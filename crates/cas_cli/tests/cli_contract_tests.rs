@@ -82,18 +82,11 @@ fn test_eval_emits_wire_output() {
 
 #[test]
 fn test_eval_calculus_residuals_emit_conservative_steps_json() {
-    let cases = [
-        (
-            "diff(sign(x), x)",
-            "diff(sign(x), x)",
-            "Conservar derivada residual",
-        ),
-        (
-            "integrate(exp(x^2), x)",
-            "integrate(e^(x^2), x)",
-            "Conservar integral residual",
-        ),
-    ];
+    let cases = [(
+        "integrate(exp(x^2), x)",
+        "integrate(e^(x^2), x)",
+        "Conservar integral residual",
+    )];
 
     for (input, expected_result, expected_rule) in cases {
         let output = cli()
@@ -117,6 +110,43 @@ fn test_eval_calculus_residuals_emit_conservative_steps_json() {
         assert_eq!(steps.len(), 1, "input: {input}");
         assert_eq!(steps[0]["rule"], expected_rule, "input: {input}");
     }
+}
+
+#[test]
+fn test_eval_diff_sign_polynomial_returns_zero_with_nonzero_domain_json() {
+    let output = cli()
+        .args([
+            "eval",
+            "diff(sign(x), x)",
+            "--format",
+            "json",
+            "--steps",
+            "on",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+    let steps = wire["steps"].as_array().expect("steps array");
+    let first_substeps = steps[0]["substeps"].as_array().expect("substeps array");
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x ≠ 0"]));
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        first_substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar derivada de sign(u) fuera de u = 0"),
+        "missing sign derivative substep: {first_substeps:?}"
+    );
 }
 
 #[test]
@@ -152,7 +182,7 @@ fn test_eval_inverse_trig_canonical_reciprocal_root_exact_values_json() {
 }
 
 #[test]
-fn test_eval_wire_surfaces_blocked_diff_domain_hint() {
+fn test_eval_wire_returns_undefined_for_empty_diff_domain() {
     let output = cli()
         .args(["eval", "diff(atanh(sqrt(x^2+2)), x)", "--format", "json"])
         .output()
@@ -162,21 +192,11 @@ fn test_eval_wire_surfaces_blocked_diff_domain_hint() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
-    let blocked = wire["blocked_hints"]
-        .as_array()
-        .expect("blocked_hints array");
-
-    assert_eq!(blocked.len(), 1);
-    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+    assert_eq!(wire["result"], "undefined");
     assert_eq!(
-        blocked[0]["tip"],
-        "real domain is empty; no real derivative is exposed"
-    );
-    assert!(
-        blocked[0]["requires"][0]
-            .as_str()
-            .is_some_and(|condition| condition.contains("-x") && condition.contains("> 0")),
-        "expected concrete impossible positive gap, got: {blocked:?}"
+        wire["blocked_hints"],
+        serde_json::Value::Null,
+        "undefined domain is now explained by the derivative step, not a blocked residual"
     );
 }
 
@@ -456,16 +476,13 @@ fn test_eval_diff_requires_explicit_variable_diagnostic() {
 }
 
 #[test]
-fn test_eval_text_surfaces_blocked_diff_domain_hint_on_stderr() {
+fn test_eval_text_returns_undefined_for_empty_diff_domain_without_blocked_stderr() {
     cli()
         .args(["eval", "diff(atanh(sqrt(x^2+2)), x)"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("diff(atanh(sqrt(x^2 + 2)), x)"))
-        .stderr(predicate::str::contains("Blocked: requires -x"))
-        .stderr(predicate::str::contains(
-            "real domain is empty; no real derivative is exposed",
-        ));
+        .stdout(predicate::str::contains("undefined"))
+        .stderr(predicate::str::is_empty());
 }
 
 #[test]

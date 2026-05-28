@@ -380,12 +380,22 @@ fn is_inverse_reciprocal_trig_empty_domain_diff_residual(
         )
 }
 
+fn eval_result_is_undefined(ctx: &cas_ast::Context, result: &EvalResult) -> bool {
+    matches!(
+        eval_result_first_expr(result).map(|expr| ctx.get(expr)),
+        Some(cas_ast::Expr::Constant(cas_ast::Constant::Undefined))
+    )
+}
+
 fn public_required_conditions(
     ctx: &cas_ast::Context,
     result: &EvalResult,
     diagnostics: &crate::diagnostics::Diagnostics,
     blocked_hints: &[crate::BlockedHint],
 ) -> Vec<crate::ImplicitCondition> {
+    if eval_result_is_undefined(ctx, result) {
+        return Vec::new();
+    }
     if has_empty_real_domain_diff_block(blocked_hints)
         && is_inverse_reciprocal_trig_empty_domain_diff_residual(ctx, result)
     {

@@ -11596,6 +11596,9 @@ fn generate_symbolic_differentiation_substeps(ctx: &Context, step: &Step) -> Vec
     if let Some(substep) = sqrt_empty_positive_domain_diff_substep(ctx, target, after, var_name) {
         return vec![substep];
     }
+    if let Some(substep) = inverse_function_empty_open_interval_diff_substep(ctx, target, after) {
+        return vec![substep];
+    }
 
     let Some(rule_title) = differentiation_rule_title(ctx, target, var_name) else {
         return Vec::new();
@@ -11830,6 +11833,72 @@ fn sqrt_empty_positive_domain_diff_substep(
     )
 }
 
+fn inverse_function_empty_open_interval_diff_substep(
+    ctx: &Context,
+    target: ExprId,
+    after: ExprId,
+) -> Option<SubStep> {
+    let Expr::Constant(Constant::Undefined) = ctx.get(after) else {
+        return None;
+    };
+    if !contains_empty_domain_inverse_calculus_function(ctx, target) {
+        return None;
+    }
+
+    Some(
+        SubStep::new(
+            "Detectar dominio real vacío de la función inversa",
+            display_expr(ctx, target),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, target))
+        .with_after_latex(latex_expr(ctx, after)),
+    )
+}
+
+fn contains_empty_domain_inverse_calculus_function(ctx: &Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Function(fn_id, args) => {
+                if matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(
+                        BuiltinFn::Asin
+                            | BuiltinFn::Acos
+                            | BuiltinFn::Asec
+                            | BuiltinFn::Acsc
+                            | BuiltinFn::Arcsin
+                            | BuiltinFn::Arccos
+                            | BuiltinFn::Arcsec
+                            | BuiltinFn::Arccsc
+                            | BuiltinFn::Acosh
+                            | BuiltinFn::Atanh
+                    )
+                ) {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Number(_)
+            | Expr::Constant(_)
+            | Expr::Variable(_)
+            | Expr::SessionRef(_)
+            | Expr::Matrix { .. } => {}
+        }
+    }
+    false
+}
+
 fn differentiation_call_target(ctx: &Context, expr: ExprId) -> Option<(ExprId, &str)> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
@@ -11912,6 +11981,7 @@ fn differentiation_rule_title(
                 BuiltinFn::Sinh => Some("Usar regla de sinh(u)"),
                 BuiltinFn::Cosh => Some("Usar regla de cosh(u)"),
                 BuiltinFn::Tanh => Some("Usar regla de tanh(u)"),
+                BuiltinFn::Sign => Some("Usar derivada de sign(u) fuera de u = 0"),
                 _ => Some("Usar regla de la cadena"),
             }
         }
@@ -12996,10 +13066,6 @@ fn generate_rational_linear_partial_fraction_integration_substeps(
             return Vec::new();
         }
     }
-    if !expr_contains_log_call(ctx, after) {
-        return Vec::new();
-    }
-
     let Expr::Variable(var_sym) = ctx.get(args[1]) else {
         return Vec::new();
     };
@@ -13047,30 +13113,6 @@ fn generate_rational_linear_partial_fraction_integration_substeps(
         .with_before_latex(decomposition_latex)
         .with_after_latex(latex_expr(ctx, after)),
     ]
-}
-
-fn expr_contains_log_call(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args) => {
-            if matches!(
-                ctx.builtin_of(*fn_id),
-                Some(BuiltinFn::Ln | BuiltinFn::Log | BuiltinFn::Log10)
-            ) {
-                return true;
-            }
-            args.iter().any(|arg| expr_contains_log_call(ctx, *arg))
-        }
-        Expr::Add(left, right)
-        | Expr::Sub(left, right)
-        | Expr::Mul(left, right)
-        | Expr::Div(left, right)
-        | Expr::Pow(left, right) => {
-            expr_contains_log_call(ctx, *left) || expr_contains_log_call(ctx, *right)
-        }
-        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_log_call(ctx, *inner),
-        Expr::Matrix { data, .. } => data.iter().any(|id| expr_contains_log_call(ctx, *id)),
-        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
-    }
 }
 
 fn generate_positive_quadratic_square_integration_substeps(

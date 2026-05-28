@@ -4,6 +4,10 @@
 //! dispatch orchestrator so the pipeline flow stays compact.
 
 use super::*;
+use cas_math::limit_types::FiniteLimitSide;
+use cas_math::polynomial::Polynomial;
+use num_rational::BigRational;
+use num_traits::{Signed, Zero};
 
 fn is_simple_negative_var_affine_witness(
     ctx: &cas_ast::Context,
@@ -43,6 +47,131 @@ fn is_simple_positive_var_affine_witness(
             *left == var && !cas_math::expr_predicates::contains_named_var(ctx, *right, var_name)
         }
         _ => false,
+    }
+}
+
+fn polynomial_local_order_and_derivative(
+    polynomial: &Polynomial,
+    point: &BigRational,
+) -> Option<(usize, BigRational)> {
+    let mut current = polynomial.clone();
+    for order in 0..=polynomial.degree() {
+        let value = current.eval(point);
+        if !value.is_zero() {
+            return Some((order, value));
+        }
+        current = current.derivative();
+    }
+    None
+}
+
+fn finite_one_sided_polynomial_tail_is_negative(
+    polynomial: &Polynomial,
+    point: &BigRational,
+    side: FiniteLimitSide,
+) -> Option<bool> {
+    let (order, derivative_value) = polynomial_local_order_and_derivative(polynomial, point)?;
+    Some(
+        derivative_value.is_positive()
+            != (side == FiniteLimitSide::Right || order.is_multiple_of(2)),
+    )
+}
+
+fn shifted_domain_witness_polynomial(
+    ctx: &cas_ast::Context,
+    witness: ExprId,
+    var_name: &str,
+    lower_bound: &BigRational,
+) -> Option<Polynomial> {
+    let poly = Polynomial::from_expr(ctx, witness, var_name).ok()?;
+    if lower_bound.is_zero() {
+        return Some(poly);
+    }
+
+    let mut coeffs = poly.coeffs;
+    if coeffs.is_empty() {
+        coeffs.push(-lower_bound.clone());
+    } else {
+        coeffs[0] -= lower_bound;
+    }
+    Some(Polynomial::new(coeffs, poly.var))
+}
+
+fn finite_one_sided_domain_path_conflict(
+    ctx: &cas_ast::Context,
+    cond: &crate::ImplicitCondition,
+    var_name: &str,
+    point_value: &BigRational,
+    side: FiniteLimitSide,
+) -> bool {
+    let (witness, lower_bound, strict_positive) = match cond {
+        crate::ImplicitCondition::Positive(witness) => (*witness, BigRational::zero(), true),
+        crate::ImplicitCondition::NonNegative(witness) => (*witness, BigRational::zero(), false),
+        crate::ImplicitCondition::LowerBound(witness, lower_bound) => {
+            (*witness, lower_bound.clone(), false)
+        }
+        crate::ImplicitCondition::NonZero(_) => return false,
+    };
+
+    let Some(poly) = shifted_domain_witness_polynomial(ctx, witness, var_name, &lower_bound) else {
+        return false;
+    };
+    let value_at_point = poly.eval(point_value);
+    if value_at_point.is_negative() {
+        return true;
+    }
+    if value_at_point.is_positive() {
+        return false;
+    }
+    if poly.is_zero() {
+        return strict_positive;
+    }
+
+    finite_one_sided_polynomial_tail_is_negative(&poly, point_value, side).unwrap_or(false)
+}
+
+fn finite_one_sided_approach_display(
+    ctx: &cas_ast::Context,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> String {
+    let point_display = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: point,
+        }
+    );
+    match side {
+        FiniteLimitSide::Left => format!("{point_display} from the left"),
+        FiniteLimitSide::Right => format!("{point_display} from the right"),
+    }
+}
+
+fn finite_one_sided_inverse_interval_condition(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<crate::ImplicitCondition> {
+    let cas_ast::Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let square = ctx.add(cas_ast::Expr::Pow(args[0], two));
+    let bounded = ctx.add(cas_ast::Expr::Sub(one, square));
+    match ctx.builtin_of(fn_id) {
+        Some(
+            cas_ast::BuiltinFn::Arcsin
+            | cas_ast::BuiltinFn::Asin
+            | cas_ast::BuiltinFn::Arccos
+            | cas_ast::BuiltinFn::Acos,
+        ) => Some(crate::ImplicitCondition::NonNegative(bounded)),
+        Some(cas_ast::BuiltinFn::Atanh) => Some(crate::ImplicitCondition::Positive(bounded)),
+        _ => None,
     }
 }
 
@@ -127,7 +256,7 @@ fn cleanup_residual_limit_output_expr(ctx: &mut cas_ast::Context, expr: ExprId) 
 }
 
 fn limit_domain_path_warning(
-    ctx: &cas_ast::Context,
+    ctx: &mut cas_ast::Context,
     expr: ExprId,
     var: ExprId,
     var_name: &str,
@@ -137,6 +266,20 @@ fn limit_domain_path_warning(
         crate::infer_implicit_domain(ctx, expr, crate::semantics::ValueDomain::RealOnly);
 
     let required = match approach {
+        crate::limits::Approach::FiniteOneSided(point, side) => {
+            let cas_ast::Expr::Number(point_value) = ctx.get(point) else {
+                return None;
+            };
+            let point_value = point_value.clone();
+            let mut conditions: Vec<_> = input_domain.conditions().iter().cloned().collect();
+            if let Some(cond) = finite_one_sided_inverse_interval_condition(ctx, expr) {
+                conditions.push(cond);
+            }
+            conditions.iter().find_map(|cond| {
+                finite_one_sided_domain_path_conflict(ctx, cond, var_name, &point_value, side)
+                    .then(|| cond.display(ctx))
+            })
+        }
         crate::limits::Approach::NegInfinity => input_domain.conditions().iter().find_map(|cond| {
             let witness = match cond {
                 crate::ImplicitCondition::Positive(witness)
@@ -165,6 +308,15 @@ fn limit_domain_path_warning(
     let approach_display = match approach {
         crate::limits::Approach::NegInfinity => "-infinity",
         crate::limits::Approach::PosInfinity => "infinity",
+        crate::limits::Approach::FiniteOneSided(point, side) => {
+            return Some(DomainWarning {
+                message: format!(
+                    "Limit path conflicts with the input domain: {var_name} -> {} while the expression requires {required}",
+                    finite_one_sided_approach_display(ctx, point, side)
+                ),
+                rule_name: "Limit Domain Path".to_string(),
+            });
+        }
         crate::limits::Approach::Finite(_) => return None,
     };
 
@@ -321,6 +473,10 @@ impl Engine {
                                 "Evaluar límite finito",
                                 "Evaluar el límite finito con política conservadora",
                             ),
+                            crate::limits::Approach::FiniteOneSided(_, _) => (
+                                "Evaluar límite unilateral finito",
+                                "Evaluar el límite finito unilateral con política conservadora",
+                            ),
                             crate::limits::Approach::PosInfinity
                             | crate::limits::Approach::NegInfinity => (
                                 "Evaluar límite en infinito",
@@ -350,7 +506,7 @@ impl Engine {
                     .collect();
                 if !warnings.is_empty() {
                     if let Some(warning) = limit_domain_path_warning(
-                        &self.simplifier.context,
+                        &mut self.simplifier.context,
                         resolved,
                         var_id,
                         var,

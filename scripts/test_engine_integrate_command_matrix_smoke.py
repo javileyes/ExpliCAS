@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 86)
+        self.assertEqual(len(cases), 94)
         names = {case.name for case in cases}
         self.assertIn("reciprocal_affine_log_abs_domain", names)
         self.assertIn("reciprocal_negative_affine_log_abs_domain", names)
@@ -57,10 +57,36 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertIn("inverse_trig_sqrt_reciprocal_bridge", names)
         self.assertIn("inverse_trig_scaled_sqrt_reciprocal_bridge", names)
+        self.assertIn("rational_positive_quadratic_square_reduction", names)
         self.assertIn("affine_exp_substitution", names)
         self.assertIn("by_parts_affine_log_domain", names)
         self.assertIn("inverse_hyperbolic_rational_direct_atanh_domain", names)
         self.assertIn("rational_partial_fraction_two_real_linear_factors", names)
+        self.assertIn("rational_partial_fraction_three_real_linear_factors", names)
+        self.assertIn(
+            "rational_partial_fraction_mixed_simple_repeated_linear_factors",
+            names,
+        )
+        self.assertIn(
+            "rational_partial_fraction_repeated_real_linear_factors",
+            names,
+        )
+        self.assertIn(
+            "rational_partial_fraction_mixed_linear_positive_quadratic",
+            names,
+        )
+        self.assertIn(
+            "rational_partial_fraction_repeated_linear_positive_quadratic",
+            names,
+        )
+        self.assertIn(
+            "rational_partial_fraction_repeated_origin_linear_positive_quadratic_no_log",
+            names,
+        )
+        self.assertIn(
+            "rational_partial_fraction_repeated_origin_scaled_positive_quadratic_no_log",
+            names,
+        )
         self.assertIn(
             "rational_improper_partial_fraction_polynomial_division",
             names,
@@ -222,7 +248,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 9, "supported": 75, "undefined": 2},
+            {"residual": 9, "supported": 83, "undefined": 2},
         )
         self.assertEqual(
             sum(
@@ -233,14 +259,14 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     or case.expected_derivative_equivalent_to is not None
                 )
             ),
-            75,
+            83,
         )
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
             {
                 "residual_not_verified": 9,
                 "undefined_not_verified": 2,
-                "verified_by_diff": 75,
+                "verified_by_diff": 83,
             },
         )
         step_checked = {
@@ -280,10 +306,18 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "explicit_reciprocal_hyperbolic_tangent_presimplified_condition_dedupe",
                 "additive_trig_pole_residual_domain",
                 "inverse_trig_table",
+                "rational_positive_quadratic_square_reduction",
                 "inverse_trig_sqrt_reciprocal_bridge",
                 "inverse_trig_scaled_sqrt_reciprocal_bridge",
                 "inverse_hyperbolic_rational_direct_atanh_domain",
                 "rational_partial_fraction_two_real_linear_factors",
+                "rational_partial_fraction_three_real_linear_factors",
+                "rational_partial_fraction_mixed_simple_repeated_linear_factors",
+                "rational_partial_fraction_repeated_real_linear_factors",
+                "rational_partial_fraction_mixed_linear_positive_quadratic",
+                "rational_partial_fraction_repeated_linear_positive_quadratic",
+                "rational_partial_fraction_repeated_origin_linear_positive_quadratic_no_log",
+                "rational_partial_fraction_repeated_origin_scaled_positive_quadratic_no_log",
                 "rational_improper_partial_fraction_polynomial_division",
                 "rational_improper_positive_quadratic_polynomial_division",
                 "rational_improper_positive_quadratic_negative_orientation",
@@ -355,7 +389,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "explicit_tangent_denominator_source_condition": 1,
                 "explicit_tangent_denominator_verified_substitution": 1,
                 "hyperbolic_sine_pole_required": 8,
-                "linear_poles_required": 2,
+                "linear_poles_required": 9,
                 "nonzero_required": 3,
                 "nonfinite_undefined": 1,
                 "positive_log_argument_required": 1,
@@ -371,7 +405,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "sqrt_chain_hyperbolic_presimplified_condition_dedupe": 1,
                 "sqrt_chain_hyperbolic_sine_pole_required": 1,
                 "structurally_nonzero_negative_quadratic_denominator": 1,
-                "structurally_positive_denominator": 1,
+                "structurally_positive_denominator": 2,
                 "structurally_positive_log_argument": 3,
                 "trig_pole_additive_residual": 1,
                 "trig_pole_presimplified_residual": 1,
@@ -396,6 +430,26 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block7_sqrt_chain_trig_log": 2,
                 "block7_trig_reciprocal_derivative_product": 13,
                 "block9_explicit_reciprocal_trig_residual": 2,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_calculus_maturity_blocks(cases),
+            {
+                "block4_base_integration": 6,
+                "block5_generalized_substitution": 10,
+                "block6_rational_integration": 12,
+                "block7_trig_hyperbolic_integration": 47,
+                "block8_radical_inverse_families": 8,
+                "block9_residuals_and_non_goals": 11,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_calculus_block_gates(cases),
+            {
+                "didactic_trace_and_verified_antiderivative": 24,
+                "domain_conditions_and_verified_antiderivative": 59,
+                "explicit_undefined_domain_policy": 2,
+                "safe_residual_policy": 9,
             },
         )
         self.assertGreaterEqual(len({case.family for case in cases}), 10)

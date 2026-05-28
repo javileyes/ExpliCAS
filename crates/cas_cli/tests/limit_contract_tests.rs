@@ -239,6 +239,247 @@ fn test_limit_subcommand_rejects_finite_to_value_before_eval_json() {
 }
 
 #[test]
+fn test_eval_one_sided_limit_orientation_policy_json() {
+    for (input, expected_result) in [
+        ("limit(abs(x)/x, x, 0+)", "1"),
+        ("limit(abs(x)/x, x, 0-)", "-1"),
+        ("limit(abs(x)/x, x, 0, right)", "1"),
+        ("limit(1/x, x, 0+)", "infinity"),
+        ("limit(1/x, x, 0-)", "-infinity"),
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions.iter().any(|condition| condition == "x ≠ 0")
+            }),
+            "One-sided orientation limit should preserve denominator domain for {input}, got: {wire:?}"
+        );
+    }
+
+    for input in [
+        "limit(ln(x), x, 0+)",
+        "limit(log2(x), x, 0+)",
+        "limit(log10(x), x, 0+)",
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], "-infinity", "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions.iter().any(|condition| condition == "x > 0")
+            }),
+            "One-sided log endpoint should preserve positive-domain condition for {input}, got: {wire:?}"
+        );
+    }
+
+    for (input, expected_condition) in [
+        ("limit(sqrt(x), x, 0+)", "x ≥ 0"),
+        ("limit(sqrt(-x), x, 0-)", "x ≤ 0"),
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], "0", "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_condition)
+            }),
+            "One-sided sqrt endpoint should preserve nonnegative-domain condition for {input}, got: {wire:?}"
+        );
+    }
+
+    for (input, expected_condition) in [
+        ("limit(acosh(x), x, 1+)", "x ≥ 1"),
+        ("limit(acosh(x+2), x, -1+)", "x ≥ -1"),
+        ("limit(acosh(2-x), x, 1-)", "x ≤ 1"),
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], "0", "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_condition)
+            }),
+            "One-sided acosh endpoint should preserve lower-bound-domain condition for {input}, got: {wire:?}"
+        );
+    }
+
+    for (input, expected_result, expected_condition) in [
+        ("limit(acos(x), x, 1-)", "0", "-1 ≤ x ≤ 1"),
+        ("limit(asin(x), x, 1-)", "pi / 2", "-1 ≤ x ≤ 1"),
+        ("limit(acos(x), x, -1+)", "pi", "-1 ≤ x ≤ 1"),
+        ("limit(asin(x), x, -1+)", "-pi / 2", "-1 ≤ x ≤ 1"),
+        ("limit(acos(2-x), x, 1+)", "0", "1 ≤ x ≤ 3"),
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_condition)
+            }),
+            "One-sided inverse-trig endpoint should preserve interval-domain condition for {input}, got: {wire:?}"
+        );
+    }
+
+    for (input, expected_result, expected_condition) in [
+        ("limit(atanh(x), x, 1-)", "infinity", "-1 < x < 1"),
+        ("limit(atanh(x), x, -1+)", "-infinity", "-1 < x < 1"),
+        ("limit(atanh(2-x), x, 1+)", "infinity", "1 < x < 3"),
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_condition)
+            }),
+            "One-sided atanh endpoint should preserve open-interval-domain condition for {input}, got: {wire:?}"
+        );
+    }
+
+    for (input, expected_result, expected_condition) in [
+        (
+            "limit(acos(x), x, 1+)",
+            "limit(acos(x), x, 1, right)",
+            "-1 ≤ x ≤ 1",
+        ),
+        (
+            "limit(asin(x), x, -1-)",
+            "limit(asin(x), x, -1, left)",
+            "-1 ≤ x ≤ 1",
+        ),
+        (
+            "limit(acos(1+x^2), x, 0+)",
+            "limit(acos(x^2 + 1), x, 0, right)",
+            "-1 ≤ x^2 + 1 ≤ 1",
+        ),
+        (
+            "limit(atanh(x), x, 1+)",
+            "limit(atanh(x), x, 1, right)",
+            "-1 < x < 1",
+        ),
+        (
+            "limit(atanh(x), x, -1-)",
+            "limit(atanh(x), x, -1, left)",
+            "-1 < x < 1",
+        ),
+        (
+            "limit(atanh(1+x^2), x, 0+)",
+            "limit(atanh(x^2 + 1), x, 0, right)",
+            "1 - (x^2 + 1)^2 > 0",
+        ),
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_condition)
+            }),
+            "Unsupported one-sided inverse interval endpoint should preserve required condition for {input}, got: {wire:?}"
+        );
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains(
+                                "One-sided finite point limits are not supported safely for this expression yet",
+                            )
+                        })
+                }) && warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Domain Path"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Limit path conflicts with the input domain")
+                                && message.contains(expected_condition)
+                    })
+                })
+            }),
+            "Unsupported one-sided inverse interval endpoint should stay residual with explicit domain-path warning for {input}, got: {wire:?}"
+        );
+    }
+
+    for (input, expected_result, expected_condition) in [
+        ("limit(ln(x), x, 0-)", "limit(ln(x), x, 0, left)", "x > 0"),
+        (
+            "limit(sqrt(x), x, 0-)",
+            "limit(sqrt(x), x, 0, left)",
+            "x ≥ 0",
+        ),
+        (
+            "limit(sqrt(x+1), x, -1-)",
+            "limit(sqrt(x + 1), x, -1, left)",
+            "x ≥ -1",
+        ),
+        (
+            "limit(sqrt(1-x), x, 1+)",
+            "limit(sqrt(1 - x), x, 1, right)",
+            "x ≤ 1",
+        ),
+        (
+            "limit(acosh(x), x, 1-)",
+            "limit(acosh(x), x, 1, left)",
+            "x ≥ 1",
+        ),
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions.iter().any(|condition| condition == expected_condition)
+            }),
+            "Domain-conflicting one-sided endpoint should preserve required condition for {input}, got: {wire:?}"
+        );
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains(
+                                "One-sided finite point limits are not supported safely for this expression yet",
+                            )
+                        })
+                }) && warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Domain Path"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Limit path conflicts with the input domain")
+                                && message.contains(expected_condition)
+                        })
+                })
+            }),
+            "Unsupported one-sided endpoint should stay residual with explicit domain-path warning for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_finite_dependent_limit_stays_residual_with_warning_json() {
     let (success, stdout) = run_eval("limit(ln(x), x, -1)", "json");
     assert!(success, "Command should succeed even for finite residual");
@@ -570,9 +811,18 @@ fn test_eval_finite_partial_domain_inverse_elementary_limits_stay_residual_json(
     for input in [
         "limit(arcsin(x), x, 2)",
         "limit(arcsin(x), x, 1)",
+        "limit(arcsin(x), x, -1)",
+        "limit(acos(x), x, 1)",
+        "limit(acos(x), x, -1)",
+        "limit(acos(1+x^2), x, 0)",
+        "limit(acos(1-x^3), x, 0)",
+        "limit(acos(-1-x^2), x, 0)",
+        "limit(acos(-1+x^3), x, 0)",
         "limit(atanh(x), x, 1)",
         "limit(acosh(x), x, 1)",
         "limit(acosh(sqrt(x)), x, 1)",
+        "limit(acosh(1+x^3), x, 0)",
+        "limit(acosh(1-x^2), x, 0)",
     ] {
         let (success, stdout) = run_eval(input, "json");
         assert!(
@@ -597,6 +847,60 @@ fn test_eval_finite_partial_domain_inverse_elementary_limits_stay_residual_json(
                 })
             }),
             "Partial-domain inverse limit should remain residual with warning for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_inverse_trig_bilateral_endpoint_policy_json() {
+    for (input, expected_result, expected_required) in [
+        ("limit(acos(1-x^2), x, 0)", "0", "-1 ≤ x^2 - 1 ≤ 1"),
+        ("limit(asin(1-x^2), x, 0)", "pi / 2", "-1 ≤ x^2 - 1 ≤ 1"),
+        ("limit(acos(-1+x^2), x, 0)", "pi", "-1 ≤ x^2 - 1 ≤ 1"),
+        ("limit(asin(-1+x^2), x, 0)", "-pi / 2", "-1 ≤ x^2 - 1 ≤ 1"),
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should resolve bilateral inverse-trig endpoint for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_required)
+            }),
+            "Bilateral inverse-trig endpoint should preserve interval-domain condition for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_acosh_bilateral_lower_bound_endpoint_policy_json() {
+    for (input, expected_required) in [
+        ("limit(acosh(1+x^2), x, 0)", "x^2 + 1 ≥ 1"),
+        ("limit(acosh(1+(x-2)^2), x, 2)", "(x - 2)^2 + 1 ≥ 1"),
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should resolve bilateral acosh lower-bound endpoint for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], "0", "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert!(
+            wire["required_display"].as_array().is_some_and(|conditions| {
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_required)
+            }),
+            "Bilateral acosh endpoint should preserve lower-bound-domain condition for {input}, got: {wire:?}"
         );
     }
 }

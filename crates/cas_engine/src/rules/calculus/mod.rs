@@ -13,7 +13,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::symbolic_calculus_call_support::{
     render_diff_desc_with, render_integrate_desc_with, try_extract_diff_call,
-    try_extract_integrate_call,
+    try_extract_integrate_call, NamedVarCall,
 };
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
@@ -19327,48 +19327,69 @@ fn zero_base_variable_exponent_diff_required_conditions(
     }
 }
 
+fn sign_polynomial_diff_result(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (fn_id, args) = match ctx.get(target).clone() {
+        Expr::Function(fn_id, args) => (fn_id, args),
+        _ => return None,
+    };
+    if args.len() != 1 || ctx.builtin_of(fn_id) != Some(BuiltinFn::Sign) {
+        return None;
+    }
+
+    let arg = cas_ast::hold::unwrap_internal_hold(ctx, args[0]);
+    if !contains_named_var(ctx, arg, var_name) {
+        return None;
+    }
+
+    let polynomial = Polynomial::from_expr(ctx, arg, var_name).ok()?;
+    let zero = ctx.num(0);
+    if polynomial.is_zero() || polynomial.degree() == 0 {
+        return Some((zero, Vec::new()));
+    }
+
+    Some((zero, vec![crate::ImplicitCondition::NonZero(arg)]))
+}
+
+fn undefined_diff_rewrite(ctx: &mut Context, call: &NamedVarCall) -> Rewrite {
+    let undefined = ctx.add(Expr::Constant(Constant::Undefined));
+    let desc = render_diff_desc_with(call, |id| {
+        format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+    });
+    Rewrite::new(undefined).desc(desc)
+}
+
 define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
     let call = try_extract_diff_call(ctx, expr)?;
     let target = unwrap_internal_hold_for_calculus(ctx, call.target);
     if diff_target_known_undefined_over_reals(ctx, target, &call.var_name) {
-        let undefined = ctx.add(Expr::Constant(Constant::Undefined));
+        return Some(undefined_diff_rewrite(ctx, &call));
+    }
+    if atanh_known_empty_open_interval_gap(ctx, target).is_some() {
+        return Some(undefined_diff_rewrite(ctx, &call));
+    }
+    if inverse_reciprocal_trig_bounded_trig_empty_open_interval_gap(ctx, target, &call.var_name)
+        .is_some()
+    {
+        return Some(undefined_diff_rewrite(ctx, &call));
+    }
+    if bounded_inverse_trig_known_empty_open_interval_gap(ctx, target, &call.var_name).is_some() {
+        return Some(undefined_diff_rewrite(ctx, &call));
+    }
+    if let Some((result, required_conditions)) =
+        sign_polynomial_diff_result(ctx, target, &call.var_name)
+    {
         let desc = render_diff_desc_with(&call, |id| {
             format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
         });
-        return Some(Rewrite::new(undefined).desc(desc));
-    }
-    if let Some(open_interval_gap) = atanh_known_empty_open_interval_gap(ctx, target) {
-        crate::register_blocked_hint(crate::BlockedHint {
-            key: crate::AssumptionKey::positive_key(ctx, open_interval_gap),
-            expr_id: open_interval_gap,
-            rule: "Symbolic Differentiation".to_string(),
-            suggestion: "real domain is empty; no real derivative is exposed",
-        });
-        return None;
-    }
-    if let Some((open_interval_gap, should_emit_hint)) =
-        inverse_reciprocal_trig_bounded_trig_empty_open_interval_gap(ctx, target, &call.var_name)
-    {
-        if should_emit_hint {
-            crate::register_blocked_hint(crate::BlockedHint {
-                key: crate::AssumptionKey::positive_key(ctx, open_interval_gap),
-                expr_id: open_interval_gap,
-                rule: "Symbolic Differentiation".to_string(),
-                suggestion: "real domain is empty; no real derivative is exposed",
-            });
-        }
-        return None;
-    }
-    if let Some(open_interval_gap) =
-        bounded_inverse_trig_known_empty_open_interval_gap(ctx, target, &call.var_name)
-    {
-        crate::register_blocked_hint(crate::BlockedHint {
-            key: crate::AssumptionKey::positive_key(ctx, open_interval_gap),
-            expr_id: open_interval_gap,
-            rule: "Symbolic Differentiation".to_string(),
-            suggestion: "real domain is empty; no real derivative is exposed",
-        });
-        return None;
+        return Some(
+            Rewrite::new(result)
+                .desc(desc)
+                .requires_all(required_conditions),
+        );
     }
     let mut shortcut_required_conditions = Vec::new();
     if let Some((result, required_conditions)) =

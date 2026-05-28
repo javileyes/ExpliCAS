@@ -20,9 +20,39 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_limit_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 46)
+        self.assertEqual(len(cases), 73)
         names = {case.name for case in cases}
         self.assertIn("finite_removable_rational_cancellation", names)
+        self.assertIn("finite_rational_simple_pole_residual", names)
+        self.assertIn("finite_one_sided_abs_orientation_quotient_supported", names)
+        self.assertIn("finite_one_sided_log_zero_endpoint_supported", names)
+        self.assertIn("finite_one_sided_sqrt_zero_endpoint_supported", names)
+        self.assertIn("finite_one_sided_sqrt_domain_path_conflict_residual", names)
+        self.assertIn("finite_one_sided_acosh_lower_bound_endpoint_supported", names)
+        self.assertIn(
+            "finite_one_sided_acosh_lower_bound_domain_path_conflict_residual",
+            names,
+        )
+        self.assertIn("finite_one_sided_inverse_trig_upper_endpoint_supported", names)
+        self.assertIn(
+            "finite_one_sided_inverse_trig_upper_domain_path_conflict_residual",
+            names,
+        )
+        self.assertIn("finite_one_sided_atanh_upper_endpoint_supported", names)
+        self.assertIn("finite_one_sided_atanh_lower_endpoint_supported", names)
+        self.assertIn(
+            "finite_one_sided_atanh_upper_domain_path_conflict_residual",
+            names,
+        )
+        self.assertIn("finite_log_argument_zero_endpoint_residual", names)
+        self.assertIn("finite_fixed_base_log_argument_zero_endpoint_residual", names)
+        self.assertIn(
+            "finite_binary_log_constant_base_argument_zero_endpoint_residual",
+            names,
+        )
+        self.assertIn("finite_acosh_bilateral_lower_bound_endpoint_supported", names)
+        self.assertIn("finite_inverse_trig_bilateral_upper_endpoint_supported", names)
+        self.assertIn("finite_inverse_trig_bilateral_lower_endpoint_supported", names)
         self.assertIn("finite_log_root_structurally_positive_composition", names)
         self.assertIn("finite_sqrt_structurally_positive_radical_presentation", names)
         self.assertIn("finite_inverse_trig_root_interior_special_angle", names)
@@ -32,10 +62,21 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("finite_static_invalid_log_undefined", names)
         self.assertIn("finite_sqrt_endpoint_residual_presentation_cleanup", names)
         self.assertIn("finite_discontinuous_sign_residual_presentation_cleanup", names)
+        self.assertIn("finite_abs_orientation_quotient_residual_boundary", names)
         self.assertIn("finite_negative_integer_power_nonzero_root_base", names)
         self.assertIn("finite_trig_special_angle_structural_domain", names)
         self.assertIn("finite_trig_table_undefined_pole_residual", names)
         self.assertIn("finite_reciprocal_trig_sine_pole_residual", names)
+        self.assertIn("finite_trig_small_angle_scaled_quotient", names)
+        self.assertIn("finite_exp_zero_scaled_quotient", names)
+        self.assertIn("finite_log_unit_scaled_quotient", names)
+        self.assertIn("finite_fixed_base_log_unit_scaled_quotient", names)
+        self.assertIn("finite_binary_log_constant_base_unit_scaled_quotient", names)
+        self.assertIn("finite_binary_log_variable_base_unit_scaled_quotient", names)
+        self.assertIn("finite_binary_log_resolved_base_unit_scaled_quotient", names)
+        self.assertIn(
+            "finite_binary_log_resolved_radical_base_unit_scaled_quotient", names
+        )
         self.assertIn("negative_infinity_log_domain_conflict_residual", names)
         self.assertIn(
             "negative_infinity_log_domain_compatible_growth_supported",
@@ -65,21 +106,67 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("infinity_bounded_polynomial_exp_decay", names)
         self.assertIn("negative_infinity_bounded_over_divergent_orientation_supported", names)
         self.assertIn("infinity_bounded_over_divergent_domain_conflict_residual", names)
-        self.assertEqual(SMOKE.count_by(cases, "point_regime"), {"finite": 19, "infinity": 27})
+        self.assertEqual(
+            SMOKE.count_by(cases, "point_regime"),
+            {"finite": 35, "finite_one_sided": 11, "infinity": 27},
+        )
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 10, "supported": 35, "undefined": 1},
+            {"residual": 19, "supported": 53, "undefined": 1},
+        )
+        self.assertEqual(
+            SMOKE.count_calculus_maturity_blocks(cases),
+            {
+                "block3_real_domain_limits": 53,
+                "block9_residuals_and_non_goals": 20,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_calculus_block_gates(cases),
+            {
+                "didactic_trace_and_limit_policy": 29,
+                "domain_conditions_and_limit_policy": 24,
+                "explicit_undefined_domain_policy": 1,
+                "safe_residual_policy": 19,
+            },
         )
         self.assertEqual(
             SMOKE.count_by(cases, "required_condition_regime"),
             {
+                "finite_acosh_bilateral_lower_bound_endpoint_domain": 1,
+                "finite_abs_orientation_denominator_domain": 1,
+                "finite_binary_log_constant_base_endpoint_residual_domain": 1,
+                "finite_binary_log_constant_base_unit_denominator_domain": 1,
+                "finite_binary_log_resolved_base_unit_denominator_and_base_domain": 1,
+                "finite_binary_log_resolved_radical_base_unit_denominator_base_and_radical_domain": 1,
+                "finite_binary_log_variable_base_unit_denominator_and_base_domain": 1,
                 "finite_boundary_residual_domain": 2,
                 "finite_endpoint_residual_domain": 2,
+                "finite_fixed_base_log_endpoint_residual_domain": 1,
+                "finite_fixed_base_log_unit_denominator_domain": 1,
                 "finite_interval_domain": 1,
+                "finite_inverse_trig_bilateral_lower_endpoint_domain": 1,
+                "finite_inverse_trig_bilateral_upper_endpoint_domain": 1,
                 "finite_log_base_argument_domain": 1,
+                "finite_log_endpoint_residual_domain": 1,
+                "finite_log_unit_denominator_domain": 1,
+                "finite_one_sided_acosh_lower_bound_endpoint_domain": 1,
+                "finite_one_sided_atanh_endpoint_domain": 1,
+                "finite_one_sided_atanh_lower_endpoint_domain": 1,
+                "finite_one_sided_atanh_path_conflict": 1,
+                "finite_one_sided_inverse_trig_endpoint_domain": 1,
+                "finite_one_sided_inverse_trig_path_conflict": 1,
+                "finite_one_sided_lower_bound_path_conflict": 1,
                 "finite_positive_domain": 1,
                 "finite_positive_nonzero_power_domain": 1,
+                "finite_exp_zero_denominator_domain": 1,
+                "finite_one_sided_log_endpoint_domain": 1,
+                "finite_one_sided_orientation_domain": 1,
+                "finite_one_sided_path_conflict": 1,
+                "finite_one_sided_root_endpoint_domain": 1,
+                "finite_rational_pole_residual_domain": 1,
                 "finite_removable_hole": 1,
+                "finite_small_angle_denominator_domain": 1,
                 "finite_source_definedness": 1,
                 "finite_trig_sine_pole_residual_domain": 1,
                 "finite_trig_pole_residual_domain": 1,
@@ -99,7 +186,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             sum(1 for case in cases if case.expected_step_substrings),
-            46,
+            73,
         )
         self.assertEqual(
             [
@@ -159,6 +246,17 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(matrix["supported_step_unchecked_cases"], [])
         self.assertEqual(matrix["expected_step_substring_count"], 2)
         self.assertEqual(matrix["required_display_counts"], {"x ≠ 1": 1})
+        self.assertEqual(
+            matrix["calculus_maturity_block_counts"],
+            {"block3_real_domain_limits": 2},
+        )
+        self.assertEqual(
+            matrix["calculus_block_gate_counts"],
+            {
+                "didactic_trace_and_limit_policy": 1,
+                "domain_conditions_and_limit_policy": 1,
+            },
+        )
 
     def test_run_matrix_reports_required_display_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

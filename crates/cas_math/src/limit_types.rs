@@ -3,6 +3,31 @@
 use crate::infinity_support::InfSign;
 use cas_ast::ExprId;
 
+/// Side for a one-sided finite limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FiniteLimitSide {
+    /// x -> a^-.
+    Left,
+    /// x -> a^+.
+    Right,
+}
+
+impl FiniteLimitSide {
+    pub const fn tail_sign(self) -> InfSign {
+        match self {
+            FiniteLimitSide::Left => InfSign::Neg,
+            FiniteLimitSide::Right => InfSign::Pos,
+        }
+    }
+
+    pub const fn marker(self) -> &'static str {
+        match self {
+            FiniteLimitSide::Left => "left",
+            FiniteLimitSide::Right => "right",
+        }
+    }
+}
+
 /// Direction of limit approach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Approach {
@@ -10,8 +35,10 @@ pub enum Approach {
     PosInfinity,
     /// x -> -inf
     NegInfinity,
-    /// x -> finite point.
+    /// x -> finite point from both sides.
     Finite(ExprId),
+    /// x -> finite point from an explicit side.
+    FiniteOneSided(ExprId, FiniteLimitSide),
 }
 
 impl Approach {
@@ -20,7 +47,7 @@ impl Approach {
         match self {
             Approach::PosInfinity => Some(InfSign::Pos),
             Approach::NegInfinity => Some(InfSign::Neg),
-            Approach::Finite(_) => None,
+            Approach::Finite(_) | Approach::FiniteOneSided(_, _) => None,
         }
     }
 }

@@ -1,6 +1,8 @@
 use crate::calculus_domain_support::real_domain_is_empty_for_static_expr;
 use crate::infinity_support::{mk_infinity, InfSign};
-use crate::limit_types::{Approach, LimitEvalOutcome, LimitOptions, PreSimplifyMode};
+use crate::limit_types::{
+    Approach, FiniteLimitSide, LimitEvalOutcome, LimitOptions, PreSimplifyMode,
+};
 use crate::perfect_square_support::rational_sqrt;
 use crate::polynomial::Polynomial;
 use crate::root_forms::{extract_square_root_base, rational_cbrt_exact};
@@ -82,6 +84,10 @@ pub fn mk_limit_for_approach(
         Approach::PosInfinity => mk_limit(ctx, expr, var, InfSign::Pos),
         Approach::NegInfinity => mk_limit(ctx, expr, var, InfSign::Neg),
         Approach::Finite(point) => ctx.call("limit", vec![expr, var, point]),
+        Approach::FiniteOneSided(point, side) => {
+            let side_marker = ctx.var(side.marker());
+            ctx.call("limit", vec![expr, var, point, side_marker])
+        }
     }
 }
 
@@ -210,6 +216,731 @@ fn finite_rational_polynomial_value(
     }
 
     None
+}
+
+fn finite_polynomial_local_order_and_derivative(
+    polynomial: &Polynomial,
+    point: &BigRational,
+) -> Option<(usize, BigRational)> {
+    let mut current = polynomial.clone();
+    for order in 0..=polynomial.degree() {
+        let value = current.eval(point);
+        if !value.is_zero() {
+            return Some((order, value));
+        }
+        current = current.derivative();
+    }
+    None
+}
+
+fn finite_local_tail_sign(
+    derivative_value: &BigRational,
+    order: usize,
+    side: FiniteLimitSide,
+) -> Option<InfSign> {
+    if derivative_value.is_zero() {
+        return None;
+    }
+    let positive = derivative_value.is_positive()
+        == (side == FiniteLimitSide::Right || order.is_multiple_of(2));
+    Some(if positive { InfSign::Pos } else { InfSign::Neg })
+}
+
+fn apply_finite_one_sided_rational_polynomial_pole_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol);
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let numerator = Polynomial::from_expr(ctx, num, var_name).ok()?;
+    let denominator = Polynomial::from_expr(ctx, den, var_name).ok()?;
+    let (den_order, den_derivative) =
+        finite_polynomial_local_order_and_derivative(&denominator, &point_value)?;
+    if den_order == 0 {
+        return None;
+    }
+
+    let Some((num_order, num_derivative)) =
+        finite_polynomial_local_order_and_derivative(&numerator, &point_value)
+    else {
+        return Some(ctx.num(0));
+    };
+    if num_order >= den_order {
+        return None;
+    }
+
+    let num_sign = finite_local_tail_sign(&num_derivative, num_order, side)?;
+    let den_sign = finite_local_tail_sign(&den_derivative, den_order, side)?;
+    Some(signed_abs_ratio_infinity(ctx, num_sign, den_sign))
+}
+
+fn apply_finite_one_sided_abs_polynomial_ratio_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol);
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let (abs_scale, abs_arg) = scaled_abs_base(ctx, num)?;
+    let abs_arg_poly = Polynomial::from_expr(ctx, abs_arg, var_name).ok()?;
+    let denominator = Polynomial::from_expr(ctx, den, var_name).ok()?;
+    let (abs_order, abs_derivative) =
+        finite_polynomial_local_order_and_derivative(&abs_arg_poly, &point_value)?;
+    let (den_order, den_derivative) =
+        finite_polynomial_local_order_and_derivative(&denominator, &point_value)?;
+    if den_order == 0 {
+        return None;
+    }
+
+    let numerator_tail = if abs_scale.is_positive() {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    };
+    let den_tail = finite_local_tail_sign(&den_derivative, den_order, side)?;
+
+    if abs_order < den_order {
+        return Some(signed_abs_ratio_infinity(ctx, numerator_tail, den_tail));
+    }
+    if abs_order > den_order {
+        return Some(ctx.num(0));
+    }
+
+    let magnitude = abs_scale.abs() * abs_derivative.abs() / den_derivative.abs();
+    Some(signed_abs_ratio_result(
+        ctx,
+        magnitude,
+        numerator_tail,
+        den_tail,
+    ))
+}
+
+fn scaled_sine_argument(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 && ctx.is_builtin(fn_id, BuiltinFn::Sin) => {
+            Some((BigRational::one(), args[0]))
+        }
+        Expr::Neg(inner) => {
+            let (scale, argument) = scaled_sine_argument(ctx, inner)?;
+            Some((-scale, argument))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = constant_rational_value(ctx, lhs) {
+                let (inner_scale, argument) = scaled_sine_argument(ctx, rhs)?;
+                return Some((scale * inner_scale, argument));
+            }
+            if let Some(scale) = constant_rational_value(ctx, rhs) {
+                let (inner_scale, argument) = scaled_sine_argument(ctx, lhs)?;
+                return Some((scale * inner_scale, argument));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+#[derive(Clone)]
+enum UnitLogBase {
+    Natural,
+    Fixed(BigRational),
+}
+
+fn finite_unit_log_base_value(
+    ctx: &mut Context,
+    base_expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    var_name: &str,
+    point_value: &BigRational,
+) -> Option<BigRational> {
+    let base = if let Some(base) = constant_rational_value(ctx, base_expr) {
+        base
+    } else if let Ok(base_poly) = Polynomial::from_expr(ctx, base_expr, var_name) {
+        base_poly.eval(point_value)
+    } else {
+        let base_limit = try_limit_rules_at_finite(ctx, base_expr, var, point)?;
+        constant_rational_value(ctx, base_limit)?
+    };
+
+    if !base.is_positive() || base == rational_one() {
+        return None;
+    }
+    Some(base)
+}
+
+fn scaled_unit_log_argument(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    var_name: &str,
+    point_value: &BigRational,
+) -> Option<(BigRational, ExprId, UnitLogBase)> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(fn_id)? {
+            BuiltinFn::Ln => Some((BigRational::one(), args[0], UnitLogBase::Natural)),
+            BuiltinFn::Log2 => Some((
+                BigRational::one(),
+                args[0],
+                UnitLogBase::Fixed(BigRational::from_integer(BigInt::from(2))),
+            )),
+            BuiltinFn::Log10 => Some((
+                BigRational::one(),
+                args[0],
+                UnitLogBase::Fixed(BigRational::from_integer(BigInt::from(10))),
+            )),
+            _ => None,
+        },
+        Expr::Function(fn_id, args) if args.len() == 2 && ctx.is_builtin(fn_id, BuiltinFn::Log) => {
+            let base = finite_unit_log_base_value(ctx, args[0], var, point, var_name, point_value)?;
+            Some((BigRational::one(), args[1], UnitLogBase::Fixed(base)))
+        }
+        Expr::Neg(inner) => {
+            let (scale, argument, base) =
+                scaled_unit_log_argument(ctx, inner, var, point, var_name, point_value)?;
+            Some((-scale, argument, base))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = constant_rational_value(ctx, lhs) {
+                let (inner_scale, argument, base) =
+                    scaled_unit_log_argument(ctx, rhs, var, point, var_name, point_value)?;
+                return Some((scale * inner_scale, argument, base));
+            }
+            if let Some(scale) = constant_rational_value(ctx, rhs) {
+                let (inner_scale, argument, base) =
+                    scaled_unit_log_argument(ctx, lhs, var, point, var_name, point_value)?;
+                return Some((scale * inner_scale, argument, base));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn finite_log_unit_quotient_result(
+    ctx: &mut Context,
+    value: BigRational,
+    base: UnitLogBase,
+) -> ExprId {
+    match base {
+        UnitLogBase::Natural => ctx.add(Expr::Number(value)),
+        UnitLogBase::Fixed(base) => {
+            if value.is_zero() {
+                return ctx.add(Expr::Number(value));
+            }
+            let numerator = ctx.add(Expr::Number(value));
+            let base_expr = ctx.add(Expr::Number(base));
+            let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base_expr]);
+            ctx.add(Expr::Div(numerator, ln_base))
+        }
+    }
+}
+
+fn unit_log_base_tail_coeff(base: &UnitLogBase) -> BigRational {
+    match base {
+        UnitLogBase::Natural => rational_one(),
+        UnitLogBase::Fixed(base) if base > &rational_one() => rational_one(),
+        UnitLogBase::Fixed(_) => -rational_one(),
+    }
+}
+
+fn apply_finite_one_sided_log_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+
+    let (scale, log_argument, base) =
+        scaled_unit_log_argument(ctx, expr, var, point, &var_name, &point_value)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, log_argument, &var_name).ok()?;
+    let (argument_order, argument_derivative) =
+        finite_polynomial_local_order_and_derivative(&argument, &point_value)?;
+    if argument_order == 0 {
+        return None;
+    }
+
+    if finite_local_tail_sign(&argument_derivative, argument_order, side)? != InfSign::Pos {
+        return None;
+    }
+
+    let total_scale = scale * unit_log_base_tail_coeff(&base);
+    scale_infinity(ctx, &total_scale, InfSign::Neg)
+}
+
+fn apply_finite_one_sided_sqrt_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol);
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let radicand = extract_square_root_base(ctx, expr)?;
+    let radicand = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    let (radicand_order, radicand_derivative) =
+        finite_polynomial_local_order_and_derivative(&radicand, &point_value)?;
+    if radicand_order == 0 {
+        return None;
+    }
+    if finite_local_tail_sign(&radicand_derivative, radicand_order, side)? != InfSign::Pos {
+        return None;
+    }
+
+    Some(ctx.num(0))
+}
+
+fn apply_finite_one_sided_acosh_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 || !ctx.is_builtin(fn_id, BuiltinFn::Acosh) {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, args[0], &var_name).ok()?;
+    if argument.eval(&point_value) != rational_one() {
+        return None;
+    }
+
+    let endpoint_gap = argument.sub(&Polynomial::one(var_name));
+    let (gap_order, gap_derivative) =
+        finite_polynomial_local_order_and_derivative(&endpoint_gap, &point_value)?;
+    if finite_local_tail_sign(&gap_derivative, gap_order, side)? != InfSign::Pos {
+        return None;
+    }
+
+    Some(ctx.num(0))
+}
+
+fn apply_finite_acosh_polynomial_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 || !ctx.is_builtin(fn_id, BuiltinFn::Acosh) {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, args[0], &var_name).ok()?;
+    if argument.eval(&point_value) != rational_one() {
+        return None;
+    }
+
+    let endpoint_gap = argument.sub(&Polynomial::one(var_name));
+    let (gap_order, gap_derivative) =
+        finite_polynomial_local_order_and_derivative(&endpoint_gap, &point_value)?;
+    if finite_local_tail_sign(&gap_derivative, gap_order, FiniteLimitSide::Left)? != InfSign::Pos
+        || finite_local_tail_sign(&gap_derivative, gap_order, FiniteLimitSide::Right)?
+            != InfSign::Pos
+    {
+        return None;
+    }
+
+    Some(ctx.num(0))
+}
+
+#[derive(Clone, Copy)]
+enum InverseTrigEndpoint {
+    Lower,
+    Upper,
+}
+
+fn finite_inverse_trig_endpoint_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    endpoint: InverseTrigEndpoint,
+) -> Option<ExprId> {
+    match (builtin, endpoint) {
+        (BuiltinFn::Asin | BuiltinFn::Arcsin, InverseTrigEndpoint::Lower) => {
+            let pi_over_two = TrigValue::PiDiv(2).to_expr(ctx);
+            Some(ctx.add(Expr::Neg(pi_over_two)))
+        }
+        (BuiltinFn::Asin | BuiltinFn::Arcsin, InverseTrigEndpoint::Upper) => {
+            Some(TrigValue::PiDiv(2).to_expr(ctx))
+        }
+        (BuiltinFn::Acos | BuiltinFn::Arccos, InverseTrigEndpoint::Lower) => {
+            Some(ctx.add(Expr::Constant(Constant::Pi)))
+        }
+        (BuiltinFn::Acos | BuiltinFn::Arccos, InverseTrigEndpoint::Upper) => Some(ctx.num(0)),
+        _ => None,
+    }
+}
+
+fn finite_inverse_trig_endpoint_gap(
+    argument: &Polynomial,
+    var_name: &str,
+    point_value: &BigRational,
+) -> Option<(Polynomial, InverseTrigEndpoint)> {
+    let one = rational_one();
+    let argument_value = argument.eval(point_value);
+    if argument_value == one {
+        Some((
+            Polynomial::one(var_name.to_string()).sub(argument),
+            InverseTrigEndpoint::Upper,
+        ))
+    } else if argument_value == -one {
+        Some((
+            argument.add(&Polynomial::one(var_name.to_string())),
+            InverseTrigEndpoint::Lower,
+        ))
+    } else {
+        None
+    }
+}
+
+fn apply_finite_one_sided_atanh_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 || !ctx.is_builtin(fn_id, BuiltinFn::Atanh) {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, args[0], &var_name).ok()?;
+    let (endpoint_gap, endpoint) =
+        finite_inverse_trig_endpoint_gap(&argument, &var_name, &point_value)?;
+    let (gap_order, gap_derivative) =
+        finite_polynomial_local_order_and_derivative(&endpoint_gap, &point_value)?;
+    if finite_local_tail_sign(&gap_derivative, gap_order, side)? != InfSign::Pos {
+        return None;
+    }
+
+    Some(match endpoint {
+        InverseTrigEndpoint::Lower => mk_infinity(ctx, InfSign::Neg),
+        InverseTrigEndpoint::Upper => mk_infinity(ctx, InfSign::Pos),
+    })
+}
+
+fn apply_finite_inverse_trig_polynomial_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(
+        builtin,
+        BuiltinFn::Asin | BuiltinFn::Arcsin | BuiltinFn::Acos | BuiltinFn::Arccos
+    ) {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, args[0], &var_name).ok()?;
+    let (endpoint_gap, endpoint) =
+        finite_inverse_trig_endpoint_gap(&argument, &var_name, &point_value)?;
+    let (gap_order, gap_derivative) =
+        finite_polynomial_local_order_and_derivative(&endpoint_gap, &point_value)?;
+    if finite_local_tail_sign(&gap_derivative, gap_order, FiniteLimitSide::Left)? != InfSign::Pos
+        || finite_local_tail_sign(&gap_derivative, gap_order, FiniteLimitSide::Right)?
+            != InfSign::Pos
+    {
+        return None;
+    }
+
+    finite_inverse_trig_endpoint_result(ctx, builtin, endpoint)
+}
+
+fn apply_finite_one_sided_inverse_trig_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(
+        builtin,
+        BuiltinFn::Asin | BuiltinFn::Arcsin | BuiltinFn::Acos | BuiltinFn::Arccos
+    ) {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, args[0], &var_name).ok()?;
+    let (endpoint_gap, endpoint) =
+        finite_inverse_trig_endpoint_gap(&argument, &var_name, &point_value)?;
+    let (gap_order, gap_derivative) =
+        finite_polynomial_local_order_and_derivative(&endpoint_gap, &point_value)?;
+    if finite_local_tail_sign(&gap_derivative, gap_order, side)? != InfSign::Pos {
+        return None;
+    }
+
+    finite_inverse_trig_endpoint_result(ctx, builtin, endpoint)
+}
+
+fn exp_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 && ctx.is_builtin(fn_id, BuiltinFn::Exp) => {
+            Some(args[0])
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(base), Expr::Constant(Constant::E)) => Some(exp),
+        _ => None,
+    }
+}
+
+fn scaled_exp_zero_offset_argument(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if expr_is_one(ctx, rhs) => {
+            Some((BigRational::one(), exp_argument(ctx, lhs)?))
+        }
+        Expr::Sub(lhs, rhs) if expr_is_one(ctx, lhs) => {
+            Some((-BigRational::one(), exp_argument(ctx, rhs)?))
+        }
+        Expr::Add(lhs, rhs) => {
+            if constant_rational_value(ctx, rhs).is_some_and(|value| value == -BigRational::one()) {
+                return Some((BigRational::one(), exp_argument(ctx, lhs)?));
+            }
+            if constant_rational_value(ctx, lhs).is_some_and(|value| value == -BigRational::one()) {
+                return Some((BigRational::one(), exp_argument(ctx, rhs)?));
+            }
+            None
+        }
+        Expr::Neg(inner) => {
+            let (scale, argument) = scaled_exp_zero_offset_argument(ctx, inner)?;
+            Some((-scale, argument))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = constant_rational_value(ctx, lhs) {
+                let (inner_scale, argument) = scaled_exp_zero_offset_argument(ctx, rhs)?;
+                return Some((scale * inner_scale, argument));
+            }
+            if let Some(scale) = constant_rational_value(ctx, rhs) {
+                let (inner_scale, argument) = scaled_exp_zero_offset_argument(ctx, lhs)?;
+                return Some((scale * inner_scale, argument));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn apply_finite_zero_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    scaled_argument: fn(&Context, ExprId) -> Option<(BigRational, ExprId)>,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let (scale, zero_argument) = scaled_argument(ctx, num)?;
+    let argument = Polynomial::from_expr(ctx, zero_argument, &var_name).ok()?;
+    if !argument.eval(&point_value).is_zero() {
+        return None;
+    }
+
+    let scale_poly = Polynomial::new(vec![scale], var_name.to_string());
+    let numerator = argument.mul(&scale_poly);
+    let denominator = Polynomial::from_expr(ctx, den, &var_name).ok()?;
+    let value = finite_rational_polynomial_value(&numerator, &denominator, &point_value)?;
+    Some(ctx.add(Expr::Number(value)))
+}
+
+fn apply_finite_sine_zero_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    apply_finite_zero_quotient_rule(ctx, expr, var, point, scaled_sine_argument)
+}
+
+fn apply_finite_exp_zero_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    apply_finite_zero_quotient_rule(ctx, expr, var, point, scaled_exp_zero_offset_argument)
+}
+
+fn apply_finite_log_unit_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let (scale, log_argument, base) =
+        scaled_unit_log_argument(ctx, num, var, point, &var_name, &point_value)?;
+    let argument = Polynomial::from_expr(ctx, log_argument, &var_name).ok()?;
+    if argument.eval(&point_value) != BigRational::one() {
+        return None;
+    }
+
+    let unit_offset = argument.sub(&Polynomial::one(var_name.clone()));
+    let scale_poly = Polynomial::new(vec![scale], var_name.clone());
+    let numerator = unit_offset.mul(&scale_poly);
+    let denominator = Polynomial::from_expr(ctx, den, &var_name).ok()?;
+    let value = finite_rational_polynomial_value(&numerator, &denominator, &point_value)?;
+    Some(finite_log_unit_quotient_result(ctx, value, base))
 }
 
 fn is_finite_total_real_unary_builtin(builtin: BuiltinFn) -> bool {
@@ -1115,7 +1846,23 @@ fn try_limit_rules_at_finite(
     if let Some(result) = apply_finite_rational_polynomial_rule(ctx, expr, var, point) {
         return Some(result);
     }
+    if let Some(result) = apply_finite_sine_zero_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_exp_zero_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_log_unit_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
     if let Some(result) = apply_finite_elementary_polynomial_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_acosh_polynomial_endpoint_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_inverse_trig_polynomial_endpoint_rule(ctx, expr, var, point)
+    {
         return Some(result);
     }
     if let Some(result) = apply_finite_square_root_power_rule(ctx, expr, var, point) {
@@ -1174,6 +1921,41 @@ fn try_limit_rules_at_finite(
         }
         _ => None,
     }
+}
+
+fn try_limit_rules_at_finite_one_sided(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if let Some(result) = try_limit_rules_at_finite(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) =
+        apply_finite_one_sided_rational_polynomial_pole_rule(ctx, expr, var, point, side)
+    {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_one_sided_log_endpoint_rule(ctx, expr, var, point, side) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_one_sided_sqrt_endpoint_rule(ctx, expr, var, point, side) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_one_sided_acosh_endpoint_rule(ctx, expr, var, point, side) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_one_sided_atanh_endpoint_rule(ctx, expr, var, point, side) {
+        return Some(result);
+    }
+    if let Some(result) =
+        apply_finite_one_sided_inverse_trig_endpoint_rule(ctx, expr, var, point, side)
+    {
+        return Some(result);
+    }
+    apply_finite_one_sided_abs_polynomial_ratio_rule(ctx, expr, var, point, side)
 }
 
 /// Rule 2: Variable - lim x = ±∞ based on approach sign.
@@ -3563,6 +4345,16 @@ pub fn eval_limit_at_infinity(
             };
         }
     }
+    if let Approach::FiniteOneSided(point, side) = approach {
+        if let Some(result_expr) =
+            try_limit_rules_at_finite_one_sided(ctx, simplified_expr, var, point, side)
+        {
+            return LimitEvalOutcome {
+                expr: result_expr,
+                warning: None,
+            };
+        }
+    }
 
     if let Some(sign) = approach.inf_sign() {
         if let Some(result_expr) = try_limit_rules_at_infinity(ctx, simplified_expr, var, sign) {
@@ -3576,6 +4368,10 @@ pub fn eval_limit_at_infinity(
     let residual = mk_limit_for_approach(ctx, simplified_expr, var, approach);
     let warning = match approach {
         Approach::Finite(_) => "Finite point limits are not supported safely yet".to_string(),
+        Approach::FiniteOneSided(_, _) => {
+            "One-sided finite point limits are not supported safely for this expression yet"
+                .to_string()
+        }
         Approach::PosInfinity | Approach::NegInfinity => {
             "Could not determine limit safely".to_string()
         }
@@ -3723,6 +4519,43 @@ mod tests {
         .to_string()
     }
 
+    fn assert_number_expr(ctx: &Context, expr: ExprId, numerator: i64, denominator: i64) {
+        let Expr::Number(value) = ctx.get(expr) else {
+            panic!("expected exact rational expression");
+        };
+        assert_eq!(
+            value,
+            &BigRational::new(BigInt::from(numerator), BigInt::from(denominator))
+        );
+    }
+
+    fn assert_ratio_over_ln_base(
+        ctx: &Context,
+        expr: ExprId,
+        numerator: i64,
+        denominator: i64,
+        base_numerator: i64,
+        base_denominator: i64,
+    ) {
+        let Expr::Div(num_expr, den_expr) = ctx.get(expr).clone() else {
+            panic!(
+                "expected quotient over ln(base), got {}",
+                display_expr(ctx, expr)
+            );
+        };
+        assert_number_expr(ctx, num_expr, numerator, denominator);
+
+        let Expr::Function(fn_id, args) = ctx.get(den_expr).clone() else {
+            panic!(
+                "expected ln(base) denominator, got {}",
+                display_expr(ctx, den_expr)
+            );
+        };
+        assert!(ctx.is_builtin(fn_id, BuiltinFn::Ln));
+        assert_eq!(args.len(), 1);
+        assert_number_expr(ctx, args[0], base_numerator, base_denominator);
+    }
+
     #[test]
     fn depends_on_detects_simple_variable() {
         let mut ctx = Context::new();
@@ -3807,6 +4640,689 @@ mod tests {
         assert!(
             try_limit_rules_at_finite(&mut ctx, finite_pole, x, point).is_none(),
             "finite poles must remain residual until one-sided/infinite-point policy exists"
+        );
+    }
+
+    #[test]
+    fn finite_one_sided_limits_resolve_orientation_and_simple_poles() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_zero = parse_expr(&mut ctx, "0");
+
+        let abs_ratio = parse_expr(&mut ctx, "abs(x)/x");
+        let right_abs = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            abs_ratio,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided abs orientation limit");
+        assert_number_expr(&ctx, right_abs, 1, 1);
+
+        let left_abs = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            abs_ratio,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided abs orientation limit");
+        assert_number_expr(&ctx, left_abs, -1, 1);
+
+        let reciprocal = parse_expr(&mut ctx, "1/x");
+        let right_pole = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            reciprocal,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided rational pole");
+        assert_eq!(display_expr(&ctx, right_pole), "infinity");
+
+        let left_pole = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            reciprocal,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided rational pole");
+        assert_eq!(display_expr(&ctx, left_pole), "-infinity");
+
+        let ln_right_endpoint = parse_expr(&mut ctx, "ln(x)");
+        let ln_right_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            ln_right_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided log endpoint");
+        assert_eq!(display_expr(&ctx, ln_right_endpoint_out), "-infinity");
+
+        let ln_left_endpoint = parse_expr(&mut ctx, "ln(x)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                ln_left_endpoint,
+                x,
+                point_zero,
+                FiniteLimitSide::Left,
+            )
+            .is_none(),
+            "wrong-side log endpoint must remain residual"
+        );
+
+        let ln_neg_left_endpoint = parse_expr(&mut ctx, "ln(-x)");
+        let ln_neg_left_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            ln_neg_left_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided positive-tail log endpoint");
+        assert_eq!(display_expr(&ctx, ln_neg_left_endpoint_out), "-infinity");
+
+        let log2_right_endpoint = parse_expr(&mut ctx, "log2(x)");
+        let log2_right_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            log2_right_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected fixed-base log endpoint");
+        assert_eq!(display_expr(&ctx, log2_right_endpoint_out), "-infinity");
+
+        let reciprocal_base_log = parse_expr(&mut ctx, "log(1/2, x)");
+        let reciprocal_base_log_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            reciprocal_base_log,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected reciprocal-base log endpoint");
+        assert_eq!(display_expr(&ctx, reciprocal_base_log_out), "infinity");
+
+        let sqrt_right_endpoint = parse_expr(&mut ctx, "sqrt(x)");
+        let sqrt_right_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            sqrt_right_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided sqrt endpoint");
+        assert_eq!(display_expr(&ctx, sqrt_right_endpoint_out), "0");
+
+        let sqrt_left_endpoint = parse_expr(&mut ctx, "sqrt(x)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                sqrt_left_endpoint,
+                x,
+                point_zero,
+                FiniteLimitSide::Left,
+            )
+            .is_none(),
+            "wrong-side sqrt endpoint must remain residual"
+        );
+
+        let sqrt_neg_left_endpoint = parse_expr(&mut ctx, "sqrt(-x)");
+        let sqrt_neg_left_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            sqrt_neg_left_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided sqrt endpoint");
+        assert_eq!(display_expr(&ctx, sqrt_neg_left_endpoint_out), "0");
+
+        let sqrt_even_endpoint = parse_expr(&mut ctx, "sqrt(x^2)");
+        let sqrt_even_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            sqrt_even_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected even-order sqrt endpoint");
+        assert_eq!(display_expr(&ctx, sqrt_even_endpoint_out), "0");
+
+        let sqrt_abs_endpoint = parse_expr(&mut ctx, "sqrt(abs(x))");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                sqrt_abs_endpoint,
+                x,
+                point_zero,
+                FiniteLimitSide::Right,
+            )
+            .is_none(),
+            "non-polynomial sqrt endpoint remains residual for a later policy"
+        );
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let acosh_right_endpoint = parse_expr(&mut ctx, "acosh(x)");
+        let acosh_right_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            acosh_right_endpoint,
+            x,
+            point_one,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided acosh lower-bound endpoint");
+        assert_eq!(display_expr(&ctx, acosh_right_endpoint_out), "0");
+
+        let acosh_left_endpoint = parse_expr(&mut ctx, "acosh(x)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                acosh_left_endpoint,
+                x,
+                point_one,
+                FiniteLimitSide::Left,
+            )
+            .is_none(),
+            "wrong-side acosh lower-bound endpoint must remain residual"
+        );
+
+        let acosh_neg_orientation_endpoint = parse_expr(&mut ctx, "acosh(2 - x)");
+        let acosh_neg_orientation_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            acosh_neg_orientation_endpoint,
+            x,
+            point_one,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided negative-orientation acosh lower-bound endpoint");
+        assert_eq!(display_expr(&ctx, acosh_neg_orientation_endpoint_out), "0");
+
+        let acosh_even_endpoint = parse_expr(&mut ctx, "acosh(1 + x^2)");
+        let acosh_even_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            acosh_even_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected even-order acosh lower-bound endpoint");
+        assert_eq!(display_expr(&ctx, acosh_even_endpoint_out), "0");
+
+        let acosh_sqrt_endpoint = parse_expr(&mut ctx, "acosh(sqrt(x))");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                acosh_sqrt_endpoint,
+                x,
+                point_one,
+                FiniteLimitSide::Right,
+            )
+            .is_none(),
+            "non-polynomial acosh endpoint remains residual for a later policy"
+        );
+
+        let acos_upper_left_endpoint = parse_expr(&mut ctx, "acos(x)");
+        let acos_upper_left_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            acos_upper_left_endpoint,
+            x,
+            point_one,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided inverse-trig upper endpoint");
+        assert_eq!(display_expr(&ctx, acos_upper_left_endpoint_out), "0");
+
+        let asin_upper_left_endpoint = parse_expr(&mut ctx, "asin(x)");
+        let asin_upper_left_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            asin_upper_left_endpoint,
+            x,
+            point_one,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided arcsin upper endpoint");
+        assert_eq!(display_expr(&ctx, asin_upper_left_endpoint_out), "pi / 2");
+
+        let acos_upper_right_endpoint = parse_expr(&mut ctx, "acos(x)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                acos_upper_right_endpoint,
+                x,
+                point_one,
+                FiniteLimitSide::Right,
+            )
+            .is_none(),
+            "wrong-side inverse-trig upper endpoint must remain residual"
+        );
+
+        let acos_upper_neg_orientation_endpoint = parse_expr(&mut ctx, "acos(2 - x)");
+        let acos_upper_neg_orientation_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            acos_upper_neg_orientation_endpoint,
+            x,
+            point_one,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided negative-orientation inverse-trig upper endpoint");
+        assert_eq!(
+            display_expr(&ctx, acos_upper_neg_orientation_endpoint_out),
+            "0"
+        );
+
+        let point_minus_one = parse_expr(&mut ctx, "-1");
+        let acos_lower_right_endpoint = parse_expr(&mut ctx, "acos(x)");
+        let acos_lower_right_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            acos_lower_right_endpoint,
+            x,
+            point_minus_one,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided inverse-trig lower endpoint");
+        assert_eq!(display_expr(&ctx, acos_lower_right_endpoint_out), "pi");
+
+        let asin_lower_right_endpoint = parse_expr(&mut ctx, "asin(x)");
+        let asin_lower_right_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            asin_lower_right_endpoint,
+            x,
+            point_minus_one,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided arcsin lower endpoint");
+        assert_eq!(display_expr(&ctx, asin_lower_right_endpoint_out), "-pi / 2");
+
+        let asin_lower_left_endpoint = parse_expr(&mut ctx, "asin(x)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                asin_lower_left_endpoint,
+                x,
+                point_minus_one,
+                FiniteLimitSide::Left,
+            )
+            .is_none(),
+            "wrong-side inverse-trig lower endpoint must remain residual"
+        );
+
+        let acos_above_domain_endpoint = parse_expr(&mut ctx, "acos(1 + x^2)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                acos_above_domain_endpoint,
+                x,
+                point_zero,
+                FiniteLimitSide::Right,
+            )
+            .is_none(),
+            "empty-domain one-sided inverse-trig endpoint must remain residual"
+        );
+
+        let atanh_upper_left_endpoint = parse_expr(&mut ctx, "atanh(x)");
+        let atanh_upper_left_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            atanh_upper_left_endpoint,
+            x,
+            point_one,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided atanh upper endpoint");
+        assert_eq!(
+            display_expr(&ctx, atanh_upper_left_endpoint_out),
+            "infinity"
+        );
+
+        let atanh_upper_right_endpoint = parse_expr(&mut ctx, "atanh(x)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                atanh_upper_right_endpoint,
+                x,
+                point_one,
+                FiniteLimitSide::Right,
+            )
+            .is_none(),
+            "wrong-side atanh upper endpoint must remain residual"
+        );
+
+        let atanh_upper_neg_orientation_endpoint = parse_expr(&mut ctx, "atanh(2 - x)");
+        let atanh_upper_neg_orientation_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            atanh_upper_neg_orientation_endpoint,
+            x,
+            point_one,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided negative-orientation atanh upper endpoint");
+        assert_eq!(
+            display_expr(&ctx, atanh_upper_neg_orientation_endpoint_out),
+            "infinity"
+        );
+
+        let atanh_lower_right_endpoint = parse_expr(&mut ctx, "atanh(x)");
+        let atanh_lower_right_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            atanh_lower_right_endpoint,
+            x,
+            point_minus_one,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided atanh lower endpoint");
+        assert_eq!(
+            display_expr(&ctx, atanh_lower_right_endpoint_out),
+            "-infinity"
+        );
+
+        let atanh_lower_left_endpoint = parse_expr(&mut ctx, "atanh(x)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                atanh_lower_left_endpoint,
+                x,
+                point_minus_one,
+                FiniteLimitSide::Left,
+            )
+            .is_none(),
+            "wrong-side atanh lower endpoint must remain residual"
+        );
+
+        let atanh_above_domain_endpoint = parse_expr(&mut ctx, "atanh(1 + x^2)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                atanh_above_domain_endpoint,
+                x,
+                point_zero,
+                FiniteLimitSide::Right,
+            )
+            .is_none(),
+            "empty-domain one-sided atanh endpoint must remain residual"
+        );
+
+        let acos_sqrt_endpoint = parse_expr(&mut ctx, "acos(sqrt(x))");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                acos_sqrt_endpoint,
+                x,
+                point_one,
+                FiniteLimitSide::Left,
+            )
+            .is_none(),
+            "non-polynomial inverse-trig endpoint remains residual for a later policy"
+        );
+    }
+
+    #[test]
+    fn finite_sine_zero_quotient_limit_uses_removable_polynomial_ratio() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_zero = parse_expr(&mut ctx, "0");
+
+        let cases = [
+            ("sin(x)/x", 1, 1),
+            ("sin(2*x)/x", 2, 1),
+            ("3*sin(2*x)/(5*x)", 6, 5),
+            ("sin(x^2)/x", 0, 1),
+        ];
+
+        for (input, expected_num, expected_den) in cases {
+            let expr = parse_expr(&mut ctx, input);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, point_zero)
+                .unwrap_or_else(|| panic!("expected finite sine quotient limit for {input}"));
+            let Expr::Number(value) = ctx.get(out) else {
+                panic!("expected exact rational sine quotient limit for {input}");
+            };
+            assert_eq!(
+                value,
+                &BigRational::new(BigInt::from(expected_num), BigInt::from(expected_den))
+            );
+        }
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let shifted = parse_expr(&mut ctx, "sin(x - 1)/(x^2 - 1)");
+        let shifted_out = try_limit_rules_at_finite(&mut ctx, shifted, x, point_one)
+            .expect("expected shifted finite sine quotient limit");
+        let Expr::Number(value) = ctx.get(shifted_out) else {
+            panic!("expected exact shifted sine quotient limit");
+        };
+        assert_eq!(value, &BigRational::new(BigInt::from(1), BigInt::from(2)));
+
+        let nonzero_argument = parse_expr(&mut ctx, "sin(x + 1)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, nonzero_argument, x, point_zero).is_none(),
+            "sine quotient rule must only apply when the sine argument tends to zero"
+        );
+
+        let finite_pole = parse_expr(&mut ctx, "sin(x)/x^2");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, finite_pole, x, point_zero).is_none(),
+            "sine quotient rule must not promote finite poles"
+        );
+    }
+
+    #[test]
+    fn finite_exp_zero_quotient_limit_uses_removable_polynomial_ratio() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_zero = parse_expr(&mut ctx, "0");
+
+        let cases = [
+            ("(exp(x)-1)/x", 1, 1),
+            ("(exp(2*x)-1)/x", 2, 1),
+            ("3*(exp(2*x)-1)/(5*x)", 6, 5),
+            ("(exp(x^2)-1)/x", 0, 1),
+            ("(1-exp(2*x))/x", -2, 1),
+        ];
+
+        for (input, expected_num, expected_den) in cases {
+            let expr = parse_expr(&mut ctx, input);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, point_zero)
+                .unwrap_or_else(|| panic!("expected finite exp quotient limit for {input}"));
+            let Expr::Number(value) = ctx.get(out) else {
+                panic!("expected exact rational exp quotient limit for {input}");
+            };
+            assert_eq!(
+                value,
+                &BigRational::new(BigInt::from(expected_num), BigInt::from(expected_den))
+            );
+        }
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let shifted = parse_expr(&mut ctx, "(exp(x - 1) - 1)/(x^2 - 1)");
+        let shifted_out = try_limit_rules_at_finite(&mut ctx, shifted, x, point_one)
+            .expect("expected shifted finite exp quotient limit");
+        let Expr::Number(value) = ctx.get(shifted_out) else {
+            panic!("expected exact shifted exp quotient limit");
+        };
+        assert_eq!(value, &BigRational::new(BigInt::from(1), BigInt::from(2)));
+
+        let nonzero_argument = parse_expr(&mut ctx, "(exp(x + 1) - 1)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, nonzero_argument, x, point_zero).is_none(),
+            "exp quotient rule must only apply when the exponent tends to zero"
+        );
+
+        let finite_pole = parse_expr(&mut ctx, "(exp(x)-1)/x^2");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, finite_pole, x, point_zero).is_none(),
+            "exp quotient rule must not promote finite poles"
+        );
+    }
+
+    #[test]
+    fn finite_log_unit_quotient_limit_uses_removable_polynomial_ratio() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_zero = parse_expr(&mut ctx, "0");
+
+        let cases = [
+            ("ln(1+x)/x", 1, 1),
+            ("ln(1+2*x)/x", 2, 1),
+            ("3*ln(1+2*x)/(5*x)", 6, 5),
+            ("ln(1+x^2)/x", 0, 1),
+            ("-ln(1+2*x)/x", -2, 1),
+        ];
+
+        for (input, expected_num, expected_den) in cases {
+            let expr = parse_expr(&mut ctx, input);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, point_zero)
+                .unwrap_or_else(|| panic!("expected finite log unit quotient limit for {input}"));
+            assert_number_expr(&ctx, out, expected_num, expected_den);
+        }
+
+        let fixed_base_cases = [
+            ("log2(1+2*x)/x", 2, 1, 2, 1),
+            ("3*log10(1+2*x)/(5*x)", 6, 5, 10, 1),
+            ("log(3, 1+2*x)/x", 2, 1, 3, 1),
+            ("5*log(1/2, 1+2*x)/(2*x)", 5, 1, 1, 2),
+        ];
+
+        for (input, expected_num, expected_den, expected_base_num, expected_base_den) in
+            fixed_base_cases
+        {
+            let expr = parse_expr(&mut ctx, input);
+            let out =
+                try_limit_rules_at_finite(&mut ctx, expr, x, point_zero).unwrap_or_else(|| {
+                    panic!("expected fixed-base log unit quotient limit for {input}")
+                });
+            assert_ratio_over_ln_base(
+                &ctx,
+                out,
+                expected_num,
+                expected_den,
+                expected_base_num,
+                expected_base_den,
+            );
+        }
+
+        let variable_base_cases = [
+            ("log(x+2, 1+2*x)/x", 2, 1, 2, 1),
+            ("log(x+1/4, 1+2*x)/x", 2, 1, 1, 4),
+            ("5*log(x+3/2, 1+2*x)/(2*x)", 5, 1, 3, 2),
+            ("log(exp(x)+2, 1+2*x)/x", 2, 1, 3, 1),
+            ("log(sin(x)+2, 1+2*x)/x", 2, 1, 2, 1),
+            ("log(sqrt(x+4)+1, 1+2*x)/x", 2, 1, 3, 1),
+        ];
+
+        for (input, expected_num, expected_den, expected_base_num, expected_base_den) in
+            variable_base_cases
+        {
+            let expr = parse_expr(&mut ctx, input);
+            let out =
+                try_limit_rules_at_finite(&mut ctx, expr, x, point_zero).unwrap_or_else(|| {
+                    panic!("expected variable-base log unit quotient limit for {input}")
+                });
+            assert_ratio_over_ln_base(
+                &ctx,
+                out,
+                expected_num,
+                expected_den,
+                expected_base_num,
+                expected_base_den,
+            );
+        }
+
+        let fixed_zero = parse_expr(&mut ctx, "log10(1+x^2)/x");
+        let fixed_zero_out = try_limit_rules_at_finite(&mut ctx, fixed_zero, x, point_zero)
+            .expect("expected zero fixed-base log unit quotient limit");
+        assert_number_expr(&ctx, fixed_zero_out, 0, 1);
+
+        let fixed_nonunit_argument = parse_expr(&mut ctx, "log2(2 + x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, fixed_nonunit_argument, x, point_zero).is_none(),
+            "fixed-base log quotient rule must only apply when the log argument tends to one"
+        );
+
+        let fixed_finite_pole = parse_expr(&mut ctx, "log10(1+x)/x^2");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, fixed_finite_pole, x, point_zero).is_none(),
+            "fixed-base log quotient rule must not promote finite poles"
+        );
+
+        let variable_base_one_log = parse_expr(&mut ctx, "log(x+1, 1+2*x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, variable_base_one_log, x, point_zero).is_none(),
+            "binary log quotient rule must not promote variable-base quotients whose base tends to one"
+        );
+
+        let variable_base_zero_log = parse_expr(&mut ctx, "log(x, 1+2*x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, variable_base_zero_log, x, point_zero).is_none(),
+            "binary log quotient rule must not promote variable-base quotients whose base tends to zero"
+        );
+
+        let variable_base_negative_log = parse_expr(&mut ctx, "log(x-1, 1+2*x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, variable_base_negative_log, x, point_zero)
+                .is_none(),
+            "binary log quotient rule must not promote variable-base quotients whose base tends negative"
+        );
+
+        let non_rational_variable_base_log = parse_expr(&mut ctx, "log(ln(x+3), 1+2*x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, non_rational_variable_base_log, x, point_zero)
+                .is_none(),
+            "binary log quotient rule must keep non-rational resolved variable bases residual"
+        );
+
+        let unit_base_log = parse_expr(&mut ctx, "log(1, 1+x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, unit_base_log, x, point_zero).is_none(),
+            "binary log quotient rule must not promote base one"
+        );
+
+        let negative_base_log = parse_expr(&mut ctx, "log(-2, 1+x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, negative_base_log, x, point_zero).is_none(),
+            "binary log quotient rule must not promote negative bases"
+        );
+
+        let binary_nonunit_argument = parse_expr(&mut ctx, "log(3, 2+x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, binary_nonunit_argument, x, point_zero).is_none(),
+            "binary log quotient rule must only apply when the log argument tends to one"
+        );
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let shifted = parse_expr(&mut ctx, "ln(x)/(x - 1)");
+        let shifted_out = try_limit_rules_at_finite(&mut ctx, shifted, x, point_one)
+            .expect("expected shifted finite log unit quotient limit");
+        let Expr::Number(value) = ctx.get(shifted_out) else {
+            panic!("expected exact shifted log unit quotient limit");
+        };
+        assert_eq!(value, &BigRational::one());
+
+        let fixed_shifted = parse_expr(&mut ctx, "log2(x)/(x - 1)");
+        let fixed_shifted_out = try_limit_rules_at_finite(&mut ctx, fixed_shifted, x, point_one)
+            .expect("expected shifted fixed-base log unit quotient limit");
+        assert_ratio_over_ln_base(&ctx, fixed_shifted_out, 1, 1, 2, 1);
+
+        let quadratic_argument = parse_expr(&mut ctx, "ln(x^2)/(x - 1)");
+        let quadratic_out = try_limit_rules_at_finite(&mut ctx, quadratic_argument, x, point_one)
+            .expect("expected quadratic log unit quotient limit");
+        let Expr::Number(value) = ctx.get(quadratic_out) else {
+            panic!("expected exact quadratic log unit quotient limit");
+        };
+        assert_eq!(value, &BigRational::from_integer(BigInt::from(2)));
+
+        let nonunit_argument = parse_expr(&mut ctx, "ln(2 + x)/x");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, nonunit_argument, x, point_zero).is_none(),
+            "log quotient rule must only apply when the log argument tends to one"
+        );
+
+        let finite_pole = parse_expr(&mut ctx, "ln(1+x)/x^2");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, finite_pole, x, point_zero).is_none(),
+            "log quotient rule must not promote finite poles"
         );
     }
 
@@ -4264,6 +5780,79 @@ mod tests {
             try_limit_rules_at_finite(&mut ctx, arcsin_endpoint, x, point_one).is_none(),
             "arcsin endpoint must remain residual"
         );
+        let acos_endpoint = parse_expr(&mut ctx, "acos(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acos_endpoint, x, point_one).is_none(),
+            "acos one-sided-only endpoint must remain residual for bilateral limits"
+        );
+        let acos_even_gap_endpoint = parse_expr(&mut ctx, "acos(1 - x^2)");
+        let acos_even_gap_endpoint_out =
+            try_limit_rules_at_finite(&mut ctx, acos_even_gap_endpoint, x, point_zero)
+                .expect("expected bilateral inverse-trig upper endpoint");
+        assert_eq!(display_expr(&ctx, acos_even_gap_endpoint_out), "0");
+
+        let arcsin_even_gap_endpoint = parse_expr(&mut ctx, "arcsin(1 - x^2)");
+        let arcsin_even_gap_endpoint_out =
+            try_limit_rules_at_finite(&mut ctx, arcsin_even_gap_endpoint, x, point_zero)
+                .expect("expected bilateral arcsin upper endpoint");
+        assert_eq!(display_expr(&ctx, arcsin_even_gap_endpoint_out), "pi / 2");
+
+        let acos_shifted_even_gap_endpoint = parse_expr(&mut ctx, "acos(1 - (x - 2)^2)");
+        let acos_shifted_even_gap_endpoint_out =
+            try_limit_rules_at_finite(&mut ctx, acos_shifted_even_gap_endpoint, x, point_two)
+                .expect("expected shifted bilateral inverse-trig upper endpoint");
+        assert_eq!(display_expr(&ctx, acos_shifted_even_gap_endpoint_out), "0");
+
+        let acos_odd_gap_endpoint = parse_expr(&mut ctx, "acos(1 - x^3)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acos_odd_gap_endpoint, x, point_zero).is_none(),
+            "one-sided-only inverse-trig upper endpoint must remain residual"
+        );
+
+        let acos_above_domain_endpoint = parse_expr(&mut ctx, "acos(1 + x^2)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acos_above_domain_endpoint, x, point_zero)
+                .is_none(),
+            "empty-punctured-domain inverse-trig upper endpoint must remain residual"
+        );
+
+        let acos_lower_even_gap_endpoint = parse_expr(&mut ctx, "acos(-1 + x^2)");
+        let acos_lower_even_gap_endpoint_out =
+            try_limit_rules_at_finite(&mut ctx, acos_lower_even_gap_endpoint, x, point_zero)
+                .expect("expected bilateral inverse-trig lower endpoint");
+        assert_eq!(display_expr(&ctx, acos_lower_even_gap_endpoint_out), "pi");
+
+        let arcsin_lower_even_gap_endpoint = parse_expr(&mut ctx, "arcsin(-1 + x^2)");
+        let arcsin_lower_even_gap_endpoint_out =
+            try_limit_rules_at_finite(&mut ctx, arcsin_lower_even_gap_endpoint, x, point_zero)
+                .expect("expected bilateral arcsin lower endpoint");
+        assert_eq!(
+            display_expr(&ctx, arcsin_lower_even_gap_endpoint_out),
+            "-pi / 2"
+        );
+
+        let acos_shifted_lower_even_gap_endpoint = parse_expr(&mut ctx, "acos(-1 + (x - 2)^2)");
+        let acos_shifted_lower_even_gap_endpoint_out =
+            try_limit_rules_at_finite(&mut ctx, acos_shifted_lower_even_gap_endpoint, x, point_two)
+                .expect("expected shifted bilateral inverse-trig lower endpoint");
+        assert_eq!(
+            display_expr(&ctx, acos_shifted_lower_even_gap_endpoint_out),
+            "pi"
+        );
+
+        let acos_lower_odd_gap_endpoint = parse_expr(&mut ctx, "acos(-1 + x^3)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acos_lower_odd_gap_endpoint, x, point_zero)
+                .is_none(),
+            "one-sided-only inverse-trig lower endpoint must remain residual"
+        );
+
+        let acos_below_domain_endpoint = parse_expr(&mut ctx, "acos(-1 - x^2)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acos_below_domain_endpoint, x, point_zero)
+                .is_none(),
+            "empty-punctured-domain inverse-trig lower endpoint must remain residual"
+        );
         let arcsin_out_of_domain = parse_expr(&mut ctx, "arcsin(x)");
         assert!(
             try_limit_rules_at_finite(&mut ctx, arcsin_out_of_domain, x, point_two).is_none(),
@@ -4278,6 +5867,31 @@ mod tests {
         assert!(
             try_limit_rules_at_finite(&mut ctx, acosh_endpoint, x, point_one).is_none(),
             "acosh endpoint must remain residual"
+        );
+
+        let acosh_even_gap_endpoint = parse_expr(&mut ctx, "acosh(1 + x^2)");
+        let acosh_even_gap_endpoint_out =
+            try_limit_rules_at_finite(&mut ctx, acosh_even_gap_endpoint, x, point_zero)
+                .expect("expected bilateral acosh lower-bound endpoint");
+        assert_eq!(display_expr(&ctx, acosh_even_gap_endpoint_out), "0");
+
+        let acosh_shifted_even_gap_endpoint = parse_expr(&mut ctx, "acosh(1 + (x - 2)^2)");
+        let acosh_shifted_even_gap_endpoint_out =
+            try_limit_rules_at_finite(&mut ctx, acosh_shifted_even_gap_endpoint, x, point_two)
+                .expect("expected shifted bilateral acosh lower-bound endpoint");
+        assert_eq!(display_expr(&ctx, acosh_shifted_even_gap_endpoint_out), "0");
+
+        let acosh_odd_gap_endpoint = parse_expr(&mut ctx, "acosh(1 + x^3)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acosh_odd_gap_endpoint, x, point_zero).is_none(),
+            "one-sided-only acosh polynomial endpoint must remain residual"
+        );
+
+        let acosh_negative_gap_endpoint = parse_expr(&mut ctx, "acosh(1 - x^2)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acosh_negative_gap_endpoint, x, point_zero)
+                .is_none(),
+            "empty-punctured-domain acosh endpoint must remain residual"
         );
     }
 

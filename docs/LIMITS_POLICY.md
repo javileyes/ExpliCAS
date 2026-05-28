@@ -1,6 +1,6 @@
 # Limits Policy
 
-> **V1.3** — Pre-simplification contract and enforcement
+> **V1.29** — Pre-simplification contract, finite quotient policies, one-sided finite orientation/pole, log-endpoint, root-endpoint, finite inverse-trig/acosh endpoint policies, finite one-sided inverse-trig and atanh endpoint paths, finite one-sided domain-path residual policy, domain-bearing resolved-base log quotients, natural/fixed-base/binary-log endpoint residuals, and enforcement
 
 ## 1. Purpose
 
@@ -169,6 +169,12 @@ defined and tested beyond the narrow exception below.
 Current contract:
 
 - accepted finite points render as `limit(expr, var, point)` when unresolved
+- finite-point eval syntax may carry an explicit side as
+  `limit(f(x), x, 0+)`, `limit(f(x), x, 0-)`, or
+  `limit(f(x), x, 0, right|left)`; this does not make ordinary finite limits
+  directional, and unsupported one-sided families must remain residual with an
+  explicit one-sided warning rather than falling through as internal parse
+  errors
 - expressions that do not depend on the limit variable may evaluate directly,
   preserving their own implicit domain requirements
 - expressions that do not depend on the limit variable but have a statically
@@ -184,9 +190,10 @@ Current contract:
   points only when the denominator evaluates explicitly to a nonzero value at
   that point, or when exact polynomial multiplicity checks prove a removable
   hole by repeatedly differentiating numerator and denominator until the
-  denominator has a nonzero value at the point; finite poles and unresolved
-  zero-denominator forms remain residual until a one-sided or infinite
-  finite-point policy exists
+  denominator has a nonzero value at the point; finite poles such as
+  `limit(1/x, x, 0)` and unresolved zero-denominator forms remain residual
+  until a one-sided or infinite finite-point policy exists, and must retain
+  the denominator nonzero requirement such as `x ≠ 0`
 - `exp(p(x))`, `sin(p(x))`, `cos(p(x))`, `sinh(p(x))`, `cosh(p(x))`,
   `tanh(p(x))`, `atan(p(x))`/`arctan(p(x))`, `asinh(p(x))`, `cbrt(p(x))`,
   and `abs(p(x))` may evaluate at numeric rational finite points when `p(x)`
@@ -199,6 +206,13 @@ Current contract:
   numeric rational finite points only when `p(x)` is polynomial in the limit
   variable and `p(a)` is strictly positive; zero and negative argument values
   remain residual to avoid endpoint, side, branch, or domain-path assumptions
+- natural, fixed-base, and binary-log endpoint boundaries such as
+  `limit(ln(x), x, 0)`, `limit(log2(x), x, 0)`, and
+  `limit(log(2, x), x, 0)` remain residual under the current two-sided
+  finite-point policy, but must retain the positive-domain requirement
+  (`x > 0`) and a residual explanation instead of silently returning a
+  one-sided infinite result; for an explicit valid binary-log base such as `2`,
+  no extra base-domain requirement should be displayed
 - `asin(p(x))`/`arcsin(p(x))`, `acos(p(x))`/`arccos(p(x))`, `atanh(p(x))`,
   and `acosh(p(x))` may evaluate at numeric rational finite points only when
   the polynomial argument lands strictly inside the real domain interior:
@@ -220,6 +234,62 @@ Current contract:
   arithmetic and structural identities such as `g - g -> 0`, `0 + g -> g`,
   `1*g -> g`, and `g/g -> 1` only after the denominator has been proven
   nonzero
+- the standard small-angle quotient may evaluate finite limits of
+  `c*sin(p(x))/q(x)` when the approach point is rational, `p(x)` and `q(x)`
+  are polynomials in the limit variable, `p(a) = 0`, and the exact removable
+  rational-polynomial value of `c*p(x)/q(x)` at `a` is finite; this promotes
+  cases such as `sin(x)/x -> 1`, `sin(2*x)/x -> 2`, and shifted polynomial
+  variants, but leaves nonzero sine arguments, finite poles, non-polynomial
+  denominators, and broader trigonometric quotient families residual
+- the standard exponential zero quotient may evaluate finite limits of
+  `c*(exp(p(x)) - 1)/q(x)` or `c*(e^p - 1)/q(x)` when the approach point is
+  rational, `p(x)` and `q(x)` are polynomials in the limit variable,
+  `p(a) = 0`, and the exact removable rational-polynomial value of
+  `c*p(x)/q(x)` at `a` is finite; this promotes cases such as
+  `(exp(x)-1)/x -> 1`, `(exp(2*x)-1)/x -> 2`, and shifted polynomial variants,
+  while leaving nonzero exponent arguments, finite poles, and non-polynomial
+  denominators residual
+- the standard natural-log unit quotient may evaluate finite limits of
+  `c*ln(g(x))/q(x)` when the approach point is rational, `g(x)` and `q(x)`
+  are polynomials in the limit variable, `g(a) = 1`, and the exact removable
+  rational-polynomial value of `c*(g(x)-1)/q(x)` at `a` is finite; this
+  promotes cases such as `ln(1+x)/x -> 1`, `ln(1+2*x)/x -> 2`, and
+  `ln(x)/(x-1) -> 1` at `x -> 1`; because `g(a)=1`, polynomial continuity
+  gives a local positive-domain witness for the two-sided real limit, while
+  non-unit log arguments, finite poles, non-polynomial arguments, and
+  non-polynomial denominators remain residual
+- the same unit-log quotient policy may evaluate fixed-base variants
+  `c*log2(g(x))/q(x)` and `c*log10(g(x))/q(x)` under the identical rational
+  point, polynomial, `g(a)=1`, and finite removable-ratio checks; the result is
+  represented exactly as the rational removable value divided by `ln(2)` or
+  `ln(10)`, preserving the base-change factor explicitly; broader binary
+  `log(base, argument)` forms remain residual unless a separate policy proves
+  base constancy, base positivity, `base != 1`, argument positivity, and the
+  same removable unit-argument shape without hidden branch or domain assumptions
+- binary unit-log quotients with a literal rational base may evaluate finite
+  limits of `c*log(b, g(x))/q(x)` under the same rational point, polynomial,
+  `g(a)=1`, and finite removable-ratio checks, but only when `b` is an explicit
+  rational constant with `b > 0` and `b != 1`; the result is represented exactly
+  as the rational removable value divided by `ln(b)`, for example
+  `log(3, 1+2*x)/x -> 2/ln(3)` and
+  `log(1/2, 1+2*x)/x -> 2/ln(1/2)`
+- binary unit-log quotients with a variable base may evaluate finite limits of
+  `c*log(b(x), g(x))/q(x)` under the same rational point, polynomial
+  `g(a)=1`, and finite removable-ratio checks, but only when `b(x)` is either
+  polynomial at the point or resolves through an already supported finite
+  sublimit to an exact rational value `b(a) > 0` with `b(a) != 1`; the public
+  command output must still surface the input's base positivity, `base != 1`,
+  log-argument positivity, and quotient-denominator conditions unless one
+  condition is already implied by a stronger displayed condition; the result is
+  represented exactly as the rational removable value divided by `ln(b(a))`,
+  for example `log(x+1/4, 1+2*x)/x -> 2/ln(1/4)` and
+  `log(exp(x)+2, 1+2*x)/x -> 2/ln(3)` at `x -> 0`; if the resolved base has
+  its own real-domain requirement, such as
+  `log(sqrt(x+4)+1, 1+2*x)/x -> 2/ln(3)`, that condition must remain visible
+  in command output alongside the base, argument, and quotient-denominator
+  conditions; non-rational resolved bases, unresolved bases, base sublimit `1`,
+  nonpositive base sublimits, non-unit log arguments, and finite poles remain
+  residual
 - total-real continuous unary compositions already in the finite allowlist
   (`exp`, `sin`, `cos`, `sinh`, `cosh`, `tanh`, `atan`/`arctan`, `asinh`,
   `cbrt`, and `abs`) may evaluate when their argument has already resolved to a
@@ -228,13 +298,45 @@ Current contract:
   table-backed exact folds may reduce special total-real results such as
   `sin(pi/6)` to `1 / 2`, `cos(pi/3)` to `1 / 2`, `atan(1)`/`arctan(1)` to
   `pi/4`, and `atan(sqrt(3))`/`arctan(sqrt(3))` to `pi/3`
+- orientation-sensitive quotients such as `limit(abs(x)/x, x, 0)` remain
+  residual under the current two-sided finite-point policy, but must retain
+  denominator definedness such as `x ≠ 0`; this avoids silently selecting a
+  one-sided sign or rewriting to a discontinuous surrogate without an explicit
+  direction policy
+- explicit one-sided finite limits may evaluate narrow orientation and pole
+  regimes when local polynomial sign evidence proves the side behavior:
+  `limit(abs(x)/x, x, 0+) -> 1`, `limit(abs(x)/x, x, 0-) -> -1`,
+  `limit(1/x, x, 0+) -> infinity`, and
+  `limit(1/x, x, 0-) -> -infinity`; the public output must retain source
+  definedness such as `x ≠ 0`
+- one-sided finite log endpoints may evaluate when local polynomial tail-sign
+  evidence proves the log argument approaches `0` through positive values from
+  the requested side: `limit(ln(x), x, 0+) -> -infinity`,
+  `limit(log2(x), x, 0+) -> -infinity`, and
+  `limit(log10(x), x, 0+) -> -infinity`; reciprocal fixed bases flip the
+  infinity sign, for example `limit(log(1/2, x), x, 0+) -> infinity`; the
+  public output must retain positive-argument domain requirements such as
+  `x > 0`; wrong-side paths such as `limit(ln(x), x, 0-)` remain residual, but
+  now carry a `Limit Domain Path` warning when local polynomial side evidence
+  proves the requested path is outside the input domain
+- one-sided finite square-root endpoints may evaluate to `0` when local
+  polynomial tail-sign evidence proves the radicand approaches `0` through
+  nonnegative values from the requested side: `limit(sqrt(x), x, 0+) -> 0`,
+  `limit(sqrt(-x), x, 0-) -> 0`, and
+  `limit(sqrt(x + 1), x, -1+) -> 0`; the public output must retain
+  nonnegative-radicand requirements such as `x ≥ 0`; wrong-side paths such as
+  `limit(sqrt(x), x, 0-)` remain residual with a `Limit Domain Path` warning
+  when polynomial side evidence proves the requested path violates the
+  nonnegative-radicand domain; non-polynomial endpoint shapes such as
+  `sqrt(abs(x))` remain residual until a separate orientation policy is
+  promoted
 - `ln(g(x))`, `log2(g(x))`, `log10(g(x))`, and `sqrt(g(x))` may evaluate when
   `g(x)` has already resolved to a safe finite sublimit that is explicitly
   numeric positive or is proven strictly positive by the existing sign prover;
   exact rational-power folds may reduce values such as `log2(8) -> 3` and
-  `log10(100) -> 2`; zero, negative, or unproven positive sublimits remain
-  residual, including endpoint-looking cases such as `sqrt(abs(x))` at
-  `x -> 0`
+  `log10(100) -> 2`; under the two-sided finite policy, zero, negative, or
+  unproven positive sublimits remain residual, including endpoint-looking cases
+  such as `sqrt(abs(x))` at `x -> 0`
 - `asin(g(x))`/`arcsin(g(x))`, `acos(g(x))`/`arccos(g(x))`, `atanh(g(x))`,
   and `acosh(g(x))` may evaluate only when `g(x)` has already resolved to a
   numeric rational sublimit strictly inside the real domain interior; exact
@@ -242,7 +344,65 @@ Current contract:
   `acos(0)`/`arccos(0)` to `pi/2`, `asin(1/2)`/`arcsin(1/2)` to `pi/6`,
   `acos(1/2)`/`arccos(1/2)` to `pi/3`, and `atanh(0)` to `0`, while
   endpoint-looking cases such as `asin(x)` at `x -> 1`, `atanh(x)` at
-  `x -> 1`, and `acosh(x)` at `x -> 1` remain residual
+  `x -> 1`, and one-sided-only lower-bound cases such as `acosh(x)` at
+  `x -> 1` remain residual
+- finite two-sided upper-bound inverse-trig endpoint paths may evaluate
+  `asin(p(x))`/`arcsin(p(x))` and `acos(p(x))`/`arccos(p(x))` when `p(x)` is
+  polynomial, `p(a) = 1`, and local polynomial side evidence proves
+  `1 - p(x) > 0` from both sides of the approach point, for example
+  `limit(acos(1-x^2), x, 0) -> 0` and
+  `limit(asin(1-x^2), x, 0) -> pi/2`; one-sided-only or empty-punctured-domain
+  shapes such as `acos(x)`, `acos(1-x^3)`, or `acos(1+x^2)` at the upper
+  endpoint remain residual
+- finite two-sided lower-bound inverse-trig endpoint paths may evaluate
+  `asin(p(x))`/`arcsin(p(x))` and `acos(p(x))`/`arccos(p(x))` when `p(x)` is
+  polynomial, `p(a) = -1`, and local polynomial side evidence proves
+  `p(x) + 1 > 0` from both sides of the approach point, for example
+  `limit(acos(-1+x^2), x, 0) -> pi` and
+  `limit(asin(-1+x^2), x, 0) -> -pi/2`; one-sided-only or
+  empty-punctured-domain shapes such as `acos(x)`, `acos(-1+x^3)`, or
+  `acos(-1-x^2)` at the lower endpoint remain residual
+- finite one-sided inverse-trig endpoint paths may evaluate
+  `asin(p(x))`/`arcsin(p(x))` and `acos(p(x))`/`arccos(p(x))` when `p(x)` is
+  polynomial, `p(a) = 1` and `1 - p(x) > 0` from the requested side, or
+  `p(a) = -1` and `p(x) + 1 > 0` from the requested side, for example
+  `limit(acos(x), x, 1-) -> 0`,
+  `limit(asin(x), x, 1-) -> pi/2`,
+  `limit(acos(x), x, -1+) -> pi`, and
+  `limit(asin(x), x, -1+) -> -pi/2`; wrong-side paths such as
+  `limit(acos(x), x, 1+)`, empty-domain gaps such as
+  `limit(acos(1+x^2), x, 0+)`, and non-polynomial endpoint arguments remain
+  residual while preserving the interval requirement; when the requested
+  one-sided path is proven outside the interval domain by local polynomial
+  evidence, the residual must carry a `Limit Domain Path` warning
+- finite one-sided `atanh(p(x))` endpoint paths may evaluate when `p(x)` is
+  polynomial, `p(a) = 1` and `1 - p(x) > 0` from the requested side, or
+  `p(a) = -1` and `p(x) + 1 > 0` from the requested side; the upper endpoint
+  approached from inside the open interval resolves to `infinity`, for example
+  `limit(atanh(x), x, 1-) -> infinity`, and the lower endpoint approached
+  from inside resolves to `-infinity`, for example
+  `limit(atanh(x), x, -1+) -> -infinity`; wrong-side paths such as
+  `limit(atanh(x), x, 1+)`, empty-domain gaps such as
+  `limit(atanh(1+x^2), x, 0+)`, and non-polynomial endpoint arguments remain
+  residual while preserving the strict open-interval requirement; when the
+  requested one-sided path is proven outside the open interval by local
+  polynomial evidence, the residual must carry a `Limit Domain Path` warning
+- finite two-sided lower-bound inverse-hyperbolic endpoint paths may evaluate
+  `acosh(p(x)) -> 0` when `p(x)` is polynomial, `p(a) = 1`, and local
+  polynomial side evidence proves `p(x) - 1 > 0` from both sides of the
+  approach point, for example `limit(acosh(1+x^2), x, 0) -> 0`; odd-gap or
+  negative-gap endpoint shapes such as `acosh(1+x^3)` or `acosh(1-x^2)` at
+  `x -> 0` remain residual because the real-domain path is one-sided or empty
+  in a punctured neighborhood
+- finite one-sided lower-bound inverse-hyperbolic endpoint paths may evaluate
+  `acosh(p(x)) -> 0` when `p(x)` is polynomial, `p(a) = 1`, and local
+  polynomial side evidence proves the requested approach enters the real domain
+  `p(x) > 1`, for example `limit(acosh(x), x, 1+) -> 0` and
+  `limit(acosh(2-x), x, 1-) -> 0`; wrong-side paths such as
+  `limit(acosh(x), x, 1-)` remain residual, preserve the required condition
+  `x ≥ 1`, and carry an explicit `Limit Domain Path` warning, while
+  non-polynomial endpoint arguments remain residual until a separate policy is
+  promoted
 - `tan(g(x))`, `sec(g(x))`, `csc(g(x))`, and `cot(g(x))` may evaluate when
   `g(x)` has already resolved to exact numeric zero where defined, or to a
   recognized special angle whose table value is defined, such as `tan(pi/4) ->

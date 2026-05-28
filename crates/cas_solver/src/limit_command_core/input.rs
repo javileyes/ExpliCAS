@@ -33,7 +33,8 @@ fn limit_command_approach_from_runtime(
     match approach {
         cas_math::limit_types::Approach::PosInfinity => LimitCommandApproach::Infinity,
         cas_math::limit_types::Approach::NegInfinity => LimitCommandApproach::NegInfinity,
-        cas_math::limit_types::Approach::Finite(_) => {
+        cas_math::limit_types::Approach::Finite(_)
+        | cas_math::limit_types::Approach::FiniteOneSided(_, _) => {
             unreachable!("limit command parser does not construct finite approaches")
         }
     }

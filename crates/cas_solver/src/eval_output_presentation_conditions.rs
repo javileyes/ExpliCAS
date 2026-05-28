@@ -357,7 +357,9 @@ fn resolved_infinity_limit_tail(
     let approach = match approach {
         EvalLimitApproach::PosInfinity => InfinityTailApproach::Pos,
         EvalLimitApproach::NegInfinity => InfinityTailApproach::Neg,
-        EvalLimitApproach::Finite(_) => return None,
+        EvalLimitApproach::Finite(_)
+        | EvalLimitApproach::FiniteFromLeft(_)
+        | EvalLimitApproach::FiniteFromRight(_) => return None,
     };
     Some(InfinityLimitTail { var, approach })
 }

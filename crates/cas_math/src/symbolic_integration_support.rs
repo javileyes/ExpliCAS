@@ -1550,6 +1550,69 @@ fn reciprocal_trig_square_parts(ctx: &Context, den: ExprId) -> Option<(BuiltinFn
     }
 }
 
+#[derive(Clone, Copy)]
+struct ReciprocalTrigDerivativePolicy {
+    denominator_builtin: BuiltinFn,
+    numerator_builtin: BuiltinFn,
+    reciprocal_builtin: BuiltinFn,
+    derivative_builtin: BuiltinFn,
+    antiderivative_negative: bool,
+}
+
+fn reciprocal_trig_derivative_policy(
+    denominator_builtin: BuiltinFn,
+) -> Option<ReciprocalTrigDerivativePolicy> {
+    match denominator_builtin {
+        BuiltinFn::Cos => Some(ReciprocalTrigDerivativePolicy {
+            denominator_builtin,
+            numerator_builtin: BuiltinFn::Sin,
+            reciprocal_builtin: BuiltinFn::Sec,
+            derivative_builtin: BuiltinFn::Tan,
+            antiderivative_negative: false,
+        }),
+        BuiltinFn::Sin => Some(ReciprocalTrigDerivativePolicy {
+            denominator_builtin,
+            numerator_builtin: BuiltinFn::Cos,
+            reciprocal_builtin: BuiltinFn::Csc,
+            derivative_builtin: BuiltinFn::Cot,
+            antiderivative_negative: true,
+        }),
+        _ => None,
+    }
+}
+
+fn reciprocal_trig_derivative_policy_from_reciprocal(
+    reciprocal_builtin: BuiltinFn,
+) -> Option<ReciprocalTrigDerivativePolicy> {
+    match reciprocal_builtin {
+        BuiltinFn::Sec => reciprocal_trig_derivative_policy(BuiltinFn::Cos),
+        BuiltinFn::Csc => reciprocal_trig_derivative_policy(BuiltinFn::Sin),
+        _ => None,
+    }
+}
+
+fn build_reciprocal_trig_derivative_integral(
+    ctx: &mut Context,
+    policy: ReciprocalTrigDerivativePolicy,
+    arg: ExprId,
+) -> ExprId {
+    let reciprocal = ctx.call_builtin(policy.reciprocal_builtin, vec![arg]);
+    if policy.antiderivative_negative {
+        ctx.add(Expr::Neg(reciprocal))
+    } else {
+        reciprocal
+    }
+}
+
+fn reciprocal_trig_derivative_base_antiderivative(
+    ctx: &mut Context,
+    denominator_builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let policy = reciprocal_trig_derivative_policy(denominator_builtin)?;
+    Some(build_reciprocal_trig_derivative_integral(ctx, policy, arg))
+}
+
 fn reciprocal_trig_square_antiderivative(
     ctx: &mut Context,
     den: ExprId,
@@ -3859,25 +3922,73 @@ fn reciprocal_hyperbolic_cosh_square_arg(ctx: &Context, den: ExprId) -> Option<E
     reciprocal_hyperbolic_square_arg(ctx, den, BuiltinFn::Cosh)
 }
 
-fn reciprocal_hyperbolic_cosh_fourth_arg(ctx: &Context, den: ExprId) -> Option<ExprId> {
-    reciprocal_hyperbolic_power_arg(ctx, den, BuiltinFn::Cosh, 4)
-}
-
 fn reciprocal_hyperbolic_sinh_square_arg(ctx: &Context, den: ExprId) -> Option<ExprId> {
     reciprocal_hyperbolic_square_arg(ctx, den, BuiltinFn::Sinh)
 }
 
-fn reciprocal_hyperbolic_sinh_fourth_arg(ctx: &Context, den: ExprId) -> Option<ExprId> {
-    reciprocal_hyperbolic_power_arg(ctx, den, BuiltinFn::Sinh, 4)
+#[derive(Clone, Copy)]
+struct HyperbolicReciprocalDerivativePolicy {
+    denominator_builtin: BuiltinFn,
+    numerator_builtin: BuiltinFn,
 }
 
-fn hyperbolic_tanh_reciprocal_square_antiderivative(
+#[derive(Clone, Copy)]
+struct HyperbolicReciprocalTablePolicy {
+    denominator_builtin: BuiltinFn,
+    power: i64,
+}
+
+fn hyperbolic_reciprocal_table_policy(
+    denominator_builtin: BuiltinFn,
+    power: i64,
+) -> Option<HyperbolicReciprocalTablePolicy> {
+    if !matches!(denominator_builtin, BuiltinFn::Cosh | BuiltinFn::Sinh) || !matches!(power, 2 | 4)
+    {
+        return None;
+    }
+    Some(HyperbolicReciprocalTablePolicy {
+        denominator_builtin,
+        power,
+    })
+}
+
+fn hyperbolic_reciprocal_derivative_policy(
+    denominator_builtin: BuiltinFn,
+) -> Option<HyperbolicReciprocalDerivativePolicy> {
+    match denominator_builtin {
+        BuiltinFn::Cosh => Some(HyperbolicReciprocalDerivativePolicy {
+            denominator_builtin,
+            numerator_builtin: BuiltinFn::Sinh,
+        }),
+        BuiltinFn::Sinh => Some(HyperbolicReciprocalDerivativePolicy {
+            denominator_builtin,
+            numerator_builtin: BuiltinFn::Cosh,
+        }),
+        _ => None,
+    }
+}
+
+fn build_hyperbolic_reciprocal_derivative_integral(
+    ctx: &mut Context,
+    policy: HyperbolicReciprocalDerivativePolicy,
+    arg: ExprId,
+) -> ExprId {
+    let den_arg = ctx.call_builtin(policy.denominator_builtin, vec![arg]);
+    let one = ctx.num(1);
+    let reciprocal = ctx.add(Expr::Div(one, den_arg));
+    ctx.add(Expr::Neg(reciprocal))
+}
+
+fn hyperbolic_reciprocal_power_antiderivative(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
     var: &str,
+    denominator_builtin: BuiltinFn,
+    power: i64,
 ) -> Option<ExprId> {
-    let arg = reciprocal_hyperbolic_cosh_square_arg(ctx, den)?;
+    let policy = hyperbolic_reciprocal_table_policy(denominator_builtin, power)?;
+    let arg = reciprocal_hyperbolic_power_arg(ctx, den, policy.denominator_builtin, policy.power)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
@@ -3887,28 +3998,67 @@ fn hyperbolic_tanh_reciprocal_square_antiderivative(
         return None;
     }
 
-    let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
-    Some(scale_expr_reciprocal_integration_result(
-        ctx, scale, tanh_arg,
-    ))
+    match policy.power {
+        2 => Some(build_hyperbolic_reciprocal_square_integral(
+            ctx, policy, arg, scale,
+        )),
+        4 => Some(build_hyperbolic_reciprocal_fourth_integral(
+            ctx, policy, arg, scale,
+        )),
+        _ => None,
+    }
 }
 
-fn hyperbolic_tanh_reciprocal_fourth_antiderivative(
+fn build_hyperbolic_reciprocal_square_integral(
     ctx: &mut Context,
-    num: ExprId,
-    den: ExprId,
-    var: &str,
-) -> Option<ExprId> {
-    let arg = reciprocal_hyperbolic_cosh_fourth_arg(ctx, den)?;
-    if !contains_named_var(ctx, arg, var) {
-        return None;
-    }
+    policy: HyperbolicReciprocalTablePolicy,
+    arg: ExprId,
+    scale: ExprId,
+) -> ExprId {
+    match policy.denominator_builtin {
+        BuiltinFn::Cosh => {
+            let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
+            scale_expr_reciprocal_integration_result(ctx, scale, tanh_arg)
+        }
+        BuiltinFn::Sinh => {
+            let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
+            let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
+            let quotient = ctx.add(Expr::Div(cosh_arg, sinh_arg));
+            if let Expr::Number(value) = ctx.get(scale).clone() {
+                if value.is_one() {
+                    return ctx.add(Expr::Neg(quotient));
+                }
 
-    let scale = symbolic_linear_cofactor_scale_expr(ctx, num, arg, var)?;
-    if is_number(ctx, scale, 0) {
-        return None;
-    }
+                let scale_expr = ctx.add(Expr::Number(value));
+                let negative_scale_expr = ctx.add(Expr::Neg(scale_expr));
+                return mul2_raw(ctx, negative_scale_expr, quotient);
+            }
 
+            let negative_scale = negate_scalar_expr(ctx, scale);
+            scale_expr_reciprocal_integration_result(ctx, negative_scale, quotient)
+        }
+        _ => unreachable!("hyperbolic reciprocal table policy only supports sinh/cosh"),
+    }
+}
+
+fn build_hyperbolic_reciprocal_fourth_integral(
+    ctx: &mut Context,
+    policy: HyperbolicReciprocalTablePolicy,
+    arg: ExprId,
+    scale: ExprId,
+) -> ExprId {
+    match policy.denominator_builtin {
+        BuiltinFn::Cosh => build_hyperbolic_cosh_reciprocal_fourth_integral(ctx, arg, scale),
+        BuiltinFn::Sinh => build_hyperbolic_sinh_reciprocal_fourth_integral(ctx, arg, scale),
+        _ => unreachable!("hyperbolic reciprocal table policy only supports sinh/cosh"),
+    }
+}
+
+fn build_hyperbolic_cosh_reciprocal_fourth_integral(
+    ctx: &mut Context,
+    arg: ExprId,
+    scale: ExprId,
+) -> ExprId {
     let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
     let three = ctx.num(3);
     let tanh_cubed = ctx.add(Expr::Pow(tanh_arg, three));
@@ -3919,67 +4069,20 @@ fn hyperbolic_tanh_reciprocal_fourth_antiderivative(
             -scale_value / BigRational::from_integer(3.into()),
             tanh_cubed,
         );
-        return Some(ctx.add(Expr::Add(linear_term, cubic_term)));
+        return ctx.add(Expr::Add(linear_term, cubic_term));
     }
+
     let linear_term = scale_expr_reciprocal_integration_result(ctx, scale, tanh_arg);
     let cubic_scale = scale_rational_term(ctx, BigRational::new(1.into(), 3.into()), scale);
     let cubic_term = scale_expr_reciprocal_integration_result(ctx, cubic_scale, tanh_cubed);
-    Some(ctx.add(Expr::Sub(linear_term, cubic_term)))
+    ctx.add(Expr::Sub(linear_term, cubic_term))
 }
 
-fn hyperbolic_coth_reciprocal_square_antiderivative(
+fn build_hyperbolic_sinh_reciprocal_fourth_integral(
     ctx: &mut Context,
-    num: ExprId,
-    den: ExprId,
-    var: &str,
-) -> Option<ExprId> {
-    let arg = reciprocal_hyperbolic_sinh_square_arg(ctx, den)?;
-    if !contains_named_var(ctx, arg, var) {
-        return None;
-    }
-
-    let scale = symbolic_linear_cofactor_scale_expr(ctx, num, arg, var)?;
-    if is_number(ctx, scale, 0) {
-        return None;
-    }
-
-    let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
-    let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
-    let quotient = ctx.add(Expr::Div(cosh_arg, sinh_arg));
-    if let Expr::Number(value) = ctx.get(scale).clone() {
-        if value.is_one() {
-            return Some(ctx.add(Expr::Neg(quotient)));
-        }
-
-        let scale_expr = ctx.add(Expr::Number(value));
-        let negative_scale_expr = ctx.add(Expr::Neg(scale_expr));
-        return Some(mul2_raw(ctx, negative_scale_expr, quotient));
-    }
-
-    let negative_scale = negate_scalar_expr(ctx, scale);
-    Some(scale_expr_reciprocal_integration_result(
-        ctx,
-        negative_scale,
-        quotient,
-    ))
-}
-
-fn hyperbolic_coth_reciprocal_fourth_antiderivative(
-    ctx: &mut Context,
-    num: ExprId,
-    den: ExprId,
-    var: &str,
-) -> Option<ExprId> {
-    let arg = reciprocal_hyperbolic_sinh_fourth_arg(ctx, den)?;
-    if !contains_named_var(ctx, arg, var) {
-        return None;
-    }
-
-    let scale = symbolic_linear_cofactor_scale_expr(ctx, num, arg, var)?;
-    if is_number(ctx, scale, 0) {
-        return None;
-    }
-
+    arg: ExprId,
+    scale: ExprId,
+) -> ExprId {
     let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
     let one = ctx.num(1);
     let coth_arg = ctx.add(Expr::Div(one, tanh_arg));
@@ -3995,13 +4098,13 @@ fn hyperbolic_coth_reciprocal_fourth_antiderivative(
             -scale_value / BigRational::from_integer(3.into()),
             tanh_cubed,
         );
-        return Some(ctx.add(Expr::Add(linear_term, cubic_term)));
+        return ctx.add(Expr::Add(linear_term, cubic_term));
     }
 
     let linear_term = scale_expr_reciprocal_integration_result(ctx, scale, coth_arg);
     let cubic_scale = scale_rational_term(ctx, BigRational::new(1.into(), 3.into()), scale);
     let cubic_term = scale_expr_reciprocal_integration_result(ctx, cubic_scale, coth_cubed);
-    Some(ctx.add(Expr::Sub(linear_term, cubic_term)))
+    ctx.add(Expr::Sub(linear_term, cubic_term))
 }
 
 fn hyperbolic_log_derivative_ratio_antiderivative(
@@ -4206,27 +4309,29 @@ fn hyperbolic_tanh_reciprocal_log_sinh_antiderivative(
     Some(mul2_raw(ctx, scale_expr, log_abs_sinh))
 }
 
-fn hyperbolic_cosh_reciprocal_derivative_antiderivative(
+fn hyperbolic_reciprocal_derivative_antiderivative(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let arg = reciprocal_hyperbolic_cosh_square_arg(ctx, den)?;
+    let (den_builtin, arg) = reciprocal_hyperbolic_square_factor_parts(ctx, den)?;
+    let policy = hyperbolic_reciprocal_derivative_policy(den_builtin)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
 
     let factors = mul_leaves(ctx, num);
-    let (sinh_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, BuiltinFn::Sinh)
-            .is_some_and(|sinh_arg| same_structural_or_linear_arg(ctx, sinh_arg, arg, var))
+    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
+        unary_builtin_arg(ctx, **factor, policy.numerator_builtin).is_some_and(|numerator_arg| {
+            same_structural_or_linear_arg(ctx, numerator_arg, arg, var)
+        })
     })?;
 
     let cofactor_factors: Vec<ExprId> = factors
         .iter()
         .enumerate()
-        .filter_map(|(idx, factor)| (idx != sinh_index).then_some(*factor))
+        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
         .collect();
     let cofactor = if cofactor_factors.is_empty() {
         ctx.num(1)
@@ -4239,58 +4344,9 @@ fn hyperbolic_cosh_reciprocal_derivative_antiderivative(
         return None;
     }
 
-    let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
-    let one = ctx.num(1);
-    let reciprocal_cosh = ctx.add(Expr::Div(one, cosh_arg));
-    let negative_scale = negate_scalar_expr(ctx, scale);
+    let integral = build_hyperbolic_reciprocal_derivative_integral(ctx, policy, arg);
     Some(scale_expr_reciprocal_integration_result(
-        ctx,
-        negative_scale,
-        reciprocal_cosh,
-    ))
-}
-
-fn hyperbolic_sinh_reciprocal_derivative_antiderivative(
-    ctx: &mut Context,
-    num: ExprId,
-    den: ExprId,
-    var: &str,
-) -> Option<ExprId> {
-    let arg = reciprocal_hyperbolic_sinh_square_arg(ctx, den)?;
-    if !contains_named_var(ctx, arg, var) {
-        return None;
-    }
-
-    let factors = mul_leaves(ctx, num);
-    let (cosh_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, BuiltinFn::Cosh)
-            .is_some_and(|cosh_arg| same_structural_or_linear_arg(ctx, cosh_arg, arg, var))
-    })?;
-
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != cosh_index).then_some(*factor))
-        .collect();
-    let cofactor = if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    };
-
-    let scale = symbolic_linear_cofactor_scale_expr(ctx, cofactor, arg, var)?;
-    if is_number(ctx, scale, 0) {
-        return None;
-    }
-
-    let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
-    let one = ctx.num(1);
-    let reciprocal_sinh = ctx.add(Expr::Div(one, sinh_arg));
-    let negative_scale = negate_scalar_expr(ctx, scale);
-    Some(scale_expr_reciprocal_integration_result(
-        ctx,
-        negative_scale,
-        reciprocal_sinh,
+        ctx, scale, integral,
     ))
 }
 
@@ -4300,12 +4356,17 @@ fn hyperbolic_reciprocal_square_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    hyperbolic_tanh_reciprocal_square_antiderivative(ctx, num, den, var)
-        .or_else(|| hyperbolic_tanh_reciprocal_fourth_antiderivative(ctx, num, den, var))
-        .or_else(|| hyperbolic_coth_reciprocal_square_antiderivative(ctx, num, den, var))
-        .or_else(|| hyperbolic_coth_reciprocal_fourth_antiderivative(ctx, num, den, var))
-        .or_else(|| hyperbolic_cosh_reciprocal_derivative_antiderivative(ctx, num, den, var))
-        .or_else(|| hyperbolic_sinh_reciprocal_derivative_antiderivative(ctx, num, den, var))
+    hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Cosh, 2)
+        .or_else(|| {
+            hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Cosh, 4)
+        })
+        .or_else(|| {
+            hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Sinh, 2)
+        })
+        .or_else(|| {
+            hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Sinh, 4)
+        })
+        .or_else(|| hyperbolic_reciprocal_derivative_antiderivative(ctx, num, den, var))
 }
 
 pub fn integrate_symbolic_is_hyperbolic_quotient_substitution_target(
@@ -4859,31 +4920,15 @@ fn trig_reciprocal_derivative_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     let (den_builtin, arg) = reciprocal_trig_square_parts(ctx, den)?;
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cos => BuiltinFn::Sin,
-        BuiltinFn::Sin => BuiltinFn::Cos,
-        _ => return None,
-    };
-    let numerator_arg = unary_builtin_arg(ctx, num, numerator_builtin)?;
+    let policy = reciprocal_trig_derivative_policy(den_builtin)?;
+    let numerator_arg = unary_builtin_arg(ctx, num, policy.numerator_builtin)?;
     if compare_expr(ctx, numerator_arg, arg) != Ordering::Equal {
         return None;
     }
 
     let (a, _) = get_linear_coeffs(ctx, arg, var)?;
-    let integral = match den_builtin {
-        BuiltinFn::Cos => ctx.call_builtin(BuiltinFn::Sec, vec![arg]),
-        BuiltinFn::Sin => {
-            let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
-            ctx.add(Expr::Neg(csc_arg))
-        }
-        _ => return None,
-    };
-    let result = match den_builtin {
-        BuiltinFn::Cos | BuiltinFn::Sin => {
-            divide_by_coeff_unless_one_preserving_presentation(ctx, integral, a)
-        }
-        _ => divide_by_coeff_unless_one(ctx, integral, a),
-    };
+    let integral = build_reciprocal_trig_derivative_integral(ctx, policy, arg);
+    let result = divide_by_coeff_unless_one_preserving_presentation(ctx, integral, a);
     Some(result)
 }
 
@@ -4894,14 +4939,7 @@ fn sqrt_compact_reciprocal_trig_antiderivative(
 ) -> Option<ExprId> {
     let radicand = sqrt_like_radicand(ctx, arg)?;
     let sqrt_arg = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
-    match den_builtin {
-        BuiltinFn::Cos => Some(ctx.call_builtin(BuiltinFn::Sec, vec![sqrt_arg])),
-        BuiltinFn::Sin => {
-            let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![sqrt_arg]);
-            Some(ctx.add(Expr::Neg(csc_arg)))
-        }
-        _ => None,
-    }
+    reciprocal_trig_derivative_base_antiderivative(ctx, den_builtin, sqrt_arg)
 }
 
 fn negate_integration_result(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -5364,14 +5402,7 @@ fn trig_reciprocal_derivative_base_integral(
         return Some(compact);
     }
 
-    match den_builtin {
-        BuiltinFn::Cos => Some(ctx.call_builtin(BuiltinFn::Sec, vec![arg])),
-        BuiltinFn::Sin => {
-            let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
-            Some(ctx.add(Expr::Neg(csc_arg)))
-        }
-        _ => None,
-    }
+    reciprocal_trig_derivative_base_antiderivative(ctx, den_builtin, arg)
 }
 
 fn polynomial_trig_reciprocal_derivative_parts(
@@ -5381,17 +5412,13 @@ fn polynomial_trig_reciprocal_derivative_parts(
     var: &str,
 ) -> Option<(BuiltinFn, ExprId, ExprId)> {
     let (den_builtin, arg) = reciprocal_trig_square_parts(ctx, den)?;
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cos => BuiltinFn::Sin,
-        BuiltinFn::Sin => BuiltinFn::Cos,
-        _ => return None,
-    };
+    let policy = reciprocal_trig_derivative_policy(den_builtin)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
 
     let cofactor =
-        polynomial_trig_reciprocal_derivative_cofactor(ctx, num, numerator_builtin, arg)?;
+        polynomial_trig_reciprocal_derivative_cofactor(ctx, num, policy.numerator_builtin, arg)?;
     Some((den_builtin, arg, cofactor))
 }
 
@@ -5749,11 +5776,7 @@ fn sqrt_trig_reciprocal_derivative_parts(
             .find_map(|(idx, factor)| {
                 reciprocal_trig_square_parts(ctx, *factor).map(|parts| (idx, parts))
             })?;
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cos => BuiltinFn::Sin,
-        BuiltinFn::Sin => BuiltinFn::Cos,
-        _ => return None,
-    };
+    let policy = reciprocal_trig_derivative_policy(den_builtin)?;
 
     let (numerator_index, numerator_sign) =
         numerator_factors
@@ -5761,7 +5784,7 @@ fn sqrt_trig_reciprocal_derivative_parts(
             .enumerate()
             .find_map(|(idx, factor)| {
                 let (numerator_arg, sign) =
-                    signed_unary_builtin_arg(ctx, *factor, numerator_builtin)?;
+                    signed_unary_builtin_arg(ctx, *factor, policy.numerator_builtin)?;
                 (compare_expr(ctx, numerator_arg, arg) == Ordering::Equal).then_some((idx, sign))
             })?;
 
@@ -5806,12 +5829,16 @@ fn sqrt_trig_reciprocal_derivative_raw_numerator_parts(
     numerator_factors: &[ExprId],
 ) -> Option<(BuiltinFn, ExprId, usize, usize, BigRational)> {
     for (reciprocal_index, factor) in numerator_factors.iter().enumerate() {
-        let (den_builtin, derivative_builtin, arg) = match ctx.get(*factor) {
-            Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(*fn_id)? {
-                BuiltinFn::Sec => (BuiltinFn::Cos, BuiltinFn::Tan, args[0]),
-                BuiltinFn::Csc => (BuiltinFn::Sin, BuiltinFn::Cot, args[0]),
-                _ => continue,
-            },
+        let (policy, arg) = match ctx.get(*factor) {
+            Expr::Function(fn_id, args) if args.len() == 1 => {
+                let Some(policy) = ctx
+                    .builtin_of(*fn_id)
+                    .and_then(reciprocal_trig_derivative_policy_from_reciprocal)
+                else {
+                    continue;
+                };
+                (policy, args[0])
+            }
             _ => continue,
         };
 
@@ -5820,13 +5847,13 @@ fn sqrt_trig_reciprocal_derivative_raw_numerator_parts(
                 continue;
             }
             let Some((derivative_arg, derivative_sign)) =
-                signed_unary_builtin_arg(ctx, *factor, derivative_builtin)
+                signed_unary_builtin_arg(ctx, *factor, policy.derivative_builtin)
             else {
                 continue;
             };
             if compare_expr(ctx, derivative_arg, arg) == Ordering::Equal {
                 return Some((
-                    den_builtin,
+                    policy.denominator_builtin,
                     arg,
                     reciprocal_index,
                     derivative_index,
@@ -5847,14 +5874,7 @@ fn sqrt_trig_reciprocal_derivative_antiderivative(
     let (den_builtin, arg, _, scale) = sqrt_trig_reciprocal_derivative_parts(ctx, expr, var)?;
     let preserve_symbolic_scale_presentation =
         !matches!(ctx.get(scale), Expr::Number(_)) && sqrt_like_radicand(ctx, arg).is_some();
-    let integral = match den_builtin {
-        BuiltinFn::Cos => ctx.call_builtin(BuiltinFn::Sec, vec![arg]),
-        BuiltinFn::Sin => {
-            let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
-            ctx.add(Expr::Neg(csc_arg))
-        }
-        _ => return None,
-    };
+    let integral = reciprocal_trig_derivative_base_antiderivative(ctx, den_builtin, arg)?;
     let scaled = scale_expr_reciprocal_integration_result(ctx, scale, integral);
     Some(if preserve_symbolic_scale_presentation {
         cas_ast::hold::wrap_hold(ctx, scaled)
@@ -6247,14 +6267,10 @@ fn sqrt_hyperbolic_reciprocal_derivative_parts(
             .find_map(|(idx, factor)| {
                 reciprocal_hyperbolic_square_factor_parts(ctx, *factor).map(|parts| (idx, parts))
             })?;
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cosh => BuiltinFn::Sinh,
-        BuiltinFn::Sinh => BuiltinFn::Cosh,
-        _ => return None,
-    };
+    let policy = hyperbolic_reciprocal_derivative_policy(den_builtin)?;
 
     let (numerator_index, _) = numerator_factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
+        unary_builtin_arg(ctx, **factor, policy.numerator_builtin)
             .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
     })?;
 
@@ -6289,10 +6305,8 @@ fn sqrt_hyperbolic_reciprocal_derivative_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     let (den_builtin, arg, _, scale) = sqrt_hyperbolic_reciprocal_derivative_parts(ctx, expr, var)?;
-    let den_arg = ctx.call_builtin(den_builtin, vec![arg]);
-    let one = ctx.num(1);
-    let reciprocal = ctx.add(Expr::Div(one, den_arg));
-    let integral = ctx.add(Expr::Neg(reciprocal));
+    let policy = hyperbolic_reciprocal_derivative_policy(den_builtin)?;
+    let integral = build_hyperbolic_reciprocal_derivative_integral(ctx, policy, arg);
     Some(scale_expr_reciprocal_integration_result(
         ctx, scale, integral,
     ))
@@ -6326,18 +6340,14 @@ fn polynomial_trig_reciprocal_factor_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     let (den_builtin, arg) = reciprocal_trig_factor_parts(ctx, den)?;
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cos => BuiltinFn::Tan,
-        BuiltinFn::Sin => BuiltinFn::Cot,
-        _ => return None,
-    };
+    let policy = reciprocal_trig_derivative_policy(den_builtin)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
 
     let factors = mul_leaves(ctx, num);
     let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
+        unary_builtin_arg(ctx, **factor, policy.derivative_builtin)
             .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
     })?;
 
@@ -6360,19 +6370,7 @@ fn polynomial_trig_reciprocal_factor_antiderivative(
         return None;
     }
 
-    let integral =
-        if let Some(compact) = sqrt_compact_reciprocal_trig_antiderivative(ctx, den_builtin, arg) {
-            compact
-        } else {
-            match den_builtin {
-                BuiltinFn::Cos => ctx.call_builtin(BuiltinFn::Sec, vec![arg]),
-                BuiltinFn::Sin => {
-                    let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
-                    ctx.add(Expr::Neg(csc_arg))
-                }
-                _ => return None,
-            }
-        };
+    let integral = trig_reciprocal_derivative_base_integral(ctx, den_builtin, arg)?;
     if scale.is_one() {
         return Some(integral);
     }
@@ -6409,12 +6407,8 @@ fn trig_reciprocal_derivative_required_nonzero(
         _ => return None,
     };
     let (den_builtin, arg) = reciprocal_trig_square_parts(ctx, den)?;
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cos => BuiltinFn::Sin,
-        BuiltinFn::Sin => BuiltinFn::Cos,
-        _ => return None,
-    };
-    let numerator_arg = unary_builtin_arg(ctx, num, numerator_builtin)?;
+    let policy = reciprocal_trig_derivative_policy(den_builtin)?;
+    let numerator_arg = unary_builtin_arg(ctx, num, policy.numerator_builtin)?;
     if compare_expr(ctx, numerator_arg, arg) != Ordering::Equal {
         return None;
     }
@@ -6512,18 +6506,14 @@ fn polynomial_trig_reciprocal_factor_required_nonzero(
         _ => return None,
     };
     let (den_builtin, arg) = reciprocal_trig_factor_parts(ctx, den)?;
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cos => BuiltinFn::Tan,
-        BuiltinFn::Sin => BuiltinFn::Cot,
-        _ => return None,
-    };
+    let policy = reciprocal_trig_derivative_policy(den_builtin)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
 
     let factors = mul_leaves(ctx, num);
     let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
+        unary_builtin_arg(ctx, **factor, policy.derivative_builtin)
             .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
     })?;
     let cofactor_factors: Vec<ExprId> = factors

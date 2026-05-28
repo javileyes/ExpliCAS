@@ -82,16 +82,16 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn("inverse_trig_root_interval_orientation", names)
-        self.assertIn("inverse_trig_root_empty_open_interval_residual", names)
+        self.assertIn("inverse_trig_root_empty_open_interval_undefined", names)
         self.assertIn(
-            "inverse_trig_shifted_quadratic_empty_open_interval_residual",
+            "inverse_trig_shifted_quadratic_empty_open_interval_undefined",
             names,
         )
         self.assertIn(
-            "inverse_trig_symbolic_constant_empty_open_interval_residual",
+            "inverse_trig_symbolic_constant_empty_open_interval_undefined",
             names,
         )
-        self.assertIn("inverse_hyperbolic_atanh_empty_open_interval_residual", names)
+        self.assertIn("inverse_hyperbolic_atanh_empty_open_interval_undefined", names)
         self.assertIn(
             "inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
             names,
@@ -117,10 +117,25 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             "positive_quadratic_log_arctan_surd_negative_orientation_compact",
             names,
         )
-        self.assertIn("discontinuous_sign_residual_boundary", names)
+        self.assertIn("discontinuous_sign_polynomial_nonzero_domain", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 5, "supported": 38, "undefined": 6},
+            {"supported": 39, "undefined": 10},
+        )
+        self.assertEqual(
+            SMOKE.count_calculus_maturity_blocks(cases),
+            {
+                "block2_real_domain_differentiation": 39,
+                "block9_residuals_and_non_goals": 10,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_calculus_block_gates(cases),
+            {
+                "didactic_trace_and_diff_policy": 8,
+                "domain_conditions_and_diff_policy": 31,
+                "explicit_undefined_domain_policy": 10,
+            },
         )
         step_checked = {
             case.name
@@ -172,7 +187,10 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "inverse_trig_root_symbolic_denominator_internal_scale",
                 "inverse_trig_root_symbolic_denominator_scale_dual_orientation",
                 "inverse_trig_root_interval_orientation",
-                "inverse_trig_shifted_quadratic_empty_open_interval_residual",
+                "inverse_trig_root_empty_open_interval_undefined",
+                "inverse_trig_shifted_quadratic_empty_open_interval_undefined",
+                "inverse_trig_symbolic_constant_empty_open_interval_undefined",
+                "inverse_hyperbolic_atanh_empty_open_interval_undefined",
                 "inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
                 "inverse_hyperbolic_root_symbolic_numerator_scale_positive_gap",
                 "inverse_trig_root_negative_argument",
@@ -180,14 +198,13 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "sqrt_chain_trig_log_presimplified_condition_dedupe",
                 "variable_power_log_domain",
                 "abs_piecewise_required_condition",
-                "discontinuous_sign_residual_boundary",
+                "discontinuous_sign_polynomial_nonzero_domain",
             },
         )
         self.assertEqual(supported_step_unchecked, set())
         self.assertEqual(
             SMOKE.count_by(cases, "domain_regime"),
             {
-                "discontinuous_residual": 1,
                 "empty_open_interval_domain": 4,
                 "empty_positive_argument_domain": 2,
                 "empty_positive_exponent_domain": 1,
@@ -197,7 +214,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "nonfinite_undefined": 1,
                 "open_interval_required": 1,
                 "positive_exponent_required": 1,
-                "required_condition": 27,
+                "required_condition": 28,
                 "unconditional": 5,
                 "unconditional_positive_quadratic": 3,
             },
@@ -229,7 +246,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                     ;;
                     *"diff(sign(x), x)"*)
                     cat <<'OUT'
-                    {"ok":true,"result":"diff(sign(x), x)","warnings":[],"required_display":[],"steps":[{"rule":"Conservar derivada residual","before":"sign(x)","after":"diff(sign(x), x)"}]}
+                    {"ok":true,"result":"0","warnings":[],"required_display":["x ≠ 0"],"steps":[{"substeps":[{"title":"Usar derivada de sign(u) fuera de u = 0"}]}]}
                     OUT
                     ;;
                     *)
@@ -247,7 +264,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                     "polynomial_power_direct",
                     "polynomial_inner_chain_power",
                     "sqrt_variable_open_domain",
-                    "discontinuous_sign_residual_boundary",
+                    "discontinuous_sign_polynomial_nonzero_domain",
                 )
             )
             matrix = SMOKE.run_matrix(cases, cas_cli=cas_cli, timeout_seconds=2.0)
@@ -255,16 +272,29 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(matrix["status"], "pass", matrix)
         self.assertEqual(matrix["total"], 4)
         self.assertEqual(matrix["status_counts"]["pass"], 4)
-        self.assertEqual(matrix["supported_case_count"], 3)
-        self.assertEqual(matrix["residual_case_count"], 1)
+        self.assertEqual(matrix["supported_case_count"], 4)
+        self.assertEqual(matrix["residual_case_count"], 0)
         self.assertEqual(matrix["warning_expected_case_count"], 0)
         self.assertEqual(matrix["blocked_hint_expected_case_count"], 0)
-        self.assertEqual(matrix["required_display_case_count"], 1)
-        self.assertEqual(matrix["required_display_counts"], {"x > 0": 1})
+        self.assertEqual(matrix["required_display_case_count"], 2)
+        self.assertEqual(matrix["required_display_counts"], {"x > 0": 1, "x ≠ 0": 1})
         self.assertEqual(matrix["step_checked_case_count"], 4)
         self.assertEqual(matrix["supported_step_unchecked_case_count"], 0)
         self.assertEqual(matrix["supported_step_unchecked_cases"], [])
         self.assertEqual(matrix["expected_step_substring_count"], 5)
+        self.assertEqual(
+            matrix["calculus_maturity_block_counts"],
+            {
+                "block2_real_domain_differentiation": 4,
+            },
+        )
+        self.assertEqual(
+            matrix["calculus_block_gate_counts"],
+            {
+                "didactic_trace_and_diff_policy": 2,
+                "domain_conditions_and_diff_policy": 2,
+            },
+        )
 
     def test_run_matrix_reports_result_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

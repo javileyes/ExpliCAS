@@ -395,33 +395,22 @@ mod tests {
 
         let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
         assert_eq!(payload["ok"], true);
-        assert_eq!(payload["result"], "diff(atanh(sqrt(x^2 + 2)), x)");
+        assert_eq!(payload["result"], "undefined");
 
-        let blocked = payload["blocked_hints"]
-            .as_array()
-            .expect("blocked_hints array");
-        assert_eq!(blocked.len(), 1);
-        assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
         assert_eq!(
-            blocked[0]["tip"],
-            "real domain is empty; no real derivative is exposed"
-        );
-        let condition = blocked[0]["requires"][0]
-            .as_str()
-            .expect("blocked hint condition");
-        assert!(
-            condition.contains("-x") && condition.contains("> 0"),
-            "expected concrete impossible positive gap, got: {condition}"
+            payload["blocked_hints"],
+            serde_json::Value::Null,
+            "undefined domain is explained by the derivative step, not a blocked residual"
         );
 
         let wire_messages = payload["wire"]["messages"]
             .as_array()
             .expect("wire messages");
         assert!(
-            wire_messages.iter().any(|message| message["text"]
+            !wire_messages.iter().any(|message| message["text"]
                 .as_str()
-                .is_some_and(|text| text.contains("Blocked: requires -x"))),
-            "wire reply should include the blocked hint, got: {wire_messages:?}"
+                .is_some_and(|text| text.contains("Blocked: requires"))),
+            "wire reply should not include blocked hints for resolved undefined output: {wire_messages:?}"
         );
     }
 

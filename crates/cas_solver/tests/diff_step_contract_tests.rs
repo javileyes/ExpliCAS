@@ -2483,6 +2483,101 @@ fn absolute_value_diff_composite_arguments_preserve_nonsmooth_conditions() {
 }
 
 #[test]
+fn sign_polynomial_diff_evaluates_zero_with_nonsmooth_conditions() {
+    let cases = [
+        ("diff(sign(x), x)", vec!["x ≠ 0".to_string()]),
+        ("diff(sign(2*x+1), x)", vec!["x ≠ -1/2".to_string()]),
+        (
+            "diff(sign(x^2-1), x)",
+            vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
+        ),
+    ];
+
+    for (input, expected_conditions) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, "0", "input: {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_conditions,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn sign_nonpolynomial_diff_remains_residual_with_inner_domain_condition() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let input = "diff(sign(sqrt(x)), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "diff(sign(x^(1/2)), x)");
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x ≥ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
 fn absolute_value_diff_quotient_argument_uses_compact_domain_safe_form() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -14456,7 +14551,7 @@ fn atanh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
 }
 
 #[test]
-fn atanh_sqrt_diff_keeps_residual_when_real_open_interval_is_empty() {
+fn atanh_sqrt_diff_returns_undefined_when_real_open_interval_is_empty() {
     for input in [
         "diff(atanh(sqrt(x^2+1)), x)",
         "diff(atanh(sqrt(x^2+2)), x)",
@@ -14487,9 +14582,9 @@ fn atanh_sqrt_diff_keeps_residual_when_real_open_interval_is_empty() {
             other => panic!("expected expression result, got {other:?}"),
         };
 
-        assert!(
-            result.starts_with("diff(atanh("),
-            "input: {input}, empty real-domain atanh sqrt should remain residual, got: {result}"
+        assert_eq!(
+            result, "undefined",
+            "input: {input}, empty real-domain atanh sqrt should be undefined, got: {result}"
         );
         let required: Vec<String> = normalize_and_dedupe_conditions(
             &mut engine.simplifier.context,
@@ -14500,40 +14595,32 @@ fn atanh_sqrt_diff_keeps_residual_when_real_open_interval_is_empty() {
         .collect();
         assert!(
             required.is_empty(),
-            "input: {input}, empty-domain residual should not surface public Requires: {required:?}"
+            "input: {input}, empty-domain undefined result should not surface public Requires: {required:?}"
         );
         assert!(
             output
                 .steps
                 .iter()
-                .all(|step| step.rule_name != "Symbolic Differentiation"),
-            "input: {input}, empty real-domain atanh sqrt should not record a differentiation step"
-        );
-        assert_eq!(
-            output.blocked_hints.len(),
-            1,
-            "input: {input}, empty real-domain atanh sqrt should expose one blocked hint"
-        );
-        let hint = &output.blocked_hints[0];
-        assert_eq!(hint.rule, "Symbolic Differentiation");
-        assert!(
-            hint.suggestion.contains("real domain is empty"),
-            "input: {input}, expected a domain-empty hint, got: {}",
-            hint.suggestion
-        );
-        let hint_condition = cas_solver_core::assumption_model::format_blocked_hint_condition(
-            &engine.simplifier.context,
-            hint,
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "input: {input}, empty real-domain atanh sqrt should record the undefined differentiation step"
         );
         assert!(
-            hint_condition.contains("> 0") && hint_condition.contains('-'),
-            "input: {input}, expected a concrete impossible positive gap, got: {hint_condition}"
+            output.blocked_hints.len() <= 1,
+            "input: {input}, resolved undefined output should expose at most one raw domain hint"
         );
+        if let Some(hint) = output.blocked_hints.first() {
+            assert_eq!(hint.rule, "Symbolic Differentiation");
+            assert!(
+                hint.suggestion.contains("real domain is empty"),
+                "input: {input}, expected a domain-empty hint, got: {}",
+                hint.suggestion
+            );
+        }
     }
 }
 
 #[test]
-fn inverse_reciprocal_trig_direct_bounded_trig_diff_keeps_residual_when_real_open_interval_is_empty(
+fn inverse_reciprocal_trig_direct_bounded_trig_diff_returns_undefined_when_real_open_interval_is_empty(
 ) {
     for input in [
         "diff(arcsec(sin(x)), x)",
@@ -14573,9 +14660,9 @@ fn inverse_reciprocal_trig_direct_bounded_trig_diff_keeps_residual_when_real_ope
             other => panic!("expected expression result, got {other:?}"),
         };
 
-        assert!(
-            result.starts_with("diff("),
-            "input: {input}, empty real-domain inverse reciprocal trig diff should remain residual, got: {result}"
+        assert_eq!(
+            result, "undefined",
+            "input: {input}, empty real-domain inverse reciprocal trig diff should be undefined, got: {result}"
         );
         let required: Vec<String> = normalize_and_dedupe_conditions(
             &mut engine.simplifier.context,
@@ -14586,27 +14673,27 @@ fn inverse_reciprocal_trig_direct_bounded_trig_diff_keeps_residual_when_real_ope
         .collect();
         assert!(
             required.is_empty(),
-            "input: {input}, empty-domain residual should not surface redundant Requires: {required:?}"
+            "input: {input}, empty-domain undefined result should not surface redundant Requires: {required:?}"
         );
         assert!(
             output
                 .steps
                 .iter()
-                .all(|step| step.rule_name != "Symbolic Differentiation"),
-            "input: {input}, empty real-domain inverse reciprocal trig diff should not record a differentiation step"
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "input: {input}, empty real-domain inverse reciprocal trig diff should record the undefined differentiation step"
         );
-        assert_eq!(
-            output.blocked_hints.len(),
-            1,
-            "input: {input}, empty real-domain inverse reciprocal trig diff should expose one blocked hint"
-        );
-        let hint = &output.blocked_hints[0];
-        assert_eq!(hint.rule, "Symbolic Differentiation");
         assert!(
-            hint.suggestion.contains("real domain is empty"),
-            "input: {input}, expected a domain-empty hint, got: {}",
-            hint.suggestion
+            output.blocked_hints.len() <= 1,
+            "input: {input}, empty real-domain inverse reciprocal trig diff should expose at most one domain hint"
         );
+        if let Some(hint) = output.blocked_hints.first() {
+            assert_eq!(hint.rule, "Symbolic Differentiation");
+            assert!(
+                hint.suggestion.contains("real domain is empty"),
+                "input: {input}, expected a domain-empty hint, got: {}",
+                hint.suggestion
+            );
+        }
     }
 }
 

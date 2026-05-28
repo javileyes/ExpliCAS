@@ -474,6 +474,8 @@ pub enum EvalLimitApproach {
     PosInfinity,
     NegInfinity,
     Finite(String),
+    FiniteFromLeft(String),
+    FiniteFromRight(String),
 }
 
 /// Parsed special command forms accepted by eval input.
@@ -544,13 +546,31 @@ pub fn parse_eval_limit_command_error(input: &str) -> Option<String> {
     };
 
     if !trimmed.ends_with(')') {
-        return Some("Invalid limit command. Expected limit(expr, var, infinity).".to_string());
+        return Some(limit_command_usage_error());
     }
 
     let content = &trimmed[prefix_len..trimmed.len() - 1];
     let parts = split_by_comma_at_depth_0(content);
-    if parts.len() < 2 || parts.len() > 3 {
-        return Some("Invalid limit command. Expected limit(expr, var, infinity).".to_string());
+    if parts.len() < 2 {
+        return Some(limit_command_usage_error());
+    }
+    if parts.len() > 3 {
+        let extra = parts[3].trim();
+        if looks_like_one_sided_limit_marker(extra) {
+            if parts.len() == 4
+                && looks_like_finite_limit_point(parts[2].trim())
+                && parse_one_sided_limit_marker(extra).is_some()
+            {
+                return None;
+            }
+            return Some(format!(
+                "Unsupported one-sided limit approach `{extra}`. One-sided eval limit syntax expects limit(expr, var, finite_point, left|right)."
+            ));
+        }
+        return Some(
+            "Invalid limit command. Expected limit(expr, var, approach); eval limit syntax does not accept a fourth argument."
+                .to_string(),
+        );
     }
 
     let var_str = parts[1].trim();
@@ -565,6 +585,7 @@ pub fn parse_eval_limit_command_error(input: &str) -> Option<String> {
         let dir = parts[2].trim();
         match dir.to_lowercase().as_str() {
             "inf" | "infinity" | "+inf" | "+infinity" | "-inf" | "-infinity" => None,
+            _ if parse_one_sided_finite_limit_point(dir).is_some() => None,
             _ if looks_like_finite_limit_point(dir) => None,
             _ => Some(format!(
                 "Unsupported limit direction `{dir}`. Use infinity, -infinity, or a finite point."
@@ -684,7 +705,7 @@ fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach
 
     let content = &trimmed[prefix_len..trimmed.len() - 1];
     let parts = split_by_comma_at_depth_0(content);
-    if parts.len() < 2 || parts.len() > 3 {
+    if parts.len() < 2 || parts.len() > 4 {
         return None;
     }
 
@@ -702,8 +723,24 @@ fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach
         match dir.to_lowercase().as_str() {
             "inf" | "infinity" | "+inf" | "+infinity" => EvalLimitApproach::PosInfinity,
             "-inf" | "-infinity" => EvalLimitApproach::NegInfinity,
+            _ if parse_one_sided_finite_limit_point(dir).is_some() => {
+                let (point, side) = parse_one_sided_finite_limit_point(dir)?;
+                match side {
+                    OneSidedLimitMarker::Left => EvalLimitApproach::FiniteFromLeft(point),
+                    OneSidedLimitMarker::Right => EvalLimitApproach::FiniteFromRight(point),
+                }
+            }
             _ if looks_like_finite_limit_point(dir) => EvalLimitApproach::Finite(dir.to_string()),
             _ => return None,
+        }
+    } else if parts.len() == 4 {
+        let point = parts[2].trim();
+        if !looks_like_finite_limit_point(point) {
+            return None;
+        }
+        match parse_one_sided_limit_marker(parts[3].trim())? {
+            OneSidedLimitMarker::Left => EvalLimitApproach::FiniteFromLeft(point.to_string()),
+            OneSidedLimitMarker::Right => EvalLimitApproach::FiniteFromRight(point.to_string()),
         }
     } else {
         EvalLimitApproach::PosInfinity
@@ -712,9 +749,68 @@ fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach
     Some((expr_str.to_string(), var_str.to_string(), approach))
 }
 
+fn limit_command_usage_error() -> String {
+    "Invalid limit command. Expected limit(expr, var, approach).".to_string()
+}
+
 fn looks_like_finite_limit_point(dir: &str) -> bool {
     let trimmed = dir.trim();
-    !trimmed.is_empty() && trimmed.chars().any(|ch| ch.is_ascii_digit())
+    !trimmed.is_empty()
+        && trimmed.chars().any(|ch| ch.is_ascii_digit())
+        && !has_one_sided_limit_suffix(trimmed)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OneSidedLimitMarker {
+    Left,
+    Right,
+}
+
+fn parse_one_sided_finite_limit_point(dir: &str) -> Option<(String, OneSidedLimitMarker)> {
+    let compact: String = dir.chars().filter(|ch| !ch.is_whitespace()).collect();
+    let last = compact.chars().last()?;
+    let side = match last {
+        '-' => OneSidedLimitMarker::Left,
+        '+' => OneSidedLimitMarker::Right,
+        _ => return None,
+    };
+    let point = &compact[..compact.len() - last.len_utf8()];
+    looks_like_finite_limit_point(point).then(|| (point.to_string(), side))
+}
+
+fn has_one_sided_limit_suffix(dir: &str) -> bool {
+    let compact: String = dir.chars().filter(|ch| !ch.is_whitespace()).collect();
+    compact
+        .chars()
+        .last()
+        .is_some_and(|last| matches!(last, '+' | '-'))
+        && compact.len() > 1
+        && compact[..compact.len() - 1]
+            .chars()
+            .any(|ch| ch.is_ascii_digit())
+}
+
+fn parse_one_sided_limit_marker(raw: &str) -> Option<OneSidedLimitMarker> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "-" | "left" | "from_left" | "left_hand" | "lh" => Some(OneSidedLimitMarker::Left),
+        "+" | "right" | "from_right" | "right_hand" | "rh" => Some(OneSidedLimitMarker::Right),
+        _ => None,
+    }
+}
+
+fn looks_like_one_sided_limit_marker(raw: &str) -> bool {
+    matches!(
+        raw.trim().to_ascii_lowercase().as_str(),
+        "+" | "-"
+            | "left"
+            | "right"
+            | "from_left"
+            | "from_right"
+            | "left_hand"
+            | "right_hand"
+            | "lh"
+            | "rh"
+    )
 }
 
 fn split_by_comma_at_depth_0(s: &str) -> Vec<&str> {
@@ -2128,12 +2224,36 @@ mod tests {
                 approach: EvalLimitApproach::Finite("-1".to_string()),
             }
         );
+
+        let finite_right_limit =
+            parse_eval_special_command("limit(abs(x)/x, x, 0+)").expect("limit");
+        assert_eq!(
+            finite_right_limit,
+            super::EvalSpecialCommand::Limit {
+                expr: "abs(x)/x".to_string(),
+                var: "x".to_string(),
+                approach: EvalLimitApproach::FiniteFromRight("0".to_string()),
+            }
+        );
+
+        let finite_left_limit =
+            parse_eval_special_command("limit(abs(x)/x, x, 0, left)").expect("limit");
+        assert_eq!(
+            finite_left_limit,
+            super::EvalSpecialCommand::Limit {
+                expr: "abs(x)/x".to_string(),
+                var: "x".to_string(),
+                approach: EvalLimitApproach::FiniteFromLeft("0".to_string()),
+            }
+        );
     }
 
     #[test]
     fn parse_eval_special_command_rejects_invalid_forms() {
         assert!(parse_eval_special_command("solve(x+1=0)").is_none());
         assert!(parse_eval_special_command("limit(x, x, sideways)").is_none());
+        assert!(parse_eval_special_command("limit(abs(x)/x, x, 0++)").is_none());
+        assert!(parse_eval_special_command("limit(abs(x)/x, x, 0, safe)").is_none());
         assert!(parse_eval_special_command("x + 1").is_none());
     }
 
@@ -2143,6 +2263,20 @@ mod tests {
         assert_eq!(
             parse_eval_limit_command_error("limit(ln(x), x, sideways)").as_deref(),
             Some("Unsupported limit direction `sideways`. Use infinity, -infinity, or a finite point.")
+        );
+        assert_eq!(
+            parse_eval_limit_command_error("limit(abs(x)/x, x, 0++)").as_deref(),
+            Some("Unsupported limit direction `0++`. Use infinity, -infinity, or a finite point.")
+        );
+        assert!(parse_eval_limit_command_error("limit(abs(x)/x, x, 0+)").is_none());
+        assert!(parse_eval_limit_command_error("limit(abs(x)/x, x, 0, right)").is_none());
+        assert_eq!(
+            parse_eval_limit_command_error("limit(abs(x)/x, x, 0, upward)").as_deref(),
+            Some("Invalid limit command. Expected limit(expr, var, approach); eval limit syntax does not accept a fourth argument.")
+        );
+        assert_eq!(
+            parse_eval_limit_command_error("limit(abs(x)/x, x, 0, safe)").as_deref(),
+            Some("Invalid limit command. Expected limit(expr, var, approach); eval limit syntax does not accept a fourth argument.")
         );
         assert!(parse_eval_limit_command_error("limit(ln(x), x, -infinity)").is_none());
         assert!(parse_eval_limit_command_error("x + 1").is_none());

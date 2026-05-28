@@ -115,6 +115,12 @@ pub(crate) fn format_output_input_latex(
                     EvalLimitApproach::PosInfinity => "\\infty".to_string(),
                     EvalLimitApproach::NegInfinity => "-\\infty".to_string(),
                     EvalLimitApproach::Finite(point) => latex_escape(&point),
+                    EvalLimitApproach::FiniteFromLeft(point) => {
+                        format!("{}^-", latex_escape(&point))
+                    }
+                    EvalLimitApproach::FiniteFromRight(point) => {
+                        format!("{}^+", latex_escape(&point))
+                    }
                 };
                 return format!("\\lim_{{{var} \\to {approach_latex}}} {expr_latex}");
             }

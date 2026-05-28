@@ -32,6 +32,21 @@ fn parse_wire(s: &str) -> Value {
         .unwrap_or_else(|e| panic!("Failed to parse wire JSON: {} (error: {})", trimmed, e))
 }
 
+fn assert_optional_empty_domain_blocked_hint(wire: &Value, output: &str) {
+    let blocked = &wire["blocked_hints"];
+    if blocked.is_null() {
+        return;
+    }
+
+    let blocked = blocked.as_array().expect("blocked_hints array");
+    assert_eq!(blocked.len(), 1, "unexpected blocked hints: {output}");
+    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+    assert_eq!(
+        blocked[0]["tip"],
+        "real domain is empty; no real derivative is exposed"
+    );
+}
+
 fn expected_visible_rule_name(rule_name: &str) -> &str {
     match rule_name {
         "Angle Sum/Diff Identity" => "Aplicar suma/diferencia de ángulos",
@@ -2855,30 +2870,18 @@ fn eval_diff_bounded_inverse_trig_rejects_empty_open_interval_domain() {
     assert_eq!(code, 0);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "diff(arcsin(sqrt(x^2 + 1)), x)");
+    assert_eq!(wire["result"], "undefined");
     assert_eq!(wire["required_display"], json!([]));
-    let blocked = wire["blocked_hints"]
-        .as_array()
-        .expect("blocked_hints array");
-    assert_eq!(blocked.len(), 1, "unexpected blocked hints: {blocked:?}");
-    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
-    assert_eq!(
-        blocked[0]["tip"],
-        "real domain is empty; no real derivative is exposed"
-    );
-    let requires = blocked[0]["requires"]
-        .as_array()
-        .expect("blocked hint requires array");
-    let condition = requires[0].as_str().expect("blocked hint condition");
-    assert!(
-        condition.contains("> 0") && condition.contains('-') && condition.contains('x'),
-        "expected the concrete impossible open-interval gap, got: {condition}"
-    );
+    assert_optional_empty_domain_blocked_hint(&wire, &output);
     assert!(
         !output.contains("Usar regla de arcsin(u)")
             && !output.contains("Identificar u y du")
             && !output.contains("sqrt(-(x^2))"),
         "empty inverse-trig domain should not expose a chain rule or impossible derivative: {output}"
+    );
+    assert!(
+        output.contains("Detectar dominio real vacío de la función inversa"),
+        "empty inverse-trig domain should explain the undefined derivative: {output}"
     );
 }
 
@@ -2895,30 +2898,18 @@ fn eval_diff_bounded_inverse_trig_rejects_shifted_empty_open_interval_domain() {
     assert_eq!(code, 0);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "diff(arcsin(x^2 + 2·x + 2), x)");
+    assert_eq!(wire["result"], "undefined");
     assert_eq!(wire["required_display"], json!([]));
-    let blocked = wire["blocked_hints"]
-        .as_array()
-        .expect("blocked_hints array");
-    assert_eq!(blocked.len(), 1, "unexpected blocked hints: {blocked:?}");
-    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
-    assert_eq!(
-        blocked[0]["tip"],
-        "real domain is empty; no real derivative is exposed"
-    );
-    let requires = blocked[0]["requires"]
-        .as_array()
-        .expect("blocked hint requires array");
-    let condition = requires[0].as_str().expect("blocked hint condition");
-    assert!(
-        condition.contains("> 0") && condition.contains("x^4"),
-        "expected the concrete impossible open-interval gap, got: {condition}"
-    );
+    assert_optional_empty_domain_blocked_hint(&wire, &output);
     assert!(
         !output.contains("Usar regla de arcsin(u)")
             && !output.contains("Identificar u y du")
             && !output.contains("1 - (x^2 + 2·x + 2)^2 > 0"),
         "shifted empty inverse-trig domain should not expose a chain rule or impossible condition: {output}"
+    );
+    assert!(
+        output.contains("Detectar dominio real vacío de la función inversa"),
+        "shifted empty inverse-trig domain should explain the undefined derivative: {output}"
     );
 }
 
@@ -2950,40 +2941,22 @@ fn eval_diff_inverse_functions_reject_symbolic_constants_outside_real_domain() {
         assert_eq!(code, 0, "unexpected command failure for {expr}: {output}");
         let wire = parse_wire(&output);
 
-        assert!(
-            wire["result"]
-                .as_str()
-                .is_some_and(|result| result.starts_with("diff(")),
-            "symbolic constant outside real domain should remain residual for {expr}: {output}"
+        assert_eq!(
+            wire["result"], "undefined",
+            "symbolic constant outside real domain should be undefined for {expr}: {output}"
         );
         assert_eq!(wire["required_display"], json!([]));
-        let blocked = wire["blocked_hints"]
-            .as_array()
-            .expect("blocked_hints array");
-        assert_eq!(
-            blocked.len(),
-            1,
-            "unexpected blocked hints for {expr}: {blocked:?}"
-        );
-        assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
-        assert_eq!(
-            blocked[0]["tip"],
-            "real domain is empty; no real derivative is exposed"
-        );
-        let requires = blocked[0]["requires"]
-            .as_array()
-            .expect("blocked hint requires array");
-        let condition = requires[0].as_str().expect("blocked hint condition");
-        assert!(
-            condition.contains("> 0") && (condition.contains("pi") || condition.contains('e')),
-            "expected symbolic constant open-interval gap for {expr}, got: {condition}"
-        );
+        assert_optional_empty_domain_blocked_hint(&wire, &output);
         assert!(
             !output.contains("Usar regla de arcsin(u)")
                 && !output.contains("Usar regla de arccos(u)")
                 && !output.contains("Usar regla de atanh(u)")
                 && !output.contains("Identificar u y du"),
             "symbolic constant outside domain should not expose a chain rule: {output}"
+        );
+        assert!(
+            output.contains("Detectar dominio real vacío de la función inversa"),
+            "symbolic constant outside domain should explain the undefined derivative: {output}"
         );
     }
 
@@ -3018,30 +2991,18 @@ fn eval_diff_atanh_rejects_empty_open_interval_domain() {
     assert_eq!(code, 0);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "diff(atanh(x^2 + 1), x)");
+    assert_eq!(wire["result"], "undefined");
     assert_eq!(wire["required_display"], json!([]));
-    let blocked = wire["blocked_hints"]
-        .as_array()
-        .expect("blocked_hints array");
-    assert_eq!(blocked.len(), 1, "unexpected blocked hints: {blocked:?}");
-    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
-    assert_eq!(
-        blocked[0]["tip"],
-        "real domain is empty; no real derivative is exposed"
-    );
-    let requires = blocked[0]["requires"]
-        .as_array()
-        .expect("blocked hint requires array");
-    let condition = requires[0].as_str().expect("blocked hint condition");
-    assert!(
-        condition.contains("> 0") && condition.contains("-x"),
-        "expected the concrete impossible open-interval gap, got: {condition}"
-    );
+    assert_optional_empty_domain_blocked_hint(&wire, &output);
     assert!(
         !output.contains("Usar regla de atanh(u)")
             && !output.contains("Identificar u y du")
             && !output.contains("sqrt(1 - (x^2 + 1)^2)"),
         "empty atanh domain should not expose a chain rule or impossible derivative: {output}"
+    );
+    assert!(
+        output.contains("Detectar dominio real vacío de la función inversa"),
+        "empty atanh domain should explain the undefined derivative: {output}"
     );
 }
 

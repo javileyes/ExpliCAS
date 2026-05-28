@@ -622,66 +622,52 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         presentation_regime="signed_reciprocal_root_interval",
     ),
     DiffCommandMatrixCase(
-        name="inverse_trig_root_empty_open_interval_residual",
+        name="inverse_trig_root_empty_open_interval_undefined",
         expr="diff(arcsin(sqrt(x^2+1)), x)",
-        expected_result="diff(arcsin(sqrt(x^2 + 1)), x)",
-        expected_blocked_hint_substrings=(
-            "real domain is empty",
-            "> 0",
-        ),
+        expected_result="undefined",
+        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
         family="inverse_trig_root",
         argument_regime="quadratic_root_argument",
         domain_regime="empty_open_interval_domain",
-        outcome="residual",
+        outcome="undefined",
         trace_regime="empty_open_interval_policy",
-        presentation_regime="residual",
+        presentation_regime="undefined",
     ),
     DiffCommandMatrixCase(
-        name="inverse_trig_shifted_quadratic_empty_open_interval_residual",
+        name="inverse_trig_shifted_quadratic_empty_open_interval_undefined",
         expr="diff(arcsin((x+1)^2+1), x)",
-        expected_result="diff(arcsin(x^2 + 2·x + 2), x)",
-        expected_blocked_hint_substrings=(
-            "real domain is empty",
-            "> 0",
-        ),
-        expected_step_substrings=("Conservar derivada residual",),
+        expected_result="undefined",
+        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
         family="inverse_trig_root",
         argument_regime="shifted_quadratic_argument",
         domain_regime="empty_open_interval_domain",
-        outcome="residual",
+        outcome="undefined",
         trace_regime="empty_open_interval_policy",
-        presentation_regime="residual",
+        presentation_regime="undefined",
     ),
     DiffCommandMatrixCase(
-        name="inverse_trig_symbolic_constant_empty_open_interval_residual",
+        name="inverse_trig_symbolic_constant_empty_open_interval_undefined",
         expr="diff(arcsin(pi), x)",
-        expected_result="diff(arcsin(pi), x)",
-        expected_blocked_hint_substrings=(
-            "real domain is empty",
-            "pi",
-            "> 0",
-        ),
+        expected_result="undefined",
+        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
         family="inverse_trig",
         argument_regime="symbolic_constant",
         domain_regime="empty_open_interval_domain",
-        outcome="residual",
+        outcome="undefined",
         trace_regime="empty_open_interval_policy",
-        presentation_regime="residual",
+        presentation_regime="undefined",
     ),
     DiffCommandMatrixCase(
-        name="inverse_hyperbolic_atanh_empty_open_interval_residual",
+        name="inverse_hyperbolic_atanh_empty_open_interval_undefined",
         expr="diff(atanh(x^2+1), x)",
-        expected_result="diff(atanh(x^2 + 1), x)",
-        expected_blocked_hint_substrings=(
-            "real domain is empty",
-            "> 0",
-        ),
+        expected_result="undefined",
+        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
         family="inverse_hyperbolic",
         argument_regime="quadratic_argument",
         domain_regime="empty_open_interval_domain",
-        outcome="residual",
+        outcome="undefined",
         trace_regime="empty_open_interval_policy",
-        presentation_regime="residual",
+        presentation_regime="undefined",
     ),
     DiffCommandMatrixCase(
         name="inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
@@ -790,16 +776,16 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         presentation_regime="quotient_abs",
     ),
     DiffCommandMatrixCase(
-        name="discontinuous_sign_residual_boundary",
+        name="discontinuous_sign_polynomial_nonzero_domain",
         expr="diff(sign(x), x)",
-        expected_result="diff(sign(x), x)",
-        expected_step_substrings=("Conservar derivada residual",),
+        expected_result="0",
+        expected_required_display=("x ≠ 0",),
+        expected_step_substrings=("Usar derivada de sign(u) fuera de u = 0",),
         family="discontinuous",
         argument_regime="variable",
-        domain_regime="discontinuous_residual",
-        outcome="residual",
-        trace_regime="residual_policy",
-        presentation_regime="residual",
+        domain_regime="required_condition",
+        trace_regime="sign_derivative",
+        presentation_regime="constant_zero",
     ),
 )
 
@@ -1120,6 +1106,44 @@ def count_by(cases: tuple[DiffCommandMatrixCase, ...], attr: str) -> dict[str, i
     return dict(sorted(counts.items()))
 
 
+def calculus_maturity_block(case: DiffCommandMatrixCase) -> str:
+    if case.outcome in {"residual", "undefined"}:
+        return "block9_residuals_and_non_goals"
+    return "block2_real_domain_differentiation"
+
+
+def calculus_block_gate(case: DiffCommandMatrixCase) -> str:
+    if case.outcome == "residual":
+        return "safe_residual_policy"
+    if case.outcome == "undefined":
+        return "explicit_undefined_domain_policy"
+    if case.expected_required_display:
+        return "domain_conditions_and_diff_policy"
+    if case.expected_step_substrings:
+        return "didactic_trace_and_diff_policy"
+    return "supported_diff_policy"
+
+
+def count_calculus_maturity_blocks(
+    cases: tuple[DiffCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        block = calculus_maturity_block(case)
+        counts[block] = counts.get(block, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_calculus_block_gates(
+    cases: tuple[DiffCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        gate = calculus_block_gate(case)
+        counts[gate] = counts.get(gate, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def count_required_display_items(results: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for result in results:
@@ -1199,6 +1223,8 @@ def run_matrix(
         "argument_regime_counts": count_by(cases, "argument_regime"),
         "domain_regime_counts": count_by(cases, "domain_regime"),
         "outcome_counts": count_by(cases, "outcome"),
+        "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
+        "calculus_block_gate_counts": count_calculus_block_gates(cases),
         "trace_regime_counts": count_by(cases, "trace_regime"),
         "presentation_regime_counts": count_by(cases, "presentation_regime"),
         "case_filters": [case.name for case in cases],

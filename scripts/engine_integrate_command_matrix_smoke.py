@@ -426,6 +426,21 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="inverse_trig",
     ),
     IntegrateCommandMatrixCase(
+        name="rational_positive_quadratic_square_reduction",
+        expr="integrate(1/(x^2+1)^2, x)",
+        expected_result="1/2·arctan(x) + x / (2·(x^2 + 1))",
+        expected_derivative_result="1 / (x^2 + 1)^2",
+        expected_step_substrings=(
+            "Reducir el cuadrático positivo al cuadrado",
+            "Integrar la parte arctan y la parte racional",
+        ),
+        family="rational_positive_quadratic_power",
+        argument_regime="repeated_irreducible_positive_quadratic_denominator",
+        domain_regime="structurally_positive_denominator",
+        trace_regime="positive_quadratic_square_reduction",
+        presentation_regime="arctan_plus_rational_term",
+    ),
+    IntegrateCommandMatrixCase(
         name="inverse_trig_sqrt_reciprocal_bridge",
         expr="integrate(1/(sqrt(x)*(x+1)), x)",
         expected_result="2·arctan(sqrt(x))",
@@ -493,6 +508,125 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="linear_poles_required",
         trace_regime="partial_fraction_linear_factors",
         presentation_regime="log_ratio_abs",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_partial_fraction_three_real_linear_factors",
+        expr="integrate(1/(x*(x-1)*(x+1)), x)",
+        expected_result="1/2·ln(|x - 1|) + 1/2·ln(|x + 1|) - ln(|x|)",
+        expected_derivative_result="1 / (x·(x^2 - 1))",
+        expected_derivative_required_display=("x ≠ 1", "x ≠ -1", "x ≠ 0"),
+        expected_required_display=("x ≠ -1", "x ≠ 1", "x ≠ 0"),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_three_linear_partial_fraction",
+        argument_regime="three_real_linear_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="partial_fraction_three_linear_factors",
+        presentation_regime="three_linear_log_terms",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_partial_fraction_mixed_simple_repeated_linear_factors",
+        expr="integrate(1/(x*(x+1)^2), x)",
+        expected_result="ln(|x / (x + 1)|) + 1 / (x + 1)",
+        expected_derivative_equivalent_to="1/(x*(x+1)^2)",
+        expected_derivative_required_display=("x ≠ 0", "x ≠ -1"),
+        expected_required_display=("x ≠ 0", "x ≠ -1"),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_mixed_simple_repeated_linear_partial_fraction",
+        argument_regime="mixed_simple_repeated_real_linear_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="partial_fraction_mixed_simple_repeated_linear_factors",
+        presentation_regime="log_ratio_plus_single_rational_pole",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_partial_fraction_repeated_real_linear_factors",
+        expr="integrate(1/(x^2-1)^2, x)",
+        expected_result="1/4·ln(|(x + 1) / (x - 1)|) - 1 / (4·(x - 1)) - 1 / (4·(x + 1))",
+        expected_derivative_equivalent_to="1/(x^2-1)^2",
+        expected_derivative_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_repeated_linear_partial_fraction",
+        argument_regime="repeated_two_real_linear_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="partial_fraction_repeated_linear_factors",
+        presentation_regime="log_ratio_plus_rational_poles",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_partial_fraction_mixed_linear_positive_quadratic",
+        expr="integrate(1/(x^4-1), x)",
+        expected_result="1/4·ln(|x - 1|) - 1/2·arctan(x) - 1/4·ln(|x + 1|)",
+        expected_derivative_equivalent_to="1/(x^4-1)",
+        expected_derivative_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_mixed_linear_positive_quadratic_partial_fraction",
+        argument_regime="multi_linear_positive_quadratic_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="partial_fraction_mixed_linear_positive_quadratic",
+        presentation_regime="linear_logs_plus_arctan",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_partial_fraction_repeated_linear_positive_quadratic",
+        expr="integrate(1/((x-1)^2*(x^2+1)), x)",
+        expected_result="1/4·ln(x^2 + 1) - 1/2·ln(|x - 1|) - 1 / (2·(x - 1))",
+        expected_derivative_equivalent_to="1/((x-1)^2*(x^2+1))",
+        expected_derivative_required_display=("x ≠ 1",),
+        expected_required_display=("x ≠ 1",),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_repeated_linear_positive_quadratic_partial_fraction",
+        argument_regime="repeated_linear_positive_quadratic_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="partial_fraction_repeated_linear_positive_quadratic",
+        presentation_regime="positive_log_abs_log_plus_rational_pole",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_partial_fraction_repeated_origin_linear_positive_quadratic_no_log",
+        expr="integrate(1/(x^2*(x^2+1)), x)",
+        expected_result="-1 / x - arctan(x)",
+        expected_derivative_equivalent_to="1/(x^2*(x^2+1))",
+        expected_derivative_required_display=("x ≠ 0",),
+        expected_required_display=("x ≠ 0",),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_repeated_origin_linear_positive_quadratic_partial_fraction",
+        argument_regime="repeated_origin_linear_positive_quadratic_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="partial_fraction_repeated_origin_linear_positive_quadratic",
+        presentation_regime="arctan_plus_rational_pole_no_log",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_partial_fraction_repeated_origin_scaled_positive_quadratic_no_log",
+        expr="integrate(1/(x^2*(x^2+4)), x)",
+        expected_result="-1/8·arctan(x / 2) - 1 / (4·x)",
+        expected_derivative_equivalent_to="1/(x^2*(x^2+4))",
+        expected_derivative_required_display=("x ≠ 0",),
+        expected_required_display=("x ≠ 0",),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_repeated_origin_linear_positive_quadratic_partial_fraction",
+        argument_regime="repeated_origin_linear_scaled_positive_quadratic_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="partial_fraction_repeated_origin_scaled_positive_quadratic",
+        presentation_regime="scaled_arctan_plus_rational_pole_no_log",
     ),
     IntegrateCommandMatrixCase(
         name="rational_improper_partial_fraction_polynomial_division",
@@ -1922,6 +2056,8 @@ def run_case(
         "outcome": case.outcome,
         "trace_regime": case.trace_regime,
         "presentation_regime": case.presentation_regime,
+        "calculus_maturity_block": calculus_maturity_block(case),
+        "calculus_block_gate": calculus_block_gate(case),
         "stderr": stderr,
         "derivative_stderr": derivative_stderr,
     }
@@ -1989,6 +2125,73 @@ def count_trig_hyperbolic_policy_clusters(
         if cluster is None:
             continue
         counts[cluster] = counts.get(cluster, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def calculus_maturity_block(case: IntegrateCommandMatrixCase) -> str:
+    if case.outcome in {"residual", "undefined"}:
+        return "block9_residuals_and_non_goals"
+
+    cluster = trig_hyperbolic_policy_cluster(case)
+    if cluster is not None and cluster.startswith("block7_"):
+        return "block7_trig_hyperbolic_integration"
+
+    if (
+        "inverse" in case.family
+        or "sqrt" in case.family
+        or "radical" in case.family
+        or "inverse_" in case.trace_regime
+        or "arctan" in case.trace_regime
+        or "asinh" in case.trace_regime
+        or "atanh" in case.trace_regime
+        or "radical" in case.argument_regime
+    ):
+        return "block8_radical_inverse_families"
+
+    if (
+        "partial_fraction" in case.family
+        or "positive_quadratic" in case.family
+        or "partial_fraction" in case.trace_regime
+        or "polynomial_division" in case.trace_regime
+        or "positive_quadratic_decomposition" in case.trace_regime
+    ):
+        return "block6_rational_integration"
+
+    if "substitution" in case.trace_regime or "derivative" in case.argument_regime:
+        return "block5_generalized_substitution"
+
+    return "block4_base_integration"
+
+
+def calculus_block_gate(case: IntegrateCommandMatrixCase) -> str:
+    if case.outcome == "residual":
+        return "safe_residual_policy"
+    if case.outcome == "undefined":
+        return "explicit_undefined_domain_policy"
+    if case.expected_required_display:
+        return "domain_conditions_and_verified_antiderivative"
+    if case.expected_step_substrings:
+        return "didactic_trace_and_verified_antiderivative"
+    return "verified_antiderivative"
+
+
+def count_calculus_maturity_blocks(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        block = calculus_maturity_block(case)
+        counts[block] = counts.get(block, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_calculus_block_gates(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        gate = calculus_block_gate(case)
+        counts[gate] = counts.get(gate, 0) + 1
     return dict(sorted(counts.items()))
 
 
@@ -2120,6 +2323,8 @@ def run_matrix(
         "domain_regime_counts": count_by(cases, "domain_regime"),
         "outcome_counts": count_by(cases, "outcome"),
         "verification_regime_counts": count_verification_regimes(cases),
+        "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
+        "calculus_block_gate_counts": count_calculus_block_gates(cases),
         "trace_regime_counts": count_by(cases, "trace_regime"),
         "presentation_regime_counts": count_by(cases, "presentation_regime"),
         "trig_hyperbolic_policy_cluster_counts": (

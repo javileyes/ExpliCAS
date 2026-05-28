@@ -484,7 +484,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_limit_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_limit_command_matrix(
             """
-{"status":"pass","total":11,"status_counts":{"pass":11,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":3,"warning_expected_case_count":3,"required_display_case_count":6,"step_checked_case_count":11,"supported_step_unchecked_case_count":0,"expected_step_substring_count":11,"distinct_required_display_count":6,"required_display_counts":{"x > -3":1,"x ≠ -2":1,"x ≠ 1":1},"family_count":7,"point_regime_counts":{"finite":6,"infinity":5},"domain_regime_counts":{"unconditional":4,"required_condition":3,"removable_hole":1,"endpoint_residual":1,"discontinuous_residual":1,"domain_path_conflict":1},"required_condition_regime_counts":{"finite_source_definedness":1,"infinity_path_conflict":1,"none":9},"outcome_counts":{"supported":8,"residual":3},"trace_regime_counts":{"substitution":1},"presentation_regime_counts":{"canonical":7,"infinity":1,"residual":3}}
+{"status":"pass","total":11,"status_counts":{"pass":11,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":3,"warning_expected_case_count":3,"required_display_case_count":6,"step_checked_case_count":11,"supported_step_unchecked_case_count":0,"expected_step_substring_count":11,"distinct_required_display_count":6,"required_display_counts":{"x > -3":1,"x ≠ -2":1,"x ≠ 1":1},"family_count":7,"point_regime_counts":{"finite":6,"infinity":5},"domain_regime_counts":{"unconditional":4,"required_condition":3,"removable_hole":1,"endpoint_residual":1,"discontinuous_residual":1,"domain_path_conflict":1},"required_condition_regime_counts":{"finite_source_definedness":1,"infinity_path_conflict":1,"none":9},"outcome_counts":{"supported":8,"residual":3},"calculus_maturity_block_counts":{"block3_real_domain_limits":8,"block9_residuals_and_non_goals":3},"calculus_block_gate_counts":{"didactic_trace_and_limit_policy":2,"domain_conditions_and_limit_policy":6,"safe_residual_policy":3},"trace_regime_counts":{"substitution":1},"presentation_regime_counts":{"canonical":7,"infinity":1,"residual":3}}
 """
         )
 
@@ -516,6 +516,21 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["limit_point_regime_counts"], {"finite": 6, "infinity": 5})
         self.assertEqual(metrics["limit_outcome_counts"], {"supported": 8, "residual": 3})
         self.assertEqual(
+            metrics["limit_calculus_maturity_block_counts"],
+            {
+                "block3_real_domain_limits": 8,
+                "block9_residuals_and_non_goals": 3,
+            },
+        )
+        self.assertEqual(
+            metrics["limit_calculus_block_gate_counts"],
+            {
+                "didactic_trace_and_limit_policy": 2,
+                "domain_conditions_and_limit_policy": 6,
+                "safe_residual_policy": 3,
+            },
+        )
+        self.assertEqual(
             MODULE.suite_status("calculus_limit_command_matrix_smoke", metrics, 0),
             "pass",
         )
@@ -523,7 +538,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_diff_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_diff_command_matrix(
             """
-{"status":"pass","total":13,"status_counts":{"pass":13,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":12,"residual_case_count":1,"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":13,"supported_step_unchecked_case_count":0,"expected_step_substring_count":32,"distinct_required_display_count":4,"required_display_counts":{"x > 0":4,"cos(2·x + 1) ≠ 0":1},"family_count":10,"argument_regime_counts":{"variable":4,"product":2,"polynomial_inner":1,"rational_expression":1,"nested_root":1,"scaled_nested_root":1,"nested_bounded_root":1,"negated_nested_root":1,"variable_power":1},"domain_regime_counts":{"unconditional":3,"required_condition":8,"interval_required":1,"discontinuous_residual":1},"outcome_counts":{"supported":12,"residual":1},"trace_regime_counts":{"chain_rule":4,"constant_multiple_chain_rule":1,"logarithmic_derivative":1,"negative_argument_chain_rule":1,"piecewise_abs":1,"power_rule":1,"product_rule":1,"product_rule_log":1,"quotient_rule":1,"residual_policy":1},"presentation_regime_counts":{"canonical":2,"compact_quotient":1,"factored":2,"post_calculus_compact":1,"quotient_abs":1,"reciprocal_root":1,"residual":1,"scaled_post_calculus_compact":1,"signed_post_calculus_compact":1,"signed_reciprocal_root_interval":1,"trig_power_difference":1}}
+{"status":"pass","total":13,"status_counts":{"pass":13,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":12,"residual_case_count":1,"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":13,"supported_step_unchecked_case_count":0,"expected_step_substring_count":32,"distinct_required_display_count":4,"required_display_counts":{"x > 0":4,"cos(2·x + 1) ≠ 0":1},"family_count":10,"argument_regime_counts":{"variable":4,"product":2,"polynomial_inner":1,"rational_expression":1,"nested_root":1,"scaled_nested_root":1,"nested_bounded_root":1,"negated_nested_root":1,"variable_power":1},"domain_regime_counts":{"unconditional":3,"required_condition":8,"interval_required":1,"discontinuous_residual":1},"outcome_counts":{"supported":12,"residual":1},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":12,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":3,"domain_conditions_and_diff_policy":9,"safe_residual_policy":1},"trace_regime_counts":{"chain_rule":4,"constant_multiple_chain_rule":1,"logarithmic_derivative":1,"negative_argument_chain_rule":1,"piecewise_abs":1,"power_rule":1,"product_rule":1,"product_rule_log":1,"quotient_rule":1,"residual_policy":1},"presentation_regime_counts":{"canonical":2,"compact_quotient":1,"factored":2,"post_calculus_compact":1,"quotient_abs":1,"reciprocal_root":1,"residual":1,"scaled_post_calculus_compact":1,"signed_post_calculus_compact":1,"signed_reciprocal_root_interval":1,"trig_power_difference":1}}
 """
         )
 
@@ -562,6 +577,21 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             metrics["diff_outcome_counts"], {"supported": 12, "residual": 1}
         )
         self.assertEqual(
+            metrics["diff_calculus_maturity_block_counts"],
+            {
+                "block2_real_domain_differentiation": 12,
+                "block9_residuals_and_non_goals": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["diff_calculus_block_gate_counts"],
+            {
+                "didactic_trace_and_diff_policy": 3,
+                "domain_conditions_and_diff_policy": 9,
+                "safe_residual_policy": 1,
+            },
+        )
+        self.assertEqual(
             MODULE.suite_status("calculus_diff_command_matrix_smoke", metrics, 0),
             "pass",
         )
@@ -569,7 +599,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_integrate_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_integrate_command_matrix(
             """
-{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"trig_hyperbolic_policy_cluster_counts":{"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1}}
+{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1}}
 """
         )
 
@@ -622,6 +652,24 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             {"residual_not_verified": 1, "verified_by_diff": 17},
         )
         self.assertEqual(
+            metrics["integrate_calculus_maturity_block_counts"],
+            {
+                "block4_base_integration": 2,
+                "block5_generalized_substitution": 3,
+                "block7_trig_hyperbolic_integration": 8,
+                "block8_radical_inverse_families": 4,
+                "block9_residuals_and_non_goals": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["integrate_calculus_block_gate_counts"],
+            {
+                "didactic_trace_and_verified_antiderivative": 8,
+                "domain_conditions_and_verified_antiderivative": 9,
+                "safe_residual_policy": 1,
+            },
+        )
+        self.assertEqual(
             metrics["integrate_trig_hyperbolic_policy_cluster_counts"],
             {
                 "block7_hyperbolic_reciprocal_square": 1,
@@ -629,10 +677,15 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            metrics["integrate_trig_hyperbolic_consolidation_candidate_counts"],
+            metrics["integrate_trig_hyperbolic_consolidated_policy_cluster_counts"],
             {
+                "block7_hyperbolic_reciprocal_square": 1,
                 "block7_sqrt_chain_reciprocal_trig_product": 7,
             },
+        )
+        self.assertNotIn(
+            "integrate_trig_hyperbolic_consolidation_candidate_counts",
+            metrics,
         )
         self.assertEqual(
             MODULE.suite_status("calculus_integrate_command_matrix_smoke", metrics, 0),
@@ -1822,6 +1875,15 @@ root.direct_small_zero_composition.candidate.three_core_groups
                             "discontinuous_residual": 1,
                         },
                         "diff_outcome_counts": {"supported": 12, "residual": 1},
+                        "diff_calculus_maturity_block_counts": {
+                            "block2_real_domain_differentiation": 12,
+                            "block9_residuals_and_non_goals": 1,
+                        },
+                        "diff_calculus_block_gate_counts": {
+                            "didactic_trace_and_diff_policy": 3,
+                            "domain_conditions_and_diff_policy": 9,
+                            "safe_residual_policy": 1,
+                        },
                         "diff_trace_regime_counts": {
                             "chain_rule": 4,
                             "constant_multiple_chain_rule": 1,
@@ -1932,11 +1994,24 @@ root.direct_small_zero_composition.candidate.three_core_groups
                             "verified_by_diff": 17,
                             "residual_not_verified": 1,
                         },
+                        "integrate_calculus_maturity_block_counts": {
+                            "block4_base_integration": 2,
+                            "block5_generalized_substitution": 3,
+                            "block7_trig_hyperbolic_integration": 8,
+                            "block8_radical_inverse_families": 4,
+                            "block9_residuals_and_non_goals": 1,
+                        },
+                        "integrate_calculus_block_gate_counts": {
+                            "didactic_trace_and_verified_antiderivative": 8,
+                            "domain_conditions_and_verified_antiderivative": 9,
+                            "safe_residual_policy": 1,
+                        },
                         "integrate_trig_hyperbolic_policy_cluster_counts": {
                             "block7_hyperbolic_reciprocal_square": 1,
                             "block7_sqrt_chain_reciprocal_trig_product": 7,
                         },
-                        "integrate_trig_hyperbolic_consolidation_candidate_counts": {
+                        "integrate_trig_hyperbolic_consolidated_policy_cluster_counts": {
+                            "block7_hyperbolic_reciprocal_square": 1,
                             "block7_sqrt_chain_reciprocal_trig_product": 7,
                         },
                         "integrate_trace_regime_counts": {
@@ -2071,6 +2146,15 @@ root.direct_small_zero_composition.candidate.three_core_groups
                             "none": 9,
                         },
                         "limit_outcome_counts": {"supported": 8, "residual": 3},
+                        "limit_calculus_maturity_block_counts": {
+                            "block3_real_domain_limits": 8,
+                            "block9_residuals_and_non_goals": 3,
+                        },
+                        "limit_calculus_block_gate_counts": {
+                            "didactic_trace_and_limit_policy": 2,
+                            "domain_conditions_and_limit_policy": 6,
+                            "safe_residual_policy": 3,
+                        },
                         "limit_trace_regime_counts": {
                             "finite_residual_policy": 2,
                             "substitution": 1,
@@ -2153,6 +2237,18 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertIn(
             "`diff_command_matrix` outcomes: residual=1, supported=12",
+            markdown,
+        )
+        self.assertIn(
+            "`diff_command_matrix` calculus maturity blocks: "
+            "block2_real_domain_differentiation=12, "
+            "block9_residuals_and_non_goals=1",
+            markdown,
+        )
+        self.assertIn(
+            "`diff_command_matrix` calculus block gates: "
+            "didactic_trace_and_diff_policy=3, "
+            "domain_conditions_and_diff_policy=9, safe_residual_policy=1",
             markdown,
         )
         self.assertIn(
@@ -2278,14 +2374,32 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "`integrate_command_matrix` calculus maturity blocks: "
+            "block4_base_integration=2, block5_generalized_substitution=3, "
+            "block7_trig_hyperbolic_integration=8",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` calculus block gates: "
+            "didactic_trace_and_verified_antiderivative=8, "
+            "domain_conditions_and_verified_antiderivative=9, "
+            "safe_residual_policy=1",
+            markdown,
+        )
+        self.assertIn(
             "`integrate_command_matrix` trig/hyperbolic policy clusters: "
             "block7_hyperbolic_reciprocal_square=1, "
             "block7_sqrt_chain_reciprocal_trig_product=7",
             markdown,
         )
         self.assertIn(
-            "`integrate_command_matrix` trig/hyperbolic consolidation candidates: "
+            "`integrate_command_matrix` trig/hyperbolic consolidated policy clusters: "
+            "block7_hyperbolic_reciprocal_square=1, "
             "block7_sqrt_chain_reciprocal_trig_product=7",
+            markdown,
+        )
+        self.assertNotIn(
+            "`integrate_command_matrix` trig/hyperbolic consolidation candidates:",
             markdown,
         )
         self.assertIn(
@@ -2328,6 +2442,17 @@ root.direct_small_zero_composition.candidate.three_core_groups
             "passed=11 failed=0 total=11 supported=8 residual=3 "
             "warning_expected=3 required_display=6 step_checked=11 "
             "unchecked_supported_steps=0 families=7 |",
+            markdown,
+        )
+        self.assertIn(
+            "`limit_command_matrix` calculus maturity blocks: "
+            "block3_real_domain_limits=8, block9_residuals_and_non_goals=3",
+            markdown,
+        )
+        self.assertIn(
+            "`limit_command_matrix` calculus block gates: "
+            "didactic_trace_and_limit_policy=2, "
+            "domain_conditions_and_limit_policy=6, safe_residual_policy=3",
             markdown,
         )
         self.assertIn(

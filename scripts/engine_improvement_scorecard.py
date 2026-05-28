@@ -44,6 +44,18 @@ EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT = 480
 NF_FIRST_FULL_TIMEOUT_SECONDS = 15 * 60
 COMBINED_ADDITIVE_FAMILY_TARGET_CASE_COUNT = 6
 CALCULUS_POLICY_CLUSTER_CONSOLIDATION_THRESHOLD = 6
+# Keep these clusters visible, but do not keep re-selecting them as raw
+# consolidation candidates once a shared engine policy owns the family.
+CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
+    {
+        "block7_hyperbolic_reciprocal_derivative_product",
+        "block7_hyperbolic_reciprocal_fourth",
+        "block7_hyperbolic_reciprocal_square",
+        "block7_sqrt_chain_hyperbolic_reciprocal_derivative_product",
+        "block7_sqrt_chain_reciprocal_trig_product",
+        "block7_trig_reciprocal_derivative_product",
+    }
+)
 SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS = (
     ("sum", 0, 100),
     ("sum", 700, 100),
@@ -2780,6 +2792,8 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
         ("domain_regime_counts", "limit_domain_regime_counts"),
         ("required_condition_regime_counts", "limit_required_condition_regime_counts"),
         ("outcome_counts", "limit_outcome_counts"),
+        ("calculus_maturity_block_counts", "limit_calculus_maturity_block_counts"),
+        ("calculus_block_gate_counts", "limit_calculus_block_gate_counts"),
         ("required_display_counts", "limit_required_display_counts"),
         ("trace_regime_counts", "limit_trace_regime_counts"),
         ("presentation_regime_counts", "limit_presentation_regime_counts"),
@@ -2877,6 +2891,8 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
         ("argument_regime_counts", "diff_argument_regime_counts"),
         ("domain_regime_counts", "diff_domain_regime_counts"),
         ("outcome_counts", "diff_outcome_counts"),
+        ("calculus_maturity_block_counts", "diff_calculus_maturity_block_counts"),
+        ("calculus_block_gate_counts", "diff_calculus_block_gate_counts"),
         ("required_display_counts", "diff_required_display_counts"),
         ("trace_regime_counts", "diff_trace_regime_counts"),
         ("presentation_regime_counts", "diff_presentation_regime_counts"),
@@ -2983,6 +2999,11 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         ("outcome_counts", "integrate_outcome_counts"),
         ("required_display_counts", "integrate_required_display_counts"),
         ("verification_regime_counts", "integrate_verification_regime_counts"),
+        (
+            "calculus_maturity_block_counts",
+            "integrate_calculus_maturity_block_counts",
+        ),
+        ("calculus_block_gate_counts", "integrate_calculus_block_gate_counts"),
         ("trace_regime_counts", "integrate_trace_regime_counts"),
         ("presentation_regime_counts", "integrate_presentation_regime_counts"),
         (
@@ -2997,13 +3018,25 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         "integrate_trig_hyperbolic_policy_cluster_counts"
     )
     if isinstance(policy_cluster_counts, dict):
+        consolidated_policy_clusters = {
+            cluster: count
+            for cluster, count in sorted(policy_cluster_counts.items())
+            if isinstance(cluster, str)
+            and isinstance(count, int)
+            and cluster in CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY
+        }
         consolidation_candidates = {
             cluster: count
             for cluster, count in sorted(policy_cluster_counts.items())
             if isinstance(cluster, str)
             and isinstance(count, int)
             and count >= CALCULUS_POLICY_CLUSTER_CONSOLIDATION_THRESHOLD
+            and cluster not in CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY
         }
+        if consolidated_policy_clusters:
+            metrics["integrate_trig_hyperbolic_consolidated_policy_cluster_counts"] = (
+                consolidated_policy_clusters
+            )
         if consolidation_candidates:
             metrics["integrate_trig_hyperbolic_consolidation_candidate_counts"] = (
                 consolidation_candidates
@@ -4543,6 +4576,21 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` outcomes: " + ", ".join(diff_outcome_counts)
                     )
                 for metric_key, regime_label in (
+                    (
+                        "diff_calculus_maturity_block_counts",
+                        "calculus maturity blocks",
+                    ),
+                    ("diff_calculus_block_gate_counts", "calculus block gates"),
+                ):
+                    fragments = calculus_matrix_count_map_fragments(
+                        metrics.get(metric_key)
+                    )
+                    if fragments:
+                        lines.append(
+                            f"- `{label}` {regime_label}: "
+                            + ", ".join(fragments)
+                        )
+                for metric_key, regime_label in (
                     ("diff_trace_regime_counts", "trace regimes"),
                     ("diff_presentation_regime_counts", "presentation regimes"),
                 ):
@@ -4594,6 +4642,21 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` verification regimes: "
                         + ", ".join(integrate_verification_regimes)
                     )
+                for metric_key, regime_label in (
+                    (
+                        "integrate_calculus_maturity_block_counts",
+                        "calculus maturity blocks",
+                    ),
+                    ("integrate_calculus_block_gate_counts", "calculus block gates"),
+                ):
+                    fragments = calculus_matrix_count_map_fragments(
+                        metrics.get(metric_key)
+                    )
+                    if fragments:
+                        lines.append(
+                            f"- `{label}` {regime_label}: "
+                            + ", ".join(fragments)
+                        )
                 integrate_policy_clusters = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_trig_hyperbolic_policy_cluster_counts")
                 )
@@ -4601,6 +4664,18 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` trig/hyperbolic policy clusters: "
                         + ", ".join(integrate_policy_clusters)
+                    )
+                integrate_consolidated_policy_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_trig_hyperbolic_consolidated_policy_cluster_counts"
+                        )
+                    )
+                )
+                if integrate_consolidated_policy_clusters:
+                    lines.append(
+                        f"- `{label}` trig/hyperbolic consolidated policy clusters: "
+                        + ", ".join(integrate_consolidated_policy_clusters)
                     )
                 integrate_consolidation_candidates = (
                     calculus_matrix_count_map_fragments(
@@ -4666,6 +4741,21 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` outcomes: " + ", ".join(outcome_counts)
                     )
+                for metric_key, regime_label in (
+                    (
+                        "limit_calculus_maturity_block_counts",
+                        "calculus maturity blocks",
+                    ),
+                    ("limit_calculus_block_gate_counts", "calculus block gates"),
+                ):
+                    fragments = calculus_matrix_count_map_fragments(
+                        metrics.get(metric_key)
+                    )
+                    if fragments:
+                        lines.append(
+                            f"- `{label}` {regime_label}: "
+                            + ", ".join(fragments)
+                        )
                 for metric_key, regime_label in (
                     ("limit_trace_regime_counts", "trace regimes"),
                     ("limit_presentation_regime_counts", "presentation regimes"),

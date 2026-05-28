@@ -1,6 +1,6 @@
 use cas_api_models::EvalLimitApproach;
 use cas_ast::{Equation, ExprId};
-use cas_math::limit_types::Approach;
+use cas_math::limit_types::{Approach, FiniteLimitSide};
 
 pub(crate) fn map_limit_approach(
     ctx: &mut cas_ast::Context,
@@ -13,6 +13,16 @@ pub(crate) fn map_limit_approach(
             let parsed = cas_parser::parse(&point, ctx)
                 .map_err(|e| format!("Parse error in limit approach: {e}"))?;
             Ok(Approach::Finite(parsed))
+        }
+        EvalLimitApproach::FiniteFromLeft(point) => {
+            let parsed = cas_parser::parse(&point, ctx)
+                .map_err(|e| format!("Parse error in limit approach: {e}"))?;
+            Ok(Approach::FiniteOneSided(parsed, FiniteLimitSide::Left))
+        }
+        EvalLimitApproach::FiniteFromRight(point) => {
+            let parsed = cas_parser::parse(&point, ctx)
+                .map_err(|e| format!("Parse error in limit approach: {e}"))?;
+            Ok(Approach::FiniteOneSided(parsed, FiniteLimitSide::Right))
         }
     }
 }
