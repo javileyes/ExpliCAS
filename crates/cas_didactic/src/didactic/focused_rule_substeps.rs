@@ -15682,11 +15682,18 @@ fn generate_arctan_sqrt_reciprocal_table_integration_substeps(
         return Vec::new();
     };
     let var_name = ctx.sym_name(*var_sym);
-    if !cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
-        ctx,
-        args[0],
-        var_name,
-    ) {
+    let is_arctan_sqrt_target =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
+            ctx,
+            args[0],
+            var_name,
+        )
+        || cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_affine_derivative_target(
+            ctx,
+            args[0],
+            var_name,
+        );
+    if !is_arctan_sqrt_target {
         return Vec::new();
     }
     let Some(table_match) = arctan_sqrt_var_result_match(ctx, after, var_name) else {
@@ -15755,12 +15762,16 @@ fn arctan_sqrt_var_function_match(
     if !matches!(builtin, BuiltinFn::Arctan | BuiltinFn::Atan) {
         return None;
     }
-    let scale = arctan_sqrt_var_arg_scale(ctx, arg, var_name)?;
-    if !scale.is_positive() {
+    let arg_match = arctan_sqrt_var_arg_match(ctx, arg, var_name)?;
+    if !arg_match.scale.is_positive() {
         return None;
     }
-    let (derivative_display, derivative_latex) =
-        scaled_sqrt_var_derivative_display_and_latex(&scale, var_name);
+    let (derivative_display, derivative_latex) = scaled_sqrt_affine_derivative_display_and_latex(
+        ctx,
+        &arg_match.scale,
+        arg_match.radicand,
+        var_name,
+    )?;
     Some(ArctanSqrtVarTableMatch {
         arg,
         derivative_display,
@@ -15768,18 +15779,40 @@ fn arctan_sqrt_var_function_match(
     })
 }
 
-fn arctan_sqrt_var_arg_scale(ctx: &Context, expr: ExprId, var_name: &str) -> Option<BigRational> {
+struct ArctanSqrtArgMatch {
+    scale: BigRational,
+    radicand: ExprId,
+}
+
+fn arctan_sqrt_var_arg_match(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ArctanSqrtArgMatch> {
     let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
-    if is_sqrt_var_arg(ctx, expr, var_name) {
-        return Some(BigRational::one());
+    if let Some(radicand) = sqrt_affine_radicand(ctx, expr, var_name) {
+        return Some(ArctanSqrtArgMatch {
+            scale: BigRational::one(),
+            radicand,
+        });
     }
     match ctx.get(expr) {
         Expr::Mul(left, right) => {
             if let Some(coeff) = as_rational_const(ctx, *left, 8) {
-                return arctan_sqrt_var_arg_scale(ctx, *right, var_name).map(|scale| coeff * scale);
+                return arctan_sqrt_var_arg_match(ctx, *right, var_name).map(|arg_match| {
+                    ArctanSqrtArgMatch {
+                        scale: coeff * arg_match.scale,
+                        radicand: arg_match.radicand,
+                    }
+                });
             }
             if let Some(coeff) = as_rational_const(ctx, *right, 8) {
-                return arctan_sqrt_var_arg_scale(ctx, *left, var_name).map(|scale| coeff * scale);
+                return arctan_sqrt_var_arg_match(ctx, *left, var_name).map(|arg_match| {
+                    ArctanSqrtArgMatch {
+                        scale: coeff * arg_match.scale,
+                        radicand: arg_match.radicand,
+                    }
+                });
             }
             None
         }
@@ -15788,48 +15821,71 @@ fn arctan_sqrt_var_arg_scale(ctx: &Context, expr: ExprId, var_name: &str) -> Opt
             if coeff.is_zero() {
                 return None;
             }
-            arctan_sqrt_var_arg_scale(ctx, *num, var_name).map(|scale| scale / coeff)
+            arctan_sqrt_var_arg_match(ctx, *num, var_name).map(|arg_match| ArctanSqrtArgMatch {
+                scale: arg_match.scale / coeff,
+                radicand: arg_match.radicand,
+            })
         }
-        Expr::Neg(inner) | Expr::Hold(inner) => {
-            arctan_sqrt_var_arg_scale(ctx, *inner, var_name).map(|scale| -scale)
-        }
+        Expr::Neg(inner) | Expr::Hold(inner) => arctan_sqrt_var_arg_match(ctx, *inner, var_name)
+            .map(|arg_match| ArctanSqrtArgMatch {
+                scale: -arg_match.scale,
+                radicand: arg_match.radicand,
+            }),
         _ => None,
     }
 }
 
-fn is_sqrt_var_arg(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
-    let Some((sqrt_builtin, radicand)) = unary_builtin_arg(ctx, expr) else {
-        return false;
-    };
-    sqrt_builtin == BuiltinFn::Sqrt
-        && matches!(ctx.get(radicand), Expr::Variable(sym) if ctx.sym_name(*sym) == var_name)
+fn sqrt_affine_radicand(ctx: &Context, expr: ExprId, var_name: &str) -> Option<ExprId> {
+    let (sqrt_builtin, radicand) = unary_builtin_arg(ctx, expr)?;
+    if sqrt_builtin != BuiltinFn::Sqrt {
+        return None;
+    }
+    let poly = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    (poly.degree() == 1).then_some(radicand)
 }
 
-fn scaled_sqrt_var_derivative_display_and_latex(
+fn scaled_sqrt_affine_derivative_display_and_latex(
+    ctx: &Context,
     scale: &BigRational,
+    radicand: ExprId,
     var_name: &str,
-) -> (String, String) {
-    let coeff = scale.clone() / BigRational::from_integer(2.into());
+) -> Option<(String, String)> {
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    let radicand_slope = radicand_poly.coeffs.get(1).cloned()?;
+    if radicand_slope.is_zero() {
+        return None;
+    }
+    let coeff = scale.clone() * radicand_slope / BigRational::from_integer(2.into());
     let numerator = coeff.numer().to_string();
     let denominator = coeff.denom().to_string();
-    match (numerator.as_str(), denominator.as_str()) {
+    let radicand_display = display_expr(ctx, radicand);
+    let radicand_latex = latex_expr(ctx, radicand);
+    Some(match (numerator.as_str(), denominator.as_str()) {
         ("1", "1") => (
-            format!("1 / sqrt({var_name})"),
-            format!("\\frac{{1}}{{\\sqrt{{{var_name}}}}}"),
+            format!("1 / sqrt({radicand_display})"),
+            format!("\\frac{{1}}{{\\sqrt{{{radicand_latex}}}}}"),
+        ),
+        ("-1", "1") => (
+            format!("-1 / sqrt({radicand_display})"),
+            format!("-\\frac{{1}}{{\\sqrt{{{radicand_latex}}}}}"),
         ),
         ("1", denominator) => (
-            format!("1 / ({denominator}·sqrt({var_name}))"),
-            format!("\\frac{{1}}{{{denominator}\\sqrt{{{var_name}}}}}"),
+            format!("1 / ({denominator}·sqrt({radicand_display}))"),
+            format!("\\frac{{1}}{{{denominator}\\sqrt{{{radicand_latex}}}}}"),
+        ),
+        ("-1", denominator) => (
+            format!("-1 / ({denominator}·sqrt({radicand_display}))"),
+            format!("-\\frac{{1}}{{{denominator}\\sqrt{{{radicand_latex}}}}}"),
         ),
         (numerator, "1") => (
-            format!("{numerator} / sqrt({var_name})"),
-            format!("\\frac{{{numerator}}}{{\\sqrt{{{var_name}}}}}"),
+            format!("{numerator} / sqrt({radicand_display})"),
+            format!("\\frac{{{numerator}}}{{\\sqrt{{{radicand_latex}}}}}"),
         ),
         (numerator, denominator) => (
-            format!("{numerator} / ({denominator}·sqrt({var_name}))"),
-            format!("\\frac{{{numerator}}}{{{denominator}\\sqrt{{{var_name}}}}}"),
+            format!("{numerator} / ({denominator}·sqrt({radicand_display}))"),
+            format!("\\frac{{{numerator}}}{{{denominator}\\sqrt{{{radicand_latex}}}}}"),
         ),
-    }
+    })
 }
 
 #[derive(Clone, Copy)]

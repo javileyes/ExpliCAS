@@ -130,6 +130,33 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-28 - Observe-only discovery: condition display must not scale-normalize periodic arguments
+
+- area:
+  - calculus / domain-condition display / reciprocal trig residuals
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while compacting residual integration conditions for
+    `integrate(1/sin(x^2+0), x)` and `integrate(1/tan(x^2+0), x)`, an
+    initial helper reused sign-preserving condition normalization inside
+    unary function arguments
+  - the local integration rows improved, but `make engine-fast` caught a
+    `calculus_diff_contract` regression: `diff(sec((3*x+2)/2), x)` published
+    `cos(3*x+2) != 0` instead of preserving
+    `cos((3*x+2)/2) != 0`
+- decision:
+  - retain only additive-zero cleanup inside display-only unary condition
+    arguments
+  - reject scale/content normalization inside periodic arguments, even when it
+    is sign-preserving for polynomial inequalities
+- retained learning:
+  - nonzero conditions over periodic functions are sensitive to argument scale;
+    `cos(k*u) != 0` is not equivalent to `cos(u) != 0`
+  - future condition-display cleanup may remove inert additive-zero noise, but
+    must not reuse polynomial sign-preserving normalization inside
+    `sin/cos/tan/sec/csc/cot` arguments without a zero-set proof
+
 ## 2026-05-26 - Observe-only discovery: shifted sqrt-chain reciprocal trig external scale enters fragile simplification route
 
 - area:
@@ -16042,3 +16069,46 @@ The burden of proof stays the same:
   - the verifier rule is targeted to additive nodes with priority above broad
     exact-zero subset search, preventing the expensive generic route from
     consuming the public simplification budget first
+
+## 2026-05-28 - Partial rejection: atanh open-interval compaction must skip rational-only scales
+
+- area:
+  - calculus / differentiation / atanh domain-condition presentation
+- status:
+  - `retained-with-narrowing`
+- observed:
+  - a local helper that compacted `(scale*sqrt(radicand))^2` inside the
+    `atanh` open-interval condition fixed the symbolic case
+    `diff(atanh(a*sqrt(x+1)), x)`
+  - applying the same path to rational-only scales changed the established
+    display order for `diff(atanh(sqrt(x+1)/3)/sqrt(5), x)` from
+    `x < 8, x > -1` to `x > -1, x < 8`, tripping the promoted diff contract
+- retained learning:
+  - symbolic scale compaction is useful and domain-safe, but rational-only
+    scaled-root `atanh` cases already have a stable presentation path
+  - future condition-presentation helpers should avoid intercepting
+    rational-only scale cases unless they explicitly preserve the promoted
+    condition ordering contract
+
+## 2026-05-28 - Discovery observe-only: atanh exact-square denominator scale hits depth overflow
+
+- area:
+  - calculus / differentiation / atanh domain-condition presentation
+- status:
+  - `discovery/observe-only`
+- observed:
+  - the sibling probe `diff(atanh(sqrt(4*x+4)/a), x)` still emits
+    `depth_overflow` on stderr before returning a result
+  - the returned domain display remains split between `a != 0`,
+    `x > -1`, `a^2 - 4*x - 4 != 0`, and the uncompact
+    `1 - (((x + 1)^(1/2)*2)/a)^2 > 0`
+- decision:
+  - do not promote the exact-square scaled-radicand variant in this cycle
+  - keep the retained case to the minimal symbolic denominator scale
+    `sqrt(x+1)/a`, which adds a distinct public domain presentation regime
+    without the overflow route
+- retained learning:
+  - exact-square/rational-factor extraction before atanh open-interval
+    compaction needs a bounded route; otherwise it can expose depth overflow
+    and redundant nonzero conditions even when the final inequality should
+    collapse to a polynomial gap

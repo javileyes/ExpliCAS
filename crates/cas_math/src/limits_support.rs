@@ -246,6 +246,98 @@ fn finite_local_tail_sign(
     Some(if positive { InfSign::Pos } else { InfSign::Neg })
 }
 
+fn finite_endpoint_argument_zero_tail_sign(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    point_value: &BigRational,
+    side: FiniteLimitSide,
+) -> Option<InfSign> {
+    if let Ok(polynomial) = Polynomial::from_expr(ctx, expr, var_name) {
+        let (order, derivative) =
+            finite_polynomial_local_order_and_derivative(&polynomial, point_value)?;
+        if order == 0 {
+            return None;
+        }
+        return finite_local_tail_sign(&derivative, order, side);
+    }
+
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let numerator = Polynomial::from_expr(ctx, num, var_name).ok()?;
+    let denominator = Polynomial::from_expr(ctx, den, var_name).ok()?;
+    let denominator_value = denominator.eval(point_value);
+    if denominator_value.is_zero() {
+        return None;
+    }
+
+    let (numerator_order, numerator_derivative) =
+        finite_polynomial_local_order_and_derivative(&numerator, point_value)?;
+    if numerator_order == 0 {
+        return None;
+    }
+
+    let numerator_tail = finite_local_tail_sign(&numerator_derivative, numerator_order, side)?;
+    let denominator_tail = if denominator_value.is_positive() {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    };
+    Some(if numerator_tail == denominator_tail {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    })
+}
+
+fn finite_endpoint_unit_base_tail_sign(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    point_value: &BigRational,
+    side: FiniteLimitSide,
+) -> Option<InfSign> {
+    if let Ok(polynomial) = Polynomial::from_expr(ctx, expr, var_name) {
+        let unit_gap = polynomial.sub(&Polynomial::one(var_name.to_string()));
+        let (order, derivative) =
+            finite_polynomial_local_order_and_derivative(&unit_gap, point_value)?;
+        if order == 0 {
+            return None;
+        }
+        return finite_local_tail_sign(&derivative, order, side);
+    }
+
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let numerator = Polynomial::from_expr(ctx, num, var_name).ok()?;
+    let denominator = Polynomial::from_expr(ctx, den, var_name).ok()?;
+    let denominator_value = denominator.eval(point_value);
+    if denominator_value.is_zero() {
+        return None;
+    }
+
+    let unit_gap_numerator = numerator.sub(&denominator);
+    let (gap_order, gap_derivative) =
+        finite_polynomial_local_order_and_derivative(&unit_gap_numerator, point_value)?;
+    if gap_order == 0 {
+        return None;
+    }
+
+    let gap_tail = finite_local_tail_sign(&gap_derivative, gap_order, side)?;
+    let denominator_tail = if denominator_value.is_positive() {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    };
+    Some(if gap_tail == denominator_tail {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    })
+}
+
 fn apply_finite_one_sided_rational_polynomial_pole_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -374,16 +466,18 @@ fn scaled_sine_argument(ctx: &Context, expr: ExprId) -> Option<(BigRational, Exp
 enum UnitLogBase {
     Natural,
     Fixed(BigRational),
+    UnitBoundary(InfSign),
 }
 
-fn finite_unit_log_base_value(
+fn finite_unit_log_base(
     ctx: &mut Context,
     base_expr: ExprId,
     var: ExprId,
     point: ExprId,
     var_name: &str,
     point_value: &BigRational,
-) -> Option<BigRational> {
+    unit_boundary_side: Option<FiniteLimitSide>,
+) -> Option<UnitLogBase> {
     let base = if let Some(base) = constant_rational_value(ctx, base_expr) {
         base
     } else if let Ok(base_poly) = Polynomial::from_expr(ctx, base_expr, var_name) {
@@ -393,10 +487,16 @@ fn finite_unit_log_base_value(
         constant_rational_value(ctx, base_limit)?
     };
 
-    if !base.is_positive() || base == rational_one() {
+    if !base.is_positive() {
         return None;
     }
-    Some(base)
+    if base == rational_one() {
+        let side = unit_boundary_side?;
+        let base_tail =
+            finite_endpoint_unit_base_tail_sign(ctx, base_expr, var_name, point_value, side)?;
+        return Some(UnitLogBase::UnitBoundary(base_tail));
+    }
+    Some(UnitLogBase::Fixed(base))
 }
 
 fn scaled_unit_log_argument(
@@ -406,6 +506,7 @@ fn scaled_unit_log_argument(
     point: ExprId,
     var_name: &str,
     point_value: &BigRational,
+    unit_boundary_side: Option<FiniteLimitSide>,
 ) -> Option<(BigRational, ExprId, UnitLogBase)> {
     match ctx.get(expr).clone() {
         Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(fn_id)? {
@@ -423,23 +524,52 @@ fn scaled_unit_log_argument(
             _ => None,
         },
         Expr::Function(fn_id, args) if args.len() == 2 && ctx.is_builtin(fn_id, BuiltinFn::Log) => {
-            let base = finite_unit_log_base_value(ctx, args[0], var, point, var_name, point_value)?;
-            Some((BigRational::one(), args[1], UnitLogBase::Fixed(base)))
+            let base = finite_unit_log_base(
+                ctx,
+                args[0],
+                var,
+                point,
+                var_name,
+                point_value,
+                unit_boundary_side,
+            )?;
+            Some((BigRational::one(), args[1], base))
         }
         Expr::Neg(inner) => {
-            let (scale, argument, base) =
-                scaled_unit_log_argument(ctx, inner, var, point, var_name, point_value)?;
+            let (scale, argument, base) = scaled_unit_log_argument(
+                ctx,
+                inner,
+                var,
+                point,
+                var_name,
+                point_value,
+                unit_boundary_side,
+            )?;
             Some((-scale, argument, base))
         }
         Expr::Mul(lhs, rhs) => {
             if let Some(scale) = constant_rational_value(ctx, lhs) {
-                let (inner_scale, argument, base) =
-                    scaled_unit_log_argument(ctx, rhs, var, point, var_name, point_value)?;
+                let (inner_scale, argument, base) = scaled_unit_log_argument(
+                    ctx,
+                    rhs,
+                    var,
+                    point,
+                    var_name,
+                    point_value,
+                    unit_boundary_side,
+                )?;
                 return Some((scale * inner_scale, argument, base));
             }
             if let Some(scale) = constant_rational_value(ctx, rhs) {
-                let (inner_scale, argument, base) =
-                    scaled_unit_log_argument(ctx, lhs, var, point, var_name, point_value)?;
+                let (inner_scale, argument, base) = scaled_unit_log_argument(
+                    ctx,
+                    lhs,
+                    var,
+                    point,
+                    var_name,
+                    point_value,
+                    unit_boundary_side,
+                )?;
                 return Some((scale * inner_scale, argument, base));
             }
             None
@@ -464,6 +594,9 @@ fn finite_log_unit_quotient_result(
             let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base_expr]);
             ctx.add(Expr::Div(numerator, ln_base))
         }
+        UnitLogBase::UnitBoundary(_) => {
+            unreachable!("unit-boundary log bases are only valid for endpoint limits")
+        }
     }
 }
 
@@ -472,6 +605,8 @@ fn unit_log_base_tail_coeff(base: &UnitLogBase) -> BigRational {
         UnitLogBase::Natural => rational_one(),
         UnitLogBase::Fixed(base) if base > &rational_one() => rational_one(),
         UnitLogBase::Fixed(_) => -rational_one(),
+        UnitLogBase::UnitBoundary(InfSign::Pos) => rational_one(),
+        UnitLogBase::UnitBoundary(InfSign::Neg) => -rational_one(),
     }
 }
 
@@ -495,19 +630,14 @@ fn apply_finite_one_sided_log_endpoint_rule(
     let point_value = point_value.clone();
 
     let (scale, log_argument, base) =
-        scaled_unit_log_argument(ctx, expr, var, point, &var_name, &point_value)?;
+        scaled_unit_log_argument(ctx, expr, var, point, &var_name, &point_value, Some(side))?;
     if scale.is_zero() {
         return None;
     }
 
-    let argument = Polynomial::from_expr(ctx, log_argument, &var_name).ok()?;
-    let (argument_order, argument_derivative) =
-        finite_polynomial_local_order_and_derivative(&argument, &point_value)?;
-    if argument_order == 0 {
-        return None;
-    }
-
-    if finite_local_tail_sign(&argument_derivative, argument_order, side)? != InfSign::Pos {
+    if finite_endpoint_argument_zero_tail_sign(ctx, log_argument, &var_name, &point_value, side)?
+        != InfSign::Pos
+    {
         return None;
     }
 
@@ -534,13 +664,9 @@ fn apply_finite_one_sided_sqrt_endpoint_rule(
     };
     let point_value = point_value.clone();
     let radicand = extract_square_root_base(ctx, expr)?;
-    let radicand = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
-    let (radicand_order, radicand_derivative) =
-        finite_polynomial_local_order_and_derivative(&radicand, &point_value)?;
-    if radicand_order == 0 {
-        return None;
-    }
-    if finite_local_tail_sign(&radicand_derivative, radicand_order, side)? != InfSign::Pos {
+    if finite_endpoint_argument_zero_tail_sign(ctx, radicand, var_name, &point_value, side)?
+        != InfSign::Pos
+    {
         return None;
     }
 
@@ -929,7 +1055,7 @@ fn apply_finite_log_unit_quotient_rule(
     };
 
     let (scale, log_argument, base) =
-        scaled_unit_log_argument(ctx, num, var, point, &var_name, &point_value)?;
+        scaled_unit_log_argument(ctx, num, var, point, &var_name, &point_value, None)?;
     let argument = Polynomial::from_expr(ctx, log_argument, &var_name).ok()?;
     if argument.eval(&point_value) != BigRational::one() {
         return None;
@@ -4747,6 +4873,45 @@ mod tests {
         )
         .expect("expected reciprocal-base log endpoint");
         assert_eq!(display_expr(&ctx, reciprocal_base_log_out), "infinity");
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let unit_boundary_base_above = parse_expr(&mut ctx, "log(x, (x - 1)/(x + 3))");
+        let unit_boundary_base_above_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            unit_boundary_base_above,
+            x,
+            point_one,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected unit-boundary base log endpoint from above");
+        assert_eq!(
+            display_expr(&ctx, unit_boundary_base_above_out),
+            "-infinity"
+        );
+
+        let unit_boundary_base_below = parse_expr(&mut ctx, "log(2 - x, (x - 1)/(x + 3))");
+        let unit_boundary_base_below_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            unit_boundary_base_below,
+            x,
+            point_one,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected unit-boundary base log endpoint from below");
+        assert_eq!(display_expr(&ctx, unit_boundary_base_below_out), "infinity");
+
+        let unit_boundary_wrong_side = parse_expr(&mut ctx, "log(x, (x - 1)/(x + 3))");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                unit_boundary_wrong_side,
+                x,
+                point_one,
+                FiniteLimitSide::Left,
+            )
+            .is_none(),
+            "unit-boundary base log endpoint must still reject wrong-side arguments"
+        );
 
         let sqrt_right_endpoint = parse_expr(&mut ctx, "sqrt(x)");
         let sqrt_right_endpoint_out = try_limit_rules_at_finite_one_sided(

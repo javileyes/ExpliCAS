@@ -20,7 +20,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_diff_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 49)
+        self.assertEqual(len(cases), 52)
         names = {case.name for case in cases}
         self.assertIn(
             "log_quadratic_empty_positive_argument_domain_undefined",
@@ -73,6 +73,10 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn(
+            "inverse_trig_root_exact_square_symbolic_denominator_scale_condition_dedupe",
+            names,
+        )
+        self.assertIn(
             "inverse_trig_root_symbolic_numerator_scale_positive_gap",
             names,
         )
@@ -94,6 +98,14 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("inverse_hyperbolic_atanh_empty_open_interval_undefined", names)
         self.assertIn(
             "inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
+            names,
+        )
+        self.assertIn(
+            "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
+            names,
+        )
+        self.assertIn(
+            "inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval",
             names,
         )
         self.assertIn(
@@ -120,12 +132,12 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("discontinuous_sign_polynomial_nonzero_domain", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"supported": 39, "undefined": 10},
+            {"supported": 42, "undefined": 10},
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block2_real_domain_differentiation": 39,
+                "block2_real_domain_differentiation": 42,
                 "block9_residuals_and_non_goals": 10,
             },
         )
@@ -133,7 +145,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_calculus_block_gates(cases),
             {
                 "didactic_trace_and_diff_policy": 8,
-                "domain_conditions_and_diff_policy": 31,
+                "domain_conditions_and_diff_policy": 34,
                 "explicit_undefined_domain_policy": 10,
             },
         )
@@ -183,6 +195,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "inverse_trig_root_symbolic_rational_denominator_scale",
                 "inverse_trig_root_symbolic_rational_denominator_affine_radicand_shortcut",
                 "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
+                "inverse_trig_root_exact_square_symbolic_denominator_scale_condition_dedupe",
                 "inverse_trig_root_symbolic_numerator_scale_positive_gap",
                 "inverse_trig_root_symbolic_denominator_internal_scale",
                 "inverse_trig_root_symbolic_denominator_scale_dual_orientation",
@@ -192,6 +205,8 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "inverse_trig_symbolic_constant_empty_open_interval_undefined",
                 "inverse_hyperbolic_atanh_empty_open_interval_undefined",
                 "inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
+                "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
+                "inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval",
                 "inverse_hyperbolic_root_symbolic_numerator_scale_positive_gap",
                 "inverse_trig_root_negative_argument",
                 "trig_product_rule",
@@ -212,9 +227,9 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "interval_required": 1,
                 "negative_base_undefined": 1,
                 "nonfinite_undefined": 1,
-                "open_interval_required": 1,
+                "open_interval_required": 3,
                 "positive_exponent_required": 1,
-                "required_condition": 28,
+                "required_condition": 29,
                 "unconditional": 5,
                 "unconditional_positive_quadratic": 3,
             },

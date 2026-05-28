@@ -14506,12 +14506,12 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
         ),
         (
             "integrate(k/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
-            "tanh(x^(1/2) - b) * k",
+            "tanh(sqrt(x) - b) * k",
             vec!["x > 0"],
         ),
         (
             "integrate(k/(2*sqrt(x)*sinh(sqrt(x)-b)^2), x)",
-            "-k / tanh(x^(1/2) - b)",
+            "-k / tanh(sqrt(x) - b)",
             vec!["x > 0", "sinh(sqrt(x) - b) ≠ 0"],
         ),
     ];
@@ -14608,12 +14608,12 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
         ),
         (
             "integrate(k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
-            "-k / cosh(x^(1/2) - b)",
+            "-k / cosh(sqrt(x) - b)",
             vec!["x > 0"],
         ),
         (
             "integrate(k*cosh(sqrt(x)-b)/(2*sqrt(x)*sinh(sqrt(x)-b)^2), x)",
-            "-k / sinh(x^(1/2) - b)",
+            "-k / sinh(sqrt(x) - b)",
             vec!["x > 0", "sinh(sqrt(x) - b) ≠ 0"],
         ),
     ];
@@ -14689,19 +14689,19 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_tables_explain_u_and_du()
         ),
         (
             "integrate(k/(2*sqrt(x)*sinh(sqrt(x)-b)^2), x)",
-            "-k / tanh(x^(1/2) - b)",
+            "-k / tanh(sqrt(x) - b)",
             serde_json::json!(["x > 0", "sinh(sqrt(x) - b) ≠ 0"]),
             "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
         ),
         (
             "integrate(k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
-            "-k / cosh(x^(1/2) - b)",
+            "-k / cosh(sqrt(x) - b)",
             serde_json::json!(["x > 0"]),
             "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
         ),
         (
             "integrate(k*cosh(sqrt(x)-b)/(2*sqrt(x)*sinh(sqrt(x)-b)^2), x)",
-            "-k / sinh(x^(1/2) - b)",
+            "-k / sinh(sqrt(x) - b)",
             serde_json::json!(["x > 0", "sinh(sqrt(x) - b) ≠ 0"]),
             "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
         ),

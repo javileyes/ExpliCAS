@@ -1,16 +1,34 @@
 {
-  "generated_at": "2026-05-28T04:02:03.191462+00:00",
+  "generated_at": "2026-05-28T11:10:53.063363+00:00",
   "generated_discovery": {
-    "areas": {},
+    "areas": {
+      "calculus / differentiation": 1,
+      "calculus / domain-condition display": 1
+    },
     "families": {},
-    "observe_only_discoveries": 0,
-    "recent": [],
+    "observe_only_discoveries": 2,
+    "recent": [
+      {
+        "area": "calculus / domain-condition display",
+        "family": "unknown",
+        "status": "observe-only discovery",
+        "title": "2026-05-28 - Observe-only discovery: condition display must not scale-normalize periodic arguments",
+        "wrapper": "unknown"
+      },
+      {
+        "area": "calculus / differentiation",
+        "family": "unknown",
+        "status": "observe-only discovery",
+        "title": "2026-05-28 - Discovery observe-only: atanh exact-square denominator scale hits depth overflow",
+        "wrapper": "unknown"
+      }
+    ],
     "wrappers": {}
   },
   "generated_discovery_pressure": {},
   "git": {
     "branch": "main",
-    "commit": "e7d776c323596b41c78e328ca3946ae617cd2b63"
+    "commit": "eaf8a51b675e5f50c28332d85ad4b79e7b1fbf78"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
@@ -29,7 +47,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 1.062,
+      "elapsed_seconds": 1.413,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -40,6 +58,7 @@
           "constant": 1,
           "denominator_scaled_reciprocal_root_same_argument": 1,
           "dual_symbolic_denominator_scaled_nested_root": 1,
+          "exact_square_symbolic_denominator_scaled_shifted_root": 2,
           "external_scale_symbolic_rational_denominator_affine_radicand": 1,
           "log_arctan_polynomial_primitive": 1,
           "negated_nested_root": 1,
@@ -65,6 +84,7 @@
           "symbolic_denominator_scaled_nested_root": 1,
           "symbolic_denominator_scaled_quotient_domain_bearing_denominator": 1,
           "symbolic_denominator_scaled_reciprocal_root_same_argument": 1,
+          "symbolic_denominator_scaled_shifted_root": 1,
           "symbolic_numerator_scaled_shifted_root": 3,
           "symbolic_rational_denominator_affine_radicand": 1,
           "symbolic_rational_denominator_scaled_nested_root": 1,
@@ -74,14 +94,14 @@
         },
         "diff_calculus_block_gate_counts": {
           "didactic_trace_and_diff_policy": 8,
-          "domain_conditions_and_diff_policy": 31,
+          "domain_conditions_and_diff_policy": 34,
           "explicit_undefined_domain_policy": 10
         },
         "diff_calculus_maturity_block_counts": {
-          "block2_real_domain_differentiation": 39,
+          "block2_real_domain_differentiation": 42,
           "block9_residuals_and_non_goals": 10
         },
-        "diff_distinct_required_display_count": 13,
+        "diff_distinct_required_display_count": 15,
         "diff_domain_regime_counts": {
           "empty_open_interval_domain": 4,
           "empty_positive_argument_domain": 2,
@@ -90,16 +110,16 @@
           "invalid_log_base_domain": 1,
           "negative_base_undefined": 1,
           "nonfinite_undefined": 1,
-          "open_interval_required": 1,
+          "open_interval_required": 3,
           "positive_exponent_required": 1,
-          "required_condition": 28,
+          "required_condition": 29,
           "unconditional": 5,
           "unconditional_positive_quadratic": 3
         },
-        "diff_expected_step_substring_count": 134,
+        "diff_expected_step_substring_count": 149,
         "diff_family_count": 24,
         "diff_outcome_counts": {
-          "supported": 39,
+          "supported": 42,
           "undefined": 10
         },
         "diff_presentation_regime_counts": {
@@ -113,6 +133,8 @@
           "compact_quotient": 2,
           "constant_zero": 2,
           "denominator_scaled_compact_log_over_root_denominator": 1,
+          "exact_square_symbolic_denominator_condition_deduped_compact": 1,
+          "exact_square_symbolic_denominator_open_interval_compact": 1,
           "external_scale_symbolic_rational_denominator_affine_radicand_compact": 1,
           "factored": 2,
           "open_interval_boundary_deduped_compact": 1,
@@ -128,6 +150,7 @@
           "signed_reciprocal_root_interval": 1,
           "symbolic_denominator_dual_post_calculus_compact": 1,
           "symbolic_denominator_internal_scale_post_calculus_compact": 1,
+          "symbolic_denominator_open_interval_compact": 1,
           "symbolic_denominator_post_calculus_compact": 1,
           "symbolic_denominator_scaled_compact_log_denominator_root_quotient": 1,
           "symbolic_denominator_scaled_compact_log_over_root_denominator": 1,
@@ -137,16 +160,18 @@
           "trig_power_difference": 1,
           "undefined": 10
         },
-        "diff_required_display_case_count": 31,
+        "diff_required_display_case_count": 34,
         "diff_required_display_counts": {
-          "1 - (a\u00b7(x + 1)^(1/2))^2 > 0": 1,
+          "1 - a^2\u00b7x - a^2 > 0": 1,
           "a > 0": 1,
-          "a \u2260 0": 8,
+          "a \u2260 0": 11,
+          "a^2 - 4\u00b7x - 4 > 0": 1,
+          "a^2 - x - 1 > 0": 1,
           "cos(2\u00b7x + 1) \u2260 0": 1,
           "cos(sqrt(x)) \u2260 0": 1,
           "x < 1": 1,
           "x < 1/2": 1,
-          "x > -1": 5,
+          "x > -1": 8,
           "x > -1/2": 2,
           "x > 0": 18,
           "x \u2260 -1": 1,
@@ -154,11 +179,11 @@
           "x \u2260 1": 2
         },
         "diff_residual_case_count": 0,
-        "diff_step_checked_case_count": 49,
-        "diff_supported_case_count": 39,
+        "diff_step_checked_case_count": 52,
+        "diff_supported_case_count": 42,
         "diff_supported_step_unchecked_case_count": 0,
         "diff_trace_regime_counts": {
-          "chain_rule": 6,
+          "chain_rule": 8,
           "constant_base_exponential_chain_rule": 1,
           "constant_multiple_chain_rule": 1,
           "constant_multiple_parameter_denominator_scaled_affine_radicand_chain_rule": 1,
@@ -172,6 +197,7 @@
           "logarithmic_derivative": 1,
           "negative_argument_chain_rule": 1,
           "nonfinite_domain_policy": 1,
+          "parameter_denominator_exact_square_chain_rule": 1,
           "parameter_denominator_scaled_affine_radicand_chain_rule": 1,
           "parameter_denominator_scaled_chain_rule": 1,
           "parameter_internal_scaled_chain_rule": 1,
@@ -203,15 +229,15 @@
         "failed": 0,
         "issue_kind_counts": {},
         "matrix_status": "pass",
-        "passed": 49,
+        "passed": 52,
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
         "slow": 0,
         "timeouts": 0,
-        "total_cases": 49
+        "total_cases": 52
       },
-      "process_elapsed_seconds": 1.062,
+      "process_elapsed_seconds": 1.413,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -232,7 +258,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 3.731,
+      "elapsed_seconds": 21.671,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -250,7 +276,7 @@
         "passed": 263,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 3.731,
+      "process_elapsed_seconds": 21.671,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -268,12 +294,12 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 4.442,
+      "elapsed_seconds": 6.295,
       "env": {},
       "guardrail": null,
       "metrics": {
         "failed": 0,
-        "integrate_antiderivative_verification_case_count": 83,
+        "integrate_antiderivative_verification_case_count": 85,
         "integrate_argument_regime_counts": {
           "additive_interval_radical_residual": 1,
           "additive_nonlinear_trig_residual": 1,
@@ -284,6 +310,7 @@
           "affine_product": 1,
           "affine_radical": 1,
           "affine_reciprocal_trig_product": 2,
+          "affine_shifted_sqrt_chain": 1,
           "bounded_rational_expression": 1,
           "bounded_variable_radical": 1,
           "constant": 1,
@@ -327,6 +354,7 @@
           "scaled_sqrt_reciprocal_linear": 1,
           "shifted_polynomial_hyperbolic_product": 1,
           "shifted_polynomial_reciprocal_trig_product": 1,
+          "shifted_scaled_sqrt_reciprocal_linear": 1,
           "shifted_sqrt_chain": 2,
           "shifted_sqrt_chain_hyperbolic_product": 1,
           "sqrt_chain": 2,
@@ -350,7 +378,7 @@
         },
         "integrate_calculus_block_gate_counts": {
           "didactic_trace_and_verified_antiderivative": 24,
-          "domain_conditions_and_verified_antiderivative": 59,
+          "domain_conditions_and_verified_antiderivative": 61,
           "explicit_undefined_domain_policy": 2,
           "safe_residual_policy": 9
         },
@@ -358,12 +386,13 @@
           "block4_base_integration": 6,
           "block5_generalized_substitution": 10,
           "block6_rational_integration": 12,
-          "block7_trig_hyperbolic_integration": 47,
-          "block8_radical_inverse_families": 8,
+          "block7_trig_hyperbolic_integration": 48,
+          "block8_radical_inverse_families": 9,
           "block9_residuals_and_non_goals": 11
         },
-        "integrate_distinct_required_display_count": 37,
+        "integrate_distinct_required_display_count": 38,
         "integrate_domain_regime_counts": {
+          "affine_shifted_sqrt_chain_nonzero_positive": 1,
           "empty_real_domain": 1,
           "explicit_denominator_source_condition": 1,
           "explicit_hyperbolic_tangent_denominator_verified_substitution": 1,
@@ -375,7 +404,7 @@
           "nonfinite_undefined": 1,
           "nonzero_required": 3,
           "positive_log_argument_required": 1,
-          "positive_required": 4,
+          "positive_required": 5,
           "positive_required_residual": 1,
           "radical_interval": 2,
           "radical_interval_additive_residual": 1,
@@ -397,15 +426,16 @@
           "trig_sine_pole_presimplified_residual": 1,
           "unconditional": 19
         },
-        "integrate_expected_step_substring_count": 322,
+        "integrate_expected_step_substring_count": 331,
         "integrate_family_count": 45,
         "integrate_outcome_counts": {
           "residual": 9,
-          "supported": 83,
+          "supported": 85,
           "undefined": 2
         },
         "integrate_presentation_regime_counts": {
           "abs_log": 1,
+          "abs_log_affine_shifted_sqrt_chain_hyperbolic": 1,
           "abs_log_exact_derivative": 1,
           "abs_log_hyperbolic_condition_dedupe": 1,
           "abs_log_hyperbolic_source_condition": 1,
@@ -469,13 +499,14 @@
           "scaled_reciprocal_hyperbolic_tangent_minus_cubic": 1,
           "scaled_reciprocal_trig_product": 2,
           "scaled_root_argument_inverse_trig": 1,
+          "scaled_shifted_root_argument_inverse_trig": 1,
           "scaled_trig": 1,
           "signed_abs_log": 1,
           "three_linear_log_terms": 1,
           "undefined": 2,
           "unscaled_hyperbolic_tangent": 1
         },
-        "integrate_required_display_case_count": 67,
+        "integrate_required_display_case_count": 69,
         "integrate_required_display_counts": {
           "-1 < x < 1": 3,
           "-3 < x < 1": 1,
@@ -496,18 +527,19 @@
           "sin(b - sqrt(x)) \u2260 0": 1,
           "sin(sqrt(x) - b) \u2260 0": 1,
           "sin(sqrt(x)) \u2260 0": 1,
-          "sin(x^2 + 0) \u2260 0": 1,
-          "sin(x^2) \u2260 0": 3,
+          "sin(x^2) \u2260 0": 4,
           "sinh(2\u00b7x + 1) \u2260 0": 2,
           "sinh(a\u00b7x + b) \u2260 0": 3,
+          "sinh(b - sqrt(3\u00b7x + 1)) \u2260 0": 1,
           "sinh(b - sqrt(x)) \u2260 0": 2,
           "sinh(sqrt(x)) \u2260 0": 2,
           "sinh(x^2 + b) \u2260 0": 3,
           "sinh(x^2) \u2260 0": 2,
-          "tan(x^2 + 0) \u2260 0": 1,
-          "tan(x^2) \u2260 0": 1,
+          "tan(x^2) \u2260 0": 2,
           "x < -1 or x > 1": 1,
+          "x > -1": 1,
           "x > -1/2": 1,
+          "x > -1/3": 1,
           "x > 0": 18,
           "x \u2260 -1": 6,
           "x \u2260 -1/2": 1,
@@ -516,11 +548,13 @@
           "x \u2260 1/2": 2
         },
         "integrate_residual_case_count": 9,
-        "integrate_step_checked_case_count": 94,
-        "integrate_supported_case_count": 83,
+        "integrate_step_checked_case_count": 96,
+        "integrate_supported_case_count": 85,
         "integrate_supported_step_unchecked_case_count": 0,
         "integrate_trace_regime_counts": {
+          "affine_shifted_sqrt_chain_hyperbolic_log": 1,
           "arctan_scaled_sqrt_reciprocal_substitution": 1,
+          "arctan_shifted_scaled_sqrt_reciprocal_substitution": 1,
           "arctan_sqrt_reciprocal_substitution": 1,
           "by_parts_affine_log": 1,
           "by_parts_log": 1,
@@ -611,7 +645,7 @@
           "block7_hyperbolic_reciprocal_derivative_product": 7,
           "block7_hyperbolic_reciprocal_fourth": 4,
           "block7_hyperbolic_reciprocal_square": 6,
-          "block7_sqrt_chain_hyperbolic_log": 2,
+          "block7_sqrt_chain_hyperbolic_log": 3,
           "block7_sqrt_chain_hyperbolic_reciprocal_derivative_product": 3,
           "block7_sqrt_chain_reciprocal_trig_product": 7,
           "block7_sqrt_chain_trig_log": 2,
@@ -621,20 +655,20 @@
         "integrate_verification_regime_counts": {
           "residual_not_verified": 9,
           "undefined_not_verified": 2,
-          "verified_by_diff": 83
+          "verified_by_diff": 85
         },
         "integrate_warning_expected_case_count": 0,
         "issue_kind_counts": {},
         "matrix_status": "pass",
-        "passed": 94,
+        "passed": 96,
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
         "slow": 0,
         "timeouts": 0,
-        "total_cases": 94
+        "total_cases": 96
       },
-      "process_elapsed_seconds": 4.442,
+      "process_elapsed_seconds": 6.295,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -657,7 +691,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 8.724,
+      "elapsed_seconds": 11.289,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -669,7 +703,7 @@
         "passed": 1,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 8.724,
+      "process_elapsed_seconds": 11.289,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -687,7 +721,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 0.577,
+      "elapsed_seconds": 0.904,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -695,15 +729,15 @@
         "issue_kind_counts": {},
         "limit_calculus_block_gate_counts": {
           "didactic_trace_and_limit_policy": 29,
-          "domain_conditions_and_limit_policy": 24,
+          "domain_conditions_and_limit_policy": 34,
           "explicit_undefined_domain_policy": 1,
-          "safe_residual_policy": 19
+          "safe_residual_policy": 20
         },
         "limit_calculus_maturity_block_counts": {
-          "block3_real_domain_limits": 53,
-          "block9_residuals_and_non_goals": 20
+          "block3_real_domain_limits": 63,
+          "block9_residuals_and_non_goals": 21
         },
-        "limit_distinct_required_display_count": 24,
+        "limit_distinct_required_display_count": 28,
         "limit_domain_regime_counts": {
           "argument_zero_boundary_residual": 1,
           "argument_zero_endpoint_residual": 1,
@@ -740,9 +774,20 @@
           "one_sided_inverse_trig_upper_endpoint": 1,
           "one_sided_log_endpoint": 1,
           "one_sided_orientation": 1,
+          "one_sided_rational_log_zero_tail_endpoint": 1,
+          "one_sided_rational_root_zero_tail_endpoint": 1,
+          "one_sided_rational_unit_base_boundary_log_zero_tail_endpoint": 1,
+          "one_sided_removable_hole": 1,
+          "one_sided_removable_hole_with_nonlocal_pole": 1,
           "one_sided_root_endpoint": 1,
+          "one_sided_shifted_scaled_odd_order_pole": 1,
+          "one_sided_simple_pole": 1,
+          "one_sided_unit_base_boundary_rational_log_zero_tail_endpoint": 1,
+          "one_sided_variable_base_rational_log_zero_tail_endpoint": 1,
           "orientation_discontinuity_residual": 1,
           "positive_root_nonzero_power_required": 1,
+          "rational_domain_path_conflict": 1,
+          "rational_positive_sublimit_domain": 1,
           "removable_hole": 1,
           "required_condition": 3,
           "root_interior_interval_required": 1,
@@ -761,16 +806,16 @@
           "unit_base_boundary_residual": 1,
           "valid_base_and_positive_argument": 1
         },
-        "limit_expected_step_substring_count": 75,
-        "limit_family_count": 34,
+        "limit_expected_step_substring_count": 86,
+        "limit_family_count": 37,
         "limit_outcome_counts": {
-          "residual": 19,
-          "supported": 53,
+          "residual": 20,
+          "supported": 63,
           "undefined": 1
         },
         "limit_point_regime_counts": {
-          "finite": 35,
-          "finite_one_sided": 11,
+          "finite": 36,
+          "finite_one_sided": 21,
           "infinity": 27
         },
         "limit_presentation_regime_counts": {
@@ -780,11 +825,12 @@
           "canonical": 6,
           "canonical_no_required_conditions": 2,
           "exact_log_base_factor": 5,
+          "exact_log_rational": 1,
           "exact_pi": 1,
           "exact_radical": 1,
-          "exact_rational": 4,
-          "exact_zero": 5,
-          "infinity": 2,
+          "exact_rational": 6,
+          "exact_zero": 6,
+          "infinity": 5,
           "infinity_tail_bounded_polynomial_exponential_decay": 1,
           "infinity_tail_polynomial_bounded_inverse_trig": 1,
           "infinity_tail_polynomial_condition_suppression": 1,
@@ -803,12 +849,12 @@
           "infinity_tail_rational_signed_cube_root": 1,
           "infinity_tail_rational_zero_positive_condition_suppression": 1,
           "infinity_tail_rational_zero_positive_radical": 1,
-          "negative_infinity": 2,
+          "negative_infinity": 5,
           "negative_infinity_tail_bounded_condition_suppression": 1,
           "negative_infinity_tail_condition_suppression": 1,
           "rational_pole_residual": 1,
           "reciprocal_power": 1,
-          "residual": 14,
+          "residual": 15,
           "residual_presentation_cleanup": 2,
           "special_angle": 1,
           "undefined": 1
@@ -831,6 +877,7 @@
           "finite_inverse_trig_bilateral_upper_endpoint_domain": 1,
           "finite_log_base_argument_domain": 1,
           "finite_log_endpoint_residual_domain": 1,
+          "finite_log_rational_positive_sublimit_domain": 1,
           "finite_log_unit_denominator_domain": 1,
           "finite_one_sided_acosh_lower_bound_endpoint_domain": 1,
           "finite_one_sided_atanh_endpoint_domain": 1,
@@ -839,10 +886,20 @@
           "finite_one_sided_inverse_trig_endpoint_domain": 1,
           "finite_one_sided_inverse_trig_path_conflict": 1,
           "finite_one_sided_log_endpoint_domain": 1,
+          "finite_one_sided_log_rational_zero_tail_endpoint_domain": 1,
           "finite_one_sided_lower_bound_path_conflict": 1,
           "finite_one_sided_orientation_domain": 1,
           "finite_one_sided_path_conflict": 1,
+          "finite_one_sided_rational_path_conflict": 1,
+          "finite_one_sided_rational_pole_domain": 1,
+          "finite_one_sided_rational_unit_base_boundary_log_zero_tail_endpoint_domain": 1,
+          "finite_one_sided_removable_hole": 1,
+          "finite_one_sided_removable_hole_with_nonlocal_pole_domain": 1,
           "finite_one_sided_root_endpoint_domain": 1,
+          "finite_one_sided_root_rational_zero_tail_endpoint_domain": 1,
+          "finite_one_sided_shifted_scaled_odd_order_pole_domain": 1,
+          "finite_one_sided_unit_base_boundary_log_rational_zero_tail_endpoint_domain": 1,
+          "finite_one_sided_variable_base_log_rational_zero_tail_endpoint_domain": 1,
           "finite_positive_domain": 1,
           "finite_positive_nonzero_power_domain": 1,
           "finite_rational_pole_residual_domain": 1,
@@ -864,36 +921,40 @@
           "infinity_source_definedness": 1,
           "none": 12
         },
-        "limit_required_display_case_count": 41,
+        "limit_required_display_case_count": 52,
         "limit_required_display_counts": {
+          "(x - 1) / (x + 3) \u2265 0": 2,
           "-1 < x < 1": 3,
           "-1 \u2264 x \u2264 1": 2,
           "-1 \u2264 x^2 - 1 \u2264 1": 2,
           "cos(pi / 2 + x) \u2260 0": 1,
-          "e^x + 2 - 1 \u2260 0": 1,
           "sin(x + pi) \u2260 0": 1,
-          "sqrt(x + 4) + 1 - 1 \u2260 0": 1,
+          "x < -2 or x > -1/2": 1,
+          "x < -3 or x > -2": 1,
+          "x < -3 or x > 1": 4,
           "x > -1": 1,
           "x > -1/2": 5,
           "x > -1/4": 1,
           "x > -2": 1,
           "x > -3": 1,
           "x > -4": 1,
-          "x > 0": 6,
+          "x > 0": 7,
+          "x > 1/2": 1,
           "x \u2260 -1": 1,
           "x \u2260 -2": 1,
-          "x \u2260 0": 13,
-          "x \u2260 1": 1,
+          "x \u2260 -3": 3,
+          "x \u2260 0": 14,
+          "x \u2260 1": 4,
+          "x \u2260 3/2": 1,
           "x \u2260 3/4": 1,
           "x \u2264 1": 2,
-          "x \u2265 -4": 1,
           "x \u2265 0": 5,
           "x \u2265 1": 2,
           "x^2 + 1 \u2265 1": 1
         },
-        "limit_residual_case_count": 19,
-        "limit_step_checked_case_count": 73,
-        "limit_supported_case_count": 53,
+        "limit_residual_case_count": 20,
+        "limit_step_checked_case_count": 84,
+        "limit_supported_case_count": 63,
         "limit_supported_step_unchecked_case_count": 0,
         "limit_trace_regime_counts": {
           "asinh_polynomial_signed_tail_policy": 1,
@@ -918,6 +979,7 @@
           "finite_inverse_trig_bilateral_upper_endpoint_policy": 1,
           "finite_log_unit_quotient_policy": 1,
           "finite_negative_integer_power_policy": 1,
+          "finite_positive_domain_substitution": 1,
           "finite_residual_policy": 13,
           "finite_small_angle_quotient_policy": 1,
           "finite_special_angle_table": 1,
@@ -939,7 +1001,14 @@
           "one_sided_inverse_trig_endpoint_policy": 1,
           "one_sided_log_endpoint_policy": 1,
           "one_sided_orientation_policy": 1,
+          "one_sided_rational_domain_path_residual_policy": 1,
+          "one_sided_rational_log_endpoint_policy": 2,
+          "one_sided_rational_multiplicity_policy": 2,
+          "one_sided_rational_pole_policy": 2,
+          "one_sided_rational_root_endpoint_policy": 1,
+          "one_sided_rational_unit_base_boundary_log_endpoint_policy": 1,
           "one_sided_root_endpoint_policy": 1,
+          "one_sided_unit_base_boundary_rational_log_endpoint_policy": 1,
           "polynomial_leading_term_policy": 1,
           "positive_domain_substitution": 1,
           "positive_radical_substitution": 1,
@@ -952,17 +1021,17 @@
           "static_empty_domain_policy": 1,
           "substitution": 1
         },
-        "limit_warning_expected_case_count": 19,
+        "limit_warning_expected_case_count": 20,
         "matrix_status": "pass",
-        "passed": 73,
+        "passed": 84,
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
         "slow": 0,
         "timeouts": 0,
-        "total_cases": 73
+        "total_cases": 84
       },
-      "process_elapsed_seconds": 0.577,
+      "process_elapsed_seconds": 0.904,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -985,7 +1054,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 24.564,
+      "elapsed_seconds": 49.37,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -997,7 +1066,7 @@
         "passed": 1,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 24.564,
+      "process_elapsed_seconds": 49.37,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1018,7 +1087,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.693,
+      "elapsed_seconds": 0.797,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1030,7 +1099,7 @@
         "passed": 8,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.693,
+      "process_elapsed_seconds": 0.797,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1049,7 +1118,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 8.709,
+      "elapsed_seconds": 10.768,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1099,7 +1168,7 @@
         "timeouts": 0,
         "total_cases": 730
       },
-      "process_elapsed_seconds": 8.709,
+      "process_elapsed_seconds": 10.768,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1123,7 +1192,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.162,
+      "elapsed_seconds": 0.189,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1149,7 +1218,7 @@
         "timeouts": 0,
         "total_combos": 15
       },
-      "process_elapsed_seconds": 0.162,
+      "process_elapsed_seconds": 0.189,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1173,7 +1242,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 13.806,
+      "elapsed_seconds": 60.507,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1199,7 +1268,7 @@
         "timeouts": 0,
         "total_combos": 64
       },
-      "process_elapsed_seconds": 13.806,
+      "process_elapsed_seconds": 60.507,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1221,7 +1290,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 1.854,
+      "elapsed_seconds": 6.973,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1247,7 +1316,7 @@
         "timeouts": 0,
         "total_combos": 435
       },
-      "process_elapsed_seconds": 1.854,
+      "process_elapsed_seconds": 6.973,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

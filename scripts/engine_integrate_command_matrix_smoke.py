@@ -314,7 +314,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="explicit_reciprocal_sine_presimplified_residual_domain",
         expr="integrate(1/sin(x^2+0), x)",
         expected_result="integrate(csc(x^2), x)",
-        expected_required_display=("sin(x^2 + 0) ≠ 0",),
+        expected_required_display=("sin(x^2) ≠ 0",),
         expected_step_substrings=(
             "Reconocer cosecante desde un recíproco",
             "Conservar integral residual",
@@ -330,7 +330,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="explicit_reciprocal_tangent_presimplified_residual_domain",
         expr="integrate(1/tan(x^2+0), x)",
         expected_result="integrate(cot(x^2), x)",
-        expected_required_display=("sin(x^2) ≠ 0", "tan(x^2 + 0) ≠ 0"),
+        expected_required_display=("sin(x^2) ≠ 0", "tan(x^2) ≠ 0"),
         expected_step_substrings=(
             "Expandir tangente como seno entre coseno",
             "Simplificar fracción anidada",
@@ -477,6 +477,25 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="positive_required",
         trace_regime="arctan_scaled_sqrt_reciprocal_substitution",
         presentation_regime="scaled_root_argument_inverse_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_shifted_scaled_sqrt_reciprocal_bridge",
+        expr="integrate(1/(sqrt(x+1)*(4*x+5)), x)",
+        expected_result="arctan(2·sqrt(x + 1))",
+        expected_derivative_result="1 / (sqrt(x + 1)·(4·x + 5))",
+        expected_derivative_required_display=("x > -1",),
+        expected_required_display=("x > -1",),
+        expected_step_substrings=(
+            "Usar la regla de u'/(1+u^2) -> arctan(u)",
+            "Identificar u y du",
+            "u = 2\\cdot \\sqrt{x + 1}",
+            "du = \\frac{1}{\\sqrt{x + 1}}\\,dx",
+        ),
+        family="inverse_trig_root_reciprocal",
+        argument_regime="shifted_scaled_sqrt_reciprocal_linear",
+        domain_regime="positive_required",
+        trace_regime="arctan_shifted_scaled_sqrt_reciprocal_substitution",
+        presentation_regime="scaled_shifted_root_argument_inverse_trig",
     ),
     IntegrateCommandMatrixCase(
         name="inverse_hyperbolic_rational_direct_atanh_domain",
@@ -1578,7 +1597,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="shifted_sqrt_chain_hyperbolic_tangent_log_domain",
         expr="integrate(1/(2*sqrt(x)*tanh(b-sqrt(x))), x)",
-        expected_result="-ln(|sinh(x^(1/2) - b)|)",
+        expected_result="-ln(|sinh(sqrt(x) - b)|)",
         expected_derivative_equivalent_to="1/(2*sqrt(x)*tanh(b-sqrt(x)))",
         expected_derivative_required_display=("sinh(b - sqrt(x)) ≠ 0", "x > 0"),
         expected_required_display=("sinh(b - sqrt(x)) ≠ 0", "x > 0"),
@@ -1594,6 +1613,26 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="shifted_sqrt_chain_nonzero_positive",
         trace_regime="shifted_sqrt_chain_hyperbolic_log",
         presentation_regime="abs_log_shifted_sqrt_chain_hyperbolic",
+    ),
+    IntegrateCommandMatrixCase(
+        name="affine_shifted_sqrt_chain_hyperbolic_tangent_log_domain",
+        expr="integrate(3/(2*sqrt(3*x+1)*tanh(b-sqrt(3*x+1))), x)",
+        expected_result="-ln(|sinh(sqrt(3·x + 1) - b)|)",
+        expected_derivative_equivalent_to="3/(2*sqrt(3*x+1)*tanh(b-sqrt(3*x+1)))",
+        expected_derivative_required_display=("sinh(b - sqrt(3·x + 1)) ≠ 0", "x > -1/3"),
+        expected_required_display=("sinh(b - sqrt(3·x + 1)) ≠ 0", "x > -1/3"),
+        expected_step_substrings=(
+            "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_hyperbolic_log",
+        argument_regime="affine_shifted_sqrt_chain",
+        domain_regime="affine_shifted_sqrt_chain_nonzero_positive",
+        trace_regime="affine_shifted_sqrt_chain_hyperbolic_log",
+        presentation_regime="abs_log_affine_shifted_sqrt_chain_hyperbolic",
     ),
     IntegrateCommandMatrixCase(
         name="sqrt_chain_hyperbolic_cosh_over_sinh_square_domain",
@@ -1617,7 +1656,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="shifted_sqrt_chain_hyperbolic_sinh_over_cosh_square_symbolic_scale_domain",
         expr="integrate(k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
-        expected_result="-k / cosh(x^(1/2) - b)",
+        expected_result="-k / cosh(sqrt(x) - b)",
         expected_derivative_equivalent_to=(
             "k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2)"
         ),
@@ -1639,7 +1678,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="negative_shifted_sqrt_chain_hyperbolic_cosh_over_sinh_square_symbolic_scale_domain",
         expr="integrate(k*cosh(b-sqrt(x))/(2*sqrt(x)*sinh(b-sqrt(x))^2), x)",
-        expected_result="-k / sinh(x^(1/2) - b)",
+        expected_result="-k / sinh(sqrt(x) - b)",
         expected_derivative_equivalent_to=(
             "k*cosh(b-sqrt(x))/(2*sqrt(x)*sinh(b-sqrt(x))^2)"
         ),

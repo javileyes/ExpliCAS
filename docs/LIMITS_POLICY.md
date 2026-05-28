@@ -1,6 +1,6 @@
 # Limits Policy
 
-> **V1.29** — Pre-simplification contract, finite quotient policies, one-sided finite orientation/pole, log-endpoint, root-endpoint, finite inverse-trig/acosh endpoint policies, finite one-sided inverse-trig and atanh endpoint paths, finite one-sided domain-path residual policy, domain-bearing resolved-base log quotients, natural/fixed-base/binary-log endpoint residuals, and enforcement
+> **V1.30** — Pre-simplification contract, finite quotient policies, one-sided finite orientation/pole, log-endpoint, root-endpoint, finite inverse-trig/acosh endpoint policies, finite one-sided inverse-trig and atanh endpoint paths, finite one-sided domain-path residual policy, domain-bearing resolved-base log quotients with compact condition witnesses, natural/fixed-base/binary-log endpoint residuals, and enforcement
 
 ## 1. Purpose
 
@@ -287,9 +287,12 @@ Current contract:
   its own real-domain requirement, such as
   `log(sqrt(x+4)+1, 1+2*x)/x -> 2/ln(3)`, that condition must remain visible
   in command output alongside the base, argument, and quotient-denominator
-  conditions; non-rational resolved bases, unresolved bases, base sublimit `1`,
-  nonpositive base sublimits, non-unit log arguments, and finite poles remain
-  residual
+  conditions unless it is already implied by a stronger displayed condition;
+  internal `base - 1` witnesses should be compacted before display, so
+  intrinsically nonzero gaps are suppressed and radical gaps are exposed as
+  ordinary real-domain inequalities rather than as unevaluated arithmetic;
+  non-rational resolved bases, unresolved bases, base sublimit `1`, nonpositive
+  base sublimits, non-unit log arguments, and finite poles remain residual
 - total-real continuous unary compositions already in the finite allowlist
   (`exp`, `sin`, `cos`, `sinh`, `cosh`, `tanh`, `atan`/`arctan`, `asinh`,
   `cbrt`, and `abs`) may evaluate when their argument has already resolved to a
@@ -307,36 +310,66 @@ Current contract:
   regimes when local polynomial sign evidence proves the side behavior:
   `limit(abs(x)/x, x, 0+) -> 1`, `limit(abs(x)/x, x, 0-) -> -1`,
   `limit(1/x, x, 0+) -> infinity`, and
-  `limit(1/x, x, 0-) -> -infinity`; the public output must retain source
-  definedness such as `x ≠ 0`
+  `limit(1/x, x, 0-) -> -infinity`; rational polynomial pole variants may also
+  evaluate when exact local order and side-sign evidence prove the behavior,
+  including shifted, scaled, and higher-order cases such as
+  `limit(2/(x-1)^3, x, 1-) -> -infinity`; the public output must retain source
+  definedness such as `x ≠ 0` or `x ≠ 1`. When removable local cancellation
+  leaves other denominator factors in the source, those nonlocal pole
+  conditions must remain visible too, for example
+  `limit((x^2-1)/((x-1)*(x+3)), x, 1+) -> 1/2` must retain both `x ≠ 1` and
+  `x ≠ -3`
 - one-sided finite log endpoints may evaluate when local polynomial tail-sign
   evidence proves the log argument approaches `0` through positive values from
   the requested side: `limit(ln(x), x, 0+) -> -infinity`,
   `limit(log2(x), x, 0+) -> -infinity`, and
-  `limit(log10(x), x, 0+) -> -infinity`; reciprocal fixed bases flip the
-  infinity sign, for example `limit(log(1/2, x), x, 0+) -> infinity`; the
-  public output must retain positive-argument domain requirements such as
-  `x > 0`; wrong-side paths such as `limit(ln(x), x, 0-)` remain residual, but
-  now carry a `Limit Domain Path` warning when local polynomial side evidence
-  proves the requested path is outside the input domain
+  `limit(log10(x), x, 0+) -> -infinity`; the same endpoint policy may use
+  rational-polynomial arguments when the denominator is nonzero at the approach
+  point and local order/sign evidence proves a positive zero-tail, for example
+  `limit(ln((x-1)/(x+3)), x, 1+) -> -infinity`; reciprocal bases flip the
+  infinity sign, including finite valid bases resolved from a variable base,
+  for example `limit(log(1/2, x), x, 0+) -> infinity` and
+  `limit(log(x-1/2, (x-1)/(x+3)), x, 1+) -> infinity`; the public output must
+  retain positive-argument and valid-base domain requirements such as
+  `x > 0`, `x < -3 or x > 1`, `x > 1/2`, and `x ≠ 3/2`; wrong-side paths such as
+  `limit(ln(x), x, 0-)` and `limit(ln((x-1)/(x+3)), x, 1-)` remain residual,
+  but now carry a `Limit Domain Path` warning when local polynomial or
+  denominator-nonzero rational side evidence proves the requested path is
+  outside the input domain. Variable bases approaching `1` are allowed only for
+  explicit one-sided paths when local sign evidence proves which side of the
+  unit base is used and the argument has a positive zero-tail; for example
+  `limit(log(x, (x-1)/(x+3)), x, 1+) -> -infinity` while the wrong-side
+  argument path remains residual with a domain-path warning. Rational variable
+  bases may use the same unit-boundary policy when numerator-minus-denominator
+  sign evidence is available; for example
+  `limit(log((x+2)/(2*x+1), (x-1)/(x+3)), x, 1+) -> infinity` with readable
+  real-domain requirements such as `x < -2 or x > -1/2` and
+  `x < -3 or x > 1`, rather than exposing the internal `(base - 1) ≠ 0`
+  witness
 - one-sided finite square-root endpoints may evaluate to `0` when local
   polynomial tail-sign evidence proves the radicand approaches `0` through
   nonnegative values from the requested side: `limit(sqrt(x), x, 0+) -> 0`,
   `limit(sqrt(-x), x, 0-) -> 0`, and
-  `limit(sqrt(x + 1), x, -1+) -> 0`; the public output must retain
-  nonnegative-radicand requirements such as `x ≥ 0`; wrong-side paths such as
-  `limit(sqrt(x), x, 0-)` remain residual with a `Limit Domain Path` warning
-  when polynomial side evidence proves the requested path violates the
-  nonnegative-radicand domain; non-polynomial endpoint shapes such as
-  `sqrt(abs(x))` remain residual until a separate orientation policy is
-  promoted
+  `limit(sqrt(x + 1), x, -1+) -> 0`; the same denominator-nonzero
+  rational-polynomial positive zero-tail check may resolve cases such as
+  `limit(sqrt((x-1)/(x+3)), x, 1+) -> 0`; the public output must retain
+  nonnegative-radicand requirements such as `x ≥ 0` or
+  `(x - 1)/(x + 3) ≥ 0` plus source denominator conditions; wrong-side paths
+  such as `limit(sqrt(x), x, 0-)` and
+  `limit(sqrt((x-1)/(x+3)), x, 1-)` remain residual with a
+  `Limit Domain Path` warning when polynomial or denominator-nonzero rational
+  side evidence proves the requested path violates the nonnegative-radicand
+  domain; non-polynomial endpoint shapes such as `sqrt(abs(x))` remain residual
+  until a separate orientation policy is promoted
 - `ln(g(x))`, `log2(g(x))`, `log10(g(x))`, and `sqrt(g(x))` may evaluate when
   `g(x)` has already resolved to a safe finite sublimit that is explicitly
   numeric positive or is proven strictly positive by the existing sign prover;
   exact rational-power folds may reduce values such as `log2(8) -> 3` and
-  `log10(100) -> 2`; under the two-sided finite policy, zero, negative, or
-  unproven positive sublimits remain residual, including endpoint-looking cases
-  such as `sqrt(abs(x))` at `x -> 0`
+  `log10(100) -> 2`; domain-bearing sublimits must keep their public real-domain
+  requirements visible, for example `limit(ln((x+2)/(x+3)), x, 0) -> ln(2/3)`
+  requires `x < -3 or x > -2`; under the two-sided finite policy, zero,
+  negative, or unproven positive sublimits remain residual, including
+  endpoint-looking cases such as `sqrt(abs(x))` at `x -> 0`
 - `asin(g(x))`/`arcsin(g(x))`, `acos(g(x))`/`arccos(g(x))`, `atanh(g(x))`,
   and `acosh(g(x))` may evaluate only when `g(x)` has already resolved to a
   numeric rational sublimit strictly inside the real domain interior; exact

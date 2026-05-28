@@ -264,23 +264,72 @@ fn test_eval_one_sided_limit_orientation_policy_json() {
         "limit(ln(x), x, 0+)",
         "limit(log2(x), x, 0+)",
         "limit(log10(x), x, 0+)",
+        "limit(ln((x-1)/(x+3)), x, 1+)",
+        "limit(log2((x-1)/(x+3)), x, 1+)",
     ] {
         let (_success, stdout) = run_eval(input, "json");
         let wire: Value = serde_json::from_str(&stdout).expect("eval json");
         assert_eq!(wire["ok"], true, "input: {input}");
         assert_eq!(wire["result"], "-infinity", "input: {input}");
         assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        let expected_condition = if input.contains("(x-1)/(x+3)") {
+            "x < -3 or x > 1"
+        } else {
+            "x > 0"
+        };
         assert!(
             wire["required_display"].as_array().is_some_and(|conditions| {
-                conditions.iter().any(|condition| condition == "x > 0")
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_condition)
             }),
             "One-sided log endpoint should preserve positive-domain condition for {input}, got: {wire:?}"
         );
     }
 
+    for (input, expected_result, expected_conditions) in [
+        (
+            "limit(log(x-1/2, (x-1)/(x+3)), x, 1+)",
+            "infinity",
+            &["x < -3 or x > 1", "x > 1/2", "x ≠ 3/2"][..],
+        ),
+        (
+            "limit(log(x, (x-1)/(x+3)), x, 1+)",
+            "-infinity",
+            &["x < -3 or x > 1", "x > 0"][..],
+        ),
+        (
+            "limit(log(2-x, (x-1)/(x+3)), x, 1+)",
+            "infinity",
+            &["x < -3 or x > 1", "x < 2"][..],
+        ),
+        (
+            "limit(log((x+2)/(2*x+1), (x-1)/(x+3)), x, 1+)",
+            "infinity",
+            &["x < -2 or x > -1/2", "x < -3 or x > 1"][..],
+        ),
+    ] {
+        let (_success, stdout) = run_eval(input, "json");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        for expected_condition in expected_conditions {
+            assert!(
+                wire["required_display"].as_array().is_some_and(|conditions| {
+                    conditions
+                        .iter()
+                        .any(|condition| condition == expected_condition)
+                }),
+                "One-sided variable-base log endpoint should preserve domain condition {expected_condition} for {input}, got: {wire:?}"
+            );
+        }
+    }
+
     for (input, expected_condition) in [
         ("limit(sqrt(x), x, 0+)", "x ≥ 0"),
         ("limit(sqrt(-x), x, 0-)", "x ≤ 0"),
+        ("limit(sqrt((x-1)/(x+3)), x, 1+)", "(x - 1) / (x + 3) ≥ 0"),
     ] {
         let (_success, stdout) = run_eval(input, "json");
         let wire: Value = serde_json::from_str(&stdout).expect("eval json");
@@ -295,6 +344,14 @@ fn test_eval_one_sided_limit_orientation_policy_json() {
             }),
             "One-sided sqrt endpoint should preserve nonnegative-domain condition for {input}, got: {wire:?}"
         );
+        if input.contains("(x-1)/(x+3)") {
+            assert!(
+                wire["required_display"].as_array().is_some_and(|conditions| {
+                    conditions.iter().any(|condition| condition == "x ≠ -3")
+                }),
+                "One-sided rational sqrt endpoint should preserve denominator condition for {input}, got: {wire:?}"
+            );
+        }
     }
 
     for (input, expected_condition) in [
@@ -424,26 +481,47 @@ fn test_eval_one_sided_limit_orientation_policy_json() {
         );
     }
 
-    for (input, expected_result, expected_condition) in [
-        ("limit(ln(x), x, 0-)", "limit(ln(x), x, 0, left)", "x > 0"),
+    for (input, expected_result, expected_required_condition, expected_warning_condition) in [
+        (
+            "limit(ln(x), x, 0-)",
+            "limit(ln(x), x, 0, left)",
+            "x > 0",
+            "x > 0",
+        ),
         (
             "limit(sqrt(x), x, 0-)",
             "limit(sqrt(x), x, 0, left)",
+            "x ≥ 0",
             "x ≥ 0",
         ),
         (
             "limit(sqrt(x+1), x, -1-)",
             "limit(sqrt(x + 1), x, -1, left)",
             "x ≥ -1",
+            "x ≥ -1",
         ),
         (
             "limit(sqrt(1-x), x, 1+)",
             "limit(sqrt(1 - x), x, 1, right)",
             "x ≤ 1",
+            "x ≤ 1",
+        ),
+        (
+            "limit(ln((x-1)/(x+3)), x, 1-)",
+            "limit(ln((x - 1) / (x + 3)), x, 1, left)",
+            "x < -3 or x > 1",
+            "(x - 1) / (x + 3) > 0",
+        ),
+        (
+            "limit(sqrt((x-1)/(x+3)), x, 1-)",
+            "limit(sqrt((x - 1) / (x + 3)), x, 1, left)",
+            "(x - 1) / (x + 3) ≥ 0",
+            "(x - 1) / (x + 3) ≥ 0",
         ),
         (
             "limit(acosh(x), x, 1-)",
             "limit(acosh(x), x, 1, left)",
+            "x ≥ 1",
             "x ≥ 1",
         ),
     ] {
@@ -453,7 +531,9 @@ fn test_eval_one_sided_limit_orientation_policy_json() {
         assert_eq!(wire["result"], expected_result, "input: {input}");
         assert!(
             wire["required_display"].as_array().is_some_and(|conditions| {
-                conditions.iter().any(|condition| condition == expected_condition)
+                conditions
+                    .iter()
+                    .any(|condition| condition == expected_required_condition)
             }),
             "Domain-conflicting one-sided endpoint should preserve required condition for {input}, got: {wire:?}"
         );
@@ -470,7 +550,7 @@ fn test_eval_one_sided_limit_orientation_policy_json() {
                     warning["rule"] == "Limit Domain Path"
                         && warning["assumption"].as_str().is_some_and(|message| {
                             message.contains("Limit path conflicts with the input domain")
-                                && message.contains(expected_condition)
+                                && message.contains(expected_warning_condition)
                         })
                 })
             }),

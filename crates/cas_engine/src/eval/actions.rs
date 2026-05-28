@@ -77,6 +77,27 @@ fn finite_one_sided_polynomial_tail_is_negative(
     )
 }
 
+fn finite_one_sided_rational_tail_is_negative(
+    ctx: &cas_ast::Context,
+    witness: ExprId,
+    var_name: &str,
+    point: &BigRational,
+    side: FiniteLimitSide,
+) -> Option<bool> {
+    let cas_ast::Expr::Div(num, den) = ctx.get(witness).clone() else {
+        return None;
+    };
+    let numerator = Polynomial::from_expr(ctx, num, var_name).ok()?;
+    let denominator = Polynomial::from_expr(ctx, den, var_name).ok()?;
+    let denominator_value = denominator.eval(point);
+    if denominator_value.is_zero() {
+        return None;
+    }
+    let numerator_tail_negative =
+        finite_one_sided_polynomial_tail_is_negative(&numerator, point, side)?;
+    Some(numerator_tail_negative ^ denominator_value.is_negative())
+}
+
 fn shifted_domain_witness_polynomial(
     ctx: &cas_ast::Context,
     witness: ExprId,
@@ -114,7 +135,15 @@ fn finite_one_sided_domain_path_conflict(
     };
 
     let Some(poly) = shifted_domain_witness_polynomial(ctx, witness, var_name, &lower_bound) else {
-        return false;
+        return lower_bound.is_zero()
+            && finite_one_sided_rational_tail_is_negative(
+                ctx,
+                witness,
+                var_name,
+                point_value,
+                side,
+            )
+            .unwrap_or(false);
     };
     let value_at_point = poly.eval(point_value);
     if value_at_point.is_negative() {

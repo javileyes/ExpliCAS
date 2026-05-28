@@ -592,6 +592,14 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
         return normalize_nonzero_condition_expr_for_display(ctx, compact);
     }
 
+    if let Some(compact) = compact_additive_numeric_offsets_for_condition_display(ctx, expr) {
+        return normalize_nonzero_condition_expr_for_display(ctx, compact);
+    }
+
+    if let Some(compact) = normalize_unary_condition_argument_for_display(ctx, expr) {
+        return normalize_nonzero_condition_expr_for_display(ctx, compact);
+    }
+
     if let Some(sinh_expr) = tanh_nonzero_equivalent_sinh(ctx, expr) {
         return sinh_expr;
     }
@@ -817,6 +825,129 @@ fn compact_diff_integral_residual_passthrough_for_condition_display(
     }
 
     None
+}
+
+fn compact_additive_numeric_offsets_for_condition_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut numeric_count = 0usize;
+    let mut numeric_sum = BigRational::zero();
+    let mut symbolic_terms = Vec::with_capacity(terms.len());
+
+    for (term, sign) in terms {
+        if let Some(value) = as_rational_const(ctx, term) {
+            numeric_count += 1;
+            match sign {
+                Sign::Pos => numeric_sum += value,
+                Sign::Neg => numeric_sum -= value,
+            }
+        } else {
+            symbolic_terms.push((term, sign));
+        }
+    }
+
+    if numeric_count < 2 {
+        return None;
+    }
+
+    if !numeric_sum.is_zero() {
+        let sign = if numeric_sum.is_positive() {
+            Sign::Pos
+        } else {
+            Sign::Neg
+        };
+        let constant = ctx.add(Expr::Number(numeric_sum.abs()));
+        symbolic_terms.push((constant, sign));
+    }
+
+    if symbolic_terms.is_empty() {
+        return Some(ctx.add(Expr::Number(BigRational::zero())));
+    }
+
+    let rebuilt_terms: Vec<_> = symbolic_terms
+        .into_iter()
+        .map(|(term, sign)| match sign {
+            Sign::Pos => term,
+            Sign::Neg => ctx.add(Expr::Neg(term)),
+        })
+        .collect();
+
+    Some(build_balanced_add(ctx, &rebuilt_terms))
+}
+
+fn normalize_unary_condition_argument_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !unary_condition_argument_display_builtin(builtin) {
+        return None;
+    }
+
+    let arg = args[0];
+    let normalized_arg = strip_additive_zero_terms_for_condition_argument_display(ctx, arg)?;
+    if normalized_arg == arg {
+        return None;
+    }
+
+    Some(ctx.call_builtin(builtin, vec![normalized_arg]))
+}
+
+fn strip_additive_zero_terms_for_condition_argument_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut changed = false;
+    let mut remaining = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        if as_rational_const(ctx, term).is_some_and(|value| value.is_zero()) {
+            changed = true;
+            continue;
+        }
+        remaining.push(match sign {
+            Sign::Pos => term,
+            Sign::Neg => ctx.add(Expr::Neg(term)),
+        });
+    }
+
+    changed.then(|| build_balanced_add(ctx, &remaining))
+}
+
+fn unary_condition_argument_display_builtin(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Sin
+            | BuiltinFn::Cos
+            | BuiltinFn::Tan
+            | BuiltinFn::Sec
+            | BuiltinFn::Csc
+            | BuiltinFn::Cot
+            | BuiltinFn::Sinh
+            | BuiltinFn::Cosh
+            | BuiltinFn::Tanh
+            | BuiltinFn::Ln
+            | BuiltinFn::Log2
+            | BuiltinFn::Log10
+            | BuiltinFn::Exp
+    )
 }
 
 fn diff_of_matching_integral_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -1861,6 +1992,11 @@ fn nonzero_is_dominated_by_positive_condition(
                 normalized_positive,
                 normalized_expr,
             )
+            || positive_condition_scaled_plus_nonnegative_polynomial_dominates_nonzero(
+                ctx,
+                normalized_positive,
+                normalized_expr,
+            )
             || positive_condition_times_nonnegative_square_plus_positive_constant_dominates_nonzero(
                 ctx,
                 normalized_positive,
@@ -1912,6 +2048,92 @@ fn positive_condition_plus_nonnegative_square_dominates_nonzero(
     let mut remaining_terms = nonzero_terms;
     remove_matching_signed_term(ctx, &mut remaining_terms, positive_expr, Sign::Pos)
         && single_positive_even_square_term_is_nonnegative(ctx, &remaining_terms)
+}
+
+fn positive_condition_scaled_plus_nonnegative_polynomial_dominates_nonzero(
+    ctx: &Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
+
+    let budget = PolyBudget {
+        max_terms: 16,
+        max_total_degree: 8,
+        max_pow_exp: 4,
+    };
+    let (Ok(positive_poly), Ok(nonzero_poly)) = (
+        multipoly_from_expr(ctx, positive_expr, &budget),
+        multipoly_from_expr(ctx, nonzero_expr, &budget),
+    ) else {
+        return false;
+    };
+    if positive_poly.is_zero()
+        || nonzero_poly.is_zero()
+        || !positive_poly
+            .vars
+            .iter()
+            .all(|var| nonzero_poly.vars.iter().any(|target| target == var))
+    {
+        return false;
+    }
+
+    let positive_poly = positive_poly.align_vars(&nonzero_poly.vars);
+    let Some(scale) = positive_nonconstant_scale_in_target(&positive_poly, &nonzero_poly) else {
+        return false;
+    };
+    if !scale.is_positive() {
+        return false;
+    }
+
+    let scaled_positive = positive_poly.mul_scalar(&scale);
+    let Ok(residual) = nonzero_poly.sub(&scaled_positive) else {
+        return false;
+    };
+    polynomial_is_nonnegative_even_monomial_sum(&residual)
+}
+
+fn positive_nonconstant_scale_in_target(
+    source: &MultiPoly,
+    target: &MultiPoly,
+) -> Option<BigRational> {
+    if source.vars != target.vars {
+        return None;
+    }
+
+    let mut scale: Option<BigRational> = None;
+    let mut saw_nonconstant = false;
+    for (source_coeff, source_mono) in &source.terms {
+        if source_mono.iter().all(|exp| *exp == 0) {
+            continue;
+        }
+        saw_nonconstant = true;
+        let (target_coeff, _) = target
+            .terms
+            .iter()
+            .find(|(_, target_mono)| target_mono == source_mono)?;
+        let term_scale = target_coeff / source_coeff;
+        if term_scale.is_zero() {
+            return None;
+        }
+        match &scale {
+            Some(existing) if existing != &term_scale => return None,
+            Some(_) => {}
+            None => scale = Some(term_scale),
+        }
+    }
+
+    if saw_nonconstant {
+        scale
+    } else {
+        None
+    }
+}
+
+fn polynomial_is_nonnegative_even_monomial_sum(poly: &MultiPoly) -> bool {
+    poly.terms
+        .iter()
+        .all(|(coeff, mono)| coeff.is_positive() && mono.iter().all(|exponent| exponent % 2 == 0))
 }
 
 fn positive_condition_times_nonnegative_square_plus_positive_constant_dominates_nonzero(
@@ -4474,8 +4696,22 @@ fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<
         return expand_nonzero_condition_for_display(ctx, sinh_expr);
     }
 
+    if let Some(compact) =
+        compact_additive_numeric_offsets_for_condition_display(ctx, stripped_expr)
+    {
+        let compact_condition = ImplicitCondition::NonZero(compact);
+        if condition_is_intrinsically_satisfied(ctx, &compact_condition) {
+            return Vec::new();
+        }
+        return expand_nonzero_condition_for_display(ctx, compact);
+    }
+
     if let Some(arg_minus_one) = log_nonzero_argument_offset(ctx, stripped_expr) {
         return expand_nonzero_condition_for_display(ctx, arg_minus_one);
+    }
+
+    if let Some(expanded) = expand_rational_offset_nonzero_for_display(ctx, stripped_expr) {
+        return expanded;
     }
 
     if let Some(expanded) = expand_abs_unit_offset_nonzero_for_display(ctx, stripped_expr) {
@@ -4498,8 +4734,22 @@ fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<
         return expand_nonzero_condition_for_display(ctx, sinh_expr);
     }
 
+    if let Some(compact) =
+        compact_additive_numeric_offsets_for_condition_display(ctx, normalized_expr)
+    {
+        let compact_condition = ImplicitCondition::NonZero(compact);
+        if condition_is_intrinsically_satisfied(ctx, &compact_condition) {
+            return Vec::new();
+        }
+        return expand_nonzero_condition_for_display(ctx, compact);
+    }
+
     if let Some(arg_minus_one) = log_nonzero_argument_offset(ctx, normalized_expr) {
         return expand_nonzero_condition_for_display(ctx, arg_minus_one);
+    }
+
+    if let Some(expanded) = expand_rational_offset_nonzero_for_display(ctx, normalized_expr) {
+        return expanded;
     }
 
     if let Some(expanded) = expand_abs_unit_offset_nonzero_for_display(ctx, normalized_expr) {
@@ -4557,6 +4807,84 @@ fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<
         )]
     } else {
         expanded
+    }
+}
+
+fn expand_rational_offset_nonzero_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let (num, den, quotient_scale, offset) = rational_offset_parts(ctx, expr)?;
+    if offset.is_zero() {
+        return None;
+    }
+
+    let mut variables = cas_ast::collect_variables(ctx, num);
+    variables.extend(cas_ast::collect_variables(ctx, den));
+    if variables.len() != 1 {
+        return None;
+    }
+    let var_name = variables.iter().next()?;
+
+    let num_poly = Polynomial::from_expr(ctx, num, var_name.as_str()).ok()?;
+    let den_poly = Polynomial::from_expr(ctx, den, var_name.as_str()).ok()?;
+    if den_poly.is_zero() {
+        return None;
+    }
+
+    let scaled_num = num_poly.mul(&Polynomial::new(vec![quotient_scale], var_name.to_string()));
+    let offset_den = den_poly.mul(&Polynomial::new(vec![offset], var_name.to_string()));
+    let gap = scaled_num.add(&offset_den);
+    if gap.is_zero() {
+        return None;
+    }
+
+    let gap_expr = gap.to_expr(ctx);
+    let mut expanded = expand_nonzero_condition_for_display(ctx, gap_expr);
+
+    if den_poly.degree() != 0 {
+        let den_expr = den_poly.to_expr(ctx);
+        for cond in expand_nonzero_condition_for_display(ctx, den_expr) {
+            if !expanded
+                .iter()
+                .any(|existing| conditions_equivalent(ctx, existing, &cond))
+            {
+                expanded.push(cond);
+            }
+        }
+    }
+
+    Some(expanded)
+}
+
+fn rational_offset_parts(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, BigRational, BigRational)> {
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            if let Expr::Div(num, den) = ctx.get(left).clone() {
+                let offset = as_rational_const(ctx, right)?;
+                return Some((num, den, BigRational::one(), offset));
+            }
+            if let Expr::Div(num, den) = ctx.get(right).clone() {
+                let offset = as_rational_const(ctx, left)?;
+                return Some((num, den, BigRational::one(), offset));
+            }
+            None
+        }
+        Expr::Sub(left, right) => {
+            if let Expr::Div(num, den) = ctx.get(left).clone() {
+                let offset = -as_rational_const(ctx, right)?;
+                return Some((num, den, BigRational::one(), offset));
+            }
+            if let Expr::Div(num, den) = ctx.get(right).clone() {
+                let offset = as_rational_const(ctx, left)?;
+                return Some((num, den, -BigRational::one(), offset));
+            }
+            None
+        }
+        _ => None,
     }
 }
 
@@ -5727,6 +6055,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || positive_condition_plus_nonnegative_square_dominates_nonzero(
                             ctx, *pos_expr, *nz_expr,
                         )
+                        || positive_condition_scaled_plus_nonnegative_polynomial_dominates_nonzero(
+                            ctx, *pos_expr, *nz_expr,
+                        )
                         || positive_condition_times_nonnegative_square_plus_positive_constant_dominates_nonzero(
                             ctx, *pos_expr, *nz_expr,
                         )
@@ -6886,6 +7217,80 @@ mod tests {
     }
 
     #[test]
+    fn positive_scaled_condition_plus_even_square_dominates_nonzero_gap() {
+        let mut ctx = Context::new();
+        let positive = parse("x + 1", &mut ctx).expect("parse positive");
+        let nonzero = parse("a^2 + 4*x + 4", &mut ctx).expect("parse nonzero");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(nonzero),
+                ImplicitCondition::Positive(positive),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x > -1"]);
+    }
+
+    #[test]
+    fn positive_scaled_condition_keeps_signed_square_gap_nonzero() {
+        let mut ctx = Context::new();
+        let positive = parse("x + 1", &mut ctx).expect("parse positive");
+        let nonzero = parse("a^2 - 4*x - 4", &mut ctx).expect("parse nonzero");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(nonzero),
+                ImplicitCondition::Positive(positive),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::NonZero(nonzero)
+        )));
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::Positive(positive)
+        )));
+    }
+
+    #[test]
+    fn nonzero_rational_offset_expands_to_gap_and_denominator_conditions() {
+        let mut ctx = Context::new();
+        let offset = parse("(x + 2)/(2*x + 1) - 1", &mut ctx).expect("parse offset");
+
+        let rendered =
+            render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(offset)]);
+
+        assert_eq!(rendered, vec!["x ≠ 1", "x ≠ -1/2"]);
+    }
+
+    #[test]
+    fn positive_rational_base_dominates_unit_gap_denominator_condition() {
+        let mut ctx = Context::new();
+        let base = parse("(x + 2)/(2*x + 1)", &mut ctx).expect("parse base");
+        let base_gap = parse("(x + 2)/(2*x + 1) - 1", &mut ctx).expect("parse base gap");
+        let argument = parse("(x - 1)/(x + 3)", &mut ctx).expect("parse argument");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(base_gap),
+                ImplicitCondition::Positive(base),
+                ImplicitCondition::Positive(argument),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x < -2 or x > -1/2", "x < -3 or x > 1"]);
+    }
+
+    #[test]
     fn nonzero_scaled_square_and_expanded_denominator_preserve_base_condition() {
         let mut ctx = Context::new();
         let scaled_square = parse("3*(x^2+x-1)^2", &mut ctx).expect("parse scaled square");
@@ -7321,6 +7726,57 @@ mod tests {
         let sinh_normalized =
             normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(sinh_expr)]);
         assert_eq!(sinh_normalized, vec![ImplicitCondition::NonZero(sinh_expr)]);
+    }
+
+    #[test]
+    fn nonzero_additive_numeric_offsets_drop_intrinsic_exp_gap() {
+        let mut ctx = Context::new();
+        let gap = parse("exp(x)+2-1", &mut ctx).expect("parse gap");
+
+        let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(gap)]);
+
+        assert!(rendered.is_empty(), "unexpected conditions: {rendered:?}");
+    }
+
+    #[test]
+    fn nonzero_additive_numeric_offsets_expose_sqrt_radicand_gap() {
+        let mut ctx = Context::new();
+        let gap = parse("sqrt(x+4)+1-1", &mut ctx).expect("parse gap");
+
+        let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(gap)]);
+
+        assert_eq!(rendered, vec!["x > -4".to_string()]);
+    }
+
+    #[test]
+    fn nonzero_unary_conditions_normalize_polynomial_argument_noise() {
+        let mut ctx = Context::new();
+        let sin_condition = parse("sin(x^2+0)", &mut ctx).expect("parse sin");
+        let tan_condition = parse("tan(x^2+0)", &mut ctx).expect("parse tan");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(sin_condition),
+                ImplicitCondition::NonZero(tan_condition),
+            ],
+        );
+
+        assert_eq!(
+            rendered,
+            vec!["sin(x^2) ≠ 0".to_string(), "tan(x^2) ≠ 0".to_string()]
+        );
+    }
+
+    #[test]
+    fn nonzero_unary_conditions_preserve_periodic_argument_scale() {
+        let mut ctx = Context::new();
+        let condition = parse("cos((3*x+2)/2)", &mut ctx).expect("parse cos");
+
+        let rendered =
+            render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(condition)]);
+
+        assert_eq!(rendered, vec!["cos((3 * x + 2) / 2) ≠ 0".to_string()]);
     }
 
     #[test]
