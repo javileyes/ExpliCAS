@@ -1,17 +1,30 @@
-use super::presentation_utils::calculus_sqrt_like_radicand;
+use super::gap_presentation::primitive_positive_gap;
+use super::polynomial_support::{
+    nonzero_affine_variable_derivative, polynomial_is_strictly_positive_everywhere,
+    polynomial_radicand_for_calculus_presentation,
+};
+use super::presentation_utils::{
+    calculus_sqrt_like_radicand, scaled_sqrt_argument_for_calculus_presentation, squared_expr,
+};
 use super::scalar_presentation::{
-    add_rational_for_calculus_presentation, scale_expr_for_calculus_presentation,
+    add_rational_for_calculus_presentation,
+    positive_constant_over_inverse_sqrt_arg_for_calculus_presentation,
+    rational_scaled_single_factor_allow_unit, scale_expr_for_calculus_presentation,
     subtract_expr_for_calculus_presentation, subtract_from_one_for_calculus_presentation,
 };
-use super::squared_expr;
-use super::CALCULUS_DOMAIN_PROOF_DEPTH;
+use super::surd_quotient_args::{
+    arctan_self_normalized_surd_quotient_parts, atanh_arg_over_sqrt_parts,
+};
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use cas_math::expr_predicates::contains_named_var;
+use cas_math::polynomial::Polynomial;
 use cas_math::root_forms::extract_square_root_base;
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
+
+const CALCULUS_DOMAIN_PROOF_DEPTH: usize = 12;
 
 fn nonfinite_or_undefined_calculus_target(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -74,8 +87,42 @@ pub(crate) fn diff_target_known_undefined_over_reals(
         || sqrt_known_empty_positive_domain(ctx, target, var_name)
 }
 
+pub(super) fn shifted_sqrt_product_required_conditions(
+    radicand: ExprId,
+    shift: &BigRational,
+    shifted_sqrt: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    let mut required_conditions = vec![crate::ImplicitCondition::Positive(radicand)];
+    if !shift.is_positive() {
+        required_conditions.push(crate::ImplicitCondition::NonZero(shifted_sqrt));
+    }
+    required_conditions
+}
+
+pub(super) fn positive_polynomial_radicand_required_conditions(
+    radicand: ExprId,
+    radicand_poly: &Polynomial,
+) -> Vec<crate::ImplicitCondition> {
+    if polynomial_is_strictly_positive_everywhere(radicand_poly) {
+        Vec::new()
+    } else {
+        vec![crate::ImplicitCondition::Positive(radicand)]
+    }
+}
+
+pub(super) fn positive_polynomial_radicand_and_nonzero_required_conditions(
+    radicand: ExprId,
+    radicand_poly: &Polynomial,
+    nonzero_witness: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    let mut required_conditions =
+        positive_polynomial_radicand_required_conditions(radicand, radicand_poly);
+    required_conditions.push(crate::ImplicitCondition::NonZero(nonzero_witness));
+    required_conditions
+}
+
 pub(super) fn atanh_open_interval_condition(ctx: &mut Context, arg: ExprId) -> ExprId {
-    if let Some((num, radicand)) = super::atanh_arg_over_sqrt_parts(ctx, arg) {
+    if let Some((num, radicand)) = atanh_arg_over_sqrt_parts(ctx, arg) {
         let num_square = squared_expr(ctx, num);
         return ctx.add(Expr::Sub(radicand, num_square));
     }
@@ -168,7 +215,7 @@ fn denominator_scaled_sqrt_open_interval_parts(
             Some((radicand, denominator, sqrt_scale))
         }
         Expr::Mul(_, _) => {
-            let (outer_scale, inner) = super::rational_scaled_single_factor_allow_unit(ctx, arg)?;
+            let (outer_scale, inner) = rational_scaled_single_factor_allow_unit(ctx, arg)?;
             if outer_scale.is_one() {
                 return None;
             }
@@ -180,8 +227,7 @@ fn denominator_scaled_sqrt_open_interval_parts(
             if cas_ast::views::as_rational_const(ctx, den, 8).is_some() {
                 return None;
             }
-            let (radicand, sqrt_scale) =
-                super::scaled_sqrt_argument_for_calculus_presentation(ctx, num)?;
+            let (radicand, sqrt_scale) = scaled_sqrt_argument_for_calculus_presentation(ctx, num)?;
             Some((radicand, den, sqrt_scale))
         }
         _ => None,
@@ -271,7 +317,7 @@ pub(super) fn atanh_diff_required_conditions(
         return Vec::new();
     }
     let open_interval = if let Some((numerator_value, denominator)) =
-        super::positive_constant_over_inverse_sqrt_arg_for_calculus_presentation(ctx, arg)
+        positive_constant_over_inverse_sqrt_arg_for_calculus_presentation(ctx, arg)
     {
         add_rational_for_calculus_presentation(ctx, denominator, -numerator_value)
     } else {
@@ -289,10 +335,9 @@ pub(super) fn atanh_self_normalized_surd_quotient_positive_gap(
         Expr::Neg(inner) => inner,
         _ => arg,
     };
-    let (num, radicand) = super::arctan_self_normalized_surd_quotient_parts(ctx, arg)?;
-    let num_poly = super::polynomial_radicand_for_calculus_presentation(ctx, num, var_name)?;
-    let radicand_poly =
-        super::polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
+    let (num, radicand) = arctan_self_normalized_surd_quotient_parts(ctx, arg)?;
+    let num_poly = polynomial_radicand_for_calculus_presentation(ctx, num, var_name)?;
+    let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
     let gap_poly = radicand_poly.sub(&num_poly.mul(&num_poly));
     if gap_poly.degree() != 0 {
         return None;
@@ -377,6 +422,33 @@ pub(super) fn reciprocal_trig_diff_required_conditions(
     vec![crate::ImplicitCondition::NonZero(denominator)]
 }
 
+pub(super) fn inverse_reciprocal_trig_affine_abs_required_conditions(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Vec<crate::ImplicitCondition> {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return vec![];
+    };
+    match ctx.builtin_of(*fn_id) {
+        Some(BuiltinFn::Arcsec | BuiltinFn::Asec | BuiltinFn::Arccsc | BuiltinFn::Acsc) => {}
+        _ => return vec![],
+    }
+    if args.len() != 1 {
+        return vec![];
+    }
+
+    let arg = args[0];
+    if nonzero_affine_variable_derivative(ctx, arg, var_name).is_none() {
+        return vec![];
+    }
+    let arg_sq = squared_expr(ctx, arg);
+    let one = ctx.num(1);
+    let raw_gap = ctx.add(Expr::Sub(arg_sq, one));
+    let (gap, _) = primitive_positive_gap(ctx, raw_gap);
+    vec![crate::ImplicitCondition::Positive(gap)]
+}
+
 fn reciprocal_trig_diff_pole_display_arg(ctx: &mut Context, arg: ExprId) -> ExprId {
     calculus_sqrt_like_radicand(ctx, arg)
         .map(|radicand| ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]))
@@ -388,14 +460,14 @@ fn reciprocal_trig_diff_pole_arg_needs_explicit_condition(
     arg: ExprId,
     var_name: &str,
 ) -> bool {
-    if super::nonzero_affine_variable_derivative(ctx, arg, var_name).is_some() {
+    if nonzero_affine_variable_derivative(ctx, arg, var_name).is_some() {
         return true;
     }
 
     let Some(radicand) = calculus_sqrt_like_radicand(ctx, arg) else {
         return false;
     };
-    super::polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)
+    polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)
         .map(|poly| !poly.derivative().is_zero())
         .unwrap_or(false)
 }

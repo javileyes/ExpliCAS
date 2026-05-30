@@ -1,9 +1,23 @@
 use cas_ast::ordering::compare_expr;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
 use cas_math::root_forms::extract_square_root_base;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
+
+pub(super) fn unwrap_internal_hold_for_calculus(ctx: &mut Context, target: ExprId) -> ExprId {
+    cas_ast::hold::strip_all_holds(ctx, target)
+}
+
+pub(super) fn squared_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    ctx.add(Expr::Pow(expr, two))
+}
+
+pub(super) fn sqrt_raw_for_calculus_presentation(ctx: &mut Context, radicand: ExprId) -> ExprId {
+    let fn_id = ctx.builtin_id(BuiltinFn::Sqrt);
+    ctx.add_raw(Expr::Function(fn_id, vec![radicand]))
+}
 
 pub(super) fn positive_rational_scale_between_exprs(
     ctx: &mut Context,
@@ -145,6 +159,53 @@ pub(super) fn calculus_sqrt_like_radicand(ctx: &Context, expr: ExprId) -> Option
     })
 }
 
+pub(super) fn scaled_sqrt_argument_for_calculus_presentation(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, BigRational)> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    if let Some(radicand) = calculus_sqrt_like_radicand(ctx, expr) {
+        return Some((radicand, BigRational::one()));
+    }
+
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            let (radicand, scale) = scaled_sqrt_argument_for_calculus_presentation(ctx, *inner)?;
+            Some((radicand, -scale))
+        }
+        Expr::Div(num, den) => {
+            let den_scale = cas_ast::views::as_rational_const(ctx, *den, 8)?;
+            if den_scale.is_zero() {
+                return None;
+            }
+            let (radicand, num_scale) = scaled_sqrt_argument_for_calculus_presentation(ctx, *num)?;
+            Some((radicand, num_scale / den_scale))
+        }
+        Expr::Mul(_, _) => {
+            let mut scale = BigRational::one();
+            let mut radicand = None;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+                    scale *= value;
+                    continue;
+                }
+
+                if radicand.is_none() {
+                    if let Some(base) = calculus_sqrt_like_radicand(ctx, factor) {
+                        radicand = Some(base);
+                        continue;
+                    }
+                }
+
+                return None;
+            }
+
+            Some((radicand?, scale))
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn same_sqrt_like_argument(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
     if compare_expr(ctx, left, right) == std::cmp::Ordering::Equal {
         return true;
@@ -156,6 +217,24 @@ pub(super) fn same_sqrt_like_argument(ctx: &mut Context, left: ExprId, right: Ex
         return false;
     };
     compare_expr(ctx, left_base, right_base) == std::cmp::Ordering::Equal
+}
+
+pub(super) fn multiply_by_sqrt_factor_for_calculus_presentation(
+    ctx: &mut Context,
+    factor: ExprId,
+    radicand: ExprId,
+) -> ExprId {
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+        if value.is_one() {
+            return sqrt_radicand;
+        }
+        if value == -BigRational::one() {
+            return ctx.add(Expr::Neg(sqrt_radicand));
+        }
+    }
+
+    cas_math::expr_nary::build_balanced_mul(ctx, &[factor, sqrt_radicand])
 }
 
 pub(super) fn rational_const_for_hold(ctx: &Context, expr: ExprId) -> Option<BigRational> {

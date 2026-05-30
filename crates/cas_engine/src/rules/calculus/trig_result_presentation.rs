@@ -1,5 +1,5 @@
+use super::presentation_utils::unwrap_internal_hold_for_calculus;
 use super::scalar_presentation::scale_expr_for_calculus_presentation;
-use super::unwrap_internal_hold_for_calculus;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
