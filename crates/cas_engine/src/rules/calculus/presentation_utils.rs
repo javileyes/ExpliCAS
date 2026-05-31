@@ -9,6 +9,10 @@ pub(super) fn unwrap_internal_hold_for_calculus(ctx: &mut Context, target: ExprI
     cas_ast::hold::strip_all_holds(ctx, target)
 }
 
+pub(super) fn variable_named(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
+    matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var_name)
+}
+
 pub(super) fn squared_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
     let two = ctx.num(2);
     ctx.add(Expr::Pow(expr, two))

@@ -87,6 +87,18 @@ pub(crate) fn diff_target_known_undefined_over_reals(
         || sqrt_known_empty_positive_domain(ctx, target, var_name)
 }
 
+pub(super) fn diff_target_known_undefined_or_empty_domain_over_reals(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    diff_target_known_undefined_over_reals(ctx, target, var_name)
+        || atanh_known_empty_open_interval_gap(ctx, target).is_some()
+        || inverse_reciprocal_trig_bounded_trig_empty_open_interval_gap(ctx, target, var_name)
+            .is_some()
+        || bounded_inverse_trig_known_empty_open_interval_gap(ctx, target, var_name).is_some()
+}
+
 pub(super) fn shifted_sqrt_product_required_conditions(
     radicand: ExprId,
     shift: &BigRational,
@@ -554,6 +566,33 @@ pub(super) fn zero_base_variable_exponent_diff_required_conditions(
     } else {
         Vec::new()
     }
+}
+
+pub(super) fn reciprocal_trig_and_log_diff_required_conditions(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Vec<crate::ImplicitCondition> {
+    reciprocal_trig_diff_required_conditions(ctx, target, var_name)
+        .into_iter()
+        .chain(log_reciprocal_abs_or_sqrt_negative_even_power_diff_required_conditions(ctx, target))
+        .collect()
+}
+
+pub(super) fn diff_required_conditions_for_target(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Vec<crate::ImplicitCondition> {
+    atanh_diff_required_conditions(ctx, target, var_name)
+        .into_iter()
+        .chain(reciprocal_trig_and_log_diff_required_conditions(
+            ctx, target, var_name,
+        ))
+        .chain(zero_base_variable_exponent_diff_required_conditions(
+            ctx, target, var_name,
+        ))
+        .collect()
 }
 
 fn zero_base_variable_exponent_positive_domain_is_empty(
