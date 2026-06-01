@@ -1,8 +1,8 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-31T11:23:22.872034+00:00
+- Generated: 2026-06-01T05:33:37.675590+00:00
 - Git branch: main
-- Git commit: `9e8659da74cc04894f131e276b62ce0fa1860e66`
+- Git commit: `990006e12568e9b737b3ff13b8dbcb7e5eee83ad`
 - Profile: `fast`
 
 ## Generated Discovery Ledger
@@ -61,14 +61,14 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `simplify_add_small` | `pass` | 2.36s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=435 (100.0%) timeouts=0 |
-| `contextual_strict_fast` | `pass` | 29.58s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=64 (100.0%) timeouts=0 |
-| `contextual_radical_fast` | `pass` | 0.17s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=15 (100.0%) timeouts=0 |
-| `calculus_diff_contract` | `pass` | 16.64s | passed=263 failed=0 ignored=1 |
-| `calculus_diff_command_matrix_smoke` | `pass` | 1.17s | passed=52 failed=0 total=52 supported=42 residual=0 warning_expected=0 required_display=34 step_checked=52 unchecked_supported_steps=0 families=24 |
-| `calculus_limit_compact_contract` | `pass` | 18.77s | passed=1 failed=0 |
-| `calculus_limit_presimplify_contract` | `pass` | 0.65s | passed=8 failed=0 |
-| `calculus_limit_command_matrix_smoke` | `pass` | 0.46s | passed=84 failed=0 total=84 supported=63 residual=20 warning_expected=20 required_display=52 step_checked=84 unchecked_supported_steps=0 families=37 |
-| `calculus_integrate_compact_contract` | `pass` | 7.46s | passed=1 failed=0 |
-| `calculus_integrate_command_matrix_smoke` | `pass` | 4.26s | passed=96 failed=0 total=96 supported=85 residual=9 warning_expected=0 required_display=69 step_checked=96 unchecked_supported_steps=0 antiderivative_verified=85 families=45 |
-| `calculus_residual_matrix_smoke` | `pass` | 6.14s | passed=730 failed=0 total=730 conditioned=723 conditions=20 total_bases=81 wrapped_bases=59 standalone_bases=22 wrappers=12 missing_wrapped_pairs=0 partial_wrapper_bases=0 |
+| `simplify_add_small` | `pass` | 2.61s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=435 (100.0%) timeouts=0 |
+| `contextual_strict_fast` | `pass` | 32.38s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=64 (100.0%) timeouts=0 |
+| `contextual_radical_fast` | `pass` | 0.14s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=15 (100.0%) timeouts=0 |
+| `calculus_diff_contract` | `pass` | 15.57s | passed=263 failed=0 ignored=1 |
+| `calculus_diff_command_matrix_smoke` | `pass` | 1.01s | passed=52 failed=0 total=52 supported=42 residual=0 warning_expected=0 required_display=34 step_checked=52 unchecked_supported_steps=0 families=24 |
+| `calculus_limit_compact_contract` | `pass` | 21.01s | passed=1 failed=0 |
+| `calculus_limit_presimplify_contract` | `pass` | 0.73s | passed=8 failed=0 |
+| `calculus_limit_command_matrix_smoke` | `pass` | 0.78s | passed=84 failed=0 total=84 supported=63 residual=20 warning_expected=20 required_display=52 step_checked=84 unchecked_supported_steps=0 families=37 |
+| `calculus_integrate_compact_contract` | `pass` | 8.88s | passed=1 failed=0 |
+| `calculus_integrate_command_matrix_smoke` | `pass` | 5.35s | passed=96 failed=0 total=96 supported=85 residual=9 warning_expected=0 required_display=69 step_checked=96 unchecked_supported_steps=0 antiderivative_verified=85 families=45 |
+| `calculus_residual_matrix_smoke` | `pass` | 9.42s | passed=730 failed=0 total=730 conditioned=723 conditions=20 total_bases=81 wrapped_bases=59 standalone_bases=22 wrappers=12 missing_wrapped_pairs=0 partial_wrapper_bases=0 |

@@ -182,3 +182,73 @@ fn sqrt_positive_rational_factor_value_for_calculus_presentation(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        compact_acosh_surd_width_arg_for_integration_presentation,
+        compact_rationalized_sqrt_denominator_quotient_for_calculus_presentation,
+    };
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn compact_acosh_surd_width_arg_for_integration_presentation_uses_sqrt_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse("acosh(sqrt(5)*(x^2+x)/5)", &mut ctx).unwrap();
+        let compact =
+            compact_acosh_surd_width_arg_for_integration_presentation(&mut ctx, expr).unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "acosh((x^2 + x) / sqrt(5))");
+
+        let normalized = parse("acosh(1/5*sqrt(5)*(x^2+x))", &mut ctx).unwrap();
+        let compact =
+            compact_acosh_surd_width_arg_for_integration_presentation(&mut ctx, normalized)
+                .unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "acosh((x^2 + x) / sqrt(5))");
+
+        let normalized_power = parse("acosh(1/5*5^(1/2)*(x^2+x))", &mut ctx).unwrap();
+        let compact =
+            compact_acosh_surd_width_arg_for_integration_presentation(&mut ctx, normalized_power)
+                .unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "acosh((x^2 + x) / sqrt(5))");
+
+        let negative_half_power = parse("acosh(5^(-1/2)*(x^2+x))", &mut ctx).unwrap();
+        let compact = compact_acosh_surd_width_arg_for_integration_presentation(
+            &mut ctx,
+            negative_half_power,
+        )
+        .unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "acosh((x^2 + x) / sqrt(5))");
+    }
+
+    #[test]
+    fn compact_rationalized_sqrt_denominator_quotient_uses_sqrt_denominator() {
+        let cases = [
+            (
+                "cos(x)*sqrt(sin(x)+1)/(2*sin(x)+2)",
+                "cos(x) / (2 * sqrt(sin(x) + 1))",
+            ),
+            ("sqrt(ln(x)+1)/(ln(x)+1)", "1 / sqrt(ln(x) + 1)"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).unwrap();
+            let compact = compact_rationalized_sqrt_denominator_quotient_for_calculus_presentation(
+                &mut ctx, expr,
+            )
+            .unwrap();
+
+            assert_eq!(rendered(&ctx, compact), expected, "input: {input}");
+        }
+    }
+}

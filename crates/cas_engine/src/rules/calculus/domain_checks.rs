@@ -26,6 +26,23 @@ use num_traits::{One, Signed, Zero};
 
 const CALCULUS_DOMAIN_PROOF_DEPTH: usize = 12;
 
+pub(super) fn positive_required_conditions_first(
+    required_positive: ExprId,
+    mut required_conditions: Vec<crate::ImplicitCondition>,
+) -> Vec<crate::ImplicitCondition> {
+    required_conditions.insert(0, crate::ImplicitCondition::Positive(required_positive));
+    required_conditions
+}
+
+pub(super) fn append_positive_required_conditions(
+    target: &mut Vec<crate::ImplicitCondition>,
+    required_positive: ExprId,
+    required_conditions: impl IntoIterator<Item = crate::ImplicitCondition>,
+) {
+    target.push(crate::ImplicitCondition::Positive(required_positive));
+    target.extend(required_conditions);
+}
+
 fn nonfinite_or_undefined_calculus_target(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Constant(Constant::Infinity | Constant::Undefined) => true,
@@ -846,5 +863,170 @@ fn variable_dependent_reciprocal_bounded_trig_arg(
             variable_dependent_direct_bounded_trig_arg(ctx, *base, var_name).map(|()| false)
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::{
+        atanh_known_empty_open_interval_gap, atanh_open_interval_condition,
+        bounded_inverse_trig_known_empty_open_interval_gap, diff_target_known_undefined_over_reals,
+    };
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn bounded_inverse_trig_empty_open_interval_gap_detects_root_quadratic() {
+        let mut ctx = Context::new();
+        let target = parse("arcsin(sqrt(x^2+1))", &mut ctx).unwrap();
+        let gap = bounded_inverse_trig_known_empty_open_interval_gap(&mut ctx, target, "x")
+            .expect("empty open interval gap");
+
+        assert_eq!(rendered(&ctx, gap), "-(x^2)");
+
+        let negated_target = parse("-arcsin(sqrt(x^2+1))", &mut ctx).unwrap();
+        let negated_gap =
+            bounded_inverse_trig_known_empty_open_interval_gap(&mut ctx, negated_target, "x")
+                .expect("negated empty open interval gap");
+        assert_eq!(rendered(&ctx, negated_gap), "-(x^2)");
+
+        let shifted_target = parse("arcsin((x+1)^2+1)", &mut ctx).unwrap();
+        assert!(
+            bounded_inverse_trig_known_empty_open_interval_gap(&mut ctx, shifted_target, "x")
+                .is_some()
+        );
+
+        let shifted_negative_target = parse("arccos(-((x+1)^2+1))", &mut ctx).unwrap();
+        assert!(bounded_inverse_trig_known_empty_open_interval_gap(
+            &mut ctx,
+            shifted_negative_target,
+            "x"
+        )
+        .is_some());
+
+        let finite_boundary_target = parse("arccos(-1)", &mut ctx).unwrap();
+        assert!(bounded_inverse_trig_known_empty_open_interval_gap(
+            &mut ctx,
+            finite_boundary_target,
+            "x"
+        )
+        .is_none());
+
+        let symbolic_constant_target = parse("arcsin(pi)", &mut ctx).unwrap();
+        let symbolic_gap = bounded_inverse_trig_known_empty_open_interval_gap(
+            &mut ctx,
+            symbolic_constant_target,
+            "x",
+        )
+        .expect("symbolic constant outside unit interval");
+        assert_eq!(rendered(&ctx, symbolic_gap), "1 - pi^2");
+
+        let negative_symbolic_constant_target = parse("arccos(-e)", &mut ctx).unwrap();
+        assert!(bounded_inverse_trig_known_empty_open_interval_gap(
+            &mut ctx,
+            negative_symbolic_constant_target,
+            "x"
+        )
+        .is_some());
+
+        let shifted_symbolic_constant_target = parse("pi - arccos(e)", &mut ctx).unwrap();
+        assert!(bounded_inverse_trig_known_empty_open_interval_gap(
+            &mut ctx,
+            shifted_symbolic_constant_target,
+            "x"
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn atanh_empty_open_interval_gap_detects_direct_quadratic_and_wrappers() {
+        let mut ctx = Context::new();
+        let target = parse("atanh(x^2+1)", &mut ctx).unwrap();
+        let gap =
+            atanh_known_empty_open_interval_gap(&mut ctx, target).expect("empty interval gap");
+
+        assert_eq!(rendered(&ctx, gap), "-x^4 - 2 * x^2");
+
+        let scaled_target = parse("2*atanh(x^2+1)", &mut ctx).unwrap();
+        let scaled_gap = atanh_known_empty_open_interval_gap(&mut ctx, scaled_target)
+            .expect("scaled empty interval gap");
+        assert_eq!(rendered(&ctx, scaled_gap), "-x^4 - 2 * x^2");
+
+        let shifted_target = parse("atanh((x+1)^2+1)", &mut ctx).unwrap();
+        assert!(atanh_known_empty_open_interval_gap(&mut ctx, shifted_target).is_some());
+
+        let symbolic_constant_target = parse("atanh(pi)", &mut ctx).unwrap();
+        let symbolic_gap = atanh_known_empty_open_interval_gap(&mut ctx, symbolic_constant_target)
+            .expect("symbolic constant outside open interval");
+        assert_eq!(rendered(&ctx, symbolic_gap), "1 - pi^2");
+    }
+
+    #[test]
+    fn atanh_open_interval_condition_compacts_scaled_shifted_sqrt_arg() {
+        let mut ctx = Context::new();
+        let arg = parse("a*sqrt(x+1)", &mut ctx).unwrap();
+        let condition = atanh_open_interval_condition(&mut ctx, arg);
+
+        assert_eq!(rendered(&ctx, condition), "1 - a^2 * x - a^2");
+    }
+
+    #[test]
+    fn atanh_open_interval_condition_compacts_symbolic_denominator_scaled_sqrt_arg() {
+        let mut ctx = Context::new();
+        let arg = parse("sqrt(x+1)/a", &mut ctx).unwrap();
+        let condition = atanh_open_interval_condition(&mut ctx, arg);
+
+        assert_eq!(rendered(&ctx, condition), "a^2 - x - 1");
+    }
+
+    #[test]
+    fn atanh_open_interval_condition_compacts_external_denominator_scaled_sqrt_arg() {
+        let mut ctx = Context::new();
+        let arg = parse("2*sqrt(x+1)/a", &mut ctx).unwrap();
+        let condition = atanh_open_interval_condition(&mut ctx, arg);
+
+        assert_eq!(rendered(&ctx, condition), "a^2 - 4 * x - 4");
+    }
+
+    #[test]
+    fn diff_target_known_undefined_over_reals_detects_nonfinite_log_and_root_domains() {
+        let mut ctx = Context::new();
+        for source in [
+            "-infinity",
+            "ln(0)",
+            "log2(0)",
+            "log(2, 0)",
+            "log(1, 2)",
+            "log(1, x)",
+            "log(-2, x)",
+        ] {
+            let target = parse(source, &mut ctx).unwrap();
+            assert!(
+                diff_target_known_undefined_over_reals(&mut ctx, target, "x"),
+                "source: {source}"
+            );
+        }
+
+        for source in ["sqrt(-1)", "sqrt(-x^2-1)", "sqrt(-x^2)"] {
+            let target = parse(source, &mut ctx).unwrap();
+            assert!(
+                diff_target_known_undefined_over_reals(&mut ctx, target, "x"),
+                "source: {source}"
+            );
+        }
+
+        for source in ["sqrt(0)", "sqrt(4)", "ln(1)", "log2(1)", "log(2, 1)"] {
+            let target = parse(source, &mut ctx).unwrap();
+            assert!(
+                !diff_target_known_undefined_over_reals(&mut ctx, target, "x"),
+                "source: {source}"
+            );
+        }
     }
 }

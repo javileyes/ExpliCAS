@@ -116,6 +116,31 @@ pub(super) fn rational_scaled_single_factor(
     Some((scale, *inner))
 }
 
+pub(super) fn split_numeric_scale_single_core(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        let den_scale = cas_ast::views::as_rational_const(ctx, den, 8)?;
+        if den_scale.is_zero() {
+            return None;
+        }
+        let (num_scale, core) = split_numeric_scale_single_core(ctx, num)?;
+        return Some((num_scale / den_scale, core));
+    }
+    let mut scale = BigRational::one();
+    let mut core = None;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+            scale *= value;
+        } else if core.replace(factor).is_some() {
+            return None;
+        }
+    }
+    Some((scale, core.unwrap_or(expr)))
+}
+
 pub(super) fn split_outer_numeric_mul_for_calculus_presentation(
     ctx: &mut Context,
     expr: ExprId,
@@ -804,4 +829,67 @@ pub(super) fn scale_expr_by_sqrt_positive_rational_for_calculus_presentation(
         return scale_expr_for_calculus_presentation(ctx, expr_value, sqrt_scale);
     }
     cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_scale, expr])
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::{
+        fold_numeric_mul_constants_for_hold, fold_numeric_mul_constants_for_hold_additive_terms,
+    };
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn fold_numeric_mul_constants_for_hold_collapses_rational_noise() {
+        let mut ctx = Context::new();
+        let expr = parse("(atanh(x^2/sqrt(3)) * 1/2 * 2)/sqrt(3)", &mut ctx).unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, expr);
+
+        assert_eq!(rendered(&ctx, folded), "atanh(x^2 / sqrt(3)) / sqrt(3)");
+    }
+
+    #[test]
+    fn fold_numeric_mul_constants_for_hold_absorbs_outer_scale_into_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("2 * ((atanh(x^2/sqrt(3))/2)/sqrt(3))", &mut ctx).unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, expr);
+
+        assert_eq!(rendered(&ctx, folded), "atanh(x^2 / sqrt(3)) / sqrt(3)");
+    }
+
+    #[test]
+    fn fold_numeric_mul_constants_for_hold_extracts_scaled_sqrt_square_factor() {
+        let mut ctx = Context::new();
+        let expr = parse("25*sqrt(12/25)", &mut ctx).unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, expr);
+
+        assert_eq!(rendered(&ctx, folded), "10 * sqrt(3)");
+    }
+
+    #[test]
+    fn fold_numeric_mul_constants_for_hold_keeps_fractional_denominator_scale() {
+        let mut ctx = Context::new();
+        let expr = parse("-1/(3*(x^2+x-1))", &mut ctx).unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, expr);
+
+        assert_eq!(rendered(&ctx, folded), "-1 / (3 * (x^2 + x - 1))");
+    }
+
+    #[test]
+    fn fold_numeric_mul_constants_for_hold_additive_terms_recurses_into_terms() {
+        let mut ctx = Context::new();
+        let expr = parse("1/2*ln(abs(x+1)) + 1/2*(x^2/2) - 1/2*x", &mut ctx).unwrap();
+        let folded = fold_numeric_mul_constants_for_hold_additive_terms(&mut ctx, expr);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "1/2 * ln(|x + 1|) + 1/4 * x^2 - 1/2 * x"
+        );
+    }
 }

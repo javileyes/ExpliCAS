@@ -100,3 +100,19 @@ pub(super) fn constant_scaled_unit_interval_bounded_inverse_trig_shifted_sqrt_de
 
     Some(scale_compact_derivative_by_rational(ctx, derivative, scale))
 }
+
+pub(super) fn unit_interval_bounded_inverse_trig_shifted_sqrt_family_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some(compact) = unit_interval_bounded_inverse_trig_shifted_sqrt_derivative_presentation(
+        ctx, target, var_name,
+    ) {
+        return Some(compact);
+    }
+
+    constant_scaled_unit_interval_bounded_inverse_trig_shifted_sqrt_derivative_presentation(
+        ctx, target, var_name,
+    )
+}

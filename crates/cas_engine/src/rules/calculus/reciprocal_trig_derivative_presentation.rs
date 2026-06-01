@@ -212,6 +212,20 @@ pub(super) fn scaled_reciprocal_trig_power_derivative_presentation(
     ))
 }
 
+pub(super) fn direct_reciprocal_trig_post_calculus_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some(compact) =
+        scaled_reciprocal_trig_power_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+
+    reciprocal_trig_affine_derivative_presentation(ctx, target, var_name)
+}
+
 fn shifted_sqrt_reciprocal_trig_factor(
     ctx: &Context,
     factor: ExprId,

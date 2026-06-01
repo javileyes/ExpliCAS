@@ -14,10 +14,9 @@ use super::presentation_utils::unwrap_internal_hold_for_calculus;
 use super::scalar_presentation::{
     add_rational_for_calculus_presentation, nonzero_rational_parts,
     rational_const_for_calculus_presentation, scale_expr_for_calculus_presentation,
-    sqrt_positive_rational_expr_for_calculus_presentation,
+    split_numeric_scale_single_core, sqrt_positive_rational_expr_for_calculus_presentation,
 };
 use super::shifted_sqrt_args::supported_sqrt_shift_constant_parts;
-use super::split_numeric_scale_single_core;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use cas_math::polynomial::Polynomial;
 use cas_math::root_forms::extract_square_root_base;
@@ -217,6 +216,28 @@ pub(super) fn ln_sqrt_positive_shift_nonpolynomial_derivative_presentation(
         cas_ast::hold::wrap_hold(ctx, compact),
         vec![crate::ImplicitCondition::Positive(radicand)],
     ))
+}
+
+pub(super) fn log_root_post_calculus_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some(compact) = ln_sqrt_shift_derivative_presentation(ctx, target, var_name) {
+        return Some(compact);
+    }
+    if let Some((compact, _)) =
+        ln_sqrt_positive_shift_nonpolynomial_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        ln_sum_of_equal_derivative_roots_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+
+    ln_sqrt_polynomial_gap_derivative_presentation(ctx, target, var_name)
 }
 
 pub(super) fn ln_sum_of_equal_derivative_roots_derivative_presentation(
@@ -648,5 +669,33 @@ fn shifted_root_log_term_arg(ctx: &mut Context, expr: ExprId) -> Option<(ExprId,
             Some((args[0], Some(ctx.call_builtin(BuiltinFn::Ln, vec![ten]))))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::ln_sum_of_equal_derivative_roots_derivative_presentation;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn ln_sum_of_equal_derivative_roots_presentation_accepts_scaled_affines() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(sqrt(2*x+1)+sqrt(2*x+3))", &mut ctx).unwrap();
+        let compact = ln_sum_of_equal_derivative_roots_derivative_presentation(&mut ctx, expr, "x")
+            .unwrap_or_else(|| {
+                panic!("scaled affine equal-derivative root sum should be recognized")
+            });
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "1 / (sqrt(2 * x + 1) * sqrt(2 * x + 3))"
+        );
     }
 }

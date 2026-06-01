@@ -11,6 +11,16 @@ use super::direct_trig_affine_integrand_presentation::expr_contains_direct_trig_
 use super::fractional_denominator_power_integrand_preservation::fractional_denominator_power_substitution_integrand_for_calculus_presentation;
 use super::integration::{integrate, IntegrationRequiredConditions};
 use super::inverse_sqrt_product_integrand_presentation::compact_inverse_sqrt_product_integrand_for_calculus_presentation;
+use super::inverse_sqrt_product_integrand_preservation::{
+    affine_sqrt_product_derivative_integrand_for_calculus_presentation,
+    arcsin_inverse_sqrt_product_integrand_for_calculus_presentation,
+};
+use super::sqrt_chain_integrand_preservation::{
+    sqrt_hyperbolic_log_integrand_for_calculus_presentation,
+    sqrt_hyperbolic_reciprocal_derivative_integrand_for_calculus_presentation,
+    sqrt_hyperbolic_reciprocal_square_integrand_for_calculus_presentation,
+    sqrt_trig_log_integrand_for_calculus_presentation,
+};
 use super::sqrt_reciprocal_trig_product_integrand_presentation::sqrt_reciprocal_trig_product_integrand_target;
 use super::sqrt_trig_log_integrand_presentation::{
     compact_direct_sqrt_trig_log_derivative_integrand, compact_sqrt_trig_log_derivative_integrand,
@@ -57,11 +67,10 @@ pub(super) fn supported_integral_derivative_presentation(
         return verified_source_integrand_target(ctx, integrate_call.target, &integrate_call.var_name);
     }
 
-    let supported_sqrt_chain_log_target =
-        cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_log_derivative_target(
-            ctx,
-            integrate_call.target,
-            &integrate_call.var_name,
+    let supported_sqrt_chain_log_target = sqrt_hyperbolic_log_integrand_for_calculus_presentation(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
     );
     if supported_sqrt_chain_log_target {
         return verified_source_integrand_target(
@@ -71,20 +80,28 @@ pub(super) fn supported_integral_derivative_presentation(
         );
     }
 
-    if cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_square_target(
+    if sqrt_hyperbolic_reciprocal_square_integrand_for_calculus_presentation(
         ctx,
         integrate_call.target,
         &integrate_call.var_name,
     ) {
-        return verified_source_integrand_target(ctx, integrate_call.target, &integrate_call.var_name);
+        return verified_source_integrand_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        );
     }
 
-    if cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_derivative_target(
+    if sqrt_hyperbolic_reciprocal_derivative_integrand_for_calculus_presentation(
         ctx,
         integrate_call.target,
         &integrate_call.var_name,
     ) {
-        return verified_source_integrand_target(ctx, integrate_call.target, &integrate_call.var_name);
+        return verified_source_integrand_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        );
     }
 
     if cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
@@ -139,23 +156,21 @@ pub(super) fn supported_integral_derivative_presentation(
         return verified_source_integrand_target(ctx, integrate_call.target, &integrate_call.var_name);
     }
 
-    if cas_math::symbolic_integration_support::integrate_symbolic_is_arcsin_inverse_sqrt_product_target(
+    if arcsin_inverse_sqrt_product_integrand_for_calculus_presentation(
         ctx,
         integrate_call.target,
         &integrate_call.var_name,
     ) {
-        if let Some(compact) =
-            compact_inverse_sqrt_product_integrand_for_calculus_presentation(
-                ctx,
-                integrate_call.target,
-            )
-        {
+        if let Some(compact) = compact_inverse_sqrt_product_integrand_for_calculus_presentation(
+            ctx,
+            integrate_call.target,
+        ) {
             return Some(cas_ast::hold::wrap_hold(ctx, compact));
         }
         return Some(cas_ast::hold::wrap_hold(ctx, integrate_call.target));
     }
 
-    if cas_math::symbolic_integration_support::integrate_symbolic_is_affine_sqrt_product_derivative_target(
+    if affine_sqrt_product_derivative_integrand_for_calculus_presentation(
         ctx,
         integrate_call.target,
         &integrate_call.var_name,
@@ -222,7 +237,7 @@ pub(super) fn supported_integral_derivative_presentation(
         return Some(compact);
     }
 
-    if cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_log_derivative_target(
+    if sqrt_trig_log_integrand_for_calculus_presentation(
         ctx,
         integrate_call.target,
         &integrate_call.var_name,

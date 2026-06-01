@@ -149,6 +149,23 @@ pub(super) fn constant_scaled_acosh_sqrt_polynomial_derivative_presentation(
     )
 }
 
+pub(super) fn acosh_sqrt_family_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some(compact) =
+        scaled_acosh_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) = acosh_sqrt_polynomial_derivative_presentation(ctx, target, var_name) {
+        return Some(compact);
+    }
+
+    constant_scaled_acosh_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+}
+
 pub(super) fn acosh_sqrt_shifted_quadratic_derivative_presentation(
     ctx: &mut Context,
     target: ExprId,

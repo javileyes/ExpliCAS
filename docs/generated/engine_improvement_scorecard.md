@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-31T11:24:54.431595+00:00
+- Generated: 2026-06-01T05:35:20.473590+00:00
 - Git branch: main
-- Git commit: `9e8659da74cc04894f131e276b62ce0fa1860e66`
+- Git commit: `990006e12568e9b737b3ff13b8dbcb7e5eee83ad`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 10.02s
-- Per-case runtime: 6.734ms/case
+- Elapsed: 10.89s
+- Per-case runtime: 7.319ms/case
 - Coverage axes: 7 wrappers across 27 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 19.8%
@@ -72,9 +72,9 @@
 - Outcomes: cases=472 flagged=0 flagged_rate=0.0%
 - Substeps: total_web_substeps=485 mean_step_count=1.06
 - Flags: no_web_substeps=0 no_web_steps=0
-- Runtime split: artifacts=0.85s cli=0.80s report=0.00s total=1.65s workers=4
-- Runtime family hotspots: artifacts=expand:1.212,rationalize:0.488,solve_prep:0.177,finite_telescoping:0.174,trig_contract:0.167,factor:0.164 cli=expand:1.205,rationalize:0.485,factor:0.161,trig_contract:0.161,solve_prep:0.157,finite_telescoping:0.153
-- Runtime case hotspots: artifacts=expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.541,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.515,rationalize_symbolic_linear_root_alt_var:0.199,rationalize_symbolic_linear_root:0.199,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.084,factor_geometric_difference_power_6:0.062 cli=expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.536,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.514,rationalize_symbolic_linear_root_alt_var:0.199,rationalize_symbolic_linear_root:0.198,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.084,factor_geometric_difference_power_6:0.063
+- Runtime split: artifacts=0.87s cli=0.82s report=0.00s total=1.69s workers=4
+- Runtime family hotspots: artifacts=expand:1.253,rationalize:0.508,solve_prep:0.185,finite_telescoping:0.182,factor:0.169,trig_contract:0.169 cli=expand:1.247,rationalize:0.504,solve_prep:0.166,factor:0.163,trig_contract:0.163,finite_telescoping:0.157
+- Runtime case hotspots: artifacts=expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.556,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.536,rationalize_symbolic_linear_root:0.207,rationalize_symbolic_linear_root_alt_var:0.206,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.086,factor_geometric_difference_power_6:0.064 cli=expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.555,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.532,rationalize_symbolic_linear_root:0.207,rationalize_symbolic_linear_root_alt_var:0.205,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.086,factor_geometric_difference_power_6:0.062
 
 ## Simplify Didactic Trace Audit
 
@@ -147,17 +147,17 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 10.02s | passed=1488 failed=0 total=1488 wrappers=7 families=27 avg_case=6.734ms |
-| `derive_contract` | `pass` | 1.92s | derived=390 unsupported=0 expected_not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 single_step=371 multi_step_ids=19 max_step=3 |
-| `derive_shadow_pressure` | `pass` | 0.24s | sampled=67 derived=67 unsupported=0 not_equivalent=0 mean_step_count=1.09 generic_simplify_strategy_successes=0 single_step=62 multi_step_ids=5 max_step=4 embedded_families=26/26 |
-| `derive_didactic_audit` | `pass` | 18.95s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 artifacts=0.85s cli=0.80s workers=4 top_artifact_family=expand:1.212 top_cli_family=expand:1.205 |
-| `simplify_didactic_audit` | `pass` | 0.94s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
-| `simplify_strict` | `pass` | 21.26s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
-| `calculus_diff_contract` | `pass` | 2.94s | passed=263 failed=0 ignored=1 |
-| `calculus_diff_command_matrix_smoke` | `pass` | 0.88s | passed=52 failed=0 total=52 supported=42 residual=0 warning_expected=0 required_display=34 step_checked=52 unchecked_supported_steps=0 families=24 |
-| `calculus_limit_contract` | `pass` | 0.58s | passed=185 failed=0 |
+| `embedded_equivalence_context` | `pass` | 10.89s | passed=1488 failed=0 total=1488 wrappers=7 families=27 avg_case=7.319ms |
+| `derive_contract` | `pass` | 2.20s | derived=390 unsupported=0 expected_not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 single_step=371 multi_step_ids=19 max_step=3 |
+| `derive_shadow_pressure` | `pass` | 0.30s | sampled=67 derived=67 unsupported=0 not_equivalent=0 mean_step_count=1.09 generic_simplify_strategy_successes=0 single_step=62 multi_step_ids=5 max_step=4 embedded_families=26/26 |
+| `derive_didactic_audit` | `pass` | 27.52s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 artifacts=0.87s cli=0.82s workers=4 top_artifact_family=expand:1.253 top_cli_family=expand:1.247 |
+| `simplify_didactic_audit` | `pass` | 0.99s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
+| `simplify_strict` | `pass` | 21.07s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
+| `calculus_diff_contract` | `pass` | 2.88s | passed=263 failed=0 ignored=1 |
+| `calculus_diff_command_matrix_smoke` | `pass` | 0.95s | passed=52 failed=0 total=52 supported=42 residual=0 warning_expected=0 required_display=34 step_checked=52 unchecked_supported_steps=0 families=24 |
+| `calculus_limit_contract` | `pass` | 0.57s | passed=185 failed=0 |
 | `calculus_limit_presimplify_contract` | `pass` | 0.34s | passed=8 failed=0 |
-| `calculus_limit_command_matrix_smoke` | `pass` | 0.47s | passed=84 failed=0 total=84 supported=63 residual=20 warning_expected=20 required_display=52 step_checked=84 unchecked_supported_steps=0 families=37 |
-| `calculus_integrate_command_matrix_smoke` | `pass` | 4.30s | passed=96 failed=0 total=96 supported=85 residual=9 warning_expected=0 required_display=69 step_checked=96 unchecked_supported_steps=0 antiderivative_verified=85 families=45 |
-| `calculus_residual_matrix_smoke` | `pass` | 6.15s | passed=730 failed=0 total=730 conditioned=723 conditions=20 total_bases=81 wrapped_bases=59 standalone_bases=22 wrappers=12 missing_wrapped_pairs=0 partial_wrapper_bases=0 |
-| `calculus_integrate_contract` | `pass` | 4.06s | passed=340 failed=0 ignored=1 |
+| `calculus_limit_command_matrix_smoke` | `pass` | 0.49s | passed=84 failed=0 total=84 supported=63 residual=20 warning_expected=20 required_display=52 step_checked=84 unchecked_supported_steps=0 families=37 |
+| `calculus_integrate_command_matrix_smoke` | `pass` | 4.18s | passed=96 failed=0 total=96 supported=85 residual=9 warning_expected=0 required_display=69 step_checked=96 unchecked_supported_steps=0 antiderivative_verified=85 families=45 |
+| `calculus_residual_matrix_smoke` | `pass` | 5.91s | passed=730 failed=0 total=730 conditioned=723 conditions=20 total_bases=81 wrapped_bases=59 standalone_bases=22 wrappers=12 missing_wrapped_pairs=0 partial_wrapper_bases=0 |
+| `calculus_integrate_contract` | `pass` | 4.12s | passed=340 failed=0 ignored=1 |

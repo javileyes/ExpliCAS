@@ -245,3 +245,97 @@ pub(super) fn arctan_self_normalized_surd_reciprocal_compact_derivative(
         crate::ImplicitCondition::NonZero(denominator_arg),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::{
+        arctan_self_normalized_surd_quotient_compact_derivative,
+        arctan_self_normalized_surd_reciprocal_compact_derivative,
+        arctan_surd_quotient_compact_derivative, arctan_surd_quotient_scaled_compact_derivative,
+        constant_scaled_arctan_surd_quotient_scaled_compact_derivative,
+    };
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn arctan_surd_quotient_scaled_compact_derivative_avoids_rationalized_route() {
+        let mut ctx = Context::new();
+        let expr = parse("arctan((2*x+2)/sqrt(6))/sqrt(6)", &mut ctx).unwrap();
+        let derivative =
+            arctan_surd_quotient_scaled_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, derivative), "2 / ((2 * x + 2)^2 + 6)");
+    }
+
+    #[test]
+    fn constant_scaled_arctan_surd_quotient_scaled_derivative_reuses_compact_route() {
+        let mut ctx = Context::new();
+        let expr = parse("7*arctan((2*x+1)/sqrt(3))/sqrt(3)", &mut ctx).unwrap();
+        let derivative =
+            constant_scaled_arctan_surd_quotient_scaled_compact_derivative(&mut ctx, expr, "x")
+                .unwrap();
+
+        assert_eq!(rendered(&ctx, derivative), "7 / (2 * (x^2 + x + 1))");
+    }
+
+    #[test]
+    fn arctan_surd_quotient_compact_derivative_normalizes_negative_polynomial() {
+        let mut ctx = Context::new();
+        let expr = parse("arctan(-(x^2+x+1)/sqrt(5))", &mut ctx).unwrap();
+        let derivative = arctan_surd_quotient_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "-(2 * x + 1) * sqrt(5) / ((x^2 + x + 1)^2 + 5)"
+        );
+    }
+
+    #[test]
+    fn arctan_surd_quotient_scaled_compact_derivative_normalizes_negative_polynomial() {
+        let mut ctx = Context::new();
+        let expr = parse("arctan((1-x-x^2)/sqrt(5))/sqrt(5)", &mut ctx).unwrap();
+        let derivative =
+            arctan_surd_quotient_scaled_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "-(2 * x + 1) / ((x^2 + x - 1)^2 + 5)"
+        );
+    }
+
+    #[test]
+    fn arctan_self_normalized_surd_quotient_accepts_inverse_sqrt_product_arg() {
+        let mut ctx = Context::new();
+        let expr = parse("arctan((4*x^2+4*x+2)^(-1/2)*(2*x+1))", &mut ctx).unwrap();
+        let derivative =
+            arctan_self_normalized_surd_quotient_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "2 / (sqrt(4 * x^2 + 4 * x + 2) * (2 * (2 * x + 1)^2 + 1))"
+        );
+    }
+
+    #[test]
+    fn arctan_self_normalized_surd_reciprocal_accepts_inverse_denominator_arg() {
+        let mut ctx = Context::new();
+        let expr = parse("arctan((x^2+1)^(1/2)*x^(-1))", &mut ctx).unwrap();
+        let (derivative, required_condition) =
+            arctan_self_normalized_surd_reciprocal_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "-1 / (sqrt(x^2 + 1) * (2 * x^2 + 1))"
+        );
+        assert!(matches!(
+            required_condition,
+            crate::ImplicitCondition::NonZero(required) if rendered(&ctx, required) == "x"
+        ));
+    }
+}

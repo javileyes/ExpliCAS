@@ -1550,3 +1550,174 @@ pub(super) fn has_compactable_ln_abs_trig_sqrt(
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        arctan_affine_by_parts_compact_derivative,
+        compact_arctan_additive_terms_for_calculus_presentation,
+        compact_positive_cosh_log_abs_for_integration_presentation,
+        compact_sqrt_hyperbolic_reciprocal_for_integration_presentation,
+        try_calculus_result_presentation,
+    };
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn calculus_result_presentation_expands_trig_odd_power_primitive_coefficients() {
+        let cases = [
+            ("1/3*(cos(x)^3 - 3*cos(x))", "1/3 * cos(x)^3 - cos(x)"),
+            ("1/3*(3*sin(x) - sin(x)^3)", "sin(x) - 1/3 * sin(x)^3"),
+            (
+                "1/6*(cos(2*x+1)^3 - 3*cos(2*x+1))",
+                "1/6 * cos(2 * x + 1)^3 - 1/2 * cos(2 * x + 1)",
+            ),
+            (
+                "1/5*(10/3*cos(x)^3 - cos(x)^5 - 5*cos(x))",
+                "2/3 * cos(x)^3 - cos(x) - 1/5 * cos(x)^5",
+            ),
+            (
+                "1/5*(sin(x)^5 + 5*sin(x) - 10/3*sin(x)^3)",
+                "sin(x) + 1/5 * sin(x)^5 - 2/3 * sin(x)^3",
+            ),
+            (
+                "1/10*(10/3*cos(2*x+1)^3 - cos(2*x+1)^5 - 5*cos(2*x+1))",
+                "1/3 * cos(2 * x + 1)^3 - 1/2 * cos(2 * x + 1) - 1/10 * cos(2 * x + 1)^5",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).unwrap();
+            let compact = try_calculus_result_presentation(&mut ctx, expr).unwrap();
+
+            assert_eq!(rendered(&ctx, compact), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn calculus_result_presentation_expands_trig_square_primitive_coefficients() {
+        let cases = [
+            ("1/4*(2*x - sin(2*x))", "1/2 * x - 1/4 * sin(2 * x)"),
+            ("1/4*(sin(2*x) + 2*x)", "1/4 * sin(2 * x) + 1/2 * x"),
+            ("1/8*(4*x - sin(4*x+2))", "1/2 * x - 1/8 * sin(4 * x + 2)"),
+            ("1/8*(sin(4*x+2) + 4*x)", "1/8 * sin(4 * x + 2) + 1/2 * x"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).unwrap();
+            let compact = try_calculus_result_presentation(&mut ctx, expr).unwrap();
+
+            assert_eq!(rendered(&ctx, compact), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn arctan_affine_by_parts_compact_derivative_accepts_polynomial_remainder() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((x^3+2)*arctan(1-x))/3 + ln(x^2+2-2*x)/3 + x^2/6 + 2*x/3",
+            &mut ctx,
+        )
+        .unwrap();
+        let derivative = arctan_affine_by_parts_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, derivative), "arctan(1 - x) * x^2");
+
+        let normalized = parse(
+            "1/6*(2*ln(x^2+2-2*x) + 2*arctan(1-x)*x^3 + 4*arctan(1-x) + x^2 + 4*x)",
+            &mut ctx,
+        )
+        .unwrap();
+        let derivative =
+            arctan_affine_by_parts_compact_derivative(&mut ctx, normalized, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, derivative), "x^2 * arctan(1 - x)");
+    }
+
+    #[test]
+    fn compact_arctan_additive_terms_accepts_negative_affine_argument() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/3*x^3*arctan(1-x) + 1/3*ln(x^2+2-2*x) + 2/3*arctan(1-x) + 1/6*x^2 + 2/3*x",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact =
+            compact_arctan_additive_terms_for_calculus_presentation(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact).matches("arctan(1 - x)").count(), 1);
+
+        let raw_by_parts = parse(
+            "1/3*x^3*arctan(1-x) - (-1/3*ln(x^2+2-2*x) - 2/3*arctan(1-x) - 1/6*x^2 - 2/3*x)",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact =
+            compact_arctan_additive_terms_for_calculus_presentation(&mut ctx, raw_by_parts, "x")
+                .unwrap();
+        assert_eq!(rendered(&ctx, compact).matches("arctan(1 - x)").count(), 1);
+
+        let duplicate_companions = parse(
+            "1/3*ln(x^2+2-2*x) + 1/2*ln(x^2+2-2*x) + 1/3*x^3*arctan(1-x) + 1/2*x^2*arctan(1-x) + 2/3*arctan(1-x) + 1/6*x^2 + 1/2*x + 2/3*x",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact = compact_arctan_additive_terms_for_calculus_presentation(
+            &mut ctx,
+            duplicate_companions,
+            "x",
+        )
+        .unwrap();
+        let rendered = rendered(&ctx, compact);
+        assert_eq!(rendered.matches("ln(x^2 + 2 - 2 * x)").count(), 1);
+        assert!(rendered.contains("5/6 * ln(x^2 + 2 - 2 * x)"));
+        assert!(rendered.contains("7/6 * x"));
+    }
+
+    #[test]
+    fn compact_positive_cosh_log_presentation_accepts_half_power_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(cosh((3*x+1)^(1/2)))", &mut ctx).unwrap();
+        let compact =
+            compact_positive_cosh_log_abs_for_integration_presentation(&mut ctx, expr, "x");
+
+        assert_eq!(rendered(&ctx, compact), "ln(cosh(sqrt(3 * x + 1)))");
+    }
+
+    #[test]
+    fn compact_positive_cosh_log_presentation_preserves_sinh_abs_shift() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(abs(sinh(x^(1/2)-b)))", &mut ctx).unwrap();
+        let compact =
+            compact_positive_cosh_log_abs_for_integration_presentation(&mut ctx, expr, "x");
+
+        assert_eq!(rendered(&ctx, compact), "ln(|sinh(sqrt(x) - b)|)");
+    }
+
+    #[test]
+    fn compact_sqrt_hyperbolic_reciprocal_preserves_shifted_sqrt_display() {
+        let mut ctx = Context::new();
+        let expr = parse("-k/cosh(x^(1/2)-b)", &mut ctx).unwrap();
+        let compact =
+            compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(&mut ctx, expr, "x");
+
+        assert_eq!(rendered(&ctx, compact), "-k / cosh(sqrt(x) - b)");
+    }
+
+    #[test]
+    fn compact_sqrt_hyperbolic_reciprocal_preserves_negative_shift_orientation() {
+        let mut ctx = Context::new();
+        let expr = parse("-k/sinh(b-x^(1/2))", &mut ctx).unwrap();
+        let compact =
+            compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(&mut ctx, expr, "x");
+
+        assert_eq!(rendered(&ctx, compact), "-k / sinh(b - sqrt(x))");
+    }
+}

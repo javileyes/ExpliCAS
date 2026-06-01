@@ -1,9 +1,15 @@
 use super::gap_presentation::squared_expr_for_compact_gap_presentation;
+use super::inverse_reciprocal_trig_affine_abs_derivative_presentation::inverse_reciprocal_trig_affine_abs_presentation;
+use super::inverse_reciprocal_trig_sqrt_derivative_presentation::{
+    inverse_reciprocal_trig_sqrt_affine_derivative_presentation,
+    inverse_reciprocal_trig_sqrt_quadratic_derivative_presentation,
+};
 use super::polynomial_support::{
     expanded_polynomial_expr_for_calculus_presentation,
     polynomial_radicand_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation, strictly_positive_quadratic_on_reals,
 };
+use super::positive_quadratic_presentation::inverse_reciprocal_trig_positive_quadratic_square_presentation;
 use super::presentation_utils::{
     multiply_by_sqrt_factor_for_calculus_presentation, squared_expr,
     unwrap_internal_hold_for_calculus,
@@ -131,4 +137,36 @@ pub(crate) fn inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentat
         ctx, target, var_name,
     )?;
     Some((unwrap_internal_hold_for_calculus(ctx, compact), Vec::new()))
+}
+
+pub(super) fn inverse_reciprocal_trig_post_calculus_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some(compact) =
+        inverse_reciprocal_trig_sqrt_affine_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        inverse_reciprocal_trig_sqrt_quadratic_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) = inverse_reciprocal_trig_affine_abs_presentation(ctx, target, var_name) {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        inverse_reciprocal_trig_positive_quadratic_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+
+    inverse_reciprocal_trig_positive_quadratic_square_presentation(ctx, target, var_name)
 }

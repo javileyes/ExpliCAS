@@ -1,7 +1,8 @@
-use super::compact_squared_affine_gap_for_calculus_presentation;
 use super::differentiation::differentiate;
-use super::gap_presentation::squared_expr_for_compact_gap_presentation;
-use super::gap_presentation::{primitive_positive_gap, reciprocal_positive_rational};
+use super::gap_presentation::{
+    compact_squared_affine_gap_for_calculus_presentation, primitive_positive_gap,
+    reciprocal_positive_rational, squared_expr_for_compact_gap_presentation,
+};
 use super::polynomial_support::{
     polynomial_derivative_expr_for_calculus_presentation,
     polynomial_radicand_for_calculus_presentation,

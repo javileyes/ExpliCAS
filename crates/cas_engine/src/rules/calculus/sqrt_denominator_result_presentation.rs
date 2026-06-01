@@ -44,3 +44,27 @@ pub(super) fn has_sqrt_denominator_result(ctx: &Context, expr: ExprId) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    use super::inverse_sqrt_quotient_arg_result;
+
+    #[test]
+    fn inverse_sqrt_quotient_arg_result_detects_compact_inverse_sqrt_substitution() {
+        let mut ctx = Context::new();
+        let expr = parse("arcsin(x^2/sqrt(3))", &mut ctx).unwrap();
+
+        assert!(inverse_sqrt_quotient_arg_result(&ctx, expr));
+
+        let rationalized = parse("arcsin(1/3 * sqrt(3) * x^2)", &mut ctx).unwrap();
+
+        assert!(!inverse_sqrt_quotient_arg_result(&ctx, rationalized));
+
+        let arctan = parse("arctan((2*x+2)/sqrt(6))/sqrt(6)", &mut ctx).unwrap();
+
+        assert!(inverse_sqrt_quotient_arg_result(&ctx, arctan));
+    }
+}

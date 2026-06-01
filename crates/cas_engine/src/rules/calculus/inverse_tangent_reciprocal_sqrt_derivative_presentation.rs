@@ -1,5 +1,5 @@
-use super::arctan_sqrt_polynomial_derivative_presentation;
 use super::domain_checks::positive_polynomial_radicand_required_conditions;
+use super::inverse_tangent_polynomial_root_derivative_presentation::arctan_sqrt_polynomial_derivative_presentation;
 use super::polynomial_support::{
     polynomial_radicand_for_calculus_presentation,
     rational_polynomial_content_for_calculus_presentation,

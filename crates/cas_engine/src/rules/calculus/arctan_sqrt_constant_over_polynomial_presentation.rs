@@ -1,3 +1,4 @@
+use super::inverse_tangent_root_args::{arccot_sqrt_radicand_arg, arctan_sqrt_radicand_arg};
 use super::polynomial_support::{
     polynomial_radicand_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
@@ -7,7 +8,6 @@ use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
     scale_expr_for_calculus_presentation,
 };
-use super::{arccot_sqrt_radicand_arg, arctan_sqrt_radicand_arg};
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed};

@@ -7,11 +7,14 @@ use super::polynomial_support::{
     polynomial_radicand_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
 };
-use super::presentation_utils::squared_expr;
+use super::presentation_utils::{squared_expr, unwrap_internal_hold_for_calculus};
+use super::result_presentation::scale_compact_derivative_by_rational;
 use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
-    scale_expr_for_calculus_presentation, signed_numerator_for_calculus_presentation,
+    rational_scaled_single_factor_allow_unit, scale_expr_for_calculus_presentation,
+    signed_numerator_for_calculus_presentation,
 };
+use super::shifted_sqrt_derivative_presentation::inverse_tangent_reciprocal_sqrt_shifted_sqrt_product_derivative_presentation;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::polynomial::Polynomial;
@@ -395,4 +398,57 @@ pub(super) fn inverse_tangent_reciprocal_sqrt_polynomial_product_derivative_pres
 
     let compact = ctx.add(Expr::Div(numerator, denominator));
     Some((ctx.add(Expr::Hold(compact)), required_conditions))
+}
+
+pub(super) fn constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (scale, inner) = rational_scaled_single_factor_allow_unit(ctx, target)?;
+    let (derivative, required_conditions) =
+        inverse_tangent_reciprocal_sqrt_polynomial_product_derivative_presentation(
+            ctx, inner, var_name,
+        )
+        .or_else(|| {
+            inverse_tangent_reciprocal_sqrt_shifted_sqrt_product_derivative_presentation(
+                ctx, inner, var_name,
+            )
+        })?;
+    let derivative = if scale.is_one() {
+        unwrap_internal_hold_for_calculus(ctx, derivative)
+    } else {
+        scale_compact_derivative_by_rational(ctx, derivative, scale)
+    };
+    Some((ctx.add(Expr::Hold(derivative)), required_conditions))
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_presentation;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn constant_scaled_reciprocal_sqrt_product_arctan_derivative_reuses_compact_route() {
+        let mut ctx = Context::new();
+        let expr = parse("2*arctan(1/(sqrt(x)*(x+1)))", &mut ctx).unwrap();
+        let (derivative, required_conditions) =
+            constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_presentation(
+                &mut ctx, expr, "x",
+            )
+            .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "-(3 * x + 1) / ((x * (x + 1)^2 + 1) * sqrt(x))"
+        );
+        assert_eq!(required_conditions.len(), 2);
+    }
 }

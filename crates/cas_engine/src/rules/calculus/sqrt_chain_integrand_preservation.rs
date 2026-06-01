@@ -23,32 +23,19 @@ pub(super) fn sqrt_chain_integrand_preservation_gates(
 ) -> SqrtChainIntegrandPreservation {
     let preserve_compact_sqrt_reciprocal_trig_product =
         sqrt_reciprocal_trig_product_integrand_target(ctx, target, var_name);
-    let preserve_compact_sqrt_trig_reciprocal = cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_reciprocal_derivative_target(
-        ctx,
-        target,
-        var_name,
-    );
-    let preserve_compact_sqrt_trig_log = cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_log_derivative_target(
-        ctx,
-        target,
-        var_name,
-    );
-    let preserve_compact_sqrt_hyperbolic_log = cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_log_derivative_target(
-        ctx,
-        target,
-        var_name,
-    );
+    let preserve_compact_sqrt_trig_reciprocal =
+        sqrt_trig_reciprocal_integrand_for_calculus_presentation(ctx, target, var_name);
+    let preserve_compact_sqrt_trig_log =
+        sqrt_trig_log_integrand_for_calculus_presentation(ctx, target, var_name);
+    let preserve_compact_sqrt_hyperbolic_log =
+        sqrt_hyperbolic_log_integrand_for_calculus_presentation(ctx, target, var_name);
     let preserve_compact_sqrt_hyperbolic_reciprocal_square =
-        cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_square_target(
-            ctx,
-            target,
-            var_name,
+        sqrt_hyperbolic_reciprocal_square_integrand_for_calculus_presentation(
+            ctx, target, var_name,
         );
     let preserve_compact_sqrt_hyperbolic_reciprocal_derivative =
-        cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_derivative_target(
-            ctx,
-            target,
-            var_name,
+        sqrt_hyperbolic_reciprocal_derivative_integrand_for_calculus_presentation(
+            ctx, target, var_name,
         );
 
     SqrtChainIntegrandPreservation {
@@ -62,4 +49,54 @@ pub(super) fn sqrt_chain_integrand_preservation_gates(
         preserve_compact_sqrt_hyperbolic_log,
         preserve_compact_sqrt_hyperbolic_reciprocal_derivative,
     }
+}
+
+pub(super) fn sqrt_trig_log_integrand_for_calculus_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_log_derivative_target(
+        ctx, target, var_name,
+    )
+}
+
+pub(super) fn sqrt_hyperbolic_log_integrand_for_calculus_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_log_derivative_target(
+        ctx, target, var_name,
+    )
+}
+
+pub(super) fn sqrt_hyperbolic_reciprocal_square_integrand_for_calculus_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_square_target(
+        ctx, target, var_name,
+    )
+}
+
+pub(super) fn sqrt_hyperbolic_reciprocal_derivative_integrand_for_calculus_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_derivative_target(
+        ctx, target, var_name,
+    )
+}
+
+fn sqrt_trig_reciprocal_integrand_for_calculus_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_reciprocal_derivative_target(
+        ctx, target, var_name,
+    )
 }

@@ -153,6 +153,23 @@ pub(super) fn scaled_asinh_sqrt_polynomial_derivative_presentation(
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
+pub(super) fn asinh_sqrt_family_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some(compact) = asinh_sqrt_polynomial_derivative_presentation(ctx, target, var_name) {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        scaled_asinh_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+
+    constant_scaled_asinh_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+}
+
 fn asinh_sqrt_presentation_safe_radicand(poly: &Polynomial) -> bool {
     match poly.degree() {
         1 => poly.coeffs.get(1).is_some_and(|linear| !linear.is_zero()),

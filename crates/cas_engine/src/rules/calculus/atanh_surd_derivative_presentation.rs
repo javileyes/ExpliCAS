@@ -1,9 +1,10 @@
-use super::compact_squared_affine_gap_for_calculus_presentation;
 use super::differentiation::differentiate;
 use super::domain_checks::{
     atanh_open_interval_condition, atanh_self_normalized_surd_quotient_positive_gap,
 };
-use super::gap_presentation::primitive_positive_gap;
+use super::gap_presentation::{
+    compact_squared_affine_gap_for_calculus_presentation, primitive_positive_gap,
+};
 use super::polynomial_support::{
     polynomial_derivative_expr_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
@@ -90,4 +91,27 @@ pub(super) fn atanh_surd_quotient_compact_derivative(
     let compact = fold_numeric_mul_constants_for_hold(ctx, compact);
 
     Some(cas_ast::hold::wrap_hold(ctx, compact))
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::atanh_self_normalized_surd_quotient_compact_derivative;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn atanh_self_normalized_surd_quotient_accepts_inverse_sqrt_product_arg() {
+        let mut ctx = Context::new();
+        let expr = parse("atanh(((2*x+1)^2+3)^(-1/2)*(2*x+1))", &mut ctx).unwrap();
+        let derivative =
+            atanh_self_normalized_surd_quotient_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, derivative), "2 / sqrt((2 * x + 1)^2 + 3)");
+    }
 }

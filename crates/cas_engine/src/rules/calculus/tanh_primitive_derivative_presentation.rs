@@ -235,3 +235,76 @@ pub(super) fn affine_tanh_even_primitive_derivative_presentation(
         tanh_power,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::affine_tanh_even_primitive_derivative_presentation;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn affine_tanh_even_primitive_derivative_presentation_accepts_direct_arg() {
+        let mut ctx = Context::new();
+        let expr = parse("x - tanh(x) - tanh(x)^3/3 - tanh(x)^5/5", &mut ctx).unwrap();
+        let compact =
+            affine_tanh_even_primitive_derivative_presentation(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "tanh(x)^6");
+    }
+
+    #[test]
+    fn affine_tanh_even_primitive_derivative_presentation_accepts_positive_affine_arg() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "x - 1/2*(tanh(2*x+1) + tanh(2*x+1)^3/3 + tanh(2*x+1)^5/5)",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact =
+            affine_tanh_even_primitive_derivative_presentation(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "tanh(2 * x + 1)^6");
+    }
+
+    #[test]
+    fn affine_tanh_even_primitive_derivative_presentation_accepts_negative_affine_arg() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "x + 1/2*(tanh(1-2*x) + tanh(1-2*x)^3/3 + tanh(1-2*x)^5/5)",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact =
+            affine_tanh_even_primitive_derivative_presentation(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "tanh(1 - 2 * x)^6");
+    }
+
+    #[test]
+    fn affine_tanh_even_primitive_derivative_presentation_accepts_eighth_power() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "x - 1/2*(tanh(2*x+1) + tanh(2*x+1)^3/3 + tanh(2*x+1)^5/5 + tanh(2*x+1)^7/7)",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact =
+            affine_tanh_even_primitive_derivative_presentation(&mut ctx, expr, "x").unwrap();
+        assert_eq!(rendered(&ctx, compact), "tanh(2 * x + 1)^8");
+
+        let expr = parse(
+            "x + 1/2*(tanh(1-2*x) + tanh(1-2*x)^3/3 + tanh(1-2*x)^5/5 + tanh(1-2*x)^7/7)",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact =
+            affine_tanh_even_primitive_derivative_presentation(&mut ctx, expr, "x").unwrap();
+        assert_eq!(rendered(&ctx, compact), "tanh(1 - 2 * x)^8");
+    }
+}

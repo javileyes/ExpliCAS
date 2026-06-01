@@ -673,3 +673,221 @@ fn scale_three_half_power_product_for_presentation(
     }
     scale_expr_for_calculus_presentation(ctx, coefficient, product)
 }
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::super::scalar_presentation::fold_numeric_mul_constants_for_hold;
+    use super::{
+        compact_negative_half_power_product_for_calculus_presentation,
+        compact_negative_half_power_result_for_integration_presentation,
+        compact_negative_three_half_power_result_for_integration_presentation,
+        compact_positive_half_power_result_for_integration_presentation,
+    };
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn compact_negative_half_power_result_for_integration_presentation_uses_sqrt_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse("-2*(x^2+x+1)^(-1/2)", &mut ctx).unwrap();
+        let compact =
+            compact_negative_half_power_result_for_integration_presentation(&mut ctx, expr)
+                .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(rendered(&ctx, folded), "-2 / sqrt(x^2 + x + 1)");
+    }
+
+    #[test]
+    fn compact_negative_half_power_product_for_calculus_presentation_uses_sqrt_denominator() {
+        let cases = [
+            (
+                "cos(x)/2*(sin(x)+1)^(1/2-1)",
+                "cos(x) / (2 * sqrt(sin(x) + 1))",
+            ),
+            (
+                "((ln(x)+1)^(1/2-1)/2)*(1/x)",
+                "1 / (2 * x * sqrt(ln(x) + 1))",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).unwrap();
+            let compact =
+                compact_negative_half_power_product_for_calculus_presentation(&mut ctx, expr)
+                    .unwrap();
+
+            assert_eq!(rendered(&ctx, compact), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn compact_negative_three_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(3*(x^2+x+1)^(3/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (3 * sqrt(x^2 + x + 1) * (x^2 + x + 1))"
+        );
+    }
+
+    #[test]
+    fn compact_negative_five_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(5*(x^2+x+1)^(5/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (5 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^2)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_seven_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(7*(x^2+x+1)^(7/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (7 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^3)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_nine_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(9*(x^2+x+1)^(9/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (9 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^4)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_eleven_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(11*(x^2+x+1)^(11/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (11 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^5)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_thirteen_half_power_result_for_integration_presentation_uses_sqrt_product()
+    {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(13*(x^2+x+1)^(13/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (13 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^6)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_three_half_power_result_requires_conditional_domain_signal() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(3*(x^2-1)^(3/2))", &mut ctx).unwrap();
+
+        assert!(
+            compact_negative_three_half_power_result_for_integration_presentation(
+                &mut ctx, expr, "x", false,
+            )
+            .is_none()
+        );
+
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", true,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (3 * sqrt(x^2 - 1) * (x^2 - 1))"
+        );
+    }
+
+    #[test]
+    fn compact_positive_half_power_result_for_integration_presentation_uses_sqrt() {
+        let mut ctx = Context::new();
+        let expr = parse("2*(x^2+x+1)^(1/2)", &mut ctx).unwrap();
+        let compact =
+            compact_positive_half_power_result_for_integration_presentation(&mut ctx, expr)
+                .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(rendered(&ctx, folded), "2 * sqrt(x^2 + x + 1)");
+    }
+
+    #[test]
+    fn compact_positive_three_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("2/3*(x^2+x+1)^(3/2)", &mut ctx).unwrap();
+        let compact =
+            compact_positive_half_power_result_for_integration_presentation(&mut ctx, expr)
+                .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "2/3 * sqrt(x^2 + x + 1) * (x^2 + x + 1)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_three_half_power_result_for_integration_presentation_keeps_outer_sign() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/3*(x^2+x+1)^(3/2)", &mut ctx).unwrap();
+        let compact =
+            compact_positive_half_power_result_for_integration_presentation(&mut ctx, expr)
+                .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-(2/3 * sqrt(x^2 + x + 1) * (x^2 + x + 1))"
+        );
+    }
+}

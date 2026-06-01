@@ -215,3 +215,20 @@ pub(super) fn constant_scaled_atanh_sqrt_polynomial_derivative_presentation(
         atanh_sqrt_polynomial_derivative_presentation,
     )
 }
+
+pub(super) fn atanh_sqrt_family_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some(compact) =
+        scaled_atanh_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) = atanh_sqrt_polynomial_derivative_presentation(ctx, target, var_name) {
+        return Some(compact);
+    }
+
+    constant_scaled_atanh_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+}

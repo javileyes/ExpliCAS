@@ -125,3 +125,58 @@ fn bounded_inverse_trig_self_normalized_projection_arg(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::bounded_inverse_trig_self_normalized_projection_derivative_presentation;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn self_normalized_projection_presentation_accepts_quadratic_numerator() {
+        let mut ctx = Context::new();
+        let expr = parse("arccos((x^2+x+1)/sqrt((x^2+x+1)^2+5))", &mut ctx).unwrap();
+        let derivative = bounded_inverse_trig_self_normalized_projection_derivative_presentation(
+            &mut ctx, expr, "x",
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "-sqrt(5) * (2 * x + 1) / ((x^2 + x + 1)^2 + 5)"
+        );
+    }
+
+    #[test]
+    fn self_normalized_projection_presentation_accepts_negated_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("arccos(-x/sqrt(x^2+1))", &mut ctx).unwrap();
+        let derivative = bounded_inverse_trig_self_normalized_projection_derivative_presentation(
+            &mut ctx, expr, "x",
+        )
+        .unwrap();
+
+        assert_eq!(rendered(&ctx, derivative), "1 / (x^2 + 1)");
+    }
+
+    #[test]
+    fn self_normalized_projection_presentation_normalizes_negated_quadratic_content() {
+        let mut ctx = Context::new();
+        let expr = parse("arccos(-(x^2+x+1)/sqrt((x^2+x+1)^2+5))", &mut ctx).unwrap();
+        let derivative = bounded_inverse_trig_self_normalized_projection_derivative_presentation(
+            &mut ctx, expr, "x",
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "sqrt(5) * (2 * x + 1) / ((x^2 + x + 1)^2 + 5)"
+        );
+    }
+}

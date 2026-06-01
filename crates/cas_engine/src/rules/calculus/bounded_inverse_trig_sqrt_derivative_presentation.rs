@@ -288,3 +288,33 @@ pub(super) fn constant_scaled_bounded_inverse_trig_sqrt_polynomial_derivative_pr
 
     Some(scale_compact_derivative_by_rational(ctx, derivative, scale))
 }
+
+pub(super) fn bounded_inverse_trig_sqrt_family_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some(compact) =
+        bounded_inverse_trig_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        scaled_bounded_inverse_trig_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        bounded_inverse_trig_sqrt_affine_quotient_derivative_presentation(ctx, target, var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) = bounded_inverse_trig_reciprocal_sqrt_polynomial_derivative_presentation(
+        ctx, target, var_name,
+    ) {
+        return Some(compact);
+    }
+    constant_scaled_bounded_inverse_trig_sqrt_polynomial_derivative_presentation(
+        ctx, target, var_name,
+    )
+}

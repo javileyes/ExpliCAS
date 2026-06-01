@@ -3,6 +3,10 @@ use super::by_parts_integrand_preservation::by_parts_integrand_preservation_gate
 use super::fractional_denominator_power_integrand_preservation::fractional_denominator_power_substitution_integrand_for_calculus_presentation;
 use super::hyperbolic_power_integrand_presentation::hyperbolic_power_integrand_for_calculus_presentation;
 use super::inverse_hyperbolic_affine_integrand_preservation::inverse_hyperbolic_affine_integrand_for_calculus_presentation;
+use super::inverse_sqrt_product_integrand_preservation::{
+    affine_sqrt_product_derivative_integrand_for_calculus_presentation,
+    arcsin_inverse_sqrt_product_integrand_for_calculus_presentation,
+};
 use super::log_product_integrand_preservation::log_product_integrand_for_calculus_presentation;
 use super::power_result_presentation::{
     compact_half_power_sum_root_product_for_integration_presentation,
@@ -89,17 +93,9 @@ pub(super) fn integration_source_preservation_gates(
             var_name,
         );
     let preserve_compact_affine_sqrt_product_derivative =
-        cas_math::symbolic_integration_support::integrate_symbolic_is_affine_sqrt_product_derivative_target(
-            ctx,
-            target,
-            var_name,
-        );
+        affine_sqrt_product_derivative_integrand_for_calculus_presentation(ctx, target, var_name);
     let preserve_compact_arcsin_inverse_sqrt_product =
-        cas_math::symbolic_integration_support::integrate_symbolic_is_arcsin_inverse_sqrt_product_target(
-            ctx,
-            target,
-            var_name,
-        );
+        arcsin_inverse_sqrt_product_integrand_for_calculus_presentation(ctx, target, var_name);
     let preserve_compact_log_product_integrand =
         log_product_integrand_for_calculus_presentation(ctx, target, var_name);
     let preserve_compact_rational_linear_partial_fraction =
