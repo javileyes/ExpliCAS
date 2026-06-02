@@ -4,13 +4,32 @@
 //! polynomial and symbolic-denominator shortcuts. It intentionally stops before
 //! the positive-shift arctangent family, whose presentation policy is separate.
 
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::inverse_tangent_scaled_root_derivative_presentation::{
     atanh_sqrt_over_symbolic_constant_derivative_shortcut,
     constant_scaled_inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut,
     inverse_tangent_scaled_sqrt_polynomial_derivative_shortcut,
     inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut,
 };
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use cas_ast::{Context, ExprId};
+
+pub(super) fn inverse_tangent_scaled_root_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) =
+        inverse_tangent_scaled_root_derivative_route(ctx, target, &call.var_name)?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        required_conditions,
+    ))
+}
 
 pub(super) fn inverse_tangent_scaled_root_derivative_route(
     ctx: &mut Context,
@@ -37,9 +56,35 @@ mod tests {
 
     use super::super::presentation_utils::unwrap_internal_hold_for_calculus;
     use super::inverse_tangent_scaled_root_derivative_route;
+    use crate::symbolic_calculus_call_support::NamedVarCall;
 
     fn rendered(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn inverse_tangent_scaled_root_rewrite_preserves_finalized_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("arctan(2*sqrt(x+1))", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+
+        let rewrite =
+            super::inverse_tangent_scaled_root_derivative_rewrite(&mut ctx, &call, target).unwrap();
+        let derivative = unwrap_internal_hold_for_calculus(&mut ctx, rewrite.new_expr);
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "1 / (sqrt(x + 1) * (4 * x + 5))"
+        );
+        let rendered_conditions: Vec<_> = rewrite
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+        assert_eq!(rendered_conditions, vec!["x > -1"]);
     }
 
     #[test]

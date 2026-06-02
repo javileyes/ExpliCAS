@@ -21,6 +21,32 @@ impl ByPartsIntegrandPreservation {
     }
 }
 
+#[derive(Default)]
+struct ByPartsIntegrandPreservationBuilder {
+    active: bool,
+    preserve_compact_log_by_parts: bool,
+}
+
+impl ByPartsIntegrandPreservationBuilder {
+    fn record_hit(mut self, hit: bool) -> Self {
+        self.active |= hit;
+        self
+    }
+
+    fn record_log_by_parts(mut self, hit: bool) -> Self {
+        self.active |= hit;
+        self.preserve_compact_log_by_parts = hit;
+        self
+    }
+
+    fn build(self) -> ByPartsIntegrandPreservation {
+        ByPartsIntegrandPreservation {
+            active: self.active,
+            preserve_compact_log_by_parts: self.preserve_compact_log_by_parts,
+        }
+    }
+}
+
 pub(super) fn by_parts_integrand_preservation_gates(
     ctx: &mut Context,
     target: ExprId,
@@ -39,15 +65,37 @@ pub(super) fn by_parts_integrand_preservation_gates(
     let preserve_compact_log_by_parts =
         log_by_parts_integrand_for_calculus_presentation(ctx, target, var_name);
 
-    let active = preserve_compact_linear_exp_by_parts
-        || preserve_compact_linear_trig_by_parts
-        || preserve_compact_linear_hyperbolic_by_parts
-        || preserve_compact_repeated_trig_by_parts
-        || preserve_compact_repeated_hyperbolic_by_parts
-        || preserve_compact_log_by_parts;
+    ByPartsIntegrandPreservationBuilder::default()
+        .record_hit(preserve_compact_linear_exp_by_parts)
+        .record_hit(preserve_compact_linear_trig_by_parts)
+        .record_hit(preserve_compact_linear_hyperbolic_by_parts)
+        .record_hit(preserve_compact_repeated_trig_by_parts)
+        .record_hit(preserve_compact_repeated_hyperbolic_by_parts)
+        .record_log_by_parts(preserve_compact_log_by_parts)
+        .build()
+}
 
-    ByPartsIntegrandPreservation {
-        active,
-        preserve_compact_log_by_parts,
+#[cfg(test)]
+mod tests {
+    use super::ByPartsIntegrandPreservationBuilder;
+
+    #[test]
+    fn by_parts_builder_activates_when_log_by_parts_hits() {
+        let preservation = ByPartsIntegrandPreservationBuilder::default()
+            .record_log_by_parts(true)
+            .build();
+
+        assert!(preservation.should_preserve_compact_result());
+        assert!(preservation.preserve_compact_log_by_parts);
+    }
+
+    #[test]
+    fn by_parts_builder_tracks_activation_only_hits() {
+        let preservation = ByPartsIntegrandPreservationBuilder::default()
+            .record_hit(true)
+            .build();
+
+        assert!(preservation.should_preserve_compact_result());
+        assert!(!preservation.preserve_compact_log_by_parts);
     }
 }

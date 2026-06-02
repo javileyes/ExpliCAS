@@ -4,6 +4,7 @@
 //! affine arguments, scaled powers of `tan/cot`, and shifted sqrt-chain source
 //! routes with explicit pole and radicand conditions.
 
+use super::diff_rule_support::diff_rewrite_with_conditions;
 use super::polynomial_support::nonzero_affine_variable_derivative;
 use super::presentation_utils::{is_calculus_presentation_one, squared_expr};
 use super::scalar_presentation::{
@@ -13,10 +14,27 @@ use super::scalar_presentation::{
 use super::shifted_sqrt_args::shifted_sqrt_arg_radicand_and_sign;
 use super::signed_factor_presentation::signed_mul_leaves_for_calculus_presentation;
 use super::sqrt_chain_factor_presentation::sqrt_chain_linear_derivative_coeff;
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_predicates::contains_named_var;
 use num_rational::BigRational;
 use num_traits::{One, ToPrimitive, Zero};
+
+pub(super) fn reciprocal_trig_shifted_sqrt_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) =
+        reciprocal_trig_shifted_sqrt_derivative_presentation(ctx, target, &call.var_name)?;
+    Some(diff_rewrite_with_conditions(
+        ctx,
+        call,
+        result,
+        required_conditions,
+    ))
+}
 
 pub(crate) fn reciprocal_trig_shifted_sqrt_derivative_presentation(
     ctx: &mut Context,
@@ -264,5 +282,46 @@ fn shifted_sqrt_reciprocal_trig_factor(
             Some((builtin, args[0], table_sign, pole_builtin, scale))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    fn rendered_required_conditions(ctx: &Context, rewrite: &Rewrite) -> Vec<String> {
+        rewrite
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(ctx))
+            .collect()
+    }
+
+    #[test]
+    fn shifted_sqrt_reciprocal_trig_rewrite_preserves_result_and_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("sec(sqrt(x)+1)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+
+        let rewrite =
+            reciprocal_trig_shifted_sqrt_derivative_rewrite(&mut ctx, &call, target).unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            "sec(sqrt(x) + 1) * tan(sqrt(x) + 1) / (2 * sqrt(x))"
+        );
+        assert_eq!(
+            rendered_required_conditions(&ctx, &rewrite),
+            vec!["x > 0", "cos(sqrt(x) + 1) ≠ 0"]
+        );
     }
 }

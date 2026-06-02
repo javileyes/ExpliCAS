@@ -9,9 +9,12 @@ use super::arctan_sqrt_additive_derivative_presentation::{
     arctan_sqrt_additive_trig_polynomial_derivative_presentation,
     arctan_sqrt_small_additive_elementary_derivative_presentation,
 };
+use super::arctan_sqrt_positive_shift_derivative_presentation::compact_sqrt_var_over_var_times_positive_shift_square_diff_result;
+use super::diff_required_conditions::diff_required_conditions_for_target;
 use super::domain_checks::{
     append_positive_required_conditions, reciprocal_trig_and_log_diff_required_conditions,
 };
+use super::positive_quadratic_square_result_presentation::compact_positive_quadratic_square_derivative_result;
 use super::sqrt_small_additive_derivative_presentation::sqrt_small_additive_elementary_derivative_presentation;
 use super::{
     sqrt_additive_tan_polynomial_derivative_presentation,
@@ -45,6 +48,20 @@ pub(super) fn sign_polynomial_diff_result(
     Some((zero, vec![crate::ImplicitCondition::NonZero(arg)]))
 }
 
+pub(super) fn sign_polynomial_diff_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) = sign_polynomial_diff_result(ctx, target, &call.var_name)?;
+    Some(diff_rewrite_with_conditions(
+        ctx,
+        call,
+        result,
+        required_conditions,
+    ))
+}
+
 pub(super) fn undefined_diff_rewrite(ctx: &mut Context, call: &NamedVarCall) -> Rewrite {
     let undefined = ctx.add(Expr::Constant(Constant::Undefined));
     diff_rewrite_with_conditions(
@@ -70,6 +87,34 @@ where
     Rewrite::new(result)
         .desc(desc)
         .requires_all(required_conditions)
+}
+
+pub(super) fn finalize_diff_rewrite_with_conditions<I>(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+    mut result: ExprId,
+    shortcut_required_conditions: I,
+) -> Rewrite
+where
+    I: IntoIterator<Item = crate::ImplicitCondition>,
+{
+    if let Some(compact) =
+        compact_positive_quadratic_square_derivative_result(ctx, result, &call.var_name)
+    {
+        result = compact;
+    }
+    if let Some(compact) = compact_sqrt_var_over_var_times_positive_shift_square_diff_result(
+        ctx,
+        result,
+        &call.var_name,
+    ) {
+        result = compact;
+    }
+    let required_conditions = diff_required_conditions_for_target(ctx, target, &call.var_name)
+        .into_iter()
+        .chain(shortcut_required_conditions);
+    diff_rewrite_with_conditions(ctx, call, result, required_conditions)
 }
 
 pub(super) fn arctan_sqrt_additive_derivative_rewrite(
@@ -171,4 +216,63 @@ pub(super) fn sqrt_additive_derivative_shortcut(
         required_conditions,
     );
     Some(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    fn rendered_required_conditions(ctx: &Context, rewrite: &Rewrite) -> Vec<String> {
+        rewrite
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(ctx))
+            .collect()
+    }
+
+    #[test]
+    fn sign_polynomial_diff_rewrite_preserves_nonzero_condition() {
+        let mut ctx = Context::new();
+        let target = parse("sign(x)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+
+        let rewrite = sign_polynomial_diff_rewrite(&mut ctx, &call, target).unwrap();
+
+        assert_eq!(rendered(&ctx, rewrite.new_expr), "0");
+        assert_eq!(rendered_required_conditions(&ctx, &rewrite), vec!["x ≠ 0"]);
+    }
+
+    #[test]
+    fn finalize_diff_rewrite_preserves_target_required_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("sec(x)", &mut ctx).unwrap();
+        let result = parse("sec(x)*tan(x)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+
+        let rewrite = finalize_diff_rewrite_with_conditions(
+            &mut ctx,
+            &call,
+            target,
+            result,
+            std::iter::empty(),
+        );
+
+        assert_eq!(rendered(&ctx, rewrite.new_expr), "tan(x) * sec(x)");
+        assert_eq!(
+            rendered_required_conditions(&ctx, &rewrite),
+            vec!["cos(x) ≠ 0"]
+        );
+    }
 }

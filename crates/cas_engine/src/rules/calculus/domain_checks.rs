@@ -10,7 +10,7 @@ pub(super) use super::bounded_inverse_trig_open_interval_domain::{
 };
 pub(crate) use super::diff_domain_undefined_targets::diff_target_known_undefined_over_reals;
 pub(super) use super::diff_required_conditions::{
-    diff_required_conditions_for_target, inverse_reciprocal_trig_affine_abs_required_conditions,
+    inverse_reciprocal_trig_affine_abs_required_conditions,
     reciprocal_trig_and_log_diff_required_conditions,
 };
 pub(super) use super::root_required_conditions::{

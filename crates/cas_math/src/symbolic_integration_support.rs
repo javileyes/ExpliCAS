@@ -9,6 +9,23 @@ use crate::expr_predicates::{contains_named_var, contains_variable};
 use crate::factor::factor;
 use crate::polynomial::Polynomial;
 use crate::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
+use crate::symbolic_integration_derivative_cofactor_support::{
+    additive_cofactor_from_term_cofactors, product_cofactor_excluding_unary_builtin_arg,
+    unique_product_cofactor_excluding_unary_builtin_arg,
+};
+use crate::symbolic_integration_hyperbolic_reciprocal_policy::{
+    build_hyperbolic_denominator_nonzero_condition,
+    build_hyperbolic_reciprocal_derivative_integral, build_hyperbolic_reciprocal_table_integral,
+    hyperbolic_reciprocal_derivative_policy, hyperbolic_reciprocal_table_policy,
+    reciprocal_hyperbolic_power_arg, reciprocal_hyperbolic_square_parts,
+    HyperbolicReciprocalPrimitiveScaleOps,
+};
+use crate::symbolic_integration_reciprocal_trig_policy::{
+    build_reciprocal_trig_denominator_nonzero_condition, build_reciprocal_trig_derivative_integral,
+    build_trig_pole_nonzero_condition, reciprocal_trig_derivative_base_antiderivative,
+    reciprocal_trig_derivative_policy, reciprocal_trig_derivative_policy_from_reciprocal,
+    reciprocal_trig_square_parts, trig_pole_nonzero_builtin,
+};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_integer::Integer;
@@ -1599,88 +1616,6 @@ fn is_var_square_plus_one(ctx: &Context, expr: ExprId, var: &str) -> bool {
         }
         _ => false,
     }
-}
-
-fn reciprocal_trig_square_parts(ctx: &Context, den: ExprId) -> Option<(BuiltinFn, ExprId)> {
-    let (base, exp) = match ctx.get(den) {
-        Expr::Pow(base, exp) => (*base, *exp),
-        _ => return None,
-    };
-    if !is_number(ctx, exp, 2) {
-        return None;
-    }
-
-    let (builtin, arg) = match ctx.get(base) {
-        Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id)?, args[0]),
-        _ => return None,
-    };
-    match builtin {
-        BuiltinFn::Cos | BuiltinFn::Sin => Some((builtin, arg)),
-        _ => None,
-    }
-}
-
-#[derive(Clone, Copy)]
-struct ReciprocalTrigDerivativePolicy {
-    denominator_builtin: BuiltinFn,
-    numerator_builtin: BuiltinFn,
-    reciprocal_builtin: BuiltinFn,
-    derivative_builtin: BuiltinFn,
-    antiderivative_negative: bool,
-}
-
-fn reciprocal_trig_derivative_policy(
-    denominator_builtin: BuiltinFn,
-) -> Option<ReciprocalTrigDerivativePolicy> {
-    match denominator_builtin {
-        BuiltinFn::Cos => Some(ReciprocalTrigDerivativePolicy {
-            denominator_builtin,
-            numerator_builtin: BuiltinFn::Sin,
-            reciprocal_builtin: BuiltinFn::Sec,
-            derivative_builtin: BuiltinFn::Tan,
-            antiderivative_negative: false,
-        }),
-        BuiltinFn::Sin => Some(ReciprocalTrigDerivativePolicy {
-            denominator_builtin,
-            numerator_builtin: BuiltinFn::Cos,
-            reciprocal_builtin: BuiltinFn::Csc,
-            derivative_builtin: BuiltinFn::Cot,
-            antiderivative_negative: true,
-        }),
-        _ => None,
-    }
-}
-
-fn reciprocal_trig_derivative_policy_from_reciprocal(
-    reciprocal_builtin: BuiltinFn,
-) -> Option<ReciprocalTrigDerivativePolicy> {
-    match reciprocal_builtin {
-        BuiltinFn::Sec => reciprocal_trig_derivative_policy(BuiltinFn::Cos),
-        BuiltinFn::Csc => reciprocal_trig_derivative_policy(BuiltinFn::Sin),
-        _ => None,
-    }
-}
-
-fn build_reciprocal_trig_derivative_integral(
-    ctx: &mut Context,
-    policy: ReciprocalTrigDerivativePolicy,
-    arg: ExprId,
-) -> ExprId {
-    let reciprocal = ctx.call_builtin(policy.reciprocal_builtin, vec![arg]);
-    if policy.antiderivative_negative {
-        ctx.add(Expr::Neg(reciprocal))
-    } else {
-        reciprocal
-    }
-}
-
-fn reciprocal_trig_derivative_base_antiderivative(
-    ctx: &mut Context,
-    denominator_builtin: BuiltinFn,
-    arg: ExprId,
-) -> Option<ExprId> {
-    let policy = reciprocal_trig_derivative_policy(denominator_builtin)?;
-    Some(build_reciprocal_trig_derivative_integral(ctx, policy, arg))
 }
 
 fn reciprocal_trig_square_antiderivative(
@@ -3956,99 +3891,6 @@ fn polynomial_reciprocal_trig_square_antiderivative(
     }
 }
 
-fn reciprocal_hyperbolic_square_arg(
-    ctx: &Context,
-    den: ExprId,
-    builtin: BuiltinFn,
-) -> Option<ExprId> {
-    reciprocal_hyperbolic_power_arg(ctx, den, builtin, 2)
-}
-
-fn reciprocal_hyperbolic_power_arg(
-    ctx: &Context,
-    den: ExprId,
-    builtin: BuiltinFn,
-    power: i64,
-) -> Option<ExprId> {
-    let (base, exp) = match ctx.get(den) {
-        Expr::Pow(base, exp) => (*base, *exp),
-        _ => return None,
-    };
-    if !is_number(ctx, exp, power) {
-        return None;
-    }
-
-    match ctx.get(base) {
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin) =>
-        {
-            Some(args[0])
-        }
-        _ => None,
-    }
-}
-
-fn reciprocal_hyperbolic_cosh_square_arg(ctx: &Context, den: ExprId) -> Option<ExprId> {
-    reciprocal_hyperbolic_square_arg(ctx, den, BuiltinFn::Cosh)
-}
-
-fn reciprocal_hyperbolic_sinh_square_arg(ctx: &Context, den: ExprId) -> Option<ExprId> {
-    reciprocal_hyperbolic_square_arg(ctx, den, BuiltinFn::Sinh)
-}
-
-#[derive(Clone, Copy)]
-struct HyperbolicReciprocalDerivativePolicy {
-    denominator_builtin: BuiltinFn,
-    numerator_builtin: BuiltinFn,
-}
-
-#[derive(Clone, Copy)]
-struct HyperbolicReciprocalTablePolicy {
-    denominator_builtin: BuiltinFn,
-    power: i64,
-}
-
-fn hyperbolic_reciprocal_table_policy(
-    denominator_builtin: BuiltinFn,
-    power: i64,
-) -> Option<HyperbolicReciprocalTablePolicy> {
-    if !matches!(denominator_builtin, BuiltinFn::Cosh | BuiltinFn::Sinh) || !matches!(power, 2 | 4)
-    {
-        return None;
-    }
-    Some(HyperbolicReciprocalTablePolicy {
-        denominator_builtin,
-        power,
-    })
-}
-
-fn hyperbolic_reciprocal_derivative_policy(
-    denominator_builtin: BuiltinFn,
-) -> Option<HyperbolicReciprocalDerivativePolicy> {
-    match denominator_builtin {
-        BuiltinFn::Cosh => Some(HyperbolicReciprocalDerivativePolicy {
-            denominator_builtin,
-            numerator_builtin: BuiltinFn::Sinh,
-        }),
-        BuiltinFn::Sinh => Some(HyperbolicReciprocalDerivativePolicy {
-            denominator_builtin,
-            numerator_builtin: BuiltinFn::Cosh,
-        }),
-        _ => None,
-    }
-}
-
-fn build_hyperbolic_reciprocal_derivative_integral(
-    ctx: &mut Context,
-    policy: HyperbolicReciprocalDerivativePolicy,
-    arg: ExprId,
-) -> ExprId {
-    let den_arg = ctx.call_builtin(policy.denominator_builtin, vec![arg]);
-    let one = ctx.num(1);
-    let reciprocal = ctx.add(Expr::Div(one, den_arg));
-    ctx.add(Expr::Neg(reciprocal))
-}
-
 fn hyperbolic_reciprocal_power_antiderivative(
     ctx: &mut Context,
     num: ExprId,
@@ -4058,7 +3900,12 @@ fn hyperbolic_reciprocal_power_antiderivative(
     power: i64,
 ) -> Option<ExprId> {
     let policy = hyperbolic_reciprocal_table_policy(denominator_builtin, power)?;
-    let arg = reciprocal_hyperbolic_power_arg(ctx, den, policy.denominator_builtin, policy.power)?;
+    let arg = reciprocal_hyperbolic_power_arg(
+        ctx,
+        den,
+        policy.denominator_builtin,
+        policy.power.exponent(),
+    )?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
@@ -4068,113 +3915,22 @@ fn hyperbolic_reciprocal_power_antiderivative(
         return None;
     }
 
-    match policy.power {
-        2 => Some(build_hyperbolic_reciprocal_square_integral(
-            ctx, policy, arg, scale,
-        )),
-        4 => Some(build_hyperbolic_reciprocal_fourth_integral(
-            ctx, policy, arg, scale,
-        )),
-        _ => None,
-    }
+    Some(build_hyperbolic_reciprocal_table_integral(
+        ctx,
+        policy,
+        arg,
+        scale,
+        hyperbolic_reciprocal_primitive_scale_ops(),
+    ))
 }
 
-fn build_hyperbolic_reciprocal_square_integral(
-    ctx: &mut Context,
-    policy: HyperbolicReciprocalTablePolicy,
-    arg: ExprId,
-    scale: ExprId,
-) -> ExprId {
-    match policy.denominator_builtin {
-        BuiltinFn::Cosh => {
-            let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
-            scale_expr_reciprocal_integration_result(ctx, scale, tanh_arg)
-        }
-        BuiltinFn::Sinh => {
-            let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
-            let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
-            let quotient = ctx.add(Expr::Div(cosh_arg, sinh_arg));
-            if let Expr::Number(value) = ctx.get(scale).clone() {
-                if value.is_one() {
-                    return ctx.add(Expr::Neg(quotient));
-                }
-
-                let scale_expr = ctx.add(Expr::Number(value));
-                let negative_scale_expr = ctx.add(Expr::Neg(scale_expr));
-                return mul2_raw(ctx, negative_scale_expr, quotient);
-            }
-
-            let negative_scale = negate_scalar_expr(ctx, scale);
-            scale_expr_reciprocal_integration_result(ctx, negative_scale, quotient)
-        }
-        _ => unreachable!("hyperbolic reciprocal table policy only supports sinh/cosh"),
-    }
-}
-
-fn build_hyperbolic_reciprocal_fourth_integral(
-    ctx: &mut Context,
-    policy: HyperbolicReciprocalTablePolicy,
-    arg: ExprId,
-    scale: ExprId,
-) -> ExprId {
-    match policy.denominator_builtin {
-        BuiltinFn::Cosh => build_hyperbolic_cosh_reciprocal_fourth_integral(ctx, arg, scale),
-        BuiltinFn::Sinh => build_hyperbolic_sinh_reciprocal_fourth_integral(ctx, arg, scale),
-        _ => unreachable!("hyperbolic reciprocal table policy only supports sinh/cosh"),
-    }
-}
-
-fn build_hyperbolic_cosh_reciprocal_fourth_integral(
-    ctx: &mut Context,
-    arg: ExprId,
-    scale: ExprId,
-) -> ExprId {
-    let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
-    let three = ctx.num(3);
-    let tanh_cubed = ctx.add(Expr::Pow(tanh_arg, three));
-    if let Expr::Number(scale_value) = ctx.get(scale).clone() {
-        let linear_term = scale_rational_term(ctx, scale_value.clone(), tanh_arg);
-        let cubic_term = scale_rational_term(
-            ctx,
-            -scale_value / BigRational::from_integer(3.into()),
-            tanh_cubed,
-        );
-        return ctx.add(Expr::Add(linear_term, cubic_term));
-    }
-
-    let linear_term = scale_expr_reciprocal_integration_result(ctx, scale, tanh_arg);
-    let cubic_scale = scale_rational_term(ctx, BigRational::new(1.into(), 3.into()), scale);
-    let cubic_term = scale_expr_reciprocal_integration_result(ctx, cubic_scale, tanh_cubed);
-    ctx.add(Expr::Sub(linear_term, cubic_term))
-}
-
-fn build_hyperbolic_sinh_reciprocal_fourth_integral(
-    ctx: &mut Context,
-    arg: ExprId,
-    scale: ExprId,
-) -> ExprId {
-    let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
-    let one = ctx.num(1);
-    let coth_arg = ctx.add(Expr::Div(one, tanh_arg));
-    let three = ctx.num(3);
-    let tanh_cubed = ctx.add(Expr::Pow(tanh_arg, three));
-    let one = ctx.num(1);
-    let coth_cubed = ctx.add(Expr::Div(one, tanh_cubed));
-
-    if let Expr::Number(scale_value) = ctx.get(scale).clone() {
-        let linear_term = rational_over_expr(ctx, scale_value.clone(), tanh_arg);
-        let cubic_term = rational_over_expr(
-            ctx,
-            -scale_value / BigRational::from_integer(3.into()),
-            tanh_cubed,
-        );
-        return ctx.add(Expr::Add(linear_term, cubic_term));
-    }
-
-    let linear_term = scale_expr_reciprocal_integration_result(ctx, scale, coth_arg);
-    let cubic_scale = scale_rational_term(ctx, BigRational::new(1.into(), 3.into()), scale);
-    let cubic_term = scale_expr_reciprocal_integration_result(ctx, cubic_scale, coth_cubed);
-    ctx.add(Expr::Sub(linear_term, cubic_term))
+fn hyperbolic_reciprocal_primitive_scale_ops() -> HyperbolicReciprocalPrimitiveScaleOps {
+    HyperbolicReciprocalPrimitiveScaleOps::new(
+        scale_rational_term,
+        rational_over_expr,
+        scale_expr_reciprocal_integration_result,
+        negate_scalar_expr,
+    )
 }
 
 fn hyperbolic_log_derivative_ratio_antiderivative(
@@ -4196,22 +3952,12 @@ fn hyperbolic_log_derivative_ratio_antiderivative(
         return None;
     }
 
-    let factors = mul_leaves(ctx, num);
-    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
-
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let cofactor = if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    };
+    let cofactor = product_cofactor_excluding_unary_builtin_arg(
+        ctx,
+        num,
+        numerator_builtin,
+        |ctx, numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal,
+    )?;
 
     let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
     let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
@@ -4291,24 +4037,9 @@ fn trig_log_derivative_ratio_cofactor(
     numerator_builtin: BuiltinFn,
     arg: ExprId,
 ) -> Option<ExprId> {
-    if let Some(cofactor) =
-        trig_log_derivative_ratio_term_cofactor(ctx, num, numerator_builtin, arg)
-    {
-        return Some(cofactor);
-    }
-
-    let add_view = AddView::from_expr(ctx, num);
-    if add_view.terms.len() < 2 {
-        return None;
-    }
-
-    let mut cofactor_terms = Vec::with_capacity(add_view.terms.len());
-    for (term, sign) in add_view.terms {
-        let cofactor = trig_log_derivative_ratio_term_cofactor(ctx, term, numerator_builtin, arg)?;
-        cofactor_terms.push(signed_term(ctx, cofactor, sign));
-    }
-
-    Some(build_balanced_add(ctx, &cofactor_terms))
+    additive_cofactor_from_term_cofactors(ctx, num, |ctx, term| {
+        trig_log_derivative_ratio_term_cofactor(ctx, term, numerator_builtin, arg)
+    })
 }
 
 fn trig_log_derivative_ratio_term_cofactor(
@@ -4317,24 +4048,12 @@ fn trig_log_derivative_ratio_term_cofactor(
     numerator_builtin: BuiltinFn,
     arg: ExprId,
 ) -> Option<ExprId> {
-    let factors = mul_leaves(ctx, term);
-    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
-
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let cofactor = if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    };
-
-    Some(cofactor)
+    product_cofactor_excluding_unary_builtin_arg(
+        ctx,
+        term,
+        numerator_builtin,
+        |ctx, numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal,
+    )
 }
 
 fn trig_log_derivative_ratio_required_nonzero(
@@ -4347,7 +4066,7 @@ fn trig_log_derivative_ratio_required_nonzero(
         _ => return None,
     };
     let (den_builtin, arg, _) = trig_log_derivative_ratio_scale(ctx, num, den, var)?;
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn hyperbolic_tanh_reciprocal_log_sinh_antiderivative(
@@ -4385,29 +4104,18 @@ fn hyperbolic_reciprocal_derivative_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let (den_builtin, arg) = reciprocal_hyperbolic_square_factor_parts(ctx, den)?;
+    let (den_builtin, arg) = reciprocal_hyperbolic_square_parts(ctx, den)?;
     let policy = hyperbolic_reciprocal_derivative_policy(den_builtin)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
 
-    let factors = mul_leaves(ctx, num);
-    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, policy.numerator_builtin).is_some_and(|numerator_arg| {
-            same_structural_or_linear_arg(ctx, numerator_arg, arg, var)
-        })
-    })?;
-
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let cofactor = if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    };
+    let cofactor = product_cofactor_excluding_unary_builtin_arg(
+        ctx,
+        num,
+        policy.numerator_builtin,
+        |ctx, numerator_arg| same_structural_or_linear_arg(ctx, numerator_arg, arg, var),
+    )?;
 
     let scale = symbolic_linear_cofactor_scale_expr(ctx, cofactor, arg, var)?;
     if is_number(ctx, scale, 0) {
@@ -4717,11 +4425,7 @@ fn reciprocal_trig_square_required_nonzero(
 
     let (builtin, arg) = reciprocal_trig_square_parts(ctx, den)?;
     get_linear_coeffs(ctx, arg, var)?;
-    Some(match builtin {
-        BuiltinFn::Cos => ctx.call_builtin(BuiltinFn::Cos, vec![arg]),
-        BuiltinFn::Sin => ctx.call_builtin(BuiltinFn::Sin, vec![arg]),
-        _ => return None,
-    })
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, builtin, arg)
 }
 
 fn sec_fourth_required_nonzero(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
@@ -4839,11 +4543,7 @@ fn polynomial_reciprocal_trig_square_required_nonzero_from_parts(
         return None;
     }
 
-    Some(match builtin {
-        BuiltinFn::Cos => ctx.call_builtin(BuiltinFn::Cos, vec![arg]),
-        BuiltinFn::Sin => ctx.call_builtin(BuiltinFn::Sin, vec![arg]),
-        _ => return None,
-    })
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, builtin, arg)
 }
 
 fn polynomial_reciprocal_trig_square_required_nonzero(
@@ -4991,7 +4691,7 @@ fn trig_reciprocal_derivative_antiderivative(
 ) -> Option<ExprId> {
     let (den_builtin, arg) = reciprocal_trig_square_parts(ctx, den)?;
     let policy = reciprocal_trig_derivative_policy(den_builtin)?;
-    let numerator_arg = unary_builtin_arg(ctx, num, policy.numerator_builtin)?;
+    let numerator_arg = unary_builtin_arg(ctx, num, policy.numerator_builtin())?;
     if compare_expr(ctx, numerator_arg, arg) != Ordering::Equal {
         return None;
     }
@@ -5164,33 +4864,12 @@ fn polynomial_trig_reciprocal_derivative_term_cofactor(
     numerator_builtin: BuiltinFn,
     arg: ExprId,
 ) -> Option<ExprId> {
-    let factors = mul_leaves(ctx, term);
-    let mut numerator_index = None;
-
-    for (idx, factor) in factors.iter().enumerate() {
-        let Some(numerator_arg) = unary_builtin_arg(ctx, *factor, numerator_builtin) else {
-            continue;
-        };
-        if compare_expr(ctx, numerator_arg, arg) != Ordering::Equal {
-            continue;
-        }
-        if numerator_index.replace(idx).is_some() {
-            return None;
-        }
-    }
-
-    let numerator_index = numerator_index?;
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-
-    Some(if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    })
+    unique_product_cofactor_excluding_unary_builtin_arg(
+        ctx,
+        term,
+        numerator_builtin,
+        |ctx, numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal,
+    )
 }
 
 fn polynomial_trig_reciprocal_derivative_cofactor(
@@ -5199,27 +4878,9 @@ fn polynomial_trig_reciprocal_derivative_cofactor(
     numerator_builtin: BuiltinFn,
     arg: ExprId,
 ) -> Option<ExprId> {
-    let terms = crate::expr_nary::add_terms_signed(ctx, num);
-    if terms.len() <= 1 {
-        return polynomial_trig_reciprocal_derivative_term_cofactor(
-            ctx,
-            num,
-            numerator_builtin,
-            arg,
-        );
-    }
-
-    let mut cofactor_terms = Vec::with_capacity(terms.len());
-    for (term, sign) in terms {
-        let cofactor =
-            polynomial_trig_reciprocal_derivative_term_cofactor(ctx, term, numerator_builtin, arg)?;
-        cofactor_terms.push(match sign {
-            Sign::Pos => cofactor,
-            Sign::Neg => ctx.add(Expr::Neg(cofactor)),
-        });
-    }
-
-    Some(build_balanced_add(ctx, &cofactor_terms))
+    additive_cofactor_from_term_cofactors(ctx, num, |ctx, term| {
+        polynomial_trig_reciprocal_derivative_term_cofactor(ctx, term, numerator_builtin, arg)
+    })
 }
 
 fn polynomial_or_symbolic_linear_cofactor_scale(
@@ -5488,7 +5149,7 @@ fn polynomial_trig_reciprocal_derivative_parts(
     }
 
     let cofactor =
-        polynomial_trig_reciprocal_derivative_cofactor(ctx, num, policy.numerator_builtin, arg)?;
+        polynomial_trig_reciprocal_derivative_cofactor(ctx, num, policy.numerator_builtin(), arg)?;
     Some((den_builtin, arg, cofactor))
 }
 
@@ -5854,7 +5515,7 @@ fn sqrt_trig_reciprocal_derivative_parts(
             .enumerate()
             .find_map(|(idx, factor)| {
                 let (numerator_arg, sign) =
-                    signed_unary_builtin_arg(ctx, *factor, policy.numerator_builtin)?;
+                    signed_unary_builtin_arg(ctx, *factor, policy.numerator_builtin())?;
                 (compare_expr(ctx, numerator_arg, arg) == Ordering::Equal).then_some((idx, sign))
             })?;
 
@@ -5917,13 +5578,13 @@ fn sqrt_trig_reciprocal_derivative_raw_numerator_parts(
                 continue;
             }
             let Some((derivative_arg, derivative_sign)) =
-                signed_unary_builtin_arg(ctx, *factor, policy.derivative_builtin)
+                signed_unary_builtin_arg(ctx, *factor, policy.derivative_builtin())
             else {
                 continue;
             };
             if compare_expr(ctx, derivative_arg, arg) == Ordering::Equal {
                 return Some((
-                    policy.denominator_builtin,
+                    policy.denominator_builtin(),
                     arg,
                     reciprocal_index,
                     derivative_index,
@@ -6236,19 +5897,6 @@ pub fn integrate_symbolic_is_sqrt_hyperbolic_log_derivative_target(
     sqrt_hyperbolic_log_derivative_parts(ctx, expr, var).is_some()
 }
 
-fn reciprocal_hyperbolic_square_factor_parts(
-    ctx: &Context,
-    factor: ExprId,
-) -> Option<(BuiltinFn, ExprId)> {
-    if let Some(arg) = reciprocal_hyperbolic_cosh_square_arg(ctx, factor) {
-        return Some((BuiltinFn::Cosh, arg));
-    }
-    if let Some(arg) = reciprocal_hyperbolic_sinh_square_arg(ctx, factor) {
-        return Some((BuiltinFn::Sinh, arg));
-    }
-    None
-}
-
 fn sqrt_hyperbolic_reciprocal_square_parts(
     ctx: &mut Context,
     expr: ExprId,
@@ -6266,7 +5914,7 @@ fn sqrt_hyperbolic_reciprocal_square_parts(
             .iter()
             .enumerate()
             .find_map(|(idx, factor)| {
-                reciprocal_hyperbolic_square_factor_parts(ctx, *factor).map(|parts| (idx, parts))
+                reciprocal_hyperbolic_square_parts(ctx, *factor).map(|parts| (idx, parts))
             })?;
 
     let remaining_denominator: Vec<_> = denominator_factors
@@ -6335,7 +5983,7 @@ fn sqrt_hyperbolic_reciprocal_derivative_parts(
             .iter()
             .enumerate()
             .find_map(|(idx, factor)| {
-                reciprocal_hyperbolic_square_factor_parts(ctx, *factor).map(|parts| (idx, parts))
+                reciprocal_hyperbolic_square_parts(ctx, *factor).map(|parts| (idx, parts))
             })?;
     let policy = hyperbolic_reciprocal_derivative_policy(den_builtin)?;
 
@@ -6415,22 +6063,12 @@ fn polynomial_trig_reciprocal_factor_antiderivative(
         return None;
     }
 
-    let factors = mul_leaves(ctx, num);
-    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, policy.derivative_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
-
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let cofactor = if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    };
+    let cofactor = product_cofactor_excluding_unary_builtin_arg(
+        ctx,
+        num,
+        policy.derivative_builtin(),
+        |ctx, numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal,
+    )?;
 
     let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
     let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
@@ -6478,12 +6116,12 @@ fn trig_reciprocal_derivative_required_nonzero(
     };
     let (den_builtin, arg) = reciprocal_trig_square_parts(ctx, den)?;
     let policy = reciprocal_trig_derivative_policy(den_builtin)?;
-    let numerator_arg = unary_builtin_arg(ctx, num, policy.numerator_builtin)?;
+    let numerator_arg = unary_builtin_arg(ctx, num, policy.numerator_builtin())?;
     if compare_expr(ctx, numerator_arg, arg) != Ordering::Equal {
         return None;
     }
     get_linear_coeffs(ctx, arg, var)?;
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn polynomial_trig_reciprocal_derivative_required_nonzero_from_parts(
@@ -6496,7 +6134,7 @@ fn polynomial_trig_reciprocal_derivative_required_nonzero_from_parts(
         polynomial_trig_reciprocal_derivative_parts(ctx, num, den, var)?;
     trig_reciprocal_derivative_cofactor_is_nonzero(ctx, cofactor, arg, var)?;
 
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn polynomial_trig_reciprocal_derivative_required_nonzero(
@@ -6517,7 +6155,7 @@ fn sqrt_trig_reciprocal_derivative_required_nonzero(
     var: &str,
 ) -> Option<ExprId> {
     let (den_builtin, arg, _, _) = sqrt_trig_reciprocal_derivative_parts(ctx, expr, var)?;
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn sqrt_trig_log_derivative_required_nonzero(
@@ -6526,7 +6164,7 @@ fn sqrt_trig_log_derivative_required_nonzero(
     var: &str,
 ) -> Option<ExprId> {
     let (den_builtin, arg, _, _) = sqrt_trig_log_derivative_parts(ctx, expr, var)?;
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn sqrt_reciprocal_trig_log_derivative_required_nonzero(
@@ -6536,7 +6174,7 @@ fn sqrt_reciprocal_trig_log_derivative_required_nonzero(
 ) -> Option<ExprId> {
     let (den_builtin, _, radicand, _) = sqrt_reciprocal_trig_log_derivative_parts(ctx, expr, var)?;
     let arg = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn sqrt_hyperbolic_log_derivative_required_nonzero(
@@ -6545,7 +6183,7 @@ fn sqrt_hyperbolic_log_derivative_required_nonzero(
     var: &str,
 ) -> Option<ExprId> {
     let (log_builtin, arg, _, _) = sqrt_hyperbolic_log_derivative_parts(ctx, expr, var)?;
-    Some(ctx.call_builtin(log_builtin, vec![arg]))
+    build_hyperbolic_denominator_nonzero_condition(ctx, log_builtin, arg)
 }
 
 fn sqrt_hyperbolic_reciprocal_square_required_nonzero(
@@ -6554,7 +6192,7 @@ fn sqrt_hyperbolic_reciprocal_square_required_nonzero(
     var: &str,
 ) -> Option<ExprId> {
     let (den_builtin, arg, _, _) = sqrt_hyperbolic_reciprocal_square_parts(ctx, expr, var)?;
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_hyperbolic_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn sqrt_hyperbolic_reciprocal_derivative_required_nonzero(
@@ -6563,7 +6201,7 @@ fn sqrt_hyperbolic_reciprocal_derivative_required_nonzero(
     var: &str,
 ) -> Option<ExprId> {
     let (den_builtin, arg, _, _) = sqrt_hyperbolic_reciprocal_derivative_parts(ctx, expr, var)?;
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_hyperbolic_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn polynomial_trig_reciprocal_factor_required_nonzero(
@@ -6581,21 +6219,12 @@ fn polynomial_trig_reciprocal_factor_required_nonzero(
         return None;
     }
 
-    let factors = mul_leaves(ctx, num);
-    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, policy.derivative_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let cofactor = if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    };
+    let cofactor = product_cofactor_excluding_unary_builtin_arg(
+        ctx,
+        num,
+        policy.derivative_builtin(),
+        |ctx, numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal,
+    )?;
 
     let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
     let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
@@ -6605,7 +6234,7 @@ fn polynomial_trig_reciprocal_factor_required_nonzero(
         return None;
     }
 
-    Some(ctx.call_builtin(den_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn constant_scaled_trig_reciprocal_derivative_required_nonzero(
@@ -6652,7 +6281,7 @@ fn trig_ratio_power_reciprocal_square_required_nonzero(
             _ => return None,
         };
         get_linear_coeffs(ctx, arg, var)?;
-        return Some(ctx.call_builtin(den_builtin, vec![arg]));
+        return build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg);
     }
 
     let factors = mul_leaves(ctx, expr);
@@ -6725,7 +6354,7 @@ fn trig_ratio_power_reciprocal_square_required_nonzero(
         return None;
     }
     get_linear_coeffs(ctx, den_arg, var)?;
-    Some(ctx.call_builtin(den_builtin, vec![den_arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, den_arg)
 }
 
 fn polynomial_sec_csc_square_required_nonzero(
@@ -6783,7 +6412,7 @@ fn polynomial_sec_csc_square_required_nonzero(
         return None;
     }
 
-    Some(ctx.call_builtin(required_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, required_builtin, arg)
 }
 
 fn trig_ratio_square_required_nonzero(
@@ -6793,36 +6422,31 @@ fn trig_ratio_square_required_nonzero(
 ) -> Option<ExprId> {
     if let Expr::Div(num, den) = ctx.get(expr).clone() {
         if let Some((builtin, arg, _)) = trig_ratio_square_quotient_parts(ctx, num, den, var) {
-            let required_builtin = match builtin {
-                BuiltinFn::Tan => BuiltinFn::Cos,
-                BuiltinFn::Cot => BuiltinFn::Sin,
-                _ => return None,
-            };
-            return Some(ctx.call_builtin(required_builtin, vec![arg]));
+            return build_trig_pole_nonzero_condition(ctx, builtin, arg);
         }
 
         if let Some((arg, _)) = trig_tan_fourth_quotient_parts(ctx, num, den, var) {
-            return Some(ctx.call_builtin(BuiltinFn::Cos, vec![arg]));
+            return build_trig_pole_nonzero_condition(ctx, BuiltinFn::Tan, arg);
         }
 
         if let Some((arg, _)) = trig_cot_fourth_quotient_parts(ctx, num, den, var) {
-            return Some(ctx.call_builtin(BuiltinFn::Sin, vec![arg]));
+            return build_trig_pole_nonzero_condition(ctx, BuiltinFn::Cot, arg);
         }
 
         if let Some((arg, _)) = trig_tan_sixth_quotient_parts(ctx, num, den, var) {
-            return Some(ctx.call_builtin(BuiltinFn::Cos, vec![arg]));
+            return build_trig_pole_nonzero_condition(ctx, BuiltinFn::Tan, arg);
         }
 
         if let Some((arg, _)) = trig_cot_sixth_quotient_parts(ctx, num, den, var) {
-            return Some(ctx.call_builtin(BuiltinFn::Sin, vec![arg]));
+            return build_trig_pole_nonzero_condition(ctx, BuiltinFn::Cot, arg);
         }
 
         if let Some((arg, _)) = trig_tan_eighth_quotient_parts(ctx, num, den, var) {
-            return Some(ctx.call_builtin(BuiltinFn::Cos, vec![arg]));
+            return build_trig_pole_nonzero_condition(ctx, BuiltinFn::Tan, arg);
         }
 
         let (arg, _) = trig_cot_eighth_quotient_parts(ctx, num, den, var)?;
-        return Some(ctx.call_builtin(BuiltinFn::Sin, vec![arg]));
+        return build_trig_pole_nonzero_condition(ctx, BuiltinFn::Cot, arg);
     }
 
     let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
@@ -6834,28 +6458,17 @@ fn trig_ratio_square_required_nonzero(
         _ => return None,
     };
     let builtin = ctx.builtin_of(fn_id)?;
-    let required_builtin = match builtin {
-        BuiltinFn::Tan
+    match builtin {
+        BuiltinFn::Tan | BuiltinFn::Cot
             if is_number(ctx, exp, 2)
                 || is_number(ctx, exp, 4)
                 || is_number(ctx, exp, 6)
-                || is_number(ctx, exp, 8) =>
-        {
-            BuiltinFn::Cos
-        }
-        BuiltinFn::Cot
-            if is_number(ctx, exp, 2)
-                || is_number(ctx, exp, 4)
-                || is_number(ctx, exp, 6)
-                || is_number(ctx, exp, 8) =>
-        {
-            BuiltinFn::Sin
-        }
+                || is_number(ctx, exp, 8) => {}
         _ => return None,
-    };
+    }
     let arg = args[0];
     get_linear_coeffs(ctx, arg, var)?;
-    Some(ctx.call_builtin(required_builtin, vec![arg]))
+    build_trig_pole_nonzero_condition(ctx, builtin, arg)
 }
 
 fn trig_log_antiderivative(
@@ -7003,19 +6616,10 @@ fn trig_log_required_nonzero(ctx: &mut Context, expr: ExprId, var: &str) -> Opti
         Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(fn_id)?, args[0]),
         _ => return None,
     };
-    let nonzero_builtin = trig_pole_nonzero_builtin(builtin)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
-    Some(ctx.call_builtin(nonzero_builtin, vec![arg]))
-}
-
-fn trig_pole_nonzero_builtin(builtin: BuiltinFn) -> Option<BuiltinFn> {
-    match builtin {
-        BuiltinFn::Tan | BuiltinFn::Sec => Some(BuiltinFn::Cos),
-        BuiltinFn::Cot | BuiltinFn::Csc => Some(BuiltinFn::Sin),
-        _ => None,
-    }
+    build_trig_pole_nonzero_condition(ctx, builtin, arg)
 }
 
 fn residual_trig_pole_required_nonzero_conditions(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
@@ -7127,14 +6731,7 @@ fn polynomial_trig_log_required_nonzero(
         return None;
     }
 
-    let nonzero_builtin = match builtin {
-        BuiltinFn::Tan => BuiltinFn::Cos,
-        BuiltinFn::Cot => BuiltinFn::Sin,
-        BuiltinFn::Sec => BuiltinFn::Cos,
-        BuiltinFn::Csc => BuiltinFn::Sin,
-        _ => return None,
-    };
-    Some(ctx.call_builtin(nonzero_builtin, vec![arg]))
+    build_trig_pole_nonzero_condition(ctx, builtin, arg)
 }
 
 fn reciprocal_trig_log_required_nonzero(
@@ -7147,7 +6744,7 @@ fn reciprocal_trig_log_required_nonzero(
         _ => return None,
     };
 
-    let (nonzero_builtin, arg) = unary_builtin_arg(ctx, den, BuiltinFn::Cos)
+    let (den_builtin, arg) = unary_builtin_arg(ctx, den, BuiltinFn::Cos)
         .map(|arg| (BuiltinFn::Cos, arg))
         .or_else(|| unary_builtin_arg(ctx, den, BuiltinFn::Sin).map(|arg| (BuiltinFn::Sin, arg)))?;
 
@@ -7159,7 +6756,7 @@ fn reciprocal_trig_log_required_nonzero(
         return None;
     }
 
-    Some(ctx.call_builtin(nonzero_builtin, vec![arg]))
+    build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
 fn positive_one_plus_square_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {

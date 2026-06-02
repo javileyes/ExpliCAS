@@ -16,6 +16,49 @@ impl SqrtChainIntegrandPreservation {
     }
 }
 
+#[derive(Default)]
+struct SqrtChainIntegrandPreservationBuilder {
+    active: bool,
+    preserve_compact_sqrt_trig_log: bool,
+    preserve_compact_sqrt_hyperbolic_log: bool,
+    preserve_compact_sqrt_hyperbolic_reciprocal_derivative: bool,
+}
+
+impl SqrtChainIntegrandPreservationBuilder {
+    fn record_hit(mut self, hit: bool) -> Self {
+        self.active |= hit;
+        self
+    }
+
+    fn record_sqrt_trig_log(mut self, hit: bool) -> Self {
+        self.active |= hit;
+        self.preserve_compact_sqrt_trig_log = hit;
+        self
+    }
+
+    fn record_sqrt_hyperbolic_log(mut self, hit: bool) -> Self {
+        self.active |= hit;
+        self.preserve_compact_sqrt_hyperbolic_log = hit;
+        self
+    }
+
+    fn record_sqrt_hyperbolic_reciprocal_derivative(mut self, hit: bool) -> Self {
+        self.active |= hit;
+        self.preserve_compact_sqrt_hyperbolic_reciprocal_derivative = hit;
+        self
+    }
+
+    fn build(self) -> SqrtChainIntegrandPreservation {
+        SqrtChainIntegrandPreservation {
+            active: self.active,
+            preserve_compact_sqrt_trig_log: self.preserve_compact_sqrt_trig_log,
+            preserve_compact_sqrt_hyperbolic_log: self.preserve_compact_sqrt_hyperbolic_log,
+            preserve_compact_sqrt_hyperbolic_reciprocal_derivative: self
+                .preserve_compact_sqrt_hyperbolic_reciprocal_derivative,
+        }
+    }
+}
+
 pub(super) fn sqrt_chain_integrand_preservation_gates(
     ctx: &mut Context,
     target: ExprId,
@@ -38,17 +81,16 @@ pub(super) fn sqrt_chain_integrand_preservation_gates(
             ctx, target, var_name,
         );
 
-    SqrtChainIntegrandPreservation {
-        active: preserve_compact_sqrt_reciprocal_trig_product
-            || preserve_compact_sqrt_trig_reciprocal
-            || preserve_compact_sqrt_trig_log
-            || preserve_compact_sqrt_hyperbolic_log
-            || preserve_compact_sqrt_hyperbolic_reciprocal_square
-            || preserve_compact_sqrt_hyperbolic_reciprocal_derivative,
-        preserve_compact_sqrt_trig_log,
-        preserve_compact_sqrt_hyperbolic_log,
-        preserve_compact_sqrt_hyperbolic_reciprocal_derivative,
-    }
+    SqrtChainIntegrandPreservationBuilder::default()
+        .record_hit(preserve_compact_sqrt_reciprocal_trig_product)
+        .record_hit(preserve_compact_sqrt_trig_reciprocal)
+        .record_sqrt_trig_log(preserve_compact_sqrt_trig_log)
+        .record_sqrt_hyperbolic_log(preserve_compact_sqrt_hyperbolic_log)
+        .record_hit(preserve_compact_sqrt_hyperbolic_reciprocal_square)
+        .record_sqrt_hyperbolic_reciprocal_derivative(
+            preserve_compact_sqrt_hyperbolic_reciprocal_derivative,
+        )
+        .build()
 }
 
 pub(super) fn sqrt_trig_log_integrand_for_calculus_presentation(
@@ -99,4 +141,31 @@ fn sqrt_trig_reciprocal_integrand_for_calculus_presentation(
     cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_reciprocal_derivative_target(
         ctx, target, var_name,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SqrtChainIntegrandPreservationBuilder;
+
+    #[test]
+    fn sqrt_chain_builder_activates_when_fielded_gate_hits() {
+        let preservation = SqrtChainIntegrandPreservationBuilder::default()
+            .record_sqrt_trig_log(true)
+            .build();
+
+        assert!(preservation.should_preserve_compact_result());
+        assert!(preservation.preserve_compact_sqrt_trig_log);
+    }
+
+    #[test]
+    fn sqrt_chain_builder_tracks_activation_only_hits() {
+        let preservation = SqrtChainIntegrandPreservationBuilder::default()
+            .record_hit(true)
+            .build();
+
+        assert!(preservation.should_preserve_compact_result());
+        assert!(!preservation.preserve_compact_sqrt_trig_log);
+        assert!(!preservation.preserve_compact_sqrt_hyperbolic_log);
+        assert!(!preservation.preserve_compact_sqrt_hyperbolic_reciprocal_derivative);
+    }
 }

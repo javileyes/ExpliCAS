@@ -13,6 +13,7 @@ mod acosh_strictly_positive_polynomial_derivative_presentation;
 mod affine_inverse_family_post_calculus_presentation;
 mod arctan_additive_result_presentation;
 mod arctan_by_parts_result_presentation;
+mod arctan_companion_result_presentation;
 mod arctan_integrand_preservation;
 mod arctan_polynomial_integrand_presentation;
 mod arctan_sqrt_additive_derivative_presentation;
@@ -62,11 +63,36 @@ mod half_power_sum_result_presentation;
 mod hyperbolic_by_parts_integrand_presentation;
 mod hyperbolic_power_integrand_presentation;
 mod hyperbolic_primitive_derivative_presentation;
+mod integral_derivative_arctan_polynomial_routes;
+mod integral_derivative_conditioned_return;
+mod integral_derivative_direct_trig_affine_routes;
+mod integral_derivative_final_presentation_routes;
+mod integral_derivative_held_presentation_routes;
+mod integral_derivative_held_source_routes;
 mod integral_derivative_shortcut_presentation;
+mod integral_derivative_shortcut_return_policy;
+mod integral_derivative_sqrt_reciprocal_trig_routes;
+mod integral_derivative_sqrt_trig_log_routes;
+mod integral_derivative_verified_held_inverse_sqrt_routes;
+mod integral_derivative_verified_held_polynomial_substitution_routes;
+mod integral_derivative_verified_power_inverse_routes;
+mod integral_derivative_verified_rational_substitution_routes;
+mod integral_derivative_verified_source_routes;
 mod integrate_post_calculus_presentation;
 mod integrate_rule;
 mod integration;
+mod integration_antiderivative_verification;
+mod integration_arctan_by_parts_result_presentation;
+mod integration_conditions;
+mod integration_derivative_cofactor_routes;
 mod integration_final_result_presentation;
+mod integration_fractional_power_result_presentation;
+mod integration_inverse_argument_presentation;
+mod integration_power_result_preservation;
+mod integration_result_pipeline;
+mod integration_source_preservation;
+mod integration_source_route_hits;
+mod integration_sqrt_result_preservation;
 mod inverse_hyperbolic_affine_integrand_preservation;
 mod inverse_hyperbolic_root_post_calculus_presentation;
 mod inverse_hyperbolic_scaled_sqrt_derivative_routes;
@@ -114,6 +140,7 @@ mod positive_half_power_result_presentation;
 mod positive_quadratic_derivative_routes;
 mod positive_quadratic_presentation;
 mod positive_quadratic_square_result_presentation;
+mod positive_shift_linear_presentation;
 mod post_calculus_presentation;
 mod presentation_compaction;
 mod presentation_utils;
@@ -140,10 +167,12 @@ mod shifted_sqrt_argument_presentation;
 mod shifted_sqrt_derivative_presentation;
 mod shifted_sqrt_derivative_routes;
 mod signed_factor_presentation;
+mod sqrt_additive_generic_derivative_routes;
 mod sqrt_additive_result_presentation;
 mod sqrt_additive_tan_derivative_presentation;
 mod sqrt_additive_tan_inline_derivative_presentation;
 mod sqrt_additive_tan_result_presentation;
+mod sqrt_additive_tan_term_scan;
 mod sqrt_additive_trig_derivative_presentation;
 mod sqrt_bounded_trig_positive_shift_derivative_presentation;
 mod sqrt_chain_factor_presentation;
@@ -195,14 +224,13 @@ use atanh_surd_derivative_presentation::atanh_surd_quotient_compact_derivative;
 use bounded_inverse_trig_derivative_routes::bounded_inverse_trig_derivative_route;
 pub use diff_rule::DiffRule;
 use diff_rule_support::{
-    arctan_sqrt_additive_derivative_rewrite, diff_rewrite_with_conditions,
-    sign_polynomial_diff_result, sqrt_additive_derivative_shortcut, undefined_diff_rewrite,
+    arctan_sqrt_additive_derivative_rewrite, finalize_diff_rewrite_with_conditions,
+    sign_polynomial_diff_rewrite, sqrt_additive_derivative_shortcut, undefined_diff_rewrite,
 };
 use differentiation::differentiate;
 pub(crate) use domain_checks::diff_target_known_undefined_over_reals;
 use domain_checks::{
-    append_positive_required_conditions, diff_required_conditions_for_target,
-    diff_target_known_undefined_or_empty_domain_over_reals,
+    append_positive_required_conditions, diff_target_known_undefined_or_empty_domain_over_reals,
 };
 use elementary_sqrt_derivative_presentation::signed_elementary_sqrt_polynomial_derivative_presentation;
 use elementary_variable_term_presentation::{
@@ -211,7 +239,7 @@ use elementary_variable_term_presentation::{
 };
 use exponential_derivative_presentation::sqrt_shifted_exp_derivative_presentation;
 pub(crate) use hyperbolic_primitive_derivative_presentation::affine_hyperbolic_odd_primitive_derivative_presentation;
-use integral_derivative_shortcut_presentation::supported_integral_diff_shortcut_presentation;
+use integral_derivative_shortcut_presentation::supported_integral_diff_shortcut_rewrite;
 pub use integrate_rule::IntegrateRule;
 use inverse_reciprocal_trig_affine_abs_derivative_presentation::constant_scaled_inverse_reciprocal_trig_affine_abs_presentation;
 pub(crate) use inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation::inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation_with_domain;
@@ -230,7 +258,6 @@ use polynomial_support::{
 };
 use polynomial_times_sqrt_polynomial_derivative_presentation::polynomial_times_sqrt_polynomial_derivative_presentation;
 use positive_quadratic_derivative_routes::positive_quadratic_derivative_route;
-use positive_quadratic_square_result_presentation::compact_positive_quadratic_square_derivative_result;
 pub(crate) use post_calculus_presentation::try_post_calculus_presentation;
 pub(crate) use presentation_compaction::compact_double_angle_sine_products_for_calculus_presentation;
 use presentation_compaction::{
@@ -244,7 +271,10 @@ use reciprocal_sqrt_product_derivative_presentation::{
     reciprocal_sqrt_polynomial_product_derivative_presentation,
 };
 pub(crate) use reciprocal_trig_derivative_presentation::reciprocal_trig_shifted_sqrt_derivative_presentation;
-use reciprocal_trig_derivative_presentation::scaled_reciprocal_trig_power_derivative_presentation;
+use reciprocal_trig_derivative_presentation::{
+    reciprocal_trig_shifted_sqrt_derivative_rewrite,
+    scaled_reciprocal_trig_power_derivative_presentation,
+};
 pub(crate) use result_presentation::try_calculus_result_presentation;
 use scalar_presentation::{
     add_one_for_calculus_presentation, add_rational_for_calculus_presentation,

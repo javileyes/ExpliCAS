@@ -20,6 +20,16 @@ pub(super) struct SqrtAdditiveTanDerivativePresentationParts {
     pub(super) other_derivatives: Vec<ExprId>,
 }
 
+pub(super) struct SqrtAdditiveTanCommonDenominatorPresentationParts {
+    pub(super) radicand: ExprId,
+    pub(super) tan_arg: ExprId,
+    pub(super) common_trig_denominator_builtin: BuiltinFn,
+    pub(super) tan_scale: BigRational,
+    pub(super) common_denominator: Option<ExprId>,
+    pub(super) reciprocal_derivative_scales: Vec<BigRational>,
+    pub(super) other_derivatives: Vec<ExprId>,
+}
+
 pub(super) fn compact_tan_sqrt_common_denominator_numerator_term(
     ctx: &mut Context,
     cos_arg: ExprId,
@@ -42,6 +52,99 @@ pub(super) fn compact_tan_sqrt_common_denominator_numerator_term(
     compact_numeric_mul_factors_for_calculus_presentation(ctx, term)
 }
 
+fn push_scaled_tan_derivative_numerator_term(
+    ctx: &mut Context,
+    numerator_terms: &mut Vec<ExprId>,
+    tan_scale: BigRational,
+    reciprocal_trig_square: ExprId,
+    derivative_multiplier: ExprId,
+) {
+    let tan_term = scale_expr_for_calculus_presentation(ctx, tan_scale, reciprocal_trig_square);
+    let tan_term = ctx.add_raw(Expr::Mul(derivative_multiplier, tan_term));
+    numerator_terms.push(compact_numeric_mul_factors_for_calculus_presentation(
+        ctx, tan_term,
+    ));
+}
+
+fn push_scaled_other_derivative_numerator_terms(
+    ctx: &mut Context,
+    numerator_terms: &mut Vec<ExprId>,
+    derivative_multiplier: ExprId,
+    other_derivatives: Vec<ExprId>,
+) {
+    for derivative in other_derivatives {
+        let term = ctx.add_raw(Expr::Mul(derivative_multiplier, derivative));
+        numerator_terms.push(compact_numeric_mul_factors_for_calculus_presentation(
+            ctx, term,
+        ));
+    }
+}
+
+pub(super) fn sqrt_additive_tan_common_denominator_derivative_presentation(
+    ctx: &mut Context,
+    parts: SqrtAdditiveTanCommonDenominatorPresentationParts,
+) -> (ExprId, ExprId) {
+    let denominator_trig_arg =
+        ctx.call_builtin(parts.common_trig_denominator_builtin, vec![parts.tan_arg]);
+    let two = ctx.num(2);
+    let denominator_trig_square = ctx.add_raw(Expr::Pow(denominator_trig_arg, two));
+
+    let mut numerator_terms = Vec::new();
+    let common_denominator = parts
+        .common_denominator
+        .filter(|_| !parts.reciprocal_derivative_scales.is_empty());
+    let tan_numerator = if let Some(denominator) = common_denominator {
+        scale_expr_for_calculus_presentation(ctx, parts.tan_scale, denominator)
+    } else {
+        rational_const_for_calculus_presentation(ctx, parts.tan_scale)
+    };
+    numerator_terms.push(tan_numerator);
+    for scale in parts.reciprocal_derivative_scales {
+        numerator_terms.push(scale_expr_for_calculus_presentation(
+            ctx,
+            scale,
+            denominator_trig_square,
+        ));
+    }
+    for derivative in parts.other_derivatives {
+        let mut term = compact_tan_sqrt_common_denominator_numerator_term(
+            ctx,
+            denominator_trig_arg,
+            denominator_trig_square,
+            derivative,
+        );
+        if let Some(denominator) = common_denominator {
+            term = ctx.add_raw(Expr::Mul(denominator, term));
+            term = compact_numeric_mul_factors_for_calculus_presentation(ctx, term);
+        }
+        numerator_terms.push(term);
+    }
+    let numerator = cas_math::expr_nary::build_balanced_add(ctx, &numerator_terms);
+    let numerator = compact_numeric_mul_factors_for_calculus_presentation(ctx, numerator);
+
+    let denominator_scale =
+        rational_const_for_calculus_presentation(ctx, BigRational::from_integer(2.into()));
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![parts.radicand]);
+    let denominator = if let Some(common_denominator) = common_denominator {
+        cas_math::expr_nary::build_balanced_mul(
+            ctx,
+            &[
+                denominator_scale,
+                common_denominator,
+                denominator_trig_square,
+                sqrt_radicand,
+            ],
+        )
+    } else {
+        cas_math::expr_nary::build_balanced_mul(
+            ctx,
+            &[denominator_scale, denominator_trig_square, sqrt_radicand],
+        )
+    };
+    let compact = ctx.add_raw(Expr::Div(numerator, denominator));
+    (cas_ast::hold::wrap_hold(ctx, compact), denominator_trig_arg)
+}
+
 pub(super) fn sqrt_additive_tan_sqrt_variable_derivative_presentation(
     ctx: &mut Context,
     parts: SqrtAdditiveTanDerivativePresentationParts,
@@ -61,19 +164,20 @@ pub(super) fn sqrt_additive_tan_sqrt_variable_derivative_presentation(
     let two_sqrt_arg = ctx.add_raw(Expr::Mul(two, sqrt_arg_root));
 
     let mut numerator_terms = Vec::new();
-    let tan_term =
-        scale_expr_for_calculus_presentation(ctx, parts.tan_scale, reciprocal_trig_square);
-    let tan_term = ctx.add_raw(Expr::Mul(two_sqrt_arg, tan_term));
-    numerator_terms.push(compact_numeric_mul_factors_for_calculus_presentation(
-        ctx, tan_term,
-    ));
+    push_scaled_tan_derivative_numerator_term(
+        ctx,
+        &mut numerator_terms,
+        parts.tan_scale,
+        reciprocal_trig_square,
+        two_sqrt_arg,
+    );
     numerator_terms.push(rational_const_for_calculus_presentation(ctx, sqrt_scale));
-    for derivative in parts.other_derivatives {
-        let term = ctx.add_raw(Expr::Mul(two_sqrt_arg, derivative));
-        numerator_terms.push(compact_numeric_mul_factors_for_calculus_presentation(
-            ctx, term,
-        ));
-    }
+    push_scaled_other_derivative_numerator_terms(
+        ctx,
+        &mut numerator_terms,
+        two_sqrt_arg,
+        parts.other_derivatives,
+    );
 
     let numerator = cas_math::expr_nary::build_balanced_add(ctx, &numerator_terms);
     let numerator = compact_numeric_mul_factors_for_calculus_presentation(ctx, numerator);
@@ -106,18 +210,19 @@ pub(super) fn sqrt_additive_tan_sqrt_and_reciprocal_sqrt_variable_derivative_pre
         cas_math::expr_nary::build_balanced_mul(ctx, &[two, sqrt_arg, sqrt_arg_root]);
 
     let mut numerator_terms = Vec::new();
-    let tan_term =
-        scale_expr_for_calculus_presentation(ctx, parts.tan_scale, reciprocal_trig_square);
-    let tan_term = ctx.add_raw(Expr::Mul(two_arg_times_sqrt_arg, tan_term));
-    numerator_terms.push(compact_numeric_mul_factors_for_calculus_presentation(
-        ctx, tan_term,
-    ));
-    for derivative in parts.other_derivatives {
-        let term = ctx.add_raw(Expr::Mul(two_arg_times_sqrt_arg, derivative));
-        numerator_terms.push(compact_numeric_mul_factors_for_calculus_presentation(
-            ctx, term,
-        ));
-    }
+    push_scaled_tan_derivative_numerator_term(
+        ctx,
+        &mut numerator_terms,
+        parts.tan_scale,
+        reciprocal_trig_square,
+        two_arg_times_sqrt_arg,
+    );
+    push_scaled_other_derivative_numerator_terms(
+        ctx,
+        &mut numerator_terms,
+        two_arg_times_sqrt_arg,
+        parts.other_derivatives,
+    );
     numerator_terms.push(scale_expr_for_calculus_presentation(
         ctx, sqrt_scale, sqrt_arg,
     ));
@@ -156,18 +261,19 @@ pub(super) fn sqrt_additive_tan_reciprocal_sqrt_variable_derivative_presentation
         cas_math::expr_nary::build_balanced_mul(ctx, &[two, reciprocal_sqrt_arg, sqrt_arg_root]);
 
     let mut numerator_terms = Vec::new();
-    let tan_term =
-        scale_expr_for_calculus_presentation(ctx, parts.tan_scale, reciprocal_trig_square);
-    let tan_term = ctx.add_raw(Expr::Mul(two_arg_times_sqrt_arg, tan_term));
-    numerator_terms.push(compact_numeric_mul_factors_for_calculus_presentation(
-        ctx, tan_term,
-    ));
-    for derivative in parts.other_derivatives {
-        let term = ctx.add_raw(Expr::Mul(two_arg_times_sqrt_arg, derivative));
-        numerator_terms.push(compact_numeric_mul_factors_for_calculus_presentation(
-            ctx, term,
-        ));
-    }
+    push_scaled_tan_derivative_numerator_term(
+        ctx,
+        &mut numerator_terms,
+        parts.tan_scale,
+        reciprocal_trig_square,
+        two_arg_times_sqrt_arg,
+    );
+    push_scaled_other_derivative_numerator_terms(
+        ctx,
+        &mut numerator_terms,
+        two_arg_times_sqrt_arg,
+        parts.other_derivatives,
+    );
     numerator_terms.push(rational_const_for_calculus_presentation(
         ctx,
         -reciprocal_sqrt_scale,

@@ -1,9 +1,12 @@
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::polynomial::Polynomial;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
 use super::inverse_tangent_root_args::arctan_sqrt_radicand_arg;
+use super::positive_shift_linear_presentation::{
+    is_calculus_var, is_x_plus_one_for_calculus_presentation, positive_shift_denominator_scale,
+    x_plus_one_linear_scale_for_calculus_presentation,
+};
 use super::presentation_utils::{calculus_sqrt_like_radicand, unwrap_internal_hold_for_calculus};
 use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
@@ -418,39 +421,6 @@ fn scaled_sqrt_var_over_positive_shift_term(
     Some((outer_scale * num_scale / den_scale, offset))
 }
 
-fn positive_shift_denominator_scale(
-    ctx: &Context,
-    expr: ExprId,
-    var_name: &str,
-) -> Option<(BigRational, BigRational)> {
-    let mut scale = BigRational::one();
-    let mut offset = None;
-    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
-        if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
-            scale *= value;
-            continue;
-        }
-        let poly = Polynomial::from_expr(ctx, factor, var_name).ok()?;
-        if poly.degree() != 1 {
-            return None;
-        }
-        let constant = poly.coeffs.first()?.clone();
-        let slope = poly.coeffs.get(1)?;
-        if !slope.is_positive() {
-            return None;
-        }
-        let candidate_offset = constant / slope.clone();
-        if !candidate_offset.is_positive() {
-            return None;
-        }
-        scale *= slope.clone();
-        if offset.replace(candidate_offset).is_some() {
-            return None;
-        }
-    }
-    Some((scale, offset?))
-}
-
 fn arctan_sqrt_plus_sqrt_over_x_plus_one_scale(
     ctx: &mut Context,
     target: ExprId,
@@ -627,40 +597,6 @@ fn scaled_sqrt_var_over_x_plus_one_term(
     let (num_scale, num_core) = split_numeric_scale_single_core(ctx, num)?;
     let radicand = calculus_sqrt_like_radicand(ctx, num_core)?;
     is_calculus_var(ctx, radicand, var_name).then_some(outer_scale * num_scale)
-}
-
-fn x_plus_one_linear_scale_for_calculus_presentation(
-    ctx: &Context,
-    expr: ExprId,
-    var_name: &str,
-) -> Option<BigRational> {
-    let poly = Polynomial::from_expr(ctx, expr, var_name).ok()?;
-    if poly.degree() != 1 {
-        return None;
-    }
-    let offset = poly.coeffs.first()?;
-    let slope = poly.coeffs.get(1)?;
-    (offset == slope).then_some(offset.clone())
-}
-
-fn is_calculus_var(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
-    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
-    matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var_name)
-}
-
-fn is_x_plus_one_for_calculus_presentation(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
-    let poly = Polynomial::from_expr(ctx, expr, var_name).ok();
-    poly.is_some_and(|poly| {
-        poly.degree() == 1
-            && poly
-                .coeffs
-                .first()
-                .is_some_and(|offset| offset == &BigRational::one())
-            && poly
-                .coeffs
-                .get(1)
-                .is_some_and(|slope| slope == &BigRational::one())
-    })
 }
 
 #[cfg(test)]
