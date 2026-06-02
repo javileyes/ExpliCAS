@@ -1,4 +1,4 @@
-use super::result_presentation::{
+use super::derivative_result_scaling_presentation::{
     divide_compact_derivative_by_constant_factor,
     reciprocal_constant_denominator_for_calculus_presentation,
     remove_unit_mul_factors_for_calculus_presentation, scale_compact_derivative_by_rational,

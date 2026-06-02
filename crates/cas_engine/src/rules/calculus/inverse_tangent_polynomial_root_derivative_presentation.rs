@@ -2,6 +2,10 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::One;
 
+use super::derivative_result_scaling_presentation::{
+    cancel_denominator_content_with_numerator_for_calculus_presentation,
+    scale_compact_derivative_by_rational,
+};
 use super::domain_checks::positive_polynomial_radicand_required_conditions;
 use super::inverse_tangent_reciprocal_sqrt_derivative_presentation::arctan_sqrt_reciprocal_content_presentation;
 use super::inverse_tangent_root_args::{arccot_sqrt_radicand_arg, arctan_sqrt_radicand_arg};
@@ -10,10 +14,6 @@ use super::polynomial_support::{
     split_polynomial_content_for_calculus_presentation,
 };
 use super::presentation_utils::scaled_sqrt_argument_for_calculus_presentation;
-use super::result_presentation::{
-    cancel_denominator_content_with_numerator_for_calculus_presentation,
-    scale_compact_derivative_by_rational,
-};
 use super::scalar_presentation::{
     add_one_for_calculus_presentation, nonzero_rational_parts,
     rational_const_for_calculus_presentation, rational_scaled_single_factor,

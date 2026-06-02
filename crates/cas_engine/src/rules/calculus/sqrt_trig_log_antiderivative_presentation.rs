@@ -59,3 +59,43 @@ pub(super) fn sqrt_trig_log_antiderivative_derivative_presentation(
 
     Some((compact, conditions))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn sqrt_trig_log_antiderivative_derivative_presentation_compacts_shifted_chain() {
+        let mut ctx = Context::new();
+        let expr = parse("-ln(abs(cos(sqrt(3*x+1))))", &mut ctx).unwrap();
+        let (compact, conditions) =
+            sqrt_trig_log_antiderivative_derivative_presentation(&mut ctx, expr, "x").unwrap();
+        let rendered_conditions: Vec<_> = conditions
+            .iter()
+            .map(|condition| match condition {
+                crate::ImplicitCondition::Positive(expr) => {
+                    format!("{} > 0", rendered(&ctx, *expr))
+                }
+                crate::ImplicitCondition::NonZero(expr) => {
+                    format!("{} != 0", rendered(&ctx, *expr))
+                }
+                other => format!("{other:?}"),
+            })
+            .collect();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+        assert_eq!(
+            rendered_conditions,
+            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) != 0"]
+        );
+    }
+}

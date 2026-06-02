@@ -1,9 +1,9 @@
+use super::derivative_result_scaling_presentation::scale_compact_derivative_by_rational;
 use super::gap_presentation::{primitive_positive_gap, reciprocal_positive_rational};
 use super::polynomial_support::{
     polynomial_radicand_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
 };
-use super::result_presentation::scale_compact_derivative_by_rational;
 use super::scalar_presentation::{
     add_rational_for_calculus_presentation, exact_positive_rational_sqrt_for_calculus_presentation,
     nonzero_rational_parts, rational_const_for_calculus_presentation,

@@ -1,8 +1,8 @@
+use super::derivative_result_scaling_presentation::scale_compact_derivative_by_rational;
 use super::polynomial_support::{
     polynomial_radicand_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
 };
-use super::result_presentation::scale_compact_derivative_by_rational;
 use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
     rational_scaled_single_factor, signed_numerator_for_calculus_presentation,

@@ -1,6 +1,11 @@
+use super::arctan_additive_result_presentation::{
+    compact_arctan_additive_terms_for_calculus_presentation,
+    flatten_subtracting_additive_group_for_calculus_presentation,
+};
 use super::arctan_integrand_preservation::arctan_integrand_for_calculus_presentation;
 use super::by_parts_integrand_preservation::by_parts_integrand_preservation_gates;
 use super::fractional_denominator_power_integrand_preservation::fractional_denominator_power_substitution_integrand_for_calculus_presentation;
+use super::half_power_sum_result_presentation::compact_half_power_sum_root_product_for_integration_presentation;
 use super::hyperbolic_power_integrand_presentation::hyperbolic_power_integrand_for_calculus_presentation;
 use super::inverse_hyperbolic_affine_integrand_preservation::inverse_hyperbolic_affine_integrand_for_calculus_presentation;
 use super::inverse_sqrt_product_integrand_preservation::{
@@ -8,21 +13,10 @@ use super::inverse_sqrt_product_integrand_preservation::{
     arcsin_inverse_sqrt_product_integrand_for_calculus_presentation,
 };
 use super::log_product_integrand_preservation::log_product_integrand_for_calculus_presentation;
-use super::power_result_presentation::{
-    compact_half_power_sum_root_product_for_integration_presentation,
-    compact_negative_half_power_result_for_integration_presentation,
-    compact_negative_three_half_power_result_for_integration_presentation,
-    compact_positive_half_power_result_for_integration_presentation,
-};
+use super::negative_half_power_result_presentation::compact_negative_half_power_result_for_integration_presentation;
+use super::negative_odd_half_power_result_presentation::compact_negative_three_half_power_result_for_integration_presentation;
+use super::positive_half_power_result_presentation::compact_positive_half_power_result_for_integration_presentation;
 use super::rational_partial_fraction_integrand_preservation::rational_linear_partial_fraction_integrand_for_calculus_presentation;
-use super::result_presentation::{
-    compact_arctan_additive_terms_for_calculus_presentation,
-    compact_positive_cosh_log_abs_for_integration_presentation,
-    compact_sqrt_hyperbolic_reciprocal_for_integration_presentation,
-    compact_sqrt_trig_log_abs_for_integration_presentation,
-    flatten_subtracting_additive_group_for_calculus_presentation, has_compactable_ln_abs_trig_sqrt,
-    has_compactable_sqrt_hyperbolic_reciprocal_result,
-};
 use super::scalar_presentation::{
     fold_numeric_mul_constants_for_hold, fold_numeric_mul_constants_for_hold_additive_terms,
 };
@@ -30,7 +24,15 @@ use super::sqrt_chain_integrand_preservation::sqrt_chain_integrand_preservation_
 use super::sqrt_denominator_result_presentation::{
     has_sqrt_denominator_result, inverse_sqrt_quotient_arg_result,
 };
+use super::sqrt_hyperbolic_result_presentation::{
+    compact_positive_cosh_log_abs_for_integration_presentation,
+    compact_sqrt_hyperbolic_reciprocal_for_integration_presentation,
+    has_compactable_sqrt_hyperbolic_reciprocal_result,
+};
 use super::sqrt_reciprocal_trig_antiderivative_presentation::sqrt_reciprocal_trig_antiderivative_result;
+use super::sqrt_trig_result_presentation::{
+    compact_sqrt_trig_log_abs_for_integration_presentation, has_compactable_ln_abs_trig_sqrt,
+};
 use super::trig_power_integrand_presentation::affine_trig_power_integrand_for_calculus_presentation;
 use cas_ast::{Context, Expr, ExprId};
 

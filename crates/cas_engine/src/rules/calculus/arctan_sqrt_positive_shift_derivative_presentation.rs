@@ -662,3 +662,52 @@ fn is_x_plus_one_for_calculus_presentation(ctx: &Context, expr: ExprId, var_name
                 .is_some_and(|slope| slope == &BigRational::one())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_presentation;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn post_diff_presentation_compacts_sqrt_over_var_shift_square() {
+        let mut ctx = Context::new();
+        let target = parse("arctan(sqrt(x)) + sqrt(x)/(x+1)", &mut ctx).unwrap();
+        let (direct, _required) =
+            arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_presentation(&mut ctx, target, "x")
+                .unwrap();
+
+        assert_eq!(rendered(&ctx, direct), "1 / ((x + 1)^2 * sqrt(x))");
+
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "diff(arctan(sqrt(x)) + sqrt(x)/(x+1), x)",
+            &mut simplifier.context,
+        )
+        .unwrap();
+        let (result, _steps) = simplifier.simplify(expr);
+
+        assert_eq!(
+            rendered(&simplifier.context, result),
+            "1 / ((x + 1)^2 * sqrt(x))"
+        );
+
+        let expr = parse(
+            "diff(8*arctan(2*sqrt(x)) + 4*sqrt(x)/(x+1/4), x)",
+            &mut simplifier.context,
+        )
+        .unwrap();
+        let (result, _steps) = simplifier.simplify(expr);
+
+        assert_eq!(
+            rendered(&simplifier.context, result),
+            "1 / ((x + 1/4)^2 * sqrt(x))"
+        );
+    }
+}

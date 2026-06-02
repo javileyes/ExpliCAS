@@ -4,12 +4,12 @@ use cas_math::expr_predicates::contains_named_var;
 use super::arctan_surd_derivative_presentation::arctan_surd_quotient_compact_derivative;
 use super::asinh_surd_derivative_presentation::asinh_surd_quotient_compact_derivative;
 use super::atanh_surd_derivative_presentation::atanh_surd_quotient_compact_derivative;
-use super::inverse_trig_derivative_presentation::bounded_inverse_trig_surd_quotient_compact_derivative;
-use super::result_presentation::{
+use super::derivative_result_scaling_presentation::{
     divide_compact_derivative_by_constant_factor,
     reciprocal_constant_denominator_for_calculus_presentation,
     remove_unit_mul_factors_for_calculus_presentation,
 };
+use super::inverse_trig_derivative_presentation::bounded_inverse_trig_surd_quotient_compact_derivative;
 
 pub(super) fn inverse_surd_quotient_post_calculus_presentation(
     ctx: &mut Context,
@@ -94,4 +94,45 @@ pub(super) fn reciprocal_constant_scaled_bounded_inverse_trig_surd_quotient_comp
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn constant_divisor_compact_derivative_accepts_asinh_surd_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("asinh((1-x-x^2)/sqrt(5))/sqrt(5)", &mut ctx).unwrap();
+        let derivative = constant_divisor_bounded_inverse_trig_surd_quotient_compact_derivative(
+            &mut ctx, expr, "x",
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "(-2 * x - 1) / (sqrt(5) * sqrt((1 - x - x^2)^2 + 5))"
+        );
+    }
+
+    #[test]
+    fn constant_divisor_compact_derivative_accepts_atanh_surd_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("atanh((x^2+x+1)/sqrt(7))/sqrt(7)", &mut ctx).unwrap();
+        let derivative = constant_divisor_bounded_inverse_trig_surd_quotient_compact_derivative(
+            &mut ctx, expr, "x",
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "(2 * x + 1) / (7 - (x^2 + x + 1)^2)"
+        );
+    }
 }

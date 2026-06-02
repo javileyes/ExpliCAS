@@ -1,12 +1,12 @@
-use super::domain_checks::inverse_reciprocal_trig_affine_abs_required_conditions;
-use super::gap_presentation::{primitive_positive_gap, reciprocal_positive_rational};
-use super::polynomial_support::nonzero_affine_variable_derivative;
-use super::presentation_utils::squared_expr;
-use super::result_presentation::{
+use super::derivative_result_scaling_presentation::{
     divide_compact_derivative_by_constant_factor,
     reciprocal_constant_denominator_for_calculus_presentation,
     remove_unit_mul_factors_for_calculus_presentation,
 };
+use super::domain_checks::inverse_reciprocal_trig_affine_abs_required_conditions;
+use super::gap_presentation::{primitive_positive_gap, reciprocal_positive_rational};
+use super::polynomial_support::nonzero_affine_variable_derivative;
+use super::presentation_utils::squared_expr;
 use super::scalar_presentation::{
     rational_const_for_calculus_presentation,
     scale_expr_by_sqrt_positive_rational_for_calculus_presentation,

@@ -1,3 +1,4 @@
+use super::derivative_result_scaling_presentation::scale_compact_derivative_by_rational;
 use super::domain_checks::positive_polynomial_radicand_and_nonzero_required_conditions;
 use super::polynomial_power_presentation::{
     polynomial_power_for_calculus_presentation,
@@ -8,7 +9,6 @@ use super::polynomial_support::{
     split_polynomial_content_for_calculus_presentation,
 };
 use super::presentation_utils::{squared_expr, unwrap_internal_hold_for_calculus};
-use super::result_presentation::scale_compact_derivative_by_rational;
 use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
     rational_scaled_single_factor_allow_unit, scale_expr_for_calculus_presentation,

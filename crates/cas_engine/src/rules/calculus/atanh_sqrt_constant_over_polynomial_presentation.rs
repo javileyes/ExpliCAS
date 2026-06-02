@@ -1,10 +1,10 @@
+use super::derivative_result_scaling_presentation::{
+    cancel_denominator_content_with_numerator_for_calculus_presentation,
+    cancel_positive_denominator_content_with_numerator_for_calculus_presentation,
+};
 use super::polynomial_support::{
     polynomial_radicand_for_calculus_presentation, scale_polynomial_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
-};
-use super::result_presentation::{
-    cancel_denominator_content_with_numerator_for_calculus_presentation,
-    cancel_positive_denominator_content_with_numerator_for_calculus_presentation,
 };
 use super::scalar_presentation::{
     add_rational_for_calculus_presentation, nonzero_rational_parts,

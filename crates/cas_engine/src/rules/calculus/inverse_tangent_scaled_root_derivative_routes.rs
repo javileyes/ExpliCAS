@@ -1,0 +1,80 @@
+//! Direct diff routes for inverse-tangent scaled-root derivative forms.
+//!
+//! This module preserves the local `diff_rule` priority for scaled sqrt
+//! polynomial and symbolic-denominator shortcuts. It intentionally stops before
+//! the positive-shift arctangent family, whose presentation policy is separate.
+
+use super::inverse_tangent_scaled_root_derivative_presentation::{
+    atanh_sqrt_over_symbolic_constant_derivative_shortcut,
+    constant_scaled_inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut,
+    inverse_tangent_scaled_sqrt_polynomial_derivative_shortcut,
+    inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut,
+};
+use cas_ast::{Context, ExprId};
+
+pub(super) fn inverse_tangent_scaled_root_derivative_route(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    inverse_tangent_scaled_sqrt_polynomial_derivative_shortcut(ctx, target, var_name)
+        .or_else(|| {
+            inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut(ctx, target, var_name)
+        })
+        .or_else(|| atanh_sqrt_over_symbolic_constant_derivative_shortcut(ctx, target, var_name))
+        .or_else(|| {
+            constant_scaled_inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut(
+                ctx, target, var_name,
+            )
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::super::presentation_utils::unwrap_internal_hold_for_calculus;
+    use super::inverse_tangent_scaled_root_derivative_route;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn inverse_tangent_scaled_root_route_preserves_scaled_polynomial_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("arctan(2*sqrt(x+1))", &mut ctx).unwrap();
+        let (derivative, required_conditions) =
+            inverse_tangent_scaled_root_derivative_route(&mut ctx, target, "x").unwrap();
+        let derivative = unwrap_internal_hold_for_calculus(&mut ctx, derivative);
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "1 / (sqrt(x + 1) * (4 * x + 5))"
+        );
+        assert_eq!(required_conditions.len(), 1);
+        assert_eq!(required_conditions[0].display(&ctx), "x > -1");
+    }
+
+    #[test]
+    fn inverse_tangent_scaled_root_route_preserves_symbolic_denominator_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("atanh(2*(sqrt(x+1)/a))", &mut ctx).unwrap();
+        let (derivative, required_conditions) =
+            inverse_tangent_scaled_root_derivative_route(&mut ctx, target, "x").unwrap();
+        let derivative = unwrap_internal_hold_for_calculus(&mut ctx, derivative);
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "a / (sqrt(x + 1) * (a^2 - 4 * x - 4))"
+        );
+        assert_eq!(required_conditions.len(), 2);
+        assert_eq!(required_conditions[0].display(&ctx), "x > -1");
+        assert!(matches!(
+            required_conditions[1],
+            crate::ImplicitCondition::NonZero(required) if rendered(&ctx, required) == "a"
+        ));
+    }
+}

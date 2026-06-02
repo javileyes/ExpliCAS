@@ -152,3 +152,42 @@ pub(super) fn ln_constant_shifted_tan_sqrt_derivative_presentation(
         ],
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn ln_constant_shifted_tan_sqrt_diff_uses_held_compact_derivative() {
+        let mut ctx = Context::new();
+        let target = parse("ln(tan(sqrt(x))+1)", &mut ctx).unwrap();
+        let (result, required_conditions) =
+            ln_constant_shifted_tan_sqrt_derivative_presentation(&mut ctx, target, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, result),
+            "1 / (2 * sqrt(x) * cos(sqrt(x))^2 * (tan(sqrt(x)) + 1))"
+        );
+        assert_eq!(required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn ln_constant_shifted_tan_affine_sqrt_diff_uses_held_compact_derivative() {
+        let mut ctx = Context::new();
+        let target = parse("ln(1+tan(sqrt(2*x+3)))", &mut ctx).unwrap();
+        let (result, required_conditions) =
+            ln_constant_shifted_tan_sqrt_derivative_presentation(&mut ctx, target, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, result),
+            "1 / (sqrt(2 * x + 3) * cos(sqrt(2 * x + 3))^2 * (tan(sqrt(2 * x + 3)) + 1))"
+        );
+        assert_eq!(required_conditions.len(), 3);
+    }
+}

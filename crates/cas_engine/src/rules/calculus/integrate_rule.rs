@@ -1,13 +1,12 @@
 use crate::define_rule;
 use crate::symbolic_calculus_call_support::try_extract_integrate_call;
 
+use super::arctan_additive_result_presentation::compact_arctan_additive_terms_for_calculus_presentation;
 use super::arctan_polynomial_integrand_presentation::polynomial_times_arctan_affine_integrand_for_diff_shortcut;
 use super::integration::{
     integrate, integrate_rewrite_with_conditions, IntegrationRequiredConditions,
 };
-use super::result_presentation::{
-    apply_integration_final_presentation, compact_arctan_additive_terms_for_calculus_presentation,
-};
+use super::integration_final_result_presentation::apply_integration_final_presentation;
 use super::result_preservation::{
     apply_integration_result_preservation, integration_source_preservation_gates,
 };

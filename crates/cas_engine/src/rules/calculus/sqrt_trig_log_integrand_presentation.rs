@@ -182,3 +182,79 @@ pub(super) fn build_compact_sqrt_trig_log_integrand(
     };
     Some(ctx.add(Expr::Div(compact_numerator, denominator)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn compact_direct_sqrt_trig_log_derivative_integrand_preserves_tangent_form() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(sqrt(x))/(2*sqrt(x))", &mut ctx).unwrap();
+        let compact =
+            compact_direct_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "tan(sqrt(x)) / (2 * sqrt(x))");
+    }
+
+    #[test]
+    fn compact_direct_sqrt_trig_log_derivative_integrand_accepts_mul_div_chain() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1))", &mut ctx).unwrap();
+        let compact =
+            compact_direct_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+    }
+
+    #[test]
+    fn compact_sqrt_trig_log_derivative_integrand_preserves_negative_tangent_form() {
+        let mut ctx = Context::new();
+        let inner = parse("sin(sqrt(x))*x^(-1/2)/(2*cos(sqrt(x)))", &mut ctx).unwrap();
+        let expr = ctx.add(Expr::Neg(inner));
+        let compact = compact_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "-tan(sqrt(x)) / (2 * sqrt(x))");
+    }
+
+    #[test]
+    fn compact_sqrt_trig_log_derivative_integrand_accepts_half_power_argument() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((3*x+1)^(-1/2) * sin((3*x+1)^(1/2)) * 3)/(2 * cos((3*x+1)^(1/2)))",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact = compact_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+    }
+
+    #[test]
+    fn compact_sqrt_trig_log_derivative_integrand_accepts_scaled_radicand_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((3*x+1)^(1/2) * sin((3*x+1)^(1/2)) * 3)/(cos((3*x+1)^(1/2)) * (6*x+2))",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact = compact_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+    }
+}

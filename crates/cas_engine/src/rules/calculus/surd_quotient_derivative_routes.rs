@@ -1,0 +1,206 @@
+//! Direct diff route for surd-quotient derivative presentation.
+//!
+//! This route keeps the existing `diff_rule` priority across arctangent
+//! constant-radicand, self-normalized, and reciprocal self-normalized variants.
+//! The presentation modules still own result construction and domain evidence.
+
+use super::arctan_surd_derivative_presentation::{
+    arctan_self_normalized_surd_reciprocal_compact_derivative,
+    arctan_surd_quotient_compact_derivative, arctan_surd_quotient_scaled_compact_derivative,
+    constant_scaled_arctan_surd_quotient_scaled_compact_derivative,
+};
+use super::inverse_surd_quotient_derivative_presentation::reciprocal_constant_scaled_bounded_inverse_trig_surd_quotient_compact_derivative;
+use super::self_normalized_surd_quotient_derivative_presentation::direct_self_normalized_surd_quotient_post_calculus_presentation;
+use cas_ast::{Context, ExprId};
+
+pub(super) fn constant_scaled_surd_quotient_derivative_route(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    reciprocal_constant_scaled_bounded_inverse_trig_surd_quotient_compact_derivative(
+        ctx, target, var_name,
+    )
+    .or_else(|| {
+        constant_scaled_arctan_surd_quotient_scaled_compact_derivative(ctx, target, var_name)
+    })
+}
+
+pub(super) fn surd_quotient_derivative_route(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    arctan_surd_quotient_scaled_compact_derivative(ctx, target, var_name)
+        .map(|result| (result, Vec::new()))
+        .or_else(|| {
+            arctan_surd_quotient_compact_derivative(ctx, target, var_name)
+                .map(|result| (result, Vec::new()))
+        })
+        .or_else(|| {
+            direct_self_normalized_surd_quotient_post_calculus_presentation(ctx, target, var_name)
+                .map(|result| (result, Vec::new()))
+        })
+        .or_else(|| {
+            let (result, required_condition) =
+                arctan_self_normalized_surd_reciprocal_compact_derivative(ctx, target, var_name)?;
+            Some((result, vec![required_condition]))
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::super::arctan_surd_derivative_presentation::{
+        arctan_self_normalized_surd_reciprocal_compact_derivative,
+        arctan_surd_quotient_compact_derivative, arctan_surd_quotient_scaled_compact_derivative,
+        constant_scaled_arctan_surd_quotient_scaled_compact_derivative,
+    };
+    use super::super::inverse_surd_quotient_derivative_presentation::reciprocal_constant_scaled_bounded_inverse_trig_surd_quotient_compact_derivative;
+    use super::super::self_normalized_surd_quotient_derivative_presentation::direct_self_normalized_surd_quotient_post_calculus_presentation;
+    use super::{constant_scaled_surd_quotient_derivative_route, surd_quotient_derivative_route};
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn surd_quotient_route_preserves_scaled_arctan_result() {
+        let mut route_ctx = Context::new();
+        let route_target = parse("arctan((2*x+2)/sqrt(6))/sqrt(6)", &mut route_ctx).unwrap();
+        let (route_result, route_conditions) =
+            surd_quotient_derivative_route(&mut route_ctx, route_target, "x").unwrap();
+
+        let mut direct_ctx = Context::new();
+        let direct_target = parse("arctan((2*x+2)/sqrt(6))/sqrt(6)", &mut direct_ctx).unwrap();
+        let direct_result =
+            arctan_surd_quotient_scaled_compact_derivative(&mut direct_ctx, direct_target, "x")
+                .unwrap();
+
+        assert_eq!(
+            rendered(&route_ctx, route_result),
+            rendered(&direct_ctx, direct_result)
+        );
+        assert!(route_conditions.is_empty());
+    }
+
+    #[test]
+    fn constant_scaled_surd_quotient_route_preserves_reciprocal_constant_scaled_result() {
+        let mut route_ctx = Context::new();
+        let route_target = parse("1/2*arcsin(x/sqrt(4))", &mut route_ctx).unwrap();
+        let route_result =
+            constant_scaled_surd_quotient_derivative_route(&mut route_ctx, route_target, "x")
+                .unwrap();
+
+        let mut direct_ctx = Context::new();
+        let direct_target = parse("1/2*arcsin(x/sqrt(4))", &mut direct_ctx).unwrap();
+        let direct_result =
+            reciprocal_constant_scaled_bounded_inverse_trig_surd_quotient_compact_derivative(
+                &mut direct_ctx,
+                direct_target,
+                "x",
+            )
+            .unwrap();
+
+        assert_eq!(
+            rendered(&route_ctx, route_result),
+            rendered(&direct_ctx, direct_result)
+        );
+    }
+
+    #[test]
+    fn constant_scaled_surd_quotient_route_preserves_scaled_arctan_result() {
+        let mut route_ctx = Context::new();
+        let route_target = parse("7*arctan((2*x+1)/sqrt(3))/sqrt(3)", &mut route_ctx).unwrap();
+        let route_result =
+            constant_scaled_surd_quotient_derivative_route(&mut route_ctx, route_target, "x")
+                .unwrap();
+
+        let mut direct_ctx = Context::new();
+        let direct_target = parse("7*arctan((2*x+1)/sqrt(3))/sqrt(3)", &mut direct_ctx).unwrap();
+        let direct_result = constant_scaled_arctan_surd_quotient_scaled_compact_derivative(
+            &mut direct_ctx,
+            direct_target,
+            "x",
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered(&route_ctx, route_result),
+            rendered(&direct_ctx, direct_result)
+        );
+    }
+
+    #[test]
+    fn surd_quotient_route_preserves_unscaled_arctan_hold() {
+        let mut route_ctx = Context::new();
+        let route_target = parse("arctan((2*x+2)/sqrt(6))", &mut route_ctx).unwrap();
+        let (route_result, route_conditions) =
+            surd_quotient_derivative_route(&mut route_ctx, route_target, "x").unwrap();
+
+        let mut direct_ctx = Context::new();
+        let direct_target = parse("arctan((2*x+2)/sqrt(6))", &mut direct_ctx).unwrap();
+        let direct_result =
+            arctan_surd_quotient_compact_derivative(&mut direct_ctx, direct_target, "x").unwrap();
+
+        assert_eq!(
+            rendered(&route_ctx, route_result),
+            rendered(&direct_ctx, direct_result)
+        );
+        assert!(route_conditions.is_empty());
+    }
+
+    #[test]
+    fn surd_quotient_route_preserves_self_normalized_result() {
+        let mut route_ctx = Context::new();
+        let route_target = parse("arctan(x/sqrt(x^2+1))", &mut route_ctx).unwrap();
+        let (route_result, route_conditions) =
+            surd_quotient_derivative_route(&mut route_ctx, route_target, "x").unwrap();
+
+        let mut direct_ctx = Context::new();
+        let direct_target = parse("arctan(x/sqrt(x^2+1))", &mut direct_ctx).unwrap();
+        let direct_result = direct_self_normalized_surd_quotient_post_calculus_presentation(
+            &mut direct_ctx,
+            direct_target,
+            "x",
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered(&route_ctx, route_result),
+            rendered(&direct_ctx, direct_result)
+        );
+        assert!(route_conditions.is_empty());
+    }
+
+    #[test]
+    fn surd_quotient_route_preserves_reciprocal_condition() {
+        let mut route_ctx = Context::new();
+        let route_target = parse("arctan(sqrt(x^2+1)/x)", &mut route_ctx).unwrap();
+        let (route_result, route_conditions) =
+            surd_quotient_derivative_route(&mut route_ctx, route_target, "x").unwrap();
+
+        let mut direct_ctx = Context::new();
+        let direct_target = parse("arctan(sqrt(x^2+1)/x)", &mut direct_ctx).unwrap();
+        let (direct_result, direct_condition) =
+            arctan_self_normalized_surd_reciprocal_compact_derivative(
+                &mut direct_ctx,
+                direct_target,
+                "x",
+            )
+            .unwrap();
+
+        assert_eq!(
+            rendered(&route_ctx, route_result),
+            rendered(&direct_ctx, direct_result)
+        );
+        assert_eq!(route_conditions.len(), 1);
+        assert_eq!(
+            route_conditions[0].display(&route_ctx),
+            direct_condition.display(&direct_ctx)
+        );
+    }
+}

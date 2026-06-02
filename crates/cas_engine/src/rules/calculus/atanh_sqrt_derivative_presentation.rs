@@ -1,9 +1,9 @@
+use super::derivative_result_scaling_presentation::cancel_denominator_content_with_numerator_for_calculus_presentation;
 use super::gap_presentation::reciprocal_positive_rational;
 use super::polynomial_support::{
     polynomial_radicand_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
 };
-use super::result_presentation::cancel_denominator_content_with_numerator_for_calculus_presentation;
 use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
     signed_numerator_for_calculus_presentation, subtract_from_rational_for_calculus_presentation,

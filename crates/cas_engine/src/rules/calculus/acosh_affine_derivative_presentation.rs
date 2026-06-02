@@ -1,12 +1,12 @@
+use super::derivative_result_scaling_presentation::{
+    divide_compact_derivative_by_constant_factor,
+    reciprocal_constant_denominator_for_calculus_presentation,
+    remove_unit_mul_factors_for_calculus_presentation,
+};
 use super::polynomial_support::{
     nonzero_affine_variable_derivative, polynomial_radicand_for_calculus_presentation,
     rational_polynomial_content_for_calculus_presentation,
     scale_polynomial_for_calculus_presentation,
-};
-use super::result_presentation::{
-    divide_compact_derivative_by_constant_factor,
-    reciprocal_constant_denominator_for_calculus_presentation,
-    remove_unit_mul_factors_for_calculus_presentation,
 };
 use super::scalar_presentation::{
     add_one_for_calculus_presentation, add_rational_for_calculus_presentation,
@@ -170,4 +170,34 @@ pub(super) fn constant_scaled_acosh_affine_derivative_presentation(
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn constant_scaled_acosh_affine_derivative_keeps_compact_roots() {
+        let mut ctx = Context::new();
+        let expr = parse("acosh(x+1)/2", &mut ctx).unwrap();
+        let (derivative, required_conditions) =
+            constant_scaled_acosh_affine_derivative_presentation(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "1 / (2 * sqrt(x) * sqrt(x + 2))"
+        );
+        assert_eq!(required_conditions.len(), 1);
+        assert_eq!(
+            required_conditions[0].display(&ctx),
+            "x > 0",
+            "constant-scaled acosh shortcut must preserve the affine real-domain guard"
+        );
+    }
 }

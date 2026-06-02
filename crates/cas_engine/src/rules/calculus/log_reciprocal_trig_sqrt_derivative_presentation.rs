@@ -89,3 +89,38 @@ fn reciprocal_trig_log_sqrt_parts(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn ln_reciprocal_trig_affine_sqrt_diff_uses_held_compact_derivative() {
+        let mut ctx = Context::new();
+        let target = parse("ln(sec(sqrt(3*x+1))+tan(sqrt(3*x+1)))", &mut ctx).unwrap();
+        let (result, required_conditions) =
+            ln_reciprocal_trig_sqrt_derivative_presentation(&mut ctx, target, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, result),
+            "3 / (2 * sqrt(3 * x + 1) * cos(sqrt(3 * x + 1)))"
+        );
+        assert_eq!(required_conditions.len(), 3);
+
+        let target = parse("ln(csc(sqrt(3*x+1))-cot(sqrt(3*x+1)))", &mut ctx).unwrap();
+        let (result, required_conditions) =
+            ln_reciprocal_trig_sqrt_derivative_presentation(&mut ctx, target, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, result),
+            "3 / (2 * sqrt(3 * x + 1) * sin(sqrt(3 * x + 1)))"
+        );
+        assert_eq!(required_conditions.len(), 3);
+    }
+}

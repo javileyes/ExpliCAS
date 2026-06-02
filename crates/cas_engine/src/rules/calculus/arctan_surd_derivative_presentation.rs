@@ -1,3 +1,4 @@
+use super::derivative_result_scaling_presentation::scale_compact_derivative_by_rational;
 use super::differentiation::differentiate;
 use super::gap_presentation::squared_expr_for_compact_gap_presentation;
 use super::polynomial_support::{
@@ -6,7 +7,6 @@ use super::polynomial_support::{
     split_polynomial_content_for_calculus_presentation,
 };
 use super::presentation_utils::multiply_by_sqrt_factor_for_calculus_presentation;
-use super::result_presentation::scale_compact_derivative_by_rational;
 use super::scalar_presentation::{
     rational_const_for_calculus_presentation, rational_scaled_single_factor,
     scale_expr_for_calculus_presentation, signed_numerator_for_calculus_presentation,
@@ -271,6 +271,18 @@ mod tests {
             arctan_surd_quotient_scaled_compact_derivative(&mut ctx, expr, "x").unwrap();
 
         assert_eq!(rendered(&ctx, derivative), "2 / ((2 * x + 2)^2 + 6)");
+    }
+
+    #[test]
+    fn arctan_surd_quotient_compact_derivative_avoids_rationalized_route() {
+        let mut ctx = Context::new();
+        let expr = parse("arctan((2*x+2)/sqrt(6))", &mut ctx).unwrap();
+        let derivative = arctan_surd_quotient_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "2 * sqrt(6) / ((2 * x + 2)^2 + 6)"
+        );
     }
 
     #[test]

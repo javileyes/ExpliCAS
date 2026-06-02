@@ -228,3 +228,57 @@ fn build_compact_sqrt_hyperbolic_log_integrand(
     };
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn compact_direct_sqrt_hyperbolic_log_derivative_integrand_accepts_half_power_product() {
+        let mut ctx = Context::new();
+        let expr = parse("1/2*tanh(sqrt(x))*x^(-1/2)", &mut ctx).unwrap();
+        let compact =
+            compact_direct_sqrt_hyperbolic_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "tanh(sqrt(x)) / (2 * sqrt(x))");
+    }
+
+    #[test]
+    fn compact_direct_sqrt_hyperbolic_log_derivative_integrand_accepts_tanh_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x)/(2*x*tanh(sqrt(x)))", &mut ctx).unwrap();
+        let compact =
+            compact_direct_sqrt_hyperbolic_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "1 / (2 * tanh(sqrt(x)) * sqrt(x))");
+    }
+
+    #[test]
+    fn compact_direct_sqrt_hyperbolic_log_derivative_integrand_accepts_sinh_cosh_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("-sinh(sqrt(x))*x^(-1/2)/(2*cosh(sqrt(x)))", &mut ctx).unwrap();
+        let compact =
+            compact_direct_sqrt_hyperbolic_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "-tanh(sqrt(x)) / (2 * sqrt(x))");
+    }
+
+    #[test]
+    fn compact_direct_sqrt_hyperbolic_log_derivative_integrand_accepts_cosh_sinh_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("-cosh(sqrt(x))*x^(-1/2)/(2*sinh(sqrt(x)))", &mut ctx).unwrap();
+        let compact =
+            compact_direct_sqrt_hyperbolic_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "-1 / (2 * tanh(sqrt(x)) * sqrt(x))"
+        );
+    }
+}

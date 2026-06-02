@@ -1,10 +1,10 @@
+use super::derivative_result_scaling_presentation::scale_compact_derivative_by_rational;
 use super::inverse_tangent_root_args::arctan_sqrt_radicand_arg;
 use super::polynomial_support::{
     nonzero_affine_variable_derivative, polynomial_is_strictly_positive_everywhere,
     split_polynomial_content_for_calculus_presentation,
 };
 use super::presentation_utils::{unwrap_internal_hold_for_calculus, variable_named};
-use super::result_presentation::scale_compact_derivative_by_rational;
 use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
     rational_scaled_single_factor, signed_numerator_for_calculus_presentation,
