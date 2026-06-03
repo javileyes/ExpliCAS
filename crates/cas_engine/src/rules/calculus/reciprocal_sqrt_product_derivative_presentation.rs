@@ -1,4 +1,5 @@
 use super::derivative_result_scaling_presentation::scale_compact_derivative_by_rational;
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::domain_checks::positive_polynomial_radicand_and_nonzero_required_conditions;
 use super::polynomial_power_presentation::{
     polynomial_power_for_calculus_presentation,
@@ -15,6 +16,8 @@ use super::scalar_presentation::{
     signed_numerator_for_calculus_presentation,
 };
 use super::shifted_sqrt_derivative_presentation::inverse_tangent_reciprocal_sqrt_shifted_sqrt_product_derivative_presentation;
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::polynomial::Polynomial;
@@ -423,13 +426,37 @@ pub(super) fn constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative
     Some((ctx.add(Expr::Hold(derivative)), required_conditions))
 }
 
+pub(super) fn constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) =
+        constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_presentation(
+            ctx,
+            target,
+            &call.var_name,
+        )?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        required_conditions,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use cas_ast::{Context, ExprId};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
-    use super::constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_presentation;
+    use super::{
+        constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_presentation,
+        constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_rewrite,
+    };
+    use crate::symbolic_calculus_call_support::NamedVarCall;
 
     fn rendered(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
@@ -450,5 +477,25 @@ mod tests {
             "-(3 * x + 1) / ((x * (x + 1)^2 + 1) * sqrt(x))"
         );
         assert_eq!(required_conditions.len(), 2);
+    }
+
+    #[test]
+    fn constant_scaled_reciprocal_sqrt_product_arctan_rewrite_preserves_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("2*arctan(1/(sqrt(x)*(x+1)))", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite = constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_rewrite(
+            &mut ctx, &call, target,
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            "-(3 * x + 1) / ((x * (x + 1)^2 + 1) * sqrt(x))"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 2);
     }
 }

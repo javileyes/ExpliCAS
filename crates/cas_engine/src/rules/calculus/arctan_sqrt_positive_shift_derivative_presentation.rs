@@ -2,6 +2,7 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::inverse_tangent_root_args::arctan_sqrt_radicand_arg;
 use super::positive_shift_linear_presentation::{
     is_calculus_var, is_x_plus_one_for_calculus_presentation, positive_shift_denominator_scale,
@@ -12,6 +13,24 @@ use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
     split_numeric_scale_single_core, split_outer_numeric_mul_for_calculus_presentation,
 };
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
+
+pub(super) fn arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) =
+        arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_presentation(ctx, target, &call.var_name)?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        required_conditions,
+    ))
+}
 
 pub(super) fn arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_presentation(
     ctx: &mut Context,
@@ -605,10 +624,39 @@ mod tests {
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
-    use super::arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_presentation;
+    use super::{
+        arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_presentation,
+        arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_rewrite,
+    };
+    use crate::symbolic_calculus_call_support::NamedVarCall;
 
     fn rendered(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn positive_shift_rewrite_preserves_finalized_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("arctan(sqrt(x)) + sqrt(x)/(x+1)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+
+        let rewrite =
+            arctan_sqrt_plus_sqrt_over_x_plus_one_derivative_rewrite(&mut ctx, &call, target)
+                .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            "1 / ((x + 1)^2 * sqrt(x))"
+        );
+        let rendered_conditions: Vec<_> = rewrite
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+        assert_eq!(rendered_conditions, vec!["x > 0"]);
     }
 
     #[test]

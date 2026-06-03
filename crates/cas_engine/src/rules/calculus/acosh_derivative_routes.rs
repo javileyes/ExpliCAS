@@ -13,6 +13,9 @@ use super::acosh_over_sqrt_derivative_presentation::{
 use super::acosh_sqrt_derivative_presentation::acosh_sqrt_shifted_quadratic_derivative_presentation;
 use super::acosh_strictly_positive_polynomial_derivative_presentation::acosh_strictly_positive_polynomial_derivative_presentation;
 use super::diff_required_conditions::acosh_sqrt_diff_required_conditions;
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use crate::ImplicitCondition;
 use cas_ast::{Context, ExprId};
 
@@ -50,13 +53,33 @@ pub(super) fn constant_scaled_acosh_derivative_route(
     })
 }
 
+pub(super) fn constant_scaled_acosh_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) =
+        constant_scaled_acosh_derivative_route(ctx, target, &call.var_name)?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        required_conditions,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use cas_ast::{Context, ExprId};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
-    use super::{acosh_direct_derivative_route, constant_scaled_acosh_derivative_route};
+    use super::{
+        acosh_direct_derivative_route, constant_scaled_acosh_derivative_rewrite,
+        constant_scaled_acosh_derivative_route,
+    };
+    use crate::symbolic_calculus_call_support::NamedVarCall;
 
     fn rendered(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
@@ -106,5 +129,23 @@ mod tests {
             required_conditions[1].display(&ctx),
             "x^2 + x - sqrt(5) > 0"
         );
+    }
+
+    #[test]
+    fn constant_scaled_acosh_rewrite_preserves_domain_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("acosh(x+1)/2", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite = constant_scaled_acosh_derivative_rewrite(&mut ctx, &call, target).unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            "1 / (2 * sqrt(x) * sqrt(x + 2))"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+        assert_eq!(rewrite.required_conditions[0].display(&ctx), "x > 0");
     }
 }

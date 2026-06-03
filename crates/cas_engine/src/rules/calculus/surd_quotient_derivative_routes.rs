@@ -9,8 +9,11 @@ use super::arctan_surd_derivative_presentation::{
     arctan_surd_quotient_compact_derivative, arctan_surd_quotient_scaled_compact_derivative,
     constant_scaled_arctan_surd_quotient_scaled_compact_derivative,
 };
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::inverse_surd_quotient_derivative_presentation::reciprocal_constant_scaled_bounded_inverse_trig_surd_quotient_compact_derivative;
 use super::self_normalized_surd_quotient_derivative_presentation::direct_self_normalized_surd_quotient_post_calculus_presentation;
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use cas_ast::{Context, ExprId};
 
 pub(super) fn constant_scaled_surd_quotient_derivative_route(
@@ -48,6 +51,22 @@ pub(super) fn surd_quotient_derivative_route(
         })
 }
 
+pub(super) fn surd_quotient_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) =
+        surd_quotient_derivative_route(ctx, target, &call.var_name)?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        required_conditions,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use cas_ast::{Context, ExprId};
@@ -61,7 +80,11 @@ mod tests {
     };
     use super::super::inverse_surd_quotient_derivative_presentation::reciprocal_constant_scaled_bounded_inverse_trig_surd_quotient_compact_derivative;
     use super::super::self_normalized_surd_quotient_derivative_presentation::direct_self_normalized_surd_quotient_post_calculus_presentation;
-    use super::{constant_scaled_surd_quotient_derivative_route, surd_quotient_derivative_route};
+    use super::{
+        constant_scaled_surd_quotient_derivative_route, surd_quotient_derivative_rewrite,
+        surd_quotient_derivative_route,
+    };
+    use crate::symbolic_calculus_call_support::NamedVarCall;
 
     fn rendered(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
@@ -202,5 +225,23 @@ mod tests {
             route_conditions[0].display(&route_ctx),
             direct_condition.display(&direct_ctx)
         );
+    }
+
+    #[test]
+    fn surd_quotient_rewrite_preserves_reciprocal_condition() {
+        let mut ctx = Context::new();
+        let target = parse("arctan(sqrt(x^2+1)/x)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite = surd_quotient_derivative_rewrite(&mut ctx, &call, target).unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            "-1 / (sqrt(x^2 + 1) * (2 * x^2 + 1))"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+        assert_eq!(rewrite.required_conditions[0].display(&ctx), "x ≠ 0");
     }
 }

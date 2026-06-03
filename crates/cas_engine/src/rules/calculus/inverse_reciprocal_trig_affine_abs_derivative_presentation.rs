@@ -3,6 +3,7 @@ use super::derivative_result_scaling_presentation::{
     reciprocal_constant_denominator_for_calculus_presentation,
     remove_unit_mul_factors_for_calculus_presentation,
 };
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::domain_checks::inverse_reciprocal_trig_affine_abs_required_conditions;
 use super::gap_presentation::{primitive_positive_gap, reciprocal_positive_rational};
 use super::polynomial_support::nonzero_affine_variable_derivative;
@@ -11,6 +12,8 @@ use super::scalar_presentation::{
     rational_const_for_calculus_presentation,
     scale_expr_by_sqrt_positive_rational_for_calculus_presentation,
 };
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_predicates::contains_named_var;
 use num_rational::BigRational;
@@ -104,4 +107,80 @@ pub(super) fn constant_scaled_inverse_reciprocal_trig_affine_abs_presentation(
     }
 
     None
+}
+
+pub(super) fn constant_scaled_inverse_reciprocal_trig_affine_abs_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) =
+        constant_scaled_inverse_reciprocal_trig_affine_abs_presentation(
+            ctx,
+            target,
+            &call.var_name,
+        )?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        required_conditions,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::{
+        constant_scaled_inverse_reciprocal_trig_affine_abs_presentation,
+        constant_scaled_inverse_reciprocal_trig_affine_abs_rewrite,
+    };
+    use crate::symbolic_calculus_call_support::NamedVarCall;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn constant_scaled_arcsec_affine_abs_route_preserves_domain_condition() {
+        let mut ctx = Context::new();
+        let target = parse("arcsec(2*x+1)/3", &mut ctx).unwrap();
+        let (derivative, required_conditions) =
+            constant_scaled_inverse_reciprocal_trig_affine_abs_presentation(&mut ctx, target, "x")
+                .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "1 / (3 * |2 * x + 1| * sqrt(x^2 + x))"
+        );
+        assert_eq!(required_conditions.len(), 1);
+        assert_eq!(required_conditions[0].display(&ctx), "x < -1 or x > 0");
+    }
+
+    #[test]
+    fn constant_scaled_arcsec_affine_abs_rewrite_preserves_domain_condition() {
+        let mut ctx = Context::new();
+        let target = parse("arcsec(2*x+1)/3", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite =
+            constant_scaled_inverse_reciprocal_trig_affine_abs_rewrite(&mut ctx, &call, target)
+                .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            "1 / (3 * |2 * x + 1| * sqrt(x^2 + x))"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+        assert_eq!(
+            rewrite.required_conditions[0].display(&ctx),
+            "x < -1 or x > 0"
+        );
+    }
 }

@@ -2,6 +2,7 @@ use super::derivative_result_scaling_presentation::{
     cancel_denominator_content_with_numerator_for_calculus_presentation,
     cancel_positive_denominator_content_with_numerator_for_calculus_presentation,
 };
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::polynomial_support::{
     polynomial_radicand_for_calculus_presentation, scale_polynomial_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
@@ -13,6 +14,8 @@ use super::scalar_presentation::{
     rational_const_for_calculus_presentation, scale_expr_for_calculus_presentation,
     subtract_from_rational_for_calculus_presentation,
 };
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
@@ -120,4 +123,78 @@ pub(super) fn atanh_sqrt_constant_over_polynomial_presentation(
         cas_ast::hold::wrap_hold(ctx, compact),
         crate::ImplicitCondition::Positive(den),
     ))
+}
+
+pub(super) fn atanh_sqrt_constant_over_polynomial_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_condition) =
+        atanh_sqrt_constant_over_polynomial_presentation(ctx, target, &call.var_name)?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        std::iter::once(required_condition),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::{
+        atanh_sqrt_constant_over_polynomial_derivative_rewrite,
+        atanh_sqrt_constant_over_polynomial_presentation,
+    };
+    use crate::symbolic_calculus_call_support::NamedVarCall;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn atanh_sqrt_constant_over_polynomial_route_preserves_result_and_condition() {
+        let mut ctx = Context::new();
+        let target = parse("atanh(sqrt(3/x))", &mut ctx).unwrap();
+        let (derivative, required_condition) =
+            atanh_sqrt_constant_over_polynomial_presentation(&mut ctx, target, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "3 / (2 * sqrt(3 * x) * (3 - x))"
+        );
+        assert_eq!(required_condition.display(&ctx), "x > 0");
+    }
+
+    #[test]
+    fn atanh_sqrt_constant_over_polynomial_rewrite_preserves_result_and_condition() {
+        let mut ctx = Context::new();
+        let target = parse("atanh(sqrt(3/x))", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite =
+            atanh_sqrt_constant_over_polynomial_derivative_rewrite(&mut ctx, &call, target)
+                .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            "3 / (2 * sqrt(3 * x) * (3 - x))"
+        );
+        let required_conditions: Vec<String> = rewrite
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+        assert_eq!(
+            required_conditions,
+            vec!["x > 3".to_string(), "x > 0".to_string()]
+        );
+    }
 }

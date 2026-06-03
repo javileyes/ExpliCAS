@@ -5,6 +5,7 @@
 //! shared polynomial-power helpers live in a small presentation-policy module
 //! because sibling extracted families use the same denominator-power policy.
 
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::polynomial_power_presentation::{
     expanded_affine_square_for_calculus_presentation, polynomial_power_for_calculus_presentation,
     positive_integer_polynomial_power_for_calculus_presentation,
@@ -19,6 +20,8 @@ use super::scalar_presentation::{
     signed_numerator_for_calculus_presentation,
 };
 use super::scaled_sqrt_args::scaled_square_root_radicand_for_calculus_presentation;
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::One;
@@ -190,6 +193,26 @@ pub(super) fn sqrt_of_polynomial_quotient_derivative_presentation(
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
+pub(super) fn sqrt_of_polynomial_quotient_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let (result, required_conditions) =
+        sqrt_of_polynomial_quotient_derivative_presentation_with_domain(
+            ctx,
+            target,
+            &call.var_name,
+        )?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        required_conditions,
+    ))
+}
+
 pub(crate) fn sqrt_polynomial_quotient_has_powered_expanded_affine_square_denominator(
     ctx: &mut Context,
     target: ExprId,
@@ -237,4 +260,40 @@ pub(crate) fn sqrt_of_polynomial_quotient_derivative_presentation_with_domain(
     let quotient = calculus_sqrt_like_radicand(ctx, target)?;
     let result = sqrt_of_polynomial_quotient_derivative_presentation(ctx, target, var_name)?;
     Some((result, vec![crate::ImplicitCondition::Positive(quotient)]))
+}
+
+#[cfg(test)]
+mod tests {
+    use cas_ast::{Context, ExprId};
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    use super::sqrt_of_polynomial_quotient_derivative_rewrite;
+    use crate::symbolic_calculus_call_support::NamedVarCall;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn sqrt_of_polynomial_quotient_rewrite_preserves_finalized_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("sqrt((x+1)/(x+2))", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite =
+            sqrt_of_polynomial_quotient_derivative_rewrite(&mut ctx, &call, target).unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            "1 / (2 * sqrt((x + 1) / (x + 2)) * (x + 2)^2)"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 1);
+        assert_eq!(
+            rewrite.required_conditions[0].display(&ctx),
+            "(x + 1) / (x + 2) > 0"
+        );
+    }
 }
