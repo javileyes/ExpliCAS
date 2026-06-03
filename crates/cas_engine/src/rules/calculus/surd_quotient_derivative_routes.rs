@@ -29,6 +29,21 @@ pub(super) fn constant_scaled_surd_quotient_derivative_route(
     })
 }
 
+pub(super) fn constant_scaled_surd_quotient_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let result = constant_scaled_surd_quotient_derivative_route(ctx, target, &call.var_name)?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        Vec::new(),
+    ))
+}
+
 pub(super) fn surd_quotient_derivative_route(
     ctx: &mut Context,
     target: ExprId,
@@ -81,6 +96,7 @@ mod tests {
     use super::super::inverse_surd_quotient_derivative_presentation::reciprocal_constant_scaled_bounded_inverse_trig_surd_quotient_compact_derivative;
     use super::super::self_normalized_surd_quotient_derivative_presentation::direct_self_normalized_surd_quotient_post_calculus_presentation;
     use super::{
+        constant_scaled_surd_quotient_derivative_rewrite,
         constant_scaled_surd_quotient_derivative_route, surd_quotient_derivative_rewrite,
         surd_quotient_derivative_route,
     };
@@ -155,6 +171,26 @@ mod tests {
             rendered(&route_ctx, route_result),
             rendered(&direct_ctx, direct_result)
         );
+    }
+
+    #[test]
+    fn constant_scaled_surd_quotient_rewrite_preserves_result_and_empty_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("1/2*arcsin(x/sqrt(4))", &mut ctx).unwrap();
+        let route_result =
+            constant_scaled_surd_quotient_derivative_route(&mut ctx, target, "x").unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite =
+            constant_scaled_surd_quotient_derivative_rewrite(&mut ctx, &call, target).unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            rendered(&ctx, route_result)
+        );
+        assert!(rewrite.required_conditions.is_empty());
     }
 
     #[test]

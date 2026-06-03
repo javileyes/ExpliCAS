@@ -40,11 +40,14 @@ mod bounded_inverse_trig_projection_presentation;
 mod bounded_inverse_trig_shifted_sqrt_derivative_presentation;
 mod bounded_inverse_trig_sqrt_derivative_presentation;
 mod by_parts_integrand_preservation;
+mod compact_derivative_presentation_routes;
+mod compact_inverse_surd_derivative_routes;
 mod constant_scaled_inverse_trig_root_post_calculus_presentation;
 mod derivative_integrand_factor_parts;
 mod derivative_result_scaling_presentation;
 mod diff_domain_undefined_targets;
 mod diff_integral_source_post_calculus_presentation;
+mod diff_late_derivative_routes;
 mod diff_post_calculus_presentation;
 mod diff_required_conditions;
 mod diff_rule;
@@ -179,6 +182,7 @@ mod sqrt_chain_factor_presentation;
 mod sqrt_chain_integrand_preservation;
 mod sqrt_denominator_result_presentation;
 mod sqrt_derivative_post_calculus_presentation;
+mod sqrt_early_derivative_routes;
 mod sqrt_elementary_derivative_routes;
 mod sqrt_elementary_function_derivative_presentation;
 mod sqrt_hyperbolic_log_integrand_presentation;
@@ -206,31 +210,15 @@ mod trig_power_integrand_presentation;
 mod trig_result_presentation;
 mod unary_function_presentation;
 
-use num_rational::BigRational;
-use num_traits::One;
-
 pub(crate) use arctan_sqrt_additive_derivative_presentation::{
     arctan_sqrt_additive_tan_polynomial_derivative_inline_presentation_with_domain,
     arctan_sqrt_additive_tan_polynomial_derivative_presentation_with_domain,
     arctan_sqrt_additive_trig_polynomial_derivative_presentation_with_domain,
     arctan_sqrt_small_additive_elementary_derivative_presentation_with_domain,
 };
-use arctan_sqrt_constant_over_polynomial_presentation::arctan_sqrt_constant_over_polynomial_presentation;
 pub(crate) use arctan_sqrt_quotient_derivative_presentation::arctan_sqrt_positive_polynomial_quotient_derivative_for_diff_call;
-use arctan_sqrt_quotient_derivative_presentation::arctan_sqrt_positive_polynomial_quotient_derivative_shortcut;
-use asinh_surd_derivative_presentation::asinh_surd_quotient_compact_derivative;
-use atanh_surd_derivative_presentation::atanh_surd_quotient_compact_derivative;
-use bounded_inverse_trig_derivative_routes::bounded_inverse_trig_derivative_route;
 pub use diff_rule::DiffRule;
-use diff_rule_support::{
-    arctan_sqrt_additive_derivative_rewrite, finalize_diff_rewrite_with_conditions,
-    sign_polynomial_diff_rewrite, sqrt_additive_derivative_shortcut, undefined_diff_rewrite,
-};
-use differentiation::differentiate;
 pub(crate) use domain_checks::diff_target_known_undefined_over_reals;
-use domain_checks::{
-    append_positive_required_conditions, diff_target_known_undefined_or_empty_domain_over_reals,
-};
 use elementary_sqrt_derivative_presentation::signed_elementary_sqrt_polynomial_derivative_presentation;
 use elementary_variable_term_presentation::{
     scaled_ln_variable_arg_for_calculus_presentation,
@@ -238,41 +226,30 @@ use elementary_variable_term_presentation::{
 };
 use exponential_derivative_presentation::sqrt_shifted_exp_derivative_presentation;
 pub(crate) use hyperbolic_primitive_derivative_presentation::affine_hyperbolic_odd_primitive_derivative_presentation;
-use integral_derivative_shortcut_presentation::supported_integral_diff_shortcut_rewrite;
 pub use integrate_rule::IntegrateRule;
 pub(crate) use inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation::inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation_with_domain;
-use inverse_tangent_trig_affine_derivative_presentation::inverse_tangent_direct_trig_affine_derivative_presentation;
-use ln_sum_equal_roots_derivative_presentation::ln_sum_of_equal_derivative_roots_derivative_presentation;
 pub(crate) use ln_sum_equal_roots_derivative_presentation::ln_sum_of_equal_derivative_roots_derivative_presentation_with_domain;
 use log_sqrt_quotient_derivative_presentation::{
     log_over_sqrt_polynomial_derivative_presentation,
     sqrt_over_log_polynomial_derivative_presentation,
 };
-use log_sqrt_quotient_derivative_routes::log_sqrt_quotient_derivative_route;
 use polynomial_over_sqrt_derivative_presentation::polynomial_over_sqrt_polynomial_derivative_presentation;
 pub(crate) use polynomial_over_sqrt_derivative_presentation::polynomial_over_sqrt_polynomial_derivative_presentation_with_domain;
 use polynomial_support::{
     polynomial_is_strictly_positive_everywhere, polynomial_radicand_for_calculus_presentation,
 };
-use polynomial_times_sqrt_polynomial_derivative_presentation::polynomial_times_sqrt_polynomial_derivative_presentation;
-use positive_quadratic_derivative_routes::positive_quadratic_derivative_route;
 pub(crate) use post_calculus_presentation::try_post_calculus_presentation;
 pub(crate) use presentation_compaction::compact_double_angle_sine_products_for_calculus_presentation;
 use presentation_compaction::{
     compact_numeric_mul_factors_for_calculus_presentation,
     compact_small_power_exponents_for_calculus_presentation,
 };
-use presentation_utils::unwrap_internal_hold_for_calculus;
 pub(crate) use reciprocal_sqrt_product_derivative_presentation::reciprocal_sqrt_polynomial_product_derivative_presentation_with_domain;
 use reciprocal_sqrt_product_derivative_presentation::{
     constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_presentation,
     reciprocal_sqrt_polynomial_product_derivative_presentation,
 };
 pub(crate) use reciprocal_trig_derivative_presentation::reciprocal_trig_shifted_sqrt_derivative_presentation;
-use reciprocal_trig_derivative_presentation::{
-    reciprocal_trig_shifted_sqrt_derivative_rewrite,
-    scaled_reciprocal_trig_power_derivative_presentation,
-};
 pub(crate) use result_presentation::try_calculus_result_presentation;
 use scalar_presentation::{
     add_one_for_calculus_presentation, add_rational_for_calculus_presentation,
@@ -286,8 +263,6 @@ pub(crate) use sqrt_additive_tan_derivative_presentation::{
     sqrt_additive_tan_polynomial_derivative_presentation,
 };
 pub(crate) use sqrt_additive_trig_derivative_presentation::sqrt_additive_trig_polynomial_derivative_presentation;
-use sqrt_bounded_trig_positive_shift_derivative_presentation::sqrt_bounded_trig_positive_shift_derivative_presentation;
-use sqrt_elementary_derivative_routes::sqrt_elementary_function_derivative_route;
 use sqrt_polynomial_quotient_derivative_presentation::{
     sqrt_of_polynomial_quotient_derivative_presentation,
     sqrt_polynomial_quotient_derivative_presentation,

@@ -1,5 +1,6 @@
 //! Presentation for `ln(sqrt(f) + sqrt(g))` routes with equal derivatives.
 
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::polynomial_support::{
     polynomial_is_strictly_positive_everywhere, polynomial_radicand_for_calculus_presentation,
     split_polynomial_content_for_calculus_presentation,
@@ -8,6 +9,8 @@ use super::scalar_presentation::{
     nonzero_rational_parts, rational_const_for_calculus_presentation,
     scale_expr_for_calculus_presentation,
 };
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::NamedVarCall;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::root_forms::extract_square_root_base;
 use num_rational::BigRational;
@@ -22,6 +25,22 @@ pub(super) fn ln_sum_of_equal_derivative_roots_derivative_presentation(
         ctx, target, var_name,
     )?;
     Some(compact)
+}
+
+pub(super) fn ln_sum_of_equal_derivative_roots_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let result =
+        ln_sum_of_equal_derivative_roots_derivative_presentation(ctx, target, &call.var_name)?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        Vec::new(),
+    ))
 }
 
 pub(crate) fn ln_sum_of_equal_derivative_roots_derivative_presentation_with_domain(
@@ -128,7 +147,11 @@ mod tests {
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
-    use super::ln_sum_of_equal_derivative_roots_derivative_presentation;
+    use super::{
+        ln_sum_of_equal_derivative_roots_derivative_presentation,
+        ln_sum_of_equal_derivative_roots_derivative_rewrite,
+    };
+    use crate::symbolic_calculus_call_support::NamedVarCall;
 
     fn rendered(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
@@ -145,6 +168,23 @@ mod tests {
 
         assert_eq!(
             rendered(&ctx, compact),
+            "1 / (sqrt(2 * x + 1) * sqrt(2 * x + 3))"
+        );
+    }
+
+    #[test]
+    fn ln_sum_of_equal_derivative_roots_rewrite_preserves_result() {
+        let mut ctx = Context::new();
+        let target = parse("ln(sqrt(2*x+1)+sqrt(2*x+3))", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite =
+            ln_sum_of_equal_derivative_roots_derivative_rewrite(&mut ctx, &call, target).unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
             "1 / (sqrt(2 * x + 1) * sqrt(2 * x + 3))"
         );
     }

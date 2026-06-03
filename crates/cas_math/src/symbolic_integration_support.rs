@@ -20,11 +20,24 @@ use crate::symbolic_integration_hyperbolic_reciprocal_policy::{
     reciprocal_hyperbolic_power_arg, reciprocal_hyperbolic_square_parts,
     HyperbolicReciprocalPrimitiveScaleOps,
 };
+use crate::symbolic_integration_log_support::{
+    affine_constant_base_log_antiderivative_from_slope, constant_base_log_derivative_correction,
+    ln_abs, positive_integer_constant_log_base_derivative_correction,
+    positive_integer_constant_log_base_ln, scaled_ln_abs_product_form,
+    scaled_ln_abs_with_negative_shortcut, valid_constant_log_base_ln_from_rational_value,
+};
+use crate::symbolic_integration_polynomial_support::{
+    constant_derivative_scale, constant_polynomial_ratio,
+    elementary_polynomial_substitution_kernel_antiderivative, polynomial_substitution_kernel,
+    PolynomialSubstitutionKernel,
+};
 use crate::symbolic_integration_reciprocal_trig_policy::{
     build_reciprocal_trig_denominator_nonzero_condition, build_reciprocal_trig_derivative_integral,
-    build_trig_pole_nonzero_condition, reciprocal_trig_derivative_base_antiderivative,
+    build_reciprocal_trig_log_argument, build_trig_pole_nonzero_condition, is_reciprocal_trig_call,
+    reciprocal_trig_denominator_call, reciprocal_trig_derivative_base_antiderivative,
     reciprocal_trig_derivative_policy, reciprocal_trig_derivative_policy_from_reciprocal,
-    reciprocal_trig_square_parts, trig_pole_nonzero_builtin,
+    reciprocal_trig_reciprocal_parts_from_denominator, reciprocal_trig_square_parts,
+    trig_pole_nonzero_builtin,
 };
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
@@ -41,22 +54,8 @@ const MAX_HYPERBOLIC_POLYNOMIAL_BY_PARTS_DEGREE: usize = 8;
 const SYMBOLIC_INTEGRATION_DOMAIN_PROOF_DEPTH: usize = 8;
 const SYMBOLIC_INTEGRATION_DOMAIN_SCAN_DEPTH: usize = 24;
 
-fn ln_abs(ctx: &mut Context, arg: ExprId) -> ExprId {
-    let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
-    ctx.call_builtin(BuiltinFn::Ln, vec![abs_arg])
-}
-
 fn valid_constant_log_base_ln(ctx: &mut Context, base: ExprId) -> Option<Option<ExprId>> {
-    if matches!(ctx.get(base), Expr::Constant(Constant::E)) {
-        return Some(None);
-    }
-
-    let value = rational_constant_value(ctx, base)?;
-    if !value.is_positive() || value.is_one() {
-        return None;
-    }
-
-    Some(Some(ctx.call_builtin(BuiltinFn::Ln, vec![base])))
+    valid_constant_log_base_ln_from_rational_value(ctx, base, rational_constant_value(ctx, base))
 }
 
 fn real_domain_is_empty_or_nonfinite_for_integration(ctx: &mut Context, expr: ExprId) -> bool {
@@ -66,16 +65,6 @@ fn real_domain_is_empty_or_nonfinite_for_integration(ctx: &mut Context, expr: Ex
         SYMBOLIC_INTEGRATION_DOMAIN_PROOF_DEPTH,
         SYMBOLIC_INTEGRATION_DOMAIN_SCAN_DEPTH,
     )
-}
-
-fn constant_base_log_derivative_correction(ctx: &mut Context, base_ln: Option<ExprId>) -> ExprId {
-    match base_ln {
-        Some(base_ln) => {
-            let one = ctx.num(1);
-            ctx.add(Expr::Div(one, base_ln))
-        }
-        None => ctx.num(1),
-    }
 }
 
 fn affine_constant_base_log_antiderivative(
@@ -89,19 +78,14 @@ fn affine_constant_base_log_antiderivative(
     if contains_named_var(ctx, a, var) {
         return None;
     }
-    if rational_constant_value(ctx, a).is_some_and(|value| value.is_zero()) {
-        return None;
-    }
-
-    let reciprocal_base_ln = constant_base_log_derivative_correction(ctx, base_ln);
-    let log_minus_reciprocal_base_ln = ctx.add(Expr::Sub(log_expr, reciprocal_base_ln));
-    let integral = mul2_raw(ctx, arg, log_minus_reciprocal_base_ln);
-
-    if matches!(ctx.get(a), Expr::Number(n) if n.is_one()) {
-        Some(integral)
-    } else {
-        Some(ctx.add(Expr::Div(integral, a)))
-    }
+    affine_constant_base_log_antiderivative_from_slope(
+        ctx,
+        log_expr,
+        arg,
+        base_ln,
+        a,
+        rational_constant_value(ctx, a),
+    )
 }
 
 fn compact_single_power_polynomial_arg(ctx: &mut Context, arg: ExprId) -> ExprId {
@@ -3939,6 +3923,18 @@ fn hyperbolic_log_derivative_ratio_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    let (den, scale) = hyperbolic_log_derivative_ratio_parts(ctx, num, den, var)?;
+    Some(hyperbolic_log_derivative_ratio_antiderivative_from_parts(
+        ctx, den, scale,
+    ))
+}
+
+fn hyperbolic_log_derivative_ratio_parts(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, BigRational)> {
     let (den_builtin, arg) = match ctx.get(den) {
         Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id)?, args[0]),
         _ => return None,
@@ -3959,21 +3955,17 @@ fn hyperbolic_log_derivative_ratio_antiderivative(
         |ctx, numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal,
     )?;
 
-    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
-    let derivative = arg_poly.derivative();
-    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
-    if scale.is_zero() {
-        return None;
-    }
+    let scale = constant_derivative_scale(ctx, cofactor, arg, var)?;
 
-    let log_abs_den = ln_abs(ctx, den);
-    if scale.is_one() {
-        return Some(log_abs_den);
-    }
+    Some((den, scale))
+}
 
-    let scale_expr = ctx.add(Expr::Number(scale));
-    Some(mul2_raw(ctx, scale_expr, log_abs_den))
+fn hyperbolic_log_derivative_ratio_antiderivative_from_parts(
+    ctx: &mut Context,
+    den: ExprId,
+    scale: BigRational,
+) -> ExprId {
+    scaled_ln_abs_product_form(ctx, den, scale)
 }
 
 fn trig_log_derivative_ratio_antiderivative(
@@ -3983,16 +3975,7 @@ fn trig_log_derivative_ratio_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     let (_, _, scaled) = trig_log_derivative_ratio_scale(ctx, num, den, var)?;
-    let log_abs_den = ln_abs(ctx, den);
-    if scaled.is_one() {
-        return Some(log_abs_den);
-    }
-    if scaled == -BigRational::one() {
-        return Some(ctx.add(Expr::Neg(log_abs_den)));
-    }
-
-    let scale_expr = ctx.add(Expr::Number(scaled));
-    Some(mul2_raw(ctx, scale_expr, log_abs_den))
+    Some(scaled_ln_abs_with_negative_shortcut(ctx, den, scaled))
 }
 
 fn trig_log_derivative_ratio_scale(
@@ -4015,13 +3998,7 @@ fn trig_log_derivative_ratio_scale(
     }
 
     let cofactor = trig_log_derivative_ratio_cofactor(ctx, num, numerator_builtin, arg)?;
-    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
-    let derivative = arg_poly.derivative();
-    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
-    if scale.is_zero() {
-        return None;
-    }
+    let scale = constant_derivative_scale(ctx, cofactor, arg, var)?;
 
     let scaled = match den_builtin {
         BuiltinFn::Cos => -scale,
@@ -4075,27 +4052,33 @@ fn hyperbolic_tanh_reciprocal_log_sinh_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    let (arg, scale) = hyperbolic_tanh_reciprocal_log_sinh_parts(ctx, num, den, var)?;
+    Some(hyperbolic_tanh_reciprocal_log_sinh_antiderivative_from_parts(ctx, arg, scale))
+}
+
+fn hyperbolic_tanh_reciprocal_log_sinh_parts(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, BigRational)> {
     let arg = unary_builtin_arg(ctx, den, BuiltinFn::Tanh)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
 
-    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
-    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
-    let derivative = arg_poly.derivative();
-    let scale = constant_polynomial_ratio(&numerator, &derivative)?;
-    if scale.is_zero() {
-        return None;
-    }
+    let scale = constant_derivative_scale(ctx, num, arg, var)?;
 
+    Some((arg, scale))
+}
+
+fn hyperbolic_tanh_reciprocal_log_sinh_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    scale: BigRational,
+) -> ExprId {
     let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
-    let log_abs_sinh = ln_abs(ctx, sinh_arg);
-    if scale.is_one() {
-        return Some(log_abs_sinh);
-    }
-
-    let scale_expr = ctx.add(Expr::Number(scale));
-    Some(mul2_raw(ctx, scale_expr, log_abs_sinh))
+    scaled_ln_abs_product_form(ctx, sinh_arg, scale)
 }
 
 fn hyperbolic_reciprocal_derivative_antiderivative(
@@ -4104,6 +4087,16 @@ fn hyperbolic_reciprocal_derivative_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    let (den_builtin, arg, scale) = hyperbolic_reciprocal_derivative_parts(ctx, num, den, var)?;
+    hyperbolic_reciprocal_derivative_antiderivative_from_parts(ctx, den_builtin, arg, scale)
+}
+
+fn hyperbolic_reciprocal_derivative_parts(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<(BuiltinFn, ExprId, ExprId)> {
     let (den_builtin, arg) = reciprocal_hyperbolic_square_parts(ctx, den)?;
     let policy = hyperbolic_reciprocal_derivative_policy(den_builtin)?;
     if !contains_named_var(ctx, arg, var) {
@@ -4122,6 +4115,16 @@ fn hyperbolic_reciprocal_derivative_antiderivative(
         return None;
     }
 
+    Some((den_builtin, arg, scale))
+}
+
+fn hyperbolic_reciprocal_derivative_antiderivative_from_parts(
+    ctx: &mut Context,
+    den_builtin: BuiltinFn,
+    arg: ExprId,
+    scale: ExprId,
+) -> Option<ExprId> {
+    let policy = hyperbolic_reciprocal_derivative_policy(den_builtin)?;
     let integral = build_hyperbolic_reciprocal_derivative_integral(ctx, policy, arg);
     Some(scale_expr_reciprocal_integration_result(
         ctx, scale, integral,
@@ -4716,11 +4719,11 @@ fn negate_integration_result(ctx: &mut Context, expr: ExprId) -> ExprId {
     let unheld = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     let negated = match ctx.get(unheld).clone() {
         Expr::Neg(inner) => inner,
-        Expr::Mul(left, right) if is_sec_or_csc_call(ctx, right) => {
+        Expr::Mul(left, right) if is_reciprocal_trig_call(ctx, right) => {
             let negative_scale = negate_scalar_expr(ctx, left);
             mul2_raw(ctx, negative_scale, right)
         }
-        Expr::Mul(left, right) if is_sec_or_csc_call(ctx, left) => {
+        Expr::Mul(left, right) if is_reciprocal_trig_call(ctx, left) => {
             let negative_scale = negate_scalar_expr(ctx, right);
             mul2_raw(ctx, negative_scale, left)
         }
@@ -4736,11 +4739,6 @@ fn negate_integration_result(ctx: &mut Context, expr: ExprId) -> ExprId {
     } else {
         cas_ast::hold::wrap_hold(ctx, negated)
     }
-}
-
-fn is_sec_or_csc_call(ctx: &Context, expr: ExprId) -> bool {
-    unary_builtin_arg(ctx, expr, BuiltinFn::Sec).is_some()
-        || unary_builtin_arg(ctx, expr, BuiltinFn::Csc).is_some()
 }
 
 fn scale_reciprocal_integration_result(
@@ -4822,6 +4820,20 @@ fn scale_expr_reciprocal_integration_result(
     }
 }
 
+fn scale_expr_reciprocal_integration_result_preserving_presentation(
+    ctx: &mut Context,
+    scale: ExprId,
+    expr: ExprId,
+    preserve_presentation: bool,
+) -> ExprId {
+    let scaled = scale_expr_reciprocal_integration_result(ctx, scale, expr);
+    if preserve_presentation {
+        cas_ast::hold::wrap_hold(ctx, scaled)
+    } else {
+        scaled
+    }
+}
+
 fn scale_reciprocal_integration_result_preserving_presentation(
     ctx: &mut Context,
     scale: BigRational,
@@ -4856,6 +4868,21 @@ fn scale_reciprocal_integration_result_preserving_presentation(
         ctx.add(Expr::Div(numerator, denominator_scale))
     };
     cas_ast::hold::wrap_hold(ctx, scaled)
+}
+
+fn scale_reciprocal_integration_result_with_unit_presentation(
+    ctx: &mut Context,
+    scale: BigRational,
+    expr: ExprId,
+    preserve_unit_scale_presentation: bool,
+) -> ExprId {
+    let scaled =
+        scale_reciprocal_integration_result_preserving_presentation(ctx, scale.clone(), expr);
+    if preserve_unit_scale_presentation && (scale.is_one() || scale == -BigRational::one()) {
+        cas_ast::hold::wrap_hold(ctx, scaled)
+    } else {
+        scaled
+    }
 }
 
 fn polynomial_trig_reciprocal_derivative_term_cofactor(
@@ -5175,6 +5202,22 @@ fn polynomial_trig_reciprocal_derivative_antiderivative(
 ) -> Option<ExprId> {
     let (den_builtin, arg, cofactor) =
         polynomial_trig_reciprocal_derivative_parts(ctx, num, den, var)?;
+    polynomial_trig_reciprocal_derivative_antiderivative_from_parts(
+        ctx,
+        den_builtin,
+        arg,
+        cofactor,
+        var,
+    )
+}
+
+fn polynomial_trig_reciprocal_derivative_antiderivative_from_parts(
+    ctx: &mut Context,
+    den_builtin: BuiltinFn,
+    arg: ExprId,
+    cofactor: ExprId,
+    var: &str,
+) -> Option<ExprId> {
     let integral = trig_reciprocal_derivative_base_integral(ctx, den_builtin, arg)?;
     let preserve_shifted_symbolic_presentation =
         additive_var_dependent_part(ctx, arg, var).is_some();
@@ -5186,28 +5229,11 @@ fn polynomial_trig_reciprocal_derivative_antiderivative(
             return None;
         }
 
-        if scale.is_one() {
-            return Some(
-                if preserve_symbolic_linear_presentation || preserve_shifted_symbolic_presentation {
-                    cas_ast::hold::wrap_hold(ctx, integral)
-                } else {
-                    integral
-                },
-            );
-        }
-        if scale == -BigRational::one() {
-            let negated = negate_integration_result(ctx, integral);
-            return Some(
-                if preserve_symbolic_linear_presentation || preserve_shifted_symbolic_presentation {
-                    cas_ast::hold::wrap_hold(ctx, negated)
-                } else {
-                    negated
-                },
-            );
-        }
-
-        return Some(scale_reciprocal_integration_result_preserving_presentation(
-            ctx, scale, integral,
+        return Some(scale_reciprocal_integration_result_with_unit_presentation(
+            ctx,
+            scale,
+            integral,
+            preserve_symbolic_linear_presentation || preserve_shifted_symbolic_presentation,
         ));
     }
 
@@ -5215,8 +5241,11 @@ fn polynomial_trig_reciprocal_derivative_antiderivative(
     if is_number(ctx, scale, 0) {
         return None;
     }
-    let scaled = scale_expr_reciprocal_integration_result(ctx, scale, integral);
-    Some(cas_ast::hold::wrap_hold(ctx, scaled))
+    Some(
+        scale_expr_reciprocal_integration_result_preserving_presentation(
+            ctx, scale, integral, true,
+        ),
+    )
 }
 
 fn polynomial_trig_reciprocal_derivative_antiderivative_with_required_nonzero(
@@ -5225,9 +5254,18 @@ fn polynomial_trig_reciprocal_derivative_antiderivative_with_required_nonzero(
     den: ExprId,
     var: &str,
 ) -> Option<(ExprId, ExprId)> {
-    let integral = polynomial_trig_reciprocal_derivative_antiderivative(ctx, num, den, var)?;
+    let (den_builtin, arg, cofactor) =
+        polynomial_trig_reciprocal_derivative_parts(ctx, num, den, var)?;
+    let integral = polynomial_trig_reciprocal_derivative_antiderivative_from_parts(
+        ctx,
+        den_builtin,
+        arg,
+        cofactor,
+        var,
+    )?;
+    trig_reciprocal_derivative_cofactor_is_nonzero(ctx, cofactor, arg, var)?;
     let required_nonzero =
-        polynomial_trig_reciprocal_derivative_required_nonzero_from_parts(ctx, num, den, var)?;
+        build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)?;
     Some((integral, required_nonzero))
 }
 
@@ -5606,12 +5644,14 @@ fn sqrt_trig_reciprocal_derivative_antiderivative(
     let preserve_symbolic_scale_presentation =
         !matches!(ctx.get(scale), Expr::Number(_)) && sqrt_like_radicand(ctx, arg).is_some();
     let integral = reciprocal_trig_derivative_base_antiderivative(ctx, den_builtin, arg)?;
-    let scaled = scale_expr_reciprocal_integration_result(ctx, scale, integral);
-    Some(if preserve_symbolic_scale_presentation {
-        cas_ast::hold::wrap_hold(ctx, scaled)
-    } else {
-        scaled
-    })
+    Some(
+        scale_expr_reciprocal_integration_result_preserving_presentation(
+            ctx,
+            scale,
+            integral,
+            preserve_symbolic_scale_presentation,
+        ),
+    )
 }
 
 pub fn integrate_symbolic_is_sqrt_trig_reciprocal_derivative_target(
@@ -5662,7 +5702,7 @@ fn sqrt_trig_log_derivative_parts(
             .iter()
             .enumerate()
             .find_map(|(idx, factor)| {
-                reciprocal_trig_factor_parts(ctx, *factor).map(|parts| (idx, parts))
+                reciprocal_trig_denominator_call(ctx, *factor).map(|parts| (idx, parts))
             })?;
     let numerator_builtin = match den_builtin {
         BuiltinFn::Cos => BuiltinFn::Sin,
@@ -5772,7 +5812,7 @@ fn sqrt_reciprocal_trig_log_derivative_parts(
             .iter()
             .enumerate()
             .find_map(|(idx, factor)| {
-                reciprocal_trig_factor_parts(ctx, *factor).map(|parts| (idx, parts))
+                reciprocal_trig_denominator_call(ctx, *factor).map(|parts| (idx, parts))
             })?;
 
     let radicand = sqrt_like_radicand(ctx, arg)?;
@@ -5929,12 +5969,7 @@ fn sqrt_hyperbolic_reciprocal_square_parts(
         arg,
         var,
     )?;
-    if is_number(ctx, scale, 0) {
-        return None;
-    }
-
-    let (radicand, _) = sqrt_chain_argument_derivative_parts(ctx, arg, var)?;
-    Some((den_builtin, arg, radicand, scale))
+    finish_sqrt_hyperbolic_reciprocal_parts(ctx, den_builtin, arg, scale, var)
 }
 
 fn sqrt_hyperbolic_reciprocal_square_antiderivative(
@@ -6009,6 +6044,16 @@ fn sqrt_hyperbolic_reciprocal_derivative_parts(
         arg,
         var,
     )?;
+    finish_sqrt_hyperbolic_reciprocal_parts(ctx, den_builtin, arg, scale, var)
+}
+
+fn finish_sqrt_hyperbolic_reciprocal_parts(
+    ctx: &mut Context,
+    den_builtin: BuiltinFn,
+    arg: ExprId,
+    scale: ExprId,
+    var: &str,
+) -> Option<(BuiltinFn, ExprId, ExprId, ExprId)> {
     if is_number(ctx, scale, 0) {
         return None;
     }
@@ -6038,26 +6083,34 @@ pub fn integrate_symbolic_is_sqrt_hyperbolic_reciprocal_derivative_target(
     sqrt_hyperbolic_reciprocal_derivative_parts(ctx, expr, var).is_some()
 }
 
-fn reciprocal_trig_factor_parts(ctx: &Context, den: ExprId) -> Option<(BuiltinFn, ExprId)> {
-    match ctx.get(den) {
-        Expr::Function(fn_id, args) if args.len() == 1 => {
-            let builtin = ctx.builtin_of(*fn_id)?;
-            match builtin {
-                BuiltinFn::Cos | BuiltinFn::Sin => Some((builtin, args[0])),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
-}
-
 fn polynomial_trig_reciprocal_factor_antiderivative(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let (den_builtin, arg) = reciprocal_trig_factor_parts(ctx, den)?;
+    let (den_builtin, arg, scale) =
+        polynomial_trig_reciprocal_factor_derivative_parts(ctx, num, den, var)?;
+    let integral = trig_reciprocal_derivative_base_integral(ctx, den_builtin, arg)?;
+    if scale.is_one() {
+        return Some(integral);
+    }
+    if scale == -BigRational::one() {
+        return Some(negate_integration_result(ctx, integral));
+    }
+
+    Some(scale_reciprocal_integration_result_preserving_presentation(
+        ctx, scale, integral,
+    ))
+}
+
+fn polynomial_trig_reciprocal_factor_derivative_parts(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<(BuiltinFn, ExprId, BigRational)> {
+    let (den_builtin, arg) = reciprocal_trig_denominator_call(ctx, den)?;
     let policy = reciprocal_trig_derivative_policy(den_builtin)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
@@ -6078,17 +6131,7 @@ fn polynomial_trig_reciprocal_factor_antiderivative(
         return None;
     }
 
-    let integral = trig_reciprocal_derivative_base_integral(ctx, den_builtin, arg)?;
-    if scale.is_one() {
-        return Some(integral);
-    }
-    if scale == -BigRational::one() {
-        return Some(negate_integration_result(ctx, integral));
-    }
-
-    Some(scale_reciprocal_integration_result_preserving_presentation(
-        ctx, scale, integral,
-    ))
+    Some((den_builtin, arg, scale))
 }
 
 fn constant_scaled_trig_reciprocal_derivative_antiderivative(
@@ -6213,26 +6256,8 @@ fn polynomial_trig_reciprocal_factor_required_nonzero(
         Expr::Div(num, den) => (num, den),
         _ => return None,
     };
-    let (den_builtin, arg) = reciprocal_trig_factor_parts(ctx, den)?;
-    let policy = reciprocal_trig_derivative_policy(den_builtin)?;
-    if !contains_named_var(ctx, arg, var) {
-        return None;
-    }
-
-    let cofactor = product_cofactor_excluding_unary_builtin_arg(
-        ctx,
-        num,
-        policy.derivative_builtin(),
-        |ctx, numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal,
-    )?;
-
-    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
-    let derivative = arg_poly.derivative();
-    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
-    if scale.is_zero() {
-        return None;
-    }
+    let (den_builtin, arg, _) =
+        polynomial_trig_reciprocal_factor_derivative_parts(ctx, num, den, var)?;
 
     build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
@@ -6512,19 +6537,7 @@ fn sec_csc_log_antiderivative(
     arg: ExprId,
     coeff: ExprId,
 ) -> Option<ExprId> {
-    let log_arg = match builtin {
-        BuiltinFn::Sec => {
-            let primary = ctx.call_builtin(BuiltinFn::Sec, vec![arg]);
-            let companion = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
-            ctx.add(Expr::Add(primary, companion))
-        }
-        BuiltinFn::Csc => {
-            let primary = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
-            let companion = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
-            ctx.add(Expr::Sub(primary, companion))
-        }
-        _ => return None,
-    };
+    let log_arg = build_reciprocal_trig_log_argument(ctx, builtin, arg)?;
     let log_arg = cas_ast::hold::wrap_hold(ctx, log_arg);
     let log_abs = ln_abs(ctx, log_arg);
     if let Some(coeff) = rational_constant_value(ctx, coeff) {
@@ -6551,9 +6564,7 @@ fn reciprocal_trig_log_antiderivative(
         return None;
     }
 
-    let (builtin, arg) = unary_builtin_arg(ctx, den, BuiltinFn::Cos)
-        .map(|arg| (BuiltinFn::Sec, arg))
-        .or_else(|| unary_builtin_arg(ctx, den, BuiltinFn::Sin).map(|arg| (BuiltinFn::Csc, arg)))?;
+    let (builtin, arg) = reciprocal_trig_reciprocal_parts_from_denominator(ctx, den)?;
     let (a, _) = get_linear_coeffs(ctx, arg, var)?;
     sec_csc_log_antiderivative(ctx, builtin, arg, a)
 }
@@ -6564,9 +6575,7 @@ fn polynomial_reciprocal_trig_log_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let (builtin, arg) = unary_builtin_arg(ctx, den, BuiltinFn::Cos)
-        .map(|arg| (BuiltinFn::Sec, arg))
-        .or_else(|| unary_builtin_arg(ctx, den, BuiltinFn::Sin).map(|arg| (BuiltinFn::Csc, arg)))?;
+    let (builtin, arg) = reciprocal_trig_reciprocal_parts_from_denominator(ctx, den)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
@@ -6744,9 +6753,7 @@ fn reciprocal_trig_log_required_nonzero(
         _ => return None,
     };
 
-    let (den_builtin, arg) = unary_builtin_arg(ctx, den, BuiltinFn::Cos)
-        .map(|arg| (BuiltinFn::Cos, arg))
-        .or_else(|| unary_builtin_arg(ctx, den, BuiltinFn::Sin).map(|arg| (BuiltinFn::Sin, arg)))?;
+    let (den_builtin, arg) = reciprocal_trig_denominator_call(ctx, den)?;
 
     let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
     let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
@@ -7853,76 +7860,19 @@ pub fn integrate_symbolic_is_acosh_affine_variable_target(
     rational_constant_value(ctx, coeff).is_some_and(|coeff| !coeff.is_zero())
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum PolynomialSubstitutionKernel {
-    Exp,
-    Sin,
-    Cos,
-    Sinh,
-    Cosh,
-    Tanh,
-    Tan,
-    Cot,
-    Sec,
-    Csc,
-}
-
-fn polynomial_substitution_kernel(
-    ctx: &Context,
-    expr: ExprId,
-) -> Option<(PolynomialSubstitutionKernel, ExprId)> {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args) if args.len() == 1 => {
-            let kernel = match ctx.builtin_of(*fn_id)? {
-                BuiltinFn::Exp => PolynomialSubstitutionKernel::Exp,
-                BuiltinFn::Sin => PolynomialSubstitutionKernel::Sin,
-                BuiltinFn::Cos => PolynomialSubstitutionKernel::Cos,
-                BuiltinFn::Sinh => PolynomialSubstitutionKernel::Sinh,
-                BuiltinFn::Cosh => PolynomialSubstitutionKernel::Cosh,
-                BuiltinFn::Tanh => PolynomialSubstitutionKernel::Tanh,
-                BuiltinFn::Tan => PolynomialSubstitutionKernel::Tan,
-                BuiltinFn::Cot => PolynomialSubstitutionKernel::Cot,
-                BuiltinFn::Sec => PolynomialSubstitutionKernel::Sec,
-                BuiltinFn::Csc => PolynomialSubstitutionKernel::Csc,
-                _ => return None,
-            };
-            Some((kernel, args[0]))
-        }
-        Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(Constant::E)) => {
-            Some((PolynomialSubstitutionKernel::Exp, *exp))
-        }
-        _ => None,
-    }
-}
-
 fn polynomial_substitution_kernel_antiderivative(
     ctx: &mut Context,
     kernel: PolynomialSubstitutionKernel,
     arg: ExprId,
     kernel_factor: ExprId,
 ) -> ExprId {
+    if let Some(antiderivative) =
+        elementary_polynomial_substitution_kernel_antiderivative(ctx, kernel, arg, kernel_factor)
+    {
+        return antiderivative;
+    }
+
     match kernel {
-        PolynomialSubstitutionKernel::Exp => kernel_factor,
-        PolynomialSubstitutionKernel::Sin => {
-            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
-            ctx.add(Expr::Neg(cos_arg))
-        }
-        PolynomialSubstitutionKernel::Cos => ctx.call_builtin(BuiltinFn::Sin, vec![arg]),
-        PolynomialSubstitutionKernel::Sinh => ctx.call_builtin(BuiltinFn::Cosh, vec![arg]),
-        PolynomialSubstitutionKernel::Cosh => ctx.call_builtin(BuiltinFn::Sinh, vec![arg]),
-        PolynomialSubstitutionKernel::Tanh => {
-            let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
-            ln_abs(ctx, cosh_arg)
-        }
-        PolynomialSubstitutionKernel::Tan => {
-            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
-            let log_abs = ln_abs(ctx, cos_arg);
-            ctx.add(Expr::Neg(log_abs))
-        }
-        PolynomialSubstitutionKernel::Cot => {
-            let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
-            ln_abs(ctx, sin_arg)
-        }
         PolynomialSubstitutionKernel::Sec => {
             let one = ctx.num(1);
             sec_csc_log_antiderivative(ctx, BuiltinFn::Sec, arg, one).unwrap_or(kernel_factor)
@@ -7931,47 +7881,8 @@ fn polynomial_substitution_kernel_antiderivative(
             let one = ctx.num(1);
             sec_csc_log_antiderivative(ctx, BuiltinFn::Csc, arg, one).unwrap_or(kernel_factor)
         }
+        _ => kernel_factor,
     }
-}
-
-fn constant_polynomial_ratio(
-    numerator: &Polynomial,
-    denominator: &Polynomial,
-) -> Option<BigRational> {
-    if denominator.is_zero() {
-        return None;
-    }
-
-    let pivot = denominator
-        .coeffs
-        .iter()
-        .position(|coeff| !coeff.is_zero())?;
-    let numerator_pivot = numerator
-        .coeffs
-        .get(pivot)
-        .cloned()
-        .unwrap_or_else(BigRational::zero);
-    let scale = numerator_pivot / denominator.coeffs[pivot].clone();
-    let len = numerator.coeffs.len().max(denominator.coeffs.len());
-
-    for idx in 0..len {
-        let left = numerator
-            .coeffs
-            .get(idx)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        let right = denominator
-            .coeffs
-            .get(idx)
-            .cloned()
-            .unwrap_or_else(BigRational::zero)
-            * scale.clone();
-        if left != right {
-            return None;
-        }
-    }
-
-    Some(scale)
 }
 
 fn rational_constant_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
@@ -8777,17 +8688,11 @@ fn log_product_substitution_factor_parts(
             Some((log_expr, arg, correction, distribute_correction))
         }
         Some(BuiltinFn::Log2) if args.len() == 1 => {
-            let two = ctx.num(2);
-            let base_ln = valid_constant_log_base_ln(ctx, two)?
-                .expect("base 2 should have an explicit natural-log denominator");
-            let correction = constant_base_log_derivative_correction(ctx, Some(base_ln));
+            let correction = positive_integer_constant_log_base_derivative_correction(ctx, 2);
             Some((factor, args[0], correction, true))
         }
         Some(BuiltinFn::Log10) if args.len() == 1 => {
-            let ten = ctx.num(10);
-            let base_ln = valid_constant_log_base_ln(ctx, ten)?
-                .expect("base 10 should have an explicit natural-log denominator");
-            let correction = constant_base_log_derivative_correction(ctx, Some(base_ln));
+            let correction = positive_integer_constant_log_base_derivative_correction(ctx, 10);
             Some((factor, args[0], correction, true))
         }
         _ => None,
@@ -9859,10 +9764,7 @@ fn log_power_function_parts(
             ))
         }
         Some(BuiltinFn::Log2) if args.len() == 1 => {
-            let two = ctx.num(2);
-            let base_ln = valid_constant_log_base_ln(ctx, two)?
-                .expect("base 2 should have an explicit natural-log denominator");
-            let correction = constant_base_log_derivative_correction(ctx, Some(base_ln));
+            let correction = positive_integer_constant_log_base_derivative_correction(ctx, 2);
             let arg = args[0];
             Some((
                 arg,
@@ -9871,10 +9773,7 @@ fn log_power_function_parts(
             ))
         }
         Some(BuiltinFn::Log10) if args.len() == 1 => {
-            let ten = ctx.num(10);
-            let base_ln = valid_constant_log_base_ln(ctx, ten)?
-                .expect("base 10 should have an explicit natural-log denominator");
-            let correction = constant_base_log_derivative_correction(ctx, Some(base_ln));
+            let correction = positive_integer_constant_log_base_derivative_correction(ctx, 10);
             let arg = args[0];
             Some((
                 arg,
@@ -17644,9 +17543,7 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
 
                 match ctx.builtin_of(fn_id) {
                     Some(BuiltinFn::Log2) => {
-                        let two = ctx.num(2);
-                        let base_ln = valid_constant_log_base_ln(ctx, two)?
-                            .expect("base 2 should have an explicit natural-log denominator");
+                        let base_ln = positive_integer_constant_log_base_ln(ctx, 2);
                         return affine_constant_base_log_antiderivative(
                             ctx,
                             expr,
@@ -17656,9 +17553,7 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
                         );
                     }
                     Some(BuiltinFn::Log10) => {
-                        let ten = ctx.num(10);
-                        let base_ln = valid_constant_log_base_ln(ctx, ten)?
-                            .expect("base 10 should have an explicit natural-log denominator");
+                        let base_ln = positive_integer_constant_log_base_ln(ctx, 10);
                         return affine_constant_base_log_antiderivative(
                             ctx,
                             expr,

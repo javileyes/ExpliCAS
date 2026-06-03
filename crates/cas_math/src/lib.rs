@@ -157,6 +157,8 @@ pub mod summation_support;
 pub mod symbolic_differentiation_support;
 mod symbolic_integration_derivative_cofactor_support;
 mod symbolic_integration_hyperbolic_reciprocal_policy;
+mod symbolic_integration_log_support;
+mod symbolic_integration_polynomial_support;
 mod symbolic_integration_reciprocal_trig_policy;
 pub mod symbolic_integration_support;
 pub mod telescoping_dirichlet;

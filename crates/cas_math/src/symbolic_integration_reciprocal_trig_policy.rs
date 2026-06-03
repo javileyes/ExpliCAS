@@ -115,6 +115,58 @@ pub(crate) fn reciprocal_trig_derivative_base_antiderivative(
     Some(build_reciprocal_trig_derivative_integral(ctx, policy, arg))
 }
 
+pub(crate) fn is_reciprocal_trig_call(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sec | BuiltinFn::Csc))
+    )
+}
+
+pub(crate) fn reciprocal_trig_denominator_call(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId)> {
+    let (builtin, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id)?, args[0]),
+        _ => return None,
+    };
+    match builtin {
+        BuiltinFn::Cos | BuiltinFn::Sin => Some((builtin, arg)),
+        _ => None,
+    }
+}
+
+pub(crate) fn reciprocal_trig_reciprocal_parts_from_denominator(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId)> {
+    let (denominator_builtin, arg) = reciprocal_trig_denominator_call(ctx, expr)?;
+    let policy = reciprocal_trig_derivative_policy(denominator_builtin)?;
+    Some((policy.reciprocal_builtin(), arg))
+}
+
+pub(crate) fn build_reciprocal_trig_log_argument(
+    ctx: &mut Context,
+    reciprocal_builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    match reciprocal_builtin {
+        BuiltinFn::Sec => {
+            let primary = ctx.call_builtin(BuiltinFn::Sec, vec![arg]);
+            let companion = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+            Some(ctx.add(Expr::Add(primary, companion)))
+        }
+        BuiltinFn::Csc => {
+            let primary = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
+            let companion = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
+            Some(ctx.add(Expr::Sub(primary, companion)))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn trig_pole_nonzero_builtin(builtin: BuiltinFn) -> Option<BuiltinFn> {
     match builtin {
         BuiltinFn::Tan | BuiltinFn::Sec => Some(BuiltinFn::Cos),
@@ -198,6 +250,57 @@ mod tests {
         assert_eq!(csc_policy.denominator_builtin(), BuiltinFn::Sin);
         assert_eq!(csc_policy.derivative_builtin(), BuiltinFn::Cot);
         assert!(reciprocal_trig_derivative_policy_from_reciprocal(BuiltinFn::Tan).is_none());
+    }
+
+    #[test]
+    fn detects_reciprocal_trig_calls() {
+        let mut ctx = Context::new();
+        let sec_expr = parse("sec(2*x+1)", &mut ctx).unwrap();
+        let csc_expr = parse("csc(2*x+1)", &mut ctx).unwrap();
+        let tan_expr = parse("tan(2*x+1)", &mut ctx).unwrap();
+
+        assert!(is_reciprocal_trig_call(&ctx, sec_expr));
+        assert!(is_reciprocal_trig_call(&ctx, csc_expr));
+        assert!(!is_reciprocal_trig_call(&ctx, tan_expr));
+    }
+
+    #[test]
+    fn maps_denominator_calls_to_reciprocal_trig_policy_parts() {
+        let mut ctx = Context::new();
+        let cos_den = parse("cos(2*x+1)", &mut ctx).unwrap();
+        let sin_den = parse("sin(2*x+1)", &mut ctx).unwrap();
+        let tan_den = parse("tan(2*x+1)", &mut ctx).unwrap();
+
+        let (cos_builtin, cos_arg) = reciprocal_trig_denominator_call(&ctx, cos_den).unwrap();
+        let (sin_builtin, sin_arg) = reciprocal_trig_denominator_call(&ctx, sin_den).unwrap();
+        let (sec_builtin, sec_arg) =
+            reciprocal_trig_reciprocal_parts_from_denominator(&ctx, cos_den).unwrap();
+        let (csc_builtin, csc_arg) =
+            reciprocal_trig_reciprocal_parts_from_denominator(&ctx, sin_den).unwrap();
+
+        assert_eq!(cos_builtin, BuiltinFn::Cos);
+        assert_eq!(rendered(&ctx, cos_arg), "2 * x + 1");
+        assert_eq!(sin_builtin, BuiltinFn::Sin);
+        assert_eq!(rendered(&ctx, sin_arg), "2 * x + 1");
+        assert_eq!(sec_builtin, BuiltinFn::Sec);
+        assert_eq!(rendered(&ctx, sec_arg), "2 * x + 1");
+        assert_eq!(csc_builtin, BuiltinFn::Csc);
+        assert_eq!(rendered(&ctx, csc_arg), "2 * x + 1");
+        assert!(reciprocal_trig_denominator_call(&ctx, tan_den).is_none());
+        assert!(reciprocal_trig_reciprocal_parts_from_denominator(&ctx, tan_den).is_none());
+    }
+
+    #[test]
+    fn builds_reciprocal_trig_log_arguments() {
+        let mut ctx = Context::new();
+        let arg = parse("2*x+1", &mut ctx).unwrap();
+
+        let sec_arg = build_reciprocal_trig_log_argument(&mut ctx, BuiltinFn::Sec, arg).unwrap();
+        let csc_arg = build_reciprocal_trig_log_argument(&mut ctx, BuiltinFn::Csc, arg).unwrap();
+
+        assert_eq!(rendered(&ctx, sec_arg), "tan(2 * x + 1) + sec(2 * x + 1)");
+        assert_eq!(rendered(&ctx, csc_arg), "csc(2 * x + 1) - cot(2 * x + 1)");
+        assert!(build_reciprocal_trig_log_argument(&mut ctx, BuiltinFn::Tan, arg).is_none());
     }
 
     #[test]

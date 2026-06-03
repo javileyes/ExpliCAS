@@ -1,6 +1,9 @@
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_predicates::contains_named_var;
 
+use crate::symbolic_calculus_call_support::NamedVarCall;
+use crate::Rewrite;
+
 use super::arctan_surd_derivative_presentation::arctan_surd_quotient_compact_derivative;
 use super::asinh_surd_derivative_presentation::asinh_surd_quotient_compact_derivative;
 use super::atanh_surd_derivative_presentation::atanh_surd_quotient_compact_derivative;
@@ -9,6 +12,7 @@ use super::derivative_result_scaling_presentation::{
     reciprocal_constant_denominator_for_calculus_presentation,
     remove_unit_mul_factors_for_calculus_presentation,
 };
+use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::inverse_trig_derivative_presentation::bounded_inverse_trig_surd_quotient_compact_derivative;
 
 pub(super) fn inverse_surd_quotient_post_calculus_presentation(
@@ -52,6 +56,25 @@ pub(super) fn constant_divisor_bounded_inverse_trig_surd_quotient_compact_deriva
         ctx,
         inner_derivative,
         outer_den,
+    ))
+}
+
+pub(super) fn constant_divisor_bounded_inverse_trig_surd_quotient_compact_derivative_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    let result = constant_divisor_bounded_inverse_trig_surd_quotient_compact_derivative(
+        ctx,
+        target,
+        &call.var_name,
+    )?;
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        Vec::new(),
     ))
 }
 
@@ -134,5 +157,30 @@ mod tests {
             rendered(&ctx, derivative),
             "(2 * x + 1) / (7 - (x^2 + x + 1)^2)"
         );
+    }
+
+    #[test]
+    fn constant_divisor_rewrite_preserves_result_and_empty_conditions() {
+        let mut ctx = Context::new();
+        let target = parse("asinh((1-x-x^2)/sqrt(5))/sqrt(5)", &mut ctx).unwrap();
+        let route_result = constant_divisor_bounded_inverse_trig_surd_quotient_compact_derivative(
+            &mut ctx, target, "x",
+        )
+        .unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite =
+            constant_divisor_bounded_inverse_trig_surd_quotient_compact_derivative_rewrite(
+                &mut ctx, &call, target,
+            )
+            .unwrap();
+
+        assert_eq!(
+            rendered(&ctx, rewrite.new_expr),
+            rendered(&ctx, route_result)
+        );
+        assert!(rewrite.required_conditions.is_empty());
     }
 }
