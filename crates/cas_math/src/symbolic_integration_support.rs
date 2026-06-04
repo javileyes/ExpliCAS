@@ -10,13 +10,18 @@ use crate::factor::factor;
 use crate::polynomial::Polynomial;
 use crate::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
 use crate::symbolic_integration_derivative_cofactor_support::{
-    additive_cofactor_from_term_cofactors, product_cofactor_excluding_unary_builtin_arg,
+    additive_cofactor_from_term_cofactors, factor_product_excluding_index, factor_product_or_one,
+    factors_excluding_index, factors_excluding_two_indices, indexed_signed_matching_unary_factor,
+    product_cofactor_excluding_unary_builtin_arg, signed_factor_product_excluding_index,
     unique_product_cofactor_excluding_unary_builtin_arg,
 };
+use crate::symbolic_integration_hyperbolic_policy::signed_hyperbolic_like_factor;
 use crate::symbolic_integration_hyperbolic_reciprocal_policy::{
     build_hyperbolic_denominator_nonzero_condition,
     build_hyperbolic_reciprocal_derivative_integral, build_hyperbolic_reciprocal_table_integral,
     hyperbolic_reciprocal_derivative_policy, hyperbolic_reciprocal_table_policy,
+    hyperbolic_tangent_arg, indexed_hyperbolic_reciprocal_derivative_numerator_factor,
+    indexed_hyperbolic_tangent_factor_arg, indexed_reciprocal_hyperbolic_square_parts,
     reciprocal_hyperbolic_power_arg, reciprocal_hyperbolic_square_parts,
     HyperbolicReciprocalPrimitiveScaleOps,
 };
@@ -33,12 +38,17 @@ use crate::symbolic_integration_polynomial_support::{
 };
 use crate::symbolic_integration_reciprocal_trig_policy::{
     build_reciprocal_trig_denominator_nonzero_condition, build_reciprocal_trig_derivative_integral,
-    build_reciprocal_trig_log_argument, build_trig_pole_nonzero_condition, is_reciprocal_trig_call,
-    reciprocal_trig_denominator_call, reciprocal_trig_derivative_base_antiderivative,
-    reciprocal_trig_derivative_policy, reciprocal_trig_derivative_policy_from_reciprocal,
+    build_reciprocal_trig_log_argument, build_trig_pole_nonzero_condition,
+    has_trig_pole_builtin_factor_except, indexed_reciprocal_trig_denominator_call,
+    indexed_reciprocal_trig_square_parts, indexed_trig_log_derivative_numerator_factor,
+    indexed_trig_log_derivative_raw_numerator_factor, indexed_trig_pole_builtin_factor,
+    is_reciprocal_trig_call, reciprocal_trig_denominator_call,
+    reciprocal_trig_derivative_base_antiderivative, reciprocal_trig_derivative_policy,
+    reciprocal_trig_derivative_policy_from_reciprocal,
     reciprocal_trig_reciprocal_parts_from_denominator, reciprocal_trig_square_parts,
-    trig_pole_nonzero_builtin,
+    trig_log_derivative_numerator_builtin, trig_pole_nonzero_builtin,
 };
+use crate::symbolic_integration_trig_policy::{signed_trig_like_factor, trig_like_factor};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_integer::Integer;
@@ -3988,11 +3998,7 @@ fn trig_log_derivative_ratio_scale(
         Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id)?, args[0]),
         _ => return None,
     };
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cos => BuiltinFn::Sin,
-        BuiltinFn::Sin => BuiltinFn::Cos,
-        _ => return None,
-    };
+    let numerator_builtin = trig_log_derivative_numerator_builtin(den_builtin)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
@@ -4062,7 +4068,7 @@ fn hyperbolic_tanh_reciprocal_log_sinh_parts(
     den: ExprId,
     var: &str,
 ) -> Option<(ExprId, BigRational)> {
-    let arg = unary_builtin_arg(ctx, den, BuiltinFn::Tanh)?;
+    let arg = hyperbolic_tangent_arg(ctx, den)?;
     if !contains_named_var(ctx, arg, var) {
         return None;
     }
@@ -5520,13 +5526,8 @@ fn sqrt_trig_reciprocal_derivative_parts(
     if let Some((den_builtin, arg, reciprocal_index, derivative_index, derivative_sign)) =
         sqrt_trig_reciprocal_derivative_raw_numerator_parts(ctx, &numerator_factors)
     {
-        let remaining_numerator: Vec<_> = numerator_factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| {
-                (idx != reciprocal_index && idx != derivative_index).then_some(*factor)
-            })
-            .collect();
+        let remaining_numerator =
+            factors_excluding_two_indices(&numerator_factors, reciprocal_index, derivative_index);
         let scale = sqrt_polynomial_derivative_quotient_scale_expr(
             ctx,
             &remaining_numerator,
@@ -5539,34 +5540,18 @@ fn sqrt_trig_reciprocal_derivative_parts(
     }
 
     let (denominator_index, (den_builtin, arg)) =
-        denominator_factors
-            .iter()
-            .enumerate()
-            .find_map(|(idx, factor)| {
-                reciprocal_trig_square_parts(ctx, *factor).map(|parts| (idx, parts))
-            })?;
+        indexed_reciprocal_trig_square_parts(ctx, &denominator_factors)?;
     let policy = reciprocal_trig_derivative_policy(den_builtin)?;
 
-    let (numerator_index, numerator_sign) =
-        numerator_factors
-            .iter()
-            .enumerate()
-            .find_map(|(idx, factor)| {
-                let (numerator_arg, sign) =
-                    signed_unary_builtin_arg(ctx, *factor, policy.numerator_builtin())?;
-                (compare_expr(ctx, numerator_arg, arg) == Ordering::Equal).then_some((idx, sign))
-            })?;
+    let (numerator_index, numerator_sign) = indexed_signed_matching_unary_factor(
+        ctx,
+        &numerator_factors,
+        policy.numerator_builtin(),
+        arg,
+    )?;
 
-    let remaining_numerator: Vec<_> = numerator_factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let remaining_denominator: Vec<_> = denominator_factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
-        .collect();
+    let remaining_numerator = factors_excluding_index(&numerator_factors, numerator_index);
+    let remaining_denominator = factors_excluding_index(&denominator_factors, denominator_index);
     let scale = sqrt_polynomial_derivative_quotient_scale_expr(
         ctx,
         &remaining_numerator,
@@ -5680,13 +5665,9 @@ fn sqrt_trig_log_derivative_parts(
     let numerator_factors = mul_leaves(ctx, num);
     let denominator_factors = mul_leaves(ctx, den);
     if let Some((den_builtin, arg, numerator_index, numerator_sign)) =
-        sqrt_trig_log_derivative_raw_numerator_parts(ctx, &numerator_factors)
+        indexed_trig_log_derivative_raw_numerator_factor(ctx, &numerator_factors)
     {
-        let remaining_numerator: Vec<_> = numerator_factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-            .collect();
+        let remaining_numerator = factors_excluding_index(&numerator_factors, numerator_index);
         let scale = sqrt_polynomial_derivative_quotient_scale(
             ctx,
             &remaining_numerator,
@@ -5698,33 +5679,12 @@ fn sqrt_trig_log_derivative_parts(
     }
 
     let (denominator_index, (den_builtin, arg)) =
-        denominator_factors
-            .iter()
-            .enumerate()
-            .find_map(|(idx, factor)| {
-                reciprocal_trig_denominator_call(ctx, *factor).map(|parts| (idx, parts))
-            })?;
-    let numerator_builtin = match den_builtin {
-        BuiltinFn::Cos => BuiltinFn::Sin,
-        BuiltinFn::Sin => BuiltinFn::Cos,
-        _ => return None,
-    };
+        indexed_reciprocal_trig_denominator_call(ctx, &denominator_factors)?;
+    let numerator_index =
+        indexed_trig_log_derivative_numerator_factor(ctx, &numerator_factors, den_builtin, arg)?;
 
-    let (numerator_index, _) = numerator_factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
-
-    let remaining_numerator: Vec<_> = numerator_factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let remaining_denominator: Vec<_> = denominator_factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
-        .collect();
+    let remaining_numerator = factors_excluding_index(&numerator_factors, numerator_index);
+    let remaining_denominator = factors_excluding_index(&denominator_factors, denominator_index);
     let scale = sqrt_polynomial_derivative_quotient_scale(
         ctx,
         &remaining_numerator,
@@ -5748,22 +5708,6 @@ fn finish_sqrt_trig_log_derivative_parts(
 
     let (radicand, _) = sqrt_chain_argument_derivative_parts(ctx, arg, var)?;
     Some((den_builtin, arg, radicand, scale))
-}
-
-fn sqrt_trig_log_derivative_raw_numerator_parts(
-    ctx: &Context,
-    numerator_factors: &[ExprId],
-) -> Option<(BuiltinFn, ExprId, usize, BigRational)> {
-    for (numerator_index, factor) in numerator_factors.iter().enumerate() {
-        if let Some((arg, sign)) = signed_unary_builtin_arg(ctx, *factor, BuiltinFn::Tan) {
-            return Some((BuiltinFn::Cos, arg, numerator_index, sign));
-        }
-        if let Some((arg, sign)) = signed_unary_builtin_arg(ctx, *factor, BuiltinFn::Cot) {
-            return Some((BuiltinFn::Sin, arg, numerator_index, sign));
-        }
-    }
-
-    None
 }
 
 fn sqrt_trig_log_derivative_antiderivative(
@@ -5808,19 +5752,10 @@ fn sqrt_reciprocal_trig_log_derivative_parts(
     let numerator_factors = mul_leaves(ctx, num);
     let denominator_factors = mul_leaves(ctx, den);
     let (denominator_index, (den_builtin, arg)) =
-        denominator_factors
-            .iter()
-            .enumerate()
-            .find_map(|(idx, factor)| {
-                reciprocal_trig_denominator_call(ctx, *factor).map(|parts| (idx, parts))
-            })?;
+        indexed_reciprocal_trig_denominator_call(ctx, &denominator_factors)?;
 
     let radicand = sqrt_like_radicand(ctx, arg)?;
-    let remaining_denominator: Vec<_> = denominator_factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
-        .collect();
+    let remaining_denominator = factors_excluding_index(&denominator_factors, denominator_index);
     let scale = sqrt_polynomial_derivative_quotient_scale(
         ctx,
         &numerator_factors,
@@ -5869,15 +5804,8 @@ fn sqrt_hyperbolic_log_derivative_parts(
         _ => (mul_leaves(ctx, expr), Default::default()),
     };
 
-    for (idx, factor) in numerator_factors.iter().enumerate() {
-        let Some(arg) = unary_builtin_arg(ctx, *factor, BuiltinFn::Tanh) else {
-            continue;
-        };
-        let remaining_numerator: Vec<_> = numerator_factors
-            .iter()
-            .enumerate()
-            .filter_map(|(factor_idx, factor)| (factor_idx != idx).then_some(*factor))
-            .collect();
+    if let Some((idx, arg)) = indexed_hyperbolic_tangent_factor_arg(ctx, &numerator_factors) {
+        let remaining_numerator = factors_excluding_index(&numerator_factors, idx);
         let scale = sqrt_polynomial_derivative_quotient_scale(
             ctx,
             &remaining_numerator,
@@ -5885,22 +5813,11 @@ fn sqrt_hyperbolic_log_derivative_parts(
             arg,
             var,
         )?;
-        if scale.is_zero() {
-            return None;
-        }
-        let (radicand, _) = sqrt_chain_argument_derivative_parts(ctx, arg, var)?;
-        return Some((BuiltinFn::Cosh, arg, radicand, scale));
+        return finish_sqrt_hyperbolic_log_derivative_parts(ctx, BuiltinFn::Cosh, arg, scale, var);
     }
 
-    for (idx, factor) in denominator_factors.iter().enumerate() {
-        let Some(arg) = unary_builtin_arg(ctx, *factor, BuiltinFn::Tanh) else {
-            continue;
-        };
-        let remaining_denominator: Vec<_> = denominator_factors
-            .iter()
-            .enumerate()
-            .filter_map(|(factor_idx, factor)| (factor_idx != idx).then_some(*factor))
-            .collect();
+    if let Some((idx, arg)) = indexed_hyperbolic_tangent_factor_arg(ctx, &denominator_factors) {
+        let remaining_denominator = factors_excluding_index(&denominator_factors, idx);
         let scale = sqrt_polynomial_derivative_quotient_scale(
             ctx,
             &numerator_factors,
@@ -5908,14 +5825,25 @@ fn sqrt_hyperbolic_log_derivative_parts(
             arg,
             var,
         )?;
-        if scale.is_zero() {
-            return None;
-        }
-        let (radicand, _) = sqrt_chain_argument_derivative_parts(ctx, arg, var)?;
-        return Some((BuiltinFn::Sinh, arg, radicand, scale));
+        return finish_sqrt_hyperbolic_log_derivative_parts(ctx, BuiltinFn::Sinh, arg, scale, var);
     }
 
     None
+}
+
+fn finish_sqrt_hyperbolic_log_derivative_parts(
+    ctx: &mut Context,
+    log_builtin: BuiltinFn,
+    arg: ExprId,
+    scale: BigRational,
+    var: &str,
+) -> Option<(BuiltinFn, ExprId, ExprId, BigRational)> {
+    if scale.is_zero() {
+        return None;
+    }
+
+    let (radicand, _) = sqrt_chain_argument_derivative_parts(ctx, arg, var)?;
+    Some((log_builtin, arg, radicand, scale))
 }
 
 fn sqrt_hyperbolic_log_derivative_antiderivative(
@@ -5950,18 +5878,9 @@ fn sqrt_hyperbolic_reciprocal_square_parts(
     let numerator_factors = mul_leaves(ctx, num);
     let denominator_factors = mul_leaves(ctx, den);
     let (denominator_index, (den_builtin, arg)) =
-        denominator_factors
-            .iter()
-            .enumerate()
-            .find_map(|(idx, factor)| {
-                reciprocal_hyperbolic_square_parts(ctx, *factor).map(|parts| (idx, parts))
-            })?;
+        indexed_reciprocal_hyperbolic_square_parts(ctx, &denominator_factors)?;
 
-    let remaining_denominator: Vec<_> = denominator_factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
-        .collect();
+    let remaining_denominator = factors_excluding_index(&denominator_factors, denominator_index);
     let scale = sqrt_polynomial_derivative_quotient_scale_expr(
         ctx,
         &numerator_factors,
@@ -6014,29 +5933,17 @@ fn sqrt_hyperbolic_reciprocal_derivative_parts(
     let numerator_factors = mul_leaves(ctx, num);
     let denominator_factors = mul_leaves(ctx, den);
     let (denominator_index, (den_builtin, arg)) =
-        denominator_factors
-            .iter()
-            .enumerate()
-            .find_map(|(idx, factor)| {
-                reciprocal_hyperbolic_square_parts(ctx, *factor).map(|parts| (idx, parts))
-            })?;
-    let policy = hyperbolic_reciprocal_derivative_policy(den_builtin)?;
+        indexed_reciprocal_hyperbolic_square_parts(ctx, &denominator_factors)?;
 
-    let (numerator_index, _) = numerator_factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, policy.numerator_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
+    let numerator_index = indexed_hyperbolic_reciprocal_derivative_numerator_factor(
+        ctx,
+        &numerator_factors,
+        den_builtin,
+        arg,
+    )?;
 
-    let remaining_numerator: Vec<_> = numerator_factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let remaining_denominator: Vec<_> = denominator_factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
-        .collect();
+    let remaining_numerator = factors_excluding_index(&numerator_factors, numerator_index);
+    let remaining_denominator = factors_excluding_index(&denominator_factors, denominator_index);
     let scale = sqrt_polynomial_derivative_quotient_scale_expr(
         ctx,
         &remaining_numerator,
@@ -6679,41 +6586,9 @@ fn polynomial_trig_log_required_nonzero(
     var: &str,
 ) -> Option<ExprId> {
     let factors = mul_leaves(ctx, expr);
-    let (trig_index, builtin, arg) =
-        factors
-            .iter()
-            .enumerate()
-            .find_map(|(idx, factor)| match ctx.get(*factor) {
-                Expr::Function(fn_id, args) if args.len() == 1 => {
-                    let builtin = ctx.builtin_of(*fn_id)?;
-                    matches!(
-                        builtin,
-                        BuiltinFn::Tan | BuiltinFn::Cot | BuiltinFn::Sec | BuiltinFn::Csc
-                    )
-                    .then_some((idx, builtin, args[0]))
-                }
-                _ => None,
-            })?;
+    let (trig_index, builtin, arg) = indexed_trig_pole_builtin_factor(ctx, &factors)?;
 
-    if factors.iter().enumerate().any(|(idx, factor)| {
-        idx != trig_index
-            && matches!(
-                ctx.get(*factor),
-                Expr::Function(fn_id, args)
-                    if args.len() == 1
-                        && ctx
-                            .builtin_of(*fn_id)
-                            .is_some_and(|builtin| {
-                                matches!(
-                                    builtin,
-                                    BuiltinFn::Tan
-                                        | BuiltinFn::Cot
-                                        | BuiltinFn::Sec
-                                        | BuiltinFn::Csc
-                                )
-                            })
-            )
-    }) {
+    if has_trig_pole_builtin_factor_except(ctx, &factors, trig_index) {
         return None;
     }
 
@@ -6721,17 +6596,7 @@ fn polynomial_trig_log_required_nonzero(
         return None;
     }
 
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
-        .collect();
-    let cofactor = if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    };
-
+    let cofactor = factor_product_excluding_index(ctx, &factors, trig_index);
     let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
     let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
     let derivative = arg_poly.derivative();
@@ -10359,66 +10224,232 @@ fn exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+fn nonzero_linear_polynomial_slope(poly: &Polynomial) -> Option<BigRational> {
+    if poly.degree() != 1 {
+        return None;
+    }
+    let slope = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    (!slope.is_zero()).then_some(slope)
+}
+
+fn nonzero_linear_polynomial_from_expr(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Result<Option<(Polynomial, BigRational)>, ()> {
+    let poly = Polynomial::from_expr(ctx, expr, var).map_err(|_| ())?;
+    Ok(nonzero_linear_polynomial_slope(&poly).map(|slope| (poly, slope)))
+}
+
+fn linear_exp_factor_parts(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Result<Option<(ExprId, BigRational)>, ()> {
+    let Some(exp_arg) = exp_like_arg(ctx, expr) else {
+        return Ok(None);
+    };
+    let Some((_arg_poly, arg_slope)) = nonzero_linear_polynomial_from_expr(ctx, exp_arg, var)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some((exp_arg, arg_slope)))
+}
+
+fn linear_trig_factor_parts(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Result<Option<(BuiltinFn, ExprId, BigRational)>, ()> {
+    let Some((builtin, trig_arg)) = trig_like_factor(ctx, expr) else {
+        return Ok(None);
+    };
+    let Some((_arg_poly, arg_slope)) = nonzero_linear_polynomial_from_expr(ctx, trig_arg, var)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some((builtin, trig_arg, arg_slope)))
+}
+
+fn scaled_exp_trig_antiderivative(
+    ctx: &mut Context,
+    exp_factor: ExprId,
+    inner: ExprId,
+    scale: BigRational,
+    cofactor: ExprId,
+    has_nontrivial_cofactor: bool,
+) -> ExprId {
+    let exp_inner = mul2_raw(ctx, exp_factor, inner);
+    if let Some(cofactor_scale) = rational_constant_value(ctx, cofactor) {
+        return scale_rational_term(ctx, scale * cofactor_scale, exp_inner);
+    }
+
+    let integral = scale_rational_term(ctx, scale, exp_inner);
+    if has_nontrivial_cofactor {
+        mul2_raw(ctx, cofactor, integral)
+    } else {
+        integral
+    }
+}
+
+fn exp_trig_distinct_linear_inner(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    trig_arg: ExprId,
+    exp_slope: &BigRational,
+    trig_slope: &BigRational,
+) -> Option<ExprId> {
+    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![trig_arg]);
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
+    match builtin {
+        BuiltinFn::Sin => {
+            let sin_term = scale_rational_term(ctx, exp_slope.clone(), sin_arg);
+            let cos_term = scale_rational_term(ctx, trig_slope.clone(), cos_arg);
+            Some(ctx.add(Expr::Sub(sin_term, cos_term)))
+        }
+        BuiltinFn::Cos => {
+            let cos_term = scale_rational_term(ctx, exp_slope.clone(), cos_arg);
+            let sin_term = scale_rational_term(ctx, trig_slope.clone(), sin_arg);
+            Some(ctx.add(Expr::Add(cos_term, sin_term)))
+        }
+        _ => None,
+    }
+}
+
+fn exp_trig_same_linear_inner(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    match builtin {
+        BuiltinFn::Sin => Some(ctx.add(Expr::Sub(sin_arg, cos_arg))),
+        BuiltinFn::Cos => Some(ctx.add(Expr::Add(sin_arg, cos_arg))),
+        _ => None,
+    }
+}
+
+enum ExpByPartsCofactorFailure {
+    Stop,
+    Skip,
+}
+
+// Exp-by-parts route map:
+// source constructors stop on malformed cofactors to preserve the historic
+// antiderivative path, while target probes skip them so a later factor can
+// still match. Keep route priority visible in `integrate_symbolic_expr`.
+struct LinearExpPolynomialProductParts {
+    exp_factor: ExprId,
+    exp_arg: ExprId,
+    arg_slope: BigRational,
+    cofactor_poly: Polynomial,
+}
+
+fn polynomial_cofactor_excluding_index(
+    ctx: &mut Context,
+    factors: &[ExprId],
+    excluded_index: usize,
+    var: &str,
+) -> Result<Polynomial, ()> {
+    let cofactor = factor_product_excluding_index(ctx, factors, excluded_index);
+    Polynomial::from_expr(ctx, cofactor, var).map_err(|_| ())
+}
+
+fn linear_exp_polynomial_product_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    cofactor_failure: ExpByPartsCofactorFailure,
+    mut cofactor_matches: impl FnMut(&Polynomial) -> bool,
+) -> Result<Option<LinearExpPolynomialProductParts>, ()> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return Ok(None);
+    }
+
+    for (exp_index, factor) in factors.iter().enumerate() {
+        let Some((exp_arg, arg_slope)) = linear_exp_factor_parts(ctx, *factor, var)? else {
+            continue;
+        };
+
+        let cofactor_poly = match polynomial_cofactor_excluding_index(ctx, &factors, exp_index, var)
+        {
+            Ok(cofactor_poly) => cofactor_poly,
+            Err(()) => match cofactor_failure {
+                ExpByPartsCofactorFailure::Stop => return Err(()),
+                ExpByPartsCofactorFailure::Skip => continue,
+            },
+        };
+
+        if !cofactor_matches(&cofactor_poly) {
+            continue;
+        }
+
+        return Ok(Some(LinearExpPolynomialProductParts {
+            exp_factor: *factor,
+            exp_arg,
+            arg_slope,
+            cofactor_poly,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn linear_exp_linear_product_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Result<Option<LinearExpPolynomialProductParts>, ()> {
+    linear_exp_polynomial_product_parts(
+        ctx,
+        expr,
+        var,
+        ExpByPartsCofactorFailure::Stop,
+        |cofactor_poly| nonzero_linear_polynomial_slope(cofactor_poly).is_some(),
+    )
+}
+
+fn polynomial_exp_by_parts_cofactor_degree(poly: &Polynomial) -> bool {
+    (2..=MAX_EXP_POLYNOMIAL_BY_PARTS_DEGREE).contains(&poly.degree())
+}
+
+fn polynomial_exp_linear_product_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    cofactor_failure: ExpByPartsCofactorFailure,
+) -> Result<Option<LinearExpPolynomialProductParts>, ()> {
+    linear_exp_polynomial_product_parts(
+        ctx,
+        expr,
+        var,
+        cofactor_failure,
+        polynomial_exp_by_parts_cofactor_degree,
+    )
+}
+
 fn linear_times_exp_linear_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let factors = mul_leaves(ctx, expr);
-    if factors.len() < 2 {
-        return None;
-    }
+    let parts = linear_exp_linear_product_parts(ctx, expr, var).ok()??;
+    let cofactor_slope = nonzero_linear_polynomial_slope(&parts.cofactor_poly)?;
 
-    for (exp_index, factor) in factors.iter().enumerate() {
-        let Some(exp_arg) = exp_like_arg(ctx, *factor) else {
-            continue;
-        };
-
-        let arg_poly = Polynomial::from_expr(ctx, exp_arg, var).ok()?;
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != exp_index).then_some(*factor))
-            .collect();
-        let cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-        if cofactor_poly.degree() != 1 {
-            continue;
-        }
-
-        let cofactor_slope = cofactor_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if cofactor_slope.is_zero() {
-            continue;
-        }
-
-        let correction = cofactor_slope / (arg_slope.clone() * arg_slope.clone());
-        let correction_poly = Polynomial::new(vec![correction], var.to_string());
-        let inner_poly = cofactor_poly.div_scalar(&arg_slope).sub(&correction_poly);
-        let inner = inner_poly.to_expr(ctx);
-        return Some(mul2_raw(ctx, *factor, inner));
-    }
-
-    None
+    let correction = cofactor_slope / (parts.arg_slope.clone() * parts.arg_slope.clone());
+    let correction_poly = Polynomial::new(vec![correction], var.to_string());
+    let inner_poly = parts
+        .cofactor_poly
+        .div_scalar(&parts.arg_slope)
+        .sub(&correction_poly);
+    let inner = inner_poly.to_expr(ctx);
+    Some(mul2_raw(ctx, parts.exp_factor, inner))
 }
 
 pub fn integrate_symbolic_is_linear_times_exp_linear_target(
@@ -10434,101 +10465,27 @@ fn polynomial_times_exp_linear_antiderivative(
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let factors = mul_leaves(ctx, expr);
-    if factors.len() < 2 {
-        return None;
-    }
+    let parts =
+        polynomial_exp_linear_product_parts(ctx, expr, var, ExpByPartsCofactorFailure::Stop)
+            .ok()??;
 
-    for (exp_index, factor) in factors.iter().enumerate() {
-        let Some(exp_arg) = exp_like_arg(ctx, *factor) else {
-            continue;
-        };
-
-        let arg_poly = Polynomial::from_expr(ctx, exp_arg, var).ok()?;
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != exp_index).then_some(*factor))
-            .collect();
-        let cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-        if !(2..=MAX_EXP_POLYNOMIAL_BY_PARTS_DEGREE).contains(&cofactor_poly.degree()) {
-            continue;
-        }
-
-        let inner_poly = polynomial_exp_by_parts_inner(&cofactor_poly, &arg_slope);
-        let exp_factor = ctx.call_builtin(BuiltinFn::Exp, vec![exp_arg]);
-        return Some(exp_times_polynomial_with_rational_content_factored(
-            ctx,
-            exp_factor,
-            &inner_poly,
-        ));
-    }
-
-    None
+    let inner_poly = polynomial_exp_by_parts_inner(&parts.cofactor_poly, &parts.arg_slope);
+    let exp_factor = ctx.call_builtin(BuiltinFn::Exp, vec![parts.exp_arg]);
+    Some(exp_times_polynomial_with_rational_content_factored(
+        ctx,
+        exp_factor,
+        &inner_poly,
+    ))
 }
 
 fn is_polynomial_times_exp_linear_target(ctx: &mut Context, expr: ExprId, var: &str) -> bool {
-    let factors = mul_leaves(ctx, expr);
-    if factors.len() < 2 {
+    let Ok(Some(_parts)) =
+        polynomial_exp_linear_product_parts(ctx, expr, var, ExpByPartsCofactorFailure::Skip)
+    else {
         return false;
-    }
+    };
 
-    for (exp_index, factor) in factors.iter().enumerate() {
-        let Some(exp_arg) = exp_like_arg(ctx, *factor) else {
-            continue;
-        };
-
-        let Ok(arg_poly) = Polynomial::from_expr(ctx, exp_arg, var) else {
-            continue;
-        };
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != exp_index).then_some(*factor))
-            .collect();
-        let cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
-            continue;
-        };
-        if (2..=MAX_EXP_POLYNOMIAL_BY_PARTS_DEGREE).contains(&cofactor_poly.degree()) {
-            return true;
-        }
-    }
-
-    false
+    true
 }
 
 fn polynomial_exp_by_parts_inner(poly: &Polynomial, arg_slope: &BigRational) -> Polynomial {
@@ -10621,115 +10578,62 @@ fn exp_trig_same_linear_antiderivative(
     }
 
     for (exp_index, exp_factor) in factors.iter().enumerate() {
-        let Some(exp_arg) = exp_like_arg(ctx, *exp_factor) else {
+        let Some((exp_arg, arg_slope)) = linear_exp_factor_parts(ctx, *exp_factor, var).ok()?
+        else {
             continue;
         };
-
-        let arg_poly = Polynomial::from_expr(ctx, exp_arg, var).ok()?;
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
 
         for (trig_index, trig_factor) in factors.iter().enumerate() {
             if trig_index == exp_index {
                 continue;
             }
 
-            let Some((builtin, trig_arg)) = trig_like_factor(ctx, *trig_factor) else {
+            let Some((builtin, trig_arg, trig_slope)) =
+                linear_trig_factor_parts(ctx, *trig_factor, var).ok()?
+            else {
                 continue;
             };
 
-            let trig_poly = Polynomial::from_expr(ctx, trig_arg, var).ok()?;
-            if trig_poly.degree() != 1 {
-                continue;
-            }
-            let trig_slope = trig_poly
-                .coeffs
-                .get(1)
-                .cloned()
-                .unwrap_or_else(BigRational::zero);
-            if trig_slope.is_zero() {
-                continue;
-            }
-
-            let cofactor_factors: Vec<ExprId> = factors
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, factor)| {
-                    (idx != exp_index && idx != trig_index).then_some(*factor)
-                })
-                .collect();
-            let cofactor = if cofactor_factors.is_empty() {
-                ctx.num(1)
-            } else {
-                build_balanced_mul(ctx, &cofactor_factors)
-            };
+            let cofactor_factors = factors_excluding_two_indices(&factors, exp_index, trig_index);
+            let cofactor = factor_product_or_one(ctx, &cofactor_factors);
             if contains_named_var(ctx, cofactor, var) {
                 continue;
             }
 
             if compare_expr(ctx, exp_arg, trig_arg) != Ordering::Equal {
-                let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![trig_arg]);
-                let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
-                let inner = match builtin {
-                    BuiltinFn::Sin => {
-                        let sin_term = scale_rational_term(ctx, arg_slope.clone(), sin_arg);
-                        let cos_term = scale_rational_term(ctx, trig_slope.clone(), cos_arg);
-                        ctx.add(Expr::Sub(sin_term, cos_term))
-                    }
-                    BuiltinFn::Cos => {
-                        let cos_term = scale_rational_term(ctx, arg_slope.clone(), cos_arg);
-                        let sin_term = scale_rational_term(ctx, trig_slope.clone(), sin_arg);
-                        ctx.add(Expr::Add(cos_term, sin_term))
-                    }
-                    _ => continue,
+                let Some(inner) =
+                    exp_trig_distinct_linear_inner(ctx, builtin, trig_arg, &arg_slope, &trig_slope)
+                else {
+                    continue;
                 };
-                let exp_inner = mul2_raw(ctx, *exp_factor, inner);
                 let denominator =
                     arg_slope.clone() * arg_slope.clone() + trig_slope.clone() * trig_slope.clone();
                 if denominator.is_zero() {
                     continue;
                 }
                 let scale = BigRational::one() / denominator;
-                if let Some(cofactor_scale) = rational_constant_value(ctx, cofactor) {
-                    return Some(scale_rational_term(ctx, scale * cofactor_scale, exp_inner));
-                }
-
-                let integral = scale_rational_term(ctx, scale, exp_inner);
-                return if cofactor_factors.is_empty() {
-                    Some(integral)
-                } else {
-                    Some(mul2_raw(ctx, cofactor, integral))
-                };
+                return Some(scaled_exp_trig_antiderivative(
+                    ctx,
+                    *exp_factor,
+                    inner,
+                    scale,
+                    cofactor,
+                    !cofactor_factors.is_empty(),
+                ));
             }
 
-            let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![exp_arg]);
-            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![exp_arg]);
-            let inner = match builtin {
-                BuiltinFn::Sin => ctx.add(Expr::Sub(sin_arg, cos_arg)),
-                BuiltinFn::Cos => ctx.add(Expr::Add(sin_arg, cos_arg)),
-                _ => continue,
+            let Some(inner) = exp_trig_same_linear_inner(ctx, builtin, exp_arg) else {
+                continue;
             };
-            let exp_inner = mul2_raw(ctx, *exp_factor, inner);
             let scale = BigRational::one() / (BigRational::from_integer(2.into()) * arg_slope);
-            if let Some(cofactor_scale) = rational_constant_value(ctx, cofactor) {
-                return Some(scale_rational_term(ctx, scale * cofactor_scale, exp_inner));
-            }
-
-            let integral = scale_rational_term(ctx, scale, exp_inner);
-            return if cofactor_factors.is_empty() {
-                Some(integral)
-            } else {
-                Some(mul2_raw(ctx, cofactor, integral))
-            };
+            return Some(scaled_exp_trig_antiderivative(
+                ctx,
+                *exp_factor,
+                inner,
+                scale,
+                cofactor,
+                !cofactor_factors.is_empty(),
+            ));
         }
     }
 
@@ -10750,10 +10654,10 @@ fn is_polynomial_times_linear_function_target<F>(
     var: &str,
     min_degree: usize,
     max_degree: usize,
-    function_arg: F,
+    detector: F,
 ) -> bool
 where
-    F: Fn(&Context, ExprId) -> Option<ExprId>,
+    F: Fn(&Context, ExprId) -> Option<(BuiltinFn, ExprId, Sign, ExprId)>,
 {
     let (outer_sign, factors) = signed_mul_leaves(ctx, expr);
     if factors.len() < 2 {
@@ -10761,39 +10665,12 @@ where
     }
 
     for (function_index, factor) in factors.iter().enumerate() {
-        let Some(arg) = function_arg(ctx, *factor) else {
-            continue;
-        };
-
-        let Ok(arg_poly) = Polynomial::from_expr(ctx, arg, var) else {
-            continue;
-        };
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
+        if signed_linear_function_factor_parts(ctx, *factor, var, &detector).is_none() {
             continue;
         }
 
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != function_index).then_some(*factor))
-            .collect();
-        let cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let cofactor = match outer_sign {
-            Sign::Pos => cofactor,
-            Sign::Neg => ctx.add(Expr::Neg(cofactor)),
-        };
+        let cofactor =
+            signed_factor_product_excluding_index(ctx, &factors, function_index, outer_sign);
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
         };
@@ -10816,7 +10693,7 @@ pub fn integrate_symbolic_is_polynomial_times_trig_linear_target(
         var,
         2,
         MAX_TRIG_POLYNOMIAL_BY_PARTS_DEGREE,
-        |ctx, factor| signed_trig_like_factor(ctx, factor).map(|(_, arg, _, _)| arg),
+        signed_trig_like_factor,
     ) {
         return true;
     }
@@ -10858,65 +10735,68 @@ fn exp_times_polynomial_with_rational_content_factored(
     ctx.add(Expr::Div(numerator, denominator_expr))
 }
 
-fn trig_like_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
-    };
-    if args.len() != 1 {
-        return None;
-    }
-
-    match ctx.builtin_of(*fn_id) {
-        Some(builtin @ (BuiltinFn::Sin | BuiltinFn::Cos)) => Some((builtin, args[0])),
-        _ => None,
-    }
-}
-
-fn signed_trig_like_factor(
-    ctx: &Context,
-    expr: ExprId,
-) -> Option<(BuiltinFn, ExprId, Sign, ExprId)> {
-    match ctx.get(expr) {
-        Expr::Neg(inner) => {
-            trig_like_factor(ctx, *inner).map(|(builtin, arg)| (builtin, arg, Sign::Neg, *inner))
-        }
-        _ => trig_like_factor(ctx, expr).map(|(builtin, arg)| (builtin, arg, Sign::Pos, expr)),
-    }
-}
-
-fn hyperbolic_like_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
-    };
-    if args.len() != 1 {
-        return None;
-    }
-
-    match ctx.builtin_of(*fn_id) {
-        Some(builtin @ (BuiltinFn::Sinh | BuiltinFn::Cosh)) => Some((builtin, args[0])),
-        _ => None,
-    }
-}
-
-fn signed_hyperbolic_like_factor(
-    ctx: &Context,
-    expr: ExprId,
-) -> Option<(BuiltinFn, ExprId, Sign, ExprId)> {
-    match ctx.get(expr) {
-        Expr::Neg(inner) => hyperbolic_like_factor(ctx, *inner)
-            .map(|(builtin, arg)| (builtin, arg, Sign::Neg, *inner)),
-        _ => {
-            hyperbolic_like_factor(ctx, expr).map(|(builtin, arg)| (builtin, arg, Sign::Pos, expr))
-        }
-    }
-}
-
 fn scale_factor(ctx: &mut Context, scale: BigRational, expr: ExprId) -> ExprId {
     if scale.is_one() {
         return expr;
     }
     let scale_expr = ctx.add(Expr::Number(scale));
     mul2_raw(ctx, scale_expr, expr)
+}
+
+fn trig_by_parts_quotient_by_slope(
+    ctx: &mut Context,
+    numerator: ExprId,
+    slope: &BigRational,
+) -> ExprId {
+    if slope.is_one() {
+        numerator
+    } else if slope.is_integer() {
+        let slope_expr = ctx.add(Expr::Number(slope.clone()));
+        ctx.add(Expr::Div(numerator, slope_expr))
+    } else {
+        scale_factor(ctx, BigRational::one() / slope.clone(), numerator)
+    }
+}
+
+struct SignedLinearFunctionFactorParts {
+    builtin: BuiltinFn,
+    arg: ExprId,
+    sign: Sign,
+    factor: ExprId,
+    arg_slope: BigRational,
+}
+
+fn signed_linear_function_factor_parts<F>(
+    ctx: &mut Context,
+    factor: ExprId,
+    var: &str,
+    detector: F,
+) -> Option<SignedLinearFunctionFactorParts>
+where
+    F: Fn(&Context, ExprId) -> Option<(BuiltinFn, ExprId, Sign, ExprId)>,
+{
+    let (builtin, arg, sign, source_factor) = detector(ctx, factor)?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+
+    let arg_slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if arg_slope.is_zero() {
+        return None;
+    }
+
+    Some(SignedLinearFunctionFactorParts {
+        builtin,
+        arg,
+        sign,
+        factor: source_factor,
+        arg_slope,
+    })
 }
 
 fn polynomial_trig_term(
@@ -10949,42 +10829,15 @@ fn polynomial_times_trig_linear_antiderivative(
     }
 
     for (trig_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, trig_arg, trig_sign, _trig_factor)) =
-            signed_trig_like_factor(ctx, *factor)
+        let Some(trig_parts) =
+            signed_linear_function_factor_parts(ctx, *factor, var, signed_trig_like_factor)
         else {
             continue;
         };
 
-        let Ok(arg_poly) = Polynomial::from_expr(ctx, trig_arg, var) else {
-            continue;
-        };
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
-            .collect();
-        let raw_cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let effective_sign = combine_factor_signs(outer_sign, trig_sign);
-        let cofactor = match effective_sign {
-            Sign::Pos => raw_cofactor,
-            Sign::Neg => ctx.add(Expr::Neg(raw_cofactor)),
-        };
+        let effective_sign = combine_factor_signs(outer_sign, trig_parts.sign);
+        let cofactor =
+            signed_factor_product_excluding_index(ctx, &factors, trig_index, effective_sign);
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
         };
@@ -10992,14 +10845,17 @@ fn polynomial_times_trig_linear_antiderivative(
             continue;
         }
 
-        let (sin_poly, cos_poly) =
-            polynomial_trig_by_parts_polys(&cofactor_poly, builtin, &arg_slope)?;
+        let (sin_poly, cos_poly) = polynomial_trig_by_parts_polys(
+            &cofactor_poly,
+            trig_parts.builtin,
+            &trig_parts.arg_slope,
+        )?;
 
-        return match builtin {
+        return match trig_parts.builtin {
             BuiltinFn::Sin | BuiltinFn::Cos => {
                 let terms: Vec<ExprId> = [
-                    polynomial_trig_term(ctx, &sin_poly, BuiltinFn::Sin, trig_arg),
-                    polynomial_trig_term(ctx, &cos_poly, BuiltinFn::Cos, trig_arg),
+                    polynomial_trig_term(ctx, &sin_poly, BuiltinFn::Sin, trig_parts.arg),
+                    polynomial_trig_term(ctx, &cos_poly, BuiltinFn::Cos, trig_parts.arg),
                 ]
                 .into_iter()
                 .flatten()
@@ -11021,42 +10877,23 @@ fn polynomial_trig_linear_term_parts(
     let (outer_sign, factors) = signed_mul_leaves(ctx, term);
 
     for (trig_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, trig_arg, trig_sign, trig_factor)) =
-            signed_trig_like_factor(ctx, *factor)
+        let Some(trig_parts) =
+            signed_linear_function_factor_parts(ctx, *factor, var, signed_trig_like_factor)
         else {
             continue;
         };
 
-        let Ok(arg_poly) = Polynomial::from_expr(ctx, trig_arg, var) else {
-            continue;
-        };
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
-            .collect();
-        let raw_cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let effective_sign = combine_factor_signs(outer_sign, trig_sign);
-        let cofactor = signed_term(ctx, raw_cofactor, effective_sign);
+        let effective_sign = combine_factor_signs(outer_sign, trig_parts.sign);
+        let cofactor =
+            signed_factor_product_excluding_index(ctx, &factors, trig_index, effective_sign);
         let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
 
-        return Some((builtin, trig_arg, trig_factor, cofactor_poly));
+        return Some((
+            trig_parts.builtin,
+            trig_parts.arg,
+            trig_parts.factor,
+            cofactor_poly,
+        ));
     }
 
     None
@@ -11118,38 +10955,14 @@ fn linear_times_trig_linear_antiderivative(
     }
 
     for (trig_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, trig_arg, trig_sign, trig_factor)) =
-            signed_trig_like_factor(ctx, *factor)
+        let Some(trig_parts) =
+            signed_linear_function_factor_parts(ctx, *factor, var, signed_trig_like_factor)
         else {
             continue;
         };
 
-        let Ok(arg_poly) = Polynomial::from_expr(ctx, trig_arg, var) else {
-            continue;
-        };
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
-            .collect();
-        let raw_cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let effective_sign = combine_factor_signs(outer_sign, trig_sign);
+        let raw_cofactor = factor_product_excluding_index(ctx, &factors, trig_index);
+        let effective_sign = combine_factor_signs(outer_sign, trig_parts.sign);
         let cofactor = match effective_sign {
             Sign::Pos => raw_cofactor,
             Sign::Neg => ctx.add(Expr::Neg(raw_cofactor)),
@@ -11170,7 +10983,7 @@ fn linear_times_trig_linear_antiderivative(
             continue;
         }
 
-        if effective_sign == Sign::Neg && matches!(builtin, BuiltinFn::Sin) {
+        if effective_sign == Sign::Neg && matches!(trig_parts.builtin, BuiltinFn::Sin) {
             let Ok(raw_cofactor_poly) = Polynomial::from_expr(ctx, raw_cofactor, var) else {
                 continue;
             };
@@ -11183,46 +10996,29 @@ fn linear_times_trig_linear_antiderivative(
                 continue;
             }
 
-            let raw_quotient = if arg_slope.is_one() {
-                raw_cofactor
-            } else if arg_slope.is_integer() {
-                let arg_slope_expr = ctx.add(Expr::Number(arg_slope.clone()));
-                ctx.add(Expr::Div(raw_cofactor, arg_slope_expr))
-            } else {
-                scale_factor(ctx, BigRational::one() / arg_slope.clone(), raw_cofactor)
-            };
-            let raw_correction = raw_cofactor_slope / (arg_slope.clone() * arg_slope.clone());
-            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
+            let raw_quotient =
+                trig_by_parts_quotient_by_slope(ctx, raw_cofactor, &trig_parts.arg_slope);
+            let raw_correction =
+                raw_cofactor_slope / (trig_parts.arg_slope.clone() * trig_parts.arg_slope.clone());
+            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_parts.arg]);
             let quotient_cos = mul2_raw(ctx, cos_arg, raw_quotient);
-            let correction_sin = scale_factor(ctx, raw_correction, trig_factor);
+            let correction_sin = scale_factor(ctx, raw_correction, trig_parts.factor);
             let result = ctx.add(Expr::Sub(quotient_cos, correction_sin));
             return Some(cas_ast::hold::wrap_hold(ctx, result));
         }
 
-        let quotient = if arg_slope.is_one() {
-            cofactor
-        } else if arg_slope.is_integer() {
-            let arg_slope_expr = ctx.add(Expr::Number(arg_slope.clone()));
-            ctx.add(Expr::Div(cofactor, arg_slope_expr))
-        } else {
-            scale_factor(ctx, BigRational::one() / arg_slope.clone(), cofactor)
-        };
-        let correction = cofactor_slope / (arg_slope.clone() * arg_slope.clone());
+        let quotient = trig_by_parts_quotient_by_slope(ctx, cofactor, &trig_parts.arg_slope);
+        let correction =
+            cofactor_slope / (trig_parts.arg_slope.clone() * trig_parts.arg_slope.clone());
 
-        return match builtin {
+        return match trig_parts.builtin {
             BuiltinFn::Sin => {
-                let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
-                let correction_sin = scale_factor(ctx, correction, trig_factor);
-                if arg_slope.is_negative() {
-                    let positive_slope = -arg_slope.clone();
-                    let positive_quotient = if positive_slope.is_one() {
-                        cofactor
-                    } else if positive_slope.is_integer() {
-                        let positive_slope_expr = ctx.add(Expr::Number(positive_slope));
-                        ctx.add(Expr::Div(cofactor, positive_slope_expr))
-                    } else {
-                        scale_factor(ctx, BigRational::one() / positive_slope, cofactor)
-                    };
+                let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_parts.arg]);
+                let correction_sin = scale_factor(ctx, correction, trig_parts.factor);
+                if trig_parts.arg_slope.is_negative() {
+                    let positive_slope = -trig_parts.arg_slope.clone();
+                    let positive_quotient =
+                        trig_by_parts_quotient_by_slope(ctx, cofactor, &positive_slope);
                     let quotient_cos = mul2_raw(ctx, positive_quotient, cos_arg);
                     Some(ctx.add(Expr::Add(correction_sin, quotient_cos)))
                 } else {
@@ -11231,18 +11027,12 @@ fn linear_times_trig_linear_antiderivative(
                 }
             }
             BuiltinFn::Cos => {
-                let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![trig_arg]);
-                let correction_cos = scale_factor(ctx, correction, trig_factor);
-                if arg_slope.is_negative() {
-                    let positive_slope = -arg_slope.clone();
-                    let positive_quotient = if positive_slope.is_one() {
-                        cofactor
-                    } else if positive_slope.is_integer() {
-                        let positive_slope_expr = ctx.add(Expr::Number(positive_slope));
-                        ctx.add(Expr::Div(cofactor, positive_slope_expr))
-                    } else {
-                        scale_factor(ctx, BigRational::one() / positive_slope, cofactor)
-                    };
+                let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![trig_parts.arg]);
+                let correction_cos = scale_factor(ctx, correction, trig_parts.factor);
+                if trig_parts.arg_slope.is_negative() {
+                    let positive_slope = -trig_parts.arg_slope.clone();
+                    let positive_quotient =
+                        trig_by_parts_quotient_by_slope(ctx, cofactor, &positive_slope);
                     let quotient_sin = mul2_raw(ctx, positive_quotient, sin_arg);
                     Some(ctx.add(Expr::Sub(correction_cos, quotient_sin)))
                 } else {
@@ -11276,41 +11066,15 @@ fn linear_times_hyperbolic_linear_antiderivative(
     }
 
     for (hyperbolic_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, hyperbolic_arg, hyperbolic_sign, hyperbolic_factor)) =
-            signed_hyperbolic_like_factor(ctx, *factor)
+        let Some(hyperbolic_parts) =
+            signed_linear_function_factor_parts(ctx, *factor, var, signed_hyperbolic_like_factor)
         else {
             continue;
         };
 
-        let Ok(arg_poly) = Polynomial::from_expr(ctx, hyperbolic_arg, var) else {
-            continue;
-        };
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != hyperbolic_index).then_some(*factor))
-            .collect();
-        let cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let cofactor = match combine_factor_signs(outer_sign, hyperbolic_sign) {
-            Sign::Pos => cofactor,
-            Sign::Neg => ctx.add(Expr::Neg(cofactor)),
-        };
+        let effective_sign = combine_factor_signs(outer_sign, hyperbolic_parts.sign);
+        let cofactor =
+            signed_factor_product_excluding_index(ctx, &factors, hyperbolic_index, effective_sign);
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
         };
@@ -11327,25 +11091,26 @@ fn linear_times_hyperbolic_linear_antiderivative(
             continue;
         }
 
-        let arg_slope_expr = ctx.add(Expr::Number(arg_slope.clone()));
-        let quotient = if arg_slope.is_one() {
+        let arg_slope_expr = ctx.add(Expr::Number(hyperbolic_parts.arg_slope.clone()));
+        let quotient = if hyperbolic_parts.arg_slope.is_one() {
             cofactor
         } else {
             ctx.add(Expr::Div(cofactor, arg_slope_expr))
         };
-        let correction = cofactor_slope / (arg_slope.clone() * arg_slope);
+        let correction =
+            cofactor_slope / (hyperbolic_parts.arg_slope.clone() * hyperbolic_parts.arg_slope);
 
-        return match builtin {
+        return match hyperbolic_parts.builtin {
             BuiltinFn::Sinh => {
-                let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![hyperbolic_arg]);
+                let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![hyperbolic_parts.arg]);
                 let quotient_cosh = mul2_raw(ctx, quotient, cosh_arg);
-                let correction_sinh = scale_factor(ctx, correction, hyperbolic_factor);
+                let correction_sinh = scale_factor(ctx, correction, hyperbolic_parts.factor);
                 Some(ctx.add(Expr::Sub(quotient_cosh, correction_sinh)))
             }
             BuiltinFn::Cosh => {
-                let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![hyperbolic_arg]);
+                let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![hyperbolic_parts.arg]);
                 let quotient_sinh = mul2_raw(ctx, quotient, sinh_arg);
-                let correction_cosh = scale_factor(ctx, correction, hyperbolic_factor);
+                let correction_cosh = scale_factor(ctx, correction, hyperbolic_parts.factor);
                 Some(ctx.add(Expr::Sub(quotient_sinh, correction_cosh)))
             }
             _ => None,
@@ -11393,41 +11158,15 @@ fn polynomial_times_hyperbolic_linear_antiderivative(
     }
 
     for (hyperbolic_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, hyperbolic_arg, hyperbolic_sign, _hyperbolic_factor)) =
-            signed_hyperbolic_like_factor(ctx, *factor)
+        let Some(hyperbolic_parts) =
+            signed_linear_function_factor_parts(ctx, *factor, var, signed_hyperbolic_like_factor)
         else {
             continue;
         };
 
-        let Ok(arg_poly) = Polynomial::from_expr(ctx, hyperbolic_arg, var) else {
-            continue;
-        };
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != hyperbolic_index).then_some(*factor))
-            .collect();
-        let cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let cofactor = match combine_factor_signs(outer_sign, hyperbolic_sign) {
-            Sign::Pos => cofactor,
-            Sign::Neg => ctx.add(Expr::Neg(cofactor)),
-        };
+        let effective_sign = combine_factor_signs(outer_sign, hyperbolic_parts.sign);
+        let cofactor =
+            signed_factor_product_excluding_index(ctx, &factors, hyperbolic_index, effective_sign);
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
         };
@@ -11435,13 +11174,13 @@ fn polynomial_times_hyperbolic_linear_antiderivative(
             continue;
         }
 
-        let slope_sq = arg_slope.clone() * arg_slope.clone();
-        let slope_cube = slope_sq.clone() * arg_slope.clone();
-        let slope_fourth = slope_cube.clone() * arg_slope.clone();
-        let slope_fifth = slope_fourth.clone() * arg_slope.clone();
-        let slope_sixth = slope_fifth.clone() * arg_slope.clone();
-        let slope_seventh = slope_sixth.clone() * arg_slope.clone();
-        let slope_eighth = slope_seventh.clone() * arg_slope.clone();
+        let slope_sq = hyperbolic_parts.arg_slope.clone() * hyperbolic_parts.arg_slope.clone();
+        let slope_cube = slope_sq.clone() * hyperbolic_parts.arg_slope.clone();
+        let slope_fourth = slope_cube.clone() * hyperbolic_parts.arg_slope.clone();
+        let slope_fifth = slope_fourth.clone() * hyperbolic_parts.arg_slope.clone();
+        let slope_sixth = slope_fifth.clone() * hyperbolic_parts.arg_slope.clone();
+        let slope_seventh = slope_sixth.clone() * hyperbolic_parts.arg_slope.clone();
+        let slope_eighth = slope_seventh.clone() * hyperbolic_parts.arg_slope.clone();
         let first_derivative = cofactor_poly.derivative();
         let second_derivative = first_derivative.derivative();
         let third_derivative = second_derivative.derivative();
@@ -11451,7 +11190,7 @@ fn polynomial_times_hyperbolic_linear_antiderivative(
         let seventh_derivative = sixth_derivative.derivative();
 
         let even_poly = cofactor_poly
-            .div_scalar(&arg_slope)
+            .div_scalar(&hyperbolic_parts.arg_slope)
             .add(&second_derivative.div_scalar(&slope_cube))
             .add(&fourth_derivative.div_scalar(&slope_fifth))
             .add(&sixth_derivative.div_scalar(&slope_seventh));
@@ -11461,15 +11200,16 @@ fn polynomial_times_hyperbolic_linear_antiderivative(
             .add(&fifth_derivative.div_scalar(&slope_sixth))
             .add(&seventh_derivative.div_scalar(&slope_eighth));
 
-        let (even_builtin, odd_builtin) = match builtin {
+        let (even_builtin, odd_builtin) = match hyperbolic_parts.builtin {
             BuiltinFn::Sinh => (BuiltinFn::Cosh, BuiltinFn::Sinh),
             BuiltinFn::Cosh => (BuiltinFn::Sinh, BuiltinFn::Cosh),
             _ => return None,
         };
 
-        let even_term = polynomial_hyperbolic_term(ctx, &even_poly, even_builtin, hyperbolic_arg)?;
+        let even_term =
+            polynomial_hyperbolic_term(ctx, &even_poly, even_builtin, hyperbolic_parts.arg)?;
         let Some(odd_term) =
-            polynomial_hyperbolic_term(ctx, &odd_poly, odd_builtin, hyperbolic_arg)
+            polynomial_hyperbolic_term(ctx, &odd_poly, odd_builtin, hyperbolic_parts.arg)
         else {
             return Some(even_term);
         };
@@ -11490,7 +11230,7 @@ pub fn integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
         var,
         2,
         MAX_HYPERBOLIC_POLYNOMIAL_BY_PARTS_DEGREE,
-        |ctx, factor| signed_hyperbolic_like_factor(ctx, factor).map(|(_, arg, _, _)| arg),
+        signed_hyperbolic_like_factor,
     ) {
         return true;
     }
@@ -11506,42 +11246,23 @@ fn polynomial_hyperbolic_linear_term_parts(
     let (outer_sign, factors) = signed_mul_leaves(ctx, term);
 
     for (hyperbolic_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, hyperbolic_arg, hyperbolic_sign, hyperbolic_factor)) =
-            signed_hyperbolic_like_factor(ctx, *factor)
+        let Some(hyperbolic_parts) =
+            signed_linear_function_factor_parts(ctx, *factor, var, signed_hyperbolic_like_factor)
         else {
             continue;
         };
 
-        let Ok(arg_poly) = Polynomial::from_expr(ctx, hyperbolic_arg, var) else {
-            continue;
-        };
-        if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_slope = arg_poly
-            .coeffs
-            .get(1)
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if arg_slope.is_zero() {
-            continue;
-        }
-
-        let cofactor_factors: Vec<ExprId> = factors
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, factor)| (idx != hyperbolic_index).then_some(*factor))
-            .collect();
-        let raw_cofactor = if cofactor_factors.is_empty() {
-            ctx.num(1)
-        } else {
-            build_balanced_mul(ctx, &cofactor_factors)
-        };
-        let effective_sign = combine_factor_signs(outer_sign, hyperbolic_sign);
-        let cofactor = signed_term(ctx, raw_cofactor, effective_sign);
+        let effective_sign = combine_factor_signs(outer_sign, hyperbolic_parts.sign);
+        let cofactor =
+            signed_factor_product_excluding_index(ctx, &factors, hyperbolic_index, effective_sign);
         let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
 
-        return Some((builtin, hyperbolic_arg, hyperbolic_factor, cofactor_poly));
+        return Some((
+            hyperbolic_parts.builtin,
+            hyperbolic_parts.arg,
+            hyperbolic_parts.factor,
+            cofactor_poly,
+        ));
     }
 
     None

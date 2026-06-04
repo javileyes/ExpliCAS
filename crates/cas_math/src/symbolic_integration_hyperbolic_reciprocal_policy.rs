@@ -2,13 +2,17 @@
 //!
 //! This module owns only the small detection and primitive-construction policy
 //! for `1/cosh(u)^n`, `1/sinh(u)^n`, and derivative-product reciprocal
-//! hyperbolic routes. Scaled primitive presentation primitives are injected by
-//! the caller so route order and broader integration formatting stay explicit.
+//! hyperbolic routes, plus source-side `tanh(u)` evidence for hyperbolic
+//! log-derivative routes. Scaled primitive presentation primitives are injected
+//! by the caller so route order and broader integration formatting stay
+//! explicit.
 
 use crate::build::mul2_raw;
+use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::One;
+use std::cmp::Ordering;
 
 pub(crate) fn reciprocal_hyperbolic_power_arg(
     ctx: &Context,
@@ -61,6 +65,43 @@ pub(crate) fn reciprocal_hyperbolic_square_parts(
         return Some((BuiltinFn::Sinh, arg));
     }
     None
+}
+
+pub(crate) fn indexed_reciprocal_hyperbolic_square_parts(
+    ctx: &Context,
+    factors: &[ExprId],
+) -> Option<(usize, (BuiltinFn, ExprId))> {
+    factors.iter().enumerate().find_map(|(idx, factor)| {
+        reciprocal_hyperbolic_square_parts(ctx, *factor).map(|parts| (idx, parts))
+    })
+}
+
+pub(crate) fn hyperbolic_tangent_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    unary_builtin_arg(ctx, expr, BuiltinFn::Tanh)
+}
+
+pub(crate) fn indexed_hyperbolic_tangent_factor_arg(
+    ctx: &Context,
+    factors: &[ExprId],
+) -> Option<(usize, ExprId)> {
+    factors
+        .iter()
+        .enumerate()
+        .find_map(|(idx, factor)| hyperbolic_tangent_arg(ctx, *factor).map(|arg| (idx, arg)))
+}
+
+pub(crate) fn indexed_hyperbolic_reciprocal_derivative_numerator_factor(
+    ctx: &Context,
+    factors: &[ExprId],
+    denominator_builtin: BuiltinFn,
+    expected_arg: ExprId,
+) -> Option<usize> {
+    let policy = hyperbolic_reciprocal_derivative_policy(denominator_builtin)?;
+    factors.iter().enumerate().find_map(|(idx, factor)| {
+        unary_builtin_arg(ctx, *factor, policy.numerator_builtin)
+            .is_some_and(|arg| compare_expr(ctx, arg, expected_arg) == Ordering::Equal)
+            .then_some(idx)
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -327,6 +368,17 @@ fn is_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
     matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::from_integer(value.into()))
 }
 
+fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin) =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,6 +459,87 @@ mod tests {
         assert_eq!(rendered(&ctx, square_arg), "2 * x + 1");
         assert!(reciprocal_hyperbolic_cosh_square_arg(&ctx, tanh_square).is_none());
         assert!(reciprocal_hyperbolic_square_parts(&ctx, tanh_square).is_none());
+    }
+
+    #[test]
+    fn detects_hyperbolic_tangent_factors() {
+        let mut ctx = Context::new();
+        let factors = [
+            parse("3", &mut ctx).unwrap(),
+            parse("tanh(2*x+1)", &mut ctx).unwrap(),
+        ];
+        let invalid = parse("sinh(2*x+1)", &mut ctx).unwrap();
+
+        assert_eq!(
+            rendered(&ctx, hyperbolic_tangent_arg(&ctx, factors[1]).unwrap()),
+            "2 * x + 1"
+        );
+        let (idx, indexed_arg) = indexed_hyperbolic_tangent_factor_arg(&ctx, &factors).unwrap();
+        assert_eq!(idx, 1);
+        assert_eq!(rendered(&ctx, indexed_arg), "2 * x + 1");
+        assert!(hyperbolic_tangent_arg(&ctx, invalid).is_none());
+    }
+
+    #[test]
+    fn maps_hyperbolic_reciprocal_derivative_numerator_from_denominator_policy() {
+        let mut ctx = Context::new();
+        let arg = parse("2*x+1", &mut ctx).unwrap();
+        let wrong_arg = parse("x", &mut ctx).unwrap();
+        let cosh_denominator_factors = [
+            parse("3", &mut ctx).unwrap(),
+            parse("sinh(2*x+1)", &mut ctx).unwrap(),
+        ];
+        let sinh_denominator_factors = [
+            parse("5", &mut ctx).unwrap(),
+            parse("cosh(2*x+1)", &mut ctx).unwrap(),
+        ];
+        let signed_factors = [parse("-sinh(2*x+1)", &mut ctx).unwrap()];
+
+        assert_eq!(
+            indexed_hyperbolic_reciprocal_derivative_numerator_factor(
+                &ctx,
+                &cosh_denominator_factors,
+                BuiltinFn::Cosh,
+                arg
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            indexed_hyperbolic_reciprocal_derivative_numerator_factor(
+                &ctx,
+                &sinh_denominator_factors,
+                BuiltinFn::Sinh,
+                arg
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            indexed_hyperbolic_reciprocal_derivative_numerator_factor(
+                &ctx,
+                &cosh_denominator_factors,
+                BuiltinFn::Cosh,
+                wrong_arg
+            ),
+            None
+        );
+        assert_eq!(
+            indexed_hyperbolic_reciprocal_derivative_numerator_factor(
+                &ctx,
+                &signed_factors,
+                BuiltinFn::Cosh,
+                arg
+            ),
+            None
+        );
+        assert_eq!(
+            indexed_hyperbolic_reciprocal_derivative_numerator_factor(
+                &ctx,
+                &cosh_denominator_factors,
+                BuiltinFn::Tanh,
+                arg
+            ),
+            None
+        );
     }
 
     #[test]

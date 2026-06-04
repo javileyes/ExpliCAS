@@ -34,13 +34,32 @@ pub(super) fn verified_integrand_target(
     verified_integrand_result(ctx, target, var_name, |_, target| target)
 }
 
+pub(super) fn verified_source_route<R>(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    verified_source: impl FnOnce(ExprId) -> R,
+    verification_failed: R,
+) -> R {
+    match verified_integrand_target(ctx, target, var_name) {
+        Some(source) => verified_source(source),
+        None => verification_failed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use cas_ast::{Context, ExprId};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
-    use super::{verified_integrand_result, verified_integrand_target};
+    use super::{verified_integrand_result, verified_integrand_target, verified_source_route};
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum TestVerifiedSourceRoute {
+        VerificationFailed,
+        VerifiedSource(ExprId),
+    }
 
     fn rendered(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
@@ -89,5 +108,33 @@ mod tests {
 
         assert!(verified.is_none());
         assert!(!projected);
+    }
+
+    #[test]
+    fn verified_source_route_maps_supported_and_unsupported_integrands() {
+        let mut ctx = Context::new();
+        let supported = parse("1/(x+1)", &mut ctx).unwrap();
+        let unsupported = parse("exp(x^2)", &mut ctx).unwrap();
+
+        assert_eq!(
+            verified_source_route(
+                &mut ctx,
+                supported,
+                "x",
+                TestVerifiedSourceRoute::VerifiedSource,
+                TestVerifiedSourceRoute::VerificationFailed,
+            ),
+            TestVerifiedSourceRoute::VerifiedSource(supported)
+        );
+        assert_eq!(
+            verified_source_route(
+                &mut ctx,
+                unsupported,
+                "x",
+                TestVerifiedSourceRoute::VerifiedSource,
+                TestVerifiedSourceRoute::VerificationFailed,
+            ),
+            TestVerifiedSourceRoute::VerificationFailed
+        );
     }
 }

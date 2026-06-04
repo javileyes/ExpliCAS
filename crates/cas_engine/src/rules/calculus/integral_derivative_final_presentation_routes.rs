@@ -1,39 +1,105 @@
 //! Final presentation routes for integration-backed derivative shortcuts.
 //!
-//! This module owns routes 16-19 from `integral_derivative_shortcut_presentation`.
-//! It preserves the parent gate's final route order, including the early
-//! `None` propagation from the sqrt-trig-log compact verifier.
+//! This module owns routes 16-17 from `integral_derivative_shortcut_presentation`
+//! and delegates routes 18-19 to `integral_derivative_final_source_routes`. It
+//! preserves the parent gate's final route order, including the early abort on
+//! sqrt-trig-log compact verifier failure.
 
-use super::integral_derivative_direct_trig_affine_routes::direct_trig_affine_integral_derivative_shortcut;
-use super::integral_derivative_sqrt_reciprocal_trig_routes::sqrt_reciprocal_trig_product_integral_derivative_shortcut;
+use super::integral_derivative_final_source_routes::{
+    final_source_integral_derivative_route, FinalSourceIntegralDerivativeRoute,
+};
 use super::integral_derivative_sqrt_trig_log_routes::{
-    sqrt_trig_log_integral_derivative_shortcut, SqrtTrigLogDerivativeRoute,
+    sqrt_trig_log_integral_derivative_shortcut, SqrtTrigLogPresentationDecision,
 };
 use cas_ast::{Context, ExprId};
 
-pub(super) fn final_presentation_integral_derivative_shortcut(
+pub(super) enum FinalPresentationIntegralDerivativeRoute {
+    NoMatch,
+    SqrtTrigLogCompact(ExprId),
+    SqrtTrigLogAbortFallback,
+    FinalSourceSqrtReciprocalTrigProduct(ExprId),
+    FinalSourceDirectTrigAffine(ExprId),
+    FinalSourceDirectTrigAffineVerificationFailed,
+}
+
+impl FinalPresentationIntegralDerivativeRoute {
+    fn from_final_source_route(
+        route: FinalSourceIntegralDerivativeRoute,
+    ) -> FinalPresentationIntegralDerivativeRoute {
+        match route {
+            FinalSourceIntegralDerivativeRoute::SqrtReciprocalTrigProduct(source_target) => {
+                FinalPresentationIntegralDerivativeRoute::FinalSourceSqrtReciprocalTrigProduct(
+                    source_target,
+                )
+            }
+            FinalSourceIntegralDerivativeRoute::DirectTrigAffine(source_target) => {
+                FinalPresentationIntegralDerivativeRoute::FinalSourceDirectTrigAffine(source_target)
+            }
+            FinalSourceIntegralDerivativeRoute::DirectTrigAffineVerificationFailed => {
+                FinalPresentationIntegralDerivativeRoute::FinalSourceDirectTrigAffineVerificationFailed
+            }
+            FinalSourceIntegralDerivativeRoute::NoMatch => {
+                FinalPresentationIntegralDerivativeRoute::NoMatch
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl FinalPresentationIntegralDerivativeRoute {
+    fn into_presentation_target(self) -> Option<ExprId> {
+        match self {
+            FinalPresentationIntegralDerivativeRoute::SqrtTrigLogCompact(compact)
+            | FinalPresentationIntegralDerivativeRoute::FinalSourceSqrtReciprocalTrigProduct(
+                compact,
+            )
+            | FinalPresentationIntegralDerivativeRoute::FinalSourceDirectTrigAffine(compact) => {
+                Some(compact)
+            }
+            FinalPresentationIntegralDerivativeRoute::NoMatch
+            | FinalPresentationIntegralDerivativeRoute::SqrtTrigLogAbortFallback
+            | FinalPresentationIntegralDerivativeRoute::FinalSourceDirectTrigAffineVerificationFailed => None,
+        }
+    }
+}
+
+#[cfg(test)]
+fn final_presentation_integral_derivative_shortcut(
     ctx: &mut Context,
     target: ExprId,
     var_name: &str,
 ) -> Option<ExprId> {
-    match sqrt_trig_log_integral_derivative_shortcut(ctx, target, var_name)? {
-        SqrtTrigLogDerivativeRoute::VerifiedCompact(compact) => return Some(compact),
-        SqrtTrigLogDerivativeRoute::NoMatch | SqrtTrigLogDerivativeRoute::VerifiedNoCompact => {}
-    }
+    final_presentation_integral_derivative_route(ctx, target, var_name).into_presentation_target()
+}
 
-    if let Some(source_target) =
-        sqrt_reciprocal_trig_product_integral_derivative_shortcut(ctx, target, var_name)
+pub(super) fn final_presentation_integral_derivative_route(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> FinalPresentationIntegralDerivativeRoute {
+    match sqrt_trig_log_integral_derivative_shortcut(ctx, target, var_name)
+        .into_final_presentation_decision()
     {
-        return Some(source_target);
+        SqrtTrigLogPresentationDecision::AbortFallback => {
+            return FinalPresentationIntegralDerivativeRoute::SqrtTrigLogAbortFallback;
+        }
+        SqrtTrigLogPresentationDecision::Compact(compact) => {
+            return FinalPresentationIntegralDerivativeRoute::SqrtTrigLogCompact(compact);
+        }
+        SqrtTrigLogPresentationDecision::Continue => {}
     }
 
-    if let Some(source_target) =
-        direct_trig_affine_integral_derivative_shortcut(ctx, target, var_name)
-    {
-        return Some(source_target);
+    let final_source_route = FinalPresentationIntegralDerivativeRoute::from_final_source_route(
+        final_source_integral_derivative_route(ctx, target, var_name),
+    );
+    if !matches!(
+        final_source_route,
+        FinalPresentationIntegralDerivativeRoute::NoMatch
+    ) {
+        return final_source_route;
     }
 
-    None
+    FinalPresentationIntegralDerivativeRoute::NoMatch
 }
 
 #[cfg(test)]
@@ -50,32 +116,58 @@ mod tests {
     fn returns_compact_sqrt_trig_log_route() {
         let mut ctx = Context::new();
         let target = parse("tan(sqrt(x))/(2*sqrt(x))", &mut ctx).unwrap();
-        let compact =
-            final_presentation_integral_derivative_shortcut(&mut ctx, target, "x").unwrap();
+
+        let route = final_presentation_integral_derivative_route(&mut ctx, target, "x");
+
+        let FinalPresentationIntegralDerivativeRoute::SqrtTrigLogCompact(compact) = route else {
+            panic!("expected sqrt-trig-log compact route");
+        };
 
         assert_eq!(rendered(&ctx, compact), "tan(sqrt(x)) / (2 * sqrt(x))");
+        assert!(final_presentation_integral_derivative_shortcut(&mut ctx, target, "x").is_some());
     }
 
     #[test]
-    fn returns_source_for_sqrt_reciprocal_trig_product_route() {
-        let mut ctx = Context::new();
-        let target = parse("sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x))", &mut ctx).unwrap();
-
-        assert_eq!(
-            final_presentation_integral_derivative_shortcut(&mut ctx, target, "x"),
-            Some(target)
-        );
-    }
-
-    #[test]
-    fn returns_source_for_direct_trig_affine_fallback() {
+    fn returns_final_source_route_after_compact_routes_continue() {
         let mut ctx = Context::new();
         let target = parse("sin(2*x+1)", &mut ctx).unwrap();
 
+        assert!(matches!(
+            final_presentation_integral_derivative_route(&mut ctx, target, "x"),
+            FinalPresentationIntegralDerivativeRoute::FinalSourceDirectTrigAffine(source)
+                if source == target
+        ));
         assert_eq!(
             final_presentation_integral_derivative_shortcut(&mut ctx, target, "x"),
             Some(target)
         );
+    }
+
+    #[test]
+    fn converts_final_source_route_signals_locally() {
+        let mut ctx = Context::new();
+        let target = ctx.var("x");
+
+        assert!(matches!(
+            FinalPresentationIntegralDerivativeRoute::from_final_source_route(
+                FinalSourceIntegralDerivativeRoute::SqrtReciprocalTrigProduct(target)
+            ),
+            FinalPresentationIntegralDerivativeRoute::FinalSourceSqrtReciprocalTrigProduct(
+                source
+            ) if source == target
+        ));
+        assert!(matches!(
+            FinalPresentationIntegralDerivativeRoute::from_final_source_route(
+                FinalSourceIntegralDerivativeRoute::DirectTrigAffineVerificationFailed
+            ),
+            FinalPresentationIntegralDerivativeRoute::FinalSourceDirectTrigAffineVerificationFailed
+        ));
+        assert!(matches!(
+            FinalPresentationIntegralDerivativeRoute::from_final_source_route(
+                FinalSourceIntegralDerivativeRoute::NoMatch
+            ),
+            FinalPresentationIntegralDerivativeRoute::NoMatch
+        ));
     }
 
     #[test]
@@ -83,6 +175,25 @@ mod tests {
         let mut ctx = Context::new();
         let target = parse("exp(x^2)", &mut ctx).unwrap();
 
+        assert!(matches!(
+            final_presentation_integral_derivative_route(&mut ctx, target, "x"),
+            FinalPresentationIntegralDerivativeRoute::NoMatch
+        ));
+        assert_eq!(
+            final_presentation_integral_derivative_shortcut(&mut ctx, target, "x"),
+            None
+        );
+    }
+
+    #[test]
+    fn final_source_verification_failure_remains_absent_from_shortcut_output() {
+        let mut ctx = Context::new();
+        let target = parse("sin(2*x+1)+exp(x^2)", &mut ctx).unwrap();
+
+        assert!(matches!(
+            final_presentation_integral_derivative_route(&mut ctx, target, "x"),
+            FinalPresentationIntegralDerivativeRoute::FinalSourceDirectTrigAffineVerificationFailed
+        ));
         assert_eq!(
             final_presentation_integral_derivative_shortcut(&mut ctx, target, "x"),
             None

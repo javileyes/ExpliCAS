@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-03T11:50:29.779664+00:00",
+  "generated_at": "2026-06-04T10:44:17.352772+00:00",
   "generated_discovery": {
     "areas": {
       "calculus / differentiation": 1,
@@ -33,7 +33,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "fc8db9293b134ded9d91c6a6b0687af2333ebcfa"
+    "commit": "e7b3983de1c59cb3b9c1fd5358a2504dd11e3212"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
@@ -52,7 +52,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 0.884,
+      "elapsed_seconds": 0.898,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -242,7 +242,7 @@
         "timeouts": 0,
         "total_cases": 52
       },
-      "process_elapsed_seconds": 0.884,
+      "process_elapsed_seconds": 0.898,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -263,7 +263,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 2.892,
+      "elapsed_seconds": 2.959,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -281,7 +281,7 @@
         "passed": 263,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 2.892,
+      "process_elapsed_seconds": 2.959,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -299,7 +299,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 4.217,
+      "elapsed_seconds": 4.195,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -673,7 +673,7 @@
         "timeouts": 0,
         "total_cases": 96
       },
-      "process_elapsed_seconds": 4.217,
+      "process_elapsed_seconds": 4.195,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -694,7 +694,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 4.085,
+      "elapsed_seconds": 5.002,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -712,7 +712,7 @@
         "passed": 340,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 4.085,
+      "process_elapsed_seconds": 5.002,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -730,7 +730,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 0.468,
+      "elapsed_seconds": 0.485,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1040,7 +1040,7 @@
         "timeouts": 0,
         "total_cases": 84
       },
-      "process_elapsed_seconds": 0.468,
+      "process_elapsed_seconds": 0.485,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1061,7 +1061,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.586,
+      "elapsed_seconds": 0.589,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1073,7 +1073,7 @@
         "passed": 185,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.586,
+      "process_elapsed_seconds": 0.589,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1094,7 +1094,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.327,
+      "elapsed_seconds": 0.325,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1106,7 +1106,7 @@
         "passed": 8,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.327,
+      "process_elapsed_seconds": 0.325,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1125,7 +1125,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 6.167,
+      "elapsed_seconds": 6.16,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1175,7 +1175,7 @@
         "timeouts": 0,
         "total_cases": 730
       },
-      "process_elapsed_seconds": 6.167,
+      "process_elapsed_seconds": 6.16,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1321,28 +1321,28 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 22.351,
+      "elapsed_seconds": 19.678,
       "env": {},
       "guardrail": null,
       "metrics": {
-        "artifact_case_hotspots": "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.553,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.528,rationalize_symbolic_linear_root_alt_var:0.197,rationalize_symbolic_linear_root:0.196,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.084,factor_geometric_difference_power_6:0.070",
-        "artifact_family_hotspots": "expand:1.237,rationalize:0.483,factor:0.184,solve_prep:0.175,finite_telescoping:0.172,trig_contract:0.163",
-        "artifact_seconds": 0.855,
+        "artifact_case_hotspots": "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.557,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.538,rationalize_symbolic_linear_root_alt_var:0.201,rationalize_symbolic_linear_root:0.201,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.085,factor_geometric_difference_power_6:0.068",
+        "artifact_family_hotspots": "expand:1.253,rationalize:0.493,solve_prep:0.179,finite_telescoping:0.178,factor:0.178,trig_contract:0.167",
+        "artifact_seconds": 0.877,
         "cases": 472,
-        "cli_case_hotspots": "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.538,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.523,rationalize_symbolic_linear_root:0.197,rationalize_symbolic_linear_root_alt_var:0.197,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.085,factor_geometric_difference_power_6:0.062",
-        "cli_family_hotspots": "expand:1.218,rationalize:0.483,trig_contract:0.163,factor:0.161,solve_prep:0.160,finite_telescoping:0.155",
-        "cli_seconds": 0.798,
+        "cli_case_hotspots": "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.549,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.518,rationalize_symbolic_linear_root_alt_var:0.198,rationalize_symbolic_linear_root:0.198,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.083,factor_geometric_difference_power_6:0.062",
+        "cli_family_hotspots": "expand:1.223,rationalize:0.490,factor:0.161,solve_prep:0.161,trig_contract:0.160,finite_telescoping:0.154",
+        "cli_seconds": 0.801,
         "flagged_cases": 0,
         "flagged_rate": 0.0,
         "mean_step_count": 1.06,
         "no_web_steps": 0,
         "no_web_substeps": 0,
         "report_seconds": 0.001,
-        "reported_total_seconds": 1.653,
+        "reported_total_seconds": 1.679,
         "total_web_substeps": 485,
         "worker_count": 4
       },
-      "process_elapsed_seconds": 22.351,
+      "process_elapsed_seconds": 19.678,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1365,7 +1365,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.248,
+      "elapsed_seconds": 0.258,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1497,7 +1497,7 @@
         "unsupported": 0,
         "unsupported_by_family": {}
       },
-      "process_elapsed_seconds": 0.248,
+      "process_elapsed_seconds": 0.258,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -2810,7 +2810,7 @@
           }
         ]
       },
-      "process_elapsed_seconds": 11.206,
+      "process_elapsed_seconds": 11.205,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -2834,7 +2834,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.947,
+      "elapsed_seconds": 0.965,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -2847,7 +2847,7 @@
         "single_step_no_substeps": 0,
         "total_wire_substeps": 24
       },
-      "process_elapsed_seconds": 0.947,
+      "process_elapsed_seconds": 0.965,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -2870,7 +2870,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 21.006,
+      "elapsed_seconds": 21.049,
       "env": {
         "METATEST_MAX_EXAMPLES": "20",
         "METATEST_PROGRESS_EVERY": "1000",
@@ -3129,7 +3129,7 @@
         "timeouts": 0,
         "total_combos": 16519
       },
-      "process_elapsed_seconds": 21.006,
+      "process_elapsed_seconds": 21.049,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

@@ -46,11 +46,12 @@
 use super::diff_rule_support::finalize_diff_rewrite_with_conditions;
 use super::integral_derivative_arctan_polynomial_routes::arctan_polynomial_source_integral_derivative_shortcut;
 use super::integral_derivative_conditioned_return::conditioned_integral_derivative_shortcut_result;
-use super::integral_derivative_final_presentation_routes::final_presentation_integral_derivative_shortcut;
-use super::integral_derivative_held_presentation_routes::held_presentation_integral_derivative_shortcut;
-use super::integral_derivative_verified_power_inverse_routes::power_inverse_verified_integral_derivative_shortcut;
-use super::integral_derivative_verified_rational_substitution_routes::rational_substitution_verified_integral_derivative_shortcut;
-use super::integral_derivative_verified_source_routes::initial_verified_source_integral_derivative_shortcut;
+use super::integral_derivative_final_presentation_routes::final_presentation_integral_derivative_route;
+use super::integral_derivative_held_presentation_routes::held_presentation_integral_derivative_route;
+use super::integral_derivative_presentation_route::SupportedIntegralDerivativePresentationRoute;
+use super::integral_derivative_verified_power_inverse_routes::power_inverse_verified_integral_derivative_route;
+use super::integral_derivative_verified_rational_substitution_routes::rational_substitution_verified_integral_derivative_route;
+use super::integral_derivative_verified_source_routes::initial_verified_source_integral_derivative_route;
 use crate::rule::Rewrite;
 use crate::symbolic_calculus_call_support::{try_extract_integrate_call, NamedVarCall};
 use cas_ast::{Context, ExprId};
@@ -69,65 +70,101 @@ fn supported_integral_derivative_presentation_for_integrate_call(
     integrate_call: &NamedVarCall,
     var_name: &str,
 ) -> Option<ExprId> {
+    supported_integral_derivative_presentation_route_for_integrate_call(
+        ctx,
+        integrate_call,
+        var_name,
+    )
+    .into_presentation_target()
+}
+
+fn supported_integral_derivative_presentation_route_for_integrate_call(
+    ctx: &mut Context,
+    integrate_call: &NamedVarCall,
+    var_name: &str,
+) -> SupportedIntegralDerivativePresentationRoute {
     if integrate_call.var_name != var_name {
-        return None;
+        return SupportedIntegralDerivativePresentationRoute::NoMatch;
     }
 
+    let mut pending_non_success_route = SupportedIntegralDerivativePresentationRoute::NoMatch;
+
     // Verified source-return routes.
-    if let Some(source_target) = initial_verified_source_integral_derivative_shortcut(
-        ctx,
-        integrate_call.target,
-        &integrate_call.var_name,
-    ) {
-        return Some(source_target);
+    if let Some(route) =
+        SupportedIntegralDerivativePresentationRoute::observe_initial_verified_source_route(
+            &mut pending_non_success_route,
+            initial_verified_source_integral_derivative_route(
+                ctx,
+                integrate_call.target,
+                &integrate_call.var_name,
+            ),
+        )
+    {
+        return route;
     }
 
     // Source-side presentation exception.
-    if let Some(source_target) = arctan_polynomial_source_integral_derivative_shortcut(
-        ctx,
-        integrate_call.target,
-        &integrate_call.var_name,
-    ) {
-        return Some(source_target);
+    if let Some(route) =
+        SupportedIntegralDerivativePresentationRoute::observe_arctan_polynomial_source_target(
+            arctan_polynomial_source_integral_derivative_shortcut(
+                ctx,
+                integrate_call.target,
+                &integrate_call.var_name,
+            ),
+        )
+    {
+        return route;
     }
 
     // Verified rational/substitution source-return routes.
-    if let Some(source_target) = rational_substitution_verified_integral_derivative_shortcut(
-        ctx,
-        integrate_call.target,
-        &integrate_call.var_name,
-    ) {
-        return Some(source_target);
+    if let Some(route) =
+        SupportedIntegralDerivativePresentationRoute::observe_rational_substitution_route(
+            &mut pending_non_success_route,
+            rational_substitution_verified_integral_derivative_route(
+                ctx,
+                integrate_call.target,
+                &integrate_call.var_name,
+            ),
+        )
+    {
+        return route;
     }
 
     // Held-presentation routes that keep condition collection at the caller.
-    if let Some(held_target) = held_presentation_integral_derivative_shortcut(
-        ctx,
-        integrate_call.target,
-        &integrate_call.var_name,
-    ) {
-        return Some(held_target);
+    if let Some(route) =
+        SupportedIntegralDerivativePresentationRoute::observe_held_presentation_route(
+            &mut pending_non_success_route,
+            held_presentation_integral_derivative_route(
+                ctx,
+                integrate_call.target,
+                &integrate_call.var_name,
+            ),
+        )
+    {
+        return route;
     }
 
     // Late verified source-return routes.
-    if let Some(source_target) = power_inverse_verified_integral_derivative_shortcut(
+    if let Some(route) = SupportedIntegralDerivativePresentationRoute::observe_power_inverse_route(
+        &mut pending_non_success_route,
+        power_inverse_verified_integral_derivative_route(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ),
+    ) {
+        return route;
+    }
+
+    let final_route = final_presentation_integral_derivative_route(
         ctx,
         integrate_call.target,
         &integrate_call.var_name,
-    ) {
-        return Some(source_target);
-    }
-
-    // Final compact/source presentation routes and verified fallback.
-    if let Some(final_target) = final_presentation_integral_derivative_shortcut(
-        ctx,
-        integrate_call.target,
-        &integrate_call.var_name,
-    ) {
-        return Some(final_target);
-    }
-
-    None
+    );
+    SupportedIntegralDerivativePresentationRoute::complete_with_final_presentation_route(
+        pending_non_success_route,
+        final_route,
+    )
 }
 
 pub(super) fn supported_integral_diff_shortcut_presentation(
@@ -183,6 +220,26 @@ mod tests {
         let mut ctx = Context::new();
         let target = parse("integrate(sin(2*x+1), y)", &mut ctx).unwrap();
 
+        assert_eq!(
+            supported_integral_derivative_presentation(&mut ctx, target, "x"),
+            None
+        );
+    }
+
+    #[test]
+    fn derivative_presentation_route_preserves_final_verification_failure_signal() {
+        let mut ctx = Context::new();
+        let target = parse("integrate(sin(2*x+1)+exp(x^2), x)", &mut ctx).unwrap();
+        let integrate_call = try_extract_integrate_call(&ctx, target).unwrap();
+
+        assert!(matches!(
+            supported_integral_derivative_presentation_route_for_integrate_call(
+                &mut ctx,
+                &integrate_call,
+                "x"
+            ),
+            SupportedIntegralDerivativePresentationRoute::FinalPresentationSourceDirectTrigAffineVerificationFailed
+        ));
         assert_eq!(
             supported_integral_derivative_presentation(&mut ctx, target, "x"),
             None

@@ -42,6 +42,32 @@ pub(super) fn verified_held_source_integrand_target(
     verified_integrand_result(ctx, target, var_name, held_source_integrand_target)
 }
 
+pub(super) fn verified_held_inverse_sqrt_compact_or_source_route<R>(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    verified_held: impl FnOnce(ExprId) -> R,
+    verification_failed: R,
+) -> R {
+    match verified_held_inverse_sqrt_compact_or_source_integrand_target(ctx, target, var_name) {
+        Some(held_target) => verified_held(held_target),
+        None => verification_failed,
+    }
+}
+
+pub(super) fn verified_held_source_route<R>(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    verified_held: impl FnOnce(ExprId) -> R,
+    verification_failed: R,
+) -> R {
+    match verified_held_source_integrand_target(ctx, target, var_name) {
+        Some(held_target) => verified_held(held_target),
+        None => verification_failed,
+    }
+}
+
 pub(super) fn verified_compact_integrand_target(
     ctx: &mut Context,
     target: ExprId,
@@ -62,13 +88,20 @@ pub(super) fn verified_optional_compact_integrand_target_from(
 
 #[cfg(test)]
 mod tests {
-    use cas_ast::{hold, Context};
+    use cas_ast::{hold, Context, ExprId};
     use cas_parser::parse;
 
     use super::{
         held_source_integrand_target, verified_compact_integrand_target,
-        verified_held_source_integrand_target, verified_optional_compact_integrand_target_from,
+        verified_held_inverse_sqrt_compact_or_source_route, verified_held_source_integrand_target,
+        verified_held_source_route, verified_optional_compact_integrand_target_from,
     };
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum TestVerifiedHeldRoute {
+        VerificationFailed,
+        VerifiedHeld(ExprId),
+    }
 
     #[test]
     fn held_source_return_wraps_without_rewriting() {
@@ -115,5 +148,56 @@ mod tests {
 
         assert!(verified.is_none());
         assert!(!compact_called);
+    }
+
+    #[test]
+    fn verified_held_source_route_maps_supported_and_unsupported_integrands() {
+        let mut ctx = Context::new();
+        let supported = parse("1/(x+1)", &mut ctx).unwrap();
+        let unsupported = parse("exp(x^2)", &mut ctx).unwrap();
+
+        match verified_held_source_route(
+            &mut ctx,
+            supported,
+            "x",
+            TestVerifiedHeldRoute::VerifiedHeld,
+            TestVerifiedHeldRoute::VerificationFailed,
+        ) {
+            TestVerifiedHeldRoute::VerifiedHeld(held) => {
+                assert!(hold::is_hold(&ctx, held));
+                assert_eq!(hold::unwrap_internal_hold(&ctx, held), supported);
+            }
+            TestVerifiedHeldRoute::VerificationFailed => panic!("expected verified held source"),
+        }
+
+        assert_eq!(
+            verified_held_source_route(
+                &mut ctx,
+                unsupported,
+                "x",
+                TestVerifiedHeldRoute::VerifiedHeld,
+                TestVerifiedHeldRoute::VerificationFailed,
+            ),
+            TestVerifiedHeldRoute::VerificationFailed
+        );
+    }
+
+    #[test]
+    fn verified_held_inverse_sqrt_route_maps_compact_or_source_integrand() {
+        let mut ctx = Context::new();
+        let target = parse("1/sqrt(x)", &mut ctx).unwrap();
+
+        match verified_held_inverse_sqrt_compact_or_source_route(
+            &mut ctx,
+            target,
+            "x",
+            TestVerifiedHeldRoute::VerifiedHeld,
+            TestVerifiedHeldRoute::VerificationFailed,
+        ) {
+            TestVerifiedHeldRoute::VerifiedHeld(held) => assert!(hold::is_hold(&ctx, held)),
+            TestVerifiedHeldRoute::VerificationFailed => {
+                panic!("expected verified held inverse-sqrt target")
+            }
+        }
     }
 }

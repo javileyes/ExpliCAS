@@ -1,12 +1,16 @@
 //! Reciprocal-trig policy helpers for symbolic integration.
 //!
 //! This module owns the small detection and primitive-construction policy for
-//! routes based on `1/cos(u)^2`, `1/sin(u)^2`, `sec(u) tan(u)`, and
-//! `csc(u) cot(u)`. Higher-level integration routes stay in
+//! routes based on `1/cos(u)^2`, `1/sin(u)^2`, `sec(u) tan(u)`,
+//! `csc(u) cot(u)`, and trig log-derivative numerator pairing including
+//! source-side `tan`/`cot` evidence. Higher-level integration routes stay in
 //! `symbolic_integration_support` so route order remains explicit there.
 
+use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
+use num_traits::One;
+use std::cmp::Ordering;
 
 pub(crate) fn reciprocal_trig_square_parts(
     ctx: &Context,
@@ -28,6 +32,15 @@ pub(crate) fn reciprocal_trig_square_parts(
         BuiltinFn::Cos | BuiltinFn::Sin => Some((builtin, arg)),
         _ => None,
     }
+}
+
+pub(crate) fn indexed_reciprocal_trig_square_parts(
+    ctx: &Context,
+    factors: &[ExprId],
+) -> Option<(usize, (BuiltinFn, ExprId))> {
+    factors.iter().enumerate().find_map(|(idx, factor)| {
+        reciprocal_trig_square_parts(ctx, *factor).map(|parts| (idx, parts))
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -138,6 +151,74 @@ pub(crate) fn reciprocal_trig_denominator_call(
     }
 }
 
+pub(crate) fn indexed_reciprocal_trig_denominator_call(
+    ctx: &Context,
+    factors: &[ExprId],
+) -> Option<(usize, (BuiltinFn, ExprId))> {
+    factors.iter().enumerate().find_map(|(idx, factor)| {
+        reciprocal_trig_denominator_call(ctx, *factor).map(|parts| (idx, parts))
+    })
+}
+
+pub(crate) fn trig_log_derivative_numerator_builtin(
+    denominator_builtin: BuiltinFn,
+) -> Option<BuiltinFn> {
+    match denominator_builtin {
+        BuiltinFn::Cos => Some(BuiltinFn::Sin),
+        BuiltinFn::Sin => Some(BuiltinFn::Cos),
+        _ => None,
+    }
+}
+
+pub(crate) fn indexed_trig_log_derivative_numerator_factor(
+    ctx: &Context,
+    factors: &[ExprId],
+    denominator_builtin: BuiltinFn,
+    expected_arg: ExprId,
+) -> Option<usize> {
+    let numerator_builtin = trig_log_derivative_numerator_builtin(denominator_builtin)?;
+    factors.iter().enumerate().find_map(|(idx, factor)| {
+        unary_builtin_arg(ctx, *factor, numerator_builtin)
+            .is_some_and(|arg| compare_expr(ctx, arg, expected_arg) == Ordering::Equal)
+            .then_some(idx)
+    })
+}
+
+pub(crate) fn indexed_trig_log_derivative_raw_numerator_factor(
+    ctx: &Context,
+    factors: &[ExprId],
+) -> Option<(BuiltinFn, ExprId, usize, BigRational)> {
+    factors.iter().enumerate().find_map(|(idx, factor)| {
+        if let Some((arg, sign)) = signed_unary_builtin_arg(ctx, *factor, BuiltinFn::Tan) {
+            return Some((BuiltinFn::Cos, arg, idx, sign));
+        }
+        if let Some((arg, sign)) = signed_unary_builtin_arg(ctx, *factor, BuiltinFn::Cot) {
+            return Some((BuiltinFn::Sin, arg, idx, sign));
+        }
+        None
+    })
+}
+
+pub(crate) fn indexed_trig_pole_builtin_factor(
+    ctx: &Context,
+    factors: &[ExprId],
+) -> Option<(usize, BuiltinFn, ExprId)> {
+    factors.iter().enumerate().find_map(|(idx, factor)| {
+        trig_pole_builtin_arg(ctx, *factor).map(|(builtin, arg)| (idx, builtin, arg))
+    })
+}
+
+pub(crate) fn has_trig_pole_builtin_factor_except(
+    ctx: &Context,
+    factors: &[ExprId],
+    excluded_index: usize,
+) -> bool {
+    factors
+        .iter()
+        .enumerate()
+        .any(|(idx, factor)| idx != excluded_index && trig_pole_builtin_arg(ctx, *factor).is_some())
+}
+
 pub(crate) fn reciprocal_trig_reciprocal_parts_from_denominator(
     ctx: &Context,
     expr: ExprId,
@@ -197,6 +278,42 @@ pub(crate) fn build_reciprocal_trig_denominator_nonzero_condition(
 
 fn is_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
     matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::from_integer(value.into()))
+}
+
+fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin) =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn trig_pole_builtin_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let (builtin, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id)?, args[0]),
+        _ => return None,
+    };
+    matches!(
+        builtin,
+        BuiltinFn::Tan | BuiltinFn::Cot | BuiltinFn::Sec | BuiltinFn::Csc
+    )
+    .then_some((builtin, arg))
+}
+
+fn signed_unary_builtin_arg(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<(ExprId, BigRational)> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            unary_builtin_arg(ctx, *inner, builtin).map(|arg| (arg, -BigRational::one()))
+        }
+        _ => unary_builtin_arg(ctx, expr, builtin).map(|arg| (arg, BigRational::one())),
+    }
 }
 
 #[cfg(test)]
@@ -288,6 +405,102 @@ mod tests {
         assert_eq!(rendered(&ctx, csc_arg), "2 * x + 1");
         assert!(reciprocal_trig_denominator_call(&ctx, tan_den).is_none());
         assert!(reciprocal_trig_reciprocal_parts_from_denominator(&ctx, tan_den).is_none());
+    }
+
+    #[test]
+    fn maps_trig_log_derivative_numerator_factor_from_denominator() {
+        let mut ctx = Context::new();
+        let arg = parse("2*x+1", &mut ctx).unwrap();
+        let wrong_arg = parse("x", &mut ctx).unwrap();
+        let factors = [
+            parse("3", &mut ctx).unwrap(),
+            parse("sin(2*x+1)", &mut ctx).unwrap(),
+        ];
+
+        assert_eq!(
+            trig_log_derivative_numerator_builtin(BuiltinFn::Cos),
+            Some(BuiltinFn::Sin)
+        );
+        assert_eq!(
+            trig_log_derivative_numerator_builtin(BuiltinFn::Sin),
+            Some(BuiltinFn::Cos)
+        );
+        assert_eq!(
+            indexed_trig_log_derivative_numerator_factor(&ctx, &factors, BuiltinFn::Cos, arg),
+            Some(1)
+        );
+        assert_eq!(
+            indexed_trig_log_derivative_numerator_factor(&ctx, &factors, BuiltinFn::Cos, wrong_arg),
+            None
+        );
+        assert_eq!(
+            indexed_trig_log_derivative_numerator_factor(&ctx, &factors, BuiltinFn::Tan, arg),
+            None
+        );
+    }
+
+    #[test]
+    fn maps_raw_tan_cot_log_derivative_numerator_factors() {
+        let mut ctx = Context::new();
+        let tan_factors = [
+            parse("3", &mut ctx).unwrap(),
+            parse("-tan(2*x+1)", &mut ctx).unwrap(),
+        ];
+        let cot_factors = [
+            parse("5", &mut ctx).unwrap(),
+            parse("cot(x^2)", &mut ctx).unwrap(),
+        ];
+        let invalid_factors = [parse("sin(x)", &mut ctx).unwrap()];
+
+        let (tan_den_builtin, tan_arg, tan_index, tan_sign) =
+            indexed_trig_log_derivative_raw_numerator_factor(&ctx, &tan_factors).unwrap();
+        let (cot_den_builtin, cot_arg, cot_index, cot_sign) =
+            indexed_trig_log_derivative_raw_numerator_factor(&ctx, &cot_factors).unwrap();
+
+        assert_eq!(tan_den_builtin, BuiltinFn::Cos);
+        assert_eq!(rendered(&ctx, tan_arg), "2 * x + 1");
+        assert_eq!(tan_index, 1);
+        assert_eq!(tan_sign, -BigRational::one());
+        assert_eq!(cot_den_builtin, BuiltinFn::Sin);
+        assert_eq!(rendered(&ctx, cot_arg), "x^2");
+        assert_eq!(cot_index, 1);
+        assert_eq!(cot_sign, BigRational::one());
+        assert!(indexed_trig_log_derivative_raw_numerator_factor(&ctx, &invalid_factors).is_none());
+    }
+
+    #[test]
+    fn maps_trig_pole_builtin_factor_without_widening_to_sin_cos() {
+        let mut ctx = Context::new();
+        let factors = [
+            parse("2", &mut ctx).unwrap(),
+            parse("sec(2*x+1)", &mut ctx).unwrap(),
+        ];
+        let invalid_factors = [
+            parse("2", &mut ctx).unwrap(),
+            parse("cos(2*x+1)", &mut ctx).unwrap(),
+        ];
+
+        let (idx, builtin, arg) = indexed_trig_pole_builtin_factor(&ctx, &factors).unwrap();
+
+        assert_eq!(idx, 1);
+        assert_eq!(builtin, BuiltinFn::Sec);
+        assert_eq!(rendered(&ctx, arg), "2 * x + 1");
+        assert!(!has_trig_pole_builtin_factor_except(&ctx, &factors, 1));
+        assert!(indexed_trig_pole_builtin_factor(&ctx, &invalid_factors).is_none());
+    }
+
+    #[test]
+    fn detects_additional_trig_pole_builtin_factor_except_selected_index() {
+        let mut ctx = Context::new();
+        let factors = [
+            parse("tan(x)", &mut ctx).unwrap(),
+            parse("3", &mut ctx).unwrap(),
+            parse("csc(x)", &mut ctx).unwrap(),
+        ];
+
+        assert!(has_trig_pole_builtin_factor_except(&ctx, &factors, 0));
+        assert!(has_trig_pole_builtin_factor_except(&ctx, &factors, 2));
+        assert!(!has_trig_pole_builtin_factor_except(&ctx, &factors[..1], 0));
     }
 
     #[test]
