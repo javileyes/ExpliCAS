@@ -24,23 +24,6 @@ pub(crate) fn scaled_ln_abs_product_form(
     mul2_raw(ctx, scale_expr, log_abs)
 }
 
-pub(crate) fn scaled_ln_abs_with_negative_shortcut(
-    ctx: &mut Context,
-    arg: ExprId,
-    scale: BigRational,
-) -> ExprId {
-    let log_abs = ln_abs(ctx, arg);
-    if scale.is_one() {
-        return log_abs;
-    }
-    if scale == -BigRational::one() {
-        return ctx.add(Expr::Neg(log_abs));
-    }
-
-    let scale_expr = ctx.add(Expr::Number(scale));
-    mul2_raw(ctx, scale_expr, log_abs)
-}
-
 pub(crate) fn constant_base_log_derivative_correction(
     ctx: &mut Context,
     base_ln: Option<ExprId>,
@@ -115,7 +98,7 @@ mod tests {
         constant_base_log_derivative_correction,
         positive_integer_constant_log_base_derivative_correction,
         positive_integer_constant_log_base_ln, scaled_ln_abs_product_form,
-        scaled_ln_abs_with_negative_shortcut, valid_constant_log_base_ln_from_rational_value,
+        valid_constant_log_base_ln_from_rational_value,
     };
     use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
     use cas_formatter::DisplayExpr;
@@ -163,18 +146,6 @@ mod tests {
 
         let scaled = scaled_ln_abs_product_form(&mut ctx, x, rational(2));
         assert_eq!(rendered(&ctx, scaled), "2 * ln(|x|)");
-    }
-
-    #[test]
-    fn builds_scaled_ln_abs_with_negative_shortcut() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-
-        let negative = scaled_ln_abs_with_negative_shortcut(&mut ctx, x, rational(-1));
-        assert_eq!(rendered(&ctx, negative), "-ln(|x|)");
-
-        let scaled = scaled_ln_abs_with_negative_shortcut(&mut ctx, x, rational(-2));
-        assert_eq!(rendered(&ctx, scaled), "-2 * ln(|x|)");
     }
 
     #[test]

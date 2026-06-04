@@ -130,6 +130,35 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-06-04 - Observe-only discovery: direct tanh symbolic scale lacks substitution substeps
+
+- area:
+  - calculus / integration / hyperbolic log-derivative traces
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while generalizing the retained hyperbolic quotient route for
+    `2*k*x*sinh(x^2+b)/cosh(x^2+b)`, a narrow direct helper also made
+    `integrate(2*k*x*tanh(x^2+b), x)` return `k*ln(cosh(x^2+b))`
+  - the direct result was mathematically correct and kept no fake real-domain
+    pole condition, but the public CLI trace only showed `Calcular la integral`
+    plus positivity cleanup; it did not show the `tanh(u) -> ln(cosh(u))`
+    table rule or `u/du` evidence that the existing rational-scale direct
+    route shows for `integrate(2*x*tanh(x^2), x)`
+- decision:
+  - retain the quotient symbolic-scale route in this cycle because it keeps a
+    visible substitution trace
+  - reject direct `tanh` symbolic-scale promotion until the source-route
+    detector and didactic substep builder share the same symbolic cofactor
+    policy
+- retained learning:
+  - the reusable weakness is a boundary mismatch between direct `tanh`
+    integration detection and didactic substitution trace construction, not a
+    formula gap
+  - a future candidate should extend the existing direct `tanh(u)` substitution
+    trace to symbolic external scales before promoting the direct form to the
+    command matrix
+
 ## 2026-05-28 - Observe-only discovery: condition display must not scale-normalize periodic arguments
 
 - area:

@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 96)
+        self.assertEqual(len(cases), 100)
         names = {case.name for case in cases}
         self.assertIn("reciprocal_affine_log_abs_domain", names)
         self.assertIn("reciprocal_negative_affine_log_abs_domain", names)
@@ -41,11 +41,27 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("explicit_reciprocal_tangent_presimplified_residual_domain", names)
         self.assertIn("explicit_reciprocal_tangent_verified_log_domain", names)
         self.assertIn(
+            "symbolic_external_scale_tangent_log_derivative_ratio_domain",
+            names,
+        )
+        self.assertIn(
+            "symbolic_external_scale_cotangent_log_derivative_ratio_domain",
+            names,
+        )
+        self.assertIn(
             "explicit_reciprocal_hyperbolic_tangent_verified_log_domain",
             names,
         )
         self.assertIn(
             "explicit_reciprocal_hyperbolic_tangent_presimplified_condition_dedupe",
+            names,
+        )
+        self.assertIn(
+            "symbolic_external_scale_hyperbolic_tanh_log_derivative_ratio_positive",
+            names,
+        )
+        self.assertIn(
+            "symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
             names,
         )
         self.assertIn("additive_trig_pole_residual_domain", names)
@@ -250,7 +266,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 9, "supported": 85, "undefined": 2},
+            {"residual": 9, "supported": 89, "undefined": 2},
         )
         self.assertEqual(
             sum(
@@ -261,14 +277,14 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     or case.expected_derivative_equivalent_to is not None
                 )
             ),
-            85,
+            89,
         )
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
             {
                 "residual_not_verified": 9,
                 "undefined_not_verified": 2,
-                "verified_by_diff": 85,
+                "verified_by_diff": 89,
             },
         )
         step_checked = {
@@ -304,8 +320,12 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "explicit_reciprocal_sine_presimplified_residual_domain",
                 "explicit_reciprocal_tangent_presimplified_residual_domain",
                 "explicit_reciprocal_tangent_verified_log_domain",
+                "symbolic_external_scale_tangent_log_derivative_ratio_domain",
+                "symbolic_external_scale_cotangent_log_derivative_ratio_domain",
                 "explicit_reciprocal_hyperbolic_tangent_verified_log_domain",
                 "explicit_reciprocal_hyperbolic_tangent_presimplified_condition_dedupe",
+                "symbolic_external_scale_hyperbolic_tanh_log_derivative_ratio_positive",
+                "symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
                 "additive_trig_pole_residual_domain",
                 "inverse_trig_table",
                 "rational_positive_quadratic_square_reduction",
@@ -415,10 +435,12 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "trig_pole_additive_residual": 1,
                 "trig_pole_presimplified_residual": 1,
                 "trig_pole_residual": 1,
+                "trig_log_derivative_pole_required": 2,
                 "trig_reciprocal_product_pole_required": 5,
                 "trig_reciprocal_product_exact_symbolic_derivative_pole_required": 8,
                 "trig_sine_pole_presimplified_residual": 1,
                 "unconditional": 19,
+                "unconditional_cosh_positive": 2,
             },
         )
         self.assertEqual(
@@ -427,8 +449,11 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block7_explicit_reciprocal_hyperbolic_tangent": 2,
                 "block7_explicit_reciprocal_trig_tangent": 1,
                 "block7_hyperbolic_reciprocal_derivative_product": 7,
+                "block7_hyperbolic_log_derivative_ratio": 1,
+                "block7_hyperbolic_tanh_log_derivative": 1,
                 "block7_hyperbolic_reciprocal_fourth": 4,
                 "block7_hyperbolic_reciprocal_square": 6,
+                "block7_trig_log_derivative_ratio": 2,
                 "block7_sqrt_chain_hyperbolic_reciprocal_derivative_product": 3,
                 "block7_sqrt_chain_hyperbolic_log": 3,
                 "block7_sqrt_chain_reciprocal_trig_product": 7,
@@ -443,7 +468,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block4_base_integration": 6,
                 "block5_generalized_substitution": 10,
                 "block6_rational_integration": 12,
-                "block7_trig_hyperbolic_integration": 48,
+                "block7_trig_hyperbolic_integration": 52,
                 "block8_radical_inverse_families": 9,
                 "block9_residuals_and_non_goals": 11,
             },
@@ -451,8 +476,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
-                "didactic_trace_and_verified_antiderivative": 24,
-                "domain_conditions_and_verified_antiderivative": 61,
+                "didactic_trace_and_verified_antiderivative": 26,
+                "domain_conditions_and_verified_antiderivative": 63,
                 "explicit_undefined_domain_policy": 2,
                 "safe_residual_policy": 9,
             },

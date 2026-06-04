@@ -13508,25 +13508,24 @@ fn trig_log_sqrt_chain_from_factors(
         if contains_var_dependent_trig_factor(ctx, &remaining_numerator, var_name) {
             continue;
         }
-        let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
-            sqrt_chain_cofactor_derivative_trace(
-                ctx,
-                arg,
-                numerator_negative,
-                &remaining_numerator,
-                &denominator_factors,
-                var_name,
-            )?;
+        let trace = sqrt_chain_cofactor_derivative_trace(
+            ctx,
+            arg,
+            numerator_negative,
+            &remaining_numerator,
+            &denominator_factors,
+            var_name,
+        )?;
 
         return Some(TrigLogTableMatch {
             kind,
             arg,
             trace: TrigLogTableTrace::PolynomialCofactor {
-                cofactor_display,
-                cofactor_latex,
-                derivative_display,
-                derivative_latex,
-                scale,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
             },
         });
     }
@@ -13554,25 +13553,24 @@ fn trig_log_sqrt_chain_from_factors(
         {
             continue;
         }
-        let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
-            sqrt_chain_cofactor_derivative_trace(
-                ctx,
-                arg,
-                numerator_negative,
-                numerator_factors,
-                &remaining_denominator,
-                var_name,
-            )?;
+        let trace = sqrt_chain_cofactor_derivative_trace(
+            ctx,
+            arg,
+            numerator_negative,
+            numerator_factors,
+            &remaining_denominator,
+            var_name,
+        )?;
 
         return Some(TrigLogTableMatch {
             kind,
             arg,
             trace: TrigLogTableTrace::PolynomialCofactor {
-                cofactor_display,
-                cofactor_latex,
-                derivative_display,
-                derivative_latex,
-                scale,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
             },
         });
     }
@@ -13625,25 +13623,24 @@ fn trig_log_polynomial_quotient_integrand(
     den: ExprId,
     var_name: &str,
 ) -> Option<TrigLogTableMatch> {
-    let (num_builtin, num_arg, cofactor_expr, cofactor_poly) =
-        trig_factor_with_polynomial_cofactor(ctx, num, var_name)?;
+    let cofactor = trig_factor_with_polynomial_cofactor(ctx, num, var_name)?;
     let (den_builtin, den_arg) = unary_builtin_arg(ctx, den)?;
-    if compare_expr(ctx, num_arg, den_arg) != Ordering::Equal {
+    if compare_expr(ctx, cofactor.arg, den_arg) != Ordering::Equal {
         return None;
     }
 
-    let kind = match (num_builtin, den_builtin) {
+    let kind = match (cofactor.builtin, den_builtin) {
         (BuiltinFn::Sin, BuiltinFn::Cos) => TrigLogTableKind::Tangent,
         (BuiltinFn::Cos, BuiltinFn::Sin) => TrigLogTableKind::Cotangent,
         _ => return None,
     };
 
-    let arg_poly = Polynomial::from_expr(ctx, num_arg, var_name).ok()?;
+    let arg_poly = Polynomial::from_expr(ctx, cofactor.arg, var_name).ok()?;
     if arg_poly.degree() <= 1 {
         return None;
     }
     let derivative = arg_poly.derivative();
-    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
+    let scale = constant_polynomial_ratio(&cofactor.polynomial, &derivative)?;
     if scale.is_zero() {
         return None;
     }
@@ -13651,10 +13648,10 @@ fn trig_log_polynomial_quotient_integrand(
     let (derivative_display, derivative_latex) = polynomial_display_and_latex(ctx, &derivative);
     Some(TrigLogTableMatch {
         kind,
-        arg: num_arg,
+        arg: cofactor.arg,
         trace: TrigLogTableTrace::PolynomialCofactor {
-            cofactor_display: display_expr(ctx, cofactor_expr),
-            cofactor_latex: latex_expr(ctx, cofactor_expr),
+            cofactor_display: display_expr(ctx, cofactor.expr),
+            cofactor_latex: latex_expr(ctx, cofactor.expr),
             derivative_display,
             derivative_latex,
             scale,
@@ -13662,11 +13659,18 @@ fn trig_log_polynomial_quotient_integrand(
     })
 }
 
+struct TrigPolynomialCofactor {
+    builtin: BuiltinFn,
+    arg: ExprId,
+    expr: ExprId,
+    polynomial: Polynomial,
+}
+
 fn trig_factor_with_polynomial_cofactor(
     ctx: &Context,
     expr: ExprId,
     var_name: &str,
-) -> Option<(BuiltinFn, ExprId, ExprId, Polynomial)> {
+) -> Option<TrigPolynomialCofactor> {
     let Expr::Mul(left, right) = ctx.get(expr) else {
         return None;
     };
@@ -13674,7 +13678,12 @@ fn trig_factor_with_polynomial_cofactor(
     if let Some((builtin, arg)) = unary_builtin_arg(ctx, *left) {
         if matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) {
             let cofactor_poly = Polynomial::from_expr(ctx, *right, var_name).ok()?;
-            return Some((builtin, arg, *right, cofactor_poly));
+            return Some(TrigPolynomialCofactor {
+                builtin,
+                arg,
+                expr: *right,
+                polynomial: cofactor_poly,
+            });
         }
     }
 
@@ -13683,7 +13692,12 @@ fn trig_factor_with_polynomial_cofactor(
         return None;
     }
     let cofactor_poly = Polynomial::from_expr(ctx, *left, var_name).ok()?;
-    Some((builtin, arg, *left, cofactor_poly))
+    Some(TrigPolynomialCofactor {
+        builtin,
+        arg,
+        expr: *left,
+        polynomial: cofactor_poly,
+    })
 }
 
 fn trig_log_polynomial_reciprocal_integrand(
@@ -13839,6 +13853,59 @@ struct HyperbolicLogTableMatch {
     derivative_display: String,
     derivative_latex: String,
     scale: BigRational,
+    symbolic_scale_display: Option<String>,
+    symbolic_scale_latex: Option<String>,
+}
+
+struct IntegrationConstantFactorAdjustment<'a> {
+    cofactor_display: &'a str,
+    cofactor_latex: &'a str,
+    derivative_display: &'a str,
+    derivative_latex: &'a str,
+    scale: &'a BigRational,
+    symbolic_scale_display: Option<&'a str>,
+    symbolic_scale_latex: Option<&'a str>,
+}
+
+fn push_integration_constant_factor_adjustment_substep(
+    substeps: &mut Vec<SubStep>,
+    adjustment: IntegrationConstantFactorAdjustment<'_>,
+) {
+    if let (Some(scale_display), Some(scale_latex)) = (
+        adjustment.symbolic_scale_display,
+        adjustment.symbolic_scale_latex,
+    ) {
+        substeps.push(
+            SubStep::new(
+                "Ajustar el factor constante",
+                adjustment.cofactor_display,
+                format!("{} · {}", scale_display, adjustment.derivative_display),
+            )
+            .with_before_latex(adjustment.cofactor_latex)
+            .with_after_latex(format!(
+                "{}\\cdot {}",
+                scale_latex, adjustment.derivative_latex
+            )),
+        );
+    } else if !adjustment.scale.is_one() {
+        substeps.push(
+            SubStep::new(
+                "Ajustar el factor constante",
+                adjustment.cofactor_display,
+                format!(
+                    "{} · {}",
+                    rational_display(adjustment.scale),
+                    adjustment.derivative_display
+                ),
+            )
+            .with_before_latex(adjustment.cofactor_latex)
+            .with_after_latex(format!(
+                "{}\\cdot {}",
+                rational_latex(adjustment.scale),
+                adjustment.derivative_latex
+            )),
+        );
+    }
 }
 
 fn generate_hyperbolic_log_table_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -13889,25 +13956,18 @@ fn generate_hyperbolic_log_table_integration_substeps(ctx: &Context, step: &Step
         .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
         .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
-    if !table_match.scale.is_one() {
-        substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
-                table_match.cofactor_display,
-                format!(
-                    "{} · {}",
-                    rational_display(&table_match.scale),
-                    table_match.derivative_display
-                ),
-            )
-            .with_before_latex(table_match.cofactor_latex)
-            .with_after_latex(format!(
-                "{}\\cdot {}",
-                rational_latex(&table_match.scale),
-                table_match.derivative_latex
-            )),
-        );
-    }
+    push_integration_constant_factor_adjustment_substep(
+        &mut substeps,
+        IntegrationConstantFactorAdjustment {
+            cofactor_display: &table_match.cofactor_display,
+            cofactor_latex: &table_match.cofactor_latex,
+            derivative_display: &table_match.derivative_display,
+            derivative_latex: &table_match.derivative_latex,
+            scale: &table_match.scale,
+            symbolic_scale_display: table_match.symbolic_scale_display.as_deref(),
+            symbolic_scale_latex: table_match.symbolic_scale_latex.as_deref(),
+        },
+    );
 
     substeps
 }
@@ -14076,13 +14136,7 @@ fn hyperbolic_log_match_from_cofactor(
     var_name: &str,
 ) -> Option<HyperbolicLogTableMatch> {
     if denominator_factors.is_empty() {
-        if let Some((
-            derivative_display,
-            derivative_latex,
-            scale,
-            cofactor_display,
-            cofactor_latex,
-        )) = polynomial_derivative_cofactor_trace(
+        if let Some(trace) = polynomial_derivative_cofactor_trace(
             ctx,
             numerator_negative,
             numerator_factors,
@@ -14092,11 +14146,32 @@ fn hyperbolic_log_match_from_cofactor(
             return Some(HyperbolicLogTableMatch {
                 kind,
                 arg,
-                cofactor_display,
-                cofactor_latex,
-                derivative_display,
-                derivative_latex,
-                scale,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
+                symbolic_scale_display: trace.symbolic_scale_display,
+                symbolic_scale_latex: trace.symbolic_scale_latex,
+            });
+        }
+        if let Some(trace) = polynomial_derivative_cofactor_trace_with_symbolic_scale(
+            ctx,
+            numerator_negative,
+            numerator_factors,
+            arg,
+            var_name,
+        ) {
+            return Some(HyperbolicLogTableMatch {
+                kind,
+                arg,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
+                symbolic_scale_display: trace.symbolic_scale_display,
+                symbolic_scale_latex: trace.symbolic_scale_latex,
             });
         }
     }
@@ -14121,24 +14196,25 @@ fn hyperbolic_log_sqrt_chain_match_from_cofactor(
     denominator_factors: &[ExprId],
     var_name: &str,
 ) -> Option<HyperbolicLogTableMatch> {
-    let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
-        sqrt_chain_cofactor_derivative_trace(
-            ctx,
-            arg,
-            numerator_negative,
-            numerator_factors,
-            denominator_factors,
-            var_name,
-        )?;
+    let trace = sqrt_chain_cofactor_derivative_trace(
+        ctx,
+        arg,
+        numerator_negative,
+        numerator_factors,
+        denominator_factors,
+        var_name,
+    )?;
 
     Some(HyperbolicLogTableMatch {
         kind,
         arg,
-        cofactor_display,
-        cofactor_latex,
-        derivative_display,
-        derivative_latex,
-        scale,
+        cofactor_display: trace.cofactor_display,
+        cofactor_latex: trace.cofactor_latex,
+        derivative_display: trace.derivative_display,
+        derivative_latex: trace.derivative_latex,
+        scale: trace.scale,
+        symbolic_scale_display: trace.symbolic_scale_display,
+        symbolic_scale_latex: trace.symbolic_scale_latex,
     })
 }
 
@@ -14228,41 +14304,18 @@ fn generate_hyperbolic_reciprocal_table_integration_substeps(
         .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
         .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
-    if let (Some(scale_display), Some(scale_latex)) = (
-        table_match.symbolic_scale_display.as_ref(),
-        table_match.symbolic_scale_latex.as_ref(),
-    ) {
-        substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
-                table_match.cofactor_display,
-                format!("{} · {}", scale_display, table_match.derivative_display),
-            )
-            .with_before_latex(table_match.cofactor_latex)
-            .with_after_latex(format!(
-                "{}\\cdot {}",
-                scale_latex, table_match.derivative_latex
-            )),
-        );
-    } else if !table_match.scale.is_one() {
-        substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
-                table_match.cofactor_display,
-                format!(
-                    "{} · {}",
-                    rational_display(&table_match.scale),
-                    table_match.derivative_display
-                ),
-            )
-            .with_before_latex(table_match.cofactor_latex)
-            .with_after_latex(format!(
-                "{}\\cdot {}",
-                rational_latex(&table_match.scale),
-                table_match.derivative_latex
-            )),
-        );
-    }
+    push_integration_constant_factor_adjustment_substep(
+        &mut substeps,
+        IntegrationConstantFactorAdjustment {
+            cofactor_display: &table_match.cofactor_display,
+            cofactor_latex: &table_match.cofactor_latex,
+            derivative_display: &table_match.derivative_display,
+            derivative_latex: &table_match.derivative_latex,
+            scale: &table_match.scale,
+            symbolic_scale_display: table_match.symbolic_scale_display.as_deref(),
+            symbolic_scale_latex: table_match.symbolic_scale_latex.as_deref(),
+        },
+    );
 
     substeps
 }
@@ -14508,13 +14561,7 @@ fn hyperbolic_reciprocal_match_from_cofactor(
     var_name: &str,
 ) -> Option<HyperbolicReciprocalTableMatch> {
     if denominator_factors.is_empty() {
-        if let Some((
-            derivative_display,
-            derivative_latex,
-            scale,
-            cofactor_display,
-            cofactor_latex,
-        )) = polynomial_derivative_cofactor_trace(
+        if let Some(trace) = polynomial_derivative_cofactor_trace(
             ctx,
             numerator_negative,
             numerator_factors,
@@ -14524,24 +14571,54 @@ fn hyperbolic_reciprocal_match_from_cofactor(
             return Some(HyperbolicReciprocalTableMatch {
                 kind,
                 arg,
-                cofactor_display,
-                cofactor_latex,
-                derivative_display,
-                derivative_latex,
-                scale,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
+                symbolic_scale_display: trace.symbolic_scale_display,
+                symbolic_scale_latex: trace.symbolic_scale_latex,
+            });
+        }
+        if let Some(trace) = polynomial_derivative_cofactor_trace_with_symbolic_scale(
+            ctx,
+            numerator_negative,
+            numerator_factors,
+            arg,
+            var_name,
+        ) {
+            return Some(HyperbolicReciprocalTableMatch {
+                kind,
+                arg,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
+                symbolic_scale_display: trace.symbolic_scale_display,
+                symbolic_scale_latex: trace.symbolic_scale_latex,
+            });
+        }
+        if let Some(trace) = symbolic_linear_exact_derivative_cofactor_trace(
+            ctx,
+            numerator_negative,
+            numerator_factors,
+            arg,
+            var_name,
+        ) {
+            return Some(HyperbolicReciprocalTableMatch {
+                kind,
+                arg,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
                 symbolic_scale_display: None,
                 symbolic_scale_latex: None,
             });
         }
-        if let Some((
-            derivative_display,
-            derivative_latex,
-            scale,
-            cofactor_display,
-            cofactor_latex,
-            symbolic_scale_display,
-            symbolic_scale_latex,
-        )) = polynomial_derivative_cofactor_trace_with_symbolic_scale(
+        if let Some(trace) = symbolic_linear_scaled_derivative_cofactor_trace(
             ctx,
             numerator_negative,
             numerator_factors,
@@ -14551,76 +14628,18 @@ fn hyperbolic_reciprocal_match_from_cofactor(
             return Some(HyperbolicReciprocalTableMatch {
                 kind,
                 arg,
-                cofactor_display,
-                cofactor_latex,
-                derivative_display,
-                derivative_latex,
-                scale,
-                symbolic_scale_display,
-                symbolic_scale_latex,
-            });
-        }
-        if let Some((
-            derivative_display,
-            derivative_latex,
-            scale,
-            cofactor_display,
-            cofactor_latex,
-        )) = symbolic_linear_exact_derivative_cofactor_trace(
-            ctx,
-            numerator_negative,
-            numerator_factors,
-            arg,
-            var_name,
-        ) {
-            return Some(HyperbolicReciprocalTableMatch {
-                kind,
-                arg,
-                cofactor_display,
-                cofactor_latex,
-                derivative_display,
-                derivative_latex,
-                scale,
-                symbolic_scale_display: None,
-                symbolic_scale_latex: None,
-            });
-        }
-        if let Some((
-            derivative_display,
-            derivative_latex,
-            scale,
-            cofactor_display,
-            cofactor_latex,
-        )) = symbolic_linear_scaled_derivative_cofactor_trace(
-            ctx,
-            numerator_negative,
-            numerator_factors,
-            arg,
-            var_name,
-        ) {
-            return Some(HyperbolicReciprocalTableMatch {
-                kind,
-                arg,
-                cofactor_display,
-                cofactor_latex,
-                derivative_display,
-                derivative_latex,
-                scale,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
                 symbolic_scale_display: None,
                 symbolic_scale_latex: None,
             });
         }
     }
 
-    let (
-        derivative_display,
-        derivative_latex,
-        scale,
-        cofactor_display,
-        cofactor_latex,
-        symbolic_scale_display,
-        symbolic_scale_latex,
-    ) = sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
+    let trace = sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
         ctx,
         arg,
         numerator_negative,
@@ -14632,13 +14651,13 @@ fn hyperbolic_reciprocal_match_from_cofactor(
     Some(HyperbolicReciprocalTableMatch {
         kind,
         arg,
-        cofactor_display,
-        cofactor_latex,
-        derivative_display,
-        derivative_latex,
-        scale,
-        symbolic_scale_display,
-        symbolic_scale_latex,
+        cofactor_display: trace.cofactor_display,
+        cofactor_latex: trace.cofactor_latex,
+        derivative_display: trace.derivative_display,
+        derivative_latex: trace.derivative_latex,
+        scale: trace.scale,
+        symbolic_scale_display: trace.symbolic_scale_display,
+        symbolic_scale_latex: trace.symbolic_scale_latex,
     })
 }
 
@@ -14687,6 +14706,8 @@ struct PolynomialDerivativeTableMatch {
     derivative_display: String,
     derivative_latex: String,
     scale: BigRational,
+    symbolic_scale_display: Option<String>,
+    symbolic_scale_latex: Option<String>,
 }
 
 fn generate_polynomial_derivative_table_integration_substeps(
@@ -14744,25 +14765,18 @@ fn generate_polynomial_derivative_table_integration_substeps(
         .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
         .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
-    if !table_match.scale.is_one() {
-        substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
-                table_match.cofactor_display,
-                format!(
-                    "{} · {}",
-                    rational_display(&table_match.scale),
-                    table_match.derivative_display
-                ),
-            )
-            .with_before_latex(table_match.cofactor_latex)
-            .with_after_latex(format!(
-                "{}\\cdot {}",
-                rational_latex(&table_match.scale),
-                table_match.derivative_latex
-            )),
-        );
-    }
+    push_integration_constant_factor_adjustment_substep(
+        &mut substeps,
+        IntegrationConstantFactorAdjustment {
+            cofactor_display: &table_match.cofactor_display,
+            cofactor_latex: &table_match.cofactor_latex,
+            derivative_display: &table_match.derivative_display,
+            derivative_latex: &table_match.derivative_latex,
+            scale: &table_match.scale,
+            symbolic_scale_display: table_match.symbolic_scale_display.as_deref(),
+            symbolic_scale_latex: table_match.symbolic_scale_latex.as_deref(),
+        },
+    );
 
     substeps
 }
@@ -14800,18 +14814,41 @@ fn polynomial_derivative_table_from_factors(
             .enumerate()
             .filter_map(|(idx, factor)| (idx != kernel_index).then_some(*factor))
             .collect::<Vec<_>>();
-        let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
-            polynomial_derivative_cofactor_trace(ctx, negative, &remaining_factors, arg, var_name)?;
+        if let Some(trace) =
+            polynomial_derivative_cofactor_trace(ctx, negative, &remaining_factors, arg, var_name)
+        {
+            return Some(PolynomialDerivativeTableMatch {
+                builtin,
+                arg,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
+                symbolic_scale_display: trace.symbolic_scale_display,
+                symbolic_scale_latex: trace.symbolic_scale_latex,
+            });
+        }
 
-        return Some(PolynomialDerivativeTableMatch {
-            builtin,
+        if let Some(trace) = polynomial_derivative_cofactor_trace_with_symbolic_scale(
+            ctx,
+            negative,
+            &remaining_factors,
             arg,
-            cofactor_display,
-            cofactor_latex,
-            derivative_display,
-            derivative_latex,
-            scale,
-        });
+            var_name,
+        ) {
+            return Some(PolynomialDerivativeTableMatch {
+                builtin,
+                arg,
+                cofactor_display: trace.cofactor_display,
+                cofactor_latex: trace.cofactor_latex,
+                derivative_display: trace.derivative_display,
+                derivative_latex: trace.derivative_latex,
+                scale: trace.scale,
+                symbolic_scale_display: trace.symbolic_scale_display,
+                symbolic_scale_latex: trace.symbolic_scale_latex,
+            });
+        }
     }
 
     None
@@ -14831,13 +14868,31 @@ fn polynomial_derivative_kernel_arg(ctx: &Context, expr: ExprId) -> Option<(Buil
     }
 }
 
+struct PolynomialDerivativeCofactorTrace {
+    derivative_display: String,
+    derivative_latex: String,
+    scale: BigRational,
+    cofactor_display: String,
+    cofactor_latex: String,
+    symbolic_scale_display: Option<String>,
+    symbolic_scale_latex: Option<String>,
+}
+
+struct LinearDerivativeCofactorTrace {
+    derivative_display: String,
+    derivative_latex: String,
+    scale: BigRational,
+    cofactor_display: String,
+    cofactor_latex: String,
+}
+
 fn polynomial_derivative_cofactor_trace(
     ctx: &Context,
     negative: bool,
     cofactor_factors: &[ExprId],
     arg: ExprId,
     var_name: &str,
-) -> Option<(String, String, BigRational, String, String)> {
+) -> Option<PolynomialDerivativeCofactorTrace> {
     let arg_poly = polynomial_trace_arg_ignoring_independent_addends(ctx, arg, var_name)?;
     if arg_poly.degree() == 0 {
         return None;
@@ -14864,24 +14919,16 @@ fn polynomial_derivative_cofactor_trace(
 
     let (derivative_display, derivative_latex) =
         polynomial_display_and_latex(ctx, &derivative_poly);
-    Some((
+    Some(PolynomialDerivativeCofactorTrace {
         derivative_display,
         derivative_latex,
         scale,
-        display_expr(&scratch, cofactor_simplified),
-        latex_expr(&scratch, cofactor_simplified),
-    ))
+        cofactor_display: display_expr(&scratch, cofactor_simplified),
+        cofactor_latex: latex_expr(&scratch, cofactor_simplified),
+        symbolic_scale_display: None,
+        symbolic_scale_latex: None,
+    })
 }
-
-type PolynomialDerivativeCofactorTraceWithSymbolicScale = (
-    String,
-    String,
-    BigRational,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-);
 
 fn polynomial_derivative_cofactor_trace_with_symbolic_scale(
     ctx: &Context,
@@ -14889,7 +14936,7 @@ fn polynomial_derivative_cofactor_trace_with_symbolic_scale(
     cofactor_factors: &[ExprId],
     arg: ExprId,
     var_name: &str,
-) -> Option<PolynomialDerivativeCofactorTraceWithSymbolicScale> {
+) -> Option<PolynomialDerivativeCofactorTrace> {
     let arg_poly = polynomial_trace_arg_ignoring_independent_addends(ctx, arg, var_name)?;
     if arg_poly.degree() == 0 {
         return None;
@@ -14949,15 +14996,15 @@ fn polynomial_derivative_cofactor_trace_with_symbolic_scale(
 
     let (derivative_display, derivative_latex) =
         polynomial_display_and_latex(ctx, &derivative_poly);
-    Some((
+    Some(PolynomialDerivativeCofactorTrace {
         derivative_display,
         derivative_latex,
-        BigRational::one(),
-        display_expr(&scratch, cofactor_simplified),
-        latex_expr(&scratch, cofactor_simplified),
-        Some(display_expr(&scratch, scaled_symbolic_scale)),
-        Some(latex_expr(&scratch, scaled_symbolic_scale)),
-    ))
+        scale: BigRational::one(),
+        cofactor_display: display_expr(&scratch, cofactor_simplified),
+        cofactor_latex: latex_expr(&scratch, cofactor_simplified),
+        symbolic_scale_display: Some(display_expr(&scratch, scaled_symbolic_scale)),
+        symbolic_scale_latex: Some(latex_expr(&scratch, scaled_symbolic_scale)),
+    })
 }
 
 fn symbolic_linear_exact_derivative_cofactor_trace(
@@ -14966,7 +15013,7 @@ fn symbolic_linear_exact_derivative_cofactor_trace(
     numerator_factors: &[ExprId],
     arg: ExprId,
     var_name: &str,
-) -> Option<(String, String, BigRational, String, String)> {
+) -> Option<LinearDerivativeCofactorTrace> {
     let mut scratch = ctx.clone();
     let derivative = extract_non_unit_affine_var_coeff_with_sign(&scratch, arg, var_name)?;
 
@@ -14985,13 +15032,13 @@ fn symbolic_linear_exact_derivative_cofactor_trace(
         -BigRational::one()
     };
 
-    Some((
-        signed_affine_coeff_display(&scratch, derivative),
-        signed_affine_coeff_latex(&scratch, derivative),
+    Some(LinearDerivativeCofactorTrace {
+        derivative_display: signed_affine_coeff_display(&scratch, derivative),
+        derivative_latex: signed_affine_coeff_latex(&scratch, derivative),
         scale,
-        display_expr(&scratch, cofactor_simplified),
-        latex_expr(&scratch, cofactor_simplified),
-    ))
+        cofactor_display: display_expr(&scratch, cofactor_simplified),
+        cofactor_latex: latex_expr(&scratch, cofactor_simplified),
+    })
 }
 
 fn symbolic_linear_scaled_derivative_cofactor_trace(
@@ -15000,7 +15047,7 @@ fn symbolic_linear_scaled_derivative_cofactor_trace(
     numerator_factors: &[ExprId],
     arg: ExprId,
     var_name: &str,
-) -> Option<(String, String, BigRational, String, String)> {
+) -> Option<LinearDerivativeCofactorTrace> {
     let mut scratch = ctx.clone();
     let derivative = extract_non_unit_affine_var_coeff_with_sign(&scratch, arg, var_name)?;
 
@@ -15031,13 +15078,13 @@ fn symbolic_linear_scaled_derivative_cofactor_trace(
             return None;
         }
 
-        return Some((
-            signed_affine_coeff_display(&scratch, derivative),
-            signed_affine_coeff_latex(&scratch, derivative),
-            BigRational::one(),
-            display_expr(&scratch, cofactor_simplified),
-            latex_expr(&scratch, cofactor_simplified),
-        ));
+        return Some(LinearDerivativeCofactorTrace {
+            derivative_display: signed_affine_coeff_display(&scratch, derivative),
+            derivative_latex: signed_affine_coeff_latex(&scratch, derivative),
+            scale: BigRational::one(),
+            cofactor_display: display_expr(&scratch, cofactor_simplified),
+            cofactor_latex: latex_expr(&scratch, cofactor_simplified),
+        });
     }
 
     None
@@ -15214,24 +15261,23 @@ fn log_power_product_table_from_factors(
             .enumerate()
             .filter_map(|(idx, factor)| (idx != log_index).then_some(*factor))
             .collect::<Vec<_>>();
-        let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
-            polynomial_derivative_cofactor_trace(
-                ctx,
-                negative,
-                &remaining_factors,
-                base,
-                var_name,
-            )?;
+        let trace = polynomial_derivative_cofactor_trace(
+            ctx,
+            negative,
+            &remaining_factors,
+            base,
+            var_name,
+        )?;
 
         return Some(LogPowerProductTableMatch {
             power,
             natural_log,
             base,
-            cofactor_display,
-            cofactor_latex,
-            derivative_display,
-            derivative_latex,
-            scale,
+            cofactor_display: trace.cofactor_display,
+            cofactor_latex: trace.cofactor_latex,
+            derivative_display: trace.derivative_display,
+            derivative_latex: trace.derivative_latex,
+            scale: trace.scale,
         });
     }
 
@@ -16147,17 +16193,17 @@ fn trig_quotient_match_from_cofactor(
     cofactor_factors: &[ExprId],
     var_name: &str,
 ) -> Option<TrigQuotientTableMatch> {
-    let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
+    let trace =
         polynomial_derivative_cofactor_trace(ctx, negative, cofactor_factors, arg, var_name)?;
 
     Some(TrigQuotientTableMatch {
         kind,
         arg,
-        cofactor_display,
-        cofactor_latex,
-        derivative_display,
-        derivative_latex,
-        scale,
+        cofactor_display: trace.cofactor_display,
+        cofactor_latex: trace.cofactor_latex,
+        derivative_display: trace.derivative_display,
+        derivative_latex: trace.derivative_latex,
+        scale: trace.scale,
     })
 }
 
@@ -16240,41 +16286,18 @@ fn generate_reciprocal_trig_derivative_product_integration_substeps(
         .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
         .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
-    if let (Some(scale_display), Some(scale_latex)) = (
-        table_match.symbolic_scale_display.as_ref(),
-        table_match.symbolic_scale_latex.as_ref(),
-    ) {
-        substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
-                table_match.cofactor_display,
-                format!("{} · {}", scale_display, table_match.derivative_display),
-            )
-            .with_before_latex(table_match.cofactor_latex)
-            .with_after_latex(format!(
-                "{}\\cdot {}",
-                scale_latex, table_match.derivative_latex
-            )),
-        );
-    } else if !table_match.scale.is_one() {
-        substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
-                table_match.cofactor_display,
-                format!(
-                    "{} · {}",
-                    rational_display(&table_match.scale),
-                    table_match.derivative_display
-                ),
-            )
-            .with_before_latex(table_match.cofactor_latex)
-            .with_after_latex(format!(
-                "{}\\cdot {}",
-                rational_latex(&table_match.scale),
-                table_match.derivative_latex
-            )),
-        );
-    }
+    push_integration_constant_factor_adjustment_substep(
+        &mut substeps,
+        IntegrationConstantFactorAdjustment {
+            cofactor_display: &table_match.cofactor_display,
+            cofactor_latex: &table_match.cofactor_latex,
+            derivative_display: &table_match.derivative_display,
+            derivative_latex: &table_match.derivative_latex,
+            scale: &table_match.scale,
+            symbolic_scale_display: table_match.symbolic_scale_display.as_deref(),
+            symbolic_scale_latex: table_match.symbolic_scale_latex.as_deref(),
+        },
+    );
 
     substeps
 }
@@ -16358,32 +16381,31 @@ fn reciprocal_trig_derivative_product_div(
         }
     }
 
-    let (num_builtin, num_arg, mut cofactor_display, mut cofactor_latex, mut cofactor_poly) =
-        reciprocal_trig_derivative_product_numerator_cofactor(ctx, num, var_name)?;
+    let mut cofactor = reciprocal_trig_derivative_product_numerator_cofactor(ctx, num, var_name)?;
     let (den_builtin, den_arg) = trig_square_denominator_arg(ctx, den)?;
-    if compare_expr(ctx, num_arg, den_arg) != Ordering::Equal {
+    if compare_expr(ctx, cofactor.arg, den_arg) != Ordering::Equal {
         return None;
     }
 
-    let kind = match (num_builtin, den_builtin) {
+    let kind = match (cofactor.builtin, den_builtin) {
         (BuiltinFn::Sin, BuiltinFn::Cos) => ReciprocalTrigDerivativeProductKind::SecantTangent,
         (BuiltinFn::Cos, BuiltinFn::Sin) => ReciprocalTrigDerivativeProductKind::CosecantCotangent,
         _ => return None,
     };
 
     if let Some((scale_expr, scale)) = outer_scale {
-        cofactor_poly = scale_polynomial(&cofactor_poly, &scale);
-        cofactor_display = format!("{} · {}", display_expr(ctx, scale_expr), cofactor_display);
-        cofactor_latex = format!("{}\\cdot {}", latex_expr(ctx, scale_expr), cofactor_latex);
+        cofactor.polynomial = scale_polynomial(&cofactor.polynomial, &scale);
+        cofactor.display = format!("{} · {}", display_expr(ctx, scale_expr), cofactor.display);
+        cofactor.latex = format!("{}\\cdot {}", latex_expr(ctx, scale_expr), cofactor.latex);
     }
 
     reciprocal_trig_derivative_product_match_from_cofactor(
         ctx,
         kind,
-        num_arg,
-        cofactor_display,
-        cofactor_latex,
-        cofactor_poly,
+        cofactor.arg,
+        cofactor.display,
+        cofactor.latex,
+        cofactor.polynomial,
         var_name,
     )
 }
@@ -16514,45 +16536,42 @@ fn reciprocal_trig_derivative_product_symbolic_linear_exact_div(
         _ => return None,
     };
 
-    if let Some((derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex)) =
-        symbolic_linear_exact_derivative_cofactor_trace(
-            ctx,
-            cofactor_negative,
-            &cofactor_factors,
-            num_arg,
-            var_name,
-        )
-    {
+    if let Some(trace) = symbolic_linear_exact_derivative_cofactor_trace(
+        ctx,
+        cofactor_negative,
+        &cofactor_factors,
+        num_arg,
+        var_name,
+    ) {
         return Some(ReciprocalTrigDerivativeProductMatch {
             kind,
             arg: num_arg,
-            cofactor_display,
-            cofactor_latex,
-            derivative_display,
-            derivative_latex,
-            scale,
+            cofactor_display: trace.cofactor_display,
+            cofactor_latex: trace.cofactor_latex,
+            derivative_display: trace.derivative_display,
+            derivative_latex: trace.derivative_latex,
+            scale: trace.scale,
             symbolic_scale_display: None,
             symbolic_scale_latex: None,
         });
     }
 
-    let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
-        symbolic_linear_scaled_derivative_cofactor_trace(
-            ctx,
-            cofactor_negative,
-            &cofactor_factors,
-            num_arg,
-            var_name,
-        )?;
+    let trace = symbolic_linear_scaled_derivative_cofactor_trace(
+        ctx,
+        cofactor_negative,
+        &cofactor_factors,
+        num_arg,
+        var_name,
+    )?;
 
     Some(ReciprocalTrigDerivativeProductMatch {
         kind,
         arg: num_arg,
-        cofactor_display,
-        cofactor_latex,
-        derivative_display,
-        derivative_latex,
-        scale,
+        cofactor_display: trace.cofactor_display,
+        cofactor_latex: trace.cofactor_latex,
+        derivative_display: trace.derivative_display,
+        derivative_latex: trace.derivative_latex,
+        scale: trace.scale,
         symbolic_scale_display: None,
         symbolic_scale_latex: None,
     })
@@ -16589,32 +16608,39 @@ fn reciprocal_trig_derivative_product_numerator_expr_cofactor(
     Some((builtin, arg, negative, cofactor_factors))
 }
 
+struct ReciprocalTrigNumeratorCofactor {
+    builtin: BuiltinFn,
+    arg: ExprId,
+    display: String,
+    latex: String,
+    polynomial: Polynomial,
+}
+
 fn reciprocal_trig_derivative_product_numerator_cofactor(
     ctx: &Context,
     expr: ExprId,
     var_name: &str,
-) -> Option<(BuiltinFn, ExprId, String, String, Polynomial)> {
+) -> Option<ReciprocalTrigNumeratorCofactor> {
     if let Some((builtin, arg)) = unary_builtin_arg(ctx, expr) {
         if matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) {
-            return Some((
+            return Some(ReciprocalTrigNumeratorCofactor {
                 builtin,
                 arg,
-                "1".to_string(),
-                "1".to_string(),
-                Polynomial::one(var_name.to_string()),
-            ));
+                display: "1".to_string(),
+                latex: "1".to_string(),
+                polynomial: Polynomial::one(var_name.to_string()),
+            });
         }
     }
 
-    let (builtin, arg, cofactor_expr, cofactor_poly) =
-        trig_factor_with_polynomial_cofactor(ctx, expr, var_name)?;
-    Some((
-        builtin,
-        arg,
-        display_expr(ctx, cofactor_expr),
-        latex_expr(ctx, cofactor_expr),
-        cofactor_poly,
-    ))
+    let cofactor = trig_factor_with_polynomial_cofactor(ctx, expr, var_name)?;
+    Some(ReciprocalTrigNumeratorCofactor {
+        builtin: cofactor.builtin,
+        arg: cofactor.arg,
+        display: display_expr(ctx, cofactor.expr),
+        latex: latex_expr(ctx, cofactor.expr),
+        polynomial: cofactor.polynomial,
+    })
 }
 
 fn reciprocal_trig_derivative_product_match_from_cofactor(
@@ -16929,15 +16955,7 @@ fn sqrt_chain_reciprocal_trig_match_from_cofactor(
     denominator_factors: &[ExprId],
     var_name: &str,
 ) -> Option<ReciprocalTrigDerivativeProductMatch> {
-    let (
-        derivative_display,
-        derivative_latex,
-        scale,
-        cofactor_display,
-        cofactor_latex,
-        symbolic_scale_display,
-        symbolic_scale_latex,
-    ) = sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
+    let trace = sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
         ctx,
         arg,
         numerator_negative,
@@ -16949,13 +16967,13 @@ fn sqrt_chain_reciprocal_trig_match_from_cofactor(
     Some(ReciprocalTrigDerivativeProductMatch {
         kind,
         arg,
-        cofactor_display,
-        cofactor_latex,
-        derivative_display,
-        derivative_latex,
-        scale,
-        symbolic_scale_display,
-        symbolic_scale_latex,
+        cofactor_display: trace.cofactor_display,
+        cofactor_latex: trace.cofactor_latex,
+        derivative_display: trace.derivative_display,
+        derivative_latex: trace.derivative_latex,
+        scale: trace.scale,
+        symbolic_scale_display: trace.symbolic_scale_display,
+        symbolic_scale_latex: trace.symbolic_scale_latex,
     })
 }
 
@@ -16966,16 +16984,8 @@ fn sqrt_chain_cofactor_derivative_trace(
     numerator_factors: &[ExprId],
     denominator_factors: &[ExprId],
     var_name: &str,
-) -> Option<(String, String, BigRational, String, String)> {
-    let (
-        derivative_display,
-        derivative_latex,
-        scale,
-        cofactor_display,
-        cofactor_latex,
-        symbolic_scale_display,
-        _,
-    ) = sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
+) -> Option<SqrtChainCofactorTrace> {
+    let trace = sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
         ctx,
         arg,
         numerator_negative,
@@ -16983,16 +16993,10 @@ fn sqrt_chain_cofactor_derivative_trace(
         denominator_factors,
         var_name,
     )?;
-    if symbolic_scale_display.is_some() {
+    if trace.symbolic_scale_display.is_some() || trace.symbolic_scale_latex.is_some() {
         return None;
     }
-    Some((
-        derivative_display,
-        derivative_latex,
-        scale,
-        cofactor_display,
-        cofactor_latex,
-    ))
+    Some(trace)
 }
 
 fn sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
@@ -17078,26 +17082,26 @@ fn sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
         return None;
     }
 
-    Some((
-        display_expr(&scratch, derivative_expr),
-        latex_expr(&scratch, derivative_expr),
+    Some(SqrtChainCofactorTrace {
+        derivative_display: display_expr(&scratch, derivative_expr),
+        derivative_latex: latex_expr(&scratch, derivative_expr),
         scale,
-        display_expr(&scratch, cofactor_simplified),
-        latex_expr(&scratch, cofactor_simplified),
+        cofactor_display: display_expr(&scratch, cofactor_simplified),
+        cofactor_latex: latex_expr(&scratch, cofactor_simplified),
         symbolic_scale_display,
         symbolic_scale_latex,
-    ))
+    })
 }
 
-type SqrtChainCofactorTrace = (
-    String,
-    String,
-    BigRational,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-);
+struct SqrtChainCofactorTrace {
+    derivative_display: String,
+    derivative_latex: String,
+    scale: BigRational,
+    cofactor_display: String,
+    cofactor_latex: String,
+    symbolic_scale_display: Option<String>,
+    symbolic_scale_latex: Option<String>,
+}
 
 struct SqrtChainSymbolicScaleTraceInput<'a> {
     numerator_negative: bool,

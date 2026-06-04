@@ -29,7 +29,7 @@ use crate::symbolic_integration_log_support::{
     affine_constant_base_log_antiderivative_from_slope, constant_base_log_derivative_correction,
     ln_abs, positive_integer_constant_log_base_derivative_correction,
     positive_integer_constant_log_base_ln, scaled_ln_abs_product_form,
-    scaled_ln_abs_with_negative_shortcut, valid_constant_log_base_ln_from_rational_value,
+    valid_constant_log_base_ln_from_rational_value,
 };
 use crate::symbolic_integration_polynomial_support::{
     constant_derivative_scale, constant_polynomial_ratio,
@@ -3944,7 +3944,7 @@ fn hyperbolic_log_derivative_ratio_parts(
     num: ExprId,
     den: ExprId,
     var: &str,
-) -> Option<(ExprId, BigRational)> {
+) -> Option<(ExprId, ExprId)> {
     let (den_builtin, arg) = match ctx.get(den) {
         Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id)?, args[0]),
         _ => return None,
@@ -3965,7 +3965,7 @@ fn hyperbolic_log_derivative_ratio_parts(
         |ctx, numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal,
     )?;
 
-    let scale = constant_derivative_scale(ctx, cofactor, arg, var)?;
+    let scale = symbolic_linear_cofactor_scale_expr(ctx, cofactor, arg, var)?;
 
     Some((den, scale))
 }
@@ -3973,9 +3973,44 @@ fn hyperbolic_log_derivative_ratio_parts(
 fn hyperbolic_log_derivative_ratio_antiderivative_from_parts(
     ctx: &mut Context,
     den: ExprId,
-    scale: BigRational,
+    scale: ExprId,
 ) -> ExprId {
-    scaled_ln_abs_product_form(ctx, den, scale)
+    let log_arg = cas_ast::hold::wrap_hold(ctx, den);
+    let log_abs = ln_abs(ctx, log_arg);
+    scale_expr_reciprocal_integration_result(ctx, scale, log_abs)
+}
+
+fn hyperbolic_tanh_log_cosh_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (arg, scale) = hyperbolic_tanh_log_cosh_parts(ctx, expr, var)?;
+    let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
+    let log_abs = ln_abs(ctx, cosh_arg);
+    Some(scale_expr_reciprocal_integration_result(
+        ctx, scale, log_abs,
+    ))
+}
+
+fn hyperbolic_tanh_log_cosh_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let factors = mul_leaves(ctx, expr);
+    let (tanh_index, arg) = indexed_hyperbolic_tangent_factor_arg(ctx, &factors)?;
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
+
+    let cofactor = factor_product_excluding_index(ctx, &factors, tanh_index);
+    let scale = symbolic_linear_cofactor_scale_expr(ctx, cofactor, arg, var)?;
+    if is_number(ctx, scale, 0) {
+        return None;
+    }
+
+    Some((arg, scale))
 }
 
 fn trig_log_derivative_ratio_antiderivative(
@@ -3985,7 +4020,11 @@ fn trig_log_derivative_ratio_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     let (_, _, scaled) = trig_log_derivative_ratio_scale(ctx, num, den, var)?;
-    Some(scaled_ln_abs_with_negative_shortcut(ctx, den, scaled))
+    let log_arg = cas_ast::hold::wrap_hold(ctx, den);
+    let log_abs = ln_abs(ctx, log_arg);
+    Some(scale_expr_reciprocal_integration_result(
+        ctx, scaled, log_abs,
+    ))
 }
 
 fn trig_log_derivative_ratio_scale(
@@ -3993,7 +4032,7 @@ fn trig_log_derivative_ratio_scale(
     num: ExprId,
     den: ExprId,
     var: &str,
-) -> Option<(BuiltinFn, ExprId, BigRational)> {
+) -> Option<(BuiltinFn, ExprId, ExprId)> {
     let (den_builtin, arg) = match ctx.get(den) {
         Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id)?, args[0]),
         _ => return None,
@@ -4004,10 +4043,10 @@ fn trig_log_derivative_ratio_scale(
     }
 
     let cofactor = trig_log_derivative_ratio_cofactor(ctx, num, numerator_builtin, arg)?;
-    let scale = constant_derivative_scale(ctx, cofactor, arg, var)?;
+    let scale = symbolic_linear_cofactor_scale_expr(ctx, cofactor, arg, var)?;
 
     let scaled = match den_builtin {
-        BuiltinFn::Cos => -scale,
+        BuiltinFn::Cos => negate_scalar_expr(ctx, scale),
         BuiltinFn::Sin => scale,
         _ => return None,
     };
@@ -16668,6 +16707,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = hyperbolic_tanh_log_cosh_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = monomial_times_ln_var_by_parts_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -18369,6 +18412,20 @@ mod tests {
         let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
         assert_eq!(conditions.len(), 1);
         assert_eq!(rendered(&ctx, conditions[0]), "sin(x^4 - x^2)");
+
+        let expr = parse("(2*k*x*sin(x^2+b))/cos(x^2+b)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-k * ln(|cos(x^2 + b)|)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(x^2 + b)");
+
+        let expr = parse("(2*k*x*cos(x^2+b))/sin(x^2+b)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "k * ln(|sin(x^2 + b)|)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(x^2 + b)");
     }
 
     #[test]
@@ -18397,6 +18454,14 @@ mod tests {
         let expr = parse("2*x*tanh(x^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "ln(|cosh(x^2)|)");
+
+        let expr = parse("2*k*x*tanh(x^2+b)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "k * ln(|cosh(x^2 + b)|)");
+
+        let expr = parse("-2*k*x*tanh(x^2+b)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-k * ln(|cosh(x^2 + b)|)");
     }
 
     #[test]
@@ -18429,6 +18494,10 @@ mod tests {
         let expr = parse("2*x*cosh(x^2)/sinh(x^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "ln(|sinh(x^2)|)");
+
+        let expr = parse("2*k*x*sinh(x^2+b)/cosh(x^2+b)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "k * ln(|cosh(x^2 + b)|)");
     }
 
     #[test]

@@ -365,6 +365,42 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="abs_log_source_condition",
     ),
     IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_tangent_log_derivative_ratio_domain",
+        expr="integrate(2*k*x*tan(x^2+b), x)",
+        expected_result="-(k·ln(|cos(x^2 + b)|))",
+        expected_derivative_equivalent_to="2*k*x*tan(x^2+b)",
+        expected_derivative_required_display=("cos(x^2 + b) ≠ 0",),
+        expected_required_display=("cos(x^2 + b) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir tangente como seno entre coseno",
+            "Sacar constante de una fracción",
+            "Usar sustitución",
+        ),
+        family="trig_log_derivative_ratio",
+        argument_regime="symbolic_external_scale_polynomial_trig_log_derivative",
+        domain_regime="trig_log_derivative_pole_required",
+        trace_regime="symbolic_external_scale_trig_log_derivative_substitution",
+        presentation_regime="symbolic_external_scale_abs_log_trig_denominator",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_cotangent_log_derivative_ratio_domain",
+        expr="integrate(2*k*x*cot(x^2+b), x)",
+        expected_result="k·ln(|sin(x^2 + b)|)",
+        expected_derivative_equivalent_to="2*k*x*cot(x^2+b)",
+        expected_derivative_required_display=("sin(x^2 + b) ≠ 0",),
+        expected_required_display=("sin(x^2 + b) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cotangente como coseno entre seno",
+            "Sacar constante de una fracción",
+            "Usar sustitución",
+        ),
+        family="trig_log_derivative_ratio",
+        argument_regime="symbolic_external_scale_polynomial_trig_log_derivative",
+        domain_regime="trig_log_derivative_pole_required",
+        trace_regime="symbolic_external_scale_trig_log_derivative_substitution",
+        presentation_regime="symbolic_external_scale_abs_log_trig_denominator",
+    ),
+    IntegrateCommandMatrixCase(
         name="explicit_reciprocal_hyperbolic_tangent_verified_log_domain",
         expr="integrate(2*x/tanh(x^2), x)",
         expected_result="ln(|sinh(x^2)|)",
@@ -400,6 +436,39 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="explicit_hyperbolic_tangent_presimplified_condition_dedupe",
         trace_regime="presimplified_reciprocal_hyperbolic_tangent_verified_substitution",
         presentation_regime="abs_log_hyperbolic_condition_dedupe",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_hyperbolic_tanh_log_derivative_ratio_positive",
+        expr="integrate(2*k*x*sinh(x^2+b)/cosh(x^2+b), x)",
+        expected_result="k·ln(cosh(x^2 + b))",
+        expected_derivative_equivalent_to="2*k*x*sinh(x^2+b)/cosh(x^2+b)",
+        expected_step_substrings=(
+            "Sacar constante de una fracción",
+            "Usar sustitución",
+            "Abs Under Positivity",
+        ),
+        family="hyperbolic_log_derivative_ratio",
+        argument_regime="symbolic_external_scale_polynomial_hyperbolic_log_derivative",
+        domain_regime="unconditional_cosh_positive",
+        trace_regime="symbolic_external_scale_hyperbolic_log_derivative_substitution",
+        presentation_regime="symbolic_external_scale_positive_cosh_log",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
+        expr="integrate(2*k*x*tanh(x^2+b), x)",
+        expected_result="k·ln(cosh(x^2 + b))",
+        expected_derivative_equivalent_to="2*k*x*tanh(x^2+b)",
+        expected_step_substrings=(
+            "Usar la regla de tanh(u) -> ln(cosh(u))",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+            "Abs Under Positivity",
+        ),
+        family="hyperbolic_tanh_log_derivative",
+        argument_regime="symbolic_external_scale_polynomial_hyperbolic_tanh",
+        domain_regime="unconditional_cosh_positive",
+        trace_regime="symbolic_external_scale_hyperbolic_tanh_substitution",
+        presentation_regime="symbolic_external_scale_positive_cosh_log",
     ),
     IntegrateCommandMatrixCase(
         name="additive_trig_pole_residual_domain",
@@ -2026,6 +2095,60 @@ def run_case(
             elif derivative_ok is not True:
                 error = "antiderivative verification ok was not true"
             elif (
+                case.expected_derivative_equivalent_to is not None
+                and derivative_equivalence_result not in {None, "0"}
+            ):
+                simplified_command = [
+                    str(cas_cli),
+                    "eval",
+                    f"simplify({derivative_equivalence_result})",
+                    "--format",
+                    "json",
+                ]
+                simplified_process = subprocess.Popen(
+                    simplified_command,
+                    cwd=ROOT,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    start_new_session=True,
+                )
+                try:
+                    simplified_stdout, simplified_stderr = simplified_process.communicate(
+                        timeout=timeout_seconds
+                    )
+                except subprocess.TimeoutExpired:
+                    terminate_process_group(simplified_process)
+                    simplified_stdout, simplified_stderr = simplified_process.communicate()
+                    error = "antiderivative verification timeout"
+                else:
+                    derivative_stderr += simplified_stderr
+                    simplified_parsed, simplified_parse_error = parse_json(simplified_stdout)
+                    simplified_result = (
+                        simplified_parsed.get("result")
+                        if isinstance(simplified_parsed, dict)
+                        else None
+                    )
+                    simplified_ok = (
+                        simplified_parsed.get("ok")
+                        if isinstance(simplified_parsed, dict)
+                        else None
+                    )
+                    if simplified_process.returncode != 0:
+                        error = (
+                            "antiderivative verification "
+                            f"returncode={simplified_process.returncode}"
+                        )
+                    elif simplified_parse_error:
+                        error = f"antiderivative verification {simplified_parse_error}"
+                    elif simplified_ok is not True:
+                        error = "antiderivative verification ok was not true"
+                    else:
+                        derivative_equivalence_result = simplified_result
+
+            if error is not None:
+                pass
+            elif (
                 case.expected_derivative_equivalent_to is None
                 and derivative_result != case.expected_derivative_result
             ):
@@ -2146,6 +2269,12 @@ def trig_hyperbolic_policy_cluster(
         return "block7_explicit_reciprocal_hyperbolic_tangent"
     if case.family == "explicit_reciprocal_trig_substitution":
         return "block7_explicit_reciprocal_trig_tangent"
+    if case.family == "trig_log_derivative_ratio":
+        return "block7_trig_log_derivative_ratio"
+    if case.family == "hyperbolic_log_derivative_ratio":
+        return "block7_hyperbolic_log_derivative_ratio"
+    if case.family == "hyperbolic_tanh_log_derivative":
+        return "block7_hyperbolic_tanh_log_derivative"
     if case.family == "sqrt_chain_trig_log":
         return "block7_sqrt_chain_trig_log"
     if case.family == "sqrt_chain_hyperbolic_log":
