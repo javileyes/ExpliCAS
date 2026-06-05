@@ -189,6 +189,27 @@ verticals into a serious real-domain calculus surface:
 - series/asymptotics later, after limits and differentiation have stronger
   domain and trace support
 
+Interpret green calculus scorecards as retention evidence, not as proof of
+general maturity. The remaining work is mostly systematic:
+
+- make differentiation uniform across elementary real-domain families,
+  preserving domain requirements and readable post-calculus forms
+- keep limits conservative while expanding policy-backed finite, infinity,
+  endpoint, one-sided, discontinuity, removable-singularity, and residual
+  regimes
+- grow integration through verified families with explicit domain and constant
+  policy, not through unbounded integration search
+- make didactic traces explain nontrivial calculus moves instead of returning
+  answer-only shortcuts
+- reduce architecture pressure when repeated local helpers obscure ownership of
+  detection, domain reasoning, transformation, verification, presentation, or
+  steps
+
+For planning purposes, treat a serious educational calculus surface as a
+dozens-of-retained-cycles target and a mature elementary real-domain calculus
+surface as a substantially longer campaign. A universal integration prover is
+not a bounded goal of this automation loop.
+
 Post-calculus presentation is part of this strategy, but it is not a license to
 make the global simplifier prettier. The selector should treat presentation as a
 calculus concern only when a supported `diff`, `limit`, or `integrate` result is
@@ -917,6 +938,92 @@ to record:
 
 This prevents the campaign from forgetting good local hypotheses that only need
 better scoping.
+
+## Calculus Runtime Budgets Are Block-Level Guardrails
+
+`embedded_equivalence_context` remains the broadest runtime proxy for common
+engine traffic, but it is not enough once `diff`, `limit`, and `integrate`
+become first-class public surfaces.
+
+Calculus lanes should also be interpreted as runtime guardrails, not only as
+semantic green/red tests. A calculus scorecard that gains support while becoming
+slower may be acceptable; a calculus scorecard that becomes slower without
+retained coverage, domain safety, verification value, or didactic value is
+usually a regression.
+
+The useful calculus runtime numbers are:
+
+- total elapsed time for the lane
+- `avg_case_ms` normalized by matrix size or contract count
+- p95/max case time when available
+- per-family and per-regime hot spots
+- whether slow cases are supported, residual, or undefined
+- whether antiderivative/differentiation verification cost is the driver
+
+When the scorecard does not yet expose one of those numbers, prefer adding that
+observability over guessing from wall-clock time.
+
+### Retention Heuristic
+
+Use runtime deltas relative to a recent baseline, and evaluate them against the
+capability retained by the change.
+
+Accept by default when:
+
+- `failed = 0`, no timeouts, no stack overflow, no nontermination
+- `avg_case_ms` is flat or improves
+- the change increases supported cases, domain safety, verification, didactic
+  quality, or removes residuals
+
+Accept with explicit justification when:
+
+- a broad calculus lane slows by roughly 10-20%
+- the slowdown is localized to the family being generalized
+- the change adds a reusable public capability or a materially stronger domain
+  policy
+- a follow-up runtime candidate is clear if the cost remains high
+
+Reject or defer when:
+
+- a broad lane slows by more than roughly 20-30% without a major reusable win
+- embedded runtime regresses materially as collateral damage
+- the only gain is a near-duplicate matrix row or presentation preference
+- a residual/unsupported path becomes expensive without improving user-facing
+  behavior
+- the change hides route churn behind a green result
+
+Phrase the decision as:
+
+```text
+runtime_delta / retained_capability_delta
+```
+
+For example, a small `integrate_command_matrix` slowdown may be acceptable if it
+adds a verified integration family with real domain conditions. The same
+slowdown is not acceptable for one syntactic variant of an already-covered
+family.
+
+### Calculus Runtime Observability Targets
+
+The scorecard should grow toward explicit runtime reporting for:
+
+- `diff_command_matrix`
+- `limit_command_matrix`
+- `integrate_command_matrix`
+- public contract lanes for `diff`, `limit`, and `integrate`
+
+Preferred output:
+
+- elapsed seconds
+- case count
+- `avg_case_ms`
+- slow case count
+- timeout count
+- top slow case IDs
+- family/regime breakdown for the slowest cases
+
+This makes calculus runtime comparable to embedded runtime and prevents broad
+generality work from silently turning into route churn.
 
 ## Why The Embedded Context Corpus Must Keep Growing
 
@@ -1764,6 +1871,9 @@ Next expansions that make sense:
 - promote recurring hotspot slices into named corpora rather than keeping them as ad hoc notes
 - add explicit runtime-budget alerts for suites that remain semantically green
   but become materially slower
+- add normalized calculus runtime metrics (`avg_case_ms`, p95/max case time,
+  top slow case IDs, family/regime breakdown) for `diff`, `limit`, and
+  `integrate` matrices and public contracts
 
 ## Commands
 

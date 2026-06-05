@@ -92,6 +92,55 @@ Reject or defer candidates that only add one more syntactic variant unless the
 variant reveals a new domain regime, rule interaction, didactic gap, runtime
 cliff, or public behavior class.
 
+## Current Maturity Gap
+
+The calculus surface is now credible for curated, real-domain educational
+traffic, but it should not be treated as mature or general merely because the
+current promoted matrices are green.
+
+The practical status is:
+
+- `diff` has a serious supported slice and is the closest command to systematic
+  real-domain coverage, but it still needs broader uniformity across general
+  powers, products, quotients, chains, absolute values, logs, trig,
+  hyperbolic, inverse families, domain retention, and post-calculus
+  presentation.
+- `limit` is useful but intentionally conservative. It still needs more policy
+  depth around one-sided behavior, endpoints, discontinuities, removable
+  singularities, continuity evidence, infinity dominance, empty domains, and
+  explanatory residuals.
+- `integrate` has many verified table, substitution, rational, trig,
+  hyperbolic, radical, and inverse-family slices, but it remains narrower than
+  differentiation by design. Maturity means verified families with explicit
+  domain and constant policy, not broad integration search.
+- didactic quality is part of calculus maturity: nontrivial public results
+  should show useful rule names, `u`/`du` evidence, domain or pole reasoning,
+  final presentation choices, or a clear residual explanation.
+- architecture remains a first-order risk. If detection, domain reasoning,
+  transformation, verification, presentation, and steps keep being solved
+  locally inside large files, the next capability cycle becomes less safe and
+  less general.
+
+Use these planning horizons as rough engineering heuristics, not commitments:
+
+- a serious educational one-variable real-domain calculus surface likely needs
+  dozens more retained ROI cycles, mostly expanding and consolidating existing
+  families rather than adding isolated examples
+- a mature elementary real-domain calculus surface likely needs on the order of
+  one hundred or more retained cycles because the hard work is systematic
+  coverage, domain policy, verification, didactic trace quality, and
+  architecture
+- a universal integration engine is not a bounded target for this campaign;
+  integration should continue to grow through verified table, substitution,
+  rational, by-parts, trig/hyperbolic, radical, and inverse-family regimes with
+  conservative residuals
+
+This gap assessment should influence ROI selection. A new green row is valuable
+only when it moves the engine toward a coherent block capability. If a proposed
+row does not improve family generality, domain safety, verification, didactic
+quality, or architecture, it should usually be rejected as another isolated
+example.
+
 ## Current Risk: Architecture Pressure From Calculus Generalization
 
 Recent retained and rejected calculus cycles show a new primary weakness: many
@@ -624,6 +673,48 @@ Typical calculus validation:
 
 Do not treat a successful calculus unit test as sufficient when the change adds
 new broad simplification behavior.
+
+## Calculus Runtime Policy
+
+As the calculus engine generalizes, runtime must be interpreted per block, not
+only through the global embedded equivalence lane.
+
+`embedded_equivalence_context` is still the broadest guardrail for common
+simplification/equivalence traffic. Calculus needs additional runtime visibility
+because `diff`, `limit`, and `integrate` have different cost centers:
+
+- `diff`: rule dispatch, chain/product/quotient expansion, domain collection,
+  and final presentation cleanup
+- `limit`: finite/infinite routing, domain path checks, one-sided policy, and
+  safe pre-simplification
+- `integrate`: method selection, substitution detection, partial fractions,
+  residual policy, and verification by differentiation
+
+For calculus lanes, prefer normalized metrics:
+
+- elapsed seconds
+- case count
+- `avg_case_ms`
+- p95/max case time when available
+- top slow case IDs
+- family/regime breakdown of slow cases
+
+Runtime regressions are acceptable only when the retained mathematical value is
+clear. Use this rule of thumb:
+
+- flat or improved runtime with more supported/domain-safe cases is a clean win
+- roughly 10-20% slowdown can be retained if it unlocks a reusable public
+  family, stronger domain policy, or verified integration method
+- more than roughly 20-30% slowdown should be rejected or deferred unless the
+  capability gain is major and the cost is localized
+- any embedded collateral slowdown must be justified separately
+
+Do not accept a calculus change that merely adds a near-duplicate matrix row,
+presentation preference, or residual wrapper while making a broad calculus lane
+materially slower.
+
+When runtime worsens but the capability is valuable, document the tradeoff in
+the cycle report and leave the next runtime candidate explicit.
 
 ## Guardrails
 

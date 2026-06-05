@@ -20,10 +20,11 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_limit_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 90)
+        self.assertEqual(len(cases), 98)
         names = {case.name for case in cases}
         self.assertIn("finite_removable_rational_cancellation", names)
         self.assertIn("finite_rational_simple_pole_residual", names)
+        self.assertIn("finite_even_order_rational_pole_bilateral_supported", names)
         self.assertIn("finite_one_sided_removable_rational_cancellation", names)
         self.assertIn(
             "finite_one_sided_removable_rational_cancellation_with_nonlocal_pole",
@@ -35,6 +36,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn("finite_one_sided_abs_orientation_quotient_supported", names)
+        self.assertIn("finite_abs_even_order_pole_bilateral_supported", names)
         self.assertIn("finite_one_sided_log_zero_endpoint_supported", names)
         self.assertIn(
             "finite_one_sided_binary_log_constant_base_less_than_one_endpoint_supported",
@@ -80,6 +82,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn("finite_log_argument_zero_endpoint_residual", names)
+        self.assertIn("finite_log_exact_e_point_required_condition", names)
         self.assertIn("finite_fixed_base_log_argument_zero_endpoint_residual", names)
         self.assertIn(
             "finite_binary_log_constant_base_argument_zero_endpoint_residual",
@@ -109,6 +112,20 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("finite_discontinuous_sign_residual_presentation_cleanup", names)
         self.assertIn("finite_abs_orientation_quotient_residual_boundary", names)
         self.assertIn("finite_negative_integer_power_nonzero_root_base", names)
+        self.assertIn("finite_trig_sine_even_power_pole_bilateral_supported", names)
+        self.assertIn(
+            "finite_trig_sine_special_point_even_power_pole_bilateral_supported",
+            names,
+        )
+        self.assertIn(
+            "finite_trig_sine_rational_pi_multiple_even_power_pole_bilateral_supported",
+            names,
+        )
+        self.assertIn("finite_trig_cosine_even_power_pole_bilateral_supported", names)
+        self.assertIn(
+            "finite_trig_cosine_special_point_even_power_pole_bilateral_supported",
+            names,
+        )
         self.assertIn("finite_trig_special_angle_structural_domain", names)
         self.assertIn("finite_trig_table_undefined_pole_residual", names)
         self.assertIn("finite_reciprocal_trig_sine_pole_residual", names)
@@ -153,11 +170,11 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("infinity_bounded_over_divergent_domain_conflict_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "point_regime"),
-            {"finite": 41, "finite_one_sided": 22, "infinity": 27},
+            {"finite": 49, "finite_one_sided": 22, "infinity": 27},
         )
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 23, "supported": 66, "undefined": 1},
+            {"residual": 23, "supported": 74, "undefined": 1},
         )
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
@@ -174,7 +191,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block3_real_domain_limits": 66,
+                "block3_real_domain_limits": 74,
                 "block9_residuals_and_non_goals": 24,
             },
         )
@@ -182,7 +199,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_calculus_block_gates(cases),
             {
                 "didactic_trace_and_limit_policy": 31,
-                "domain_conditions_and_limit_policy": 35,
+                "domain_conditions_and_limit_policy": 43,
                 "explicit_undefined_domain_policy": 1,
                 "safe_residual_policy": 23,
             },
@@ -197,6 +214,13 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_binary_log_resolved_base_unit_denominator_and_base_domain": 1,
                 "finite_binary_log_resolved_radical_base_unit_denominator_base_and_radical_domain": 1,
                 "finite_binary_log_variable_base_unit_denominator_and_base_domain": 1,
+                "finite_bilateral_abs_even_order_pole_domain": 1,
+                "finite_bilateral_even_order_rational_pole_domain": 1,
+                "finite_bilateral_trig_cosine_power_pole_domain": 1,
+                "finite_bilateral_trig_cosine_special_point_power_pole_domain": 1,
+                "finite_bilateral_trig_sine_power_pole_domain": 1,
+                "finite_bilateral_trig_sine_rational_pi_multiple_power_pole_domain": 1,
+                "finite_bilateral_trig_sine_special_point_power_pole_domain": 1,
                 "finite_boundary_residual_domain": 2,
                 "finite_empty_punctured_endpoint_residual_domain": 1,
                 "finite_empty_punctured_inverse_trig_endpoint_residual_domain": 1,
@@ -208,6 +232,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_inverse_trig_bilateral_lower_endpoint_domain": 1,
                 "finite_inverse_trig_bilateral_upper_endpoint_domain": 1,
                 "finite_log_base_argument_domain": 1,
+                "finite_log_exact_e_point_positive_domain": 1,
                 "finite_log_endpoint_residual_domain": 1,
                 "finite_log_rational_positive_sublimit_domain": 1,
                 "finite_log_unit_denominator_domain": 1,
@@ -258,7 +283,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             sum(1 for case in cases if case.expected_step_substrings),
-            90,
+            98,
         )
         self.assertEqual(
             [

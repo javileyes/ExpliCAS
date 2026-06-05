@@ -116,6 +116,62 @@ fn build_prepared_eval_request_parses_finite_limit_point_as_residual_action() {
 }
 
 #[test]
+fn build_prepared_eval_request_parses_pi_finite_limit_point() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_input::build_prepared_eval_request_for_input(
+        "limit(sin(x), x, pi)",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::Eval { action, .. } => match action {
+            crate::eval_input::EvalNonSolveAction::Limit { var, approach } => {
+                assert_eq!(var, "x");
+                match approach {
+                    cas_math::limit_types::Approach::Finite(point) => match ctx.get(point) {
+                        cas_ast::Expr::Constant(cas_ast::Constant::Pi) => {}
+                        other => panic!("expected pi point, got {other:?}"),
+                    },
+                    other => panic!("expected finite limit approach, got {other:?}"),
+                }
+            }
+            _ => panic!("expected limit action"),
+        },
+        _ => panic!("expected eval variant"),
+    }
+}
+
+#[test]
+fn build_prepared_eval_request_parses_e_finite_limit_point() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_input::build_prepared_eval_request_for_input(
+        "limit(ln(x), x, e)",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::Eval { action, .. } => match action {
+            crate::eval_input::EvalNonSolveAction::Limit { var, approach } => {
+                assert_eq!(var, "x");
+                match approach {
+                    cas_math::limit_types::Approach::Finite(point) => match ctx.get(point) {
+                        cas_ast::Expr::Constant(cas_ast::Constant::E) => {}
+                        other => panic!("expected e point, got {other:?}"),
+                    },
+                    other => panic!("expected finite limit approach, got {other:?}"),
+                }
+            }
+            _ => panic!("expected limit action"),
+        },
+        _ => panic!("expected eval variant"),
+    }
+}
+
+#[test]
 fn build_prepared_eval_request_parses_one_sided_finite_limit_point() {
     let mut ctx = cas_ast::Context::new();
     let prepared = crate::eval_input::build_prepared_eval_request_for_input(

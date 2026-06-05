@@ -611,7 +611,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_integrate_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_integrate_command_matrix(
             """
-{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"residual_case_names":["integrate_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"residual_cause_counts":{"special_function_method_required":1},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1}}
+{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"residual_case_names":["integrate_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"residual_cause_counts":{"special_function_method_required":1},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"radical_inverse_policy_cluster_counts":{"block8_inverse_trig_root_reciprocal":6},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1}}
 """
         )
 
@@ -704,6 +704,18 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         )
         self.assertNotIn(
             "integrate_trig_hyperbolic_consolidation_candidate_counts",
+            metrics,
+        )
+        self.assertEqual(
+            metrics["integrate_radical_inverse_policy_cluster_counts"],
+            {"block8_inverse_trig_root_reciprocal": 6},
+        )
+        self.assertEqual(
+            metrics["integrate_radical_inverse_consolidated_policy_cluster_counts"],
+            {"block8_inverse_trig_root_reciprocal": 6},
+        )
+        self.assertNotIn(
+            "integrate_radical_inverse_consolidation_candidate_counts",
             metrics,
         )
         self.assertEqual(
@@ -2038,6 +2050,12 @@ root.direct_small_zero_composition.candidate.three_core_groups
                             "block7_hyperbolic_reciprocal_square": 1,
                             "block7_sqrt_chain_reciprocal_trig_product": 7,
                         },
+                        "integrate_radical_inverse_policy_cluster_counts": {
+                            "block8_inverse_trig_root_reciprocal": 6,
+                        },
+                        "integrate_radical_inverse_consolidated_policy_cluster_counts": {
+                            "block8_inverse_trig_root_reciprocal": 6,
+                        },
                         "integrate_trace_regime_counts": {
                             "by_parts_affine_log": 1,
                             "by_parts_log": 1,
@@ -2457,6 +2475,20 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertNotIn(
             "`integrate_command_matrix` trig/hyperbolic consolidation candidates:",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` radical/inverse policy clusters: "
+            "block8_inverse_trig_root_reciprocal=6",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` radical/inverse consolidated policy clusters: "
+            "block8_inverse_trig_root_reciprocal=6",
+            markdown,
+        )
+        self.assertNotIn(
+            "`integrate_command_matrix` radical/inverse consolidation candidates:",
             markdown,
         )
         self.assertIn(

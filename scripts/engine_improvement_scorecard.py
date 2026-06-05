@@ -57,6 +57,11 @@ CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
         "block9_explicit_reciprocal_trig_residual",
     }
 )
+CALCULUS_RADICAL_INVERSE_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
+    {
+        "block8_inverse_trig_root_reciprocal",
+    }
+)
 SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS = (
     ("sum", 0, 100),
     ("sum", 700, 100),
@@ -2915,6 +2920,39 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
     return metrics
 
 
+def add_policy_cluster_consolidation_metrics(
+    metrics: dict[str, Any],
+    *,
+    source_key: str,
+    consolidated_key: str,
+    candidate_key: str,
+    shared_policy_clusters: frozenset[str],
+) -> None:
+    policy_cluster_counts = metrics.get(source_key)
+    if not isinstance(policy_cluster_counts, dict):
+        return
+
+    consolidated_policy_clusters = {
+        cluster: count
+        for cluster, count in sorted(policy_cluster_counts.items())
+        if isinstance(cluster, str)
+        and isinstance(count, int)
+        and cluster in shared_policy_clusters
+    }
+    consolidation_candidates = {
+        cluster: count
+        for cluster, count in sorted(policy_cluster_counts.items())
+        if isinstance(cluster, str)
+        and isinstance(count, int)
+        and count >= CALCULUS_POLICY_CLUSTER_CONSOLIDATION_THRESHOLD
+        and cluster not in shared_policy_clusters
+    }
+    if consolidated_policy_clusters:
+        metrics[consolidated_key] = consolidated_policy_clusters
+    if consolidation_candidates:
+        metrics[candidate_key] = consolidation_candidates
+
+
 def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
     try:
         raw = json.loads(output)
@@ -3025,37 +3063,33 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
             "trig_hyperbolic_policy_cluster_counts",
             "integrate_trig_hyperbolic_policy_cluster_counts",
         ),
+        (
+            "radical_inverse_policy_cluster_counts",
+            "integrate_radical_inverse_policy_cluster_counts",
+        ),
     ):
         counts = count_map(raw_key)
         if counts:
             metrics[metric_key] = counts
-    policy_cluster_counts = metrics.get(
-        "integrate_trig_hyperbolic_policy_cluster_counts"
+
+    add_policy_cluster_consolidation_metrics(
+        metrics,
+        source_key="integrate_trig_hyperbolic_policy_cluster_counts",
+        consolidated_key=(
+            "integrate_trig_hyperbolic_consolidated_policy_cluster_counts"
+        ),
+        candidate_key="integrate_trig_hyperbolic_consolidation_candidate_counts",
+        shared_policy_clusters=CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY,
     )
-    if isinstance(policy_cluster_counts, dict):
-        consolidated_policy_clusters = {
-            cluster: count
-            for cluster, count in sorted(policy_cluster_counts.items())
-            if isinstance(cluster, str)
-            and isinstance(count, int)
-            and cluster in CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY
-        }
-        consolidation_candidates = {
-            cluster: count
-            for cluster, count in sorted(policy_cluster_counts.items())
-            if isinstance(cluster, str)
-            and isinstance(count, int)
-            and count >= CALCULUS_POLICY_CLUSTER_CONSOLIDATION_THRESHOLD
-            and cluster not in CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY
-        }
-        if consolidated_policy_clusters:
-            metrics["integrate_trig_hyperbolic_consolidated_policy_cluster_counts"] = (
-                consolidated_policy_clusters
-            )
-        if consolidation_candidates:
-            metrics["integrate_trig_hyperbolic_consolidation_candidate_counts"] = (
-                consolidation_candidates
-            )
+    add_policy_cluster_consolidation_metrics(
+        metrics,
+        source_key="integrate_radical_inverse_policy_cluster_counts",
+        consolidated_key="integrate_radical_inverse_consolidated_policy_cluster_counts",
+        candidate_key="integrate_radical_inverse_consolidation_candidate_counts",
+        shared_policy_clusters=(
+            CALCULUS_RADICAL_INVERSE_POLICY_CLUSTERS_WITH_SHARED_POLICY
+        ),
+    )
     return metrics
 
 
@@ -4739,6 +4773,38 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` trig/hyperbolic consolidation candidates: "
                         + ", ".join(integrate_consolidation_candidates)
+                    )
+                radical_inverse_policy_clusters = calculus_matrix_count_map_fragments(
+                    metrics.get("integrate_radical_inverse_policy_cluster_counts")
+                )
+                if radical_inverse_policy_clusters:
+                    lines.append(
+                        f"- `{label}` radical/inverse policy clusters: "
+                        + ", ".join(radical_inverse_policy_clusters)
+                    )
+                radical_inverse_consolidated_policy_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_radical_inverse_consolidated_policy_cluster_counts"
+                        )
+                    )
+                )
+                if radical_inverse_consolidated_policy_clusters:
+                    lines.append(
+                        f"- `{label}` radical/inverse consolidated policy clusters: "
+                        + ", ".join(radical_inverse_consolidated_policy_clusters)
+                    )
+                radical_inverse_consolidation_candidates = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_radical_inverse_consolidation_candidate_counts"
+                        )
+                    )
+                )
+                if radical_inverse_consolidation_candidates:
+                    lines.append(
+                        f"- `{label}` radical/inverse consolidation candidates: "
+                        + ", ".join(radical_inverse_consolidation_candidates)
                     )
                 for metric_key, regime_label in (
                     ("integrate_trace_regime_counts", "trace regimes"),

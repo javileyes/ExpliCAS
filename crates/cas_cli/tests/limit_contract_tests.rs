@@ -764,6 +764,17 @@ fn test_eval_finite_elementary_polynomial_limit_requires_positive_argument_at_po
     assert_eq!(wire["warnings"], json!([]));
     assert_eq!(wire["required_display"], json!(["x > -3"]));
 
+    let (success, stdout) = run_eval("limit(ln(x), x, e)", "json");
+    assert!(
+        success,
+        "Command should parse and evaluate finite ln limit at exact e"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x > 0"]));
+
     let (success, stdout) = run_eval("limit(ln(x + 3), x, -4)", "json");
     assert!(
         success,

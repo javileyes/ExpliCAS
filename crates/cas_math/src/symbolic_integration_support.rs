@@ -499,6 +499,25 @@ fn reciprocal_sqrt_var_over_symbolic_square_shift_parts(
     })
 }
 
+fn arctan_sqrt_var_symbolic_square_shift_parts(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<SymbolicSquareShiftDenominator> {
+    if let Some(parts) = sqrt_var_times_symbolic_square_shift_denominator(ctx, den, var) {
+        let numerator_scale = rational_constant_value(ctx, num)?;
+        return Some(SymbolicSquareShiftDenominator {
+            scale: numerator_scale / parts.scale,
+            parameter: parts.parameter,
+            argument: parts.argument,
+            argument_scale: parts.argument_scale,
+        });
+    }
+
+    reciprocal_sqrt_var_over_symbolic_square_shift_parts(ctx, num, den, var)
+}
+
 fn sqrt_var_times_positive_linear_denominator(
     ctx: &Context,
     den: ExprId,
@@ -601,6 +620,27 @@ fn reciprocal_sqrt_var_over_positive_linear_parts(
         slope,
         offset,
     })
+}
+
+fn arctan_sqrt_var_positive_linear_parts(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<SqrtLinearDenominator> {
+    if let Some(parts) = sqrt_var_times_positive_linear_parts(ctx, den, var) {
+        if parts.scale.is_zero() {
+            return None;
+        }
+        let numerator_scale = rational_constant_value(ctx, num)?;
+        return Some(SqrtLinearDenominator {
+            scale: numerator_scale / parts.scale,
+            slope: parts.slope,
+            offset: parts.offset,
+        });
+    }
+
+    reciprocal_sqrt_var_over_positive_linear_parts(ctx, num, den, var)
 }
 
 struct PositiveSquareShiftDenominator {
@@ -781,6 +821,31 @@ fn sqrt_var_over_var_times_positive_square_shift_linear_square_parts(
     })
 }
 
+fn arctan_sqrt_var_unit_shift_square_parts(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<PositiveSquareShiftDenominator> {
+    if let Some(denominator) =
+        sqrt_var_times_positive_square_shift_linear_square_denominator_parts(ctx, den, var)
+    {
+        if denominator.scale.is_zero() {
+            return None;
+        }
+        let numerator_scale = rational_constant_value(ctx, num)?;
+        return Some(PositiveSquareShiftDenominator {
+            scale: numerator_scale / denominator.scale,
+            offset: denominator.offset,
+            offset_root: denominator.offset_root,
+        });
+    }
+
+    reciprocal_sqrt_var_over_positive_square_shift_linear_square_parts(ctx, num, den, var).or_else(
+        || sqrt_var_over_var_times_positive_square_shift_linear_square_parts(ctx, num, den, var),
+    )
+}
+
 fn arctan_sqrt_var_reciprocal_antiderivative_from_parts(
     ctx: &mut Context,
     scale: BigRational,
@@ -817,18 +882,7 @@ fn arctan_sqrt_var_reciprocal_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    if let Some(parts) = sqrt_var_times_positive_linear_parts(ctx, den, var) {
-        let num_scale = rational_constant_value(ctx, num)?;
-        return arctan_sqrt_var_reciprocal_antiderivative_from_parts(
-            ctx,
-            num_scale / parts.scale,
-            parts.slope,
-            parts.offset,
-            var,
-        );
-    }
-
-    let parts = reciprocal_sqrt_var_over_positive_linear_parts(ctx, num, den, var)?;
+    let parts = arctan_sqrt_var_positive_linear_parts(ctx, num, den, var)?;
     arctan_sqrt_var_reciprocal_antiderivative_from_parts(
         ctx,
         parts.scale,
@@ -880,19 +934,7 @@ fn arctan_sqrt_var_symbolic_square_shift_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    if let Some(parts) = sqrt_var_times_symbolic_square_shift_denominator(ctx, den, var) {
-        let numerator_scale = rational_constant_value(ctx, num)?;
-        return arctan_sqrt_var_symbolic_square_shift_antiderivative_from_parts(
-            ctx,
-            numerator_scale / parts.scale,
-            parts.parameter,
-            parts.argument,
-            parts.argument_scale,
-            var,
-        );
-    }
-
-    let parts = reciprocal_sqrt_var_over_symbolic_square_shift_parts(ctx, num, den, var)?;
+    let parts = arctan_sqrt_var_symbolic_square_shift_parts(ctx, num, den, var)?;
     arctan_sqrt_var_symbolic_square_shift_antiderivative_from_parts(
         ctx,
         parts.scale,
@@ -957,33 +999,7 @@ fn arctan_sqrt_var_unit_shift_square_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    if let Some(denominator) =
-        sqrt_var_times_positive_square_shift_linear_square_denominator_parts(ctx, den, var)
-    {
-        let numerator_scale = rational_constant_value(ctx, num)?;
-        return arctan_sqrt_var_unit_shift_square_antiderivative_from_scale(
-            ctx,
-            numerator_scale / denominator.scale,
-            denominator.offset,
-            denominator.offset_root,
-            var,
-        );
-    }
-
-    if let Some(parts) =
-        reciprocal_sqrt_var_over_positive_square_shift_linear_square_parts(ctx, num, den, var)
-    {
-        return arctan_sqrt_var_unit_shift_square_antiderivative_from_scale(
-            ctx,
-            parts.scale,
-            parts.offset,
-            parts.offset_root,
-            var,
-        );
-    }
-
-    let parts =
-        sqrt_var_over_var_times_positive_square_shift_linear_square_parts(ctx, num, den, var)?;
+    let parts = arctan_sqrt_var_unit_shift_square_parts(ctx, num, den, var)?;
     arctan_sqrt_var_unit_shift_square_antiderivative_from_scale(
         ctx,
         parts.scale,
@@ -1001,32 +1017,15 @@ fn arctan_sqrt_var_reciprocal_required_positive_radicand(
     let Expr::Div(num, den) = ctx.get(expr) else {
         return None;
     };
-    let matches_denominator_form = sqrt_var_times_positive_linear_parts(ctx, *den, var).is_some()
-        && rational_constant_value(ctx, *num).is_some();
-    let matches_numerator_form =
-        reciprocal_sqrt_var_over_positive_linear_parts(ctx, *num, *den, var).is_some();
-    let matches_unit_shift_square_denominator_form =
-        sqrt_var_times_positive_square_shift_linear_square_denominator_parts(ctx, *den, var)
-            .is_some()
-            && rational_constant_value(ctx, *num).is_some();
-    let matches_unit_shift_square_numerator_form =
-        reciprocal_sqrt_var_over_positive_square_shift_linear_square_parts(ctx, *num, *den, var)
-            .is_some()
-            || sqrt_var_over_var_times_positive_square_shift_linear_square_parts(
-                ctx, *num, *den, var,
-            )
-            .is_some();
-    let matches_symbolic_square_shift_denominator_form =
-        sqrt_var_times_symbolic_square_shift_denominator(ctx, *den, var).is_some()
-            && rational_constant_value(ctx, *num).is_some();
-    let matches_symbolic_square_shift_numerator_form =
-        reciprocal_sqrt_var_over_symbolic_square_shift_parts(ctx, *num, *den, var).is_some();
-    if matches_denominator_form
-        || matches_numerator_form
-        || matches_unit_shift_square_denominator_form
-        || matches_unit_shift_square_numerator_form
-        || matches_symbolic_square_shift_denominator_form
-        || matches_symbolic_square_shift_numerator_form
+    let matches_positive_linear_form =
+        arctan_sqrt_var_positive_linear_parts(ctx, *num, *den, var).is_some();
+    let matches_unit_shift_square_form =
+        arctan_sqrt_var_unit_shift_square_parts(ctx, *num, *den, var).is_some();
+    let matches_symbolic_square_shift_form =
+        arctan_sqrt_var_symbolic_square_shift_parts(ctx, *num, *den, var).is_some();
+    if matches_positive_linear_form
+        || matches_unit_shift_square_form
+        || matches_symbolic_square_shift_form
     {
         return Some(ctx.var(var));
     }
@@ -1041,12 +1040,7 @@ fn arctan_sqrt_var_symbolic_square_shift_required_nonzero_parameter(
     let Expr::Div(num, den) = ctx.get(expr) else {
         return None;
     };
-    if let Some(parts) = sqrt_var_times_symbolic_square_shift_denominator(ctx, *den, var) {
-        rational_constant_value(ctx, *num)?;
-        return Some(parts.parameter);
-    }
-    reciprocal_sqrt_var_over_symbolic_square_shift_parts(ctx, *num, *den, var)
-        .map(|parts| parts.parameter)
+    arctan_sqrt_var_symbolic_square_shift_parts(ctx, *num, *den, var).map(|parts| parts.parameter)
 }
 
 struct ArctanSqrtAffineDerivativeParts {
@@ -1846,12 +1840,8 @@ pub fn integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
     let Expr::Div(num, den) = ctx.get(expr) else {
         return false;
     };
-    (sqrt_var_times_positive_linear_parts(ctx, *den, var).is_some()
-        && rational_constant_value(ctx, *num).is_some())
-        || reciprocal_sqrt_var_over_positive_linear_parts(ctx, *num, *den, var).is_some()
-        || (sqrt_var_times_symbolic_square_shift_denominator(ctx, *den, var).is_some()
-            && rational_constant_value(ctx, *num).is_some())
-        || reciprocal_sqrt_var_over_symbolic_square_shift_parts(ctx, *num, *den, var).is_some()
+    arctan_sqrt_var_positive_linear_parts(ctx, *num, *den, var).is_some()
+        || arctan_sqrt_var_symbolic_square_shift_parts(ctx, *num, *den, var).is_some()
 }
 
 pub fn integrate_symbolic_is_arctan_sqrt_var_unit_shift_square_target(
@@ -1871,23 +1861,7 @@ pub fn integrate_symbolic_arctan_sqrt_var_unit_shift_square_key(
     let Expr::Div(num, den) = ctx.get(expr) else {
         return None;
     };
-    if let Some(denominator) =
-        sqrt_var_times_positive_square_shift_linear_square_denominator_parts(ctx, *den, var)
-    {
-        let scale = rational_constant_value(ctx, *num)?;
-        if !scale.is_zero() && !denominator.scale.is_zero() {
-            return Some((scale / denominator.scale, denominator.offset));
-        }
-    }
-    if let Some(parts) =
-        reciprocal_sqrt_var_over_positive_square_shift_linear_square_parts(ctx, *num, *den, var)
-    {
-        if !parts.scale.is_zero() {
-            return Some((parts.scale, parts.offset));
-        }
-    }
-    let parts =
-        sqrt_var_over_var_times_positive_square_shift_linear_square_parts(ctx, *num, *den, var)?;
+    let parts = arctan_sqrt_var_unit_shift_square_parts(ctx, *num, *den, var)?;
     (!parts.scale.is_zero()).then_some((parts.scale, parts.offset))
 }
 

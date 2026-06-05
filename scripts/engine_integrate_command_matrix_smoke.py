@@ -111,6 +111,42 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="external_constant_scaled_trig",
     ),
     IntegrateCommandMatrixCase(
+        name="affine_secant_table_log_domain",
+        expr="integrate(sec(2*x+1), x)",
+        expected_result="ln(|tan(2·x + 1) + sec(2·x + 1)|) / 2",
+        expected_derivative_equivalent_to="sec(2*x+1)",
+        expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+            "Identificar el argumento afín",
+        ),
+        family="trig_reciprocal_log_table",
+        argument_regime="affine_reciprocal_trig_table",
+        domain_regime="trig_reciprocal_table_pole_required",
+        trace_regime="affine_secant_log_table",
+        presentation_regime="abs_log_reciprocal_trig_affine",
+    ),
+    IntegrateCommandMatrixCase(
+        name="affine_cosecant_table_log_domain",
+        expr="integrate(csc(2*x+1), x)",
+        expected_result="ln(|csc(2·x + 1) - cot(2·x + 1)|) / 2",
+        expected_derivative_equivalent_to="csc(2*x+1)",
+        expected_derivative_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
+            "Identificar el argumento afín",
+        ),
+        family="trig_reciprocal_log_table",
+        argument_regime="affine_reciprocal_trig_table",
+        domain_regime="trig_reciprocal_table_pole_required",
+        trace_regime="affine_cosecant_log_table",
+        presentation_regime="abs_log_reciprocal_trig_affine",
+    ),
+    IntegrateCommandMatrixCase(
         name="affine_exp_substitution",
         expr="integrate(exp(2*x+1), x)",
         expected_result="1/2·e^(2·x + 1)",
@@ -2555,6 +2591,8 @@ def trig_hyperbolic_policy_cluster(
         return "block7_explicit_reciprocal_trig_log_substitution"
     if case.family == "trig_log_derivative_ratio":
         return "block7_trig_log_derivative_ratio"
+    if case.family == "trig_reciprocal_log_table":
+        return "block7_trig_reciprocal_log_table"
     if case.family == "hyperbolic_log_derivative_ratio":
         return "block7_hyperbolic_log_derivative_ratio"
     if case.family == "hyperbolic_tanh_log_derivative":
@@ -2574,6 +2612,26 @@ def count_trig_hyperbolic_policy_clusters(
     counts: dict[str, int] = {}
     for case in cases:
         cluster = trig_hyperbolic_policy_cluster(case)
+        if cluster is None:
+            continue
+        counts[cluster] = counts.get(cluster, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def radical_inverse_policy_cluster(
+    case: IntegrateCommandMatrixCase,
+) -> str | None:
+    if case.family == "inverse_trig_root_reciprocal":
+        return "block8_inverse_trig_root_reciprocal"
+    return None
+
+
+def count_radical_inverse_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        cluster = radical_inverse_policy_cluster(case)
         if cluster is None:
             continue
         counts[cluster] = counts.get(cluster, 0) + 1
@@ -2798,6 +2856,9 @@ def run_matrix(
         "presentation_regime_counts": count_by(cases, "presentation_regime"),
         "trig_hyperbolic_policy_cluster_counts": (
             count_trig_hyperbolic_policy_clusters(cases)
+        ),
+        "radical_inverse_policy_cluster_counts": (
+            count_radical_inverse_policy_clusters(cases)
         ),
         "case_filters": [case.name for case in cases],
     }

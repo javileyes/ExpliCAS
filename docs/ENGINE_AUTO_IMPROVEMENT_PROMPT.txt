@@ -50,6 +50,11 @@ Objetivo:
 Plan operativo de madurez de cálculo:
 - Usa la sección "Block-Based Calculus Maturity Plan" de
   docs/CALCULUS_ENGINE_STRATEGY.md como mapa activo.
+- Usa también la sección "Current Maturity Gap" de
+  docs/CALCULUS_ENGINE_STRATEGY.md para no confundir matrices verdes con
+  madurez general. El engine ya tiene una superficie de cálculo real educativo
+  creíble, pero la meta activa sigue siendo sistematicidad: dominio,
+  verificación, trazas, presentación, residuals y arquitectura.
 - Si eliges `calculus`, o si una mejora de engine/cobertura nace de un fallo de
   cálculo, identifica un bloque concreto de madurez y un gate concreto que el
   ciclo avanza.
@@ -69,6 +74,13 @@ Plan operativo de madurez de cálculo:
   sólo cuando su capacidad representativa tiene resultado correcto o residual
   seguro, condiciones de dominio real explícitas, steps explicables, celda de
   matriz mínima, verificación cuando aplique, y guardrails verdes.
+- Distingue el alcance de la mejora:
+  - "educativo serio" significa familias de cálculo reales, verificadas,
+    explicables y conservadoras para tráfico curado
+  - "maduro general" significa cobertura elemental sistemática con política de
+    dominio, residual, presentación y arquitectura repetible
+  - "CAS universal", especialmente para integración, no es el objetivo de estos
+    ciclos
 - Cada ciclo debe elegir un checkbox pequeño dentro de un bloque. Si el
   candidato no avanza un gate de bloque, trátalo como discovery pressure o
   recházalo como near-duplicate.
@@ -80,7 +92,8 @@ Plan operativo de madurez de cálculo:
 Optimiza en este orden:
 1. mantener failed = 0
 2. reducir timeouts, stack overflows, no terminación o rutas claramente frágiles
-3. preservar o mejorar runtime en lanes promovidos, especialmente embedded
+3. preservar o mejorar runtime en lanes promovidos, especialmente embedded, y
+   vigilar runtime normalizado por caso en `diff`, `limit` e `integrate`
 4. contener presión arquitectónica que ya bloquee la generalización segura de
    cálculo:
    - separar detección, dominio, transformación, verificación, presentación y
@@ -98,6 +111,11 @@ Optimiza en este orden:
      sensibles a dominio, y política lateral cuando exista
    - `integrate`: tabla, sustitución, partes acotadas, verificación por
      diferenciación, política de constante y residuales explicables
+   - didáctica: nombres de regla, `u`/`du`, polos/dominio, elección de
+     presentación y explicación residual sin saltos mágicos
+   - arquitectura: no seguir acumulando matchers locales si la repetición ya
+     pide separar detección, dominio, transformación, verificación,
+     presentación y steps
 6. expandir completitud matemática útil en dimensiones infracubiertas cuando
    alimente cálculo, derive o guardrails reales:
    - wrapper spread
@@ -179,12 +197,18 @@ Proceso obligatorio:
    - guardrail: make engine-scorecard
    - pressure: make engine-scorecard-pressure si tocas normalización, orquestación, arithmetic, tráfico profundo, refactor estructural o casos muy compuestos
    - make ci sólo como cierre si realmente corresponde
+   - si una mejora de cálculo ralentiza una lane amplia, compara contra
+     baseline cuando exista y justifica la retención con
+     `runtime_delta / retained_capability_delta`
 11. Para cualquier mejora de cálculo:
    - identifica el bloque de madurez que avanza y el gate concreto que queda
      más maduro
    - decide qué capacidad pre-cálculo reutiliza o fuerza
    - identifica la celda de matriz que cubre:
      comando/familia/régimen de argumento/régimen de dominio/traza/presentación
+   - identifica si el coste runtime esperado es local a esa familia o afecta
+     rutas generales; no retengas una ralentización amplia por una variante
+     casi duplicada
    - ejecuta un sibling sweep acotado sobre familias, orientaciones, signo,
      escala y presentación cercanas; esto es un probe barato, no búsqueda
      amplia

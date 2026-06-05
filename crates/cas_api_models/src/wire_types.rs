@@ -756,8 +756,17 @@ fn limit_command_usage_error() -> String {
 fn looks_like_finite_limit_point(dir: &str) -> bool {
     let trimmed = dir.trim();
     !trimmed.is_empty()
-        && trimmed.chars().any(|ch| ch.is_ascii_digit())
+        && has_finite_limit_point_signal(trimmed)
         && !has_one_sided_limit_suffix(trimmed)
+}
+
+fn has_finite_limit_point_signal(raw: &str) -> bool {
+    raw.chars().any(|ch| ch.is_ascii_digit()) || contains_named_finite_constant_token(raw)
+}
+
+fn contains_named_finite_constant_token(raw: &str) -> bool {
+    raw.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+        .any(|token| token.eq_ignore_ascii_case("pi") || token.eq_ignore_ascii_case("e"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -785,9 +794,7 @@ fn has_one_sided_limit_suffix(dir: &str) -> bool {
         .last()
         .is_some_and(|last| matches!(last, '+' | '-'))
         && compact.len() > 1
-        && compact[..compact.len() - 1]
-            .chars()
-            .any(|ch| ch.is_ascii_digit())
+        && has_finite_limit_point_signal(&compact[..compact.len() - 1])
 }
 
 fn parse_one_sided_limit_marker(raw: &str) -> Option<OneSidedLimitMarker> {
@@ -2225,6 +2232,26 @@ mod tests {
             }
         );
 
+        let finite_pi_limit = parse_eval_special_command("limit(sin(x), x, pi)").expect("limit");
+        assert_eq!(
+            finite_pi_limit,
+            super::EvalSpecialCommand::Limit {
+                expr: "sin(x)".to_string(),
+                var: "x".to_string(),
+                approach: EvalLimitApproach::Finite("pi".to_string()),
+            }
+        );
+
+        let finite_e_limit = parse_eval_special_command("limit(ln(x), x, e)").expect("limit");
+        assert_eq!(
+            finite_e_limit,
+            super::EvalSpecialCommand::Limit {
+                expr: "ln(x)".to_string(),
+                var: "x".to_string(),
+                approach: EvalLimitApproach::Finite("e".to_string()),
+            }
+        );
+
         let finite_right_limit =
             parse_eval_special_command("limit(abs(x)/x, x, 0+)").expect("limit");
         assert_eq!(
@@ -2233,6 +2260,28 @@ mod tests {
                 expr: "abs(x)/x".to_string(),
                 var: "x".to_string(),
                 approach: EvalLimitApproach::FiniteFromRight("0".to_string()),
+            }
+        );
+
+        let finite_pi_right_limit =
+            parse_eval_special_command("limit(1/sin(x), x, pi+)").expect("limit");
+        assert_eq!(
+            finite_pi_right_limit,
+            super::EvalSpecialCommand::Limit {
+                expr: "1/sin(x)".to_string(),
+                var: "x".to_string(),
+                approach: EvalLimitApproach::FiniteFromRight("pi".to_string()),
+            }
+        );
+
+        let finite_e_right_limit =
+            parse_eval_special_command("limit(ln(x), x, e+)").expect("limit");
+        assert_eq!(
+            finite_e_right_limit,
+            super::EvalSpecialCommand::Limit {
+                expr: "ln(x)".to_string(),
+                var: "x".to_string(),
+                approach: EvalLimitApproach::FiniteFromRight("e".to_string()),
             }
         );
 
@@ -2270,6 +2319,12 @@ mod tests {
         );
         assert!(parse_eval_limit_command_error("limit(abs(x)/x, x, 0+)").is_none());
         assert!(parse_eval_limit_command_error("limit(abs(x)/x, x, 0, right)").is_none());
+        assert!(parse_eval_limit_command_error("limit(sin(x), x, pi)").is_none());
+        assert!(parse_eval_limit_command_error("limit(1/sin(x), x, pi+)").is_none());
+        assert!(parse_eval_limit_command_error("limit(1/sin(x), x, pi, right)").is_none());
+        assert!(parse_eval_limit_command_error("limit(ln(x), x, e)").is_none());
+        assert!(parse_eval_limit_command_error("limit(ln(x), x, e+)").is_none());
+        assert!(parse_eval_limit_command_error("limit(ln(x), x, e, right)").is_none());
         assert_eq!(
             parse_eval_limit_command_error("limit(abs(x)/x, x, 0, upward)").as_deref(),
             Some("Invalid limit command. Expected limit(expr, var, approach); eval limit syntax does not accept a fourth argument.")
