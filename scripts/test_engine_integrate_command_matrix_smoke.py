@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 100)
+        self.assertEqual(len(cases), 113)
         names = {case.name for case in cases}
         self.assertIn("reciprocal_affine_log_abs_domain", names)
         self.assertIn("reciprocal_negative_affine_log_abs_domain", names)
@@ -38,8 +38,30 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_tan_presimplified_residual_domain", names)
         self.assertIn("non_elementary_csc_presimplified_residual_domain", names)
         self.assertIn("explicit_reciprocal_sine_presimplified_residual_domain", names)
+        self.assertIn("explicit_reciprocal_sine_verified_log_domain", names)
         self.assertIn("explicit_reciprocal_tangent_presimplified_residual_domain", names)
+        self.assertIn("explicit_tangent_log_residual_condition_alias_dedupe", names)
+        self.assertIn(
+            "explicit_tangent_log_numeric_shifted_residual_condition_alias_dedupe",
+            names,
+        )
+        self.assertIn(
+            "explicit_tangent_log_numeric_offset_residual_condition_alias_dedupe",
+            names,
+        )
+        self.assertIn(
+            "explicit_cotangent_log_numeric_offset_residual_condition_alias_dedupe",
+            names,
+        )
         self.assertIn("explicit_reciprocal_tangent_verified_log_domain", names)
+        self.assertIn(
+            "explicit_reciprocal_tangent_presimplified_verified_log_domain",
+            names,
+        )
+        self.assertIn(
+            "explicit_reciprocal_secant_presimplified_source_domain",
+            names,
+        )
         self.assertIn(
             "symbolic_external_scale_tangent_log_derivative_ratio_domain",
             names,
@@ -49,11 +71,23 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn(
+            "nested_tangent_log_derivative_denominator_verified_domain",
+            names,
+        )
+        self.assertIn(
             "explicit_reciprocal_hyperbolic_tangent_verified_log_domain",
             names,
         )
         self.assertIn(
             "explicit_reciprocal_hyperbolic_tangent_presimplified_condition_dedupe",
+            names,
+        )
+        self.assertIn(
+            "symbolic_external_scale_reciprocal_hyperbolic_tangent_log_domain",
+            names,
+        )
+        self.assertIn(
+            "negative_orientation_symbolic_external_scale_reciprocal_hyperbolic_tangent_log_domain",
             names,
         )
         self.assertIn(
@@ -73,6 +107,18 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertIn("inverse_trig_sqrt_reciprocal_bridge", names)
         self.assertIn("inverse_trig_scaled_sqrt_reciprocal_bridge", names)
+        self.assertIn(
+            "inverse_trig_symbolic_denominator_scale_sqrt_reciprocal_bridge",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_symbolic_denominator_numeric_square_scale_sqrt_reciprocal_bridge",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_symbolic_numerator_scale_sqrt_reciprocal_bridge",
+            names,
+        )
         self.assertIn("inverse_trig_shifted_scaled_sqrt_reciprocal_bridge", names)
         self.assertIn("rational_positive_quadratic_square_reduction", names)
         self.assertIn("affine_exp_substitution", names)
@@ -266,7 +312,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 9, "supported": 89, "undefined": 2},
+            {"residual": 13, "supported": 98, "undefined": 2},
         )
         self.assertEqual(
             sum(
@@ -277,14 +323,23 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     or case.expected_derivative_equivalent_to is not None
                 )
             ),
-            89,
+            98,
         )
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
             {
-                "residual_not_verified": 9,
+                "residual_not_verified": 13,
                 "undefined_not_verified": 2,
-                "verified_by_diff": 89,
+                "verified_by_diff": 98,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_residual_causes(cases),
+            {
+                "branch_sensitive_interval_residual": 1,
+                "non_elementary_composition": 7,
+                "special_function_method_required": 1,
+                "unsupported_reciprocal_trig_method": 4,
             },
         )
         step_checked = {
@@ -318,12 +373,22 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "non_elementary_tan_presimplified_residual_domain",
                 "non_elementary_csc_presimplified_residual_domain",
                 "explicit_reciprocal_sine_presimplified_residual_domain",
+                "explicit_reciprocal_sine_verified_log_domain",
                 "explicit_reciprocal_tangent_presimplified_residual_domain",
+                "explicit_tangent_log_residual_condition_alias_dedupe",
+                "explicit_tangent_log_numeric_shifted_residual_condition_alias_dedupe",
+                "explicit_tangent_log_numeric_offset_residual_condition_alias_dedupe",
+                "explicit_cotangent_log_numeric_offset_residual_condition_alias_dedupe",
                 "explicit_reciprocal_tangent_verified_log_domain",
+                "explicit_reciprocal_tangent_presimplified_verified_log_domain",
+                "explicit_reciprocal_secant_presimplified_source_domain",
                 "symbolic_external_scale_tangent_log_derivative_ratio_domain",
                 "symbolic_external_scale_cotangent_log_derivative_ratio_domain",
+                "nested_tangent_log_derivative_denominator_verified_domain",
                 "explicit_reciprocal_hyperbolic_tangent_verified_log_domain",
                 "explicit_reciprocal_hyperbolic_tangent_presimplified_condition_dedupe",
+                "symbolic_external_scale_reciprocal_hyperbolic_tangent_log_domain",
+                "negative_orientation_symbolic_external_scale_reciprocal_hyperbolic_tangent_log_domain",
                 "symbolic_external_scale_hyperbolic_tanh_log_derivative_ratio_positive",
                 "symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
                 "additive_trig_pole_residual_domain",
@@ -331,6 +396,9 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "rational_positive_quadratic_square_reduction",
                 "inverse_trig_sqrt_reciprocal_bridge",
                 "inverse_trig_scaled_sqrt_reciprocal_bridge",
+                "inverse_trig_symbolic_denominator_scale_sqrt_reciprocal_bridge",
+                "inverse_trig_symbolic_denominator_numeric_square_scale_sqrt_reciprocal_bridge",
+                "inverse_trig_symbolic_numerator_scale_sqrt_reciprocal_bridge",
                 "inverse_trig_shifted_scaled_sqrt_reciprocal_bridge",
                 "inverse_hyperbolic_rational_direct_atanh_domain",
                 "rational_partial_fraction_two_real_linear_factors",
@@ -411,13 +479,21 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "explicit_denominator_source_condition": 1,
                 "explicit_hyperbolic_tangent_presimplified_condition_dedupe": 1,
                 "explicit_hyperbolic_tangent_denominator_verified_substitution": 1,
+                "explicit_reciprocal_sine_verified_substitution": 1,
+                "explicit_reciprocal_trig_source_defined_condition": 1,
                 "explicit_tangent_denominator_source_condition": 1,
                 "explicit_tangent_denominator_verified_substitution": 1,
-                "hyperbolic_sine_pole_required": 8,
+                "explicit_tangent_log_shifted_condition_dedupe": 1,
+                "explicit_tangent_log_numeric_shifted_condition_dedupe": 1,
+                "explicit_tangent_log_numeric_offset_condition_dedupe": 1,
+                "explicit_cotangent_log_numeric_offset_condition_dedupe": 1,
+                "explicit_tangent_presimplified_condition_dedupe": 1,
+                "hyperbolic_sine_pole_required": 10,
                 "linear_poles_required": 9,
                 "nonzero_required": 3,
                 "nonfinite_undefined": 1,
                 "positive_log_argument_required": 1,
+                "positive_log_argument_and_trig_poles": 1,
                 "positive_required": 5,
                 "positive_required_residual": 1,
                 "radical_interval_additive_residual": 1,
@@ -425,6 +501,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "rational_interval": 2,
                 "shifted_sqrt_chain_nonzero_positive": 5,
                 "shifted_sqrt_chain_positive": 1,
+                "symbolic_denominator_scale_positive_required": 2,
+                "symbolic_numerator_scale_positive_required": 1,
                 "sqrt_minus_symbol_chain_nonzero_positive": 2,
                 "sqrt_chain_nonzero_positive": 4,
                 "sqrt_chain_hyperbolic_presimplified_condition_dedupe": 1,
@@ -446,8 +524,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_trig_hyperbolic_policy_clusters(cases),
             {
-                "block7_explicit_reciprocal_hyperbolic_tangent": 2,
-                "block7_explicit_reciprocal_trig_tangent": 1,
+                "block7_explicit_reciprocal_hyperbolic_tangent": 4,
+                "block7_explicit_reciprocal_trig_log_substitution": 4,
                 "block7_hyperbolic_reciprocal_derivative_product": 7,
                 "block7_hyperbolic_log_derivative_ratio": 1,
                 "block7_hyperbolic_tanh_log_derivative": 1,
@@ -459,27 +537,27 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block7_sqrt_chain_reciprocal_trig_product": 7,
                 "block7_sqrt_chain_trig_log": 2,
                 "block7_trig_reciprocal_derivative_product": 13,
-                "block9_explicit_reciprocal_trig_residual": 2,
+                "block9_explicit_reciprocal_trig_residual": 6,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
                 "block4_base_integration": 6,
-                "block5_generalized_substitution": 10,
+                "block5_generalized_substitution": 11,
                 "block6_rational_integration": 12,
-                "block7_trig_hyperbolic_integration": 52,
-                "block8_radical_inverse_families": 9,
-                "block9_residuals_and_non_goals": 11,
+                "block7_trig_hyperbolic_integration": 57,
+                "block8_radical_inverse_families": 12,
+                "block9_residuals_and_non_goals": 15,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
                 "didactic_trace_and_verified_antiderivative": 26,
-                "domain_conditions_and_verified_antiderivative": 63,
+                "domain_conditions_and_verified_antiderivative": 72,
                 "explicit_undefined_domain_policy": 2,
-                "safe_residual_policy": 9,
+                "safe_residual_policy": 13,
             },
         )
         self.assertGreaterEqual(len({case.family for case in cases}), 10)
@@ -562,6 +640,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             matrix["verification_regime_counts"],
             {"residual_not_verified": 1, "verified_by_diff": 3},
+        )
+        self.assertEqual(
+            matrix["residual_cause_counts"],
+            {"non_elementary_composition": 1},
         )
         self.assertEqual(matrix["expected_step_substring_count"], 7)
         self.assertEqual(matrix["required_display_counts"], {"x ≠ -1/2": 1})

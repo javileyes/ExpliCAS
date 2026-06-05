@@ -95,6 +95,7 @@ mod eval_output_presentation_input;
 mod eval_output_presentation_solution_display;
 mod eval_output_presentation_solution_latex;
 mod eval_output_presentation_solve_steps;
+mod eval_output_public_conditions;
 mod eval_output_stats;
 mod eval_output_stats_format;
 mod eval_output_stats_hash;

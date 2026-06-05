@@ -4895,6 +4895,63 @@ fn integrate_contract_polynomial_derivative_substitution_exposes_didactic_subste
 }
 
 #[test]
+fn integrate_contract_symbolic_scale_tanh_substitution_exposes_concrete_trace() {
+    let input = "integrate(2*k*x*tanh(x^2+b), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert_eq!(wire["result"], "k·ln(cosh(x^2 + b))");
+    assert!(
+        wire["required_display"]
+            .as_array()
+            .expect("required_display should be an array")
+            .is_empty(),
+        "symbolic tanh substitution should not invent domain conditions: {:?}",
+        wire["required_display"]
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "symbolic tanh substitution trace should not emit depth_overflow warning\nstderr:\n{stderr}"
+    );
+
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar la regla de tanh(u) -> ln(cosh(u))"),
+        "expected tanh table substep for symbolic scale case, got {substeps:?}"
+    );
+    assert_u_du_substep_labels(substeps, input);
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Ajustar el factor constante"),
+        "expected symbolic scale adjustment substep, got {substeps:?}"
+    );
+    assert!(
+        substeps
+            .iter()
+            .all(|substep| substep["title"] != "Usar sustitución"),
+        "symbolic tanh substitution should not fall back to generic substitution only: {substeps:?}"
+    );
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Abs Under Positivity"),
+        "expected cosh positivity cleanup step for symbolic tanh substitution, got {steps:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
 fn integrate_contract_log_power_product_substitution_exposes_didactic_substep() {
     for (input, expected_result, expected_substep_title) in [
         (
@@ -13239,6 +13296,52 @@ fn integrate_contract_polynomial_cosecant_uses_abs_log_and_nonzero_domain() {
         serde_json::json!(["sin(x^2) ≠ 0"]),
         "unexpected public required_display: {:?}",
         wire["required_display"]
+    );
+}
+
+#[test]
+fn integrate_contract_presimplified_reciprocal_secant_and_cosecant_use_source_domain() {
+    let (sec_wire, sec_stderr) = cli_eval_json_with_stderr("integrate(2*x/sec(x^2+0), x)");
+    assert!(sec_stderr.is_empty(), "unexpected stderr: {sec_stderr}");
+    assert_eq!(sec_wire["result"], serde_json::json!("sin(x^2)"));
+    assert_eq!(
+        sec_wire["required_display"],
+        serde_json::json!(["cos(x^2) ≠ 0"]),
+        "unexpected secant reciprocal required_display: {:?}",
+        sec_wire["required_display"]
+    );
+
+    let (csc_wire, csc_stderr) = cli_eval_json_with_stderr("integrate(2*x/csc(x^2+0), x)");
+    assert!(csc_stderr.is_empty(), "unexpected stderr: {csc_stderr}");
+    assert_eq!(csc_wire["result"], serde_json::json!("-cos(x^2)"));
+    assert_eq!(
+        csc_wire["required_display"],
+        serde_json::json!(["sin(x^2) ≠ 0"]),
+        "unexpected cosecant reciprocal required_display: {:?}",
+        csc_wire["required_display"]
+    );
+}
+
+#[test]
+fn integrate_contract_presimplified_reciprocal_tangent_and_cotangent_use_source_domain() {
+    let (tan_wire, tan_stderr) = cli_eval_json_with_stderr("integrate(2*x/tan(x^2+0), x)");
+    assert!(tan_stderr.is_empty(), "unexpected stderr: {tan_stderr}");
+    assert_eq!(tan_wire["result"], serde_json::json!("ln(|sin(x^2)|)"));
+    assert_eq!(
+        tan_wire["required_display"],
+        serde_json::json!(["sin(x^2) ≠ 0", "cos(x^2) ≠ 0"]),
+        "unexpected tangent reciprocal required_display: {:?}",
+        tan_wire["required_display"]
+    );
+
+    let (cot_wire, cot_stderr) = cli_eval_json_with_stderr("integrate(2*x/cot(x^2+0), x)");
+    assert!(cot_stderr.is_empty(), "unexpected stderr: {cot_stderr}");
+    assert_eq!(cot_wire["result"], serde_json::json!("-ln(|cos(x^2)|)"));
+    assert_eq!(
+        cot_wire["required_display"],
+        serde_json::json!(["cos(x^2) ≠ 0", "sin(x^2) ≠ 0"]),
+        "unexpected cotangent reciprocal required_display: {:?}",
+        cot_wire["required_display"]
     );
 }
 

@@ -291,6 +291,76 @@ fn finite_endpoint_argument_zero_tail_sign(
     })
 }
 
+fn finite_local_tail_positive_on_both_sides(
+    derivative_value: &BigRational,
+    order: usize,
+) -> Option<bool> {
+    Some(
+        finite_local_tail_sign(derivative_value, order, FiniteLimitSide::Left)? == InfSign::Pos
+            && finite_local_tail_sign(derivative_value, order, FiniteLimitSide::Right)?
+                == InfSign::Pos,
+    )
+}
+
+fn finite_local_tail_negative_on_both_sides(
+    derivative_value: &BigRational,
+    order: usize,
+) -> Option<bool> {
+    Some(
+        finite_local_tail_sign(derivative_value, order, FiniteLimitSide::Left)? == InfSign::Neg
+            && finite_local_tail_sign(derivative_value, order, FiniteLimitSide::Right)?
+                == InfSign::Neg,
+    )
+}
+
+fn finite_endpoint_argument_zero_tail_positive_on_both_sides(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    point_value: &BigRational,
+) -> Option<bool> {
+    Some(
+        finite_endpoint_argument_zero_tail_sign(
+            ctx,
+            expr,
+            var_name,
+            point_value,
+            FiniteLimitSide::Left,
+        )? == InfSign::Pos
+            && finite_endpoint_argument_zero_tail_sign(
+                ctx,
+                expr,
+                var_name,
+                point_value,
+                FiniteLimitSide::Right,
+            )? == InfSign::Pos,
+    )
+}
+
+fn finite_endpoint_argument_zero_tail_negative_on_both_sides(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    point_value: &BigRational,
+) -> Option<bool> {
+    Some(
+        finite_endpoint_argument_zero_tail_sign(
+            ctx,
+            expr,
+            var_name,
+            point_value,
+            FiniteLimitSide::Left,
+        )? == InfSign::Neg
+            && finite_endpoint_argument_zero_tail_sign(
+                ctx,
+                expr,
+                var_name,
+                point_value,
+                FiniteLimitSide::Right,
+            )? == InfSign::Neg,
+    )
+}
+
 fn finite_endpoint_unit_base_tail_sign(
     ctx: &Context,
     expr: ExprId,
@@ -673,6 +743,36 @@ fn apply_finite_one_sided_sqrt_endpoint_rule(
     Some(ctx.num(0))
 }
 
+fn apply_finite_bilateral_sqrt_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol);
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let radicand = extract_square_root_base(ctx, expr)?;
+    if !finite_endpoint_argument_zero_tail_positive_on_both_sides(
+        ctx,
+        radicand,
+        var_name,
+        &point_value,
+    )? {
+        return None;
+    }
+
+    Some(ctx.num(0))
+}
+
 fn apply_finite_one_sided_acosh_endpoint_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -745,10 +845,7 @@ fn apply_finite_acosh_polynomial_endpoint_rule(
     let endpoint_gap = argument.sub(&Polynomial::one(var_name));
     let (gap_order, gap_derivative) =
         finite_polynomial_local_order_and_derivative(&endpoint_gap, &point_value)?;
-    if finite_local_tail_sign(&gap_derivative, gap_order, FiniteLimitSide::Left)? != InfSign::Pos
-        || finite_local_tail_sign(&gap_derivative, gap_order, FiniteLimitSide::Right)?
-            != InfSign::Pos
-    {
+    if !finite_local_tail_positive_on_both_sides(&gap_derivative, gap_order)? {
         return None;
     }
 
@@ -880,10 +977,7 @@ fn apply_finite_inverse_trig_polynomial_endpoint_rule(
         finite_inverse_trig_endpoint_gap(&argument, &var_name, &point_value)?;
     let (gap_order, gap_derivative) =
         finite_polynomial_local_order_and_derivative(&endpoint_gap, &point_value)?;
-    if finite_local_tail_sign(&gap_derivative, gap_order, FiniteLimitSide::Left)? != InfSign::Pos
-        || finite_local_tail_sign(&gap_derivative, gap_order, FiniteLimitSide::Right)?
-            != InfSign::Pos
-    {
+    if !finite_local_tail_positive_on_both_sides(&gap_derivative, gap_order)? {
         return None;
     }
 
@@ -1989,6 +2083,9 @@ fn try_limit_rules_at_finite(
     }
     if let Some(result) = apply_finite_inverse_trig_polynomial_endpoint_rule(ctx, expr, var, point)
     {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_bilateral_sqrt_endpoint_rule(ctx, expr, var, point) {
         return Some(result);
     }
     if let Some(result) = apply_finite_square_root_power_rule(ctx, expr, var, point) {
@@ -4447,6 +4544,148 @@ pub fn try_limit_rules_at_infinity(
     rational_poly_limit(ctx, expr, var, approach)
 }
 
+const FINITE_POINT_LIMIT_UNSUPPORTED_WARNING: &str =
+    "Finite point limits are not supported safely yet";
+const FINITE_EMPTY_PUNCTURED_REAL_NEIGHBORHOOD_WARNING_DETAIL: &str =
+    "real-domain condition holds only at the approach point; no punctured real neighbourhood is available";
+
+struct FiniteResidualPoint {
+    var_name: String,
+    point_value: BigRational,
+}
+
+fn finite_residual_point(ctx: &Context, var: ExprId, point: ExprId) -> Option<FiniteResidualPoint> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    Some(FiniteResidualPoint {
+        var_name: ctx.sym_name(*var_symbol).to_string(),
+        point_value: point_value.clone(),
+    })
+}
+
+fn finite_single_function_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    Some((ctx.builtin_of(fn_id)?, args[0]))
+}
+
+fn finite_polynomial_tail_negative_on_both_sides(
+    polynomial: &Polynomial,
+    point_value: &BigRational,
+) -> Option<bool> {
+    let (order, derivative) =
+        finite_polynomial_local_order_and_derivative(polynomial, point_value)?;
+    finite_local_tail_negative_on_both_sides(&derivative, order)
+}
+
+fn finite_residual_has_empty_punctured_sqrt_domain(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> bool {
+    let Some(finite_point) = finite_residual_point(ctx, var, point) else {
+        return false;
+    };
+    let Some(radicand) = extract_square_root_base(ctx, expr) else {
+        return false;
+    };
+
+    finite_endpoint_argument_zero_tail_negative_on_both_sides(
+        ctx,
+        radicand,
+        &finite_point.var_name,
+        &finite_point.point_value,
+    )
+    .unwrap_or(false)
+}
+
+fn finite_residual_has_empty_punctured_acosh_domain(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> bool {
+    let Some(finite_point) = finite_residual_point(ctx, var, point) else {
+        return false;
+    };
+    let Some((builtin, argument_expr)) = finite_single_function_arg(ctx, expr) else {
+        return false;
+    };
+    if builtin != BuiltinFn::Acosh {
+        return false;
+    }
+
+    let Ok(argument) = Polynomial::from_expr(ctx, argument_expr, &finite_point.var_name) else {
+        return false;
+    };
+    if argument.eval(&finite_point.point_value) != rational_one() {
+        return false;
+    }
+    let endpoint_gap = argument.sub(&Polynomial::one(finite_point.var_name));
+
+    finite_polynomial_tail_negative_on_both_sides(&endpoint_gap, &finite_point.point_value)
+        .unwrap_or(false)
+}
+
+fn finite_residual_has_empty_punctured_inverse_trig_domain(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> bool {
+    let Some(finite_point) = finite_residual_point(ctx, var, point) else {
+        return false;
+    };
+    let Some((builtin, argument_expr)) = finite_single_function_arg(ctx, expr) else {
+        return false;
+    };
+    if !matches!(
+        builtin,
+        BuiltinFn::Asin | BuiltinFn::Arcsin | BuiltinFn::Acos | BuiltinFn::Arccos
+    ) {
+        return false;
+    }
+
+    let Ok(argument) = Polynomial::from_expr(ctx, argument_expr, &finite_point.var_name) else {
+        return false;
+    };
+    let Some((endpoint_gap, _endpoint)) = finite_inverse_trig_endpoint_gap(
+        &argument,
+        &finite_point.var_name,
+        &finite_point.point_value,
+    ) else {
+        return false;
+    };
+
+    finite_polynomial_tail_negative_on_both_sides(&endpoint_gap, &finite_point.point_value)
+        .unwrap_or(false)
+}
+
+fn finite_residual_warning(ctx: &Context, expr: ExprId, var: ExprId, point: ExprId) -> String {
+    if finite_residual_has_empty_punctured_sqrt_domain(ctx, expr, var, point)
+        || finite_residual_has_empty_punctured_acosh_domain(ctx, expr, var, point)
+        || finite_residual_has_empty_punctured_inverse_trig_domain(ctx, expr, var, point)
+    {
+        format!(
+            "{FINITE_POINT_LIMIT_UNSUPPORTED_WARNING}; {FINITE_EMPTY_PUNCTURED_REAL_NEIGHBORHOOD_WARNING_DETAIL}"
+        )
+    } else {
+        FINITE_POINT_LIMIT_UNSUPPORTED_WARNING.to_string()
+    }
+}
+
 /// Evaluate a limit at infinity using conservative rules.
 ///
 /// This runs optional safe pre-simplification, applies direct rules in order,
@@ -4493,7 +4732,7 @@ pub fn eval_limit_at_infinity(
 
     let residual = mk_limit_for_approach(ctx, simplified_expr, var, approach);
     let warning = match approach {
-        Approach::Finite(_) => "Finite point limits are not supported safely yet".to_string(),
+        Approach::Finite(point) => finite_residual_warning(ctx, simplified_expr, var, point),
         Approach::FiniteOneSided(_, _) => {
             "One-sided finite point limits are not supported safely for this expression yet"
                 .to_string()
@@ -6058,6 +6297,167 @@ mod tests {
                 .is_none(),
             "empty-punctured-domain acosh endpoint must remain residual"
         );
+    }
+
+    #[test]
+    fn finite_bilateral_sqrt_endpoint_requires_positive_tail_on_both_sides() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_zero = parse_expr(&mut ctx, "0");
+
+        let even_gap = parse_expr(&mut ctx, "sqrt(x^2)");
+        let even_gap_out = try_limit_rules_at_finite(&mut ctx, even_gap, x, point_zero)
+            .expect("expected bilateral sqrt endpoint over positive even gap");
+        assert_eq!(display_expr(&ctx, even_gap_out), "0");
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let shifted_even_gap = parse_expr(&mut ctx, "sqrt((x - 1)^2)");
+        let shifted_even_gap_out =
+            try_limit_rules_at_finite(&mut ctx, shifted_even_gap, x, point_one)
+                .expect("expected shifted bilateral sqrt endpoint over positive even gap");
+        assert_eq!(display_expr(&ctx, shifted_even_gap_out), "0");
+
+        let one_sided_only = parse_expr(&mut ctx, "sqrt(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, one_sided_only, x, point_zero).is_none(),
+            "sqrt(x) at a finite endpoint must remain residual for bilateral limits"
+        );
+
+        let odd_gap = parse_expr(&mut ctx, "sqrt(x^3)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, odd_gap, x, point_zero).is_none(),
+            "sqrt over an odd local tail must remain residual for bilateral limits"
+        );
+
+        let log_even_gap = parse_expr(&mut ctx, "ln(x^2)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, log_even_gap, x, point_zero).is_none(),
+            "log over a zero endpoint remains divergent and must not share sqrt policy"
+        );
+    }
+
+    #[test]
+    fn finite_residual_warning_marks_empty_punctured_domains() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_zero = parse_expr(&mut ctx, "0");
+
+        let empty_punctured = parse_expr(&mut ctx, "sqrt(-x^2)");
+        let outcome = eval_limit_at_infinity(
+            &mut ctx,
+            empty_punctured,
+            x,
+            Approach::Finite(point_zero),
+            &LimitOptions::default(),
+        );
+        assert_eq!(
+            display_expr(&ctx, outcome.expr),
+            "limit(sqrt(-(x^2)), x, 0)"
+        );
+        let warning = outcome.warning.expect("expected residual warning");
+        assert!(warning.contains(FINITE_POINT_LIMIT_UNSUPPORTED_WARNING));
+        assert!(warning.contains("no punctured real neighbourhood"));
+
+        let empty_punctured_acosh = parse_expr(&mut ctx, "acosh(1 - x^2)");
+        let acosh_outcome = eval_limit_at_infinity(
+            &mut ctx,
+            empty_punctured_acosh,
+            x,
+            Approach::Finite(point_zero),
+            &LimitOptions::default(),
+        );
+        assert_eq!(
+            display_expr(&ctx, acosh_outcome.expr),
+            "limit(acosh(1 - x^2), x, 0)"
+        );
+        let acosh_warning = acosh_outcome.warning.expect("expected residual warning");
+        assert!(acosh_warning.contains(FINITE_POINT_LIMIT_UNSUPPORTED_WARNING));
+        assert!(acosh_warning.contains("no punctured real neighbourhood"));
+
+        let empty_punctured_inverse_trig = parse_expr(&mut ctx, "acos(1 + x^2)");
+        let inverse_trig_outcome = eval_limit_at_infinity(
+            &mut ctx,
+            empty_punctured_inverse_trig,
+            x,
+            Approach::Finite(point_zero),
+            &LimitOptions::default(),
+        );
+        assert_eq!(
+            display_expr(&ctx, inverse_trig_outcome.expr),
+            "limit(acos(x^2 + 1), x, 0)"
+        );
+        let inverse_trig_warning = inverse_trig_outcome
+            .warning
+            .expect("expected residual warning");
+        assert!(inverse_trig_warning.contains(FINITE_POINT_LIMIT_UNSUPPORTED_WARNING));
+        assert!(inverse_trig_warning.contains("no punctured real neighbourhood"));
+
+        let empty_punctured_inverse_trig_lower = parse_expr(&mut ctx, "acos(-1 - x^2)");
+        let inverse_trig_lower_outcome = eval_limit_at_infinity(
+            &mut ctx,
+            empty_punctured_inverse_trig_lower,
+            x,
+            Approach::Finite(point_zero),
+            &LimitOptions::default(),
+        );
+        let inverse_trig_lower_warning = inverse_trig_lower_outcome
+            .warning
+            .expect("expected residual warning");
+        assert!(inverse_trig_lower_warning.contains(FINITE_POINT_LIMIT_UNSUPPORTED_WARNING));
+        assert!(inverse_trig_lower_warning.contains("no punctured real neighbourhood"));
+
+        let one_sided_only = parse_expr(&mut ctx, "sqrt(x^3)");
+        let one_sided_outcome = eval_limit_at_infinity(
+            &mut ctx,
+            one_sided_only,
+            x,
+            Approach::Finite(point_zero),
+            &LimitOptions::default(),
+        );
+        let one_sided_warning = one_sided_outcome
+            .warning
+            .expect("expected generic residual warning");
+        assert!(one_sided_warning.contains(FINITE_POINT_LIMIT_UNSUPPORTED_WARNING));
+        assert!(!one_sided_warning.contains("no punctured real neighbourhood"));
+
+        let one_sided_only_acosh = parse_expr(&mut ctx, "acosh(1 + x^3)");
+        let one_sided_acosh_outcome = eval_limit_at_infinity(
+            &mut ctx,
+            one_sided_only_acosh,
+            x,
+            Approach::Finite(point_zero),
+            &LimitOptions::default(),
+        );
+        let one_sided_acosh_warning = one_sided_acosh_outcome
+            .warning
+            .expect("expected generic residual warning");
+        assert!(one_sided_acosh_warning.contains(FINITE_POINT_LIMIT_UNSUPPORTED_WARNING));
+        assert!(!one_sided_acosh_warning.contains("no punctured real neighbourhood"));
+
+        let one_sided_only_inverse_trig = parse_expr(&mut ctx, "acos(1 - x^3)");
+        let one_sided_inverse_trig_outcome = eval_limit_at_infinity(
+            &mut ctx,
+            one_sided_only_inverse_trig,
+            x,
+            Approach::Finite(point_zero),
+            &LimitOptions::default(),
+        );
+        let one_sided_inverse_trig_warning = one_sided_inverse_trig_outcome
+            .warning
+            .expect("expected generic residual warning");
+        assert!(one_sided_inverse_trig_warning.contains(FINITE_POINT_LIMIT_UNSUPPORTED_WARNING));
+        assert!(!one_sided_inverse_trig_warning.contains("no punctured real neighbourhood"));
+
+        let positive_even_gap = parse_expr(&mut ctx, "sqrt(x^2)");
+        let resolved_outcome = eval_limit_at_infinity(
+            &mut ctx,
+            positive_even_gap,
+            x,
+            Approach::Finite(point_zero),
+            &LimitOptions::default(),
+        );
+        assert_eq!(display_expr(&ctx, resolved_outcome.expr), "0");
+        assert!(resolved_outcome.warning.is_none());
     }
 
     #[test]

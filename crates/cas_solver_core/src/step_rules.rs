@@ -14,6 +14,9 @@ pub fn is_always_keep_step_rule_name(name: &str) -> bool {
         || name == "Cancel Exact Additive Pairs"
         || name == "Abs Under Positivity"
         || name == "Abs Under Non-Negativity"
+        || name == "Conservar derivada residual"
+        || name == "Conservar integral residual"
+        || name == "Conservar límite residual"
 }
 
 /// Returns true when rule name corresponds to canonicalization/reordering.
@@ -83,6 +86,9 @@ mod tests {
         assert!(is_always_keep_step_rule_name("Expand Log Abs Mul/Div"));
         assert!(is_always_keep_step_rule_name("Abs Under Positivity"));
         assert!(is_always_keep_step_rule_name("Abs Under Non-Negativity"));
+        assert!(is_always_keep_step_rule_name("Conservar derivada residual"));
+        assert!(is_always_keep_step_rule_name("Conservar integral residual"));
+        assert!(is_always_keep_step_rule_name("Conservar límite residual"));
         assert!(is_canonicalization_rule_name("Canonicalize Terms"));
         assert!(is_mechanical_rule_name("Combine Like Terms"));
         assert!(!is_mechanical_rule_name("Quadratic Formula"));

@@ -120,29 +120,11 @@ pub(crate) fn constant_polynomial_ratio(
     Some(scale)
 }
 
-pub(crate) fn constant_derivative_scale(
-    ctx: &mut Context,
-    numerator: ExprId,
-    arg: ExprId,
-    var: &str,
-) -> Option<BigRational> {
-    let numerator_poly = Polynomial::from_expr(ctx, numerator, var).ok()?;
-    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
-    let derivative = arg_poly.derivative();
-    let scale = constant_polynomial_ratio(&numerator_poly, &derivative)?;
-    if scale.is_zero() {
-        return None;
-    }
-
-    Some(scale)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        constant_derivative_scale, constant_polynomial_ratio,
-        elementary_polynomial_substitution_kernel_antiderivative, polynomial_substitution_kernel,
-        PolynomialSubstitutionKernel,
+        constant_polynomial_ratio, elementary_polynomial_substitution_kernel_antiderivative,
+        polynomial_substitution_kernel, PolynomialSubstitutionKernel,
     };
     use crate::polynomial::Polynomial;
     use cas_ast::{BuiltinFn, Constant, Context, Expr};
@@ -182,27 +164,6 @@ mod tests {
         let denominator = polynomial(&[1, 2, 3]);
 
         assert!(constant_polynomial_ratio(&numerator, &denominator).is_none());
-    }
-
-    #[test]
-    fn rejects_zero_derivative_scale() {
-        let mut ctx = Context::new();
-        let numerator = parse("0", &mut ctx).unwrap();
-        let arg = parse("x^2 + 1", &mut ctx).unwrap();
-
-        assert!(constant_derivative_scale(&mut ctx, numerator, arg, "x").is_none());
-    }
-
-    #[test]
-    fn detects_constant_derivative_scale() {
-        let mut ctx = Context::new();
-        let numerator = parse("6*x", &mut ctx).unwrap();
-        let arg = parse("x^2 + 1", &mut ctx).unwrap();
-
-        assert_eq!(
-            constant_derivative_scale(&mut ctx, numerator, arg, "x"),
-            Some(rational(3))
-        );
     }
 
     #[test]

@@ -46,6 +46,7 @@ class LimitCommandMatrixCase:
     domain_regime: str = "unconditional"
     required_condition_regime: str = "none"
     outcome: str = "supported"
+    residual_cause: str = "not_applicable"
     trace_regime: str = "direct"
     presentation_regime: str = "canonical"
 
@@ -96,6 +97,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="simple_pole_residual",
         required_condition_regime="finite_rational_pole_residual_domain",
         outcome="residual",
+        residual_cause="finite_rational_pole_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="rational_pole_residual",
     ),
@@ -180,6 +182,21 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         required_condition_regime="finite_one_sided_log_endpoint_domain",
         trace_regime="one_sided_log_endpoint_policy",
         presentation_regime="negative_infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_binary_log_constant_base_less_than_one_endpoint_supported",
+        expr="limit(log(1/2,x), x, 0+)",
+        expected_result="infinity",
+        expected_required_display=("x > 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="binary_log_endpoint",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_constant_base_less_than_one_log_endpoint",
+        required_condition_regime=(
+            "finite_one_sided_constant_base_less_than_one_log_endpoint_domain"
+        ),
+        trace_regime="one_sided_log_endpoint_policy",
+        presentation_regime="infinity",
     ),
     LimitCommandMatrixCase(
         name="finite_one_sided_log_rational_zero_tail_endpoint_supported",
@@ -284,6 +301,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="rational_domain_path_conflict",
         required_condition_regime="finite_one_sided_rational_path_conflict",
         outcome="residual",
+        residual_cause="one_sided_domain_path_conflict",
         trace_regime="one_sided_rational_domain_path_residual_policy",
         presentation_regime="residual",
     ),
@@ -302,6 +320,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="domain_path_conflict",
         required_condition_regime="finite_one_sided_path_conflict",
         outcome="residual",
+        residual_cause="one_sided_domain_path_conflict",
         trace_regime="one_sided_domain_path_residual_policy",
         presentation_regime="residual",
     ),
@@ -333,6 +352,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="lower_bound_domain_path_conflict",
         required_condition_regime="finite_one_sided_lower_bound_path_conflict",
         outcome="residual",
+        residual_cause="one_sided_domain_path_conflict",
         trace_regime="one_sided_domain_path_residual_policy",
         presentation_regime="residual",
     ),
@@ -364,6 +384,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="inverse_trig_domain_path_conflict",
         required_condition_regime="finite_one_sided_inverse_trig_path_conflict",
         outcome="residual",
+        residual_cause="one_sided_domain_path_conflict",
         trace_regime="one_sided_domain_path_residual_policy",
         presentation_regime="residual",
     ),
@@ -408,6 +429,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="atanh_open_interval_domain_path_conflict",
         required_condition_regime="finite_one_sided_atanh_path_conflict",
         outcome="residual",
+        residual_cause="one_sided_domain_path_conflict",
         trace_regime="one_sided_domain_path_residual_policy",
         presentation_regime="residual",
     ),
@@ -435,6 +457,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="argument_zero_endpoint_residual",
         required_condition_regime="finite_log_endpoint_residual_domain",
         outcome="residual",
+        residual_cause="finite_endpoint_or_boundary_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
     ),
@@ -450,6 +473,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="fixed_base_argument_zero_endpoint_residual",
         required_condition_regime="finite_fixed_base_log_endpoint_residual_domain",
         outcome="residual",
+        residual_cause="finite_endpoint_or_boundary_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
     ),
@@ -465,6 +489,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="constant_base_argument_zero_endpoint_residual",
         required_condition_regime="finite_binary_log_constant_base_endpoint_residual_domain",
         outcome="residual",
+        residual_cause="finite_endpoint_or_boundary_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="binary_log_residual",
     ),
@@ -495,6 +520,25 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="exact_zero",
     ),
     LimitCommandMatrixCase(
+        name="finite_inverse_trig_empty_punctured_upper_endpoint_residual",
+        expr="limit(acos(1+x^2), x, 0)",
+        expected_result="limit(acos(x^2 + 1), x, 0)",
+        expected_required_display=("-1 ≤ x^2 + 1 ≤ 1",),
+        expected_warning_substrings=(
+            "Finite point limits are not supported safely yet",
+            "no punctured real neighbourhood",
+        ),
+        expected_step_substrings=("Conservar límite residual",),
+        family="inverse_trig",
+        point_regime="finite",
+        domain_regime="empty_punctured_interval_endpoint_residual",
+        required_condition_regime="finite_empty_punctured_inverse_trig_endpoint_residual_domain",
+        outcome="residual",
+        residual_cause="finite_endpoint_empty_punctured_domain_policy",
+        trace_regime="finite_residual_policy",
+        presentation_regime="residual",
+    ),
+    LimitCommandMatrixCase(
         name="finite_inverse_trig_bilateral_lower_endpoint_supported",
         expr="limit(acos(-1+x^2), x, 0)",
         expected_result="pi",
@@ -517,6 +561,17 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="structurally_positive_composition",
         trace_regime="nested_positive_domain_substitution",
         presentation_regime="canonical_no_required_conditions",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_total_real_over_positive_sublimit_composition",
+        expr="limit(sin(sqrt(x^2+1)), x, -2)",
+        expected_result="sin(sqrt(5))",
+        expected_step_substrings=("Evaluar límite finito",),
+        family="total_real_root_composition",
+        point_regime="finite",
+        domain_regime="structurally_positive_nested_composition",
+        trace_regime="total_real_over_positive_sublimit_substitution",
+        presentation_regime="symbolic_trig_over_radical",
     ),
     LimitCommandMatrixCase(
         name="finite_log_rational_positive_sublimit_domain",
@@ -593,6 +648,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="unit_base_boundary_residual",
         required_condition_regime="finite_boundary_residual_domain",
         outcome="residual",
+        residual_cause="finite_endpoint_or_boundary_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
     ),
@@ -608,6 +664,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="argument_zero_boundary_residual",
         required_condition_regime="finite_boundary_residual_domain",
         outcome="residual",
+        residual_cause="finite_endpoint_or_boundary_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
     ),
@@ -624,6 +681,55 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="undefined",
     ),
     LimitCommandMatrixCase(
+        name="finite_sqrt_bilateral_even_gap_endpoint_supported",
+        expr="limit(sqrt(x^2), x, 0)",
+        expected_result="0",
+        expected_step_substrings=("Evaluar límite finito",),
+        family="root",
+        point_regime="finite",
+        domain_regime="bilateral_even_gap_endpoint",
+        trace_regime="finite_sqrt_bilateral_endpoint_policy",
+        presentation_regime="exact_zero",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_sqrt_empty_punctured_endpoint_residual",
+        expr="limit(sqrt(-x^2), x, 0)",
+        expected_result="limit(sqrt(-(x^2)), x, 0)",
+        expected_required_display=("0 ≤ x ≤ 0",),
+        expected_warning_substrings=(
+            "Finite point limits are not supported safely yet",
+            "no punctured real neighbourhood",
+        ),
+        expected_step_substrings=("Conservar límite residual",),
+        family="root",
+        point_regime="finite",
+        domain_regime="empty_punctured_endpoint_residual",
+        required_condition_regime="finite_empty_punctured_endpoint_residual_domain",
+        outcome="residual",
+        residual_cause="finite_endpoint_empty_punctured_domain_policy",
+        trace_regime="finite_residual_policy",
+        presentation_regime="residual",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_acosh_empty_punctured_lower_bound_endpoint_residual",
+        expr="limit(acosh(1-x^2), x, 0)",
+        expected_result="limit(acosh(1 - x^2), x, 0)",
+        expected_required_display=("1 - x^2 ≥ 1",),
+        expected_warning_substrings=(
+            "Finite point limits are not supported safely yet",
+            "no punctured real neighbourhood",
+        ),
+        expected_step_substrings=("Conservar límite residual",),
+        family="inverse_hyperbolic_domain_policy",
+        point_regime="finite",
+        domain_regime="empty_punctured_lower_bound_endpoint_residual",
+        required_condition_regime="finite_empty_punctured_lower_bound_endpoint_residual_domain",
+        outcome="residual",
+        residual_cause="finite_endpoint_empty_punctured_domain_policy",
+        trace_regime="finite_residual_policy",
+        presentation_regime="residual",
+    ),
+    LimitCommandMatrixCase(
         name="finite_sqrt_endpoint_residual_boundary",
         expr="limit(x^(1/2), x, 0)",
         expected_result="limit(x^(1 / 2), x, 0)",
@@ -635,6 +741,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="endpoint_residual",
         required_condition_regime="finite_endpoint_residual_domain",
         outcome="residual",
+        residual_cause="finite_endpoint_or_boundary_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
     ),
@@ -650,6 +757,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="endpoint_residual",
         required_condition_regime="finite_endpoint_residual_domain",
         outcome="residual",
+        residual_cause="finite_endpoint_or_boundary_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual_presentation_cleanup",
     ),
@@ -663,6 +771,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         point_regime="finite",
         domain_regime="discontinuous_residual",
         outcome="residual",
+        residual_cause="finite_discontinuity_or_orientation",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
     ),
@@ -676,6 +785,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         point_regime="finite",
         domain_regime="discontinuous_residual",
         outcome="residual",
+        residual_cause="finite_discontinuity_or_orientation",
         trace_regime="finite_residual_policy",
         presentation_regime="residual_presentation_cleanup",
     ),
@@ -691,6 +801,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="orientation_discontinuity_residual",
         required_condition_regime="finite_abs_orientation_denominator_domain",
         outcome="residual",
+        residual_cause="finite_discontinuity_or_orientation",
         trace_regime="finite_residual_policy",
         presentation_regime="abs_orientation_residual",
     ),
@@ -717,6 +828,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="table_undefined_trig_pole_residual",
         required_condition_regime="finite_trig_pole_residual_domain",
         outcome="residual",
+        residual_cause="finite_trig_pole_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
     ),
@@ -732,6 +844,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="table_undefined_trig_sine_pole_residual",
         required_condition_regime="finite_trig_sine_pole_residual_domain",
         outcome="residual",
+        residual_cause="finite_trig_pole_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
     ),
@@ -1027,6 +1140,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="domain_path_conflict",
         required_condition_regime="infinity_path_conflict",
         outcome="residual",
+        residual_cause="infinity_domain_path_conflict",
         trace_regime="infinity_residual_policy",
         presentation_regime="residual",
     ),
@@ -1162,6 +1276,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="domain_path_conflict",
         required_condition_regime="infinity_path_conflict",
         outcome="residual",
+        residual_cause="infinity_domain_path_conflict",
         trace_regime="infinity_residual_policy",
         presentation_regime="residual",
     ),
@@ -1409,6 +1524,7 @@ def run_case(
         "domain_regime": case.domain_regime,
         "required_condition_regime": case.required_condition_regime,
         "outcome": case.outcome,
+        "residual_cause": case.residual_cause,
         "trace_regime": case.trace_regime,
         "presentation_regime": case.presentation_regime,
     }
@@ -1477,6 +1593,20 @@ def count_required_display_items(results: list[dict[str, Any]]) -> dict[str, int
     return dict(sorted(counts.items()))
 
 
+def count_residual_causes(
+    cases: tuple[LimitCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        if case.outcome != "residual":
+            continue
+        cause = case.residual_cause
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        counts[cause] = counts.get(cause, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def increment_issue_kind(issue_kind_counts: dict[str, int], error_kind: str | None) -> None:
     if error_kind is None:
         return
@@ -1533,6 +1663,7 @@ def run_matrix(
         for case in cases
         if case.outcome == "supported" and not case.expected_step_substrings
     ]
+    residual_case_names = [case.name for case in cases if case.outcome == "residual"]
 
     return {
         "status": overall_status,
@@ -1544,6 +1675,7 @@ def run_matrix(
         "cases": results,
         "supported_case_count": sum(1 for case in cases if case.outcome == "supported"),
         "residual_case_count": sum(1 for case in cases if case.outcome == "residual"),
+        "residual_case_names": residual_case_names,
         "warning_expected_case_count": warning_expected_cases,
         "required_display_case_count": required_display_cases,
         "step_checked_case_count": step_checked_cases,
@@ -1563,6 +1695,7 @@ def run_matrix(
         "domain_regime_counts": count_by(cases, "domain_regime"),
         "required_condition_regime_counts": count_by(cases, "required_condition_regime"),
         "outcome_counts": count_by(cases, "outcome"),
+        "residual_cause_counts": count_residual_causes(cases),
         "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
         "calculus_block_gate_counts": count_calculus_block_gates(cases),
         "trace_regime_counts": count_by(cases, "trace_regime"),

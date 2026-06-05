@@ -1,6 +1,5 @@
 //! Log-result construction helpers for symbolic integration.
 
-use crate::build::mul2_raw;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
@@ -8,20 +7,6 @@ use num_traits::{One, Signed, Zero};
 pub(crate) fn ln_abs(ctx: &mut Context, arg: ExprId) -> ExprId {
     let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
     ctx.call_builtin(BuiltinFn::Ln, vec![abs_arg])
-}
-
-pub(crate) fn scaled_ln_abs_product_form(
-    ctx: &mut Context,
-    arg: ExprId,
-    scale: BigRational,
-) -> ExprId {
-    let log_abs = ln_abs(ctx, arg);
-    if scale.is_one() {
-        return log_abs;
-    }
-
-    let scale_expr = ctx.add(Expr::Number(scale));
-    mul2_raw(ctx, scale_expr, log_abs)
 }
 
 pub(crate) fn constant_base_log_derivative_correction(
@@ -97,8 +82,7 @@ mod tests {
         affine_constant_base_log_antiderivative_from_slope,
         constant_base_log_derivative_correction,
         positive_integer_constant_log_base_derivative_correction,
-        positive_integer_constant_log_base_ln, scaled_ln_abs_product_form,
-        valid_constant_log_base_ln_from_rational_value,
+        positive_integer_constant_log_base_ln, valid_constant_log_base_ln_from_rational_value,
     };
     use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
     use cas_formatter::DisplayExpr;
@@ -134,18 +118,6 @@ mod tests {
         let base_ten_correction =
             positive_integer_constant_log_base_derivative_correction(&mut ctx, 10);
         assert_eq!(rendered(&ctx, base_ten_correction), "1 / ln(10)");
-    }
-
-    #[test]
-    fn builds_scaled_ln_abs_product_form() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-
-        let unit = scaled_ln_abs_product_form(&mut ctx, x, rational(1));
-        assert_eq!(rendered(&ctx, unit), "ln(|x|)");
-
-        let scaled = scaled_ln_abs_product_form(&mut ctx, x, rational(2));
-        assert_eq!(rendered(&ctx, scaled), "2 * ln(|x|)");
     }
 
     #[test]

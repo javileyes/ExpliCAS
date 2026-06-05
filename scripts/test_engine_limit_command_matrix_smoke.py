@@ -20,7 +20,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_limit_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 84)
+        self.assertEqual(len(cases), 90)
         names = {case.name for case in cases}
         self.assertIn("finite_removable_rational_cancellation", names)
         self.assertIn("finite_rational_simple_pole_residual", names)
@@ -36,6 +36,10 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertIn("finite_one_sided_abs_orientation_quotient_supported", names)
         self.assertIn("finite_one_sided_log_zero_endpoint_supported", names)
+        self.assertIn(
+            "finite_one_sided_binary_log_constant_base_less_than_one_endpoint_supported",
+            names,
+        )
         self.assertIn(
             "finite_one_sided_log_rational_zero_tail_endpoint_supported", names
         )
@@ -83,8 +87,12 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertIn("finite_acosh_bilateral_lower_bound_endpoint_supported", names)
         self.assertIn("finite_inverse_trig_bilateral_upper_endpoint_supported", names)
+        self.assertIn(
+            "finite_inverse_trig_empty_punctured_upper_endpoint_residual", names
+        )
         self.assertIn("finite_inverse_trig_bilateral_lower_endpoint_supported", names)
         self.assertIn("finite_log_root_structurally_positive_composition", names)
+        self.assertIn("finite_total_real_over_positive_sublimit_composition", names)
         self.assertIn("finite_log_rational_positive_sublimit_domain", names)
         self.assertIn("finite_sqrt_structurally_positive_radical_presentation", names)
         self.assertIn("finite_inverse_trig_root_interior_special_angle", names)
@@ -92,6 +100,11 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("finite_binary_log_unit_base_boundary_residual", names)
         self.assertIn("finite_binary_log_argument_zero_boundary_residual", names)
         self.assertIn("finite_static_invalid_log_undefined", names)
+        self.assertIn("finite_sqrt_bilateral_even_gap_endpoint_supported", names)
+        self.assertIn("finite_sqrt_empty_punctured_endpoint_residual", names)
+        self.assertIn(
+            "finite_acosh_empty_punctured_lower_bound_endpoint_residual", names
+        )
         self.assertIn("finite_sqrt_endpoint_residual_presentation_cleanup", names)
         self.assertIn("finite_discontinuous_sign_residual_presentation_cleanup", names)
         self.assertIn("finite_abs_orientation_quotient_residual_boundary", names)
@@ -140,26 +153,38 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("infinity_bounded_over_divergent_domain_conflict_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "point_regime"),
-            {"finite": 36, "finite_one_sided": 21, "infinity": 27},
+            {"finite": 41, "finite_one_sided": 22, "infinity": 27},
         )
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 20, "supported": 63, "undefined": 1},
+            {"residual": 23, "supported": 66, "undefined": 1},
+        )
+        self.assertEqual(
+            SMOKE.count_residual_causes(cases),
+            {
+                "finite_discontinuity_or_orientation": 3,
+                "finite_endpoint_empty_punctured_domain_policy": 3,
+                "finite_endpoint_or_boundary_policy": 7,
+                "finite_rational_pole_policy": 1,
+                "finite_trig_pole_policy": 2,
+                "infinity_domain_path_conflict": 2,
+                "one_sided_domain_path_conflict": 5,
+            },
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block3_real_domain_limits": 63,
-                "block9_residuals_and_non_goals": 21,
+                "block3_real_domain_limits": 66,
+                "block9_residuals_and_non_goals": 24,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
-                "didactic_trace_and_limit_policy": 29,
-                "domain_conditions_and_limit_policy": 34,
+                "didactic_trace_and_limit_policy": 31,
+                "domain_conditions_and_limit_policy": 35,
                 "explicit_undefined_domain_policy": 1,
-                "safe_residual_policy": 20,
+                "safe_residual_policy": 23,
             },
         )
         self.assertEqual(
@@ -173,6 +198,9 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_binary_log_resolved_radical_base_unit_denominator_base_and_radical_domain": 1,
                 "finite_binary_log_variable_base_unit_denominator_and_base_domain": 1,
                 "finite_boundary_residual_domain": 2,
+                "finite_empty_punctured_endpoint_residual_domain": 1,
+                "finite_empty_punctured_inverse_trig_endpoint_residual_domain": 1,
+                "finite_empty_punctured_lower_bound_endpoint_residual_domain": 1,
                 "finite_endpoint_residual_domain": 2,
                 "finite_fixed_base_log_endpoint_residual_domain": 1,
                 "finite_fixed_base_log_unit_denominator_domain": 1,
@@ -190,6 +218,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_one_sided_inverse_trig_endpoint_domain": 1,
                 "finite_one_sided_inverse_trig_path_conflict": 1,
                 "finite_one_sided_lower_bound_path_conflict": 1,
+                "finite_one_sided_constant_base_less_than_one_log_endpoint_domain": 1,
                 "finite_positive_domain": 1,
                 "finite_positive_nonzero_power_domain": 1,
                 "finite_exp_zero_denominator_domain": 1,
@@ -224,12 +253,12 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "infinity_path_total_real_polynomial_tail_domain": 5,
                 "infinity_path_total_real_rational_finite_tail_domain": 1,
                 "infinity_source_definedness": 1,
-                "none": 12,
+                "none": 14,
             },
         )
         self.assertEqual(
             sum(1 for case in cases if case.expected_step_substrings),
-            84,
+            90,
         )
         self.assertEqual(
             [

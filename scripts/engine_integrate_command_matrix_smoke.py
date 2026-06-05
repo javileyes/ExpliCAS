@@ -49,6 +49,7 @@ class IntegrateCommandMatrixCase:
     argument_regime: str = "variable"
     domain_regime: str = "unconditional"
     outcome: str = "supported"
+    residual_cause: str = "not_applicable"
     trace_regime: str = "direct"
     presentation_regime: str = "canonical"
 
@@ -268,6 +269,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="log_over_affine_rational_expression",
         domain_regime="positive_required_residual",
         outcome="residual",
+        residual_cause="special_function_method_required",
         trace_regime="residual_policy_with_domain",
         presentation_regime="residual",
     ),
@@ -281,6 +283,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="nonlinear_polynomial_argument",
         domain_regime="trig_pole_residual",
         outcome="residual",
+        residual_cause="non_elementary_composition",
         trace_regime="residual_policy_with_domain",
         presentation_regime="residual",
     ),
@@ -294,6 +297,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="nonlinear_polynomial_argument_presimplified",
         domain_regime="trig_pole_presimplified_residual",
         outcome="residual",
+        residual_cause="non_elementary_composition",
         trace_regime="residual_presimplification_with_domain",
         presentation_regime="residual_presentation_cleanup",
     ),
@@ -307,6 +311,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="nonlinear_polynomial_argument_presimplified",
         domain_regime="trig_sine_pole_presimplified_residual",
         outcome="residual",
+        residual_cause="non_elementary_composition",
         trace_regime="residual_presimplification_with_domain",
         presentation_regime="residual_presentation_cleanup",
     ),
@@ -323,14 +328,33 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="explicit_reciprocal_presimplified_argument",
         domain_regime="explicit_denominator_source_condition",
         outcome="residual",
+        residual_cause="non_elementary_composition",
         trace_regime="residual_presimplification_with_domain",
         presentation_regime="result_cleanup_source_condition",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_reciprocal_sine_verified_log_domain",
+        expr="integrate(2*x/sin(x^2), x)",
+        expected_result="ln(|csc(x^2) - cot(x^2)|)",
+        expected_derivative_equivalent_to="2*x/sin(x^2)",
+        expected_derivative_required_display=("sin(x^2) ≠ 0",),
+        expected_required_display=("sin(x^2) ≠ 0",),
+        expected_step_substrings=(
+            "Sacar constante de una fracción",
+            "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
+            "Identificar u y du",
+        ),
+        family="explicit_reciprocal_trig_substitution",
+        argument_regime="explicit_reciprocal_sine_polynomial_derivative",
+        domain_regime="explicit_reciprocal_sine_verified_substitution",
+        trace_regime="reciprocal_sine_verified_substitution",
+        presentation_regime="abs_log_reciprocal_trig_source_condition",
     ),
     IntegrateCommandMatrixCase(
         name="explicit_reciprocal_tangent_presimplified_residual_domain",
         expr="integrate(1/tan(x^2+0), x)",
         expected_result="integrate(cot(x^2), x)",
-        expected_required_display=("sin(x^2) ≠ 0", "tan(x^2) ≠ 0"),
+        expected_required_display=("sin(x^2) ≠ 0", "cos(x^2) ≠ 0"),
         expected_step_substrings=(
             "Expandir tangente como seno entre coseno",
             "Simplificar fracción anidada",
@@ -341,8 +365,97 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="explicit_tangent_reciprocal_presimplified_argument",
         domain_regime="explicit_tangent_denominator_source_condition",
         outcome="residual",
+        residual_cause="non_elementary_composition",
         trace_regime="reciprocal_tangent_residual_prep",
         presentation_regime="compound_source_condition_residual",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_tangent_log_residual_condition_alias_dedupe",
+        expr="integrate(1/(tan(x)*ln(tan(x))), x)",
+        expected_result="integrate(cos(x) / (sin(x)·ln(sin(x) / cos(x))), x)",
+        expected_required_display=(
+            "tan(x) > 0",
+            "cos(x) ≠ 0",
+            "tan(x) - 1 ≠ 0",
+            "sin(x) ≠ 0",
+        ),
+        expected_step_substrings=(
+            "Expandir tangente como seno entre coseno",
+            "Conservar integral residual",
+        ),
+        family="explicit_reciprocal_trig_residual_domain",
+        argument_regime="explicit_tangent_log_residual_argument",
+        domain_regime="explicit_tangent_log_shifted_condition_dedupe",
+        outcome="residual",
+        residual_cause="unsupported_reciprocal_trig_method",
+        trace_regime="residual_presimplification_with_domain",
+        presentation_regime="shifted_tangent_condition_alias_dedupe",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_tangent_log_numeric_shifted_residual_condition_alias_dedupe",
+        expr="integrate(1/((tan(x)-2)*ln(tan(x))), x)",
+        expected_result="integrate(cos(x) / (ln(sin(x) / cos(x))·(sin(x) - 2·cos(x))), x)",
+        expected_required_display=(
+            "cos(x) ≠ 0",
+            "tan(x) - 1 ≠ 0",
+            "tan(x) - 2 ≠ 0",
+            "tan(x) > 0",
+        ),
+        expected_step_substrings=(
+            "Expandir tangente como seno entre coseno",
+            "Conservar integral residual",
+        ),
+        family="explicit_reciprocal_trig_residual_domain",
+        argument_regime="explicit_tangent_log_numeric_shifted_residual_argument",
+        domain_regime="explicit_tangent_log_numeric_shifted_condition_dedupe",
+        outcome="residual",
+        residual_cause="unsupported_reciprocal_trig_method",
+        trace_regime="residual_presimplification_with_domain",
+        presentation_regime="shifted_tangent_numeric_condition_alias_dedupe",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_tangent_log_numeric_offset_residual_condition_alias_dedupe",
+        expr="integrate(1/((2-tan(x))*ln(tan(x))), x)",
+        expected_result="integrate(1 / (2·ln(sin(x) / cos(x)) - sin(x)·ln(sin(x) / cos(x)) / cos(x)), x)",
+        expected_required_display=(
+            "cos(x) ≠ 0",
+            "2 - tan(x) ≠ 0",
+            "tan(x) - 1 ≠ 0",
+            "tan(x) > 0",
+        ),
+        expected_step_substrings=(
+            "Expandir tangente como seno entre coseno",
+            "Conservar integral residual",
+        ),
+        family="explicit_reciprocal_trig_residual_domain",
+        argument_regime="explicit_tangent_log_numeric_offset_residual_argument",
+        domain_regime="explicit_tangent_log_numeric_offset_condition_dedupe",
+        outcome="residual",
+        residual_cause="unsupported_reciprocal_trig_method",
+        trace_regime="residual_presimplification_with_domain",
+        presentation_regime="offset_tangent_numeric_condition_alias_dedupe",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_cotangent_log_numeric_offset_residual_condition_alias_dedupe",
+        expr="integrate(1/((2-cot(x))*ln(cot(x))), x)",
+        expected_result="integrate(1 / (2·ln(cos(x) / sin(x)) - cos(x)·ln(cos(x) / sin(x)) / sin(x)), x)",
+        expected_required_display=(
+            "sin(x) ≠ 0",
+            "2 - cot(x) ≠ 0",
+            "cot(x) > 0",
+            "cot(x) - 1 ≠ 0",
+        ),
+        expected_step_substrings=(
+            "Expandir cotangente como coseno entre seno",
+            "Conservar integral residual",
+        ),
+        family="explicit_reciprocal_trig_residual_domain",
+        argument_regime="explicit_cotangent_log_numeric_offset_residual_argument",
+        domain_regime="explicit_cotangent_log_numeric_offset_condition_dedupe",
+        outcome="residual",
+        residual_cause="unsupported_reciprocal_trig_method",
+        trace_regime="residual_presimplification_with_domain",
+        presentation_regime="offset_cotangent_numeric_condition_alias_dedupe",
     ),
     IntegrateCommandMatrixCase(
         name="explicit_reciprocal_tangent_verified_log_domain",
@@ -350,7 +463,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="ln(|sin(x^2)|)",
         expected_derivative_result="(cos(x^2)·x·2)/sin(x^2)",
         expected_derivative_required_display=("sin(x^2) ≠ 0",),
-        expected_required_display=("sin(x^2) ≠ 0", "tan(x^2) ≠ 0"),
+        expected_required_display=("sin(x^2) ≠ 0", "cos(x^2) ≠ 0"),
         expected_step_substrings=(
             "Expandir tangente como seno entre coseno",
             "Simplificar fracción anidada",
@@ -365,6 +478,47 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="abs_log_source_condition",
     ),
     IntegrateCommandMatrixCase(
+        name="explicit_reciprocal_tangent_presimplified_verified_log_domain",
+        expr="integrate(2*x/tan(x^2+0), x)",
+        expected_result="ln(|sin(x^2)|)",
+        expected_derivative_result="(cos(x^2)·x·2)/sin(x^2)",
+        expected_derivative_required_display=("sin(x^2) ≠ 0",),
+        expected_required_display=("sin(x^2) ≠ 0", "cos(x^2) ≠ 0"),
+        expected_step_substrings=(
+            "Agrupar términos semejantes",
+            "Expandir tangente como seno entre coseno",
+            "Simplificar fracción anidada",
+            "Sacar constante de una fracción",
+            "Usar la regla de cot(u) -> ln|sin(u)|",
+            "Identificar u y du",
+        ),
+        family="explicit_reciprocal_trig_substitution",
+        argument_regime="explicit_tangent_reciprocal_presimplified_polynomial_derivative",
+        domain_regime="explicit_tangent_presimplified_condition_dedupe",
+        trace_regime="presimplified_reciprocal_tangent_verified_substitution",
+        presentation_regime="abs_log_condition_dedupe",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_reciprocal_secant_presimplified_source_domain",
+        expr="integrate(2*x/sec(x^2+0), x)",
+        expected_result="sin(x^2)",
+        expected_derivative_equivalent_to="2*x/sec(x^2)",
+        expected_derivative_required_display=("cos(x^2) ≠ 0",),
+        expected_required_display=("cos(x^2) ≠ 0",),
+        expected_step_substrings=(
+            "Agrupar términos semejantes",
+            "Expandir secante como recíproco de coseno",
+            "Simplificar fracción anidada",
+            "Usar la regla de cos(u) -> sin(u)",
+            "Identificar u y du",
+        ),
+        family="explicit_reciprocal_trig_substitution",
+        argument_regime="explicit_secant_reciprocal_presimplified_polynomial_derivative",
+        domain_regime="explicit_reciprocal_trig_source_defined_condition",
+        trace_regime="presimplified_reciprocal_secant_verified_substitution",
+        presentation_regime="source_defined_condition_cleanup",
+    ),
+    IntegrateCommandMatrixCase(
         name="symbolic_external_scale_tangent_log_derivative_ratio_domain",
         expr="integrate(2*k*x*tan(x^2+b), x)",
         expected_result="-(k·ln(|cos(x^2 + b)|))",
@@ -374,7 +528,9 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_step_substrings=(
             "Expandir tangente como seno entre coseno",
             "Sacar constante de una fracción",
-            "Usar sustitución",
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
+            "Identificar u y du",
+            "Ajustar el factor constante",
         ),
         family="trig_log_derivative_ratio",
         argument_regime="symbolic_external_scale_polynomial_trig_log_derivative",
@@ -392,13 +548,41 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_step_substrings=(
             "Expandir cotangente como coseno entre seno",
             "Sacar constante de una fracción",
-            "Usar sustitución",
+            "Usar la regla de cot(u) -> ln|sin(u)|",
+            "Identificar u y du",
+            "Ajustar el factor constante",
         ),
         family="trig_log_derivative_ratio",
         argument_regime="symbolic_external_scale_polynomial_trig_log_derivative",
         domain_regime="trig_log_derivative_pole_required",
         trace_regime="symbolic_external_scale_trig_log_derivative_substitution",
         presentation_regime="symbolic_external_scale_abs_log_trig_denominator",
+    ),
+    IntegrateCommandMatrixCase(
+        name="nested_tangent_log_derivative_denominator_verified_domain",
+        expr="integrate(1/(sin(x)*cos(x)*ln(tan(x))), x)",
+        expected_result="ln(|ln(tan(x))|)",
+        expected_derivative_equivalent_to="1/(sin(x)*cos(x)*ln(tan(x)))",
+        expected_derivative_required_display=(
+            "cos(x) ≠ 0",
+            "tan(x) - 1 ≠ 0",
+            "tan(x) > 0",
+        ),
+        expected_required_display=(
+            "tan(x) - 1 ≠ 0",
+            "tan(x) > 0",
+        ),
+        expected_step_substrings=(
+            "Expandir tangente como seno entre coseno",
+            "Usar la regla de u'/u -> ln|u|",
+            "Identificar u y du",
+            "Convertir un cociente trigonométrico en tangente",
+        ),
+        family="nested_trig_log_derivative_substitution",
+        argument_regime="affine_trig_log_derivative_denominator",
+        domain_regime="positive_log_argument_and_trig_poles",
+        trace_regime="nested_log_derivative_substitution",
+        presentation_regime="nested_abs_log",
     ),
     IntegrateCommandMatrixCase(
         name="explicit_reciprocal_hyperbolic_tangent_verified_log_domain",
@@ -438,13 +622,54 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="abs_log_hyperbolic_condition_dedupe",
     ),
     IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_reciprocal_hyperbolic_tangent_log_domain",
+        expr="integrate(2*k*x/tanh(x^2+b), x)",
+        expected_result="k·ln(|sinh(x^2 + b)|)",
+        expected_derivative_equivalent_to="2*k*x/tanh(x^2+b)",
+        expected_derivative_required_display=("sinh(x^2 + b) ≠ 0",),
+        expected_required_display=("sinh(x^2 + b) ≠ 0",),
+        expected_step_substrings=(
+            "Sacar constante de una fracción",
+            "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+        ),
+        family="explicit_reciprocal_hyperbolic_substitution",
+        argument_regime="symbolic_external_scale_hyperbolic_tangent_reciprocal_polynomial_derivative",
+        domain_regime="hyperbolic_sine_pole_required",
+        trace_regime="symbolic_external_scale_reciprocal_hyperbolic_tangent",
+        presentation_regime="reciprocal_hyperbolic_tangent",
+    ),
+    IntegrateCommandMatrixCase(
+        name="negative_orientation_symbolic_external_scale_reciprocal_hyperbolic_tangent_log_domain",
+        expr="integrate(2*k*x/tanh(b-x^2), x)",
+        expected_result="-(k·ln(|sinh(x^2 - b)|))",
+        expected_derivative_equivalent_to="2*k*x/tanh(b-x^2)",
+        expected_derivative_required_display=("sinh(b - x^2) ≠ 0",),
+        expected_required_display=("sinh(b - x^2) ≠ 0",),
+        expected_step_substrings=(
+            "Hyperbolic Negative Argument",
+            "Sacar constante de una fracción",
+            "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+        ),
+        family="explicit_reciprocal_hyperbolic_substitution",
+        argument_regime="negative_orientation_symbolic_external_scale_hyperbolic_tangent_reciprocal_polynomial_derivative",
+        domain_regime="hyperbolic_sine_pole_required",
+        trace_regime="negative_orientation_symbolic_external_scale_reciprocal_hyperbolic_tangent",
+        presentation_regime="negative_orientation_reciprocal_hyperbolic_tangent",
+    ),
+    IntegrateCommandMatrixCase(
         name="symbolic_external_scale_hyperbolic_tanh_log_derivative_ratio_positive",
         expr="integrate(2*k*x*sinh(x^2+b)/cosh(x^2+b), x)",
         expected_result="k·ln(cosh(x^2 + b))",
         expected_derivative_equivalent_to="2*k*x*sinh(x^2+b)/cosh(x^2+b)",
         expected_step_substrings=(
             "Sacar constante de una fracción",
-            "Usar sustitución",
+            "Usar la regla de tanh(u) -> ln(cosh(u))",
+            "Identificar u y du",
+            "Ajustar el factor constante",
             "Abs Under Positivity",
         ),
         family="hyperbolic_log_derivative_ratio",
@@ -480,6 +705,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="additive_nonlinear_trig_residual",
         domain_regime="trig_pole_additive_residual",
         outcome="residual",
+        residual_cause="non_elementary_composition",
         trace_regime="residual_policy_with_domain",
         presentation_regime="residual",
     ),
@@ -546,6 +772,61 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="positive_required",
         trace_regime="arctan_scaled_sqrt_reciprocal_substitution",
         presentation_regime="scaled_root_argument_inverse_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_symbolic_denominator_scale_sqrt_reciprocal_bridge",
+        expr="integrate(1/(sqrt(x)*(x+a^2)), x)",
+        expected_result="(2·arctan(sqrt(x) / a))/a",
+        expected_derivative_equivalent_to="1/(sqrt(x)*(x+a^2))",
+        expected_derivative_required_display=("a ≠ 0", "x > 0"),
+        expected_required_display=("a ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de u'/(1+u^2) -> arctan(u)",
+            "Identificar u y du",
+        ),
+        family="inverse_trig_root_reciprocal",
+        argument_regime="symbolic_denominator_scaled_sqrt_reciprocal_linear",
+        domain_regime="symbolic_denominator_scale_positive_required",
+        trace_regime="arctan_symbolic_denominator_scaled_sqrt_reciprocal_substitution",
+        presentation_regime="symbolic_denominator_scaled_root_argument_inverse_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_symbolic_denominator_numeric_square_scale_sqrt_reciprocal_bridge",
+        expr="integrate(1/(sqrt(x)*(4*x+a^2)), x)",
+        expected_result="arctan(2·sqrt(x) / a) / a",
+        expected_derivative_equivalent_to="1/(sqrt(x)*(4*x+a^2))",
+        expected_derivative_required_display=("a ≠ 0", "x > 0"),
+        expected_required_display=("a ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de u'/(1+u^2) -> arctan(u)",
+            "Identificar u y du",
+            "u = \\frac{2\\cdot \\sqrt{x}}{a}",
+            "du = \\frac{1}{a\\cdot \\sqrt{x}}\\,dx",
+        ),
+        family="inverse_trig_root_reciprocal",
+        argument_regime="symbolic_denominator_numeric_square_scaled_sqrt_reciprocal_linear",
+        domain_regime="symbolic_denominator_scale_positive_required",
+        trace_regime="arctan_symbolic_denominator_numeric_square_scaled_sqrt_reciprocal_substitution",
+        presentation_regime="symbolic_denominator_numeric_square_scaled_root_argument_inverse_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_symbolic_numerator_scale_sqrt_reciprocal_bridge",
+        expr="integrate(1/(sqrt(x)*(a^2*x+1)), x)",
+        expected_result="(2·arctan(a·sqrt(x)))/a",
+        expected_derivative_equivalent_to="1/(sqrt(x)*(a^2*x+1))",
+        expected_derivative_required_display=("a ≠ 0", "x > 0"),
+        expected_required_display=("a ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de u'/(1+u^2) -> arctan(u)",
+            "Identificar u y du",
+            "u = a\\cdot \\sqrt{x}",
+            "du = \\frac{a}{2\\cdot \\sqrt{x}}\\,dx",
+        ),
+        family="inverse_trig_root_reciprocal",
+        argument_regime="symbolic_numerator_scaled_sqrt_reciprocal_linear",
+        domain_regime="symbolic_numerator_scale_positive_required",
+        trace_regime="arctan_symbolic_numerator_scaled_sqrt_reciprocal_substitution",
+        presentation_regime="symbolic_numerator_scaled_root_argument_inverse_trig",
     ),
     IntegrateCommandMatrixCase(
         name="inverse_trig_shifted_scaled_sqrt_reciprocal_bridge",
@@ -809,6 +1090,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="additive_interval_radical_residual",
         domain_regime="radical_interval_additive_residual",
         outcome="residual",
+        residual_cause="branch_sensitive_interval_residual",
         trace_regime="residual_presimplification_with_domain",
         presentation_regime="residual_reciprocal_sqrt_power",
     ),
@@ -1802,6 +2084,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         family="non_elementary_exp_quadratic",
         argument_regime="unsupported_core",
         outcome="residual",
+        residual_cause="non_elementary_composition",
         trace_regime="residual_policy",
         presentation_regime="residual",
     ),
@@ -2216,6 +2499,7 @@ def run_case(
         "argument_regime": case.argument_regime,
         "domain_regime": case.domain_regime,
         "outcome": case.outcome,
+        "residual_cause": case.residual_cause,
         "trace_regime": case.trace_regime,
         "presentation_regime": case.presentation_regime,
         "calculus_maturity_block": calculus_maturity_block(case),
@@ -2268,7 +2552,7 @@ def trig_hyperbolic_policy_cluster(
     if case.family == "explicit_reciprocal_hyperbolic_substitution":
         return "block7_explicit_reciprocal_hyperbolic_tangent"
     if case.family == "explicit_reciprocal_trig_substitution":
-        return "block7_explicit_reciprocal_trig_tangent"
+        return "block7_explicit_reciprocal_trig_log_substitution"
     if case.family == "trig_log_derivative_ratio":
         return "block7_trig_log_derivative_ratio"
     if case.family == "hyperbolic_log_derivative_ratio":
@@ -2396,6 +2680,20 @@ def count_verification_regimes(
     return dict(sorted(counts.items()))
 
 
+def count_residual_causes(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        if case.outcome != "residual":
+            continue
+        cause = case.residual_cause
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        counts[cause] = counts.get(cause, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def increment_issue_kind(issue_kind_counts: dict[str, int], error_kind: str | None) -> None:
     if error_kind is None:
         return
@@ -2460,6 +2758,7 @@ def run_matrix(
         for case in cases
         if case.outcome == "supported" and not case.expected_step_substrings
     ]
+    residual_case_names = [case.name for case in cases if case.outcome == "residual"]
 
     return {
         "status": overall_status,
@@ -2471,6 +2770,7 @@ def run_matrix(
         "cases": results,
         "supported_case_count": sum(1 for case in cases if case.outcome == "supported"),
         "residual_case_count": sum(1 for case in cases if case.outcome == "residual"),
+        "residual_case_names": residual_case_names,
         "warning_expected_case_count": warning_expected_cases,
         "required_display_case_count": required_display_cases,
         "step_checked_case_count": step_checked_cases,
@@ -2490,6 +2790,7 @@ def run_matrix(
         "argument_regime_counts": count_by(cases, "argument_regime"),
         "domain_regime_counts": count_by(cases, "domain_regime"),
         "outcome_counts": count_by(cases, "outcome"),
+        "residual_cause_counts": count_residual_causes(cases),
         "verification_regime_counts": count_verification_regimes(cases),
         "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
         "calculus_block_gate_counts": count_calculus_block_gates(cases),

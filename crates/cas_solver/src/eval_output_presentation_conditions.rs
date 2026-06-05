@@ -10,6 +10,9 @@ use num_traits::{One, Signed, Zero};
 use std::collections::HashSet;
 
 use crate::eval_output_condition_filter::AssumedConditionFilter;
+use crate::eval_output_public_conditions::{
+    public_condition_wires, public_required_condition_displays,
+};
 
 pub(crate) fn collect_output_warnings(
     domain_warnings: &[crate::DomainWarning],
@@ -46,29 +49,29 @@ pub(crate) fn collect_output_required_conditions(
         result_display,
     );
 
-    let wires: Vec<_> = visible_conditions
-        .iter()
-        .filter(|cond| !required_condition_wire_is_redundant(ctx, cond, &visible_conditions))
-        .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
-        .map(|cond| {
-            let cond = *cond;
-            let (kind, expr_id) = match cond {
-                crate::ImplicitCondition::NonNegative(e) => ("NonNegative", *e),
-                crate::ImplicitCondition::LowerBound(e, _) => ("LowerBound", *e),
-                crate::ImplicitCondition::Positive(e) => ("Positive", *e),
-                crate::ImplicitCondition::NonZero(e) => ("NonZero", *e),
-            };
+    let mut wires = Vec::new();
+    for cond in &visible_conditions {
+        let cond = *cond;
+        if required_condition_wire_is_redundant(ctx, cond, &visible_conditions)
+            || assumed_filter.covers_required_condition(ctx, cond)
+        {
+            continue;
+        }
+
+        for (kind, expr_id) in public_condition_wires(ctx, cond) {
             let expr_str = expr_display(ctx, expr_id);
             let expr_display =
                 apply_input_inverse_trig_alias_preferences(&expr_str, raw_input, result_display);
-            RequiredConditionWire {
+            wires.push(RequiredConditionWire {
                 kind: kind.to_string(),
                 expr_display,
                 expr_canonical: expr_str,
-            }
-        })
-        .collect();
-    dedupe_sqrt_half_power_condition_wires(wires)
+            });
+        }
+    }
+    dedupe_sqrt_half_power_condition_wires(dedupe_positive_dominates_nonnegative_condition_wires(
+        dedupe_exact_condition_wires(wires),
+    ))
 }
 
 fn required_condition_wire_is_redundant(
@@ -113,18 +116,72 @@ pub(crate) fn collect_output_required_display(
         result_display,
     );
 
-    let displays: Vec<_> = visible_conditions
-        .iter()
-        .filter(|cond| !required_condition_is_redundant(ctx, cond, &visible_conditions))
-        .map(|cond| {
-            apply_input_inverse_trig_alias_preferences(
-                &cond.display(ctx),
+    let mut displays = Vec::new();
+    for cond in &visible_conditions {
+        let cond = *cond;
+        if required_condition_is_redundant(ctx, cond, &visible_conditions) {
+            continue;
+        }
+        for display in public_required_condition_displays(ctx, cond) {
+            displays.push(apply_input_inverse_trig_alias_preferences(
+                &display,
                 raw_input,
                 result_display,
-            )
-        })
+            ));
+        }
+    }
+    dedupe_sqrt_half_power_required_displays(
+        dedupe_positive_dominates_nonnegative_required_displays(dedupe_exact_required_displays(
+            displays,
+        )),
+    )
+}
+
+fn dedupe_exact_condition_wires(wires: Vec<RequiredConditionWire>) -> Vec<RequiredConditionWire> {
+    let mut seen = HashSet::new();
+    wires
+        .into_iter()
+        .filter(|wire| seen.insert((wire.kind.clone(), wire.expr_canonical.clone())))
+        .collect()
+}
+
+fn dedupe_exact_required_displays(displays: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    displays
+        .into_iter()
+        .filter(|display| seen.insert(display.clone()))
+        .collect()
+}
+
+fn dedupe_positive_dominates_nonnegative_condition_wires(
+    wires: Vec<RequiredConditionWire>,
+) -> Vec<RequiredConditionWire> {
+    let positive_exprs: HashSet<String> = wires
+        .iter()
+        .filter(|wire| wire.kind == "Positive")
+        .map(|wire| wire.expr_canonical.clone())
         .collect();
-    dedupe_sqrt_half_power_required_displays(displays)
+    wires
+        .into_iter()
+        .filter(|wire| {
+            !(wire.kind == "NonNegative" && positive_exprs.contains(&wire.expr_canonical))
+        })
+        .collect()
+}
+
+fn dedupe_positive_dominates_nonnegative_required_displays(displays: Vec<String>) -> Vec<String> {
+    let positive_exprs: HashSet<String> = displays
+        .iter()
+        .filter_map(|display| display.strip_suffix(" > 0").map(str::to_string))
+        .collect();
+    displays
+        .into_iter()
+        .filter(|display| {
+            display
+                .strip_suffix(" ≥ 0")
+                .is_none_or(|expr| !positive_exprs.contains(expr))
+        })
+        .collect()
 }
 
 fn dedupe_sqrt_half_power_condition_wires(

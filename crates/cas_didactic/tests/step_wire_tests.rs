@@ -478,6 +478,180 @@ fn step_wire_integration_uses_human_visible_rule_title() {
 }
 
 #[test]
+fn step_wire_nested_trig_log_integral_exposes_concrete_substitution() {
+    let steps = step_payloads_on_for("integrate(1/(sin(x)*cos(x)*ln(tan(x))), x)");
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Calcular la integral")
+        .expect("expected symbolic integration step");
+
+    assert!(
+        step.substeps.len() >= 2,
+        "expected rule and u/du substeps, got: {:?}",
+        step.substeps
+            .iter()
+            .map(|substep| &substep.title)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(step.substeps[0].title, "Usar la regla de u'/u -> ln|u|");
+    assert_eq!(step.substeps[1].title, "Identificar u y du");
+    assert!(
+        step.substeps[1]
+            .before_latex
+            .as_deref()
+            .is_some_and(|latex| latex.contains("\\ln")
+                && latex.contains("\\sin")
+                && latex.contains("\\cos")),
+        "expected concrete u = ln(sin/cos) after trig expansion, got: {:?}",
+        step.substeps[1].before_latex
+    );
+    assert!(
+        step.substeps[1]
+            .after_latex
+            .as_deref()
+            .is_some_and(|latex| {
+                latex.contains("\\frac{1}{\\sin(x)\\cdot \\cos(x)}") && latex.contains("\\,dx")
+            }),
+        "expected concrete du = 1/(sin cos) dx, got: {:?}",
+        step.substeps[1].after_latex
+    );
+}
+
+#[test]
+fn step_wire_symbolic_scaled_trig_log_integrals_expose_u_du() {
+    for (expr, rule_title, base_fn) in [
+        (
+            "integrate(2*k*x*tan(x^2+b), x)",
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
+            "\\cos",
+        ),
+        (
+            "integrate(2*k*x*cot(x^2+b), x)",
+            "Usar la regla de cot(u) -> ln|sin(u)|",
+            "\\sin",
+        ),
+    ] {
+        let steps = step_payloads_on_for(expr);
+        let step = steps
+            .iter()
+            .find(|step| step.rule == "Calcular la integral")
+            .expect("expected symbolic integration step");
+        let titles = step
+            .substeps
+            .iter()
+            .map(|substep| substep.title.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(
+            titles.contains(&rule_title),
+            "expected concrete trig log rule for {expr}, got {titles:?}"
+        );
+        assert!(
+            titles.contains(&"Identificar u y du"),
+            "expected u/du substep for {expr}, got {titles:?}"
+        );
+        assert!(
+            titles.contains(&"Ajustar el factor constante"),
+            "expected symbolic constant adjustment for {expr}, got {titles:?}"
+        );
+        assert!(
+            step.substeps.iter().any(|substep| {
+                substep
+                    .after_latex
+                    .as_deref()
+                    .is_some_and(|latex| latex.contains("du = 2\\cdot x\\,dx"))
+            }),
+            "expected du = 2*x dx for {expr}, got {:?}",
+            step.substeps
+        );
+        assert!(
+            step.after_latex.contains(base_fn),
+            "expected final integral latex to keep {base_fn} for {expr}, got {:?}",
+            step.after_latex
+        );
+    }
+}
+
+#[test]
+fn step_wire_symbolic_scaled_hyperbolic_log_ratio_exposes_u_du() {
+    let steps = step_payloads_on_for("integrate(2*k*x*sinh(x^2+b)/cosh(x^2+b), x)");
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Calcular la integral")
+        .expect("expected symbolic integration step");
+    let titles = step
+        .substeps
+        .iter()
+        .map(|substep| substep.title.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        titles.contains(&"Usar la regla de tanh(u) -> ln(cosh(u))"),
+        "expected concrete hyperbolic log rule, got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Identificar u y du"),
+        "expected u/du substep, got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Ajustar el factor constante"),
+        "expected symbolic constant adjustment, got {titles:?}"
+    );
+    assert!(
+        step.substeps.iter().any(|substep| {
+            substep
+                .after_latex
+                .as_deref()
+                .is_some_and(|latex| latex.contains("du = 2\\cdot x\\,dx"))
+        }),
+        "expected du = 2*x dx, got {:?}",
+        step.substeps
+    );
+    assert!(
+        steps.iter().any(|step| step.rule == "Abs Under Positivity"),
+        "expected positive-cosh cleanup step, got {:?}",
+        steps.iter().map(|step| &step.rule).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn step_wire_symbolic_scaled_reciprocal_hyperbolic_tangent_exposes_u_du() {
+    let steps = step_payloads_on_for("integrate(2*k*x/tanh(x^2+b), x)");
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Calcular la integral")
+        .expect("expected symbolic integration step");
+    let titles = step
+        .substeps
+        .iter()
+        .map(|substep| substep.title.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        titles.contains(&"Usar la regla de 1/tanh(u) -> ln|sinh(u)|"),
+        "expected concrete reciprocal hyperbolic tangent rule, got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Identificar u y du"),
+        "expected u/du substep, got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Ajustar el factor constante"),
+        "expected symbolic constant adjustment, got {titles:?}"
+    );
+    assert!(
+        step.substeps.iter().any(|substep| {
+            substep
+                .after_latex
+                .as_deref()
+                .is_some_and(|latex| latex.contains("du = 2\\cdot x\\,dx"))
+        }),
+        "expected du = 2*x dx, got {:?}",
+        step.substeps
+    );
+}
+
+#[test]
 fn step_wire_nonfinite_calculus_undefined_explains_domain_policy() {
     let diff_steps = step_payloads_on_for("diff(infinity, x)");
     let diff_step = diff_steps

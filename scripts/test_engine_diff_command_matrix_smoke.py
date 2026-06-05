@@ -20,7 +20,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_diff_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 52)
+        self.assertEqual(len(cases), 55)
         names = {case.name for case in cases}
         self.assertIn(
             "log_quadratic_empty_positive_argument_domain_undefined",
@@ -31,6 +31,9 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("elementary_exp_affine_chain_trace", names)
         self.assertIn("elementary_trig_affine_chain_trace", names)
         self.assertIn("elementary_trig_tan_affine_chain_required_condition", names)
+        self.assertIn("log_tangent_positive_source_domain", names)
+        self.assertIn("log_cotangent_positive_source_domain", names)
+        self.assertIn("sqrt_tangent_positive_dominates_nonnegative_domain", names)
         self.assertIn("product_log_root_domain_dedupe_compact", names)
         self.assertIn("log_over_sqrt_root_denominator_compact", names)
         self.assertIn("log_over_sqrt_denominator_scale_compact", names)
@@ -132,12 +135,12 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("discontinuous_sign_polynomial_nonzero_domain", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"supported": 42, "undefined": 10},
+            {"supported": 45, "undefined": 10},
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block2_real_domain_differentiation": 42,
+                "block2_real_domain_differentiation": 45,
                 "block9_residuals_and_non_goals": 10,
             },
         )
@@ -145,7 +148,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_calculus_block_gates(cases),
             {
                 "didactic_trace_and_diff_policy": 8,
-                "domain_conditions_and_diff_policy": 34,
+                "domain_conditions_and_diff_policy": 37,
                 "explicit_undefined_domain_policy": 10,
             },
         )
@@ -174,6 +177,8 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "elementary_exp_affine_chain_trace",
                 "elementary_trig_affine_chain_trace",
                 "elementary_trig_tan_affine_chain_required_condition",
+                "log_tangent_positive_source_domain",
+                "log_cotangent_positive_source_domain",
                 "log_affine_chain_required_domain",
                 "log_affine_chain_negative_orientation_required_domain",
                 "constant_base_exp_affine_chain_positive_base",
@@ -188,6 +193,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "positive_quadratic_log_arctan_surd_primitive_compact",
                 "positive_quadratic_log_arctan_surd_negative_orientation_compact",
                 "sqrt_variable_open_domain",
+                "sqrt_tangent_positive_dominates_nonnegative_domain",
                 "sqrt_quadratic_empty_positive_argument_domain_undefined",
                 "inverse_trig_root_compact_presentation",
                 "inverse_trig_root_constant_multiple_trace",
@@ -229,6 +235,8 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "nonfinite_undefined": 1,
                 "open_interval_required": 3,
                 "positive_exponent_required": 1,
+                "positive_dominates_nonnegative_source_trig_domain": 1,
+                "positive_source_trig_domain": 2,
                 "required_condition": 29,
                 "unconditional": 5,
                 "unconditional_positive_quadratic": 3,

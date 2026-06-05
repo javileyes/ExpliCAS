@@ -18,7 +18,10 @@ pub(super) fn build_engine_wire_steps(
 }
 
 fn build_engine_wire_step(ctx: &mut cas_ast::Context, step: &crate::Step) -> EngineWireStep {
-    let normalize_expr = step.rule_name.as_str() != "Conservar límite residual";
+    let normalize_expr = !matches!(
+        step.rule_name.as_str(),
+        "Conservar derivada residual" | "Conservar integral residual" | "Conservar límite residual"
+    );
     EngineWireStep {
         phase: "Simplify".into(),
         rule: step.rule_name.clone().into(),

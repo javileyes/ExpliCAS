@@ -13246,13 +13246,18 @@ struct TrigLogTableMatch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TrigLogTableTrace {
     AffineArgument,
-    PolynomialCofactor {
-        cofactor_display: String,
-        cofactor_latex: String,
-        derivative_display: String,
-        derivative_latex: String,
-        scale: BigRational,
-    },
+    PolynomialCofactor(Box<TrigLogPolynomialCofactorTrace>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TrigLogPolynomialCofactorTrace {
+    cofactor_display: String,
+    cofactor_latex: String,
+    derivative_display: String,
+    derivative_latex: String,
+    scale: BigRational,
+    symbolic_scale_display: Option<String>,
+    symbolic_scale_latex: Option<String>,
 }
 
 fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -13308,13 +13313,16 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
                 .with_after_latex(latex_expr(ctx, after)),
             );
         }
-        TrigLogTableTrace::PolynomialCofactor {
-            cofactor_display,
-            cofactor_latex,
-            derivative_display,
-            derivative_latex,
-            scale,
-        } => {
+        TrigLogTableTrace::PolynomialCofactor(trace) => {
+            let TrigLogPolynomialCofactorTrace {
+                cofactor_display,
+                cofactor_latex,
+                derivative_display,
+                derivative_latex,
+                scale,
+                symbolic_scale_display,
+                symbolic_scale_latex,
+            } = *trace;
             substeps.push(
                 SubStep::new(
                     "Identificar u y du",
@@ -13324,21 +13332,18 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
                 .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
                 .with_after_latex(format!("du = {}\\,dx", derivative_latex)),
             );
-            if !scale.is_one() {
-                substeps.push(
-                    SubStep::new(
-                        "Ajustar el factor constante",
-                        cofactor_display,
-                        format!("{} · {}", rational_display(&scale), derivative_display),
-                    )
-                    .with_before_latex(cofactor_latex)
-                    .with_after_latex(format!(
-                        "{}\\cdot {}",
-                        rational_latex(&scale),
-                        derivative_latex
-                    )),
-                );
-            }
+            push_integration_constant_factor_adjustment_substep(
+                &mut substeps,
+                IntegrationConstantFactorAdjustment {
+                    cofactor_display: &cofactor_display,
+                    cofactor_latex: &cofactor_latex,
+                    derivative_display: &derivative_display,
+                    derivative_latex: &derivative_latex,
+                    scale: &scale,
+                    symbolic_scale_display: symbolic_scale_display.as_deref(),
+                    symbolic_scale_latex: symbolic_scale_latex.as_deref(),
+                },
+            );
         }
     }
 
@@ -13374,6 +13379,11 @@ fn trig_log_table_integrand_arg(
     }
 
     if let Some(table_match) = trig_log_sqrt_chain_integrand(ctx, integrand, var_name) {
+        return Some(table_match);
+    }
+
+    if let Some(table_match) = trig_log_symbolic_scaled_quotient_integrand(ctx, integrand, var_name)
+    {
         return Some(table_match);
     }
 
@@ -13520,13 +13530,17 @@ fn trig_log_sqrt_chain_from_factors(
         return Some(TrigLogTableMatch {
             kind,
             arg,
-            trace: TrigLogTableTrace::PolynomialCofactor {
-                cofactor_display: trace.cofactor_display,
-                cofactor_latex: trace.cofactor_latex,
-                derivative_display: trace.derivative_display,
-                derivative_latex: trace.derivative_latex,
-                scale: trace.scale,
-            },
+            trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
+                TrigLogPolynomialCofactorTrace {
+                    cofactor_display: trace.cofactor_display,
+                    cofactor_latex: trace.cofactor_latex,
+                    derivative_display: trace.derivative_display,
+                    derivative_latex: trace.derivative_latex,
+                    scale: trace.scale,
+                    symbolic_scale_display: trace.symbolic_scale_display,
+                    symbolic_scale_latex: trace.symbolic_scale_latex,
+                },
+            )),
         });
     }
 
@@ -13565,13 +13579,17 @@ fn trig_log_sqrt_chain_from_factors(
         return Some(TrigLogTableMatch {
             kind,
             arg,
-            trace: TrigLogTableTrace::PolynomialCofactor {
-                cofactor_display: trace.cofactor_display,
-                cofactor_latex: trace.cofactor_latex,
-                derivative_display: trace.derivative_display,
-                derivative_latex: trace.derivative_latex,
-                scale: trace.scale,
-            },
+            trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
+                TrigLogPolynomialCofactorTrace {
+                    cofactor_display: trace.cofactor_display,
+                    cofactor_latex: trace.cofactor_latex,
+                    derivative_display: trace.derivative_display,
+                    derivative_latex: trace.derivative_latex,
+                    scale: trace.scale,
+                    symbolic_scale_display: trace.symbolic_scale_display,
+                    symbolic_scale_latex: trace.symbolic_scale_latex,
+                },
+            )),
         });
     }
 
@@ -13649,14 +13667,131 @@ fn trig_log_polynomial_quotient_integrand(
     Some(TrigLogTableMatch {
         kind,
         arg: cofactor.arg,
-        trace: TrigLogTableTrace::PolynomialCofactor {
+        trace: TrigLogTableTrace::PolynomialCofactor(Box::new(TrigLogPolynomialCofactorTrace {
             cofactor_display: display_expr(ctx, cofactor.expr),
             cofactor_latex: latex_expr(ctx, cofactor.expr),
             derivative_display,
             derivative_latex,
             scale,
-        },
+            symbolic_scale_display: None,
+            symbolic_scale_latex: None,
+        })),
     })
+}
+
+fn trig_log_symbolic_scaled_quotient_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    match ctx.get(integrand) {
+        Expr::Div(num, den) => {
+            let (negative, numerator_factors) = signed_mul_factors(ctx, *num);
+            trig_log_symbolic_scaled_quotient_from_factors(
+                ctx,
+                negative,
+                &numerator_factors,
+                *den,
+                var_name,
+            )
+        }
+        Expr::Mul(left, right) => trig_log_symbolic_scaled_quotient_scaled_div(
+            ctx, *left, *right, var_name,
+        )
+        .or_else(|| trig_log_symbolic_scaled_quotient_scaled_div(ctx, *right, *left, var_name)),
+        Expr::Neg(inner) => {
+            let Expr::Div(num, den) = ctx.get(*inner) else {
+                return None;
+            };
+            let (negative, numerator_factors) = signed_mul_factors(ctx, *num);
+            trig_log_symbolic_scaled_quotient_from_factors(
+                ctx,
+                !negative,
+                &numerator_factors,
+                *den,
+                var_name,
+            )
+        }
+        _ => None,
+    }
+}
+
+fn trig_log_symbolic_scaled_quotient_scaled_div(
+    ctx: &Context,
+    scale_expr: ExprId,
+    div_expr: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    let Expr::Div(num, den) = ctx.get(div_expr) else {
+        return None;
+    };
+    let (scale_negative, mut numerator_factors) = signed_mul_factors(ctx, scale_expr);
+    let (num_negative, num_factors) = signed_mul_factors(ctx, *num);
+    numerator_factors.extend(num_factors);
+    trig_log_symbolic_scaled_quotient_from_factors(
+        ctx,
+        scale_negative != num_negative,
+        &numerator_factors,
+        *den,
+        var_name,
+    )
+}
+
+fn trig_log_symbolic_scaled_quotient_from_factors(
+    ctx: &Context,
+    negative: bool,
+    numerator_factors: &[ExprId],
+    den: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    let (den_builtin, den_arg) = unary_builtin_arg(ctx, den)?;
+    let (expected_num_builtin, kind) = match den_builtin {
+        BuiltinFn::Cos => (BuiltinFn::Sin, TrigLogTableKind::Tangent),
+        BuiltinFn::Sin => (BuiltinFn::Cos, TrigLogTableKind::Cotangent),
+        _ => return None,
+    };
+
+    for (trig_index, factor) in numerator_factors.iter().enumerate() {
+        let Some((num_builtin, num_arg)) = unary_builtin_arg(ctx, *factor) else {
+            continue;
+        };
+        if num_builtin != expected_num_builtin
+            || compare_expr(ctx, num_arg, den_arg) != Ordering::Equal
+        {
+            continue;
+        }
+
+        let cofactor_factors = numerator_factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
+            .collect::<Vec<_>>();
+        let trace = polynomial_derivative_cofactor_trace_with_symbolic_scale(
+            ctx,
+            negative,
+            &cofactor_factors,
+            den_arg,
+            var_name,
+        )?;
+
+        return Some(TrigLogTableMatch {
+            kind,
+            arg: den_arg,
+            trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
+                TrigLogPolynomialCofactorTrace {
+                    cofactor_display: trace.cofactor_display,
+                    cofactor_latex: trace.cofactor_latex,
+                    derivative_display: trace.derivative_display,
+                    derivative_latex: trace.derivative_latex,
+                    scale: trace.scale,
+                    symbolic_scale_display: trace.symbolic_scale_display,
+                    symbolic_scale_latex: trace.symbolic_scale_latex,
+                },
+            )),
+        });
+    }
+
+    None
 }
 
 struct TrigPolynomialCofactor {
@@ -13715,13 +13850,17 @@ fn trig_log_polynomial_reciprocal_integrand(
                     TrigLogTableMatch {
                         kind,
                         arg,
-                        trace: TrigLogTableTrace::PolynomialCofactor {
-                            cofactor_display: display_expr(ctx, *num),
-                            cofactor_latex: latex_expr(ctx, *num),
-                            derivative_display,
-                            derivative_latex,
-                            scale,
-                        },
+                        trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
+                            TrigLogPolynomialCofactorTrace {
+                                cofactor_display: display_expr(ctx, *num),
+                                cofactor_latex: latex_expr(ctx, *num),
+                                derivative_display,
+                                derivative_latex,
+                                scale,
+                                symbolic_scale_display: None,
+                                symbolic_scale_latex: None,
+                            },
+                        )),
                     }
                 },
             )
@@ -13756,21 +13895,25 @@ fn trig_log_scaled_polynomial_reciprocal_integrand(
             TrigLogTableMatch {
                 kind,
                 arg,
-                trace: TrigLogTableTrace::PolynomialCofactor {
-                    cofactor_display: format!(
-                        "{} · {}",
-                        display_expr(ctx, scale_expr),
-                        display_expr(ctx, *num)
-                    ),
-                    cofactor_latex: format!(
-                        "{}\\cdot {}",
-                        latex_expr(ctx, scale_expr),
-                        latex_expr(ctx, *num)
-                    ),
-                    derivative_display,
-                    derivative_latex,
-                    scale,
-                },
+                trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
+                    TrigLogPolynomialCofactorTrace {
+                        cofactor_display: format!(
+                            "{} · {}",
+                            display_expr(ctx, scale_expr),
+                            display_expr(ctx, *num)
+                        ),
+                        cofactor_latex: format!(
+                            "{}\\cdot {}",
+                            latex_expr(ctx, scale_expr),
+                            latex_expr(ctx, *num)
+                        ),
+                        derivative_display,
+                        derivative_latex,
+                        scale,
+                        symbolic_scale_display: None,
+                        symbolic_scale_latex: None,
+                    },
+                )),
             }
         },
     )
@@ -14082,6 +14225,44 @@ fn hyperbolic_log_sqrt_chain_from_factors(
             var_name,
         ) {
             return Some(table_match);
+        }
+    }
+
+    for (denominator_index, factor) in denominator_factors.iter().enumerate() {
+        let Some((BuiltinFn::Cosh, arg)) = unary_builtin_arg(ctx, *factor) else {
+            continue;
+        };
+
+        for (numerator_index, factor) in numerator_factors.iter().enumerate() {
+            let Some((BuiltinFn::Sinh, candidate_arg)) = unary_builtin_arg(ctx, *factor) else {
+                continue;
+            };
+            if !same_sqrt_chain_arg(ctx, candidate_arg, arg) {
+                continue;
+            }
+
+            let remaining_numerator = numerator_factors
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
+                .collect::<Vec<_>>();
+            let remaining_denominator = denominator_factors
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
+                .collect::<Vec<_>>();
+
+            if let Some(table_match) = hyperbolic_log_match_from_cofactor(
+                ctx,
+                HyperbolicLogTableKind::Tanh,
+                arg,
+                numerator_negative,
+                &remaining_numerator,
+                &remaining_denominator,
+                var_name,
+            ) {
+                return Some(table_match);
+            }
         }
     }
 
@@ -15784,12 +15965,16 @@ fn arctan_sqrt_var_result_match(
                 arctan_sqrt_var_result_match(ctx, *right, var_name)
             } else if as_rational_const(ctx, *right, 8).is_some() {
                 arctan_sqrt_var_result_match(ctx, *left, var_name)
+            } else if !contains_named_var(ctx, *left, var_name) {
+                arctan_sqrt_var_result_match(ctx, *right, var_name)
+            } else if !contains_named_var(ctx, *right, var_name) {
+                arctan_sqrt_var_result_match(ctx, *left, var_name)
             } else {
                 None
             }
         }
         Expr::Div(num, den) => {
-            if as_rational_const(ctx, *den, 8).is_some() {
+            if !contains_named_var(ctx, *den, var_name) {
                 arctan_sqrt_var_result_match(ctx, *num, var_name)
             } else {
                 None
@@ -15812,12 +15997,31 @@ fn arctan_sqrt_var_function_match(
     if !arg_match.scale.is_positive() {
         return None;
     }
-    let (derivative_display, derivative_latex) = scaled_sqrt_affine_derivative_display_and_latex(
-        ctx,
-        &arg_match.scale,
-        arg_match.radicand,
-        var_name,
-    )?;
+    let (derivative_display, derivative_latex) =
+        if let Some(parameter) = arg_match.symbolic_denominator {
+            symbolic_denominator_sqrt_affine_derivative_display_and_latex(
+                ctx,
+                &arg_match.scale,
+                arg_match.radicand,
+                parameter,
+                var_name,
+            )?
+        } else if let Some(parameter) = arg_match.symbolic_multiplier {
+            symbolic_multiplier_sqrt_affine_derivative_display_and_latex(
+                ctx,
+                &arg_match.scale,
+                arg_match.radicand,
+                parameter,
+                var_name,
+            )?
+        } else {
+            scaled_sqrt_affine_derivative_display_and_latex(
+                ctx,
+                &arg_match.scale,
+                arg_match.radicand,
+                var_name,
+            )?
+        };
     Some(ArctanSqrtVarTableMatch {
         arg,
         derivative_display,
@@ -15828,6 +16032,8 @@ fn arctan_sqrt_var_function_match(
 struct ArctanSqrtArgMatch {
     scale: BigRational,
     radicand: ExprId,
+    symbolic_denominator: Option<ExprId>,
+    symbolic_multiplier: Option<ExprId>,
 }
 
 fn arctan_sqrt_var_arg_match(
@@ -15840,6 +16046,8 @@ fn arctan_sqrt_var_arg_match(
         return Some(ArctanSqrtArgMatch {
             scale: BigRational::one(),
             radicand,
+            symbolic_denominator: None,
+            symbolic_multiplier: None,
         });
     }
     match ctx.get(expr) {
@@ -15849,6 +16057,8 @@ fn arctan_sqrt_var_arg_match(
                     ArctanSqrtArgMatch {
                         scale: coeff * arg_match.scale,
                         radicand: arg_match.radicand,
+                        symbolic_denominator: arg_match.symbolic_denominator,
+                        symbolic_multiplier: arg_match.symbolic_multiplier,
                     }
                 });
             }
@@ -15857,25 +16067,78 @@ fn arctan_sqrt_var_arg_match(
                     ArctanSqrtArgMatch {
                         scale: coeff * arg_match.scale,
                         radicand: arg_match.radicand,
+                        symbolic_denominator: arg_match.symbolic_denominator,
+                        symbolic_multiplier: arg_match.symbolic_multiplier,
                     }
+                });
+            }
+            if !contains_named_var(ctx, *left, var_name) {
+                return arctan_sqrt_var_arg_match(ctx, *right, var_name).and_then(|arg_match| {
+                    if arg_match.symbolic_denominator.is_some()
+                        || arg_match.symbolic_multiplier.is_some()
+                    {
+                        return None;
+                    }
+                    Some(ArctanSqrtArgMatch {
+                        scale: arg_match.scale,
+                        radicand: arg_match.radicand,
+                        symbolic_denominator: None,
+                        symbolic_multiplier: Some(*left),
+                    })
+                });
+            }
+            if !contains_named_var(ctx, *right, var_name) {
+                return arctan_sqrt_var_arg_match(ctx, *left, var_name).and_then(|arg_match| {
+                    if arg_match.symbolic_denominator.is_some()
+                        || arg_match.symbolic_multiplier.is_some()
+                    {
+                        return None;
+                    }
+                    Some(ArctanSqrtArgMatch {
+                        scale: arg_match.scale,
+                        radicand: arg_match.radicand,
+                        symbolic_denominator: None,
+                        symbolic_multiplier: Some(*right),
+                    })
                 });
             }
             None
         }
         Expr::Div(num, den) => {
-            let coeff = as_rational_const(ctx, *den, 8)?;
-            if coeff.is_zero() {
+            if let Some(coeff) = as_rational_const(ctx, *den, 8) {
+                if coeff.is_zero() {
+                    return None;
+                }
+                return arctan_sqrt_var_arg_match(ctx, *num, var_name).map(|arg_match| {
+                    ArctanSqrtArgMatch {
+                        scale: arg_match.scale / coeff,
+                        radicand: arg_match.radicand,
+                        symbolic_denominator: arg_match.symbolic_denominator,
+                        symbolic_multiplier: arg_match.symbolic_multiplier,
+                    }
+                });
+            }
+            if contains_named_var(ctx, *den, var_name) {
                 return None;
             }
-            arctan_sqrt_var_arg_match(ctx, *num, var_name).map(|arg_match| ArctanSqrtArgMatch {
-                scale: arg_match.scale / coeff,
-                radicand: arg_match.radicand,
+            arctan_sqrt_var_arg_match(ctx, *num, var_name).and_then(|arg_match| {
+                if arg_match.symbolic_denominator.is_some() {
+                    return None;
+                }
+                Some(ArctanSqrtArgMatch {
+                    scale: arg_match.scale,
+                    radicand: arg_match.radicand,
+                    symbolic_denominator: Some(*den),
+                    symbolic_multiplier: None,
+                })
             })
         }
         Expr::Neg(inner) | Expr::Hold(inner) => arctan_sqrt_var_arg_match(ctx, *inner, var_name)
             .map(|arg_match| ArctanSqrtArgMatch {
                 scale: -arg_match.scale,
                 radicand: arg_match.radicand,
+                symbolic_denominator: arg_match.symbolic_denominator,
+                symbolic_multiplier: arg_match.symbolic_multiplier,
             }),
         _ => None,
     }
@@ -15932,6 +16195,89 @@ fn scaled_sqrt_affine_derivative_display_and_latex(
             format!("\\frac{{{numerator}}}{{{denominator}\\sqrt{{{radicand_latex}}}}}"),
         ),
     })
+}
+
+fn symbolic_denominator_sqrt_affine_derivative_display_and_latex(
+    ctx: &Context,
+    scale: &BigRational,
+    radicand: ExprId,
+    parameter: ExprId,
+    var_name: &str,
+) -> Option<(String, String)> {
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    let radicand_slope = radicand_poly.coeffs.get(1).cloned()?;
+    if !radicand_slope.is_one() {
+        return None;
+    }
+
+    let coeff = scale.clone() / BigRational::from_integer(2.into());
+    let parameter_display = display_expr(ctx, parameter);
+    let radicand_display = display_expr(ctx, radicand);
+    let parameter_latex = latex_expr(ctx, parameter);
+    let radicand_latex = latex_expr(ctx, radicand);
+    Some(if coeff.is_one() {
+        (
+            format!("1 / ({}·sqrt({}))", parameter_display, radicand_display),
+            format!(
+                "\\frac{{1}}{{{}\\cdot \\sqrt{{{}}}}}",
+                parameter_latex, radicand_latex
+            ),
+        )
+    } else if coeff.numer().is_one() {
+        let denominator = coeff.denom();
+        (
+            format!(
+                "1 / ({}·{}·sqrt({}))",
+                denominator, parameter_display, radicand_display
+            ),
+            format!(
+                "\\frac{{1}}{{{}\\cdot {}\\cdot \\sqrt{{{}}}}}",
+                denominator, parameter_latex, radicand_latex
+            ),
+        )
+    } else {
+        let numerator = coeff.numer();
+        let denominator = coeff.denom();
+        (
+            format!(
+                "{} / ({}·{}·sqrt({}))",
+                numerator, denominator, parameter_display, radicand_display
+            ),
+            format!(
+                "\\frac{{{}}}{{{}\\cdot {}\\cdot \\sqrt{{{}}}}}",
+                numerator, denominator, parameter_latex, radicand_latex
+            ),
+        )
+    })
+}
+
+fn symbolic_multiplier_sqrt_affine_derivative_display_and_latex(
+    ctx: &Context,
+    scale: &BigRational,
+    radicand: ExprId,
+    parameter: ExprId,
+    var_name: &str,
+) -> Option<(String, String)> {
+    if !scale.is_one() {
+        return None;
+    }
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    let radicand_slope = radicand_poly.coeffs.get(1).cloned()?;
+    if !radicand_slope.is_one() {
+        return None;
+    }
+
+    let parameter_display = display_expr(ctx, parameter);
+    let radicand_display = display_expr(ctx, radicand);
+    let parameter_latex = latex_expr(ctx, parameter);
+    let radicand_latex = latex_expr(ctx, radicand);
+    Some((
+        format!("{} / (2·sqrt({}))", parameter_display, radicand_display),
+        format!(
+            "\\frac{{{}}}{{2\\cdot \\sqrt{{{}}}}}",
+            parameter_latex, radicand_latex
+        ),
+    ))
 }
 
 #[derive(Clone, Copy)]
@@ -17462,6 +17808,12 @@ fn generate_integration_substitution_substeps(ctx: &Context, step: &Step) -> Vec
         return Vec::new();
     }
 
+    if let Some(substeps) =
+        nested_trig_log_derivative_substitution_substeps(ctx, args[0], after, var_name)
+    {
+        return substeps;
+    }
+
     vec![SubStep::new(
         "Usar sustitución",
         display_expr(ctx, args[0]),
@@ -17469,6 +17821,121 @@ fn generate_integration_substitution_substeps(ctx: &Context, step: &Step) -> Vec
     )
     .with_before_latex(latex_expr(ctx, args[0]))
     .with_after_latex(latex_expr(ctx, after))]
+}
+
+struct NestedTrigLogDerivativeSubstitutionPlan {
+    log_expr: ExprId,
+    derivative_display: String,
+    derivative_latex: String,
+}
+
+fn nested_trig_log_derivative_substitution_substeps(
+    ctx: &Context,
+    integrand: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Option<Vec<SubStep>> {
+    let plan = nested_trig_log_derivative_substitution_plan(ctx, integrand, var_name)?;
+    Some(vec![
+        SubStep::new(
+            "Usar la regla de u'/u -> ln|u|",
+            display_expr(ctx, integrand),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, integrand))
+        .with_after_latex(latex_expr(ctx, after)),
+        SubStep::new(
+            "Identificar u y du",
+            format!("u = {}", display_expr(ctx, plan.log_expr)),
+            format!("du = {} dx", plan.derivative_display),
+        )
+        .with_before_latex(format!("u = {}", latex_expr(ctx, plan.log_expr)))
+        .with_after_latex(format!("du = {}\\,dx", plan.derivative_latex)),
+    ])
+}
+
+fn nested_trig_log_derivative_substitution_plan(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<NestedTrigLogDerivativeSubstitutionPlan> {
+    let Expr::Div(_, den) = ctx.get(integrand) else {
+        return None;
+    };
+    let denominator_factors = cas_math::expr_nary::mul_factors(ctx, *den);
+    let (log_expr, arg) = denominator_factors
+        .iter()
+        .find_map(|factor| nested_trig_log_factor_arg(ctx, *factor))?;
+    if !contains_named_var(ctx, arg, var_name) {
+        return None;
+    }
+
+    let has_sin = denominator_factors.iter().any(|factor| {
+        matches!(
+            unary_builtin_arg(ctx, *factor),
+            Some((BuiltinFn::Sin, factor_arg))
+                if compare_expr(ctx, factor_arg, arg) == Ordering::Equal
+        )
+    });
+    let has_cos = denominator_factors.iter().any(|factor| {
+        matches!(
+            unary_builtin_arg(ctx, *factor),
+            Some((BuiltinFn::Cos, factor_arg))
+                if compare_expr(ctx, factor_arg, arg) == Ordering::Equal
+        )
+    });
+    if !has_sin || !has_cos {
+        return None;
+    }
+
+    let mut scratch = ctx.clone();
+    let derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        log_expr,
+        var_name,
+    )?;
+    let derivative = simplify_expr_in_context(&mut scratch, derivative);
+    Some(NestedTrigLogDerivativeSubstitutionPlan {
+        log_expr,
+        derivative_display: display_expr(&scratch, derivative),
+        derivative_latex: latex_expr(&scratch, derivative),
+    })
+}
+
+fn nested_trig_log_factor_arg(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(BuiltinFn::Ln) {
+        return None;
+    }
+
+    match ctx.get(args[0]) {
+        Expr::Function(inner_fn_id, inner_args) if inner_args.len() == 1 => {
+            match ctx.builtin_of(*inner_fn_id)? {
+                BuiltinFn::Tan | BuiltinFn::Cot => Some((expr, inner_args[0])),
+                _ => None,
+            }
+        }
+        Expr::Div(num, den) => {
+            if let (Some((BuiltinFn::Sin, sin_arg)), Some((BuiltinFn::Cos, cos_arg))) =
+                (unary_builtin_arg(ctx, *num), unary_builtin_arg(ctx, *den))
+            {
+                if compare_expr(ctx, sin_arg, cos_arg) == Ordering::Equal {
+                    return Some((expr, sin_arg));
+                }
+            }
+            if let (Some((BuiltinFn::Cos, cos_arg)), Some((BuiltinFn::Sin, sin_arg))) =
+                (unary_builtin_arg(ctx, *num), unary_builtin_arg(ctx, *den))
+            {
+                if compare_expr(ctx, cos_arg, sin_arg) == Ordering::Equal {
+                    return Some((expr, cos_arg));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
 }
 
 fn display_expr(ctx: &Context, expr: ExprId) -> String {

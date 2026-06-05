@@ -54,6 +54,7 @@ CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
         "block7_sqrt_chain_hyperbolic_reciprocal_derivative_product",
         "block7_sqrt_chain_reciprocal_trig_product",
         "block7_trig_reciprocal_derivative_product",
+        "block9_explicit_reciprocal_trig_residual",
     }
 )
 SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS = (
@@ -2704,6 +2705,12 @@ def sanitize_limit_command_problem_cases(raw_cases: Any) -> list[dict[str, Any]]
     return sanitized
 
 
+def sanitize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
 def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
     try:
         raw = json.loads(output)
@@ -2750,6 +2757,7 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
         }
 
     problem_cases = sanitize_limit_command_problem_cases(raw.get("problem_cases"))
+    residual_case_names = sanitize_string_list(raw.get("residual_case_names"))
     problem_case_count = raw.get("problem_case_count")
     if not isinstance(problem_case_count, int):
         problem_case_count = len(problem_cases)
@@ -2764,6 +2772,7 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
         "timeouts": timeouts,
         "problem_case_count": problem_case_count,
         "problem_cases": problem_cases,
+        "limit_residual_case_names": residual_case_names,
         "issue_kind_counts": {
             key: value
             for key, value in issue_kind_counts.items()
@@ -2792,6 +2801,7 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
         ("domain_regime_counts", "limit_domain_regime_counts"),
         ("required_condition_regime_counts", "limit_required_condition_regime_counts"),
         ("outcome_counts", "limit_outcome_counts"),
+        ("residual_cause_counts", "limit_residual_cause_counts"),
         ("calculus_maturity_block_counts", "limit_calculus_maturity_block_counts"),
         ("calculus_block_gate_counts", "limit_calculus_block_gate_counts"),
         ("required_display_counts", "limit_required_display_counts"),
@@ -2850,6 +2860,7 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
         }
 
     problem_cases = sanitize_limit_command_problem_cases(raw.get("problem_cases"))
+    residual_case_names = sanitize_string_list(raw.get("residual_case_names"))
     problem_case_count = raw.get("problem_case_count")
     if not isinstance(problem_case_count, int):
         problem_case_count = len(problem_cases)
@@ -2864,6 +2875,7 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
         "timeouts": timeouts,
         "problem_case_count": problem_case_count,
         "problem_cases": problem_cases,
+        "diff_residual_case_names": residual_case_names,
         "issue_kind_counts": {
             key: value
             for key, value in issue_kind_counts.items()
@@ -2949,6 +2961,7 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         }
 
     problem_cases = sanitize_limit_command_problem_cases(raw.get("problem_cases"))
+    residual_case_names = sanitize_string_list(raw.get("residual_case_names"))
     problem_case_count = raw.get("problem_case_count")
     if not isinstance(problem_case_count, int):
         problem_case_count = len(problem_cases)
@@ -2963,6 +2976,7 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         "timeouts": timeouts,
         "problem_case_count": problem_case_count,
         "problem_cases": problem_cases,
+        "integrate_residual_case_names": residual_case_names,
         "issue_kind_counts": {
             key: value
             for key, value in issue_kind_counts.items()
@@ -2997,6 +3011,7 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         ("argument_regime_counts", "integrate_argument_regime_counts"),
         ("domain_regime_counts", "integrate_domain_regime_counts"),
         ("outcome_counts", "integrate_outcome_counts"),
+        ("residual_cause_counts", "integrate_residual_cause_counts"),
         ("required_display_counts", "integrate_required_display_counts"),
         ("verification_regime_counts", "integrate_verification_regime_counts"),
         (
@@ -3110,6 +3125,18 @@ def count_map_fragments(value: Any, limit: int | None = 8) -> list[str]:
 
 def calculus_matrix_count_map_fragments(value: Any) -> list[str]:
     return count_map_fragments(value, limit=None)
+
+
+def calculus_residual_case_fragments(value: Any, limit: int = 12) -> list[str]:
+    names = sanitize_string_list(value)
+    if not names:
+        return []
+    selected = names[:limit]
+    fragments = list(selected)
+    remaining = len(names) - len(selected)
+    if remaining > 0:
+        fragments.append(f"+{remaining} more")
+    return fragments
 
 
 PARSERS = {
@@ -4575,6 +4602,14 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` outcomes: " + ", ".join(diff_outcome_counts)
                     )
+                diff_residual_cases = calculus_residual_case_fragments(
+                    metrics.get("diff_residual_case_names")
+                )
+                if diff_residual_cases:
+                    lines.append(
+                        f"- `{label}` residual case IDs: "
+                        + ", ".join(diff_residual_cases)
+                    )
                 for metric_key, regime_label in (
                     (
                         "diff_calculus_maturity_block_counts",
@@ -4633,6 +4668,22 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` outcomes: "
                         + ", ".join(integrate_outcome_counts)
+                    )
+                integrate_residual_cases = calculus_residual_case_fragments(
+                    metrics.get("integrate_residual_case_names")
+                )
+                if integrate_residual_cases:
+                    lines.append(
+                        f"- `{label}` residual case IDs: "
+                        + ", ".join(integrate_residual_cases)
+                    )
+                integrate_residual_causes = calculus_matrix_count_map_fragments(
+                    metrics.get("integrate_residual_cause_counts")
+                )
+                if integrate_residual_causes:
+                    lines.append(
+                        f"- `{label}` residual causes: "
+                        + ", ".join(integrate_residual_causes)
                     )
                 integrate_verification_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_verification_regime_counts")
@@ -4740,6 +4791,22 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 if outcome_counts:
                     lines.append(
                         f"- `{label}` outcomes: " + ", ".join(outcome_counts)
+                    )
+                residual_cases = calculus_residual_case_fragments(
+                    metrics.get("limit_residual_case_names")
+                )
+                if residual_cases:
+                    lines.append(
+                        f"- `{label}` residual case IDs: "
+                        + ", ".join(residual_cases)
+                    )
+                residual_causes = calculus_matrix_count_map_fragments(
+                    metrics.get("limit_residual_cause_counts")
+                )
+                if residual_causes:
+                    lines.append(
+                        f"- `{label}` residual causes: "
+                        + ", ".join(residual_causes)
                     )
                 for metric_key, regime_label in (
                     (

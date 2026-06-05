@@ -158,6 +158,14 @@ The burden of proof stays the same:
   - a future candidate should extend the existing direct `tanh(u)` substitution
     trace to symbolic external scales before promoting the direct form to the
     command matrix
+- follow-up resolution:
+  - retained a public integration contract for
+    `integrate(2*k*x*tanh(x^2+b), x)` that fixes the concrete
+    `tanh(u) -> ln(cosh(u))` rule, `u/du` evidence, symbolic constant-factor
+    adjustment, and `cosh` positivity cleanup without adding domain conditions
+  - the command matrix already carried the promoted case; the retained value is
+    preventing regression from the current specific trace back to a generic
+    substitution-only step
 
 ## 2026-05-28 - Observe-only discovery: condition display must not scale-normalize periodic arguments
 
@@ -185,6 +193,12 @@ The burden of proof stays the same:
   - future condition-display cleanup may remove inert additive-zero noise, but
     must not reuse polynomial sign-preserving normalization inside
     `sin/cos/tan/sec/csc/cot` arguments without a zero-set proof
+- follow-up resolution:
+  - retained a public CLI contract for `diff(sec((3*x+2)/2), x)` that asserts
+    `required_display` preserves `cos((3*x+2)/2) != 0` and explicitly rejects
+    the previously observed scale-normalized `cos(3*x+2) != 0`
+  - this complements the lower-level domain-normalization unit without
+    broadening condition cleanup beyond additive-zero display normalization
 
 ## 2026-05-26 - Observe-only discovery: shifted sqrt-chain reciprocal trig external scale enters fragile simplification route
 
@@ -16141,3 +16155,10 @@ The burden of proof stays the same:
     compaction needs a bounded route; otherwise it can expose depth overflow
     and redundant nonzero conditions even when the final inequality should
     collapse to a polynomial gap
+- follow-up resolution:
+  - retained command-matrix and public CLI contract coverage for
+    `diff(atanh(sqrt(4*x+4)/a), x)`
+  - the public result stays compact, the required display is now the bounded
+    open-interval policy `a != 0`, `a^2 - 4*x - 4 > 0`, `x > -1`, and the
+    CLI trace keeps the perfect-square extraction, constant factoring,
+    chain-rule, and `u/du` evidence without `depth_overflow` warnings

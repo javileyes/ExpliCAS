@@ -73,7 +73,10 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
 }
 
 fn residual_limit_step_prefers_direct_display(step: &Step) -> bool {
-    step.rule_name == "Conservar límite residual"
+    matches!(
+        step.rule_name.as_str(),
+        "Conservar derivada residual" | "Conservar integral residual" | "Conservar límite residual"
+    )
 }
 
 fn symbolic_integration_step_prefers_reciprocal_sqrt_before_display(

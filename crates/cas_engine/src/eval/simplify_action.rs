@@ -2121,6 +2121,45 @@ fn expr_is_named_function_call_local(ctx: &cas_ast::Context, expr: ExprId, names
     names.iter().any(|name| ctx.sym_name(*fn_id) == *name)
 }
 
+fn try_extract_integrate_call_lenient_local(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<crate::symbolic_calculus_call_support::NamedVarCall> {
+    let mut expr = expr;
+    while let Expr::Hold(inner) = ctx.get(expr) {
+        expr = *inner;
+    }
+
+    if let Some(call) = crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, expr)
+    {
+        return Some(call);
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.sym_name(*fn_id) != "int" {
+        return None;
+    }
+
+    match args.as_slice() {
+        [target] => Some(crate::symbolic_calculus_call_support::NamedVarCall {
+            target: *target,
+            var_name: "x".to_string(),
+        }),
+        [target, var_expr] => {
+            let Expr::Variable(var_sym) = ctx.get(*var_expr) else {
+                return None;
+            };
+            Some(crate::symbolic_calculus_call_support::NamedVarCall {
+                target: *target,
+                var_name: ctx.sym_name(*var_sym).to_string(),
+            })
+        }
+        _ => None,
+    }
+}
+
 fn expr_contains_named_function_local(
     ctx: &cas_ast::Context,
     root: ExprId,
@@ -2153,7 +2192,7 @@ fn expr_contains_named_function_local(
 
 fn expr_is_symbolic_calculus_call_local(ctx: &cas_ast::Context, expr: ExprId) -> bool {
     crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, expr).is_some()
-        || crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, expr).is_some()
+        || try_extract_integrate_call_lenient_local(ctx, expr).is_some()
 }
 
 fn expr_contains_symbolic_calculus_call_local(ctx: &cas_ast::Context, root: ExprId) -> bool {
@@ -2197,9 +2236,7 @@ fn direct_calculus_residual_step_local(
             "Conservar derivada residual",
             "Conservar la derivada sin resolver porque no hay una regla segura para esta familia",
         )
-    } else if let Some(call) =
-        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source)
-    {
+    } else if let Some(call) = try_extract_integrate_call_lenient_local(ctx, source) {
         (
             call.target,
             "Conservar integral residual",
@@ -2243,8 +2280,8 @@ fn presimplified_calculus_residual_step_local(
             "Conservar la derivada sin resolver tras simplificar el argumento porque no hay una regla segura para esta familia",
         )
     } else if let (Some(source_call), Some(residual_call)) = (
-        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source),
-        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, residual),
+        try_extract_integrate_call_lenient_local(ctx, source),
+        try_extract_integrate_call_lenient_local(ctx, residual),
     ) {
         if source_call.var_name != residual_call.var_name {
             return None;
@@ -2266,10 +2303,55 @@ fn presimplified_calculus_residual_step_local(
         Vec::new(),
         Some(ctx),
     );
-    // Match the preceding visible calculus cleanup level so the visibility gate
-    // keeps both the presimplification and the terminal residual policy.
-    step.importance = importance;
+    // Keep residual policy visible even when the preceding cleanup is low-level.
+    step.importance = importance.max(crate::ImportanceLevel::Medium);
     Some(step)
+}
+
+fn terminal_integrate_residual_step_local(
+    ctx: &mut cas_ast::Context,
+    residual: ExprId,
+    importance: crate::ImportanceLevel,
+) -> Option<crate::Step> {
+    let residual_call = try_extract_integrate_call_lenient_local(ctx, residual)?;
+    let mut step = crate::Step::new(
+        "Conservar la integral sin resolver tras simplificar el integrando porque no hay una regla segura y verificable para esta familia",
+        "Conservar integral residual",
+        residual_call.target,
+        residual,
+        Vec::new(),
+        Some(ctx),
+    );
+    step.importance = importance.max(crate::ImportanceLevel::Medium);
+    Some(step)
+}
+
+fn calculus_residual_step_has_visible_payload_local(
+    ctx: &cas_ast::Context,
+    step: &crate::Step,
+) -> bool {
+    if !matches!(
+        step.rule_name.as_str(),
+        "Conservar derivada residual" | "Conservar integral residual"
+    ) {
+        return false;
+    }
+    if !step.required_conditions().is_empty() || !step.substeps().is_empty() {
+        return true;
+    }
+    format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: step.before
+        }
+    ) != format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: step.after
+        }
+    )
 }
 
 fn direct_integrate_residual_required_conditions_local(
@@ -4690,20 +4772,25 @@ impl Engine {
                     steps.push(step);
                 }
             } else if !steps.iter().any(|step| {
-                matches!(
-                    step.rule_name.as_str(),
-                    "Conservar derivada residual" | "Conservar integral residual"
-                )
+                calculus_residual_step_has_visible_payload_local(&ctx_simplifier.context, step)
             }) {
+                let residual_importance = steps
+                    .last()
+                    .map(|step| step.importance)
+                    .unwrap_or(crate::ImportanceLevel::Low);
                 if let Some(mut step) = presimplified_calculus_residual_step_local(
                     &mut ctx_simplifier.context,
                     resolved,
                     res,
-                    steps
-                        .last()
-                        .map(|step| step.importance)
-                        .unwrap_or(crate::ImportanceLevel::Low),
-                ) {
+                    residual_importance,
+                )
+                .or_else(|| {
+                    terminal_integrate_residual_step_local(
+                        &mut ctx_simplifier.context,
+                        res,
+                        residual_importance,
+                    )
+                }) {
                     if !residual_required.is_empty() {
                         step.meta_mut().required_conditions = residual_required;
                     }

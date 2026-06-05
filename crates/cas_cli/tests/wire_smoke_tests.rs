@@ -1101,14 +1101,14 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             "1 / (2·cos(x)^2·sqrt(tan(x)))",
             "tan(x)^(-1/2)",
             ["sqrt(tan(x))", "cos(x)^2"],
-            Some("sin(x) / cos(x)"),
+            Some("tan(x)"),
         ),
         (
             "diff(sqrt(cot(x)), x)",
             "-1 / (2·sin(x)^2·sqrt(cot(x)))",
             "cot(x)^(-1/2)",
             ["sqrt(cot(x))", "sin(x)^2"],
-            Some("cos(x) / sin(x)"),
+            Some("cot(x)"),
         ),
         (
             "diff(sqrt(tanh(x)), x)",
@@ -1414,11 +1414,11 @@ fn test_eval_json_post_calculus_sqrt_elementary_derivative_verifies() {
         ),
         (
             "diff(sqrt(tan(x)), x) - 1/(2*cos(x)^2*sqrt(tan(x)))",
-            ["sin(x) / cos(x)", ""],
+            ["tan(x)", ""],
         ),
         (
             "diff(sqrt(cot(x)), x) + 1/(2*sin(x)^2*sqrt(cot(x)))",
-            ["cos(x) / sin(x)", ""],
+            ["cot(x)", ""],
         ),
         (
             "diff(sqrt(tanh(x)), x) - 1/(2*cosh(x)^2*sqrt(tanh(x)))",
@@ -1525,9 +1525,9 @@ fn test_eval_json_reciprocal_half_power_shared_denominator_verifies() {
             .as_array()
             .expect("required_conditions should be an array");
         let expected_positive = if expr.contains("cot") {
-            "cos(x) / sin(x)"
+            "cot(x)"
         } else {
-            "sin(x) / cos(x)"
+            "tan(x)"
         };
         assert!(
             required.iter().any(|condition| {

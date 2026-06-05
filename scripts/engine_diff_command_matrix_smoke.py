@@ -229,6 +229,38 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         presentation_regime="reciprocal_trig_power",
     ),
     DiffCommandMatrixCase(
+        name="log_tangent_positive_source_domain",
+        expr="diff(ln(tan(x)), x)",
+        expected_result="1 / (sin(x)·cos(x))",
+        expected_required_display=("tan(x) > 0",),
+        expected_step_substrings=(
+            "Expandir tangente como seno entre coseno",
+            "Usar regla de ln(u)",
+            "Aplicar la identidad pitagórica",
+        ),
+        family="log_trig_chain",
+        argument_regime="tangent_argument",
+        domain_regime="positive_source_trig_domain",
+        trace_regime="log_chain_rule_after_trig_expansion",
+        presentation_regime="positive_source_trig_condition",
+    ),
+    DiffCommandMatrixCase(
+        name="log_cotangent_positive_source_domain",
+        expr="diff(ln(cot(x)), x)",
+        expected_result="-1 / (sin(x)·cos(x))",
+        expected_required_display=("cot(x) > 0",),
+        expected_step_substrings=(
+            "Expandir cotangente como coseno entre seno",
+            "Usar regla de ln(u)",
+            "Simplificar fracción anidada",
+        ),
+        family="log_trig_chain",
+        argument_regime="cotangent_argument",
+        domain_regime="positive_source_trig_domain",
+        trace_regime="log_chain_rule_after_trig_expansion",
+        presentation_regime="positive_source_trig_condition",
+    ),
+    DiffCommandMatrixCase(
         name="log_affine_chain_required_domain",
         expr="diff(ln(2*x+1), x)",
         expected_result="2 / (2·x + 1)",
@@ -432,6 +464,21 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         domain_regime="required_condition",
         trace_regime="chain_rule",
         presentation_regime="reciprocal_root",
+    ),
+    DiffCommandMatrixCase(
+        name="sqrt_tangent_positive_dominates_nonnegative_domain",
+        expr="diff(sqrt(tan(x)), x)",
+        expected_result="1 / (2·cos(x)^2·sqrt(tan(x)))",
+        expected_required_display=("tan(x) > 0",),
+        expected_step_substrings=(
+            "Calcular la derivada",
+            "Convertir un cociente trigonométrico en tangente",
+        ),
+        family="root_trig_chain",
+        argument_regime="source_trig_argument",
+        domain_regime="positive_dominates_nonnegative_source_trig_domain",
+        trace_regime="root_trig_chain_rule",
+        presentation_regime="positive_dominates_nonnegative_source_condition",
     ),
     DiffCommandMatrixCase(
         name="sqrt_quadratic_empty_positive_argument_domain_undefined",
@@ -1256,6 +1303,7 @@ def run_matrix(
         for case in cases
         if case.outcome == "supported" and not case.expected_step_substrings
     ]
+    residual_case_names = [case.name for case in cases if case.outcome == "residual"]
     return {
         "status": status,
         "total": len(results),
@@ -1265,6 +1313,7 @@ def run_matrix(
         "problem_cases": problem_cases,
         "supported_case_count": sum(1 for case in cases if case.outcome == "supported"),
         "residual_case_count": sum(1 for case in cases if case.outcome == "residual"),
+        "residual_case_names": residual_case_names,
         "warning_expected_case_count": sum(
             1 for case in cases if case.expected_warning_substrings
         ),

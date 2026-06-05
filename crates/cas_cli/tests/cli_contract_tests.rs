@@ -227,6 +227,122 @@ fn test_eval_scaled_arctan_surd_diff_stays_off_rationalize_overflow_route() {
 }
 
 #[test]
+fn test_eval_atanh_exact_square_symbolic_denominator_diff_stays_compact_without_overflow() {
+    let input = "diff(atanh(sqrt(4*x+4)/a), x)";
+    let output = cli()
+        .args(["eval", input, "--format", "json", "--steps", "on"])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(
+        output.status.success(),
+        "CLI failed for {input}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(
+        wire["result"],
+        "a\u{00b7}(x + 1)^(1/2) / ((x + 1)\u{00b7}(a^2 - 4\u{00b7}x - 4))"
+    );
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["a \u{2260} 0", "a^2 - 4\u{00b7}x - 4 > 0", "x > -1"])
+    );
+    assert!(
+        !stderr.contains("depth_overflow") && !stderr.contains("WARN"),
+        "atanh exact-square symbolic denominator diff should stay off the overflow route, got stderr:\n{stderr}"
+    );
+
+    let steps = wire["steps"].as_array().expect("steps should be present");
+    for expected_rule in [
+        "Reconocer un cuadrado perfecto bajo la raíz",
+        "Sacar constante de una fracción",
+        "Calcular la derivada",
+    ] {
+        assert!(
+            steps.iter().any(|step| step["rule"] == expected_rule),
+            "expected rule {expected_rule} in public trace for {input}, got {steps:?}"
+        );
+    }
+    let derivative_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la derivada")
+        .expect("expected derivative step");
+    let substeps = derivative_step["substeps"]
+        .as_array()
+        .expect("derivative step should expose substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar regla de la cadena"),
+        "expected chain-rule substep for {input}, got {substeps:?}"
+    );
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Identificar u y du"),
+        "expected u/du substep for {input}, got {substeps:?}"
+    );
+}
+
+#[test]
+fn test_eval_diff_periodic_required_display_preserves_argument_scale() {
+    let input = "diff(sec((3*x+2)/2), x)";
+    let output = cli()
+        .args(["eval", input, "--format", "json", "--steps", "on"])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(
+        output.status.success(),
+        "CLI failed for {input}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(
+        wire["result"],
+        "3/2\u{00b7}sec((3\u{00b7}x + 2) / 2)\u{00b7}tan((3\u{00b7}x + 2) / 2)"
+    );
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["cos((3\u{00b7}x + 2) / 2) \u{2260} 0"])
+    );
+    let required_text = wire["required_display"]
+        .as_array()
+        .expect("required_display array")
+        .iter()
+        .map(|value| value.as_str().expect("required_display string"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !required_text.contains("cos(3\u{00b7}x + 2) \u{2260} 0"),
+        "periodic zero-set display must not scale-normalize the argument for {input}: {required_text}"
+    );
+    assert!(
+        !stderr.contains("depth_overflow") && !stderr.contains("WARN"),
+        "periodic required-display diff should stay off fragile routes for {input}, got stderr:\n{stderr}"
+    );
+
+    let steps = wire["steps"].as_array().expect("steps should be present");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Calcular la derivada"),
+        "expected derivative step in public trace for {input}, got {steps:?}"
+    );
+}
+
+#[test]
 fn test_eval_plain_reciprocal_trig_log_diff_stays_off_depth_overflow_route() {
     let cases = [
         (
@@ -377,10 +493,7 @@ fn test_eval_plain_log_tan_sqrt_diff_uses_sqrt_in_scaled_trig_argument() {
         .map(|value| value.as_str().expect("required_display string"))
         .collect::<Vec<_>>();
     required_display.sort_unstable();
-    assert_eq!(
-        required_display,
-        ["sin(sqrt(x)) / cos(sqrt(x)) > 0", "x > 0"]
-    );
+    assert_eq!(required_display, ["tan(sqrt(x)) > 0", "x > 0"]);
 }
 
 #[test]
