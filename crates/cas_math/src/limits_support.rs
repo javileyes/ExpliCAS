@@ -662,6 +662,321 @@ fn scaled_trig_zero_power_argument(
     Some((builtin, power_scale, argument, exponent))
 }
 
+fn scaled_reciprocal_trig_zero_argument(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BuiltinFn, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            if ctx.is_builtin(fn_id, BuiltinFn::Csc) {
+                Some((BigRational::one(), BuiltinFn::Sin, args[0]))
+            } else if ctx.is_builtin(fn_id, BuiltinFn::Sec) {
+                Some((BigRational::one(), BuiltinFn::Cos, args[0]))
+            } else {
+                None
+            }
+        }
+        Expr::Neg(inner) => {
+            let (scale, builtin, argument) = scaled_reciprocal_trig_zero_argument(ctx, inner)?;
+            Some((-scale, builtin, argument))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = constant_rational_value(ctx, lhs) {
+                let (inner_scale, builtin, argument) =
+                    scaled_reciprocal_trig_zero_argument(ctx, rhs)?;
+                return Some((scale * inner_scale, builtin, argument));
+            }
+            if let Some(scale) = constant_rational_value(ctx, rhs) {
+                let (inner_scale, builtin, argument) =
+                    scaled_reciprocal_trig_zero_argument(ctx, lhs)?;
+                return Some((scale * inner_scale, builtin, argument));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn scaled_reciprocal_trig_zero_power_argument(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BuiltinFn, ExprId, usize)> {
+    if let Some((scale, builtin, argument)) = scaled_reciprocal_trig_zero_argument(ctx, expr) {
+        if scale.is_zero() {
+            return None;
+        }
+        return Some((scale, builtin, argument, 1));
+    }
+
+    if let Expr::Neg(inner) = ctx.get(expr).clone() {
+        let (scale, builtin, argument, exponent) =
+            scaled_reciprocal_trig_zero_power_argument(ctx, inner)?;
+        return Some((-scale, builtin, argument, exponent));
+    }
+    if let Expr::Mul(lhs, rhs) = ctx.get(expr).clone() {
+        if let Some(scale) = constant_rational_value(ctx, lhs) {
+            let (inner_scale, builtin, argument, exponent) =
+                scaled_reciprocal_trig_zero_power_argument(ctx, rhs)?;
+            let scale = scale * inner_scale;
+            if scale.is_zero() {
+                return None;
+            }
+            return Some((scale, builtin, argument, exponent));
+        }
+        if let Some(scale) = constant_rational_value(ctx, rhs) {
+            let (inner_scale, builtin, argument, exponent) =
+                scaled_reciprocal_trig_zero_power_argument(ctx, lhs)?;
+            let scale = scale * inner_scale;
+            if scale.is_zero() {
+                return None;
+            }
+            return Some((scale, builtin, argument, exponent));
+        }
+    }
+
+    let (base, exponent) = parse_pow_int(ctx, expr)?;
+    if exponent <= 0 {
+        return None;
+    }
+    let exponent = usize::try_from(exponent).ok()?;
+    let (scale, builtin, argument) = scaled_reciprocal_trig_zero_argument(ctx, base)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let mut power_scale = BigRational::one();
+    for _ in 0..exponent {
+        power_scale *= &scale;
+    }
+    Some((power_scale, builtin, argument, exponent))
+}
+
+fn scaled_tan_cot_argument(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BuiltinFn, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            if ctx.is_builtin(fn_id, BuiltinFn::Tan) {
+                Some((BigRational::one(), BuiltinFn::Tan, args[0]))
+            } else if ctx.is_builtin(fn_id, BuiltinFn::Cot) {
+                Some((BigRational::one(), BuiltinFn::Cot, args[0]))
+            } else {
+                None
+            }
+        }
+        Expr::Neg(inner) => {
+            let (scale, builtin, argument) = scaled_tan_cot_argument(ctx, inner)?;
+            Some((-scale, builtin, argument))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = constant_rational_value(ctx, lhs) {
+                let (inner_scale, builtin, argument) = scaled_tan_cot_argument(ctx, rhs)?;
+                return Some((scale * inner_scale, builtin, argument));
+            }
+            if let Some(scale) = constant_rational_value(ctx, rhs) {
+                let (inner_scale, builtin, argument) = scaled_tan_cot_argument(ctx, lhs)?;
+                return Some((scale * inner_scale, builtin, argument));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn scaled_trig_ratio_power_argument(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BuiltinFn, ExprId, BuiltinFn, ExprId, usize)> {
+    if let Some((
+        scale,
+        numerator_builtin,
+        numerator_argument,
+        denominator_builtin,
+        denominator_argument,
+    )) = trig_ratio_source_components(ctx, expr)
+    {
+        if scale.is_zero() {
+            return None;
+        }
+        return Some((
+            scale,
+            numerator_builtin,
+            numerator_argument,
+            denominator_builtin,
+            denominator_argument,
+            1,
+        ));
+    }
+
+    if let Expr::Neg(inner) = ctx.get(expr).clone() {
+        let (
+            scale,
+            numerator_builtin,
+            numerator_argument,
+            denominator_builtin,
+            denominator_argument,
+            exponent,
+        ) = scaled_trig_ratio_power_argument(ctx, inner)?;
+        return Some((
+            -scale,
+            numerator_builtin,
+            numerator_argument,
+            denominator_builtin,
+            denominator_argument,
+            exponent,
+        ));
+    }
+    if let Expr::Mul(lhs, rhs) = ctx.get(expr).clone() {
+        if let Some(scale) = constant_rational_value(ctx, lhs) {
+            let (
+                inner_scale,
+                numerator_builtin,
+                numerator_argument,
+                denominator_builtin,
+                denominator_argument,
+                exponent,
+            ) = scaled_trig_ratio_power_argument(ctx, rhs)?;
+            let scale = scale * inner_scale;
+            if scale.is_zero() {
+                return None;
+            }
+            return Some((
+                scale,
+                numerator_builtin,
+                numerator_argument,
+                denominator_builtin,
+                denominator_argument,
+                exponent,
+            ));
+        }
+        if let Some(scale) = constant_rational_value(ctx, rhs) {
+            let (
+                inner_scale,
+                numerator_builtin,
+                numerator_argument,
+                denominator_builtin,
+                denominator_argument,
+                exponent,
+            ) = scaled_trig_ratio_power_argument(ctx, lhs)?;
+            let scale = scale * inner_scale;
+            if scale.is_zero() {
+                return None;
+            }
+            return Some((
+                scale,
+                numerator_builtin,
+                numerator_argument,
+                denominator_builtin,
+                denominator_argument,
+                exponent,
+            ));
+        }
+    }
+
+    let (base, exponent) = parse_pow_int(ctx, expr)?;
+    if exponent <= 0 {
+        return None;
+    }
+    let exponent = usize::try_from(exponent).ok()?;
+    let (scale, numerator_builtin, numerator_argument, denominator_builtin, denominator_argument) =
+        trig_ratio_source_components(ctx, base)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let mut power_scale = BigRational::one();
+    for _ in 0..exponent {
+        power_scale *= &scale;
+    }
+    Some((
+        power_scale,
+        numerator_builtin,
+        numerator_argument,
+        denominator_builtin,
+        denominator_argument,
+        exponent,
+    ))
+}
+
+fn finite_trig_power_pole_components(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BuiltinFn, BigRational, ExprId, usize)> {
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        let numerator = constant_rational_value(ctx, num)?;
+        if numerator.is_zero() {
+            return None;
+        }
+
+        let (builtin, den_scale, argument, exponent) = scaled_trig_zero_power_argument(ctx, den)?;
+        return Some((numerator, builtin, den_scale, argument, exponent));
+    }
+
+    let (numerator, builtin, argument, exponent) =
+        scaled_reciprocal_trig_zero_power_argument(ctx, expr)?;
+    Some((numerator, builtin, BigRational::one(), argument, exponent))
+}
+
+fn tan_cot_ratio_builtins(source_builtin: BuiltinFn) -> Option<(BuiltinFn, BuiltinFn)> {
+    match source_builtin {
+        BuiltinFn::Tan => Some((BuiltinFn::Sin, BuiltinFn::Cos)),
+        BuiltinFn::Cot => Some((BuiltinFn::Cos, BuiltinFn::Sin)),
+        _ => None,
+    }
+}
+
+fn trig_ratio_source_components(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BuiltinFn, ExprId, BuiltinFn, ExprId)> {
+    if let Some((scale, source_builtin, argument)) = scaled_tan_cot_argument(ctx, expr) {
+        let (numerator_builtin, denominator_builtin) = tan_cot_ratio_builtins(source_builtin)?;
+        return Some((
+            scale,
+            numerator_builtin,
+            argument,
+            denominator_builtin,
+            argument,
+        ));
+    }
+
+    let Expr::Div(numerator, denominator) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let (numerator_builtin, numerator_scale, numerator_argument) =
+        scaled_trig_zero_argument(ctx, numerator)?;
+    let (denominator_builtin, denominator_scale, denominator_argument) =
+        scaled_trig_zero_argument(ctx, denominator)?;
+    if denominator_scale.is_zero() {
+        return None;
+    }
+
+    Some((
+        numerator_scale / denominator_scale,
+        numerator_builtin,
+        numerator_argument,
+        denominator_builtin,
+        denominator_argument,
+    ))
+}
+
+fn rational_tail_sign(value: &BigRational) -> InfSign {
+    if value.is_positive() {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    }
+}
+
+fn multiply_tail_signs(lhs: InfSign, rhs: InfSign) -> InfSign {
+    if lhs == rhs {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    }
+}
+
 fn structurally_equal_expr(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
     lhs == rhs || cas_ast::ordering::compare_expr(ctx, lhs, rhs) == std::cmp::Ordering::Equal
 }
@@ -681,6 +996,9 @@ fn finite_argument_tail_after_limit(
             }
         }
         Expr::Sub(lhs, rhs) => {
+            if structurally_equal_expr(ctx, lhs, argument_limit) {
+                return ctx.add(Expr::Neg(rhs));
+            }
             if structurally_equal_expr(ctx, rhs, argument_limit) {
                 return lhs;
             }
@@ -713,7 +1031,19 @@ fn finite_trig_zero_tail_sign(
                     ctx, builtin, argument, var, point, side,
                 );
             };
-            let argument = Polynomial::from_expr(ctx, argument, &var_name).ok()?;
+            let argument = match Polynomial::from_expr(ctx, argument, &var_name) {
+                Ok(argument) => argument,
+                Err(_) => {
+                    let local = FiniteTrigZeroTailLocal {
+                        var,
+                        point,
+                        point_value,
+                        side,
+                        var_name: &var_name,
+                    };
+                    return finite_table_trig_zero_tail_sign(ctx, builtin, argument, &local);
+                }
+            };
             let (argument_order, argument_derivative) =
                 finite_polynomial_local_order_and_derivative(&argument, point_value)?;
             if argument_order == 0 {
@@ -730,47 +1060,76 @@ fn finite_trig_zero_tail_sign(
                 }
             }
 
-            let argument_limit = try_limit_rules_at_finite(ctx, argument, var, point)?;
-            let cos_at_limit =
-                finite_total_real_unary_trig_table_result(ctx, BuiltinFn::Cos, argument_limit)?;
-            if !constant_rational_value(ctx, cos_at_limit)?.is_zero() {
-                return None;
-            }
-
-            let sin_at_limit =
-                finite_total_real_unary_trig_table_result(ctx, BuiltinFn::Sin, argument_limit)?;
-            let derivative_factor = -constant_rational_value(ctx, sin_at_limit)?;
-            if derivative_factor.is_zero() {
-                return None;
-            }
-
-            let Some(point_value) = point_value else {
-                return finite_direct_variable_special_trig_zero_tail_sign(
-                    ctx, builtin, argument, var, point, side,
-                );
+            let point_value = point_value?;
+            let local = FiniteTrigZeroTailLocal {
+                var,
+                point,
+                point_value,
+                side,
+                var_name: &var_name,
             };
-            let tail_expr = finite_argument_tail_after_limit(ctx, argument, argument_limit);
-            let tail = Polynomial::from_expr(ctx, tail_expr, &var_name).ok()?;
-            let (tail_order, tail_derivative) =
-                finite_polynomial_local_order_and_derivative(&tail, point_value)?;
-            if tail_order == 0 {
-                return None;
-            }
-
-            let tail_sign = finite_local_tail_sign(&tail_derivative, tail_order, side)?;
-            let derivative_sign = if derivative_factor.is_positive() {
-                InfSign::Pos
-            } else {
-                InfSign::Neg
-            };
-            Some(if derivative_sign == tail_sign {
-                InfSign::Pos
-            } else {
-                InfSign::Neg
-            })
+            finite_table_trig_zero_tail_sign(ctx, builtin, argument, &local)
         }
         _ => None,
     }
+}
+
+struct FiniteTrigZeroTailLocal<'a> {
+    var: ExprId,
+    point: ExprId,
+    point_value: &'a BigRational,
+    side: FiniteLimitSide,
+    var_name: &'a str,
+}
+
+fn finite_table_trig_zero_tail_sign(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument: ExprId,
+    local: &FiniteTrigZeroTailLocal<'_>,
+) -> Option<InfSign> {
+    let argument_limit = try_limit_rules_at_finite(ctx, argument, local.var, local.point)?;
+    let value_at_limit = finite_total_real_unary_trig_table_result(ctx, builtin, argument_limit)?;
+    if !constant_rational_value(ctx, value_at_limit)?.is_zero() {
+        return None;
+    }
+
+    let derivative_factor = match builtin {
+        BuiltinFn::Sin => {
+            let cos_at_limit =
+                finite_total_real_unary_trig_table_result(ctx, BuiltinFn::Cos, argument_limit)?;
+            constant_rational_value(ctx, cos_at_limit)?
+        }
+        BuiltinFn::Cos => {
+            let sin_at_limit =
+                finite_total_real_unary_trig_table_result(ctx, BuiltinFn::Sin, argument_limit)?;
+            -constant_rational_value(ctx, sin_at_limit)?
+        }
+        _ => return None,
+    };
+    if derivative_factor.is_zero() {
+        return None;
+    }
+
+    let tail_expr = finite_argument_tail_after_limit(ctx, argument, argument_limit);
+    let tail = Polynomial::from_expr(ctx, tail_expr, local.var_name).ok()?;
+    let (tail_order, tail_derivative) =
+        finite_polynomial_local_order_and_derivative(&tail, local.point_value)?;
+    if tail_order == 0 {
+        return None;
+    }
+
+    let tail_sign = finite_local_tail_sign(&tail_derivative, tail_order, local.side)?;
+    let derivative_sign = if derivative_factor.is_positive() {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    };
+    Some(if derivative_sign == tail_sign {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    })
 }
 
 fn finite_direct_variable_special_trig_zero_tail_sign(
@@ -905,16 +1264,9 @@ fn apply_finite_one_sided_trig_power_pole_rule(
         Expr::Number(point_value) => Some(point_value.clone()),
         _ => None,
     };
-    let Expr::Div(num, den) = ctx.get(expr).clone() else {
-        return None;
-    };
 
-    let numerator = constant_rational_value(ctx, num)?;
-    if numerator.is_zero() {
-        return None;
-    }
-
-    let (builtin, den_scale, argument, exponent) = scaled_trig_zero_power_argument(ctx, den)?;
+    let (numerator, builtin, den_scale, argument, exponent) =
+        finite_trig_power_pole_components(ctx, expr)?;
     let argument_tail = finite_trig_zero_tail_sign(
         ctx,
         builtin,
@@ -952,6 +1304,104 @@ fn apply_finite_bilateral_trig_power_pole_rule(
         apply_finite_one_sided_trig_power_pole_rule(ctx, expr, var, point, FiniteLimitSide::Left)?;
     let right =
         apply_finite_one_sided_trig_power_pole_rule(ctx, expr, var, point, FiniteLimitSide::Right)?;
+    matching_finite_bilateral_one_sided_result(ctx, left, right)
+}
+
+fn apply_finite_one_sided_trig_ratio_power_pole_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let point_value = match ctx.get(point) {
+        Expr::Number(point_value) => Some(point_value.clone()),
+        _ => None,
+    };
+
+    let (
+        scale,
+        numerator_builtin,
+        numerator_argument,
+        denominator_builtin,
+        denominator_argument,
+        exponent,
+    ) = scaled_trig_ratio_power_argument(ctx, expr)?;
+    let numerator_argument_limit = try_limit_rules_at_finite(ctx, numerator_argument, var, point)?;
+    let denominator_argument_limit =
+        try_limit_rules_at_finite(ctx, denominator_argument, var, point)?;
+
+    let denominator_at_limit = finite_total_real_unary_trig_table_result(
+        ctx,
+        denominator_builtin,
+        denominator_argument_limit,
+    )?;
+    if !constant_rational_value(ctx, denominator_at_limit)?.is_zero() {
+        return None;
+    }
+
+    let numerator_at_limit = finite_total_real_unary_trig_table_result(
+        ctx,
+        numerator_builtin,
+        numerator_argument_limit,
+    )?;
+    let numerator_value = constant_rational_value(ctx, numerator_at_limit)?;
+    if numerator_value.is_zero() {
+        return None;
+    }
+
+    let denominator_tail = finite_trig_zero_tail_sign(
+        ctx,
+        denominator_builtin,
+        denominator_argument,
+        var,
+        point,
+        point_value.as_ref(),
+        side,
+    )?;
+    let denominator_tail = if exponent.is_multiple_of(2) {
+        InfSign::Pos
+    } else {
+        denominator_tail
+    };
+
+    let scale_tail = rational_tail_sign(&scale);
+    let numerator_tail = if exponent.is_multiple_of(2) || numerator_value.is_positive() {
+        scale_tail
+    } else {
+        multiply_tail_signs(scale_tail, InfSign::Neg)
+    };
+
+    Some(signed_abs_ratio_infinity(
+        ctx,
+        numerator_tail,
+        denominator_tail,
+    ))
+}
+
+fn apply_finite_bilateral_trig_ratio_power_pole_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let left = apply_finite_one_sided_trig_ratio_power_pole_rule(
+        ctx,
+        expr,
+        var,
+        point,
+        FiniteLimitSide::Left,
+    )?;
+    let right = apply_finite_one_sided_trig_ratio_power_pole_rule(
+        ctx,
+        expr,
+        var,
+        point,
+        FiniteLimitSide::Right,
+    )?;
     matching_finite_bilateral_one_sided_result(ctx, left, right)
 }
 
@@ -2504,6 +2954,9 @@ fn try_limit_rules_at_finite(
     if let Some(result) = apply_finite_bilateral_trig_power_pole_rule(ctx, expr, var, point) {
         return Some(result);
     }
+    if let Some(result) = apply_finite_bilateral_trig_ratio_power_pole_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
     if let Some(result) = apply_finite_sine_zero_quotient_rule(ctx, expr, var, point) {
         return Some(result);
     }
@@ -2600,6 +3053,11 @@ fn try_limit_rules_at_finite_one_sided(
         return Some(result);
     }
     if let Some(result) = apply_finite_one_sided_trig_power_pole_rule(ctx, expr, var, point, side) {
+        return Some(result);
+    }
+    if let Some(result) =
+        apply_finite_one_sided_trig_ratio_power_pole_rule(ctx, expr, var, point, side)
+    {
         return Some(result);
     }
     if let Some(result) = apply_finite_one_sided_log_endpoint_rule(ctx, expr, var, point, side) {
@@ -5967,6 +6425,64 @@ mod tests {
             "bilateral first-order sine pole must remain residual when one-sided limits differ"
         );
 
+        let reciprocal_sine_even_pole = parse_expr(&mut ctx, "csc(x + pi)^2");
+        let reciprocal_sine_even_pole_out =
+            try_limit_rules_at_finite(&mut ctx, reciprocal_sine_even_pole, x, point_zero)
+                .expect("expected bilateral even-order reciprocal sine pole");
+        assert_eq!(
+            display_expr(&ctx, reciprocal_sine_even_pole_out),
+            "infinity"
+        );
+
+        let reciprocal_sine_first_order_pole = parse_expr(&mut ctx, "csc(x + pi)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, reciprocal_sine_first_order_pole, x, point_zero)
+                .is_none(),
+            "bilateral first-order reciprocal sine pole must remain residual"
+        );
+
+        let right_reciprocal_sine_first_order_pole = parse_expr(&mut ctx, "csc(x + pi)");
+        let right_reciprocal_sine_first_order_pole_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            right_reciprocal_sine_first_order_pole,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided first-order reciprocal sine pole");
+        assert_eq!(
+            display_expr(&ctx, right_reciprocal_sine_first_order_pole_out),
+            "-infinity"
+        );
+
+        let scaled_right_reciprocal_sine_first_order_pole = parse_expr(&mut ctx, "-2*csc(x + pi)");
+        let scaled_right_reciprocal_sine_first_order_pole_out =
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                scaled_right_reciprocal_sine_first_order_pole,
+                x,
+                point_zero,
+                FiniteLimitSide::Right,
+            )
+            .expect("expected scaled right-sided first-order reciprocal sine pole");
+        assert_eq!(
+            display_expr(&ctx, scaled_right_reciprocal_sine_first_order_pole_out),
+            "infinity"
+        );
+
+        let negative_scaled_reciprocal_sine_even_pole = parse_expr(&mut ctx, "-3*csc(x + pi)^2");
+        let negative_scaled_reciprocal_sine_even_pole_out = try_limit_rules_at_finite(
+            &mut ctx,
+            negative_scaled_reciprocal_sine_even_pole,
+            x,
+            point_zero,
+        )
+        .expect("expected negative scaled bilateral even-order reciprocal sine pole");
+        assert_eq!(
+            display_expr(&ctx, negative_scaled_reciprocal_sine_even_pole_out),
+            "-infinity"
+        );
+
         let right_first_order_sine_pole = parse_expr(&mut ctx, "1/sin(x)");
         let right_first_order_sine_pole_out = try_limit_rules_at_finite_one_sided(
             &mut ctx,
@@ -6021,6 +6537,31 @@ mod tests {
         assert!(
             try_limit_rules_at_finite(&mut ctx, first_order_cosine_pole, x, point_zero).is_none(),
             "bilateral first-order cosine pole must remain residual when one-sided limits differ"
+        );
+
+        let reciprocal_cosine_even_pole = parse_expr(&mut ctx, "sec(pi/2 + x)^2");
+        let reciprocal_cosine_even_pole_out =
+            try_limit_rules_at_finite(&mut ctx, reciprocal_cosine_even_pole, x, point_zero)
+                .expect("expected bilateral even-order reciprocal cosine pole");
+        assert_eq!(
+            display_expr(&ctx, reciprocal_cosine_even_pole_out),
+            "infinity"
+        );
+
+        let scaled_right_reciprocal_cosine_first_order_pole =
+            parse_expr(&mut ctx, "2*sec(pi/2 + x)");
+        let scaled_right_reciprocal_cosine_first_order_pole_out =
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                scaled_right_reciprocal_cosine_first_order_pole,
+                x,
+                point_zero,
+                FiniteLimitSide::Right,
+            )
+            .expect("expected scaled right-sided first-order reciprocal cosine pole");
+        assert_eq!(
+            display_expr(&ctx, scaled_right_reciprocal_cosine_first_order_pole_out),
+            "-infinity"
         );
 
         let right_first_order_cosine_pole = parse_expr(&mut ctx, "1/cos(pi/2 + x)");
@@ -6111,6 +6652,149 @@ mod tests {
             )
             .is_none(),
             "direct bilateral first-order sine pole at rational-pi point must remain residual"
+        );
+
+        let right_tangent_first_order_pole = parse_expr(&mut ctx, "tan(pi/2 + x)");
+        let right_tangent_first_order_pole_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            right_tangent_first_order_pole,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided first-order tangent pole");
+        assert_eq!(
+            display_expr(&ctx, right_tangent_first_order_pole_out),
+            "-infinity"
+        );
+
+        let left_tangent_first_order_pole = parse_expr(&mut ctx, "tan(pi/2 + x)");
+        let left_tangent_first_order_pole_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            left_tangent_first_order_pole,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided first-order tangent pole");
+        assert_eq!(
+            display_expr(&ctx, left_tangent_first_order_pole_out),
+            "infinity"
+        );
+
+        let tangent_first_order_pole = parse_expr(&mut ctx, "tan(pi/2 + x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, tangent_first_order_pole, x, point_zero).is_none(),
+            "bilateral first-order tangent pole must remain residual"
+        );
+
+        let tangent_even_pole = parse_expr(&mut ctx, "tan(pi/2 + x)^2");
+        let tangent_even_pole_out =
+            try_limit_rules_at_finite(&mut ctx, tangent_even_pole, x, point_zero)
+                .expect("expected bilateral even-order tangent pole");
+        assert_eq!(display_expr(&ctx, tangent_even_pole_out), "infinity");
+
+        let right_cotangent_first_order_pole = parse_expr(&mut ctx, "cot(x + pi)");
+        let right_cotangent_first_order_pole_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            right_cotangent_first_order_pole,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided first-order cotangent pole");
+        assert_eq!(
+            display_expr(&ctx, right_cotangent_first_order_pole_out),
+            "infinity"
+        );
+
+        let explicit_right_tangent_first_order_pole =
+            parse_expr(&mut ctx, "sin(pi/2 + x)/cos(pi/2 + x)");
+        let explicit_right_tangent_first_order_pole_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            explicit_right_tangent_first_order_pole,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided explicit sine/cosine tangent-ratio pole");
+        assert_eq!(
+            display_expr(&ctx, explicit_right_tangent_first_order_pole_out),
+            "-infinity"
+        );
+
+        let explicit_tangent_first_order_pole = parse_expr(&mut ctx, "sin(pi/2 + x)/cos(pi/2 + x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, explicit_tangent_first_order_pole, x, point_zero)
+                .is_none(),
+            "explicit bilateral first-order tangent-ratio pole must remain residual"
+        );
+
+        let explicit_tangent_even_pole = parse_expr(&mut ctx, "(sin(pi/2 + x)/cos(pi/2 + x))^2");
+        let explicit_tangent_even_pole_out =
+            try_limit_rules_at_finite(&mut ctx, explicit_tangent_even_pole, x, point_zero)
+                .expect("expected bilateral even-order explicit tangent-ratio pole");
+        assert_eq!(
+            display_expr(&ctx, explicit_tangent_even_pole_out),
+            "infinity"
+        );
+
+        let explicit_right_cotangent_first_order_pole =
+            parse_expr(&mut ctx, "cos(x + pi)/sin(x + pi)");
+        let explicit_right_cotangent_first_order_pole_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            explicit_right_cotangent_first_order_pole,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided explicit cosine/sine cotangent-ratio pole");
+        assert_eq!(
+            display_expr(&ctx, explicit_right_cotangent_first_order_pole_out),
+            "infinity"
+        );
+
+        let cross_argument_explicit_tangent_pole =
+            parse_expr(&mut ctx, "sin(pi/2 + x)/cos(pi/2 - x)");
+        let cross_argument_explicit_tangent_pole_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            cross_argument_explicit_tangent_pole,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected cross-argument explicit tangent-ratio pole");
+        assert_eq!(
+            display_expr(&ctx, cross_argument_explicit_tangent_pole_out),
+            "infinity"
+        );
+
+        let noisy_denominator_explicit_tangent_pole =
+            parse_expr(&mut ctx, "sin(pi/2 + x)/cos(pi/2 + x + 0)");
+        let noisy_denominator_explicit_tangent_pole_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            noisy_denominator_explicit_tangent_pole,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected explicit tangent-ratio pole with harmless denominator noise");
+        assert_eq!(
+            display_expr(&ctx, noisy_denominator_explicit_tangent_pole_out),
+            "-infinity"
+        );
+
+        let zero_numerator_explicit_trig_ratio = parse_expr(&mut ctx, "sin(x)/cos(pi/2 - x)");
+        assert!(
+            try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                zero_numerator_explicit_trig_ratio,
+                x,
+                point_zero,
+                FiniteLimitSide::Right
+            )
+            .is_none(),
+            "explicit trig ratio with zero numerator limit must not be treated as a pole"
         );
 
         let point_three_pi_over_two = parse_expr(&mut ctx, "3*pi/2");

@@ -203,6 +203,7 @@ fn diff_target_should_preserve_raw_derivative_route(
     diff_target_is_repeated_trig_by_parts_integrate_call(ctx, target, var_name)
         || diff_target_is_rational_linear_partial_fraction_integrate_call(ctx, target, var_name)
         || diff_target_is_rational_linear_positive_quadratic_integrate_call(ctx, target, var_name)
+        || diff_target_is_reciprocal_positive_quadratic_arctan_integrate_call(ctx, target, var_name)
         || diff_target_is_positive_quadratic_power_integrate_call(ctx, target, var_name)
         || diff_target_is_quadratic_affine_ln_by_parts_integrate_call(ctx, target, var_name)
         || diff_target_is_arcsin_inverse_sqrt_product_integrate_call(ctx, target, var_name)
@@ -217,8 +218,12 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_ln_constant_shifted_tan_sqrt(ctx, target, var_name)
         || diff_target_is_log_ratio_single_linear_pole(ctx, target, var_name)
         || diff_target_is_separated_linear_log_abs_with_linear_pole(ctx, target, var_name)
+        || diff_target_is_positive_quadratic_log_abs_with_linear_pole(ctx, target, var_name)
         || diff_target_is_scaled_reciprocal_trig_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, target, var_name)
+        || diff_target_is_constant_scaled_inverse_tangent_linear_positive_rational_radius(
+            ctx, target, var_name,
+        )
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_reciprocal_sqrt_times_nonzero_shifted_sqrt(ctx, target, var_name)
@@ -231,6 +236,9 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_atanh_surd_polynomial(ctx, target, var_name)
+        || crate::rules::calculus::diff_target_is_tanh_cubic_sech_fourth_primitive(
+            ctx, target, var_name,
+        )
 }
 
 fn diff_target_is_log_ratio_single_linear_pole(
@@ -307,6 +315,93 @@ fn diff_target_is_separated_linear_log_abs_with_linear_pole(
                 .iter()
                 .any(|log_factor| linear_polynomials_are_proportional(pole, log_factor))
         })
+}
+
+fn diff_target_is_positive_quadratic_log_abs_with_linear_pole(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, target);
+    if terms.len() < 3 {
+        return false;
+    }
+
+    let mut has_positive_quadratic_log = false;
+    let mut log_factors = Vec::new();
+    let mut pole_factors = Vec::new();
+
+    for (term, _sign) in terms {
+        if !contains_named_var(ctx, term, var_name) {
+            continue;
+        }
+        if scaled_log_positive_quadratic_for_raw_diff_target(ctx, term, var_name).is_some() {
+            has_positive_quadratic_log = true;
+            continue;
+        }
+        if let Some(linear) = scaled_log_abs_linear_factor_for_raw_diff_target(ctx, term, var_name)
+        {
+            log_factors.push(linear);
+            continue;
+        }
+        if let Some(linear) = reciprocal_linear_factor_for_raw_diff_target(ctx, term, var_name) {
+            pole_factors.push(linear);
+            continue;
+        }
+        return false;
+    }
+
+    has_positive_quadratic_log
+        && !log_factors.is_empty()
+        && pole_factors.iter().any(|pole| {
+            log_factors
+                .iter()
+                .any(|log_factor| linear_polynomials_are_proportional(pole, log_factor))
+        })
+}
+
+fn scaled_log_positive_quadratic_for_raw_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<Polynomial> {
+    let core = strip_rational_scale_for_raw_diff_target(ctx, expr)?;
+    let Expr::Function(ln_fn, ln_args) = ctx.get(core) else {
+        return None;
+    };
+    if ln_args.len() != 1 || ctx.builtin_of(*ln_fn) != Some(cas_ast::BuiltinFn::Ln) {
+        return None;
+    }
+    let poly = Polynomial::from_expr(ctx, ln_args[0], var_name).ok()?;
+    strictly_positive_quadratic_for_raw_diff_target(&poly).then_some(poly)
+}
+
+fn strictly_positive_quadratic_for_raw_diff_target(poly: &Polynomial) -> bool {
+    if poly.degree() != 2 {
+        return false;
+    }
+
+    let a = poly
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let b = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if !a.is_positive() {
+        return false;
+    }
+
+    let four = BigRational::from_integer(4.into());
+    b.clone() * b - four * a * c < BigRational::zero()
 }
 
 fn scaled_log_abs_linear_factor_for_raw_diff_target(
@@ -809,6 +904,109 @@ fn diff_target_is_rational_linear_positive_quadratic_integrate_call(
         )
 }
 
+fn diff_target_is_reciprocal_positive_quadratic_arctan_integrate_call(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return false;
+    }
+    if diff_variable_name(ctx, args[1]).is_none_or(|integrate_var| integrate_var != var_name) {
+        return false;
+    }
+
+    let Expr::Div(num, den) = ctx.get(args[0]) else {
+        return false;
+    };
+    if !cas_ast::views::as_rational_const(ctx, *num, 8).is_some_and(|value| value.is_one()) {
+        return false;
+    }
+
+    Polynomial::from_expr(ctx, *den, var_name)
+        .ok()
+        .is_some_and(|denominator| strictly_positive_quadratic_for_raw_diff_target(&denominator))
+        || expr_is_linear_square_plus_positive_constant_for_raw_diff_target(ctx, *den, var_name)
+}
+
+fn expr_is_linear_square_plus_positive_constant_for_raw_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return false;
+    };
+
+    (expr_is_square_of_linear_for_raw_diff_target(ctx, *left, var_name)
+        && cas_ast::views::as_rational_const(ctx, *right, 8)
+            .is_some_and(|value| value.is_positive()))
+        || (expr_is_square_of_linear_for_raw_diff_target(ctx, *right, var_name)
+            && cas_ast::views::as_rational_const(ctx, *left, 8)
+                .is_some_and(|value| value.is_positive()))
+}
+
+fn expr_is_square_of_linear_for_raw_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    if cas_ast::views::as_rational_const(ctx, *exp, 8)
+        .is_none_or(|value| value != BigRational::from_integer(2.into()))
+    {
+        return false;
+    }
+    let Ok(poly) = Polynomial::from_expr(ctx, *base, var_name) else {
+        return expr_is_symbolic_linear_for_raw_diff_target(ctx, *base, var_name);
+    };
+    poly.degree() == 1
+}
+
+fn expr_is_symbolic_linear_for_raw_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var_name,
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            let left_has_var = contains_named_var(ctx, *left, var_name);
+            let right_has_var = contains_named_var(ctx, *right, var_name);
+            (left_has_var
+                && !right_has_var
+                && expr_is_symbolic_linear_for_raw_diff_target(ctx, *left, var_name))
+                || (!left_has_var
+                    && right_has_var
+                    && expr_is_symbolic_linear_for_raw_diff_target(ctx, *right, var_name))
+        }
+        Expr::Mul(left, right) => {
+            let left_has_var = contains_named_var(ctx, *left, var_name);
+            let right_has_var = contains_named_var(ctx, *right, var_name);
+            (left_has_var
+                && !right_has_var
+                && expr_is_symbolic_linear_for_raw_diff_target(ctx, *left, var_name))
+                || (!left_has_var
+                    && right_has_var
+                    && expr_is_symbolic_linear_for_raw_diff_target(ctx, *right, var_name))
+        }
+        Expr::Neg(inner) => expr_is_symbolic_linear_for_raw_diff_target(ctx, *inner, var_name),
+        Expr::Hold(inner) => expr_is_symbolic_linear_for_raw_diff_target(ctx, *inner, var_name),
+        Expr::Number(_)
+        | Expr::Constant(_)
+        | Expr::Function(_, _)
+        | Expr::Div(_, _)
+        | Expr::Pow(_, _)
+        | Expr::Matrix { .. }
+        | Expr::SessionRef(_) => false,
+    }
+}
+
 fn diff_target_is_positive_quadratic_power_integrate_call(
     ctx: &cas_ast::Context,
     target: ExprId,
@@ -931,6 +1129,20 @@ mod tests {
     }
 
     #[test]
+    fn preserves_raw_diff_target_for_positive_rational_quadratic_arctan_integral() {
+        let mut ctx = cas_ast::Context::new();
+        let target = cas_parser::parse("integrate(1/((a*x+b)^2+2), x)", &mut ctx).unwrap();
+        let variable = ctx.var("x");
+
+        assert!(
+            diff_target_is_reciprocal_positive_quadratic_arctan_integrate_call(&ctx, target, "x")
+        );
+        assert!(diff_target_should_preserve_raw_derivative_route(
+            &ctx, target, variable
+        ));
+    }
+
+    #[test]
     fn preserves_raw_diff_target_for_separated_linear_log_abs_poles() {
         let mut ctx = cas_ast::Context::new();
         let variable = cas_parser::parse("x", &mut ctx).unwrap();
@@ -948,6 +1160,23 @@ mod tests {
     }
 
     #[test]
+    fn preserves_raw_diff_target_for_positive_quadratic_log_abs_poles() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "1/4*ln(x^2+1)-1/2*ln(abs(x-1))+1/(2*x-2)",
+            "1/6*ln(2*x^2+2)-1/2*ln(abs(2*x-2))-1/(2*(2*x-2))",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
     fn avoids_raw_diff_target_for_unrelated_separated_log_abs_sums() {
         let mut ctx = cas_ast::Context::new();
         let variable = cas_parser::parse("x", &mut ctx).unwrap();
@@ -955,6 +1184,7 @@ mod tests {
         for raw in [
             "ln(abs(x-1)) - ln(abs(x+1))",
             "ln(abs(x^2+1)) + 1/(x+1) + ln(abs(x-1))",
+            "ln(x^2-1) + ln(abs(x-1)) + 1/(x-1)",
         ] {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
@@ -2272,6 +2502,113 @@ fn diff_target_is_inverse_tangent_reciprocal_sqrt_product(
     }
 
     saw_sqrt && saw_polynomial
+}
+
+fn diff_target_is_constant_scaled_inverse_tangent_linear_positive_rational_radius(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Div(numerator, outer_denominator) = ctx.get(target) else {
+        return false;
+    };
+    let Expr::Function(fn_id, args) = ctx.get(*numerator) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(cas_ast::BuiltinFn::Atan | cas_ast::BuiltinFn::Arctan)
+        )
+    {
+        return false;
+    }
+
+    let Some(arg_radius) = diff_arg_is_positive_rational_sqrt_times_dependent_factor_over_radius(
+        ctx, args[0], var_name,
+    ) else {
+        return false;
+    };
+    diff_denominator_is_positive_rational_sqrt_times_independent_factor(
+        ctx,
+        *outer_denominator,
+        var_name,
+    )
+    .is_some_and(|outer_radius| outer_radius == arg_radius)
+}
+
+fn diff_arg_is_positive_rational_sqrt_times_dependent_factor_over_radius(
+    ctx: &cas_ast::Context,
+    arg: ExprId,
+    var_name: &str,
+) -> Option<BigRational> {
+    let Expr::Div(numerator, denominator) = ctx.get(arg) else {
+        return None;
+    };
+    let radius = cas_ast::views::as_rational_const(ctx, *denominator, 8)?;
+    if !radius.is_positive() {
+        return None;
+    }
+
+    let mut saw_sqrt = false;
+    let mut saw_dependent = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, *numerator) {
+        if let Some(radicand) = extract_square_root_base(ctx, factor) {
+            if saw_sqrt {
+                return None;
+            }
+            let value = cas_ast::views::as_rational_const(ctx, radicand, 8)?;
+            if value != radius {
+                return None;
+            }
+            saw_sqrt = true;
+            continue;
+        }
+
+        if contains_named_var(ctx, factor, var_name) {
+            if saw_dependent {
+                return None;
+            }
+            saw_dependent = true;
+            continue;
+        }
+
+        let value = cas_ast::views::as_rational_const(ctx, factor, 8)?;
+        if !value.is_one() {
+            return None;
+        }
+    }
+
+    (saw_sqrt && saw_dependent).then_some(radius)
+}
+
+fn diff_denominator_is_positive_rational_sqrt_times_independent_factor(
+    ctx: &cas_ast::Context,
+    denominator: ExprId,
+    var_name: &str,
+) -> Option<BigRational> {
+    let mut sqrt_radicand = None;
+    let mut saw_independent_factor = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, denominator) {
+        if let Some(radicand) = extract_square_root_base(ctx, factor) {
+            if sqrt_radicand.is_some() {
+                return None;
+            }
+            let value = cas_ast::views::as_rational_const(ctx, radicand, 8)?;
+            if !value.is_positive() {
+                return None;
+            }
+            sqrt_radicand = Some(value);
+            continue;
+        }
+
+        if contains_named_var(ctx, factor, var_name) {
+            return None;
+        }
+        saw_independent_factor = true;
+    }
+
+    saw_independent_factor.then_some(sqrt_radicand?)
 }
 
 fn diff_target_is_bounded_inverse_trig_surd_quotient(

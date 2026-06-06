@@ -126,6 +126,46 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             40.0,
         )
 
+    def test_exact_square_runtime_pair_rows_compare_sibling_cases(self) -> None:
+        rows = SMOKE.exact_square_runtime_pair_rows(
+            [
+                {
+                    "name": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
+                    "family": "inverse_hyperbolic_root",
+                    "argument_regime": "symbolic_denominator_scaled_shifted_root",
+                    "presentation_regime": "symbolic_denominator_open_interval_compact",
+                    "wall_elapsed_seconds": 0.006,
+                },
+                {
+                    "name": "inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval",
+                    "family": "inverse_hyperbolic_root",
+                    "argument_regime": "exact_square_symbolic_denominator_scaled_shifted_root",
+                    "presentation_regime": "exact_square_symbolic_denominator_open_interval_compact",
+                    "wall_elapsed_seconds": 0.096,
+                },
+            ]
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "name": "inverse_hyperbolic_root_atanh_denominator_scale_exact_square",
+                    "baseline_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
+                    "exact_square_case": "inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval",
+                    "baseline_case_ms": 6.0,
+                    "exact_square_case_ms": 96.0,
+                    "delta_ms": 90.0,
+                    "ratio": 16.0,
+                    "baseline_argument_regime": "symbolic_denominator_scaled_shifted_root",
+                    "baseline_presentation_regime": "symbolic_denominator_open_interval_compact",
+                    "exact_square_argument_regime": "exact_square_symbolic_denominator_scaled_shifted_root",
+                    "exact_square_presentation_regime": "exact_square_symbolic_denominator_open_interval_compact",
+                    "family": "inverse_hyperbolic_root",
+                },
+            ],
+        )
+
     def test_payload_observability_summary_reports_output_and_step_hotspots(self) -> None:
         summary = SMOKE.payload_observability_summary(
             [
@@ -172,7 +212,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_diff_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 63)
+        self.assertEqual(len(cases), 67)
         names = {case.name for case in cases}
         self.assertIn(
             "log_quadratic_empty_positive_argument_domain_undefined",
@@ -187,6 +227,15 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("elementary_exp_affine_chain_trace", names)
         self.assertIn("elementary_trig_affine_chain_trace", names)
         self.assertIn("elementary_trig_tan_affine_chain_required_condition", names)
+        self.assertIn(
+            "elementary_reciprocal_trig_csc_affine_chain_sine_pole",
+            names,
+        )
+        self.assertIn("elementary_hyperbolic_sinh_affine_chain_trace", names)
+        self.assertIn(
+            "elementary_hyperbolic_tanh_affine_chain_reciprocal_square",
+            names,
+        )
         self.assertIn("log_tangent_positive_source_domain", names)
         self.assertIn("log_cotangent_positive_source_domain", names)
         self.assertIn("sqrt_tangent_positive_dominates_nonnegative_domain", names)
@@ -301,23 +350,27 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("separated_log_abs_linear_pole_raw_preserved", names)
         self.assertIn("positive_quadratic_log_abs_pole_scaled_quadratic_compact", names)
         self.assertIn("positive_quadratic_log_abs_pole_scaled_linear_pole_compact", names)
+        self.assertIn(
+            "positive_quadratic_log_abs_pole_positive_orientation_combined_source_compact",
+            names,
+        )
         self.assertIn("discontinuous_sign_polynomial_nonzero_domain", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"supported": 52, "undefined": 11},
+            {"supported": 56, "undefined": 11},
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block2_real_domain_differentiation": 52,
+                "block2_real_domain_differentiation": 56,
                 "block9_residuals_and_non_goals": 11,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
-                "didactic_trace_and_diff_policy": 8,
-                "domain_conditions_and_diff_policy": 44,
+                "didactic_trace_and_diff_policy": 10,
+                "domain_conditions_and_diff_policy": 46,
                 "explicit_undefined_domain_policy": 11,
             },
         )
@@ -347,6 +400,9 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "elementary_exp_affine_chain_trace",
                 "elementary_trig_affine_chain_trace",
                 "elementary_trig_tan_affine_chain_required_condition",
+                "elementary_reciprocal_trig_csc_affine_chain_sine_pole",
+                "elementary_hyperbolic_sinh_affine_chain_trace",
+                "elementary_hyperbolic_tanh_affine_chain_reciprocal_square",
                 "log_tangent_positive_source_domain",
                 "log_cotangent_positive_source_domain",
                 "log_affine_chain_required_domain",
@@ -367,6 +423,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "separated_log_abs_linear_pole_raw_preserved",
                 "positive_quadratic_log_abs_pole_scaled_quadratic_compact",
                 "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
+                "positive_quadratic_log_abs_pole_positive_orientation_combined_source_compact",
                 "sqrt_variable_open_domain",
                 "sqrt_tangent_positive_dominates_nonnegative_domain",
                 "sqrt_quadratic_empty_positive_argument_domain_undefined",
@@ -408,7 +465,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "empty_positive_exponent_domain": 1,
                 "invalid_log_base_domain": 1,
                 "interval_required": 1,
-                "linear_poles_required": 5,
+                "linear_poles_required": 6,
                 "negative_base_undefined": 1,
                 "nonfinite_undefined": 1,
                 "open_interval_required": 3,
@@ -417,7 +474,9 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "positive_gap_with_symbolic_denominator_scale_deduped": 1,
                 "positive_source_trig_domain": 2,
                 "required_condition": 30,
-                "unconditional": 5,
+                "trig_sine_pole_required": 1,
+                "unconditional": 6,
+                "unconditional_cosh_positive": 1,
                 "unconditional_positive_quadratic": 3,
             },
         )

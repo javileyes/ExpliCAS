@@ -59,6 +59,21 @@ fn eval_json_with_args_and_stderr(expr: &str, args: &[&str]) -> (Value, String) 
 }
 
 #[test]
+fn test_eval_json_diff_arctan_linear_positive_rational_radius_stays_compact_without_depth_overflow()
+{
+    let expr = "diff(arctan(sqrt(2)*(a*x+b)/2)/(sqrt(2)*a), x)";
+    let (json, stderr) = eval_json_with_stderr(expr);
+
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["result"], "1 / ((a·x + b)^2 + 2)");
+    assert_eq!(json["required_display"], Value::Array(vec!["a ≠ 0".into()]));
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "positive-rational arctan radius diff should avoid generic depth overflow: {stderr}"
+    );
+}
+
+#[test]
 fn test_eval_json_sqrt_shifted_ln_diff_step_uses_compact_reciprocal_root_presentation() {
     let json = eval_json_with_args("diff(sqrt(ln(x)+1), x)", &["--steps", "on"]);
 

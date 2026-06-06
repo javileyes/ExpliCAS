@@ -155,6 +155,7 @@ mod rational_partial_fraction_integrand_preservation;
 mod rationalized_sqrt_result_presentation;
 mod reciprocal_sqrt_product_derivative_presentation;
 mod reciprocal_trig_derivative_presentation;
+mod reciprocal_trig_log_domain;
 mod result_presentation;
 mod result_preservation;
 mod result_sensitive_post_calculus_presentation;
@@ -282,6 +283,7 @@ pub(crate) use sqrt_polynomial_quotient_derivative_presentation::{
 use sqrt_product_presentation::shared_positive_content_sqrt_product_for_calculus_presentation;
 use sqrt_shifted_log_derivative_presentation::sqrt_shifted_ln_derivative_presentation;
 pub(crate) use sqrt_small_additive_derivative_presentation::sqrt_small_additive_elementary_derivative_presentation_with_domain;
+pub(crate) use tanh_primitive_derivative_presentation::diff_target_is_tanh_cubic_sech_fourth_primitive;
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(IntegrateRule));

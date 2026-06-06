@@ -58,6 +58,98 @@ class IntegrateCommandMatrixCase:
     presentation_regime: str = "canonical"
 
 
+@dataclass(frozen=True)
+class ResidualShapeOrientationProbe:
+    name: str
+    expr: str
+    expression_shape: str
+    orientation: str
+
+
+RESIDUAL_SHAPE_ORIENTATION_PROBES = (
+    ResidualShapeOrientationProbe(
+        name="shifted_tangent_log_source",
+        expr="integrate(1/((tan(x)-2)*ln(tan(x))), x)",
+        expression_shape="source",
+        orientation="tan_minus_offset",
+    ),
+    ResidualShapeOrientationProbe(
+        name="shifted_tangent_log_factored_residual",
+        expr=(
+            "integrate(cos(x)/(ln(sin(x)/cos(x))*(sin(x)-2*cos(x))), x)"
+        ),
+        expression_shape="factored_residual",
+        orientation="tan_minus_offset",
+    ),
+    ResidualShapeOrientationProbe(
+        name="shifted_cotangent_log_source",
+        expr="integrate(1/((cot(x)-2)*ln(cot(x))), x)",
+        expression_shape="source",
+        orientation="cot_minus_offset",
+    ),
+    ResidualShapeOrientationProbe(
+        name="shifted_cotangent_log_factored_residual",
+        expr=(
+            "integrate(sin(x)/(ln(cos(x)/sin(x))*(cos(x)-2*sin(x))), x)"
+        ),
+        expression_shape="factored_residual",
+        orientation="cot_minus_offset",
+    ),
+    ResidualShapeOrientationProbe(
+        name="offset_tangent_log_source",
+        expr="integrate(1/((2-tan(x))*ln(tan(x))), x)",
+        expression_shape="source",
+        orientation="offset_minus_tan",
+    ),
+    ResidualShapeOrientationProbe(
+        name="offset_tangent_log_factored_residual",
+        expr=(
+            "integrate(cos(x)/(ln(sin(x)/cos(x))*(2*cos(x)-sin(x))), x)"
+        ),
+        expression_shape="factored_residual",
+        orientation="offset_minus_tan",
+    ),
+    ResidualShapeOrientationProbe(
+        name="offset_cotangent_log_source",
+        expr="integrate(1/((2-cot(x))*ln(cot(x))), x)",
+        expression_shape="source",
+        orientation="offset_minus_cot",
+    ),
+    ResidualShapeOrientationProbe(
+        name="offset_cotangent_log_factored_residual",
+        expr=(
+            "integrate(sin(x)/(ln(cos(x)/sin(x))*(2*sin(x)-cos(x))), x)"
+        ),
+        expression_shape="factored_residual",
+        orientation="offset_minus_cot",
+    ),
+    ResidualShapeOrientationProbe(
+        name="symbolic_shifted_tangent_log_source",
+        expr="integrate(1/((tan(x)-a)*ln(tan(x))), x)",
+        expression_shape="source",
+        orientation="tan_minus_symbolic_offset",
+    ),
+    ResidualShapeOrientationProbe(
+        name="symbolic_offset_tangent_log_source",
+        expr="integrate(1/((a-tan(x))*ln(tan(x))), x)",
+        expression_shape="source",
+        orientation="symbolic_offset_minus_tan",
+    ),
+    ResidualShapeOrientationProbe(
+        name="symbolic_shifted_cotangent_log_source",
+        expr="integrate(1/((cot(x)-a)*ln(cot(x))), x)",
+        expression_shape="source",
+        orientation="cot_minus_symbolic_offset",
+    ),
+    ResidualShapeOrientationProbe(
+        name="symbolic_offset_cotangent_log_source",
+        expr="integrate(1/((a-cot(x))*ln(cot(x))), x)",
+        expression_shape="source",
+        orientation="symbolic_offset_minus_cot",
+    ),
+)
+
+
 DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="polynomial_power_direct",
@@ -117,7 +209,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="affine_secant_table_log_domain",
         expr="integrate(sec(2*x+1), x)",
-        expected_result="ln(|tan(2·x + 1) + sec(2·x + 1)|) / 2",
+        expected_result="1/2·ln(|tan(2·x + 1) + sec(2·x + 1)|)",
         expected_derivative_equivalent_to="sec(2*x+1)",
         expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
         expected_required_display=("cos(2·x + 1) ≠ 0",),
@@ -135,7 +227,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="affine_cosecant_table_log_domain",
         expr="integrate(csc(2*x+1), x)",
-        expected_result="ln(|csc(2·x + 1) - cot(2·x + 1)|) / 2",
+        expected_result="1/2·ln(|csc(2·x + 1) - cot(2·x + 1)|)",
         expected_derivative_equivalent_to="csc(2*x+1)",
         expected_derivative_required_display=("sin(2·x + 1) ≠ 0",),
         expected_required_display=("sin(2·x + 1) ≠ 0",),
@@ -149,6 +241,65 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="trig_reciprocal_table_pole_required",
         trace_regime="affine_cosecant_log_table",
         presentation_regime="abs_log_reciprocal_trig_affine",
+    ),
+    IntegrateCommandMatrixCase(
+        name="external_constant_affine_secant_table_log_domain",
+        expr="integrate(3*sec(2*x+1), x)",
+        expected_result="3/2·ln(|tan(2·x + 1) + sec(2·x + 1)|)",
+        expected_derivative_equivalent_to="3*sec(2*x+1)",
+        expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="trig_reciprocal_log_table",
+        argument_regime="external_constant_affine_reciprocal_trig_table",
+        domain_regime="trig_reciprocal_table_pole_required",
+        trace_regime="external_constant_affine_secant_log_table",
+        presentation_regime="external_constant_abs_log_reciprocal_trig_affine",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_denominator_scaled_affine_secant_table_log_domain",
+        expr="integrate(2/3*sec(2*x+1), x)",
+        expected_result="ln(|tan(2·x + 1) + sec(2·x + 1)|) / 3",
+        expected_derivative_equivalent_to="2/3*sec(2*x+1)",
+        expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="trig_reciprocal_log_table",
+        argument_regime="rational_denominator_scaled_affine_reciprocal_trig_table",
+        domain_regime="trig_reciprocal_table_pole_required",
+        trace_regime="rational_denominator_scaled_affine_secant_log_table",
+        presentation_regime="rational_denominator_scaled_abs_log_reciprocal_trig_affine",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_denominator_scaled_affine_cosecant_table_log_domain",
+        expr="integrate(2/3*csc(2*x+1), x)",
+        expected_result="ln(|csc(2·x + 1) - cot(2·x + 1)|) / 3",
+        expected_derivative_equivalent_to="2/3*csc(2*x+1)",
+        expected_derivative_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="trig_reciprocal_log_table",
+        argument_regime="rational_denominator_scaled_affine_reciprocal_trig_table",
+        domain_regime="trig_reciprocal_table_pole_required",
+        trace_regime="rational_denominator_scaled_affine_cosecant_log_table",
+        presentation_regime="rational_denominator_scaled_abs_log_reciprocal_trig_affine",
     ),
     IntegrateCommandMatrixCase(
         name="affine_exp_substitution",
@@ -391,6 +542,61 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="abs_log_reciprocal_trig_source_condition",
     ),
     IntegrateCommandMatrixCase(
+        name="explicit_reciprocal_cosine_verified_log_domain",
+        expr="integrate(2*x/cos(x^2), x)",
+        expected_result="ln(|tan(x^2) + sec(x^2)|)",
+        expected_derivative_equivalent_to="2*x/cos(x^2)",
+        expected_derivative_required_display=("cos(x^2) ≠ 0",),
+        expected_required_display=("cos(x^2) ≠ 0",),
+        expected_step_substrings=(
+            "Sacar constante de una fracción",
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+            "Identificar u y du",
+        ),
+        family="explicit_reciprocal_trig_substitution",
+        argument_regime="explicit_reciprocal_cosine_polynomial_derivative",
+        domain_regime="explicit_reciprocal_cosine_verified_substitution",
+        trace_regime="reciprocal_cosine_verified_substitution",
+        presentation_regime="abs_log_reciprocal_trig_source_condition",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_reciprocal_cosine_symbolic_shift_verified_log_domain",
+        expr="integrate(2*x/cos(x^2+b), x)",
+        expected_result="ln(|tan(x^2 + b) + sec(x^2 + b)|)",
+        expected_derivative_equivalent_to="2*x/cos(x^2+b)",
+        expected_derivative_required_display=("cos(x^2 + b) ≠ 0",),
+        expected_required_display=("cos(x^2 + b) ≠ 0",),
+        expected_step_substrings=(
+            "Sacar constante de una fracción",
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+            "Identificar u y du",
+        ),
+        family="explicit_reciprocal_trig_substitution",
+        argument_regime="explicit_reciprocal_cosine_symbolic_shift_polynomial_derivative",
+        domain_regime="explicit_reciprocal_cosine_symbolic_shift_verified_substitution",
+        trace_regime="reciprocal_cosine_symbolic_shift_verified_substitution",
+        presentation_regime="abs_log_reciprocal_trig_symbolic_shift_source_condition",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_reciprocal_cosine_symbolic_external_scale_shift_verified_log_domain",
+        expr="integrate(2*k*x/cos(x^2+b), x)",
+        expected_result="k·ln(|tan(x^2 + b) + sec(x^2 + b)|)",
+        expected_derivative_equivalent_to="2*k*x/cos(x^2+b)",
+        expected_derivative_required_display=("cos(x^2 + b) ≠ 0",),
+        expected_required_display=("cos(x^2 + b) ≠ 0",),
+        expected_step_substrings=(
+            "Sacar constante de una fracción",
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+        ),
+        family="explicit_reciprocal_trig_substitution",
+        argument_regime="explicit_reciprocal_cosine_symbolic_external_scale_shift_polynomial_derivative",
+        domain_regime="explicit_reciprocal_cosine_symbolic_external_scale_shift_verified_substitution",
+        trace_regime="reciprocal_cosine_symbolic_external_scale_shift_verified_substitution",
+        presentation_regime="abs_log_reciprocal_trig_symbolic_external_scale_shift_source_condition",
+    ),
+    IntegrateCommandMatrixCase(
         name="explicit_reciprocal_tangent_presimplified_residual_domain",
         expr="integrate(1/tan(x^2+0), x)",
         expected_result="integrate(cot(x^2), x)",
@@ -427,7 +633,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="explicit_tangent_log_residual_argument",
         domain_regime="explicit_tangent_log_shifted_condition_dedupe",
         outcome="residual",
-        residual_cause="unsupported_reciprocal_trig_method",
+        residual_cause="special_function_method_required",
         trace_regime="residual_presimplification_with_domain",
         presentation_regime="shifted_tangent_condition_alias_dedupe",
     ),
@@ -449,17 +655,17 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="explicit_tangent_log_numeric_shifted_residual_argument",
         domain_regime="explicit_tangent_log_numeric_shifted_condition_dedupe",
         outcome="residual",
-        residual_cause="unsupported_reciprocal_trig_method",
+        residual_cause="special_function_method_required",
         trace_regime="residual_presimplification_with_domain",
         presentation_regime="shifted_tangent_numeric_condition_alias_dedupe",
     ),
     IntegrateCommandMatrixCase(
         name="explicit_tangent_log_numeric_offset_residual_condition_alias_dedupe",
         expr="integrate(1/((2-tan(x))*ln(tan(x))), x)",
-        expected_result="integrate(1 / (2·ln(sin(x) / cos(x)) - sin(x)·ln(sin(x) / cos(x)) / cos(x)), x)",
+        expected_result="integrate(cos(x) / (ln(sin(x) / cos(x))·(2·cos(x) - sin(x))), x)",
         expected_required_display=(
-            "cos(x) ≠ 0",
             "2 - tan(x) ≠ 0",
+            "cos(x) ≠ 0",
             "tan(x) - 1 ≠ 0",
             "tan(x) > 0",
         ),
@@ -471,19 +677,19 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="explicit_tangent_log_numeric_offset_residual_argument",
         domain_regime="explicit_tangent_log_numeric_offset_condition_dedupe",
         outcome="residual",
-        residual_cause="unsupported_reciprocal_trig_method",
+        residual_cause="special_function_method_required",
         trace_regime="residual_presimplification_with_domain",
         presentation_regime="offset_tangent_numeric_condition_alias_dedupe",
     ),
     IntegrateCommandMatrixCase(
         name="explicit_cotangent_log_numeric_offset_residual_condition_alias_dedupe",
         expr="integrate(1/((2-cot(x))*ln(cot(x))), x)",
-        expected_result="integrate(1 / (2·ln(cos(x) / sin(x)) - cos(x)·ln(cos(x) / sin(x)) / sin(x)), x)",
+        expected_result="integrate(sin(x) / (ln(cos(x) / sin(x))·(2·sin(x) - cos(x))), x)",
         expected_required_display=(
-            "sin(x) ≠ 0",
             "2 - cot(x) ≠ 0",
             "cot(x) > 0",
             "cot(x) - 1 ≠ 0",
+            "sin(x) ≠ 0",
         ),
         expected_step_substrings=(
             "Expandir cotangente como coseno entre seno",
@@ -493,9 +699,31 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="explicit_cotangent_log_numeric_offset_residual_argument",
         domain_regime="explicit_cotangent_log_numeric_offset_condition_dedupe",
         outcome="residual",
-        residual_cause="unsupported_reciprocal_trig_method",
+        residual_cause="special_function_method_required",
         trace_regime="residual_presimplification_with_domain",
         presentation_regime="offset_cotangent_numeric_condition_alias_dedupe",
+    ),
+    IntegrateCommandMatrixCase(
+        name="explicit_cotangent_log_numeric_shifted_residual_condition_alias_dedupe",
+        expr="integrate(1/((cot(x)-2)*ln(cot(x))), x)",
+        expected_result="integrate(sin(x) / (ln(cos(x) / sin(x))·(cos(x) - 2·sin(x))), x)",
+        expected_required_display=(
+            "cot(x) > 0",
+            "cot(x) - 1 ≠ 0",
+            "cot(x) - 2 ≠ 0",
+            "sin(x) ≠ 0",
+        ),
+        expected_step_substrings=(
+            "Expandir cotangente como coseno entre seno",
+            "Conservar integral residual",
+        ),
+        family="explicit_reciprocal_trig_residual_domain",
+        argument_regime="explicit_cotangent_log_numeric_shifted_residual_argument",
+        domain_regime="explicit_cotangent_log_numeric_shifted_condition_dedupe",
+        outcome="residual",
+        residual_cause="special_function_method_required",
+        trace_regime="residual_presimplification_with_domain",
+        presentation_regime="shifted_cotangent_numeric_condition_alias_dedupe",
     ),
     IntegrateCommandMatrixCase(
         name="explicit_reciprocal_tangent_verified_log_domain",
@@ -775,6 +1003,34 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="structurally_positive_denominator",
         trace_regime="arctan_affine_positive_quadratic_table",
         presentation_regime="scaled_arctan_affine",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_symbolic_affine_expanded_square_radius_positive_quadratic_table",
+        expr="integrate(1/((a*x+b)^2+4), x)",
+        expected_result="arctan((a·x + b) / 2) / (2·a)",
+        expected_derivative_equivalent_to="1/((a*x+b)^2+4)",
+        expected_required_display=("a ≠ 0",),
+        expected_derivative_required_display=("a ≠ 0",),
+        expected_step_substrings=("Calcular la integral",),
+        family="inverse_trig_table",
+        argument_regime="symbolic_affine_expanded_square_radius_positive_quadratic",
+        domain_regime="symbolic_scale_nonzero_required",
+        trace_regime="arctan_symbolic_affine_expanded_square_radius_positive_quadratic_table",
+        presentation_regime="symbolic_affine_expanded_square_radius_arctan",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_symbolic_affine_positive_rational_radius_positive_quadratic_table",
+        expr="integrate(1/((a*x+b)^2+2), x)",
+        expected_result="arctan(sqrt(2)·(a·x + b) / 2) / (sqrt(2)·a)",
+        expected_derivative_equivalent_to="1/((a*x+b)^2+2)",
+        expected_required_display=("a ≠ 0",),
+        expected_derivative_required_display=("a ≠ 0",),
+        expected_step_substrings=("Calcular la integral",),
+        family="inverse_trig_table",
+        argument_regime="symbolic_affine_positive_rational_radius_positive_quadratic",
+        domain_regime="symbolic_scale_nonzero_required",
+        trace_regime="arctan_symbolic_affine_positive_rational_radius_positive_quadratic_table",
+        presentation_regime="symbolic_affine_positive_rational_radius_arctan",
     ),
     IntegrateCommandMatrixCase(
         name="rational_positive_quadratic_square_reduction",
@@ -2243,6 +2499,21 @@ def extract_required_display(payload: dict[str, Any] | None) -> tuple[str, ...]:
     return tuple(item for item in raw if isinstance(item, str))
 
 
+def extract_cli_timings_us(payload: dict[str, Any] | None) -> dict[str, int]:
+    if not payload:
+        return {}
+    raw = payload.get("timings_us")
+    if not isinstance(raw, dict):
+        return {}
+
+    timings: dict[str, int] = {}
+    for key in ("parse_us", "simplify_us", "total_us"):
+        value = raw.get(key)
+        if isinstance(value, int):
+            timings[key] = value
+    return timings
+
+
 def extract_warning_messages(payload: dict[str, Any] | None) -> tuple[str, ...]:
     if not payload:
         return ()
@@ -2371,6 +2642,17 @@ def run_case(
     required_display = extract_required_display(parsed)
     warnings = extract_warning_messages(parsed)
     step_text = extract_step_text(parsed)
+    cli_timings_us = extract_cli_timings_us(parsed)
+    cli_total_seconds = (
+        cli_timings_us["total_us"] / 1_000_000.0
+        if "total_us" in cli_timings_us
+        else None
+    )
+    public_overhead_seconds = (
+        max(0.0, integrate_elapsed - cli_total_seconds)
+        if cli_total_seconds is not None
+        else None
+    )
     ok = parsed.get("ok") if isinstance(parsed, dict) else None
 
     error: str | None = None
@@ -2580,6 +2862,17 @@ def run_case(
         "returncode": process.returncode,
         "wall_elapsed_seconds": round(wall_elapsed, 3),
         "integrate_elapsed_seconds": round(integrate_elapsed, 3),
+        "cli_parse_us": cli_timings_us.get("parse_us"),
+        "cli_simplify_us": cli_timings_us.get("simplify_us"),
+        "cli_total_us": cli_timings_us.get("total_us"),
+        "cli_total_seconds": (
+            round(cli_total_seconds, 6) if cli_total_seconds is not None else None
+        ),
+        "public_overhead_seconds": (
+            round(public_overhead_seconds, 6)
+            if public_overhead_seconds is not None
+            else None
+        ),
         "stdout_bytes": len(stdout.encode("utf-8")),
         "step_text_char_count": len(step_text),
         "antiderivative_verification_elapsed_seconds": (
@@ -2855,6 +3148,20 @@ def count_residual_causes(
     return dict(sorted(counts.items()))
 
 
+def group_residual_cases_by_cause(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for case in cases:
+        if case.outcome != "residual":
+            continue
+        cause = case.residual_cause
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        grouped.setdefault(cause, []).append(case.name)
+    return {cause: grouped[cause] for cause in sorted(grouped)}
+
+
 def phase_runtime_case_rows(
     results: list[dict[str, Any]],
     *,
@@ -2942,6 +3249,276 @@ def verification_mode_runtime_rows(
     return rows[:limit]
 
 
+def residual_cause_runtime_rows(
+    results: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        if result.get("outcome") != "residual":
+            continue
+        cause = result.get("residual_cause")
+        elapsed = result.get("integrate_elapsed_seconds")
+        if not isinstance(cause, str) or not isinstance(elapsed, (int, float)):
+            continue
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        groups.setdefault(cause, []).append(result)
+
+    rows: list[dict[str, Any]] = []
+    for cause, cause_results in groups.items():
+        elapsed_values = [
+            float(result["integrate_elapsed_seconds"]) for result in cause_results
+        ]
+        total_elapsed = sum(elapsed_values)
+        slowest = max(
+            cause_results,
+            key=lambda result: float(result.get("integrate_elapsed_seconds", 0.0)),
+        )
+        rows.append(
+            {
+                "cause": cause,
+                "case_count": len(cause_results),
+                "total_elapsed_seconds": round(total_elapsed, 3),
+                "avg_case_ms": round(total_elapsed * 1000.0 / len(cause_results), 3),
+                "max_elapsed_seconds": round(max(elapsed_values), 3),
+                "slowest_case": slowest.get("name"),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            -float(row["total_elapsed_seconds"]),
+            -int(row["case_count"]),
+            str(row["cause"]),
+        )
+    )
+    return rows[:limit]
+
+
+def residual_public_phase_case_rows(
+    results: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    residual_results = [
+        result
+        for result in results
+        if result.get("outcome") == "residual"
+        and isinstance(result.get("integrate_elapsed_seconds"), (int, float))
+        and isinstance(result.get("cli_total_seconds"), (int, float))
+    ]
+    residual_results.sort(
+        key=lambda result: (
+            -float(result.get("integrate_elapsed_seconds", 0.0)),
+            str(result.get("name", "")),
+        )
+    )
+
+    rows: list[dict[str, Any]] = []
+    for result in residual_results[:limit]:
+        integrate_elapsed = float(result.get("integrate_elapsed_seconds", 0.0))
+        cli_total = float(result.get("cli_total_seconds", 0.0))
+        public_overhead = float(result.get("public_overhead_seconds") or 0.0)
+        row: dict[str, Any] = {
+            "name": result.get("name"),
+            "integrate_elapsed_seconds": round(integrate_elapsed, 3),
+            "cli_total_seconds": round(cli_total, 6),
+            "cli_simplify_ms": round(
+                float(result.get("cli_simplify_us") or 0) / 1000.0,
+                3,
+            ),
+            "public_overhead_seconds": round(public_overhead, 6),
+            "public_overhead_share_percent": round(
+                public_overhead * 100.0 / integrate_elapsed,
+                1,
+            )
+            if integrate_elapsed > 0.0
+            else 0.0,
+            "required_display_count": len(result.get("required_display", [])),
+            "step_text_char_count": int(result.get("step_text_char_count") or 0),
+            "stdout_bytes": int(result.get("stdout_bytes") or 0),
+        }
+        for key in (
+            "residual_cause",
+            "family",
+            "trace_regime",
+            "domain_regime",
+            "presentation_regime",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+        ):
+            value = result.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def residual_public_phase_group_rows(
+    results: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        if result.get("outcome") != "residual":
+            continue
+        cause = result.get("residual_cause")
+        if not isinstance(cause, str):
+            continue
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        if not isinstance(result.get("cli_total_seconds"), (int, float)):
+            continue
+        groups.setdefault(cause, []).append(result)
+
+    rows: list[dict[str, Any]] = []
+    for cause, cause_results in groups.items():
+        integrate_total = sum(
+            float(result.get("integrate_elapsed_seconds") or 0.0)
+            for result in cause_results
+        )
+        cli_total = sum(
+            float(result.get("cli_total_seconds") or 0.0)
+            for result in cause_results
+        )
+        public_overhead_total = sum(
+            float(result.get("public_overhead_seconds") or 0.0)
+            for result in cause_results
+        )
+        slowest = max(
+            cause_results,
+            key=lambda result: float(result.get("integrate_elapsed_seconds") or 0.0),
+        )
+        rows.append(
+            {
+                "cause": cause,
+                "case_count": len(cause_results),
+                "integrate_total_seconds": round(integrate_total, 3),
+                "cli_total_seconds": round(cli_total, 6),
+                "public_overhead_total_seconds": round(public_overhead_total, 6),
+                "public_overhead_share_percent": round(
+                    public_overhead_total * 100.0 / integrate_total,
+                    1,
+                )
+                if integrate_total > 0.0
+                else 0.0,
+                "avg_required_display_count": round(
+                    sum(len(result.get("required_display", [])) for result in cause_results)
+                    / len(cause_results),
+                    3,
+                ),
+                "avg_step_text_char_count": round(
+                    sum(int(result.get("step_text_char_count") or 0) for result in cause_results)
+                    / len(cause_results),
+                    3,
+                ),
+                "slowest_case": slowest.get("name"),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            -float(row["integrate_total_seconds"]),
+            -int(row["case_count"]),
+            str(row["cause"]),
+        )
+    )
+    return rows[:limit]
+
+
+def run_residual_shape_orientation_probe(
+    probe: ResidualShapeOrientationProbe,
+    *,
+    cas_cli: str | pathlib.Path,
+    timeout_seconds: float,
+    steps_mode: str,
+) -> dict[str, Any]:
+    command = [str(cas_cli), "eval", probe.expr, "--format", "json", "--steps", steps_mode]
+    start = time.monotonic()
+    process = subprocess.Popen(
+        command,
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        terminate_process_group(process)
+        stdout, stderr = process.communicate()
+        elapsed = time.monotonic() - start
+        return {
+            "name": probe.name,
+            "status": "timeout",
+            "error": "timeout",
+            "expression_shape": probe.expression_shape,
+            "orientation": probe.orientation,
+            "steps_mode": steps_mode,
+            "wall_elapsed_seconds": round(elapsed, 3),
+            "stdout_bytes": len(stdout.encode("utf-8")),
+            "stderr_bytes": len(stderr.encode("utf-8")),
+        }
+
+    elapsed = time.monotonic() - start
+    parsed, parse_error = parse_json(stdout)
+    ok = parsed.get("ok") if isinstance(parsed, dict) else None
+    cli_timings_us = extract_cli_timings_us(parsed)
+    error: str | None = None
+    if process.returncode != 0:
+        error = f"returncode={process.returncode}"
+    elif parse_error:
+        error = parse_error
+    elif ok is not True:
+        error = "ok was not true"
+
+    row: dict[str, Any] = {
+        "name": probe.name,
+        "status": "pass" if error is None else "fail",
+        "error": error,
+        "expression_shape": probe.expression_shape,
+        "orientation": probe.orientation,
+        "steps_mode": steps_mode,
+        "wall_elapsed_seconds": round(elapsed, 3),
+        "stdout_bytes": len(stdout.encode("utf-8")),
+        "stderr_bytes": len(stderr.encode("utf-8")),
+    }
+    result = parsed.get("result") if isinstance(parsed, dict) else None
+    if isinstance(result, str):
+        row["result"] = result
+    required_display = extract_required_display(parsed)
+    row["required_display"] = list(required_display)
+    row["required_display_count"] = len(required_display)
+    for source_key, output_key in (
+        ("parse_us", "cli_parse_us"),
+        ("simplify_us", "cli_simplify_us"),
+        ("total_us", "cli_total_us"),
+    ):
+        value = cli_timings_us.get(source_key)
+        if isinstance(value, int):
+            row[output_key] = value
+    return row
+
+
+def residual_shape_orientation_probe_rows(
+    *,
+    cas_cli: str | pathlib.Path,
+    timeout_seconds: float,
+) -> list[dict[str, Any]]:
+    return [
+        run_residual_shape_orientation_probe(
+            probe,
+            cas_cli=cas_cli,
+            timeout_seconds=timeout_seconds,
+            steps_mode=steps_mode,
+        )
+        for probe in RESIDUAL_SHAPE_ORIENTATION_PROBES
+        for steps_mode in ("off", "on")
+    ]
+
+
 def phase_runtime_observability_summary(
     results: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -2977,6 +3554,15 @@ def phase_runtime_observability_summary(
         summary["runtime_by_antiderivative_verification_mode"] = (
             verification_mode_rows
         )
+    residual_cause_rows = residual_cause_runtime_rows(results)
+    if residual_cause_rows:
+        summary["runtime_by_residual_cause"] = residual_cause_rows
+    residual_phase_rows = residual_public_phase_case_rows(results)
+    if residual_phase_rows:
+        summary["residual_public_phase_slowest_cases"] = residual_phase_rows
+    residual_phase_group_rows = residual_public_phase_group_rows(results)
+    if residual_phase_group_rows:
+        summary["residual_public_phase_by_cause"] = residual_phase_group_rows
     return summary
 
 
@@ -3077,6 +3663,7 @@ def run_matrix(
         "domain_regime_counts": count_by(cases, "domain_regime"),
         "outcome_counts": count_by(cases, "outcome"),
         "residual_cause_counts": count_residual_causes(cases),
+        "residual_cases_by_cause": group_residual_cases_by_cause(cases),
         "verification_regime_counts": count_verification_regimes(cases),
         "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
         "calculus_block_gate_counts": count_calculus_block_gates(cases),
@@ -3137,6 +3724,13 @@ def main() -> int:
         timeout_seconds=args.timeout_seconds,
         slow_wall_seconds=args.slow_wall_seconds,
     )
+    if args.summary_json:
+        matrix["residual_shape_orientation_probes"] = (
+            residual_shape_orientation_probe_rows(
+                cas_cli=cas_cli,
+                timeout_seconds=args.timeout_seconds,
+            )
+        )
     payload = summarize_matrix(matrix) if args.summary_json else matrix
     if args.json:
         print(json.dumps(payload, sort_keys=True))

@@ -18,6 +18,7 @@ pub(super) enum SupportedIntegralDerivativePresentationRoute {
     InitialVerifiedSource(ExprId),
     InitialVerifiedSourceVerificationFailed,
     ArctanPolynomialSource(ExprId),
+    ReciprocalPositiveQuadraticArctanSource(ExprId),
     RationalSubstitutionVerifiedSource(ExprId),
     RationalSubstitutionVerifiedSourceVerificationFailed,
     HeldPresentationSourceHeld(ExprId),
@@ -39,6 +40,9 @@ impl SupportedIntegralDerivativePresentationRoute {
         match self {
             SupportedIntegralDerivativePresentationRoute::InitialVerifiedSource(target)
             | SupportedIntegralDerivativePresentationRoute::ArctanPolynomialSource(target)
+            | SupportedIntegralDerivativePresentationRoute::ReciprocalPositiveQuadraticArctanSource(
+                target,
+            )
             | SupportedIntegralDerivativePresentationRoute::RationalSubstitutionVerifiedSource(
                 target,
             )
@@ -250,6 +254,13 @@ mod tests {
         assert_eq!(
             SupportedIntegralDerivativePresentationRoute::InitialVerifiedSource(target)
                 .into_presentation_target(),
+            Some(target)
+        );
+        assert_eq!(
+            SupportedIntegralDerivativePresentationRoute::ReciprocalPositiveQuadraticArctanSource(
+                target
+            )
+            .into_presentation_target(),
             Some(target)
         );
         assert_eq!(

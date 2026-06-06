@@ -900,6 +900,19 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="infinity",
     ),
     LimitCommandMatrixCase(
+        name="finite_trig_sine_higher_even_power_pole_bilateral_supported",
+        expr="limit(1/(sin(x)^4), x, 0)",
+        expected_result="infinity",
+        expected_required_display=("sin(x) ≠ 0",),
+        expected_step_substrings=("Evaluar límite finito",),
+        family="trig_pole",
+        point_regime="finite",
+        domain_regime="bilateral_higher_even_order_trig_sine_pole",
+        required_condition_regime="finite_bilateral_trig_sine_higher_even_power_pole_domain",
+        trace_regime="finite_bilateral_trig_pole_policy",
+        presentation_regime="infinity",
+    ),
+    LimitCommandMatrixCase(
         name="finite_trig_cosine_even_power_pole_bilateral_supported",
         expr="limit(1/(cos(pi/2 + x)^2), x, 0)",
         expected_result="infinity",
@@ -953,6 +966,93 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="residual",
     ),
     LimitCommandMatrixCase(
+        name="finite_reciprocal_trig_sine_even_power_pole_bilateral_supported",
+        expr="limit(csc(x)^2, x, 0)",
+        expected_result="infinity",
+        expected_required_display=("sin(x) ≠ 0",),
+        expected_step_substrings=("Evaluar límite finito",),
+        family="reciprocal_trig",
+        point_regime="finite",
+        domain_regime="bilateral_even_order_reciprocal_trig_sine_pole",
+        required_condition_regime=(
+            "finite_bilateral_reciprocal_trig_sine_even_power_pole_domain"
+        ),
+        trace_regime="finite_bilateral_trig_pole_policy",
+        presentation_regime="infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_tangent_pole_supported",
+        expr="limit(tan(x + pi/2), x, 0+)",
+        expected_result="-infinity",
+        expected_required_display=("cos(pi / 2 + x) ≠ 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="trig_special_angle",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_tangent_pole",
+        required_condition_regime="finite_one_sided_tangent_pole_domain",
+        trace_regime="finite_one_sided_trig_function_pole_policy",
+        presentation_regime="negative_infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_explicit_tangent_ratio_pole_supported",
+        expr="limit(sin(x + pi/2)/cos(x + pi/2), x, 0+)",
+        expected_result="-infinity",
+        expected_required_display=("cos(pi / 2 + x) ≠ 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="trig_ratio",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_explicit_tangent_ratio_pole",
+        required_condition_regime="finite_one_sided_explicit_tangent_ratio_pole_domain",
+        trace_regime="finite_one_sided_trig_ratio_pole_policy",
+        presentation_regime="negative_infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_cross_argument_explicit_trig_ratio_pole_supported",
+        expr="limit(sin(x + pi/2)/cos(pi/2 - x), x, 0+)",
+        expected_result="infinity",
+        expected_required_display=("cos(pi / 2 - x) ≠ 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="trig_ratio",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_cross_argument_explicit_trig_ratio_pole",
+        required_condition_regime="finite_one_sided_cross_argument_explicit_trig_ratio_pole_domain",
+        trace_regime="finite_one_sided_trig_ratio_pole_policy",
+        presentation_regime="infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_scaled_cross_argument_trig_ratio_orientation_supported",
+        expr="limit(sin(pi/2 - 2*x)/cos(pi/2 + 2*x), x, 0+)",
+        expected_result="-infinity",
+        expected_required_display=("cos(pi / 2 + 2·x) ≠ 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="trig_ratio",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_scaled_cross_argument_trig_ratio_orientation",
+        required_condition_regime=(
+            "finite_one_sided_scaled_cross_argument_trig_ratio_orientation_domain"
+        ),
+        trace_regime="finite_one_sided_trig_ratio_pole_policy",
+        presentation_regime="negative_infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_symbolic_orientation_trig_ratio_pole_residual",
+        expr="limit(sin(pi/2 + a*x)/cos(pi/2 - a*x), x, 0+)",
+        expected_result="limit(sin(pi / 2 + a·x) / cos(pi / 2 - a·x), x, 0, right)",
+        expected_required_display=("cos(pi / 2 - a·x) ≠ 0",),
+        expected_warning_substrings=(
+            "One-sided finite point limits are not supported safely",
+        ),
+        expected_step_substrings=("Conservar límite residual",),
+        family="trig_ratio",
+        point_regime="finite_one_sided",
+        domain_regime="symbolic_orientation_trig_ratio_residual",
+        required_condition_regime="finite_one_sided_symbolic_orientation_trig_ratio_domain",
+        outcome="residual",
+        residual_cause="finite_trig_symbolic_orientation_policy",
+        trace_regime="finite_residual_policy",
+        presentation_regime="residual",
+    ),
+    LimitCommandMatrixCase(
         name="finite_reciprocal_trig_sine_pole_residual",
         expr="limit(csc(x + pi), x, 0)",
         expected_result="limit(csc(x + pi), x, 0)",
@@ -967,6 +1067,32 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         residual_cause="finite_trig_pole_policy",
         trace_regime="finite_residual_policy",
         presentation_regime="residual",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_reciprocal_trig_sine_pole_supported",
+        expr="limit(csc(x + pi), x, 0+)",
+        expected_result="-infinity",
+        expected_required_display=("sin(x + pi) ≠ 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="reciprocal_trig",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_reciprocal_trig_sine_pole",
+        required_condition_regime="finite_one_sided_reciprocal_trig_sine_pole_domain",
+        trace_regime="finite_one_sided_trig_pole_policy",
+        presentation_regime="negative_infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_scaled_reciprocal_trig_sine_pole_supported",
+        expr="limit(-2*csc(x + pi), x, 0+)",
+        expected_result="infinity",
+        expected_required_display=("sin(x + pi) ≠ 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="reciprocal_trig",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_scaled_reciprocal_trig_sine_pole",
+        required_condition_regime="finite_one_sided_scaled_reciprocal_trig_sine_pole_domain",
+        trace_regime="finite_one_sided_trig_pole_policy",
+        presentation_regime="infinity",
     ),
     LimitCommandMatrixCase(
         name="finite_trig_small_angle_scaled_quotient",
@@ -1727,6 +1853,20 @@ def count_residual_causes(
     return dict(sorted(counts.items()))
 
 
+def group_residual_cases_by_cause(
+    cases: tuple[LimitCommandMatrixCase, ...],
+) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for case in cases:
+        if case.outcome != "residual":
+            continue
+        cause = case.residual_cause
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        grouped.setdefault(cause, []).append(case.name)
+    return {cause: grouped[cause] for cause in sorted(grouped)}
+
+
 def increment_issue_kind(issue_kind_counts: dict[str, int], error_kind: str | None) -> None:
     if error_kind is None:
         return
@@ -1816,6 +1956,7 @@ def run_matrix(
         "required_condition_regime_counts": count_by(cases, "required_condition_regime"),
         "outcome_counts": count_by(cases, "outcome"),
         "residual_cause_counts": count_residual_causes(cases),
+        "residual_cases_by_cause": group_residual_cases_by_cause(cases),
         "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
         "calculus_block_gate_counts": count_calculus_block_gates(cases),
         "trace_regime_counts": count_by(cases, "trace_regime"),

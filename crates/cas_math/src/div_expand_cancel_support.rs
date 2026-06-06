@@ -6,7 +6,7 @@
 use crate::expandable_pattern_support::contains_expandable_small_depth;
 use crate::expr_complexity::node_count_tree;
 use crate::expr_destructure::as_div;
-use crate::expr_nary::{add_terms_no_sign, build_balanced_add};
+use crate::expr_nary::{add_terms_no_sign, build_balanced_add, mul_factors};
 use crate::fraction_factors::{
     build_fraction_from_factor_vectors, decompose_fraction_like_factors,
 };
@@ -397,6 +397,48 @@ fn contains_exp_function(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+fn has_structural_factor_overlap(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    left.iter().any(|left_factor| {
+        right
+            .iter()
+            .any(|right_factor| compare_expr(ctx, *left_factor, *right_factor) == Ordering::Equal)
+    })
+}
+
+/// Detect quotient presentations like `k*sqrt(r)/(r*g)`.
+///
+/// In this shape, expand-to-cancel has no polynomial quotient to retain: after
+/// root-family substitution it becomes `k*t/(t^2*g)`. Dedicated root/power
+/// rules own any eventual inverse-root presentation, while this helper only
+/// avoids running expensive simplify/expand callbacks from rationalization
+/// probes that would return `None`.
+pub fn should_skip_inverse_sqrt_denominator_expand_cancel(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+) -> bool {
+    let num_factors = mul_factors(ctx, num);
+    let den_factors = mul_factors(ctx, den);
+    if num_factors.is_empty() || den_factors.len() < 2 {
+        return false;
+    }
+    if has_structural_factor_overlap(ctx, &num_factors, &den_factors) {
+        return false;
+    }
+
+    num_factors.iter().any(|num_factor| {
+        let Some((root_base, root_index)) = extract_root_family_base(ctx, *num_factor) else {
+            return false;
+        };
+        if root_index != 2 {
+            return false;
+        }
+        den_factors
+            .iter()
+            .any(|den_factor| compare_expr(ctx, root_base, *den_factor) == Ordering::Equal)
+    })
+}
+
 /// Detect high-cost cases where several inner opaque calls are shared across a
 /// root over a multi-function sum. Callers still allow the cheap exact quotient
 /// check before using this signature to skip full simplify/expand callbacks.
@@ -754,6 +796,9 @@ where
     if both_sides_leaf_like(ctx, num, den) {
         return None;
     }
+    if should_skip_inverse_sqrt_denominator_expand_cancel(ctx, num, den) {
+        return None;
+    }
 
     let skip_after_opaque_attempt =
         should_skip_broad_opaque_root_expand_cancel(ctx, num, den, 4, 3);
@@ -1005,6 +1050,49 @@ mod tests {
         assert!(should_skip_broad_opaque_root_expand_cancel(
             &ctx, num, den, 4, 3
         ));
+    }
+
+    #[test]
+    fn inverse_sqrt_denominator_guard_skips_non_polynomial_root_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("a*sqrt(x+1)/((x+1)*(a^2 - 4*x - 4))", &mut ctx).expect("parse expr");
+        let (num, den) = as_fraction_like_num_den(&mut ctx, expr).expect("fraction");
+
+        assert!(should_skip_inverse_sqrt_denominator_expand_cancel(
+            &ctx, num, den
+        ));
+
+        let result = try_rewrite_div_expand_to_cancel_expr_with(
+            &mut ctx,
+            expr,
+            |_ctx, _frac| panic!("strategy0 should be skipped"),
+            |_ctx, _expr| panic!("expand should be skipped"),
+            |_ctx, _left, _right| panic!("strategy2 should be skipped"),
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn inverse_sqrt_denominator_guard_keeps_exact_root_family_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x^2 + 1)^5/sqrt(x^2 + 1)^3", &mut ctx).expect("parse expr");
+        let (num, den) = as_fraction_like_num_den(&mut ctx, expr).expect("fraction");
+
+        assert!(!should_skip_inverse_sqrt_denominator_expand_cancel(
+            &ctx, num, den
+        ));
+
+        let rewrite = try_rewrite_div_expand_to_cancel_expr_with(
+            &mut ctx,
+            expr,
+            |base_ctx, sub_frac| Some((base_ctx.clone(), sub_frac)),
+            |_expand_ctx, expand_expr| expand_expr,
+            |expanded_ctx, expanded_num, expanded_den| {
+                Some((expanded_ctx, expanded_num, expanded_den))
+            },
+        )
+        .expect("rewrite");
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "(x^2 + 1)^(1/2)^2");
     }
 
     #[test]

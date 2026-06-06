@@ -97,6 +97,124 @@ fn resolved_is_calculus_call(ctx: &cas_ast::Context, resolved: ExprId) -> bool {
     )
 }
 
+fn compact_trig_log_source_residual_condition_aliases(
+    ctx: &mut cas_ast::Context,
+    resolved: ExprId,
+    diagnostics: &mut crate::diagnostics::Diagnostics,
+) {
+    use std::collections::HashSet;
+
+    let aliases =
+        cas_math::reciprocal_trig_log_domain::integrate_reciprocal_trig_log_source_condition_aliases(
+            ctx, resolved,
+        );
+    if aliases.is_empty() {
+        return;
+    }
+
+    let nonzero_fingerprints: HashSet<_> = diagnostics
+        .requires
+        .iter()
+        .filter_map(|item| match &item.cond {
+            crate::ImplicitCondition::NonZero(expr) => Some(crate::expr_fingerprint(ctx, *expr)),
+            _ => None,
+        })
+        .collect();
+    let redundant_aliases: Vec<_> = aliases
+        .into_iter()
+        .filter(|alias| {
+            nonzero_fingerprints.contains(&crate::expr_fingerprint(ctx, alias.source_pole))
+        })
+        .map(|alias| alias.factored_pole)
+        .collect();
+    let redundant_fingerprints: HashSet<_> = redundant_aliases
+        .iter()
+        .map(|factored_pole| crate::expr_fingerprint(ctx, *factored_pole))
+        .collect();
+    let redundant_displays: HashSet<_> = redundant_aliases
+        .iter()
+        .map(|factored_pole| crate::ImplicitCondition::NonZero(*factored_pole).display(ctx))
+        .collect();
+    if redundant_fingerprints.is_empty() {
+        return;
+    }
+
+    diagnostics.requires.retain(|item| match &item.cond {
+        crate::ImplicitCondition::NonZero(expr) => {
+            !redundant_fingerprints.contains(&crate::expr_fingerprint(ctx, *expr))
+                && !redundant_displays.contains(&item.cond.display(ctx))
+        }
+        _ => true,
+    });
+}
+
+fn compact_public_trig_log_source_residual_condition_aliases(
+    ctx: &mut cas_ast::Context,
+    resolved: ExprId,
+    conditions: &mut Vec<crate::ImplicitCondition>,
+) {
+    use std::collections::HashSet;
+
+    let aliases =
+        cas_math::reciprocal_trig_log_domain::integrate_reciprocal_trig_log_source_condition_aliases(
+            ctx, resolved,
+        );
+    if aliases.is_empty() {
+        return;
+    }
+
+    let nonzero_fingerprints: HashSet<_> = conditions
+        .iter()
+        .filter_map(|condition| match condition {
+            crate::ImplicitCondition::NonZero(expr) => Some(crate::expr_fingerprint(ctx, *expr)),
+            _ => None,
+        })
+        .collect();
+    let nonzero_displays: HashSet<_> = conditions
+        .iter()
+        .filter_map(|condition| match condition {
+            crate::ImplicitCondition::NonZero(_) => Some(condition_display_key(ctx, condition)),
+            _ => None,
+        })
+        .collect();
+    let redundant_aliases: Vec<_> = aliases
+        .into_iter()
+        .filter(|alias| {
+            nonzero_fingerprints.contains(&crate::expr_fingerprint(ctx, alias.source_pole))
+                || nonzero_displays.contains(&condition_display_key(
+                    ctx,
+                    &crate::ImplicitCondition::NonZero(alias.source_pole),
+                ))
+        })
+        .map(|alias| alias.factored_pole)
+        .collect();
+    let redundant_fingerprints: HashSet<_> = redundant_aliases
+        .iter()
+        .map(|factored_pole| crate::expr_fingerprint(ctx, *factored_pole))
+        .collect();
+    let redundant_displays: HashSet<_> = redundant_aliases
+        .iter()
+        .map(|factored_pole| {
+            condition_display_key(ctx, &crate::ImplicitCondition::NonZero(*factored_pole))
+        })
+        .collect();
+    if redundant_fingerprints.is_empty() {
+        return;
+    }
+
+    conditions.retain(|condition| match condition {
+        crate::ImplicitCondition::NonZero(expr) => {
+            !redundant_fingerprints.contains(&crate::expr_fingerprint(ctx, *expr))
+                && !redundant_displays.contains(&condition_display_key(ctx, condition))
+        }
+        _ => true,
+    });
+}
+
+fn condition_display_key(ctx: &cas_ast::Context, condition: &crate::ImplicitCondition) -> String {
+    condition.display(ctx).replace(" * ", "·")
+}
+
 fn present_calculus_required_diagnostics(
     ctx: &mut cas_ast::Context,
     diagnostics: &mut crate::diagnostics::Diagnostics,
@@ -475,6 +593,7 @@ fn build_eval_diagnostics(input: EvalDiagnosticsInput<'_>) -> crate::diagnostics
 
     if resolved_is_calculus_call(ctx, resolved) {
         present_calculus_required_diagnostics(ctx, &mut diagnostics);
+        compact_trig_log_source_residual_condition_aliases(ctx, resolved, &mut diagnostics);
     }
 
     // Stable output ordering and trivial-condition filtering.
@@ -563,6 +682,12 @@ impl Engine {
                 &mut self.simplifier.context,
                 &required_conditions,
             );
+        let mut required_conditions = required_conditions;
+        compact_public_trig_log_source_residual_condition_aliases(
+            &mut self.simplifier.context,
+            parsed,
+            &mut required_conditions,
+        );
 
         // V2.9.9: Convert raw steps to display-ready steps via unified pipeline.
         // This is the ONLY place DisplayEvalSteps is constructed from raw steps.

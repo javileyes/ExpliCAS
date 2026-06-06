@@ -5672,13 +5672,13 @@ fn integrate_contract_direct_trig_log_substitution_exposes_didactic_substep() {
         ),
         (
             "integrate(sec(2*x+1), x)",
-            "ln(|tan(2·x + 1) + sec(2·x + 1)|) / 2",
+            "1/2·ln(|tan(2·x + 1) + sec(2·x + 1)|)",
             serde_json::json!(["cos(2·x + 1) ≠ 0"]),
             "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
         ),
         (
             "integrate(csc(2*x+1), x)",
-            "ln(|csc(2·x + 1) - cot(2·x + 1)|) / 2",
+            "1/2·ln(|csc(2·x + 1) - cot(2·x + 1)|)",
             serde_json::json!(["sin(2·x + 1) ≠ 0"]),
             "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
         ),
@@ -10724,6 +10724,67 @@ fn integrate_contract_arctan_positive_quadratic_with_surd_width() {
 }
 
 #[test]
+fn integrate_contract_arctan_symbolic_scaled_positive_quadratic() {
+    let cases = [
+        ("integrate(1/(a^2*x^2+1), x)", "arctan(a * x) / a"),
+        (
+            "integrate(1/(a^2*(x+b)^2+1), x)",
+            "arctan(a * b + a * x) / a",
+        ),
+        ("integrate(1/((a*x+b)^2+1), x)", "arctan(a * x + b) / a"),
+        (
+            "integrate(1/((a*x+b)^2+4), x)",
+            "arctan((a * x + b) / 2) / (2 * a)",
+        ),
+        (
+            "integrate(1/((a*x+b)^2+2), x)",
+            "arctan(sqrt(2) * (a * x + b) / 2) / (sqrt(2) * a)",
+        ),
+        (
+            "integrate(1/(a^2*(2*x+1)^2+1), x)",
+            "arctan(2 * a * x + a) / (2 * a)",
+        ),
+        ("integrate(1/(a^2*(1-x)^2+1), x)", "-arctan(a - a * x) / a"),
+    ];
+
+    for (input, expected) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(
+            result, expected,
+            "unexpected symbolic arctan integral for {input}"
+        );
+        assert_eq!(
+            required,
+            vec!["a ≠ 0".to_string()],
+            "symbolic arctan scale should expose the nonzero parameter condition for {input}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(1/((a*x+b)^2+4), x), x) - 1/((a*x+b)^2+4)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["a ≠ 0".to_string()],
+        "nested verification should preserve the nonzero parameter condition"
+    );
+
+    let (irrational_radius_residual, irrational_radius_required) =
+        evaluated_expr_with_required_conditions(
+            "diff(integrate(1/((a*x+b)^2+2), x), x) - 1/((a*x+b)^2+2)",
+        );
+    assert_eq!(irrational_radius_residual, "0");
+    assert_eq!(
+        irrational_radius_required,
+        vec!["a ≠ 0".to_string()],
+        "nested irrational-radius verification should preserve the nonzero parameter condition"
+    );
+}
+
+#[test]
 fn integrate_contract_scaled_polynomial_derivative_atanh_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x/(4-x^4), x)");
@@ -12972,7 +13033,7 @@ fn integrate_contract_linear_secant_uses_abs_log_and_nonzero_domain() {
     let (result, _required) =
         evaluated_integral_with_required_conditions("integrate(sec(2*x + 1), x)");
 
-    assert_eq!(result, "ln(|tan(2 * x + 1) + sec(2 * x + 1)|) / 2");
+    assert_eq!(result, "1/2 * ln(|tan(2 * x + 1) + sec(2 * x + 1)|)");
     let (wire, stderr) = cli_eval_json_with_stderr("integrate(sec(2*x + 1), x)");
     assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
     assert_eq!(
@@ -13001,7 +13062,7 @@ fn integrate_contract_linear_cosecant_uses_abs_log_and_nonzero_domain() {
     let (result, _required) =
         evaluated_integral_with_required_conditions("integrate(csc(2*x + 1), x)");
 
-    assert_eq!(result, "ln(|csc(2 * x + 1) - cot(2 * x + 1)|) / 2");
+    assert_eq!(result, "1/2 * ln(|csc(2 * x + 1) - cot(2 * x + 1)|)");
     let (wire, stderr) = cli_eval_json_with_stderr("integrate(csc(2*x + 1), x)");
     assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
     assert_eq!(
@@ -13029,12 +13090,12 @@ fn integrate_contract_scaled_affine_secant_cosecant_uses_abs_log_and_nonzero_dom
     let cases = [
         (
             "integrate(sec((3*x+2)/2), x)",
-            "2 * ln(|tan((3 * x + 2) / 2) + sec((3 * x + 2) / 2)|) / 3",
+            "2/3 * ln(|tan((3 * x + 2) / 2) + sec((3 * x + 2) / 2)|)",
             "cos((3 * x + 2) / 2) ≠ 0",
         ),
         (
             "integrate(csc((2-3*x)/2), x)",
-            "-2 * ln(|csc((2 - 3 * x) / 2) - cot((2 - 3 * x) / 2)|) / 3",
+            "-2/3 * ln(|csc((2 - 3 * x) / 2) - cot((2 - 3 * x) / 2)|)",
             "sin((2 - 3 * x) / 2) ≠ 0",
         ),
     ];

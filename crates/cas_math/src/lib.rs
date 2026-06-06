@@ -147,6 +147,7 @@ pub mod rationalize_binomial_surd_support;
 pub mod rationalize_diff_squares_support;
 pub mod rationalize_single_surd_support;
 pub mod reciprocal_sqrt_canon_support;
+pub mod reciprocal_trig_log_domain;
 pub mod root_den_rationalize_support;
 pub mod root_forms;
 pub mod root_power_canonical_support;

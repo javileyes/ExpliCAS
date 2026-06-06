@@ -69,8 +69,8 @@ pub(crate) fn collect_output_required_conditions(
             });
         }
     }
-    dedupe_sqrt_half_power_condition_wires(dedupe_positive_dominates_nonnegative_condition_wires(
-        dedupe_exact_condition_wires(wires),
+    dedupe_sqrt_half_power_condition_wires(dedupe_shifted_trig_quotient_zero_set_condition_wires(
+        dedupe_positive_dominates_nonnegative_condition_wires(dedupe_exact_condition_wires(wires)),
     ))
 }
 
@@ -90,6 +90,13 @@ fn required_condition_wire_is_redundant(
     };
 
     if calculus_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
+        return true;
+    }
+    if reciprocal_trig_log_factored_pole_condition_is_redundant(
+        ctx,
+        *nonzero_expr,
+        visible_conditions,
+    ) {
         return true;
     }
     if sqrt_like_unary_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
@@ -131,9 +138,11 @@ pub(crate) fn collect_output_required_display(
         }
     }
     dedupe_sqrt_half_power_required_displays(
-        dedupe_positive_dominates_nonnegative_required_displays(dedupe_exact_required_displays(
-            displays,
-        )),
+        dedupe_shifted_trig_quotient_zero_set_required_displays(
+            dedupe_positive_dominates_nonnegative_required_displays(
+                dedupe_exact_required_displays(displays),
+            ),
+        ),
     )
 }
 
@@ -182,6 +191,72 @@ fn dedupe_positive_dominates_nonnegative_required_displays(displays: Vec<String>
                 .is_none_or(|expr| !positive_exprs.contains(expr))
         })
         .collect()
+}
+
+fn dedupe_shifted_trig_quotient_zero_set_condition_wires(
+    wires: Vec<RequiredConditionWire>,
+) -> Vec<RequiredConditionWire> {
+    wires
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, wire)| {
+            let zero_set_key = shifted_trig_quotient_zero_set_display_key(&wire.expr_display);
+            let has_prior_equivalent_zero_set = zero_set_key.as_ref().is_some_and(|key| {
+                wires.iter().take(idx).any(|other| {
+                    other.kind == wire.kind
+                        && shifted_trig_quotient_zero_set_display_key(&other.expr_display).as_ref()
+                            == Some(key)
+                })
+            });
+            (!has_prior_equivalent_zero_set).then_some(wire.clone())
+        })
+        .collect()
+}
+
+fn dedupe_shifted_trig_quotient_zero_set_required_displays(displays: Vec<String>) -> Vec<String> {
+    displays
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, display)| {
+            let zero_set_key = shifted_trig_quotient_zero_set_display_key(display);
+            let has_prior_equivalent_zero_set = zero_set_key.as_ref().is_some_and(|key| {
+                displays.iter().take(idx).any(|other| {
+                    shifted_trig_quotient_zero_set_display_key(other).as_ref() == Some(key)
+                })
+            });
+            (!has_prior_equivalent_zero_set).then(|| display.clone())
+        })
+        .collect()
+}
+
+fn shifted_trig_quotient_zero_set_display_key(display: &str) -> Option<String> {
+    let display = display.trim();
+    let (body, suffix) = display
+        .strip_suffix(" ≠ 0")
+        .map(|body| (body.trim(), " ≠ 0"))
+        .unwrap_or((display, ""));
+    let (left, right) = split_top_level_subtraction_display(body)?;
+
+    let left = left.trim();
+    let right = right.trim();
+    let left_builtin = shifted_trig_quotient_display_builtin(left);
+    let right_builtin = shifted_trig_quotient_display_builtin(right);
+    let builtin = left_builtin.or(right_builtin)?;
+    if left_builtin == right_builtin {
+        return None;
+    }
+
+    let mut parts = [left.to_string(), right.to_string()];
+    parts.sort();
+    Some(format!("{builtin}:{}-{}{suffix}", parts[0], parts[1]))
+}
+
+fn shifted_trig_quotient_display_builtin(display: &str) -> Option<&'static str> {
+    ["tan", "cot"].into_iter().find(|builtin| {
+        display
+            .strip_prefix(&format!("{builtin}("))
+            .is_some_and(|tail| tail.ends_with(')'))
+    })
 }
 
 fn dedupe_sqrt_half_power_condition_wires(
@@ -824,6 +899,13 @@ fn required_condition_is_redundant(
     if calculus_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
         return true;
     }
+    if reciprocal_trig_log_factored_pole_condition_is_redundant(
+        ctx,
+        *nonzero_expr,
+        visible_conditions,
+    ) {
+        return true;
+    }
     if sqrt_like_unary_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
         return true;
     }
@@ -1022,6 +1104,24 @@ fn calculus_nonzero_condition_is_redundant(
                     nonzero_expr,
                     *candidate_expr,
                 ))
+    })
+}
+
+fn reciprocal_trig_log_factored_pole_condition_is_redundant(
+    ctx: &Context,
+    nonzero_expr: ExprId,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
+    visible_conditions.iter().any(|candidate| {
+        let crate::ImplicitCondition::NonZero(candidate_expr) = candidate else {
+            return false;
+        };
+        *candidate_expr != nonzero_expr
+            && cas_math::reciprocal_trig_log_domain::reciprocal_trig_log_factored_pole_matches_source(
+                ctx,
+                nonzero_expr,
+                *candidate_expr,
+            )
     })
 }
 
@@ -1896,5 +1996,55 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(rendered, vec!["NonZero:sinh(b - sqrt(x))", "Positive:x"]);
+    }
+
+    #[test]
+    fn dedupe_required_displays_removes_opposite_shifted_tangent_zero_set() {
+        let displays = vec![
+            "cos(x) ≠ 0".to_string(),
+            "tan(x) - 1 ≠ 0".to_string(),
+            "2 - tan(x) ≠ 0".to_string(),
+            "tan(x) > 0".to_string(),
+            "tan(x) - 2 ≠ 0".to_string(),
+        ];
+
+        assert_eq!(
+            dedupe_shifted_trig_quotient_zero_set_required_displays(displays),
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "tan(x) - 1 ≠ 0".to_string(),
+                "2 - tan(x) ≠ 0".to_string(),
+                "tan(x) > 0".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn dedupe_condition_wires_removes_opposite_shifted_cotangent_zero_set() {
+        let wires = vec![
+            RequiredConditionWire {
+                kind: "NonZero".to_string(),
+                expr_display: "cot(x) - 2".to_string(),
+                expr_canonical: "cot(x) - 2".to_string(),
+            },
+            RequiredConditionWire {
+                kind: "Positive".to_string(),
+                expr_display: "cot(x)".to_string(),
+                expr_canonical: "cot(x)".to_string(),
+            },
+            RequiredConditionWire {
+                kind: "NonZero".to_string(),
+                expr_display: "2 - cot(x)".to_string(),
+                expr_canonical: "2 - cot(x)".to_string(),
+            },
+        ];
+
+        let deduped = dedupe_shifted_trig_quotient_zero_set_condition_wires(wires);
+        let rendered = deduped
+            .iter()
+            .map(|wire| format!("{}:{}", wire.kind, wire.expr_display))
+            .collect::<Vec<_>>();
+
+        assert_eq!(rendered, vec!["NonZero:cot(x) - 2", "Positive:cot(x)"]);
     }
 }

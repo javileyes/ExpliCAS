@@ -1,4 +1,5 @@
 use super::domain_checks::collect_atanh_open_interval_conditions;
+use super::reciprocal_trig_log_domain::collect_reciprocal_trig_log_denominator_conditions;
 use cas_ast::{Context, ExprId};
 
 pub(crate) fn integrate_required_nonzero_conditions(
@@ -39,7 +40,24 @@ impl IntegrationRequiredConditions {
         ctx: &mut Context,
         result: ExprId,
     ) {
+        self.include_reciprocal_trig_log_denominator_conditions(ctx, result);
         self.include_atanh_open_interval_conditions_if_source_positive_absent(ctx, result);
+    }
+
+    fn include_reciprocal_trig_log_denominator_conditions(
+        &mut self,
+        ctx: &mut Context,
+        result: ExprId,
+    ) {
+        for condition in collect_reciprocal_trig_log_denominator_conditions(ctx, result) {
+            if !self
+                .nonzero
+                .iter()
+                .any(|existing| cas_math::expr_domain::exprs_equivalent(ctx, *existing, condition))
+            {
+                self.nonzero.push(condition);
+            }
+        }
     }
 
     fn include_atanh_open_interval_conditions_if_source_positive_absent(
@@ -94,6 +112,64 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    fn rendered_nonzero_conditions(
+        ctx: &Context,
+        conditions: IntegrationRequiredConditions,
+    ) -> Vec<String> {
+        conditions
+            .into_implicit_conditions()
+            .filter_map(|condition| match condition {
+                crate::ImplicitCondition::NonZero(expr) => Some(rendered(ctx, expr)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn result_implied_conditions_add_secant_log_denominator_pole() {
+        let mut ctx = Context::new();
+        let target = parse("2/(3*cos(2*x+1))", &mut ctx).unwrap();
+        let result = parse("ln(abs(tan(2*x+1)+sec(2*x+1)))/3", &mut ctx).unwrap();
+        let mut conditions = IntegrationRequiredConditions::from_target(&mut ctx, target, "x");
+
+        conditions.include_conditions_implied_by_result(&mut ctx, result);
+
+        assert_eq!(
+            rendered_nonzero_conditions(&ctx, conditions),
+            vec!["cos(2 * x + 1)"]
+        );
+    }
+
+    #[test]
+    fn result_implied_conditions_add_cosecant_log_denominator_pole() {
+        let mut ctx = Context::new();
+        let target = parse("1/(3*sin(2*x+1))", &mut ctx).unwrap();
+        let result = parse("ln(abs(csc(2*x+1)-cot(2*x+1)))/6", &mut ctx).unwrap();
+        let mut conditions = IntegrationRequiredConditions::from_target(&mut ctx, target, "x");
+
+        conditions.include_conditions_implied_by_result(&mut ctx, result);
+
+        assert_eq!(
+            rendered_nonzero_conditions(&ctx, conditions),
+            vec!["sin(2 * x + 1)"]
+        );
+    }
+
+    #[test]
+    fn result_implied_conditions_add_cosecant_log_denominator_pole_from_negated_sum() {
+        let mut ctx = Context::new();
+        let target = parse("1/(3*sin(2*x+1))", &mut ctx).unwrap();
+        let result = parse("ln(abs(-cot(2*x+1)+csc(2*x+1)))/6", &mut ctx).unwrap();
+        let mut conditions = IntegrationRequiredConditions::from_target(&mut ctx, target, "x");
+
+        conditions.include_conditions_implied_by_result(&mut ctx, result);
+
+        assert_eq!(
+            rendered_nonzero_conditions(&ctx, conditions),
+            vec!["sin(2 * x + 1)"]
+        );
     }
 
     #[test]

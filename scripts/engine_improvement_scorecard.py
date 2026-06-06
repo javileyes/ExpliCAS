@@ -44,10 +44,18 @@ EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT = 480
 NF_FIRST_FULL_TIMEOUT_SECONDS = 15 * 60
 COMBINED_ADDITIVE_FAMILY_TARGET_CASE_COUNT = 6
 CALCULUS_POLICY_CLUSTER_CONSOLIDATION_THRESHOLD = 6
+CALCULUS_RUNTIME_PRESSURE_WATCH_MAX_MS = 150.0
+CALCULUS_RUNTIME_PRESSURE_RISK_MAX_MS = 500.0
+CALCULUS_RUNTIME_PRESSURE_WATCH_P95_MS = 75.0
+CALCULUS_RUNTIME_PRESSURE_RISK_P95_MS = 250.0
+CALCULUS_RUNTIME_PRESSURE_WATCH_TOP3_SHARE_PERCENT = 50.0
+CALCULUS_RUNTIME_PRESSURE_RISK_TOP3_SHARE_PERCENT = 80.0
+CALCULUS_RUNTIME_PRESSURE_CONCENTRATION_MIN_CASES = 10
 # Keep these clusters visible, but do not keep re-selecting them as raw
 # consolidation candidates once a shared engine policy owns the family.
 CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
     {
+        "block7_explicit_reciprocal_trig_log_substitution",
         "block7_hyperbolic_reciprocal_derivative_product",
         "block7_hyperbolic_reciprocal_fourth",
         "block7_hyperbolic_reciprocal_square",
@@ -2716,6 +2724,19 @@ def sanitize_string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str)]
 
 
+def sanitize_string_list_map(value: Any) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    sanitized: dict[str, list[str]] = {}
+    for key, raw_items in value.items():
+        if not isinstance(key, str):
+            continue
+        items = sanitize_string_list(raw_items)
+        if items:
+            sanitized[key] = items
+    return dict(sorted(sanitized.items()))
+
+
 def sanitize_runtime_case_rows(raw_rows: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_rows, list):
         return []
@@ -2824,6 +2845,75 @@ def sanitize_runtime_concentration(raw_row: Any) -> dict[str, Any]:
     return row
 
 
+def classify_calculus_runtime_pressure(
+    distribution: dict[str, Any],
+    concentration: dict[str, Any],
+    *,
+    sample_basis: str = "cold_inclusive",
+) -> dict[str, Any]:
+    signals: list[tuple[str, str, str]] = []
+    max_case_ms = distribution.get("max_case_ms")
+    if isinstance(max_case_ms, (int, float)):
+        if max_case_ms >= CALCULUS_RUNTIME_PRESSURE_RISK_MAX_MS:
+            signals.append(("risk", "max", f"max_case_ms={max_case_ms:.3f}"))
+        elif max_case_ms >= CALCULUS_RUNTIME_PRESSURE_WATCH_MAX_MS:
+            signals.append(("watch", "max", f"max_case_ms={max_case_ms:.3f}"))
+    p95_case_ms = distribution.get("p95_case_ms")
+    if isinstance(p95_case_ms, (int, float)):
+        if p95_case_ms >= CALCULUS_RUNTIME_PRESSURE_RISK_P95_MS:
+            signals.append(("risk", "p95", f"p95_case_ms={p95_case_ms:.3f}"))
+        elif p95_case_ms >= CALCULUS_RUNTIME_PRESSURE_WATCH_P95_MS:
+            signals.append(("watch", "p95", f"p95_case_ms={p95_case_ms:.3f}"))
+
+    timed_case_count = distribution.get("timed_case_count")
+    if not isinstance(timed_case_count, int):
+        timed_case_count = concentration.get("timed_case_count")
+    top_3_share = concentration.get("top_3_share_percent")
+    if (
+        isinstance(timed_case_count, int)
+        and timed_case_count >= CALCULUS_RUNTIME_PRESSURE_CONCENTRATION_MIN_CASES
+        and isinstance(top_3_share, (int, float))
+    ):
+        if top_3_share >= CALCULUS_RUNTIME_PRESSURE_RISK_TOP3_SHARE_PERCENT:
+            signals.append(
+                ("risk", "top3", f"top3_share_percent={top_3_share:.1f}")
+            )
+        elif top_3_share >= CALCULUS_RUNTIME_PRESSURE_WATCH_TOP3_SHARE_PERCENT:
+            signals.append(
+                ("watch", "top3", f"top3_share_percent={top_3_share:.1f}")
+            )
+
+    severity_rank = {"ok": 0, "watch": 1, "risk": 2}
+    status = "ok"
+    primary_signal = "none"
+    reason = "within runtime pressure thresholds"
+    if signals:
+        status, primary_signal, reason = max(
+            signals,
+            key=lambda signal: severity_rank[signal[0]],
+        )
+
+    pressure: dict[str, Any] = {
+        "status": status,
+        "primary_signal": primary_signal,
+        "reason": reason,
+        "sample_basis": sample_basis,
+    }
+    for source, key in (
+        (distribution, "timed_case_count"),
+        (distribution, "avg_case_ms"),
+        (distribution, "p95_case_ms"),
+        (distribution, "max_case_ms"),
+        (concentration, "top_3_share_percent"),
+        (concentration, "slowest_case"),
+        (concentration, "slowest_family"),
+    ):
+        value = source.get(key)
+        if isinstance(value, (int, float, str)):
+            pressure[key] = value
+    return pressure
+
+
 def add_runtime_observability_metrics(
     metrics: dict[str, Any],
     raw: dict[str, Any],
@@ -2847,6 +2937,14 @@ def add_runtime_observability_metrics(
     )
     if warm_concentration:
         metrics[f"{prefix}_warm_runtime_concentration"] = warm_concentration
+    pressure_distribution = warm_distribution or distribution
+    pressure_concentration = warm_concentration or concentration
+    if pressure_distribution:
+        metrics[f"{prefix}_runtime_pressure"] = classify_calculus_runtime_pressure(
+            pressure_distribution,
+            pressure_concentration,
+            sample_basis="warm" if warm_distribution else "cold_inclusive",
+        )
     slowest_cases = sanitize_runtime_case_rows(raw.get("slowest_cases"))
     if slowest_cases:
         metrics[f"{prefix}_slowest_cases"] = slowest_cases
@@ -2899,6 +2997,52 @@ def sanitize_phase_runtime_case_rows(
             value = raw_row.get(key)
             if isinstance(value, str):
                 row[key] = value
+        rows.append(row)
+    return rows
+
+
+def sanitize_diff_exact_square_runtime_pair_rows(
+    raw_rows: Any,
+) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        name = raw_row.get("name")
+        baseline_case = raw_row.get("baseline_case")
+        exact_square_case = raw_row.get("exact_square_case")
+        if (
+            not isinstance(name, str)
+            or not isinstance(baseline_case, str)
+            or not isinstance(exact_square_case, str)
+        ):
+            continue
+        row: dict[str, Any] = {
+            "name": name,
+            "baseline_case": baseline_case,
+            "exact_square_case": exact_square_case,
+        }
+        for key in (
+            "family",
+            "baseline_argument_regime",
+            "exact_square_argument_regime",
+            "baseline_presentation_regime",
+            "exact_square_presentation_regime",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        for key in (
+            "baseline_case_ms",
+            "exact_square_case_ms",
+            "delta_ms",
+            "ratio",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 3)
         rows.append(row)
     return rows
 
@@ -2971,6 +3115,193 @@ def sanitize_verification_mode_runtime_rows(raw_rows: Any) -> list[dict[str, Any
     return rows
 
 
+def sanitize_residual_cause_runtime_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        cause = raw_row.get("cause")
+        case_count = raw_row.get("case_count")
+        if not isinstance(cause, str) or not isinstance(case_count, int):
+            continue
+        row: dict[str, Any] = {
+            "cause": cause,
+            "case_count": case_count,
+        }
+        for key in ("total_elapsed_seconds", "avg_case_ms", "max_elapsed_seconds"):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 3)
+        slowest_case = raw_row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            row["slowest_case"] = slowest_case
+        rows.append(row)
+    return rows
+
+
+def sanitize_residual_public_phase_case_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        name = raw_row.get("name")
+        if not isinstance(name, str):
+            continue
+        row: dict[str, Any] = {"name": name}
+        for key in (
+            "integrate_elapsed_seconds",
+            "cli_total_seconds",
+            "cli_simplify_ms",
+            "public_overhead_seconds",
+            "public_overhead_share_percent",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 6)
+        for key in (
+            "required_display_count",
+            "step_text_char_count",
+            "stdout_bytes",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, int):
+                row[key] = value
+        for key in (
+            "residual_cause",
+            "family",
+            "domain_regime",
+            "trace_regime",
+            "presentation_regime",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def sanitize_residual_public_phase_group_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        cause = raw_row.get("cause")
+        case_count = raw_row.get("case_count")
+        if not isinstance(cause, str) or not isinstance(case_count, int):
+            continue
+        row: dict[str, Any] = {
+            "cause": cause,
+            "case_count": case_count,
+        }
+        for key in (
+            "integrate_total_seconds",
+            "cli_total_seconds",
+            "public_overhead_total_seconds",
+            "public_overhead_share_percent",
+            "avg_required_display_count",
+            "avg_step_text_char_count",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 6)
+        slowest_case = raw_row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            row["slowest_case"] = slowest_case
+        rows.append(row)
+    return rows
+
+
+def sanitize_residual_shape_orientation_probe_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        name = raw_row.get("name")
+        expression_shape = raw_row.get("expression_shape")
+        orientation = raw_row.get("orientation")
+        status = raw_row.get("status")
+        if not all(
+            isinstance(value, str)
+            for value in (name, expression_shape, orientation, status)
+        ):
+            continue
+        row: dict[str, Any] = {
+            "name": name,
+            "expression_shape": expression_shape,
+            "orientation": orientation,
+            "status": status,
+        }
+        steps_mode = raw_row.get("steps_mode")
+        if isinstance(steps_mode, str):
+            row["steps_mode"] = steps_mode
+        for key in (
+            "wall_elapsed_seconds",
+            "cli_parse_us",
+            "cli_simplify_us",
+            "cli_total_us",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 6)
+        for key in ("stdout_bytes", "stderr_bytes"):
+            value = raw_row.get(key)
+            if isinstance(value, int):
+                row[key] = value
+        required_display_count = raw_row.get("required_display_count")
+        if isinstance(required_display_count, int):
+            row["required_display_count"] = required_display_count
+        for key in ("error", "result"):
+            value = raw_row.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def residual_shape_orientation_probe_summary(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    counted_rows = [
+        row for row in rows if isinstance(row.get("required_display_count"), int)
+    ]
+    if not counted_rows:
+        return {}
+    max_row = max(
+        counted_rows,
+        key=lambda row: (
+            int(row["required_display_count"]),
+            str(row.get("name", "")),
+            str(row.get("steps_mode", "")),
+        ),
+    )
+    total_required_display_count = sum(
+        int(row["required_display_count"]) for row in counted_rows
+    )
+    summary: dict[str, Any] = {
+        "probe_count": len(rows),
+        "counted_probe_count": len(counted_rows),
+        "max_required_display_count": int(max_row["required_display_count"]),
+        "avg_required_display_count": round(
+            total_required_display_count / len(counted_rows), 3
+        ),
+    }
+    for key in ("name", "expression_shape", "orientation", "steps_mode", "status"):
+        value = max_row.get(key)
+        if isinstance(value, str):
+            summary[f"max_{key}"] = value
+    return summary
+
+
 def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
     try:
         raw = json.loads(output)
@@ -3018,6 +3349,9 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
 
     problem_cases = sanitize_limit_command_problem_cases(raw.get("problem_cases"))
     residual_case_names = sanitize_string_list(raw.get("residual_case_names"))
+    residual_cases_by_cause = sanitize_string_list_map(
+        raw.get("residual_cases_by_cause")
+    )
     problem_case_count = raw.get("problem_case_count")
     if not isinstance(problem_case_count, int):
         problem_case_count = len(problem_cases)
@@ -3033,6 +3367,7 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
         "problem_case_count": problem_case_count,
         "problem_cases": problem_cases,
         "limit_residual_case_names": residual_case_names,
+        "limit_residual_cases_by_cause": residual_cases_by_cause,
         "issue_kind_counts": {
             key: value
             for key, value in issue_kind_counts.items()
@@ -3216,6 +3551,11 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
         )
         if rows:
             metrics[metric_key] = rows
+    exact_square_pairs = sanitize_diff_exact_square_runtime_pair_rows(
+        raw.get("exact_square_runtime_pairs")
+    )
+    if exact_square_pairs:
+        metrics["diff_exact_square_runtime_pairs"] = exact_square_pairs
     for raw_key, metric_key, payload_key in (
         (
             "largest_stdout_payload_cases",
@@ -3317,6 +3657,9 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
 
     problem_cases = sanitize_limit_command_problem_cases(raw.get("problem_cases"))
     residual_case_names = sanitize_string_list(raw.get("residual_case_names"))
+    residual_cases_by_cause = sanitize_string_list_map(
+        raw.get("residual_cases_by_cause")
+    )
     problem_case_count = raw.get("problem_case_count")
     if not isinstance(problem_case_count, int):
         problem_case_count = len(problem_cases)
@@ -3332,6 +3675,7 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         "problem_case_count": problem_case_count,
         "problem_cases": problem_cases,
         "integrate_residual_case_names": residual_case_names,
+        "integrate_residual_cases_by_cause": residual_cases_by_cause,
         "issue_kind_counts": {
             key: value
             for key, value in issue_kind_counts.items()
@@ -3448,6 +3792,41 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         metrics["integrate_runtime_by_antiderivative_verification_mode"] = (
             verification_mode_rows
         )
+    residual_cause_runtime_rows = sanitize_residual_cause_runtime_rows(
+        raw.get("runtime_by_residual_cause")
+    )
+    if residual_cause_runtime_rows:
+        metrics["integrate_runtime_by_residual_cause"] = (
+            residual_cause_runtime_rows
+        )
+    residual_public_phase_rows = sanitize_residual_public_phase_case_rows(
+        raw.get("residual_public_phase_slowest_cases")
+    )
+    if residual_public_phase_rows:
+        metrics["integrate_residual_public_phase_slowest_cases"] = (
+            residual_public_phase_rows
+        )
+    residual_public_phase_group_rows = sanitize_residual_public_phase_group_rows(
+        raw.get("residual_public_phase_by_cause")
+    )
+    if residual_public_phase_group_rows:
+        metrics["integrate_residual_public_phase_by_cause"] = (
+            residual_public_phase_group_rows
+        )
+    residual_shape_orientation_rows = sanitize_residual_shape_orientation_probe_rows(
+        raw.get("residual_shape_orientation_probes")
+    )
+    if residual_shape_orientation_rows:
+        metrics["integrate_residual_shape_orientation_probes"] = (
+            residual_shape_orientation_rows
+        )
+        residual_shape_orientation_summary = (
+            residual_shape_orientation_probe_summary(residual_shape_orientation_rows)
+        )
+        if residual_shape_orientation_summary:
+            metrics["integrate_residual_shape_orientation_summary"] = (
+                residual_shape_orientation_summary
+            )
 
     add_policy_cluster_consolidation_metrics(
         metrics,
@@ -3624,6 +4003,46 @@ def calculus_runtime_concentration_fragment(raw_row: Any) -> str | None:
     return fragment
 
 
+def calculus_runtime_pressure_fragment(raw_row: Any) -> str | None:
+    if not isinstance(raw_row, dict):
+        return None
+    status = raw_row.get("status")
+    primary_signal = raw_row.get("primary_signal")
+    reason = raw_row.get("reason")
+    if (
+        not isinstance(status, str)
+        or not isinstance(primary_signal, str)
+        or not isinstance(reason, str)
+    ):
+        return None
+    fragment = f"status={status} primary={primary_signal} reason={reason}"
+    sample_basis = raw_row.get("sample_basis")
+    if isinstance(sample_basis, str):
+        fragment += f" basis={sample_basis}"
+    for key, label, precision in (
+        ("timed_case_count", "timed_cases", None),
+        ("p95_case_ms", "p95", 3),
+        ("max_case_ms", "max", 3),
+        ("top_3_share_percent", "top3_share", 1),
+    ):
+        value = raw_row.get(key)
+        if not isinstance(value, (int, float)):
+            continue
+        if precision is None:
+            fragment += f" {label}={int(value)}"
+        elif key == "top_3_share_percent":
+            fragment += f" {label}={value:.{precision}f}%"
+        else:
+            fragment += f" {label}={value:.{precision}f}ms"
+    slowest_case = raw_row.get("slowest_case")
+    if isinstance(slowest_case, str):
+        fragment += f" slowest={slowest_case}"
+    family = raw_row.get("slowest_family")
+    if isinstance(family, str):
+        fragment += f" family={family}"
+    return fragment
+
+
 def phase_runtime_case_fragments(
     raw_rows: Any,
     *,
@@ -3648,6 +4067,45 @@ def phase_runtime_case_fragments(
         if isinstance(mode, str):
             fragment += f" mode={mode}"
         fragments.append(fragment)
+    return fragments
+
+
+def diff_exact_square_runtime_pair_fragments(
+    raw_rows: Any,
+    *,
+    limit: int = 5,
+) -> list[str]:
+    rows = sanitize_diff_exact_square_runtime_pair_rows(raw_rows)
+    fragments: list[str] = []
+    for row in rows[:limit]:
+        baseline_ms = row.get("baseline_case_ms")
+        exact_square_ms = row.get("exact_square_case_ms")
+        if not isinstance(baseline_ms, (int, float)) or not isinstance(
+            exact_square_ms,
+            (int, float),
+        ):
+            continue
+        fragment = (
+            f"{row['name']} exact_square={exact_square_ms:.3f}ms "
+            f"baseline={baseline_ms:.3f}ms"
+        )
+        delta_ms = row.get("delta_ms")
+        if isinstance(delta_ms, (int, float)):
+            fragment += f" delta={delta_ms:.3f}ms"
+        ratio = row.get("ratio")
+        if isinstance(ratio, (int, float)):
+            fragment += f" ratio={ratio:.3f}x"
+        exact_square_case = row.get("exact_square_case")
+        baseline_case = row.get("baseline_case")
+        if isinstance(exact_square_case, str) and isinstance(baseline_case, str):
+            fragment += f" pair={exact_square_case}/{baseline_case}"
+        family = row.get("family")
+        if isinstance(family, str):
+            fragment += f" family={family}"
+        fragments.append(fragment)
+    remaining = len(rows) - limit
+    if remaining > 0:
+        fragments.append(f"+{remaining} more")
     return fragments
 
 
@@ -3711,6 +4169,170 @@ def verification_mode_runtime_fragments(raw_rows: Any, limit: int = 5) -> list[s
     return fragments
 
 
+def residual_cause_runtime_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        cause = row.get("cause")
+        total_elapsed = row.get("total_elapsed_seconds")
+        avg_case_ms = row.get("avg_case_ms")
+        case_count = row.get("case_count")
+        if (
+            not isinstance(cause, str)
+            or not isinstance(total_elapsed, (int, float))
+            or not isinstance(avg_case_ms, (int, float))
+            or not isinstance(case_count, int)
+        ):
+            continue
+        fragment = (
+            f"{cause} total={total_elapsed:.3f}s "
+            f"avg={avg_case_ms:.3f}ms cases={case_count}"
+        )
+        slowest_case = row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            fragment += f" slowest={slowest_case}"
+        fragments.append(fragment)
+    return fragments
+
+
+def residual_public_phase_group_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        cause = row.get("cause")
+        integrate_total = row.get("integrate_total_seconds")
+        cli_total = row.get("cli_total_seconds")
+        overhead_share = row.get("public_overhead_share_percent")
+        case_count = row.get("case_count")
+        if (
+            not isinstance(cause, str)
+            or not isinstance(integrate_total, (int, float))
+            or not isinstance(cli_total, (int, float))
+            or not isinstance(overhead_share, (int, float))
+            or not isinstance(case_count, int)
+        ):
+            continue
+        fragment = (
+            f"{cause} total={integrate_total:.3f}s "
+            f"cli={cli_total:.3f}s overhead_share={overhead_share:.1f}% "
+            f"cases={case_count}"
+        )
+        slowest_case = row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            fragment += f" slowest={slowest_case}"
+        fragments.append(fragment)
+    return fragments
+
+
+def residual_public_phase_case_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        integrate_elapsed = row.get("integrate_elapsed_seconds")
+        cli_simplify_ms = row.get("cli_simplify_ms")
+        overhead_share = row.get("public_overhead_share_percent")
+        if (
+            not isinstance(name, str)
+            or not isinstance(integrate_elapsed, (int, float))
+            or not isinstance(cli_simplify_ms, (int, float))
+            or not isinstance(overhead_share, (int, float))
+        ):
+            continue
+        fragment = (
+            f"{name} total={integrate_elapsed:.3f}s "
+            f"cli_simplify={cli_simplify_ms:.3f}ms "
+            f"overhead_share={overhead_share:.1f}%"
+        )
+        cause = row.get("residual_cause")
+        if isinstance(cause, str):
+            fragment += f" cause={cause}"
+        fragments.append(fragment)
+    return fragments
+
+
+def residual_shape_orientation_probe_fragments(
+    raw_rows: Any,
+    limit: int = 5,
+) -> list[str]:
+    rows = sanitize_residual_shape_orientation_probe_rows(raw_rows)
+    fragments: list[str] = []
+    for row in rows[:limit]:
+        name = row.get("name")
+        expression_shape = row.get("expression_shape")
+        orientation = row.get("orientation")
+        status = row.get("status")
+        if not all(
+            isinstance(value, str)
+            for value in (name, expression_shape, orientation, status)
+        ):
+            continue
+        fragment = (
+            f"{name} status={status} shape={expression_shape} "
+            f"orientation={orientation}"
+        )
+        steps_mode = row.get("steps_mode")
+        if isinstance(steps_mode, str):
+            fragment += f" steps={steps_mode}"
+        required_display_count = row.get("required_display_count")
+        if isinstance(required_display_count, int):
+            fragment += f" required_display={required_display_count}"
+        simplify_us = row.get("cli_simplify_us")
+        if isinstance(simplify_us, (int, float)):
+            fragment += f" cli_simplify={simplify_us / 1000.0:.3f}ms"
+        total_us = row.get("cli_total_us")
+        if isinstance(total_us, (int, float)):
+            fragment += f" cli_total={total_us / 1000.0:.3f}ms"
+        fragments.append(fragment)
+    remaining = len(rows) - limit
+    if remaining > 0:
+        fragments.append(f"+{remaining} more")
+    return fragments
+
+
+def residual_shape_orientation_summary_fragment(raw_summary: Any) -> str | None:
+    if not isinstance(raw_summary, dict):
+        return None
+    probe_count = raw_summary.get("probe_count")
+    counted_probe_count = raw_summary.get("counted_probe_count")
+    max_required_display_count = raw_summary.get("max_required_display_count")
+    avg_required_display_count = raw_summary.get("avg_required_display_count")
+    if (
+        not isinstance(probe_count, int)
+        or not isinstance(counted_probe_count, int)
+        or not isinstance(max_required_display_count, int)
+        or not isinstance(avg_required_display_count, (int, float))
+    ):
+        return None
+    fragment = (
+        f"probes={probe_count} counted={counted_probe_count} "
+        f"max_required_display={max_required_display_count} "
+        f"avg_required_display={float(avg_required_display_count):.3f}"
+    )
+    max_name = raw_summary.get("max_name")
+    if isinstance(max_name, str):
+        fragment += f" max_case={max_name}"
+    max_expression_shape = raw_summary.get("max_expression_shape")
+    if isinstance(max_expression_shape, str):
+        fragment += f" shape={max_expression_shape}"
+    max_orientation = raw_summary.get("max_orientation")
+    if isinstance(max_orientation, str):
+        fragment += f" orientation={max_orientation}"
+    max_steps_mode = raw_summary.get("max_steps_mode")
+    if isinstance(max_steps_mode, str):
+        fragment += f" steps={max_steps_mode}"
+    return fragment
+
+
 def calculus_runtime_lines(
     label: str,
     metrics: dict[str, Any],
@@ -3729,6 +4351,11 @@ def calculus_runtime_lines(
     )
     if concentration:
         lines.append(f"- `{label}` runtime concentration: {concentration}")
+    pressure = calculus_runtime_pressure_fragment(
+        metrics.get(f"{prefix}_runtime_pressure")
+    )
+    if pressure:
+        lines.append(f"- `{label}` runtime pressure: {pressure}")
     warm_distribution = calculus_runtime_distribution_fragment(
         metrics.get(f"{prefix}_warm_runtime_distribution")
     )
@@ -3804,6 +4431,27 @@ def calculus_residual_case_fragments(value: Any, limit: int = 12) -> list[str]:
     remaining = len(names) - len(selected)
     if remaining > 0:
         fragments.append(f"+{remaining} more")
+    return fragments
+
+
+def calculus_residual_cases_by_cause_fragments(
+    value: Any,
+    *,
+    cause_limit: int = 8,
+    case_limit: int = 3,
+) -> list[str]:
+    grouped = sanitize_string_list_map(value)
+    fragments: list[str] = []
+    for cause, case_names in list(grouped.items())[:cause_limit]:
+        selected = case_names[:case_limit]
+        cases_fragment = ", ".join(selected)
+        remaining = len(case_names) - len(selected)
+        if remaining > 0:
+            cases_fragment = f"{cases_fragment}, +{remaining} more"
+        fragments.append(f"{cause}: {cases_fragment}")
+    remaining_causes = len(grouped) - cause_limit
+    if remaining_causes > 0:
+        fragments.append(f"+{remaining_causes} more causes")
     return fragments
 
 
@@ -5279,6 +5927,14 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` slowest process evaluations: "
                             + ", ".join(slowest_process)
                         )
+                    exact_square_pairs = diff_exact_square_runtime_pair_fragments(
+                        metrics.get("diff_exact_square_runtime_pairs")
+                    )
+                    if exact_square_pairs:
+                        lines.append(
+                            f"- `{label}` exact-square runtime pairs: "
+                            + ", ".join(exact_square_pairs)
+                        )
                     harness_distribution = calculus_runtime_distribution_fragment(
                         metrics.get("diff_harness_check_runtime_distribution")
                     )
@@ -5394,6 +6050,56 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` runtime by antiderivative verification mode: "
                             + ", ".join(verification_modes)
                         )
+                    residual_cause_runtime = residual_cause_runtime_fragments(
+                        metrics.get("integrate_runtime_by_residual_cause")
+                    )
+                    if residual_cause_runtime:
+                        lines.append(
+                            f"- `{label}` runtime by residual cause: "
+                            + ", ".join(residual_cause_runtime)
+                        )
+                    residual_phase_by_cause = residual_public_phase_group_fragments(
+                        metrics.get("integrate_residual_public_phase_by_cause")
+                    )
+                    if residual_phase_by_cause:
+                        lines.append(
+                            f"- `{label}` residual public phase by cause: "
+                            + ", ".join(residual_phase_by_cause)
+                        )
+                    residual_phase_slowest = residual_public_phase_case_fragments(
+                        metrics.get(
+                            "integrate_residual_public_phase_slowest_cases"
+                        )
+                    )
+                    if residual_phase_slowest:
+                        lines.append(
+                            f"- `{label}` residual public phase slowest cases: "
+                            + ", ".join(residual_phase_slowest)
+                        )
+                    residual_shape_summary = (
+                        residual_shape_orientation_summary_fragment(
+                            metrics.get(
+                                "integrate_residual_shape_orientation_summary"
+                            )
+                        )
+                    )
+                    if residual_shape_summary:
+                        lines.append(
+                            f"- `{label}` residual shape/orientation summary: "
+                            + residual_shape_summary
+                        )
+                    residual_shape_orientation = (
+                        residual_shape_orientation_probe_fragments(
+                            metrics.get(
+                                "integrate_residual_shape_orientation_probes"
+                            )
+                        )
+                    )
+                    if residual_shape_orientation:
+                        lines.append(
+                            f"- `{label}` residual shape/orientation probes: "
+                            + ", ".join(residual_shape_orientation)
+                        )
                 argument_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("diff_argument_regime_counts")
                 )
@@ -5506,6 +6212,16 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` residual causes: "
                         + ", ".join(integrate_residual_causes)
+                    )
+                integrate_residual_cases_by_cause = (
+                    calculus_residual_cases_by_cause_fragments(
+                        metrics.get("integrate_residual_cases_by_cause")
+                    )
+                )
+                if integrate_residual_cases_by_cause:
+                    lines.append(
+                        f"- `{label}` residual examples by cause: "
+                        + "; ".join(integrate_residual_cases_by_cause)
                     )
                 integrate_verification_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_verification_regime_counts")
@@ -5661,6 +6377,16 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` residual causes: "
                         + ", ".join(residual_causes)
+                    )
+                residual_cases_by_cause = (
+                    calculus_residual_cases_by_cause_fragments(
+                        metrics.get("limit_residual_cases_by_cause")
+                    )
+                )
+                if residual_cases_by_cause:
+                    lines.append(
+                        f"- `{label}` residual examples by cause: "
+                        + "; ".join(residual_cases_by_cause)
                     )
                 for metric_key, regime_label in (
                     (

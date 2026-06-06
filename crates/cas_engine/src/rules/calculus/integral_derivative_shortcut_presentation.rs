@@ -13,19 +13,20 @@
 //! 4. sqrt-chain reciprocal derivative: verified source return.
 //! 5. quadratic times affine logarithm by parts: verified source return.
 //! 6. polynomial times arctan affine: source-side presentation return.
-//! 7. rational linear partial fraction: verified source return.
-//! 8. rational linear positive quadratic: verified source return.
-//! 9. fractional denominator power substitution: verified source return.
-//! 10. sqrt derivative substitution: verified source return.
-//! 11. arcsin inverse-sqrt product: source-side held compact/source return.
-//! 12. affine/acosh inverse-sqrt product: verified held compact/source return.
-//! 13. arcsin/asinh polynomial substitution: verified held source return.
-//! 14. positive quadratic powers: verified source return.
-//! 15. inverse hyperbolic sqrt reciprocal: verified source return.
-//! 16. direct sqrt-trig logarithm compaction: verified compact return.
-//! 17. sqrt-trig logarithm presentation: verified compact-only return.
-//! 18. sqrt reciprocal trig product: source-side presentation return.
-//! 19. direct trig affine argument: verified source return.
+//! 7. reciprocal positive quadratic arctan: source-side presentation return.
+//! 8. rational linear partial fraction: verified source return.
+//! 9. rational linear positive quadratic: verified source return.
+//! 10. fractional denominator power substitution: verified source return.
+//! 11. sqrt derivative substitution: verified source return.
+//! 12. arcsin inverse-sqrt product: source-side held compact/source return.
+//! 13. affine/acosh inverse-sqrt product: verified held compact/source return.
+//! 14. arcsin/asinh polynomial substitution: verified held source return.
+//! 15. positive quadratic powers: verified source return.
+//! 16. inverse hyperbolic sqrt reciprocal: verified source return.
+//! 17. direct sqrt-trig logarithm compaction: verified compact return.
+//! 18. sqrt-trig logarithm presentation: verified compact-only return.
+//! 19. sqrt reciprocal trig product: source-side presentation return.
+//! 20. direct trig affine argument: verified source return.
 //!
 //! Keep this map synchronized with the route order. A later extraction should
 //! move a whole policy group at a time and preserve whether the returned
@@ -33,12 +34,12 @@
 //! a source-side presentation shortcut.
 //!
 //! Policy groups:
-//! - Routes 1-5, 7-10, and 14-15 are verified source-return routes.
-//! - Routes 6 and 18 are source-side presentation exceptions.
-//! - Routes 11-13 are held-presentation routes that preserve source or compact
+//! - Routes 1-5, 8-11, and 15-16 are verified source-return routes.
+//! - Routes 6, 7, and 19 are source-side presentation exceptions.
+//! - Routes 12-14 are held-presentation routes that preserve source or compact
 //!   integrands for caller condition collection.
-//! - Routes 16-17 are compact-only sqrt-trig-log presentation routes.
-//! - Route 19 is the final verified direct-trig fallback.
+//! - Routes 17-18 are compact-only sqrt-trig-log presentation routes.
+//! - Route 20 is the final verified direct-trig fallback.
 //!
 //! The groups are descriptive, not a registry. Source-order priority remains in
 //! the function body.
@@ -114,6 +115,16 @@ fn supported_integral_derivative_presentation_route_for_integrate_call(
         )
     {
         return route;
+    }
+
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_positive_rational_quadratic_arctan_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return SupportedIntegralDerivativePresentationRoute::ReciprocalPositiveQuadraticArctanSource(
+            integrate_call.target,
+        );
     }
 
     // Verified rational/substitution source-return routes.
@@ -271,5 +282,29 @@ mod tests {
 
         assert!(hold::is_hold(&ctx, rewrite.new_expr));
         assert!(rewrite.required_conditions.is_empty());
+    }
+
+    #[test]
+    fn diff_shortcut_returns_positive_rational_quadratic_arctan_source() {
+        let mut ctx = Context::new();
+        let target = parse("integrate(1/((a*x+b)^2+2), x)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+
+        let rewrite = supported_integral_diff_shortcut_rewrite(&mut ctx, &call, target).unwrap();
+        let compact = cas_ast::hold::unwrap_internal_hold(&ctx, rewrite.new_expr);
+
+        assert_eq!(compact, parse("1/((a*x+b)^2+2)", &mut ctx).unwrap());
+        let required_displays: Vec<_> = rewrite
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+        assert!(
+            !required_displays.iter().any(|display| display == "a ≠ 0"),
+            "source shortcut must not inherit primitive-only slope condition: {required_displays:?}"
+        );
     }
 }

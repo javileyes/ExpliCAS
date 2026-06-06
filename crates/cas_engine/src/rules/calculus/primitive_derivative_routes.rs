@@ -6,7 +6,10 @@
 
 use super::exponential_derivative_presentation::exp_trig_by_parts_primitive_derivative_presentation;
 use super::hyperbolic_primitive_derivative_presentation::affine_hyperbolic_odd_primitive_derivative_presentation;
-use super::tanh_primitive_derivative_presentation::affine_tanh_even_primitive_derivative_presentation;
+use super::tanh_primitive_derivative_presentation::{
+    affine_tanh_even_primitive_derivative_presentation,
+    tanh_cubic_sech_fourth_primitive_derivative_presentation,
+};
 use cas_ast::{Context, ExprId};
 
 pub(super) fn primitive_derivative_route(
@@ -15,6 +18,7 @@ pub(super) fn primitive_derivative_route(
     var_name: &str,
 ) -> Option<ExprId> {
     exp_trig_by_parts_primitive_derivative_presentation(ctx, target, var_name)
+        .or_else(|| tanh_cubic_sech_fourth_primitive_derivative_presentation(ctx, target, var_name))
         .or_else(|| affine_tanh_even_primitive_derivative_presentation(ctx, target, var_name))
         .or_else(|| affine_hyperbolic_odd_primitive_derivative_presentation(ctx, target, var_name))
 }
@@ -51,6 +55,18 @@ mod tests {
         let derivative = primitive_derivative_route(&mut ctx, target, "x").unwrap();
 
         assert_eq!(rendered(&ctx, derivative), "tanh(2 * x + 1)^6");
+    }
+
+    #[test]
+    fn primitive_route_preserves_tanh_cubic_sech_fourth_derivative() {
+        let mut ctx = Context::new();
+        let target = parse("k*tanh(x^2+b)-k*tanh(x^2+b)^3/3", &mut ctx).unwrap();
+        let derivative = primitive_derivative_route(&mut ctx, target, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "k * 2 * x^(2 - 1) / cosh(x^2 + b)^4"
+        );
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 use super::*;
 use cas_ast::{BuiltinFn, Expr};
-use num_traits::{ToPrimitive, Zero};
+use num_traits::{One, ToPrimitive, Zero};
 
 fn expr_contains_any_builtin_local(
     ctx: &cas_ast::Context,
@@ -2114,6 +2114,396 @@ fn exprs_exact_ignoring_internal_holds_local(
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
 }
 
+fn unary_builtin_arg_local(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    (args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin)).then_some(args[0])
+}
+
+fn ln_trig_quotient_arg_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, BuiltinFn, ExprId)> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 || ctx.builtin_of(fn_id) != Some(BuiltinFn::Ln) {
+        return None;
+    }
+
+    let mut ratio = cas_ast::hold::strip_all_holds(ctx, args[0]);
+    if let Expr::Function(abs_fn_id, abs_args) = ctx.get(ratio).clone() {
+        if abs_args.len() == 1 && ctx.builtin_of(abs_fn_id) == Some(BuiltinFn::Abs) {
+            ratio = cas_ast::hold::strip_all_holds(ctx, abs_args[0]);
+        }
+    }
+    let Expr::Div(num, den) = ctx.get(ratio).clone() else {
+        return None;
+    };
+
+    for (num_builtin, den_builtin) in [
+        (BuiltinFn::Sin, BuiltinFn::Cos),
+        (BuiltinFn::Cos, BuiltinFn::Sin),
+    ] {
+        let Some(num_arg) = unary_builtin_arg_local(ctx, num, num_builtin) else {
+            continue;
+        };
+        let Some(den_arg) = unary_builtin_arg_local(ctx, den, den_builtin) else {
+            continue;
+        };
+        if exprs_equivalent_ignoring_internal_holds_local(ctx, num_arg, den_arg) {
+            return Some((num_builtin, den_builtin, num_arg));
+        }
+    }
+    None
+}
+
+fn scaled_unary_builtin_arg_for_residual_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<(num_rational::BigRational, ExprId)> {
+    let (scale, core) = split_numeric_scale_product_for_residual_local(ctx, expr);
+    unary_builtin_arg_local(ctx, core, builtin).map(|arg| (scale, arg))
+}
+
+fn additive_trig_pair_ratio_pole_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    ratio_num_builtin: BuiltinFn,
+    ratio_den_builtin: BuiltinFn,
+    expected_arg: ExprId,
+) -> Option<num_rational::BigRational> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let (left, right, subtract_right) = (match ctx.get(expr).clone() {
+        Expr::Add(left, right) => Some((left, right, false)),
+        Expr::Sub(left, right) => Some((left, right, true)),
+        _ => None,
+    })?;
+
+    let mut signed_terms = Vec::new();
+    for (term, negate) in [(left, false), (right, subtract_right)] {
+        if let Some((mut scale, arg)) =
+            scaled_unary_builtin_arg_for_residual_local(ctx, term, ratio_num_builtin)
+        {
+            if negate {
+                scale = -scale;
+            }
+            signed_terms.push((ratio_num_builtin, scale, arg));
+            continue;
+        }
+        if let Some((mut scale, arg)) =
+            scaled_unary_builtin_arg_for_residual_local(ctx, term, ratio_den_builtin)
+        {
+            if negate {
+                scale = -scale;
+            }
+            signed_terms.push((ratio_den_builtin, scale, arg));
+        }
+    }
+    if signed_terms.len() != 2 {
+        return None;
+    }
+
+    let mut numerator_scale = None;
+    let mut denominator_scale = None;
+    for (builtin, scale, arg) in signed_terms {
+        if !exprs_equivalent_ignoring_internal_holds_local(ctx, arg, expected_arg) {
+            return None;
+        }
+        if builtin == ratio_num_builtin {
+            numerator_scale = Some(scale);
+        } else if builtin == ratio_den_builtin {
+            denominator_scale = Some(scale);
+        }
+    }
+
+    let numerator_scale = numerator_scale?;
+    let denominator_scale = denominator_scale?;
+    if numerator_scale.is_zero() || denominator_scale.is_zero() {
+        return None;
+    }
+    Some(-denominator_scale / numerator_scale)
+}
+
+fn rational_number_expr_local(
+    ctx: &mut cas_ast::Context,
+    value: num_rational::BigRational,
+) -> ExprId {
+    ctx.add(Expr::Number(value))
+}
+
+fn ln_unary_builtin_arg_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 || ctx.builtin_of(fn_id) != Some(BuiltinFn::Ln) {
+        return None;
+    }
+    unary_builtin_arg_local(ctx, args[0], builtin)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TrigRatioOffsetOrientationLocal {
+    RatioMinusOffset,
+    OffsetMinusRatio,
+}
+
+fn trig_ratio_nontrivial_offset_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    ratio_builtin: BuiltinFn,
+    var_name: &str,
+) -> Option<(ExprId, ExprId, TrigRatioOffsetOrientationLocal)> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Sub(left, right) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if let Some(ratio_arg) = unary_builtin_arg_local(ctx, left, ratio_builtin) {
+        if trig_ratio_offset_is_rejected_local(ctx, right, var_name) {
+            return None;
+        }
+        return Some((
+            ratio_arg,
+            cas_ast::hold::strip_all_holds(ctx, right),
+            TrigRatioOffsetOrientationLocal::RatioMinusOffset,
+        ));
+    }
+    let ratio_arg = unary_builtin_arg_local(ctx, right, ratio_builtin)?;
+    if trig_ratio_offset_is_rejected_local(ctx, left, var_name) {
+        return None;
+    }
+    Some((
+        ratio_arg,
+        cas_ast::hold::strip_all_holds(ctx, left),
+        TrigRatioOffsetOrientationLocal::OffsetMinusRatio,
+    ))
+}
+
+fn trig_ratio_offset_is_rejected_local(
+    ctx: &mut cas_ast::Context,
+    offset: ExprId,
+    var_name: &str,
+) -> bool {
+    let offset = cas_ast::hold::strip_all_holds(ctx, offset);
+    if cas_math::expr_predicates::contains_named_var(ctx, offset, var_name) {
+        return true;
+    }
+    cas_ast::views::as_rational_const(ctx, offset, 8)
+        .is_some_and(|value| value.is_zero() || value.is_one())
+}
+
+struct ShiftedTrigLogSourceResidualLocal {
+    residual: ExprId,
+    required_conditions: Vec<crate::ImplicitCondition>,
+    expansion_rule_name: &'static str,
+    expansion_description: &'static str,
+}
+
+fn shifted_trig_log_source_residual_integral_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<ShiftedTrigLogSourceResidualLocal> {
+    let call = crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let Expr::Div(num, den) = ctx.get(target).clone() else {
+        return None;
+    };
+    if cas_ast::views::as_rational_const(ctx, num, 8).is_none_or(|value| !value.is_one()) {
+        return None;
+    }
+
+    let factors = cas_math::expr_nary::mul_leaves(ctx, den);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for (ln_index, ln_factor) in factors.iter().enumerate() {
+        for (
+            ratio_builtin,
+            ratio_num_builtin,
+            ratio_den_builtin,
+            expansion_rule_name,
+            expansion_description,
+        ) in [
+            (
+                BuiltinFn::Tan,
+                BuiltinFn::Sin,
+                BuiltinFn::Cos,
+                "Expandir tangente como seno entre coseno",
+                "Reescribir la tangente como seno entre coseno antes de conservar el residual",
+            ),
+            (
+                BuiltinFn::Cot,
+                BuiltinFn::Cos,
+                BuiltinFn::Sin,
+                "Expandir cotangente como coseno entre seno",
+                "Reescribir la cotangente como coseno entre seno antes de conservar el residual",
+            ),
+        ] {
+            let Some(log_ratio_arg) = ln_unary_builtin_arg_local(ctx, *ln_factor, ratio_builtin)
+            else {
+                continue;
+            };
+            let shifted_factor = factors[1 - ln_index];
+            let Some((shifted_ratio_arg, offset, offset_orientation)) =
+                trig_ratio_nontrivial_offset_local(
+                    ctx,
+                    shifted_factor,
+                    ratio_builtin,
+                    &call.var_name,
+                )
+            else {
+                continue;
+            };
+            if !exprs_equivalent_ignoring_internal_holds_local(
+                ctx,
+                log_ratio_arg,
+                shifted_ratio_arg,
+            ) {
+                continue;
+            }
+
+            let ratio_num = ctx.call_builtin(ratio_num_builtin, vec![log_ratio_arg]);
+            let ratio_den = ctx.call_builtin(ratio_den_builtin, vec![log_ratio_arg]);
+            let ratio_quotient = ctx.add(Expr::Div(ratio_num, ratio_den));
+            let ln_ratio = ctx.call_builtin(BuiltinFn::Ln, vec![ratio_quotient]);
+            let scaled_ratio_den = ctx.add(Expr::Mul(offset, ratio_den));
+            let shifted_ratio_num = match offset_orientation {
+                TrigRatioOffsetOrientationLocal::RatioMinusOffset => {
+                    ctx.add(Expr::Sub(ratio_num, scaled_ratio_den))
+                }
+                TrigRatioOffsetOrientationLocal::OffsetMinusRatio => {
+                    ctx.add(Expr::Sub(scaled_ratio_den, ratio_num))
+                }
+            };
+            let residual_den = ctx.add(Expr::Mul(ln_ratio, shifted_ratio_num));
+            let residual_target = ctx.add(Expr::Div(ratio_den, residual_den));
+            let var = ctx.var(&call.var_name);
+            let residual = ctx.call("integrate", vec![residual_target, var]);
+            let ratio = ctx.call_builtin(ratio_builtin, vec![log_ratio_arg]);
+            let one = ctx.num(1);
+            let ratio_minus_one = ctx.add(Expr::Sub(ratio, one));
+            let source_pole = match offset_orientation {
+                TrigRatioOffsetOrientationLocal::RatioMinusOffset => {
+                    ctx.add(Expr::Sub(ratio, offset))
+                }
+                TrigRatioOffsetOrientationLocal::OffsetMinusRatio => {
+                    ctx.add(Expr::Sub(offset, ratio))
+                }
+            };
+            let denominator = ctx.call_builtin(ratio_den_builtin, vec![log_ratio_arg]);
+            let mut required_conditions = Vec::new();
+            push_nonzero_condition_exact_unique_local(ctx, &mut required_conditions, denominator);
+            if offset_orientation == TrigRatioOffsetOrientationLocal::OffsetMinusRatio {
+                push_nonzero_condition_exact_unique_local(
+                    ctx,
+                    &mut required_conditions,
+                    source_pole,
+                );
+                push_nonzero_condition_exact_unique_local(
+                    ctx,
+                    &mut required_conditions,
+                    ratio_minus_one,
+                );
+            } else {
+                push_nonzero_condition_exact_unique_local(
+                    ctx,
+                    &mut required_conditions,
+                    ratio_minus_one,
+                );
+                push_nonzero_condition_exact_unique_local(
+                    ctx,
+                    &mut required_conditions,
+                    source_pole,
+                );
+            }
+            required_conditions.push(crate::ImplicitCondition::Positive(ratio));
+            return Some(ShiftedTrigLogSourceResidualLocal {
+                residual,
+                required_conditions,
+                expansion_rule_name,
+                expansion_description,
+            });
+        }
+    }
+
+    None
+}
+
+fn terminal_factored_reciprocal_trig_log_integral_residual_conditions_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let call = crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let Expr::Div(num, den) = ctx.get(target).clone() else {
+        return None;
+    };
+
+    let factors = cas_math::expr_nary::mul_leaves(ctx, den);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for (ln_index, ln_factor) in factors.iter().enumerate() {
+        let Some((ratio_num_builtin, ratio_den_builtin, ratio_arg)) =
+            ln_trig_quotient_arg_local(ctx, *ln_factor)
+        else {
+            continue;
+        };
+        let Some(num_arg) = unary_builtin_arg_local(ctx, num, ratio_den_builtin) else {
+            continue;
+        };
+        if !exprs_equivalent_ignoring_internal_holds_local(ctx, num_arg, ratio_arg) {
+            continue;
+        }
+
+        let partner = factors[1 - ln_index];
+        let Some(pole) = additive_trig_pair_ratio_pole_local(
+            ctx,
+            partner,
+            ratio_num_builtin,
+            ratio_den_builtin,
+            ratio_arg,
+        ) else {
+            continue;
+        };
+
+        let ratio_builtin = match (ratio_num_builtin, ratio_den_builtin) {
+            (BuiltinFn::Sin, BuiltinFn::Cos) => BuiltinFn::Tan,
+            (BuiltinFn::Cos, BuiltinFn::Sin) => BuiltinFn::Cot,
+            _ => continue,
+        };
+        let ratio = ctx.call_builtin(ratio_builtin, vec![ratio_arg]);
+        let one = ctx.num(1);
+        let ratio_minus_one = ctx.add(Expr::Sub(ratio, one));
+        let pole_expr = rational_number_expr_local(ctx, pole);
+        let ratio_minus_pole = ctx.add(Expr::Sub(ratio, pole_expr));
+        let denominator = ctx.call_builtin(ratio_den_builtin, vec![ratio_arg]);
+
+        let mut conditions = Vec::new();
+        push_nonzero_condition_exact_unique_local(ctx, &mut conditions, denominator);
+        push_nonzero_condition_exact_unique_local(ctx, &mut conditions, ratio_minus_one);
+        push_nonzero_condition_exact_unique_local(ctx, &mut conditions, ratio_minus_pole);
+        conditions.push(crate::ImplicitCondition::Positive(ratio));
+        return Some(conditions);
+    }
+    None
+}
+
 fn expr_is_named_function_call_local(ctx: &cas_ast::Context, expr: ExprId, names: &[&str]) -> bool {
     let Expr::Function(fn_id, _) = ctx.get(expr) else {
         return false;
@@ -3748,6 +4138,78 @@ impl Engine {
             }
         }
 
+        if let Some(source_residual) =
+            shifted_trig_log_source_residual_integral_local(&mut self.simplifier.context, resolved)
+        {
+            let residual = source_residual.residual;
+            let required_conditions = source_residual.required_conditions;
+            let mut steps = Vec::new();
+            if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                let mut expansion_step = crate::Step::new(
+                    source_residual.expansion_description,
+                    source_residual.expansion_rule_name,
+                    resolved,
+                    residual,
+                    Vec::new(),
+                    Some(&self.simplifier.context),
+                );
+                expansion_step.importance = crate::ImportanceLevel::Low;
+                steps.push(expansion_step);
+                if let Some(mut residual_step) = presimplified_calculus_residual_step_local(
+                    &mut self.simplifier.context,
+                    resolved,
+                    residual,
+                    crate::ImportanceLevel::Medium,
+                ) {
+                    residual_step.meta_mut().required_conditions = required_conditions.clone();
+                    steps.push(residual_step);
+                }
+            }
+
+            return Ok((
+                crate::EvalResult::Expr(residual),
+                Vec::new(),
+                steps,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                required_conditions,
+            ));
+        }
+
+        if let Some(required_conditions) =
+            terminal_factored_reciprocal_trig_log_integral_residual_conditions_local(
+                &mut self.simplifier.context,
+                resolved,
+            )
+        {
+            if !required_conditions.is_empty() {
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    if let Some(mut step) = direct_calculus_residual_step_local(
+                        &mut self.simplifier.context,
+                        resolved,
+                        resolved,
+                    ) {
+                        step.meta_mut().required_conditions = required_conditions.clone();
+                        steps.push(step);
+                    }
+                }
+
+                return Ok((
+                    crate::EvalResult::Expr(resolved),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    required_conditions,
+                ));
+            }
+        }
+
         if let Some(call) = crate::symbolic_calculus_call_support::try_extract_diff_call(
             &self.simplifier.context,
             resolved,
@@ -5076,6 +5538,600 @@ mod tests {
             target,
             result_with_sqrt_term
         ));
+    }
+
+    #[test]
+    fn terminal_factored_reciprocal_trig_log_integral_residual_is_detected() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse(
+            "integrate(cos(x)/(ln(sin(x)/cos(x))*(sin(x)-2*cos(x))), x)",
+            &mut ctx,
+        )
+        .unwrap();
+
+        let required = terminal_factored_reciprocal_trig_log_integral_residual_conditions_local(
+            &mut ctx, expr,
+        )
+        .unwrap_or_default();
+        assert!(
+            !required.is_empty(),
+            "expected direct residual conditions for terminal factored trig-log integral"
+        );
+    }
+
+    #[test]
+    fn shifted_tangent_log_source_residual_integral_is_detected() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("integrate(1/((tan(x)-2)*ln(tan(x))), x)", &mut ctx).unwrap();
+
+        let source_residual = shifted_trig_log_source_residual_integral_local(&mut ctx, expr)
+            .expect("expected shifted tangent-log source residual");
+        let residual = source_residual.residual;
+        let required = source_residual.required_conditions;
+
+        assert_eq!(
+            DisplayExpr {
+                context: &ctx,
+                id: residual,
+            }
+            .to_string(),
+            "integrate(cos(x) / (ln(sin(x) / cos(x)) * (sin(x) - 2 * cos(x))), x)"
+        );
+        let required_display = crate::render_conditions_normalized(&mut ctx, &required);
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "tan(x) - 1 ≠ 0"),
+            "expected log-zero guard, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "tan(x) - 2 ≠ 0"),
+            "expected shifted pole guard, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition.ends_with(" > 0")),
+            "expected positivity guard, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn shifted_cotangent_log_source_residual_integral_is_detected() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("integrate(1/((cot(x)-2)*ln(cot(x))), x)", &mut ctx).unwrap();
+
+        let source_residual = shifted_trig_log_source_residual_integral_local(&mut ctx, expr)
+            .expect("expected shifted cotangent-log source residual");
+
+        assert_eq!(
+            DisplayExpr {
+                context: &ctx,
+                id: source_residual.residual,
+            }
+            .to_string(),
+            "integrate(sin(x) / (ln(cos(x) / sin(x)) * (cos(x) - 2 * sin(x))), x)"
+        );
+        assert_eq!(
+            source_residual.expansion_rule_name,
+            "Expandir cotangente como coseno entre seno"
+        );
+        let required_display =
+            crate::render_conditions_normalized(&mut ctx, &source_residual.required_conditions);
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "cot(x) - 1 ≠ 0"),
+            "expected log-zero guard, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "cot(x) - 2 ≠ 0"),
+            "expected shifted pole guard, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition.ends_with(" > 0")),
+            "expected positivity guard, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn offset_tangent_log_source_residual_integral_is_detected() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("integrate(1/((2-tan(x))*ln(tan(x))), x)", &mut ctx).unwrap();
+
+        let source_residual = shifted_trig_log_source_residual_integral_local(&mut ctx, expr)
+            .expect("expected offset tangent-log source residual");
+
+        assert_eq!(
+            DisplayExpr {
+                context: &ctx,
+                id: source_residual.residual,
+            }
+            .to_string(),
+            "integrate(cos(x) / (ln(sin(x) / cos(x)) * (2 * cos(x) - sin(x))), x)"
+        );
+        let required_display =
+            crate::render_conditions_normalized(&mut ctx, &source_residual.required_conditions);
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "2 - tan(x) ≠ 0"),
+            "expected source-oriented shifted pole guard, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn offset_cotangent_log_source_residual_integral_is_detected() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("integrate(1/((2-cot(x))*ln(cot(x))), x)", &mut ctx).unwrap();
+
+        let source_residual = shifted_trig_log_source_residual_integral_local(&mut ctx, expr)
+            .expect("expected offset cotangent-log source residual");
+
+        assert_eq!(
+            DisplayExpr {
+                context: &ctx,
+                id: source_residual.residual,
+            }
+            .to_string(),
+            "integrate(sin(x) / (ln(cos(x) / sin(x)) * (2 * sin(x) - cos(x))), x)"
+        );
+        let required_display =
+            crate::render_conditions_normalized(&mut ctx, &source_residual.required_conditions);
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "2 - cot(x) ≠ 0"),
+            "expected source-oriented shifted pole guard, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn symbolic_offset_tangent_log_source_residual_integral_is_detected() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("integrate(1/((a-tan(x))*ln(tan(x))), x)", &mut ctx).unwrap();
+
+        let source_residual = shifted_trig_log_source_residual_integral_local(&mut ctx, expr)
+            .expect("expected symbolic offset tangent-log source residual");
+
+        assert_eq!(
+            DisplayExpr {
+                context: &ctx,
+                id: source_residual.residual,
+            }
+            .to_string(),
+            "integrate(cos(x) / (ln(sin(x) / cos(x)) * (a * cos(x) - sin(x))), x)"
+        );
+        let required_display =
+            crate::render_conditions_normalized(&mut ctx, &source_residual.required_conditions);
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "a - tan(x) ≠ 0"),
+            "expected source-oriented symbolic pole guard, got {required_display:?}"
+        );
+        assert!(
+            !required_display
+                .iter()
+                .any(|condition| condition.contains("ln(sin(x) / cos(x))")),
+            "expected compact source conditions, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn variable_dependent_trig_log_offset_does_not_use_source_residual_fast_path() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("integrate(1/((x-tan(x))*ln(tan(x))), x)", &mut ctx).unwrap();
+
+        assert!(shifted_trig_log_source_residual_integral_local(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn eval_simplify_terminal_factored_reciprocal_trig_log_integral_residual_uses_fast_path() {
+        let expr_text = "integrate(cos(x)/(ln(sin(x)/cos(x))*(sin(x)-2*cos(x))), x)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Compact;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "integrate(cos(x) / (ln(sin(x) / cos(x)) * (sin(x) - 2 * cos(x))), x)"
+        );
+        assert_eq!(output.steps.len(), 1);
+        assert_eq!(output.steps[0].rule_name, "Conservar integral residual");
+        let step_required_conditions = output.steps[0].required_conditions().to_vec();
+        let step_required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            &step_required_conditions,
+        );
+        assert!(
+            step_required_display
+                .iter()
+                .any(|condition| condition == "tan(x) - 1 ≠ 0"),
+            "expected log-zero guard in residual step, got {step_required_display:?}"
+        );
+        assert!(
+            step_required_display
+                .iter()
+                .any(|condition| condition == "tan(x) - 2 ≠ 0"),
+            "expected shifted pole guard in residual step, got {step_required_display:?}"
+        );
+        assert!(
+            step_required_display
+                .iter()
+                .any(|condition| condition.ends_with(" > 0")),
+            "expected positivity guard in residual step, got {step_required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_shifted_tangent_log_source_residual_uses_fast_path_with_trace() {
+        let expr_text = "integrate(1/((tan(x)-2)*ln(tan(x))), x)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::On;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "integrate(cos(x) / (ln(sin(x) / cos(x)) * (sin(x) - 2 * cos(x))), x)"
+        );
+        let rule_names: Vec<_> = output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect();
+        assert_eq!(
+            rule_names,
+            vec![
+                "Expandir tangente como seno entre coseno",
+                "Conservar integral residual",
+            ]
+        );
+        let required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "tan(x) - 1 ≠ 0"),
+            "expected log-zero guard, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "tan(x) - 2 ≠ 0"),
+            "expected shifted pole guard, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition.ends_with(" > 0")),
+            "expected positivity guard, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_shifted_cotangent_log_source_residual_uses_fast_path_with_trace() {
+        let expr_text = "integrate(1/((cot(x)-2)*ln(cot(x))), x)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::On;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "integrate(sin(x) / (ln(cos(x) / sin(x)) * (cos(x) - 2 * sin(x))), x)"
+        );
+        let rule_names: Vec<_> = output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect();
+        assert_eq!(
+            rule_names,
+            vec![
+                "Expandir cotangente como coseno entre seno",
+                "Conservar integral residual",
+            ]
+        );
+        let required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "cot(x) - 1 ≠ 0"),
+            "expected log-zero guard, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "cot(x) - 2 ≠ 0"),
+            "expected shifted pole guard, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition.ends_with(" > 0")),
+            "expected positivity guard, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_offset_cotangent_log_source_residual_uses_fast_path_with_trace() {
+        let expr_text = "integrate(1/((2-cot(x))*ln(cot(x))), x)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::On;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "integrate(sin(x) / (ln(cos(x) / sin(x)) * (2 * sin(x) - cos(x))), x)"
+        );
+        let rule_names: Vec<_> = output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect();
+        assert_eq!(
+            rule_names,
+            vec![
+                "Expandir cotangente como coseno entre seno",
+                "Conservar integral residual",
+            ]
+        );
+        let required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "2 - cot(x) ≠ 0"),
+            "expected source-oriented shifted pole guard, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_symbolic_offset_cotangent_log_source_residual_uses_fast_path_with_trace() {
+        let expr_text = "integrate(1/((a-cot(x))*ln(cot(x))), x)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::On;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "integrate(sin(x) / (ln(cos(x) / sin(x)) * (a * sin(x) - cos(x))), x)"
+        );
+        let rule_names: Vec<_> = output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect();
+        assert_eq!(
+            rule_names,
+            vec![
+                "Expandir cotangente como coseno entre seno",
+                "Conservar integral residual",
+            ]
+        );
+        let required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "a - cot(x) ≠ 0"),
+            "expected source-oriented symbolic shifted pole guard, got {required_display:?}"
+        );
+        assert!(
+            !required_display
+                .iter()
+                .any(|condition| condition.contains("ln(cos(x) / sin(x))")),
+            "expected compact source conditions, got {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_symbolic_trig_log_source_residual_dedupes_factored_pole_conditions() {
+        for (expr_text, expected_source_required, rejected_required) in [
+            (
+                "integrate(1/((tan(x)-a)*ln(tan(x))), x)",
+                "tan(x) - a ≠ 0",
+                "sin(x) - a·cos(x) ≠ 0",
+            ),
+            (
+                "integrate(1/((a-tan(x))*ln(tan(x))), x)",
+                "a - tan(x) ≠ 0",
+                "a·cos(x) - sin(x) ≠ 0",
+            ),
+            (
+                "integrate(1/((cot(x)-a)*ln(cot(x))), x)",
+                "cot(x) - a ≠ 0",
+                "cos(x) - a·sin(x) ≠ 0",
+            ),
+            (
+                "integrate(1/((a-cot(x))*ln(cot(x))), x)",
+                "a - cot(x) ≠ 0",
+                "a·sin(x) - cos(x) ≠ 0",
+            ),
+        ] {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::On;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let required_display = crate::render_conditions_normalized(
+                &mut engine.simplifier.context,
+                &output.required_conditions,
+            );
+            assert!(
+                required_display
+                    .iter()
+                    .any(|actual| actual == expected_source_required),
+                "{expr_text}: expected source condition {expected_source_required}, got {required_display:?}"
+            );
+            assert!(
+                !required_display
+                    .iter()
+                    .map(|actual| actual.replace(" * ", "·"))
+                    .any(|actual| actual == rejected_required),
+                "{expr_text}: redundant factored pole survived: {required_display:?}"
+            );
+            assert!(
+                required_display
+                    .iter()
+                    .any(|actual| actual.ends_with(" - 1 ≠ 0")),
+                "{expr_text}: expected log-zero condition, got {required_display:?}"
+            );
+            assert!(
+                required_display
+                    .iter()
+                    .any(|actual| actual.ends_with(" > 0")),
+                "{expr_text}: expected positive log argument condition, got {required_display:?}"
+            );
+            assert!(
+                required_display.len() <= 4,
+                "{expr_text}: condition alias compaction did not reduce noise: {required_display:?}"
+            );
+            assert_eq!(
+                output.steps.len(),
+                2,
+                "{expr_text}: residual didactic trace changed"
+            );
+        }
     }
 
     #[test]

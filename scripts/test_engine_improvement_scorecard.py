@@ -484,7 +484,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_limit_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_limit_command_matrix(
             """
-{"status":"pass","total":11,"status_counts":{"pass":11,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":3,"residual_case_names":["limit_residual_a","limit_residual_b","limit_residual_c"],"warning_expected_case_count":3,"required_display_case_count":6,"step_checked_case_count":11,"supported_step_unchecked_case_count":0,"expected_step_substring_count":11,"distinct_required_display_count":6,"required_display_counts":{"x > -3":1,"x ≠ -2":1,"x ≠ 1":1},"family_count":7,"point_regime_counts":{"finite":6,"infinity":5},"domain_regime_counts":{"unconditional":4,"required_condition":3,"removable_hole":1,"endpoint_residual":1,"discontinuous_residual":1,"domain_path_conflict":1},"required_condition_regime_counts":{"finite_source_definedness":1,"infinity_path_conflict":1,"none":9},"outcome_counts":{"supported":8,"residual":3},"residual_cause_counts":{"finite_endpoint_or_boundary_policy":2,"infinity_domain_path_conflict":1},"calculus_maturity_block_counts":{"block3_real_domain_limits":8,"block9_residuals_and_non_goals":3},"calculus_block_gate_counts":{"didactic_trace_and_limit_policy":2,"domain_conditions_and_limit_policy":6,"safe_residual_policy":3},"trace_regime_counts":{"substitution":1},"presentation_regime_counts":{"canonical":7,"infinity":1,"residual":3}}
+{"status":"pass","total":11,"status_counts":{"pass":11,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":3,"residual_case_names":["limit_residual_a","limit_residual_b","limit_residual_c"],"warning_expected_case_count":3,"required_display_case_count":6,"step_checked_case_count":11,"supported_step_unchecked_case_count":0,"expected_step_substring_count":11,"distinct_required_display_count":6,"required_display_counts":{"x > -3":1,"x ≠ -2":1,"x ≠ 1":1},"family_count":7,"point_regime_counts":{"finite":6,"infinity":5},"domain_regime_counts":{"unconditional":4,"required_condition":3,"removable_hole":1,"endpoint_residual":1,"discontinuous_residual":1,"domain_path_conflict":1},"required_condition_regime_counts":{"finite_source_definedness":1,"infinity_path_conflict":1,"none":9},"outcome_counts":{"supported":8,"residual":3},"residual_cause_counts":{"finite_endpoint_or_boundary_policy":2,"infinity_domain_path_conflict":1},"residual_cases_by_cause":{"finite_endpoint_or_boundary_policy":["limit_residual_a","limit_residual_b"],"infinity_domain_path_conflict":["limit_residual_c"]},"calculus_maturity_block_counts":{"block3_real_domain_limits":8,"block9_residuals_and_non_goals":3},"calculus_block_gate_counts":{"didactic_trace_and_limit_policy":2,"domain_conditions_and_limit_policy":6,"safe_residual_policy":3},"trace_regime_counts":{"substitution":1},"presentation_regime_counts":{"canonical":7,"infinity":1,"residual":3}}
 """
         )
 
@@ -524,6 +524,16 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             {
                 "finite_endpoint_or_boundary_policy": 2,
                 "infinity_domain_path_conflict": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["limit_residual_cases_by_cause"],
+            {
+                "finite_endpoint_or_boundary_policy": [
+                    "limit_residual_a",
+                    "limit_residual_b",
+                ],
+                "infinity_domain_path_conflict": ["limit_residual_c"],
             },
         )
         self.assertEqual(
@@ -611,7 +621,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_integrate_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_integrate_command_matrix(
             """
-{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"residual_case_names":["integrate_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"residual_cause_counts":{"special_function_method_required":1},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"radical_inverse_policy_cluster_counts":{"block8_inverse_trig_root_reciprocal":6},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1},"slowest_integrate_evaluations":[{"name":"slow_integrate_case","family":"hyperbolic_reciprocal_fourth","integrate_elapsed_seconds":0.42,"antiderivative_verification_mode":"residual_equivalence"}],"slowest_antiderivative_verifications":[{"name":"slow_verify_case","family":"hyperbolic_reciprocal_square","antiderivative_verification_elapsed_seconds":0.21,"antiderivative_verification_mode":"residual_equivalence"}],"largest_stdout_payload_cases":[{"name":"large_integrate_output","family":"rational_partial_fraction","stdout_bytes":8192,"required_display_count":3,"expected_step_substring_count":4}],"largest_step_trace_cases":[{"name":"large_integrate_steps","family":"by_parts_affine_log","step_text_char_count":4096,"required_display_count":1,"expected_step_substring_count":6}],"runtime_by_antiderivative_verification_mode":[{"mode":"residual_equivalence","case_count":10,"total_elapsed_seconds":1.23,"avg_case_ms":123.0,"max_elapsed_seconds":0.21,"slowest_case":"slow_verify_case"}]}
+{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"residual_case_names":["integrate_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"residual_cause_counts":{"special_function_method_required":1},"residual_cases_by_cause":{"special_function_method_required":["integrate_residual_case"]},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_explicit_reciprocal_trig_log_substitution":7,"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"radical_inverse_policy_cluster_counts":{"block8_inverse_trig_root_reciprocal":6},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1},"slowest_integrate_evaluations":[{"name":"slow_integrate_case","family":"hyperbolic_reciprocal_fourth","integrate_elapsed_seconds":0.42,"antiderivative_verification_mode":"residual_equivalence"}],"slowest_antiderivative_verifications":[{"name":"slow_verify_case","family":"hyperbolic_reciprocal_square","antiderivative_verification_elapsed_seconds":0.21,"antiderivative_verification_mode":"residual_equivalence"}],"largest_stdout_payload_cases":[{"name":"large_integrate_output","family":"rational_partial_fraction","stdout_bytes":8192,"required_display_count":3,"expected_step_substring_count":4}],"largest_step_trace_cases":[{"name":"large_integrate_steps","family":"by_parts_affine_log","step_text_char_count":4096,"required_display_count":1,"expected_step_substring_count":6}],"runtime_by_antiderivative_verification_mode":[{"mode":"residual_equivalence","case_count":10,"total_elapsed_seconds":1.23,"avg_case_ms":123.0,"max_elapsed_seconds":0.21,"slowest_case":"slow_verify_case"}],"runtime_by_residual_cause":[{"cause":"special_function_method_required","case_count":1,"total_elapsed_seconds":0.42,"avg_case_ms":420.0,"max_elapsed_seconds":0.42,"slowest_case":"integrate_residual_case"}],"residual_public_phase_by_cause":[{"cause":"special_function_method_required","case_count":1,"integrate_total_seconds":0.42,"cli_total_seconds":0.31,"public_overhead_total_seconds":0.11,"public_overhead_share_percent":26.2,"avg_required_display_count":4.0,"avg_step_text_char_count":610.0,"slowest_case":"integrate_residual_case"}],"residual_public_phase_slowest_cases":[{"name":"integrate_residual_case","integrate_elapsed_seconds":0.42,"cli_total_seconds":0.31,"cli_simplify_ms":309.0,"public_overhead_seconds":0.11,"public_overhead_share_percent":26.2,"required_display_count":4,"step_text_char_count":610,"stdout_bytes":2048,"residual_cause":"special_function_method_required","family":"explicit_reciprocal_trig_residual_domain","trace_regime":"residual_presimplification_with_domain"}],"residual_shape_orientation_probes":[{"name":"shifted_tangent_log_factored_residual","status":"pass","expression_shape":"factored_residual","orientation":"tan_minus_offset","wall_elapsed_seconds":0.052,"cli_parse_us":100,"cli_simplify_us":49000,"cli_total_us":51000,"stdout_bytes":2048,"stderr_bytes":0,"required_display_count":4}]}
 """
         )
 
@@ -667,6 +677,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             {"special_function_method_required": 1},
         )
         self.assertEqual(
+            metrics["integrate_residual_cases_by_cause"],
+            {"special_function_method_required": ["integrate_residual_case"]},
+        )
+        self.assertEqual(
             metrics["integrate_verification_regime_counts"],
             {"residual_not_verified": 1, "verified_by_diff": 17},
         )
@@ -691,6 +705,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(
             metrics["integrate_trig_hyperbolic_policy_cluster_counts"],
             {
+                "block7_explicit_reciprocal_trig_log_substitution": 7,
                 "block7_hyperbolic_reciprocal_square": 1,
                 "block7_sqrt_chain_reciprocal_trig_product": 7,
             },
@@ -698,6 +713,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(
             metrics["integrate_trig_hyperbolic_consolidated_policy_cluster_counts"],
             {
+                "block7_explicit_reciprocal_trig_log_substitution": 7,
                 "block7_hyperbolic_reciprocal_square": 1,
                 "block7_sqrt_chain_reciprocal_trig_product": 7,
             },
@@ -737,6 +753,62 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "mode"
             ],
             "residual_equivalence",
+        )
+        self.assertEqual(
+            metrics["integrate_runtime_by_residual_cause"][0],
+            {
+                "cause": "special_function_method_required",
+                "case_count": 1,
+                "total_elapsed_seconds": 0.42,
+                "avg_case_ms": 420.0,
+                "max_elapsed_seconds": 0.42,
+                "slowest_case": "integrate_residual_case",
+            },
+        )
+        self.assertEqual(
+            metrics["integrate_residual_public_phase_by_cause"][0]["cause"],
+            "special_function_method_required",
+        )
+        self.assertEqual(
+            metrics["integrate_residual_public_phase_by_cause"][0][
+                "public_overhead_share_percent"
+            ],
+            26.2,
+        )
+        self.assertEqual(
+            metrics["integrate_residual_public_phase_slowest_cases"][0][
+                "cli_simplify_ms"
+            ],
+            309.0,
+        )
+        self.assertEqual(
+            metrics["integrate_residual_shape_orientation_probes"][0],
+            {
+                "name": "shifted_tangent_log_factored_residual",
+                "expression_shape": "factored_residual",
+                "orientation": "tan_minus_offset",
+                "status": "pass",
+                "wall_elapsed_seconds": 0.052,
+                "cli_parse_us": 100.0,
+                "cli_simplify_us": 49000.0,
+                "cli_total_us": 51000.0,
+                "stdout_bytes": 2048,
+                "stderr_bytes": 0,
+                "required_display_count": 4,
+            },
+        )
+        self.assertEqual(
+            metrics["integrate_residual_shape_orientation_summary"],
+            {
+                "probe_count": 1,
+                "counted_probe_count": 1,
+                "max_required_display_count": 4,
+                "avg_required_display_count": 4.0,
+                "max_name": "shifted_tangent_log_factored_residual",
+                "max_expression_shape": "factored_residual",
+                "max_orientation": "tan_minus_offset",
+                "max_status": "pass",
+            },
         )
         self.assertNotIn(
             "integrate_radical_inverse_consolidation_candidate_counts",
@@ -840,7 +912,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_calculus_matrix_runtime_hotspots_parse_and_render(self):
         metrics = MODULE.parse_calculus_diff_command_matrix(
             """
-{"status":"pass","total":2,"status_counts":{"pass":2,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":2,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":1,"step_checked_case_count":2,"supported_step_unchecked_case_count":0,"expected_step_substring_count":4,"distinct_required_display_count":1,"family_count":2,"argument_regime_counts":{"variable":1,"affine_argument":1},"domain_regime_counts":{"unconditional":1,"required_condition":1},"outcome_counts":{"supported":2},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":2},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":1,"domain_conditions_and_diff_policy":1},"trace_regime_counts":{"power_rule":1,"log_chain_rule":1},"presentation_regime_counts":{"canonical":1,"compact_quotient":1},"runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"p95_case_ms":123.0,"max_case_ms":123.0},"runtime_concentration":{"timed_case_count":2,"total_elapsed_seconds":0.143,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":86.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"warm_runtime_distribution":{"timed_case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"p95_case_ms":123.0,"max_case_ms":123.0},"warm_runtime_concentration":{"timed_case_count":1,"total_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":100.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"cold_start_case":{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","wall_elapsed_seconds":0.02,"status":"pass"},"slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"warm_slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"harness_check_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.011,"avg_case_ms":5.5,"p95_case_ms":10.0,"max_case_ms":10.0},"slowest_process_evaluations":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","process_elapsed_seconds":0.123,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"domain_conditions_and_diff_policy"}],"slowest_harness_checks":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","harness_check_elapsed_seconds":0.010,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"didactic_trace_and_diff_policy"}],"largest_stdout_payload_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","stdout_bytes":4096,"required_display_count":2,"expected_step_substring_count":3}],"largest_step_trace_cases":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","step_text_char_count":1200,"required_display_count":0,"expected_step_substring_count":1}]}
+{"status":"pass","total":2,"status_counts":{"pass":2,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":2,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":1,"step_checked_case_count":2,"supported_step_unchecked_case_count":0,"expected_step_substring_count":4,"distinct_required_display_count":1,"family_count":2,"argument_regime_counts":{"variable":1,"affine_argument":1},"domain_regime_counts":{"unconditional":1,"required_condition":1},"outcome_counts":{"supported":2},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":2},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":1,"domain_conditions_and_diff_policy":1},"trace_regime_counts":{"power_rule":1,"log_chain_rule":1},"presentation_regime_counts":{"canonical":1,"compact_quotient":1},"runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"p95_case_ms":123.0,"max_case_ms":123.0},"runtime_concentration":{"timed_case_count":2,"total_elapsed_seconds":0.143,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":86.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"warm_runtime_distribution":{"timed_case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"p95_case_ms":123.0,"max_case_ms":123.0},"warm_runtime_concentration":{"timed_case_count":1,"total_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":100.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"cold_start_case":{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","wall_elapsed_seconds":0.02,"status":"pass"},"slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"warm_slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"harness_check_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.011,"avg_case_ms":5.5,"p95_case_ms":10.0,"max_case_ms":10.0},"slowest_process_evaluations":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","process_elapsed_seconds":0.123,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"domain_conditions_and_diff_policy"}],"slowest_harness_checks":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","harness_check_elapsed_seconds":0.010,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"didactic_trace_and_diff_policy"}],"exact_square_runtime_pairs":[{"name":"inverse_hyperbolic_root_atanh_denominator_scale_exact_square","baseline_case":"inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval","exact_square_case":"inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval","baseline_case_ms":6.0,"exact_square_case_ms":96.0,"delta_ms":90.0,"ratio":16.0,"family":"inverse_hyperbolic_root"}],"largest_stdout_payload_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","stdout_bytes":4096,"required_display_count":2,"expected_step_substring_count":3}],"largest_step_trace_cases":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","step_text_char_count":1200,"required_display_count":0,"expected_step_substring_count":1}]}
 """
         )
         scorecard = {
@@ -866,6 +938,13 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         )
         self.assertEqual(metrics["diff_runtime_distribution"]["timed_case_count"], 2)
         self.assertEqual(metrics["diff_runtime_distribution"]["p95_case_ms"], 123.0)
+        self.assertEqual(metrics["diff_runtime_pressure"]["status"], "watch")
+        self.assertEqual(metrics["diff_runtime_pressure"]["primary_signal"], "p95")
+        self.assertEqual(
+            metrics["diff_runtime_pressure"]["reason"],
+            "p95_case_ms=123.000",
+        )
+        self.assertEqual(metrics["diff_runtime_pressure"]["sample_basis"], "warm")
         self.assertEqual(
             metrics["diff_runtime_concentration"]["slowest_case"],
             "log_affine_chain_required_domain",
@@ -888,6 +967,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "process_elapsed_seconds"
             ],
             0.123,
+        )
+        self.assertEqual(
+            metrics["diff_exact_square_runtime_pairs"][0]["ratio"],
+            16.0,
         )
         self.assertEqual(
             metrics["diff_harness_check_runtime_distribution"]["max_case_ms"],
@@ -925,6 +1008,14 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             rendered,
         )
         self.assertIn(
+            "`diff_command_matrix` runtime pressure: "
+            "status=watch primary=p95 reason=p95_case_ms=123.000 basis=warm "
+            "timed_cases=1 p95=123.000ms max=123.000ms "
+            "top3_share=100.0% slowest=log_affine_chain_required_domain "
+            "family=log_affine_chain",
+            rendered,
+        )
+        self.assertIn(
             "`diff_command_matrix` warm runtime distribution: "
             "timed_cases=1 avg=123.000ms p95=123.000ms max=123.000ms total=0.123s",
             rendered,
@@ -944,6 +1035,16 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn(
             "`diff_command_matrix` slowest process evaluations: "
             "log_affine_chain_required_domain=0.123s family=log_affine_chain",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` exact-square runtime pairs: "
+            "inverse_hyperbolic_root_atanh_denominator_scale_exact_square "
+            "exact_square=96.000ms baseline=6.000ms delta=90.000ms "
+            "ratio=16.000x "
+            "pair=inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval/"
+            "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval "
+            "family=inverse_hyperbolic_root",
             rendered,
         )
         self.assertIn(
@@ -1010,6 +1111,98 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             "avg=123.000ms cases=1",
             rendered,
         )
+
+    def test_calculus_runtime_pressure_ignores_tiny_concentration(self):
+        pressure = MODULE.classify_calculus_runtime_pressure(
+            {
+                "timed_case_count": 2,
+                "avg_case_ms": 5.0,
+                "p95_case_ms": 10.0,
+                "max_case_ms": 10.0,
+            },
+            {
+                "timed_case_count": 2,
+                "top_3_share_percent": 100.0,
+                "slowest_case": "tiny_matrix_hotspot",
+            },
+        )
+
+        self.assertEqual(pressure["status"], "ok")
+        self.assertEqual(pressure["primary_signal"], "none")
+        self.assertEqual(pressure["sample_basis"], "cold_inclusive")
+
+    def test_calculus_runtime_pressure_prefers_warm_samples_when_available(self):
+        metrics: dict[str, object] = {}
+
+        MODULE.add_runtime_observability_metrics(
+            metrics,
+            {
+                "runtime_distribution": {
+                    "timed_case_count": 3,
+                    "avg_case_ms": 84.0,
+                    "p95_case_ms": 233.0,
+                    "max_case_ms": 233.0,
+                },
+                "runtime_concentration": {
+                    "timed_case_count": 3,
+                    "slowest_case": "polynomial_power_direct",
+                    "slowest_family": "polynomial",
+                    "slowest_case_ms": 233.0,
+                    "top_3_share_percent": 90.0,
+                },
+                "warm_runtime_distribution": {
+                    "timed_case_count": 2,
+                    "avg_case_ms": 12.0,
+                    "p95_case_ms": 20.0,
+                    "max_case_ms": 20.0,
+                },
+                "warm_runtime_concentration": {
+                    "timed_case_count": 2,
+                    "slowest_case": "log_affine_chain_required_domain",
+                    "slowest_family": "log_affine_chain",
+                    "slowest_case_ms": 20.0,
+                    "top_3_share_percent": 40.0,
+                },
+                "cold_start_case": {
+                    "name": "polynomial_power_direct",
+                    "family": "polynomial",
+                    "wall_elapsed_seconds": 0.233,
+                    "status": "pass",
+                },
+            },
+            prefix="diff",
+            group_keys=(),
+        )
+
+        self.assertEqual(metrics["diff_runtime_pressure"]["status"], "ok")
+        self.assertEqual(metrics["diff_runtime_pressure"]["primary_signal"], "none")
+        self.assertEqual(metrics["diff_runtime_pressure"]["sample_basis"], "warm")
+        self.assertEqual(
+            metrics["diff_cold_start_case"]["name"],
+            "polynomial_power_direct",
+        )
+        self.assertEqual(metrics["diff_runtime_distribution"]["max_case_ms"], 233.0)
+        self.assertEqual(metrics["diff_warm_runtime_distribution"]["max_case_ms"], 20.0)
+
+    def test_calculus_runtime_pressure_flags_representative_concentration(self):
+        pressure = MODULE.classify_calculus_runtime_pressure(
+            {
+                "timed_case_count": 20,
+                "avg_case_ms": 5.0,
+                "p95_case_ms": 10.0,
+                "max_case_ms": 10.0,
+            },
+            {
+                "timed_case_count": 20,
+                "top_3_share_percent": 90.0,
+                "slowest_case": "concentrated_hotspot",
+                "slowest_family": "exp_log_chain",
+            },
+        )
+
+        self.assertEqual(pressure["status"], "risk")
+        self.assertEqual(pressure["primary_signal"], "top3")
+        self.assertEqual(pressure["reason"], "top3_share_percent=90.0")
 
     def test_run_command_timeout_marks_timeout_and_captures_output(self):
         spec = MODULE.SuiteSpec(
@@ -2263,6 +2456,11 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "integrate_residual_cause_counts": {
                             "special_function_method_required": 1,
                         },
+                        "integrate_residual_cases_by_cause": {
+                            "special_function_method_required": [
+                                "integrate_residual_case",
+                            ],
+                        },
                         "integrate_verification_regime_counts": {
                             "verified_by_diff": 17,
                             "residual_not_verified": 1,
@@ -2280,10 +2478,12 @@ root.direct_small_zero_composition.candidate.three_core_groups
                             "safe_residual_policy": 1,
                         },
                         "integrate_trig_hyperbolic_policy_cluster_counts": {
+                            "block7_explicit_reciprocal_trig_log_substitution": 7,
                             "block7_hyperbolic_reciprocal_square": 1,
                             "block7_sqrt_chain_reciprocal_trig_product": 7,
                         },
                         "integrate_trig_hyperbolic_consolidated_policy_cluster_counts": {
+                            "block7_explicit_reciprocal_trig_log_substitution": 7,
                             "block7_hyperbolic_reciprocal_square": 1,
                             "block7_sqrt_chain_reciprocal_trig_product": 7,
                         },
@@ -2341,6 +2541,58 @@ root.direct_small_zero_composition.candidate.three_core_groups
                                 "expected_step_substring_count": 6,
                             }
                         ],
+                        "integrate_residual_public_phase_by_cause": [
+                            {
+                                "cause": "special_function_method_required",
+                                "case_count": 1,
+                                "integrate_total_seconds": 0.42,
+                                "cli_total_seconds": 0.31,
+                                "public_overhead_total_seconds": 0.11,
+                                "public_overhead_share_percent": 26.2,
+                                "avg_required_display_count": 4.0,
+                                "avg_step_text_char_count": 610.0,
+                                "slowest_case": "integrate_residual_case",
+                            }
+                        ],
+                        "integrate_residual_public_phase_slowest_cases": [
+                            {
+                                "name": "integrate_residual_case",
+                                "integrate_elapsed_seconds": 0.42,
+                                "cli_total_seconds": 0.31,
+                                "cli_simplify_ms": 309.0,
+                                "public_overhead_seconds": 0.11,
+                                "public_overhead_share_percent": 26.2,
+                                "required_display_count": 4,
+                                "step_text_char_count": 610,
+                                "stdout_bytes": 2048,
+                                "residual_cause": "special_function_method_required",
+                                "family": "explicit_reciprocal_trig_residual_domain",
+                                "trace_regime": "residual_presimplification_with_domain",
+                            }
+                        ],
+                        "integrate_residual_shape_orientation_probes": [
+                            {
+                                "name": "shifted_tangent_log_factored_residual",
+                                "status": "pass",
+                                "expression_shape": "factored_residual",
+                                "orientation": "tan_minus_offset",
+                                "steps_mode": "off",
+                                "cli_simplify_us": 49000,
+                                "cli_total_us": 51000,
+                                "required_display_count": 4,
+                            }
+                        ],
+                        "integrate_residual_shape_orientation_summary": {
+                            "probe_count": 1,
+                            "counted_probe_count": 1,
+                            "max_required_display_count": 4,
+                            "avg_required_display_count": 4.0,
+                            "max_name": "shifted_tangent_log_factored_residual",
+                            "max_expression_shape": "factored_residual",
+                            "max_orientation": "tan_minus_offset",
+                            "max_steps_mode": "off",
+                            "max_status": "pass",
+                        },
                     },
                     "delta": {},
                 },
@@ -2451,6 +2703,13 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "limit_residual_cause_counts": {
                             "finite_endpoint_or_boundary_policy": 2,
                             "infinity_domain_path_conflict": 1,
+                        },
+                        "limit_residual_cases_by_cause": {
+                            "finite_endpoint_or_boundary_policy": [
+                                "limit_residual_a",
+                                "limit_residual_b",
+                            ],
+                            "infinity_domain_path_conflict": ["limit_residual_c"],
                         },
                         "limit_calculus_maturity_block_counts": {
                             "block3_real_domain_limits": 8,
@@ -2618,6 +2877,13 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "`limit_command_matrix` residual examples by cause: "
+            "finite_endpoint_or_boundary_policy: limit_residual_a, "
+            "limit_residual_b; infinity_domain_path_conflict: "
+            "limit_residual_c",
+            markdown,
+        )
+        self.assertIn(
             "`limit_command_matrix` trace regimes: finite_residual_policy=2, "
             "rational_degree_policy=1, substitution=1",
             markdown,
@@ -2699,6 +2965,11 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "`integrate_command_matrix` residual examples by cause: "
+            "special_function_method_required: integrate_residual_case",
+            markdown,
+        )
+        self.assertIn(
             "`integrate_command_matrix` verification regimes: "
             "residual_not_verified=1, verified_by_diff=17",
             markdown,
@@ -2718,12 +2989,14 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertIn(
             "`integrate_command_matrix` trig/hyperbolic policy clusters: "
+            "block7_explicit_reciprocal_trig_log_substitution=7, "
             "block7_hyperbolic_reciprocal_square=1, "
             "block7_sqrt_chain_reciprocal_trig_product=7",
             markdown,
         )
         self.assertIn(
             "`integrate_command_matrix` trig/hyperbolic consolidated policy clusters: "
+            "block7_explicit_reciprocal_trig_log_substitution=7, "
             "block7_hyperbolic_reciprocal_square=1, "
             "block7_sqrt_chain_reciprocal_trig_product=7",
             markdown,
@@ -2769,6 +3042,33 @@ root.direct_small_zero_composition.candidate.three_core_groups
             "`integrate_command_matrix` largest step trace cases: "
             "large_integrate_steps=4096 chars family=by_parts_affine_log "
             "required=1 expected_steps=6",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` residual public phase by cause: "
+            "special_function_method_required total=0.420s cli=0.310s "
+            "overhead_share=26.2% cases=1 slowest=integrate_residual_case",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` residual public phase slowest cases: "
+            "integrate_residual_case total=0.420s cli_simplify=309.000ms "
+            "overhead_share=26.2% cause=special_function_method_required",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` residual shape/orientation summary: "
+            "probes=1 counted=1 max_required_display=4 "
+            "avg_required_display=4.000 "
+            "max_case=shifted_tangent_log_factored_residual "
+            "shape=factored_residual orientation=tan_minus_offset steps=off",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` residual shape/orientation probes: "
+            "shifted_tangent_log_factored_residual status=pass "
+            "shape=factored_residual orientation=tan_minus_offset steps=off "
+            "required_display=4 cli_simplify=49.000ms cli_total=51.000ms",
             markdown,
         )
         self.assertIn(

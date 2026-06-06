@@ -79,6 +79,71 @@ Good combination patterns:
 - `expensive fast path + cheap gate`
 - `repeated extraction + cache/reuse`
 
+## 2026-06-06 - Observe-only discovery: exact-square atanh scaled-root runtime is not caused by the global empty-domain check
+
+- area:
+  - calculus / differentiation / inverse hyperbolic scaled-root symbolic
+    denominator domain and presentation pipeline
+- status:
+  - `discovery/observe-only`
+- observed:
+  - the retained scorecard diagnostic reported
+    `inverse_hyperbolic_root_atanh_denominator_scale_exact_square` at roughly
+    `4-5x` the already-normalized sibling in guardrail/fast runs
+  - direct probes showed `diff(atanh(2*sqrt(x+1)/a), x)` remains around
+    `87-91ms`, matching `diff(atanh(sqrt(4*x+4)/a), x)`, while
+    `diff(atanh(sqrt(x+1)/a), x)` remains around `7-11ms`
+  - a candidate that skipped `atanh_known_empty_open_interval_gap` for the
+    route-owned direct family `atanh(k*sqrt(linear)/a)` preserved result and
+    conditions locally but did not reduce the exact-square or normalized
+    scaled-root runtime
+- decision:
+  - reject the code change; it does not satisfy the retained runtime condition
+  - do not prioritize more global empty-domain bypasses for this hotspot
+    without profiler evidence
+- retained learning:
+  - the cost is not primarily the global `atanh` empty-open-interval proof
+    before the direct route
+  - the next candidate should inspect the scaled-root symbolic-denominator
+    result/condition construction path itself, especially scale-dependent
+    denominator-gap construction, final condition normalization, or repeated
+    polynomial rendering/canonicalization
+
+## 2026-06-06 - Observe-only discovery: exact-square inverse-root diff runtime is not fixed by raw target preservation
+
+- area:
+  - calculus / differentiation / inverse root post-calculus presentation and
+    condition finalization
+- status:
+  - `discovery/observe-only`
+- observed:
+  - scorecard warm runtime identified
+    `inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval`
+    as the slowest `diff_command_matrix` case, around `94ms`
+  - direct probes reproduced the cost for
+    `diff(atanh(sqrt(4*x+4)/a), x)`, usually around `80-100ms`, while the
+    already-normalized sibling `diff(atanh(sqrt(x+1)/a), x)` ran around
+    `6-7ms`
+  - a candidate that built the `atanh` open-interval condition inside the
+    source-side shortcut preserved result and conditions but did not improve
+    the exact-square case
+  - a second candidate that preserved the raw
+    `atanh(sqrt(polynomial)/symbolic_denominator)` target before child
+    recomposition also preserved behavior but did not reduce the exact-square
+    runtime
+- decision:
+  - reject both code changes for this cycle; they do not satisfy the retained
+    runtime success condition for the scorecard hotspot
+  - do not broaden raw-preservation predicates for this family without a
+    profiler-backed call-site showing where the exact-square cost is paid
+- retained learning:
+  - the reusable weakness is not simply target child simplification or duplicate
+    `atanh` condition construction
+  - the next candidate should instrument or isolate the exact-square
+    inverse-root presentation/final-result simplification path, then decide
+    whether the fix belongs in polynomial content extraction, condition display
+    normalization, or post-calculus compact result rendering
+
 ## 2026-05-26 - Discovery observe-only: shifted sqrt reciprocal-trig residual verification times out
 
 - area:
@@ -129,6 +194,69 @@ The burden of proof stays the same:
 - rerun the direct release corpus if the scorecard is good enough
 
 ## Current Entries
+
+## 2026-06-06 - Observe-only discovery: quotient wrapper around log-plus-pole primitive falls into deep fallback
+
+- area:
+  - calculus / differentiation / quotient-wrapped positive-log-plus-linear-pole
+    primitives
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while probing the retained positive-quadratic log/linear-pole derivative
+    family, the sibling
+    `diff((ln(abs(x^2+x+1))+1/(x+2))/(x+2), x)` produced a large residual
+    expression with logarithms and `depth_overflow` warnings
+  - direct source-side partial-fraction primitives for the same general
+    log-plus-pole ingredients can use compact rational routes, so the weakness
+    is the quotient wrapper/product-rule path rather than the base
+    positive-log or reciprocal-linear detection alone
+- decision:
+  - do not promote the probe in this cycle; it is broader than the retained
+    linear-denominator source recovery and would require a separate quotient
+    wrapper policy
+- retained learning:
+  - future work should decide whether a bounded quotient-wrapper recovery can
+    safely expose the existing rational assembly before generic quotient
+    differentiation expands logs and poles into deep traffic
+
+## 2026-06-06 - Observe-only discovery: shifted explicit reciprocal cosine expands before substitution
+
+- area:
+  - calculus / integration / explicit reciprocal trig substitution ordering
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while promoting the retained direct
+    `integrate(2*x/cos(x^2), x)` command-matrix representative, a sibling
+    probe with symbolic external scale and shifted argument,
+    `integrate(2*k*x/cos(x^2+b), x)`, returned a residual
+  - the trace first applied the angle-sum expansion
+    `cos(x^2 + b) -> cos(b)*cos(x^2) - sin(b)*sin(x^2)`, after which the
+    existing secant-table substitution no longer saw the source as
+    `u'/cos(u)`
+  - the unshifted representative proved that the table, domain condition, and
+    derivative verification are already available for the same family
+- decision:
+  - retain only the minimal unshifted `1/cos(u)*u'` matrix cell in this cycle
+  - do not broaden integration matching or suppress angle expansion in the
+    same iteration
+- retained learning:
+  - the reusable weakness is route ordering for shifted explicit reciprocal
+    cosine: trig identity expansion can destroy a substitution shape before
+    the integration table route gets a chance to claim it
+  - a future candidate should gate angle-sum expansion below exact
+    `u'/cos(u)` integration recognition, or add a narrow pre-expansion
+    reciprocal-cosine substitution route that preserves the published
+    `cos(u) != 0` condition
+- follow-up resolution:
+  - the command matrix now promotes
+    `explicit_reciprocal_cosine_symbolic_external_scale_shift_verified_log_domain`
+    for `integrate(2*k*x/cos(x^2+b), x)` with verified derivative equivalence,
+    the published `cos(x^2 + b) != 0` condition, and substitution substeps
+  - 2026-06-06 reprobe returned
+    `k*ln(|tan(x^2 + b) + sec(x^2 + b)|)` without warnings, so this discovery
+    should no longer count as an open observe-only candidate
 
 ## 2026-06-06 - Rejected local win: broad compact diff presentation steals family-owned domain policy
 
@@ -16261,6 +16389,16 @@ The burden of proof stays the same:
   - the next retained candidate should target a bounded simplification or
     post-calculus presentation route for shifted sqrt-chain trig quotients, with
     sibling probes for `b - sqrt(x)`, `sqrt(x) - b`, and `a + sqrt(x)`
+- follow-up resolution:
+  - the command matrix now promotes `shifted_sqrt_chain_tangent_log_domain` for
+    `integrate(tan(b-sqrt(x))/(2*sqrt(x)), x)`, preserving
+    `cos(b - sqrt(x)) != 0` and `x > 0` with visible `u`/`du` substitution
+    evidence
+  - 2026-06-06 reprobes of the integral and
+    `diff(ln(abs(cos(b-sqrt(x)))), x)` returned the compact quotient form
+    without warnings and without the previously observed second-scale
+    simplification cost, so this discovery should no longer count as open
+    runtime pressure
 
 ## 2026-06-06 - Discovery observe-only: cosh^-4 direct primitive presentation shifts cost into verifier
 
@@ -16292,3 +16430,138 @@ The burden of proof stays the same:
   - the next retained candidate should either add a bounded verifier route
     before target recomposition or keep the factored primitive as the verified
     public form
+- follow-up resolution:
+  - added a bounded source-side `diff` route for the direct primitive
+    `scale*tanh(u) - scale*tanh(u)^3/3`, guarded by a raw-target preservation
+    predicate so the target reaches `DiffRule` before generic recomposition
+  - 2026-06-06 reprobes reduced
+    `diff(k*tanh(x^2+b)-k*tanh(x^2+b)^3/3, x)` from roughly 435ms to roughly
+    4.8ms and the corresponding residual zero check from roughly 784ms to
+    roughly 5.7ms, with no warnings and no required conditions
+  - the promoted public `integrate(2*k*x/cosh(x^2+b)^4, x)` presentation stays
+    on the stable factored form; direct primitive promotion remains a separate
+    decision now that verifier cost is no longer the blocking factor
+
+## 2026-06-06 - Discovery observe-only: cached radicand polynomial does not reduce exact-square atanh runtime
+
+- area:
+  - calculus / runtime / inverse hyperbolic scaled-root differentiation
+- status:
+  - `discovery/observe-only`
+- observed:
+  - the scorecard hotspot remains
+    `inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval`,
+    which is materially slower than the non-exact-square sibling
+    `inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval`
+  - threading the normalized radicand `Polynomial` through the
+    scaled-root-over-symbolic-denominator argument parser avoided one local
+    recomputation, but post-build probes stayed around the same runtime:
+    direct `diff(atanh(sqrt(4*x+4)/a), x)` was about 89ms and the matrix case
+    was about 100ms, with the exact-square/baseline ratio still near 4.5x
+  - results and real-domain conditions stayed correct:
+    `a != 0`, `a^2 - 4*x - 4 > 0`, and `x > -1`
+- decision:
+  - reject the cached-radicand transport for this cycle because it adds API
+    surface without retained runtime improvement
+  - keep the existing public exact-square presentation and condition behavior
+- retained learning:
+  - the reusable blocker is downstream of local radicand polynomial extraction,
+    likely in exact-square presentation/finalization or condition/display
+    normalization
+  - the next candidate should instrument or bound that later phase instead of
+    widening the scaled-root argument parser API
+
+## 2026-06-06 - Discovery observe-only: shifted tangent-log residual cost is above the direct integrator
+
+- area:
+  - calculus / runtime / reciprocal trig-log residual pipeline
+- status:
+  - `discovery/observe-only`
+- observed:
+  - the scorecard hotspot remains
+    `explicit_tangent_log_numeric_shifted_residual_condition_alias_dedupe`,
+    classified as `special_function_method_required`
+  - a narrow `cas_math` no-goal detector for the already presimplified residual
+    `cos(x)/(ln(sin(x)/cos(x))*(sin(x)-2*cos(x)))` correctly identified the
+    direct integrator as unsupported while preserving the nearby supported
+    derivative-log case `1/(sin(x)*cos(x)*ln(tan(x)))`
+  - promoting that detector into `IntegrateRule` did not reduce the public
+    command-matrix runtime: `special_function_method_required` stayed around
+    0.08s total for five cases, and the shifted numeric case remained the
+    slowest residual
+- decision:
+  - reject the no-goal detector and engine gate for this cycle because they add
+    route surface without retained runtime improvement
+  - keep the existing residual result and domain conditions:
+    `cos(x) != 0`, `tan(x)-1 != 0`, `tan(x)-2 != 0`, and `tan(x) > 0`
+- retained learning:
+  - the reusable blocker is not the direct `integrate_symbolic_expr` cascade
+    alone; it is in the public residual pipeline around simplification,
+    residual condition preparation, or repeated residual reprocessing
+  - a later attempt to short-circuit the
+    `integrate_symbolic_required_nonzero_conditions` collectors once residual
+    trig-pole and shifted trig-log conditions were already present preserved
+    public output but did not materially lower `simplify_us`:
+    `integrate(1/((tan(x)-2)*ln(tan(x))), x)` stayed around 52ms and the
+    already residual
+    `integrate(cos(x)/(ln(sin(x)/cos(x))*(sin(x)-2*cos(x))), x)` stayed around
+    46ms
+  - this further narrows the reusable blocker toward the factored residual
+    integration/simplification attempt, not the late condition collector list
+  - the next retained candidate should instrument or bound that public residual
+    pipeline phase before adding more no-goal family detectors
+
+## 2026-06-06 - Discovery observe-only: positive rational arctan radius exposes derivative-verifier fragility
+
+- area:
+  - calculus / robustness / rational quadratic arctan integration
+- status:
+  - `discovery/observe-only`
+- observed:
+  - source-side integration can recognize the mathematically valid extension
+    from exact-square radius
+    `integrate(1/((a*x+b)^2+4), x)` to positive non-square rational radius
+    `integrate(1/((a*x+b)^2+2), x)`
+  - the natural public primitive
+    `arctan(sqrt(2)*(a*x+b)/2)/(sqrt(2)*a)` differentiates to zero residual
+    against `1/((a*x+b)^2+2)` and preserves `a != 0`, but the public
+    antiderivative verification emits repeated `depth_overflow` warnings in
+    core simplification
+  - an internal helper-level derivative shortcut for that exact primitive can
+    produce `1/((a*x+b)^2+2)`, but the public `diff(...)` flow still reaches a
+    quotient/chain simplification path first, so the promoted matrix row remains
+    `stderr_fragility`
+  - follow-up probe in a later ROI cycle narrowed the failure: differentiating
+    the already materialized primitive
+    `arctan(sqrt(2)*(a*x+b)/2)/(sqrt(2)*a)` is clean and fast, but the composed
+    public expression
+    `diff(integrate(1/((a*x+b)^2+2), x), x) - 1/((a*x+b)^2+2)` still returns
+    `0` only after repeated `depth_overflow` warnings; the exact-square sibling
+    with `+4` remains clean
+  - a subsequent bounded probe added the same derivative recognizer to the
+    shared `cas_math` symbolic differentiator and temporarily tried a verified
+    source classifier for the arctan positive-quadratic table; the direct
+    primitive stayed clean, but the public nested expression still emitted the
+    same warnings, so the reusable blocker is before or around the public
+    nested evaluation route rather than in table recognition alone
+  - a later promotion attempt generalized exact-square source integration to
+    positive rational radii and normalized the primitive to
+    `arctan(sqrt(2)*(a*x+b)/2)/(sqrt(2)*a)`; direct integration and the `+4`
+    exact-square sibling stayed clean, but `diff(integrate(...), x)` still
+    simplified through a warning-producing pre-route/fallback path
+  - extending direct derivative recognizers to the factored
+    `1/2*sqrt(2)*(a*x+b)` spelling did not remove public `stderr`, which
+    narrows the blocker to simplification-before-route or the nested
+    command-evaluation boundary rather than primitive spelling
+- decision:
+  - reject promotion of the non-square rational radius case for this cycle
+  - keep the existing exact-square radius representative as the live matrix row
+    until the public derivative route can avoid the warning-producing expansion
+- retained learning:
+  - the reusable blocker is not table recognition or domain safety; it is route
+    ordering/presentation for public derivatives of arctan primitives with a
+    rational radical argument scale and symbolic outer scale
+  - the next candidate should add or route a public `DiffRule`/presentation
+    shortcut through composed `diff(integrate(...))` paths for
+    `arctan(sqrt(q)*(a*x+b)/q)/(sqrt(q)*a)` before promoting positive rational
+    non-square radii in integration

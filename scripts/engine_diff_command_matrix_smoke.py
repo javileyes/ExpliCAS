@@ -38,6 +38,15 @@ DEFAULT_CAS_CLI = ROOT / "target" / "release" / "cas_cli"
 Status = Literal["pass", "slow", "fail", "timeout"]
 
 
+EXACT_SQUARE_RUNTIME_PAIR_CASES = (
+    {
+        "name": "inverse_hyperbolic_root_atanh_denominator_scale_exact_square",
+        "baseline_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
+        "exact_square_case": "inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval",
+    },
+)
+
+
 @dataclass(frozen=True)
 class DiffCommandMatrixCase:
     name: str
@@ -246,6 +255,55 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         domain_regime="required_condition",
         trace_regime="trig_chain_rule_with_pole",
         presentation_regime="reciprocal_trig_power",
+    ),
+    DiffCommandMatrixCase(
+        name="elementary_reciprocal_trig_csc_affine_chain_sine_pole",
+        expr="diff(csc(2*x+1), x)",
+        expected_result="-2·csc(2·x + 1)·cot(2·x + 1)",
+        expected_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Calcular la derivada",
+            "Usar regla del cociente",
+            "Derivar el denominador",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="elementary_reciprocal_trig_chain",
+        argument_regime="affine_argument_with_sine_pole",
+        domain_regime="trig_sine_pole_required",
+        trace_regime="reciprocal_trig_quotient_chain_rule",
+        presentation_regime="reciprocal_trig_compact_product",
+    ),
+    DiffCommandMatrixCase(
+        name="elementary_hyperbolic_sinh_affine_chain_trace",
+        expr="diff(sinh(2*x+1), x)",
+        expected_result="2·cosh(2·x + 1)",
+        expected_step_substrings=(
+            "Usar regla de sinh(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="elementary_hyperbolic_chain",
+        argument_regime="affine_argument",
+        trace_regime="hyperbolic_chain_rule",
+        presentation_regime="hyperbolic_chain",
+    ),
+    DiffCommandMatrixCase(
+        name="elementary_hyperbolic_tanh_affine_chain_reciprocal_square",
+        expr="diff(tanh(2*x+1), x)",
+        expected_result="2 / cosh(2·x + 1)^2",
+        expected_step_substrings=(
+            "Usar regla de tanh(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="elementary_hyperbolic_chain",
+        argument_regime="affine_argument",
+        domain_regime="unconditional_cosh_positive",
+        trace_regime="hyperbolic_tanh_chain_rule",
+        presentation_regime="hyperbolic_reciprocal_square",
     ),
     DiffCommandMatrixCase(
         name="log_tangent_positive_source_domain",
@@ -533,6 +591,19 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         argument_regime="scaled_positive_quadratic_plus_scaled_linear_pole",
         domain_regime="linear_poles_required",
         trace_regime="positive_quadratic_log_abs_pole_linearity",
+        presentation_regime="compact_integer_rational_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="positive_quadratic_log_abs_pole_positive_orientation_combined_source_compact",
+        expr="diff(1/4*ln(x^2+1)-1/2*ln(abs(x-1))+1/(2*x-2), x)",
+        expected_result="-x^2 / (x^4 + 2·x^2 + 1 - 2·x^3 - 2·x)",
+        expected_required_display=("x ≠ 1",),
+        expected_step_substrings=("Usar linealidad de la derivada",),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="positive_quadratic_log_abs_pole_primitive",
+        argument_regime="positive_orientation_combined_linear_denominator_source",
+        domain_regime="linear_poles_required",
+        trace_regime="positive_quadratic_log_abs_pole_raw_linearity",
         presentation_regime="compact_integer_rational_quotient",
     ),
     DiffCommandMatrixCase(
@@ -1481,6 +1552,52 @@ def phase_runtime_observability_summary(
     return summary
 
 
+def exact_square_runtime_pair_rows(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_name = {
+        result.get("name"): result
+        for result in results
+        if isinstance(result.get("name"), str)
+    }
+    rows: list[dict[str, Any]] = []
+    for pair in EXACT_SQUARE_RUNTIME_PAIR_CASES:
+        baseline = by_name.get(pair["baseline_case"])
+        exact_square = by_name.get(pair["exact_square_case"])
+        if baseline is None or exact_square is None:
+            continue
+        baseline_elapsed = baseline.get("wall_elapsed_seconds")
+        exact_square_elapsed = exact_square.get("wall_elapsed_seconds")
+        if not isinstance(baseline_elapsed, (int, float)) or not isinstance(
+            exact_square_elapsed,
+            (int, float),
+        ):
+            continue
+        baseline_ms = float(baseline_elapsed) * 1000.0
+        exact_square_ms = float(exact_square_elapsed) * 1000.0
+        row: dict[str, Any] = {
+            "name": pair["name"],
+            "baseline_case": pair["baseline_case"],
+            "exact_square_case": pair["exact_square_case"],
+            "baseline_case_ms": round(baseline_ms, 3),
+            "exact_square_case_ms": round(exact_square_ms, 3),
+            "delta_ms": round(exact_square_ms - baseline_ms, 3),
+        }
+        if baseline_ms > 0.0:
+            row["ratio"] = round(exact_square_ms / baseline_ms, 3)
+        for source, prefix in (
+            (baseline, "baseline"),
+            (exact_square, "exact_square"),
+        ):
+            for key in ("argument_regime", "presentation_regime"):
+                value = source.get(key)
+                if isinstance(value, str):
+                    row[f"{prefix}_{key}"] = value
+        family = exact_square.get("family")
+        if isinstance(family, str):
+            row["family"] = family
+        rows.append(row)
+    return rows
+
+
 def run_matrix(
     cases: tuple[DiffCommandMatrixCase, ...],
     *,
@@ -1570,6 +1687,7 @@ def run_matrix(
         ),
         **phase_runtime_observability_summary(results),
         **payload_observability_summary(results),
+        "exact_square_runtime_pairs": exact_square_runtime_pair_rows(results),
         "cases": results,
     }
 

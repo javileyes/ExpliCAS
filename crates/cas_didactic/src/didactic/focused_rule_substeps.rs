@@ -13246,6 +13246,12 @@ struct TrigLogTableMatch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TrigLogTableTrace {
     AffineArgument,
+    ConstantMultipleAffineArgument {
+        cofactor_display: String,
+        cofactor_latex: String,
+        coefficient: BigRational,
+        slope: BigRational,
+    },
     PolynomialCofactor(Box<TrigLogPolynomialCofactorTrace>),
 }
 
@@ -13311,6 +13317,40 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
                 )
                 .with_before_latex(latex_expr(ctx, table_match.arg))
                 .with_after_latex(latex_expr(ctx, after)),
+            );
+        }
+        TrigLogTableTrace::ConstantMultipleAffineArgument {
+            cofactor_display,
+            cofactor_latex,
+            coefficient,
+            slope,
+        } => {
+            substeps.push(
+                SubStep::new(
+                    "Identificar el argumento afín",
+                    display_expr(ctx, table_match.arg),
+                    display_expr(ctx, after),
+                )
+                .with_before_latex(latex_expr(ctx, table_match.arg))
+                .with_after_latex(latex_expr(ctx, after)),
+            );
+            let scale = coefficient / slope.clone();
+            substeps.push(
+                SubStep::new(
+                    "Ajustar el factor constante",
+                    cofactor_display,
+                    format!(
+                        "{} · {}",
+                        rational_display(&scale),
+                        rational_display(&slope)
+                    ),
+                )
+                .with_before_latex(cofactor_latex)
+                .with_after_latex(format!(
+                    "{}\\cdot {}",
+                    rational_latex(&scale),
+                    rational_latex(&slope)
+                )),
             );
         }
         TrigLogTableTrace::PolynomialCofactor(trace) => {
@@ -13382,6 +13422,11 @@ fn trig_log_table_integrand_arg(
         return Some(table_match);
     }
 
+    if let Some(table_match) = trig_log_constant_multiple_affine_integrand(ctx, integrand, var_name)
+    {
+        return Some(table_match);
+    }
+
     if let Some(table_match) = trig_log_symbolic_scaled_quotient_integrand(ctx, integrand, var_name)
     {
         return Some(table_match);
@@ -13433,6 +13478,161 @@ fn trig_log_table_integrand_arg(
         }),
         _ => None,
     }
+}
+
+fn trig_log_constant_multiple_affine_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    if let Some(table_match) =
+        trig_log_denominator_scaled_affine_integrand(ctx, integrand, var_name)
+    {
+        return Some(table_match);
+    }
+
+    let (negative, factors) = signed_mul_factors(ctx, integrand);
+    let mut coefficient = if negative {
+        -BigRational::one()
+    } else {
+        BigRational::one()
+    };
+    let mut matched_trig: Option<(TrigLogTableKind, ExprId)> = None;
+    for factor in factors {
+        if let Some(value) = as_rational_const(ctx, factor, 8) {
+            coefficient *= value;
+            continue;
+        }
+        let (kind, arg) = trig_log_table_factor_kind_and_arg(ctx, factor)?;
+        if matched_trig.is_some() || !nontrivial_affine_argument(ctx, arg, var_name) {
+            return None;
+        }
+        matched_trig = Some((kind, arg));
+    }
+    if coefficient.is_zero() || coefficient.is_one() {
+        return None;
+    }
+    let (kind, arg) = matched_trig?;
+    Some(TrigLogTableMatch {
+        kind,
+        arg,
+        trace: TrigLogTableTrace::ConstantMultipleAffineArgument {
+            cofactor_display: rational_display(&coefficient),
+            cofactor_latex: rational_latex(&coefficient),
+            coefficient: coefficient.clone(),
+            slope: affine_argument_slope(ctx, arg, var_name)?,
+        },
+    })
+}
+
+fn trig_log_denominator_scaled_affine_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    let (num, den) = as_div(ctx, integrand)?;
+    let numerator_scale = as_rational_const(ctx, num, 8)?;
+    let (denominator_scale, kind, arg) = trig_log_denominator_factor_kind_and_arg(ctx, den)?;
+    let coefficient = numerator_scale / denominator_scale;
+    if coefficient.is_zero()
+        || coefficient.is_one()
+        || !nontrivial_affine_argument(ctx, arg, var_name)
+    {
+        return None;
+    }
+    Some(TrigLogTableMatch {
+        kind,
+        arg,
+        trace: TrigLogTableTrace::ConstantMultipleAffineArgument {
+            cofactor_display: rational_display(&coefficient),
+            cofactor_latex: rational_latex(&coefficient),
+            coefficient: coefficient.clone(),
+            slope: affine_argument_slope(ctx, arg, var_name)?,
+        },
+    })
+}
+
+fn trig_log_denominator_factor_kind_and_arg(
+    ctx: &Context,
+    denominator: ExprId,
+) -> Option<(BigRational, TrigLogTableKind, ExprId)> {
+    if let Some((kind, arg)) = trig_log_denominator_kind_and_arg(ctx, denominator) {
+        return Some((BigRational::one(), kind, arg));
+    }
+
+    let factors = expr_nary::mul_leaves(ctx, denominator);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut denominator_scale = BigRational::one();
+    let mut matched_denominator: Option<(TrigLogTableKind, ExprId)> = None;
+    for factor in factors {
+        if let Some(value) = as_rational_const(ctx, factor, 8) {
+            denominator_scale *= value;
+            continue;
+        }
+        let parts = trig_log_denominator_kind_and_arg(ctx, factor)?;
+        if matched_denominator.replace(parts).is_some() {
+            return None;
+        }
+    }
+    if denominator_scale.is_zero() {
+        return None;
+    }
+    let (kind, arg) = matched_denominator?;
+    Some((denominator_scale, kind, arg))
+}
+
+fn trig_log_denominator_kind_and_arg(
+    ctx: &Context,
+    denominator: ExprId,
+) -> Option<(TrigLogTableKind, ExprId)> {
+    let (builtin, arg) = unary_builtin_arg(ctx, denominator)?;
+    let kind = match builtin {
+        BuiltinFn::Cos => TrigLogTableKind::Secant,
+        BuiltinFn::Sin => TrigLogTableKind::Cosecant,
+        _ => return None,
+    };
+    Some((kind, arg))
+}
+
+fn trig_log_table_factor_kind_and_arg(
+    ctx: &Context,
+    factor: ExprId,
+) -> Option<(TrigLogTableKind, ExprId)> {
+    if let Some((builtin, arg)) = unary_builtin_arg(ctx, factor) {
+        let kind = match builtin {
+            BuiltinFn::Tan => TrigLogTableKind::Tangent,
+            BuiltinFn::Cot => TrigLogTableKind::Cotangent,
+            BuiltinFn::Sec => TrigLogTableKind::Secant,
+            BuiltinFn::Csc => TrigLogTableKind::Cosecant,
+            _ => return None,
+        };
+        return Some((kind, arg));
+    }
+
+    let (num, den) = as_div(ctx, factor)?;
+    let coefficient = as_rational_const(ctx, num, 8)?;
+    if !coefficient.is_one() {
+        return None;
+    }
+    trig_log_denominator_kind_and_arg(ctx, den)
+}
+
+fn affine_argument_slope(ctx: &Context, arg: ExprId, var_name: &str) -> Option<BigRational> {
+    let Ok(poly) = Polynomial::from_expr(ctx, arg, var_name) else {
+        return None;
+    };
+    if poly.degree() != 1 {
+        return None;
+    }
+    let slope = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    (!slope.is_zero()).then_some(slope)
 }
 
 fn trig_log_sqrt_chain_integrand(
@@ -13842,27 +14042,37 @@ fn trig_log_polynomial_reciprocal_integrand(
 ) -> Option<TrigLogTableMatch> {
     match ctx.get(integrand) {
         Expr::Div(num, den) => {
-            let numerator = Polynomial::from_expr(ctx, *num, var_name).ok()?;
-            trig_log_polynomial_reciprocal_arg(ctx, numerator, *den, var_name).map(
-                |(kind, arg, derivative, scale)| {
-                    let (derivative_display, derivative_latex) =
-                        polynomial_display_and_latex(ctx, &derivative);
-                    TrigLogTableMatch {
-                        kind,
-                        arg,
-                        trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
-                            TrigLogPolynomialCofactorTrace {
-                                cofactor_display: display_expr(ctx, *num),
-                                cofactor_latex: latex_expr(ctx, *num),
-                                derivative_display,
-                                derivative_latex,
-                                scale,
-                                symbolic_scale_display: None,
-                                symbolic_scale_latex: None,
-                            },
-                        )),
-                    }
-                },
+            if let Ok(numerator) = Polynomial::from_expr(ctx, *num, var_name) {
+                return trig_log_polynomial_reciprocal_arg(ctx, numerator, *den, var_name).map(
+                    |(kind, arg, derivative, scale)| {
+                        let (derivative_display, derivative_latex) =
+                            polynomial_display_and_latex(ctx, &derivative);
+                        TrigLogTableMatch {
+                            kind,
+                            arg,
+                            trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
+                                TrigLogPolynomialCofactorTrace {
+                                    cofactor_display: display_expr(ctx, *num),
+                                    cofactor_latex: latex_expr(ctx, *num),
+                                    derivative_display,
+                                    derivative_latex,
+                                    scale,
+                                    symbolic_scale_display: None,
+                                    symbolic_scale_latex: None,
+                                },
+                            )),
+                        }
+                    },
+                );
+            }
+
+            let (negative, numerator_factors) = signed_mul_factors(ctx, *num);
+            trig_log_symbolic_scaled_polynomial_reciprocal_arg(
+                ctx,
+                negative,
+                &numerator_factors,
+                *den,
+                var_name,
             )
         }
         Expr::Mul(left, right) => trig_log_scaled_polynomial_reciprocal_integrand(
@@ -13886,37 +14096,86 @@ fn trig_log_scaled_polynomial_reciprocal_integrand(
     let Expr::Div(num, den) = ctx.get(div_expr) else {
         return None;
     };
-    let numerator = Polynomial::from_expr(ctx, *num, var_name).ok()?;
-    let numerator = scale_polynomial(&numerator, &scale);
-    trig_log_polynomial_reciprocal_arg(ctx, numerator, *den, var_name).map(
-        |(kind, arg, derivative, scale)| {
-            let (derivative_display, derivative_latex) =
-                polynomial_display_and_latex(ctx, &derivative);
-            TrigLogTableMatch {
-                kind,
-                arg,
-                trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
-                    TrigLogPolynomialCofactorTrace {
-                        cofactor_display: format!(
-                            "{} · {}",
-                            display_expr(ctx, scale_expr),
-                            display_expr(ctx, *num)
-                        ),
-                        cofactor_latex: format!(
-                            "{}\\cdot {}",
-                            latex_expr(ctx, scale_expr),
-                            latex_expr(ctx, *num)
-                        ),
-                        derivative_display,
-                        derivative_latex,
-                        scale,
-                        symbolic_scale_display: None,
-                        symbolic_scale_latex: None,
-                    },
-                )),
-            }
-        },
+    if let Ok(numerator) = Polynomial::from_expr(ctx, *num, var_name) {
+        let numerator = scale_polynomial(&numerator, &scale);
+        return trig_log_polynomial_reciprocal_arg(ctx, numerator, *den, var_name).map(
+            |(kind, arg, derivative, scale)| {
+                let (derivative_display, derivative_latex) =
+                    polynomial_display_and_latex(ctx, &derivative);
+                TrigLogTableMatch {
+                    kind,
+                    arg,
+                    trace: TrigLogTableTrace::PolynomialCofactor(Box::new(
+                        TrigLogPolynomialCofactorTrace {
+                            cofactor_display: format!(
+                                "{} · {}",
+                                display_expr(ctx, scale_expr),
+                                display_expr(ctx, *num)
+                            ),
+                            cofactor_latex: format!(
+                                "{}\\cdot {}",
+                                latex_expr(ctx, scale_expr),
+                                latex_expr(ctx, *num)
+                            ),
+                            derivative_display,
+                            derivative_latex,
+                            scale,
+                            symbolic_scale_display: None,
+                            symbolic_scale_latex: None,
+                        },
+                    )),
+                }
+            },
+        );
+    }
+
+    let (scale_negative, mut numerator_factors) = signed_mul_factors(ctx, scale_expr);
+    let (num_negative, num_factors) = signed_mul_factors(ctx, *num);
+    numerator_factors.extend(num_factors);
+    trig_log_symbolic_scaled_polynomial_reciprocal_arg(
+        ctx,
+        scale_negative != num_negative,
+        &numerator_factors,
+        *den,
+        var_name,
     )
+}
+
+fn trig_log_symbolic_scaled_polynomial_reciprocal_arg(
+    ctx: &Context,
+    negative: bool,
+    numerator_factors: &[ExprId],
+    den: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    let (den_builtin, den_arg) = unary_builtin_arg(ctx, den)?;
+    let kind = match den_builtin {
+        BuiltinFn::Cos => TrigLogTableKind::Secant,
+        BuiltinFn::Sin => TrigLogTableKind::Cosecant,
+        _ => return None,
+    };
+
+    let trace = polynomial_derivative_cofactor_trace_with_symbolic_scale(
+        ctx,
+        negative,
+        numerator_factors,
+        den_arg,
+        var_name,
+    )?;
+
+    Some(TrigLogTableMatch {
+        kind,
+        arg: den_arg,
+        trace: TrigLogTableTrace::PolynomialCofactor(Box::new(TrigLogPolynomialCofactorTrace {
+            cofactor_display: trace.cofactor_display,
+            cofactor_latex: trace.cofactor_latex,
+            derivative_display: trace.derivative_display,
+            derivative_latex: trace.derivative_latex,
+            scale: trace.scale,
+            symbolic_scale_display: trace.symbolic_scale_display,
+            symbolic_scale_latex: trace.symbolic_scale_latex,
+        })),
+    })
 }
 
 fn trig_log_polynomial_reciprocal_arg(
@@ -13932,7 +14191,7 @@ fn trig_log_polynomial_reciprocal_arg(
         _ => return None,
     };
 
-    let arg_poly = Polynomial::from_expr(ctx, den_arg, var_name).ok()?;
+    let arg_poly = polynomial_trace_arg_ignoring_independent_addends(ctx, den_arg, var_name)?;
     if arg_poly.degree() <= 1 {
         return None;
     }

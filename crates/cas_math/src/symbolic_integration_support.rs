@@ -6919,13 +6919,26 @@ fn reciprocal_trig_log_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    if !is_number(ctx, num, 1) {
+    let numerator_scale = rational_constant_value(ctx, num)?;
+    if numerator_scale.is_zero() {
         return None;
     }
 
-    let (builtin, arg) = reciprocal_trig_reciprocal_parts_from_denominator(ctx, den)?;
+    let (denominator_scale, builtin, arg) = scaled_reciprocal_trig_log_denominator(ctx, den)?;
     let (a, _) = get_linear_coeffs(ctx, arg, var)?;
-    sec_csc_log_antiderivative(ctx, builtin, arg, a)
+    if let Some(slope) = rational_constant_value(ctx, a) {
+        let effective_slope = slope * denominator_scale.clone() / numerator_scale.clone();
+        if !effective_slope.is_zero() {
+            let effective_slope = ctx.add(Expr::Number(effective_slope));
+            return sec_csc_log_antiderivative(ctx, builtin, arg, effective_slope);
+        }
+    }
+    let primitive = sec_csc_log_antiderivative(ctx, builtin, arg, a)?;
+    Some(scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        numerator_scale / denominator_scale,
+        primitive,
+    ))
 }
 
 fn polynomial_reciprocal_trig_log_antiderivative(
@@ -6939,20 +6952,84 @@ fn polynomial_reciprocal_trig_log_antiderivative(
         return None;
     }
 
-    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
-    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
-    if arg_poly.degree() <= 1 {
-        return None;
-    }
-    let derivative = arg_poly.derivative();
-    let scale = constant_polynomial_ratio(&numerator, &derivative)?;
-    if scale.is_zero() {
+    let scale = symbolic_linear_cofactor_scale_expr(ctx, num, arg, var)?;
+    if is_number(ctx, scale, 0) {
         return None;
     }
 
     let one = ctx.num(1);
     let primitive = sec_csc_log_antiderivative(ctx, builtin, arg, one)?;
-    Some(scale_rational_term(ctx, scale, primitive))
+    Some(
+        scale_expr_reciprocal_integration_result_preserving_presentation(
+            ctx, scale, primitive, false,
+        ),
+    )
+}
+
+fn scaled_reciprocal_trig_log_denominator(
+    ctx: &Context,
+    den: ExprId,
+) -> Option<(BigRational, BuiltinFn, ExprId)> {
+    if let Some((builtin, arg)) = reciprocal_trig_reciprocal_parts_from_denominator(ctx, den) {
+        return Some((BigRational::one(), builtin, arg));
+    }
+
+    let factors = mul_leaves(ctx, den);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut denominator_scale = BigRational::one();
+    let mut matched_denominator: Option<(BuiltinFn, ExprId)> = None;
+    for factor in factors {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            denominator_scale *= value;
+            continue;
+        }
+        let parts = reciprocal_trig_reciprocal_parts_from_denominator(ctx, factor)?;
+        if matched_denominator.replace(parts).is_some() {
+            return None;
+        }
+    }
+
+    if denominator_scale.is_zero() {
+        return None;
+    }
+    let (builtin, arg) = matched_denominator?;
+    Some((denominator_scale, builtin, arg))
+}
+
+fn scaled_reciprocal_trig_log_denominator_call(
+    ctx: &Context,
+    den: ExprId,
+) -> Option<(BigRational, BuiltinFn, ExprId)> {
+    if let Some((builtin, arg)) = reciprocal_trig_denominator_call(ctx, den) {
+        return Some((BigRational::one(), builtin, arg));
+    }
+
+    let factors = mul_leaves(ctx, den);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut denominator_scale = BigRational::one();
+    let mut matched_denominator: Option<(BuiltinFn, ExprId)> = None;
+    for factor in factors {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            denominator_scale *= value;
+            continue;
+        }
+        let parts = reciprocal_trig_denominator_call(ctx, factor)?;
+        if matched_denominator.replace(parts).is_some() {
+            return None;
+        }
+    }
+
+    if denominator_scale.is_zero() {
+        return None;
+    }
+    let (builtin, arg) = matched_denominator?;
+    Some((denominator_scale, builtin, arg))
 }
 
 pub fn integrate_symbolic_is_trig_log_substitution_target(
@@ -6980,6 +7057,14 @@ pub fn integrate_symbolic_is_trig_log_substitution_target(
 }
 
 fn trig_log_required_nonzero(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    if let Some(inner) = constant_scaled_integrand_inner(ctx, expr, var) {
+        return trig_log_required_nonzero(ctx, inner, var);
+    }
+
+    if matches!(ctx.get(expr), Expr::Div(_, _)) {
+        return reciprocal_trig_log_required_nonzero(ctx, expr, var);
+    }
+
     let (builtin, arg) = match ctx.get(expr).clone() {
         Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(fn_id)?, args[0]),
         _ => return None,
@@ -7070,32 +7155,249 @@ fn reciprocal_trig_log_required_nonzero(
         _ => return None,
     };
 
-    let (den_builtin, arg) = reciprocal_trig_denominator_call(ctx, den)?;
+    let (denominator_scale, den_builtin, arg) =
+        scaled_reciprocal_trig_log_denominator_call(ctx, den)?;
 
-    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
-    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
-    let derivative = arg_poly.derivative();
-    let scale = constant_polynomial_ratio(&numerator, &derivative)?;
-    if scale.is_zero() {
+    let scale = symbolic_linear_cofactor_scale_expr(ctx, num, arg, var)?;
+    if is_number(ctx, scale, 0) || denominator_scale.is_zero() {
         return None;
     }
 
     build_reciprocal_trig_denominator_nonzero_condition(ctx, den_builtin, arg)
 }
 
-fn positive_one_plus_square_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+fn positive_rational_constant_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let value = rational_constant_value(ctx, expr)?;
+    positive_rational_sqrt_expr(ctx, &value)
+}
+
+fn positive_square_constant_plus_square_arg(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let Expr::Add(left, right) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    if let Some(root) = positive_rational_constant_root(ctx, left) {
+        if let Some(arg) = square_base(ctx, right) {
+            return Some((arg, root));
+        }
+    }
+    if let Some(root) = positive_rational_constant_root(ctx, right) {
+        if let Some(arg) = square_base(ctx, left) {
+            return Some((arg, root));
+        }
+    }
+
+    None
+}
+
+fn positive_one_plus_square_arg(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (arg, radius) = positive_square_constant_plus_square_arg(ctx, expr)?;
+    is_number(ctx, radius, 1).then_some(arg)
+}
+
+fn positive_one_plus_non_one_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Add(left, right) = ctx.get(expr) else {
         return None;
     };
 
     if is_number(ctx, *left, 1) {
-        return square_base(ctx, *right);
+        return Some(*right);
     }
     if is_number(ctx, *right, 1) {
-        return square_base(ctx, *left);
+        return Some(*left);
     }
 
     None
+}
+
+fn positive_square_constant_plus_expanded_square_arg(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let mut remainder_terms = Vec::new();
+    let mut constant_root = None;
+
+    for (term, sign) in AddView::from_expr(ctx, expr).terms {
+        if sign == Sign::Pos && constant_root.is_none() {
+            if let Some(root) = positive_rational_constant_root(ctx, term) {
+                constant_root = Some(root);
+                continue;
+            }
+        }
+        remainder_terms.push(match sign {
+            Sign::Pos => term,
+            Sign::Neg => ctx.add(Expr::Neg(term)),
+        });
+    }
+
+    let constant_root = constant_root?;
+    if remainder_terms.len() != 3 {
+        return None;
+    }
+
+    let square = build_balanced_add(ctx, &remainder_terms);
+    let (left, right, is_sub) =
+        crate::perfect_square_support::try_match_perfect_square_trinomial(ctx, square)?;
+    let arg = if is_sub {
+        ctx.add(Expr::Sub(left, right))
+    } else {
+        ctx.add(Expr::Add(left, right))
+    };
+    Some((arg, constant_root))
+}
+
+fn arctan_positive_quadratic_arg_and_scale(
+    ctx: &mut Context,
+    arg: ExprId,
+    radius: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let (arg, slope) = symbolic_scaled_linear_arg_and_slope(ctx, arg, var)?;
+    if is_number(ctx, radius, 1) {
+        return Some((arg, slope));
+    }
+
+    let scaled_arg = match ctx.get(radius).clone() {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Sqrt) =>
+        {
+            if let Some(radicand) = rational_constant_value(ctx, args[0]) {
+                let numerator = mul2_raw(ctx, radius, arg);
+                let denominator = ctx.add(Expr::Number(radicand));
+                ctx.add(Expr::Div(numerator, denominator))
+            } else {
+                ctx.add(Expr::Div(arg, radius))
+            }
+        }
+        _ => ctx.add(Expr::Div(arg, radius)),
+    };
+    let scale = mul2_raw(ctx, slope, radius);
+    Some((scaled_arg, scale))
+}
+
+pub fn integrate_symbolic_is_positive_rational_quadratic_arctan_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return false,
+    };
+
+    if !matches!(ctx.get(num), Expr::Number(n) if n.is_one()) {
+        return false;
+    }
+
+    symbolic_scaled_linear_square_arg_and_slope(ctx, den, var).is_some()
+}
+
+fn positive_one_plus_expanded_square_arg(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let mut remainder_terms = Vec::new();
+    let mut found_one = false;
+
+    for (term, sign) in AddView::from_expr(ctx, expr).terms {
+        if sign == Sign::Pos && is_number(ctx, term, 1) && !found_one {
+            found_one = true;
+            continue;
+        }
+        remainder_terms.push(match sign {
+            Sign::Pos => term,
+            Sign::Neg => ctx.add(Expr::Neg(term)),
+        });
+    }
+
+    if !found_one || remainder_terms.len() != 3 {
+        return None;
+    }
+
+    let square = build_balanced_add(ctx, &remainder_terms);
+    let (left, right, is_sub) =
+        crate::perfect_square_support::try_match_perfect_square_trinomial(ctx, square)?;
+    Some(if is_sub {
+        ctx.add(Expr::Sub(left, right))
+    } else {
+        ctx.add(Expr::Add(left, right))
+    })
+}
+
+fn symbolic_scaled_linear_arg_and_slope(
+    ctx: &mut Context,
+    arg: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let (slope, _) = get_linear_coeffs(ctx, arg, var)?;
+    if contains_named_var(ctx, slope, var)
+        || is_number(ctx, slope, 0)
+        || rational_constant_value(ctx, slope).is_some()
+    {
+        return None;
+    }
+
+    Some((arg, slope))
+}
+
+fn symbolic_scaled_linear_square_arg_and_slope(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    if let Some((arg, radius)) = positive_square_constant_plus_square_arg(ctx, expr) {
+        return arctan_positive_quadratic_arg_and_scale(ctx, arg, radius, var);
+    }
+
+    if let Some((arg, radius)) = positive_square_constant_plus_expanded_square_arg(ctx, expr) {
+        return arctan_positive_quadratic_arg_and_scale(ctx, arg, radius, var);
+    }
+
+    if let Some(arg) = positive_one_plus_expanded_square_arg(ctx, expr) {
+        return symbolic_scaled_linear_arg_and_slope(ctx, arg, var);
+    }
+
+    let square_term = positive_one_plus_non_one_term(ctx, expr)?;
+    let factors = mul_leaves(ctx, square_term);
+    let mut linear_base = None;
+    let mut linear_slope = None;
+    let mut scale_bases = Vec::new();
+
+    for factor in factors {
+        let base = square_base(ctx, factor)?;
+        if contains_named_var(ctx, base, var) {
+            if linear_base.is_some() {
+                return None;
+            }
+            let (slope, _) = get_linear_coeffs(ctx, base, var)?;
+            if contains_named_var(ctx, slope, var) || is_number(ctx, slope, 0) {
+                return None;
+            }
+            linear_base = Some(base);
+            linear_slope = Some(slope);
+        } else {
+            scale_bases.push(base);
+        }
+    }
+
+    if linear_base.is_none() || scale_bases.is_empty() {
+        return None;
+    }
+
+    let scale = build_balanced_mul(ctx, &scale_bases);
+    if rational_constant_value(ctx, scale).is_some() {
+        return None;
+    }
+
+    let linear_base = linear_base?;
+    let slope = linear_slope?;
+    let arg = mul2_raw(ctx, scale, linear_base);
+    let derivative_scale = if is_number(ctx, slope, 1) {
+        scale
+    } else {
+        mul2_raw(ctx, scale, slope)
+    };
+    Some((arg, derivative_scale))
 }
 
 fn square_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -7103,6 +7405,37 @@ fn square_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         return None;
     };
     is_number(ctx, *exp, 2).then_some(*base)
+}
+
+fn arctan_symbolic_scaled_variable_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !is_number(ctx, num, 1) {
+        return None;
+    }
+
+    let (arg, scale) = symbolic_scaled_linear_square_arg_and_slope(ctx, den, var)?;
+    let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![arg]);
+    Some(ctx.add(Expr::Div(arctan, scale)))
+}
+
+fn arctan_symbolic_scaled_variable_required_nonzero(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if !is_number(ctx, num, 1) {
+        return None;
+    }
+
+    let (_, scale) = symbolic_scaled_linear_square_arg_and_slope(ctx, den, var)?;
+    Some(scale)
 }
 
 fn arctan_unary_derivative_substitution_antiderivative(
@@ -16592,6 +16925,7 @@ const REQUIRED_NONZERO_CONDITION_COLLECTORS_BEFORE_RESIDUAL_SCAN: &[RequiredCond
     )];
 
 const REQUIRED_NONZERO_CONDITION_COLLECTORS_AFTER_RESIDUAL_SCAN: &[RequiredConditionCollector] = &[
+    RequiredConditionCollector::Optional(arctan_symbolic_scaled_variable_required_nonzero),
     RequiredConditionCollector::Optional(
         arctan_sqrt_var_symbolic_square_shift_required_nonzero_parameter,
     ),
@@ -17662,6 +17996,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         }
 
         if let Some(integral) = arctan_polynomial_substitution_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = arctan_symbolic_scaled_variable_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
 
@@ -19960,6 +20298,24 @@ mod tests {
         assert!(
             result.contains("x^2") && result.contains("arctan(x)"),
             "expected polynomial quotient plus arctan remainder, got {result}"
+        );
+    }
+
+    #[test]
+    fn integrates_positive_rational_radius_arctan_quadratic() {
+        let mut ctx = Context::new();
+        let expr = parse("1/((a*x+b)^2+2)", &mut ctx).expect("parse");
+
+        assert!(
+            super::integrate_symbolic_is_positive_rational_quadratic_arctan_target(
+                &mut ctx, expr, "x"
+            )
+        );
+
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "arctan(sqrt(2) * (a * x + b) / 2) / (a * sqrt(2))"
         );
     }
 

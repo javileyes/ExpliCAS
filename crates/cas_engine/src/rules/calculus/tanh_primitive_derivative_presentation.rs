@@ -6,19 +6,30 @@
 //! domain policy; this module only separates the family-specific parser and
 //! presentation builder from `calculus/mod.rs`.
 
-use super::polynomial_support::nonzero_affine_variable_derivative;
+use super::polynomial_support::{
+    nonzero_affine_variable_derivative, polynomial_derivative_expr_for_calculus_presentation,
+};
 use super::presentation_utils::unwrap_internal_hold_for_calculus;
 use super::scalar_presentation::scale_expr_for_calculus_presentation;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_nary::Sign;
+use cas_math::expr_predicates::contains_named_var;
 use num_rational::BigRational;
 use num_traits::{One, ToPrimitive, Zero};
 
+struct ScaledTanhPrimitiveTerm {
+    arg: ExprId,
+    power: u32,
+    coeff: BigRational,
+    scale_factors: Vec<ExprId>,
+}
+
 fn tanh_power_term_for_derivative_presentation(
-    ctx: &mut Context,
+    ctx: &Context,
     expr: ExprId,
 ) -> Option<(ExprId, u32)> {
-    let expr = unwrap_internal_hold_for_calculus(ctx, expr);
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
         if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Tanh) {
             return Some((args[0], 1));
@@ -46,6 +57,181 @@ fn tanh_power_term_for_derivative_presentation(
     } else {
         None
     }
+}
+
+fn flatten_scaled_tanh_primitive_factors(
+    ctx: &Context,
+    expr: ExprId,
+    coeff: &mut BigRational,
+    factors: &mut Vec<ExprId>,
+) -> Option<()> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Number(value) => {
+            *coeff *= value;
+            Some(())
+        }
+        Expr::Neg(inner) => {
+            *coeff = -coeff.clone();
+            flatten_scaled_tanh_primitive_factors(ctx, inner, coeff, factors)
+        }
+        Expr::Div(num, den) => {
+            let den_scale = cas_ast::views::as_rational_const(ctx, den, 8)?;
+            if den_scale.is_zero() {
+                return None;
+            }
+            *coeff /= den_scale;
+            flatten_scaled_tanh_primitive_factors(ctx, num, coeff, factors)
+        }
+        Expr::Mul(_, _) => {
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                flatten_scaled_tanh_primitive_factors(ctx, factor, coeff, factors)?;
+            }
+            Some(())
+        }
+        _ => {
+            factors.push(expr);
+            Some(())
+        }
+    }
+}
+
+fn scaled_tanh_cubic_primitive_term(
+    ctx: &Context,
+    term: ExprId,
+    sign: Sign,
+    var_name: &str,
+) -> Option<ScaledTanhPrimitiveTerm> {
+    let mut coeff = match sign {
+        Sign::Pos => BigRational::one(),
+        Sign::Neg => -BigRational::one(),
+    };
+    let mut factors = Vec::new();
+    flatten_scaled_tanh_primitive_factors(ctx, term, &mut coeff, &mut factors)?;
+    if coeff.is_zero() {
+        return None;
+    }
+
+    let mut tanh_part = None;
+    let mut scale_factors = Vec::new();
+    for factor in factors {
+        if let Some((arg, power)) = tanh_power_term_for_derivative_presentation(ctx, factor) {
+            if tanh_part.replace((arg, power)).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        if contains_named_var(ctx, factor, var_name) {
+            return None;
+        }
+        scale_factors.push(factor);
+    }
+
+    let (arg, power) = tanh_part?;
+    Some(ScaledTanhPrimitiveTerm {
+        arg,
+        power,
+        coeff,
+        scale_factors,
+    })
+}
+
+fn matching_scale_factors(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right.iter())
+            .all(|(left, right)| compare_expr(ctx, *left, *right) == std::cmp::Ordering::Equal)
+}
+
+fn tanh_cubic_sech_fourth_primitive_parts(
+    ctx: &Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<ExprId>, BigRational)> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, target);
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut linear_term = None;
+    let mut cubic_term = None;
+    for (term, sign) in terms {
+        let term = scaled_tanh_cubic_primitive_term(ctx, term, sign, var_name)?;
+        if term.power == 1 {
+            if linear_term.replace(term).is_some() {
+                return None;
+            }
+        } else if term.power == 3 {
+            if cubic_term.replace(term).is_some() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+
+    let linear_term: ScaledTanhPrimitiveTerm = linear_term?;
+    let cubic_term: ScaledTanhPrimitiveTerm = cubic_term?;
+    if compare_expr(ctx, linear_term.arg, cubic_term.arg) != std::cmp::Ordering::Equal {
+        return None;
+    }
+    if !matching_scale_factors(ctx, &linear_term.scale_factors, &cubic_term.scale_factors) {
+        return None;
+    }
+    if cubic_term.coeff != -(linear_term.coeff.clone() / BigRational::from_integer(3.into())) {
+        return None;
+    }
+
+    Some((
+        linear_term.arg,
+        linear_term.scale_factors,
+        linear_term.coeff,
+    ))
+}
+
+pub(crate) fn diff_target_is_tanh_cubic_sech_fourth_primitive(
+    ctx: &Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    tanh_cubic_sech_fourth_primitive_parts(ctx, target, var_name).is_some()
+}
+
+pub(super) fn tanh_cubic_sech_fourth_primitive_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (arg, scale_factors, coeff) =
+        tanh_cubic_sech_fourth_primitive_parts(ctx, target, var_name)?;
+    let arg_derivative = if let Some(derivative) =
+        polynomial_derivative_expr_for_calculus_presentation(ctx, arg, var_name)
+    {
+        derivative
+    } else {
+        cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(ctx, arg, var_name)?
+    };
+    if cas_ast::views::as_rational_const(ctx, arg_derivative, 8)
+        .is_some_and(|value| value.is_zero())
+    {
+        return None;
+    }
+
+    let mut numerator_factors = scale_factors;
+    numerator_factors.push(arg_derivative);
+    let numerator_core = match numerator_factors.as_slice() {
+        [] => ctx.num(1),
+        [single] => *single,
+        _ => cas_math::expr_nary::build_balanced_mul(ctx, &numerator_factors),
+    };
+    let numerator = scale_expr_for_calculus_presentation(ctx, coeff, numerator_core);
+
+    let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
+    let four = ctx.num(4);
+    let denominator = ctx.add(Expr::Pow(cosh_arg, four));
+    Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
 fn collect_scaled_tanh_even_primitive_terms_for_derivative_presentation(
@@ -243,6 +429,10 @@ mod tests {
     use cas_parser::parse;
 
     use super::affine_tanh_even_primitive_derivative_presentation;
+    use super::{
+        diff_target_is_tanh_cubic_sech_fourth_primitive,
+        tanh_cubic_sech_fourth_primitive_derivative_presentation,
+    };
 
     fn rendered(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
@@ -306,5 +496,35 @@ mod tests {
         let compact =
             affine_tanh_even_primitive_derivative_presentation(&mut ctx, expr, "x").unwrap();
         assert_eq!(rendered(&ctx, compact), "tanh(1 - 2 * x)^8");
+    }
+
+    #[test]
+    fn tanh_cubic_sech_fourth_primitive_derivative_accepts_symbolic_scale() {
+        let mut ctx = Context::new();
+        let expr = parse("k*tanh(x^2+b)-k*tanh(x^2+b)^3/3", &mut ctx).unwrap();
+
+        assert!(diff_target_is_tanh_cubic_sech_fourth_primitive(
+            &ctx, expr, "x"
+        ));
+        let compact =
+            tanh_cubic_sech_fourth_primitive_derivative_presentation(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "k * 2 * x^(2 - 1) / cosh(x^2 + b)^4"
+        );
+    }
+
+    #[test]
+    fn tanh_cubic_sech_fourth_primitive_derivative_rejects_var_scale() {
+        let mut ctx = Context::new();
+        let expr = parse("x*tanh(x^2+b)-x*tanh(x^2+b)^3/3", &mut ctx).unwrap();
+
+        assert!(!diff_target_is_tanh_cubic_sech_fourth_primitive(
+            &ctx, expr, "x"
+        ));
+        assert!(
+            tanh_cubic_sech_fourth_primitive_derivative_presentation(&mut ctx, expr, "x").is_none()
+        );
     }
 }
