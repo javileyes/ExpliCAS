@@ -28,30 +28,43 @@ pub(super) fn compact_rationalized_sqrt_denominator_quotient_for_calculus_presen
         let Some(base) = extract_square_root_base(ctx, numerator_factors[idx]) else {
             continue;
         };
-        let Some(denominator_scale) = positive_rational_scale_between_exprs(ctx, denominator, base)
+        let mut denominator_factors = cas_math::expr_nary::mul_leaves(ctx, denominator);
+        let Some((base_factor_idx, denominator_scale)) = denominator_factors
+            .iter()
+            .enumerate()
+            .find_map(|(factor_idx, factor)| {
+                positive_rational_scale_between_exprs(ctx, *factor, base)
+                    .map(|scale| (factor_idx, scale))
+            })
         else {
             continue;
         };
 
         numerator_factors.remove(idx);
-        let compact_numerator = match numerator_factors.as_slice() {
-            [] => ctx.num(1),
-            [single] => *single,
-            _ => cas_math::expr_nary::build_balanced_mul(ctx, &numerator_factors),
-        };
+        let compact_numerator = compact_mul_factors(ctx, &numerator_factors);
+        denominator_factors.remove(base_factor_idx);
 
         let sqrt_base = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
-        let mut denominator_factors = Vec::new();
+        let mut compact_denominator_factors = Vec::new();
         if !denominator_scale.is_one() {
-            denominator_factors.push(ctx.add(Expr::Number(denominator_scale)));
+            let denominator_scale = ctx.add(Expr::Number(denominator_scale));
+            compact_denominator_factors.push(denominator_scale);
         }
-        denominator_factors.push(sqrt_base);
-        let compact_denominator =
-            cas_math::expr_nary::build_balanced_mul(ctx, &denominator_factors);
+        compact_denominator_factors.push(sqrt_base);
+        compact_denominator_factors.extend(denominator_factors);
+        let compact_denominator = compact_mul_factors(ctx, &compact_denominator_factors);
         return Some(ctx.add(Expr::Div(compact_numerator, compact_denominator)));
     }
 
     None
+}
+
+fn compact_mul_factors(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
+    match factors {
+        [] => ctx.num(1),
+        [single] => *single,
+        _ => cas_math::expr_nary::build_balanced_mul(ctx, factors),
+    }
 }
 
 pub(super) fn compact_acosh_surd_width_arg_for_integration_presentation(
@@ -238,6 +251,10 @@ mod tests {
                 "cos(x) / (2 * sqrt(sin(x) + 1))",
             ),
             ("sqrt(ln(x)+1)/(ln(x)+1)", "1 / sqrt(ln(x) + 1)"),
+            (
+                "a*sqrt(x+1)/((x+1)*(a^2-4*x-4))",
+                "a / (sqrt(x + 1) * (a^2 - 4 * x - 4))",
+            ),
         ];
 
         for (input, expected) in cases {

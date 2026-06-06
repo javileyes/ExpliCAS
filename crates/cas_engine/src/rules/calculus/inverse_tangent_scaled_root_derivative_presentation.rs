@@ -1,4 +1,5 @@
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::polynomial::Polynomial;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
@@ -125,55 +126,38 @@ pub(super) fn inverse_tangent_sqrt_over_symbolic_constant_derivative_presentatio
             ctx, args[0], var_name,
         )?;
     let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
-    let derivative_poly = radicand_poly.derivative();
-    if derivative_poly.is_zero() {
-        return Some(ctx.num(0));
-    }
+    inverse_tangent_sqrt_over_symbolic_constant_derivative_from_parts(
+        ctx,
+        derivative_sign,
+        radicand,
+        scale_denominator,
+        argument_sign,
+        sqrt_scale,
+        &radicand_poly,
+    )
+}
 
-    let derivative = derivative_poly.to_expr(ctx);
-    let (derivative_core, derivative_content) =
-        split_polynomial_content_for_calculus_presentation(ctx, derivative);
-    let coefficient = derivative_sign
-        * argument_sign
-        * sqrt_scale.clone()
-        * derivative_content
-        * BigRational::new(1.into(), 2.into());
-    let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
-
-    let derivative_core_is_one = cas_ast::views::as_rational_const(ctx, derivative_core, 8)
-        .is_some_and(|value| value.is_one());
-    let numerator_core = if derivative_core_is_one {
-        scale_denominator
-    } else {
-        cas_math::expr_nary::build_balanced_mul(ctx, &[scale_denominator, derivative_core])
-    };
-
-    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
-    let scale_square = squared_expr_for_compact_gap_presentation(ctx, scale_denominator);
-    let scaled_radicand =
-        scale_expr_for_calculus_presentation(ctx, sqrt_scale.clone() * sqrt_scale, radicand);
-    let denominator_gap = ctx.add(Expr::Add(scale_square, scaled_radicand));
-    let (numerator_coeff, denominator_coeff, denominator_gap) =
-        cancel_denominator_content_with_numerator_for_calculus_presentation(
-            ctx,
-            numerator_coeff,
-            denominator_coeff,
-            denominator_gap,
-        );
-    let (numerator_coeff, denominator_coeff) =
-        nonzero_rational_parts(&(numerator_coeff / denominator_coeff))?;
-    let numerator =
-        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, numerator_core);
-    let core_denominator =
-        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, denominator_gap]);
-    let denominator = if denominator_coeff == BigRational::one() {
-        core_denominator
-    } else {
-        let denominator_scale = rational_const_for_calculus_presentation(ctx, denominator_coeff);
-        cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_scale, core_denominator])
-    };
-
-    Some(ctx.add(Expr::Div(numerator, denominator)))
+fn inverse_tangent_sqrt_over_symbolic_constant_derivative_from_parts(
+    ctx: &mut Context,
+    derivative_sign: BigRational,
+    radicand: ExprId,
+    scale_denominator: ExprId,
+    argument_sign: BigRational,
+    sqrt_scale: BigRational,
+    radicand_poly: &Polynomial,
+) -> Option<ExprId> {
+    sqrt_over_symbolic_constant_derivative_from_parts(
+        ctx,
+        SqrtOverSymbolicConstantDerivativeParts {
+            derivative_sign,
+            radicand,
+            scale_denominator,
+            argument_sign,
+            sqrt_scale,
+            radicand_poly,
+        },
+        SymbolicConstantGapKind::Sum,
+    )
 }
 
 pub(super) fn inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut(
@@ -181,20 +165,32 @@ pub(super) fn inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut(
     target: ExprId,
     var_name: &str,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
-    let Expr::Function(_, args) = ctx.get(target).clone() else {
+    let Expr::Function(fn_id, args) = ctx.get(target).clone() else {
         return None;
+    };
+    let derivative_sign = match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Atan | BuiltinFn::Arctan) => BigRational::one(),
+        Some(BuiltinFn::Acot | BuiltinFn::Arccot) => -BigRational::one(),
+        _ => return None,
     };
     let [arg] = args.as_slice() else {
         return None;
     };
 
-    let (radicand, scale_denominator, _, _) =
+    let (radicand, scale_denominator, argument_sign, sqrt_scale) =
         inverse_tangent_sqrt_over_symbolic_constant_arg_for_calculus_presentation(
             ctx, *arg, var_name,
         )?;
     let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
-    let result =
-        inverse_tangent_sqrt_over_symbolic_constant_derivative_presentation(ctx, target, var_name)?;
+    let result = inverse_tangent_sqrt_over_symbolic_constant_derivative_from_parts(
+        ctx,
+        derivative_sign,
+        radicand,
+        scale_denominator,
+        argument_sign,
+        sqrt_scale,
+        &radicand_poly,
+    )?;
 
     let required_conditions = positive_polynomial_radicand_and_nonzero_required_conditions(
         radicand,
@@ -224,7 +220,58 @@ pub(super) fn atanh_sqrt_over_symbolic_constant_derivative_presentation(
     }
 
     let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
-    let derivative_poly = radicand_poly.derivative();
+    atanh_sqrt_over_symbolic_constant_derivative_from_parts(
+        ctx,
+        radicand,
+        scale_denominator,
+        argument_sign,
+        sqrt_scale,
+        &radicand_poly,
+    )
+}
+
+fn atanh_sqrt_over_symbolic_constant_derivative_from_parts(
+    ctx: &mut Context,
+    radicand: ExprId,
+    scale_denominator: ExprId,
+    argument_sign: BigRational,
+    sqrt_scale: BigRational,
+    radicand_poly: &Polynomial,
+) -> Option<ExprId> {
+    sqrt_over_symbolic_constant_derivative_from_parts(
+        ctx,
+        SqrtOverSymbolicConstantDerivativeParts {
+            derivative_sign: BigRational::one(),
+            radicand,
+            scale_denominator,
+            argument_sign,
+            sqrt_scale,
+            radicand_poly,
+        },
+        SymbolicConstantGapKind::Difference,
+    )
+}
+
+enum SymbolicConstantGapKind {
+    Sum,
+    Difference,
+}
+
+struct SqrtOverSymbolicConstantDerivativeParts<'a> {
+    derivative_sign: BigRational,
+    radicand: ExprId,
+    scale_denominator: ExprId,
+    argument_sign: BigRational,
+    sqrt_scale: BigRational,
+    radicand_poly: &'a Polynomial,
+}
+
+fn sqrt_over_symbolic_constant_derivative_from_parts(
+    ctx: &mut Context,
+    parts: SqrtOverSymbolicConstantDerivativeParts<'_>,
+    gap_kind: SymbolicConstantGapKind,
+) -> Option<ExprId> {
+    let derivative_poly = parts.radicand_poly.derivative();
     if derivative_poly.is_zero() {
         return Some(ctx.num(0));
     }
@@ -232,8 +279,9 @@ pub(super) fn atanh_sqrt_over_symbolic_constant_derivative_presentation(
     let derivative = derivative_poly.to_expr(ctx);
     let (derivative_core, derivative_content) =
         split_polynomial_content_for_calculus_presentation(ctx, derivative);
-    let coefficient = argument_sign
-        * sqrt_scale.clone()
+    let coefficient = parts.derivative_sign
+        * parts.argument_sign
+        * parts.sqrt_scale.clone()
         * derivative_content
         * BigRational::new(1.into(), 2.into());
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
@@ -241,17 +289,24 @@ pub(super) fn atanh_sqrt_over_symbolic_constant_derivative_presentation(
     let derivative_core_is_one = cas_ast::views::as_rational_const(ctx, derivative_core, 8)
         .is_some_and(|value| value.is_one());
     let numerator_core = if derivative_core_is_one {
-        scale_denominator
+        parts.scale_denominator
     } else {
-        cas_math::expr_nary::build_balanced_mul(ctx, &[scale_denominator, derivative_core])
+        cas_math::expr_nary::build_balanced_mul(ctx, &[parts.scale_denominator, derivative_core])
     };
 
-    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
-    let scale_square = squared_expr_for_compact_gap_presentation(ctx, scale_denominator);
-    let scaled_radicand =
-        scale_expr_for_calculus_presentation(ctx, sqrt_scale.clone() * sqrt_scale, radicand);
-    let denominator_gap =
-        subtract_expr_for_calculus_presentation(ctx, scale_square, scaled_radicand);
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![parts.radicand]);
+    let scale_square = squared_expr_for_compact_gap_presentation(ctx, parts.scale_denominator);
+    let scaled_radicand = scale_expr_for_calculus_presentation(
+        ctx,
+        parts.sqrt_scale.clone() * parts.sqrt_scale,
+        parts.radicand,
+    );
+    let denominator_gap = match gap_kind {
+        SymbolicConstantGapKind::Sum => ctx.add(Expr::Add(scale_square, scaled_radicand)),
+        SymbolicConstantGapKind::Difference => {
+            subtract_expr_for_calculus_presentation(ctx, scale_square, scaled_radicand)
+        }
+    };
     let (numerator_coeff, denominator_coeff, denominator_gap) =
         cancel_denominator_content_with_numerator_for_calculus_presentation(
             ctx,
@@ -287,14 +342,21 @@ pub(super) fn atanh_sqrt_over_symbolic_constant_derivative_shortcut(
         return None;
     };
 
-    let (radicand, scale_denominator, _, sqrt_scale) =
+    let (radicand, scale_denominator, argument_sign, sqrt_scale) =
         scaled_sqrt_over_symbolic_constant_arg_for_calculus_presentation(ctx, *arg, var_name)?;
     if sqrt_scale.abs().is_one() {
         return None;
     }
 
     let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
-    let result = atanh_sqrt_over_symbolic_constant_derivative_presentation(ctx, target, var_name)?;
+    let result = atanh_sqrt_over_symbolic_constant_derivative_from_parts(
+        ctx,
+        radicand,
+        scale_denominator,
+        argument_sign,
+        sqrt_scale,
+        &radicand_poly,
+    )?;
     let required_conditions = positive_polynomial_radicand_and_nonzero_required_conditions(
         radicand,
         &radicand_poly,
@@ -549,7 +611,7 @@ mod tests {
     #[test]
     fn atanh_sqrt_over_symbolic_constant_derivative_compacts_exact_square_scale() {
         let mut ctx = Context::new();
-        let expr = parse("atanh(2*(sqrt(x+1)/a))", &mut ctx).unwrap();
+        let expr = parse("atanh(sqrt(4*x+4)/a)", &mut ctx).unwrap();
         let (derivative, required_conditions) =
             atanh_sqrt_over_symbolic_constant_derivative_shortcut(&mut ctx, expr, "x").unwrap();
         let derivative = unwrap_internal_hold_for_calculus(&mut ctx, derivative);
@@ -557,6 +619,30 @@ mod tests {
         assert_eq!(
             rendered(&ctx, derivative),
             "a / (sqrt(x + 1) * (a^2 - 4 * x - 4))"
+        );
+        assert_eq!(required_conditions.len(), 2);
+        assert!(matches!(
+            required_conditions[0],
+            crate::ImplicitCondition::Positive(required) if rendered(&ctx, required) == "x + 1"
+        ));
+        assert!(matches!(
+            required_conditions[1],
+            crate::ImplicitCondition::NonZero(required) if rendered(&ctx, required) == "a"
+        ));
+    }
+
+    #[test]
+    fn inverse_tangent_sqrt_over_symbolic_constant_shortcut_compacts_shifted_exact_square_scale() {
+        let mut ctx = Context::new();
+        let expr = parse("arctan(sqrt(4*x+4)/a)", &mut ctx).unwrap();
+        let (derivative, required_conditions) =
+            inverse_tangent_sqrt_over_symbolic_constant_derivative_shortcut(&mut ctx, expr, "x")
+                .unwrap();
+        let derivative = unwrap_internal_hold_for_calculus(&mut ctx, derivative);
+
+        assert_eq!(
+            rendered(&ctx, derivative),
+            "a / (sqrt(x + 1) * (4 * (x + 1) + a^2))"
         );
         assert_eq!(required_conditions.len(), 2);
         assert!(matches!(

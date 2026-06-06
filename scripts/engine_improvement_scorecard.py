@@ -2716,6 +2716,261 @@ def sanitize_string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str)]
 
 
+def sanitize_runtime_case_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        row: dict[str, Any] = {}
+        for key in (
+            "name",
+            "family",
+            "argument_regime",
+            "point_regime",
+            "domain_regime",
+            "trace_regime",
+            "presentation_regime",
+            "outcome",
+            "status",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        elapsed = raw_row.get("wall_elapsed_seconds")
+        if isinstance(elapsed, (int, float)):
+            row["wall_elapsed_seconds"] = round(float(elapsed), 3)
+        if row:
+            rows.append(row)
+    return rows
+
+
+def sanitize_runtime_group_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        row: dict[str, Any] = {}
+        for key in ("axis", "group", "slowest_case"):
+            value = raw_row.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        case_count = raw_row.get("case_count")
+        if isinstance(case_count, int):
+            row["case_count"] = case_count
+        for key in (
+            "total_elapsed_seconds",
+            "avg_case_ms",
+            "max_elapsed_seconds",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 3)
+        if row:
+            rows.append(row)
+    return rows
+
+
+def sanitize_runtime_distribution(raw_row: Any) -> dict[str, Any]:
+    if not isinstance(raw_row, dict):
+        return {}
+    row: dict[str, Any] = {}
+    timed_case_count = raw_row.get("timed_case_count")
+    if isinstance(timed_case_count, int):
+        row["timed_case_count"] = timed_case_count
+    for key in (
+        "total_elapsed_seconds",
+        "avg_case_ms",
+        "p95_case_ms",
+        "max_case_ms",
+    ):
+        value = raw_row.get(key)
+        if isinstance(value, (int, float)):
+            row[key] = round(float(value), 3)
+    return row
+
+
+def sanitize_runtime_concentration(raw_row: Any) -> dict[str, Any]:
+    if not isinstance(raw_row, dict):
+        return {}
+    row: dict[str, Any] = {}
+    timed_case_count = raw_row.get("timed_case_count")
+    if isinstance(timed_case_count, int):
+        row["timed_case_count"] = timed_case_count
+    for key in (
+        "slowest_case",
+        "slowest_family",
+        "slowest_argument_regime",
+        "slowest_point_regime",
+        "slowest_domain_regime",
+        "slowest_trace_regime",
+        "slowest_presentation_regime",
+    ):
+        value = raw_row.get(key)
+        if isinstance(value, str):
+            row[key] = value
+    for key in (
+        "total_elapsed_seconds",
+        "slowest_case_ms",
+        "slowest_case_share_percent",
+        "top_3_share_percent",
+    ):
+        value = raw_row.get(key)
+        if isinstance(value, (int, float)):
+            row[key] = round(float(value), 3)
+    return row
+
+
+def add_runtime_observability_metrics(
+    metrics: dict[str, Any],
+    raw: dict[str, Any],
+    *,
+    prefix: str,
+    group_keys: tuple[str, ...],
+) -> None:
+    distribution = sanitize_runtime_distribution(raw.get("runtime_distribution"))
+    if distribution:
+        metrics[f"{prefix}_runtime_distribution"] = distribution
+    concentration = sanitize_runtime_concentration(raw.get("runtime_concentration"))
+    if concentration:
+        metrics[f"{prefix}_runtime_concentration"] = concentration
+    warm_distribution = sanitize_runtime_distribution(
+        raw.get("warm_runtime_distribution")
+    )
+    if warm_distribution:
+        metrics[f"{prefix}_warm_runtime_distribution"] = warm_distribution
+    warm_concentration = sanitize_runtime_concentration(
+        raw.get("warm_runtime_concentration")
+    )
+    if warm_concentration:
+        metrics[f"{prefix}_warm_runtime_concentration"] = warm_concentration
+    slowest_cases = sanitize_runtime_case_rows(raw.get("slowest_cases"))
+    if slowest_cases:
+        metrics[f"{prefix}_slowest_cases"] = slowest_cases
+    cold_start_case = sanitize_runtime_case_rows([raw.get("cold_start_case")])
+    if cold_start_case:
+        metrics[f"{prefix}_cold_start_case"] = cold_start_case[0]
+    warm_slowest_cases = sanitize_runtime_case_rows(raw.get("warm_slowest_cases"))
+    if warm_slowest_cases:
+        metrics[f"{prefix}_warm_slowest_cases"] = warm_slowest_cases
+    for group_key in group_keys:
+        rows = sanitize_runtime_group_rows(raw.get(f"runtime_by_{group_key}"))
+        if rows:
+            metrics[f"{prefix}_runtime_by_{group_key}"] = rows
+        warm_rows = sanitize_runtime_group_rows(
+            raw.get(f"warm_runtime_by_{group_key}")
+        )
+        if warm_rows:
+            metrics[f"{prefix}_warm_runtime_by_{group_key}"] = warm_rows
+
+
+def sanitize_phase_runtime_case_rows(
+    raw_rows: Any,
+    *,
+    elapsed_key: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        name = raw_row.get("name")
+        elapsed = raw_row.get(elapsed_key)
+        if not isinstance(name, str) or not isinstance(elapsed, (int, float)):
+            continue
+        row: dict[str, Any] = {
+            "name": name,
+            elapsed_key: round(float(elapsed), 3),
+        }
+        for key in (
+            "family",
+            "argument_regime",
+            "domain_regime",
+            "trace_regime",
+            "presentation_regime",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+            "antiderivative_verification_mode",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def sanitize_payload_case_rows(
+    raw_rows: Any,
+    *,
+    metric_key: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        name = raw_row.get("name")
+        metric = raw_row.get(metric_key)
+        if not isinstance(name, str) or not isinstance(metric, int):
+            continue
+        row: dict[str, Any] = {
+            "name": name,
+            metric_key: metric,
+        }
+        for key in (
+            "required_display_count",
+            "expected_step_substring_count",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, int):
+                row[key] = value
+        for key in (
+            "family",
+            "argument_regime",
+            "domain_regime",
+            "trace_regime",
+            "presentation_regime",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def sanitize_verification_mode_runtime_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        mode = raw_row.get("mode")
+        case_count = raw_row.get("case_count")
+        if not isinstance(mode, str) or not isinstance(case_count, int):
+            continue
+        row: dict[str, Any] = {
+            "mode": mode,
+            "case_count": case_count,
+        }
+        for key in ("total_elapsed_seconds", "avg_case_ms", "max_elapsed_seconds"):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 3)
+        slowest_case = raw_row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            row["slowest_case"] = slowest_case
+        rows.append(row)
+    return rows
+
+
 def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
     try:
         raw = json.loads(output)
@@ -2816,6 +3071,12 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
         counts = count_map(raw_key)
         if counts:
             metrics[metric_key] = counts
+    add_runtime_observability_metrics(
+        metrics,
+        raw,
+        prefix="limit",
+        group_keys=("family", "point_regime", "domain_regime", "trace_regime"),
+    )
     return metrics
 
 
@@ -2917,6 +3178,62 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
         counts = count_map(raw_key)
         if counts:
             metrics[metric_key] = counts
+    add_runtime_observability_metrics(
+        metrics,
+        raw,
+        prefix="diff",
+        group_keys=(
+            "family",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+            "domain_regime",
+            "trace_regime",
+            "presentation_regime",
+        ),
+    )
+    harness_check_distribution = sanitize_runtime_distribution(
+        raw.get("harness_check_runtime_distribution")
+    )
+    if harness_check_distribution:
+        metrics["diff_harness_check_runtime_distribution"] = (
+            harness_check_distribution
+        )
+    for raw_key, metric_key, elapsed_key in (
+        (
+            "slowest_process_evaluations",
+            "diff_slowest_process_evaluations",
+            "process_elapsed_seconds",
+        ),
+        (
+            "slowest_harness_checks",
+            "diff_slowest_harness_checks",
+            "harness_check_elapsed_seconds",
+        ),
+    ):
+        rows = sanitize_phase_runtime_case_rows(
+            raw.get(raw_key),
+            elapsed_key=elapsed_key,
+        )
+        if rows:
+            metrics[metric_key] = rows
+    for raw_key, metric_key, payload_key in (
+        (
+            "largest_stdout_payload_cases",
+            "diff_largest_stdout_payload_cases",
+            "stdout_bytes",
+        ),
+        (
+            "largest_step_trace_cases",
+            "diff_largest_step_trace_cases",
+            "step_text_char_count",
+        ),
+    ):
+        rows = sanitize_payload_case_rows(
+            raw.get(raw_key),
+            metric_key=payload_key,
+        )
+        if rows:
+            metrics[metric_key] = rows
     return metrics
 
 
@@ -3072,6 +3389,66 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         if counts:
             metrics[metric_key] = counts
 
+    add_runtime_observability_metrics(
+        metrics,
+        raw,
+        prefix="integrate",
+        group_keys=(
+            "family",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+            "trace_regime",
+        ),
+    )
+    for raw_key, metric_key, elapsed_key in (
+        (
+            "slowest_integrate_evaluations",
+            "integrate_slowest_integrate_evaluations",
+            "integrate_elapsed_seconds",
+        ),
+        (
+            "slowest_antiderivative_verifications",
+            "integrate_slowest_antiderivative_verifications",
+            "antiderivative_verification_elapsed_seconds",
+        ),
+        (
+            "slowest_antiderivative_residual_simplifications",
+            "integrate_slowest_antiderivative_residual_simplifications",
+            "antiderivative_residual_simplify_elapsed_seconds",
+        ),
+    ):
+        rows = sanitize_phase_runtime_case_rows(
+            raw.get(raw_key),
+            elapsed_key=elapsed_key,
+        )
+        if rows:
+            metrics[metric_key] = rows
+    for raw_key, metric_key, payload_key in (
+        (
+            "largest_stdout_payload_cases",
+            "integrate_largest_stdout_payload_cases",
+            "stdout_bytes",
+        ),
+        (
+            "largest_step_trace_cases",
+            "integrate_largest_step_trace_cases",
+            "step_text_char_count",
+        ),
+    ):
+        rows = sanitize_payload_case_rows(
+            raw.get(raw_key),
+            metric_key=payload_key,
+        )
+        if rows:
+            metrics[metric_key] = rows
+    verification_mode_rows = sanitize_verification_mode_runtime_rows(
+        raw.get("runtime_by_antiderivative_verification_mode")
+    )
+    if verification_mode_rows:
+        metrics["integrate_runtime_by_antiderivative_verification_mode"] = (
+            verification_mode_rows
+        )
+
     add_policy_cluster_consolidation_metrics(
         metrics,
         source_key="integrate_trig_hyperbolic_policy_cluster_counts",
@@ -3142,6 +3519,263 @@ def domain_expected_condition_fragments(
     ]
     rows.sort(key=lambda row: (row[1], row[0]))
     return [f"{condition}={count}" for condition, count in rows[:limit]]
+
+
+def calculus_runtime_case_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        elapsed = row.get("wall_elapsed_seconds")
+        if not isinstance(name, str) or not isinstance(elapsed, (int, float)):
+            continue
+        fragment = f"{name}={elapsed:.3f}s"
+        family = row.get("family")
+        if isinstance(family, str):
+            fragment += f" family={family}"
+        fragments.append(fragment)
+    return fragments
+
+
+def calculus_runtime_group_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        group = row.get("group")
+        total_elapsed = row.get("total_elapsed_seconds")
+        avg_case_ms = row.get("avg_case_ms")
+        case_count = row.get("case_count")
+        if (
+            not isinstance(group, str)
+            or not isinstance(total_elapsed, (int, float))
+            or not isinstance(avg_case_ms, (int, float))
+            or not isinstance(case_count, int)
+        ):
+            continue
+        fragment = (
+            f"{group} total={total_elapsed:.3f}s "
+            f"avg={avg_case_ms:.3f}ms cases={case_count}"
+        )
+        slowest_case = row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            fragment += f" slowest={slowest_case}"
+        fragments.append(fragment)
+    return fragments
+
+
+def calculus_runtime_distribution_fragment(raw_row: Any) -> str | None:
+    if not isinstance(raw_row, dict):
+        return None
+    timed_case_count = raw_row.get("timed_case_count")
+    avg_case_ms = raw_row.get("avg_case_ms")
+    p95_case_ms = raw_row.get("p95_case_ms")
+    max_case_ms = raw_row.get("max_case_ms")
+    total_elapsed = raw_row.get("total_elapsed_seconds")
+    if (
+        not isinstance(timed_case_count, int)
+        or not isinstance(avg_case_ms, (int, float))
+        or not isinstance(p95_case_ms, (int, float))
+        or not isinstance(max_case_ms, (int, float))
+    ):
+        return None
+    fragment = (
+        f"timed_cases={timed_case_count} "
+        f"avg={avg_case_ms:.3f}ms "
+        f"p95={p95_case_ms:.3f}ms "
+        f"max={max_case_ms:.3f}ms"
+    )
+    if isinstance(total_elapsed, (int, float)):
+        fragment += f" total={total_elapsed:.3f}s"
+    return fragment
+
+
+def calculus_runtime_concentration_fragment(raw_row: Any) -> str | None:
+    if not isinstance(raw_row, dict):
+        return None
+    slowest_case = raw_row.get("slowest_case")
+    slowest_case_ms = raw_row.get("slowest_case_ms")
+    slowest_share = raw_row.get("slowest_case_share_percent")
+    top_3_share = raw_row.get("top_3_share_percent")
+    total_elapsed = raw_row.get("total_elapsed_seconds")
+    if (
+        not isinstance(slowest_case, str)
+        or not isinstance(slowest_case_ms, (int, float))
+        or not isinstance(slowest_share, (int, float))
+        or not isinstance(top_3_share, (int, float))
+    ):
+        return None
+    fragment = (
+        f"slowest={slowest_case} "
+        f"slowest_ms={slowest_case_ms:.3f} "
+        f"slowest_share={slowest_share:.1f}% "
+        f"top3_share={top_3_share:.1f}%"
+    )
+    if isinstance(total_elapsed, (int, float)):
+        fragment += f" total={total_elapsed:.3f}s"
+    family = raw_row.get("slowest_family")
+    if isinstance(family, str):
+        fragment += f" family={family}"
+    return fragment
+
+
+def phase_runtime_case_fragments(
+    raw_rows: Any,
+    *,
+    elapsed_key: str,
+    limit: int = 5,
+) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        elapsed = row.get(elapsed_key)
+        if not isinstance(name, str) or not isinstance(elapsed, (int, float)):
+            continue
+        fragment = f"{name}={elapsed:.3f}s"
+        family = row.get("family")
+        if isinstance(family, str):
+            fragment += f" family={family}"
+        mode = row.get("antiderivative_verification_mode")
+        if isinstance(mode, str):
+            fragment += f" mode={mode}"
+        fragments.append(fragment)
+    return fragments
+
+
+def payload_case_fragments(
+    raw_rows: Any,
+    *,
+    metric_key: str,
+    unit: str,
+    limit: int = 5,
+) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        metric = row.get(metric_key)
+        if not isinstance(name, str) or not isinstance(metric, int):
+            continue
+        fragment = f"{name}={metric}{unit}"
+        family = row.get("family")
+        if isinstance(family, str):
+            fragment += f" family={family}"
+        required_count = row.get("required_display_count")
+        if isinstance(required_count, int):
+            fragment += f" required={required_count}"
+        expected_step_count = row.get("expected_step_substring_count")
+        if isinstance(expected_step_count, int):
+            fragment += f" expected_steps={expected_step_count}"
+        fragments.append(fragment)
+    return fragments
+
+
+def verification_mode_runtime_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        mode = row.get("mode")
+        total_elapsed = row.get("total_elapsed_seconds")
+        avg_case_ms = row.get("avg_case_ms")
+        case_count = row.get("case_count")
+        if (
+            not isinstance(mode, str)
+            or not isinstance(total_elapsed, (int, float))
+            or not isinstance(avg_case_ms, (int, float))
+            or not isinstance(case_count, int)
+        ):
+            continue
+        fragment = (
+            f"{mode} total={total_elapsed:.3f}s "
+            f"avg={avg_case_ms:.3f}ms cases={case_count}"
+        )
+        slowest_case = row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            fragment += f" slowest={slowest_case}"
+        fragments.append(fragment)
+    return fragments
+
+
+def calculus_runtime_lines(
+    label: str,
+    metrics: dict[str, Any],
+    *,
+    prefix: str,
+    group_keys: tuple[str, ...],
+) -> list[str]:
+    lines: list[str] = []
+    distribution = calculus_runtime_distribution_fragment(
+        metrics.get(f"{prefix}_runtime_distribution")
+    )
+    if distribution:
+        lines.append(f"- `{label}` runtime distribution: {distribution}")
+    concentration = calculus_runtime_concentration_fragment(
+        metrics.get(f"{prefix}_runtime_concentration")
+    )
+    if concentration:
+        lines.append(f"- `{label}` runtime concentration: {concentration}")
+    warm_distribution = calculus_runtime_distribution_fragment(
+        metrics.get(f"{prefix}_warm_runtime_distribution")
+    )
+    if warm_distribution:
+        lines.append(f"- `{label}` warm runtime distribution: {warm_distribution}")
+    warm_concentration = calculus_runtime_concentration_fragment(
+        metrics.get(f"{prefix}_warm_runtime_concentration")
+    )
+    if warm_concentration:
+        lines.append(f"- `{label}` warm runtime concentration: {warm_concentration}")
+    cold_start = calculus_runtime_case_fragments(
+        [metrics.get(f"{prefix}_cold_start_case")]
+    )
+    if cold_start:
+        lines.append(f"- `{label}` cold-start case: " + ", ".join(cold_start))
+    slowest_cases = calculus_runtime_case_fragments(
+        metrics.get(f"{prefix}_slowest_cases")
+    )
+    if slowest_cases:
+        lines.append(f"- `{label}` slowest cases: " + ", ".join(slowest_cases))
+    warm_slowest_cases = calculus_runtime_case_fragments(
+        metrics.get(f"{prefix}_warm_slowest_cases")
+    )
+    if warm_slowest_cases:
+        lines.append(
+            f"- `{label}` warm slowest cases: " + ", ".join(warm_slowest_cases)
+        )
+    for group_key in group_keys:
+        fragments = calculus_runtime_group_fragments(
+            metrics.get(f"{prefix}_runtime_by_{group_key}")
+        )
+        if fragments:
+            axis_label = group_key.replace("_", " ")
+            lines.append(
+                f"- `{label}` runtime by {axis_label}: "
+                + ", ".join(fragments)
+            )
+        warm_fragments = calculus_runtime_group_fragments(
+            metrics.get(f"{prefix}_warm_runtime_by_{group_key}")
+        )
+        if warm_fragments:
+            axis_label = group_key.replace("_", " ")
+            lines.append(
+                f"- `{label}` warm runtime by {axis_label}: "
+                + ", ".join(warm_fragments)
+            )
+    return lines
 
 
 def count_map_fragments(value: Any, limit: int | None = 8) -> list[str]:
@@ -3333,6 +3967,20 @@ def effective_elapsed_seconds(metrics: dict[str, Any], process_elapsed_seconds: 
     if isinstance(reported, (int, float)):
         return float(reported)
     return process_elapsed_seconds
+
+
+def add_elapsed_per_case_metric(
+    metrics: dict[str, Any], elapsed_seconds: float
+) -> None:
+    if "reported_elapsed_per_case_ms" in metrics:
+        return
+    total_cases = metrics.get("total_cases")
+    if not isinstance(total_cases, int) or total_cases <= 0:
+        return
+    metrics["reported_elapsed_per_case_ms"] = round(
+        elapsed_seconds * 1000.0 / total_cases,
+        4,
+    )
 
 
 def sparse_wrapper_names(wrapper_rows: dict[str, dict[str, Any]]) -> set[str]:
@@ -4606,6 +5254,146 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 if isinstance(integrate_family_count, int):
                     line += f" families={integrate_family_count}"
                 lines.append(line)
+                if label == "diff_command_matrix":
+                    lines.extend(
+                        calculus_runtime_lines(
+                            label,
+                            metrics,
+                            prefix="diff",
+                            group_keys=(
+                                "family",
+                                "calculus_maturity_block",
+                                "calculus_block_gate",
+                                "domain_regime",
+                                "trace_regime",
+                                "presentation_regime",
+                            ),
+                        )
+                    )
+                    slowest_process = phase_runtime_case_fragments(
+                        metrics.get("diff_slowest_process_evaluations"),
+                        elapsed_key="process_elapsed_seconds",
+                    )
+                    if slowest_process:
+                        lines.append(
+                            f"- `{label}` slowest process evaluations: "
+                            + ", ".join(slowest_process)
+                        )
+                    harness_distribution = calculus_runtime_distribution_fragment(
+                        metrics.get("diff_harness_check_runtime_distribution")
+                    )
+                    if harness_distribution:
+                        lines.append(
+                            f"- `{label}` harness check runtime distribution: "
+                            + harness_distribution
+                        )
+                    slowest_harness = phase_runtime_case_fragments(
+                        metrics.get("diff_slowest_harness_checks"),
+                        elapsed_key="harness_check_elapsed_seconds",
+                    )
+                    if slowest_harness:
+                        lines.append(
+                            f"- `{label}` slowest harness checks: "
+                            + ", ".join(slowest_harness)
+                        )
+                    largest_stdout = payload_case_fragments(
+                        metrics.get("diff_largest_stdout_payload_cases"),
+                        metric_key="stdout_bytes",
+                        unit="B",
+                    )
+                    if largest_stdout:
+                        lines.append(
+                            f"- `{label}` largest stdout payload cases: "
+                            + ", ".join(largest_stdout)
+                        )
+                    largest_steps = payload_case_fragments(
+                        metrics.get("diff_largest_step_trace_cases"),
+                        metric_key="step_text_char_count",
+                        unit=" chars",
+                    )
+                    if largest_steps:
+                        lines.append(
+                            f"- `{label}` largest step trace cases: "
+                            + ", ".join(largest_steps)
+                        )
+                elif label == "limit_command_matrix":
+                    lines.extend(
+                        calculus_runtime_lines(
+                            label,
+                            metrics,
+                            prefix="limit",
+                            group_keys=(
+                                "family",
+                                "point_regime",
+                                "domain_regime",
+                                "trace_regime",
+                            ),
+                        )
+                    )
+                elif label == "integrate_command_matrix":
+                    lines.extend(
+                        calculus_runtime_lines(
+                            label,
+                            metrics,
+                            prefix="integrate",
+                            group_keys=(
+                                "family",
+                                "calculus_maturity_block",
+                                "calculus_block_gate",
+                                "trace_regime",
+                            ),
+                        )
+                    )
+                    slowest_integrate = phase_runtime_case_fragments(
+                        metrics.get("integrate_slowest_integrate_evaluations"),
+                        elapsed_key="integrate_elapsed_seconds",
+                    )
+                    if slowest_integrate:
+                        lines.append(
+                            f"- `{label}` slowest integrate evaluations: "
+                            + ", ".join(slowest_integrate)
+                        )
+                    slowest_antiderivative = phase_runtime_case_fragments(
+                        metrics.get(
+                            "integrate_slowest_antiderivative_verifications"
+                        ),
+                        elapsed_key="antiderivative_verification_elapsed_seconds",
+                    )
+                    if slowest_antiderivative:
+                        lines.append(
+                            f"- `{label}` slowest antiderivative verifications: "
+                            + ", ".join(slowest_antiderivative)
+                        )
+                    largest_stdout = payload_case_fragments(
+                        metrics.get("integrate_largest_stdout_payload_cases"),
+                        metric_key="stdout_bytes",
+                        unit="B",
+                    )
+                    if largest_stdout:
+                        lines.append(
+                            f"- `{label}` largest stdout payload cases: "
+                            + ", ".join(largest_stdout)
+                        )
+                    largest_steps = payload_case_fragments(
+                        metrics.get("integrate_largest_step_trace_cases"),
+                        metric_key="step_text_char_count",
+                        unit=" chars",
+                    )
+                    if largest_steps:
+                        lines.append(
+                            f"- `{label}` largest step trace cases: "
+                            + ", ".join(largest_steps)
+                        )
+                    verification_modes = verification_mode_runtime_fragments(
+                        metrics.get(
+                            "integrate_runtime_by_antiderivative_verification_mode"
+                        )
+                    )
+                    if verification_modes:
+                        lines.append(
+                            f"- `{label}` runtime by antiderivative verification mode: "
+                            + ", ".join(verification_modes)
+                        )
                 argument_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("diff_argument_regime_counts")
                 )
@@ -5587,6 +6375,7 @@ def main() -> int:
                         embedded_coverage_saturation_metrics(metrics)
                     )
         measured_elapsed = effective_elapsed_seconds(metrics, elapsed)
+        add_elapsed_per_case_metric(metrics, measured_elapsed)
         guardrail = compute_embedded_runtime_guardrail(
             baseline_data, spec.name, measured_elapsed
         )

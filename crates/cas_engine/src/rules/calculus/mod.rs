@@ -66,6 +66,7 @@ mod half_power_sum_result_presentation;
 mod hyperbolic_by_parts_integrand_presentation;
 mod hyperbolic_power_integrand_presentation;
 mod hyperbolic_primitive_derivative_presentation;
+mod hyperbolic_reciprocal_derivative_presentation;
 mod integral_derivative_arctan_polynomial_routes;
 mod integral_derivative_conditioned_return;
 mod integral_derivative_direct_trig_affine_routes;
@@ -228,6 +229,7 @@ use elementary_variable_term_presentation::{
 };
 use exponential_derivative_presentation::sqrt_shifted_exp_derivative_presentation;
 pub(crate) use hyperbolic_primitive_derivative_presentation::affine_hyperbolic_odd_primitive_derivative_presentation;
+pub(crate) use hyperbolic_reciprocal_derivative_presentation::constant_scaled_hyperbolic_reciprocal_derivative_quotient_presentation_with_domain;
 pub use integrate_rule::IntegrateRule;
 pub(crate) use inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation::inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation_with_domain;
 pub(crate) use ln_sum_equal_roots_derivative_presentation::ln_sum_of_equal_derivative_roots_derivative_presentation_with_domain;
@@ -251,7 +253,10 @@ use reciprocal_sqrt_product_derivative_presentation::{
     constant_scaled_inverse_tangent_reciprocal_sqrt_product_derivative_presentation,
     reciprocal_sqrt_polynomial_product_derivative_presentation,
 };
-pub(crate) use reciprocal_trig_derivative_presentation::reciprocal_trig_shifted_sqrt_derivative_presentation;
+pub(crate) use reciprocal_trig_derivative_presentation::{
+    constant_scaled_reciprocal_trig_affine_derivative_presentation_with_domain,
+    reciprocal_trig_shifted_sqrt_derivative_presentation,
+};
 pub(crate) use result_presentation::try_calculus_result_presentation;
 use scalar_presentation::{
     add_one_for_calculus_presentation, add_rational_for_calculus_presentation,

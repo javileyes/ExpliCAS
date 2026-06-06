@@ -130,6 +130,74 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-06-06 - Rejected local win: broad compact diff presentation steals family-owned domain policy
+
+- area:
+  - calculus / differentiation / compact presentation route ordering
+- status:
+  - `rejected`
+- local lane:
+  - `python3 scripts/engine_diff_command_matrix_smoke.py --case log_ratio_single_pole_positive_scaled_abs_argument_compact`
+- local win:
+  - a broad `compact_derivative_presentation_with_domain` hook in the
+    `diff(...)` command path made the positive-scaled
+    `ln(k*abs(linear/linear))+pole` representative return the compact integer
+    rational quotient without `depth_overflow`
+- global result:
+  - `make engine-fast` rejected the broad hook in `calculus_diff_contract`
+  - atanh/surd-quotient derivative cases lost their compact open-interval
+    domain presentation or regressed to less normalized power display such as
+    `(p)^2^2`
+- why it regressed globally:
+  - the broad presentation helper ran before family-specific atanh/surd routes
+    that own stricter real-domain policy; this changed published conditions
+    from interval/positivity guards to generic nonzero guards
+- what could make it combinable later:
+  - keep source-route hooks narrow, or run broad compact presentation only
+    after family-owned domain routes have declined the target
+  - if a shared helper is needed, pass an explicit route family/domain policy
+    instead of reusing one generic command-path hook
+- decision:
+  - reverted the broad command-path hook
+  - retained the narrow log-ratio source route and the shared
+    positive-scaled-absolute argument detector
+
+## 2026-06-06 - Observe-only discovery: scaled linear pole misses positive-quadratic compact derivative route
+
+- area:
+  - calculus / differentiation / rational primitive presentation
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while compacting the retained
+    `diff(1/4*ln((2*x)^2+1)-1/2*ln(abs(x-1))-1/(2*(x-1)), x)`
+    route into an integer rational quotient, a sibling probe with the same
+    family but a scale inside the linear pole,
+    `diff(1/6*ln(2*x^2+2)-1/2*ln(abs(2*x-2))-1/(2*(2*x-2)), x)`,
+    still fell through to the generic simplifier
+  - the public result remained mathematically correct but exposed internal
+    rational coefficients and emitted `depth_overflow` before returning
+- decision:
+  - retain only the scaled-positive-quadratic compact representative in this
+    cycle
+  - do not broaden the matcher in the same iteration, because supporting
+    scaled linear poles is a separate route-normalization hypothesis
+- retained learning:
+  - the reusable weakness is not the final rational cleanup itself; it is that
+    the positive-quadratic/log-abs/pole recognizer does not yet normalize every
+    equivalent scaled linear denominator shape before route selection
+  - a future candidate should extend the reciprocal-linear core or the
+    surrounding route gate so `2*x-2` and `x-1` are treated as the same pole
+    without changing published nonzero-domain conditions
+- follow-up resolution:
+  - retained support for positive constant factors inside absolute-log
+    arguments, so normalized forms such as `ln(2*abs(x-1))` stay on the compact
+    rational derivative presentation route
+  - promoted the public diff matrix representative with scaled positive
+    quadratic, scaled absolute-linear log, and scaled linear pole; it now
+    returns an integer rational quotient with the same `x != 1` guard and no
+    `depth_overflow`
+
 ## 2026-06-04 - Observe-only discovery: direct tanh symbolic scale lacks substitution substeps
 
 - area:
@@ -16162,3 +16230,65 @@ The burden of proof stays the same:
     open-interval policy `a != 0`, `a^2 - 4*x - 4 > 0`, `x > -1`, and the
     CLI trace keeps the perfect-square extraction, constant factoring,
     chain-rule, and `u/du` evidence without `depth_overflow` warnings
+
+## 2026-06-06 - Discovery observe-only: shifted sqrt trig quotient simplification dominates verification
+
+- area:
+  - calculus / runtime / shifted sqrt-chain trig-log antiderivative verification
+- status:
+  - `discovery/observe-only`
+- observed:
+  - the promoted matrix case
+    `integrate(tan(b-sqrt(x))/(2*sqrt(x)), x)` is slowest in
+    `integrate_command_matrix`, but probes show the integration rule is not the
+    dominant cost
+  - direct probes of `diff(ln(|cos(b - sqrt(x))|), x)`,
+    `tan(b - sqrt(x))/(2*sqrt(x))`, and
+    `sin(b - sqrt(x))/(2*cos(b - sqrt(x))*sqrt(x))` all converge to the same
+    public quotient form and preserve `cos(...) != 0`, `x > 0`, while spending
+    roughly 1.2s in simplification on the shifted `const +/- sqrt(x)` argument
+  - extending the symbolic differentiation compact helper to recognize
+    shifted sqrt-chain arguments did not reduce the public runtime, because the
+    post-derivative simplification/presentation path still paid the same cost
+- decision:
+  - reject the differentiation-helper shortcut for this cycle
+  - do not promote sibling cases such as `ln(|sin(b - sqrt(x))|)` until the
+    shared shifted-sqrt trig quotient simplification path has a bounded route
+- retained learning:
+  - the reusable blocker is simplification/presentation of trig quotients with
+    `const +/- sqrt(linear(x))`, not the integration formula and not the basic
+    symbolic derivative
+  - the next retained candidate should target a bounded simplification or
+    post-calculus presentation route for shifted sqrt-chain trig quotients, with
+    sibling probes for `b - sqrt(x)`, `sqrt(x) - b`, and `a + sqrt(x)`
+
+## 2026-06-06 - Discovery observe-only: cosh^-4 direct primitive presentation shifts cost into verifier
+
+- area:
+  - calculus / integration / hyperbolic reciprocal fourth runtime
+- status:
+  - `discovery/observe-only`
+- observed:
+  - changing the symbolic-scale `1/cosh(u)^4` primitive from
+    `1/3*(3*k*tanh(u)-k*tanh(u)^3)` to the direct presentation
+    `k*tanh(u) - 1/3*k*tanh(u)^3` reduced the public `integrate` probe for
+    `integrate(2*k*x/cosh(x^2+b)^4, x)` from roughly 30ms to roughly 4ms
+  - without an internal presentation hold, the public evaluator recomposed the
+    direct form back to the factored form and spent roughly 400ms in
+    simplification
+  - with an internal presentation hold, the `integrate` result stayed direct,
+    but antiderivative verification shifted the same cost into
+    `diff(k*tanh(x^2+b)-1/3*k*tanh(x^2+b)^3, x)`, which spent roughly 400ms
+    combining the target before the existing compact derivative gate
+- decision:
+  - reject the direct primitive presentation in this cycle
+  - keep the promoted matrix cell on the stable factored form until `diff`
+    owns a bounded source-side route for the direct `scale*tanh(u) -
+    scale*tanh(u)^3/3` primitive presentation
+- retained learning:
+  - the reusable blocker is not the `1/cosh(u)^4` integration formula; it is
+    the boundary between post-integration presentation and antiderivative
+    verification
+  - the next retained candidate should either add a bounded verifier route
+    before target recomposition or keep the factored primitive as the verified
+    public form

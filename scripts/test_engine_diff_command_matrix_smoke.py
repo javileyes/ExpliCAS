@@ -17,13 +17,169 @@ SPEC.loader.exec_module(SMOKE)
 
 
 class DiffCommandMatrixSmokeTests(unittest.TestCase):
+    def test_runtime_observability_summary_groups_hotspots(self) -> None:
+        summary = SMOKE.runtime_observability_summary(
+            [
+                {
+                    "name": "fast_case",
+                    "family": "polynomial",
+                    "domain_regime": "unconditional",
+                    "wall_elapsed_seconds": 0.01,
+                    "status": "pass",
+                },
+                {
+                    "name": "slow_case",
+                    "family": "log_chain",
+                    "domain_regime": "required_condition",
+                    "wall_elapsed_seconds": 0.25,
+                    "status": "pass",
+                },
+                {
+                    "name": "medium_case",
+                    "family": "log_chain",
+                    "domain_regime": "required_condition",
+                    "wall_elapsed_seconds": 0.14,
+                    "status": "pass",
+                },
+            ],
+            group_keys=("family", "domain_regime"),
+        )
+
+        self.assertEqual(summary["slowest_cases"][0]["name"], "slow_case")
+        self.assertEqual(summary["runtime_concentration"]["slowest_case"], "slow_case")
+        self.assertEqual(summary["runtime_concentration"]["slowest_case_ms"], 250.0)
+        self.assertEqual(
+            summary["runtime_concentration"]["slowest_case_share_percent"],
+            62.5,
+        )
+        self.assertEqual(summary["runtime_concentration"]["top_3_share_percent"], 100.0)
+        self.assertEqual(summary["cold_start_case"]["name"], "fast_case")
+        self.assertEqual(summary["warm_slowest_cases"][0]["name"], "slow_case")
+        self.assertEqual(summary["warm_runtime_distribution"]["timed_case_count"], 2)
+        self.assertEqual(
+            summary["warm_runtime_concentration"]["slowest_case_share_percent"],
+            64.1,
+        )
+        self.assertEqual(
+            summary["runtime_by_family"][0],
+            {
+                "axis": "family",
+                "group": "log_chain",
+                "case_count": 2,
+                "total_elapsed_seconds": 0.39,
+                "avg_case_ms": 195.0,
+                "max_elapsed_seconds": 0.25,
+                "slowest_case": "slow_case",
+            },
+        )
+        self.assertEqual(
+            summary["warm_runtime_by_family"][0],
+            {
+                "axis": "family",
+                "group": "log_chain",
+                "case_count": 2,
+                "total_elapsed_seconds": 0.39,
+                "avg_case_ms": 195.0,
+                "max_elapsed_seconds": 0.25,
+                "slowest_case": "slow_case",
+            },
+        )
+
+    def test_phase_runtime_observability_summary_separates_process_and_harness(self) -> None:
+        summary = SMOKE.phase_runtime_observability_summary(
+            [
+                {
+                    "name": "engine_slow_case",
+                    "family": "inverse_hyperbolic_root",
+                    "domain_regime": "required_condition",
+                    "process_elapsed_seconds": 0.18,
+                    "harness_check_elapsed_seconds": 0.01,
+                    "calculus_maturity_block": "block2_real_domain_differentiation",
+                    "calculus_block_gate": "domain_conditions_and_diff_policy",
+                },
+                {
+                    "name": "harness_slow_case",
+                    "family": "log_over_sqrt",
+                    "domain_regime": "required_condition",
+                    "process_elapsed_seconds": 0.02,
+                    "harness_check_elapsed_seconds": 0.04,
+                    "calculus_maturity_block": "block2_real_domain_differentiation",
+                    "calculus_block_gate": "didactic_trace_and_diff_policy",
+                },
+            ]
+        )
+
+        self.assertEqual(
+            summary["slowest_process_evaluations"][0]["name"],
+            "engine_slow_case",
+        )
+        self.assertEqual(
+            summary["slowest_process_evaluations"][0]["process_elapsed_seconds"],
+            0.18,
+        )
+        self.assertEqual(
+            summary["slowest_harness_checks"][0]["name"],
+            "harness_slow_case",
+        )
+        self.assertEqual(
+            summary["harness_check_runtime_distribution"]["max_case_ms"],
+            40.0,
+        )
+
+    def test_payload_observability_summary_reports_output_and_step_hotspots(self) -> None:
+        summary = SMOKE.payload_observability_summary(
+            [
+                {
+                    "name": "large_stdout_case",
+                    "family": "inverse_trig_root",
+                    "stdout_bytes": 4096,
+                    "step_text_char_count": 900,
+                    "required_display": ["a ≠ 0", "x > -1"],
+                    "expected_step_substrings": ["u =", "du ="],
+                    "calculus_maturity_block": "block2_real_domain_differentiation",
+                    "calculus_block_gate": "domain_conditions_and_diff_policy",
+                },
+                {
+                    "name": "large_steps_case",
+                    "family": "inverse_hyperbolic_root",
+                    "stdout_bytes": 1024,
+                    "step_text_char_count": 1200,
+                    "required_display": ["x > -1"],
+                    "expected_step_substrings": ["chain"],
+                    "calculus_maturity_block": "block2_real_domain_differentiation",
+                    "calculus_block_gate": "didactic_trace_and_diff_policy",
+                },
+            ]
+        )
+
+        self.assertEqual(
+            summary["largest_stdout_payload_cases"][0]["name"],
+            "large_stdout_case",
+        )
+        self.assertEqual(
+            summary["largest_stdout_payload_cases"][0]["required_display_count"],
+            2,
+        )
+        self.assertEqual(
+            summary["largest_step_trace_cases"][0]["name"],
+            "large_steps_case",
+        )
+        self.assertEqual(
+            summary["largest_step_trace_cases"][0]["step_text_char_count"],
+            1200,
+        )
+
     def test_default_matrix_covers_diff_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 55)
+        self.assertEqual(len(cases), 63)
         names = {case.name for case in cases}
         self.assertIn(
             "log_quadratic_empty_positive_argument_domain_undefined",
+            names,
+        )
+        self.assertIn(
+            "log_abs_negative_scale_empty_positive_argument_domain_undefined",
             names,
         )
         self.assertIn("general_base_log_unit_base_domain_undefined", names)
@@ -66,6 +222,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("inverse_trig_root_compact_presentation", names)
         self.assertIn("inverse_trig_root_constant_multiple_trace", names)
         self.assertIn("inverse_trig_root_symbolic_denominator_scale", names)
+        self.assertIn("inverse_trig_root_external_symbolic_denominator_scale", names)
         self.assertIn("inverse_trig_root_symbolic_rational_denominator_scale", names)
         self.assertIn(
             "inverse_trig_root_symbolic_rational_denominator_affine_radicand_shortcut",
@@ -115,6 +272,10 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             "inverse_hyperbolic_root_symbolic_numerator_scale_positive_gap",
             names,
         )
+        self.assertIn(
+            "inverse_hyperbolic_root_asinh_symbolic_denominator_scale_positive_gap",
+            names,
+        )
         self.assertIn("inverse_trig_root_negative_argument", names)
         self.assertIn(
             "sqrt_chain_trig_log_presimplified_condition_dedupe",
@@ -132,24 +293,32 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             "positive_quadratic_log_arctan_surd_negative_orientation_compact",
             names,
         )
+        self.assertIn("log_ratio_single_pole_scaled_shifted_linear_compact", names)
+        self.assertIn(
+            "log_ratio_single_pole_positive_scaled_abs_argument_compact",
+            names,
+        )
+        self.assertIn("separated_log_abs_linear_pole_raw_preserved", names)
+        self.assertIn("positive_quadratic_log_abs_pole_scaled_quadratic_compact", names)
+        self.assertIn("positive_quadratic_log_abs_pole_scaled_linear_pole_compact", names)
         self.assertIn("discontinuous_sign_polynomial_nonzero_domain", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"supported": 45, "undefined": 10},
+            {"supported": 52, "undefined": 11},
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block2_real_domain_differentiation": 45,
-                "block9_residuals_and_non_goals": 10,
+                "block2_real_domain_differentiation": 52,
+                "block9_residuals_and_non_goals": 11,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
                 "didactic_trace_and_diff_policy": 8,
-                "domain_conditions_and_diff_policy": 37,
-                "explicit_undefined_domain_policy": 10,
+                "domain_conditions_and_diff_policy": 44,
+                "explicit_undefined_domain_policy": 11,
             },
         )
         step_checked = {
@@ -171,6 +340,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "log_over_sqrt_denominator_scale_compact",
                 "log_over_sqrt_symbolic_denominator_scale_compact",
                 "log_quadratic_empty_positive_argument_domain_undefined",
+                "log_abs_negative_scale_empty_positive_argument_domain_undefined",
                 "general_base_log_unit_base_domain_undefined",
                 "polynomial_power_direct",
                 "polynomial_inner_chain_power",
@@ -192,12 +362,18 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "positive_quadratic_log_arctan_polynomial_primitive_compact",
                 "positive_quadratic_log_arctan_surd_primitive_compact",
                 "positive_quadratic_log_arctan_surd_negative_orientation_compact",
+                "log_ratio_single_pole_scaled_shifted_linear_compact",
+                "log_ratio_single_pole_positive_scaled_abs_argument_compact",
+                "separated_log_abs_linear_pole_raw_preserved",
+                "positive_quadratic_log_abs_pole_scaled_quadratic_compact",
+                "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
                 "sqrt_variable_open_domain",
                 "sqrt_tangent_positive_dominates_nonnegative_domain",
                 "sqrt_quadratic_empty_positive_argument_domain_undefined",
                 "inverse_trig_root_compact_presentation",
                 "inverse_trig_root_constant_multiple_trace",
                 "inverse_trig_root_symbolic_denominator_scale",
+                "inverse_trig_root_external_symbolic_denominator_scale",
                 "inverse_trig_root_symbolic_rational_denominator_scale",
                 "inverse_trig_root_symbolic_rational_denominator_affine_radicand_shortcut",
                 "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
@@ -214,6 +390,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
                 "inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval",
                 "inverse_hyperbolic_root_symbolic_numerator_scale_positive_gap",
+                "inverse_hyperbolic_root_asinh_symbolic_denominator_scale_positive_gap",
                 "inverse_trig_root_negative_argument",
                 "trig_product_rule",
                 "sqrt_chain_trig_log_presimplified_condition_dedupe",
@@ -227,17 +404,19 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_by(cases, "domain_regime"),
             {
                 "empty_open_interval_domain": 4,
-                "empty_positive_argument_domain": 2,
+                "empty_positive_argument_domain": 3,
                 "empty_positive_exponent_domain": 1,
                 "invalid_log_base_domain": 1,
                 "interval_required": 1,
+                "linear_poles_required": 5,
                 "negative_base_undefined": 1,
                 "nonfinite_undefined": 1,
                 "open_interval_required": 3,
                 "positive_exponent_required": 1,
                 "positive_dominates_nonnegative_source_trig_domain": 1,
+                "positive_gap_with_symbolic_denominator_scale_deduped": 1,
                 "positive_source_trig_domain": 2,
-                "required_condition": 29,
+                "required_condition": 30,
                 "unconditional": 5,
                 "unconditional_positive_quadratic": 3,
             },
@@ -316,6 +495,28 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "didactic_trace_and_diff_policy": 2,
                 "domain_conditions_and_diff_policy": 2,
+            },
+        )
+        self.assertEqual(
+            matrix["cases"][0]["calculus_maturity_block"],
+            "block2_real_domain_differentiation",
+        )
+        self.assertEqual(
+            matrix["cases"][0]["calculus_block_gate"],
+            "didactic_trace_and_diff_policy",
+        )
+        self.assertEqual(
+            matrix["runtime_by_calculus_maturity_block"][0]["group"],
+            "block2_real_domain_differentiation",
+        )
+        self.assertEqual(
+            {
+                row["group"]
+                for row in matrix["runtime_by_calculus_block_gate"]
+            },
+            {
+                "didactic_trace_and_diff_policy",
+                "domain_conditions_and_diff_policy",
             },
         )
 

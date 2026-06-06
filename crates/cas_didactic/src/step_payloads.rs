@@ -20,6 +20,7 @@ pub fn collect_step_payloads(steps: &[Step], ctx: &Context, steps_mode: &str) ->
         if remove_redundant_post_calculus_presentation_noise(&mut payloads, &mut wire) {
             continue;
         }
+        remove_redundant_pre_integral_residual_cleanup_noise(&mut payloads, &mut wire);
         if payloads
             .last()
             .is_some_and(|previous| is_adjacent_inverse_step(previous, &wire))
@@ -143,6 +144,56 @@ fn is_post_calculus_presentation_noise_wire_step(step: &StepWire) -> bool {
             | "Rationalize Product Denominator"
             | "Racionalizar el denominador"
     )
+}
+
+fn remove_redundant_pre_integral_residual_cleanup_noise(
+    payloads: &mut Vec<StepWire>,
+    current: &mut StepWire,
+) {
+    if current.rule != "Conservar integral residual" {
+        return;
+    }
+
+    let Some(anchor_index) = payloads
+        .iter()
+        .rposition(is_integral_residual_prep_anchor_wire_step)
+    else {
+        return;
+    };
+    if payloads[anchor_index + 1..].is_empty()
+        || !payloads[anchor_index + 1..]
+            .iter()
+            .all(is_integral_residual_cleanup_noise_wire_step)
+    {
+        return;
+    }
+
+    payloads.truncate(anchor_index + 1);
+    current.index = payloads.len() + 1;
+}
+
+fn is_integral_residual_prep_anchor_wire_step(step: &StepWire) -> bool {
+    matches!(
+        step.rule.as_str(),
+        "Expandir cosecante como recíproco de seno"
+            | "Expandir cotangente como coseno entre seno"
+            | "Expandir secante como recíproco de coseno"
+            | "Expandir tangente como seno entre coseno"
+            | "Reconocer cotangente desde un cociente"
+            | "Reconocer tangente desde un cociente"
+    )
+}
+
+fn is_integral_residual_cleanup_noise_wire_step(step: &StepWire) -> bool {
+    matches!(
+        step.rule.as_str(),
+        "Combinar fracciones en una multiplicación"
+            | "Convert Mixed Trig Fraction to sin/cos"
+            | "Convertir un cociente trigonométrico en tangente"
+            | "Expandir la expresión"
+            | "Extract Common Multiplicative Factor"
+            | "Simplificar fracción anidada"
+    ) || is_post_calculus_presentation_noise_wire_step(step)
 }
 
 fn is_adjacent_inverse_step(previous: &StepWire, current: &StepWire) -> bool {

@@ -7,7 +7,7 @@
 use cas_ast::{Context, ExprId};
 
 use crate::symbolic_calculus_call_support::NamedVarCall;
-use crate::Rewrite;
+use crate::{ImplicitCondition, Rewrite};
 
 use super::arctan_by_parts_result_presentation::arctan_affine_by_parts_compact_derivative;
 use super::atanh_surd_derivative_presentation::atanh_surd_quotient_compact_derivative;
@@ -19,18 +19,66 @@ pub(super) fn compact_derivative_presentation_rewrite(
     call: &NamedVarCall,
     target: ExprId,
 ) -> Option<Rewrite> {
-    let result = arctan_affine_by_parts_compact_derivative(ctx, target, &call.var_name)
-        .or_else(|| atanh_surd_quotient_compact_derivative(ctx, target, &call.var_name))
-        .or_else(|| {
-            polynomial_times_sqrt_polynomial_derivative_presentation(ctx, target, &call.var_name)
-        })?;
+    let (result, required_conditions) =
+        compact_derivative_presentation_with_domain(ctx, target, &call.var_name)?;
     Some(finalize_diff_rewrite_with_conditions(
         ctx,
         call,
         target,
         result,
-        Vec::new(),
+        required_conditions,
     ))
+}
+
+fn compact_derivative_presentation_with_domain(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<ImplicitCondition>)> {
+    if let Some((result, required_nonzero)) =
+        cas_math::symbolic_differentiation_support::rational_positive_quadratic_log_abs_pole_derivative(
+            ctx,
+            target,
+            var_name,
+        )
+    {
+        let required_conditions = required_nonzero
+            .into_iter()
+            .map(crate::ImplicitCondition::NonZero)
+            .collect();
+        return Some((result, required_conditions));
+    }
+    if let Some((result, required_nonzero)) =
+        cas_math::symbolic_differentiation_support::rational_separated_linear_log_abs_pole_derivative(
+            ctx,
+            target,
+            var_name,
+        )
+    {
+        let required_conditions = required_nonzero
+            .into_iter()
+            .map(crate::ImplicitCondition::NonZero)
+            .collect();
+        return Some((result, required_conditions));
+    }
+    if let Some((result, required_nonzero)) =
+        cas_math::symbolic_differentiation_support::rational_log_ratio_single_pole_derivative(
+            ctx, target, var_name,
+        )
+    {
+        let required_conditions = required_nonzero
+            .into_iter()
+            .map(crate::ImplicitCondition::NonZero)
+            .collect();
+        return Some((result, required_conditions));
+    }
+
+    let result = arctan_affine_by_parts_compact_derivative(ctx, target, var_name)
+        .or_else(|| atanh_surd_quotient_compact_derivative(ctx, target, var_name))
+        .or_else(|| {
+            polynomial_times_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
+        })?;
+    Some((result, Vec::new()))
 }
 
 #[cfg(test)]
@@ -82,6 +130,103 @@ mod tests {
             rewrite.required_conditions,
             expected_rewrite.required_conditions
         );
+    }
+
+    #[test]
+    fn compact_presentation_rewrite_handles_positive_quadratic_log_abs_pole_first() {
+        let mut ctx = Context::new();
+        let cases = [
+            (
+                "1/4*ln(x^2+1)-1/2*ln(abs(x-1))-1/(2*(x-1))",
+                "1 / (x^4 + 2 * x^2 + 1 - 2 * x^3 - 2 * x)",
+            ),
+            (
+                "1/6*ln(2*x^2+2)-1/2*ln(abs(2*x-2))-1/(2*(2*x-2))",
+                "(x^2 + 9 - 2 * x^3 - 2 * x) / (12 * x^4 + 24 * x^2 + 12 - 24 * x^3 - 24 * x)",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let target = parse(input, &mut ctx).unwrap();
+            let call = NamedVarCall {
+                target,
+                var_name: "x".to_string(),
+            };
+            let rewrite = compact_derivative_presentation_rewrite(&mut ctx, &call, target).unwrap();
+
+            assert_eq!(rendered(&ctx, rewrite.new_expr), expected);
+            assert!(
+                rewrite.required_conditions.iter().any(|condition| {
+                    matches!(condition, crate::ImplicitCondition::NonZero(expr) if rendered(&ctx, *expr) == "x - 1")
+                }),
+                "rewrite should preserve the linear pole guard for {input}: {:?}",
+                rewrite.required_conditions
+            );
+        }
+    }
+
+    #[test]
+    fn compact_presentation_rewrite_handles_log_ratio_single_pole() {
+        let mut ctx = Context::new();
+        let target = parse("ln(abs(x/(x+1))) + 1/(x+1)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+        let rewrite = compact_derivative_presentation_rewrite(&mut ctx, &call, target).unwrap();
+
+        assert_eq!(rendered(&ctx, rewrite.new_expr), "1 / (x^3 + 2 * x^2 + x)");
+        assert!(
+            rewrite.required_conditions.iter().any(|condition| {
+                matches!(condition, crate::ImplicitCondition::NonZero(expr) if rendered(&ctx, *expr) == "x")
+            }),
+            "rewrite should preserve the numerator pole guard: {:?}",
+            rewrite.required_conditions
+        );
+        assert!(
+            rewrite.required_conditions.iter().any(|condition| {
+                matches!(condition, crate::ImplicitCondition::NonZero(expr) if rendered(&ctx, *expr) == "x + 1")
+            }),
+            "rewrite should preserve the denominator pole guard: {:?}",
+            rewrite.required_conditions
+        );
+    }
+
+    #[test]
+    fn compact_presentation_rewrite_handles_scaled_shifted_log_ratio_single_pole() {
+        let mut ctx = Context::new();
+        let cases = [
+            "ln(abs((2*x+3)/(x-5))) + 1/(x-5)",
+            "ln(3*abs((2*x+3)/(x-5))) + 1/(x-5)",
+        ];
+
+        for input in cases {
+            let target = parse(input, &mut ctx).unwrap();
+            let call = NamedVarCall {
+                target,
+                var_name: "x".to_string(),
+            };
+            let rewrite = compact_derivative_presentation_rewrite(&mut ctx, &call, target).unwrap();
+
+            assert_eq!(
+                rendered(&ctx, rewrite.new_expr),
+                "(62 - 15 * x) / (2 * x^3 + 20 * x + 75 - 17 * x^2)"
+            );
+            assert!(
+                rewrite.required_conditions.iter().any(|condition| {
+                    matches!(condition, crate::ImplicitCondition::NonZero(expr) if rendered(&ctx, *expr) == "2 * x + 3")
+                }),
+                "rewrite should preserve the scaled numerator pole guard for {input}: {:?}",
+                rewrite.required_conditions
+            );
+            assert!(
+                rewrite.required_conditions.iter().any(|condition| {
+                    matches!(condition, crate::ImplicitCondition::NonZero(expr) if rendered(&ctx, *expr) == "x - 5")
+                }),
+                "rewrite should preserve the shifted denominator pole guard for {input}: {:?}",
+                rewrite.required_conditions
+            );
+        }
     }
 
     #[test]

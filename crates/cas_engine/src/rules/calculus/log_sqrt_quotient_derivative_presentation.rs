@@ -128,8 +128,6 @@ pub(super) fn sqrt_over_log_polynomial_derivative_presentation(
     if denominator_scale.is_zero() {
         return None;
     }
-    denominator_parameter_scale?;
-
     let radicand = calculus_sqrt_like_radicand(ctx, numerator_expr)?;
     let Expr::Function(fn_id, args) = ctx.get(denominator_expr).clone() else {
         return None;

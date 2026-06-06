@@ -49,7 +49,7 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
     }
 
     if let ImplicitCondition::Positive(e) = cond {
-        if let Some(arg) = extract_abs_argument_view(ctx, *e) {
+        if let Some(arg) = positive_scaled_abs_argument_view(ctx, *e) {
             return normalize_condition(ctx, &ImplicitCondition::NonZero(arg));
         }
 
@@ -396,6 +396,41 @@ fn strip_nonzero_scalar_factors_for_display(ctx: &mut Context, expr: ExprId) -> 
             }
         }
         _ => expr,
+    }
+}
+
+fn positive_scaled_abs_argument_view(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(arg) = extract_abs_argument_view(ctx, expr) {
+        return Some(arg);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Mul(_, _) => {
+            let mut saw_positive_scalar = false;
+            let mut symbolic_factors = Vec::new();
+            for factor in mul_leaves(ctx, expr) {
+                if let Some(value) = as_rational_const(ctx, factor) {
+                    if !value.is_positive() {
+                        return None;
+                    }
+                    saw_positive_scalar = true;
+                } else {
+                    symbolic_factors.push(factor);
+                }
+            }
+
+            if saw_positive_scalar && symbolic_factors.len() == 1 {
+                extract_abs_argument_view(ctx, symbolic_factors[0])
+            } else {
+                None
+            }
+        }
+        Expr::Div(num, den)
+            if as_rational_const(ctx, den).is_some_and(|value| value.is_positive()) =>
+        {
+            positive_scaled_abs_argument_view(ctx, num)
+        }
+        _ => None,
     }
 }
 
@@ -2046,6 +2081,34 @@ fn positive_condition_plus_nonnegative_square_dominates_nonzero(
     }
 
     let mut remaining_terms = nonzero_terms;
+    remove_matching_signed_term(ctx, &mut remaining_terms, positive_expr, Sign::Pos)
+        && single_positive_even_square_term_is_nonnegative(ctx, &remaining_terms)
+}
+
+fn positive_condition_plus_nonnegative_square_dominates_positive(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    derived_positive_expr: ExprId,
+) -> bool {
+    let positive_expr = normalize_condition_expr_preserve_sign(ctx, positive_expr);
+    let derived_positive_expr = normalize_condition_expr_preserve_sign(ctx, derived_positive_expr);
+    let positive_terms = AddView::from_expr(ctx, positive_expr)
+        .terms
+        .into_iter()
+        .collect::<Vec<_>>();
+    let derived_terms = AddView::from_expr(ctx, derived_positive_expr)
+        .terms
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let mut remaining_terms = derived_terms.clone();
+    if remove_matching_signed_terms(ctx, &mut remaining_terms, &positive_terms)
+        && single_positive_even_square_term_is_nonnegative(ctx, &remaining_terms)
+    {
+        return true;
+    }
+
+    let mut remaining_terms = derived_terms;
     remove_matching_signed_term(ctx, &mut remaining_terms, positive_expr, Sign::Pos)
         && single_positive_even_square_term_is_nonnegative(ctx, &remaining_terms)
 }
@@ -4544,7 +4607,7 @@ fn expand_condition_for_display(
     match cond {
         ImplicitCondition::NonZero(expr) => expand_nonzero_condition_for_display(ctx, *expr),
         ImplicitCondition::Positive(expr) => {
-            if let Some(arg) = extract_abs_argument_view(ctx, *expr) {
+            if let Some(arg) = positive_scaled_abs_argument_view(ctx, *expr) {
                 return expand_nonzero_condition_for_display(ctx, arg);
             }
             if let Some(expanded) = expand_positive_quotient_condition_for_display(ctx, *expr) {
@@ -5336,6 +5399,124 @@ fn trig_unit_offset_nonzero_is_dominated(
     trig_perpendicular_nonzero_is_present(ctx, conditions, skip_index, offset_builtin, arg)
 }
 
+fn reciprocal_trig_log_arg_pole_builtin(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId)> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+
+    fn matching_pair_arg(
+        ctx: &Context,
+        left: ExprId,
+        right: ExprId,
+        first: BuiltinFn,
+        second: BuiltinFn,
+    ) -> Option<ExprId> {
+        let first_left = unary_builtin_arg(ctx, left, first);
+        let second_right = unary_builtin_arg(ctx, right, second);
+        if let (Some(left_arg), Some(right_arg)) = (first_left, second_right) {
+            if positive_ordered_exprs_equivalent(ctx, left_arg, right_arg) {
+                return Some(left_arg);
+            }
+        }
+
+        let second_left = unary_builtin_arg(ctx, left, second);
+        let first_right = unary_builtin_arg(ctx, right, first);
+        if let (Some(left_arg), Some(right_arg)) = (second_left, first_right) {
+            if positive_ordered_exprs_equivalent(ctx, left_arg, right_arg) {
+                return Some(left_arg);
+            }
+        }
+
+        None
+    }
+
+    fn div_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+        let Expr::Div(num, den) = ctx.get(expr) else {
+            return None;
+        };
+        Some((*num, *den))
+    }
+
+    fn matching_quotient_unit_pair_arg(
+        ctx: &Context,
+        left: ExprId,
+        right: ExprId,
+        num_builtin: BuiltinFn,
+        den_builtin: BuiltinFn,
+    ) -> Option<ExprId> {
+        fn matches_order(
+            ctx: &Context,
+            quotient_term: ExprId,
+            unit_reciprocal_term: ExprId,
+            num_builtin: BuiltinFn,
+            den_builtin: BuiltinFn,
+        ) -> Option<ExprId> {
+            let (num, den) = div_parts(ctx, quotient_term)?;
+            let (unit_num, unit_den) = div_parts(ctx, unit_reciprocal_term)?;
+            if !as_rational_const(ctx, unit_num).is_some_and(|value| value.is_one())
+                || !exprs_equivalent(ctx, den, unit_den)
+            {
+                return None;
+            }
+            let num_arg = unary_builtin_arg(ctx, num, num_builtin)?;
+            let den_arg = unary_builtin_arg(ctx, den, den_builtin)?;
+            if !positive_ordered_exprs_equivalent(ctx, num_arg, den_arg) {
+                return None;
+            }
+            Some(num_arg)
+        }
+
+        matches_order(ctx, left, right, num_builtin, den_builtin)
+            .or_else(|| matches_order(ctx, right, left, num_builtin, den_builtin))
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            matching_pair_arg(ctx, *left, *right, BuiltinFn::Sec, BuiltinFn::Tan)
+                .or_else(|| {
+                    matching_quotient_unit_pair_arg(
+                        ctx,
+                        *left,
+                        *right,
+                        BuiltinFn::Sin,
+                        BuiltinFn::Cos,
+                    )
+                })
+                .map(|arg| (BuiltinFn::Cos, arg))
+        }
+        Expr::Sub(left, right) => {
+            matching_pair_arg(ctx, *left, *right, BuiltinFn::Csc, BuiltinFn::Cot)
+                .or_else(|| {
+                    matching_quotient_unit_pair_arg(
+                        ctx,
+                        *left,
+                        *right,
+                        BuiltinFn::Cos,
+                        BuiltinFn::Sin,
+                    )
+                })
+                .map(|arg| (BuiltinFn::Sin, arg))
+        }
+        _ => None,
+    }
+}
+
+fn reciprocal_trig_log_arg_nonzero_is_dominated_by_pole(
+    ctx: &Context,
+    expr: ExprId,
+    pole_expr: ExprId,
+) -> bool {
+    let Some((pole_builtin, arg)) = reciprocal_trig_log_arg_pole_builtin(ctx, expr) else {
+        return false;
+    };
+    let Some(pole_arg) = unary_builtin_arg(ctx, pole_expr, pole_builtin) else {
+        return false;
+    };
+
+    positive_ordered_exprs_equivalent(ctx, arg, pole_arg)
+}
+
 fn sqrt_lower_nonzero_boundary(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let (sqrt_expr, shift) = sqrt_positive_lower_shift_parts(ctx, expr)?;
     let sqrt_arg = extract_sqrt_like_base(ctx, sqrt_expr)?;
@@ -6091,6 +6272,11 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                 ) => {
                     if is_abs_of(ctx, *derived_expr, *pos_expr)
                         || is_positive_power_of_base(ctx, *derived_expr, *pos_expr)
+                        || positive_condition_plus_nonnegative_square_dominates_positive(
+                            ctx,
+                            *pos_expr,
+                            *derived_expr,
+                        )
                         || positive_condition_dominates_affine_positive_offset(
                             ctx,
                             *pos_expr,
@@ -6213,6 +6399,11 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     ImplicitCondition::NonZero(other_nz_expr),
                 ) => {
                     if nonzero_condition_dominates_sqrt_lower_nonzero(ctx, *other_nz_expr, *nz_expr)
+                        || reciprocal_trig_log_arg_nonzero_is_dominated_by_pole(
+                            ctx,
+                            *nz_expr,
+                            *other_nz_expr,
+                        )
                     {
                         to_remove.push(i);
                         break;
@@ -7234,6 +7425,50 @@ mod tests {
     }
 
     #[test]
+    fn positive_condition_plus_even_square_dominates_positive_gap() {
+        let mut ctx = Context::new();
+        let positive = parse("x + 1", &mut ctx).expect("parse positive");
+        let derived_positive = parse("a^2 + x + 1", &mut ctx).expect("parse derived positive");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(derived_positive),
+                ImplicitCondition::Positive(positive),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x > -1"]);
+    }
+
+    #[test]
+    fn positive_condition_keeps_signed_square_gap_positive() {
+        let mut ctx = Context::new();
+        let positive = parse("x + 1", &mut ctx).expect("parse positive");
+        let derived_positive = parse("x + 1 - a^2", &mut ctx).expect("parse derived positive");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(derived_positive),
+                ImplicitCondition::Positive(positive),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::Positive(derived_positive)
+        )));
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::Positive(positive)
+        )));
+    }
+
+    #[test]
     fn positive_scaled_condition_keeps_signed_square_gap_nonzero() {
         let mut ctx = Context::new();
         let positive = parse("x + 1", &mut ctx).expect("parse positive");
@@ -7941,6 +8176,29 @@ mod tests {
             .collect();
 
         assert_eq!(rendered, vec!["sinh(2 * x + 1) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_scaled_sinh_power_conditions_dedupe_to_atomic_condition() {
+        let mut ctx = Context::new();
+        let scaled_cubic = parse("2*sinh(a*x + b)^3", &mut ctx).expect("parse scaled cubic");
+        let sinh_expr = parse("sinh(a*x + b)", &mut ctx).expect("parse sinh");
+        let square = parse("sinh(a*x + b)^2", &mut ctx).expect("parse square");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(scaled_cubic),
+                ImplicitCondition::NonZero(sinh_expr),
+                ImplicitCondition::NonZero(square),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["sinh(a * x + b) ≠ 0"]);
     }
 
     #[test]
@@ -9518,6 +9776,28 @@ mod tests {
     }
 
     #[test]
+    fn positive_scaled_abs_quotient_expands_to_atomic_numerator_and_denominator() {
+        let mut ctx = Context::new();
+        let scaled_abs_quotient =
+            parse("3*abs((x-1)/(x+1))", &mut ctx).expect("parse scaled abs quotient");
+        let x_minus_1 = parse("x - 1", &mut ctx).expect("parse x - 1");
+        let x_plus_1 = parse("x + 1", &mut ctx).expect("parse x + 1");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[ImplicitCondition::Positive(scaled_abs_quotient)],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_minus_1))
+        }));
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_plus_1))
+        }));
+    }
+
+    #[test]
     fn trig_unit_offset_nonzero_is_dominated_by_perpendicular_nonzero_condition() {
         let mut ctx = Context::new();
         let sec_log_arg =
@@ -9556,6 +9836,90 @@ mod tests {
         );
         assert_eq!(
             direct_csc_normalized,
+            vec![ImplicitCondition::NonZero(sin_arg)]
+        );
+    }
+
+    #[test]
+    fn reciprocal_trig_log_arg_nonzero_is_dominated_by_pole_condition() {
+        let mut ctx = Context::new();
+        let sec_tan_log_arg =
+            parse("tan(2*x+1)+sec(2*x+1)", &mut ctx).expect("parse sec tan log arg");
+        let sec_tan_held_log_arg = cas_ast::hold::wrap_hold(&mut ctx, sec_tan_log_arg);
+        let sec_tan_abs_reordered_log_arg = parse("abs(tan(1+2*x)+sec(1+2*x))", &mut ctx)
+            .expect("parse sec tan reordered abs log arg");
+        let sec_tan_quotient_arg = parse("sin(2*x+1)/cos(2*x+1)+1/cos(2*x+1)", &mut ctx)
+            .expect("parse sec tan quotient arg");
+        let cos_arg = parse("cos(2*x+1)", &mut ctx).expect("parse cos arg");
+        let csc_cot_log_arg =
+            parse("csc(2*x+1)-cot(2*x+1)", &mut ctx).expect("parse csc cot log arg");
+        let csc_cot_quotient_arg = parse("1/sin(2*x+1)-cos(2*x+1)/sin(2*x+1)", &mut ctx)
+            .expect("parse csc cot quotient arg");
+        let sin_arg = parse("sin(2*x+1)", &mut ctx).expect("parse sin arg");
+
+        let sec_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(sec_tan_log_arg),
+                ImplicitCondition::NonZero(cos_arg),
+            ],
+        );
+        assert_eq!(sec_normalized, vec![ImplicitCondition::NonZero(cos_arg)]);
+
+        let sec_abs_reordered_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(sec_tan_abs_reordered_log_arg),
+                ImplicitCondition::NonZero(cos_arg),
+            ],
+        );
+        assert_eq!(
+            sec_abs_reordered_normalized,
+            vec![ImplicitCondition::NonZero(cos_arg)]
+        );
+
+        let sec_held_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(sec_tan_held_log_arg),
+                ImplicitCondition::NonZero(cos_arg),
+            ],
+        );
+        assert_eq!(
+            sec_held_normalized,
+            vec![ImplicitCondition::NonZero(cos_arg)]
+        );
+
+        let sec_quotient_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(sec_tan_quotient_arg),
+                ImplicitCondition::NonZero(cos_arg),
+            ],
+        );
+        assert_eq!(
+            sec_quotient_normalized,
+            vec![ImplicitCondition::NonZero(cos_arg)]
+        );
+
+        let csc_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(csc_cot_log_arg),
+                ImplicitCondition::NonZero(sin_arg),
+            ],
+        );
+        assert_eq!(csc_normalized, vec![ImplicitCondition::NonZero(sin_arg)]);
+
+        let csc_quotient_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(csc_cot_quotient_arg),
+                ImplicitCondition::NonZero(sin_arg),
+            ],
+        );
+        assert_eq!(
+            csc_quotient_normalized,
             vec![ImplicitCondition::NonZero(sin_arg)]
         );
     }

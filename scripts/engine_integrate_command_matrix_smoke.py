@@ -26,7 +26,11 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from cas_cli_release import ensure_release_cas_cli
-from engine_command_matrix_observability import stderr_fragility_error
+from engine_command_matrix_observability import (
+    payload_observability_summary,
+    runtime_observability_summary,
+    stderr_fragility_error,
+)
 
 
 ROOT = SCRIPT_DIR.parent
@@ -700,7 +704,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="symbolic_external_scale_hyperbolic_tanh_log_derivative_ratio_positive",
         expr="integrate(2*k*x*sinh(x^2+b)/cosh(x^2+b), x)",
         expected_result="k·ln(cosh(x^2 + b))",
-        expected_derivative_equivalent_to="2*k*x*sinh(x^2+b)/cosh(x^2+b)",
+        expected_derivative_result="(sinh(x^2 + b)·x·k·2)/cosh(x^2 + b)",
         expected_step_substrings=(
             "Sacar constante de una fracción",
             "Usar la regla de tanh(u) -> ln(cosh(u))",
@@ -718,7 +722,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
         expr="integrate(2*k*x*tanh(x^2+b), x)",
         expected_result="k·ln(cosh(x^2 + b))",
-        expected_derivative_equivalent_to="2*k*x*tanh(x^2+b)",
+        expected_derivative_result="(sinh(x^2 + b)·x·k·2)/cosh(x^2 + b)",
         expected_step_substrings=(
             "Usar la regla de tanh(u) -> ln(cosh(u))",
             "Identificar u y du",
@@ -755,6 +759,22 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         argument_regime="rational_expression",
         trace_regime="inverse_trig_table",
         presentation_regime="inverse_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_affine_shifted_scaled_positive_quadratic_table",
+        expr="integrate(1/((2*x+3)^2+4), x)",
+        expected_result="1/4·arctan((2·x + 3) / 2)",
+        expected_derivative_result="1 / (4·x^2 + 12·x + 13)",
+        expected_step_substrings=(
+            "Usar la regla de arctan con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="inverse_trig_table",
+        argument_regime="affine_shifted_scaled_positive_quadratic",
+        domain_regime="structurally_positive_denominator",
+        trace_regime="arctan_affine_positive_quadratic_table",
+        presentation_regime="scaled_arctan_affine",
     ),
     IntegrateCommandMatrixCase(
         name="rational_positive_quadratic_square_reduction",
@@ -813,7 +833,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="inverse_trig_symbolic_denominator_scale_sqrt_reciprocal_bridge",
         expr="integrate(1/(sqrt(x)*(x+a^2)), x)",
         expected_result="(2·arctan(sqrt(x) / a))/a",
-        expected_derivative_equivalent_to="1/(sqrt(x)*(x+a^2))",
+        expected_derivative_result="(x^(1/2)·2)/(2·(x·a^2 + x^2))",
         expected_derivative_required_display=("a ≠ 0", "x > 0"),
         expected_required_display=("a ≠ 0", "x > 0"),
         expected_step_substrings=(
@@ -830,7 +850,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="inverse_trig_symbolic_denominator_numeric_square_scale_sqrt_reciprocal_bridge",
         expr="integrate(1/(sqrt(x)*(4*x+a^2)), x)",
         expected_result="arctan(2·sqrt(x) / a) / a",
-        expected_derivative_equivalent_to="1/(sqrt(x)*(4*x+a^2))",
+        expected_derivative_result="2·a^2 / ((2·a^4 + 8·x·a^2)·sqrt(x))",
         expected_derivative_required_display=("a ≠ 0", "x > 0"),
         expected_required_display=("a ≠ 0", "x > 0"),
         expected_step_substrings=(
@@ -849,7 +869,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="inverse_trig_symbolic_numerator_scale_sqrt_reciprocal_bridge",
         expr="integrate(1/(sqrt(x)*(a^2*x+1)), x)",
         expected_result="(2·arctan(a·sqrt(x)))/a",
-        expected_derivative_equivalent_to="1/(sqrt(x)*(a^2*x+1))",
+        expected_derivative_result="2 / ((2·x·a^2 + 2)·sqrt(x))",
         expected_derivative_required_display=("a ≠ 0", "x > 0"),
         expected_required_display=("a ≠ 0", "x > 0"),
         expected_step_substrings=(
@@ -935,7 +955,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="rational_partial_fraction_mixed_simple_repeated_linear_factors",
         expr="integrate(1/(x*(x+1)^2), x)",
         expected_result="ln(|x / (x + 1)|) + 1 / (x + 1)",
-        expected_derivative_equivalent_to="1/(x*(x+1)^2)",
+        expected_derivative_result="1 / (x^3 + 2·x^2 + x)",
         expected_derivative_required_display=("x ≠ 0", "x ≠ -1"),
         expected_required_display=("x ≠ 0", "x ≠ -1"),
         expected_step_substrings=(
@@ -969,7 +989,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="rational_partial_fraction_mixed_linear_positive_quadratic",
         expr="integrate(1/(x^4-1), x)",
         expected_result="1/4·ln(|x - 1|) - 1/2·arctan(x) - 1/4·ln(|x + 1|)",
-        expected_derivative_equivalent_to="1/(x^4-1)",
+        expected_derivative_result="1 / (2·(x^2 - 1)) - 1 / (2·(x^2 + 1))",
         expected_derivative_required_display=("x ≠ -1", "x ≠ 1"),
         expected_required_display=("x ≠ -1", "x ≠ 1"),
         expected_step_substrings=(
@@ -986,7 +1006,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="rational_partial_fraction_repeated_linear_positive_quadratic",
         expr="integrate(1/((x-1)^2*(x^2+1)), x)",
         expected_result="1/4·ln(x^2 + 1) - 1/2·ln(|x - 1|) - 1 / (2·(x - 1))",
-        expected_derivative_equivalent_to="1/((x-1)^2*(x^2+1))",
+        expected_derivative_result="1 / (x^4 + 2·x^2 + 1 - 2·x^3 - 2·x)",
         expected_derivative_required_display=("x ≠ 1",),
         expected_required_display=("x ≠ 1",),
         expected_step_substrings=(
@@ -1131,6 +1151,24 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="residual_reciprocal_sqrt_power",
     ),
     IntegrateCommandMatrixCase(
+        name="inverse_sqrt_symbolic_radius_residual_domain",
+        expr="integrate(1/sqrt(a^2-x^2), x)",
+        expected_result="integrate((a^2 - x^2)^(-1/2), x)",
+        expected_required_display=("a^2 - x^2 > 0",),
+        expected_step_substrings=(
+            "Reescribir la raíz como potencia fraccionaria",
+            "Canonicalize Reciprocal Sqrt",
+            "Conservar integral residual",
+        ),
+        family="inverse_sqrt_symbolic_parameter_residual",
+        argument_regime="symbolic_interval_radical_residual",
+        domain_regime="symbolic_radical_interval_residual",
+        outcome="residual",
+        residual_cause="symbolic_parameter_condition_required",
+        trace_regime="residual_presimplification_with_domain",
+        presentation_regime="residual_reciprocal_sqrt_power",
+    ),
+    IntegrateCommandMatrixCase(
         name="inverse_sqrt_direct_asinh_unconditional",
         expr="integrate(1/sqrt(x^2+1), x)",
         expected_result="asinh(x)",
@@ -1260,7 +1298,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_square_substitution",
         expr="integrate(2*k*x/sinh(x^2+b)^2, x)",
         expected_result="-k·cosh(x^2 + b) / sinh(x^2 + b)",
-        expected_derivative_equivalent_to="2*k*x/sinh(x^2+b)^2",
+        expected_derivative_result="(x·k·2)/sinh(x^2 + b)^2",
         expected_derivative_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_step_substrings=(
@@ -1279,7 +1317,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="hyperbolic_cosh_reciprocal_fourth_substitution",
         expr="integrate(1/cosh(2*x+1)^4, x)",
         expected_result="1/6·(3·tanh(2·x + 1) - tanh(2·x + 1)^3)",
-        expected_derivative_equivalent_to="1/cosh(2*x+1)^4",
+        expected_derivative_result="1 / cosh(2·x + 1)^4",
         expected_step_substrings=(
             "Usar la regla de 1/cosh(u)^4 -> tanh(u) - tanh(u)^3/3",
             "Identificar u y du",
@@ -1295,7 +1333,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_fourth_substitution",
         expr="integrate(2*k*x/cosh(x^2+b)^4, x)",
         expected_result="1/3·(3·k·tanh(x^2 + b) - k·tanh(x^2 + b)^3)",
-        expected_derivative_equivalent_to="2*k*x/cosh(x^2+b)^4",
+        expected_derivative_result="(x·k·6)/(3·cosh(x^2 + b)^4)",
         expected_step_substrings=(
             "Usar la regla de 1/cosh(u)^4 -> tanh(u) - tanh(u)^3/3",
             "Identificar u y du",
@@ -1312,7 +1350,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="hyperbolic_sinh_reciprocal_fourth_substitution",
         expr="integrate(1/sinh(2*x+1)^4, x)",
         expected_result="1/2 / tanh(2·x + 1) - 1/6 / tanh(2·x + 1)^3",
-        expected_derivative_equivalent_to="1/sinh(2*x+1)^4",
+        expected_derivative_result="1 / (cosh(2·x + 1)^2·tanh(2·x + 1)^4) - 1 / sinh(2·x + 1)^2",
         expected_derivative_required_display=("sinh(2·x + 1) ≠ 0",),
         expected_required_display=("sinh(2·x + 1) ≠ 0",),
         expected_step_substrings=(
@@ -1331,7 +1369,10 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
         expr="integrate(2*k*x/sinh(x^2+b)^4, x)",
         expected_result="k / tanh(x^2 + b) - k / (3·tanh(x^2 + b)^3)",
-        expected_derivative_equivalent_to="2*k*x/sinh(x^2+b)^4",
+        expected_derivative_result=(
+            "k·2·x / (cosh(x^2 + b)^2·tanh(x^2 + b)^4) "
+            "- k·2·x / (cosh(x^2 + b)^2·tanh(x^2 + b)^2)"
+        ),
         expected_derivative_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_step_substrings=(
@@ -1794,7 +1835,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="external_symbolic_scale_sqrt_chain_secant_tangent_domain",
         expr="integrate(k*sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
         expected_result="sec(sqrt(x))·k",
-        expected_derivative_equivalent_to="k*sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x))",
+        expected_derivative_result="k·sin(sqrt(x)) / (2·cos(sqrt(x))^2·sqrt(x))",
         expected_derivative_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
         expected_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
         expected_step_substrings=(
@@ -1814,7 +1855,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="external_symbolic_scale_sqrt_chain_cosecant_cotangent_domain",
         expr="integrate(k*csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)",
         expected_result="-csc(sqrt(x))·k",
-        expected_derivative_equivalent_to="k*csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x))",
+        expected_derivative_result="k·cos(sqrt(x)) / (2·sin(sqrt(x))^2·sqrt(x))",
         expected_derivative_required_display=("sin(sqrt(x)) ≠ 0", "x > 0"),
         expected_required_display=("sin(sqrt(x)) ≠ 0", "x > 0"),
         expected_step_substrings=(
@@ -1834,7 +1875,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="external_symbolic_scale_shifted_sqrt_chain_secant_tangent_domain",
         expr="integrate(-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x)), x)",
         expected_result="sec(b - sqrt(x))·k",
-        expected_derivative_equivalent_to="-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x))",
+        expected_derivative_result="-k·sec(b - sqrt(x))·tan(b - sqrt(x)) / (2·sqrt(x))",
         expected_derivative_required_display=(
             "cos(b - sqrt(x)) ≠ 0",
             "x > 0",
@@ -1857,7 +1898,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="external_symbolic_scale_shifted_sqrt_chain_cosecant_cotangent_domain",
         expr="integrate(-k*csc(b-sqrt(x))*cot(b-sqrt(x))/(2*sqrt(x)), x)",
         expected_result="-csc(b - sqrt(x))·k",
-        expected_derivative_equivalent_to="-k*csc(b-sqrt(x))*cot(b-sqrt(x))/(2*sqrt(x))",
+        expected_derivative_result="-k·csc(b - sqrt(x))·cot(b - sqrt(x)) / (2·sqrt(x))",
         expected_derivative_required_display=(
             "sin(b - sqrt(x)) ≠ 0",
             "x > 0",
@@ -1880,7 +1921,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="external_symbolic_scale_sqrt_minus_symbol_chain_secant_tangent_domain",
         expr="integrate(k*sec(sqrt(x)-b)*tan(sqrt(x)-b)/(2*sqrt(x)), x)",
         expected_result="sec(sqrt(x) - b)·k",
-        expected_derivative_equivalent_to="k*sec(sqrt(x)-b)*tan(sqrt(x)-b)/(2*sqrt(x))",
+        expected_derivative_result="k·sec(sqrt(x) - b)·tan(sqrt(x) - b) / (2·sqrt(x))",
         expected_derivative_required_display=(
             "cos(sqrt(x) - b) ≠ 0",
             "x > 0",
@@ -1903,7 +1944,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="external_symbolic_scale_sqrt_minus_symbol_chain_cosecant_cotangent_domain",
         expr="integrate(k*csc(sqrt(x)-b)*cot(sqrt(x)-b)/(2*sqrt(x)), x)",
         expected_result="-csc(sqrt(x) - b)·k",
-        expected_derivative_equivalent_to="k*csc(sqrt(x)-b)*cot(sqrt(x)-b)/(2*sqrt(x))",
+        expected_derivative_result="k·csc(sqrt(x) - b)·cot(sqrt(x) - b) / (2·sqrt(x))",
         expected_derivative_required_display=(
             "sin(sqrt(x) - b) ≠ 0",
             "x > 0",
@@ -1945,8 +1986,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="shifted_sqrt_chain_tangent_log_domain",
         expr="integrate(tan(b-sqrt(x))/(2*sqrt(x)), x)",
         expected_result="ln(|cos(b - sqrt(x))|)",
-        expected_derivative_equivalent_to="tan(b-sqrt(x))/(2*sqrt(x))",
-        expected_derivative_required_display=("x > 0", "cos(b - sqrt(x)) ≠ 0"),
+        expected_derivative_result="tan(b - sqrt(x)) / (2·sqrt(x))",
+        expected_derivative_required_display=("cos(b - sqrt(x)) ≠ 0", "x > 0"),
         expected_required_display=("cos(b - sqrt(x)) ≠ 0", "x > 0"),
         expected_step_substrings=(
             "Usar la regla de tan(u) -> -ln|cos(u)|",
@@ -1985,8 +2026,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="shifted_sqrt_chain_hyperbolic_tangent_log_domain",
         expr="integrate(1/(2*sqrt(x)*tanh(b-sqrt(x))), x)",
         expected_result="-ln(|sinh(sqrt(x) - b)|)",
-        expected_derivative_equivalent_to="1/(2*sqrt(x)*tanh(b-sqrt(x)))",
-        expected_derivative_required_display=("sinh(b - sqrt(x)) ≠ 0", "x > 0"),
+        expected_derivative_result="-1 / (2·tanh(x^(1/2) - b)·sqrt(x))",
+        expected_derivative_required_display=("sinh(sqrt(x) - b) ≠ 0", "x > 0"),
         expected_required_display=("sinh(b - sqrt(x)) ≠ 0", "x > 0"),
         expected_step_substrings=(
             "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
@@ -2005,8 +2046,11 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="affine_shifted_sqrt_chain_hyperbolic_tangent_log_domain",
         expr="integrate(3/(2*sqrt(3*x+1)*tanh(b-sqrt(3*x+1))), x)",
         expected_result="-ln(|sinh(sqrt(3·x + 1) - b)|)",
-        expected_derivative_equivalent_to="3/(2*sqrt(3*x+1)*tanh(b-sqrt(3*x+1)))",
-        expected_derivative_required_display=("sinh(b - sqrt(3·x + 1)) ≠ 0", "x > -1/3"),
+        expected_derivative_result="-3 / (2·tanh((3·x + 1)^(1/2) - b)·sqrt(3·x + 1))",
+        expected_derivative_required_display=(
+            "sinh(sqrt(3·x + 1) - b) ≠ 0",
+            "x > -1/3",
+        ),
         expected_required_display=("sinh(b - sqrt(3·x + 1)) ≠ 0", "x > -1/3"),
         expected_step_substrings=(
             "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
@@ -2044,8 +2088,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="shifted_sqrt_chain_hyperbolic_sinh_over_cosh_square_symbolic_scale_domain",
         expr="integrate(k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
         expected_result="-k / cosh(sqrt(x) - b)",
-        expected_derivative_equivalent_to=(
-            "k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2)"
+        expected_derivative_result=(
+            "k·sinh(x^(1/2) - b) / (2·cosh(x^(1/2) - b)^2·sqrt(x))"
         ),
         expected_derivative_required_display=("x > 0",),
         expected_required_display=("x > 0",),
@@ -2066,10 +2110,13 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="negative_shifted_sqrt_chain_hyperbolic_cosh_over_sinh_square_symbolic_scale_domain",
         expr="integrate(k*cosh(b-sqrt(x))/(2*sqrt(x)*sinh(b-sqrt(x))^2), x)",
         expected_result="-k / sinh(sqrt(x) - b)",
-        expected_derivative_equivalent_to=(
-            "k*cosh(b-sqrt(x))/(2*sqrt(x)*sinh(b-sqrt(x))^2)"
+        expected_derivative_result=(
+            "k·cosh(x^(1/2) - b) / (2·sinh(x^(1/2) - b)^2·sqrt(x))"
         ),
-        expected_derivative_required_display=("x > 0", "sinh(b - sqrt(x)) ≠ 0"),
+        expected_derivative_required_display=(
+            "x > 0",
+            "sinh(sqrt(x) - b) ≠ 0",
+        ),
         expected_required_display=("x > 0", "sinh(b - sqrt(x)) ≠ 0"),
         expected_step_substrings=(
             "Hyperbolic Negative Argument",
@@ -2303,18 +2350,22 @@ def run_case(
     except subprocess.TimeoutExpired:
         terminate_process_group(process)
         stdout, stderr = process.communicate()
+        integrate_elapsed = time.monotonic() - start
         return {
             "name": case.name,
             "status": "timeout",
             "error": "timeout",
             "error_kind": "timeout",
             "returncode": None,
-            "wall_elapsed_seconds": round(time.monotonic() - start, 3),
+            "wall_elapsed_seconds": round(integrate_elapsed, 3),
+            "integrate_elapsed_seconds": round(integrate_elapsed, 3),
+            "antiderivative_verification_mode": verification_mode(case),
             "stdout": stdout,
             "stderr": stderr,
         }
 
     wall_elapsed = time.monotonic() - start
+    integrate_elapsed = wall_elapsed
     parsed, parse_error = parse_json(stdout)
     result = parsed.get("result") if isinstance(parsed, dict) else None
     required_display = extract_required_display(parsed)
@@ -2355,6 +2406,8 @@ def run_case(
     derivative_required_display: tuple[str, ...] = ()
     derivative_stderr = ""
     derivative_equivalence_result: str | None = None
+    derivative_elapsed: float | None = None
+    derivative_residual_simplify_elapsed: float | None = None
     if error is None and (
         case.expected_derivative_result is not None
         or case.expected_derivative_equivalent_to is not None
@@ -2373,6 +2426,7 @@ def run_case(
             "--format",
             "json",
         ]
+        derivative_start = time.monotonic()
         derivative_process = subprocess.Popen(
             derivative_command,
             cwd=ROOT,
@@ -2388,8 +2442,10 @@ def run_case(
         except subprocess.TimeoutExpired:
             terminate_process_group(derivative_process)
             derivative_stdout, derivative_stderr = derivative_process.communicate()
+            derivative_elapsed = time.monotonic() - derivative_start
             error = "antiderivative verification timeout"
         else:
+            derivative_elapsed = time.monotonic() - derivative_start
             derivative_parsed, derivative_parse_error = parse_json(derivative_stdout)
             derivative_result = (
                 derivative_parsed.get("result")
@@ -2424,6 +2480,7 @@ def run_case(
                     "--format",
                     "json",
                 ]
+                simplified_start = time.monotonic()
                 simplified_process = subprocess.Popen(
                     simplified_command,
                     cwd=ROOT,
@@ -2439,8 +2496,14 @@ def run_case(
                 except subprocess.TimeoutExpired:
                     terminate_process_group(simplified_process)
                     simplified_stdout, simplified_stderr = simplified_process.communicate()
+                    derivative_residual_simplify_elapsed = (
+                        time.monotonic() - simplified_start
+                    )
                     error = "antiderivative verification timeout"
                 else:
+                    derivative_residual_simplify_elapsed = (
+                        time.monotonic() - simplified_start
+                    )
                     derivative_stderr += simplified_stderr
                     simplified_parsed, simplified_parse_error = parse_json(simplified_stdout)
                     simplified_result = (
@@ -2516,6 +2579,18 @@ def run_case(
         "error_kind": error_kind,
         "returncode": process.returncode,
         "wall_elapsed_seconds": round(wall_elapsed, 3),
+        "integrate_elapsed_seconds": round(integrate_elapsed, 3),
+        "stdout_bytes": len(stdout.encode("utf-8")),
+        "step_text_char_count": len(step_text),
+        "antiderivative_verification_elapsed_seconds": (
+            round(derivative_elapsed, 3) if derivative_elapsed is not None else None
+        ),
+        "antiderivative_residual_simplify_elapsed_seconds": (
+            round(derivative_residual_simplify_elapsed, 3)
+            if derivative_residual_simplify_elapsed is not None
+            else None
+        ),
+        "antiderivative_verification_mode": verification_mode(case),
         "result": result if isinstance(result, str) else None,
         "required_display": list(required_display),
         "warnings": list(warnings),
@@ -2623,6 +2698,17 @@ def radical_inverse_policy_cluster(
 ) -> str | None:
     if case.family == "inverse_trig_root_reciprocal":
         return "block8_inverse_trig_root_reciprocal"
+    if case.family in {
+        "inverse_hyperbolic_rational_affine",
+        "inverse_hyperbolic_rational_table",
+    }:
+        return "block8_inverse_hyperbolic_rational_interval"
+    if case.family in {
+        "inverse_hyperbolic_sqrt_table",
+        "inverse_sqrt_affine",
+        "inverse_sqrt_table",
+    }:
+        return "block8_inverse_sqrt_tables"
     return None
 
 
@@ -2645,6 +2731,11 @@ def calculus_maturity_block(case: IntegrateCommandMatrixCase) -> str:
     cluster = trig_hyperbolic_policy_cluster(case)
     if cluster is not None and cluster.startswith("block7_"):
         return "block7_trig_hyperbolic_integration"
+
+    # Direct arctan table rows are rational integration cells; block 8 is for
+    # radical/inverse-family regimes where domain and orientation policy matter.
+    if case.family == "inverse_trig_table":
+        return "block6_rational_integration"
 
     if (
         "inverse" in case.family
@@ -2728,6 +2819,18 @@ def verification_regime(case: IntegrateCommandMatrixCase) -> str:
     return "verification_gap"
 
 
+def verification_mode(case: IntegrateCommandMatrixCase) -> str:
+    if case.expected_derivative_equivalent_to is not None:
+        return "residual_equivalence"
+    if case.expected_derivative_result is not None:
+        return "direct_derivative"
+    if case.outcome == "residual":
+        return "residual_not_verified"
+    if case.outcome == "undefined":
+        return "undefined_not_verified"
+    return "verification_gap"
+
+
 def count_verification_regimes(
     cases: tuple[IntegrateCommandMatrixCase, ...],
 ) -> dict[str, int]:
@@ -2750,6 +2853,131 @@ def count_residual_causes(
             cause = "unclassified_residual"
         counts[cause] = counts.get(cause, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def phase_runtime_case_rows(
+    results: list[dict[str, Any]],
+    *,
+    phase_key: str,
+    output_key: str,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    timed_results = [
+        result
+        for result in results
+        if isinstance(result.get(phase_key), (int, float))
+    ]
+    timed_results.sort(
+        key=lambda result: (
+            -float(result.get(phase_key, 0.0)),
+            str(result.get("name", "")),
+        )
+    )
+    rows: list[dict[str, Any]] = []
+    for result in timed_results[:limit]:
+        row: dict[str, Any] = {
+            "name": result.get("name"),
+            output_key: round(float(result[phase_key]), 3),
+        }
+        for key in (
+            "family",
+            "trace_regime",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+            "antiderivative_verification_mode",
+        ):
+            value = result.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def verification_mode_runtime_rows(
+    results: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        mode = result.get("antiderivative_verification_mode")
+        elapsed = result.get("antiderivative_verification_elapsed_seconds")
+        if not isinstance(mode, str) or not isinstance(elapsed, (int, float)):
+            continue
+        groups.setdefault(mode, []).append(result)
+
+    rows: list[dict[str, Any]] = []
+    for mode, mode_results in groups.items():
+        elapsed_values = [
+            float(result["antiderivative_verification_elapsed_seconds"])
+            for result in mode_results
+        ]
+        total_elapsed = sum(elapsed_values)
+        slowest = max(
+            mode_results,
+            key=lambda result: float(
+                result.get("antiderivative_verification_elapsed_seconds", 0.0)
+            ),
+        )
+        rows.append(
+            {
+                "mode": mode,
+                "case_count": len(mode_results),
+                "total_elapsed_seconds": round(total_elapsed, 3),
+                "avg_case_ms": round(
+                    total_elapsed * 1000.0 / len(mode_results),
+                    3,
+                ),
+                "max_elapsed_seconds": round(max(elapsed_values), 3),
+                "slowest_case": slowest.get("name"),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            -float(row["total_elapsed_seconds"]),
+            -int(row["case_count"]),
+            str(row["mode"]),
+        )
+    )
+    return rows[:limit]
+
+
+def phase_runtime_observability_summary(
+    results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    integrate_rows = phase_runtime_case_rows(
+        results,
+        phase_key="integrate_elapsed_seconds",
+        output_key="integrate_elapsed_seconds",
+    )
+    if integrate_rows:
+        summary["slowest_integrate_evaluations"] = integrate_rows
+
+    verification_rows = phase_runtime_case_rows(
+        results,
+        phase_key="antiderivative_verification_elapsed_seconds",
+        output_key="antiderivative_verification_elapsed_seconds",
+    )
+    if verification_rows:
+        summary["slowest_antiderivative_verifications"] = verification_rows
+
+    residual_simplify_rows = phase_runtime_case_rows(
+        results,
+        phase_key="antiderivative_residual_simplify_elapsed_seconds",
+        output_key="antiderivative_residual_simplify_elapsed_seconds",
+    )
+    if residual_simplify_rows:
+        summary["slowest_antiderivative_residual_simplifications"] = (
+            residual_simplify_rows
+        )
+
+    verification_mode_rows = verification_mode_runtime_rows(results)
+    if verification_mode_rows:
+        summary["runtime_by_antiderivative_verification_mode"] = (
+            verification_mode_rows
+        )
+    return summary
 
 
 def increment_issue_kind(issue_kind_counts: dict[str, int], error_kind: str | None) -> None:
@@ -2861,6 +3089,17 @@ def run_matrix(
             count_radical_inverse_policy_clusters(cases)
         ),
         "case_filters": [case.name for case in cases],
+        **runtime_observability_summary(
+            results,
+            group_keys=(
+                "family",
+                "calculus_maturity_block",
+                "calculus_block_gate",
+                "trace_regime",
+            ),
+        ),
+        **phase_runtime_observability_summary(results),
+        **payload_observability_summary(results),
     }
 
 

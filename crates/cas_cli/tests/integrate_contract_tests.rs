@@ -14372,20 +14372,12 @@ fn integrate_contract_sqrt_chain_reciprocal_trig_logs_verify_by_diff() {
         (
             "integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))), x)",
             "ln(|tan(sqrt(3 * x + 1)) + sec(sqrt(3 * x + 1))|)",
-            vec![
-                "cos(sqrt(3 * x + 1)) ≠ 0",
-                "x > -1/3",
-                "tan(sqrt(3 * x + 1)) + sec(sqrt(3 * x + 1)) ≠ 0",
-            ],
+            vec!["cos(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
         (
             "integrate(3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1))), x)",
             "ln(|csc(sqrt(3 * x + 1)) - cot(sqrt(3 * x + 1))|)",
-            vec![
-                "sin(sqrt(3 * x + 1)) ≠ 0",
-                "x > -1/3",
-                "csc(sqrt(3 * x + 1)) - cot(sqrt(3 * x + 1)) ≠ 0",
-            ],
+            vec!["sin(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
     ];
 

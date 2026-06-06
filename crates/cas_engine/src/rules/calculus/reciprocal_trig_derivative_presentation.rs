@@ -168,6 +168,148 @@ pub(super) fn reciprocal_trig_affine_derivative_presentation(
     ))
 }
 
+fn build_signed_product_for_reciprocal_trig_presentation(
+    ctx: &mut Context,
+    factors: &[ExprId],
+) -> ExprId {
+    let mut coeff = BigRational::one();
+    let mut unsigned_factors = Vec::new();
+
+    for factor in factors {
+        for leaf in signed_mul_leaves_for_calculus_presentation(ctx, *factor) {
+            if let Some(value) = cas_ast::views::as_rational_const(ctx, leaf, 8) {
+                coeff *= value;
+            } else {
+                let mut absorbed_rational_denominator = false;
+                if let Expr::Div(numerator, denominator) = ctx.get(leaf).clone() {
+                    if let Some(denominator_scale) =
+                        cas_ast::views::as_rational_const(ctx, denominator, 8)
+                    {
+                        if !denominator_scale.is_zero() {
+                            coeff /= denominator_scale;
+                            for numerator_leaf in
+                                signed_mul_leaves_for_calculus_presentation(ctx, numerator)
+                            {
+                                if let Some(value) =
+                                    cas_ast::views::as_rational_const(ctx, numerator_leaf, 8)
+                                {
+                                    coeff *= value;
+                                } else {
+                                    unsigned_factors.push(numerator_leaf);
+                                }
+                            }
+                            absorbed_rational_denominator = true;
+                        }
+                    }
+                }
+                if !absorbed_rational_denominator {
+                    unsigned_factors.push(leaf);
+                }
+            }
+        }
+    }
+
+    if unsigned_factors.is_empty() {
+        return rational_const_for_calculus_presentation(ctx, coeff);
+    }
+    if coeff.is_one() {
+        return cas_math::expr_nary::build_balanced_mul(ctx, &unsigned_factors);
+    }
+    let (numerator_coeff, denominator_coeff) =
+        nonzero_rational_parts(&coeff).unwrap_or_else(|| (BigRational::zero(), BigRational::one()));
+    let numerator = if numerator_coeff.is_one() {
+        cas_math::expr_nary::build_balanced_mul(ctx, &unsigned_factors)
+    } else {
+        let numerator_coeff = rational_const_for_calculus_presentation(ctx, numerator_coeff);
+        let mut factors = vec![numerator_coeff];
+        factors.extend(unsigned_factors);
+        cas_math::expr_nary::build_balanced_mul(ctx, &factors)
+    };
+    if denominator_coeff.is_one() {
+        numerator
+    } else {
+        let denominator = rational_const_for_calculus_presentation(ctx, denominator_coeff);
+        ctx.add(Expr::Div(numerator, denominator))
+    }
+}
+
+pub(crate) fn constant_scaled_reciprocal_trig_affine_derivative_presentation_with_domain(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let mut scale_factors = Vec::new();
+    let mut reciprocal_part = None;
+
+    for factor in signed_mul_leaves_for_calculus_presentation(ctx, target) {
+        if let Some((builtin, arg, table_sign, pole_builtin, reciprocal_scale)) =
+            shifted_sqrt_reciprocal_trig_factor(ctx, factor)
+        {
+            if reciprocal_part
+                .replace((builtin, arg, table_sign, pole_builtin))
+                .is_some()
+            {
+                return None;
+            }
+            if let Some(scale_factor) = reciprocal_scale {
+                if contains_named_var(ctx, scale_factor, var_name) {
+                    return None;
+                }
+                if !is_calculus_presentation_one(ctx, scale_factor) {
+                    scale_factors.push(scale_factor);
+                }
+            }
+            continue;
+        }
+
+        if contains_named_var(ctx, factor, var_name) {
+            return None;
+        }
+        if !is_calculus_presentation_one(ctx, factor) {
+            scale_factors.push(factor);
+        }
+    }
+
+    let (builtin, arg, table_sign, pole_builtin) = reciprocal_part?;
+    let arg_derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        ctx, arg, var_name,
+    )?;
+    if contains_named_var(ctx, arg_derivative, var_name)
+        || cas_ast::views::as_rational_const(ctx, arg_derivative, 8)
+            .is_some_and(|value| value.is_zero())
+    {
+        return None;
+    }
+    let has_symbolic_parameter = scale_factors
+        .iter()
+        .any(|factor| cas_ast::views::as_rational_const(ctx, *factor, 8).is_none())
+        || cas_ast::views::as_rational_const(ctx, arg_derivative, 8).is_none();
+    if !has_symbolic_parameter {
+        return None;
+    }
+
+    let first = ctx.call_builtin(builtin, vec![arg]);
+    let second_builtin = match builtin {
+        BuiltinFn::Sec => BuiltinFn::Tan,
+        BuiltinFn::Csc => BuiltinFn::Cot,
+        _ => return None,
+    };
+    let second = ctx.call_builtin(second_builtin, vec![arg]);
+    let table_core = cas_math::expr_nary::build_balanced_mul(ctx, &[first, second]);
+    let table_core = signed_numerator_for_calculus_presentation(ctx, table_sign, table_core);
+
+    let mut numerator_factors = scale_factors;
+    if !is_calculus_presentation_one(ctx, arg_derivative) {
+        numerator_factors.push(arg_derivative);
+    }
+    numerator_factors.push(table_core);
+    let result = build_signed_product_for_reciprocal_trig_presentation(ctx, &numerator_factors);
+    let result = cas_ast::hold::wrap_hold(ctx, result);
+    let pole = ctx.call_builtin(pole_builtin, vec![arg]);
+
+    Some((result, vec![crate::ImplicitCondition::NonZero(pole)]))
+}
+
 pub(super) fn scaled_reciprocal_trig_power_derivative_presentation(
     ctx: &mut Context,
     target: ExprId,

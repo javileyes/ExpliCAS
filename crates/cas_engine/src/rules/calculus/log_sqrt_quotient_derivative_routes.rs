@@ -71,4 +71,16 @@ mod tests {
             rendered(&direct_ctx, direct_result)
         );
     }
+
+    #[test]
+    fn log_sqrt_quotient_route_handles_unscaled_sqrt_over_log() {
+        let mut ctx = Context::new();
+        let target = parse("sqrt(x)/ln(x)", &mut ctx).unwrap();
+        let result = log_sqrt_quotient_derivative_route(&mut ctx, target, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, result),
+            "(ln(x) - 2) / (2 * ln(x)^2 * sqrt(x))"
+        );
+    }
 }

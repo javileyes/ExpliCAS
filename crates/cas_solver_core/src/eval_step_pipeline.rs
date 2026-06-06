@@ -87,6 +87,10 @@ fn remove_redundant_post_calculus_rationalization(
             index += 1;
             continue;
         }
+        if redundant_pre_residual_cleanup_after_integrate(&steps, index) {
+            index += 1;
+            continue;
+        }
         if redundant_terminal_cleanup_after_diff(&steps, index) {
             break;
         }
@@ -198,6 +202,66 @@ fn redundant_terminal_cleanup_after_diff(steps: &[crate::step_model::Step], inde
             .iter()
             .all(is_post_calculus_presentation_noise_step)
         && has_prior_symbolic_differentiation_anchor(steps, index)
+}
+
+fn redundant_pre_residual_cleanup_after_integrate(
+    steps: &[crate::step_model::Step],
+    index: usize,
+) -> bool {
+    if !steps
+        .get(index)
+        .is_some_and(is_integral_residual_cleanup_noise_step)
+    {
+        return false;
+    }
+
+    let mut next_index = index + 1;
+    while steps
+        .get(next_index)
+        .is_some_and(is_integral_residual_cleanup_noise_step)
+    {
+        next_index += 1;
+    }
+
+    steps
+        .get(next_index)
+        .is_some_and(|step| step.rule_name.as_str() == "Conservar integral residual")
+        && has_prior_integral_residual_prep_anchor(steps, index)
+}
+
+fn has_prior_integral_residual_prep_anchor(
+    steps: &[crate::step_model::Step],
+    before_index: usize,
+) -> bool {
+    steps[..before_index]
+        .iter()
+        .rev()
+        .take_while(|step| step.rule_name.as_str() != "Conservar integral residual")
+        .any(is_integral_residual_prep_anchor_step)
+}
+
+fn is_integral_residual_prep_anchor_step(step: &crate::step_model::Step) -> bool {
+    matches!(
+        step.rule_name.as_str(),
+        "Expandir cosecante como recíproco de seno"
+            | "Expandir cotangente como coseno entre seno"
+            | "Expandir secante como recíproco de coseno"
+            | "Expandir tangente como seno entre coseno"
+            | "Reconocer cotangente desde un cociente"
+            | "Reconocer tangente desde un cociente"
+    )
+}
+
+fn is_integral_residual_cleanup_noise_step(step: &crate::step_model::Step) -> bool {
+    matches!(
+        step.rule_name.as_str(),
+        "Combinar fracciones en una multiplicación"
+            | "Convert Mixed Trig Fraction to sin/cos"
+            | "Convertir un cociente trigonométrico en tangente"
+            | "Expandir la expresión"
+            | "Extract Common Multiplicative Factor"
+            | "Simplificar fracción anidada"
+    ) || is_post_calculus_presentation_noise_step(step)
 }
 
 fn repair_step_chain(steps: &mut [crate::step_model::Step]) {
@@ -1125,6 +1189,67 @@ mod tests {
             .map(|step| step.rule_name.as_str())
             .collect::<Vec<_>>();
         assert_eq!(rules, vec!["Symbolic Differentiation"]);
+    }
+
+    #[test]
+    fn to_display_eval_steps_compacts_integral_residual_cleanup_noise() {
+        let mut ctx = Context::new();
+        let source = ctx.num(1);
+        let expanded = ctx.num(2);
+        let distributed = ctx.num(3);
+        let nested = ctx.num(4);
+        let factored = ctx.num(5);
+        let residual = ctx.num(6);
+
+        let trig_prep = crate::step_model::Step::new_compact(
+            "expand tangent",
+            "Expandir tangente como seno entre coseno",
+            source,
+            expanded,
+        );
+        let distribute = crate::step_model::Step::new_compact(
+            "distribute",
+            "Expandir la expresión",
+            expanded,
+            distributed,
+        );
+        let simplify_nested = crate::step_model::Step::new_compact(
+            "nested fraction",
+            "Simplificar fracción anidada",
+            distributed,
+            nested,
+        );
+        let factor = crate::step_model::Step::new_compact(
+            "factor",
+            "Extract Common Multiplicative Factor",
+            nested,
+            factored,
+        );
+        let residual_step = crate::step_model::Step::new_compact(
+            "residual",
+            "Conservar integral residual",
+            factored,
+            residual,
+        );
+
+        let out = super::to_display_eval_steps(vec![
+            trig_prep,
+            distribute,
+            simplify_nested,
+            factor,
+            residual_step,
+        ]);
+        let rules = out
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rules,
+            vec![
+                "Expandir tangente como seno entre coseno",
+                "Conservar integral residual"
+            ]
+        );
     }
 
     #[test]

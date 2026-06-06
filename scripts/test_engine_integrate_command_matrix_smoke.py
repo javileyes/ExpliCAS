@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 115)
+        self.assertEqual(len(cases), 117)
         names = {case.name for case in cases}
         self.assertIn("reciprocal_affine_log_abs_domain", names)
         self.assertIn("reciprocal_negative_affine_log_abs_domain", names)
@@ -122,6 +122,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn("inverse_trig_shifted_scaled_sqrt_reciprocal_bridge", names)
+        self.assertIn(
+            "inverse_trig_affine_shifted_scaled_positive_quadratic_table",
+            names,
+        )
         self.assertIn("rational_positive_quadratic_square_reduction", names)
         self.assertIn("affine_exp_substitution", names)
         self.assertIn("by_parts_affine_log_domain", names)
@@ -167,6 +171,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("affine_inverse_hyperbolic_atanh_domain", names)
         self.assertIn("inverse_sqrt_direct_arcsin_domain", names)
         self.assertIn("additive_inverse_sqrt_interval_residual_domain", names)
+        self.assertIn("inverse_sqrt_symbolic_radius_residual_domain", names)
         self.assertIn("inverse_sqrt_direct_asinh_unconditional", names)
         self.assertIn("polynomial_base_sqrt_substitution", names)
         self.assertIn("hyperbolic_sine_reciprocal_square_substitution", names)
@@ -314,7 +319,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 13, "supported": 100, "undefined": 2},
+            {"residual": 14, "supported": 101, "undefined": 2},
         )
         self.assertEqual(
             sum(
@@ -325,14 +330,14 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     or case.expected_derivative_equivalent_to is not None
                 )
             ),
-            100,
+            101,
         )
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
             {
-                "residual_not_verified": 13,
+                "residual_not_verified": 14,
                 "undefined_not_verified": 2,
-                "verified_by_diff": 100,
+                "verified_by_diff": 101,
             },
         )
         self.assertEqual(
@@ -341,6 +346,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "branch_sensitive_interval_residual": 1,
                 "non_elementary_composition": 7,
                 "special_function_method_required": 1,
+                "symbolic_parameter_condition_required": 1,
                 "unsupported_reciprocal_trig_method": 4,
             },
         )
@@ -395,6 +401,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
                 "additive_trig_pole_residual_domain",
                 "inverse_trig_table",
+                "inverse_trig_affine_shifted_scaled_positive_quadratic_table",
                 "affine_secant_table_log_domain",
                 "affine_cosecant_table_log_domain",
                 "rational_positive_quadratic_square_reduction",
@@ -419,6 +426,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "affine_inverse_hyperbolic_atanh_domain",
                 "inverse_sqrt_direct_arcsin_domain",
                 "additive_inverse_sqrt_interval_residual_domain",
+                "inverse_sqrt_symbolic_radius_residual_domain",
                 "inverse_sqrt_direct_asinh_unconditional",
                 "affine_inverse_sqrt_arcsin_domain",
                 "polynomial_base_sqrt_substitution",
@@ -506,13 +514,14 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "shifted_sqrt_chain_nonzero_positive": 5,
                 "shifted_sqrt_chain_positive": 1,
                 "symbolic_denominator_scale_positive_required": 2,
+                "symbolic_radical_interval_residual": 1,
                 "symbolic_numerator_scale_positive_required": 1,
                 "sqrt_minus_symbol_chain_nonzero_positive": 2,
                 "sqrt_chain_nonzero_positive": 4,
                 "sqrt_chain_hyperbolic_presimplified_condition_dedupe": 1,
                 "sqrt_chain_hyperbolic_sine_pole_required": 1,
                 "structurally_nonzero_negative_quadratic_denominator": 1,
-                "structurally_positive_denominator": 2,
+                "structurally_positive_denominator": 3,
                 "structurally_positive_log_argument": 3,
                 "trig_pole_additive_residual": 1,
                 "trig_pole_presimplified_residual": 1,
@@ -548,29 +557,190 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             SMOKE.count_radical_inverse_policy_clusters(cases),
-            {"block8_inverse_trig_root_reciprocal": 6},
+            {
+                "block8_inverse_hyperbolic_rational_interval": 2,
+                "block8_inverse_sqrt_tables": 3,
+                "block8_inverse_trig_root_reciprocal": 6,
+            },
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
                 "block4_base_integration": 6,
                 "block5_generalized_substitution": 11,
-                "block6_rational_integration": 12,
+                "block6_rational_integration": 14,
                 "block7_trig_hyperbolic_integration": 59,
-                "block8_radical_inverse_families": 12,
-                "block9_residuals_and_non_goals": 15,
+                "block8_radical_inverse_families": 11,
+                "block9_residuals_and_non_goals": 16,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
-                "didactic_trace_and_verified_antiderivative": 26,
+                "didactic_trace_and_verified_antiderivative": 27,
                 "domain_conditions_and_verified_antiderivative": 74,
                 "explicit_undefined_domain_policy": 2,
-                "safe_residual_policy": 13,
+                "safe_residual_policy": 14,
             },
         )
         self.assertGreaterEqual(len({case.family for case in cases}), 10)
+
+    def test_direct_arctan_table_rows_count_as_rational_integration(self) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        for name in (
+            "inverse_trig_table",
+            "inverse_trig_affine_shifted_scaled_positive_quadratic_table",
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    SMOKE.calculus_maturity_block(cases[name]),
+                    "block6_rational_integration",
+                )
+
+    def test_radical_inverse_policy_clusters_cover_supported_block8_cases(self) -> None:
+        cases = SMOKE.build_cases()
+
+        supported_block8_cases = [
+            case
+            for case in cases
+            if case.outcome == "supported"
+            and SMOKE.calculus_maturity_block(case)
+            == "block8_radical_inverse_families"
+        ]
+        clustered_count = sum(SMOKE.count_radical_inverse_policy_clusters(cases).values())
+
+        self.assertEqual(clustered_count, len(supported_block8_cases))
+
+    def test_shifted_sqrt_tangent_uses_bounded_derivative_verification(self) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["shifted_sqrt_chain_tangent_log_domain"]
+
+        self.assertIsNotNone(case.expected_derivative_result)
+        self.assertIsNone(case.expected_derivative_equivalent_to)
+        self.assertIn("tan(b - sqrt(x))", case.expected_derivative_result)
+
+    def test_affine_shifted_sqrt_hyperbolic_uses_bounded_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        shifted_case = cases["shifted_sqrt_chain_hyperbolic_tangent_log_domain"]
+        case = cases["affine_shifted_sqrt_chain_hyperbolic_tangent_log_domain"]
+
+        self.assertIsNotNone(shifted_case.expected_derivative_result)
+        self.assertIsNone(shifted_case.expected_derivative_equivalent_to)
+        self.assertIn("tanh(x^(1/2) - b)", shifted_case.expected_derivative_result)
+        self.assertIsNotNone(case.expected_derivative_result)
+        self.assertIsNone(case.expected_derivative_equivalent_to)
+        self.assertIn("tanh((3·x + 1)^(1/2) - b)", case.expected_derivative_result)
+
+    def test_inverse_trig_root_scale_siblings_use_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        for name in (
+            "inverse_trig_symbolic_denominator_numeric_square_scale_sqrt_reciprocal_bridge",
+            "inverse_trig_symbolic_numerator_scale_sqrt_reciprocal_bridge",
+        ):
+            case = cases[name]
+            self.assertIsNotNone(case.expected_derivative_result)
+            self.assertIsNone(case.expected_derivative_equivalent_to)
+
+    def test_hyperbolic_reciprocal_fourth_uses_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        for name in (
+            "hyperbolic_cosh_reciprocal_fourth_substitution",
+            "symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_fourth_substitution",
+            "hyperbolic_sinh_reciprocal_fourth_substitution",
+            "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
+        ):
+            case = cases[name]
+            self.assertIsNotNone(case.expected_derivative_result)
+            self.assertIsNone(case.expected_derivative_equivalent_to)
+
+    def test_hyperbolic_log_cosh_rows_use_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        for name in (
+            "symbolic_external_scale_hyperbolic_tanh_log_derivative_ratio_positive",
+            "symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
+        ):
+            case = cases[name]
+            self.assertIsNotNone(case.expected_derivative_result)
+            self.assertIsNone(case.expected_derivative_equivalent_to)
+
+    def test_symbolic_shifted_hyperbolic_sinh_square_uses_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases[
+            "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_square_substitution"
+        ]
+
+        self.assertIsNotNone(case.expected_derivative_result)
+        self.assertIsNone(case.expected_derivative_equivalent_to)
+        self.assertIn("sinh(x^2 + b)^2", case.expected_derivative_result)
+
+    def test_shifted_sqrt_hyperbolic_reciprocal_product_rows_use_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        for name in (
+            "shifted_sqrt_chain_hyperbolic_sinh_over_cosh_square_symbolic_scale_domain",
+            "negative_shifted_sqrt_chain_hyperbolic_cosh_over_sinh_square_symbolic_scale_domain",
+        ):
+            case = cases[name]
+            self.assertIsNotNone(case.expected_derivative_result)
+            self.assertIsNone(case.expected_derivative_equivalent_to)
+
+    def test_external_symbolic_scale_sqrt_reciprocal_trig_rows_use_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        for name in (
+            "external_symbolic_scale_sqrt_chain_secant_tangent_domain",
+            "external_symbolic_scale_sqrt_chain_cosecant_cotangent_domain",
+            "external_symbolic_scale_shifted_sqrt_chain_secant_tangent_domain",
+            "external_symbolic_scale_shifted_sqrt_chain_cosecant_cotangent_domain",
+            "external_symbolic_scale_sqrt_minus_symbol_chain_secant_tangent_domain",
+            "external_symbolic_scale_sqrt_minus_symbol_chain_cosecant_cotangent_domain",
+        ):
+            case = cases[name]
+            self.assertIsNotNone(case.expected_derivative_result)
+            self.assertIsNone(case.expected_derivative_equivalent_to)
+
+    def test_repeated_linear_positive_quadratic_partial_fraction_uses_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["rational_partial_fraction_repeated_linear_positive_quadratic"]
+
+        self.assertIsNotNone(case.expected_derivative_result)
+        self.assertIsNone(case.expected_derivative_equivalent_to)
+        self.assertIn("x^4 + 2·x^2 + 1", case.expected_derivative_result)
+
+    def test_mixed_linear_positive_quadratic_partial_fraction_uses_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["rational_partial_fraction_mixed_linear_positive_quadratic"]
+
+        self.assertIsNotNone(case.expected_derivative_result)
+        self.assertIsNone(case.expected_derivative_equivalent_to)
+        self.assertIn("x^2 - 1", case.expected_derivative_result)
+
+    def test_mixed_simple_repeated_linear_partial_fraction_uses_direct_derivative_verification(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["rational_partial_fraction_mixed_simple_repeated_linear_factors"]
+
+        self.assertIsNotNone(case.expected_derivative_result)
+        self.assertIsNone(case.expected_derivative_equivalent_to)
+        self.assertIn("x^3 + 2·x^2 + x", case.expected_derivative_result)
 
     def test_run_matrix_accepts_expected_required_display_and_residual(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -658,6 +828,22 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertEqual(matrix["expected_step_substring_count"], 7)
         self.assertEqual(matrix["required_display_counts"], {"x ≠ -1/2": 1})
+        self.assertIn("slowest_integrate_evaluations", matrix)
+        self.assertIn("slowest_antiderivative_verifications", matrix)
+        self.assertIn("runtime_by_antiderivative_verification_mode", matrix)
+        self.assertIn("largest_stdout_payload_cases", matrix)
+        self.assertIn("largest_step_trace_cases", matrix)
+        self.assertIn("integrate_elapsed_seconds", matrix["cases"][0])
+        self.assertIn("stdout_bytes", matrix["cases"][0])
+        self.assertIn("step_text_char_count", matrix["cases"][0])
+        self.assertIn(
+            "antiderivative_verification_elapsed_seconds",
+            matrix["cases"][0],
+        )
+        self.assertEqual(
+            matrix["cases"][0]["antiderivative_verification_mode"],
+            "direct_derivative",
+        )
 
     def test_run_matrix_reports_required_display_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -769,6 +955,14 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {"verified_by_diff": 1},
         )
         self.assertEqual(matrix["cases"][0]["derivative_equivalence_result"], "0")
+        self.assertEqual(
+            matrix["cases"][0]["antiderivative_verification_mode"],
+            "residual_equivalence",
+        )
+        self.assertEqual(
+            matrix["runtime_by_antiderivative_verification_mode"][0]["mode"],
+            "residual_equivalence",
+        )
 
     def test_run_matrix_reports_missing_expected_step_trace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

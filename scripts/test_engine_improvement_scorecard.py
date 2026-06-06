@@ -611,7 +611,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_integrate_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_integrate_command_matrix(
             """
-{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"residual_case_names":["integrate_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"residual_cause_counts":{"special_function_method_required":1},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"radical_inverse_policy_cluster_counts":{"block8_inverse_trig_root_reciprocal":6},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1}}
+{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"residual_case_names":["integrate_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"residual_cause_counts":{"special_function_method_required":1},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"radical_inverse_policy_cluster_counts":{"block8_inverse_trig_root_reciprocal":6},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1},"slowest_integrate_evaluations":[{"name":"slow_integrate_case","family":"hyperbolic_reciprocal_fourth","integrate_elapsed_seconds":0.42,"antiderivative_verification_mode":"residual_equivalence"}],"slowest_antiderivative_verifications":[{"name":"slow_verify_case","family":"hyperbolic_reciprocal_square","antiderivative_verification_elapsed_seconds":0.21,"antiderivative_verification_mode":"residual_equivalence"}],"largest_stdout_payload_cases":[{"name":"large_integrate_output","family":"rational_partial_fraction","stdout_bytes":8192,"required_display_count":3,"expected_step_substring_count":4}],"largest_step_trace_cases":[{"name":"large_integrate_steps","family":"by_parts_affine_log","step_text_char_count":4096,"required_display_count":1,"expected_step_substring_count":6}],"runtime_by_antiderivative_verification_mode":[{"mode":"residual_equivalence","case_count":10,"total_elapsed_seconds":1.23,"avg_case_ms":123.0,"max_elapsed_seconds":0.21,"slowest_case":"slow_verify_case"}]}
 """
         )
 
@@ -714,6 +714,30 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             metrics["integrate_radical_inverse_consolidated_policy_cluster_counts"],
             {"block8_inverse_trig_root_reciprocal": 6},
         )
+        self.assertEqual(
+            metrics["integrate_slowest_integrate_evaluations"][0]["name"],
+            "slow_integrate_case",
+        )
+        self.assertEqual(
+            metrics["integrate_slowest_antiderivative_verifications"][0][
+                "antiderivative_verification_elapsed_seconds"
+            ],
+            0.21,
+        )
+        self.assertEqual(
+            metrics["integrate_largest_stdout_payload_cases"][0]["stdout_bytes"],
+            8192,
+        )
+        self.assertEqual(
+            metrics["integrate_largest_step_trace_cases"][0]["step_text_char_count"],
+            4096,
+        )
+        self.assertEqual(
+            metrics["integrate_runtime_by_antiderivative_verification_mode"][0][
+                "mode"
+            ],
+            "residual_equivalence",
+        )
         self.assertNotIn(
             "integrate_radical_inverse_consolidation_candidate_counts",
             metrics,
@@ -773,6 +797,219 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(MODULE.format_runtime_duration(0.00025), "0.25ms")
         self.assertEqual(MODULE.format_runtime_duration(0.15), "150.00ms")
         self.assertEqual(MODULE.format_runtime_duration(1.234), "1.23s")
+
+    def test_elapsed_per_case_metric_preserves_reported_corpus_value(self):
+        metrics = {
+            "total_cases": 8,
+            "reported_elapsed_per_case_ms": 2.1375,
+        }
+
+        MODULE.add_elapsed_per_case_metric(metrics, 99.0)
+
+        self.assertEqual(metrics["reported_elapsed_per_case_ms"], 2.1375)
+
+    def test_elapsed_per_case_metric_renders_for_calculus_matrix(self):
+        metrics = {
+            "matrix_status": "pass",
+            "total_cases": 25,
+            "passed": 25,
+            "failed": 0,
+            "diff_supported_case_count": 25,
+        }
+        MODULE.add_elapsed_per_case_metric(metrics, 0.5)
+        scorecard = {
+            "generated_at": "2026-06-05T00:00:00+00:00",
+            "profile": "fast",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "calculus_diff_command_matrix_smoke": {
+                    "category": "calculus",
+                    "status": "pass",
+                    "elapsed_seconds": 0.5,
+                    "metrics": metrics,
+                    "delta": {},
+                },
+            },
+        }
+
+        rendered = MODULE.render_markdown(scorecard)
+
+        self.assertEqual(metrics["reported_elapsed_per_case_ms"], 20.0)
+        self.assertIn("avg_case=20.000ms", rendered)
+
+    def test_calculus_matrix_runtime_hotspots_parse_and_render(self):
+        metrics = MODULE.parse_calculus_diff_command_matrix(
+            """
+{"status":"pass","total":2,"status_counts":{"pass":2,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":2,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":1,"step_checked_case_count":2,"supported_step_unchecked_case_count":0,"expected_step_substring_count":4,"distinct_required_display_count":1,"family_count":2,"argument_regime_counts":{"variable":1,"affine_argument":1},"domain_regime_counts":{"unconditional":1,"required_condition":1},"outcome_counts":{"supported":2},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":2},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":1,"domain_conditions_and_diff_policy":1},"trace_regime_counts":{"power_rule":1,"log_chain_rule":1},"presentation_regime_counts":{"canonical":1,"compact_quotient":1},"runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"p95_case_ms":123.0,"max_case_ms":123.0},"runtime_concentration":{"timed_case_count":2,"total_elapsed_seconds":0.143,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":86.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"warm_runtime_distribution":{"timed_case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"p95_case_ms":123.0,"max_case_ms":123.0},"warm_runtime_concentration":{"timed_case_count":1,"total_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":100.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"cold_start_case":{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","wall_elapsed_seconds":0.02,"status":"pass"},"slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"warm_slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"harness_check_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.011,"avg_case_ms":5.5,"p95_case_ms":10.0,"max_case_ms":10.0},"slowest_process_evaluations":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","process_elapsed_seconds":0.123,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"domain_conditions_and_diff_policy"}],"slowest_harness_checks":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","harness_check_elapsed_seconds":0.010,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"didactic_trace_and_diff_policy"}],"largest_stdout_payload_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","stdout_bytes":4096,"required_display_count":2,"expected_step_substring_count":3}],"largest_step_trace_cases":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","step_text_char_count":1200,"required_display_count":0,"expected_step_substring_count":1}]}
+"""
+        )
+        scorecard = {
+            "generated_at": "2026-06-05T00:00:00+00:00",
+            "profile": "fast",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "calculus_diff_command_matrix_smoke": {
+                    "category": "calculus",
+                    "status": "pass",
+                    "elapsed_seconds": 0.2,
+                    "metrics": metrics,
+                    "delta": {},
+                },
+            },
+        }
+
+        rendered = MODULE.render_markdown(scorecard)
+
+        self.assertEqual(
+            metrics["diff_slowest_cases"][0]["name"],
+            "log_affine_chain_required_domain",
+        )
+        self.assertEqual(metrics["diff_runtime_distribution"]["timed_case_count"], 2)
+        self.assertEqual(metrics["diff_runtime_distribution"]["p95_case_ms"], 123.0)
+        self.assertEqual(
+            metrics["diff_runtime_concentration"]["slowest_case"],
+            "log_affine_chain_required_domain",
+        )
+        self.assertEqual(
+            metrics["diff_runtime_concentration"]["slowest_case_share_percent"],
+            86.0,
+        )
+        self.assertEqual(metrics["diff_warm_runtime_distribution"]["timed_case_count"], 1)
+        self.assertEqual(
+            metrics["diff_warm_runtime_concentration"]["top_3_share_percent"],
+            100.0,
+        )
+        self.assertEqual(
+            metrics["diff_slowest_process_evaluations"][0]["name"],
+            "log_affine_chain_required_domain",
+        )
+        self.assertEqual(
+            metrics["diff_slowest_process_evaluations"][0][
+                "process_elapsed_seconds"
+            ],
+            0.123,
+        )
+        self.assertEqual(
+            metrics["diff_harness_check_runtime_distribution"]["max_case_ms"],
+            10.0,
+        )
+        self.assertEqual(
+            metrics["diff_slowest_harness_checks"][0]["name"],
+            "polynomial_power_direct",
+        )
+        self.assertEqual(
+            metrics["diff_largest_stdout_payload_cases"][0]["stdout_bytes"],
+            4096,
+        )
+        self.assertEqual(
+            metrics["diff_largest_stdout_payload_cases"][0][
+                "required_display_count"
+            ],
+            2,
+        )
+        self.assertEqual(
+            metrics["diff_largest_step_trace_cases"][0]["step_text_char_count"],
+            1200,
+        )
+        self.assertEqual(metrics["diff_cold_start_case"]["name"], "polynomial_power_direct")
+        self.assertIn(
+            "`diff_command_matrix` runtime distribution: "
+            "timed_cases=2 avg=71.500ms p95=123.000ms max=123.000ms total=0.143s",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` runtime concentration: "
+            "slowest=log_affine_chain_required_domain slowest_ms=123.000 "
+            "slowest_share=86.0% top3_share=100.0% total=0.143s "
+            "family=log_affine_chain",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` warm runtime distribution: "
+            "timed_cases=1 avg=123.000ms p95=123.000ms max=123.000ms total=0.123s",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` warm runtime concentration: "
+            "slowest=log_affine_chain_required_domain slowest_ms=123.000 "
+            "slowest_share=100.0% top3_share=100.0% total=0.123s "
+            "family=log_affine_chain",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` cold-start case: "
+            "polynomial_power_direct=0.020s family=polynomial",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` slowest process evaluations: "
+            "log_affine_chain_required_domain=0.123s family=log_affine_chain",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` harness check runtime distribution: "
+            "timed_cases=2 avg=5.500ms p95=10.000ms max=10.000ms total=0.011s",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` slowest harness checks: "
+            "polynomial_power_direct=0.010s family=polynomial",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` largest stdout payload cases: "
+            "log_affine_chain_required_domain=4096B family=log_affine_chain "
+            "required=2 expected_steps=3",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` largest step trace cases: "
+            "polynomial_power_direct=1200 chars family=polynomial "
+            "required=0 expected_steps=1",
+            rendered,
+        )
+        self.assertEqual(metrics["diff_runtime_by_family"][0]["avg_case_ms"], 123.0)
+        self.assertEqual(metrics["diff_warm_runtime_by_family"][0]["avg_case_ms"], 123.0)
+        self.assertEqual(
+            metrics["diff_runtime_by_calculus_maturity_block"][0]["group"],
+            "block2_real_domain_differentiation",
+        )
+        self.assertEqual(
+            metrics["diff_runtime_by_calculus_block_gate"][0]["group"],
+            "domain_conditions_and_diff_policy",
+        )
+        self.assertIn(
+            "`diff_command_matrix` slowest cases: "
+            "log_affine_chain_required_domain=0.123s family=log_affine_chain",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` warm slowest cases: "
+            "log_affine_chain_required_domain=0.123s family=log_affine_chain",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` runtime by family: "
+            "log_affine_chain total=0.123s avg=123.000ms cases=1",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` warm runtime by family: "
+            "log_affine_chain total=0.123s avg=123.000ms cases=1",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` runtime by calculus maturity block: "
+            "block2_real_domain_differentiation total=0.143s "
+            "avg=71.500ms cases=2",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` warm runtime by calculus block gate: "
+            "domain_conditions_and_diff_policy total=0.123s "
+            "avg=123.000ms cases=1",
+            rendered,
+        )
 
     def test_run_command_timeout_marks_timeout_and_captures_output(self):
         spec = MODULE.SuiteSpec(
@@ -2086,6 +2323,24 @@ root.direct_small_zero_composition.candidate.three_core_groups
                             "radical_power": 1,
                             "residual": 1,
                         },
+                        "integrate_largest_stdout_payload_cases": [
+                            {
+                                "name": "large_integrate_output",
+                                "family": "rational_partial_fraction",
+                                "stdout_bytes": 8192,
+                                "required_display_count": 3,
+                                "expected_step_substring_count": 4,
+                            }
+                        ],
+                        "integrate_largest_step_trace_cases": [
+                            {
+                                "name": "large_integrate_steps",
+                                "family": "by_parts_affine_log",
+                                "step_text_char_count": 4096,
+                                "required_display_count": 1,
+                                "expected_step_substring_count": 6,
+                            }
+                        ],
                     },
                     "delta": {},
                 },
@@ -2502,6 +2757,18 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn(
             "`integrate_command_matrix` presentation regimes: abs_log=1, "
             "abs_log_sqrt_chain=1, affine_arcsin=1, affine_atanh=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` largest stdout payload cases: "
+            "large_integrate_output=8192B family=rational_partial_fraction "
+            "required=3 expected_steps=4",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` largest step trace cases: "
+            "large_integrate_steps=4096 chars family=by_parts_affine_log "
+            "required=1 expected_steps=6",
             markdown,
         )
         self.assertIn(

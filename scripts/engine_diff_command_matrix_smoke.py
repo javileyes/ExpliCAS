@@ -26,7 +26,11 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from cas_cli_release import ensure_release_cas_cli
-from engine_command_matrix_observability import stderr_fragility_error
+from engine_command_matrix_observability import (
+    payload_observability_summary,
+    runtime_observability_summary,
+    stderr_fragility_error,
+)
 
 
 ROOT = SCRIPT_DIR.parent
@@ -150,6 +154,21 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         ),
         family="logarithmic",
         argument_regime="quadratic_argument",
+        domain_regime="empty_positive_argument_domain",
+        outcome="undefined",
+        trace_regime="log_empty_domain_policy",
+        presentation_regime="undefined",
+    ),
+    DiffCommandMatrixCase(
+        name="log_abs_negative_scale_empty_positive_argument_domain_undefined",
+        expr="diff(ln(-3*abs(x-1)), x)",
+        expected_result="undefined",
+        expected_step_substrings=(
+            "Detectar dominio real vacío del logaritmo",
+            "undefined",
+        ),
+        family="log_abs_empty_domain",
+        argument_regime="negative_scaled_abs_argument",
         domain_regime="empty_positive_argument_domain",
         outcome="undefined",
         trace_regime="log_empty_domain_policy",
@@ -392,11 +411,10 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         expected_result="(ln(x) - 2) / (2·ln(x)^2·sqrt(x))",
         expected_required_display=("x ≠ 1", "x > 0"),
         expected_step_substrings=(
+            "Calcular la derivada",
             "Usar regla del cociente",
             "Derivar el numerador",
             "Derivar el denominador",
-            "Extract Common Multiplicative Factor",
-            "Presentar resultado de cálculo en forma compacta",
         ),
         family="quotient_log_root",
         argument_regime="quotient_domain_bearing_denominator",
@@ -452,6 +470,70 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         domain_regime="unconditional_positive_quadratic",
         trace_regime="positive_quadratic_log_arctan_surd_negative_orientation_linearity",
         presentation_regime="compact_positive_quadratic_surd_negative_orientation_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="log_ratio_single_pole_scaled_shifted_linear_compact",
+        expr="diff(ln(abs((2*x+3)/(x-5)))+1/(x-5), x)",
+        expected_result="(62 - 15·x) / (2·x^3 + 20·x + 75 - 17·x^2)",
+        expected_required_display=("x ≠ -3/2", "x ≠ 5"),
+        expected_step_substrings=("Calcular la derivada",),
+        family="log_ratio_single_pole_primitive",
+        argument_regime="scaled_shifted_linear_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="log_ratio_single_pole_linearity",
+        presentation_regime="compact_integer_rational_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="log_ratio_single_pole_positive_scaled_abs_argument_compact",
+        expr="diff(ln(3*abs((2*x+3)/(x-5)))+1/(x-5), x)",
+        expected_result="(62 - 15·x) / (2·x^3 + 20·x + 75 - 17·x^2)",
+        expected_required_display=("x ≠ -3/2", "x ≠ 5"),
+        expected_step_substrings=("Calcular la derivada",),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="log_ratio_single_pole_primitive",
+        argument_regime="positive_scaled_abs_scaled_shifted_linear_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="log_ratio_single_pole_linearity",
+        presentation_regime="compact_integer_rational_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="separated_log_abs_linear_pole_raw_preserved",
+        expr="diff((-1/2)*ln(abs(x-1)) - 4/(x-1) + (1/2)*ln(abs(x+1)), x)",
+        expected_result="(3·x + 5) / (x^3 + 1 - x^2 - x)",
+        expected_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_step_substrings=("Usar linealidad de la derivada",),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="separated_log_abs_linear_pole_primitive",
+        argument_regime="separated_linear_logs_plus_linear_pole",
+        domain_regime="linear_poles_required",
+        trace_regime="separated_log_abs_linear_pole_linearity",
+        presentation_regime="compact_integer_rational_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="positive_quadratic_log_abs_pole_scaled_quadratic_compact",
+        expr="diff(1/4*ln((2*x)^2+1)-1/2*ln(abs(x-1))-1/(2*(x-1)), x)",
+        expected_result="(3·x + 2) / (8·x^4 + 10·x^2 + 2 - 16·x^3 - 4·x)",
+        expected_required_display=("x ≠ 1",),
+        expected_step_substrings=("Usar linealidad de la derivada",),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="positive_quadratic_log_abs_pole_primitive",
+        argument_regime="scaled_positive_quadratic_plus_linear_pole",
+        domain_regime="linear_poles_required",
+        trace_regime="positive_quadratic_log_abs_pole_linearity",
+        presentation_regime="compact_integer_rational_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
+        expr="diff(1/6*ln(2*x^2+2)-1/2*ln(abs(2*x-2))-1/(2*(2*x-2)), x)",
+        expected_result="(x^2 + 9 - 2·x^3 - 2·x) / (12·x^4 + 24·x^2 + 12 - 24·x^3 - 24·x)",
+        expected_required_display=("x ≠ 1",),
+        expected_step_substrings=("Usar linealidad de la derivada",),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="positive_quadratic_log_abs_pole_primitive",
+        argument_regime="scaled_positive_quadratic_plus_scaled_linear_pole",
+        domain_regime="linear_poles_required",
+        trace_regime="positive_quadratic_log_abs_pole_linearity",
+        presentation_regime="compact_integer_rational_quotient",
     ),
     DiffCommandMatrixCase(
         name="sqrt_variable_open_domain",
@@ -544,6 +626,22 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         domain_regime="required_condition",
         trace_regime="parameter_scaled_chain_rule",
         presentation_regime="symbolic_denominator_post_calculus_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_root_external_symbolic_denominator_scale",
+        expr="diff((2*arctan(sqrt(x)/a))/a, x)",
+        expected_result="(x^(1/2)·2)/(2·(x·a^2 + x^2))",
+        expected_required_display=("a ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Sacar constante de una fracción",
+            "Calcular la derivada",
+            "Usar factor constante de la derivada",
+        ),
+        family="inverse_trig_root",
+        argument_regime="external_symbolic_denominator_scaled_nested_root",
+        domain_regime="required_condition",
+        trace_regime="constant_multiple_parameter_scaled_chain_rule",
+        presentation_regime="external_symbolic_denominator_post_calculus_compact",
     ),
     DiffCommandMatrixCase(
         name="inverse_trig_root_symbolic_rational_denominator_scale",
@@ -779,7 +877,7 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
     DiffCommandMatrixCase(
         name="inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval",
         expr="diff(atanh(sqrt(4*x+4)/a), x)",
-        expected_result="a·(x + 1)^(1/2) / ((x + 1)·(a^2 - 4·x - 4))",
+        expected_result="a / (sqrt(x + 1)·(a^2 - 4·x - 4))",
         expected_required_display=(
             "a ≠ 0",
             "a^2 - 4·x - 4 > 0",
@@ -815,6 +913,24 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         domain_regime="required_condition",
         trace_regime="chain_rule",
         presentation_regime="positive_gap_domain_condition_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_hyperbolic_root_asinh_symbolic_denominator_scale_positive_gap",
+        expr="diff(asinh(sqrt(x+1)/a), x)",
+        expected_result="1 / (2·a·sqrt((a^2 + x + 1) / a^2)·sqrt(x + 1))",
+        expected_required_display=(
+            "a ≠ 0",
+            "x > -1",
+        ),
+        expected_step_substrings=(
+            "Usar regla de la cadena",
+            "Identificar u y du",
+        ),
+        family="inverse_hyperbolic_root",
+        argument_regime="symbolic_denominator_scaled_shifted_root",
+        domain_regime="positive_gap_with_symbolic_denominator_scale_deduped",
+        trace_regime="chain_rule",
+        presentation_regime="symbolic_denominator_positive_gap_compact",
     ),
     DiffCommandMatrixCase(
         name="inverse_trig_root_negative_argument",
@@ -1117,6 +1233,7 @@ def run_case(
         }
 
     wall_elapsed = time.monotonic() - start
+    harness_check_start = time.monotonic()
     parsed, parse_error = parse_json(stdout)
     result = parsed.get("result") if isinstance(parsed, dict) else None
     required_display = extract_required_display(parsed)
@@ -1166,6 +1283,7 @@ def run_case(
                         error = f"missing expected step trace containing {expected!r}"
                         break
 
+    harness_check_elapsed = time.monotonic() - harness_check_start
     status: Status = "pass" if error is None else "fail"
     error_kind = classify_error_kind(error)
     if status == "pass" and slow_wall_seconds is not None and wall_elapsed > slow_wall_seconds:
@@ -1180,6 +1298,11 @@ def run_case(
         "error_kind": error_kind,
         "returncode": process.returncode,
         "wall_elapsed_seconds": round(wall_elapsed, 3),
+        "process_elapsed_seconds": round(wall_elapsed, 3),
+        "harness_check_elapsed_seconds": round(harness_check_elapsed, 3),
+        "stdout_bytes": len(stdout.encode("utf-8")),
+        "stderr_bytes": len(stderr.encode("utf-8")),
+        "step_text_char_count": len(step_text),
         "result": result,
         "expected_result": case.expected_result,
         "required_display": list(required_display),
@@ -1194,6 +1317,8 @@ def run_case(
         "argument_regime": case.argument_regime,
         "domain_regime": case.domain_regime,
         "outcome": case.outcome,
+        "calculus_maturity_block": calculus_maturity_block(case),
+        "calculus_block_gate": calculus_block_gate(case),
         "trace_regime": case.trace_regime,
         "presentation_regime": case.presentation_regime,
         "stderr": stderr,
@@ -1264,6 +1389,96 @@ def count_required_display_items(results: list[dict[str, Any]]) -> dict[str, int
                 continue
             counts[item] = counts.get(item, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def phase_runtime_distribution(
+    results: list[dict[str, Any]],
+    *,
+    phase_key: str,
+) -> dict[str, Any]:
+    elapsed_values = sorted(
+        float(result[phase_key])
+        for result in results
+        if isinstance(result.get(phase_key), (int, float))
+    )
+    if not elapsed_values:
+        return {}
+
+    total_elapsed = sum(elapsed_values)
+    p95_index = max(0, (95 * len(elapsed_values) + 99) // 100 - 1)
+    return {
+        "timed_case_count": len(elapsed_values),
+        "total_elapsed_seconds": round(total_elapsed, 3),
+        "avg_case_ms": round(total_elapsed * 1000.0 / len(elapsed_values), 3),
+        "p95_case_ms": round(elapsed_values[p95_index] * 1000.0, 3),
+        "max_case_ms": round(elapsed_values[-1] * 1000.0, 3),
+    }
+
+
+def phase_runtime_case_rows(
+    results: list[dict[str, Any]],
+    *,
+    phase_key: str,
+    output_key: str,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    timed_results = [
+        result
+        for result in results
+        if isinstance(result.get(phase_key), (int, float))
+    ]
+    timed_results.sort(
+        key=lambda result: (
+            -float(result.get(phase_key, 0.0)),
+            str(result.get("name", "")),
+        )
+    )
+    rows: list[dict[str, Any]] = []
+    for result in timed_results[:limit]:
+        row: dict[str, Any] = {
+            "name": result.get("name"),
+            output_key: round(float(result[phase_key]), 3),
+        }
+        for key in (
+            "family",
+            "argument_regime",
+            "domain_regime",
+            "trace_regime",
+            "presentation_regime",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+        ):
+            value = result.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def phase_runtime_observability_summary(
+    results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    process_rows = phase_runtime_case_rows(
+        results,
+        phase_key="process_elapsed_seconds",
+        output_key="process_elapsed_seconds",
+    )
+    if process_rows:
+        summary["slowest_process_evaluations"] = process_rows
+
+    harness_rows = phase_runtime_case_rows(
+        results,
+        phase_key="harness_check_elapsed_seconds",
+        output_key="harness_check_elapsed_seconds",
+    )
+    if harness_rows:
+        summary["harness_check_runtime_distribution"] = phase_runtime_distribution(
+            results,
+            phase_key="harness_check_elapsed_seconds",
+        )
+        summary["slowest_harness_checks"] = harness_rows
+    return summary
 
 
 def run_matrix(
@@ -1342,6 +1557,19 @@ def run_matrix(
         "trace_regime_counts": count_by(cases, "trace_regime"),
         "presentation_regime_counts": count_by(cases, "presentation_regime"),
         "case_filters": [case.name for case in cases],
+        **runtime_observability_summary(
+            results,
+            group_keys=(
+                "family",
+                "calculus_maturity_block",
+                "calculus_block_gate",
+                "domain_regime",
+                "trace_regime",
+                "presentation_regime",
+            ),
+        ),
+        **phase_runtime_observability_summary(results),
+        **payload_observability_summary(results),
         "cases": results,
     }
 

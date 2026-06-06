@@ -113,6 +113,57 @@ fn test_eval_calculus_residuals_emit_conservative_steps_json() {
 }
 
 #[test]
+fn test_eval_trig_log_integral_residual_compacts_cleanup_noise_json() {
+    let output = cli()
+        .args([
+            "eval",
+            "integrate(1/((tan(x)-2)*ln(tan(x))), x)",
+            "--format",
+            "json",
+            "--steps",
+            "on",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+    let steps = wire["steps"].as_array().expect("steps array");
+    let rules: Vec<&str> = steps
+        .iter()
+        .map(|step| step["rule"].as_str().expect("step rule"))
+        .collect();
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(
+        wire["result"],
+        "integrate(cos(x) / (ln(sin(x) / cos(x))·(sin(x) - 2·cos(x))), x)"
+    );
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!([
+            "cos(x) ≠ 0",
+            "tan(x) - 1 ≠ 0",
+            "tan(x) - 2 ≠ 0",
+            "tan(x) > 0"
+        ])
+    );
+    assert_eq!(
+        rules,
+        vec![
+            "Expandir tangente como seno entre coseno",
+            "Conservar integral residual"
+        ]
+    );
+}
+
+#[test]
 fn test_eval_diff_sign_polynomial_returns_zero_with_nonzero_domain_json() {
     let output = cli()
         .args([
@@ -247,7 +298,7 @@ fn test_eval_atanh_exact_square_symbolic_denominator_diff_stays_compact_without_
     assert_eq!(wire["ok"], true);
     assert_eq!(
         wire["result"],
-        "a\u{00b7}(x + 1)^(1/2) / ((x + 1)\u{00b7}(a^2 - 4\u{00b7}x - 4))"
+        "a / (sqrt(x + 1)\u{00b7}(a^2 - 4\u{00b7}x - 4))"
     );
     assert_eq!(
         wire["required_display"],

@@ -19056,7 +19056,7 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "k * tanh(x^2 + b) - 1/3 * k * tanh(x^2 + b)^3"
+            "1/3 * (3 * k * tanh(x^2 + b) - k * tanh(x^2 + b)^3)"
         );
     }
 

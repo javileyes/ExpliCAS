@@ -3398,6 +3398,26 @@ fn try_resolve_direct_post_calculus_before_general_simplify_local(
         return Some((undefined, Vec::new()));
     }
 
+    if let Some((result, required_conditions)) = crate::rules::calculus::
+        constant_scaled_reciprocal_trig_affine_derivative_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )
+    {
+        return Some((result, required_conditions));
+    }
+
+    if let Some((result, required_conditions)) =
+        crate::rules::calculus::constant_scaled_hyperbolic_reciprocal_derivative_quotient_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )
+    {
+        return Some((result, required_conditions));
+    }
+
     if let Some((result, required_conditions)) =
         crate::rules::calculus::reciprocal_trig_shifted_sqrt_derivative_presentation(
             ctx,
@@ -3732,6 +3752,138 @@ impl Engine {
             &self.simplifier.context,
             resolved,
         ) {
+            if let Some((result, required_nonzero)) =
+                cas_math::symbolic_differentiation_support::rational_log_ratio_single_pole_derivative(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                let desc =
+                    crate::symbolic_calculus_call_support::render_diff_desc_with(&call, |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &self.simplifier.context,
+                                id
+                            }
+                        )
+                    });
+                let required_conditions = required_nonzero
+                    .into_iter()
+                    .map(crate::ImplicitCondition::NonZero)
+                    .collect::<Vec<_>>();
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut step = crate::Step::new(
+                        &desc,
+                        "Calcular la derivada",
+                        resolved,
+                        result,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    step.meta_mut()
+                        .required_conditions
+                        .extend(required_conditions.iter().cloned());
+                    steps.push(step);
+                }
+                return Ok((
+                    crate::EvalResult::Expr(result),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    required_conditions,
+                ));
+            }
+            if let Some(result) =
+                cas_math::symbolic_differentiation_support::differentiate_hyperbolic_cosh_fourth_tanh_cubic_primitive(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                let (result, _) = self.simplifier.simplify(result);
+                let desc =
+                    crate::symbolic_calculus_call_support::render_diff_desc_with(&call, |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &self.simplifier.context,
+                                id
+                            }
+                        )
+                    });
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    steps.push(crate::Step::new(
+                        &desc,
+                        "Calcular la derivada",
+                        resolved,
+                        result,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    ));
+                }
+                return Ok((
+                    crate::EvalResult::Expr(result),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                ));
+            }
+            if let Some((result, required_nonzero)) =
+                cas_math::symbolic_differentiation_support::differentiate_hyperbolic_sinh_fourth_reciprocal_tanh_cubic_primitive(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                let desc =
+                    crate::symbolic_calculus_call_support::render_diff_desc_with(&call, |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &self.simplifier.context,
+                                id
+                            }
+                        )
+                    });
+                let required_conditions =
+                    vec![crate::ImplicitCondition::NonZero(required_nonzero)];
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut step = crate::Step::new(
+                        &desc,
+                        "Calcular la derivada",
+                        resolved,
+                        result,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    step.meta_mut()
+                        .required_conditions
+                        .extend(required_conditions.iter().cloned());
+                    steps.push(step);
+                }
+                return Ok((
+                    crate::EvalResult::Expr(result),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    required_conditions,
+                ));
+            }
             let tan_arctan_presentation =
                 crate::rules::calculus::arctan_sqrt_additive_tan_polynomial_derivative_inline_presentation_with_domain(
                     &mut self.simplifier.context,
@@ -5686,7 +5838,7 @@ mod tests {
 
     #[test]
     fn eval_sqrt_chain_sec_wrapper_residual_reports_output_denominator_condition() {
-        let input = "((diff(integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))),x),x)-3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))))+1)/(x+2)";
+        let input = "((diff(integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))),x),x)-3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))))+1)/(x-2)";
         let mut engine = crate::Engine::new();
         let parsed = parse(input, &mut engine.simplifier.context).unwrap();
         let output = engine
@@ -5709,7 +5861,7 @@ mod tests {
         assert!(
             required_display
                 .iter()
-                .any(|condition| condition == "x ≠ -2"),
+                .any(|condition| condition == "x ≠ 2"),
             "missing output denominator condition: {required_display:?}"
         );
     }
@@ -6206,6 +6358,132 @@ mod tests {
     }
 
     #[test]
+    fn eval_simplify_steps_off_diff_scaled_hyperbolic_reciprocal_quotient_avoids_timeout() {
+        let cases = [
+            (
+                "diff((m/2)*k*(sinh(a*x+b)/cosh(a*x+b)^2), x)",
+                "k * m * a * (cosh(a * x + b)^2 - 2 * sinh(a * x + b)^2) / (2 * cosh(a * x + b)^3)",
+                None,
+            ),
+            (
+                "diff((m/2)*k*(cosh(a*x+b)/sinh(a*x+b)^2), x)",
+                "k * m * a * (sinh(a * x + b)^2 - 2 * cosh(a * x + b)^2) / (2 * sinh(a * x + b)^3)",
+                Some("sinh(a * x + b) ≠ 0"),
+            ),
+        ];
+
+        for (expr_text, expected, required_condition) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            options.time_budget_ms = Some(50);
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expected
+            );
+            assert!(
+                output
+                    .domain_warnings
+                    .iter()
+                    .all(|warning| warning.rule_name != "Simplification Time Budget"),
+                "unexpected timeout warning for {expr_text}: {:?}",
+                output.domain_warnings
+            );
+
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            match required_condition {
+                Some(required_condition) => assert_eq!(
+                    required_display,
+                    vec![required_condition],
+                    "expected only the canonical required condition for {expr_text}"
+                ),
+                None => assert!(
+                    required_display.is_empty(),
+                    "unexpected required conditions for {expr_text}: {required_display:?}"
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn eval_calculus_required_conditions_match_diagnostics_boundary() {
+        let cases = [
+            ("diff(ln(x)/sqrt(x), x)", vec!["x > 0"]),
+            ("integrate(sec(2*x+1), x)", vec!["cos(2 * x + 1) ≠ 0"]),
+        ];
+
+        for (expr_text, expected_display) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let required_conditions = output.required_conditions.clone();
+            let diagnostics_conditions = output.diagnostics.required_conditions();
+            let required_display = crate::render_conditions_normalized(
+                &mut engine.simplifier.context,
+                &required_conditions,
+            );
+            let diagnostics_display = crate::render_conditions_normalized(
+                &mut engine.simplifier.context,
+                &diagnostics_conditions,
+            );
+
+            assert_eq!(
+                required_display, expected_display,
+                "{expr_text}: unexpected required condition boundary"
+            );
+            assert_eq!(
+                diagnostics_display, required_display,
+                "{expr_text}: diagnostics.requires diverged from required_conditions"
+            );
+        }
+    }
+
+    #[test]
     fn eval_simplify_steps_off_compact_hyperbolic_coth_sum_avoids_timeout() {
         let mut engine = Engine::new();
         let expr_text = "1/tanh(2*x+1) - (2*x+2)/sinh(2*x+1)^2";
@@ -6380,6 +6658,59 @@ mod tests {
                 output.domain_warnings
             );
         }
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_log_ratio_single_pole_uses_compact_route() {
+        let mut engine = Engine::new();
+        let expr_text = "diff(ln(abs(x/(x+1)))+1/(x+1), x)";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        options.time_budget_ms = Some(50);
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        let displayed = DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result,
+        }
+        .to_string();
+        assert_eq!(displayed, "1 / (x^3 + 2 * x^2 + x)");
+        assert!(!displayed.contains("ln("), "{displayed}");
+        let required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        );
+        assert_eq!(
+            required_display,
+            vec!["x ≠ 0".to_string(), "x ≠ -1".to_string()],
+            "unexpected required_conditions: {required_display:?}"
+        );
+        assert!(
+            output
+                .domain_warnings
+                .iter()
+                .all(|warning| warning.rule_name != "Simplification Time Budget"),
+            "unexpected timeout warning: {:?}",
+            output.domain_warnings
+        );
     }
 
     #[test]
@@ -6791,6 +7122,112 @@ mod tests {
                     .count(),
                 1,
                 "input {expr_text}: expected exactly one displayed sin-domain condition, got: {required_display:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_symbolic_scaled_affine_sec_csc_avoids_timeout() {
+        let cases = [
+            (
+                "diff(k*sec(b-a*x), x)",
+                "-k * a * sec(b - a * x) * tan(b - a * x)",
+                "cos(b - a * x) ≠ 0",
+                ["sec(", "tan("],
+            ),
+            (
+                "diff(-k*csc(b-a*x), x)",
+                "-k * a * csc(b - a * x) * cot(b - a * x)",
+                "sin(b - a * x) ≠ 0",
+                ["csc(", "cot("],
+            ),
+            (
+                "diff(k*sec(a*x+b), x)",
+                "k * a * sec(a * x + b) * tan(a * x + b)",
+                "cos(a * x + b) ≠ 0",
+                ["sec(", "tan("],
+            ),
+            (
+                "diff(-k*csc(a*x+b), x)",
+                "k * a * csc(a * x + b) * cot(a * x + b)",
+                "sin(a * x + b) ≠ 0",
+                ["csc(", "cot("],
+            ),
+            (
+                "diff((m/2)*k*sec(a*x+b), x)",
+                "k * m * a * sec(a * x + b) * tan(a * x + b) / 2",
+                "cos(a * x + b) ≠ 0",
+                ["sec(", "tan("],
+            ),
+            (
+                "diff(-(m/2)*k*csc(b-a*x), x)",
+                "-k * m * a * csc(b - a * x) * cot(b - a * x) / 2",
+                "sin(b - a * x) ≠ 0",
+                ["csc(", "cot("],
+            ),
+        ];
+
+        for (expr_text, expected, expected_condition, required_fragments) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            options.time_budget_ms = Some(2_000);
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("expected expression result");
+            };
+            let rendered = DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string();
+            assert_eq!(rendered, expected, "unexpected result for {expr_text}");
+            for fragment in required_fragments {
+                assert!(
+                    rendered.contains(fragment),
+                    "input {expr_text}: missing compact reciprocal trig fragment {fragment}: {rendered}"
+                );
+            }
+            assert!(
+                !rendered.contains("/ cos(") && !rendered.contains("/ sin("),
+                "input {expr_text}: derivative should stay compact, got {rendered}"
+            );
+            assert!(
+                output
+                    .domain_warnings
+                    .iter()
+                    .all(|warning| warning.rule_name != "Simplification Time Budget"),
+                "input {expr_text}: unexpected timeout warning: {:?}",
+                output.domain_warnings
+            );
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            assert_eq!(
+                required_display
+                    .iter()
+                    .filter(|condition| condition.as_str() == expected_condition)
+                    .count(),
+                1,
+                "input {expr_text}: expected exactly one displayed domain condition, got: {required_display:?}"
             );
         }
     }

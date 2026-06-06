@@ -25,7 +25,10 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from cas_cli_release import ensure_release_cas_cli
-from engine_command_matrix_observability import stderr_fragility_error
+from engine_command_matrix_observability import (
+    runtime_observability_summary,
+    stderr_fragility_error,
+)
 
 
 ROOT = SCRIPT_DIR.parent
@@ -470,6 +473,19 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         domain_regime="required_condition",
         required_condition_regime="finite_positive_domain",
         trace_regime="positive_domain_substitution",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_log_positive_scaled_abs_quotient_domain",
+        expr="limit(ln(3*abs((x-1)/(x+1))), x, 0)",
+        expected_result="ln(3)",
+        expected_required_display=("x ≠ 1", "x ≠ -1"),
+        expected_step_substrings=("Evaluar límite finito",),
+        family="log_abs_quotient",
+        point_regime="finite",
+        domain_regime="positive_scaled_abs_quotient_domain",
+        required_condition_regime="finite_positive_scaled_abs_quotient_domain",
+        trace_regime="positive_scaled_abs_quotient_substitution",
+        presentation_regime="canonical_log_with_atomic_domain",
     ),
     LimitCommandMatrixCase(
         name="finite_log_exact_e_point_required_condition",
@@ -1805,6 +1821,15 @@ def run_matrix(
         "trace_regime_counts": count_by(cases, "trace_regime"),
         "presentation_regime_counts": count_by(cases, "presentation_regime"),
         "case_filters": [case.name for case in cases],
+        **runtime_observability_summary(
+            results,
+            group_keys=(
+                "family",
+                "point_regime",
+                "domain_regime",
+                "trace_regime",
+            ),
+        ),
     }
 
 

@@ -172,12 +172,7 @@ fn test_content_gcd_multivar_in_solve_generic_context_steps_off_keeps_requires()
         StepsMode::Off,
     );
     assert_eq!(result, "1/2");
-    assert!(
-        requires
-            .iter()
-            .any(|message| message.contains("4 * x + 4 * y") && message.contains("0")),
-        "expected denominator require, got: {requires:?}"
-    );
+    assert_eq!(requires, vec!["x + y ≠ 0".to_string()]);
 }
 
 #[test]
@@ -217,14 +212,7 @@ fn test_binomial_square_cancel_in_solve_generic_context_steps_off_keeps_requires
         StepsMode::Off,
     );
     assert_eq!(result, "1");
-    assert!(
-        requires.iter().any(|message| message.contains("(x + y)^2")),
-        "expected original denominator require, got: {requires:?}"
-    );
-    assert!(
-        requires.iter().any(|message| message == "x + y ≠ 0"),
-        "expected normalized factor require, got: {requires:?}"
-    );
+    assert_eq!(requires, vec!["x + y ≠ 0".to_string()]);
 }
 
 #[test]
@@ -250,14 +238,7 @@ fn test_power_quotient_cancel_in_solve_generic_context_steps_off_keeps_requires(
         StepsMode::Off,
     );
     assert_eq!(result, "x^2");
-    assert!(
-        requires.iter().any(|message| message.contains("x^2")),
-        "expected x^2 denominator require, got: {requires:?}"
-    );
-    assert!(
-        requires.iter().any(|message| message == "x ≠ 0"),
-        "expected base nonzero require, got: {requires:?}"
-    );
+    assert_eq!(requires, vec!["x ≠ 0".to_string()]);
 }
 
 #[test]

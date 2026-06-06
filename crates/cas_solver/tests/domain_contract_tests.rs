@@ -1158,10 +1158,10 @@ fn required_conditions_preserve_compact_shifted_power_gap_denominator() {
         result.contains("3 - (x + 1)^4"),
         "expected compact result denominator, got: {result}"
     );
-    assert_eq!(
-        required,
-        vec!["3 - (x + 1)^4 ≠ 0".to_string()],
-        "unexpected required conditions"
+    assert_eq!(required.len(), 1, "unexpected required conditions");
+    assert!(
+        required[0] == "3 - (x + 1)^4 ≠ 0" || required[0] == "(x + 1)^4 - 3 ≠ 0",
+        "unexpected required condition orientation: {required:?}"
     );
 }
 

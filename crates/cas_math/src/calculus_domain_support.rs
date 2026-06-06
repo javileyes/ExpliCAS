@@ -3,7 +3,7 @@
 use crate::tri_proof::TriProof;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_integer::Integer;
-use num_traits::{One, Zero};
+use num_traits::{One, Signed, Zero};
 
 /// Returns true when `expr > 0` has no real-domain solution provable within
 /// `proof_depth`, by proving sign-preserved `-expr >= 0`.
@@ -12,8 +12,68 @@ pub fn positive_condition_is_impossible_over_reals(
     expr: ExprId,
     proof_depth: usize,
 ) -> bool {
+    if nonpositive_scaled_nonnegative_factor_is_proven(ctx, expr, proof_depth) {
+        return true;
+    }
+
     let negated = ctx.add(Expr::Neg(expr));
     nonnegative_condition_is_proven_over_reals(ctx, negated, proof_depth)
+}
+
+fn nonpositive_scaled_nonnegative_factor_is_proven(
+    ctx: &mut Context,
+    expr: ExprId,
+    proof_depth: usize,
+) -> bool {
+    if crate::numeric_eval::as_rational_const(ctx, expr).is_some_and(|value| value <= Zero::zero())
+    {
+        return true;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            factor_is_known_nonnegative_for_positive_impossibility(ctx, inner, proof_depth)
+        }
+        Expr::Mul(left, right) => {
+            let left_const = crate::numeric_eval::as_rational_const(ctx, left);
+            if let Some(scale) = left_const {
+                return scale.is_zero()
+                    || (scale.is_negative()
+                        && factor_is_known_nonnegative_for_positive_impossibility(
+                            ctx,
+                            right,
+                            proof_depth,
+                        ));
+            }
+
+            let right_const = crate::numeric_eval::as_rational_const(ctx, right);
+            if let Some(scale) = right_const {
+                return scale.is_zero()
+                    || (scale.is_negative()
+                        && factor_is_known_nonnegative_for_positive_impossibility(
+                            ctx,
+                            left,
+                            proof_depth,
+                        ));
+            }
+
+            false
+        }
+        _ => false,
+    }
+}
+
+fn factor_is_known_nonnegative_for_positive_impossibility(
+    ctx: &mut Context,
+    expr: ExprId,
+    proof_depth: usize,
+) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Abs | BuiltinFn::Sqrt))
+    ) || nonnegative_condition_is_proven_over_reals(ctx, expr, proof_depth)
 }
 
 /// Returns true when `base` cannot be a valid real logarithm base because
@@ -230,6 +290,42 @@ mod tests {
         let neg_square = ctx.add(Expr::Neg(x_squared));
         assert!(positive_condition_is_impossible_over_reals(
             &mut ctx, neg_square, 12
+        ));
+    }
+
+    #[test]
+    fn detects_impossible_positive_condition_for_nonpositive_scaled_nonnegative_factor() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let shifted = ctx.add(Expr::Sub(x, one));
+        let abs_shifted = ctx.call_builtin(BuiltinFn::Abs, vec![shifted]);
+        let neg_three = ctx.num(-3);
+        let negative_scaled_abs = ctx.add(Expr::Mul(neg_three, abs_shifted));
+
+        assert!(positive_condition_is_impossible_over_reals(
+            &mut ctx,
+            negative_scaled_abs,
+            12
+        ));
+
+        let x = ctx.var("x");
+        let sqrt_x = ctx.call_builtin(BuiltinFn::Sqrt, vec![x]);
+        let neg_sqrt_x = ctx.add(Expr::Neg(sqrt_x));
+        assert!(positive_condition_is_impossible_over_reals(
+            &mut ctx, neg_sqrt_x, 12
+        ));
+
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let shifted = ctx.add(Expr::Sub(x, one));
+        let abs_shifted = ctx.call_builtin(BuiltinFn::Abs, vec![shifted]);
+        let zero = ctx.num(0);
+        let zero_scaled_abs = ctx.add(Expr::Mul(zero, abs_shifted));
+        assert!(positive_condition_is_impossible_over_reals(
+            &mut ctx,
+            zero_scaled_abs,
+            12
         ));
     }
 

@@ -558,6 +558,11 @@ impl Engine {
             &diagnostics,
             &blocked_hints,
         );
+        let required_conditions =
+            cas_solver_core::domain_normalization::normalize_and_dedupe_conditions(
+                &mut self.simplifier.context,
+                &required_conditions,
+            );
 
         // V2.9.9: Convert raw steps to display-ready steps via unified pipeline.
         // This is the ONLY place DisplayEvalSteps is constructed from raw steps.

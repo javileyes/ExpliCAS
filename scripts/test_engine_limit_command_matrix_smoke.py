@@ -20,7 +20,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_limit_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 98)
+        self.assertEqual(len(cases), 99)
         names = {case.name for case in cases}
         self.assertIn("finite_removable_rational_cancellation", names)
         self.assertIn("finite_rational_simple_pole_residual", names)
@@ -82,6 +82,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn("finite_log_argument_zero_endpoint_residual", names)
+        self.assertIn("finite_log_positive_scaled_abs_quotient_domain", names)
         self.assertIn("finite_log_exact_e_point_required_condition", names)
         self.assertIn("finite_fixed_base_log_argument_zero_endpoint_residual", names)
         self.assertIn(
@@ -170,11 +171,11 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("infinity_bounded_over_divergent_domain_conflict_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "point_regime"),
-            {"finite": 49, "finite_one_sided": 22, "infinity": 27},
+            {"finite": 50, "finite_one_sided": 22, "infinity": 27},
         )
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 23, "supported": 74, "undefined": 1},
+            {"residual": 23, "supported": 75, "undefined": 1},
         )
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
@@ -191,7 +192,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block3_real_domain_limits": 74,
+                "block3_real_domain_limits": 75,
                 "block9_residuals_and_non_goals": 24,
             },
         )
@@ -199,7 +200,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_calculus_block_gates(cases),
             {
                 "didactic_trace_and_limit_policy": 31,
-                "domain_conditions_and_limit_policy": 43,
+                "domain_conditions_and_limit_policy": 44,
                 "explicit_undefined_domain_policy": 1,
                 "safe_residual_policy": 23,
             },
@@ -236,6 +237,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_log_endpoint_residual_domain": 1,
                 "finite_log_rational_positive_sublimit_domain": 1,
                 "finite_log_unit_denominator_domain": 1,
+                "finite_positive_scaled_abs_quotient_domain": 1,
                 "finite_one_sided_acosh_lower_bound_endpoint_domain": 1,
                 "finite_one_sided_atanh_endpoint_domain": 1,
                 "finite_one_sided_atanh_lower_endpoint_domain": 1,
@@ -283,7 +285,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             sum(1 for case in cases if case.expected_step_substrings),
-            98,
+            99,
         )
         self.assertEqual(
             [

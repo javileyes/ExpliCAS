@@ -215,6 +215,8 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_inverse_tangent_direct_trig_linear_arg(ctx, target, var_name)
         || diff_target_is_ln_reciprocal_trig_sqrt(ctx, target, var_name)
         || diff_target_is_ln_constant_shifted_tan_sqrt(ctx, target, var_name)
+        || diff_target_is_log_ratio_single_linear_pole(ctx, target, var_name)
+        || diff_target_is_separated_linear_log_abs_with_linear_pole(ctx, target, var_name)
         || diff_target_is_scaled_reciprocal_trig_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
@@ -229,6 +231,214 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_atanh_surd_polynomial(ctx, target, var_name)
+}
+
+fn diff_target_is_log_ratio_single_linear_pole(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, target);
+    if terms.len() != 2 {
+        return false;
+    }
+
+    let mut log_factors: Option<(Polynomial, Polynomial)> = None;
+    let mut pole_factor: Option<Polynomial> = None;
+
+    for (term, _sign) in terms {
+        if let Some((num, den)) = log_abs_linear_quotient_factors(ctx, term, var_name) {
+            if log_factors.replace((num, den)).is_some() {
+                return false;
+            }
+            continue;
+        }
+        if let Some(linear) = reciprocal_linear_factor_for_raw_diff_target(ctx, term, var_name) {
+            if pole_factor.replace(linear).is_some() {
+                return false;
+            }
+            continue;
+        }
+        return false;
+    }
+
+    let Some((num, den)) = log_factors else {
+        return false;
+    };
+    let Some(pole) = pole_factor else {
+        return false;
+    };
+    pole == num || pole == den
+}
+
+fn diff_target_is_separated_linear_log_abs_with_linear_pole(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, target);
+    if terms.len() < 3 {
+        return false;
+    }
+
+    let mut log_factors = Vec::new();
+    let mut pole_factors = Vec::new();
+
+    for (term, _sign) in terms {
+        if !contains_named_var(ctx, term, var_name) {
+            continue;
+        }
+        if let Some(linear) = scaled_log_abs_linear_factor_for_raw_diff_target(ctx, term, var_name)
+        {
+            log_factors.push(linear);
+            continue;
+        }
+        if let Some(linear) = reciprocal_linear_factor_for_raw_diff_target(ctx, term, var_name) {
+            pole_factors.push(linear);
+            continue;
+        }
+        return false;
+    }
+
+    log_factors.len() >= 2
+        && !pole_factors.is_empty()
+        && pole_factors.iter().any(|pole| {
+            log_factors
+                .iter()
+                .any(|log_factor| linear_polynomials_are_proportional(pole, log_factor))
+        })
+}
+
+fn scaled_log_abs_linear_factor_for_raw_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<Polynomial> {
+    let core = strip_rational_scale_for_raw_diff_target(ctx, expr)?;
+    let Expr::Function(ln_fn, ln_args) = ctx.get(core) else {
+        return None;
+    };
+    if ln_args.len() != 1 || ctx.builtin_of(*ln_fn) != Some(cas_ast::BuiltinFn::Ln) {
+        return None;
+    }
+    let Expr::Function(abs_fn, abs_args) = ctx.get(ln_args[0]) else {
+        return None;
+    };
+    if abs_args.len() != 1 || ctx.builtin_of(*abs_fn) != Some(cas_ast::BuiltinFn::Abs) {
+        return None;
+    }
+    let poly = Polynomial::from_expr(ctx, abs_args[0], var_name).ok()?;
+    (poly.degree() == 1).then_some(poly)
+}
+
+fn strip_rational_scale_for_raw_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    if cas_ast::views::as_rational_const(ctx, expr, 8).is_some() {
+        return None;
+    }
+
+    match ctx.get(expr) {
+        Expr::Neg(inner) => strip_rational_scale_for_raw_diff_target(ctx, *inner),
+        Expr::Div(num, den) if cas_ast::views::as_rational_const(ctx, *den, 8).is_some() => {
+            strip_rational_scale_for_raw_diff_target(ctx, *num)
+        }
+        Expr::Mul(_, _) => {
+            let mut core = None;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if cas_ast::views::as_rational_const(ctx, factor, 8).is_some() {
+                    continue;
+                }
+                if core.replace(factor).is_some() {
+                    return None;
+                }
+            }
+            core
+        }
+        _ => Some(expr),
+    }
+}
+
+fn linear_polynomials_are_proportional(left: &Polynomial, right: &Polynomial) -> bool {
+    if left.degree() != 1 || right.degree() != 1 || right.is_zero() {
+        return false;
+    }
+
+    let mut ratio = None;
+    let len = left.coeffs.len().max(right.coeffs.len());
+    for idx in 0..len {
+        let l = left
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let r = right
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if r.is_zero() {
+            if !l.is_zero() {
+                return false;
+            }
+            continue;
+        }
+        let current = l / r;
+        if current.is_zero() {
+            return false;
+        }
+        if let Some(existing) = &ratio {
+            if existing != &current {
+                return false;
+            }
+        } else {
+            ratio = Some(current);
+        }
+    }
+
+    ratio.is_some()
+}
+
+fn log_abs_linear_quotient_factors(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(Polynomial, Polynomial)> {
+    let Expr::Function(ln_fn, ln_args) = ctx.get(expr) else {
+        return None;
+    };
+    if ln_args.len() != 1 || ctx.builtin_of(*ln_fn) != Some(cas_ast::BuiltinFn::Ln) {
+        return None;
+    }
+    let Expr::Function(abs_fn, abs_args) = ctx.get(ln_args[0]) else {
+        return None;
+    };
+    if abs_args.len() != 1 || ctx.builtin_of(*abs_fn) != Some(cas_ast::BuiltinFn::Abs) {
+        return None;
+    }
+    let Expr::Div(num, den) = ctx.get(abs_args[0]) else {
+        return None;
+    };
+    let num_poly = Polynomial::from_expr(ctx, *num, var_name).ok()?;
+    let den_poly = Polynomial::from_expr(ctx, *den, var_name).ok()?;
+    (num_poly.degree() == 1 && den_poly.degree() == 1).then_some((num_poly, den_poly))
+}
+
+fn reciprocal_linear_factor_for_raw_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<Polynomial> {
+    let denominator = match ctx.get(expr) {
+        Expr::Div(num, den) if cas_ast::views::as_rational_const(ctx, *num, 8).is_some() => *den,
+        Expr::Pow(base, exp) if matches!(ctx.get(*exp), Expr::Number(power) if *power == -BigRational::one()) => {
+            *base
+        }
+        _ => return None,
+    };
+    let poly = Polynomial::from_expr(ctx, denominator, var_name).ok()?;
+    (poly.degree() == 1).then_some(poly)
 }
 
 fn diff_target_is_bounded_trig_positive_shift_sqrt(ctx: &cas_ast::Context, target: ExprId) -> bool {
@@ -715,6 +925,40 @@ mod tests {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
                 diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_diff_target_for_separated_linear_log_abs_poles() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "(-1/2)*ln(abs(x-1)) - 4/(x-1) + (1/2)*ln(abs(x+1))",
+            "1/4*ln(abs(2*x+1)) - 1/(4*(2*x-3)) - 1/4*ln(abs(2*x-3))",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn avoids_raw_diff_target_for_unrelated_separated_log_abs_sums() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "ln(abs(x-1)) - ln(abs(x+1))",
+            "ln(abs(x^2+1)) + 1/(x+1) + ln(abs(x-1))",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                !diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
                 "{raw}"
             );
         }

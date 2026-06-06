@@ -228,37 +228,23 @@ mod log_power_base {
 
         let output = engine.eval(&mut state, req).expect("eval failed");
 
-        let has_positive_x = output.required_conditions.iter().any(|cond| {
-            matches!(
-                cond,
-                cas_solver::api::ImplicitCondition::Positive(id)
-                    if format!(
-                        "{}",
-                        DisplayExpr {
-                            context: &engine.simplifier.context,
-                            id: *id,
-                        }
-                    ) == "x"
-            )
-        });
-        let has_nonzero_x2_minus_1 = output.required_conditions.iter().any(|cond| {
-            matches!(
-                cond,
-                cas_solver::api::ImplicitCondition::NonZero(id)
-                    if format!(
-                        "{}",
-                        DisplayExpr {
-                            context: &engine.simplifier.context,
-                            id: *id,
-                        }
-                    ) == "x^2 - 1"
-            )
-        });
+        let required_display: Vec<_> = output
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&engine.simplifier.context))
+            .collect();
 
-        assert!(has_positive_x, "Expected x > 0 in required_conditions");
         assert!(
-            has_nonzero_x2_minus_1,
-            "Expected x^2 - 1 != 0 in required_conditions"
+            required_display
+                .iter()
+                .any(|condition| condition == "x > 0"),
+            "Expected x > 0 in required_conditions, got {required_display:?}"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "x ≠ 1"),
+            "Expected x != 1 in required_conditions, got {required_display:?}"
         );
     }
 }

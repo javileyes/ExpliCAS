@@ -324,12 +324,13 @@ fn build_hyperbolic_cosh_reciprocal_fourth_integral(
         return ctx.add(Expr::Add(linear_term, cubic_term));
     }
 
-    let linear_term = scale_ops.scale_expr_reciprocal_integration_result(ctx, scale, tanh_arg);
-    let cubic_scale =
-        scale_ops.scale_rational_term(ctx, BigRational::new(1.into(), 3.into()), scale);
-    let cubic_term =
-        scale_ops.scale_expr_reciprocal_integration_result(ctx, cubic_scale, tanh_cubed);
-    ctx.add(Expr::Sub(linear_term, cubic_term))
+    let three = ctx.num(3);
+    let one_third = ctx.add(Expr::Number(BigRational::new(1.into(), 3.into())));
+    let three_scale = mul2_raw(ctx, three, scale);
+    let scaled_linear = mul2_raw(ctx, three_scale, tanh_arg);
+    let scaled_cubic = mul2_raw(ctx, scale, tanh_cubed);
+    let primitive = ctx.add(Expr::Sub(scaled_linear, scaled_cubic));
+    mul2_raw(ctx, one_third, primitive)
 }
 
 fn build_hyperbolic_sinh_reciprocal_fourth_integral(
@@ -637,7 +638,7 @@ mod tests {
         assert_eq!(rendered(&ctx, sinh_square), "-cosh(x) * a/sinh(x)");
         assert_eq!(
             rendered(&ctx, cosh_fourth),
-            "a * tanh(x) - 1/3 * a * tanh(x)^3"
+            "1/3 * (3 * a * tanh(x) - a * tanh(x)^3)"
         );
         assert_eq!(
             rendered(&ctx, sinh_fourth),
