@@ -2854,74 +2854,6 @@ fn raw_reciprocal_trig_derivative_quotient_scale_expr(
     raw_reciprocal_trig_derivative_numerator_scale_expr(ctx, num, numerator_builtin, arg)
 }
 
-fn reciprocal_trig_derivative_integrand_quotient(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<ExprId> {
-    if let Expr::Neg(inner) = ctx.get(expr).clone() {
-        let quotient = reciprocal_trig_derivative_integrand_quotient(ctx, inner)?;
-        return Some(ctx.add(Expr::Neg(quotient)));
-    }
-
-    reciprocal_trig_derivative_integrand_quotient_for_builtin(ctx, expr, BuiltinFn::Sec).or_else(
-        || reciprocal_trig_derivative_integrand_quotient_for_builtin(ctx, expr, BuiltinFn::Csc),
-    )
-}
-
-fn reciprocal_trig_derivative_integrand_quotient_for_builtin(
-    ctx: &mut Context,
-    expr: ExprId,
-    builtin: BuiltinFn,
-) -> Option<ExprId> {
-    let (ratio_builtin, denominator_builtin) = match builtin {
-        BuiltinFn::Sec => (BuiltinFn::Tan, BuiltinFn::Cos),
-        BuiltinFn::Csc => (BuiltinFn::Cot, BuiltinFn::Sin),
-        _ => return None,
-    };
-
-    let factors = cas_math::expr_nary::mul_leaves(ctx, expr);
-    let mut reciprocal_index = None;
-    let mut ratio_index = None;
-    let mut matched_arg = None;
-
-    for (idx, factor) in factors.iter().enumerate() {
-        let Some(arg) = unary_builtin_arg(ctx, *factor, builtin) else {
-            continue;
-        };
-        if reciprocal_index.is_some() {
-            return None;
-        }
-        reciprocal_index = Some(idx);
-        matched_arg = Some(arg);
-    }
-
-    let arg = matched_arg?;
-    for (idx, factor) in factors.iter().enumerate() {
-        let Some(ratio_arg) = unary_builtin_arg(ctx, *factor, ratio_builtin) else {
-            continue;
-        };
-        if !exprs_equivalent(ctx, ratio_arg, arg) {
-            continue;
-        }
-        if ratio_index.is_some() {
-            return None;
-        }
-        ratio_index = Some(idx);
-    }
-
-    let reciprocal_index = reciprocal_index?;
-    ratio_index?;
-
-    let numerator_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != reciprocal_index).then_some(*factor))
-        .collect();
-    let numerator = cas_math::expr_nary::build_balanced_mul(ctx, &numerator_factors);
-    let denominator = ctx.call_builtin(denominator_builtin, vec![arg]);
-    Some(ctx.add(Expr::Div(numerator, denominator)))
-}
-
 fn plain_trig_log_abs_primitive(
     ctx: &Context,
     inner_expr: ExprId,
@@ -3919,7 +3851,10 @@ fn integrated_reciprocal_trig_derivative_diff_matches(
         ) {
         antiderivative
     } else {
-        let normalized = reciprocal_trig_derivative_integrand_quotient(ctx, integrate_call.target)?;
+        let normalized = crate::rules::calculus::reciprocal_trig_derivative_integrand_quotient(
+            ctx,
+            integrate_call.target,
+        )?;
         condition_target = normalized;
         cas_math::symbolic_integration_support::integrate_symbolic_expr(
             ctx,
@@ -3962,7 +3897,7 @@ fn integrated_reciprocal_trig_derivative_diff_matches(
     Some(required_nonzero.chain(required_positive).collect())
 }
 
-fn integral_required_conditions(
+pub(crate) fn integral_required_conditions(
     ctx: &mut Context,
     target: ExprId,
     var_name: &str,
@@ -3981,6 +3916,129 @@ fn integral_required_conditions(
         .map(crate::ImplicitCondition::Positive);
 
     required_nonzero.chain(required_positive).collect()
+}
+
+pub(crate) fn integral_residual_required_conditions(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Vec<crate::ImplicitCondition> {
+    let mut conditions = integral_required_conditions(ctx, target, var_name);
+    for condition in integral_residual_structural_required_conditions(ctx, target) {
+        push_unique_implicit_condition(ctx, &mut conditions, condition);
+    }
+    conditions
+}
+
+pub(crate) fn integral_residual_structural_required_conditions(
+    ctx: &mut Context,
+    target: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    let mut conditions = Vec::new();
+    collect_integral_residual_structural_required_conditions(ctx, target, &mut conditions, 16);
+    conditions
+}
+
+fn collect_integral_residual_structural_required_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+    conditions: &mut Vec<crate::ImplicitCondition>,
+    depth: usize,
+) {
+    if depth == 0 {
+        return;
+    }
+
+    if let Some(base) = reciprocal_sqrt_like_base(ctx, expr) {
+        for condition in half_power_base_required_conditions(ctx, base) {
+            push_unique_implicit_condition(ctx, conditions, condition);
+        }
+    }
+
+    for condition in unary_residual_required_conditions(ctx, expr) {
+        push_unique_implicit_condition(ctx, conditions, condition);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            collect_integral_residual_structural_required_conditions(
+                ctx,
+                left,
+                conditions,
+                depth - 1,
+            );
+            collect_integral_residual_structural_required_conditions(
+                ctx,
+                right,
+                conditions,
+                depth - 1,
+            );
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            collect_integral_residual_structural_required_conditions(
+                ctx,
+                inner,
+                conditions,
+                depth - 1,
+            );
+        }
+        Expr::Function(_, args) => {
+            for arg in args {
+                collect_integral_residual_structural_required_conditions(
+                    ctx,
+                    arg,
+                    conditions,
+                    depth - 1,
+                );
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for child in data {
+                collect_integral_residual_structural_required_conditions(
+                    ctx,
+                    child,
+                    conditions,
+                    depth - 1,
+                );
+            }
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn unary_residual_required_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return Vec::new();
+    };
+    if args.len() != 1 {
+        return Vec::new();
+    }
+
+    match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Tan) | Some(BuiltinFn::Sec) => {
+            let denominator = ctx.call_builtin(BuiltinFn::Cos, vec![args[0]]);
+            vec![crate::ImplicitCondition::NonZero(denominator)]
+        }
+        Some(BuiltinFn::Cot) | Some(BuiltinFn::Csc) => {
+            let denominator = ctx.call_builtin(BuiltinFn::Sin, vec![args[0]]);
+            vec![crate::ImplicitCondition::NonZero(denominator)]
+        }
+        Some(BuiltinFn::Ln)
+        | Some(BuiltinFn::Log)
+        | Some(BuiltinFn::Log2)
+        | Some(BuiltinFn::Log10) => {
+            vec![crate::ImplicitCondition::Positive(args[0])]
+        }
+        _ => Vec::new(),
+    }
 }
 
 fn push_unique_implicit_condition(

@@ -54,9 +54,20 @@ mod tests {
     }
 
     #[test]
+    fn accepts_verified_reciprocal_trig_affine_source() {
+        let mut ctx = Context::new();
+        let target = parse("2/3*sec(2*x+1)", &mut ctx).unwrap();
+
+        assert!(matches!(
+            direct_trig_affine_integral_derivative_route(&mut ctx, target, "x"),
+            DirectTrigAffineIntegralDerivativeRoute::VerifiedSource(source) if source == target
+        ));
+    }
+
+    #[test]
     fn route_matcher_separates_detection_from_verification() {
         let mut ctx = Context::new();
-        let target = parse("sin(2*x+1)", &mut ctx).unwrap();
+        let target = parse("2/3*csc(2*x+1)", &mut ctx).unwrap();
 
         assert!(direct_trig_affine_route_matches(&mut ctx, target, "x"));
     }
@@ -73,9 +84,31 @@ mod tests {
     }
 
     #[test]
+    fn route_reports_no_match_for_reciprocal_trig_nonlinear_source() {
+        let mut ctx = Context::new();
+        let target = parse("sec(x^2)", &mut ctx).unwrap();
+
+        assert!(matches!(
+            direct_trig_affine_integral_derivative_route(&mut ctx, target, "x"),
+            DirectTrigAffineIntegralDerivativeRoute::NoMatch
+        ));
+    }
+
+    #[test]
     fn route_reports_verification_failed_for_matched_unsupported_source() {
         let mut ctx = Context::new();
         let target = parse("sin(2*x+1)+exp(x^2)", &mut ctx).unwrap();
+
+        assert!(matches!(
+            direct_trig_affine_integral_derivative_route(&mut ctx, target, "x"),
+            DirectTrigAffineIntegralDerivativeRoute::VerificationFailed
+        ));
+    }
+
+    #[test]
+    fn route_reports_verification_failed_for_reciprocal_trig_mixed_unsupported_source() {
+        let mut ctx = Context::new();
+        let target = parse("sec(2*x+1)+exp(x^2)", &mut ctx).unwrap();
 
         assert!(matches!(
             direct_trig_affine_integral_derivative_route(&mut ctx, target, "x"),

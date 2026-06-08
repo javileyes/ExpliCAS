@@ -187,6 +187,30 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="exact_rational",
     ),
     LimitCommandMatrixCase(
+        name="finite_one_sided_abs_quadratic_orientation_quotient_supported",
+        expr="limit(abs(x^2-1)/(x^2-1), x, 1-)",
+        expected_result="-1",
+        expected_required_display=("x ≠ 1", "x ≠ -1"),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="abs_orientation",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_factored_orientation",
+        required_condition_regime="finite_one_sided_factored_abs_orientation_domain",
+        trace_regime="one_sided_orientation_policy",
+        presentation_regime="exact_rational",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_sign_quadratic_orientation_supported",
+        expr="limit(sign(x^2-1), x, 1-)",
+        expected_result="-1",
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="discontinuous",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_sign_orientation",
+        trace_regime="one_sided_sign_orientation_policy",
+        presentation_regime="exact_rational",
+    ),
+    LimitCommandMatrixCase(
         name="finite_abs_even_order_pole_bilateral_supported",
         expr="limit(abs(x)/(x^2), x, 0)",
         expected_result="infinity",
@@ -209,6 +233,47 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         point_regime="finite_one_sided",
         domain_regime="one_sided_log_endpoint",
         required_condition_regime="finite_one_sided_log_endpoint_domain",
+        trace_regime="one_sided_log_endpoint_policy",
+        presentation_regime="negative_infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_bilateral_log_even_order_endpoint_supported",
+        expr="limit(ln(x^2), x, 0)",
+        expected_result="-infinity",
+        expected_required_display=("x ≠ 0",),
+        expected_step_substrings=("Evaluar límite finito",),
+        family="log_endpoint",
+        point_regime="finite",
+        domain_regime="bilateral_log_even_order_endpoint",
+        required_condition_regime="finite_bilateral_log_even_order_endpoint_domain",
+        trace_regime="finite_bilateral_log_endpoint_policy",
+        presentation_regime="negative_infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_bilateral_reciprocal_base_log_even_order_endpoint_supported",
+        expr="limit(log(1/2,x^2), x, 0)",
+        expected_result="infinity",
+        expected_required_display=("x ≠ 0",),
+        expected_step_substrings=("Evaluar límite finito",),
+        family="binary_log_endpoint",
+        point_regime="finite",
+        domain_regime="bilateral_reciprocal_base_log_even_order_endpoint",
+        required_condition_regime=(
+            "finite_bilateral_reciprocal_base_log_even_order_endpoint_domain"
+        ),
+        trace_regime="finite_bilateral_log_endpoint_policy",
+        presentation_regime="infinity",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_fixed_base_log_zero_endpoint_supported",
+        expr="limit(log2(x), x, 0+)",
+        expected_result="-infinity",
+        expected_required_display=("x > 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="fixed_base_log_endpoint",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_fixed_base_log_endpoint",
+        required_condition_regime="finite_one_sided_fixed_base_log_endpoint_domain",
         trace_regime="one_sided_log_endpoint_policy",
         presentation_regime="negative_infinity",
     ),
@@ -301,6 +366,32 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="exact_zero",
     ),
     LimitCommandMatrixCase(
+        name="finite_one_sided_sqrt_shifted_zero_endpoint_supported",
+        expr="limit(sqrt(x+1), x, -1+)",
+        expected_result="0",
+        expected_required_display=("x ≥ -1",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="root_endpoint",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_shifted_root_endpoint",
+        required_condition_regime="finite_one_sided_root_endpoint_domain",
+        trace_regime="one_sided_root_endpoint_policy",
+        presentation_regime="exact_zero",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_half_power_zero_endpoint_supported",
+        expr="limit(x^(1/2), x, 0+)",
+        expected_result="0",
+        expected_required_display=("x ≥ 0",),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="root_endpoint",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_half_power_endpoint",
+        required_condition_regime="finite_one_sided_root_endpoint_domain",
+        trace_regime="one_sided_root_endpoint_policy",
+        presentation_regime="exact_zero",
+    ),
+    LimitCommandMatrixCase(
         name="finite_one_sided_sqrt_rational_zero_tail_endpoint_supported",
         expr="limit(sqrt((x-1)/(x+3)), x, 1+)",
         expected_result="0",
@@ -309,6 +400,21 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         family="root_rational_endpoint",
         point_regime="finite_one_sided",
         domain_regime="one_sided_rational_root_zero_tail_endpoint",
+        required_condition_regime=(
+            "finite_one_sided_root_rational_zero_tail_endpoint_domain"
+        ),
+        trace_regime="one_sided_rational_root_endpoint_policy",
+        presentation_regime="exact_zero",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_sqrt_rational_reverse_zero_tail_endpoint_supported",
+        expr="limit(sqrt((1-x)/(x+3)), x, 1-)",
+        expected_result="0",
+        expected_required_display=("(1 - x) / (x + 3) ≥ 0", "x ≠ -3"),
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="root_rational_endpoint",
+        point_regime="finite_one_sided",
+        domain_regime="one_sided_rational_root_reverse_zero_tail_endpoint",
         required_condition_regime=(
             "finite_one_sided_root_rational_zero_tail_endpoint_domain"
         ),
@@ -347,6 +453,25 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         family="root_endpoint",
         point_regime="finite_one_sided",
         domain_regime="domain_path_conflict",
+        required_condition_regime="finite_one_sided_path_conflict",
+        outcome="residual",
+        residual_cause="one_sided_domain_path_conflict",
+        trace_regime="one_sided_domain_path_residual_policy",
+        presentation_regime="residual",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_one_sided_sqrt_shifted_domain_path_conflict_residual",
+        expr="limit(sqrt(x+1), x, -1-)",
+        expected_result="limit(sqrt(x + 1), x, -1, left)",
+        expected_required_display=("x ≥ -1",),
+        expected_warning_substrings=(
+            "One-sided finite point limits are not supported safely for this expression yet",
+            "Limit path conflicts with the input domain",
+        ),
+        expected_step_substrings=("Conservar límite residual",),
+        family="root_endpoint",
+        point_regime="finite_one_sided",
+        domain_regime="shifted_root_domain_path_conflict",
         required_condition_regime="finite_one_sided_path_conflict",
         outcome="residual",
         residual_cause="one_sided_domain_path_conflict",
@@ -594,6 +719,25 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="residual",
     ),
     LimitCommandMatrixCase(
+        name="finite_inverse_trig_empty_punctured_lower_endpoint_residual",
+        expr="limit(acos(-1-x^2), x, 0)",
+        expected_result="limit(acos(-1 - x^2), x, 0)",
+        expected_required_display=("-1 ≤ x^2 + 1 ≤ 1",),
+        expected_warning_substrings=(
+            "Finite point limits are not supported safely yet",
+            "no punctured real neighbourhood",
+        ),
+        expected_step_substrings=("Conservar límite residual",),
+        family="inverse_trig",
+        point_regime="finite",
+        domain_regime="empty_punctured_interval_lower_endpoint_residual",
+        required_condition_regime="finite_empty_punctured_inverse_trig_endpoint_residual_domain",
+        outcome="residual",
+        residual_cause="finite_endpoint_empty_punctured_domain_policy",
+        trace_regime="finite_residual_policy",
+        presentation_regime="residual",
+    ),
+    LimitCommandMatrixCase(
         name="finite_inverse_trig_bilateral_lower_endpoint_supported",
         expr="limit(acos(-1+x^2), x, 0)",
         expected_result="pi",
@@ -736,6 +880,30 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="undefined",
     ),
     LimitCommandMatrixCase(
+        name="finite_invalid_binary_log_base_dependent_argument_undefined",
+        expr="limit(log(1,x^2), x, 0)",
+        expected_result="undefined",
+        expected_step_substrings=("undefined",),
+        family="binary_log_domain_policy",
+        point_regime="finite",
+        domain_regime="invalid_constant_base_dependent_argument_empty_real_domain",
+        outcome="undefined",
+        trace_regime="static_empty_domain_policy",
+        presentation_regime="undefined",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_inverse_hyperbolic_empty_open_interval_undefined",
+        expr="limit(atanh(x^2+2), x, 0)",
+        expected_result="undefined",
+        expected_step_substrings=("undefined",),
+        family="inverse_hyperbolic_domain_policy",
+        point_regime="finite",
+        domain_regime="empty_open_interval_domain",
+        outcome="undefined",
+        trace_regime="static_empty_domain_policy",
+        presentation_regime="undefined",
+    ),
+    LimitCommandMatrixCase(
         name="finite_sqrt_bilateral_even_gap_endpoint_supported",
         expr="limit(sqrt(x^2), x, 0)",
         expected_result="0",
@@ -843,6 +1011,17 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         residual_cause="finite_discontinuity_or_orientation",
         trace_regime="finite_residual_policy",
         presentation_regime="residual_presentation_cleanup",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_bilateral_sign_even_order_orientation_supported",
+        expr="limit(sign(x^2), x, 0)",
+        expected_result="1",
+        expected_step_substrings=("Evaluar límite finito",),
+        family="discontinuous",
+        point_regime="finite",
+        domain_regime="bilateral_sign_even_order_orientation",
+        trace_regime="finite_bilateral_sign_orientation_policy",
+        presentation_regime="exact_rational",
     ),
     LimitCommandMatrixCase(
         name="finite_abs_orientation_quotient_residual_boundary",
@@ -1617,6 +1796,28 @@ def extract_warning_messages(payload: dict[str, Any] | None) -> tuple[str, ...]:
     return tuple(messages)
 
 
+def extract_cli_timings_us(payload: dict[str, Any] | None) -> dict[str, int]:
+    if not payload:
+        return {}
+    raw = payload.get("timings_us")
+    if not isinstance(raw, dict):
+        return {}
+
+    timings: dict[str, int] = {}
+    for key in ("parse_us", "simplify_us", "total_us"):
+        value = raw.get(key)
+        if isinstance(value, int):
+            timings[key] = value
+    return timings
+
+
+def timing_seconds(timings_us: dict[str, int], key: str) -> float | None:
+    value = timings_us.get(key)
+    if not isinstance(value, int):
+        return None
+    return value / 1_000_000.0
+
+
 def extract_step_text(payload: dict[str, Any] | None) -> str:
     if not payload:
         return ""
@@ -1713,6 +1914,15 @@ def run_case(
     required_display = extract_required_display(parsed)
     warnings = extract_warning_messages(parsed)
     step_text = extract_step_text(parsed)
+    cli_timings_us = extract_cli_timings_us(parsed)
+    cli_parse_seconds = timing_seconds(cli_timings_us, "parse_us")
+    cli_simplify_seconds = timing_seconds(cli_timings_us, "simplify_us")
+    cli_total_seconds = timing_seconds(cli_timings_us, "total_us")
+    cli_public_overhead_seconds = (
+        max(0.0, wall_elapsed - cli_total_seconds)
+        if cli_total_seconds is not None
+        else None
+    )
     ok = parsed.get("ok") if isinstance(parsed, dict) else None
 
     error: str | None = None
@@ -1758,6 +1968,25 @@ def run_case(
         "error_kind": error_kind,
         "returncode": process.returncode,
         "wall_elapsed_seconds": round(wall_elapsed, 3),
+        "cli_parse_us": cli_timings_us.get("parse_us"),
+        "cli_simplify_us": cli_timings_us.get("simplify_us"),
+        "cli_total_us": cli_timings_us.get("total_us"),
+        "cli_parse_elapsed_seconds": (
+            round(cli_parse_seconds, 6) if cli_parse_seconds is not None else None
+        ),
+        "cli_simplify_elapsed_seconds": (
+            round(cli_simplify_seconds, 6)
+            if cli_simplify_seconds is not None
+            else None
+        ),
+        "cli_total_elapsed_seconds": (
+            round(cli_total_seconds, 6) if cli_total_seconds is not None else None
+        ),
+        "cli_public_overhead_seconds": (
+            round(cli_public_overhead_seconds, 6)
+            if cli_public_overhead_seconds is not None
+            else None
+        ),
         "result": result if isinstance(result, str) else None,
         "required_display": list(required_display),
         "warnings": list(warnings),
@@ -1853,6 +2082,32 @@ def count_residual_causes(
     return dict(sorted(counts.items()))
 
 
+def count_residual_families(
+    cases: tuple[LimitCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        if case.outcome != "residual":
+            continue
+        counts[case.family] = counts.get(case.family, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_residual_cause_families(
+    cases: tuple[LimitCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        if case.outcome != "residual":
+            continue
+        cause = case.residual_cause
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        key = f"{cause}/{case.family}"
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def group_residual_cases_by_cause(
     cases: tuple[LimitCommandMatrixCase, ...],
 ) -> dict[str, list[str]]:
@@ -1865,6 +2120,103 @@ def group_residual_cases_by_cause(
             cause = "unclassified_residual"
         grouped.setdefault(cause, []).append(case.name)
     return {cause: grouped[cause] for cause in sorted(grouped)}
+
+
+def phase_runtime_distribution(
+    results: list[dict[str, Any]],
+    *,
+    phase_key: str,
+) -> dict[str, Any]:
+    values = [
+        float(result[phase_key])
+        for result in results
+        if isinstance(result.get(phase_key), (int, float))
+    ]
+    if not values:
+        return {}
+    values.sort()
+    p95_index = min(len(values) - 1, int(len(values) * 0.95))
+    total_elapsed = sum(values)
+    return {
+        "timed_case_count": len(values),
+        "total_elapsed_seconds": round(total_elapsed, 3),
+        "avg_case_ms": round(total_elapsed * 1000.0 / len(values), 3),
+        "p95_case_ms": round(values[p95_index] * 1000.0, 3),
+        "max_case_ms": round(max(values) * 1000.0, 3),
+    }
+
+
+def phase_runtime_case_rows(
+    results: list[dict[str, Any]],
+    *,
+    phase_key: str,
+    output_key: str,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    timed_results = [
+        result
+        for result in results
+        if isinstance(result.get(phase_key), (int, float))
+    ]
+    timed_results.sort(
+        key=lambda result: (
+            -float(result.get(phase_key, 0.0)),
+            str(result.get("name", "")),
+        )
+    )
+
+    rows: list[dict[str, Any]] = []
+    for result in timed_results[:limit]:
+        row: dict[str, Any] = {
+            "name": result.get("name"),
+            output_key: round(float(result[phase_key]), 3),
+        }
+        for key in (
+            "family",
+            "point_regime",
+            "domain_regime",
+            "required_condition_regime",
+            "trace_regime",
+            "presentation_regime",
+            "calculus_maturity_block",
+            "calculus_block_gate",
+        ):
+            value = result.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def phase_runtime_observability_summary(
+    results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for phase_name, phase_key, output_key in (
+        ("cli_parse", "cli_parse_elapsed_seconds", "cli_parse_elapsed_seconds"),
+        (
+            "cli_simplify",
+            "cli_simplify_elapsed_seconds",
+            "cli_simplify_elapsed_seconds",
+        ),
+        ("cli_total", "cli_total_elapsed_seconds", "cli_total_elapsed_seconds"),
+        (
+            "cli_public_overhead",
+            "cli_public_overhead_seconds",
+            "cli_public_overhead_seconds",
+        ),
+    ):
+        distribution = phase_runtime_distribution(results, phase_key=phase_key)
+        if distribution:
+            summary[f"{phase_name}_runtime_distribution"] = distribution
+        rows = phase_runtime_case_rows(
+            results,
+            phase_key=phase_key,
+            output_key=output_key,
+        )
+        if rows:
+            summary[f"slowest_{phase_name}_evaluations"] = rows
+    return summary
 
 
 def increment_issue_kind(issue_kind_counts: dict[str, int], error_kind: str | None) -> None:
@@ -1956,6 +2308,8 @@ def run_matrix(
         "required_condition_regime_counts": count_by(cases, "required_condition_regime"),
         "outcome_counts": count_by(cases, "outcome"),
         "residual_cause_counts": count_residual_causes(cases),
+        "residual_family_counts": count_residual_families(cases),
+        "residual_cause_family_counts": count_residual_cause_families(cases),
         "residual_cases_by_cause": group_residual_cases_by_cause(cases),
         "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
         "calculus_block_gate_counts": count_calculus_block_gates(cases),
@@ -1971,6 +2325,7 @@ def run_matrix(
                 "trace_regime",
             ),
         ),
+        **phase_runtime_observability_summary(results),
     }
 
 

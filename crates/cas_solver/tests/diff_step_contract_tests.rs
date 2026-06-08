@@ -851,6 +851,7 @@ fn tan_exp_root_diff_residual_collapses_before_generic_cleanup() {
         rules.iter().any(|rule| matches!(
             *rule,
             "Resolve calculus calls and simplify matching residual before general simplification"
+                | "Resolve a matching calculus residual inside its wrapper before general simplification"
                 | "Post-calculus residual simplification"
                 | "Cancel Equal Fractions Difference"
                 | "Cancelar términos opuestos"
@@ -17462,7 +17463,7 @@ fn raw_tangent_trig_root_diff_preserves_direct_presentation_and_residual() {
         (
             "diff(sqrt(tan(x)+sin(x)+x), x) - (cos(x)^2+cos(x)^3+1)/(2*cos(x)^2*sqrt(sin(x)+tan(x)+x))",
             "0",
-            "Resolve calculus calls and simplify matching residual before general simplification",
+            "Resolve a matching calculus residual inside its wrapper before general simplification",
         ),
     ] {
         let mut engine = Engine::new();

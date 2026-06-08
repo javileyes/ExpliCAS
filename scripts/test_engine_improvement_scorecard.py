@@ -484,7 +484,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_limit_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_limit_command_matrix(
             """
-{"status":"pass","total":11,"status_counts":{"pass":11,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":3,"residual_case_names":["limit_residual_a","limit_residual_b","limit_residual_c"],"warning_expected_case_count":3,"required_display_case_count":6,"step_checked_case_count":11,"supported_step_unchecked_case_count":0,"expected_step_substring_count":11,"distinct_required_display_count":6,"required_display_counts":{"x > -3":1,"x ≠ -2":1,"x ≠ 1":1},"family_count":7,"point_regime_counts":{"finite":6,"infinity":5},"domain_regime_counts":{"unconditional":4,"required_condition":3,"removable_hole":1,"endpoint_residual":1,"discontinuous_residual":1,"domain_path_conflict":1},"required_condition_regime_counts":{"finite_source_definedness":1,"infinity_path_conflict":1,"none":9},"outcome_counts":{"supported":8,"residual":3},"residual_cause_counts":{"finite_endpoint_or_boundary_policy":2,"infinity_domain_path_conflict":1},"residual_cases_by_cause":{"finite_endpoint_or_boundary_policy":["limit_residual_a","limit_residual_b"],"infinity_domain_path_conflict":["limit_residual_c"]},"calculus_maturity_block_counts":{"block3_real_domain_limits":8,"block9_residuals_and_non_goals":3},"calculus_block_gate_counts":{"didactic_trace_and_limit_policy":2,"domain_conditions_and_limit_policy":6,"safe_residual_policy":3},"trace_regime_counts":{"substitution":1},"presentation_regime_counts":{"canonical":7,"infinity":1,"residual":3}}
+{"status":"pass","total":11,"status_counts":{"pass":11,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":3,"residual_case_names":["limit_residual_a","limit_residual_b","limit_residual_c"],"warning_expected_case_count":3,"required_display_case_count":6,"step_checked_case_count":11,"supported_step_unchecked_case_count":0,"expected_step_substring_count":11,"distinct_required_display_count":6,"required_display_counts":{"x > -3":1,"x ≠ -2":1,"x ≠ 1":1},"family_count":7,"point_regime_counts":{"finite":6,"infinity":5},"domain_regime_counts":{"unconditional":4,"required_condition":3,"removable_hole":1,"endpoint_residual":1,"discontinuous_residual":1,"domain_path_conflict":1},"required_condition_regime_counts":{"finite_source_definedness":1,"infinity_path_conflict":1,"none":9},"outcome_counts":{"supported":8,"residual":3},"residual_cause_counts":{"finite_endpoint_or_boundary_policy":2,"infinity_domain_path_conflict":1},"residual_family_counts":{"endpoint_family":2,"infinity_family":1},"residual_cause_family_counts":{"finite_endpoint_or_boundary_policy/endpoint_family":2,"infinity_domain_path_conflict/infinity_family":1},"residual_cases_by_cause":{"finite_endpoint_or_boundary_policy":["limit_residual_a","limit_residual_b"],"infinity_domain_path_conflict":["limit_residual_c"]},"calculus_maturity_block_counts":{"block3_real_domain_limits":8,"block9_residuals_and_non_goals":3},"calculus_block_gate_counts":{"didactic_trace_and_limit_policy":2,"domain_conditions_and_limit_policy":6,"safe_residual_policy":3},"trace_regime_counts":{"substitution":1},"presentation_regime_counts":{"canonical":7,"infinity":1,"residual":3},"cli_simplify_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.033,"avg_case_ms":16.5,"p95_case_ms":21.0,"max_case_ms":21.0},"cli_total_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.037,"avg_case_ms":18.5,"p95_case_ms":23.0,"max_case_ms":23.0},"cli_public_overhead_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.012,"avg_case_ms":6.0,"p95_case_ms":7.0,"max_case_ms":7.0},"slowest_cli_simplify_evaluations":[{"name":"limit_residual_c","family":"infinity_family","point_regime":"infinity","domain_regime":"domain_path_conflict","trace_regime":"infinity_residual_policy","cli_simplify_elapsed_seconds":0.021}],"slowest_cli_total_evaluations":[{"name":"limit_residual_c","family":"infinity_family","point_regime":"infinity","domain_regime":"domain_path_conflict","trace_regime":"infinity_residual_policy","cli_total_elapsed_seconds":0.023}],"slowest_cli_public_overhead_evaluations":[{"name":"finite_supported_a","family":"polynomial","point_regime":"finite","domain_regime":"unconditional","trace_regime":"substitution","cli_public_overhead_seconds":0.007}]}
 """
         )
 
@@ -527,6 +527,20 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             },
         )
         self.assertEqual(
+            metrics["limit_residual_family_counts"],
+            {
+                "endpoint_family": 2,
+                "infinity_family": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["limit_residual_cause_family_counts"],
+            {
+                "finite_endpoint_or_boundary_policy/endpoint_family": 2,
+                "infinity_domain_path_conflict/infinity_family": 1,
+            },
+        )
+        self.assertEqual(
             metrics["limit_residual_cases_by_cause"],
             {
                 "finite_endpoint_or_boundary_policy": [
@@ -552,6 +566,14 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             },
         )
         self.assertEqual(
+            metrics["limit_cli_simplify_runtime_distribution"]["max_case_ms"],
+            21.0,
+        )
+        self.assertEqual(
+            metrics["limit_slowest_cli_simplify_evaluations"][0]["name"],
+            "limit_residual_c",
+        )
+        self.assertEqual(
             MODULE.suite_status("calculus_limit_command_matrix_smoke", metrics, 0),
             "pass",
         )
@@ -559,7 +581,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_diff_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_diff_command_matrix(
             """
-{"status":"pass","total":13,"status_counts":{"pass":13,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":12,"residual_case_count":1,"residual_case_names":["diff_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":13,"supported_step_unchecked_case_count":0,"expected_step_substring_count":32,"distinct_required_display_count":4,"required_display_counts":{"x > 0":4,"cos(2·x + 1) ≠ 0":1},"family_count":10,"argument_regime_counts":{"variable":4,"product":2,"polynomial_inner":1,"rational_expression":1,"nested_root":1,"scaled_nested_root":1,"nested_bounded_root":1,"negated_nested_root":1,"variable_power":1},"domain_regime_counts":{"unconditional":3,"required_condition":8,"interval_required":1,"discontinuous_residual":1},"outcome_counts":{"supported":12,"residual":1},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":12,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":3,"domain_conditions_and_diff_policy":9,"safe_residual_policy":1},"trace_regime_counts":{"chain_rule":4,"constant_multiple_chain_rule":1,"logarithmic_derivative":1,"negative_argument_chain_rule":1,"piecewise_abs":1,"power_rule":1,"product_rule":1,"product_rule_log":1,"quotient_rule":1,"residual_policy":1},"presentation_regime_counts":{"canonical":2,"compact_quotient":1,"factored":2,"post_calculus_compact":1,"quotient_abs":1,"reciprocal_root":1,"residual":1,"scaled_post_calculus_compact":1,"signed_post_calculus_compact":1,"signed_reciprocal_root_interval":1,"trig_power_difference":1}}
+{"status":"pass","total":13,"status_counts":{"pass":13,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":12,"residual_case_count":1,"residual_case_names":["diff_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":13,"supported_step_unchecked_case_count":0,"expected_step_substring_count":32,"distinct_required_display_count":4,"required_display_counts":{"x > 0":4,"cos(2·x + 1) ≠ 0":1},"family_count":10,"argument_regime_counts":{"variable":4,"product":2,"polynomial_inner":1,"rational_expression":1,"nested_root":1,"scaled_nested_root":1,"nested_bounded_root":1,"negated_nested_root":1,"variable_power":1},"domain_regime_counts":{"unconditional":3,"required_condition":8,"interval_required":1,"discontinuous_residual":1},"outcome_counts":{"supported":12,"residual":1},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":12,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":3,"domain_conditions_and_diff_policy":9,"safe_residual_policy":1},"symbolic_radius_policy_cluster_counts":{"block2_symbolic_radius_arctan_positive_quadratic":2},"positive_quadratic_policy_cluster_counts":{"block2_positive_quadratic_log_abs_pole_primitive":3,"block2_positive_quadratic_log_arctan_primitive":3,"block2_symbolic_radius_arctan_positive_quadratic":2},"trace_regime_counts":{"chain_rule":4,"constant_multiple_chain_rule":1,"logarithmic_derivative":1,"negative_argument_chain_rule":1,"piecewise_abs":1,"power_rule":1,"product_rule":1,"product_rule_log":1,"quotient_rule":1,"residual_policy":1},"presentation_regime_counts":{"canonical":2,"compact_quotient":1,"factored":2,"post_calculus_compact":1,"quotient_abs":1,"reciprocal_root":1,"residual":1,"scaled_post_calculus_compact":1,"signed_post_calculus_compact":1,"signed_reciprocal_root_interval":1,"trig_power_difference":1}}
 """
         )
 
@@ -614,6 +636,34 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             },
         )
         self.assertEqual(
+            metrics["diff_symbolic_radius_policy_cluster_counts"],
+            {"block2_symbolic_radius_arctan_positive_quadratic": 2},
+        )
+        self.assertEqual(
+            metrics["diff_symbolic_radius_consolidated_policy_cluster_counts"],
+            {"block2_symbolic_radius_arctan_positive_quadratic": 2},
+        )
+        self.assertEqual(
+            metrics["diff_positive_quadratic_policy_cluster_counts"],
+            {
+                "block2_positive_quadratic_log_abs_pole_primitive": 3,
+                "block2_positive_quadratic_log_arctan_primitive": 3,
+                "block2_symbolic_radius_arctan_positive_quadratic": 2,
+            },
+        )
+        self.assertEqual(
+            metrics["diff_positive_quadratic_consolidated_policy_cluster_counts"],
+            {
+                "block2_positive_quadratic_log_abs_pole_primitive": 3,
+                "block2_positive_quadratic_log_arctan_primitive": 3,
+                "block2_symbolic_radius_arctan_positive_quadratic": 2,
+            },
+        )
+        self.assertNotIn(
+            "diff_positive_quadratic_consolidation_candidate_counts",
+            metrics,
+        )
+        self.assertEqual(
             MODULE.suite_status("calculus_diff_command_matrix_smoke", metrics, 0),
             "pass",
         )
@@ -621,7 +671,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_integrate_command_matrix_extracts_policy_axes(self):
         metrics = MODULE.parse_calculus_integrate_command_matrix(
             """
-{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"residual_case_names":["integrate_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"residual_cause_counts":{"special_function_method_required":1},"residual_cases_by_cause":{"special_function_method_required":["integrate_residual_case"]},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_explicit_reciprocal_trig_log_substitution":7,"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"radical_inverse_policy_cluster_counts":{"block8_inverse_trig_root_reciprocal":6},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1},"slowest_integrate_evaluations":[{"name":"slow_integrate_case","family":"hyperbolic_reciprocal_fourth","integrate_elapsed_seconds":0.42,"antiderivative_verification_mode":"residual_equivalence"}],"slowest_antiderivative_verifications":[{"name":"slow_verify_case","family":"hyperbolic_reciprocal_square","antiderivative_verification_elapsed_seconds":0.21,"antiderivative_verification_mode":"residual_equivalence"}],"largest_stdout_payload_cases":[{"name":"large_integrate_output","family":"rational_partial_fraction","stdout_bytes":8192,"required_display_count":3,"expected_step_substring_count":4}],"largest_step_trace_cases":[{"name":"large_integrate_steps","family":"by_parts_affine_log","step_text_char_count":4096,"required_display_count":1,"expected_step_substring_count":6}],"runtime_by_antiderivative_verification_mode":[{"mode":"residual_equivalence","case_count":10,"total_elapsed_seconds":1.23,"avg_case_ms":123.0,"max_elapsed_seconds":0.21,"slowest_case":"slow_verify_case"}],"runtime_by_residual_cause":[{"cause":"special_function_method_required","case_count":1,"total_elapsed_seconds":0.42,"avg_case_ms":420.0,"max_elapsed_seconds":0.42,"slowest_case":"integrate_residual_case"}],"residual_public_phase_by_cause":[{"cause":"special_function_method_required","case_count":1,"integrate_total_seconds":0.42,"cli_total_seconds":0.31,"public_overhead_total_seconds":0.11,"public_overhead_share_percent":26.2,"avg_required_display_count":4.0,"avg_step_text_char_count":610.0,"slowest_case":"integrate_residual_case"}],"residual_public_phase_slowest_cases":[{"name":"integrate_residual_case","integrate_elapsed_seconds":0.42,"cli_total_seconds":0.31,"cli_simplify_ms":309.0,"public_overhead_seconds":0.11,"public_overhead_share_percent":26.2,"required_display_count":4,"step_text_char_count":610,"stdout_bytes":2048,"residual_cause":"special_function_method_required","family":"explicit_reciprocal_trig_residual_domain","trace_regime":"residual_presimplification_with_domain"}],"residual_shape_orientation_probes":[{"name":"shifted_tangent_log_factored_residual","status":"pass","expression_shape":"factored_residual","orientation":"tan_minus_offset","wall_elapsed_seconds":0.052,"cli_parse_us":100,"cli_simplify_us":49000,"cli_total_us":51000,"stdout_bytes":2048,"stderr_bytes":0,"required_display_count":4}]}
+{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"residual_case_names":["integrate_residual_case"],"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"verified_supported_case_count":17,"direct_diff_integrate_case_count":2,"direct_diff_integrate_exact_case_count":2,"direct_diff_integrate_equivalence_case_count":0,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"residual_cause_counts":{"special_function_method_required":1},"residual_family_counts":{"log_rational_residual":1},"residual_cause_family_counts":{"special_function_method_required/log_rational_residual":1},"residual_cases_by_cause":{"special_function_method_required":["integrate_residual_case"]},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":15,"verified_by_diff_and_direct_diff_integrate":2},"calculus_maturity_block_counts":{"block4_base_integration":2,"block5_generalized_substitution":3,"block7_trig_hyperbolic_integration":8,"block8_radical_inverse_families":4,"block9_residuals_and_non_goals":1},"calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":8,"domain_conditions_and_verified_antiderivative":9,"safe_residual_policy":1},"trig_hyperbolic_policy_cluster_counts":{"block7_explicit_reciprocal_trig_log_substitution":7,"block7_sqrt_chain_reciprocal_trig_product":7,"block7_hyperbolic_reciprocal_square":1},"base_integration_policy_cluster_counts":{"block4_log_by_parts":2},"radical_inverse_policy_cluster_counts":{"block8_inverse_trig_root_reciprocal":6},"direct_diff_integrate_calculus_maturity_block_counts":{"block7_trig_hyperbolic_integration":1,"block8_radical_inverse_families":1},"direct_diff_integrate_calculus_block_gate_counts":{"didactic_trace_and_verified_antiderivative":1,"domain_conditions_and_verified_antiderivative":1},"direct_diff_integrate_trig_hyperbolic_policy_cluster_counts":{"block7_hyperbolic_reciprocal_square":1},"direct_diff_integrate_radical_inverse_policy_cluster_counts":{"block8_inverse_sqrt_tables":1},"direct_diff_integrate_gap_cases_by_calculus_maturity_block":{"block7_trig_hyperbolic_integration":["gap_case_a","gap_case_b","gap_case_c","gap_case_d"]},"direct_diff_integrate_gap_cases_by_trig_hyperbolic_policy_cluster":{"block7_sqrt_chain_reciprocal_trig_product":["gap_case_a","gap_case_b","gap_case_c","gap_case_d"]},"direct_diff_integrate_equivalence_calculus_maturity_block_counts":{},"direct_diff_integrate_equivalence_trig_hyperbolic_policy_cluster_counts":{},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1},"cli_simplify_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.075,"avg_case_ms":37.5,"p95_case_ms":49.0,"max_case_ms":49.0},"cli_total_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.081,"avg_case_ms":40.5,"p95_case_ms":52.0,"max_case_ms":52.0},"cli_public_overhead_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.022,"avg_case_ms":11.0,"p95_case_ms":13.0,"max_case_ms":13.0},"slowest_cli_simplify_evaluations":[{"name":"slow_integrate_case","family":"hyperbolic_reciprocal_fourth","trace_regime":"hyperbolic_reciprocal_fourth","calculus_maturity_block":"block7_trig_hyperbolic_integration","calculus_block_gate":"didactic_trace_and_verified_antiderivative","antiderivative_verification_mode":"residual_equivalence","cli_simplify_elapsed_seconds":0.049}],"slowest_cli_total_evaluations":[{"name":"slow_integrate_case","family":"hyperbolic_reciprocal_fourth","trace_regime":"hyperbolic_reciprocal_fourth","calculus_maturity_block":"block7_trig_hyperbolic_integration","calculus_block_gate":"didactic_trace_and_verified_antiderivative","antiderivative_verification_mode":"residual_equivalence","cli_total_elapsed_seconds":0.052}],"slowest_cli_public_overhead_evaluations":[{"name":"slow_integrate_case","family":"hyperbolic_reciprocal_fourth","trace_regime":"hyperbolic_reciprocal_fourth","calculus_maturity_block":"block7_trig_hyperbolic_integration","calculus_block_gate":"didactic_trace_and_verified_antiderivative","antiderivative_verification_mode":"residual_equivalence","cli_public_overhead_seconds":0.013}],"slowest_integrate_evaluations":[{"name":"slow_integrate_case","family":"hyperbolic_reciprocal_fourth","integrate_elapsed_seconds":0.42,"antiderivative_verification_mode":"residual_equivalence"}],"slowest_antiderivative_verifications":[{"name":"slow_verify_case","family":"hyperbolic_reciprocal_square","antiderivative_verification_elapsed_seconds":0.21,"antiderivative_verification_mode":"residual_equivalence"}],"slowest_direct_diff_integrate_checks":[{"name":"direct_nested_case","family":"inverse_sqrt_table","direct_diff_integrate_elapsed_seconds":0.13,"antiderivative_verification_mode":"direct_derivative"}],"largest_stdout_payload_cases":[{"name":"large_integrate_output","family":"rational_partial_fraction","stdout_bytes":8192,"required_display_count":3,"expected_step_substring_count":4}],"largest_step_trace_cases":[{"name":"large_integrate_steps","family":"by_parts_affine_log","step_text_char_count":4096,"required_display_count":1,"expected_step_substring_count":6}],"runtime_by_antiderivative_verification_mode":[{"mode":"residual_equivalence","case_count":10,"total_elapsed_seconds":1.23,"avg_case_ms":123.0,"max_elapsed_seconds":0.21,"slowest_case":"slow_verify_case"}],"runtime_by_residual_cause":[{"cause":"special_function_method_required","case_count":1,"total_elapsed_seconds":0.42,"avg_case_ms":420.0,"max_elapsed_seconds":0.42,"slowest_case":"integrate_residual_case"}],"runtime_by_residual_cause_family":[{"cause_family":"special_function_method_required/log_rational_residual","case_count":1,"total_elapsed_seconds":0.42,"avg_case_ms":420.0,"max_elapsed_seconds":0.42,"slowest_case":"integrate_residual_case"}],"residual_public_phase_by_cause":[{"cause":"special_function_method_required","case_count":1,"integrate_total_seconds":0.42,"cli_total_seconds":0.31,"public_overhead_total_seconds":0.11,"public_overhead_share_percent":26.2,"avg_required_display_count":4.0,"avg_step_text_char_count":610.0,"slowest_case":"integrate_residual_case"}],"residual_public_phase_by_cause_family":[{"cause_family":"special_function_method_required/log_rational_residual","case_count":1,"integrate_total_seconds":0.42,"cli_total_seconds":0.31,"public_overhead_total_seconds":0.11,"public_overhead_share_percent":26.2,"avg_required_display_count":4.0,"avg_step_text_char_count":610.0,"slowest_case":"integrate_residual_case"}],"residual_public_phase_slowest_cases":[{"name":"integrate_residual_case","integrate_elapsed_seconds":0.42,"cli_total_seconds":0.31,"cli_simplify_ms":309.0,"public_overhead_seconds":0.11,"public_overhead_share_percent":26.2,"required_display_count":4,"step_text_char_count":610,"stdout_bytes":2048,"residual_cause":"special_function_method_required","family":"explicit_reciprocal_trig_residual_domain","trace_regime":"residual_presimplification_with_domain"}],"residual_shape_orientation_probes":[{"name":"shifted_tangent_log_factored_residual","status":"pass","expression_shape":"factored_residual","orientation":"tan_minus_offset","wall_elapsed_seconds":0.052,"cli_parse_us":100,"cli_simplify_us":49000,"cli_total_us":51000,"stdout_bytes":2048,"stderr_bytes":0,"required_display_count":4}]}
 """
         )
 
@@ -640,6 +690,38 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["integrate_supported_step_unchecked_case_count"], 0)
         self.assertEqual(
             metrics["integrate_antiderivative_verification_case_count"], 17
+        )
+        self.assertEqual(metrics["integrate_verified_supported_case_count"], 17)
+        self.assertEqual(metrics["integrate_direct_diff_integrate_case_count"], 2)
+        self.assertEqual(metrics["integrate_direct_diff_integrate_exact_case_count"], 2)
+        self.assertEqual(
+            metrics["integrate_direct_diff_integrate_equivalence_case_count"], 0
+        )
+        self.assertEqual(
+            metrics[
+                "integrate_direct_diff_integrate_gap_cases_by_calculus_maturity_block"
+            ],
+            {
+                "block7_trig_hyperbolic_integration": [
+                    "gap_case_a",
+                    "gap_case_b",
+                    "gap_case_c",
+                    "gap_case_d",
+                ]
+            },
+        )
+        self.assertEqual(
+            metrics[
+                "integrate_direct_diff_integrate_gap_cases_by_trig_hyperbolic_policy_cluster"
+            ],
+            {
+                "block7_sqrt_chain_reciprocal_trig_product": [
+                    "gap_case_a",
+                    "gap_case_b",
+                    "gap_case_c",
+                    "gap_case_d",
+                ]
+            },
         )
         self.assertEqual(metrics["integrate_expected_step_substring_count"], 46)
         self.assertEqual(metrics["integrate_distinct_required_display_count"], 7)
@@ -677,12 +759,24 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             {"special_function_method_required": 1},
         )
         self.assertEqual(
+            metrics["integrate_residual_family_counts"],
+            {"log_rational_residual": 1},
+        )
+        self.assertEqual(
+            metrics["integrate_residual_cause_family_counts"],
+            {"special_function_method_required/log_rational_residual": 1},
+        )
+        self.assertEqual(
             metrics["integrate_residual_cases_by_cause"],
             {"special_function_method_required": ["integrate_residual_case"]},
         )
         self.assertEqual(
             metrics["integrate_verification_regime_counts"],
-            {"residual_not_verified": 1, "verified_by_diff": 17},
+            {
+                "residual_not_verified": 1,
+                "verified_by_diff": 15,
+                "verified_by_diff_and_direct_diff_integrate": 2,
+            },
         )
         self.assertEqual(
             metrics["integrate_calculus_maturity_block_counts"],
@@ -731,7 +825,81 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             {"block8_inverse_trig_root_reciprocal": 6},
         )
         self.assertEqual(
+            metrics["integrate_base_integration_policy_cluster_counts"],
+            {"block4_log_by_parts": 2},
+        )
+        self.assertEqual(
+            metrics["integrate_base_integration_consolidated_policy_cluster_counts"],
+            {"block4_log_by_parts": 2},
+        )
+        self.assertEqual(
+            metrics["integrate_direct_diff_integrate_calculus_maturity_block_counts"],
+            {
+                "block7_trig_hyperbolic_integration": 1,
+                "block8_radical_inverse_families": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["integrate_direct_diff_integrate_calculus_block_gate_counts"],
+            {
+                "didactic_trace_and_verified_antiderivative": 1,
+                "domain_conditions_and_verified_antiderivative": 1,
+            },
+        )
+        self.assertEqual(
+            metrics[
+                "integrate_direct_diff_integrate_trig_hyperbolic_policy_cluster_counts"
+            ],
+            {"block7_hyperbolic_reciprocal_square": 1},
+        )
+        self.assertEqual(
+            metrics[
+                "integrate_direct_diff_integrate_trig_hyperbolic_shared_policy_cluster_counts"
+            ],
+            {"block7_hyperbolic_reciprocal_square": 1},
+        )
+        self.assertEqual(
+            metrics[
+                "integrate_direct_diff_integrate_radical_inverse_policy_cluster_counts"
+            ],
+            {"block8_inverse_sqrt_tables": 1},
+        )
+        self.assertEqual(
+            metrics[
+                "integrate_direct_diff_integrate_radical_inverse_shared_policy_cluster_counts"
+            ],
+            {"block8_inverse_sqrt_tables": 1},
+        )
+        self.assertNotIn(
+            "integrate_direct_diff_integrate_base_integration_policy_cluster_counts",
+            metrics,
+        )
+        self.assertNotIn(
+            "integrate_direct_diff_integrate_base_integration_shared_policy_cluster_counts",
+            metrics,
+        )
+        self.assertNotIn(
+            "integrate_direct_diff_integrate_equivalence_calculus_maturity_block_counts",
+            metrics,
+        )
+        self.assertNotIn(
+            "integrate_direct_diff_integrate_equivalence_trig_hyperbolic_policy_cluster_counts",
+            metrics,
+        )
+        self.assertNotIn(
+            "integrate_direct_diff_integrate_equivalence_base_integration_policy_cluster_counts",
+            metrics,
+        )
+        self.assertEqual(
             metrics["integrate_slowest_integrate_evaluations"][0]["name"],
+            "slow_integrate_case",
+        )
+        self.assertEqual(
+            metrics["integrate_cli_simplify_runtime_distribution"]["max_case_ms"],
+            49.0,
+        )
+        self.assertEqual(
+            metrics["integrate_slowest_cli_simplify_evaluations"][0]["name"],
             "slow_integrate_case",
         )
         self.assertEqual(
@@ -739,6 +907,12 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "antiderivative_verification_elapsed_seconds"
             ],
             0.21,
+        )
+        self.assertEqual(
+            metrics["integrate_slowest_direct_diff_integrate_checks"][0][
+                "direct_diff_integrate_elapsed_seconds"
+            ],
+            0.13,
         )
         self.assertEqual(
             metrics["integrate_largest_stdout_payload_cases"][0]["stdout_bytes"],
@@ -766,8 +940,25 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             },
         )
         self.assertEqual(
+            metrics["integrate_runtime_by_residual_cause_family"][0],
+            {
+                "cause_family": "special_function_method_required/log_rational_residual",
+                "case_count": 1,
+                "total_elapsed_seconds": 0.42,
+                "avg_case_ms": 420.0,
+                "max_elapsed_seconds": 0.42,
+                "slowest_case": "integrate_residual_case",
+            },
+        )
+        self.assertEqual(
             metrics["integrate_residual_public_phase_by_cause"][0]["cause"],
             "special_function_method_required",
+        )
+        self.assertEqual(
+            metrics["integrate_residual_public_phase_by_cause_family"][0][
+                "cause_family"
+            ],
+            "special_function_method_required/log_rational_residual",
         )
         self.assertEqual(
             metrics["integrate_residual_public_phase_by_cause"][0][
@@ -808,6 +999,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "max_expression_shape": "factored_residual",
                 "max_orientation": "tan_minus_offset",
                 "max_status": "pass",
+                "status_counts": {"pass": 1},
             },
         )
         self.assertNotIn(
@@ -817,6 +1009,54 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(
             MODULE.suite_status("calculus_integrate_command_matrix_smoke", metrics, 0),
             "pass",
+        )
+
+    def test_integrate_radical_inverse_sqrt_tables_are_shared_policy_not_candidate(
+        self,
+    ):
+        metrics = MODULE.parse_calculus_integrate_command_matrix(
+            """
+{"status":"pass","total":8,"status_counts":{"pass":8,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":8,"step_checked_case_count":8,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":8,"verified_supported_case_count":8,"direct_diff_integrate_case_count":7,"direct_diff_integrate_exact_case_count":7,"direct_diff_integrate_equivalence_case_count":0,"expected_step_substring_count":16,"distinct_required_display_count":3,"family_count":2,"radical_inverse_policy_cluster_counts":{"block8_inverse_sqrt_tables":8},"direct_diff_integrate_radical_inverse_policy_cluster_counts":{"block8_inverse_sqrt_tables":7}}
+"""
+        )
+
+        self.assertEqual(
+            metrics["integrate_radical_inverse_consolidated_policy_cluster_counts"],
+            {"block8_inverse_sqrt_tables": 8},
+        )
+        self.assertEqual(
+            metrics[
+                "integrate_direct_diff_integrate_radical_inverse_shared_policy_cluster_counts"
+            ],
+            {"block8_inverse_sqrt_tables": 7},
+        )
+        self.assertNotIn(
+            "integrate_radical_inverse_consolidation_candidate_counts",
+            metrics,
+        )
+
+    def test_integrate_inverse_hyperbolic_rational_interval_is_shared_policy(
+        self,
+    ):
+        metrics = MODULE.parse_calculus_integrate_command_matrix(
+            """
+{"status":"pass","total":2,"status_counts":{"pass":2,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":2,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":2,"step_checked_case_count":2,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":2,"verified_supported_case_count":2,"direct_diff_integrate_case_count":2,"direct_diff_integrate_exact_case_count":2,"direct_diff_integrate_equivalence_case_count":0,"expected_step_substring_count":4,"distinct_required_display_count":2,"family_count":2,"radical_inverse_policy_cluster_counts":{"block8_inverse_hyperbolic_rational_interval":2},"direct_diff_integrate_radical_inverse_policy_cluster_counts":{"block8_inverse_hyperbolic_rational_interval":2}}
+"""
+        )
+
+        self.assertEqual(
+            metrics["integrate_radical_inverse_consolidated_policy_cluster_counts"],
+            {"block8_inverse_hyperbolic_rational_interval": 2},
+        )
+        self.assertEqual(
+            metrics[
+                "integrate_direct_diff_integrate_radical_inverse_shared_policy_cluster_counts"
+            ],
+            {"block8_inverse_hyperbolic_rational_interval": 2},
+        )
+        self.assertNotIn(
+            "integrate_radical_inverse_consolidation_candidate_counts",
+            metrics,
         )
 
     def test_calculus_command_matrix_status_fails_on_unchecked_supported_steps(self):
@@ -912,7 +1152,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_calculus_matrix_runtime_hotspots_parse_and_render(self):
         metrics = MODULE.parse_calculus_diff_command_matrix(
             """
-{"status":"pass","total":2,"status_counts":{"pass":2,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":2,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":1,"step_checked_case_count":2,"supported_step_unchecked_case_count":0,"expected_step_substring_count":4,"distinct_required_display_count":1,"family_count":2,"argument_regime_counts":{"variable":1,"affine_argument":1},"domain_regime_counts":{"unconditional":1,"required_condition":1},"outcome_counts":{"supported":2},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":2},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":1,"domain_conditions_and_diff_policy":1},"trace_regime_counts":{"power_rule":1,"log_chain_rule":1},"presentation_regime_counts":{"canonical":1,"compact_quotient":1},"runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"p95_case_ms":123.0,"max_case_ms":123.0},"runtime_concentration":{"timed_case_count":2,"total_elapsed_seconds":0.143,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":86.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"warm_runtime_distribution":{"timed_case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"p95_case_ms":123.0,"max_case_ms":123.0},"warm_runtime_concentration":{"timed_case_count":1,"total_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":100.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"cold_start_case":{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","wall_elapsed_seconds":0.02,"status":"pass"},"slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"warm_slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"harness_check_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.011,"avg_case_ms":5.5,"p95_case_ms":10.0,"max_case_ms":10.0},"slowest_process_evaluations":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","process_elapsed_seconds":0.123,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"domain_conditions_and_diff_policy"}],"slowest_harness_checks":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","harness_check_elapsed_seconds":0.010,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"didactic_trace_and_diff_policy"}],"exact_square_runtime_pairs":[{"name":"inverse_hyperbolic_root_atanh_denominator_scale_exact_square","baseline_case":"inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval","exact_square_case":"inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval","baseline_case_ms":6.0,"exact_square_case_ms":96.0,"delta_ms":90.0,"ratio":16.0,"family":"inverse_hyperbolic_root"}],"largest_stdout_payload_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","stdout_bytes":4096,"required_display_count":2,"expected_step_substring_count":3}],"largest_step_trace_cases":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","step_text_char_count":1200,"required_display_count":0,"expected_step_substring_count":1}]}
+{"status":"pass","total":2,"status_counts":{"pass":2,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":2,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":1,"step_checked_case_count":2,"supported_step_unchecked_case_count":0,"expected_step_substring_count":4,"distinct_required_display_count":1,"family_count":2,"argument_regime_counts":{"variable":1,"affine_argument":1},"domain_regime_counts":{"unconditional":1,"required_condition":1},"outcome_counts":{"supported":2},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":2},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":1,"domain_conditions_and_diff_policy":1},"trace_regime_counts":{"power_rule":1,"log_chain_rule":1},"presentation_regime_counts":{"canonical":1,"compact_quotient":1},"runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"p95_case_ms":123.0,"max_case_ms":123.0},"runtime_concentration":{"timed_case_count":2,"total_elapsed_seconds":0.143,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":86.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"warm_runtime_distribution":{"timed_case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"p95_case_ms":123.0,"max_case_ms":123.0},"warm_runtime_concentration":{"timed_case_count":1,"total_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain","slowest_case_ms":123.0,"slowest_case_share_percent":100.0,"top_3_share_percent":100.0,"slowest_family":"log_affine_chain"},"cold_start_case":{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","wall_elapsed_seconds":0.02,"status":"pass"},"slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"warm_slowest_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","wall_elapsed_seconds":0.123,"status":"pass"}],"runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_family":[{"axis":"family","group":"log_affine_chain","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":2,"total_elapsed_seconds":0.143,"avg_case_ms":71.5,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_maturity_block":[{"axis":"calculus_maturity_block","group":"block2_real_domain_differentiation","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_calculus_block_gate":[{"axis":"calculus_block_gate","group":"domain_conditions_and_diff_policy","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"runtime_by_positive_quadratic_policy_cluster":[{"axis":"positive_quadratic_policy_cluster","group":"block2_positive_quadratic_log_abs_pole_primitive","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"warm_runtime_by_positive_quadratic_policy_cluster":[{"axis":"positive_quadratic_policy_cluster","group":"block2_positive_quadratic_log_abs_pole_primitive","case_count":1,"total_elapsed_seconds":0.123,"avg_case_ms":123.0,"max_elapsed_seconds":0.123,"slowest_case":"log_affine_chain_required_domain"}],"harness_check_runtime_distribution":{"timed_case_count":2,"total_elapsed_seconds":0.011,"avg_case_ms":5.5,"p95_case_ms":10.0,"max_case_ms":10.0},"slowest_process_evaluations":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","process_elapsed_seconds":0.123,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"domain_conditions_and_diff_policy","positive_quadratic_policy_cluster":"block2_positive_quadratic_log_abs_pole_primitive"}],"slowest_harness_checks":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","harness_check_elapsed_seconds":0.010,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"didactic_trace_and_diff_policy"}],"exact_square_runtime_pairs":[{"name":"inverse_hyperbolic_root_atanh_denominator_scale_exact_square","baseline_case":"inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval","exact_square_case":"inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval","baseline_case_ms":6.0,"exact_square_case_ms":96.0,"delta_ms":90.0,"ratio":16.0,"family":"inverse_hyperbolic_root"}],"largest_stdout_payload_cases":[{"name":"log_affine_chain_required_domain","family":"log_affine_chain","domain_regime":"required_condition","stdout_bytes":4096,"required_display_count":2,"expected_step_substring_count":3}],"largest_step_trace_cases":[{"name":"polynomial_power_direct","family":"polynomial","domain_regime":"unconditional","step_text_char_count":1200,"required_display_count":0,"expected_step_substring_count":1}]}
 """
         )
         scorecard = {
@@ -940,6 +1180,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["diff_runtime_distribution"]["p95_case_ms"], 123.0)
         self.assertEqual(metrics["diff_runtime_pressure"]["status"], "watch")
         self.assertEqual(metrics["diff_runtime_pressure"]["primary_signal"], "p95")
+        self.assertEqual(
+            metrics["diff_runtime_measurement"]["status"],
+            "actionable_pressure",
+        )
         self.assertEqual(
             metrics["diff_runtime_pressure"]["reason"],
             "p95_case_ms=123.000",
@@ -1079,6 +1323,22 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             metrics["diff_runtime_by_calculus_block_gate"][0]["group"],
             "domain_conditions_and_diff_policy",
         )
+        self.assertEqual(
+            metrics["diff_runtime_by_positive_quadratic_policy_cluster"][0]["group"],
+            "block2_positive_quadratic_log_abs_pole_primitive",
+        )
+        self.assertEqual(
+            metrics["diff_warm_runtime_by_positive_quadratic_policy_cluster"][0][
+                "avg_case_ms"
+            ],
+            123.0,
+        )
+        self.assertEqual(
+            metrics["diff_slowest_process_evaluations"][0][
+                "positive_quadratic_policy_cluster"
+            ],
+            "block2_positive_quadratic_log_abs_pole_primitive",
+        )
         self.assertIn(
             "`diff_command_matrix` slowest cases: "
             "log_affine_chain_required_domain=0.123s family=log_affine_chain",
@@ -1111,6 +1371,23 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             "avg=123.000ms cases=1",
             rendered,
         )
+        self.assertIn(
+            "`diff_command_matrix` runtime by positive quadratic policy cluster: "
+            "block2_positive_quadratic_log_abs_pole_primitive total=0.123s "
+            "avg=123.000ms cases=1",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` runtime measurement: "
+            "mode=process_per_case status=actionable_pressure pressure=watch "
+            "p95=123.000ms max=123.000ms "
+            "guidance=triage runtime pressure with focused probes",
+            rendered,
+        )
+        self.assertIn(
+            "cluster=block2_positive_quadratic_log_abs_pole_primitive",
+            rendered,
+        )
 
     def test_calculus_runtime_pressure_ignores_tiny_concentration(self):
         pressure = MODULE.classify_calculus_runtime_pressure(
@@ -1130,6 +1407,158 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(pressure["status"], "ok")
         self.assertEqual(pressure["primary_signal"], "none")
         self.assertEqual(pressure["sample_basis"], "cold_inclusive")
+
+    def test_diff_positive_quadratic_runtime_candidates_require_material_runtime(self):
+        metrics = MODULE.parse_calculus_diff_command_matrix(
+            """
+{"status":"pass","total":8,"status_counts":{"pass":8,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":0,"step_checked_case_count":8,"supported_step_unchecked_case_count":0,"expected_step_substring_count":8,"distinct_required_display_count":0,"family_count":3,"argument_regime_counts":{"quadratic":8},"domain_regime_counts":{"unconditional":8},"outcome_counts":{"supported":8},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":8},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":8},"positive_quadratic_policy_cluster_counts":{"block2_positive_quadratic_log_abs_pole_primitive":3,"block2_positive_quadratic_log_arctan_primitive":3,"block2_symbolic_radius_arctan_positive_quadratic":2},"trace_regime_counts":{"chain_rule":8},"presentation_regime_counts":{"compact":8},"warm_runtime_by_positive_quadratic_policy_cluster":[{"axis":"positive_quadratic_policy_cluster","group":"block2_positive_quadratic_log_abs_pole_primitive","case_count":3,"total_elapsed_seconds":0.087,"avg_case_ms":29.0,"max_elapsed_seconds":0.032,"slowest_case":"positive_quadratic_log_abs_pole_scaled_quadratic_compact"},{"axis":"positive_quadratic_policy_cluster","group":"block2_symbolic_radius_arctan_positive_quadratic","case_count":2,"total_elapsed_seconds":0.053,"avg_case_ms":26.5,"max_elapsed_seconds":0.036,"slowest_case":"inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact"},{"axis":"positive_quadratic_policy_cluster","group":"block2_positive_quadratic_log_arctan_primitive","case_count":3,"total_elapsed_seconds":0.031,"avg_case_ms":10.333,"max_elapsed_seconds":0.012,"slowest_case":"positive_quadratic_log_arctan_surd_negative_orientation_compact"}]}
+"""
+        )
+
+        self.assertNotIn(
+            "diff_positive_quadratic_runtime_candidate_clusters",
+            metrics,
+        )
+
+    def test_diff_positive_quadratic_runtime_candidates_parse_and_render(self):
+        metrics = MODULE.parse_calculus_diff_command_matrix(
+            """
+{"status":"pass","total":8,"status_counts":{"pass":8,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":0,"step_checked_case_count":8,"supported_step_unchecked_case_count":0,"expected_step_substring_count":8,"distinct_required_display_count":0,"family_count":3,"argument_regime_counts":{"quadratic":8},"domain_regime_counts":{"unconditional":8},"outcome_counts":{"supported":8},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":8},"calculus_block_gate_counts":{"didactic_trace_and_diff_policy":8},"positive_quadratic_policy_cluster_counts":{"block2_positive_quadratic_log_abs_pole_primitive":3,"block2_positive_quadratic_log_arctan_primitive":3,"block2_symbolic_radius_arctan_positive_quadratic":2},"trace_regime_counts":{"chain_rule":8},"presentation_regime_counts":{"compact":8},"warm_runtime_by_positive_quadratic_policy_cluster":[{"axis":"positive_quadratic_policy_cluster","group":"block2_positive_quadratic_log_abs_pole_primitive","case_count":3,"total_elapsed_seconds":0.36,"avg_case_ms":120.0,"max_elapsed_seconds":0.132,"slowest_case":"positive_quadratic_log_abs_pole_scaled_quadratic_compact"},{"axis":"positive_quadratic_policy_cluster","group":"block2_symbolic_radius_arctan_positive_quadratic","case_count":2,"total_elapsed_seconds":0.22,"avg_case_ms":110.0,"max_elapsed_seconds":0.116,"slowest_case":"inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact"},{"axis":"positive_quadratic_policy_cluster","group":"block2_positive_quadratic_log_arctan_primitive","case_count":3,"total_elapsed_seconds":0.031,"avg_case_ms":10.333,"max_elapsed_seconds":0.012,"slowest_case":"positive_quadratic_log_arctan_surd_negative_orientation_compact"}]}
+"""
+        )
+        scorecard = {
+            "generated_at": "2026-06-05T00:00:00+00:00",
+            "profile": "fast",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "calculus_diff_command_matrix_smoke": {
+                    "category": "calculus",
+                    "status": "pass",
+                    "elapsed_seconds": 0.2,
+                    "metrics": metrics,
+                    "delta": {},
+                },
+            },
+        }
+
+        rendered = MODULE.render_markdown(scorecard)
+
+        self.assertEqual(
+            [
+                row["group"]
+                for row in metrics[
+                    "diff_positive_quadratic_runtime_candidate_clusters"
+                ]
+            ],
+            [
+                "block2_positive_quadratic_log_abs_pole_primitive",
+                "block2_symbolic_radius_arctan_positive_quadratic",
+            ],
+        )
+        self.assertEqual(
+            metrics["diff_positive_quadratic_runtime_candidate_clusters"][0][
+                "avg_ratio"
+            ],
+            11.613,
+        )
+        self.assertIn(
+            "`diff_command_matrix` positive-quadratic consolidated policy clusters: "
+            "block2_positive_quadratic_log_abs_pole_primitive=3, "
+            "block2_positive_quadratic_log_arctan_primitive=3, "
+            "block2_symbolic_radius_arctan_positive_quadratic=2",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` positive-quadratic runtime candidate clusters: "
+            "block2_positive_quadratic_log_abs_pole_primitive avg=120.000ms "
+            "ratio=11.613x cases=3",
+            rendered,
+        )
+
+    def test_diff_variable_power_runtime_candidates_allow_single_hot_cluster(self):
+        metrics = MODULE.parse_calculus_diff_command_matrix(
+            """
+{"status":"pass","total":3,"status_counts":{"pass":3,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":3,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":1,"step_checked_case_count":3,"supported_step_unchecked_case_count":0,"expected_step_substring_count":6,"distinct_required_display_count":1,"family_count":1,"argument_regime_counts":{"variable_power":3},"domain_regime_counts":{"unconditional":2,"disconnected_positive_base_required":1},"outcome_counts":{"supported":3},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":3},"calculus_block_gate_counts":{"domain_conditions_and_diff_policy":3},"variable_power_policy_cluster_counts":{"block2_variable_power_logarithmic_derivative_domain":3},"trace_regime_counts":{"logarithmic_derivative":3},"presentation_regime_counts":{"canonical":2,"quadratic_base_fraction":1},"warm_runtime_by_variable_power_policy_cluster":[{"axis":"variable_power_policy_cluster","group":"block2_variable_power_logarithmic_derivative_domain","case_count":3,"total_elapsed_seconds":0.201,"avg_case_ms":67.0,"max_elapsed_seconds":0.182,"slowest_case":"quadratic_base_variable_power_disconnected_domain"}]}
+"""
+        )
+
+        self.assertEqual(
+            metrics["diff_variable_power_runtime_candidate_clusters"],
+            [
+                {
+                    "group": "block2_variable_power_logarithmic_derivative_domain",
+                    "case_count": 3,
+                    "avg_case_ms": 67.0,
+                    "avg_ratio": 1.0,
+                    "total_elapsed_seconds": 0.201,
+                    "max_elapsed_seconds": 0.182,
+                    "slowest_case": (
+                        "quadratic_base_variable_power_disconnected_domain"
+                    ),
+                }
+            ],
+        )
+
+    def test_diff_cli_phase_runtime_parse_and_render(self):
+        metrics = MODULE.parse_calculus_diff_command_matrix(
+            """
+{"status":"pass","total":3,"status_counts":{"pass":3,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":3,"residual_case_count":0,"residual_case_names":[],"warning_expected_case_count":0,"required_display_case_count":1,"step_checked_case_count":3,"supported_step_unchecked_case_count":0,"expected_step_substring_count":6,"distinct_required_display_count":1,"family_count":1,"argument_regime_counts":{"variable_power":3},"domain_regime_counts":{"unconditional":2,"disconnected_positive_base_required":1},"outcome_counts":{"supported":3},"calculus_maturity_block_counts":{"block2_real_domain_differentiation":3},"calculus_block_gate_counts":{"domain_conditions_and_diff_policy":3},"variable_power_policy_cluster_counts":{"block2_variable_power_logarithmic_derivative_domain":3},"trace_regime_counts":{"logarithmic_derivative":3},"presentation_regime_counts":{"canonical":2,"quadratic_base_fraction":1},"cli_simplify_runtime_distribution":{"timed_case_count":3,"total_elapsed_seconds":0.201,"avg_case_ms":67.0,"p95_case_ms":184.0,"max_case_ms":184.0},"cli_total_runtime_distribution":{"timed_case_count":3,"total_elapsed_seconds":0.205,"avg_case_ms":68.333,"p95_case_ms":185.0,"max_case_ms":185.0},"cli_public_overhead_runtime_distribution":{"timed_case_count":3,"total_elapsed_seconds":0.019,"avg_case_ms":6.333,"p95_case_ms":8.0,"max_case_ms":8.0},"slowest_cli_simplify_evaluations":[{"name":"quadratic_base_variable_power_disconnected_domain","family":"variable_power","domain_regime":"disconnected_positive_base_required","cli_simplify_elapsed_seconds":0.184,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"domain_conditions_and_diff_policy","variable_power_policy_cluster":"block2_variable_power_logarithmic_derivative_domain","steps_count":3,"step_rule_names":["Calcular la derivada","Usar derivación logarítmica","Sumar fracciones"]}],"slowest_cli_total_evaluations":[{"name":"quadratic_base_variable_power_disconnected_domain","family":"variable_power","domain_regime":"disconnected_positive_base_required","cli_total_elapsed_seconds":0.185,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"domain_conditions_and_diff_policy","variable_power_policy_cluster":"block2_variable_power_logarithmic_derivative_domain","steps_count":3,"step_rule_names":["Calcular la derivada","Usar derivación logarítmica","Sumar fracciones"]}],"slowest_cli_public_overhead_evaluations":[{"name":"quadratic_base_variable_power_disconnected_domain","family":"variable_power","domain_regime":"disconnected_positive_base_required","cli_public_overhead_seconds":0.008,"calculus_maturity_block":"block2_real_domain_differentiation","calculus_block_gate":"domain_conditions_and_diff_policy","variable_power_policy_cluster":"block2_variable_power_logarithmic_derivative_domain","steps_count":3,"step_rule_names":["Calcular la derivada","Usar derivación logarítmica","Sumar fracciones"]}]}
+"""
+        )
+        scorecard = {
+            "generated_at": "2026-06-05T00:00:00+00:00",
+            "profile": "fast",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "calculus_diff_command_matrix_smoke": {
+                    "category": "calculus",
+                    "status": "pass",
+                    "elapsed_seconds": 0.2,
+                    "metrics": metrics,
+                    "delta": {},
+                },
+            },
+        }
+
+        rendered = MODULE.render_markdown(scorecard)
+
+        self.assertEqual(
+            metrics["diff_cli_simplify_runtime_distribution"]["max_case_ms"],
+            184.0,
+        )
+        self.assertEqual(
+            metrics["diff_slowest_cli_simplify_evaluations"][0][
+                "variable_power_policy_cluster"
+            ],
+            "block2_variable_power_logarithmic_derivative_domain",
+        )
+        self.assertEqual(
+            metrics["diff_slowest_cli_simplify_evaluations"][0]["steps_count"],
+            3,
+        )
+        self.assertEqual(
+            metrics["diff_slowest_cli_simplify_evaluations"][0]["step_rule_names"],
+            [
+                "Calcular la derivada",
+                "Usar derivación logarítmica",
+                "Sumar fracciones",
+            ],
+        )
+        self.assertIn(
+            "`diff_command_matrix` CLI simplify runtime distribution: "
+            "timed_cases=3 avg=67.000ms p95=184.000ms max=184.000ms "
+            "total=0.201s",
+            rendered,
+        )
+        self.assertIn(
+            "`diff_command_matrix` slowest CLI simplify evaluations: "
+            "quadratic_base_variable_power_disconnected_domain=0.184s "
+            "family=variable_power "
+            "variable_power_cluster=block2_variable_power_logarithmic_derivative_domain "
+            "steps=3 rules=Calcular la derivada|Usar derivación logarítmica|"
+            "Sumar fracciones",
+            rendered,
+        )
 
     def test_calculus_runtime_pressure_prefers_warm_samples_when_available(self):
         metrics: dict[str, object] = {}
@@ -1178,11 +1607,144 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["diff_runtime_pressure"]["primary_signal"], "none")
         self.assertEqual(metrics["diff_runtime_pressure"]["sample_basis"], "warm")
         self.assertEqual(
+            metrics["diff_runtime_measurement"]["status"],
+            "process_overhead_floor",
+        )
+        self.assertEqual(
+            metrics["diff_runtime_measurement"]["guidance"],
+            "require embedded or profiler evidence before treating this as an engine hotspot",
+        )
+        self.assertEqual(
             metrics["diff_cold_start_case"]["name"],
             "polynomial_power_direct",
         )
         self.assertEqual(metrics["diff_runtime_distribution"]["max_case_ms"], 233.0)
         self.assertEqual(metrics["diff_warm_runtime_distribution"]["max_case_ms"], 20.0)
+
+    def test_calculus_runtime_guardrail_renders_cross_command_summary(self):
+        scorecard = {
+            "generated_at": "2026-06-05T00:00:00+00:00",
+            "profile": "fast",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "calculus_diff_command_matrix_smoke": {
+                    "category": "calculus",
+                    "status": "pass",
+                    "elapsed_seconds": 0.2,
+                    "metrics": {
+                        "matrix_status": "pass",
+                        "passed": 2,
+                        "failed": 0,
+                        "total_cases": 2,
+                        "diff_supported_case_count": 2,
+                        "diff_residual_case_count": 0,
+                        "diff_warm_runtime_distribution": {
+                            "timed_case_count": 2,
+                            "avg_case_ms": 12.0,
+                            "p95_case_ms": 20.0,
+                            "max_case_ms": 20.0,
+                            "total_elapsed_seconds": 0.024,
+                        },
+                        "diff_runtime_pressure": {
+                            "status": "ok",
+                            "primary_signal": "none",
+                        },
+                        "diff_runtime_measurement": {
+                            "status": "process_overhead_floor",
+                        },
+                    },
+                    "delta": {},
+                },
+                "calculus_limit_command_matrix_smoke": {
+                    "category": "calculus",
+                    "status": "pass",
+                    "elapsed_seconds": 0.3,
+                    "metrics": {
+                        "matrix_status": "pass",
+                        "passed": 3,
+                        "failed": 0,
+                        "total_cases": 3,
+                        "limit_supported_case_count": 2,
+                        "limit_residual_case_count": 1,
+                        "limit_runtime_distribution": {
+                            "timed_case_count": 3,
+                            "avg_case_ms": 80.0,
+                            "p95_case_ms": 120.0,
+                            "max_case_ms": 150.0,
+                            "total_elapsed_seconds": 0.24,
+                        },
+                        "limit_runtime_pressure": {
+                            "status": "watch",
+                            "primary_signal": "max",
+                        },
+                        "limit_runtime_measurement": {
+                            "status": "actionable_pressure",
+                        },
+                    },
+                    "delta": {},
+                },
+                "calculus_integrate_command_matrix_smoke": {
+                    "category": "calculus",
+                    "status": "pass",
+                    "elapsed_seconds": 0.4,
+                    "metrics": {
+                        "matrix_status": "pass",
+                        "passed": 4,
+                        "failed": 0,
+                        "total_cases": 4,
+                        "integrate_supported_case_count": 3,
+                        "integrate_residual_case_count": 1,
+                        "integrate_warm_runtime_distribution": {
+                            "timed_case_count": 4,
+                            "avg_case_ms": 25.0,
+                            "p95_case_ms": 30.0,
+                            "max_case_ms": 35.0,
+                            "total_elapsed_seconds": 0.1,
+                        },
+                        "integrate_runtime_pressure": {
+                            "status": "ok",
+                            "primary_signal": "none",
+                        },
+                        "integrate_runtime_measurement": {
+                            "status": "process_overhead_floor",
+                        },
+                    },
+                    "delta": {},
+                },
+                "calculus_residual_matrix_smoke": {
+                    "category": "calculus",
+                    "status": "pass",
+                    "elapsed_seconds": 1.0,
+                    "metrics": {
+                        "matrix_status": "pass",
+                        "passed": 5,
+                        "failed": 0,
+                        "timeouts": 0,
+                        "total_cases": 5,
+                    },
+                    "delta": {},
+                },
+            },
+        }
+
+        rendered = MODULE.render_markdown(scorecard)
+
+        self.assertIn(
+            "- Calculus runtime guardrail: "
+            "diff_command_matrix cases=2 avg=12.000ms p95=20.000ms "
+            "max=20.000ms total=0.024s status=pass pressure=ok signal=none "
+            "measurement=process_overhead_floor basis=warm; "
+            "limit_command_matrix cases=3 avg=80.000ms p95=120.000ms "
+            "max=150.000ms total=0.240s status=pass pressure=watch signal=max "
+            "measurement=actionable_pressure basis=cold_inclusive; "
+            "integrate_command_matrix cases=4 avg=25.000ms p95=30.000ms "
+            "max=35.000ms total=0.100s status=pass pressure=ok signal=none "
+            "measurement=process_overhead_floor basis=warm; "
+            "residual_matrix cases=5 avg=200.000ms total=1.000s status=pass "
+            "failed=0 timeouts=0 pressure=suite_elapsed_only "
+            "measurement=suite_elapsed_per_case basis=suite_elapsed",
+            rendered,
+        )
 
     def test_calculus_runtime_pressure_flags_representative_concentration(self):
         pressure = MODULE.classify_calculus_runtime_pressure(
@@ -1900,6 +2462,32 @@ root.direct_small_zero_composition.candidate.three_core_groups
 - status:
   - `superseded`
 
+## 2026-05-18 - Discovery observe-only: resolved retained generated candidate
+
+- area:
+  - generated discovery
+  - `combined_additive_zero` x `quotient_wrapper`
+- status:
+  - `resolved-retained`
+
+## 2026-05-18 - Discovery observe-only: resolved by follow-up generated candidate
+
+- area:
+  - generated discovery
+  - `combined_additive_zero` x `asinh_radius`
+- status:
+  - `resolved-by-follow-up`
+
+## 2026-05-18 - Discovery observe-only: closed by retained follow-up wording
+
+- area:
+  - generated discovery
+  - `combined_additive_zero` x `shifted_secant`
+- status:
+  - `discovery/observe-only`
+- retained follow-up:
+  - validated later; this entry should no longer be treated as an open observe-only candidate
+
 ## 2026-04-27: `radical_power` Passthrough Discovery
 
 - area:
@@ -1916,6 +2504,9 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertEqual(metrics["families"]["integrate_prep"], 1)
         self.assertEqual(metrics["families"]["radical_power"], 1)
         self.assertNotIn("log_contract", metrics["families"])
+        self.assertNotIn("quotient_wrapper", metrics["families"])
+        self.assertNotIn("asinh_radius", metrics["families"])
+        self.assertNotIn("shifted_secant", metrics["families"])
         self.assertEqual(metrics["wrappers"]["combined_additive_zero"], 1)
         self.assertEqual(metrics["wrappers"]["squared_passthrough_zero"], 1)
         self.assertEqual(metrics["recent"][0]["area"], "calculus / differentiation")
@@ -2415,6 +3006,10 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "integrate_step_checked_case_count": 18,
                         "integrate_supported_step_unchecked_case_count": 0,
                         "integrate_antiderivative_verification_case_count": 17,
+                        "integrate_verified_supported_case_count": 17,
+                        "integrate_direct_diff_integrate_case_count": 2,
+                        "integrate_direct_diff_integrate_exact_case_count": 2,
+                        "integrate_direct_diff_integrate_equivalence_case_count": 0,
                         "integrate_expected_step_substring_count": 46,
                         "integrate_distinct_required_display_count": 7,
                         "integrate_required_display_counts": {
@@ -2456,14 +3051,21 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "integrate_residual_cause_counts": {
                             "special_function_method_required": 1,
                         },
+                        "integrate_residual_family_counts": {
+                            "log_rational_residual": 1,
+                        },
+                        "integrate_residual_cause_family_counts": {
+                            "special_function_method_required/log_rational_residual": 1,
+                        },
                         "integrate_residual_cases_by_cause": {
                             "special_function_method_required": [
                                 "integrate_residual_case",
                             ],
                         },
                         "integrate_verification_regime_counts": {
-                            "verified_by_diff": 17,
                             "residual_not_verified": 1,
+                            "verified_by_diff": 15,
+                            "verified_by_diff_and_direct_diff_integrate": 2,
                         },
                         "integrate_calculus_maturity_block_counts": {
                             "block4_base_integration": 2,
@@ -2493,6 +3095,51 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "integrate_radical_inverse_consolidated_policy_cluster_counts": {
                             "block8_inverse_trig_root_reciprocal": 6,
                         },
+                        "integrate_base_integration_policy_cluster_counts": {
+                            "block4_log_by_parts": 2,
+                        },
+                        "integrate_base_integration_consolidated_policy_cluster_counts": {
+                            "block4_log_by_parts": 2,
+                        },
+                        "integrate_direct_diff_integrate_calculus_maturity_block_counts": {
+                            "block7_trig_hyperbolic_integration": 1,
+                            "block8_radical_inverse_families": 1,
+                        },
+                        "integrate_direct_diff_integrate_calculus_block_gate_counts": {
+                            "didactic_trace_and_verified_antiderivative": 1,
+                            "domain_conditions_and_verified_antiderivative": 1,
+                        },
+                        "integrate_direct_diff_integrate_trig_hyperbolic_policy_cluster_counts": {
+                            "block7_hyperbolic_reciprocal_square": 1,
+                        },
+                        "integrate_direct_diff_integrate_trig_hyperbolic_shared_policy_cluster_counts": {
+                            "block7_hyperbolic_reciprocal_square": 1,
+                        },
+                        "integrate_direct_diff_integrate_radical_inverse_policy_cluster_counts": {
+                            "block8_inverse_sqrt_tables": 1,
+                        },
+                        "integrate_direct_diff_integrate_radical_inverse_shared_policy_cluster_counts": {
+                            "block8_inverse_sqrt_tables": 1,
+                        },
+                        "integrate_direct_diff_integrate_gap_cases_by_calculus_maturity_block": {
+                            "block7_trig_hyperbolic_integration": [
+                                "gap_case_a",
+                                "gap_case_b",
+                                "gap_case_c",
+                                "gap_case_d",
+                            ],
+                        },
+                        "integrate_direct_diff_integrate_gap_cases_by_trig_hyperbolic_policy_cluster": {
+                            "block7_sqrt_chain_reciprocal_trig_product": [
+                                "gap_case_a",
+                                "gap_case_b",
+                                "gap_case_c",
+                                "gap_case_d",
+                            ],
+                        },
+                        "integrate_direct_diff_integrate_equivalence_calculus_maturity_block_counts": {},
+                        "integrate_direct_diff_integrate_equivalence_base_integration_policy_cluster_counts": {},
+                        "integrate_direct_diff_integrate_equivalence_trig_hyperbolic_policy_cluster_counts": {},
                         "integrate_trace_regime_counts": {
                             "by_parts_affine_log": 1,
                             "by_parts_log": 1,
@@ -2541,9 +3188,48 @@ root.direct_small_zero_composition.candidate.three_core_groups
                                 "expected_step_substring_count": 6,
                             }
                         ],
+                        "integrate_runtime_by_residual_cause": [
+                            {
+                                "cause": "special_function_method_required",
+                                "case_count": 1,
+                                "total_elapsed_seconds": 0.42,
+                                "avg_case_ms": 420.0,
+                                "max_elapsed_seconds": 0.42,
+                                "slowest_case": "integrate_residual_case",
+                            }
+                        ],
+                        "integrate_runtime_by_residual_cause_family": [
+                            {
+                                "cause_family": (
+                                    "special_function_method_required/"
+                                    "log_rational_residual"
+                                ),
+                                "case_count": 1,
+                                "total_elapsed_seconds": 0.42,
+                                "avg_case_ms": 420.0,
+                                "max_elapsed_seconds": 0.42,
+                                "slowest_case": "integrate_residual_case",
+                            }
+                        ],
                         "integrate_residual_public_phase_by_cause": [
                             {
                                 "cause": "special_function_method_required",
+                                "case_count": 1,
+                                "integrate_total_seconds": 0.42,
+                                "cli_total_seconds": 0.31,
+                                "public_overhead_total_seconds": 0.11,
+                                "public_overhead_share_percent": 26.2,
+                                "avg_required_display_count": 4.0,
+                                "avg_step_text_char_count": 610.0,
+                                "slowest_case": "integrate_residual_case",
+                            }
+                        ],
+                        "integrate_residual_public_phase_by_cause_family": [
+                            {
+                                "cause_family": (
+                                    "special_function_method_required/"
+                                    "log_rational_residual"
+                                ),
                                 "case_count": 1,
                                 "integrate_total_seconds": 0.42,
                                 "cli_total_seconds": 0.31,
@@ -2587,11 +3273,16 @@ root.direct_small_zero_composition.candidate.three_core_groups
                             "counted_probe_count": 1,
                             "max_required_display_count": 4,
                             "avg_required_display_count": 4.0,
+                            "status_counts": {"pass": 1, "timeout": 1},
                             "max_name": "shifted_tangent_log_factored_residual",
                             "max_expression_shape": "factored_residual",
                             "max_orientation": "tan_minus_offset",
                             "max_steps_mode": "off",
                             "max_status": "pass",
+                            "first_problem_name": "late_symbolic_probe",
+                            "first_problem_status": "timeout",
+                            "first_problem_orientation": "symbolic_offset_minus_tan",
+                            "first_problem_steps_mode": "on",
                         },
                     },
                     "delta": {},
@@ -2703,6 +3394,14 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "limit_residual_cause_counts": {
                             "finite_endpoint_or_boundary_policy": 2,
                             "infinity_domain_path_conflict": 1,
+                        },
+                        "limit_residual_family_counts": {
+                            "endpoint_family": 2,
+                            "infinity_family": 1,
+                        },
+                        "limit_residual_cause_family_counts": {
+                            "finite_endpoint_or_boundary_policy/endpoint_family": 2,
+                            "infinity_domain_path_conflict/infinity_family": 1,
                         },
                         "limit_residual_cases_by_cause": {
                             "finite_endpoint_or_boundary_policy": [
@@ -2877,6 +3576,17 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "`limit_command_matrix` residual families: "
+            "endpoint_family=2, infinity_family=1",
+            markdown,
+        )
+        self.assertIn(
+            "`limit_command_matrix` residual cause-family buckets: "
+            "finite_endpoint_or_boundary_policy/endpoint_family=2, "
+            "infinity_domain_path_conflict/infinity_family=1",
+            markdown,
+        )
+        self.assertIn(
             "`limit_command_matrix` residual examples by cause: "
             "finite_endpoint_or_boundary_policy: limit_residual_a, "
             "limit_residual_b; infinity_domain_path_conflict: "
@@ -2924,7 +3634,9 @@ root.direct_small_zero_composition.candidate.three_core_groups
             "`integrate_command_matrix`: passed=18 failed=0 total=18 slow=0 "
             "timeouts=0 supported_cases=17 residual_cases=1 warning_expected=0 "
             "required_display=9 step_checked=18 unchecked_supported_steps=0 "
-            "antiderivative_verified=17 "
+            "antiderivative_verified=17 verified_supported=17 "
+            "direct_diff_integrate=2 "
+            "direct_exact=2 direct_equiv=0 "
             "families=18",
             markdown,
         )
@@ -2965,13 +3677,24 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "`integrate_command_matrix` residual families: "
+            "log_rational_residual=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` residual cause-family buckets: "
+            "special_function_method_required/log_rational_residual=1",
+            markdown,
+        )
+        self.assertIn(
             "`integrate_command_matrix` residual examples by cause: "
             "special_function_method_required: integrate_residual_case",
             markdown,
         )
         self.assertIn(
             "`integrate_command_matrix` verification regimes: "
-            "residual_not_verified=1, verified_by_diff=17",
+            "residual_not_verified=1, verified_by_diff=15, "
+            "verified_by_diff_and_direct_diff_integrate=2",
             markdown,
         )
         self.assertIn(
@@ -3006,6 +3729,72 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "`integrate_command_matrix` base integration policy clusters: "
+            "block4_log_by_parts=2",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` base integration consolidated policy clusters: "
+            "block4_log_by_parts=2",
+            markdown,
+        )
+        self.assertNotIn(
+            "`integrate_command_matrix` base integration consolidation candidates:",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) calculus maturity blocks: "
+            "block7_trig_hyperbolic_integration=1, "
+            "block8_radical_inverse_families=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) calculus block gates: "
+            "didactic_trace_and_verified_antiderivative=1, "
+            "domain_conditions_and_verified_antiderivative=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) trig/hyperbolic policy clusters:",
+            markdown,
+        )
+        self.assertIn(
+            "block7_hyperbolic_reciprocal_square=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) trig/hyperbolic shared-policy clusters: "
+            "block7_hyperbolic_reciprocal_square=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) exactness: "
+            "all 2 checks exact; no equivalence-backed fallback",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) gap examples by calculus maturity block: "
+            "block7_trig_hyperbolic_integration: gap_case_a, gap_case_b, gap_case_c, +1 more",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) gap examples by trig/hyperbolic policy cluster: "
+            "block7_sqrt_chain_reciprocal_trig_product: gap_case_a, gap_case_b, gap_case_c, +1 more",
+            markdown,
+        )
+        self.assertNotIn(
+            "`integrate_command_matrix` equivalence-backed diff(integrate) calculus maturity blocks:",
+            markdown,
+        )
+        self.assertNotIn(
+            "`integrate_command_matrix` equivalence-backed diff(integrate) base integration policy clusters:",
+            markdown,
+        )
+        self.assertNotIn(
+            "`integrate_command_matrix` equivalence-backed diff(integrate) trig/hyperbolic policy clusters:",
+            markdown,
+        )
+        self.assertIn(
             "`integrate_command_matrix` radical/inverse policy clusters: "
             "block8_inverse_trig_root_reciprocal=6",
             markdown,
@@ -3017,6 +3806,16 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertNotIn(
             "`integrate_command_matrix` radical/inverse consolidation candidates:",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) radical/inverse policy clusters: "
+            "block8_inverse_sqrt_tables=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` direct diff(integrate) radical/inverse shared-policy clusters: "
+            "block8_inverse_sqrt_tables=1",
             markdown,
         )
         self.assertIn(
@@ -3045,9 +3844,28 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "`integrate_command_matrix` runtime by residual cause: "
+            "special_function_method_required total=0.420s avg=420.000ms "
+            "cases=1 slowest=integrate_residual_case",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` runtime by residual cause-family: "
+            "special_function_method_required/log_rational_residual total=0.420s "
+            "avg=420.000ms cases=1 slowest=integrate_residual_case",
+            markdown,
+        )
+        self.assertIn(
             "`integrate_command_matrix` residual public phase by cause: "
             "special_function_method_required total=0.420s cli=0.310s "
             "overhead_share=26.2% cases=1 slowest=integrate_residual_case",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` residual public phase by cause-family: "
+            "special_function_method_required/log_rational_residual total=0.420s "
+            "cli=0.310s overhead_share=26.2% cases=1 "
+            "slowest=integrate_residual_case",
             markdown,
         )
         self.assertIn(
@@ -3059,9 +3877,11 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn(
             "`integrate_command_matrix` residual shape/orientation summary: "
             "probes=1 counted=1 max_required_display=4 "
-            "avg_required_display=4.000 "
+            "avg_required_display=4.000 status_counts=pass=1,timeout=1 "
             "max_case=shifted_tangent_log_factored_residual "
-            "shape=factored_residual orientation=tan_minus_offset steps=off",
+            "shape=factored_residual orientation=tan_minus_offset steps=off "
+            "first_problem=late_symbolic_probe:timeout "
+            "orientation=symbolic_offset_minus_tan steps=on",
             markdown,
         )
         self.assertIn(
@@ -3115,7 +3935,9 @@ root.direct_small_zero_composition.candidate.three_core_groups
             "| `calculus_integrate_command_matrix_smoke` | `pass` | 0.35s | "
             "passed=18 failed=0 total=18 supported=17 residual=1 "
             "warning_expected=0 required_display=9 step_checked=18 "
-            "unchecked_supported_steps=0 antiderivative_verified=17 families=18 |",
+            "unchecked_supported_steps=0 antiderivative_verified=17 "
+            "verified_supported=17 direct_diff_integrate=2 direct_exact=2 "
+            "direct_equiv=0 families=18 |",
             markdown,
         )
 

@@ -2,8 +2,10 @@
 
 use crate::build::mul2_raw;
 use crate::calculus_domain_support::{
-    logarithm_real_domain_is_empty_over_reals, nonfinite_or_undefined_constant,
-    positive_condition_is_impossible_over_reals,
+    bounded_inverse_derivative_real_domain_is_empty_over_reals,
+    bounded_inverse_real_domain_is_empty_over_reals, logarithm_real_domain_is_empty_over_reals,
+    nonfinite_or_undefined_constant, positive_condition_is_impossible_over_reals,
+    positive_condition_is_proven_over_reals,
 };
 use crate::expr_nary::{
     add_leaves, build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign,
@@ -163,6 +165,24 @@ fn real_domain_is_empty_or_nonfinite_for_diff(ctx: &mut Context, expr: ExprId, v
         &args,
         SYMBOLIC_DIFF_SIGN_PROOF_DEPTH,
     ) {
+        return true;
+    }
+    if bounded_inverse_real_domain_is_empty_over_reals(
+        ctx,
+        builtin,
+        &args,
+        SYMBOLIC_DIFF_SIGN_PROOF_DEPTH,
+    ) {
+        return true;
+    }
+    if contains_named_var(ctx, expr, var)
+        && bounded_inverse_derivative_real_domain_is_empty_over_reals(
+            ctx,
+            builtin,
+            &args,
+            SYMBOLIC_DIFF_SIGN_PROOF_DEPTH,
+        )
+    {
         return true;
     }
     if matches!(builtin, Some(BuiltinFn::Sqrt)) && args.len() == 1 {
@@ -916,6 +936,110 @@ pub fn rational_log_ratio_single_pole_derivative(
     Some((result, required_nonzero))
 }
 
+pub fn positive_quadratic_log_abs_matching_linear_pole_wrapper_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Vec<ExprId>)> {
+    let Expr::Div(numerator, outer_denominator) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let outer_denominator_poly = Polynomial::from_expr(ctx, outer_denominator, var).ok()?;
+    if outer_denominator_poly.degree() != 1 {
+        return None;
+    }
+    let outer_denominator_content = positive_rational_polynomial_content(&outer_denominator_poly);
+    if outer_denominator_content.is_zero() {
+        return None;
+    }
+    let linear = outer_denominator_poly.div_scalar(&outer_denominator_content);
+    let linear_derivative = linear.derivative();
+    if linear_derivative.degree() != 0 {
+        return None;
+    }
+    let linear_slope = linear_derivative
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if linear_slope.is_zero() {
+        return None;
+    }
+
+    let mut terms = Vec::new();
+    collect_scaled_add_terms(ctx, numerator, BigRational::one(), &mut terms);
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut log_scale_and_poly = None;
+    let mut pole_coefficient = None;
+    for (scale, term) in terms {
+        if let Some((term_scale, _has_abs, poly)) = ln_polynomial_core(ctx, term, var) {
+            if !strictly_positive_quadratic_polynomial(&poly) {
+                return None;
+            }
+            if log_scale_and_poly
+                .replace((scale * term_scale, poly))
+                .is_some()
+            {
+                return None;
+            }
+            continue;
+        }
+
+        if let Some((coefficient, denominator)) = reciprocal_linear_polynomial_core(ctx, term, var)
+        {
+            if denominator != linear {
+                return None;
+            }
+            if pole_coefficient.replace(scale * coefficient).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        return None;
+    }
+
+    let (log_scale, positive_quadratic) = log_scale_and_poly?;
+    let pole_coefficient = pole_coefficient?;
+    let wrapper_scale = BigRational::one() / outer_denominator_content;
+
+    let quadratic_expr = positive_quadratic.to_expr(ctx);
+    let linear_expr = linear.to_expr(ctx);
+
+    let log_derivative_numerator = scaled_polynomial(
+        &positive_quadratic.derivative(),
+        log_scale.clone() * wrapper_scale.clone(),
+    )
+    .to_expr(ctx);
+    let log_derivative_denominator = mul_pruned(ctx, quadratic_expr, linear_expr);
+    let log_derivative_term = div_pruned(ctx, log_derivative_numerator, log_derivative_denominator);
+
+    let ln_quadratic = ctx.call_builtin(BuiltinFn::Ln, vec![quadratic_expr]);
+    let two = ctx.num(2);
+    let linear_square = ctx.add(Expr::Pow(linear_expr, two));
+    let scaled_log_term = scale_expr_pruned(
+        ctx,
+        -(log_scale * wrapper_scale.clone() * linear_slope.clone()),
+        ln_quadratic,
+    );
+    let log_wrapper_term = div_pruned(ctx, scaled_log_term, linear_square);
+
+    let three = ctx.num(3);
+    let linear_cube = ctx.add(Expr::Pow(linear_expr, three));
+    let pole_scale =
+        -BigRational::from_integer(2.into()) * pole_coefficient * wrapper_scale * linear_slope;
+    let pole_numerator = ctx.add(Expr::Number(pole_scale));
+    let pole_term = div_pruned(ctx, pole_numerator, linear_cube);
+
+    let log_terms = add_pruned(ctx, log_derivative_term, log_wrapper_term);
+    let result = add_pruned(ctx, log_terms, pole_term);
+    Some((result, vec![linear_expr]))
+}
+
 fn constant_polynomial_ratio(
     numerator: &Polynomial,
     denominator: &Polynomial,
@@ -1438,6 +1562,371 @@ fn positive_quadratic_log_arctan_primitive_derivative(
     Some(div_pruned(ctx, numerator_expr, denominator_expr))
 }
 
+pub fn positive_constant_radius_quadratic_log_arctan_primitive_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    let mut terms = Vec::new();
+    collect_scaled_add_terms(ctx, expr, BigRational::one(), &mut terms);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut denominator = None;
+    let mut numerator = Polynomial::zero(var.to_string());
+    let mut arctan_terms = Vec::new();
+    let mut saw_log = false;
+
+    for (scale, term) in terms {
+        if let Some((candidate_denominator, term_numerator)) =
+            scaled_ln_positive_constant_radius_quadratic_derivative_numerator(
+                ctx,
+                scale.clone(),
+                term,
+                var,
+            )
+        {
+            if let Some(existing) = denominator {
+                if compare_expr(ctx, existing, candidate_denominator) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                denominator = Some(candidate_denominator);
+            }
+            numerator = numerator.add(&term_numerator);
+            saw_log = true;
+            continue;
+        }
+
+        arctan_terms.push((scale, term));
+    }
+
+    let denominator = denominator?;
+    if !saw_log || arctan_terms.is_empty() {
+        return None;
+    }
+    let parts = crate::symbolic_integration_support::positive_constant_radius_quadratic_parts(
+        ctx,
+        denominator,
+        var,
+    )?;
+
+    for (scale, term) in arctan_terms {
+        let constant_numerator = scaled_arctan_positive_constant_radius_quadratic_numerator(
+            ctx,
+            scale,
+            term,
+            parts.arctan_arg,
+            parts.arctan_scale,
+            var,
+        )?;
+        numerator = numerator.add(&Polynomial::new(vec![constant_numerator], var.to_string()));
+    }
+
+    if numerator.is_zero() {
+        return Some(ctx.num(0));
+    }
+    let numerator_expr = numerator.to_expr(ctx);
+    let result = div_pruned(ctx, numerator_expr, denominator);
+    if !crate::symbolic_integration_support::integrate_symbolic_is_positive_constant_radius_quadratic_linear_numerator_target(
+        ctx, result, var,
+    ) {
+        return None;
+    }
+    Some(result)
+}
+
+pub fn positive_constant_radius_quadratic_arctan_primitive_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    let Expr::Div(numerator, outer_denominator) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let arctan_arg = unary_builtin_arg(ctx, numerator, BuiltinFn::Arctan)
+        .or_else(|| unary_builtin_arg(ctx, numerator, BuiltinFn::Atan))?;
+
+    let (arg_scale, linear_factors, radius) =
+        if let Expr::Div(linear, radius_denominator) = ctx.get(arctan_arg).clone() {
+            let radius = square_root_radius_factor(ctx, radius_denominator)?;
+            (BigRational::one(), vec![linear], radius)
+        } else {
+            let (arg_scale, arg_factors) = split_rational_product_factors(ctx, arctan_arg)?;
+            let mut radius = None;
+            let mut linear_factors = Vec::new();
+            for factor in arg_factors {
+                if let Some(candidate_radius) = reciprocal_square_root_radius_factor(ctx, factor) {
+                    if radius.replace(candidate_radius).is_some_and(|existing| {
+                        compare_expr(ctx, existing, candidate_radius) != Ordering::Equal
+                    }) {
+                        return None;
+                    }
+                } else {
+                    linear_factors.push(factor);
+                }
+            }
+            (arg_scale, linear_factors, radius?)
+        };
+    if contains_named_var(ctx, radius, var)
+        || !positive_condition_is_proven_over_reals(ctx, radius, SYMBOLIC_DIFF_SIGN_PROOF_DEPTH)
+    {
+        return None;
+    }
+
+    let linear_core = single_product_core(ctx, linear_factors)?;
+    let mut linear_poly = Polynomial::from_expr(ctx, linear_core, var).ok()?;
+    linear_poly = scaled_polynomial(&linear_poly, arg_scale);
+    if linear_poly.degree() != 1 {
+        return None;
+    }
+    let linear_slope = linear_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if linear_slope.is_zero() {
+        return None;
+    }
+
+    let (den_scale, den_factors) = split_rational_product_factors(ctx, outer_denominator)?;
+    let mut saw_matching_radius = false;
+    for factor in den_factors {
+        let candidate_radius = square_root_radius_factor(ctx, factor)?;
+        if compare_expr(ctx, candidate_radius, radius) != Ordering::Equal {
+            return None;
+        }
+        if saw_matching_radius {
+            return None;
+        }
+        saw_matching_radius = true;
+    }
+    if !saw_matching_radius || den_scale != linear_slope {
+        return None;
+    }
+
+    let linear = linear_poly.to_expr(ctx);
+    let two = ctx.num(2);
+    let linear_square = ctx.add(Expr::Pow(linear, two));
+    let denominator = ctx.add(Expr::Add(linear_square, radius));
+    let one = ctx.num(1);
+    Some(ctx.add(Expr::Div(one, denominator)))
+}
+
+fn reciprocal_square_root_radius_factor(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp)
+            if rational_constant_value(ctx, *exp)
+                == Some(BigRational::new((-1).into(), 2.into())) =>
+        {
+            Some(*base)
+        }
+        Expr::Div(num, den) if is_one(ctx, *num) => square_root_radius_factor(ctx, *den),
+        _ => None,
+    }
+}
+
+fn square_root_radius_factor(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Sqrt) =>
+        {
+            Some(args[0])
+        }
+        Expr::Pow(base, exp)
+            if rational_constant_value(ctx, *exp) == Some(BigRational::new(1.into(), 2.into())) =>
+        {
+            Some(*base)
+        }
+        _ => None,
+    }
+}
+
+fn scaled_ln_positive_constant_radius_quadratic_derivative_numerator(
+    ctx: &mut Context,
+    scale: BigRational,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Polynomial)> {
+    let (term_scale, core) = split_constant_scaled_single_factor(ctx, expr)
+        .unwrap_or_else(|| (BigRational::one(), expr));
+    let arg = unary_builtin_arg(ctx, core, BuiltinFn::Ln)?;
+    let parts = crate::symbolic_integration_support::positive_constant_radius_quadratic_parts(
+        ctx, arg, var,
+    )?;
+    let slope = rational_constant_value(ctx, parts.slope)?;
+    let linear_arg = Polynomial::from_expr(ctx, parts.linear_arg, var).ok()?;
+    if linear_arg.degree() != 1 {
+        return None;
+    }
+
+    let two = BigRational::from_integer(2.into());
+    let numerator = scaled_polynomial(&linear_arg, scale * term_scale * two * slope);
+    Some((arg, numerator))
+}
+
+fn split_rational_product_factors(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, Vec<ExprId>)> {
+    let mut scale = BigRational::one();
+    let mut factors = Vec::new();
+
+    for factor in mul_leaves(ctx, expr) {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            scale *= value;
+        } else {
+            factors.push(factor);
+        }
+    }
+
+    (!scale.is_zero()).then_some((scale, factors))
+}
+
+fn single_product_core(ctx: &mut Context, factors: Vec<ExprId>) -> Option<ExprId> {
+    match factors.len() {
+        0 => Some(ctx.num(1)),
+        1 => Some(factors[0]),
+        _ => Some(build_balanced_mul(ctx, &factors)),
+    }
+}
+
+fn scaled_arctan_positive_constant_radius_quadratic_numerator(
+    ctx: &mut Context,
+    scale: BigRational,
+    expr: ExprId,
+    expected_arg: ExprId,
+    expected_scale: ExprId,
+    var: &str,
+) -> Option<BigRational> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let (num_scale, num_factors) = split_rational_product_factors(ctx, num)?;
+    let mut arctan_arg = None;
+    let mut other_num_factors = Vec::new();
+    for factor in num_factors {
+        if let Some(arg) = unary_builtin_arg(ctx, factor, BuiltinFn::Arctan)
+            .or_else(|| unary_builtin_arg(ctx, factor, BuiltinFn::Atan))
+        {
+            if arctan_arg.replace(arg).is_some() {
+                return None;
+            }
+        } else {
+            other_num_factors.push(factor);
+        }
+    }
+    if !other_num_factors.is_empty() {
+        return None;
+    }
+    if !same_constant_radius_arctan_arg(ctx, arctan_arg?, expected_arg, var) {
+        return None;
+    }
+
+    let (den_scale, den_factors) = split_rational_product_factors(ctx, den)?;
+    let den_core = single_product_core(ctx, den_factors)?;
+    let (expected_scale_factor, expected_factors) =
+        split_rational_product_factors(ctx, expected_scale)?;
+    let expected_core = single_product_core(ctx, expected_factors)?;
+    if compare_expr(ctx, den_core, expected_core) != Ordering::Equal {
+        return None;
+    }
+
+    Some(scale * num_scale * expected_scale_factor / den_scale)
+}
+
+fn same_constant_radius_arctan_arg(
+    ctx: &Context,
+    actual: ExprId,
+    expected: ExprId,
+    var: &str,
+) -> bool {
+    if compare_expr(ctx, actual, expected) == Ordering::Equal {
+        return true;
+    }
+
+    if let (Some((actual_linear, actual_radius)), Some((expected_linear, expected_radius))) = (
+        constant_radius_arctan_arg_parts(ctx, actual, var),
+        constant_radius_arctan_arg_parts(ctx, expected, var),
+    ) {
+        return actual_linear == expected_linear
+            && compare_expr(ctx, actual_radius, expected_radius) == Ordering::Equal;
+    }
+
+    if let (Ok(actual_poly), Ok(expected_poly)) = (
+        Polynomial::from_expr(ctx, actual, var),
+        Polynomial::from_expr(ctx, expected, var),
+    ) {
+        return actual_poly == expected_poly;
+    }
+
+    if let (Expr::Pow(actual_base, actual_exp), Expr::Pow(expected_base, expected_exp)) =
+        (ctx.get(actual), ctx.get(expected))
+    {
+        return compare_expr(ctx, *actual_base, *expected_base) == Ordering::Equal
+            && rational_constant_value(ctx, *actual_exp)
+                .zip(rational_constant_value(ctx, *expected_exp))
+                .is_some_and(|(actual_exp, expected_exp)| actual_exp == expected_exp);
+    }
+
+    if !matches!(ctx.get(actual), Expr::Mul(_, _)) || !matches!(ctx.get(expected), Expr::Mul(_, _))
+    {
+        return false;
+    }
+
+    let actual_factors = mul_leaves(ctx, actual);
+    let mut unmatched_expected = mul_leaves(ctx, expected);
+    if actual_factors.len() != unmatched_expected.len() {
+        return false;
+    }
+
+    for actual_factor in actual_factors {
+        let Some(match_index) = unmatched_expected.iter().position(|expected_factor| {
+            same_constant_radius_arctan_arg(ctx, actual_factor, *expected_factor, var)
+        }) else {
+            return false;
+        };
+        unmatched_expected.remove(match_index);
+    }
+
+    true
+}
+
+fn constant_radius_arctan_arg_parts(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(Polynomial, ExprId)> {
+    if let Expr::Div(linear, radius_denominator) = ctx.get(expr) {
+        let radius = square_root_radius_factor(ctx, *radius_denominator)?;
+        let linear = Polynomial::from_expr(ctx, *linear, var).ok()?;
+        return Some((linear, radius));
+    }
+
+    let (scale, factors) = split_rational_product_factors(ctx, expr)?;
+    let mut radius = None;
+    let mut linear = Polynomial::new(vec![scale], var.to_string());
+    for factor in factors {
+        if let Some(candidate_radius) = reciprocal_square_root_radius_factor(ctx, factor) {
+            if radius.replace(candidate_radius).is_some_and(|existing| {
+                compare_expr(ctx, existing, candidate_radius) != Ordering::Equal
+            }) {
+                return None;
+            }
+            continue;
+        }
+
+        let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+        linear = linear.mul(&factor_poly);
+    }
+
+    Some((linear, radius?))
+}
+
 fn positive_rational_sqrt_times_single_linear_factor(
     ctx: &mut Context,
     expr: ExprId,
@@ -1566,6 +2055,50 @@ fn inverse_tangent_linear_positive_rational_radius_derivative(
     let denominator = ctx.add(Expr::Add(linear_square, radius));
     let one = ctx.num(1);
     Some(ctx.add(Expr::Div(one, denominator)))
+}
+
+fn inverse_tangent_linear_matching_symbolic_radius_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let Expr::Div(numerator, outer_denominator) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if contains_named_var(ctx, outer_denominator, var) {
+        return None;
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(numerator).clone() else {
+        return None;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(fn_id),
+            Some(BuiltinFn::Atan | BuiltinFn::Arctan)
+        )
+    {
+        return None;
+    }
+
+    let Expr::Div(linear, inner_denominator) = ctx.get(args[0]).clone() else {
+        return None;
+    };
+    if compare_expr(ctx, inner_denominator, outer_denominator) != Ordering::Equal {
+        return None;
+    }
+
+    let (slope, _) = crate::symbolic_integration_support::get_linear_coeffs(ctx, linear, var)?;
+    if contains_named_var(ctx, slope, var) || is_zero(ctx, slope) {
+        return None;
+    }
+
+    let two = ctx.num(2);
+    let linear_square = ctx.add(Expr::Pow(linear, two));
+    let radius_square = ctx.add(Expr::Pow(outer_denominator, two));
+    let denominator = ctx.add(Expr::Add(linear_square, radius_square));
+    let derivative = div_pruned(ctx, slope, denominator);
+    Some(ctx.add(Expr::Hold(derivative)))
 }
 
 fn positive_quadratic_square_primitive_scale(
@@ -2197,6 +2730,344 @@ fn log_square_by_parts_derivative(ctx: &mut Context, expr: ExprId, var: &str) ->
     let power = ctx.num(output_power);
     let log_power = ctx.add(Expr::Pow(log_expr, power));
     Some(mul_pruned(ctx, derivative, log_power))
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ConstantBaseLogSquareTermKind {
+    Square,
+    LinearOverLnBase,
+    PlainOverLnBaseSquared,
+}
+
+struct ConstantBaseLogSquareTerm {
+    scale: BigRational,
+    kind: ConstantBaseLogSquareTermKind,
+    log_expr: Option<ExprId>,
+    log_arg: Option<ExprId>,
+    ln_base: ExprId,
+}
+
+fn constant_base_log_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 2 || ctx.builtin_of(*fn_id) != Some(BuiltinFn::Log) {
+        return None;
+    }
+    let base = args[0];
+    let arg = args[1];
+    if contains_named_var(ctx, base, var) {
+        return None;
+    }
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+    Some((expr, arg, ln_base))
+}
+
+fn constant_base_ln_square_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if !matches!(ctx.get(*exp), Expr::Number(n) if *n == BigRational::from_integer(2.into())) {
+        return None;
+    }
+    let Expr::Function(fn_id, args) = ctx.get(*base) else {
+        return None;
+    };
+    if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Ln) {
+        Some(*base)
+    } else {
+        None
+    }
+}
+
+fn constant_base_log_square_by_parts_term(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ConstantBaseLogSquareTerm> {
+    if let Expr::Pow(base, exp) = ctx.get(expr).clone() {
+        if matches!(ctx.get(exp), Expr::Number(n) if *n == BigRational::from_integer(2.into())) {
+            let (log_expr, log_arg, ln_base) = constant_base_log_parts(ctx, base, var)?;
+            return Some(ConstantBaseLogSquareTerm {
+                scale: BigRational::one(),
+                kind: ConstantBaseLogSquareTermKind::Square,
+                log_expr: Some(log_expr),
+                log_arg: Some(log_arg),
+                ln_base,
+            });
+        }
+    }
+
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        if let Some((scale, core)) = split_constant_scaled_single_factor(ctx, num) {
+            if let Some((log_expr, log_arg, ln_base)) = constant_base_log_parts(ctx, core, var) {
+                if compare_expr(ctx, den, ln_base) == Ordering::Equal {
+                    return Some(ConstantBaseLogSquareTerm {
+                        scale,
+                        kind: ConstantBaseLogSquareTermKind::LinearOverLnBase,
+                        log_expr: Some(log_expr),
+                        log_arg: Some(log_arg),
+                        ln_base,
+                    });
+                }
+            }
+        }
+
+        let num_scale = rational_constant_value(ctx, num)?;
+        let ln_base = constant_base_ln_square_denominator(ctx, den)?;
+        return Some(ConstantBaseLogSquareTerm {
+            scale: num_scale,
+            kind: ConstantBaseLogSquareTermKind::PlainOverLnBaseSquared,
+            log_expr: None,
+            log_arg: None,
+            ln_base,
+        });
+    }
+
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() <= 1 {
+        return None;
+    }
+
+    let mut scale = BigRational::one();
+    let mut component = None;
+    for factor in factors {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+
+        let mut term = constant_base_log_square_by_parts_term(ctx, factor, var)?;
+        term.scale *= scale.clone();
+        if component.replace(term).is_some() {
+            return None;
+        }
+        scale = BigRational::one();
+    }
+
+    let mut component = component?;
+    component.scale *= scale;
+    Some(component)
+}
+
+fn constant_base_log_square_by_parts_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut outer_scale = BigRational::one();
+    let mut base_poly = None;
+    let mut additive = None;
+
+    for factor in factors {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            outer_scale *= value;
+            continue;
+        }
+        if let Ok(poly) = Polynomial::from_expr(ctx, factor, var) {
+            if base_poly.replace(poly).is_some() {
+                return None;
+            }
+            continue;
+        }
+        if matches!(ctx.get(factor), Expr::Add(_, _) | Expr::Sub(_, _)) {
+            if additive.replace(factor).is_some() {
+                return None;
+            }
+            continue;
+        }
+        return None;
+    }
+
+    let base_poly = base_poly?;
+    let additive = additive?;
+    if base_poly.degree() == 0 {
+        return None;
+    }
+
+    let mut log_expr = None;
+    let mut log_arg = None;
+    let mut ln_base = None;
+    let mut square_coeff = BigRational::zero();
+    let mut linear_coeff = BigRational::zero();
+    let mut plain_coeff = BigRational::zero();
+
+    let mut raw_terms = Vec::new();
+    collect_scaled_add_terms(ctx, additive, BigRational::one(), &mut raw_terms);
+    for (scale, term) in raw_terms {
+        let component = constant_base_log_square_by_parts_term(ctx, term, var)?;
+        let total_scale = scale * component.scale;
+
+        if let Some(existing) = ln_base {
+            if compare_expr(ctx, existing, component.ln_base) != Ordering::Equal {
+                return None;
+            }
+        } else {
+            ln_base = Some(component.ln_base);
+        }
+
+        if let Some(candidate_log_expr) = component.log_expr {
+            if let Some(existing) = log_expr {
+                if compare_expr(ctx, existing, candidate_log_expr) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                log_expr = Some(candidate_log_expr);
+            }
+        }
+
+        if let Some(candidate_log_arg) = component.log_arg {
+            if let Some(existing) = log_arg {
+                if compare_expr(ctx, existing, candidate_log_arg) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                log_arg = Some(candidate_log_arg);
+            }
+        }
+
+        match component.kind {
+            ConstantBaseLogSquareTermKind::Square => square_coeff += total_scale,
+            ConstantBaseLogSquareTermKind::LinearOverLnBase => linear_coeff += total_scale,
+            ConstantBaseLogSquareTermKind::PlainOverLnBaseSquared => plain_coeff += total_scale,
+        }
+    }
+
+    if square_coeff.is_zero() {
+        return None;
+    }
+    let minus_two = -BigRational::from_integer(2.into());
+    let two = BigRational::from_integer(2.into());
+    if linear_coeff != square_coeff.clone() * minus_two {
+        return None;
+    }
+    if plain_coeff != square_coeff.clone() * two {
+        return None;
+    }
+
+    let log_expr = log_expr?;
+    let derivative_poly = scaled_polynomial(&base_poly.derivative(), outer_scale * square_coeff);
+    let derivative = derivative_poly.to_expr(ctx);
+    let two = ctx.num(2);
+    let log_square = ctx.add(Expr::Pow(log_expr, two));
+    Some(mul_pruned(ctx, derivative, log_square))
+}
+
+fn monomial_ln_var_by_parts_derivative(
+    ctx: &mut Context,
+    mut expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut outer_scale = BigRational::one();
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        let den_scale = rational_constant_value(ctx, den)?;
+        if den_scale.is_zero() {
+            return None;
+        }
+        outer_scale /= den_scale;
+        expr = num;
+    }
+
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut monomial_poly = None;
+    let mut additive = None;
+
+    for factor in factors {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            outer_scale *= value;
+            continue;
+        }
+        if let Ok(poly) = Polynomial::from_expr(ctx, factor, var) {
+            if monomial_poly.replace(poly).is_some() {
+                return None;
+            }
+            continue;
+        }
+        if matches!(ctx.get(factor), Expr::Add(_, _) | Expr::Sub(_, _)) {
+            if additive.replace(factor).is_some() {
+                return None;
+            }
+            continue;
+        }
+        return None;
+    }
+
+    let monomial_poly = monomial_poly?;
+    let additive = additive?;
+    let power = monomial_poly.degree();
+    if power == 0 {
+        return None;
+    }
+    let monomial_coeff = monomial_poly.coeffs.get(power).cloned()?;
+    if monomial_coeff.is_zero()
+        || monomial_poly
+            .coeffs
+            .iter()
+            .enumerate()
+            .any(|(idx, coeff)| idx != power && !coeff.is_zero())
+    {
+        return None;
+    }
+
+    let mut ln_scale = BigRational::zero();
+    let mut plain_scale = BigRational::zero();
+    let mut ln_expr = None;
+    let mut raw_terms = Vec::new();
+    collect_scaled_add_terms(ctx, additive, BigRational::one(), &mut raw_terms);
+    for (scale, term) in raw_terms {
+        let (term_scale, term_core) = split_constant_scaled_single_factor(ctx, term)
+            .unwrap_or_else(|| (BigRational::one(), term));
+        if let Some(ln_arg) = unary_builtin_arg(ctx, term_core, BuiltinFn::Ln) {
+            if !ctx.is_var(ln_arg, var) {
+                return None;
+            }
+            ln_expr = Some(term_core);
+            ln_scale += scale * term_scale;
+            continue;
+        }
+
+        let constant_scale = rational_constant_value(ctx, term_core)?;
+        plain_scale += scale * term_scale * constant_scale;
+    }
+
+    if ln_scale.is_zero() {
+        return None;
+    }
+    let power_rational = BigRational::from_integer(power.into());
+    if power_rational.clone() * plain_scale + ln_scale.clone() != BigRational::zero() {
+        return None;
+    }
+
+    let output_scale = outer_scale * monomial_coeff * power_rational * ln_scale;
+    if output_scale.is_zero() {
+        return Some(ctx.num(0));
+    }
+
+    let var_expr = ctx.var(var);
+    let x_power = if power == 1 {
+        ctx.num(1)
+    } else if power == 2 {
+        var_expr
+    } else {
+        let exp = ctx.num(i64::try_from(power - 1).ok()?);
+        ctx.add(Expr::Pow(var_expr, exp))
+    };
+    let ln_expr = ln_expr?;
+    let core = mul_pruned(ctx, x_power, ln_expr);
+    Some(scale_expr_pruned(ctx, output_scale, core))
 }
 
 fn trig_power_term(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId, u32)> {
@@ -5532,6 +6403,11 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
     {
         return Some(derivative);
     }
+    if let Some(derivative) =
+        inverse_tangent_linear_matching_symbolic_radius_derivative(ctx, expr, var)
+    {
+        return Some(derivative);
+    }
 
     if let Some((derivative, _required_nonzero)) =
         rational_log_ratio_single_pole_derivative(ctx, expr, var)
@@ -5545,7 +6421,24 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         return Some(derivative);
     }
 
+    if let Some((derivative, _required_nonzero)) =
+        positive_quadratic_log_abs_matching_linear_pole_wrapper_derivative(ctx, expr, var)
+    {
+        return Some(derivative);
+    }
+
     if let Some(derivative) = differentiate_scaled_additive_log_abs_by_linearity(ctx, expr, var) {
+        return Some(derivative);
+    }
+
+    if let Some(derivative) =
+        positive_constant_radius_quadratic_log_arctan_primitive_derivative(ctx, expr, var)
+    {
+        return Some(derivative);
+    }
+    if let Some(derivative) =
+        positive_constant_radius_quadratic_arctan_primitive_derivative(ctx, expr, var)
+    {
         return Some(derivative);
     }
 
@@ -5570,6 +6463,14 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
     }
 
     if let Some(derivative) = acosh_affine_by_parts_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
+    if let Some(derivative) = monomial_ln_var_by_parts_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
+    if let Some(derivative) = constant_base_log_square_by_parts_derivative(ctx, expr, var) {
         return Some(derivative);
     }
 
@@ -5982,6 +6883,9 @@ mod tests {
         differentiate_hyperbolic_sinh_fourth_reciprocal_tanh_cubic_primitive,
         differentiate_symbolic_expr,
         differentiate_symbolic_linear_times_hyperbolic_coth_linear_div_derivative,
+        positive_constant_radius_quadratic_arctan_primitive_derivative,
+        positive_constant_radius_quadratic_log_arctan_primitive_derivative,
+        positive_quadratic_log_abs_matching_linear_pole_wrapper_derivative,
         positive_quadratic_log_arctan_primitive_derivative,
         rational_positive_quadratic_log_abs_pole_derivative,
         rational_separated_linear_log_abs_pole_derivative,
@@ -6087,8 +6991,42 @@ mod tests {
     }
 
     #[test]
-    fn static_defined_root_and_log_constants_still_differentiate_to_zero() {
-        for source in ["sqrt(0)", "sqrt(4)", "ln(1)", "log2(1)", "log(2, 1)"] {
+    fn bounded_inverse_derivative_is_undefined_on_empty_real_domain() {
+        for source in [
+            "asin(x^2+2)",
+            "asin(1+x^2)",
+            "acos(1+x^2)",
+            "atanh(x^2+2)",
+            "acosh(-x^2)",
+            "acosh(1-x^2)",
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(source, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            assert_eq!(rendered(&ctx, out), "undefined", "source: {source}");
+        }
+    }
+
+    #[test]
+    fn bounded_inverse_derivative_preserves_nonempty_boundary_domains() {
+        let source = "acosh(1+x^2)";
+        let mut ctx = Context::new();
+        let expr = parse(source, &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_ne!(rendered(&ctx, out), "undefined", "source: {source}");
+    }
+
+    #[test]
+    fn static_defined_root_log_and_inverse_boundary_constants_still_differentiate_to_zero() {
+        for source in [
+            "sqrt(0)",
+            "sqrt(4)",
+            "ln(1)",
+            "log2(1)",
+            "log(2, 1)",
+            "arcsin(-1)",
+            "arccos(-1)",
+        ] {
             let mut ctx = Context::new();
             let expr = parse(source, &mut ctx).expect("parse");
             let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
@@ -6346,11 +7284,89 @@ mod tests {
     }
 
     #[test]
+    fn differentiates_inverse_tangent_matching_symbolic_radius_compactly() {
+        let cases = [
+            ("arctan(x/a)/a", "1 / (a^2 + x^2)"),
+            ("arctan((b+x)/a)/a", "1 / ((b + x)^2 + a^2)"),
+            ("arctan((c*x+b)/a)/a", "c / ((c * x + b)^2 + a^2)"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn differentiates_positive_constant_radius_quadratic_arctan_primitive_compactly() {
+        let cases = [
+            (
+                "atan(phi^(-1/2)*(2*x+3))/(2*sqrt(phi))",
+                "1 / ((2 * x + 3)^2 + phi)",
+            ),
+            ("atan(phi^(-1/2)*x)/sqrt(phi)", "1 / (x^2 + phi)"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out =
+                positive_constant_radius_quadratic_arctan_primitive_derivative(&mut ctx, expr, "x")
+                    .expect("positive constant radius arctan primitive derivative");
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn rejects_unproven_positive_constant_radius_quadratic_arctan_primitive() {
+        let mut ctx = Context::new();
+        let expr = parse("atan(a^(-1/2)*(2*x+3))/(2*sqrt(a))", &mut ctx).expect("parse");
+
+        assert!(
+            positive_constant_radius_quadratic_arctan_primitive_derivative(&mut ctx, expr, "x")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn rejects_mismatched_surd_positive_quadratic_log_arctan_primitive() {
         let mut ctx = Context::new();
         let expr =
             parse("1/2*ln(x^2+x+1)-arctan((2*x+1)/sqrt(5))/sqrt(5)", &mut ctx).expect("parse");
         assert!(positive_quadratic_log_arctan_primitive_derivative(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn differentiates_positive_constant_radius_quadratic_log_arctan_primitive_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/4*ln(4*x^2+12*x+9+phi)+(3*atan((2*x+3)/sqrt(phi)))/(2*sqrt(phi))",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+        assert_eq!(
+            rendered(&ctx, out),
+            "(2 * x + 6) / (4 * x^2 + 12 * x + 9 + phi)"
+        );
+    }
+
+    #[test]
+    fn rejects_mismatched_positive_constant_radius_quadratic_log_arctan_primitive() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/4*ln(4*x^2+12*x+9+phi)+(3*atan(5^(-1/2)*(2*x+3)))/(2*sqrt(phi))",
+            &mut ctx,
+        )
+        .expect("parse");
+
+        assert!(
+            positive_constant_radius_quadratic_log_arctan_primitive_derivative(&mut ctx, expr, "x")
+                .is_none()
+        );
     }
 
     #[test]
@@ -6405,6 +7421,38 @@ mod tests {
         let expr = parse("(x^2+x+1)*(ln(x^2+x+1)^2 + 2 - 2*ln(x^2+x+1))", &mut ctx).expect("parse");
         let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
         assert_eq!(rendered(&ctx, out), "(2 * x + 1) * ln(x^2 + x + 1)^2");
+    }
+
+    #[test]
+    fn differentiates_constant_base_log_square_by_parts_antiderivative_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(x^2-1)*(log(2,x^2-1)^2 + 2/ln(2)^2 - 2*log(2,x^2-1)/ln(2))",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "2 * x * log(2, x^2 - 1)^2");
+
+        let expr = parse(
+            "3*(x^2+x+1)*(log(5,x^2+x+1)^2 + 2/ln(5)^2 - 2*log(5,x^2+x+1)/ln(5))",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "(6 * x + 3) * log(5, x^2 + x + 1)^2");
+    }
+
+    #[test]
+    fn differentiates_monomial_ln_by_parts_antiderivative_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("x^2/4*(2*ln(x)-1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "x * ln(x)");
+
+        let expr = parse("x^3/9*(3*ln(x)-1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "x^2 * ln(x)");
     }
 
     #[test]
@@ -7346,6 +8394,33 @@ mod tests {
                     "unexpected rational derivative at x={sample} for {input}: actual={actual}, expected={expected}, text={text}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn differentiates_positive_quadratic_log_abs_linear_pole_wrapper_compactly() {
+        let mut ctx = Context::new();
+        let input = "(ln(abs(x^2+x+1))+1/(x+2))/(x+2)";
+        let expr = parse(input, &mut ctx).expect("parse");
+        let (out, required_nonzero) =
+            positive_quadratic_log_abs_matching_linear_pole_wrapper_derivative(&mut ctx, expr, "x")
+                .expect("wrapper derivative route");
+        let text = rendered(&ctx, out);
+
+        assert_eq!(required_nonzero.len(), 1);
+        assert_eq!(rendered(&ctx, required_nonzero[0]), "x + 2");
+        assert!(text.contains("ln("), "{text}");
+        assert!(!text.contains("abs("), "{text}");
+        assert!(!text.contains("x^4"), "{text}");
+        for sample in [-1.0, 0.0, 2.0] {
+            let actual = eval_at(&ctx, out, sample);
+            let q = sample.powi(2) + sample + 1.0;
+            let d = sample + 2.0;
+            let expected = (2.0 * sample + 1.0) / (q * d) - q.ln() / d.powi(2) - 2.0 / d.powi(3);
+            assert!(
+                (actual - expected).abs() < 1e-10,
+                "unexpected wrapper derivative at x={sample}: actual={actual}, expected={expected}, text={text}"
+            );
         }
     }
 

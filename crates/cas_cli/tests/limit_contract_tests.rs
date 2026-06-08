@@ -442,11 +442,6 @@ fn test_eval_one_sided_limit_orientation_policy_json() {
             "limit(atanh(x), x, -1, left)",
             "-1 < x < 1",
         ),
-        (
-            "limit(atanh(1+x^2), x, 0+)",
-            "limit(atanh(x^2 + 1), x, 0, right)",
-            "1 - (x^2 + 1)^2 > 0",
-        ),
     ] {
         let (_success, stdout) = run_eval(input, "json");
         let wire: Value = serde_json::from_str(&stdout).expect("eval json");
@@ -480,6 +475,12 @@ fn test_eval_one_sided_limit_orientation_policy_json() {
             "Unsupported one-sided inverse interval endpoint should stay residual with explicit domain-path warning for {input}, got: {wire:?}"
         );
     }
+
+    let (_success, stdout) = run_eval("limit(atanh(1+x^2), x, 0+)", "json");
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "undefined");
+    assert_eq!(wire["warnings"], json!([]));
 
     for (input, expected_result, expected_required_condition, expected_warning_condition) in [
         (
@@ -1604,8 +1605,6 @@ fn test_eval_finite_binary_log_composition_limits_json() {
 fn test_eval_finite_binary_log_composition_rejects_unsafe_cases_json() {
     for input in [
         "limit(log(2, abs(x)), x, 0)",
-        "limit(log(1, x^2 + 1), x, -2)",
-        "limit(log(-2, x^2 + 1), x, -2)",
         "limit(log(x^2 - 3, x^2 + 1), x, -2)",
         "limit(log(x^2 - 4, x^2 + 1), x, -2)",
     ] {
@@ -1633,6 +1632,25 @@ fn test_eval_finite_binary_log_composition_rejects_unsafe_cases_json() {
             }),
             "Unsafe finite binary log should remain residual with warning for {input}, got: {wire:?}"
         );
+    }
+
+    for input in [
+        "limit(log(1, x^2 + 1), x, -2)",
+        "limit(log(-2, x^2 + 1), x, -2)",
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should reject invalid-base finite binary log for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(
+            wire["result"], "undefined",
+            "invalid-base finite binary log should be undefined for {input}: {wire:?}"
+        );
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(wire["required_display"], json!([]), "input: {input}");
     }
 }
 
@@ -3319,19 +3337,32 @@ fn test_limit_direct_base_log_domain_and_base_guards_remain_residual() {
 
     for expr in ["log(1, x)", "log(-2, x)"] {
         let (success, stdout) = run_limit(expr, "x", "infinity", "json");
-        assert!(success, "Command should succeed for residual {expr}");
+        assert!(success, "Command should reject invalid-base {expr}");
+        let wire: Value = serde_json::from_str(&stdout).expect("limit json");
+        assert_eq!(wire["result"], "undefined", "{expr}");
         assert!(
-            stdout.contains("\"warning\"") && stdout.contains("limit("),
-            "{expr} should keep invalid-base residual, got: {stdout}"
+            !stdout.contains("\"warning\""),
+            "{expr} should not warn once invalid base is rejected, got: {stdout}"
         );
     }
 
-    for expr in ["ln(3 - x^2)", "log(2, 3 - x^2)", "log(1, x^2)"] {
+    for expr in ["ln(3 - x^2)", "log(2, 3 - x^2)"] {
         let (success, stdout) = run_limit(expr, "x", "infinity", "json");
         assert!(success, "Command should succeed for residual {expr}");
         assert!(
             stdout.contains("\"warning\"") && stdout.contains("limit("),
             "{expr} should keep unsafe log-polynomial residual, got: {stdout}"
+        );
+    }
+
+    for expr in ["log(1, x^2)", "log(1, (2*x^2 + 1)/(x^2 + 1))"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should reject invalid-base {expr}");
+        let wire: Value = serde_json::from_str(&stdout).expect("limit json");
+        assert_eq!(wire["result"], "undefined", "{expr}");
+        assert!(
+            !stdout.contains("\"warning\""),
+            "{expr} should not warn once invalid base is rejected, got: {stdout}"
         );
     }
 
@@ -3343,7 +3374,6 @@ fn test_limit_direct_base_log_domain_and_base_guards_remain_residual() {
         "ln((a*x + 1)/(x^2 + 1))",
         "ln((1 - 2*x^2)/(x^2 + 1))",
         "ln((a*x^2 + 1)/(x^2 + 1))",
-        "log(1, (2*x^2 + 1)/(x^2 + 1))",
     ] {
         let (success, stdout) = run_limit(expr, "x", "infinity", "json");
         assert!(success, "Command should succeed for residual {expr}");
@@ -3392,10 +3422,12 @@ fn test_limit_log_of_exp_argument_guards_remain_residual() {
 
     for expr in ["log(1, exp(x))", "log(-2, exp(x))"] {
         let (success, stdout) = run_limit(expr, "x", "infinity", "json");
-        assert!(success, "Command should succeed for residual {expr}");
+        assert!(success, "Command should reject invalid-base {expr}");
+        let wire: Value = serde_json::from_str(&stdout).expect("limit json");
+        assert_eq!(wire["result"], "undefined", "{expr}");
         assert!(
-            stdout.contains("\"warning\"") && stdout.contains("limit("),
-            "{expr} should keep invalid-base residual, got: {stdout}"
+            !stdout.contains("\"warning\""),
+            "{expr} should not warn once invalid base is rejected, got: {stdout}"
         );
     }
 }
@@ -4423,13 +4455,14 @@ fn test_limit_log_polynomial_argument_bad_tail_remains_residual() {
 }
 
 #[test]
-fn test_limit_invalid_base_log_dominance_remains_residual() {
+fn test_limit_invalid_base_log_dominance_is_undefined() {
     let (success, stdout) = run_limit("log(1, x)/x", "x", "infinity", "json");
     assert!(success, "Command should succeed");
+    let wire: Value = serde_json::from_str(&stdout).expect("limit json");
+    assert_eq!(wire["result"], "undefined");
     assert!(
-        stdout.contains("\"warning\"") && stdout.contains("limit("),
-        "log base 1 should remain residual, got: {}",
-        stdout
+        !stdout.contains("\"warning\""),
+        "invalid-base dominance should not warn once rejected, got: {stdout}"
     );
 }
 
@@ -4477,13 +4510,14 @@ fn test_limit_polynomial_over_reciprocal_e_base_log_pos_infinity() {
 }
 
 #[test]
-fn test_limit_negative_e_base_log_remains_residual() {
+fn test_limit_negative_e_base_log_is_undefined() {
     let (success, stdout) = run_limit("log(-e, x)/x", "x", "infinity", "json");
     assert!(success, "Command should succeed");
+    let wire: Value = serde_json::from_str(&stdout).expect("limit json");
+    assert_eq!(wire["result"], "undefined");
     assert!(
-        stdout.contains("\"warning\"") && stdout.contains("limit("),
-        "negative e-base log should remain residual, got: {}",
-        stdout
+        !stdout.contains("\"warning\""),
+        "negative e-base log should not warn once rejected, got: {stdout}"
     );
 }
 
@@ -4504,6 +4538,22 @@ fn test_limit_powered_e_base_log_over_polynomial_pos_infinity() {
 }
 
 #[test]
+fn test_limit_powered_rational_base_log_over_polynomial_pos_infinity() {
+    let (success, stdout) = run_limit("log(2^2, x)/x", "x", "infinity", "json");
+    assert!(success, "Command should succeed");
+    assert!(
+        stdout.contains("\"result\":\"0\""),
+        "log(2^2,x)/x should resolve to 0, got: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("\"warning\""),
+        "Resolved powered rational-base log dominance should not warn, got: {}",
+        stdout
+    );
+}
+
+#[test]
 fn test_limit_polynomial_over_negative_power_e_base_log_pos_infinity() {
     let (success, stdout) = run_limit("x/log(e^-2, x)", "x", "infinity", "json");
     assert!(success, "Command should succeed");
@@ -4515,6 +4565,22 @@ fn test_limit_polynomial_over_negative_power_e_base_log_pos_infinity() {
     assert!(
         !stdout.contains("\"warning\""),
         "Resolved negative powered e-base log dominance should not warn, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_limit_polynomial_over_negative_power_rational_base_log_pos_infinity() {
+    let (success, stdout) = run_limit("x/log(2^-2, x)", "x", "infinity", "json");
+    assert!(success, "Command should succeed");
+    assert!(
+        stdout.contains("\"result\":\"-infinity\""),
+        "x/log(2^-2,x) should resolve to -infinity, got: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("\"warning\""),
+        "Resolved negative powered rational-base log dominance should not warn, got: {}",
         stdout
     );
 }

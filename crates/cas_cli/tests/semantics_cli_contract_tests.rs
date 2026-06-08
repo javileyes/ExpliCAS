@@ -2880,7 +2880,7 @@ fn eval_diff_bounded_inverse_trig_rejects_empty_open_interval_domain() {
         "empty inverse-trig domain should not expose a chain rule or impossible derivative: {output}"
     );
     assert!(
-        output.contains("Detectar dominio real vacío de la función inversa"),
+        output.contains("Detectar dominio real vacío de la derivada de la función inversa"),
         "empty inverse-trig domain should explain the undefined derivative: {output}"
     );
 }
@@ -2908,7 +2908,7 @@ fn eval_diff_bounded_inverse_trig_rejects_shifted_empty_open_interval_domain() {
         "shifted empty inverse-trig domain should not expose a chain rule or impossible condition: {output}"
     );
     assert!(
-        output.contains("Detectar dominio real vacío de la función inversa"),
+        output.contains("Detectar dominio real vacío de la derivada de la función inversa"),
         "shifted empty inverse-trig domain should explain the undefined derivative: {output}"
     );
 }
@@ -3003,6 +3003,32 @@ fn eval_diff_atanh_rejects_empty_open_interval_domain() {
     assert!(
         output.contains("Detectar dominio real vacío de la función inversa"),
         "empty atanh domain should explain the undefined derivative: {output}"
+    );
+}
+
+#[test]
+fn eval_diff_acosh_rejects_empty_derivative_domain_with_specific_trace() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff(acosh(1-x^2), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "undefined");
+    assert_eq!(wire["required_display"], json!([]));
+    assert_optional_empty_domain_blocked_hint(&wire, &output);
+    assert!(
+        !output.contains("-(x^2) > 0"),
+        "empty derivative domain should not expose an impossible condition: {output}"
+    );
+    assert!(
+        output.contains("Detectar dominio real vacío de la derivada de la función inversa"),
+        "empty derivative domain should be distinguished from empty source domain: {output}"
     );
 }
 

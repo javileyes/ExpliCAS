@@ -91,13 +91,18 @@ mod tests {
         )
         .is_some());
 
-        let finite_boundary_target = parse("arccos(-1)", &mut ctx).unwrap();
-        assert!(bounded_inverse_trig_known_empty_open_interval_gap(
-            &mut ctx,
-            finite_boundary_target,
-            "x"
-        )
-        .is_none());
+        for source in ["arcsin(-1)", "arccos(-1)"] {
+            let finite_boundary_target = parse(source, &mut ctx).unwrap();
+            assert!(
+                bounded_inverse_trig_known_empty_open_interval_gap(
+                    &mut ctx,
+                    finite_boundary_target,
+                    "x"
+                )
+                .is_none(),
+                "source: {source}"
+            );
+        }
 
         let symbolic_constant_target = parse("arcsin(pi)", &mut ctx).unwrap();
         let symbolic_gap = bounded_inverse_trig_known_empty_open_interval_gap(
@@ -146,6 +151,12 @@ mod tests {
         let symbolic_gap = atanh_known_empty_open_interval_gap(&mut ctx, symbolic_constant_target)
             .expect("symbolic constant outside open interval");
         assert_eq!(rendered(&ctx, symbolic_gap), "1 - pi^2");
+
+        let symbolic_offset_target = parse("atanh(phi+x^2)", &mut ctx).unwrap();
+        assert!(
+            atanh_known_empty_open_interval_gap(&mut ctx, symbolic_offset_target).is_some(),
+            "named constant offset outside open interval should be rejected early"
+        );
     }
 
     #[test]

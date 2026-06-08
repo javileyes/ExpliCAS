@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
@@ -46,6 +46,10 @@ class IntegrateCommandMatrixCase:
     expected_derivative_result: str | None = None
     expected_derivative_equivalent_to: str | None = None
     expected_derivative_required_display: tuple[str, ...] = ()
+    expected_direct_diff_integrate_result: str | None = None
+    expected_direct_diff_integrate_equivalent_to: str | None = None
+    expected_direct_diff_integrate_required_display: tuple[str, ...] = ()
+    direct_diff_integrate_from_derivative: bool = False
     expected_required_display: tuple[str, ...] = ()
     expected_warning_substrings: tuple[str, ...] = ()
     expected_step_substrings: tuple[str, ...] = ()
@@ -56,6 +60,60 @@ class IntegrateCommandMatrixCase:
     residual_cause: str = "not_applicable"
     trace_regime: str = "direct"
     presentation_regime: str = "canonical"
+
+
+def direct_diff_integrate_expected_result(
+    case: IntegrateCommandMatrixCase,
+) -> str | None:
+    if case.direct_diff_integrate_from_derivative:
+        return case.expected_derivative_result
+    return case.expected_direct_diff_integrate_result
+
+
+def direct_diff_integrate_expected_equivalent_to(
+    case: IntegrateCommandMatrixCase,
+) -> str | None:
+    if case.direct_diff_integrate_from_derivative:
+        return case.expected_derivative_equivalent_to
+    return case.expected_direct_diff_integrate_equivalent_to
+
+
+def direct_diff_integrate_expected_required_display(
+    case: IntegrateCommandMatrixCase,
+) -> tuple[str, ...]:
+    if case.direct_diff_integrate_from_derivative:
+        return case.expected_derivative_required_display
+    return case.expected_direct_diff_integrate_required_display
+
+
+def has_direct_diff_integrate_probe(case: IntegrateCommandMatrixCase) -> bool:
+    return (
+        direct_diff_integrate_expected_result(case) is not None
+        or direct_diff_integrate_expected_equivalent_to(case) is not None
+    )
+
+
+def validate_direct_diff_integrate_expectations(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> None:
+    for case in cases:
+        if not case.direct_diff_integrate_from_derivative:
+            continue
+        if (
+            case.expected_direct_diff_integrate_result is not None
+            or case.expected_direct_diff_integrate_equivalent_to is not None
+            or case.expected_direct_diff_integrate_required_display
+        ):
+            raise SystemExit(
+                f"{case.name} mixes inherited and explicit direct diff(integrate) expectations"
+            )
+        if (
+            case.expected_derivative_result is None
+            and case.expected_derivative_equivalent_to is None
+        ):
+            raise SystemExit(
+                f"{case.name} inherits direct diff(integrate) expectations without derivative expectations"
+            )
 
 
 @dataclass(frozen=True)
@@ -156,6 +214,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(x^2, x)",
         expected_result="1/3·x^3",
         expected_derivative_result="x^2",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=("Usar regla de potencia para integrales",),
         family="polynomial",
         argument_regime="variable_power",
@@ -167,6 +226,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(2*x + 3, x)",
         expected_result="x^2 + 3·x",
         expected_derivative_result="2·x + 3",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=(
             "Usar linealidad de la integral",
             "Integrar cada término",
@@ -181,6 +241,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(sin(2*x), x)",
         expected_result="-1/2·cos(2·x)",
         expected_derivative_result="sin(2·x)",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=(
             "Usar la regla de sin con derivada interna",
             "Identificar el argumento afín",
@@ -196,6 +257,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(3*cos(2*x+1), x)",
         expected_result="3/2·sin(2·x + 1)",
         expected_derivative_result="3·cos(2·x + 1)",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=(
             "Usar la regla de cos(u) -> sin(u)",
             "Identificar u y du",
@@ -212,6 +274,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/2·ln(|tan(2·x + 1) + sec(2·x + 1)|)",
         expected_derivative_equivalent_to="sec(2*x+1)",
         expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_direct_diff_integrate_result="sec(2·x + 1)",
+        expected_direct_diff_integrate_required_display=("cos(2·x + 1) ≠ 0",),
         expected_required_display=("cos(2·x + 1) ≠ 0",),
         expected_step_substrings=(
             "Expandir secante como recíproco de coseno",
@@ -230,6 +294,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/2·ln(|csc(2·x + 1) - cot(2·x + 1)|)",
         expected_derivative_equivalent_to="csc(2*x+1)",
         expected_derivative_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_direct_diff_integrate_result="csc(2·x + 1)",
+        expected_direct_diff_integrate_required_display=("sin(2·x + 1) ≠ 0",),
         expected_required_display=("sin(2·x + 1) ≠ 0",),
         expected_step_substrings=(
             "Expandir cosecante como recíproco de seno",
@@ -248,6 +314,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="3/2·ln(|tan(2·x + 1) + sec(2·x + 1)|)",
         expected_derivative_equivalent_to="3*sec(2*x+1)",
         expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_direct_diff_integrate_result="3·sec(2·x + 1)",
+        expected_direct_diff_integrate_required_display=("cos(2·x + 1) ≠ 0",),
         expected_required_display=("cos(2·x + 1) ≠ 0",),
         expected_step_substrings=(
             "Expandir secante como recíproco de coseno",
@@ -267,6 +335,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="ln(|tan(2·x + 1) + sec(2·x + 1)|) / 3",
         expected_derivative_equivalent_to="2/3*sec(2*x+1)",
         expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_direct_diff_integrate_result="(2·sec(2·x + 1))/3",
+        expected_direct_diff_integrate_required_display=("cos(2·x + 1) ≠ 0",),
         expected_required_display=("cos(2·x + 1) ≠ 0",),
         expected_step_substrings=(
             "Expandir secante como recíproco de coseno",
@@ -287,6 +357,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="ln(|csc(2·x + 1) - cot(2·x + 1)|) / 3",
         expected_derivative_equivalent_to="2/3*csc(2*x+1)",
         expected_derivative_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_direct_diff_integrate_result="(2·csc(2·x + 1))/3",
+        expected_direct_diff_integrate_required_display=("sin(2·x + 1) ≠ 0",),
         expected_required_display=("sin(2·x + 1) ≠ 0",),
         expected_step_substrings=(
             "Expandir cosecante como recíproco de seno",
@@ -306,6 +378,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(exp(2*x+1), x)",
         expected_result="1/2·e^(2·x + 1)",
         expected_derivative_result="e^(2·x + 1)",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=(
             "Usar la regla de exp con derivada interna",
             "Identificar el argumento afín",
@@ -317,10 +390,35 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="exponential",
     ),
     IntegrateCommandMatrixCase(
+        name="linear_exp_by_parts",
+        expr="integrate(x*exp(x), x)",
+        expected_result="(x - 1)·e^x",
+        expected_derivative_result="x·e^x",
+        direct_diff_integrate_from_derivative=True,
+        expected_step_substrings=("Usar integración por partes",),
+        family="by_parts_exp",
+        argument_regime="linear_exp_product",
+        trace_regime="by_parts_exp",
+        presentation_regime="compact_exp_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="linear_exp_affine_slope_by_parts",
+        expr="integrate(x*exp(2*x), x)",
+        expected_result="(1/2·x - 1/4)·e^(2·x)",
+        expected_derivative_result="x·e^(2·x)",
+        direct_diff_integrate_from_derivative=True,
+        expected_step_substrings=("Usar integración por partes",),
+        family="by_parts_exp",
+        argument_regime="linear_product_affine_exp_argument",
+        trace_regime="by_parts_exp_affine_slope",
+        presentation_regime="compact_affine_exp_product",
+    ),
+    IntegrateCommandMatrixCase(
         name="polynomial_exp_derivative_substitution",
         expr="integrate(2*x*exp(x^2), x)",
         expected_result="e^(x^2)",
         expected_derivative_result="2·x·e^(x^2)",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=(
             "Usar la regla de exp(u) -> exp(u)",
             "Identificar u y du",
@@ -337,6 +435,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(2*x*ln(x^2+1)^2, x)",
         expected_result="(x^2 + 1)·(ln(x^2 + 1)^2 - 2·ln(x^2 + 1) + 2)",
         expected_derivative_result="2·x·ln(x^2 + 1)^2",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=(
             "Usar la regla de u'·ln(u)^n por partes",
             "Identificar u y du",
@@ -352,6 +451,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(2*x*log(2,x^2-1)^2, x)",
         expected_result="(x^2 - 1)·(log(2, x^2 - 1)^2 + 2 / ln(2)^2 - 2·log(2, x^2 - 1) / ln(2))",
         expected_derivative_equivalent_to="2*x*log(2,x^2-1)^2",
+        expected_direct_diff_integrate_result="2·x·log(2, x^2 - 1)^2",
+        expected_direct_diff_integrate_required_display=("x < -1 or x > 1",),
         expected_derivative_required_display=("x < -1 or x > 1",),
         expected_required_display=("x < -1 or x > 1",),
         expected_step_substrings=(
@@ -370,6 +471,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/2·ln(|2·x + 1|)",
         expected_derivative_result="1 / (2·x + 1)",
         expected_derivative_required_display=("x ≠ -1/2",),
+        direct_diff_integrate_from_derivative=True,
         expected_required_display=("x ≠ -1/2",),
         expected_step_substrings=(
             "Usar la regla de ln|u| con derivada interna",
@@ -388,6 +490,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="-1/2·ln(|1 - 2·x|)",
         expected_derivative_result="1 / (1 - 2·x)",
         expected_derivative_required_display=("x ≠ 1/2",),
+        direct_diff_integrate_from_derivative=True,
         expected_required_display=("x ≠ 1/2",),
         expected_step_substrings=(
             "Usar la regla de ln|u| con derivada interna",
@@ -406,6 +509,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="ln(|1 - 2·x|)",
         expected_derivative_result="-2 / (1 - 2·x)",
         expected_derivative_required_display=("x ≠ 1/2",),
+        direct_diff_integrate_from_derivative=True,
         expected_required_display=("x ≠ 1/2",),
         expected_step_substrings=(
             "Usar la regla de ln|u| con derivada interna",
@@ -423,6 +527,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate((2*x+2)/(x^2+2*x+2), x)",
         expected_result="ln(x^2 + 2·x + 2)",
         expected_derivative_result="(2·x + 2) / (x^2 + 2·x + 2)",
+        expected_direct_diff_integrate_result="(2·x + 2) / (x^2 + 2·x + 2)",
         expected_step_substrings=(
             "Usar la regla de u'/u -> ln|u|",
             "Identificar u y du",
@@ -439,6 +544,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate((2*x-1)/(x^2-x+1), x)",
         expected_result="ln(x^2 + 1 - x)",
         expected_derivative_result="(2·x - 1) / (x^2 + 1 - x)",
+        expected_direct_diff_integrate_result="(2·x - 1) / (x^2 + 1 - x)",
         expected_step_substrings=(
             "Usar la regla de u'/u -> ln|u|",
             "Identificar u y du",
@@ -831,6 +937,12 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(1/(sin(x)*cos(x)*ln(tan(x))), x)",
         expected_result="ln(|ln(tan(x))|)",
         expected_derivative_equivalent_to="1/(sin(x)*cos(x)*ln(tan(x)))",
+        expected_direct_diff_integrate_result="1 / (sin(x)·cos(x)·ln(tan(x)))",
+        expected_direct_diff_integrate_required_display=(
+            "cos(x) ≠ 0",
+            "tan(x) - 1 ≠ 0",
+            "tan(x) > 0",
+        ),
         expected_derivative_required_display=(
             "cos(x) ≠ 0",
             "tan(x) - 1 ≠ 0",
@@ -982,6 +1094,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(1/(x^2+1), x)",
         expected_result="arctan(x)",
         expected_derivative_result="1 / (x^2 + 1)",
+        expected_direct_diff_integrate_result="1 / (x^2 + 1)",
         expected_step_substrings=("Usar la regla de arctan con derivada interna",),
         family="inverse_trig_table",
         argument_regime="rational_expression",
@@ -993,6 +1106,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(1/((2*x+3)^2+4), x)",
         expected_result="1/4·arctan((2·x + 3) / 2)",
         expected_derivative_result="1 / (4·x^2 + 12·x + 13)",
+        expected_direct_diff_integrate_result="1 / ((2·x + 3)^2 + 4)",
         expected_step_substrings=(
             "Usar la regla de arctan con derivada interna",
             "Identificar el argumento afín",
@@ -1011,6 +1125,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_equivalent_to="1/((a*x+b)^2+4)",
         expected_required_display=("a ≠ 0",),
         expected_derivative_required_display=("a ≠ 0",),
+        expected_direct_diff_integrate_result="1 / ((a·x + b)^2 + 4)",
+        expected_direct_diff_integrate_required_display=("a ≠ 0",),
         expected_step_substrings=("Calcular la integral",),
         family="inverse_trig_table",
         argument_regime="symbolic_affine_expanded_square_radius_positive_quadratic",
@@ -1025,6 +1141,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_equivalent_to="1/((a*x+b)^2+2)",
         expected_required_display=("a ≠ 0",),
         expected_derivative_required_display=("a ≠ 0",),
+        expected_direct_diff_integrate_result="1 / ((a·x + b)^2 + 2)",
+        expected_direct_diff_integrate_required_display=("a ≠ 0",),
         expected_step_substrings=("Calcular la integral",),
         family="inverse_trig_table",
         argument_regime="symbolic_affine_positive_rational_radius_positive_quadratic",
@@ -1033,10 +1151,112 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="symbolic_affine_positive_rational_radius_arctan",
     ),
     IntegrateCommandMatrixCase(
+        name="inverse_trig_named_positive_constant_radius_positive_quadratic_table",
+        expr="integrate(1/(x^2+phi), x)",
+        expected_result="arctan(x·phi^(-1/2)) / sqrt(phi)",
+        expected_derivative_equivalent_to="1/(x^2+phi)",
+        expected_direct_diff_integrate_result="1 / (x^2 + phi)",
+        expected_step_substrings=(
+            "Usar la regla de arctan con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="inverse_trig_table",
+        argument_regime="named_positive_constant_radius_positive_quadratic",
+        domain_regime="structurally_positive_denominator",
+        trace_regime="arctan_named_positive_constant_radius_positive_quadratic_table",
+        presentation_regime="named_positive_constant_radius_arctan",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
+        expr="integrate(1/((2*x+3)^2+phi), x)",
+        expected_result="arctan(phi^(-1/2)·(2·x + 3)) / (2·sqrt(phi))",
+        expected_derivative_equivalent_to="1/((2*x+3)^2+phi)",
+        expected_direct_diff_integrate_result="1 / ((2·x + 3)^2 + phi)",
+        expected_step_substrings=(
+            "Usar la regla de arctan con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="inverse_trig_table",
+        argument_regime="numeric_affine_named_positive_constant_radius_positive_quadratic",
+        domain_regime="structurally_positive_denominator",
+        trace_regime="arctan_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
+        presentation_regime="numeric_affine_named_positive_constant_radius_arctan",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_expanded_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
+        expr="integrate(1/(4*x^2+12*x+9+phi), x)",
+        expected_result="arctan(phi^(-1/2)·(2·x + 3)) / (2·sqrt(phi))",
+        expected_derivative_equivalent_to="1/(4*x^2+12*x+9+phi)",
+        expected_direct_diff_integrate_result="1 / (4·x^2 + 12·x + 9 + phi)",
+        expected_step_substrings=(
+            "Usar la regla de arctan con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="inverse_trig_table",
+        argument_regime="expanded_numeric_affine_named_positive_constant_radius_positive_quadratic",
+        domain_regime="structurally_positive_denominator",
+        trace_regime="arctan_expanded_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
+        presentation_regime="expanded_numeric_affine_named_positive_constant_radius_arctan",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_positive_quadratic_linear_numerator_expanded_named_positive_radius_decomposition",
+        expr="integrate((2*x+6)/(4*x^2+12*x+9+phi), x)",
+        expected_result="1/4·ln(4·x^2 + 12·x + 9 + phi) + (atan(phi^(-1/2)·(2·x + 3))·3)/(2·sqrt(phi))",
+        expected_derivative_equivalent_to="(2*x+6)/(4*x^2+12*x+9+phi)",
+        expected_direct_diff_integrate_result="(2·x + 6) / (4·x^2 + 12·x + 9 + phi)",
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_positive_quadratic_linear_numerator",
+        argument_regime="expanded_numeric_affine_named_positive_constant_radius_linear_numerator",
+        domain_regime="structurally_positive_denominator",
+        trace_regime="positive_quadratic_linear_numerator_named_positive_radius_decomposition",
+        presentation_regime="positive_log_plus_named_positive_radius_arctan",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_symbolic_square_radius_positive_quadratic_table",
+        expr="integrate(1/(x^2+a^2), x)",
+        expected_result="arctan(x / a) / a",
+        expected_derivative_equivalent_to="1/(x^2+a^2)",
+        expected_required_display=("a ≠ 0",),
+        expected_derivative_required_display=("a ≠ 0",),
+        expected_direct_diff_integrate_result="1 / (a^2 + x^2)",
+        expected_direct_diff_integrate_required_display=("a ≠ 0",),
+        expected_step_substrings=("Calcular la integral",),
+        family="inverse_trig_table",
+        argument_regime="symbolic_square_radius_positive_quadratic",
+        domain_regime="symbolic_radius_nonzero_required",
+        trace_regime="arctan_symbolic_square_radius_positive_quadratic_table",
+        presentation_regime="symbolic_square_radius_arctan",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_symbolic_shifted_square_radius_positive_quadratic_table",
+        expr="integrate(1/((x+b)^2+a^2), x)",
+        expected_result="arctan((b + x) / a) / a",
+        expected_required_display=("a ≠ 0",),
+        expected_direct_diff_integrate_result="1 / ((b + x)^2 + a^2)",
+        expected_direct_diff_integrate_required_display=("a ≠ 0",),
+        expected_step_substrings=(
+            "Usar la regla de arctan con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="inverse_trig_table",
+        argument_regime="symbolic_shifted_square_radius_positive_quadratic",
+        domain_regime="symbolic_radius_nonzero_required",
+        trace_regime="arctan_symbolic_shifted_square_radius_positive_quadratic_table",
+        presentation_regime="symbolic_shifted_square_radius_arctan",
+    ),
+    IntegrateCommandMatrixCase(
         name="rational_positive_quadratic_square_reduction",
         expr="integrate(1/(x^2+1)^2, x)",
         expected_result="1/2·arctan(x) + x / (2·(x^2 + 1))",
         expected_derivative_result="1 / (x^2 + 1)^2",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=(
             "Reducir el cuadrático positivo al cuadrado",
             "Integrar la parte arctan y la parte racional",
@@ -1054,6 +1274,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="1 / ((x + 1)·sqrt(x))",
         expected_derivative_required_display=("x > 0",),
         expected_required_display=("x > 0",),
+        expected_direct_diff_integrate_result="1 / (sqrt(x)·(x + 1))",
+        expected_direct_diff_integrate_required_display=("x > 0",),
         expected_step_substrings=(
             "Usar la regla de u'/(1+u^2) -> arctan(u)",
             "Identificar u y du",
@@ -1073,6 +1295,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="1 / (sqrt(x)·(4·x + 1))",
         expected_derivative_required_display=("x > 0",),
         expected_required_display=("x > 0",),
+        expected_direct_diff_integrate_result="1 / (sqrt(x)·(4·x + 1))",
+        expected_direct_diff_integrate_required_display=("x > 0",),
         expected_step_substrings=(
             "Usar la regla de u'/(1+u^2) -> arctan(u)",
             "Identificar u y du",
@@ -1092,6 +1316,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="(x^(1/2)·2)/(2·(x·a^2 + x^2))",
         expected_derivative_required_display=("a ≠ 0", "x > 0"),
         expected_required_display=("a ≠ 0", "x > 0"),
+        expected_direct_diff_integrate_result="1 / (sqrt(x)·(a^2 + x))",
+        expected_direct_diff_integrate_required_display=("a ≠ 0", "x > 0"),
         expected_step_substrings=(
             "Usar la regla de u'/(1+u^2) -> arctan(u)",
             "Identificar u y du",
@@ -1109,6 +1335,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="2·a^2 / ((2·a^4 + 8·x·a^2)·sqrt(x))",
         expected_derivative_required_display=("a ≠ 0", "x > 0"),
         expected_required_display=("a ≠ 0", "x > 0"),
+        expected_direct_diff_integrate_result="1 / (sqrt(x)·(a^2 + 4·x))",
+        expected_direct_diff_integrate_required_display=("a ≠ 0", "x > 0"),
         expected_step_substrings=(
             "Usar la regla de u'/(1+u^2) -> arctan(u)",
             "Identificar u y du",
@@ -1128,6 +1356,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="2 / ((2·x·a^2 + 2)·sqrt(x))",
         expected_derivative_required_display=("a ≠ 0", "x > 0"),
         expected_required_display=("a ≠ 0", "x > 0"),
+        expected_direct_diff_integrate_result="1 / (sqrt(x)·(x·a^2 + 1))",
+        expected_direct_diff_integrate_required_display=("a ≠ 0", "x > 0"),
         expected_step_substrings=(
             "Usar la regla de u'/(1+u^2) -> arctan(u)",
             "Identificar u y du",
@@ -1147,6 +1377,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="1 / (sqrt(x + 1)·(4·x + 5))",
         expected_derivative_required_display=("x > -1",),
         expected_required_display=("x > -1",),
+        expected_direct_diff_integrate_result="1 / (sqrt(x + 1)·(4·x + 5))",
+        expected_direct_diff_integrate_required_display=("x > -1",),
         expected_step_substrings=(
             "Usar la regla de u'/(1+u^2) -> arctan(u)",
             "Identificar u y du",
@@ -1166,6 +1398,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="1 / (1 - x^2)",
         expected_derivative_required_display=("-1 < x < 1",),
         expected_required_display=("-1 < x < 1",),
+        expected_direct_diff_integrate_result="1 / (1 - x^2)",
+        expected_direct_diff_integrate_required_display=("-1 < x < 1",),
         expected_step_substrings=("Usar la regla de atanh con derivada interna",),
         family="inverse_hyperbolic_rational_table",
         argument_regime="bounded_rational_expression",
@@ -1179,6 +1413,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/2·ln(|(x - 1) / (x + 1)|)",
         expected_derivative_result="1 / (x^2 - 1)",
         expected_derivative_required_display=("x ≠ 1", "x ≠ -1"),
+        expected_direct_diff_integrate_result="1 / (x^2 - 1)",
+        expected_direct_diff_integrate_required_display=("x ≠ -1", "x ≠ 1"),
         expected_required_display=("x ≠ 1", "x ≠ -1"),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
@@ -1196,6 +1432,12 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/2·ln(|x - 1|) + 1/2·ln(|x + 1|) - ln(|x|)",
         expected_derivative_result="1 / (x·(x^2 - 1))",
         expected_derivative_required_display=("x ≠ 1", "x ≠ -1", "x ≠ 0"),
+        expected_direct_diff_integrate_result="1 / (x·(x + 1)·(x - 1))",
+        expected_direct_diff_integrate_required_display=(
+            "x ≠ -1",
+            "x ≠ 0",
+            "x ≠ 1",
+        ),
         expected_required_display=("x ≠ -1", "x ≠ 1", "x ≠ 0"),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
@@ -1213,6 +1455,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="ln(|x / (x + 1)|) + 1 / (x + 1)",
         expected_derivative_result="1 / (x^3 + 2·x^2 + x)",
         expected_derivative_required_display=("x ≠ 0", "x ≠ -1"),
+        expected_direct_diff_integrate_result="1 / (x·(x + 1)^2)",
+        expected_direct_diff_integrate_required_display=("x ≠ -1", "x ≠ 0"),
         expected_required_display=("x ≠ 0", "x ≠ -1"),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
@@ -1231,6 +1475,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_equivalent_to="1/(x^2-1)^2",
         expected_derivative_required_display=("x ≠ -1", "x ≠ 1"),
         expected_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_direct_diff_integrate_result="1 / (x^2 - 1)^2",
+        expected_direct_diff_integrate_required_display=("x ≠ -1", "x ≠ 1"),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
             "Integrar los términos simples",
@@ -1247,6 +1493,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/4·ln(|x - 1|) - 1/2·arctan(x) - 1/4·ln(|x + 1|)",
         expected_derivative_result="1 / (2·(x^2 - 1)) - 1 / (2·(x^2 + 1))",
         expected_derivative_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_direct_diff_integrate_result="1 / (x^4 - 1)",
+        expected_direct_diff_integrate_required_display=("x ≠ -1", "x ≠ 1"),
         expected_required_display=("x ≠ -1", "x ≠ 1"),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
@@ -1264,6 +1512,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/4·ln(x^2 + 1) - 1/2·ln(|x - 1|) - 1 / (2·(x - 1))",
         expected_derivative_result="1 / (x^4 + 2·x^2 + 1 - 2·x^3 - 2·x)",
         expected_derivative_required_display=("x ≠ 1",),
+        expected_direct_diff_integrate_result="1 / ((x - 1)^2·(x^2 + 1))",
+        expected_direct_diff_integrate_required_display=("x ≠ 1",),
         expected_required_display=("x ≠ 1",),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
@@ -1281,6 +1531,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="-1 / x - arctan(x)",
         expected_derivative_equivalent_to="1/(x^2*(x^2+1))",
         expected_derivative_required_display=("x ≠ 0",),
+        expected_direct_diff_integrate_result="1 / (x^2·(x^2 + 1))",
+        expected_direct_diff_integrate_required_display=("x ≠ 0",),
         expected_required_display=("x ≠ 0",),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
@@ -1298,6 +1550,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="-1/8·arctan(x / 2) - 1 / (4·x)",
         expected_derivative_equivalent_to="1/(x^2*(x^2+4))",
         expected_derivative_required_display=("x ≠ 0",),
+        expected_direct_diff_integrate_result="1 / (x^2·(x^2 + 4))",
+        expected_direct_diff_integrate_required_display=("x ≠ 0",),
         expected_required_display=("x ≠ 0",),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
@@ -1315,6 +1569,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="ln(|x - 1|) + x - ln(|x + 1|)",
         expected_derivative_result="2 / (x^2 - 1) + 1",
         expected_derivative_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_direct_diff_integrate_result="(x^2 + 1) / (x^2 - 1)",
+        expected_direct_diff_integrate_required_display=("x ≠ -1", "x ≠ 1"),
         expected_required_display=("x ≠ -1", "x ≠ 1"),
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
@@ -1331,6 +1587,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate((x^2+1)/(x^2+2*x+2), x)",
         expected_result="arctan(x + 1) + x - ln(x^2 + 2·x + 2)",
         expected_derivative_result="(x^2 + 1) / (x^2 + 2·x + 2)",
+        direct_diff_integrate_from_derivative=True,
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
             "Integrar los términos simples",
@@ -1346,6 +1603,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate((x^2+1)/(-x^2-2*x-2), x)",
         expected_result="ln(x^2 + 2·x + 2) - arctan(x + 1) - x",
         expected_derivative_equivalent_to="(x^2+1)/(-x^2-2*x-2)",
+        expected_direct_diff_integrate_result="(-x^2 - 1) / (x^2 + 2·x + 2)",
         expected_step_substrings=(
             "Descomponer en fracciones parciales",
             "Integrar los términos simples",
@@ -1363,6 +1621,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="2 / (3 - 4·x^2 - 4·x)",
         expected_derivative_required_display=("-3/2 < x < 1/2",),
         expected_required_display=("-3/2 < x < 1/2",),
+        expected_direct_diff_integrate_result="2 / (4 - (2·x + 1)^2)",
+        expected_direct_diff_integrate_required_display=("-3/2 < x < 1/2",),
         expected_step_substrings=(
             "Usar la regla de atanh con derivada interna",
             "Identificar el argumento afín",
@@ -1381,6 +1641,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="1 / sqrt(1 - x^2)",
         expected_derivative_required_display=("-1 < x < 1",),
         expected_required_display=("-1 < x < 1",),
+        expected_direct_diff_integrate_result="1 / sqrt(1 - x^2)",
+        expected_direct_diff_integrate_required_display=("-1 < x < 1",),
         expected_step_substrings=("Usar la regla de arcsin con derivada interna",),
         family="inverse_sqrt_table",
         argument_regime="bounded_variable_radical",
@@ -1407,33 +1669,140 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="residual_reciprocal_sqrt_power",
     ),
     IntegrateCommandMatrixCase(
-        name="inverse_sqrt_symbolic_radius_residual_domain",
+        name="inverse_sqrt_symbolic_radius_arcsin_domain",
         expr="integrate(1/sqrt(a^2-x^2), x)",
-        expected_result="integrate((a^2 - x^2)^(-1/2), x)",
-        expected_required_display=("a^2 - x^2 > 0",),
+        expected_result="arcsin(x / sqrt(a^2))",
+        expected_required_display=("a^2 - x^2 > 0", "a ≠ 0"),
+        expected_direct_diff_integrate_result="1 / sqrt(a^2 - x^2)",
+        expected_direct_diff_integrate_required_display=("a^2 - x^2 > 0",),
         expected_step_substrings=(
-            "Reescribir la raíz como potencia fraccionaria",
-            "Canonicalize Reciprocal Sqrt",
-            "Conservar integral residual",
+            "Usar la regla de arcsin con derivada interna",
         ),
-        family="inverse_sqrt_symbolic_parameter_residual",
-        argument_regime="symbolic_interval_radical_residual",
-        domain_regime="symbolic_radical_interval_residual",
-        outcome="residual",
-        residual_cause="symbolic_parameter_condition_required",
-        trace_regime="residual_presimplification_with_domain",
-        presentation_regime="residual_reciprocal_sqrt_power",
+        family="inverse_sqrt_symbolic_radius",
+        argument_regime="symbolic_interval_radical",
+        domain_regime="symbolic_radical_interval_verified",
+        trace_regime="inverse_sqrt_symbolic_radius_table",
+        presentation_regime="symbolic_radius_arcsin",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_sqrt_symbolic_radius_shifted_arcsin_domain",
+        expr="integrate(1/sqrt(a^2-(x+b)^2), x)",
+        expected_result="arcsin((b + x) / sqrt(a^2))",
+        expected_required_display=(
+            "a^2 - b^2 - x^2 - 2·b·x > 0",
+            "a ≠ 0",
+        ),
+        expected_direct_diff_integrate_result="1 / sqrt(a^2 - (b + x)^2)",
+        expected_direct_diff_integrate_required_display=(
+            "a^2 - b^2 - x^2 - 2·b·x > 0",
+        ),
+        expected_step_substrings=(
+            "Usar la regla de arcsin con derivada interna",
+            "Identificar el argumento afín",
+        ),
+        family="inverse_sqrt_symbolic_radius",
+        argument_regime="symbolic_shifted_interval_radical",
+        domain_regime="symbolic_shifted_radical_interval_verified",
+        trace_regime="inverse_sqrt_symbolic_radius_shifted_table",
+        presentation_regime="symbolic_shifted_radius_arcsin",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_sqrt_symbolic_slope_shifted_arcsin_domain",
+        expr="integrate(1/sqrt(a^2-(m*x+b)^2), x)",
+        expected_result="arcsin((m·x + b) / sqrt(a^2)) / m",
+        expected_required_display=(
+            "a^2 - m^2·x^2 - 2·b·m·x - b^2 > 0",
+            "m ≠ 0",
+            "a ≠ 0",
+        ),
+        expected_direct_diff_integrate_result="1 / sqrt(a^2 - (m·x + b)^2)",
+        expected_direct_diff_integrate_required_display=(
+            "a^2 - m^2·x^2 - 2·b·m·x - b^2 > 0",
+            "m ≠ 0",
+        ),
+        expected_step_substrings=(
+            "Usar la regla de arcsin con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="inverse_sqrt_symbolic_radius",
+        argument_regime="symbolic_slope_shifted_interval_radical",
+        domain_regime="symbolic_slope_shifted_radical_interval_verified",
+        trace_regime="inverse_sqrt_symbolic_slope_shifted_table",
+        presentation_regime="symbolic_slope_shifted_radius_arcsin",
     ),
     IntegrateCommandMatrixCase(
         name="inverse_sqrt_direct_asinh_unconditional",
         expr="integrate(1/sqrt(x^2+1), x)",
         expected_result="asinh(x)",
         expected_derivative_result="1 / sqrt(x^2 + 1)",
+        expected_direct_diff_integrate_result="1 / sqrt(x^2 + 1)",
         expected_step_substrings=("Usar la regla de asinh con derivada interna",),
         family="inverse_hyperbolic_sqrt_table",
         argument_regime="unbounded_variable_radical",
         trace_regime="inverse_sqrt_hyperbolic_direct_table",
         presentation_regime="inverse_hyperbolic",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_hyperbolic_sqrt_symbolic_radius_table",
+        expr="integrate(1/sqrt(x^2+a^2), x)",
+        expected_result="asinh(x / sqrt(a^2))",
+        expected_required_display=("a ≠ 0",),
+        expected_direct_diff_integrate_result="1 / sqrt(a^2 + x^2)",
+        expected_direct_diff_integrate_required_display=("a^2 + x^2 > 0",),
+        expected_step_substrings=(
+            "Usar la regla de asinh con derivada interna",
+            "Identificar el argumento afín",
+        ),
+        family="inverse_hyperbolic_sqrt_symbolic_radius",
+        argument_regime="symbolic_positive_square_radius",
+        domain_regime="symbolic_radius_nonzero_required",
+        trace_regime="asinh_symbolic_radius_table",
+        presentation_regime="symbolic_radius_asinh",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_hyperbolic_sqrt_symbolic_shifted_radius_table",
+        expr="integrate(1/sqrt((x+b)^2+a^2), x)",
+        expected_result="asinh((b + x) / sqrt(a^2))",
+        expected_required_display=("a^2 + b^2 + x^2 + 2·b·x > 0", "a ≠ 0"),
+        expected_direct_diff_integrate_result="1 / sqrt((b + x)^2 + a^2)",
+        expected_direct_diff_integrate_required_display=(
+            "a^2 + b^2 + x^2 + 2·b·x > 0",
+        ),
+        expected_step_substrings=(
+            "Usar la regla de asinh con derivada interna",
+            "Identificar el argumento afín",
+        ),
+        family="inverse_hyperbolic_sqrt_symbolic_radius",
+        argument_regime="symbolic_shifted_positive_square_radius",
+        domain_regime="symbolic_positive_square_radius_verified",
+        trace_regime="asinh_symbolic_shifted_radius_table",
+        presentation_regime="symbolic_shifted_radius_asinh",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_hyperbolic_sqrt_symbolic_slope_shifted_radius_table",
+        expr="integrate(1/sqrt((m*x+b)^2+a^2), x)",
+        expected_result="asinh((m·x + b) / sqrt(a^2)) / m",
+        expected_required_display=(
+            "m ≠ 0",
+            "m^2·x^2 + 2·b·m·x + a^2 + b^2 > 0",
+            "a ≠ 0",
+        ),
+        expected_direct_diff_integrate_result="1 / sqrt((m·x + b)^2 + a^2)",
+        expected_direct_diff_integrate_required_display=(
+            "m ≠ 0",
+            "m^2·x^2 + 2·b·m·x + a^2 + b^2 > 0",
+        ),
+        expected_step_substrings=(
+            "Usar la regla de asinh con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="inverse_hyperbolic_sqrt_symbolic_radius",
+        argument_regime="symbolic_slope_shifted_positive_square_radius",
+        domain_regime="symbolic_slope_positive_square_radius_verified",
+        trace_regime="asinh_symbolic_slope_shifted_radius_table",
+        presentation_regime="symbolic_slope_shifted_radius_asinh",
     ),
     IntegrateCommandMatrixCase(
         name="affine_inverse_sqrt_arcsin_domain",
@@ -1442,6 +1811,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="1 / sqrt(3 - x^2 - 2·x)",
         expected_derivative_required_display=("-3 < x < 1",),
         expected_required_display=("-3 < x < 1",),
+        expected_direct_diff_integrate_result="1 / sqrt(4 - (x + 1)^2)",
+        expected_direct_diff_integrate_required_display=("-3 < x < 1",),
         expected_step_substrings=(
             "Usar la regla de arcsin con derivada interna",
             "Identificar el argumento afín",
@@ -1457,6 +1828,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(2*x/sqrt(x^2+1), x)",
         expected_result="2·sqrt(x^2 + 1)",
         expected_derivative_result="2·x / sqrt(x^2 + 1)",
+        expected_direct_diff_integrate_result="2·x / sqrt(x^2 + 1)",
         expected_step_substrings=(
             "Usar la regla de u'/sqrt(u) -> 2*sqrt(u)",
             "Identificar u y du",
@@ -1473,6 +1845,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(1/cosh(2*x + 1)^2, x)",
         expected_result="1/2·tanh(2·x + 1)",
         expected_derivative_result="1 / cosh(2·x + 1)^2",
+        expected_direct_diff_integrate_result="1 / cosh(2·x + 1)^2",
         expected_step_substrings=(
             "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
             "Identificar u y du",
@@ -1490,6 +1863,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="1 / sinh(2·x + 1)^2",
         expected_derivative_required_display=("sinh(2·x + 1) ≠ 0",),
         expected_required_display=("sinh(2·x + 1) ≠ 0",),
+        expected_direct_diff_integrate_result="1 / sinh(2·x + 1)^2",
+        expected_direct_diff_integrate_required_display=("sinh(2·x + 1) ≠ 0",),
         expected_step_substrings=(
             "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
             "Identificar u y du",
@@ -1502,10 +1877,31 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="reciprocal_hyperbolic_tangent",
     ),
     IntegrateCommandMatrixCase(
+        name="negative_affine_hyperbolic_sine_reciprocal_square_substitution",
+        expr="integrate(1/sinh(-2*x + 1)^2, x)",
+        expected_result="1 / (2·tanh(1 - 2·x))",
+        expected_derivative_result="1 / sinh(1 - 2·x)^2",
+        expected_derivative_required_display=("sinh(2·x - 1) ≠ 0",),
+        expected_required_display=("sinh(2·x - 1) ≠ 0",),
+        expected_direct_diff_integrate_result="1 / sinh(1 - 2·x)^2",
+        expected_direct_diff_integrate_required_display=("sinh(2·x - 1) ≠ 0",),
+        expected_step_substrings=(
+            "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+        ),
+        family="hyperbolic_reciprocal_square",
+        argument_regime="negative_affine_hyperbolic",
+        domain_regime="hyperbolic_sine_pole_required",
+        trace_regime="negative_affine_hyperbolic_sine_reciprocal_square_substitution",
+        presentation_regime="negative_affine_reciprocal_hyperbolic_tangent",
+    ),
+    IntegrateCommandMatrixCase(
         name="symbolic_affine_exact_hyperbolic_cosh_reciprocal_square_substitution",
         expr="integrate(a/cosh(a*x+b)^2, x)",
         expected_result="tanh(a·x + b)",
         expected_derivative_result="a / cosh(a·x + b)^2",
+        expected_direct_diff_integrate_result="a / cosh(a·x + b)^2",
         expected_step_substrings=(
             "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
             "Identificar u y du",
@@ -1523,6 +1919,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="a / sinh(a·x + b)^2",
         expected_derivative_required_display=("sinh(a·x + b) ≠ 0",),
         expected_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_direct_diff_integrate_result="a / sinh(a·x + b)^2",
+        expected_direct_diff_integrate_required_display=("sinh(a·x + b) ≠ 0",),
         expected_step_substrings=(
             "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
             "Identificar u y du",
@@ -1539,6 +1937,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(2*k*x/cosh(x^2+b)^2, x)",
         expected_result="k·tanh(x^2 + b)",
         expected_derivative_equivalent_to="2*k*x/cosh(x^2+b)^2",
+        expected_direct_diff_integrate_equivalent_to="2*k*x/cosh(x^2+b)^2",
         expected_step_substrings=(
             "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
             "Identificar u y du",
@@ -1557,6 +1956,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="(x·k·2)/sinh(x^2 + b)^2",
         expected_derivative_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_required_display=("sinh(x^2 + b) ≠ 0",),
+        expected_direct_diff_integrate_equivalent_to="2*k*x/sinh(x^2+b)^2",
+        expected_direct_diff_integrate_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_step_substrings=(
             "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
             "Identificar u y du",
@@ -1574,6 +1975,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(1/cosh(2*x+1)^4, x)",
         expected_result="1/6·(3·tanh(2·x + 1) - tanh(2·x + 1)^3)",
         expected_derivative_result="1 / cosh(2·x + 1)^4",
+        expected_direct_diff_integrate_result="1 / cosh(2·x + 1)^4",
         expected_step_substrings=(
             "Usar la regla de 1/cosh(u)^4 -> tanh(u) - tanh(u)^3/3",
             "Identificar u y du",
@@ -1590,6 +1992,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(2*k*x/cosh(x^2+b)^4, x)",
         expected_result="1/3·(3·k·tanh(x^2 + b) - k·tanh(x^2 + b)^3)",
         expected_derivative_result="(x·k·6)/(3·cosh(x^2 + b)^4)",
+        expected_direct_diff_integrate_result="2·k·x / cosh(x^2 + b)^4",
         expected_step_substrings=(
             "Usar la regla de 1/cosh(u)^4 -> tanh(u) - tanh(u)^3/3",
             "Identificar u y du",
@@ -1608,6 +2011,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/2 / tanh(2·x + 1) - 1/6 / tanh(2·x + 1)^3",
         expected_derivative_result="1 / (cosh(2·x + 1)^2·tanh(2·x + 1)^4) - 1 / sinh(2·x + 1)^2",
         expected_derivative_required_display=("sinh(2·x + 1) ≠ 0",),
+        expected_direct_diff_integrate_result="1 / sinh(2·x + 1)^4",
+        expected_direct_diff_integrate_required_display=("sinh(2·x + 1) ≠ 0",),
         expected_required_display=("sinh(2·x + 1) ≠ 0",),
         expected_step_substrings=(
             "Usar la regla de 1/sinh(u)^4 -> 1/tanh(u) - 1/(3*tanh(u)^3)",
@@ -1630,6 +2035,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
             "- k·2·x / (cosh(x^2 + b)^2·tanh(x^2 + b)^2)"
         ),
         expected_derivative_required_display=("sinh(x^2 + b) ≠ 0",),
+        expected_direct_diff_integrate_result="2·k·x / sinh(x^2 + b)^4",
+        expected_direct_diff_integrate_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_step_substrings=(
             "Usar la regla de 1/sinh(u)^4 -> 1/tanh(u) - 1/(3*tanh(u)^3)",
@@ -1649,6 +2056,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(a*sinh(a*x+b)/cosh(a*x+b)^2, x)",
         expected_result="-1 / cosh(a·x + b)",
         expected_derivative_result="a·sinh(a·x + b) / cosh(a·x + b)^2",
+        expected_direct_diff_integrate_result="a·sinh(a·x + b) / cosh(a·x + b)^2",
         expected_step_substrings=(
             "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
             "Identificar u y du",
@@ -1666,6 +2074,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="a·cosh(a·x + b) / sinh(a·x + b)^2",
         expected_derivative_required_display=("sinh(a·x + b) ≠ 0",),
         expected_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_direct_diff_integrate_result="a·cosh(a·x + b) / sinh(a·x + b)^2",
+        expected_direct_diff_integrate_required_display=("sinh(a·x + b) ≠ 0",),
         expected_step_substrings=(
             "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
             "Identificar u y du",
@@ -1682,6 +2092,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(k*a*sinh(a*x+b)/cosh(a*x+b)^2, x)",
         expected_result="-k / cosh(a·x + b)",
         expected_derivative_result="a·k·sinh(a·x + b) / cosh(a·x + b)^2",
+        expected_direct_diff_integrate_result="a·k·sinh(a·x + b) / cosh(a·x + b)^2",
         expected_step_substrings=(
             "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
             "Identificar u y du",
@@ -1699,6 +2110,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_result="a·k·cosh(a·x + b) / sinh(a·x + b)^2",
         expected_derivative_required_display=("sinh(a·x + b) ≠ 0",),
         expected_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_direct_diff_integrate_result="a·k·cosh(a·x + b) / sinh(a·x + b)^2",
+        expected_direct_diff_integrate_required_display=("sinh(a·x + b) ≠ 0",),
         expected_step_substrings=(
             "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
             "Identificar u y du",
@@ -1715,6 +2128,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(2*x*sinh(x^2+b)/cosh(x^2+b)^2, x)",
         expected_result="-1 / cosh(x^2 + b)",
         expected_derivative_equivalent_to="2*x*sinh(x^2+b)/cosh(x^2+b)^2",
+        expected_direct_diff_integrate_equivalent_to="2*x*sinh(x^2+b)/cosh(x^2+b)^2",
         expected_step_substrings=(
             "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
             "Identificar u y du",
@@ -1730,6 +2144,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(2*k*x*sinh(x^2+b)/cosh(x^2+b)^2, x)",
         expected_result="-k / cosh(x^2 + b)",
         expected_derivative_equivalent_to="2*k*x*sinh(x^2+b)/cosh(x^2+b)^2",
+        expected_direct_diff_integrate_equivalent_to="2*k*x*sinh(x^2+b)/cosh(x^2+b)^2",
         expected_step_substrings=(
             "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
             "Identificar u y du",
@@ -1748,6 +2163,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_equivalent_to="2*k*x*cosh(x^2+b)/sinh(x^2+b)^2",
         expected_derivative_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_required_display=("sinh(x^2 + b) ≠ 0",),
+        expected_direct_diff_integrate_equivalent_to="2*k*x*cosh(x^2+b)/sinh(x^2+b)^2",
+        expected_direct_diff_integrate_required_display=("sinh(x^2 + b) ≠ 0",),
         expected_step_substrings=(
             "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
             "Identificar u y du",
@@ -1765,6 +2182,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(x*ln(x), x)",
         expected_result="1/4·x^2·(2·ln(x) - 1)",
         expected_derivative_result="x·ln(x)",
+        expected_direct_diff_integrate_result="x·ln(x)",
+        expected_direct_diff_integrate_required_display=("x > 0",),
         expected_derivative_required_display=("x > 0",),
         expected_required_display=("x > 0",),
         expected_step_substrings=(
@@ -1784,6 +2203,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate((2*x+1)*ln(2*x+1), x)",
         expected_result="1/4·((2·x + 1)^2·ln(2·x + 1) - 2·x^2 - 2·x)",
         expected_derivative_result="ln(2·x + 1)·(2·x + 1)",
+        expected_direct_diff_integrate_result="ln(2·x + 1)·(2·x + 1)",
+        expected_direct_diff_integrate_required_display=("x > -1/2",),
         expected_derivative_required_display=("x > -1/2",),
         expected_required_display=("x > -1/2",),
         expected_step_substrings=(
@@ -1803,6 +2224,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(sec(2*x+1)*tan(2*x+1), x)",
         expected_result="sec(2·x + 1) / 2",
         expected_derivative_equivalent_to="sec(2*x+1)*tan(2*x+1)",
+        expected_direct_diff_integrate_result="tan(2·x + 1)·sec(2·x + 1)",
+        expected_direct_diff_integrate_required_display=("cos(2·x + 1) ≠ 0",),
         expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
         expected_required_display=("cos(2·x + 1) ≠ 0",),
         expected_step_substrings=(
@@ -1823,6 +2246,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(csc(2*x+1)*cot(2*x+1), x)",
         expected_result="-csc(2·x + 1) / 2",
         expected_derivative_equivalent_to="csc(2*x+1)*cot(2*x+1)",
+        expected_direct_diff_integrate_result="csc(2·x + 1)·cot(2·x + 1)",
+        expected_direct_diff_integrate_required_display=("sin(2·x + 1) ≠ 0",),
         expected_derivative_required_display=("sin(2·x + 1) ≠ 0",),
         expected_required_display=("sin(2·x + 1) ≠ 0",),
         expected_step_substrings=(
@@ -1844,6 +2269,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(sec(1-2*x)*tan(1-2*x), x)",
         expected_result="-sec(1 - 2·x) / 2",
         expected_derivative_equivalent_to="sec(1-2*x)*tan(1-2*x)",
+        expected_direct_diff_integrate_result="tan(1 - 2·x)·sec(1 - 2·x)",
+        expected_direct_diff_integrate_required_display=("cos(1 - 2·x) ≠ 0",),
         expected_derivative_required_display=("cos(1 - 2·x) ≠ 0",),
         expected_required_display=("cos(1 - 2·x) ≠ 0",),
         expected_step_substrings=(
@@ -1865,6 +2292,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(csc(1-2*x)*cot(1-2*x), x)",
         expected_result="csc(1 - 2·x) / 2",
         expected_derivative_equivalent_to="csc(1-2*x)*cot(1-2*x)",
+        expected_direct_diff_integrate_result="csc(1 - 2·x)·cot(1 - 2·x)",
+        expected_direct_diff_integrate_required_display=("sin(1 - 2·x) ≠ 0",),
         expected_derivative_required_display=("sin(1 - 2·x) ≠ 0",),
         expected_required_display=("sin(1 - 2·x) ≠ 0",),
         expected_step_substrings=(
@@ -1888,6 +2317,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="sec(x^2 + b)",
         expected_derivative_equivalent_to="2*x*sec(x^2+b)*tan(x^2+b)",
         expected_derivative_required_display=("cos(x^2 + b) ≠ 0",),
+        expected_direct_diff_integrate_result="2·x·tan(x^2 + b)·sec(x^2 + b)",
+        expected_direct_diff_integrate_required_display=("cos(x^2 + b) ≠ 0",),
         expected_required_display=("cos(x^2 + b) ≠ 0",),
         expected_step_substrings=(
             "Expandir tangente como seno entre coseno",
@@ -1903,11 +2334,35 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="compact_reciprocal_trig_product",
     ),
     IntegrateCommandMatrixCase(
+        name="polynomial_shifted_cosecant_cotangent_derivative_product_domain",
+        expr="integrate(2*x*csc(x^2+b)*cot(x^2+b), x)",
+        expected_result="-csc(x^2 + b)",
+        expected_derivative_equivalent_to="2*x*csc(x^2+b)*cot(x^2+b)",
+        expected_derivative_required_display=("sin(x^2 + b) ≠ 0",),
+        expected_direct_diff_integrate_result="2·x·csc(x^2 + b)·cot(x^2 + b)",
+        expected_direct_diff_integrate_required_display=("sin(x^2 + b) ≠ 0",),
+        expected_required_display=("sin(x^2 + b) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Expandir cotangente como coseno entre seno",
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "du = 2\\cdot x",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="shifted_polynomial_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_pole_required",
+        trace_regime="polynomial_reciprocal_trig_derivative_product",
+        presentation_regime="compact_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
         name="symbolic_affine_exact_secant_tangent_derivative_product_domain",
         expr="integrate(a*sec(a*x+b)*tan(a*x+b), x)",
         expected_result="sec(a·x + b)",
         expected_derivative_equivalent_to="a*sec(a*x+b)*tan(a*x+b)",
         expected_derivative_required_display=("cos(a·x + b) ≠ 0",),
+        expected_direct_diff_integrate_result="a·tan(a·x + b)·sec(a·x + b)",
+        expected_direct_diff_integrate_required_display=("cos(a·x + b) ≠ 0",),
         expected_required_display=("cos(a·x + b) ≠ 0",),
         expected_step_substrings=(
             "Expandir secante como recíproco de coseno",
@@ -1928,6 +2383,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="-csc(a·x + b)",
         expected_derivative_equivalent_to="a*csc(a*x+b)*cot(a*x+b)",
         expected_derivative_required_display=("sin(a·x + b) ≠ 0",),
+        expected_direct_diff_integrate_result="a·csc(a·x + b)·cot(a·x + b)",
+        expected_direct_diff_integrate_required_display=("sin(a·x + b) ≠ 0",),
         expected_required_display=("sin(a·x + b) ≠ 0",),
         expected_step_substrings=(
             "Expandir cosecante como recíproco de seno",
@@ -1949,6 +2406,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="k·sec(a·x + b)",
         expected_derivative_equivalent_to="k*a*sec(a*x+b)*tan(a*x+b)",
         expected_derivative_required_display=("cos(a·x + b) ≠ 0",),
+        expected_direct_diff_integrate_result="a·k·tan(a·x + b)·sec(a·x + b)",
+        expected_direct_diff_integrate_required_display=("cos(a·x + b) ≠ 0",),
         expected_required_display=("cos(a·x + b) ≠ 0",),
         expected_step_substrings=(
             "Expandir secante como recíproco de coseno",
@@ -1969,6 +2428,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="-k·csc(a·x + b)",
         expected_derivative_equivalent_to="k*a*csc(a*x+b)*cot(a*x+b)",
         expected_derivative_required_display=("sin(a·x + b) ≠ 0",),
+        expected_direct_diff_integrate_result="a·k·csc(a·x + b)·cot(a·x + b)",
+        expected_direct_diff_integrate_required_display=("sin(a·x + b) ≠ 0",),
         expected_required_display=("sin(a·x + b) ≠ 0",),
         expected_step_substrings=(
             "Expandir cosecante como recíproco de seno",
@@ -1990,6 +2451,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="sec(b - a·x)",
         expected_derivative_equivalent_to="-a*sec(b-a*x)*tan(b-a*x)",
         expected_derivative_required_display=("cos(b - a·x) ≠ 0",),
+        expected_direct_diff_integrate_result="-tan(b - a·x)·sec(b - a·x)·a",
+        expected_direct_diff_integrate_required_display=("cos(b - a·x) ≠ 0",),
         expected_required_display=("cos(b - a·x) ≠ 0",),
         expected_step_substrings=(
             "Expandir secante como recíproco de coseno",
@@ -2010,6 +2473,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="-csc(b - a·x)",
         expected_derivative_equivalent_to="-a*csc(b-a*x)*cot(b-a*x)",
         expected_derivative_required_display=("sin(b - a·x) ≠ 0",),
+        expected_direct_diff_integrate_result="-csc(b - a·x)·cot(b - a·x)·a",
+        expected_direct_diff_integrate_required_display=("sin(b - a·x) ≠ 0",),
         expected_required_display=("sin(b - a·x) ≠ 0",),
         expected_step_substrings=(
             "Expandir cosecante como recíproco de seno",
@@ -2031,6 +2496,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="k·sec(b - a·x)",
         expected_derivative_equivalent_to="-k*a*sec(b-a*x)*tan(b-a*x)",
         expected_derivative_required_display=("cos(b - a·x) ≠ 0",),
+        expected_direct_diff_integrate_result="a·tan(b - a·x)·-sec(b - a·x)·k",
+        expected_direct_diff_integrate_required_display=("cos(b - a·x) ≠ 0",),
         expected_required_display=("cos(b - a·x) ≠ 0",),
         expected_step_substrings=(
             "Expandir secante como recíproco de coseno",
@@ -2052,6 +2519,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="-k·csc(b - a·x)",
         expected_derivative_equivalent_to="-k*a*csc(b-a*x)*cot(b-a*x)",
         expected_derivative_required_display=("sin(b - a·x) ≠ 0",),
+        expected_direct_diff_integrate_result="a·csc(b - a·x)·-cot(b - a·x)·k",
+        expected_direct_diff_integrate_required_display=("sin(b - a·x) ≠ 0",),
         expected_required_display=("sin(b - a·x) ≠ 0",),
         expected_step_substrings=(
             "Expandir cosecante como recíproco de seno",
@@ -2514,6 +2983,13 @@ def extract_cli_timings_us(payload: dict[str, Any] | None) -> dict[str, int]:
     return timings
 
 
+def timing_seconds(timings_us: dict[str, int], key: str) -> float | None:
+    value = timings_us.get(key)
+    if not isinstance(value, int):
+        return None
+    return value / 1_000_000.0
+
+
 def extract_warning_messages(payload: dict[str, Any] | None) -> tuple[str, ...]:
     if not payload:
         return ()
@@ -2582,6 +3058,10 @@ def classify_error_kind(error: str | None) -> str | None:
         return "antiderivative_verification_timeout"
     if "antiderivative verification" in error:
         return "antiderivative_verification_mismatch"
+    if "direct diff(integrate) timeout" in error:
+        return "direct_diff_integrate_timeout"
+    if "direct diff(integrate)" in error:
+        return "direct_diff_integrate_mismatch"
     if error == "timeout":
         return "timeout"
     if "warning" in error:
@@ -2643,11 +3123,9 @@ def run_case(
     warnings = extract_warning_messages(parsed)
     step_text = extract_step_text(parsed)
     cli_timings_us = extract_cli_timings_us(parsed)
-    cli_total_seconds = (
-        cli_timings_us["total_us"] / 1_000_000.0
-        if "total_us" in cli_timings_us
-        else None
-    )
+    cli_parse_seconds = timing_seconds(cli_timings_us, "parse_us")
+    cli_simplify_seconds = timing_seconds(cli_timings_us, "simplify_us")
+    cli_total_seconds = timing_seconds(cli_timings_us, "total_us")
     public_overhead_seconds = (
         max(0.0, integrate_elapsed - cli_total_seconds)
         if cli_total_seconds is not None
@@ -2844,10 +3322,133 @@ def run_case(
             ) is not None:
                 error = derivative_stderr_error
 
+    direct_diff_integrate_result: str | None = None
+    direct_diff_integrate_required_display: tuple[str, ...] = ()
+    direct_diff_integrate_stderr = ""
+    direct_diff_integrate_elapsed: float | None = None
+    expected_direct_diff_integrate_result = direct_diff_integrate_expected_result(case)
+    expected_direct_diff_integrate_equivalent_to = (
+        direct_diff_integrate_expected_equivalent_to(case)
+    )
+    expected_direct_diff_integrate_required_display = (
+        direct_diff_integrate_expected_required_display(case)
+    )
+    direct_diff_integrate_exact = expected_direct_diff_integrate_result is not None
+    direct_diff_integrate_equivalence = (
+        expected_direct_diff_integrate_equivalent_to is not None
+    )
+    if error is None and (direct_diff_integrate_exact or direct_diff_integrate_equivalence):
+        direct_diff_integrate_expr = f"diff({case.expr}, x)"
+        if direct_diff_integrate_equivalence:
+            direct_diff_integrate_expr = (
+                f"{direct_diff_integrate_expr} - "
+                f"({expected_direct_diff_integrate_equivalent_to})"
+            )
+        direct_diff_integrate_command = [
+            str(cas_cli),
+            "eval",
+            direct_diff_integrate_expr,
+            "--format",
+            "json",
+        ]
+        direct_diff_integrate_start = time.monotonic()
+        direct_diff_integrate_process = subprocess.Popen(
+            direct_diff_integrate_command,
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            direct_diff_integrate_stdout, direct_diff_integrate_stderr = (
+                direct_diff_integrate_process.communicate(timeout=timeout_seconds)
+            )
+        except subprocess.TimeoutExpired:
+            terminate_process_group(direct_diff_integrate_process)
+            direct_diff_integrate_stdout, direct_diff_integrate_stderr = (
+                direct_diff_integrate_process.communicate()
+            )
+            direct_diff_integrate_elapsed = (
+                time.monotonic() - direct_diff_integrate_start
+            )
+            error = "direct diff(integrate) timeout"
+        else:
+            direct_diff_integrate_elapsed = (
+                time.monotonic() - direct_diff_integrate_start
+            )
+            direct_diff_integrate_parsed, direct_diff_integrate_parse_error = parse_json(
+                direct_diff_integrate_stdout
+            )
+            direct_diff_integrate_result = (
+                direct_diff_integrate_parsed.get("result")
+                if isinstance(direct_diff_integrate_parsed, dict)
+                else None
+            )
+            direct_diff_integrate_required_display = extract_required_display(
+                direct_diff_integrate_parsed
+            )
+            direct_diff_integrate_warnings = extract_warning_messages(
+                direct_diff_integrate_parsed
+            )
+            direct_diff_integrate_ok = (
+                direct_diff_integrate_parsed.get("ok")
+                if isinstance(direct_diff_integrate_parsed, dict)
+                else None
+            )
+            if direct_diff_integrate_process.returncode != 0:
+                error = (
+                    "direct diff(integrate) "
+                    f"returncode={direct_diff_integrate_process.returncode}"
+                )
+            elif direct_diff_integrate_parse_error:
+                error = f"direct diff(integrate) {direct_diff_integrate_parse_error}"
+            elif direct_diff_integrate_ok is not True:
+                error = "direct diff(integrate) ok was not true"
+            elif direct_diff_integrate_equivalence and direct_diff_integrate_result != "0":
+                error = (
+                    "direct diff(integrate) expected residual result "
+                    f"'0', got {direct_diff_integrate_result!r}"
+                )
+            elif direct_diff_integrate_exact and (
+                direct_diff_integrate_result
+                != expected_direct_diff_integrate_result
+            ):
+                error = (
+                    "direct diff(integrate) expected result "
+                    f"{expected_direct_diff_integrate_result!r}, "
+                    f"got {direct_diff_integrate_result!r}"
+                )
+            elif set(direct_diff_integrate_required_display) != set(
+                expected_direct_diff_integrate_required_display
+            ):
+                error = (
+                    "direct diff(integrate) expected required_display "
+                    f"{expected_direct_diff_integrate_required_display!r}, "
+                    f"got {direct_diff_integrate_required_display!r}"
+                )
+            else:
+                direct_warnings_ok, direct_warning_error = warning_expectations_met(
+                    (),
+                    direct_diff_integrate_warnings,
+                )
+                if not direct_warnings_ok:
+                    error = f"direct diff(integrate) {direct_warning_error}"
+                elif (
+                    direct_stderr_error := stderr_fragility_error(
+                        direct_diff_integrate_stderr,
+                        label="direct diff(integrate) stderr",
+                    )
+                ) is not None:
+                    error = direct_stderr_error
+
     wall_elapsed = time.monotonic() - start
     status: Status = "pass" if error is None else "fail"
     error_kind = classify_error_kind(error)
-    if error_kind == "antiderivative_verification_timeout":
+    if error_kind in {
+        "antiderivative_verification_timeout",
+        "direct_diff_integrate_timeout",
+    }:
         status = "timeout"
     if status == "pass" and slow_wall_seconds is not None and wall_elapsed > slow_wall_seconds:
         status = "slow"
@@ -2865,8 +3466,24 @@ def run_case(
         "cli_parse_us": cli_timings_us.get("parse_us"),
         "cli_simplify_us": cli_timings_us.get("simplify_us"),
         "cli_total_us": cli_timings_us.get("total_us"),
+        "cli_parse_elapsed_seconds": (
+            round(cli_parse_seconds, 6) if cli_parse_seconds is not None else None
+        ),
+        "cli_simplify_elapsed_seconds": (
+            round(cli_simplify_seconds, 6)
+            if cli_simplify_seconds is not None
+            else None
+        ),
+        "cli_total_elapsed_seconds": (
+            round(cli_total_seconds, 6) if cli_total_seconds is not None else None
+        ),
         "cli_total_seconds": (
             round(cli_total_seconds, 6) if cli_total_seconds is not None else None
+        ),
+        "cli_public_overhead_seconds": (
+            round(public_overhead_seconds, 6)
+            if public_overhead_seconds is not None
+            else None
         ),
         "public_overhead_seconds": (
             round(public_overhead_seconds, 6)
@@ -2883,6 +3500,11 @@ def run_case(
             if derivative_residual_simplify_elapsed is not None
             else None
         ),
+        "direct_diff_integrate_elapsed_seconds": (
+            round(direct_diff_integrate_elapsed, 3)
+            if direct_diff_integrate_elapsed is not None
+            else None
+        ),
         "antiderivative_verification_mode": verification_mode(case),
         "result": result if isinstance(result, str) else None,
         "required_display": list(required_display),
@@ -2892,6 +3514,19 @@ def run_case(
         "expected_derivative_equivalent_to": case.expected_derivative_equivalent_to,
         "derivative_result": derivative_result,
         "derivative_equivalence_result": derivative_equivalence_result,
+        "expected_direct_diff_integrate_result": (
+            expected_direct_diff_integrate_result
+        ),
+        "expected_direct_diff_integrate_equivalent_to": (
+            expected_direct_diff_integrate_equivalent_to
+        ),
+        "direct_diff_integrate_result": direct_diff_integrate_result,
+        "expected_direct_diff_integrate_required_display": list(
+            expected_direct_diff_integrate_required_display
+        ),
+        "direct_diff_integrate_required_display": list(
+            direct_diff_integrate_required_display
+        ),
         "expected_derivative_required_display": list(
             case.expected_derivative_required_display
         ),
@@ -2910,12 +3545,14 @@ def run_case(
         "calculus_block_gate": calculus_block_gate(case),
         "stderr": stderr,
         "derivative_stderr": derivative_stderr,
+        "direct_diff_integrate_stderr": direct_diff_integrate_stderr,
     }
 
 
 def build_cases(
     case_filters: tuple[str, ...] = (),
 ) -> tuple[IntegrateCommandMatrixCase, ...]:
+    validate_direct_diff_integrate_expectations(DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES)
     if not case_filters:
         return DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES
     selected = {case.name: case for case in DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES}
@@ -2986,6 +3623,30 @@ def count_trig_hyperbolic_policy_clusters(
     return dict(sorted(counts.items()))
 
 
+def base_integration_policy_cluster(
+    case: IntegrateCommandMatrixCase,
+) -> str | None:
+    if case.family == "by_parts_exp":
+        return "block4_exponential_by_parts"
+    if case.family in {"by_parts_log", "by_parts_affine_log"}:
+        return "block4_log_by_parts"
+    if case.family == "log_power_product_substitution":
+        return "block4_log_power_product_by_parts"
+    return None
+
+
+def count_base_integration_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        cluster = base_integration_policy_cluster(case)
+        if cluster is None:
+            continue
+        counts[cluster] = counts.get(cluster, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def radical_inverse_policy_cluster(
     case: IntegrateCommandMatrixCase,
 ) -> str | None:
@@ -2998,7 +3659,9 @@ def radical_inverse_policy_cluster(
         return "block8_inverse_hyperbolic_rational_interval"
     if case.family in {
         "inverse_hyperbolic_sqrt_table",
+        "inverse_hyperbolic_sqrt_symbolic_radius",
         "inverse_sqrt_affine",
+        "inverse_sqrt_symbolic_radius",
         "inverse_sqrt_table",
     }:
         return "block8_inverse_sqrt_tables"
@@ -3015,6 +3678,212 @@ def count_radical_inverse_policy_clusters(
             continue
         counts[cluster] = counts.get(cluster, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def direct_diff_integrate_cases(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> tuple[IntegrateCommandMatrixCase, ...]:
+    return tuple(case for case in cases if has_direct_diff_integrate_probe(case))
+
+
+def direct_diff_integrate_exact_cases(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> tuple[IntegrateCommandMatrixCase, ...]:
+    return tuple(
+        case
+        for case in cases
+        if direct_diff_integrate_expected_result(case) is not None
+    )
+
+
+def direct_diff_integrate_equivalence_cases(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> tuple[IntegrateCommandMatrixCase, ...]:
+    return tuple(
+        case
+        for case in cases
+        if direct_diff_integrate_expected_equivalent_to(case) is not None
+    )
+
+
+def derivative_verified_without_direct_diff_integrate_cases(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> tuple[IntegrateCommandMatrixCase, ...]:
+    return tuple(
+        case
+        for case in cases
+        if (
+            case.expected_derivative_result is not None
+            or case.expected_derivative_equivalent_to is not None
+        )
+        and not has_direct_diff_integrate_probe(case)
+    )
+
+
+def count_direct_diff_integrate_calculus_maturity_blocks(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in direct_diff_integrate_cases(cases):
+        block = calculus_maturity_block(case)
+        counts[block] = counts.get(block, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_direct_diff_integrate_calculus_block_gates(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in direct_diff_integrate_cases(cases):
+        gate = calculus_block_gate(case)
+        counts[gate] = counts.get(gate, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_direct_diff_integrate_trig_hyperbolic_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    return count_trig_hyperbolic_policy_clusters(direct_diff_integrate_cases(cases))
+
+
+def count_direct_diff_integrate_base_integration_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    return count_base_integration_policy_clusters(direct_diff_integrate_cases(cases))
+
+
+def count_direct_diff_integrate_radical_inverse_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    return count_radical_inverse_policy_clusters(direct_diff_integrate_cases(cases))
+
+
+def count_direct_diff_integrate_gap_calculus_maturity_blocks(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in derivative_verified_without_direct_diff_integrate_cases(cases):
+        block = calculus_maturity_block(case)
+        counts[block] = counts.get(block, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_direct_diff_integrate_gap_calculus_block_gates(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in derivative_verified_without_direct_diff_integrate_cases(cases):
+        gate = calculus_block_gate(case)
+        counts[gate] = counts.get(gate, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_direct_diff_integrate_gap_trig_hyperbolic_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    return count_trig_hyperbolic_policy_clusters(
+        derivative_verified_without_direct_diff_integrate_cases(cases)
+    )
+
+
+def count_direct_diff_integrate_gap_base_integration_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    return count_base_integration_policy_clusters(
+        derivative_verified_without_direct_diff_integrate_cases(cases)
+    )
+
+
+def count_direct_diff_integrate_gap_radical_inverse_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    return count_radical_inverse_policy_clusters(
+        derivative_verified_without_direct_diff_integrate_cases(cases)
+    )
+
+
+def group_case_names_by_key(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+    key_fn: Callable[[IntegrateCommandMatrixCase], str | None],
+) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for case in cases:
+        key = key_fn(case)
+        if key is None:
+            continue
+        grouped.setdefault(key, []).append(case.name)
+    return dict(sorted(grouped.items()))
+
+
+def direct_diff_integrate_gap_case_names_by_calculus_maturity_block(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, list[str]]:
+    return group_case_names_by_key(
+        derivative_verified_without_direct_diff_integrate_cases(cases),
+        calculus_maturity_block,
+    )
+
+
+def direct_diff_integrate_gap_case_names_by_calculus_block_gate(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, list[str]]:
+    return group_case_names_by_key(
+        derivative_verified_without_direct_diff_integrate_cases(cases),
+        calculus_block_gate,
+    )
+
+
+def direct_diff_integrate_gap_case_names_by_trig_hyperbolic_policy_cluster(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, list[str]]:
+    return group_case_names_by_key(
+        derivative_verified_without_direct_diff_integrate_cases(cases),
+        trig_hyperbolic_policy_cluster,
+    )
+
+
+def direct_diff_integrate_gap_case_names_by_base_integration_policy_cluster(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, list[str]]:
+    return group_case_names_by_key(
+        derivative_verified_without_direct_diff_integrate_cases(cases),
+        base_integration_policy_cluster,
+    )
+
+
+def direct_diff_integrate_gap_case_names_by_radical_inverse_policy_cluster(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, list[str]]:
+    return group_case_names_by_key(
+        derivative_verified_without_direct_diff_integrate_cases(cases),
+        radical_inverse_policy_cluster,
+    )
+
+
+def count_direct_diff_integrate_equivalence_calculus_maturity_blocks(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in direct_diff_integrate_equivalence_cases(cases):
+        block = calculus_maturity_block(case)
+        counts[block] = counts.get(block, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_direct_diff_integrate_equivalence_trig_hyperbolic_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    return count_trig_hyperbolic_policy_clusters(
+        direct_diff_integrate_equivalence_cases(cases)
+    )
+
+
+def count_direct_diff_integrate_equivalence_base_integration_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    return count_base_integration_policy_clusters(
+        direct_diff_integrate_equivalence_cases(cases)
+    )
 
 
 def calculus_maturity_block(case: IntegrateCommandMatrixCase) -> str:
@@ -3100,11 +3969,17 @@ def count_required_display_items(results: list[dict[str, Any]]) -> dict[str, int
 
 
 def verification_regime(case: IntegrateCommandMatrixCase) -> str:
-    if (
+    has_diff_verification = (
         case.expected_derivative_result is not None
         or case.expected_derivative_equivalent_to is not None
-    ):
+    )
+    has_direct_diff_integrate_probe_value = has_direct_diff_integrate_probe(case)
+    if has_diff_verification and has_direct_diff_integrate_probe_value:
+        return "verified_by_diff_and_direct_diff_integrate"
+    if has_diff_verification:
         return "verified_by_diff"
+    if has_direct_diff_integrate_probe_value:
+        return "verified_by_direct_diff_integrate"
     if case.outcome == "residual":
         return "residual_not_verified"
     if case.outcome == "undefined":
@@ -3117,6 +3992,10 @@ def verification_mode(case: IntegrateCommandMatrixCase) -> str:
         return "residual_equivalence"
     if case.expected_derivative_result is not None:
         return "direct_derivative"
+    if direct_diff_integrate_expected_equivalent_to(case) is not None:
+        return "direct_diff_integrate_equivalence"
+    if direct_diff_integrate_expected_result(case) is not None:
+        return "direct_diff_integrate_exact"
     if case.outcome == "residual":
         return "residual_not_verified"
     if case.outcome == "undefined":
@@ -3134,6 +4013,22 @@ def count_verification_regimes(
     return dict(sorted(counts.items()))
 
 
+def count_verified_supported_cases(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> int:
+    verified_regimes = {
+        "verified_by_diff",
+        "verified_by_diff_and_direct_diff_integrate",
+        "verified_by_direct_diff_integrate",
+    }
+    return sum(
+        1
+        for case in cases
+        if case.outcome == "supported"
+        and verification_regime(case) in verified_regimes
+    )
+
+
 def count_residual_causes(
     cases: tuple[IntegrateCommandMatrixCase, ...],
 ) -> dict[str, int]:
@@ -3145,6 +4040,32 @@ def count_residual_causes(
         if cause == "not_applicable":
             cause = "unclassified_residual"
         counts[cause] = counts.get(cause, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_residual_families(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        if case.outcome != "residual":
+            continue
+        counts[case.family] = counts.get(case.family, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_residual_cause_families(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        if case.outcome != "residual":
+            continue
+        cause = case.residual_cause
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        key = f"{cause}/{case.family}"
+        counts[key] = counts.get(key, 0) + 1
     return dict(sorted(counts.items()))
 
 
@@ -3198,6 +4119,30 @@ def phase_runtime_case_rows(
                 row[key] = value
         rows.append(row)
     return rows
+
+
+def phase_runtime_distribution(
+    results: list[dict[str, Any]],
+    *,
+    phase_key: str,
+) -> dict[str, Any]:
+    values = [
+        float(result[phase_key])
+        for result in results
+        if isinstance(result.get(phase_key), (int, float))
+    ]
+    if not values:
+        return {}
+    values.sort()
+    p95_index = min(len(values) - 1, int(len(values) * 0.95))
+    total_elapsed = sum(values)
+    return {
+        "timed_case_count": len(values),
+        "total_elapsed_seconds": round(total_elapsed, 3),
+        "avg_case_ms": round(total_elapsed * 1000.0 / len(values), 3),
+        "p95_case_ms": round(values[p95_index] * 1000.0, 3),
+        "max_case_ms": round(max(values) * 1000.0, 3),
+    }
 
 
 def verification_mode_runtime_rows(
@@ -3291,6 +4236,61 @@ def residual_cause_runtime_rows(
             -float(row["total_elapsed_seconds"]),
             -int(row["case_count"]),
             str(row["cause"]),
+        )
+    )
+    return rows[:limit]
+
+
+def residual_cause_family_runtime_rows(
+    results: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        if result.get("outcome") != "residual":
+            continue
+        cause = result.get("residual_cause")
+        family = result.get("family")
+        elapsed = result.get("integrate_elapsed_seconds")
+        if (
+            not isinstance(cause, str)
+            or not isinstance(family, str)
+            or not isinstance(elapsed, (int, float))
+        ):
+            continue
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        groups.setdefault(f"{cause}/{family}", []).append(result)
+
+    rows: list[dict[str, Any]] = []
+    for cause_family, cause_family_results in groups.items():
+        elapsed_values = [
+            float(result["integrate_elapsed_seconds"])
+            for result in cause_family_results
+        ]
+        total_elapsed = sum(elapsed_values)
+        slowest = max(
+            cause_family_results,
+            key=lambda result: float(result.get("integrate_elapsed_seconds", 0.0)),
+        )
+        rows.append(
+            {
+                "cause_family": cause_family,
+                "case_count": len(cause_family_results),
+                "total_elapsed_seconds": round(total_elapsed, 3),
+                "avg_case_ms": round(
+                    total_elapsed * 1000.0 / len(cause_family_results), 3
+                ),
+                "max_elapsed_seconds": round(max(elapsed_values), 3),
+                "slowest_case": slowest.get("name"),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            -float(row["total_elapsed_seconds"]),
+            -int(row["case_count"]),
+            str(row["cause_family"]),
         )
     )
     return rows[:limit]
@@ -3427,6 +4427,85 @@ def residual_public_phase_group_rows(
     return rows[:limit]
 
 
+def residual_public_phase_cause_family_group_rows(
+    results: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        if result.get("outcome") != "residual":
+            continue
+        cause = result.get("residual_cause")
+        family = result.get("family")
+        if not isinstance(cause, str) or not isinstance(family, str):
+            continue
+        if cause == "not_applicable":
+            cause = "unclassified_residual"
+        if not isinstance(result.get("cli_total_seconds"), (int, float)):
+            continue
+        groups.setdefault(f"{cause}/{family}", []).append(result)
+
+    rows: list[dict[str, Any]] = []
+    for cause_family, cause_family_results in groups.items():
+        integrate_total = sum(
+            float(result.get("integrate_elapsed_seconds") or 0.0)
+            for result in cause_family_results
+        )
+        cli_total = sum(
+            float(result.get("cli_total_seconds") or 0.0)
+            for result in cause_family_results
+        )
+        public_overhead_total = sum(
+            float(result.get("public_overhead_seconds") or 0.0)
+            for result in cause_family_results
+        )
+        slowest = max(
+            cause_family_results,
+            key=lambda result: float(result.get("integrate_elapsed_seconds") or 0.0),
+        )
+        rows.append(
+            {
+                "cause_family": cause_family,
+                "case_count": len(cause_family_results),
+                "integrate_total_seconds": round(integrate_total, 3),
+                "cli_total_seconds": round(cli_total, 6),
+                "public_overhead_total_seconds": round(public_overhead_total, 6),
+                "public_overhead_share_percent": round(
+                    public_overhead_total * 100.0 / integrate_total,
+                    1,
+                )
+                if integrate_total > 0.0
+                else 0.0,
+                "avg_required_display_count": round(
+                    sum(
+                        len(result.get("required_display", []))
+                        for result in cause_family_results
+                    )
+                    / len(cause_family_results),
+                    3,
+                ),
+                "avg_step_text_char_count": round(
+                    sum(
+                        int(result.get("step_text_char_count") or 0)
+                        for result in cause_family_results
+                    )
+                    / len(cause_family_results),
+                    3,
+                ),
+                "slowest_case": slowest.get("name"),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            -float(row["integrate_total_seconds"]),
+            -int(row["case_count"]),
+            str(row["cause_family"]),
+        )
+    )
+    return rows[:limit]
+
+
 def run_residual_shape_orientation_probe(
     probe: ResidualShapeOrientationProbe,
     *,
@@ -3523,6 +4602,31 @@ def phase_runtime_observability_summary(
     results: list[dict[str, Any]],
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {}
+    for phase_name, phase_key, output_key in (
+        ("cli_parse", "cli_parse_elapsed_seconds", "cli_parse_elapsed_seconds"),
+        (
+            "cli_simplify",
+            "cli_simplify_elapsed_seconds",
+            "cli_simplify_elapsed_seconds",
+        ),
+        ("cli_total", "cli_total_elapsed_seconds", "cli_total_elapsed_seconds"),
+        (
+            "cli_public_overhead",
+            "cli_public_overhead_seconds",
+            "cli_public_overhead_seconds",
+        ),
+    ):
+        distribution = phase_runtime_distribution(results, phase_key=phase_key)
+        if distribution:
+            summary[f"{phase_name}_runtime_distribution"] = distribution
+        rows = phase_runtime_case_rows(
+            results,
+            phase_key=phase_key,
+            output_key=output_key,
+        )
+        if rows:
+            summary[f"slowest_{phase_name}_evaluations"] = rows
+
     integrate_rows = phase_runtime_case_rows(
         results,
         phase_key="integrate_elapsed_seconds",
@@ -3549,6 +4653,14 @@ def phase_runtime_observability_summary(
             residual_simplify_rows
         )
 
+    direct_diff_integrate_rows = phase_runtime_case_rows(
+        results,
+        phase_key="direct_diff_integrate_elapsed_seconds",
+        output_key="direct_diff_integrate_elapsed_seconds",
+    )
+    if direct_diff_integrate_rows:
+        summary["slowest_direct_diff_integrate_checks"] = direct_diff_integrate_rows
+
     verification_mode_rows = verification_mode_runtime_rows(results)
     if verification_mode_rows:
         summary["runtime_by_antiderivative_verification_mode"] = (
@@ -3557,12 +4669,22 @@ def phase_runtime_observability_summary(
     residual_cause_rows = residual_cause_runtime_rows(results)
     if residual_cause_rows:
         summary["runtime_by_residual_cause"] = residual_cause_rows
+    residual_cause_family_rows = residual_cause_family_runtime_rows(results)
+    if residual_cause_family_rows:
+        summary["runtime_by_residual_cause_family"] = residual_cause_family_rows
     residual_phase_rows = residual_public_phase_case_rows(results)
     if residual_phase_rows:
         summary["residual_public_phase_slowest_cases"] = residual_phase_rows
     residual_phase_group_rows = residual_public_phase_group_rows(results)
     if residual_phase_group_rows:
         summary["residual_public_phase_by_cause"] = residual_phase_group_rows
+    residual_phase_cause_family_rows = residual_public_phase_cause_family_group_rows(
+        results
+    )
+    if residual_phase_cause_family_rows:
+        summary["residual_public_phase_by_cause_family"] = (
+            residual_phase_cause_family_rows
+        )
     return summary
 
 
@@ -3622,6 +4744,22 @@ def run_matrix(
             or case.expected_derivative_equivalent_to is not None
         )
     )
+    direct_diff_integrate_cases = sum(
+        1 for case in cases if has_direct_diff_integrate_probe(case)
+    )
+    direct_diff_integrate_exact_cases = sum(
+        1
+        for case in cases
+        if direct_diff_integrate_expected_result(case) is not None
+    )
+    direct_diff_integrate_equivalence_cases = sum(
+        1
+        for case in cases
+        if direct_diff_integrate_expected_equivalent_to(case) is not None
+    )
+    direct_diff_integrate_gap_cases = len(
+        derivative_verified_without_direct_diff_integrate_cases(cases)
+    )
     expected_step_substrings = sum(
         len(case.expected_step_substrings) for case in cases
     )
@@ -3649,6 +4787,13 @@ def run_matrix(
         "supported_step_unchecked_case_count": len(supported_step_unchecked_cases),
         "supported_step_unchecked_cases": supported_step_unchecked_cases,
         "antiderivative_verification_case_count": antiderivative_verification_cases,
+        "verified_supported_case_count": count_verified_supported_cases(cases),
+        "direct_diff_integrate_case_count": direct_diff_integrate_cases,
+        "direct_diff_integrate_exact_case_count": direct_diff_integrate_exact_cases,
+        "direct_diff_integrate_equivalence_case_count": (
+            direct_diff_integrate_equivalence_cases
+        ),
+        "direct_diff_integrate_gap_case_count": direct_diff_integrate_gap_cases,
         "expected_step_substring_count": expected_step_substrings,
         "distinct_required_display_count": len(
             {
@@ -3663,6 +4808,8 @@ def run_matrix(
         "domain_regime_counts": count_by(cases, "domain_regime"),
         "outcome_counts": count_by(cases, "outcome"),
         "residual_cause_counts": count_residual_causes(cases),
+        "residual_family_counts": count_residual_families(cases),
+        "residual_cause_family_counts": count_residual_cause_families(cases),
         "residual_cases_by_cause": group_residual_cases_by_cause(cases),
         "verification_regime_counts": count_verification_regimes(cases),
         "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
@@ -3672,8 +4819,75 @@ def run_matrix(
         "trig_hyperbolic_policy_cluster_counts": (
             count_trig_hyperbolic_policy_clusters(cases)
         ),
+        "base_integration_policy_cluster_counts": (
+            count_base_integration_policy_clusters(cases)
+        ),
         "radical_inverse_policy_cluster_counts": (
             count_radical_inverse_policy_clusters(cases)
+        ),
+        "direct_diff_integrate_calculus_maturity_block_counts": (
+            count_direct_diff_integrate_calculus_maturity_blocks(cases)
+        ),
+        "direct_diff_integrate_calculus_block_gate_counts": (
+            count_direct_diff_integrate_calculus_block_gates(cases)
+        ),
+        "direct_diff_integrate_trig_hyperbolic_policy_cluster_counts": (
+            count_direct_diff_integrate_trig_hyperbolic_policy_clusters(cases)
+        ),
+        "direct_diff_integrate_base_integration_policy_cluster_counts": (
+            count_direct_diff_integrate_base_integration_policy_clusters(cases)
+        ),
+        "direct_diff_integrate_radical_inverse_policy_cluster_counts": (
+            count_direct_diff_integrate_radical_inverse_policy_clusters(cases)
+        ),
+        "direct_diff_integrate_gap_calculus_maturity_block_counts": (
+            count_direct_diff_integrate_gap_calculus_maturity_blocks(cases)
+        ),
+        "direct_diff_integrate_gap_calculus_block_gate_counts": (
+            count_direct_diff_integrate_gap_calculus_block_gates(cases)
+        ),
+        "direct_diff_integrate_gap_trig_hyperbolic_policy_cluster_counts": (
+            count_direct_diff_integrate_gap_trig_hyperbolic_policy_clusters(cases)
+        ),
+        "direct_diff_integrate_gap_base_integration_policy_cluster_counts": (
+            count_direct_diff_integrate_gap_base_integration_policy_clusters(cases)
+        ),
+        "direct_diff_integrate_gap_radical_inverse_policy_cluster_counts": (
+            count_direct_diff_integrate_gap_radical_inverse_policy_clusters(cases)
+        ),
+        "direct_diff_integrate_gap_cases_by_calculus_maturity_block": (
+            direct_diff_integrate_gap_case_names_by_calculus_maturity_block(cases)
+        ),
+        "direct_diff_integrate_gap_cases_by_calculus_block_gate": (
+            direct_diff_integrate_gap_case_names_by_calculus_block_gate(cases)
+        ),
+        "direct_diff_integrate_gap_cases_by_trig_hyperbolic_policy_cluster": (
+            direct_diff_integrate_gap_case_names_by_trig_hyperbolic_policy_cluster(
+                cases
+            )
+        ),
+        "direct_diff_integrate_gap_cases_by_base_integration_policy_cluster": (
+            direct_diff_integrate_gap_case_names_by_base_integration_policy_cluster(
+                cases
+            )
+        ),
+        "direct_diff_integrate_gap_cases_by_radical_inverse_policy_cluster": (
+            direct_diff_integrate_gap_case_names_by_radical_inverse_policy_cluster(
+                cases
+            )
+        ),
+        "direct_diff_integrate_equivalence_calculus_maturity_block_counts": (
+            count_direct_diff_integrate_equivalence_calculus_maturity_blocks(cases)
+        ),
+        "direct_diff_integrate_equivalence_trig_hyperbolic_policy_cluster_counts": (
+            count_direct_diff_integrate_equivalence_trig_hyperbolic_policy_clusters(
+                cases
+            )
+        ),
+        "direct_diff_integrate_equivalence_base_integration_policy_cluster_counts": (
+            count_direct_diff_integrate_equivalence_base_integration_policy_clusters(
+                cases
+            )
         ),
         "case_filters": [case.name for case in cases],
         **runtime_observability_summary(

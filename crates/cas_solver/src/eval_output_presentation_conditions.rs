@@ -429,7 +429,7 @@ fn display_base_before_half_power(display: &str, power_start: usize) -> Option<(
 }
 
 fn visible_required_conditions_after_public_suppression<'a>(
-    ctx: &Context,
+    ctx: &mut Context,
     normalized: &'a [crate::ImplicitCondition],
     assumed_filter: &AssumedConditionFilter,
     raw_input: &str,
@@ -444,12 +444,12 @@ fn visible_required_conditions_after_public_suppression<'a>(
     }
 
     let infinity_tail = resolved_infinity_limit_tail(raw_input, result_display);
-    normalized
-        .iter()
-        .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
-        .filter(|cond| !should_suppress_public_required_condition(ctx, cond, result_display))
-        .filter(|cond| {
-            !infinity_tail.as_ref().is_some_and(|tail| {
+    let mut visible = Vec::new();
+    for cond in normalized {
+        if assumed_filter.covers_required_condition(ctx, cond)
+            || should_suppress_public_required_condition(ctx, cond, result_display)
+            || public_condition_is_proven_over_reals(ctx, cond)
+            || infinity_tail.as_ref().is_some_and(|tail| {
                 required_condition_is_eventually_true_on_infinity_tail(
                     ctx,
                     cond,
@@ -457,8 +457,30 @@ fn visible_required_conditions_after_public_suppression<'a>(
                     tail.approach,
                 )
             })
-        })
-        .collect()
+        {
+            continue;
+        }
+        visible.push(cond);
+    }
+    visible
+}
+
+fn public_condition_is_proven_over_reals(
+    ctx: &mut Context,
+    cond: &crate::ImplicitCondition,
+) -> bool {
+    const PROOF_DEPTH: usize = 12;
+
+    match cond {
+        crate::ImplicitCondition::Positive(expr) | crate::ImplicitCondition::NonZero(expr) => {
+            cas_math::calculus_domain_support::positive_condition_is_proven_over_reals(
+                ctx,
+                *expr,
+                PROOF_DEPTH,
+            )
+        }
+        _ => false,
+    }
 }
 
 #[derive(Clone, Copy)]

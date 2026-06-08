@@ -3149,6 +3149,32 @@ fn test_eval_json_diff_positive_quadratic_log_abs_pole_primitive_without_depth_o
 }
 
 #[test]
+fn test_eval_json_diff_positive_quadratic_log_abs_pole_wrapper_without_depth_overflow() {
+    let expr = "diff((ln(abs(x^2+x+1))+1/(x+2))/(x+2), x)";
+    let (json, stderr) = eval_json_with_stderr(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(
+        json["result"],
+        "(2·x + 1) / ((x^2 + x + 1)·(x + 2)) - 2 / (x + 2)^3 - ln(x^2 + x + 1) / (x + 2)^2"
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "wrapper derivative should not emit depth_overflow for {expr}\nstderr:\n{stderr}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "x + 2"
+        }),
+        "diff shortcut should preserve the wrapper denominator guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
 fn test_eval_json_diff_reciprocal_sqrt_polynomial_power_keeps_steps_on_trace() {
     let expr = "diff(1/(sqrt(x)*(x+1)^2), x)";
     let json = eval_json_with_args(expr, &["--steps", "on"]);

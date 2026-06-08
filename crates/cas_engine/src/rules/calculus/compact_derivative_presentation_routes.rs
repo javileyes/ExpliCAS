@@ -72,6 +72,19 @@ fn compact_derivative_presentation_with_domain(
             .collect();
         return Some((result, required_conditions));
     }
+    if let Some((result, required_nonzero)) =
+        cas_math::symbolic_differentiation_support::positive_quadratic_log_abs_matching_linear_pole_wrapper_derivative(
+            ctx,
+            target,
+            var_name,
+        )
+    {
+        let required_conditions = required_nonzero
+            .into_iter()
+            .map(crate::ImplicitCondition::NonZero)
+            .collect();
+        return Some((result, required_conditions));
+    }
 
     let result = arctan_affine_by_parts_compact_derivative(ctx, target, var_name)
         .or_else(|| atanh_surd_quotient_compact_derivative(ctx, target, var_name))

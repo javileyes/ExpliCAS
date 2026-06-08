@@ -90,6 +90,24 @@ fn present_calculus_required_condition(
     }
 }
 
+fn filter_proven_positive_calculus_required_diagnostics(
+    ctx: &mut cas_ast::Context,
+    diagnostics: &mut crate::diagnostics::Diagnostics,
+) {
+    const PROOF_DEPTH: usize = 12;
+
+    diagnostics.requires.retain(|item| match item.cond {
+        crate::ImplicitCondition::Positive(expr) | crate::ImplicitCondition::NonZero(expr) => {
+            !cas_math::calculus_domain_support::positive_condition_is_proven_over_reals(
+                ctx,
+                expr,
+                PROOF_DEPTH,
+            )
+        }
+        _ => true,
+    });
+}
+
 fn resolved_is_calculus_call(ctx: &cas_ast::Context, resolved: ExprId) -> bool {
     matches!(
         ctx.get(resolved),
@@ -523,6 +541,24 @@ fn public_required_conditions(
     diagnostics.required_conditions()
 }
 
+fn filter_proven_positive_public_required_conditions(
+    ctx: &mut cas_ast::Context,
+    required_conditions: &mut Vec<crate::ImplicitCondition>,
+) {
+    const PROOF_DEPTH: usize = 12;
+
+    required_conditions.retain(|condition| match *condition {
+        crate::ImplicitCondition::Positive(expr) | crate::ImplicitCondition::NonZero(expr) => {
+            !cas_math::calculus_domain_support::positive_condition_is_proven_over_reals(
+                ctx,
+                expr,
+                PROOF_DEPTH,
+            )
+        }
+        _ => true,
+    });
+}
+
 fn push_assumed_from_steps(
     steps: &[crate::Step],
     diagnostics: &mut crate::diagnostics::Diagnostics,
@@ -594,6 +630,7 @@ fn build_eval_diagnostics(input: EvalDiagnosticsInput<'_>) -> crate::diagnostics
     if resolved_is_calculus_call(ctx, resolved) {
         present_calculus_required_diagnostics(ctx, &mut diagnostics);
         compact_trig_log_source_residual_condition_aliases(ctx, resolved, &mut diagnostics);
+        filter_proven_positive_calculus_required_diagnostics(ctx, &mut diagnostics);
     }
 
     // Stable output ordering and trivial-condition filtering.
@@ -652,6 +689,10 @@ impl Engine {
         {
             diagnostics.requires.clear();
         }
+        filter_proven_positive_calculus_required_diagnostics(
+            &mut self.simplifier.context,
+            &mut diagnostics,
+        );
 
         // Update stored entry with final diagnostics and optional simplified cache.
         // This keeps cache write policy centralized in session-core helpers.
@@ -686,6 +727,10 @@ impl Engine {
         compact_public_trig_log_source_residual_condition_aliases(
             &mut self.simplifier.context,
             parsed,
+            &mut required_conditions,
+        );
+        filter_proven_positive_public_required_conditions(
+            &mut self.simplifier.context,
             &mut required_conditions,
         );
 

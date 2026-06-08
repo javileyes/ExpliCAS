@@ -19,6 +19,7 @@ use cas_math::summation_support::{
     detect_factorized_telescoping_square_base, extract_linear_offset, extract_unit_shifted_base,
     try_extract_finite_aggregate_call, FiniteAggregateCall,
 };
+use cas_solver_core::domain_condition::ImplicitCondition;
 use cas_solver_core::quadratic_coeffs::{
     extract_quadratic_coefficients, extract_simplified_nonzero_quadratic_coefficients_with_state,
 };
@@ -40,6 +41,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
     let differentiation_substeps = generate_symbolic_differentiation_substeps(ctx, step);
     if !differentiation_substeps.is_empty() {
         return differentiation_substeps;
+    }
+
+    let integral_residual_policy_substeps = generate_integral_residual_policy_substeps(ctx, step);
+    if !integral_residual_policy_substeps.is_empty() {
+        return integral_residual_policy_substeps;
     }
 
     let basic_polynomial_integration_substeps =
@@ -11841,28 +11847,26 @@ fn inverse_function_empty_open_interval_diff_substep(
     let Expr::Constant(Constant::Undefined) = ctx.get(after) else {
         return None;
     };
-    if !contains_empty_domain_inverse_calculus_function(ctx, target) {
-        return None;
-    }
+    let title = inverse_function_empty_domain_diff_substep_title(ctx, target)?;
 
     Some(
-        SubStep::new(
-            "Detectar dominio real vacío de la función inversa",
-            display_expr(ctx, target),
-            display_expr(ctx, after),
-        )
-        .with_before_latex(latex_expr(ctx, target))
-        .with_after_latex(latex_expr(ctx, after)),
+        SubStep::new(title, display_expr(ctx, target), display_expr(ctx, after))
+            .with_before_latex(latex_expr(ctx, target))
+            .with_after_latex(latex_expr(ctx, after)),
     )
 }
 
-fn contains_empty_domain_inverse_calculus_function(ctx: &Context, expr: ExprId) -> bool {
+fn inverse_function_empty_domain_diff_substep_title(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<&'static str> {
     let mut stack = vec![expr];
     while let Some(current) = stack.pop() {
         match ctx.get(current) {
             Expr::Function(fn_id, args) => {
+                let builtin = ctx.builtin_of(*fn_id);
                 if matches!(
-                    ctx.builtin_of(*fn_id),
+                    builtin,
                     Some(
                         BuiltinFn::Asin
                             | BuiltinFn::Acos
@@ -11876,7 +11880,23 @@ fn contains_empty_domain_inverse_calculus_function(ctx: &Context, expr: ExprId) 
                             | BuiltinFn::Atanh
                     )
                 ) {
-                    return true;
+                    let mut scratch = ctx.clone();
+                    return match cas_math::calculus_domain_support::bounded_inverse_real_domain_rejection_over_reals(
+                        &mut scratch,
+                        builtin,
+                        args,
+                        8,
+                    ) {
+                        Some(
+                            cas_math::calculus_domain_support::BoundedInverseRealDomainRejection::SourceDomainEmpty,
+                        ) => Some("Detectar dominio real vacío de la función inversa"),
+                        Some(
+                            cas_math::calculus_domain_support::BoundedInverseRealDomainRejection::DerivativeDomainEmpty,
+                        ) => Some(
+                            "Detectar dominio real vacío de la derivada de la función inversa",
+                        ),
+                        None => Some("Detectar dominio real vacío de la función inversa"),
+                    };
                 }
                 stack.extend(args.iter().copied());
             }
@@ -11896,7 +11916,7 @@ fn contains_empty_domain_inverse_calculus_function(ctx: &Context, expr: ExprId) 
             | Expr::Matrix { .. } => {}
         }
     }
-    false
+    None
 }
 
 fn differentiation_call_target(ctx: &Context, expr: ExprId) -> Option<(ExprId, &str)> {
@@ -12472,6 +12492,51 @@ fn is_affine_in_var(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
     has_linear_term
 }
 
+fn is_symbolic_affine_in_var(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
+    if is_affine_in_var(ctx, expr, var_name) {
+        return true;
+    }
+    symbolic_linear_contains_var(ctx, expr, var_name).unwrap_or(false)
+}
+
+fn is_named_var_expr(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
+    matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var_name)
+}
+
+fn symbolic_linear_contains_var(ctx: &Context, expr: ExprId, var_name: &str) -> Option<bool> {
+    if !contains_named_var(ctx, expr, var_name) {
+        return Some(false);
+    }
+
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var_name => Some(true),
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            let left_has_var = symbolic_linear_contains_var(ctx, *left, var_name)?;
+            let right_has_var = symbolic_linear_contains_var(ctx, *right, var_name)?;
+            Some(left_has_var || right_has_var)
+        }
+        Expr::Mul(left, right) => {
+            let left_has_var = contains_named_var(ctx, *left, var_name);
+            let right_has_var = contains_named_var(ctx, *right, var_name);
+            match (left_has_var, right_has_var) {
+                (true, true) => None,
+                (true, false) => symbolic_linear_contains_var(ctx, *left, var_name),
+                (false, true) => symbolic_linear_contains_var(ctx, *right, var_name),
+                (false, false) => Some(false),
+            }
+        }
+        Expr::Div(num, den) => {
+            if contains_named_var(ctx, *den, var_name) {
+                return None;
+            }
+            symbolic_linear_contains_var(ctx, *num, var_name)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => symbolic_linear_contains_var(ctx, *inner, var_name),
+        Expr::Function(_, _) | Expr::Pow(_, _) | Expr::Matrix { .. } => None,
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => None,
+    }
+}
+
 fn polynomial_antiderivative_display(
     ctx: &Context,
     polynomial: ExprId,
@@ -12670,7 +12735,9 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
         return Vec::new();
     };
     let var_name = ctx.sym_name(*var_sym);
-    let Some((builtin, arg, scale)) = linear_inverse_table_result_arg(ctx, after, var_name) else {
+    let Some((builtin, arg, rational_scale, has_symbolic_external_scale)) =
+        linear_inverse_table_result_arg(ctx, after, var_name)
+    else {
         return Vec::new();
     };
 
@@ -12702,7 +12769,7 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
         );
     }
 
-    if scale != BigRational::one() {
+    if has_symbolic_external_scale || rational_scale != BigRational::one() {
         substeps.push(
             SubStep::new(
                 "Ajustar el factor constante",
@@ -12721,7 +12788,7 @@ fn linear_inverse_table_result_arg(
     ctx: &Context,
     expr: ExprId,
     var_name: &str,
-) -> Option<(BuiltinFn, ExprId, BigRational)> {
+) -> Option<(BuiltinFn, ExprId, BigRational, bool)> {
     let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     match ctx.get(expr) {
         Expr::Function(fn_id, args) if args.len() == 1 => {
@@ -12738,33 +12805,75 @@ fn linear_inverse_table_result_arg(
             ) {
                 return None;
             }
-            is_affine_in_var(ctx, args[0], var_name).then_some((
+            is_scaled_affine_inverse_table_arg(ctx, args[0], var_name).then_some((
                 builtin,
                 args[0],
                 BigRational::one(),
+                false,
             ))
         }
-        Expr::Neg(inner) => linear_inverse_table_result_arg(ctx, *inner, var_name)
-            .map(|(builtin, arg, scale)| (builtin, arg, -scale)),
+        Expr::Neg(inner) => linear_inverse_table_result_arg(ctx, *inner, var_name).map(
+            |(builtin, arg, rational_scale, has_symbolic_external_scale)| {
+                (builtin, arg, -rational_scale, has_symbolic_external_scale)
+            },
+        ),
         Expr::Hold(inner) => linear_inverse_table_result_arg(ctx, *inner, var_name),
         Expr::Mul(left, right) => {
             if let Some(scale) = as_rational_const(ctx, *left, 8) {
-                return linear_inverse_table_result_arg(ctx, *right, var_name)
-                    .map(|(builtin, arg, inner_scale)| (builtin, arg, scale * inner_scale));
+                return linear_inverse_table_result_arg(ctx, *right, var_name).map(
+                    |(builtin, arg, rational_scale, has_symbolic_external_scale)| {
+                        (
+                            builtin,
+                            arg,
+                            scale * rational_scale,
+                            has_symbolic_external_scale,
+                        )
+                    },
+                );
             }
             if let Some(scale) = as_rational_const(ctx, *right, 8) {
+                return linear_inverse_table_result_arg(ctx, *left, var_name).map(
+                    |(builtin, arg, rational_scale, has_symbolic_external_scale)| {
+                        (
+                            builtin,
+                            arg,
+                            scale * rational_scale,
+                            has_symbolic_external_scale,
+                        )
+                    },
+                );
+            }
+            if !contains_named_var(ctx, *left, var_name) {
+                return linear_inverse_table_result_arg(ctx, *right, var_name)
+                    .map(|(builtin, arg, rational_scale, _)| (builtin, arg, rational_scale, true));
+            }
+            if !contains_named_var(ctx, *right, var_name) {
                 return linear_inverse_table_result_arg(ctx, *left, var_name)
-                    .map(|(builtin, arg, inner_scale)| (builtin, arg, scale * inner_scale));
+                    .map(|(builtin, arg, rational_scale, _)| (builtin, arg, rational_scale, true));
             }
             None
         }
         Expr::Div(num, den) => {
-            let denominator = as_rational_const(ctx, *den, 8)?;
-            if denominator.is_zero() {
+            if let Some(denominator) = as_rational_const(ctx, *den, 8) {
+                if denominator.is_zero() {
+                    return None;
+                }
+                return linear_inverse_table_result_arg(ctx, *num, var_name).map(
+                    |(builtin, arg, rational_scale, has_symbolic_external_scale)| {
+                        (
+                            builtin,
+                            arg,
+                            rational_scale / denominator,
+                            has_symbolic_external_scale,
+                        )
+                    },
+                );
+            }
+            if contains_named_var(ctx, *den, var_name) {
                 return None;
             }
             linear_inverse_table_result_arg(ctx, *num, var_name)
-                .map(|(builtin, arg, scale)| (builtin, arg, scale / denominator))
+                .map(|(builtin, arg, rational_scale, _)| (builtin, arg, rational_scale, true))
         }
         _ => None,
     }
@@ -12786,6 +12895,17 @@ fn inverse_table_function_latex(ctx: &Context, builtin: BuiltinFn, arg: ExprId) 
     )
 }
 
+fn is_scaled_affine_inverse_table_arg(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
+    if is_symbolic_affine_in_var(ctx, expr, var_name) {
+        return true;
+    }
+
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    is_symbolic_affine_in_var(ctx, *num, var_name) && !contains_named_var(ctx, *den, var_name)
+}
+
 fn inverse_table_function_name(builtin: BuiltinFn) -> &'static str {
     match builtin {
         BuiltinFn::Arcsin | BuiltinFn::Asin => "arcsin",
@@ -12798,6 +12918,10 @@ fn inverse_table_function_name(builtin: BuiltinFn) -> &'static str {
 }
 
 fn nontrivial_affine_argument(ctx: &Context, arg: ExprId, var_name: &str) -> bool {
+    if !is_named_var_expr(ctx, arg, var_name) && is_symbolic_affine_in_var(ctx, arg, var_name) {
+        return true;
+    }
+
     let Ok(poly) = Polynomial::from_expr(ctx, arg, var_name) else {
         return false;
     };
@@ -18213,6 +18337,161 @@ fn latex_expr(ctx: &Context, expr: ExprId) -> String {
         id: expr,
     }
     .to_latex()
+}
+
+fn generate_integral_residual_policy_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Conservar integral residual"
+        && step.description != "Conservar integral residual"
+    {
+        return Vec::new();
+    }
+
+    let mut substeps = Vec::new();
+    collect_integral_residual_policy_substeps(ctx, step.before, &mut substeps);
+    collect_integral_residual_required_condition_substeps(ctx, step, &mut substeps);
+    substeps
+}
+
+fn collect_integral_residual_policy_substeps(
+    ctx: &Context,
+    expr: ExprId,
+    substeps: &mut Vec<SubStep>,
+) {
+    if substeps.len() >= 2 {
+        return;
+    }
+
+    if let Some(substep) = integral_residual_policy_substep_for_expr(ctx, expr) {
+        push_unique_integral_residual_substep(substeps, substep);
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            collect_integral_residual_policy_substeps(ctx, *left, substeps);
+            collect_integral_residual_policy_substeps(ctx, *right, substeps);
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            collect_integral_residual_policy_substeps(ctx, *inner, substeps);
+        }
+        Expr::Function(_, args) => {
+            for arg in args {
+                collect_integral_residual_policy_substeps(ctx, *arg, substeps);
+                if substeps.len() >= 2 {
+                    break;
+                }
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for child in data {
+                collect_integral_residual_policy_substeps(ctx, *child, substeps);
+                if substeps.len() >= 2 {
+                    break;
+                }
+            }
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn collect_integral_residual_required_condition_substeps(
+    ctx: &Context,
+    step: &Step,
+    substeps: &mut Vec<SubStep>,
+) {
+    for condition in step.required_conditions() {
+        if substeps.len() >= 3 {
+            break;
+        }
+
+        if let Some(substep) = integral_residual_required_condition_substep(ctx, condition) {
+            push_unique_integral_residual_substep(substeps, substep);
+        }
+    }
+}
+
+fn push_unique_integral_residual_substep(substeps: &mut Vec<SubStep>, substep: SubStep) {
+    let after_latex = substep.after_latex.clone();
+    let already_present = substeps
+        .iter()
+        .any(|existing| existing.after_latex == after_latex);
+    if !already_present {
+        substeps.push(substep);
+    }
+}
+
+fn integral_residual_required_condition_substep(
+    ctx: &Context,
+    condition: &ImplicitCondition,
+) -> Option<SubStep> {
+    let (title, witness, after_latex) = match condition {
+        ImplicitCondition::NonNegative(expr) => (
+            "Registrar dominio real del residual",
+            *expr,
+            format!("{} \\ge 0", latex_expr(ctx, *expr)),
+        ),
+        ImplicitCondition::LowerBound(expr, lower) => (
+            "Registrar dominio real del residual",
+            *expr,
+            format!("{} \\ge {}", latex_expr(ctx, *expr), rational_latex(lower)),
+        ),
+        ImplicitCondition::Positive(expr) => (
+            "Registrar condición de dominio del residual",
+            *expr,
+            format!("{} > 0", latex_expr(ctx, *expr)),
+        ),
+        ImplicitCondition::NonZero(expr) => (
+            "Registrar condición no nula del residual",
+            *expr,
+            format!("{} \\ne 0", latex_expr(ctx, *expr)),
+        ),
+    };
+
+    Some(
+        SubStep::new(title, display_expr(ctx, witness), condition.display(ctx))
+            .with_before_latex(latex_expr(ctx, witness))
+            .with_after_latex(after_latex),
+    )
+}
+
+fn integral_residual_policy_substep_for_expr(ctx: &Context, expr: ExprId) -> Option<SubStep> {
+    let (builtin, arg) = unary_builtin_arg(ctx, expr)?;
+    let arg_display = display_expr(ctx, arg);
+    let arg_latex = latex_expr(ctx, arg);
+
+    match builtin {
+        BuiltinFn::Tan | BuiltinFn::Sec => Some(
+            SubStep::new(
+                "Registrar polo del integrando",
+                display_expr(ctx, expr),
+                format!("cos({arg_display}) ≠ 0"),
+            )
+            .with_before_latex(latex_expr(ctx, expr))
+            .with_after_latex(format!("\\cos({arg_latex}) \\ne 0")),
+        ),
+        BuiltinFn::Cot | BuiltinFn::Csc => Some(
+            SubStep::new(
+                "Registrar polo del integrando",
+                display_expr(ctx, expr),
+                format!("sin({arg_display}) ≠ 0"),
+            )
+            .with_before_latex(latex_expr(ctx, expr))
+            .with_after_latex(format!("\\sin({arg_latex}) \\ne 0")),
+        ),
+        BuiltinFn::Ln | BuiltinFn::Log | BuiltinFn::Log2 | BuiltinFn::Log10 => Some(
+            SubStep::new(
+                "Registrar dominio del logaritmo",
+                display_expr(ctx, expr),
+                format!("{arg_display} > 0"),
+            )
+            .with_before_latex(latex_expr(ctx, expr))
+            .with_after_latex(format!("{arg_latex} > 0")),
+        ),
+        _ => None,
+    }
 }
 
 fn human_expr(ctx: &Context, expr: ExprId) -> String {

@@ -530,6 +530,32 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         presentation_regime="compact_positive_quadratic_surd_negative_orientation_quotient",
     ),
     DiffCommandMatrixCase(
+        name="inverse_trig_symbolic_radius_shifted_arctan_primitive_no_depth_overflow",
+        expr="diff(arctan((b+x)/a)/a, x)",
+        expected_result="1 / ((b + x)^2 + a^2)",
+        expected_required_display=("a ≠ 0",),
+        expected_step_substrings=("Calcular la derivada",),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="positive_quadratic_arctan_primitive",
+        argument_regime="shifted_symbolic_radius_affine_argument",
+        domain_regime="symbolic_radius_minimal_nonzero_parameter",
+        trace_regime="direct_inverse_tangent_chain_rule",
+        presentation_regime="compact_shifted_symbolic_radius_positive_quadratic",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact",
+        expr="diff(arctan((c*x+b)/a)/a, x)",
+        expected_result="c / ((c·x + b)^2 + a^2)",
+        expected_required_display=("a ≠ 0",),
+        expected_step_substrings=("Calcular la derivada",),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="positive_quadratic_arctan_primitive",
+        argument_regime="non_unit_slope_symbolic_radius_affine_argument",
+        domain_regime="symbolic_radius_minimal_nonzero_parameter",
+        trace_regime="direct_inverse_tangent_chain_rule",
+        presentation_regime="compact_shifted_symbolic_radius_positive_quadratic",
+    ),
+    DiffCommandMatrixCase(
         name="log_ratio_single_pole_scaled_shifted_linear_compact",
         expr="diff(ln(abs((2*x+3)/(x-5)))+1/(x-5), x)",
         expected_result="(62 - 15·x) / (2·x^3 + 20·x + 75 - 17·x^2)",
@@ -605,6 +631,19 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         domain_regime="linear_poles_required",
         trace_regime="positive_quadratic_log_abs_pole_raw_linearity",
         presentation_regime="compact_integer_rational_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="positive_quadratic_log_abs_pole_linear_wrapper_compact",
+        expr="diff((ln(abs(x^2+x+1))+1/(x+2))/(x+2), x)",
+        expected_result="(2·x + 1) / ((x^2 + x + 1)·(x + 2)) - 2 / (x + 2)^3 - ln(x^2 + x + 1) / (x + 2)^2",
+        expected_required_display=("x ≠ -2",),
+        expected_step_substrings=("Calcular la derivada",),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="positive_quadratic_log_abs_pole_primitive",
+        argument_regime="linear_denominator_wrapper",
+        domain_regime="linear_wrapper_pole_required",
+        trace_regime="positive_quadratic_log_abs_pole_wrapper_linearity",
+        presentation_regime="compact_log_wrapper",
     ),
     DiffCommandMatrixCase(
         name="sqrt_variable_open_domain",
@@ -861,24 +900,42 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         name="inverse_trig_root_empty_open_interval_undefined",
         expr="diff(arcsin(sqrt(x^2+1)), x)",
         expected_result="undefined",
-        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
+        expected_step_substrings=(
+            "Detectar dominio real vacío de la derivada de la función inversa",
+        ),
         family="inverse_trig_root",
         argument_regime="quadratic_root_argument",
-        domain_regime="empty_open_interval_domain",
+        domain_regime="empty_derivative_domain",
         outcome="undefined",
-        trace_regime="empty_open_interval_policy",
+        trace_regime="empty_derivative_domain_policy",
         presentation_regime="undefined",
     ),
     DiffCommandMatrixCase(
         name="inverse_trig_shifted_quadratic_empty_open_interval_undefined",
         expr="diff(arcsin((x+1)^2+1), x)",
         expected_result="undefined",
-        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
+        expected_step_substrings=(
+            "Detectar dominio real vacío de la derivada de la función inversa",
+        ),
         family="inverse_trig_root",
         argument_regime="shifted_quadratic_argument",
-        domain_regime="empty_open_interval_domain",
+        domain_regime="empty_derivative_domain",
         outcome="undefined",
-        trace_regime="empty_open_interval_policy",
+        trace_regime="empty_derivative_domain_policy",
+        presentation_regime="undefined",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_arcsin_point_domain_empty_derivative_undefined",
+        expr="diff(asin(1+x^2), x)",
+        expected_result="undefined",
+        expected_step_substrings=(
+            "Detectar dominio real vacío de la derivada de la función inversa",
+        ),
+        family="inverse_trig",
+        argument_regime="quadratic_boundary_argument",
+        domain_regime="empty_derivative_domain",
+        outcome="undefined",
+        trace_regime="empty_derivative_domain_policy",
         presentation_regime="undefined",
     ),
     DiffCommandMatrixCase(
@@ -888,6 +945,18 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
         family="inverse_trig",
         argument_regime="symbolic_constant",
+        domain_regime="empty_open_interval_domain",
+        outcome="undefined",
+        trace_regime="empty_open_interval_policy",
+        presentation_regime="undefined",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_named_constant_positive_offset_empty_open_interval_undefined",
+        expr="diff(arcsin(phi+x^2), x)",
+        expected_result="undefined",
+        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
+        family="inverse_trig",
+        argument_regime="named_positive_offset_quadratic_argument",
         domain_regime="empty_open_interval_domain",
         outcome="undefined",
         trace_regime="empty_open_interval_policy",
@@ -904,6 +973,59 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         outcome="undefined",
         trace_regime="empty_open_interval_policy",
         presentation_regime="undefined",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_hyperbolic_atanh_named_constant_positive_offset_empty_open_interval_undefined",
+        expr="diff(atanh(phi+x^2), x)",
+        expected_result="undefined",
+        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
+        family="inverse_hyperbolic",
+        argument_regime="named_positive_offset_quadratic_argument",
+        domain_regime="empty_open_interval_domain",
+        outcome="undefined",
+        trace_regime="empty_open_interval_policy",
+        presentation_regime="undefined",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_hyperbolic_acosh_empty_lower_bound_undefined",
+        expr="diff(acosh(-x^2), x)",
+        expected_result="undefined",
+        expected_step_substrings=("Detectar dominio real vacío de la función inversa",),
+        family="inverse_hyperbolic",
+        argument_regime="quadratic_argument",
+        domain_regime="empty_lower_bound_domain",
+        outcome="undefined",
+        trace_regime="empty_lower_bound_policy",
+        presentation_regime="undefined",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_hyperbolic_acosh_empty_derivative_domain_undefined",
+        expr="diff(acosh(1-x^2), x)",
+        expected_result="undefined",
+        expected_step_substrings=(
+            "Detectar dominio real vacío de la derivada de la función inversa",
+        ),
+        family="inverse_hyperbolic",
+        argument_regime="quadratic_boundary_argument",
+        domain_regime="empty_derivative_domain",
+        outcome="undefined",
+        trace_regime="empty_derivative_domain_policy",
+        presentation_regime="undefined",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_hyperbolic_acosh_named_positive_offset_satisfied_lower_bound",
+        expr="diff(acosh(phi+x^2), x)",
+        expected_result="2·x·(x^2 + phi - 1)^(-1/2) / sqrt(x^2 + 1 + phi)",
+        expected_step_substrings=(
+            "Usar regla de la cadena",
+            "Identificar u y du",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="inverse_hyperbolic",
+        argument_regime="named_positive_offset_quadratic_argument",
+        domain_regime="structurally_satisfied_lower_bound_domain",
+        trace_regime="chain_rule",
+        presentation_regime="compact_domain_suppressed_radical",
     ),
     DiffCommandMatrixCase(
         name="inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
@@ -1063,6 +1185,33 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         presentation_regime="factored",
     ),
     DiffCommandMatrixCase(
+        name="shifted_linear_base_variable_power_log_domain",
+        expr="diff((x+1)^x, x)",
+        expected_result="(x·(x + 1)^x + ln(x + 1)·(x + 1)^(x + 1)) / (x + 1)",
+        expected_required_display=("x > -1",),
+        expected_step_substrings=("Usar derivación logarítmica",),
+        family="variable_power",
+        argument_regime="shifted_linear_base_variable_power",
+        domain_regime="shifted_positive_base_required",
+        trace_regime="logarithmic_derivative",
+        presentation_regime="shifted_linear_base_fraction",
+    ),
+    DiffCommandMatrixCase(
+        name="quadratic_base_variable_power_disconnected_domain",
+        expr="diff((x^2-1)^x, x)",
+        expected_result=(
+            "(x^2 - 1)^x·(ln(x^2 - 1)·(x^2 - 1) + 2·x^2) "
+            "/ (x^2 - 1)"
+        ),
+        expected_required_display=("x < -1 or x > 1",),
+        expected_step_substrings=("Usar derivación logarítmica",),
+        family="variable_power",
+        argument_regime="quadratic_base_variable_power",
+        domain_regime="disconnected_positive_base_required",
+        trace_regime="logarithmic_derivative",
+        presentation_regime="quadratic_base_fraction",
+    ),
+    DiffCommandMatrixCase(
         name="abs_piecewise_required_condition",
         expr="diff(abs(x), x)",
         expected_result="x / |x|",
@@ -1075,6 +1224,21 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         presentation_regime="quotient_abs",
     ),
     DiffCommandMatrixCase(
+        name="abs_quadratic_factored_nondifferentiable_domain",
+        expr="diff(abs(x^2-1), x)",
+        expected_result="((x^2 - 1)·x·2)/|x^2 - 1|",
+        expected_required_display=("x ≠ 1", "x ≠ -1"),
+        expected_step_substrings=(
+            "Usar regla de la cadena",
+            "Identificar u y du",
+        ),
+        family="abs",
+        argument_regime="quadratic_argument",
+        domain_regime="factored_nondifferentiable_points_required",
+        trace_regime="piecewise_abs_chain_rule",
+        presentation_regime="quotient_abs_factored_domain",
+    ),
+    DiffCommandMatrixCase(
         name="discontinuous_sign_polynomial_nonzero_domain",
         expr="diff(sign(x), x)",
         expected_result="0",
@@ -1085,6 +1249,21 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         domain_regime="required_condition",
         trace_regime="sign_derivative",
         presentation_regime="constant_zero",
+    ),
+    DiffCommandMatrixCase(
+        name="discontinuous_sign_quadratic_factored_domain",
+        expr="diff(sign(x^2-1), x)",
+        expected_result="0",
+        expected_required_display=("x ≠ 1", "x ≠ -1"),
+        expected_step_substrings=(
+            "Usar derivada de sign(u) fuera de u = 0",
+            "Identificar u y du",
+        ),
+        family="discontinuous",
+        argument_regime="quadratic_argument",
+        domain_regime="factored_discontinuity_points_required",
+        trace_regime="sign_derivative_chain_rule",
+        presentation_regime="constant_zero_factored_domain",
     ),
 )
 
@@ -1224,6 +1403,51 @@ def extract_step_text(payload: dict[str, Any] | None) -> str:
     return "\n".join(strings)
 
 
+def extract_step_rule_names(payload: dict[str, Any] | None) -> tuple[str, ...]:
+    if not payload:
+        return ()
+    steps = payload.get("steps") or []
+    if not isinstance(steps, list):
+        return ()
+
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def add_name(value: Any) -> None:
+        if not isinstance(value, str):
+            return
+        stripped = value.strip()
+        if not stripped or stripped in seen:
+            return
+        seen.add(stripped)
+        names.append(stripped)
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            add_name(value.get("rule"))
+            add_name(value.get("title"))
+            for nested in value.get("substeps") or []:
+                visit(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                visit(nested)
+
+    visit(steps)
+    return tuple(names)
+
+
+def extract_timing_us(payload: dict[str, Any] | None, key: str) -> int | None:
+    if not payload:
+        return None
+    timings = payload.get("timings_us")
+    if not isinstance(timings, dict):
+        return None
+    value = timings.get(key)
+    if not isinstance(value, int):
+        return None
+    return value
+
+
 def warning_expectations_met(
     expected_substrings: tuple[str, ...],
     actual_warnings: tuple[str, ...],
@@ -1311,7 +1535,27 @@ def run_case(
     warnings = extract_warning_messages(parsed)
     blocked_hints = extract_blocked_hint_messages(parsed)
     step_text = extract_step_text(parsed)
+    step_rule_names = extract_step_rule_names(parsed)
     ok = parsed.get("ok") if isinstance(parsed, dict) else None
+    cli_parse_us = extract_timing_us(parsed, "parse_us")
+    cli_simplify_us = extract_timing_us(parsed, "simplify_us")
+    cli_total_us = extract_timing_us(parsed, "total_us")
+    cli_parse_elapsed_seconds = (
+        round(cli_parse_us / 1_000_000.0, 6) if cli_parse_us is not None else None
+    )
+    cli_simplify_elapsed_seconds = (
+        round(cli_simplify_us / 1_000_000.0, 6)
+        if cli_simplify_us is not None
+        else None
+    )
+    cli_total_elapsed_seconds = (
+        round(cli_total_us / 1_000_000.0, 6) if cli_total_us is not None else None
+    )
+    cli_public_overhead_seconds = (
+        round(max(0.0, wall_elapsed - cli_total_us / 1_000_000.0), 6)
+        if cli_total_us is not None
+        else None
+    )
 
     error: str | None = None
     if process.returncode != 0:
@@ -1371,9 +1615,18 @@ def run_case(
         "wall_elapsed_seconds": round(wall_elapsed, 3),
         "process_elapsed_seconds": round(wall_elapsed, 3),
         "harness_check_elapsed_seconds": round(harness_check_elapsed, 3),
+        "cli_parse_us": cli_parse_us,
+        "cli_simplify_us": cli_simplify_us,
+        "cli_total_us": cli_total_us,
+        "cli_parse_elapsed_seconds": cli_parse_elapsed_seconds,
+        "cli_simplify_elapsed_seconds": cli_simplify_elapsed_seconds,
+        "cli_total_elapsed_seconds": cli_total_elapsed_seconds,
+        "cli_public_overhead_seconds": cli_public_overhead_seconds,
         "stdout_bytes": len(stdout.encode("utf-8")),
         "stderr_bytes": len(stderr.encode("utf-8")),
         "step_text_char_count": len(step_text),
+        "step_rule_names": list(step_rule_names),
+        "steps_count": len(parsed.get("steps") or []) if isinstance(parsed, dict) else 0,
         "result": result,
         "expected_result": case.expected_result,
         "required_display": list(required_display),
@@ -1390,6 +1643,8 @@ def run_case(
         "outcome": case.outcome,
         "calculus_maturity_block": calculus_maturity_block(case),
         "calculus_block_gate": calculus_block_gate(case),
+        "positive_quadratic_policy_cluster": positive_quadratic_policy_cluster(case),
+        "variable_power_policy_cluster": variable_power_policy_cluster(case),
         "trace_regime": case.trace_regime,
         "presentation_regime": case.presentation_regime,
         "stderr": stderr,
@@ -1449,6 +1704,67 @@ def count_calculus_block_gates(
     for case in cases:
         gate = calculus_block_gate(case)
         counts[gate] = counts.get(gate, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def symbolic_radius_policy_cluster(case: DiffCommandMatrixCase) -> str | None:
+    if (
+        case.family == "positive_quadratic_arctan_primitive"
+        and case.domain_regime == "symbolic_radius_minimal_nonzero_parameter"
+        and case.presentation_regime
+        == "compact_shifted_symbolic_radius_positive_quadratic"
+    ):
+        return "block2_symbolic_radius_arctan_positive_quadratic"
+    return None
+
+
+def positive_quadratic_policy_cluster(case: DiffCommandMatrixCase) -> str | None:
+    if case.family == "positive_quadratic_log_arctan_primitive":
+        return "block2_positive_quadratic_log_arctan_primitive"
+    if case.family == "positive_quadratic_log_abs_pole_primitive":
+        return "block2_positive_quadratic_log_abs_pole_primitive"
+    return symbolic_radius_policy_cluster(case)
+
+
+def variable_power_policy_cluster(case: DiffCommandMatrixCase) -> str | None:
+    if case.family == "variable_power":
+        return "block2_variable_power_logarithmic_derivative_domain"
+    return None
+
+
+def count_symbolic_radius_policy_clusters(
+    cases: tuple[DiffCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        cluster = symbolic_radius_policy_cluster(case)
+        if cluster is None:
+            continue
+        counts[cluster] = counts.get(cluster, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_positive_quadratic_policy_clusters(
+    cases: tuple[DiffCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        cluster = positive_quadratic_policy_cluster(case)
+        if cluster is None:
+            continue
+        counts[cluster] = counts.get(cluster, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_variable_power_policy_clusters(
+    cases: tuple[DiffCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        cluster = variable_power_policy_cluster(case)
+        if cluster is None:
+            continue
+        counts[cluster] = counts.get(cluster, 0) + 1
     return dict(sorted(counts.items()))
 
 
@@ -1518,10 +1834,20 @@ def phase_runtime_case_rows(
             "presentation_regime",
             "calculus_maturity_block",
             "calculus_block_gate",
+            "positive_quadratic_policy_cluster",
+            "variable_power_policy_cluster",
         ):
             value = result.get(key)
             if isinstance(value, str):
                 row[key] = value
+        steps_count = result.get("steps_count")
+        if isinstance(steps_count, int):
+            row["steps_count"] = steps_count
+        step_rule_names = result.get("step_rule_names")
+        if isinstance(step_rule_names, list):
+            names = [value for value in step_rule_names if isinstance(value, str)]
+            if names:
+                row["step_rule_names"] = names[:8]
         rows.append(row)
     return rows
 
@@ -1549,6 +1875,40 @@ def phase_runtime_observability_summary(
             phase_key="harness_check_elapsed_seconds",
         )
         summary["slowest_harness_checks"] = harness_rows
+    for phase_name, phase_key, output_key in (
+        (
+            "cli_parse",
+            "cli_parse_elapsed_seconds",
+            "cli_parse_elapsed_seconds",
+        ),
+        (
+            "cli_simplify",
+            "cli_simplify_elapsed_seconds",
+            "cli_simplify_elapsed_seconds",
+        ),
+        (
+            "cli_total",
+            "cli_total_elapsed_seconds",
+            "cli_total_elapsed_seconds",
+        ),
+        (
+            "cli_public_overhead",
+            "cli_public_overhead_seconds",
+            "cli_public_overhead_seconds",
+        ),
+    ):
+        rows = phase_runtime_case_rows(
+            results,
+            phase_key=phase_key,
+            output_key=output_key,
+        )
+        if not rows:
+            continue
+        summary[f"{phase_name}_runtime_distribution"] = phase_runtime_distribution(
+            results,
+            phase_key=phase_key,
+        )
+        summary[f"slowest_{phase_name}_evaluations"] = rows
     return summary
 
 
@@ -1671,6 +2031,15 @@ def run_matrix(
         "outcome_counts": count_by(cases, "outcome"),
         "calculus_maturity_block_counts": count_calculus_maturity_blocks(cases),
         "calculus_block_gate_counts": count_calculus_block_gates(cases),
+        "symbolic_radius_policy_cluster_counts": (
+            count_symbolic_radius_policy_clusters(cases)
+        ),
+        "positive_quadratic_policy_cluster_counts": (
+            count_positive_quadratic_policy_clusters(cases)
+        ),
+        "variable_power_policy_cluster_counts": (
+            count_variable_power_policy_clusters(cases)
+        ),
         "trace_regime_counts": count_by(cases, "trace_regime"),
         "presentation_regime_counts": count_by(cases, "presentation_regime"),
         "case_filters": [case.name for case in cases],
@@ -1683,6 +2052,8 @@ def run_matrix(
                 "domain_regime",
                 "trace_regime",
                 "presentation_regime",
+                "positive_quadratic_policy_cluster",
+                "variable_power_policy_cluster",
             ),
         ),
         **phase_runtime_observability_summary(results),

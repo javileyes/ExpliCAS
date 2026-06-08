@@ -204,6 +204,7 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_rational_linear_partial_fraction_integrate_call(ctx, target, var_name)
         || diff_target_is_rational_linear_positive_quadratic_integrate_call(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_quadratic_arctan_integrate_call(ctx, target, var_name)
+        || diff_target_is_reciprocal_trig_derivative_product_integrate_call(ctx, target, var_name)
         || diff_target_is_positive_quadratic_power_integrate_call(ctx, target, var_name)
         || diff_target_is_quadratic_affine_ln_by_parts_integrate_call(ctx, target, var_name)
         || diff_target_is_arcsin_inverse_sqrt_product_integrate_call(ctx, target, var_name)
@@ -932,6 +933,26 @@ fn diff_target_is_reciprocal_positive_quadratic_arctan_integrate_call(
         || expr_is_linear_square_plus_positive_constant_for_raw_diff_target(ctx, *den, var_name)
 }
 
+fn diff_target_is_reciprocal_trig_derivative_product_integrate_call(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return false;
+    }
+    if diff_variable_name(ctx, args[1]).is_none_or(|integrate_var| integrate_var != var_name) {
+        return false;
+    }
+
+    crate::rules::calculus::constant_scaled_reciprocal_trig_derivative_product_source(
+        ctx, args[0], var_name,
+    )
+}
+
 fn expr_is_linear_square_plus_positive_constant_for_raw_diff_target(
     ctx: &cas_ast::Context,
     expr: ExprId,
@@ -1217,6 +1238,49 @@ mod tests {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
                 diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_diff_target_for_integrated_cosecant_cotangent_product() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+        let target =
+            cas_parser::parse("integrate(k*a*csc(a*x+b)*cot(a*x+b), x)", &mut ctx).unwrap();
+
+        assert!(diff_target_should_preserve_raw_derivative_route(
+            &ctx, target, variable
+        ));
+    }
+
+    #[test]
+    fn preserves_raw_diff_target_for_integrated_negative_secant_tangent_product() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+        let target =
+            cas_parser::parse("integrate(-k*a*sec(b-a*x)*tan(b-a*x), x)", &mut ctx).unwrap();
+
+        assert!(diff_target_should_preserve_raw_derivative_route(
+            &ctx, target, variable
+        ));
+    }
+
+    #[test]
+    fn avoids_raw_diff_target_for_integrated_reciprocal_trig_product_without_derivative_factor() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "integrate(sec(x^2)*tan(x^2), x)",
+            "integrate(k*sec(x^2+b)*tan(x^2+b), x)",
+            "integrate(csc(x^2)*cot(x^2), x)",
+            "integrate(k*csc(x^2+b)*cot(x^2+b), x)",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                !diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
                 "{raw}"
             );
         }

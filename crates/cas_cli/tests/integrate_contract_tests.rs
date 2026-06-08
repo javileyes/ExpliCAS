@@ -5745,8 +5745,28 @@ fn integrate_contract_direct_trig_log_substitution_exposes_didactic_substep() {
     assert_eq!(wire["result"], "integrate(tan(x^2), x)");
     if let Some(steps) = wire["steps"].as_array() {
         assert!(
-            !steps.iter().any(|step| step["substeps"].is_array()),
+            steps.iter().all(|step| {
+                step["substeps"].as_array().is_none_or(|substeps| {
+                    substeps.iter().all(|substep| {
+                        substep["title"] != "Usar sustitución"
+                            && substep["title"] != "Identificar u y du"
+                            && substep["title"] != "Usar la regla de tan(u) -> -ln|cos(u)|"
+                    })
+                })
+            }),
             "unsupported nonlinear tan(x^2) should not emit a fake substitution substep: {steps:?}"
+        );
+        assert!(
+            steps.iter().any(|step| {
+                step["rule"] == "Conservar integral residual"
+                    && step["substeps"].as_array().is_some_and(|substeps| {
+                        substeps.iter().any(|substep| {
+                            substep["title"] == "Registrar polo del integrando"
+                                && substep["after_latex"] == "\\cos({x}^{2}) \\ne 0"
+                        })
+                    })
+            }),
+            "unsupported nonlinear tan(x^2) should expose only the residual domain policy: {steps:?}"
         );
     }
 }

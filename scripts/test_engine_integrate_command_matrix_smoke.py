@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 126)
+        self.assertEqual(len(cases), 141)
         names = {case.name for case in cases}
         self.assertIn("reciprocal_affine_log_abs_domain", names)
         self.assertIn("reciprocal_negative_affine_log_abs_domain", names)
@@ -68,6 +68,30 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertIn(
             "inverse_trig_symbolic_affine_positive_rational_radius_positive_quadratic_table",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_named_positive_constant_radius_positive_quadratic_table",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
+            names,
+        )
+        self.assertIn(
+            "rational_positive_quadratic_linear_numerator_expanded_named_positive_radius_decomposition",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_expanded_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_symbolic_square_radius_positive_quadratic_table",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_symbolic_shifted_square_radius_positive_quadratic_table",
             names,
         )
         self.assertIn("explicit_reciprocal_tangent_verified_log_domain", names)
@@ -158,6 +182,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertIn("rational_positive_quadratic_square_reduction", names)
         self.assertIn("affine_exp_substitution", names)
+        self.assertIn("linear_exp_by_parts", names)
+        self.assertIn("linear_exp_affine_slope_by_parts", names)
         self.assertIn("by_parts_affine_log_domain", names)
         self.assertIn("inverse_hyperbolic_rational_direct_atanh_domain", names)
         self.assertIn("rational_partial_fraction_two_real_linear_factors", names)
@@ -201,10 +227,25 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("affine_inverse_hyperbolic_atanh_domain", names)
         self.assertIn("inverse_sqrt_direct_arcsin_domain", names)
         self.assertIn("additive_inverse_sqrt_interval_residual_domain", names)
-        self.assertIn("inverse_sqrt_symbolic_radius_residual_domain", names)
+        self.assertIn("inverse_sqrt_symbolic_radius_arcsin_domain", names)
+        self.assertIn("inverse_sqrt_symbolic_radius_shifted_arcsin_domain", names)
+        self.assertIn("inverse_sqrt_symbolic_slope_shifted_arcsin_domain", names)
         self.assertIn("inverse_sqrt_direct_asinh_unconditional", names)
+        self.assertIn("inverse_hyperbolic_sqrt_symbolic_radius_table", names)
+        self.assertIn(
+            "inverse_hyperbolic_sqrt_symbolic_shifted_radius_table",
+            names,
+        )
+        self.assertIn(
+            "inverse_hyperbolic_sqrt_symbolic_slope_shifted_radius_table",
+            names,
+        )
         self.assertIn("polynomial_base_sqrt_substitution", names)
         self.assertIn("hyperbolic_sine_reciprocal_square_substitution", names)
+        self.assertIn(
+            "negative_affine_hyperbolic_sine_reciprocal_square_substitution",
+            names,
+        )
         self.assertIn(
             "symbolic_affine_exact_hyperbolic_cosh_reciprocal_square_substitution",
             names,
@@ -349,7 +390,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 15, "supported": 109, "undefined": 2},
+            {"residual": 14, "supported": 125, "undefined": 2},
         )
         self.assertEqual(
             sum(
@@ -360,23 +401,48 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     or case.expected_derivative_equivalent_to is not None
                 )
             ),
-            109,
+            118,
         )
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
             {
-                "residual_not_verified": 15,
+                "residual_not_verified": 14,
                 "undefined_not_verified": 2,
-                "verified_by_diff": 109,
+                "verified_by_diff": 30,
+                "verified_by_diff_and_direct_diff_integrate": 88,
+                "verified_by_direct_diff_integrate": 7,
             },
         )
+        self.assertEqual(SMOKE.count_verified_supported_cases(cases), 125)
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
             {
                 "branch_sensitive_interval_residual": 1,
                 "non_elementary_composition": 7,
                 "special_function_method_required": 6,
-                "symbolic_parameter_condition_required": 1,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_residual_families(cases),
+            {
+                "explicit_reciprocal_trig_residual_domain": 7,
+                "inverse_sqrt_additive_residual_domain": 1,
+                "log_rational_residual": 1,
+                "non_elementary_exp_quadratic": 1,
+                "trig_additive_residual_domain": 1,
+                "trig_residual_domain": 3,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_residual_cause_families(cases),
+            {
+                "branch_sensitive_interval_residual/inverse_sqrt_additive_residual_domain": 1,
+                "non_elementary_composition/explicit_reciprocal_trig_residual_domain": 2,
+                "non_elementary_composition/non_elementary_exp_quadratic": 1,
+                "non_elementary_composition/trig_additive_residual_domain": 1,
+                "non_elementary_composition/trig_residual_domain": 3,
+                "special_function_method_required/explicit_reciprocal_trig_residual_domain": 5,
+                "special_function_method_required/log_rational_residual": 1,
             },
         )
         self.assertNotIn(
@@ -401,6 +467,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "non_elementary_composition"
             ],
         )
+        self.assertNotIn(
+            "symbolic_radius_verification_gap",
+            SMOKE.group_residual_cases_by_cause(cases),
+        )
         step_checked = {
             case.name
             for case in cases
@@ -419,6 +489,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "affine_trig_substitution",
                 "constant_multiple_affine_trig_substitution",
                 "affine_exp_substitution",
+                "linear_exp_by_parts",
+                "linear_exp_affine_slope_by_parts",
                 "polynomial_exp_derivative_substitution",
                 "log_power_product_substitution",
                 "constant_base_log_power_product_positive_domain_substitution",
@@ -459,6 +531,12 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "inverse_trig_affine_shifted_scaled_positive_quadratic_table",
                 "inverse_trig_symbolic_affine_expanded_square_radius_positive_quadratic_table",
                 "inverse_trig_symbolic_affine_positive_rational_radius_positive_quadratic_table",
+                "inverse_trig_named_positive_constant_radius_positive_quadratic_table",
+                "inverse_trig_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
+                "inverse_trig_expanded_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
+                "rational_positive_quadratic_linear_numerator_expanded_named_positive_radius_decomposition",
+                "inverse_trig_symbolic_square_radius_positive_quadratic_table",
+                "inverse_trig_symbolic_shifted_square_radius_positive_quadratic_table",
                 "affine_secant_table_log_domain",
                 "affine_cosecant_table_log_domain",
                 "external_constant_affine_secant_table_log_domain",
@@ -486,12 +564,18 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "affine_inverse_hyperbolic_atanh_domain",
                 "inverse_sqrt_direct_arcsin_domain",
                 "additive_inverse_sqrt_interval_residual_domain",
-                "inverse_sqrt_symbolic_radius_residual_domain",
+                "inverse_sqrt_symbolic_radius_arcsin_domain",
+                "inverse_sqrt_symbolic_radius_shifted_arcsin_domain",
+                "inverse_sqrt_symbolic_slope_shifted_arcsin_domain",
                 "inverse_sqrt_direct_asinh_unconditional",
+                "inverse_hyperbolic_sqrt_symbolic_radius_table",
+                "inverse_hyperbolic_sqrt_symbolic_shifted_radius_table",
+                "inverse_hyperbolic_sqrt_symbolic_slope_shifted_radius_table",
                 "affine_inverse_sqrt_arcsin_domain",
                 "polynomial_base_sqrt_substitution",
                 "hyperbolic_reciprocal_square_substitution",
                 "hyperbolic_sine_reciprocal_square_substitution",
+                "negative_affine_hyperbolic_sine_reciprocal_square_substitution",
                 "symbolic_affine_exact_hyperbolic_cosh_reciprocal_square_substitution",
                 "symbolic_affine_exact_hyperbolic_sinh_reciprocal_square_substitution",
                 "symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_square_substitution",
@@ -514,6 +598,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "negative_affine_secant_tangent_derivative_product_domain",
                 "negative_affine_cosecant_cotangent_derivative_product_domain",
                 "polynomial_shifted_secant_tangent_derivative_product_domain",
+                "polynomial_shifted_cosecant_cotangent_derivative_product_domain",
                 "symbolic_affine_exact_secant_tangent_derivative_product_domain",
                 "symbolic_affine_exact_cosecant_cotangent_derivative_product_domain",
                 "symbolic_external_scale_secant_tangent_derivative_product_domain",
@@ -564,7 +649,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "explicit_cotangent_log_numeric_offset_condition_dedupe": 1,
                 "explicit_cotangent_log_numeric_shifted_condition_dedupe": 1,
                 "explicit_tangent_presimplified_condition_dedupe": 1,
-                "hyperbolic_sine_pole_required": 10,
+                "hyperbolic_sine_pole_required": 11,
                 "linear_poles_required": 9,
                 "nonzero_required": 3,
                 "nonfinite_undefined": 1,
@@ -578,25 +663,30 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "shifted_sqrt_chain_nonzero_positive": 5,
                 "shifted_sqrt_chain_positive": 1,
                 "symbolic_denominator_scale_positive_required": 2,
+                "symbolic_radius_nonzero_required": 3,
                 "symbolic_scale_nonzero_required": 2,
-                "symbolic_radical_interval_residual": 1,
+                "symbolic_positive_square_radius_verified": 1,
+                "symbolic_slope_positive_square_radius_verified": 1,
+                "symbolic_slope_shifted_radical_interval_verified": 1,
+                "symbolic_radical_interval_verified": 1,
+                "symbolic_shifted_radical_interval_verified": 1,
                 "symbolic_numerator_scale_positive_required": 1,
                 "sqrt_minus_symbol_chain_nonzero_positive": 2,
                 "sqrt_chain_nonzero_positive": 4,
                 "sqrt_chain_hyperbolic_presimplified_condition_dedupe": 1,
                 "sqrt_chain_hyperbolic_sine_pole_required": 1,
                 "structurally_nonzero_negative_quadratic_denominator": 1,
-                "structurally_positive_denominator": 3,
+                "structurally_positive_denominator": 7,
                 "structurally_positive_log_argument": 3,
                 "trig_pole_additive_residual": 1,
                 "trig_pole_presimplified_residual": 1,
                 "trig_pole_residual": 1,
                 "trig_log_derivative_pole_required": 2,
                 "trig_reciprocal_table_pole_required": 5,
-                "trig_reciprocal_product_pole_required": 5,
+                "trig_reciprocal_product_pole_required": 6,
                 "trig_reciprocal_product_exact_symbolic_derivative_pole_required": 8,
                 "trig_sine_pole_presimplified_residual": 1,
-                "unconditional": 19,
+                "unconditional": 21,
                 "unconditional_cosh_positive": 2,
             },
         )
@@ -609,13 +699,13 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block7_hyperbolic_log_derivative_ratio": 1,
                 "block7_hyperbolic_tanh_log_derivative": 1,
                 "block7_hyperbolic_reciprocal_fourth": 4,
-                "block7_hyperbolic_reciprocal_square": 6,
+                "block7_hyperbolic_reciprocal_square": 7,
                 "block7_trig_log_derivative_ratio": 2,
                 "block7_sqrt_chain_hyperbolic_reciprocal_derivative_product": 3,
                 "block7_sqrt_chain_hyperbolic_log": 3,
                 "block7_sqrt_chain_reciprocal_trig_product": 7,
                 "block7_sqrt_chain_trig_log": 2,
-                "block7_trig_reciprocal_derivative_product": 13,
+                "block7_trig_reciprocal_derivative_product": 14,
                 "block7_trig_reciprocal_log_table": 5,
                 "block9_explicit_reciprocal_trig_residual": 7,
             },
@@ -624,28 +714,36 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_radical_inverse_policy_clusters(cases),
             {
                 "block8_inverse_hyperbolic_rational_interval": 2,
-                "block8_inverse_sqrt_tables": 3,
+                "block8_inverse_sqrt_tables": 9,
                 "block8_inverse_trig_root_reciprocal": 6,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_base_integration_policy_clusters(cases),
+            {
+                "block4_exponential_by_parts": 2,
+                "block4_log_by_parts": 2,
+                "block4_log_power_product_by_parts": 2,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block4_base_integration": 6,
+                "block4_base_integration": 8,
                 "block5_generalized_substitution": 11,
-                "block6_rational_integration": 16,
-                "block7_trig_hyperbolic_integration": 65,
-                "block8_radical_inverse_families": 11,
-                "block9_residuals_and_non_goals": 17,
+                "block6_rational_integration": 22,
+                "block7_trig_hyperbolic_integration": 67,
+                "block8_radical_inverse_families": 17,
+                "block9_residuals_and_non_goals": 16,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
-                "didactic_trace_and_verified_antiderivative": 27,
-                "domain_conditions_and_verified_antiderivative": 82,
+                "didactic_trace_and_verified_antiderivative": 33,
+                "domain_conditions_and_verified_antiderivative": 92,
                 "explicit_undefined_domain_policy": 2,
-                "safe_residual_policy": 15,
+                "safe_residual_policy": 14,
             },
         )
         self.assertGreaterEqual(len({case.family for case in cases}), 10)
@@ -658,12 +756,749 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             "inverse_trig_affine_shifted_scaled_positive_quadratic_table",
             "inverse_trig_symbolic_affine_expanded_square_radius_positive_quadratic_table",
             "inverse_trig_symbolic_affine_positive_rational_radius_positive_quadratic_table",
+            "inverse_trig_named_positive_constant_radius_positive_quadratic_table",
+            "inverse_trig_numeric_affine_named_positive_constant_radius_positive_quadratic_table",
         ):
             with self.subTest(name=name):
                 self.assertEqual(
                     SMOKE.calculus_maturity_block(cases[name]),
                     "block6_rational_integration",
                 )
+
+    def test_symbolic_positive_rational_radius_arctan_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases[
+            "inverse_trig_symbolic_affine_positive_rational_radius_positive_quadratic_table"
+        ]
+
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / ((a·x + b)^2 + 2)",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_required_display,
+            ("a ≠ 0",),
+        )
+
+    def test_named_positive_constant_radius_arctan_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases[
+            "inverse_trig_named_positive_constant_radius_positive_quadratic_table"
+        ]
+
+        self.assertEqual(case.expected_result, "arctan(x·phi^(-1/2)) / sqrt(phi)")
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / (x^2 + phi)",
+        )
+        self.assertEqual(case.expected_direct_diff_integrate_required_display, ())
+
+    def test_positive_quadratic_arctan_table_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        expectations = {
+            "inverse_trig_table": ("1 / (x^2 + 1)", ()),
+            "inverse_trig_affine_shifted_scaled_positive_quadratic_table": (
+                "1 / ((2·x + 3)^2 + 4)",
+                (),
+            ),
+            "inverse_trig_symbolic_affine_expanded_square_radius_positive_quadratic_table": (
+                "1 / ((a·x + b)^2 + 4)",
+                ("a ≠ 0",),
+            ),
+            "inverse_trig_symbolic_square_radius_positive_quadratic_table": (
+                "1 / (a^2 + x^2)",
+                ("a ≠ 0",),
+            ),
+        }
+
+        for name, (expected_result, expected_required_display) in expectations.items():
+            with self.subTest(name=name):
+                case = cases[name]
+                self.assertEqual(
+                    case.expected_direct_diff_integrate_result,
+                    expected_result,
+                )
+                self.assertIsNone(case.expected_direct_diff_integrate_equivalent_to)
+                self.assertEqual(
+                    case.expected_direct_diff_integrate_required_display,
+                    expected_required_display,
+                )
+
+    def test_numeric_affine_named_positive_constant_radius_arctan_is_verified(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases[
+            "inverse_trig_numeric_affine_named_positive_constant_radius_positive_quadratic_table"
+        ]
+
+        self.assertEqual(
+            case.expected_result,
+            "arctan(phi^(-1/2)·(2·x + 3)) / (2·sqrt(phi))",
+        )
+        self.assertEqual(
+            case.expected_derivative_equivalent_to,
+            "1/((2*x+3)^2+phi)",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / ((2·x + 3)^2 + phi)",
+        )
+        self.assertEqual(case.expected_direct_diff_integrate_required_display, ())
+        self.assertEqual(case.expected_required_display, ())
+
+    def test_linear_numerator_named_positive_constant_radius_arctan_is_verified(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases[
+            "rational_positive_quadratic_linear_numerator_expanded_named_positive_radius_decomposition"
+        ]
+
+        self.assertEqual(
+            case.expected_result,
+            "1/4·ln(4·x^2 + 12·x + 9 + phi) + (atan(phi^(-1/2)·(2·x + 3))·3)/(2·sqrt(phi))",
+        )
+        self.assertEqual(
+            case.expected_derivative_equivalent_to,
+            "(2*x+6)/(4*x^2+12*x+9+phi)",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "(2·x + 6) / (4·x^2 + 12·x + 9 + phi)",
+        )
+        self.assertEqual(case.expected_direct_diff_integrate_required_display, ())
+        self.assertEqual(case.expected_required_display, ())
+
+    def test_repeated_linear_partial_fraction_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["rational_partial_fraction_repeated_real_linear_factors"]
+
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / (x^2 - 1)^2",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_required_display,
+            ("x ≠ -1", "x ≠ 1"),
+        )
+
+    def test_inverse_sqrt_arcsin_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["inverse_sqrt_direct_arcsin_domain"]
+
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / sqrt(1 - x^2)",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_required_display,
+            ("-1 < x < 1",),
+        )
+
+    def test_symbolic_shifted_inverse_sqrt_arcsin_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["inverse_sqrt_symbolic_radius_shifted_arcsin_domain"]
+
+        self.assertEqual(
+            case.expected_result,
+            "arcsin((b + x) / sqrt(a^2))",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / sqrt(a^2 - (b + x)^2)",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_required_display,
+            ("a^2 - b^2 - x^2 - 2·b·x > 0",),
+        )
+
+    def test_symbolic_slope_shifted_inverse_sqrt_arcsin_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["inverse_sqrt_symbolic_slope_shifted_arcsin_domain"]
+
+        self.assertEqual(
+            case.expected_result,
+            "arcsin((m·x + b) / sqrt(a^2)) / m",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / sqrt(a^2 - (m·x + b)^2)",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_required_display,
+            (
+                "a^2 - m^2·x^2 - 2·b·m·x - b^2 > 0",
+                "m ≠ 0",
+            ),
+        )
+
+    def test_affine_inverse_sqrt_arcsin_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["affine_inverse_sqrt_arcsin_domain"]
+
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / sqrt(4 - (x + 1)^2)",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_required_display,
+            ("-3 < x < 1",),
+        )
+
+    def test_inverse_trig_root_reciprocal_cluster_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        expected = {
+            "inverse_trig_sqrt_reciprocal_bridge": (
+                "1 / (sqrt(x)·(x + 1))",
+                ("x > 0",),
+            ),
+            "inverse_trig_scaled_sqrt_reciprocal_bridge": (
+                "1 / (sqrt(x)·(4·x + 1))",
+                ("x > 0",),
+            ),
+            "inverse_trig_symbolic_denominator_scale_sqrt_reciprocal_bridge": (
+                "1 / (sqrt(x)·(a^2 + x))",
+                ("a ≠ 0", "x > 0"),
+            ),
+            "inverse_trig_symbolic_denominator_numeric_square_scale_sqrt_reciprocal_bridge": (
+                "1 / (sqrt(x)·(a^2 + 4·x))",
+                ("a ≠ 0", "x > 0"),
+            ),
+            "inverse_trig_symbolic_numerator_scale_sqrt_reciprocal_bridge": (
+                "1 / (sqrt(x)·(x·a^2 + 1))",
+                ("a ≠ 0", "x > 0"),
+            ),
+            "inverse_trig_shifted_scaled_sqrt_reciprocal_bridge": (
+                "1 / (sqrt(x + 1)·(4·x + 5))",
+                ("x > -1",),
+            ),
+        }
+
+        for name, (result, required_display) in expected.items():
+            with self.subTest(name=name):
+                case = cases[name]
+                self.assertEqual(case.expected_direct_diff_integrate_result, result)
+                self.assertEqual(
+                    case.expected_direct_diff_integrate_required_display,
+                    required_display,
+                )
+
+    def test_inverse_hyperbolic_rational_interval_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        expected = {
+            "inverse_hyperbolic_rational_direct_atanh_domain": (
+                "1 / (1 - x^2)",
+                ("-1 < x < 1",),
+            ),
+            "affine_inverse_hyperbolic_atanh_domain": (
+                "2 / (4 - (2·x + 1)^2)",
+                ("-3/2 < x < 1/2",),
+            ),
+        }
+
+        for name, (result, required_display) in expected.items():
+            with self.subTest(name=name):
+                case = cases[name]
+                self.assertEqual(case.expected_direct_diff_integrate_result, result)
+                self.assertEqual(
+                    case.expected_direct_diff_integrate_required_display,
+                    required_display,
+                )
+
+    def test_inverse_sqrt_asinh_tracks_direct_diff_integrate(self) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["inverse_sqrt_direct_asinh_unconditional"]
+
+        self.assertEqual(case.expected_result, "asinh(x)")
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / sqrt(x^2 + 1)",
+        )
+        self.assertEqual(case.expected_direct_diff_integrate_required_display, ())
+
+    def test_hyperbolic_reciprocal_square_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["hyperbolic_reciprocal_square_substitution"]
+
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / cosh(2·x + 1)^2",
+        )
+        self.assertEqual(case.expected_direct_diff_integrate_required_display, ())
+
+    def test_hyperbolic_sine_reciprocal_square_tracks_exact_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["hyperbolic_sine_reciprocal_square_substitution"]
+
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / sinh(2·x + 1)^2",
+        )
+        self.assertIsNone(case.expected_direct_diff_integrate_equivalent_to)
+        self.assertEqual(
+            case.expected_direct_diff_integrate_required_display,
+            ("sinh(2·x + 1) ≠ 0",),
+        )
+
+    def test_negative_affine_hyperbolic_sine_reciprocal_square_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+        case = cases["negative_affine_hyperbolic_sine_reciprocal_square_substitution"]
+
+        self.assertEqual(
+            case.expected_result,
+            "1 / (2·tanh(1 - 2·x))",
+        )
+        self.assertEqual(
+            case.expected_direct_diff_integrate_result,
+            "1 / sinh(1 - 2·x)^2",
+        )
+        self.assertIsNone(case.expected_direct_diff_integrate_equivalent_to)
+        self.assertEqual(
+            case.expected_direct_diff_integrate_required_display,
+            ("sinh(2·x - 1) ≠ 0",),
+        )
+
+    def test_hyperbolic_reciprocal_fourth_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        self.assertEqual(
+            cases["hyperbolic_cosh_reciprocal_fourth_substitution"].expected_direct_diff_integrate_result,
+            "1 / cosh(2·x + 1)^4",
+        )
+        self.assertEqual(
+            cases["symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_fourth_substitution"].expected_direct_diff_integrate_result,
+            "2·k·x / cosh(x^2 + b)^4",
+        )
+
+        sinh_case = cases["hyperbolic_sinh_reciprocal_fourth_substitution"]
+        self.assertEqual(
+            sinh_case.expected_direct_diff_integrate_result,
+            "1 / sinh(2·x + 1)^4",
+        )
+        self.assertEqual(
+            sinh_case.expected_direct_diff_integrate_required_display,
+            ("sinh(2·x + 1) ≠ 0",),
+        )
+
+        shifted_sinh_case = cases[
+            "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution"
+        ]
+        self.assertEqual(
+            shifted_sinh_case.expected_direct_diff_integrate_result,
+            "2·k·x / sinh(x^2 + b)^4",
+        )
+        self.assertEqual(
+            shifted_sinh_case.expected_direct_diff_integrate_required_display,
+            ("sinh(x^2 + b) ≠ 0",),
+        )
+
+    def test_trig_reciprocal_product_symbolic_and_polynomial_track_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        symbolic_sec = cases["symbolic_affine_exact_secant_tangent_derivative_product_domain"]
+        self.assertEqual(
+            symbolic_sec.expected_direct_diff_integrate_result,
+            "a·tan(a·x + b)·sec(a·x + b)",
+        )
+        self.assertEqual(
+            symbolic_sec.expected_direct_diff_integrate_required_display,
+            ("cos(a·x + b) ≠ 0",),
+        )
+
+        symbolic_csc = cases[
+            "symbolic_affine_exact_cosecant_cotangent_derivative_product_domain"
+        ]
+        self.assertEqual(
+            symbolic_csc.expected_direct_diff_integrate_result,
+            "a·csc(a·x + b)·cot(a·x + b)",
+        )
+        self.assertEqual(
+            symbolic_csc.expected_direct_diff_integrate_required_display,
+            ("sin(a·x + b) ≠ 0",),
+        )
+
+        symbolic_external_sec = cases[
+            "symbolic_external_scale_secant_tangent_derivative_product_domain"
+        ]
+        self.assertEqual(
+            symbolic_external_sec.expected_direct_diff_integrate_result,
+            "a·k·tan(a·x + b)·sec(a·x + b)",
+        )
+        self.assertEqual(
+            symbolic_external_sec.expected_direct_diff_integrate_required_display,
+            ("cos(a·x + b) ≠ 0",),
+        )
+
+        negative_symbolic_sec = cases[
+            "negative_symbolic_affine_exact_secant_tangent_derivative_product_domain"
+        ]
+        self.assertEqual(
+            negative_symbolic_sec.expected_direct_diff_integrate_result,
+            "-tan(b - a·x)·sec(b - a·x)·a",
+        )
+        self.assertEqual(
+            negative_symbolic_sec.expected_direct_diff_integrate_required_display,
+            ("cos(b - a·x) ≠ 0",),
+        )
+
+        negative_symbolic_csc = cases[
+            "negative_symbolic_affine_exact_cosecant_cotangent_derivative_product_domain"
+        ]
+        self.assertEqual(
+            negative_symbolic_csc.expected_direct_diff_integrate_result,
+            "-csc(b - a·x)·cot(b - a·x)·a",
+        )
+        self.assertEqual(
+            negative_symbolic_csc.expected_direct_diff_integrate_required_display,
+            ("sin(b - a·x) ≠ 0",),
+        )
+
+        negative_symbolic_external_csc = cases[
+            "negative_symbolic_external_scale_cosecant_cotangent_derivative_product_domain"
+        ]
+        self.assertEqual(
+            negative_symbolic_external_csc.expected_direct_diff_integrate_result,
+            "a·csc(b - a·x)·-cot(b - a·x)·k",
+        )
+        self.assertEqual(
+            negative_symbolic_external_csc.expected_direct_diff_integrate_required_display,
+            ("sin(b - a·x) ≠ 0",),
+        )
+
+        polynomial_sec = cases["polynomial_shifted_secant_tangent_derivative_product_domain"]
+        self.assertEqual(
+            polynomial_sec.expected_direct_diff_integrate_result,
+            "2·x·tan(x^2 + b)·sec(x^2 + b)",
+        )
+        self.assertIsNone(polynomial_sec.expected_direct_diff_integrate_equivalent_to)
+        self.assertEqual(
+            polynomial_sec.expected_direct_diff_integrate_required_display,
+            ("cos(x^2 + b) ≠ 0",),
+        )
+
+        polynomial_csc = cases[
+            "polynomial_shifted_cosecant_cotangent_derivative_product_domain"
+        ]
+        self.assertEqual(
+            polynomial_csc.expected_direct_diff_integrate_result,
+            "2·x·csc(x^2 + b)·cot(x^2 + b)",
+        )
+        self.assertIsNone(polynomial_csc.expected_direct_diff_integrate_equivalent_to)
+        self.assertEqual(
+            polynomial_csc.expected_direct_diff_integrate_required_display,
+            ("sin(x^2 + b) ≠ 0",),
+        )
+
+    def test_direct_diff_integrate_coverage_is_visible_by_block_and_cluster(
+        self,
+    ) -> None:
+        cases = SMOKE.build_cases()
+
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_calculus_maturity_blocks(cases),
+            {
+                "block4_base_integration": 8,
+                "block5_generalized_substitution": 11,
+                "block6_rational_integration": 22,
+                "block7_trig_hyperbolic_integration": 37,
+                "block8_radical_inverse_families": 17,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_calculus_block_gates(cases),
+            {
+                "didactic_trace_and_verified_antiderivative": 31,
+                "domain_conditions_and_verified_antiderivative": 64,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_base_integration_policy_clusters(cases),
+            {
+                "block4_exponential_by_parts": 2,
+                "block4_log_by_parts": 2,
+                "block4_log_power_product_by_parts": 2,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_radical_inverse_policy_clusters(cases),
+            {
+                "block8_inverse_hyperbolic_rational_interval": 2,
+                "block8_inverse_sqrt_tables": 9,
+                "block8_inverse_trig_root_reciprocal": 6,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_trig_hyperbolic_policy_clusters(cases),
+            {
+                "block7_hyperbolic_reciprocal_derivative_product": 7,
+                "block7_hyperbolic_reciprocal_fourth": 4,
+                "block7_hyperbolic_reciprocal_square": 7,
+                "block7_trig_reciprocal_derivative_product": 14,
+                "block7_trig_reciprocal_log_table": 5,
+            },
+        )
+        self.assertEqual(len(SMOKE.direct_diff_integrate_exact_cases(cases)), 90)
+        self.assertEqual(len(SMOKE.direct_diff_integrate_equivalence_cases(cases)), 5)
+        self.assertEqual(
+            len(SMOKE.derivative_verified_without_direct_diff_integrate_cases(cases)),
+            30,
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_gap_calculus_maturity_blocks(cases),
+            {"block7_trig_hyperbolic_integration": 30},
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_gap_calculus_block_gates(cases),
+            {
+                "didactic_trace_and_verified_antiderivative": 2,
+                "domain_conditions_and_verified_antiderivative": 28,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_gap_base_integration_policy_clusters(
+                cases
+            ),
+            {},
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_gap_radical_inverse_policy_clusters(
+                cases
+            ),
+            {},
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_gap_trig_hyperbolic_policy_clusters(
+                cases
+            ),
+            {
+                "block7_explicit_reciprocal_hyperbolic_tangent": 4,
+                "block7_explicit_reciprocal_trig_log_substitution": 7,
+                "block7_hyperbolic_log_derivative_ratio": 1,
+                "block7_hyperbolic_tanh_log_derivative": 1,
+                "block7_sqrt_chain_hyperbolic_log": 3,
+                "block7_sqrt_chain_hyperbolic_reciprocal_derivative_product": 3,
+                "block7_sqrt_chain_reciprocal_trig_product": 7,
+                "block7_sqrt_chain_trig_log": 2,
+                "block7_trig_log_derivative_ratio": 2,
+            },
+        )
+        self.assertEqual(
+            SMOKE.direct_diff_integrate_gap_case_names_by_base_integration_policy_cluster(
+                cases
+            ),
+            {},
+        )
+        gap_trig_examples = (
+            SMOKE.direct_diff_integrate_gap_case_names_by_trig_hyperbolic_policy_cluster(
+                cases
+            )
+        )
+        self.assertEqual(
+            gap_trig_examples["block7_hyperbolic_tanh_log_derivative"],
+            ["symbolic_external_scale_hyperbolic_tanh_direct_log_positive"],
+        )
+        self.assertEqual(
+            gap_trig_examples["block7_sqrt_chain_reciprocal_trig_product"][:3],
+            [
+                "sqrt_chain_secant_tangent_domain",
+                "external_symbolic_scale_sqrt_chain_secant_tangent_domain",
+                "external_symbolic_scale_sqrt_chain_cosecant_cotangent_domain",
+            ],
+        )
+        self.assertEqual(
+            SMOKE.direct_diff_integrate_gap_case_names_by_calculus_maturity_block(
+                cases
+            )["block7_trig_hyperbolic_integration"][:2],
+            [
+                "explicit_reciprocal_sine_verified_log_domain",
+                "explicit_reciprocal_cosine_verified_log_domain",
+            ],
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_equivalence_calculus_maturity_blocks(
+                cases
+            ),
+            {"block7_trig_hyperbolic_integration": 5},
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_equivalence_trig_hyperbolic_policy_clusters(
+                cases
+            ),
+            {
+                "block7_hyperbolic_reciprocal_derivative_product": 3,
+                "block7_hyperbolic_reciprocal_square": 2,
+            },
+        )
+        self.assertEqual(
+            SMOKE.count_direct_diff_integrate_equivalence_base_integration_policy_clusters(
+                cases
+            ),
+            {},
+        )
+
+    def test_positive_quadratic_rational_rows_track_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        square_reduction = cases["rational_positive_quadratic_square_reduction"]
+        self.assertTrue(square_reduction.direct_diff_integrate_from_derivative)
+        self.assertEqual(
+            SMOKE.direct_diff_integrate_expected_result(square_reduction),
+            "1 / (x^2 + 1)^2",
+        )
+
+        improper = cases["rational_improper_positive_quadratic_polynomial_division"]
+        self.assertTrue(improper.direct_diff_integrate_from_derivative)
+        self.assertEqual(
+            SMOKE.direct_diff_integrate_expected_result(improper),
+            "(x^2 + 1) / (x^2 + 2·x + 2)",
+        )
+
+        negative_orientation = cases[
+            "rational_improper_positive_quadratic_negative_orientation"
+        ]
+        self.assertEqual(
+            SMOKE.direct_diff_integrate_expected_result(negative_orientation),
+            "(-x^2 - 1) / (x^2 + 2·x + 2)",
+        )
+
+    def test_block6_linear_pole_rational_rows_track_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        expected = {
+            "rational_partial_fraction_mixed_linear_positive_quadratic": (
+                "1 / (x^4 - 1)",
+                ("x ≠ -1", "x ≠ 1"),
+            ),
+            "rational_partial_fraction_repeated_linear_positive_quadratic": (
+                "1 / ((x - 1)^2·(x^2 + 1))",
+                ("x ≠ 1",),
+            ),
+            "rational_partial_fraction_repeated_origin_linear_positive_quadratic_no_log": (
+                "1 / (x^2·(x^2 + 1))",
+                ("x ≠ 0",),
+            ),
+            "rational_partial_fraction_repeated_origin_scaled_positive_quadratic_no_log": (
+                "1 / (x^2·(x^2 + 4))",
+                ("x ≠ 0",),
+            ),
+            "rational_improper_partial_fraction_polynomial_division": (
+                "(x^2 + 1) / (x^2 - 1)",
+                ("x ≠ -1", "x ≠ 1"),
+            ),
+        }
+
+        for name, (result, required_display) in expected.items():
+            with self.subTest(name=name):
+                case = cases[name]
+                self.assertEqual(SMOKE.direct_diff_integrate_expected_result(case), result)
+                self.assertEqual(
+                    SMOKE.direct_diff_integrate_expected_required_display(case),
+                    required_display,
+                )
+
+    def test_block7_secant_cosecant_log_table_tracks_direct_diff_integrate(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        exact_expected = {
+            "affine_secant_table_log_domain": (
+                "sec(2·x + 1)",
+                ("cos(2·x + 1) ≠ 0",),
+            ),
+            "affine_cosecant_table_log_domain": (
+                "csc(2·x + 1)",
+                ("sin(2·x + 1) ≠ 0",),
+            ),
+            "external_constant_affine_secant_table_log_domain": (
+                "3·sec(2·x + 1)",
+                ("cos(2·x + 1) ≠ 0",),
+            ),
+            "rational_denominator_scaled_affine_secant_table_log_domain": (
+                "(2·sec(2·x + 1))/3",
+                ("cos(2·x + 1) ≠ 0",),
+            ),
+            "rational_denominator_scaled_affine_cosecant_table_log_domain": (
+                "(2·csc(2·x + 1))/3",
+                ("sin(2·x + 1) ≠ 0",),
+            ),
+        }
+
+        for name, (result, required_display) in exact_expected.items():
+            with self.subTest(name=name):
+                case = cases[name]
+                self.assertEqual(SMOKE.direct_diff_integrate_expected_result(case), result)
+                self.assertIsNone(
+                    SMOKE.direct_diff_integrate_expected_equivalent_to(case)
+                )
+                self.assertEqual(
+                    SMOKE.direct_diff_integrate_expected_required_display(case),
+                    required_display,
+                )
+
+    def test_direct_diff_integrate_expectation_can_inherit_derivative_policy(
+        self,
+    ) -> None:
+        cases = {case.name: case for case in SMOKE.build_cases()}
+
+        polynomial = cases["polynomial_power_direct"]
+        self.assertTrue(polynomial.direct_diff_integrate_from_derivative)
+        self.assertIsNone(polynomial.expected_direct_diff_integrate_result)
+        self.assertEqual(SMOKE.direct_diff_integrate_expected_result(polynomial), "x^2")
+        self.assertEqual(
+            SMOKE.direct_diff_integrate_expected_required_display(polynomial),
+            (),
+        )
+
+        reciprocal = cases["reciprocal_affine_log_abs_domain"]
+        self.assertTrue(reciprocal.direct_diff_integrate_from_derivative)
+        self.assertIsNone(reciprocal.expected_direct_diff_integrate_result)
+        self.assertEqual(
+            SMOKE.direct_diff_integrate_expected_result(reciprocal),
+            "1 / (2·x + 1)",
+        )
+        self.assertEqual(
+            SMOKE.direct_diff_integrate_expected_required_display(reciprocal),
+            ("x ≠ -1/2",),
+        )
 
     def test_radical_inverse_policy_clusters_cover_supported_block8_cases(self) -> None:
         cases = SMOKE.build_cases()
@@ -817,6 +1652,21 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     """\
                     #!/bin/sh
                     case "$*" in
+                    *"diff(integrate(x^2, x), x)"*)
+                    cat <<'OUT'
+                    {"ok":true,"result":"x^2","warnings":[],"required_display":[]}
+                    OUT
+                    ;;
+                    *"diff(integrate(2*x + 3, x), x)"*)
+                    cat <<'OUT'
+                    {"ok":true,"result":"2·x + 3","warnings":[],"required_display":[]}
+                    OUT
+                    ;;
+                    *"diff(integrate(1/(2*x + 1), x), x)"*)
+                    cat <<'OUT'
+                    {"ok":true,"result":"1 / (2·x + 1)","warnings":[],"required_display":["x ≠ -1/2"]}
+                    OUT
+                    ;;
                     *"integrate(x^2, x)"*)
                     cat <<'OUT'
                     {"ok":true,"result":"1/3·x^3","warnings":[],"required_display":[],"steps":[{"substeps":[{"title":"Usar regla de potencia para integrales"}]}]}
@@ -883,15 +1733,32 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(matrix["supported_step_unchecked_case_count"], 0)
         self.assertEqual(matrix["supported_step_unchecked_cases"], [])
         self.assertEqual(matrix["antiderivative_verification_case_count"], 3)
+        self.assertEqual(matrix["verified_supported_case_count"], 3)
+        self.assertEqual(matrix["direct_diff_integrate_case_count"], 3)
         self.assertEqual(matrix["trig_hyperbolic_policy_cluster_counts"], {})
+        self.assertEqual(matrix["base_integration_policy_cluster_counts"], {})
         self.assertEqual(matrix["radical_inverse_policy_cluster_counts"], {})
         self.assertEqual(
+            matrix["direct_diff_integrate_base_integration_policy_cluster_counts"],
+            {},
+        )
+        self.assertEqual(
             matrix["verification_regime_counts"],
-            {"residual_not_verified": 1, "verified_by_diff": 3},
+            {
+                "residual_not_verified": 1,
+                "verified_by_diff_and_direct_diff_integrate": 3,
+            },
         )
         self.assertEqual(
             matrix["residual_cause_counts"],
             {"non_elementary_composition": 1},
+        )
+        self.assertEqual(
+            matrix["residual_family_counts"], {"non_elementary_exp_quadratic": 1}
+        )
+        self.assertEqual(
+            matrix["residual_cause_family_counts"],
+            {"non_elementary_composition/non_elementary_exp_quadratic": 1},
         )
         self.assertEqual(matrix["expected_step_substring_count"], 7)
         self.assertEqual(matrix["required_display_counts"], {"x ≠ -1/2": 1})
@@ -903,11 +1770,23 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             "non_elementary_composition",
         )
         self.assertEqual(matrix["runtime_by_residual_cause"][0]["case_count"], 1)
+        self.assertEqual(
+            matrix["runtime_by_residual_cause_family"][0]["cause_family"],
+            "non_elementary_composition/non_elementary_exp_quadratic",
+        )
+        self.assertEqual(
+            matrix["runtime_by_residual_cause_family"][0]["case_count"], 1
+        )
         self.assertIn("residual_public_phase_slowest_cases", matrix)
         self.assertIn("residual_public_phase_by_cause", matrix)
         self.assertEqual(
             matrix["residual_public_phase_by_cause"][0]["cause"],
             "non_elementary_composition",
+        )
+        self.assertIn("residual_public_phase_by_cause_family", matrix)
+        self.assertEqual(
+            matrix["residual_public_phase_by_cause_family"][0]["cause_family"],
+            "non_elementary_composition/non_elementary_exp_quadratic",
         )
         self.assertEqual(
             matrix["residual_public_phase_slowest_cases"][0]["cli_simplify_ms"],
@@ -923,6 +1802,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             "antiderivative_verification_elapsed_seconds",
             matrix["cases"][0],
         )
+        self.assertIn("direct_diff_integrate_elapsed_seconds", matrix["cases"][0])
         self.assertEqual(
             matrix["cases"][0]["antiderivative_verification_mode"],
             "direct_derivative",
@@ -1086,6 +1966,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
 
         self.assertEqual(matrix["status"], "pass")
         self.assertEqual(matrix["antiderivative_verification_case_count"], 1)
+        self.assertEqual(matrix["verified_supported_case_count"], 1)
         self.assertEqual(
             matrix["verification_regime_counts"],
             {"verified_by_diff": 1},
@@ -1098,6 +1979,67 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             matrix["runtime_by_antiderivative_verification_mode"][0]["mode"],
             "residual_equivalence",
+        )
+
+    def test_run_matrix_accepts_direct_diff_integrate_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    case "$*" in
+                    *"diff(integrate(g, x), x)"*)
+                    cat <<'OUT'
+                    {"ok":true,"result":"g","warnings":[],"required_display":["a ≠ 0"]}
+                    OUT
+                    ;;
+                    *"integrate(g, x)"*)
+                    cat <<'OUT'
+                    {"ok":true,"result":"G","warnings":[],"required_display":["a ≠ 0"],"steps":[{"substeps":[{"title":"Explicar integral"}]}]}
+                    OUT
+                    ;;
+                    *"diff(G, x) - (g)"*)
+                    cat <<'OUT'
+                    {"ok":true,"result":"0","warnings":[],"required_display":["a ≠ 0"]}
+                    OUT
+                    ;;
+                    *)
+                    echo '{"ok":false,"result":"unexpected","warnings":[],"required_display":[]}'
+                    ;;
+                    esac
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            case = SMOKE.IntegrateCommandMatrixCase(
+                name="direct_nested_verified",
+                expr="integrate(g, x)",
+                expected_result="G",
+                expected_required_display=("a ≠ 0",),
+                expected_derivative_equivalent_to="g",
+                expected_derivative_required_display=("a ≠ 0",),
+                expected_direct_diff_integrate_result="g",
+                expected_direct_diff_integrate_required_display=("a ≠ 0",),
+                expected_step_substrings=("Explicar integral",),
+            )
+            matrix = SMOKE.run_matrix((case,), cas_cli=cas_cli, timeout_seconds=2.0)
+
+        self.assertEqual(matrix["status"], "pass", matrix)
+        self.assertEqual(matrix["direct_diff_integrate_case_count"], 1)
+        self.assertEqual(matrix["direct_diff_integrate_gap_case_count"], 0)
+        self.assertEqual(matrix["verified_supported_case_count"], 1)
+        self.assertEqual(
+            matrix["verification_regime_counts"],
+            {"verified_by_diff_and_direct_diff_integrate": 1},
+        )
+        self.assertIn("slowest_direct_diff_integrate_checks", matrix)
+        self.assertEqual(matrix["cases"][0]["direct_diff_integrate_result"], "g")
+        self.assertEqual(
+            matrix["cases"][0]["direct_diff_integrate_required_display"],
+            ["a ≠ 0"],
         )
 
     def test_run_matrix_reports_missing_expected_step_trace(self) -> None:

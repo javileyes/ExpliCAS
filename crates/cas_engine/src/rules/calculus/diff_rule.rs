@@ -13,7 +13,10 @@ use super::diff_rule_support::{
     arctan_sqrt_additive_derivative_rewrite, sign_polynomial_diff_rewrite, undefined_diff_rewrite,
 };
 use super::domain_checks::diff_target_known_undefined_or_empty_domain_over_reals;
-use super::integral_derivative_shortcut_presentation::supported_integral_diff_shortcut_rewrite;
+use super::integral_derivative_shortcut_presentation::{
+    reciprocal_trig_derivative_product_integral_diff_shortcut_rewrite,
+    supported_integral_diff_shortcut_rewrite,
+};
 use super::inverse_reciprocal_trig_affine_abs_derivative_presentation::constant_scaled_inverse_reciprocal_trig_affine_abs_rewrite;
 use super::inverse_surd_quotient_derivative_presentation::constant_divisor_bounded_inverse_trig_surd_quotient_compact_derivative_rewrite;
 use super::inverse_tangent_scaled_root_derivative_routes::inverse_tangent_scaled_root_derivative_rewrite;
@@ -28,6 +31,24 @@ use super::sqrt_polynomial_quotient_derivative_presentation::sqrt_of_polynomial_
 use super::surd_quotient_derivative_routes::{
     constant_scaled_surd_quotient_derivative_rewrite, surd_quotient_derivative_rewrite,
 };
+
+define_rule!(
+    IntegralDiffShortcutRule,
+    "Integral Diff Shortcut",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::TRANSFORM,
+    priority: 100,
+    |ctx, expr| {
+        let call = try_extract_diff_call(ctx, expr)?;
+        let target = unwrap_internal_hold_for_calculus(ctx, call.target);
+        if let Some(rewrite) =
+            reciprocal_trig_derivative_product_integral_diff_shortcut_rewrite(ctx, &call, target)
+        {
+            return Some(rewrite);
+        }
+        supported_integral_diff_shortcut_rewrite(ctx, &call, target)
+    }
+);
 
 define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
     let call = try_extract_diff_call(ctx, expr)?;
@@ -45,6 +66,11 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
         return Some(rewrite);
     }
     if let Some(rewrite) = log_sqrt_trig_derivative_rewrite(ctx, &call, target) {
+        return Some(rewrite);
+    }
+    if let Some(rewrite) =
+        reciprocal_trig_derivative_product_integral_diff_shortcut_rewrite(ctx, &call, target)
+    {
         return Some(rewrite);
     }
     if let Some(rewrite) = supported_integral_diff_shortcut_rewrite(ctx, &call, target) {

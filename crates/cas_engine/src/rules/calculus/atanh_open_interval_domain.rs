@@ -9,7 +9,7 @@ use super::scalar_presentation::{
 use super::surd_quotient_args::{
     arctan_self_normalized_surd_quotient_parts, atanh_arg_over_sqrt_parts,
 };
-use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_predicates::contains_named_var;
 use cas_math::root_forms::extract_square_root_base;
 use num_rational::BigRational;
@@ -248,12 +248,20 @@ pub(super) fn atanh_known_empty_open_interval_gap(
 ) -> Option<ExprId> {
     let arg = atanh_open_interval_arg(ctx, target)?;
     let gap = atanh_open_interval_condition(ctx, arg);
-    if cas_math::calculus_domain_support::positive_condition_is_impossible_over_reals(
+    if cas_math::calculus_domain_support::bounded_inverse_real_domain_rejection_over_reals(
         ctx,
-        gap,
+        Some(BuiltinFn::Atanh),
+        &[arg],
         CALCULUS_DOMAIN_PROOF_DEPTH,
-    ) || arg_is_proven_outside_open_unit_interval(ctx, arg)
-        || known_constant_abs_exceeds_one(ctx, arg)
+    )
+    .is_some()
+        || cas_math::calculus_domain_support::positive_condition_is_impossible_over_reals(
+            ctx,
+            gap,
+            CALCULUS_DOMAIN_PROOF_DEPTH,
+        )
+        || arg_is_proven_outside_open_unit_interval(ctx, arg)
+        || cas_math::calculus_domain_support::known_constant_abs_exceeds_one(ctx, arg)
     {
         return Some(gap);
     }
@@ -301,12 +309,4 @@ fn atanh_open_interval_arg(ctx: &Context, target: ExprId) -> Option<ExprId> {
         return None;
     };
     (ctx.builtin_of(*fn_id) == Some(BuiltinFn::Atanh) && args.len() == 1).then_some(args[0])
-}
-
-pub(super) fn known_constant_abs_exceeds_one(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Constant(Constant::Pi | Constant::E) => true,
-        Expr::Neg(inner) | Expr::Hold(inner) => known_constant_abs_exceeds_one(ctx, *inner),
-        _ => false,
-    }
 }

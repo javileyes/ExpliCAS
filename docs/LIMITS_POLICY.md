@@ -415,11 +415,12 @@ Current contract:
   `limit(atanh(x), x, 1-) -> infinity`, and the lower endpoint approached
   from inside resolves to `-infinity`, for example
   `limit(atanh(x), x, -1+) -> -infinity`; wrong-side paths such as
-  `limit(atanh(x), x, 1+)`, empty-domain gaps such as
-  `limit(atanh(1+x^2), x, 0+)`, and non-polynomial endpoint arguments remain
-  residual while preserving the strict open-interval requirement; when the
-  requested one-sided path is proven outside the open interval by local
-  polynomial evidence, the residual must carry a `Limit Domain Path` warning
+  `limit(atanh(x), x, 1+)` and non-polynomial endpoint arguments remain
+  residual while preserving the strict open-interval requirement; expressions
+  whose global real domain is statically empty, such as
+  `limit(atanh(1+x^2), x, 0+)`, resolve to `undefined`; when the requested
+  one-sided path is proven outside the open interval by local polynomial
+  evidence, the residual must carry a `Limit Domain Path` warning
 - finite two-sided lower-bound inverse-hyperbolic endpoint paths may evaluate
   `acosh(p(x)) -> 0` when `p(x)` is polynomial, `p(a) = 1`, and local
   polynomial side evidence proves `p(x) - 1 > 0` from both sides of the

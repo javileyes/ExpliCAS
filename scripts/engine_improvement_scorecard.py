@@ -51,6 +51,10 @@ CALCULUS_RUNTIME_PRESSURE_RISK_P95_MS = 250.0
 CALCULUS_RUNTIME_PRESSURE_WATCH_TOP3_SHARE_PERCENT = 50.0
 CALCULUS_RUNTIME_PRESSURE_RISK_TOP3_SHARE_PERCENT = 80.0
 CALCULUS_RUNTIME_PRESSURE_CONCENTRATION_MIN_CASES = 10
+CALCULUS_CLUSTER_RUNTIME_CANDIDATE_MIN_CASES = 2
+CALCULUS_CLUSTER_RUNTIME_CANDIDATE_MIN_AVG_MS = 75.0
+CALCULUS_CLUSTER_RUNTIME_CANDIDATE_RATIO = 2.0
+CALCULUS_COMMAND_MATRIX_PROCESS_OVERHEAD_FLOOR_MAX_MS = 75.0
 # Keep these clusters visible, but do not keep re-selecting them as raw
 # consolidation candidates once a shared engine policy owns the family.
 CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
@@ -67,7 +71,28 @@ CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
 )
 CALCULUS_RADICAL_INVERSE_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
     {
+        "block8_inverse_hyperbolic_rational_interval",
+        "block8_inverse_sqrt_tables",
         "block8_inverse_trig_root_reciprocal",
+    }
+)
+CALCULUS_BASE_INTEGRATION_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
+    {
+        "block4_exponential_by_parts",
+        "block4_log_by_parts",
+        "block4_log_power_product_by_parts",
+    }
+)
+CALCULUS_DIFF_SYMBOLIC_RADIUS_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
+    {
+        "block2_symbolic_radius_arctan_positive_quadratic",
+    }
+)
+CALCULUS_DIFF_POSITIVE_QUADRATIC_POLICY_CLUSTERS_WITH_SHARED_POLICY = frozenset(
+    {
+        "block2_positive_quadratic_log_abs_pole_primitive",
+        "block2_positive_quadratic_log_arctan_primitive",
+        "block2_symbolic_radius_arctan_positive_quadratic",
     }
 )
 SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS = (
@@ -1136,6 +1161,14 @@ def is_observe_only_discovery_section(title: str, body: str) -> bool:
 
 
 def is_closed_observe_only_discovery_section(body: str) -> bool:
+    lowered_body = body.lower()
+    closed_follow_up_phrases = (
+        "should no longer be treated as an open observe-only candidate",
+        "should no longer count as an open observe-only candidate",
+        "no longer an open observe-only discovery",
+    )
+    if any(phrase in lowered_body for phrase in closed_follow_up_phrases):
+        return True
     if re.search(
         r"^\s*-\s+(resolved by|superseded by|follow-up resolution):",
         body,
@@ -1143,7 +1176,10 @@ def is_closed_observe_only_discovery_section(body: str) -> bool:
     ):
         return True
     for status in re.findall(r"^\s*-\s+`([^`]+)`", body, re.M):
-        if normalized_discovery_status(status) in {"resolved", "superseded"}:
+        normalized = normalized_discovery_status(status)
+        if normalized in {"closed", "rejected", "resolved", "superseded"}:
+            return True
+        if normalized.startswith(("closed-", "resolved-", "superseded-")):
             return True
     return False
 
@@ -2914,6 +2950,47 @@ def classify_calculus_runtime_pressure(
     return pressure
 
 
+def classify_calculus_runtime_measurement(
+    distribution: dict[str, Any],
+    pressure: dict[str, Any],
+) -> dict[str, Any]:
+    max_case_ms = distribution.get("max_case_ms")
+    p95_case_ms = distribution.get("p95_case_ms")
+    pressure_status = pressure.get("status")
+    measurement: dict[str, Any] = {
+        "mode": "process_per_case",
+        "status": "unclassified",
+        "guidance": "inspect runtime distribution before selecting a runtime candidate",
+    }
+    if isinstance(max_case_ms, (int, float)):
+        measurement["max_case_ms"] = round(float(max_case_ms), 3)
+    if isinstance(p95_case_ms, (int, float)):
+        measurement["p95_case_ms"] = round(float(p95_case_ms), 3)
+    if isinstance(pressure_status, str):
+        measurement["pressure_status"] = pressure_status
+
+    if pressure_status in {"watch", "risk"}:
+        measurement["status"] = "actionable_pressure"
+        measurement["guidance"] = "triage runtime pressure with focused probes"
+        return measurement
+
+    if (
+        pressure_status == "ok"
+        and isinstance(max_case_ms, (int, float))
+        and max_case_ms < CALCULUS_COMMAND_MATRIX_PROCESS_OVERHEAD_FLOOR_MAX_MS
+    ):
+        measurement["status"] = "process_overhead_floor"
+        measurement["guidance"] = (
+            "require embedded or profiler evidence before treating this as an engine hotspot"
+        )
+        return measurement
+
+    if pressure_status == "ok":
+        measurement["status"] = "routine_process_timing"
+        measurement["guidance"] = "prefer embedded or profiler confirmation before optimizing"
+    return measurement
+
+
 def add_runtime_observability_metrics(
     metrics: dict[str, Any],
     raw: dict[str, Any],
@@ -2940,10 +3017,17 @@ def add_runtime_observability_metrics(
     pressure_distribution = warm_distribution or distribution
     pressure_concentration = warm_concentration or concentration
     if pressure_distribution:
-        metrics[f"{prefix}_runtime_pressure"] = classify_calculus_runtime_pressure(
+        runtime_pressure = classify_calculus_runtime_pressure(
             pressure_distribution,
             pressure_concentration,
             sample_basis="warm" if warm_distribution else "cold_inclusive",
+        )
+        metrics[f"{prefix}_runtime_pressure"] = runtime_pressure
+        metrics[f"{prefix}_runtime_measurement"] = (
+            classify_calculus_runtime_measurement(
+                pressure_distribution,
+                runtime_pressure,
+            )
         )
     slowest_cases = sanitize_runtime_case_rows(raw.get("slowest_cases"))
     if slowest_cases:
@@ -2992,11 +3076,25 @@ def sanitize_phase_runtime_case_rows(
             "presentation_regime",
             "calculus_maturity_block",
             "calculus_block_gate",
+            "positive_quadratic_policy_cluster",
+            "variable_power_policy_cluster",
             "antiderivative_verification_mode",
         ):
             value = raw_row.get(key)
             if isinstance(value, str):
                 row[key] = value
+        steps_count = raw_row.get("steps_count")
+        if isinstance(steps_count, int):
+            row["steps_count"] = steps_count
+        step_rule_names = raw_row.get("step_rule_names")
+        if isinstance(step_rule_names, list):
+            names = [
+                value
+                for value in step_rule_names
+                if isinstance(value, str) and value.strip()
+            ]
+            if names:
+                row["step_rule_names"] = names[:8]
         rows.append(row)
     return rows
 
@@ -3141,6 +3239,32 @@ def sanitize_residual_cause_runtime_rows(raw_rows: Any) -> list[dict[str, Any]]:
     return rows
 
 
+def sanitize_residual_cause_family_runtime_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        cause_family = raw_row.get("cause_family")
+        case_count = raw_row.get("case_count")
+        if not isinstance(cause_family, str) or not isinstance(case_count, int):
+            continue
+        row: dict[str, Any] = {
+            "cause_family": cause_family,
+            "case_count": case_count,
+        }
+        for key in ("total_elapsed_seconds", "avg_case_ms", "max_elapsed_seconds"):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 3)
+        slowest_case = raw_row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            row["slowest_case"] = slowest_case
+        rows.append(row)
+    return rows
+
+
 def sanitize_residual_public_phase_case_rows(raw_rows: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_rows, list):
         return []
@@ -3219,6 +3343,41 @@ def sanitize_residual_public_phase_group_rows(raw_rows: Any) -> list[dict[str, A
     return rows
 
 
+def sanitize_residual_public_phase_cause_family_group_rows(
+    raw_rows: Any,
+) -> list[dict[str, Any]]:
+    if not isinstance(raw_rows, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        cause_family = raw_row.get("cause_family")
+        case_count = raw_row.get("case_count")
+        if not isinstance(cause_family, str) or not isinstance(case_count, int):
+            continue
+        row: dict[str, Any] = {
+            "cause_family": cause_family,
+            "case_count": case_count,
+        }
+        for key in (
+            "integrate_total_seconds",
+            "cli_total_seconds",
+            "public_overhead_total_seconds",
+            "public_overhead_share_percent",
+            "avg_required_display_count",
+            "avg_step_text_char_count",
+        ):
+            value = raw_row.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 6)
+        slowest_case = raw_row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            row["slowest_case"] = slowest_case
+        rows.append(row)
+    return rows
+
+
 def sanitize_residual_shape_orientation_probe_rows(raw_rows: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_rows, list):
         return []
@@ -3271,11 +3430,26 @@ def sanitize_residual_shape_orientation_probe_rows(raw_rows: Any) -> list[dict[s
 def residual_shape_orientation_probe_summary(
     rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    status_counts: dict[str, int] = {}
+    first_problem_row: dict[str, Any] | None = None
+    for row in rows:
+        status = row.get("status")
+        if not isinstance(status, str):
+            continue
+        status_counts[status] = status_counts.get(status, 0) + 1
+        if status != "pass" and first_problem_row is None:
+            first_problem_row = row
+
     counted_rows = [
         row for row in rows if isinstance(row.get("required_display_count"), int)
     ]
     if not counted_rows:
-        return {}
+        summary: dict[str, Any] = {"probe_count": len(rows)}
+        if status_counts:
+            summary["status_counts"] = status_counts
+        if first_problem_row is not None:
+            add_residual_shape_orientation_problem_summary(summary, first_problem_row)
+        return summary
     max_row = max(
         counted_rows,
         key=lambda row: (
@@ -3295,11 +3469,32 @@ def residual_shape_orientation_probe_summary(
             total_required_display_count / len(counted_rows), 3
         ),
     }
+    if status_counts:
+        summary["status_counts"] = status_counts
+    if first_problem_row is not None:
+        add_residual_shape_orientation_problem_summary(summary, first_problem_row)
     for key in ("name", "expression_shape", "orientation", "steps_mode", "status"):
         value = max_row.get(key)
         if isinstance(value, str):
             summary[f"max_{key}"] = value
     return summary
+
+
+def add_residual_shape_orientation_problem_summary(
+    summary: dict[str, Any],
+    row: dict[str, Any],
+) -> None:
+    for source, target in (
+        ("name", "first_problem_name"),
+        ("status", "first_problem_status"),
+        ("expression_shape", "first_problem_expression_shape"),
+        ("orientation", "first_problem_orientation"),
+        ("steps_mode", "first_problem_steps_mode"),
+        ("error", "first_problem_error"),
+    ):
+        value = row.get(source)
+        if isinstance(value, str):
+            summary[target] = value
 
 
 def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
@@ -3397,6 +3592,11 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
         ("required_condition_regime_counts", "limit_required_condition_regime_counts"),
         ("outcome_counts", "limit_outcome_counts"),
         ("residual_cause_counts", "limit_residual_cause_counts"),
+        ("residual_family_counts", "limit_residual_family_counts"),
+        (
+            "residual_cause_family_counts",
+            "limit_residual_cause_family_counts",
+        ),
         ("calculus_maturity_block_counts", "limit_calculus_maturity_block_counts"),
         ("calculus_block_gate_counts", "limit_calculus_block_gate_counts"),
         ("required_display_counts", "limit_required_display_counts"),
@@ -3412,6 +3612,55 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
         prefix="limit",
         group_keys=("family", "point_regime", "domain_regime", "trace_regime"),
     )
+    for raw_key, metric_key in (
+        (
+            "cli_parse_runtime_distribution",
+            "limit_cli_parse_runtime_distribution",
+        ),
+        (
+            "cli_simplify_runtime_distribution",
+            "limit_cli_simplify_runtime_distribution",
+        ),
+        (
+            "cli_total_runtime_distribution",
+            "limit_cli_total_runtime_distribution",
+        ),
+        (
+            "cli_public_overhead_runtime_distribution",
+            "limit_cli_public_overhead_runtime_distribution",
+        ),
+    ):
+        distribution = sanitize_runtime_distribution(raw.get(raw_key))
+        if distribution:
+            metrics[metric_key] = distribution
+    for raw_key, metric_key, elapsed_key in (
+        (
+            "slowest_cli_parse_evaluations",
+            "limit_slowest_cli_parse_evaluations",
+            "cli_parse_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_simplify_evaluations",
+            "limit_slowest_cli_simplify_evaluations",
+            "cli_simplify_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_total_evaluations",
+            "limit_slowest_cli_total_evaluations",
+            "cli_total_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_public_overhead_evaluations",
+            "limit_slowest_cli_public_overhead_evaluations",
+            "cli_public_overhead_seconds",
+        ),
+    ):
+        rows = sanitize_phase_runtime_case_rows(
+            raw.get(raw_key),
+            elapsed_key=elapsed_key,
+        )
+        if rows:
+            metrics[metric_key] = rows
     return metrics
 
 
@@ -3506,6 +3755,18 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
         ("outcome_counts", "diff_outcome_counts"),
         ("calculus_maturity_block_counts", "diff_calculus_maturity_block_counts"),
         ("calculus_block_gate_counts", "diff_calculus_block_gate_counts"),
+        (
+            "symbolic_radius_policy_cluster_counts",
+            "diff_symbolic_radius_policy_cluster_counts",
+        ),
+        (
+            "positive_quadratic_policy_cluster_counts",
+            "diff_positive_quadratic_policy_cluster_counts",
+        ),
+        (
+            "variable_power_policy_cluster_counts",
+            "diff_variable_power_policy_cluster_counts",
+        ),
         ("required_display_counts", "diff_required_display_counts"),
         ("trace_regime_counts", "diff_trace_regime_counts"),
         ("presentation_regime_counts", "diff_presentation_regime_counts"),
@@ -3524,6 +3785,8 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
             "domain_regime",
             "trace_regime",
             "presentation_regime",
+            "positive_quadratic_policy_cluster",
+            "variable_power_policy_cluster",
         ),
     )
     harness_check_distribution = sanitize_runtime_distribution(
@@ -3533,11 +3796,52 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
         metrics["diff_harness_check_runtime_distribution"] = (
             harness_check_distribution
         )
+    for raw_key, metric_key in (
+        (
+            "cli_parse_runtime_distribution",
+            "diff_cli_parse_runtime_distribution",
+        ),
+        (
+            "cli_simplify_runtime_distribution",
+            "diff_cli_simplify_runtime_distribution",
+        ),
+        (
+            "cli_total_runtime_distribution",
+            "diff_cli_total_runtime_distribution",
+        ),
+        (
+            "cli_public_overhead_runtime_distribution",
+            "diff_cli_public_overhead_runtime_distribution",
+        ),
+    ):
+        distribution = sanitize_runtime_distribution(raw.get(raw_key))
+        if distribution:
+            metrics[metric_key] = distribution
     for raw_key, metric_key, elapsed_key in (
         (
             "slowest_process_evaluations",
             "diff_slowest_process_evaluations",
             "process_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_parse_evaluations",
+            "diff_slowest_cli_parse_evaluations",
+            "cli_parse_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_simplify_evaluations",
+            "diff_slowest_cli_simplify_evaluations",
+            "cli_simplify_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_total_evaluations",
+            "diff_slowest_cli_total_evaluations",
+            "cli_total_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_public_overhead_evaluations",
+            "diff_slowest_cli_public_overhead_evaluations",
+            "cli_public_overhead_seconds",
         ),
         (
             "slowest_harness_checks",
@@ -3574,6 +3878,34 @@ def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
         )
         if rows:
             metrics[metric_key] = rows
+    add_policy_cluster_consolidation_metrics(
+        metrics,
+        source_key="diff_symbolic_radius_policy_cluster_counts",
+        consolidated_key="diff_symbolic_radius_consolidated_policy_cluster_counts",
+        candidate_key="diff_symbolic_radius_consolidation_candidate_counts",
+        shared_policy_clusters=(
+            CALCULUS_DIFF_SYMBOLIC_RADIUS_POLICY_CLUSTERS_WITH_SHARED_POLICY
+        ),
+    )
+    add_policy_cluster_consolidation_metrics(
+        metrics,
+        source_key="diff_positive_quadratic_policy_cluster_counts",
+        consolidated_key="diff_positive_quadratic_consolidated_policy_cluster_counts",
+        candidate_key="diff_positive_quadratic_consolidation_candidate_counts",
+        shared_policy_clusters=(
+            CALCULUS_DIFF_POSITIVE_QUADRATIC_POLICY_CLUSTERS_WITH_SHARED_POLICY
+        ),
+    )
+    add_runtime_cluster_candidate_metrics(
+        metrics,
+        source_key="diff_warm_runtime_by_positive_quadratic_policy_cluster",
+        candidate_key="diff_positive_quadratic_runtime_candidate_clusters",
+    )
+    add_runtime_cluster_candidate_metrics(
+        metrics,
+        source_key="diff_warm_runtime_by_variable_power_policy_cluster",
+        candidate_key="diff_variable_power_runtime_candidate_clusters",
+    )
     return metrics
 
 
@@ -3608,6 +3940,109 @@ def add_policy_cluster_consolidation_metrics(
         metrics[consolidated_key] = consolidated_policy_clusters
     if consolidation_candidates:
         metrics[candidate_key] = consolidation_candidates
+
+
+def add_shared_policy_cluster_metrics(
+    metrics: dict[str, Any],
+    *,
+    source_key: str,
+    shared_key: str,
+    shared_policy_clusters: frozenset[str],
+) -> None:
+    policy_cluster_counts = metrics.get(source_key)
+    if not isinstance(policy_cluster_counts, dict):
+        return
+
+    shared_policy_cluster_counts = {
+        cluster: count
+        for cluster, count in sorted(policy_cluster_counts.items())
+        if isinstance(cluster, str)
+        and isinstance(count, int)
+        and cluster in shared_policy_clusters
+    }
+    if shared_policy_cluster_counts:
+        metrics[shared_key] = shared_policy_cluster_counts
+
+
+def runtime_cluster_candidate_rows(
+    raw_rows: Any,
+    *,
+    min_case_count: int = CALCULUS_CLUSTER_RUNTIME_CANDIDATE_MIN_CASES,
+    min_avg_ms: float = CALCULUS_CLUSTER_RUNTIME_CANDIDATE_MIN_AVG_MS,
+    min_ratio: float = CALCULUS_CLUSTER_RUNTIME_CANDIDATE_RATIO,
+) -> list[dict[str, Any]]:
+    rows = sanitize_runtime_group_rows(raw_rows)
+    eligible = [
+        row
+        for row in rows
+        if isinstance(row.get("group"), str)
+        and isinstance(row.get("case_count"), int)
+        and row["case_count"] >= min_case_count
+        and isinstance(row.get("avg_case_ms"), (int, float))
+    ]
+    baseline_avg_ms = (
+        min(float(row["avg_case_ms"]) for row in eligible)
+        if len(eligible) >= 2
+        else None
+    )
+    if baseline_avg_ms is not None and baseline_avg_ms <= 0:
+        return []
+    candidates: list[dict[str, Any]] = []
+    for row in eligible:
+        avg_case_ms = float(row["avg_case_ms"])
+        max_elapsed_seconds = row.get("max_elapsed_seconds")
+        max_case_ms = (
+            float(max_elapsed_seconds) * 1000.0
+            if isinstance(max_elapsed_seconds, (int, float))
+            else 0.0
+        )
+        avg_ratio = (
+            avg_case_ms / baseline_avg_ms
+            if baseline_avg_ms is not None
+            else 1.0
+        )
+        avg_is_candidate = (
+            baseline_avg_ms is not None
+            and avg_case_ms >= min_avg_ms
+            and avg_ratio >= min_ratio
+        )
+        max_is_candidate = max_case_ms >= min_avg_ms
+        if not avg_is_candidate and not max_is_candidate:
+            continue
+        candidate: dict[str, Any] = {
+            "group": row["group"],
+            "case_count": row["case_count"],
+            "avg_case_ms": round(avg_case_ms, 3),
+            "avg_ratio": round(avg_ratio, 3),
+        }
+        if baseline_avg_ms is not None:
+            candidate["baseline_avg_case_ms"] = round(baseline_avg_ms, 3)
+        for key in ("total_elapsed_seconds", "max_elapsed_seconds"):
+            value = row.get(key)
+            if isinstance(value, (int, float)):
+                candidate[key] = round(float(value), 3)
+        slowest_case = row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            candidate["slowest_case"] = slowest_case
+        candidates.append(candidate)
+    candidates.sort(
+        key=lambda row: (
+            -float(row.get("avg_case_ms", 0.0)),
+            str(row.get("group", "")),
+        )
+    )
+    return candidates
+
+
+def add_runtime_cluster_candidate_metrics(
+    metrics: dict[str, Any],
+    *,
+    source_key: str,
+    candidate_key: str,
+) -> None:
+    candidates = runtime_cluster_candidate_rows(metrics.get(source_key))
+    if candidates:
+        metrics[candidate_key] = candidates
 
 
 def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
@@ -3660,6 +4095,21 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
     residual_cases_by_cause = sanitize_string_list_map(
         raw.get("residual_cases_by_cause")
     )
+    direct_gap_cases_by_maturity_block = sanitize_string_list_map(
+        raw.get("direct_diff_integrate_gap_cases_by_calculus_maturity_block")
+    )
+    direct_gap_cases_by_block_gate = sanitize_string_list_map(
+        raw.get("direct_diff_integrate_gap_cases_by_calculus_block_gate")
+    )
+    direct_gap_cases_by_trig_hyperbolic_cluster = sanitize_string_list_map(
+        raw.get("direct_diff_integrate_gap_cases_by_trig_hyperbolic_policy_cluster")
+    )
+    direct_gap_cases_by_base_integration_cluster = sanitize_string_list_map(
+        raw.get("direct_diff_integrate_gap_cases_by_base_integration_policy_cluster")
+    )
+    direct_gap_cases_by_radical_inverse_cluster = sanitize_string_list_map(
+        raw.get("direct_diff_integrate_gap_cases_by_radical_inverse_policy_cluster")
+    )
     problem_case_count = raw.get("problem_case_count")
     if not isinstance(problem_case_count, int):
         problem_case_count = len(problem_cases)
@@ -3676,6 +4126,21 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         "problem_cases": problem_cases,
         "integrate_residual_case_names": residual_case_names,
         "integrate_residual_cases_by_cause": residual_cases_by_cause,
+        "integrate_direct_diff_integrate_gap_cases_by_calculus_maturity_block": (
+            direct_gap_cases_by_maturity_block
+        ),
+        "integrate_direct_diff_integrate_gap_cases_by_calculus_block_gate": (
+            direct_gap_cases_by_block_gate
+        ),
+        "integrate_direct_diff_integrate_gap_cases_by_trig_hyperbolic_policy_cluster": (
+            direct_gap_cases_by_trig_hyperbolic_cluster
+        ),
+        "integrate_direct_diff_integrate_gap_cases_by_base_integration_policy_cluster": (
+            direct_gap_cases_by_base_integration_cluster
+        ),
+        "integrate_direct_diff_integrate_gap_cases_by_radical_inverse_policy_cluster": (
+            direct_gap_cases_by_radical_inverse_cluster
+        ),
         "issue_kind_counts": {
             key: value
             for key, value in issue_kind_counts.items()
@@ -3696,6 +4161,23 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
             "antiderivative_verification_case_count",
             "integrate_antiderivative_verification_case_count",
         ),
+        ("verified_supported_case_count", "integrate_verified_supported_case_count"),
+        (
+            "direct_diff_integrate_case_count",
+            "integrate_direct_diff_integrate_case_count",
+        ),
+        (
+            "direct_diff_integrate_exact_case_count",
+            "integrate_direct_diff_integrate_exact_case_count",
+        ),
+        (
+            "direct_diff_integrate_equivalence_case_count",
+            "integrate_direct_diff_integrate_equivalence_case_count",
+        ),
+        (
+            "direct_diff_integrate_gap_case_count",
+            "integrate_direct_diff_integrate_gap_case_count",
+        ),
         ("expected_step_substring_count", "integrate_expected_step_substring_count"),
         (
             "distinct_required_display_count",
@@ -3711,6 +4193,11 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         ("domain_regime_counts", "integrate_domain_regime_counts"),
         ("outcome_counts", "integrate_outcome_counts"),
         ("residual_cause_counts", "integrate_residual_cause_counts"),
+        ("residual_family_counts", "integrate_residual_family_counts"),
+        (
+            "residual_cause_family_counts",
+            "integrate_residual_cause_family_counts",
+        ),
         ("required_display_counts", "integrate_required_display_counts"),
         ("verification_regime_counts", "integrate_verification_regime_counts"),
         (
@@ -3725,8 +4212,64 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
             "integrate_trig_hyperbolic_policy_cluster_counts",
         ),
         (
+            "base_integration_policy_cluster_counts",
+            "integrate_base_integration_policy_cluster_counts",
+        ),
+        (
             "radical_inverse_policy_cluster_counts",
             "integrate_radical_inverse_policy_cluster_counts",
+        ),
+        (
+            "direct_diff_integrate_calculus_maturity_block_counts",
+            "integrate_direct_diff_integrate_calculus_maturity_block_counts",
+        ),
+        (
+            "direct_diff_integrate_calculus_block_gate_counts",
+            "integrate_direct_diff_integrate_calculus_block_gate_counts",
+        ),
+        (
+            "direct_diff_integrate_trig_hyperbolic_policy_cluster_counts",
+            "integrate_direct_diff_integrate_trig_hyperbolic_policy_cluster_counts",
+        ),
+        (
+            "direct_diff_integrate_base_integration_policy_cluster_counts",
+            "integrate_direct_diff_integrate_base_integration_policy_cluster_counts",
+        ),
+        (
+            "direct_diff_integrate_radical_inverse_policy_cluster_counts",
+            "integrate_direct_diff_integrate_radical_inverse_policy_cluster_counts",
+        ),
+        (
+            "direct_diff_integrate_gap_calculus_maturity_block_counts",
+            "integrate_direct_diff_integrate_gap_calculus_maturity_block_counts",
+        ),
+        (
+            "direct_diff_integrate_gap_calculus_block_gate_counts",
+            "integrate_direct_diff_integrate_gap_calculus_block_gate_counts",
+        ),
+        (
+            "direct_diff_integrate_gap_trig_hyperbolic_policy_cluster_counts",
+            "integrate_direct_diff_integrate_gap_trig_hyperbolic_policy_cluster_counts",
+        ),
+        (
+            "direct_diff_integrate_gap_base_integration_policy_cluster_counts",
+            "integrate_direct_diff_integrate_gap_base_integration_policy_cluster_counts",
+        ),
+        (
+            "direct_diff_integrate_gap_radical_inverse_policy_cluster_counts",
+            "integrate_direct_diff_integrate_gap_radical_inverse_policy_cluster_counts",
+        ),
+        (
+            "direct_diff_integrate_equivalence_calculus_maturity_block_counts",
+            "integrate_direct_diff_integrate_equivalence_calculus_maturity_block_counts",
+        ),
+        (
+            "direct_diff_integrate_equivalence_trig_hyperbolic_policy_cluster_counts",
+            "integrate_direct_diff_integrate_equivalence_trig_hyperbolic_policy_cluster_counts",
+        ),
+        (
+            "direct_diff_integrate_equivalence_base_integration_policy_cluster_counts",
+            "integrate_direct_diff_integrate_equivalence_base_integration_policy_cluster_counts",
         ),
     ):
         counts = count_map(raw_key)
@@ -3744,7 +4287,48 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
             "trace_regime",
         ),
     )
+    for raw_key, metric_key in (
+        (
+            "cli_parse_runtime_distribution",
+            "integrate_cli_parse_runtime_distribution",
+        ),
+        (
+            "cli_simplify_runtime_distribution",
+            "integrate_cli_simplify_runtime_distribution",
+        ),
+        (
+            "cli_total_runtime_distribution",
+            "integrate_cli_total_runtime_distribution",
+        ),
+        (
+            "cli_public_overhead_runtime_distribution",
+            "integrate_cli_public_overhead_runtime_distribution",
+        ),
+    ):
+        distribution = sanitize_runtime_distribution(raw.get(raw_key))
+        if distribution:
+            metrics[metric_key] = distribution
     for raw_key, metric_key, elapsed_key in (
+        (
+            "slowest_cli_parse_evaluations",
+            "integrate_slowest_cli_parse_evaluations",
+            "cli_parse_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_simplify_evaluations",
+            "integrate_slowest_cli_simplify_evaluations",
+            "cli_simplify_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_total_evaluations",
+            "integrate_slowest_cli_total_evaluations",
+            "cli_total_elapsed_seconds",
+        ),
+        (
+            "slowest_cli_public_overhead_evaluations",
+            "integrate_slowest_cli_public_overhead_evaluations",
+            "cli_public_overhead_seconds",
+        ),
         (
             "slowest_integrate_evaluations",
             "integrate_slowest_integrate_evaluations",
@@ -3759,6 +4343,11 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
             "slowest_antiderivative_residual_simplifications",
             "integrate_slowest_antiderivative_residual_simplifications",
             "antiderivative_residual_simplify_elapsed_seconds",
+        ),
+        (
+            "slowest_direct_diff_integrate_checks",
+            "integrate_slowest_direct_diff_integrate_checks",
+            "direct_diff_integrate_elapsed_seconds",
         ),
     ):
         rows = sanitize_phase_runtime_case_rows(
@@ -3799,6 +4388,13 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         metrics["integrate_runtime_by_residual_cause"] = (
             residual_cause_runtime_rows
         )
+    residual_cause_family_runtime_rows = sanitize_residual_cause_family_runtime_rows(
+        raw.get("runtime_by_residual_cause_family")
+    )
+    if residual_cause_family_runtime_rows:
+        metrics["integrate_runtime_by_residual_cause_family"] = (
+            residual_cause_family_runtime_rows
+        )
     residual_public_phase_rows = sanitize_residual_public_phase_case_rows(
         raw.get("residual_public_phase_slowest_cases")
     )
@@ -3812,6 +4408,15 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
     if residual_public_phase_group_rows:
         metrics["integrate_residual_public_phase_by_cause"] = (
             residual_public_phase_group_rows
+        )
+    residual_public_phase_cause_family_rows = (
+        sanitize_residual_public_phase_cause_family_group_rows(
+            raw.get("residual_public_phase_by_cause_family")
+        )
+    )
+    if residual_public_phase_cause_family_rows:
+        metrics["integrate_residual_public_phase_by_cause_family"] = (
+            residual_public_phase_cause_family_rows
         )
     residual_shape_orientation_rows = sanitize_residual_shape_orientation_probe_rows(
         raw.get("residual_shape_orientation_probes")
@@ -3844,6 +4449,49 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         candidate_key="integrate_radical_inverse_consolidation_candidate_counts",
         shared_policy_clusters=(
             CALCULUS_RADICAL_INVERSE_POLICY_CLUSTERS_WITH_SHARED_POLICY
+        ),
+    )
+    add_policy_cluster_consolidation_metrics(
+        metrics,
+        source_key="integrate_base_integration_policy_cluster_counts",
+        consolidated_key="integrate_base_integration_consolidated_policy_cluster_counts",
+        candidate_key="integrate_base_integration_consolidation_candidate_counts",
+        shared_policy_clusters=(
+            CALCULUS_BASE_INTEGRATION_POLICY_CLUSTERS_WITH_SHARED_POLICY
+        ),
+    )
+    add_shared_policy_cluster_metrics(
+        metrics,
+        source_key=(
+            "integrate_direct_diff_integrate_trig_hyperbolic_policy_cluster_counts"
+        ),
+        shared_key=(
+            "integrate_direct_diff_integrate_trig_hyperbolic_shared_policy_cluster_counts"
+        ),
+        shared_policy_clusters=CALCULUS_POLICY_CLUSTERS_WITH_SHARED_POLICY,
+    )
+    add_shared_policy_cluster_metrics(
+        metrics,
+        source_key=(
+            "integrate_direct_diff_integrate_radical_inverse_policy_cluster_counts"
+        ),
+        shared_key=(
+            "integrate_direct_diff_integrate_radical_inverse_shared_policy_cluster_counts"
+        ),
+        shared_policy_clusters=(
+            CALCULUS_RADICAL_INVERSE_POLICY_CLUSTERS_WITH_SHARED_POLICY
+        ),
+    )
+    add_shared_policy_cluster_metrics(
+        metrics,
+        source_key=(
+            "integrate_direct_diff_integrate_base_integration_policy_cluster_counts"
+        ),
+        shared_key=(
+            "integrate_direct_diff_integrate_base_integration_shared_policy_cluster_counts"
+        ),
+        shared_policy_clusters=(
+            CALCULUS_BASE_INTEGRATION_POLICY_CLUSTERS_WITH_SHARED_POLICY
         ),
     )
     return metrics
@@ -3948,6 +4596,35 @@ def calculus_runtime_group_fragments(raw_rows: Any, limit: int = 5) -> list[str]
     return fragments
 
 
+def runtime_cluster_candidate_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for row in raw_rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        group = row.get("group")
+        avg_case_ms = row.get("avg_case_ms")
+        case_count = row.get("case_count")
+        avg_ratio = row.get("avg_ratio")
+        if (
+            not isinstance(group, str)
+            or not isinstance(avg_case_ms, (int, float))
+            or not isinstance(case_count, int)
+            or not isinstance(avg_ratio, (int, float))
+        ):
+            continue
+        fragment = (
+            f"{group} avg={avg_case_ms:.3f}ms "
+            f"ratio={avg_ratio:.3f}x cases={case_count}"
+        )
+        slowest_case = row.get("slowest_case")
+        if isinstance(slowest_case, str):
+            fragment += f" slowest={slowest_case}"
+        fragments.append(fragment)
+    return fragments
+
+
 def calculus_runtime_distribution_fragment(raw_row: Any) -> str | None:
     if not isinstance(raw_row, dict):
         return None
@@ -4043,6 +4720,172 @@ def calculus_runtime_pressure_fragment(raw_row: Any) -> str | None:
     return fragment
 
 
+def calculus_runtime_measurement_fragment(raw_row: Any) -> str | None:
+    if not isinstance(raw_row, dict):
+        return None
+    mode = raw_row.get("mode")
+    status = raw_row.get("status")
+    guidance = raw_row.get("guidance")
+    if not isinstance(mode, str) or not isinstance(status, str):
+        return None
+    fragment = f"mode={mode} status={status}"
+    pressure_status = raw_row.get("pressure_status")
+    if isinstance(pressure_status, str):
+        fragment += f" pressure={pressure_status}"
+    for key, label in (
+        ("p95_case_ms", "p95"),
+        ("max_case_ms", "max"),
+    ):
+        value = raw_row.get(key)
+        if isinstance(value, (int, float)):
+            fragment += f" {label}={value:.3f}ms"
+    if isinstance(guidance, str):
+        fragment += f" guidance={guidance}"
+    return fragment
+
+
+def calculus_runtime_guardrail_rows(scorecard: dict[str, Any]) -> list[dict[str, Any]]:
+    suites = scorecard.get("suites")
+    if not isinstance(suites, dict):
+        return []
+
+    rows: list[dict[str, Any]] = []
+    command_matrix_suites = (
+        ("diff_command_matrix", "calculus_diff_command_matrix_smoke", "diff"),
+        ("limit_command_matrix", "calculus_limit_command_matrix_smoke", "limit"),
+        (
+            "integrate_command_matrix",
+            "calculus_integrate_command_matrix_smoke",
+            "integrate",
+        ),
+    )
+    for label, suite_name, prefix in command_matrix_suites:
+        suite = suites.get(suite_name)
+        if not isinstance(suite, dict):
+            continue
+        metrics = suite.get("metrics")
+        if not isinstance(metrics, dict):
+            continue
+        distribution = metrics.get(f"{prefix}_warm_runtime_distribution")
+        sample_basis = "warm"
+        if not isinstance(distribution, dict):
+            distribution = metrics.get(f"{prefix}_runtime_distribution")
+            sample_basis = "cold_inclusive"
+        if not isinstance(distribution, dict):
+            continue
+
+        row: dict[str, Any] = {
+            "label": label,
+            "status": suite.get("status"),
+            "sample_basis": sample_basis,
+        }
+        total_cases = metrics.get("total_cases")
+        if isinstance(total_cases, int):
+            row["total_cases"] = total_cases
+        for key in (
+            "avg_case_ms",
+            "p95_case_ms",
+            "max_case_ms",
+            "total_elapsed_seconds",
+        ):
+            value = distribution.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = round(float(value), 3)
+        pressure = metrics.get(f"{prefix}_runtime_pressure")
+        if isinstance(pressure, dict):
+            pressure_status = pressure.get("status")
+            primary_signal = pressure.get("primary_signal")
+            if isinstance(pressure_status, str):
+                row["pressure_status"] = pressure_status
+            if isinstance(primary_signal, str):
+                row["pressure_signal"] = primary_signal
+        measurement = metrics.get(f"{prefix}_runtime_measurement")
+        if isinstance(measurement, dict):
+            measurement_status = measurement.get("status")
+            if isinstance(measurement_status, str):
+                row["measurement_status"] = measurement_status
+        rows.append(row)
+
+    residual_suite = suites.get("calculus_residual_matrix_smoke")
+    if isinstance(residual_suite, dict):
+        metrics = residual_suite.get("metrics")
+        elapsed = residual_suite.get("elapsed_seconds")
+        if isinstance(metrics, dict) and isinstance(elapsed, (int, float)):
+            total_cases = metrics.get("total_cases")
+            if isinstance(total_cases, int) and total_cases > 0:
+                row: dict[str, Any] = {
+                    "label": "residual_matrix",
+                    "status": residual_suite.get("status"),
+                    "sample_basis": "suite_elapsed",
+                    "total_cases": total_cases,
+                    "avg_case_ms": round(float(elapsed) * 1000.0 / total_cases, 3),
+                    "total_elapsed_seconds": round(float(elapsed), 3),
+                    "pressure_status": "suite_elapsed_only",
+                    "measurement_status": "suite_elapsed_per_case",
+                }
+                for key in ("failed", "timeouts"):
+                    value = metrics.get(key)
+                    if isinstance(value, int):
+                        row[key] = value
+                rows.append(row)
+    return rows
+
+
+def calculus_runtime_guardrail_fragments(
+    scorecard: dict[str, Any],
+    *,
+    limit: int = 6,
+) -> list[str]:
+    fragments: list[str] = []
+    rows = calculus_runtime_guardrail_rows(scorecard)
+    for row in rows[:limit]:
+        label = row.get("label")
+        avg_case_ms = row.get("avg_case_ms")
+        total_cases = row.get("total_cases")
+        if (
+            not isinstance(label, str)
+            or not isinstance(avg_case_ms, (int, float))
+            or not isinstance(total_cases, int)
+        ):
+            continue
+        fragment = f"{label} cases={total_cases} avg={avg_case_ms:.3f}ms"
+        p95_case_ms = row.get("p95_case_ms")
+        if isinstance(p95_case_ms, (int, float)):
+            fragment += f" p95={p95_case_ms:.3f}ms"
+        max_case_ms = row.get("max_case_ms")
+        if isinstance(max_case_ms, (int, float)):
+            fragment += f" max={max_case_ms:.3f}ms"
+        total_elapsed = row.get("total_elapsed_seconds")
+        if isinstance(total_elapsed, (int, float)):
+            fragment += f" total={total_elapsed:.3f}s"
+        status = row.get("status")
+        if isinstance(status, str):
+            fragment += f" status={status}"
+        failed = row.get("failed")
+        if isinstance(failed, int):
+            fragment += f" failed={failed}"
+        timeouts = row.get("timeouts")
+        if isinstance(timeouts, int):
+            fragment += f" timeouts={timeouts}"
+        pressure_status = row.get("pressure_status")
+        if isinstance(pressure_status, str):
+            fragment += f" pressure={pressure_status}"
+        pressure_signal = row.get("pressure_signal")
+        if isinstance(pressure_signal, str):
+            fragment += f" signal={pressure_signal}"
+        measurement_status = row.get("measurement_status")
+        if isinstance(measurement_status, str):
+            fragment += f" measurement={measurement_status}"
+        sample_basis = row.get("sample_basis")
+        if isinstance(sample_basis, str):
+            fragment += f" basis={sample_basis}"
+        fragments.append(fragment)
+    remaining = len(rows) - limit
+    if remaining > 0:
+        fragments.append(f"+{remaining} more")
+    return fragments
+
+
 def phase_runtime_case_fragments(
     raw_rows: Any,
     *,
@@ -4066,6 +4909,24 @@ def phase_runtime_case_fragments(
         mode = row.get("antiderivative_verification_mode")
         if isinstance(mode, str):
             fragment += f" mode={mode}"
+        cluster = row.get("positive_quadratic_policy_cluster")
+        if isinstance(cluster, str):
+            fragment += f" cluster={cluster}"
+        variable_power_cluster = row.get("variable_power_policy_cluster")
+        if isinstance(variable_power_cluster, str):
+            fragment += f" variable_power_cluster={variable_power_cluster}"
+        steps_count = row.get("steps_count")
+        if isinstance(steps_count, int):
+            fragment += f" steps={steps_count}"
+        step_rule_names = row.get("step_rule_names")
+        if isinstance(step_rule_names, list):
+            names = [
+                value
+                for value in step_rule_names
+                if isinstance(value, str) and value.strip()
+            ]
+            if names:
+                fragment += " rules=" + "|".join(names[:4])
         fragments.append(fragment)
     return fragments
 
@@ -4169,14 +5030,19 @@ def verification_mode_runtime_fragments(raw_rows: Any, limit: int = 5) -> list[s
     return fragments
 
 
-def residual_cause_runtime_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+def residual_cause_runtime_fragments(
+    raw_rows: Any,
+    limit: int = 5,
+    *,
+    group_key: str = "cause",
+) -> list[str]:
     if not isinstance(raw_rows, list):
         return []
     fragments: list[str] = []
     for row in raw_rows[:limit]:
         if not isinstance(row, dict):
             continue
-        cause = row.get("cause")
+        cause = row.get(group_key)
         total_elapsed = row.get("total_elapsed_seconds")
         avg_case_ms = row.get("avg_case_ms")
         case_count = row.get("case_count")
@@ -4198,14 +5064,19 @@ def residual_cause_runtime_fragments(raw_rows: Any, limit: int = 5) -> list[str]
     return fragments
 
 
-def residual_public_phase_group_fragments(raw_rows: Any, limit: int = 5) -> list[str]:
+def residual_public_phase_group_fragments(
+    raw_rows: Any,
+    limit: int = 5,
+    *,
+    group_key: str = "cause",
+) -> list[str]:
     if not isinstance(raw_rows, list):
         return []
     fragments: list[str] = []
     for row in raw_rows[:limit]:
         if not isinstance(row, dict):
             continue
-        cause = row.get("cause")
+        cause = row.get(group_key)
         integrate_total = row.get("integrate_total_seconds")
         cli_total = row.get("cli_total_seconds")
         overhead_share = row.get("public_overhead_share_percent")
@@ -4318,6 +5189,15 @@ def residual_shape_orientation_summary_fragment(raw_summary: Any) -> str | None:
         f"max_required_display={max_required_display_count} "
         f"avg_required_display={float(avg_required_display_count):.3f}"
     )
+    status_counts = raw_summary.get("status_counts")
+    if isinstance(status_counts, dict):
+        status_fragments = sorted(
+            f"{status}={count}"
+            for status, count in status_counts.items()
+            if isinstance(status, str) and isinstance(count, int)
+        )
+        if status_fragments:
+            fragment += " status_counts=" + ",".join(status_fragments)
     max_name = raw_summary.get("max_name")
     if isinstance(max_name, str):
         fragment += f" max_case={max_name}"
@@ -4330,6 +5210,16 @@ def residual_shape_orientation_summary_fragment(raw_summary: Any) -> str | None:
     max_steps_mode = raw_summary.get("max_steps_mode")
     if isinstance(max_steps_mode, str):
         fragment += f" steps={max_steps_mode}"
+    first_problem_name = raw_summary.get("first_problem_name")
+    first_problem_status = raw_summary.get("first_problem_status")
+    if isinstance(first_problem_name, str) and isinstance(first_problem_status, str):
+        fragment += f" first_problem={first_problem_name}:{first_problem_status}"
+        first_problem_orientation = raw_summary.get("first_problem_orientation")
+        if isinstance(first_problem_orientation, str):
+            fragment += f" orientation={first_problem_orientation}"
+        first_problem_steps_mode = raw_summary.get("first_problem_steps_mode")
+        if isinstance(first_problem_steps_mode, str):
+            fragment += f" steps={first_problem_steps_mode}"
     return fragment
 
 
@@ -4356,6 +5246,11 @@ def calculus_runtime_lines(
     )
     if pressure:
         lines.append(f"- `{label}` runtime pressure: {pressure}")
+    measurement = calculus_runtime_measurement_fragment(
+        metrics.get(f"{prefix}_runtime_measurement")
+    )
+    if measurement:
+        lines.append(f"- `{label}` runtime measurement: {measurement}")
     warm_distribution = calculus_runtime_distribution_fragment(
         metrics.get(f"{prefix}_warm_runtime_distribution")
     )
@@ -5744,6 +6639,11 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 "- Matrix axes: command, family, argument regime, domain regime, trace regime, presentation regime, and residual verification.",
             ]
         )
+        runtime_guardrail = calculus_runtime_guardrail_fragments(scorecard)
+        if runtime_guardrail:
+            lines.append(
+                "- Calculus runtime guardrail: " + "; ".join(runtime_guardrail)
+            )
         for label, suite in calculus_contract_rows:
             metrics = suite["metrics"]
             if "parse_error" in metrics:
@@ -5840,6 +6740,9 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 integrate_antiderivative_verification_cases = metrics.get(
                     "integrate_antiderivative_verification_case_count"
                 )
+                integrate_verified_supported_cases = metrics.get(
+                    "integrate_verified_supported_case_count"
+                )
                 integrate_family_count = metrics.get("integrate_family_count")
                 if isinstance(diff_supported_cases, int):
                     line += f" supported_cases={diff_supported_cases}"
@@ -5899,6 +6802,42 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         " antiderivative_verified="
                         f"{integrate_antiderivative_verification_cases}"
                     )
+                if isinstance(integrate_verified_supported_cases, int):
+                    line += (
+                        " verified_supported="
+                        f"{integrate_verified_supported_cases}"
+                    )
+                integrate_direct_diff_integrate_cases = metrics.get(
+                    "integrate_direct_diff_integrate_case_count"
+                )
+                if isinstance(integrate_direct_diff_integrate_cases, int):
+                    line += (
+                        " direct_diff_integrate="
+                        f"{integrate_direct_diff_integrate_cases}"
+                    )
+                integrate_direct_diff_integrate_exact_cases = metrics.get(
+                    "integrate_direct_diff_integrate_exact_case_count"
+                )
+                integrate_direct_diff_integrate_equivalence_cases = metrics.get(
+                    "integrate_direct_diff_integrate_equivalence_case_count"
+                )
+                if isinstance(
+                    integrate_direct_diff_integrate_exact_cases, int
+                ) and isinstance(integrate_direct_diff_integrate_equivalence_cases, int):
+                    line += (
+                        " direct_exact="
+                        f"{integrate_direct_diff_integrate_exact_cases}"
+                        " direct_equiv="
+                        f"{integrate_direct_diff_integrate_equivalence_cases}"
+                    )
+                integrate_direct_diff_integrate_gap_cases = metrics.get(
+                    "integrate_direct_diff_integrate_gap_case_count"
+                )
+                if isinstance(integrate_direct_diff_integrate_gap_cases, int):
+                    line += (
+                        " direct_gap="
+                        f"{integrate_direct_diff_integrate_gap_cases}"
+                    )
                 if isinstance(integrate_family_count, int):
                     line += f" families={integrate_family_count}"
                 lines.append(line)
@@ -5915,6 +6854,8 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                                 "domain_regime",
                                 "trace_regime",
                                 "presentation_regime",
+                                "positive_quadratic_policy_cluster",
+                                "variable_power_policy_cluster",
                             ),
                         )
                     )
@@ -5927,6 +6868,43 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` slowest process evaluations: "
                             + ", ".join(slowest_process)
                         )
+                    for phase_label, distribution_key, rows_key, elapsed_key in (
+                        (
+                            "CLI simplify",
+                            "diff_cli_simplify_runtime_distribution",
+                            "diff_slowest_cli_simplify_evaluations",
+                            "cli_simplify_elapsed_seconds",
+                        ),
+                        (
+                            "CLI total",
+                            "diff_cli_total_runtime_distribution",
+                            "diff_slowest_cli_total_evaluations",
+                            "cli_total_elapsed_seconds",
+                        ),
+                        (
+                            "CLI public overhead",
+                            "diff_cli_public_overhead_runtime_distribution",
+                            "diff_slowest_cli_public_overhead_evaluations",
+                            "cli_public_overhead_seconds",
+                        ),
+                    ):
+                        phase_distribution = calculus_runtime_distribution_fragment(
+                            metrics.get(distribution_key)
+                        )
+                        if phase_distribution:
+                            lines.append(
+                                f"- `{label}` {phase_label} runtime distribution: "
+                                + phase_distribution
+                            )
+                        slowest_phase = phase_runtime_case_fragments(
+                            metrics.get(rows_key),
+                            elapsed_key=elapsed_key,
+                        )
+                        if slowest_phase:
+                            lines.append(
+                                f"- `{label}` slowest {phase_label} evaluations: "
+                                + ", ".join(slowest_phase)
+                            )
                     exact_square_pairs = diff_exact_square_runtime_pair_fragments(
                         metrics.get("diff_exact_square_runtime_pairs")
                     )
@@ -5986,6 +6964,43 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             ),
                         )
                     )
+                    for phase_label, distribution_key, rows_key, elapsed_key in (
+                        (
+                            "CLI simplify",
+                            "limit_cli_simplify_runtime_distribution",
+                            "limit_slowest_cli_simplify_evaluations",
+                            "cli_simplify_elapsed_seconds",
+                        ),
+                        (
+                            "CLI total",
+                            "limit_cli_total_runtime_distribution",
+                            "limit_slowest_cli_total_evaluations",
+                            "cli_total_elapsed_seconds",
+                        ),
+                        (
+                            "CLI public overhead",
+                            "limit_cli_public_overhead_runtime_distribution",
+                            "limit_slowest_cli_public_overhead_evaluations",
+                            "cli_public_overhead_seconds",
+                        ),
+                    ):
+                        phase_distribution = calculus_runtime_distribution_fragment(
+                            metrics.get(distribution_key)
+                        )
+                        if phase_distribution:
+                            lines.append(
+                                f"- `{label}` {phase_label} runtime distribution: "
+                                + phase_distribution
+                            )
+                        slowest_phase = phase_runtime_case_fragments(
+                            metrics.get(rows_key),
+                            elapsed_key=elapsed_key,
+                        )
+                        if slowest_phase:
+                            lines.append(
+                                f"- `{label}` slowest {phase_label} evaluations: "
+                                + ", ".join(slowest_phase)
+                            )
                 elif label == "integrate_command_matrix":
                     lines.extend(
                         calculus_runtime_lines(
@@ -6000,6 +7015,43 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             ),
                         )
                     )
+                    for phase_label, distribution_key, rows_key, elapsed_key in (
+                        (
+                            "CLI simplify",
+                            "integrate_cli_simplify_runtime_distribution",
+                            "integrate_slowest_cli_simplify_evaluations",
+                            "cli_simplify_elapsed_seconds",
+                        ),
+                        (
+                            "CLI total",
+                            "integrate_cli_total_runtime_distribution",
+                            "integrate_slowest_cli_total_evaluations",
+                            "cli_total_elapsed_seconds",
+                        ),
+                        (
+                            "CLI public overhead",
+                            "integrate_cli_public_overhead_runtime_distribution",
+                            "integrate_slowest_cli_public_overhead_evaluations",
+                            "cli_public_overhead_seconds",
+                        ),
+                    ):
+                        phase_distribution = calculus_runtime_distribution_fragment(
+                            metrics.get(distribution_key)
+                        )
+                        if phase_distribution:
+                            lines.append(
+                                f"- `{label}` {phase_label} runtime distribution: "
+                                + phase_distribution
+                            )
+                        slowest_phase = phase_runtime_case_fragments(
+                            metrics.get(rows_key),
+                            elapsed_key=elapsed_key,
+                        )
+                        if slowest_phase:
+                            lines.append(
+                                f"- `{label}` slowest {phase_label} evaluations: "
+                                + ", ".join(slowest_phase)
+                            )
                     slowest_integrate = phase_runtime_case_fragments(
                         metrics.get("integrate_slowest_integrate_evaluations"),
                         elapsed_key="integrate_elapsed_seconds",
@@ -6058,6 +7110,15 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` runtime by residual cause: "
                             + ", ".join(residual_cause_runtime)
                         )
+                    residual_cause_family_runtime = residual_cause_runtime_fragments(
+                        metrics.get("integrate_runtime_by_residual_cause_family"),
+                        group_key="cause_family",
+                    )
+                    if residual_cause_family_runtime:
+                        lines.append(
+                            f"- `{label}` runtime by residual cause-family: "
+                            + ", ".join(residual_cause_family_runtime)
+                        )
                     residual_phase_by_cause = residual_public_phase_group_fragments(
                         metrics.get("integrate_residual_public_phase_by_cause")
                     )
@@ -6065,6 +7126,19 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         lines.append(
                             f"- `{label}` residual public phase by cause: "
                             + ", ".join(residual_phase_by_cause)
+                        )
+                    residual_phase_by_cause_family = (
+                        residual_public_phase_group_fragments(
+                            metrics.get(
+                                "integrate_residual_public_phase_by_cause_family"
+                            ),
+                            group_key="cause_family",
+                        )
+                    )
+                    if residual_phase_by_cause_family:
+                        lines.append(
+                            f"- `{label}` residual public phase by cause-family: "
+                            + ", ".join(residual_phase_by_cause_family)
                         )
                     residual_phase_slowest = residual_public_phase_case_fragments(
                         metrics.get(
@@ -6153,6 +7227,90 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` {regime_label}: "
                             + ", ".join(fragments)
                         )
+                diff_symbolic_radius_clusters = calculus_matrix_count_map_fragments(
+                    metrics.get("diff_symbolic_radius_policy_cluster_counts")
+                )
+                if diff_symbolic_radius_clusters:
+                    lines.append(
+                        f"- `{label}` symbolic-radius policy clusters: "
+                        + ", ".join(diff_symbolic_radius_clusters)
+                    )
+                diff_symbolic_radius_consolidated = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "diff_symbolic_radius_consolidated_policy_cluster_counts"
+                        )
+                    )
+                )
+                if diff_symbolic_radius_consolidated:
+                    lines.append(
+                        f"- `{label}` symbolic-radius consolidated policy clusters: "
+                        + ", ".join(diff_symbolic_radius_consolidated)
+                    )
+                diff_positive_quadratic_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get("diff_positive_quadratic_policy_cluster_counts")
+                    )
+                )
+                if diff_positive_quadratic_clusters:
+                    lines.append(
+                        f"- `{label}` positive-quadratic policy clusters: "
+                        + ", ".join(diff_positive_quadratic_clusters)
+                    )
+                diff_positive_quadratic_consolidated = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "diff_positive_quadratic_consolidated_policy_cluster_counts"
+                        )
+                    )
+                )
+                if diff_positive_quadratic_consolidated:
+                    lines.append(
+                        f"- `{label}` positive-quadratic consolidated policy clusters: "
+                        + ", ".join(diff_positive_quadratic_consolidated)
+                    )
+                diff_positive_quadratic_consolidation_candidates = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "diff_positive_quadratic_consolidation_candidate_counts"
+                        )
+                    )
+                )
+                if diff_positive_quadratic_consolidation_candidates:
+                    lines.append(
+                        f"- `{label}` positive-quadratic consolidation candidates: "
+                        + ", ".join(diff_positive_quadratic_consolidation_candidates)
+                    )
+                diff_positive_quadratic_runtime_candidates = (
+                    runtime_cluster_candidate_fragments(
+                        metrics.get(
+                            "diff_positive_quadratic_runtime_candidate_clusters"
+                        )
+                    )
+                )
+                if diff_positive_quadratic_runtime_candidates:
+                    lines.append(
+                        f"- `{label}` positive-quadratic runtime candidate clusters: "
+                        + ", ".join(diff_positive_quadratic_runtime_candidates)
+                    )
+                diff_variable_power_clusters = calculus_matrix_count_map_fragments(
+                    metrics.get("diff_variable_power_policy_cluster_counts")
+                )
+                if diff_variable_power_clusters:
+                    lines.append(
+                        f"- `{label}` variable-power policy clusters: "
+                        + ", ".join(diff_variable_power_clusters)
+                    )
+                diff_variable_power_runtime_candidates = (
+                    runtime_cluster_candidate_fragments(
+                        metrics.get("diff_variable_power_runtime_candidate_clusters")
+                    )
+                )
+                if diff_variable_power_runtime_candidates:
+                    lines.append(
+                        f"- `{label}` variable-power runtime candidate clusters: "
+                        + ", ".join(diff_variable_power_runtime_candidates)
+                    )
                 for metric_key, regime_label in (
                     ("diff_trace_regime_counts", "trace regimes"),
                     ("diff_presentation_regime_counts", "presentation regimes"),
@@ -6212,6 +7370,24 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` residual causes: "
                         + ", ".join(integrate_residual_causes)
+                    )
+                integrate_residual_families = calculus_matrix_count_map_fragments(
+                    metrics.get("integrate_residual_family_counts")
+                )
+                if integrate_residual_families:
+                    lines.append(
+                        f"- `{label}` residual families: "
+                        + ", ".join(integrate_residual_families)
+                    )
+                integrate_residual_cause_families = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get("integrate_residual_cause_family_counts")
+                    )
+                )
+                if integrate_residual_cause_families:
+                    lines.append(
+                        f"- `{label}` residual cause-family buckets: "
+                        + ", ".join(integrate_residual_cause_families)
                     )
                 integrate_residual_cases_by_cause = (
                     calculus_residual_cases_by_cause_fragments(
@@ -6278,6 +7454,269 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` trig/hyperbolic consolidation candidates: "
                         + ", ".join(integrate_consolidation_candidates)
                     )
+                base_integration_policy_clusters = calculus_matrix_count_map_fragments(
+                    metrics.get("integrate_base_integration_policy_cluster_counts")
+                )
+                if base_integration_policy_clusters:
+                    lines.append(
+                        f"- `{label}` base integration policy clusters: "
+                        + ", ".join(base_integration_policy_clusters)
+                    )
+                base_integration_consolidated_policy_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_base_integration_consolidated_policy_cluster_counts"
+                        )
+                    )
+                )
+                if base_integration_consolidated_policy_clusters:
+                    lines.append(
+                        f"- `{label}` base integration consolidated policy clusters: "
+                        + ", ".join(base_integration_consolidated_policy_clusters)
+                    )
+                base_integration_consolidation_candidates = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_base_integration_consolidation_candidate_counts"
+                        )
+                    )
+                )
+                if base_integration_consolidation_candidates:
+                    lines.append(
+                        f"- `{label}` base integration consolidation candidates: "
+                        + ", ".join(base_integration_consolidation_candidates)
+                    )
+                direct_block_counts = calculus_matrix_count_map_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_calculus_maturity_block_counts"
+                    )
+                )
+                if direct_block_counts:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) calculus maturity blocks: "
+                        + ", ".join(direct_block_counts)
+                    )
+                direct_gate_counts = calculus_matrix_count_map_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_calculus_block_gate_counts"
+                    )
+                )
+                if direct_gate_counts:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) calculus block gates: "
+                        + ", ".join(direct_gate_counts)
+                    )
+                direct_trig_hyperbolic_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_trig_hyperbolic_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_trig_hyperbolic_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) trig/hyperbolic policy clusters: "
+                        + ", ".join(direct_trig_hyperbolic_clusters)
+                    )
+                direct_trig_hyperbolic_shared_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_trig_hyperbolic_shared_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_trig_hyperbolic_shared_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) trig/hyperbolic shared-policy clusters: "
+                        + ", ".join(direct_trig_hyperbolic_shared_clusters)
+                    )
+                direct_base_integration_clusters = calculus_matrix_count_map_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_base_integration_policy_cluster_counts"
+                    )
+                )
+                if direct_base_integration_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) base integration policy clusters: "
+                        + ", ".join(direct_base_integration_clusters)
+                    )
+                direct_base_integration_shared_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_base_integration_shared_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_base_integration_shared_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) base integration shared-policy clusters: "
+                        + ", ".join(direct_base_integration_shared_clusters)
+                    )
+                direct_cases = metrics.get("integrate_direct_diff_integrate_case_count")
+                direct_exact_cases = metrics.get(
+                    "integrate_direct_diff_integrate_exact_case_count"
+                )
+                direct_equiv_cases = metrics.get(
+                    "integrate_direct_diff_integrate_equivalence_case_count"
+                )
+                if (
+                    isinstance(direct_cases, int)
+                    and isinstance(direct_exact_cases, int)
+                    and isinstance(direct_equiv_cases, int)
+                    and direct_cases > 0
+                    and direct_exact_cases == direct_cases
+                    and direct_equiv_cases == 0
+                ):
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) exactness: "
+                        f"all {direct_cases} checks exact; no equivalence-backed fallback"
+                    )
+                direct_gap_block_counts = calculus_matrix_count_map_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_gap_calculus_maturity_block_counts"
+                    )
+                )
+                if direct_gap_block_counts:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gaps by calculus maturity block: "
+                        + ", ".join(direct_gap_block_counts)
+                    )
+                direct_gap_block_examples = calculus_residual_cases_by_cause_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_gap_cases_by_calculus_maturity_block"
+                    )
+                )
+                if direct_gap_block_examples:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gap examples by calculus maturity block: "
+                        + "; ".join(direct_gap_block_examples)
+                    )
+                direct_gap_gate_counts = calculus_matrix_count_map_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_gap_calculus_block_gate_counts"
+                    )
+                )
+                if direct_gap_gate_counts:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gaps by calculus block gate: "
+                        + ", ".join(direct_gap_gate_counts)
+                    )
+                direct_gap_gate_examples = calculus_residual_cases_by_cause_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_gap_cases_by_calculus_block_gate"
+                    )
+                )
+                if direct_gap_gate_examples:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gap examples by calculus block gate: "
+                        + "; ".join(direct_gap_gate_examples)
+                    )
+                direct_gap_trig_hyperbolic_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_gap_trig_hyperbolic_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_gap_trig_hyperbolic_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gaps by trig/hyperbolic policy cluster: "
+                        + ", ".join(direct_gap_trig_hyperbolic_clusters)
+                    )
+                direct_gap_trig_hyperbolic_examples = (
+                    calculus_residual_cases_by_cause_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_gap_cases_by_trig_hyperbolic_policy_cluster"
+                        )
+                    )
+                )
+                if direct_gap_trig_hyperbolic_examples:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gap examples by trig/hyperbolic policy cluster: "
+                        + "; ".join(direct_gap_trig_hyperbolic_examples)
+                    )
+                direct_gap_base_integration_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_gap_base_integration_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_gap_base_integration_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gaps by base integration policy cluster: "
+                        + ", ".join(direct_gap_base_integration_clusters)
+                    )
+                direct_gap_base_integration_examples = (
+                    calculus_residual_cases_by_cause_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_gap_cases_by_base_integration_policy_cluster"
+                        )
+                    )
+                )
+                if direct_gap_base_integration_examples:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gap examples by base integration policy cluster: "
+                        + "; ".join(direct_gap_base_integration_examples)
+                    )
+                direct_gap_radical_inverse_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_gap_radical_inverse_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_gap_radical_inverse_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gaps by radical/inverse policy cluster: "
+                        + ", ".join(direct_gap_radical_inverse_clusters)
+                    )
+                direct_gap_radical_inverse_examples = (
+                    calculus_residual_cases_by_cause_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_gap_cases_by_radical_inverse_policy_cluster"
+                        )
+                    )
+                )
+                if direct_gap_radical_inverse_examples:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) gap examples by radical/inverse policy cluster: "
+                        + "; ".join(direct_gap_radical_inverse_examples)
+                    )
+                direct_equiv_block_counts = calculus_matrix_count_map_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_equivalence_calculus_maturity_block_counts"
+                    )
+                )
+                if direct_equiv_block_counts:
+                    lines.append(
+                        f"- `{label}` equivalence-backed diff(integrate) calculus maturity blocks: "
+                        + ", ".join(direct_equiv_block_counts)
+                    )
+                direct_equiv_base_integration_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_equivalence_base_integration_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_equiv_base_integration_clusters:
+                    lines.append(
+                        f"- `{label}` equivalence-backed diff(integrate) base integration policy clusters: "
+                        + ", ".join(direct_equiv_base_integration_clusters)
+                    )
+                direct_equiv_trig_hyperbolic_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_equivalence_trig_hyperbolic_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_equiv_trig_hyperbolic_clusters:
+                    lines.append(
+                        f"- `{label}` equivalence-backed diff(integrate) trig/hyperbolic policy clusters: "
+                        + ", ".join(direct_equiv_trig_hyperbolic_clusters)
+                    )
                 radical_inverse_policy_clusters = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_radical_inverse_policy_cluster_counts")
                 )
@@ -6309,6 +7748,28 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` radical/inverse consolidation candidates: "
                         + ", ".join(radical_inverse_consolidation_candidates)
+                    )
+                direct_radical_inverse_clusters = calculus_matrix_count_map_fragments(
+                    metrics.get(
+                        "integrate_direct_diff_integrate_radical_inverse_policy_cluster_counts"
+                    )
+                )
+                if direct_radical_inverse_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) radical/inverse policy clusters: "
+                        + ", ".join(direct_radical_inverse_clusters)
+                    )
+                direct_radical_inverse_shared_clusters = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_direct_diff_integrate_radical_inverse_shared_policy_cluster_counts"
+                        )
+                    )
+                )
+                if direct_radical_inverse_shared_clusters:
+                    lines.append(
+                        f"- `{label}` direct diff(integrate) radical/inverse shared-policy clusters: "
+                        + ", ".join(direct_radical_inverse_shared_clusters)
                     )
                 for metric_key, regime_label in (
                     ("integrate_trace_regime_counts", "trace regimes"),
@@ -6377,6 +7838,22 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` residual causes: "
                         + ", ".join(residual_causes)
+                    )
+                residual_families = calculus_matrix_count_map_fragments(
+                    metrics.get("limit_residual_family_counts")
+                )
+                if residual_families:
+                    lines.append(
+                        f"- `{label}` residual families: "
+                        + ", ".join(residual_families)
+                    )
+                residual_cause_families = calculus_matrix_count_map_fragments(
+                    metrics.get("limit_residual_cause_family_counts")
+                )
+                if residual_cause_families:
+                    lines.append(
+                        f"- `{label}` residual cause-family buckets: "
+                        + ", ".join(residual_cause_families)
                     )
                 residual_cases_by_cause = (
                     calculus_residual_cases_by_cause_fragments(
@@ -6877,6 +8354,33 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 pieces.append(
                     "antiderivative_verified="
                     f"{metrics['integrate_antiderivative_verification_case_count']}"
+                )
+            if "integrate_verified_supported_case_count" in metrics:
+                pieces.append(
+                    "verified_supported="
+                    f"{metrics['integrate_verified_supported_case_count']}"
+                )
+            if "integrate_direct_diff_integrate_case_count" in metrics:
+                pieces.append(
+                    "direct_diff_integrate="
+                    f"{metrics['integrate_direct_diff_integrate_case_count']}"
+                )
+            if (
+                "integrate_direct_diff_integrate_exact_case_count" in metrics
+                and "integrate_direct_diff_integrate_equivalence_case_count" in metrics
+            ):
+                pieces.append(
+                    "direct_exact="
+                    f"{metrics['integrate_direct_diff_integrate_exact_case_count']}"
+                )
+                pieces.append(
+                    "direct_equiv="
+                    f"{metrics['integrate_direct_diff_integrate_equivalence_case_count']}"
+                )
+            if "integrate_direct_diff_integrate_gap_case_count" in metrics:
+                pieces.append(
+                    "direct_gap="
+                    f"{metrics['integrate_direct_diff_integrate_gap_case_count']}"
                 )
             if "integrate_family_count" in metrics:
                 pieces.append(f"families={metrics['integrate_family_count']}")

@@ -7171,20 +7171,38 @@ fn positive_rational_constant_root(ctx: &mut Context, expr: ExprId) -> Option<Ex
     positive_rational_sqrt_expr(ctx, &value)
 }
 
+fn positive_constant_like_root(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    if let Some(root) = positive_rational_constant_root(ctx, expr) {
+        return Some(root);
+    }
+    if contains_named_var(ctx, expr, var) {
+        return None;
+    }
+    if !crate::calculus_domain_support::positive_condition_is_proven_over_reals(
+        ctx,
+        expr,
+        SYMBOLIC_INTEGRATION_DOMAIN_PROOF_DEPTH,
+    ) {
+        return None;
+    }
+    Some(ctx.call_builtin(BuiltinFn::Sqrt, vec![expr]))
+}
+
 fn positive_square_constant_plus_square_arg(
     ctx: &mut Context,
     expr: ExprId,
+    var: &str,
 ) -> Option<(ExprId, ExprId)> {
     let Expr::Add(left, right) = ctx.get(expr).clone() else {
         return None;
     };
 
-    if let Some(root) = positive_rational_constant_root(ctx, left) {
+    if let Some(root) = positive_constant_like_root(ctx, left, var) {
         if let Some(arg) = square_base(ctx, right) {
             return Some((arg, root));
         }
     }
-    if let Some(root) = positive_rational_constant_root(ctx, right) {
+    if let Some(root) = positive_constant_like_root(ctx, right, var) {
         if let Some(arg) = square_base(ctx, left) {
             return Some((arg, root));
         }
@@ -7193,8 +7211,33 @@ fn positive_square_constant_plus_square_arg(
     None
 }
 
+fn positive_symbolic_square_radius_plus_square_arg(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let Expr::Add(left, right) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let left_base = square_base(ctx, left)?;
+    let right_base = square_base(ctx, right)?;
+    let left_depends_on_var = contains_named_var(ctx, left_base, var);
+    let right_depends_on_var = contains_named_var(ctx, right_base, var);
+
+    match (left_depends_on_var, right_depends_on_var) {
+        (true, false) if rational_constant_value(ctx, right_base).is_none() => {
+            Some((left_base, right_base))
+        }
+        (false, true) if rational_constant_value(ctx, left_base).is_none() => {
+            Some((right_base, left_base))
+        }
+        _ => None,
+    }
+}
+
 fn positive_one_plus_square_arg(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    let (arg, radius) = positive_square_constant_plus_square_arg(ctx, expr)?;
+    let (arg, radius) = positive_square_constant_plus_square_arg(ctx, expr, "")?;
     is_number(ctx, radius, 1).then_some(arg)
 }
 
@@ -7216,15 +7259,67 @@ fn positive_one_plus_non_one_term(ctx: &Context, expr: ExprId) -> Option<ExprId>
 fn positive_square_constant_plus_expanded_square_arg(
     ctx: &mut Context,
     expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+
+    for (constant_index, (constant_term, constant_sign)) in terms.iter().enumerate() {
+        if *constant_sign != Sign::Pos {
+            continue;
+        }
+        let Some(constant_root) = positive_constant_like_root(ctx, *constant_term, var) else {
+            continue;
+        };
+
+        let mut remainder_terms = Vec::new();
+        for (term_index, (term, sign)) in terms.iter().enumerate() {
+            if term_index == constant_index {
+                continue;
+            }
+            remainder_terms.push(match sign {
+                Sign::Pos => *term,
+                Sign::Neg => ctx.add(Expr::Neg(*term)),
+            });
+        }
+
+        if remainder_terms.len() != 3 {
+            continue;
+        }
+
+        let square = build_balanced_add(ctx, &remainder_terms);
+        let Some((left, right, is_sub)) =
+            crate::perfect_square_support::try_match_perfect_square_trinomial(ctx, square)
+        else {
+            continue;
+        };
+        let arg = if is_sub {
+            ctx.add(Expr::Sub(left, right))
+        } else {
+            ctx.add(Expr::Add(left, right))
+        };
+        return Some((arg, constant_root));
+    }
+
+    None
+}
+
+fn positive_symbolic_square_radius_plus_expanded_square_arg(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
 ) -> Option<(ExprId, ExprId)> {
     let mut remainder_terms = Vec::new();
-    let mut constant_root = None;
+    let mut radius = None;
 
     for (term, sign) in AddView::from_expr(ctx, expr).terms {
-        if sign == Sign::Pos && constant_root.is_none() {
-            if let Some(root) = positive_rational_constant_root(ctx, term) {
-                constant_root = Some(root);
-                continue;
+        if sign == Sign::Pos && radius.is_none() {
+            if let Some(base) = square_base(ctx, term) {
+                if !contains_named_var(ctx, base, var)
+                    && rational_constant_value(ctx, base).is_none()
+                {
+                    radius = Some(base);
+                    continue;
+                }
             }
         }
         remainder_terms.push(match sign {
@@ -7233,7 +7328,7 @@ fn positive_square_constant_plus_expanded_square_arg(
         });
     }
 
-    let constant_root = constant_root?;
+    let radius = radius?;
     if remainder_terms.len() != 3 {
         return None;
     }
@@ -7246,7 +7341,7 @@ fn positive_square_constant_plus_expanded_square_arg(
     } else {
         ctx.add(Expr::Add(left, right))
     };
-    Some((arg, constant_root))
+    Some((arg, radius))
 }
 
 fn arctan_positive_quadratic_arg_and_scale(
@@ -7255,9 +7350,20 @@ fn arctan_positive_quadratic_arg_and_scale(
     radius: ExprId,
     var: &str,
 ) -> Option<(ExprId, ExprId)> {
-    let (arg, slope) = symbolic_scaled_linear_arg_and_slope(ctx, arg, var)?;
+    let (arg, slope) = nonzero_linear_arg_and_slope(ctx, arg, var)?;
+    Some(arctan_positive_quadratic_arg_and_scale_from_linear(
+        ctx, arg, radius, slope,
+    ))
+}
+
+fn arctan_positive_quadratic_arg_and_scale_from_linear(
+    ctx: &mut Context,
+    arg: ExprId,
+    radius: ExprId,
+    slope: ExprId,
+) -> (ExprId, ExprId) {
     if is_number(ctx, radius, 1) {
-        return Some((arg, slope));
+        return (arg, slope);
     }
 
     let scaled_arg = match ctx.get(radius).clone() {
@@ -7275,7 +7381,33 @@ fn arctan_positive_quadratic_arg_and_scale(
         _ => ctx.add(Expr::Div(arg, radius)),
     };
     let scale = mul2_raw(ctx, slope, radius);
-    Some((scaled_arg, scale))
+    (scaled_arg, scale)
+}
+
+pub struct PositiveConstantRadiusQuadraticParts {
+    pub linear_arg: ExprId,
+    pub slope: ExprId,
+    pub arctan_arg: ExprId,
+    pub arctan_scale: ExprId,
+}
+
+pub fn positive_constant_radius_quadratic_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<PositiveConstantRadiusQuadraticParts> {
+    let (arg, radius) = positive_square_constant_plus_square_arg(ctx, expr, var)
+        .or_else(|| positive_square_constant_plus_expanded_square_arg(ctx, expr, var))?;
+    let (linear_arg, slope) = nonzero_linear_arg_and_slope(ctx, arg, var)?;
+    let (arctan_arg, arctan_scale) =
+        arctan_positive_quadratic_arg_and_scale_from_linear(ctx, linear_arg, radius, slope);
+
+    Some(PositiveConstantRadiusQuadraticParts {
+        linear_arg,
+        slope,
+        arctan_arg,
+        arctan_scale,
+    })
 }
 
 pub fn integrate_symbolic_is_positive_rational_quadratic_arctan_target(
@@ -7324,16 +7456,26 @@ fn positive_one_plus_expanded_square_arg(ctx: &mut Context, expr: ExprId) -> Opt
     })
 }
 
-fn symbolic_scaled_linear_arg_and_slope(
+fn nonzero_linear_arg_and_slope(
     ctx: &mut Context,
     arg: ExprId,
     var: &str,
 ) -> Option<(ExprId, ExprId)> {
     let (slope, _) = get_linear_coeffs(ctx, arg, var)?;
-    if contains_named_var(ctx, slope, var)
-        || is_number(ctx, slope, 0)
-        || rational_constant_value(ctx, slope).is_some()
-    {
+    if contains_named_var(ctx, slope, var) || is_number(ctx, slope, 0) {
+        return None;
+    }
+
+    Some((arg, slope))
+}
+
+fn symbolic_scaled_linear_arg_and_slope(
+    ctx: &mut Context,
+    arg: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let (arg, slope) = nonzero_linear_arg_and_slope(ctx, arg, var)?;
+    if rational_constant_value(ctx, slope).is_some() {
         return None;
     }
 
@@ -7345,11 +7487,27 @@ fn symbolic_scaled_linear_square_arg_and_slope(
     expr: ExprId,
     var: &str,
 ) -> Option<(ExprId, ExprId)> {
-    if let Some((arg, radius)) = positive_square_constant_plus_square_arg(ctx, expr) {
+    if let Some((arg, radius)) = positive_symbolic_square_radius_plus_square_arg(ctx, expr, var) {
+        let (arg, slope) = nonzero_linear_arg_and_slope(ctx, arg, var)?;
+        return Some(arctan_positive_quadratic_arg_and_scale_from_linear(
+            ctx, arg, radius, slope,
+        ));
+    }
+
+    if let Some((arg, radius)) =
+        positive_symbolic_square_radius_plus_expanded_square_arg(ctx, expr, var)
+    {
+        let (arg, slope) = nonzero_linear_arg_and_slope(ctx, arg, var)?;
+        return Some(arctan_positive_quadratic_arg_and_scale_from_linear(
+            ctx, arg, radius, slope,
+        ));
+    }
+
+    if let Some((arg, radius)) = positive_square_constant_plus_square_arg(ctx, expr, var) {
         return arctan_positive_quadratic_arg_and_scale(ctx, arg, radius, var);
     }
 
-    if let Some((arg, radius)) = positive_square_constant_plus_expanded_square_arg(ctx, expr) {
+    if let Some((arg, radius)) = positive_square_constant_plus_expanded_square_arg(ctx, expr, var) {
         return arctan_positive_quadratic_arg_and_scale(ctx, arg, radius, var);
     }
 
@@ -11528,6 +11686,27 @@ fn scale_factor(ctx: &mut Context, scale: BigRational, expr: ExprId) -> ExprId {
     mul2_raw(ctx, scale_expr, expr)
 }
 
+fn scale_by_rational_over_variable_free_slope(
+    ctx: &mut Context,
+    numerator_scale: BigRational,
+    slope: ExprId,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if numerator_scale.is_zero() || contains_named_var(ctx, slope, var) {
+        return None;
+    }
+    if let Some(slope_scale) = rational_constant_value(ctx, slope) {
+        if slope_scale.is_zero() {
+            return None;
+        }
+        return Some(scale_factor(ctx, numerator_scale / slope_scale, expr));
+    }
+
+    let scaled = scale_factor(ctx, numerator_scale, expr);
+    Some(ctx.add(Expr::Div(scaled, slope)))
+}
+
 fn trig_by_parts_quotient_by_slope(
     ctx: &mut Context,
     numerator: ExprId,
@@ -13243,6 +13422,14 @@ fn positive_quadratic_linear_numerator_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    if Polynomial::from_expr(ctx, den, var).is_err() {
+        if let Some(integral) =
+            positive_constant_radius_quadratic_linear_numerator_antiderivative(ctx, num, den, var)
+        {
+            return Some(integral);
+        }
+    }
+
     let mut numerator = Polynomial::from_expr(ctx, num, var).ok()?;
     let mut denominator = Polynomial::from_expr(ctx, den, var).ok()?;
     if denominator.degree() != 2 {
@@ -13340,11 +13527,94 @@ fn positive_quadratic_linear_numerator_antiderivative(
     }
 }
 
+fn positive_constant_radius_quadratic_linear_numerator_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
+    if numerator.degree() > 1 {
+        return None;
+    }
+
+    let (arg, radius) = positive_square_constant_plus_square_arg(ctx, den, var)
+        .or_else(|| positive_square_constant_plus_expanded_square_arg(ctx, den, var))?;
+    let (linear_arg, slope_expr) = nonzero_linear_arg_and_slope(ctx, arg, var)?;
+    let slope = rational_constant_value(ctx, slope_expr)?;
+    let arg_poly = Polynomial::from_expr(ctx, linear_arg, var).ok()?;
+
+    let two = BigRational::from_integer(2.into());
+    let derivative_poly = scale_polynomial(&arg_poly, two * slope);
+    if derivative_poly.degree() != 1 {
+        return None;
+    }
+    let derivative_linear = derivative_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if derivative_linear.is_zero() {
+        return None;
+    }
+
+    let numerator_linear = numerator
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let log_scale = numerator_linear / derivative_linear;
+    let scaled_derivative_poly = scale_polynomial(&derivative_poly, log_scale.clone());
+    let remainder = numerator.sub(&scaled_derivative_poly);
+    if remainder.degree() > 0 {
+        return None;
+    }
+    let remainder_constant = remainder
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+
+    let mut terms = Vec::new();
+    if !log_scale.is_zero() {
+        let log_den = ctx.call_builtin(BuiltinFn::Ln, vec![den]);
+        terms.push(scale_rational_term(ctx, log_scale, log_den));
+    }
+    if !remainder_constant.is_zero() {
+        let (arctan_arg, arctan_scale) =
+            arctan_positive_quadratic_arg_and_scale(ctx, linear_arg, radius, var)?;
+        let arctan = ctx.call_builtin(BuiltinFn::Atan, vec![arctan_arg]);
+        let arctan_integral = ctx.add(Expr::Div(arctan, arctan_scale));
+        terms.push(scale_rational_term(
+            ctx,
+            remainder_constant,
+            arctan_integral,
+        ));
+    }
+
+    match terms.len() {
+        0 => None,
+        1 => Some(terms[0]),
+        _ => {
+            let sum = build_balanced_add(ctx, &terms);
+            Some(cas_ast::hold::wrap_hold(ctx, sum))
+        }
+    }
+}
+
 pub fn integrate_symbolic_positive_quadratic_linear_numerator_decomposition_expr(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    if Polynomial::from_expr(ctx, expr, var).is_err() {
+        if let Some(decomposition) =
+            positive_constant_radius_quadratic_linear_numerator_decomposition_expr(ctx, expr, var)
+        {
+            return Some(decomposition);
+        }
+    }
+
     let (num, den) = match ctx.get(expr) {
         Expr::Div(num, den) => (*num, *den),
         _ => return None,
@@ -13434,6 +13704,87 @@ pub fn integrate_symbolic_positive_quadratic_linear_numerator_decomposition_expr
         return None;
     }
     Some(build_balanced_add(ctx, &decomposition_terms))
+}
+
+fn positive_constant_radius_quadratic_linear_numerator_decomposition_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return None,
+    };
+    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
+    if numerator.degree() > 1 {
+        return None;
+    }
+
+    let (arg, _radius) = positive_square_constant_plus_square_arg(ctx, den, var)
+        .or_else(|| positive_square_constant_plus_expanded_square_arg(ctx, den, var))?;
+    let (linear_arg, slope_expr) = nonzero_linear_arg_and_slope(ctx, arg, var)?;
+    let slope = rational_constant_value(ctx, slope_expr)?;
+    let arg_poly = Polynomial::from_expr(ctx, linear_arg, var).ok()?;
+
+    let two = BigRational::from_integer(2.into());
+    let derivative_poly = scale_polynomial(&arg_poly, two * slope);
+    if derivative_poly.degree() != 1 {
+        return None;
+    }
+    let derivative_linear = derivative_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if derivative_linear.is_zero() {
+        return None;
+    }
+
+    let numerator_linear = numerator
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let log_scale = numerator_linear / derivative_linear;
+    let scaled_derivative_poly = scale_polynomial(&derivative_poly, log_scale.clone());
+    let remainder = numerator.sub(&scaled_derivative_poly);
+    if remainder.degree() > 0 {
+        return None;
+    }
+    let remainder_constant = remainder
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+
+    let mut decomposition_terms = Vec::new();
+    if !log_scale.is_zero() {
+        let derivative_part = scaled_derivative_poly.to_expr(ctx);
+        decomposition_terms.push(ctx.add(Expr::Div(derivative_part, den)));
+    }
+    if !remainder_constant.is_zero() {
+        let remainder_part =
+            Polynomial::new(vec![remainder_constant], numerator.var.clone()).to_expr(ctx);
+        decomposition_terms.push(ctx.add(Expr::Div(remainder_part, den)));
+    }
+
+    if decomposition_terms.len() <= 1 {
+        return None;
+    }
+    Some(build_balanced_add(ctx, &decomposition_terms))
+}
+
+pub fn integrate_symbolic_is_positive_constant_radius_quadratic_linear_numerator_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return false,
+    };
+
+    positive_constant_radius_quadratic_linear_numerator_antiderivative(ctx, num, den, var).is_some()
 }
 
 fn positive_quadratic_square_antiderivative(
@@ -15163,6 +15514,12 @@ fn arcsin_polynomial_substitution_from_radicand(
     radicand: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    if let Some(integral) =
+        arcsin_symbolic_radius_substitution_from_radicand(ctx, numerator, radicand, var)
+    {
+        return Some(integral);
+    }
+
     let numerator = Polynomial::from_expr(ctx, numerator, var).ok()?;
     let radicand = Polynomial::from_expr(ctx, radicand, var).ok()?;
     if let Some((arg_poly, offset_square)) =
@@ -15228,12 +15585,235 @@ fn arcsin_polynomial_substitution_from_parts(
     Some(scaled_arcsin)
 }
 
+fn square_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp)
+            if rational_constant_value(ctx, *exp) == Some(BigRational::from_integer(2.into())) =>
+        {
+            Some(*base)
+        }
+        _ => None,
+    }
+}
+
+fn symbolic_radius_base_from_square(
+    ctx: &Context,
+    radius_square: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, radius_square, var)
+        || rational_constant_value(ctx, radius_square).is_some()
+    {
+        return None;
+    }
+    let radius_base = square_power_base(ctx, radius_square)?;
+    if contains_named_var(ctx, radius_base, var)
+        || rational_constant_value(ctx, radius_base).is_some()
+    {
+        return None;
+    }
+    Some(radius_base)
+}
+
+fn symbolic_radius_square_arg_from_terms(
+    ctx: &Context,
+    radius_square: ExprId,
+    arg_square: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    symbolic_radius_base_from_square(ctx, radius_square, var)?;
+    let arg = square_power_base(ctx, arg_square)?;
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
+    Some((radius_square, arg))
+}
+
+fn symbolic_radius_arg_from_square_terms(
+    ctx: &mut Context,
+    square_terms: &[ExprId],
+    var: &str,
+) -> Option<ExprId> {
+    if square_terms.len() != 3 {
+        return None;
+    }
+
+    let square = build_balanced_add(ctx, square_terms);
+    let (left, right, is_sub) =
+        crate::perfect_square_support::try_match_perfect_square_trinomial(ctx, square)?;
+    let arg = if is_sub {
+        ctx.add(Expr::Sub(left, right))
+    } else {
+        ctx.add(Expr::Add(left, right))
+    };
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
+    Some(arg)
+}
+
+fn symbolic_radius_minus_square_arg(
+    ctx: &Context,
+    radicand: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let Expr::Sub(radius_square, arg_square) = ctx.get(radicand) else {
+        return None;
+    };
+    symbolic_radius_square_arg_from_terms(ctx, *radius_square, *arg_square, var)
+}
+
+fn symbolic_radius_minus_expanded_square_arg(
+    ctx: &mut Context,
+    radicand: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, radicand).terms;
+    for (radius_index, (radius_square, sign)) in terms.iter().enumerate() {
+        if *sign != Sign::Pos
+            || symbolic_radius_base_from_square(ctx, *radius_square, var).is_none()
+        {
+            continue;
+        }
+
+        let mut square_terms = Vec::new();
+        for (term_index, (term, term_sign)) in terms.iter().enumerate() {
+            if term_index == radius_index {
+                continue;
+            }
+            square_terms.push(match term_sign {
+                Sign::Pos => ctx.add(Expr::Neg(*term)),
+                Sign::Neg => *term,
+            });
+        }
+        let Some(arg) = symbolic_radius_arg_from_square_terms(ctx, &square_terms, var) else {
+            continue;
+        };
+        return Some((*radius_square, arg));
+    }
+
+    None
+}
+
+fn arcsin_symbolic_radius_substitution_from_radicand(
+    ctx: &mut Context,
+    numerator: ExprId,
+    radicand: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (radius_square, arg) = symbolic_radius_minus_square_arg(ctx, radicand, var)
+        .or_else(|| symbolic_radius_minus_expanded_square_arg(ctx, radicand, var))?;
+    symbolic_radius_inverse_sqrt_primitive(
+        ctx,
+        numerator,
+        radius_square,
+        arg,
+        var,
+        BuiltinFn::Arcsin,
+    )
+}
+
+fn symbolic_radius_inverse_sqrt_primitive(
+    ctx: &mut Context,
+    numerator: ExprId,
+    radius_square: ExprId,
+    arg: ExprId,
+    var: &str,
+    inverse_fn: BuiltinFn,
+) -> Option<ExprId> {
+    let numerator_scale = rational_constant_value(ctx, numerator)?;
+    let (slope, _) = get_linear_coeffs(ctx, arg, var)?;
+
+    let radius = ctx.call_builtin(BuiltinFn::Sqrt, vec![radius_square]);
+    let inverse_arg = ctx.add(Expr::Div(arg, radius));
+    let primitive = ctx.call_builtin(inverse_fn, vec![inverse_arg]);
+    scale_by_rational_over_variable_free_slope(ctx, numerator_scale, slope, primitive, var)
+}
+
+fn symbolic_radius_plus_square_arg(
+    ctx: &Context,
+    radicand: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let Expr::Add(left, right) = ctx.get(radicand) else {
+        return None;
+    };
+    symbolic_radius_plus_square_arg_from_terms(ctx, *left, *right, var)
+        .or_else(|| symbolic_radius_plus_square_arg_from_terms(ctx, *right, *left, var))
+}
+
+fn symbolic_radius_plus_square_arg_from_terms(
+    ctx: &Context,
+    radius_square: ExprId,
+    arg_square: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    symbolic_radius_square_arg_from_terms(ctx, radius_square, arg_square, var)
+}
+
+fn symbolic_radius_plus_expanded_square_arg(
+    ctx: &mut Context,
+    radicand: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, radicand).terms;
+    for (radius_index, (radius_square, sign)) in terms.iter().enumerate() {
+        if *sign != Sign::Pos
+            || symbolic_radius_base_from_square(ctx, *radius_square, var).is_none()
+        {
+            continue;
+        }
+
+        let mut square_terms = Vec::new();
+        for (term_index, (term, term_sign)) in terms.iter().enumerate() {
+            if term_index == radius_index {
+                continue;
+            }
+            if *term_sign != Sign::Pos {
+                square_terms.clear();
+                break;
+            }
+            square_terms.push(*term);
+        }
+        let Some(arg) = symbolic_radius_arg_from_square_terms(ctx, &square_terms, var) else {
+            continue;
+        };
+        return Some((*radius_square, arg));
+    }
+
+    None
+}
+
+fn asinh_symbolic_radius_substitution_from_radicand(
+    ctx: &mut Context,
+    numerator: ExprId,
+    radicand: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (radius_square, arg) = symbolic_radius_plus_square_arg(ctx, radicand, var)
+        .or_else(|| symbolic_radius_plus_expanded_square_arg(ctx, radicand, var))?;
+    symbolic_radius_inverse_sqrt_primitive(
+        ctx,
+        numerator,
+        radius_square,
+        arg,
+        var,
+        BuiltinFn::Asinh,
+    )
+}
+
 fn asinh_polynomial_substitution_from_radicand(
     ctx: &mut Context,
     numerator: ExprId,
     radicand: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    if let Some(integral) =
+        asinh_symbolic_radius_substitution_from_radicand(ctx, numerator, radicand, var)
+    {
+        return Some(integral);
+    }
+
     let numerator = Polynomial::from_expr(ctx, numerator, var).ok()?;
     let radicand = Polynomial::from_expr(ctx, radicand, var).ok()?;
     let (arg_poly, offset_square) = exact_polynomial_square_plus_positive_constant(&radicand)?;
@@ -17013,14 +17593,22 @@ pub fn integrate_symbolic_required_nonzero_conditions(
         &mut conditions,
     );
 
-    dedup_required_conditions(ctx, conditions)
+    dedup_required_conditions(ctx, conditions, var)
 }
 
-fn dedup_required_conditions(ctx: &Context, conditions: Vec<ExprId>) -> Vec<ExprId> {
+fn dedup_required_conditions(ctx: &mut Context, conditions: Vec<ExprId>, var: &str) -> Vec<ExprId> {
     let all_conditions = conditions.clone();
     let mut unique = Vec::new();
     for condition in conditions {
         if tanh_nonzero_dominated_by_sinh_nonzero(ctx, condition, &all_conditions) {
+            continue;
+        }
+        if nonzero_condition_is_proven_for_symbolic_integration(ctx, condition) {
+            continue;
+        }
+        if positive_constant_radius_quadratic_denominator_is_structurally_nonzero(
+            ctx, condition, var,
+        ) {
             continue;
         }
         if unique
@@ -17032,6 +17620,53 @@ fn dedup_required_conditions(ctx: &Context, conditions: Vec<ExprId>) -> Vec<Expr
         unique.push(condition);
     }
     unique
+}
+
+fn nonzero_condition_is_proven_for_symbolic_integration(ctx: &mut Context, expr: ExprId) -> bool {
+    if crate::calculus_domain_support::positive_condition_is_proven_over_reals(
+        ctx,
+        expr,
+        SYMBOLIC_INTEGRATION_DOMAIN_PROOF_DEPTH,
+    ) {
+        return true;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Number(value) => !value.is_zero(),
+        Expr::Constant(Constant::Pi | Constant::E | Constant::Phi) => true,
+        Expr::Neg(inner) => nonzero_condition_is_proven_for_symbolic_integration(ctx, inner),
+        Expr::Mul(_, _) => mul_leaves(ctx, expr)
+            .into_iter()
+            .all(|factor| nonzero_condition_is_proven_for_symbolic_integration(ctx, factor)),
+        Expr::Div(num, den) => {
+            nonzero_condition_is_proven_for_symbolic_integration(ctx, num)
+                && nonzero_condition_is_proven_for_symbolic_integration(ctx, den)
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Sqrt) =>
+        {
+            crate::calculus_domain_support::positive_condition_is_proven_over_reals(
+                ctx,
+                args[0],
+                SYMBOLIC_INTEGRATION_DOMAIN_PROOF_DEPTH,
+            )
+        }
+        _ => false,
+    }
+}
+
+fn positive_constant_radius_quadratic_denominator_is_structurally_nonzero(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    let parts = positive_square_constant_plus_square_arg(ctx, expr, var)
+        .or_else(|| positive_square_constant_plus_expanded_square_arg(ctx, expr, var));
+    let Some((arg, _radius)) = parts else {
+        return false;
+    };
+
+    nonzero_linear_arg_and_slope(ctx, arg, var).is_some()
 }
 
 fn tanh_nonzero_dominated_by_sinh_nonzero(
@@ -17648,6 +18283,15 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         if is_negative_half(ctx, exp) && is_var_square_plus_one(ctx, base, var) {
             let var_expr = ctx.var(var);
             return Some(ctx.call_builtin(BuiltinFn::Asinh, vec![var_expr]));
+        }
+
+        if is_negative_half(ctx, exp) {
+            let one = ctx.num(1);
+            if let Some(integral) =
+                arcsin_symbolic_radius_substitution_from_radicand(ctx, one, base, var)
+            {
+                return Some(integral);
+            }
         }
 
         if let Some(integral) = trig_square_affine_antiderivative(ctx, base, exp, var) {
@@ -19504,8 +20148,14 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sinh(x^2)", &mut ctx).expect("parse");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
         assert!(
-            super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x").is_empty()
+            conditions.is_empty(),
+            "unexpected required conditions: {:?}",
+            conditions
+                .iter()
+                .map(|condition| rendered(&ctx, *condition))
+                .collect::<Vec<_>>()
         );
         assert!(
             super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x").is_empty()
@@ -19513,8 +20163,14 @@ mod tests {
 
         let expr = parse("tanh(x^2)", &mut ctx).expect("parse");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
         assert!(
-            super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x").is_empty()
+            conditions.is_empty(),
+            "unexpected required conditions: {:?}",
+            conditions
+                .iter()
+                .map(|condition| rendered(&ctx, *condition))
+                .collect::<Vec<_>>()
         );
         assert!(
             super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x").is_empty()
@@ -20320,6 +20976,145 @@ mod tests {
     }
 
     #[test]
+    fn integrates_named_positive_constant_radius_arctan_quadratic() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(x^2+pi)", &mut ctx).expect("parse");
+
+        assert!(
+            super::integrate_symbolic_is_positive_rational_quadratic_arctan_target(
+                &mut ctx, expr, "x"
+            )
+        );
+
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(x / sqrt(pi)) / (sqrt(pi))");
+
+        let expr = parse("1/(x^2+phi)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(x / sqrt(phi)) / (sqrt(phi))");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert!(
+            conditions.is_empty(),
+            "unexpected required conditions: {:?}",
+            conditions
+                .iter()
+                .map(|condition| rendered(&ctx, *condition))
+                .collect::<Vec<_>>()
+        );
+
+        let expr = parse("1/(x^2-phi)", &mut ctx).expect("parse");
+        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn integrates_expanded_numeric_affine_named_positive_constant_radius_arctan_quadratic() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(4*x^2+12*x+9+phi)", &mut ctx).expect("parse");
+
+        assert!(
+            super::integrate_symbolic_is_positive_rational_quadratic_arctan_target(
+                &mut ctx, expr, "x"
+            )
+        );
+
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "arctan((2 * x + 3) / sqrt(phi)) / (2 * sqrt(phi))"
+        );
+        let denominator = parse("4*x^2+12*x+9+phi", &mut ctx).expect("parse");
+        assert!(
+            super::positive_constant_radius_quadratic_denominator_is_structurally_nonzero(
+                &mut ctx,
+                denominator,
+                "x"
+            )
+        );
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert!(
+            conditions.is_empty(),
+            "unexpected required conditions: {:?}",
+            conditions
+                .iter()
+                .map(|condition| rendered(&ctx, *condition))
+                .collect::<Vec<_>>()
+        );
+
+        let expr = parse("1/(4*x^2+12*x+9-phi)", &mut ctx).expect("parse");
+        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn integrates_expanded_named_positive_constant_radius_linear_numerator_quadratic() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*x+6)/(4*x^2+12*x+9+phi)", &mut ctx).expect("parse");
+
+        assert!(
+            super::integrate_symbolic_is_positive_constant_radius_quadratic_linear_numerator_target(
+                &mut ctx, expr, "x"
+            )
+        );
+
+        let decomposition =
+            super::integrate_symbolic_positive_quadratic_linear_numerator_decomposition_expr(
+                &mut ctx, expr, "x",
+            )
+            .expect("decomposition");
+        assert_eq!(
+            rendered(&ctx, decomposition),
+            "3 / (4 * x^2 + 12 * x + 9 + phi) + (2 * x + 3) / (4 * x^2 + 12 * x + 9 + phi)"
+        );
+
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/4 * ln(4 * x^2 + 12 * x + 9 + phi) + (atan((2 * x + 3) / sqrt(phi)) * 3)/(2 * sqrt(phi))"
+        );
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert!(
+            conditions.is_empty(),
+            "unexpected required conditions: {:?}",
+            conditions
+                .iter()
+                .map(|condition| rendered(&ctx, *condition))
+                .collect::<Vec<_>>()
+        );
+
+        let expr = parse("(2*x+6)/(4*x^2+12*x+9-phi)", &mut ctx).expect("parse");
+        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn integrates_symbolic_square_radius_arctan_quadratic() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(x^2+a^2)", &mut ctx).expect("parse");
+
+        assert!(
+            super::integrate_symbolic_is_positive_rational_quadratic_arctan_target(
+                &mut ctx, expr, "x"
+            )
+        );
+
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(x / a) / (a)");
+    }
+
+    #[test]
+    fn integrates_symbolic_square_radius_expanded_affine_arctan_quadratic() {
+        let mut ctx = Context::new();
+        let expr = parse("1/((x+b)^2+a^2)", &mut ctx).expect("parse");
+
+        assert!(
+            super::integrate_symbolic_is_positive_rational_quadratic_arctan_target(
+                &mut ctx, expr, "x"
+            )
+        );
+
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan((b + x) / a) / (a)");
+    }
+
+    #[test]
     fn exposes_positive_quadratic_linear_numerator_decomposition_for_didactic_trace() {
         let mut ctx = Context::new();
         let expr = parse("(x+1)/(x^2+1)", &mut ctx).expect("parse");
@@ -20671,6 +21466,34 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "arcsin((x + 1) / 2)");
 
+        let expr = parse("1/sqrt(a^2-x^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arcsin(x / sqrt(a^2))");
+
+        let conditions =
+            super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "a^2 - x^2");
+
+        let expr = parse("1/sqrt(a^2-(x+b)^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arcsin((b + x) / sqrt(a^2))");
+
+        let expr = parse("1/sqrt(a^2-(m*x+b)^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arcsin((m * x + b) / sqrt(a^2)) / m");
+
+        let conditions =
+            super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "a^2 - (m * x + b)^2");
+
+        let expr = parse("1/sqrt(a^2-(x+b)^2)", &mut ctx).expect("parse");
+        let conditions =
+            super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "a^2 - (b + x)^2");
+
         let expr = parse("(2*x*sqrt(4-x^4))/(4-x^4)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "arcsin(x^2 / 2)");
@@ -20694,6 +21517,18 @@ mod tests {
         let expr = parse("1/sqrt(4+(x+1)^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "asinh((x + 1) / 2)");
+
+        let expr = parse("1/sqrt(a^2+x^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "asinh(x / sqrt(a^2))");
+
+        let expr = parse("1/sqrt((x+b)^2+a^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "asinh((b + x) / sqrt(a^2))");
+
+        let expr = parse("1/sqrt((m*x+b)^2+a^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "asinh((m * x + b) / sqrt(a^2)) / m");
 
         let expr = parse("(2*x*sqrt(1+x^4))/(1+x^4)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
@@ -22078,8 +22913,10 @@ mod tests {
         assert_eq!(rendered(&ctx, out), "ln(|cosh(sqrt(x))|)");
 
         let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
-        assert_eq!(conditions.len(), 1);
-        assert_eq!(rendered(&ctx, conditions[0]), "cosh(sqrt(x))");
+        assert!(
+            conditions.is_empty(),
+            "cosh is strictly positive over reals and should not require a nonzero condition"
+        );
 
         let positive = super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
         assert_eq!(positive.len(), 1);
@@ -22102,8 +22939,10 @@ mod tests {
         assert_eq!(rendered(&ctx, out), "-ln(|cosh(b - sqrt(x))|)");
 
         let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
-        assert_eq!(conditions.len(), 1);
-        assert_eq!(rendered(&ctx, conditions[0]), "cosh(b - sqrt(x))");
+        assert!(
+            conditions.is_empty(),
+            "cosh is strictly positive over reals and should not require a nonzero condition"
+        );
 
         let positive = super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
         assert_eq!(positive.len(), 1);
@@ -22138,8 +22977,10 @@ mod tests {
         assert_eq!(rendered(&ctx, out), "tanh(sqrt(x))");
 
         let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
-        assert_eq!(conditions.len(), 1);
-        assert_eq!(rendered(&ctx, conditions[0]), "cosh(sqrt(x))");
+        assert!(
+            conditions.is_empty(),
+            "cosh is strictly positive over reals and should not require a nonzero condition"
+        );
 
         let positive = super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
         assert_eq!(positive.len(), 1);
@@ -22174,8 +23015,10 @@ mod tests {
         assert_eq!(rendered(&ctx, out), "-1 / cosh(sqrt(x))");
 
         let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
-        assert_eq!(conditions.len(), 1);
-        assert_eq!(rendered(&ctx, conditions[0]), "cosh(sqrt(x))");
+        assert!(
+            conditions.is_empty(),
+            "cosh is strictly positive over reals and should not require a nonzero condition"
+        );
 
         let positive = super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
         assert_eq!(positive.len(), 1);

@@ -1,4 +1,4 @@
-//! Source-side direct trig-affine integrand detection for calculus shortcuts.
+//! Source-side direct/reciprocal trig-affine integrand detection for calculus shortcuts.
 
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::polynomial::Polynomial;
@@ -15,7 +15,7 @@ pub(super) fn expr_contains_direct_trig_with_affine_arg(
                 if args.len() == 1
                     && matches!(
                         ctx.builtin_of(*fn_id),
-                        Some(BuiltinFn::Sin | BuiltinFn::Cos)
+                        Some(BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Sec | BuiltinFn::Csc)
                     )
                     && Polynomial::from_expr(ctx, args[0], var_name)
                         .is_ok_and(|poly| poly.degree() == 1) =>

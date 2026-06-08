@@ -1,6 +1,4 @@
-use super::atanh_open_interval_domain::{
-    arg_is_proven_outside_open_unit_interval, known_constant_abs_exceeds_one,
-};
+use super::atanh_open_interval_domain::arg_is_proven_outside_open_unit_interval;
 use super::presentation_utils::squared_expr;
 use super::scalar_presentation::subtract_from_one_for_calculus_presentation;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
@@ -62,11 +60,14 @@ pub(super) fn bounded_inverse_trig_known_empty_open_interval_gap(
     }
 
     let gap = bounded_inverse_trig_open_interval_gap(ctx, arg);
-    if cas_math::calculus_domain_support::positive_condition_is_impossible_over_reals(
-        ctx,
-        gap,
+    let mut scratch = ctx.clone();
+    if cas_math::calculus_domain_support::bounded_inverse_real_domain_rejection_over_reals(
+        &mut scratch,
+        ctx.builtin_of(fn_id),
+        &args,
         CALCULUS_DOMAIN_PROOF_DEPTH,
-    ) || known_constant_abs_exceeds_one(ctx, arg)
+    )
+    .is_some()
         || (contains_named_var(ctx, arg, var_name)
             && arg_is_proven_outside_open_unit_interval(ctx, arg))
     {
@@ -77,7 +78,7 @@ pub(super) fn bounded_inverse_trig_known_empty_open_interval_gap(
 }
 
 fn bounded_inverse_trig_finite_constant_domain_arg(ctx: &Context, arg: ExprId) -> bool {
-    cas_ast::views::as_rational_const(ctx, arg, 8)
+    cas_math::numeric_eval::as_rational_const(ctx, arg)
         .is_some_and(|value| value.abs() <= BigRational::one())
 }
 

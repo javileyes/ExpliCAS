@@ -2744,28 +2744,23 @@ fn calculus_residual_step_has_visible_payload_local(
     )
 }
 
-fn direct_integrate_residual_required_conditions_local(
-    ctx: &mut cas_ast::Context,
-    source: ExprId,
-    residual: ExprId,
-) -> Vec<crate::ImplicitCondition> {
-    if !exprs_exact_ignoring_internal_holds_local(ctx, source, residual) {
-        return Vec::new();
+fn attach_integrate_residual_required_conditions_local(
+    steps: &mut [crate::Step],
+    required_conditions: &[crate::ImplicitCondition],
+) {
+    if required_conditions.is_empty() {
+        return;
     }
 
-    let Some(call) = crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source)
-    else {
-        return Vec::new();
-    };
-
-    cas_math::symbolic_integration_support::integrate_symbolic_required_nonzero_conditions(
-        ctx,
-        call.target,
-        &call.var_name,
-    )
-    .into_iter()
-    .map(crate::ImplicitCondition::NonZero)
-    .collect()
+    if let Some(step) = steps
+        .iter_mut()
+        .rev()
+        .find(|step| step.rule_name == "Conservar integral residual")
+    {
+        if step.required_conditions().is_empty() {
+            step.meta_mut().required_conditions = required_conditions.to_vec();
+        }
+    }
 }
 
 fn integrate_residual_required_conditions_local(
@@ -2773,41 +2768,27 @@ fn integrate_residual_required_conditions_local(
     source: ExprId,
     residual: ExprId,
 ) -> Vec<crate::ImplicitCondition> {
-    let direct_conditions =
-        direct_integrate_residual_required_conditions_local(ctx, source, residual);
-    if !direct_conditions.is_empty() {
-        return direct_conditions;
-    }
-
     let (Some(source_call), Some(residual_call)) = (
-        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source),
-        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, residual),
+        try_extract_integrate_call_lenient_local(ctx, source),
+        try_extract_integrate_call_lenient_local(ctx, residual),
     ) else {
         return Vec::new();
     };
-    if source_call.var_name != residual_call.var_name
-        || !expr_contains_any_builtin_local(
-            ctx,
-            source_call.target,
-            &[
-                BuiltinFn::Tan,
-                BuiltinFn::Sec,
-                BuiltinFn::Cot,
-                BuiltinFn::Csc,
-            ],
-        )
-    {
+    if source_call.var_name != residual_call.var_name {
         return Vec::new();
     }
 
-    cas_math::symbolic_integration_support::integrate_symbolic_required_nonzero_conditions(
-        ctx,
-        residual_call.target,
-        &residual_call.var_name,
-    )
-    .into_iter()
-    .map(crate::ImplicitCondition::NonZero)
-    .collect()
+    let residual_target_conditions =
+        crate::calculus_residual_support::integral_residual_required_conditions(
+            ctx,
+            residual_call.target,
+            &residual_call.var_name,
+        );
+    if !residual_target_conditions.is_empty() {
+        return residual_target_conditions;
+    }
+
+    Vec::new()
 }
 
 fn expr_is_post_calculus_residual_candidate_local(ctx: &cas_ast::Context, expr: ExprId) -> bool {
@@ -2893,6 +2874,16 @@ fn try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_l
     expr: ExprId,
     depth: usize,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    if expr_is_symbolic_calculus_call_local(ctx, expr) {
+        if let Some((result, required_conditions, _, _)) =
+            crate::rules::calculus::try_resolve_direct_symbolic_calculus_before_general_simplify(
+                ctx, expr,
+            )
+        {
+            return Some((result, required_conditions));
+        }
+    }
+
     if let Some(result) =
         try_diff_arctan_sqrt_small_additive_elementary_residual_zero_local(ctx, expr)
     {
@@ -3168,6 +3159,18 @@ fn try_rewrite_post_calculus_residual_child_context_before_general_simplify_loca
         return None;
     }
 
+    if (expr_contains_named_function_local(ctx, expr, &["diff", "integrate", "int"])
+        || expr_contains_symbolic_calculus_call_local(ctx, expr))
+        && expr_is_post_calculus_residual_candidate_local(ctx, expr)
+        && !expr_is_additive_post_calculus_context_with_exact_zero_noise_local(ctx, expr)
+    {
+        if let Some(result) =
+            try_resolve_post_calculus_residual_before_general_simplify_core_local(ctx, expr)
+        {
+            return Some(result);
+        }
+    }
+
     match ctx.get(expr).clone() {
         Expr::Add(left, right) => {
             if let Some((rewritten, required_conditions)) =
@@ -3223,6 +3226,11 @@ fn try_rewrite_post_calculus_residual_child_context_before_general_simplify_loca
                     let negated = ctx.add(Expr::Neg(right));
                     return Some((negated, required_conditions));
                 }
+                if exprs_exactly_match_ignoring_internal_holds_local(ctx, rewritten_left, right)
+                    || exprs_display_match_ignoring_internal_holds_local(ctx, rewritten_left, right)
+                {
+                    return Some((ctx.num(0), required_conditions));
+                }
                 if expr_is_exact_zero_identity_local(ctx, right) {
                     return Some((rewritten_left, required_conditions));
                 }
@@ -3239,6 +3247,11 @@ fn try_rewrite_post_calculus_residual_child_context_before_general_simplify_loca
             {
                 if expr_is_zero_const_local(ctx, rewritten_right) {
                     return Some((left, required_conditions));
+                }
+                if exprs_exactly_match_ignoring_internal_holds_local(ctx, left, rewritten_right)
+                    || exprs_display_match_ignoring_internal_holds_local(ctx, left, rewritten_right)
+                {
+                    return Some((ctx.num(0), required_conditions));
                 }
                 if expr_is_exact_zero_identity_local(ctx, left) {
                     let negated = ctx.add(Expr::Neg(rewritten_right));
@@ -3774,107 +3787,6 @@ fn try_compact_reciprocal_trig_product_residual_zero_local(
     Some((ctx.num(0), required_conditions))
 }
 
-fn try_resolve_direct_post_calculus_before_general_simplify_local(
-    ctx: &mut cas_ast::Context,
-    expr: ExprId,
-) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
-    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, expr)?;
-    if crate::rules::calculus::diff_target_known_undefined_over_reals(
-        ctx,
-        call.target,
-        &call.var_name,
-    ) {
-        let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-        return Some((undefined, Vec::new()));
-    }
-
-    if let Some((result, required_conditions)) = crate::rules::calculus::
-        constant_scaled_reciprocal_trig_affine_derivative_presentation_with_domain(
-            ctx,
-            call.target,
-            &call.var_name,
-        )
-    {
-        return Some((result, required_conditions));
-    }
-
-    if let Some((result, required_conditions)) =
-        crate::rules::calculus::constant_scaled_hyperbolic_reciprocal_derivative_quotient_presentation_with_domain(
-            ctx,
-            call.target,
-            &call.var_name,
-        )
-    {
-        return Some((result, required_conditions));
-    }
-
-    if let Some((result, required_conditions)) =
-        crate::rules::calculus::reciprocal_trig_shifted_sqrt_derivative_presentation(
-            ctx,
-            call.target,
-            &call.var_name,
-        )
-    {
-        return Some((result, required_conditions));
-    }
-
-    if let Some(result) =
-        crate::rules::calculus::affine_hyperbolic_odd_primitive_derivative_presentation(
-            ctx,
-            call.target,
-            &call.var_name,
-        )
-    {
-        return Some((result, Vec::new()));
-    }
-
-    if let Some((result, radicand, mut required_conditions)) =
-        crate::rules::calculus::sqrt_additive_tan_polynomial_derivative_inline_presentation(
-            ctx,
-            call.target,
-            &call.var_name,
-        )
-    {
-        required_conditions.insert(0, crate::ImplicitCondition::Positive(radicand));
-        return Some((result, required_conditions));
-    }
-
-    let (mut result, radicand, mut required_conditions) =
-        crate::rules::calculus::sqrt_additive_tan_polynomial_derivative_presentation(
-            ctx,
-            call.target,
-            &call.var_name,
-        )?;
-    if let Some((inline_result, inline_radicand, inline_required_conditions)) =
-        crate::rules::calculus::sqrt_additive_tan_polynomial_derivative_inline_presentation(
-            ctx,
-            call.target,
-            &call.var_name,
-        )
-    {
-        if inline_radicand == radicand {
-            result = inline_result;
-            required_conditions = inline_required_conditions;
-        }
-    }
-    required_conditions.insert(0, crate::ImplicitCondition::Positive(radicand));
-    Some((result, required_conditions))
-}
-
-fn try_resolve_direct_diff_hyperbolic_coth_before_general_simplify_local(
-    ctx: &mut cas_ast::Context,
-    expr: ExprId,
-) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
-    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, expr)?;
-    let result =
-        cas_math::symbolic_differentiation_support::differentiate_symbolic_linear_times_hyperbolic_coth_linear_div_derivative(
-            ctx,
-            call.target,
-            &call.var_name,
-        )?;
-    Some((result, Vec::new()))
-}
-
 fn unary_builtin_arg_for_compact_hyperbolic_sum_local(
     ctx: &cas_ast::Context,
     expr: ExprId,
@@ -4216,6 +4128,53 @@ impl Engine {
         ) {
             if let Some((result, required_nonzero)) =
                 cas_math::symbolic_differentiation_support::rational_log_ratio_single_pole_derivative(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                let desc =
+                    crate::symbolic_calculus_call_support::render_diff_desc_with(&call, |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &self.simplifier.context,
+                                id
+                            }
+                        )
+                    });
+                let required_conditions = required_nonzero
+                    .into_iter()
+                    .map(crate::ImplicitCondition::NonZero)
+                    .collect::<Vec<_>>();
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut step = crate::Step::new(
+                        &desc,
+                        "Calcular la derivada",
+                        resolved,
+                        result,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    step.meta_mut()
+                        .required_conditions
+                        .extend(required_conditions.iter().cloned());
+                    steps.push(step);
+                }
+                return Ok((
+                    crate::EvalResult::Expr(result),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    required_conditions,
+                ));
+            }
+            if let Some((result, required_nonzero)) =
+                cas_math::symbolic_differentiation_support::positive_quadratic_log_abs_matching_linear_pole_wrapper_derivative(
                     &mut self.simplifier.context,
                     call.target,
                     &call.var_name,
@@ -5036,35 +4995,39 @@ impl Engine {
                 )
             })
         } else if expr_is_symbolic_calculus_call_local(&ctx_simplifier.context, expr_to_simplify) {
-            try_resolve_direct_diff_hyperbolic_coth_before_general_simplify_local(
+            crate::rules::calculus::try_resolve_direct_symbolic_calculus_before_general_simplify(
                 &mut ctx_simplifier.context,
                 expr_to_simplify,
             )
-            .map(|(result, required_conditions)| {
-                (
-                    result,
-                    required_conditions,
-                    "Symbolic Differentiation",
-                    "Symbolic Differentiation",
-                )
-            })
-            .or_else(|| {
-                try_resolve_direct_post_calculus_before_general_simplify_local(
-                    &mut ctx_simplifier.context,
-                    expr_to_simplify,
-                )
-                .map(|(result, required_conditions)| {
-                    (
-                        result,
-                        required_conditions,
-                        "Calcular la derivada",
-                        "Calcular la derivada",
-                    )
-                })
-            })
         } else {
             None
         };
+        let pre_resolved_post_calculus_terminal = pre_resolved_calculus_context
+            .as_ref()
+            .is_some_and(|(original, rewritten, _)| {
+                matches!(ctx_simplifier.context.get(*original), Expr::Sub(_, _))
+                    && (expr_contains_named_function_local(
+                        &ctx_simplifier.context,
+                        *original,
+                        &["diff", "integrate", "int"],
+                    ) || expr_contains_symbolic_calculus_call_local(
+                        &ctx_simplifier.context,
+                        *original,
+                    ))
+                    && expr_is_post_calculus_residual_candidate_local(
+                        &ctx_simplifier.context,
+                        *original,
+                    )
+                    && !expr_contains_named_function_local(
+                        &ctx_simplifier.context,
+                        *rewritten,
+                        &["diff", "integrate", "int"],
+                    )
+                    && !expr_contains_symbolic_calculus_call_local(
+                        &ctx_simplifier.context,
+                        *rewritten,
+                    )
+            });
 
         let (mut res, mut steps, stats) =
             if let Some((result, required_conditions, step_title, step_explanation)) =
@@ -5087,6 +5050,12 @@ impl Engine {
                     Vec::new()
                 };
                 (result, steps, crate::phase::PipelineStats::default())
+            } else if pre_resolved_post_calculus_terminal {
+                (
+                    expr_to_simplify,
+                    Vec::new(),
+                    crate::phase::PipelineStats::default(),
+                )
             } else {
                 ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts.clone())
             };
@@ -5376,6 +5345,7 @@ impl Engine {
             ctx_simplifier.extend_required_conditions(residual_required.iter().cloned());
         }
         if effective_opts.steps_mode != crate::options::StepsMode::Off {
+            attach_integrate_residual_required_conditions_local(&mut steps, &residual_required);
             if steps.is_empty() {
                 if let Some(mut step) =
                     direct_calculus_residual_step_local(&mut ctx_simplifier.context, resolved, res)
@@ -5730,6 +5700,84 @@ mod tests {
         let expr = parse("integrate(1/((x-tan(x))*ln(tan(x))), x)", &mut ctx).unwrap();
 
         assert!(shifted_trig_log_source_residual_integral_local(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn eval_simplify_additive_inverse_sqrt_residual_attaches_domain_to_step() {
+        let expr_text = "integrate(1/sqrt(1-x^2)+sin(x^2), x)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::On;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let residual_step = output
+            .steps
+            .iter()
+            .find(|step| step.rule_name == "Conservar integral residual")
+            .expect("expected residual integration step");
+        let step_required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            residual_step.required_conditions(),
+        );
+        assert!(
+            step_required_display
+                .iter()
+                .any(|condition| condition == "-1 < x < 1"),
+            "expected interval condition in residual step, got {step_required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_log_rational_residual_attaches_positive_domain_to_step() {
+        let expr_text = "integrate(ln(x)/(x+1), x)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::On;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let residual_step = output
+            .steps
+            .iter()
+            .find(|step| step.rule_name == "Conservar integral residual")
+            .expect("expected residual integration step");
+        let step_required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            residual_step.required_conditions(),
+        );
+        assert!(
+            step_required_display
+                .iter()
+                .any(|condition| condition == "x > 0"),
+            "expected log-domain condition in residual step, got {step_required_display:?}"
+        );
     }
 
     #[test]
@@ -6837,6 +6885,36 @@ mod tests {
     }
 
     #[test]
+    fn post_calculus_residual_child_rewrite_uses_direct_positive_radius_log_arctan_diff() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse(
+            "diff(1/4*ln(4*x^2+12*x+9+phi)+(3*atan(phi^(-1/2)*(2*x+3)))/(2*sqrt(phi)), x)-((2*x+6)/(4*x^2+12*x+9+phi))",
+            &mut ctx,
+        )
+        .unwrap();
+
+        let (rewritten, required_conditions) =
+            try_rewrite_post_calculus_residual_child_context_before_general_simplify_local(
+                &mut ctx, expr, 0,
+            )
+            .unwrap_or_else(|| {
+                panic!("expected direct positive-radius log-arctan residual rewrite")
+            });
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewritten
+                }
+            ),
+            "0"
+        );
+        assert!(required_conditions.is_empty());
+    }
+
+    #[test]
     fn post_calculus_residual_child_rewrite_preserves_sqrt_chain_sec_wrapper_denominator_condition()
     {
         let mut ctx = cas_ast::Context::new();
@@ -7411,6 +7489,75 @@ mod tests {
             1,
             "expected exactly one displayed sinh-domain condition, got: {required_display:?}"
         );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_integral_sinh_reciprocal_square_is_exact_and_fast() {
+        let cases = [
+            (
+                "diff(integrate(1/sinh(2*x+1)^2, x), x)",
+                "1 / sinh(2 * x + 1)^2",
+                "sinh(2 * x + 1) ≠ 0",
+            ),
+            (
+                "diff(integrate(1/sinh(-2*x+1)^2, x), x)",
+                "1 / sinh(1 - 2 * x)^2",
+                "sinh(2 * x - 1) ≠ 0",
+            ),
+        ];
+
+        for (expr_text, expected, expected_condition) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            options.time_budget_ms = Some(50);
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("{expr_text}: expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expected,
+                "{expr_text}: unexpected compact diff(integrate) result"
+            );
+            assert!(
+                output
+                    .domain_warnings
+                    .iter()
+                    .all(|warning| warning.rule_name != "Simplification Time Budget"),
+                "{expr_text}: unexpected timeout warning: {:?}",
+                output.domain_warnings
+            );
+            let required_display = crate::render_conditions_normalized(
+                &mut engine.simplifier.context,
+                &output.required_conditions,
+            );
+            assert_eq!(
+                required_display,
+                vec![expected_condition.to_string()],
+                "{expr_text}: unexpected required condition boundary"
+            );
+        }
     }
 
     #[test]

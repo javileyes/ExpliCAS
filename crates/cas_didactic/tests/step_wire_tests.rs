@@ -652,6 +652,84 @@ fn step_wire_symbolic_scaled_reciprocal_hyperbolic_tangent_exposes_u_du() {
 }
 
 #[test]
+fn step_wire_integral_residual_exposes_domain_policy_substeps() {
+    let tan_steps = step_payloads_on_for("integrate(tan(x^2), x)");
+    let tan_step = tan_steps
+        .iter()
+        .find(|step| step.rule == "Conservar integral residual")
+        .expect("expected residual integration step");
+    assert!(
+        tan_step.substeps.iter().any(|substep| {
+            substep.title == "Registrar polo del integrando"
+                && substep
+                    .before_latex
+                    .as_deref()
+                    .is_some_and(|latex| latex.contains("\\tan"))
+                && substep
+                    .after_latex
+                    .as_deref()
+                    .is_some_and(|latex| latex.contains("\\cos({x}^{2}) \\ne 0"))
+        }),
+        "tan residual should expose its pole condition: {tan_step:?}"
+    );
+
+    let log_steps = step_payloads_on_for("integrate(ln(x)/(x+1), x)");
+    let log_step = log_steps
+        .iter()
+        .find(|step| step.rule == "Conservar integral residual")
+        .expect("expected residual integration step");
+    assert!(
+        log_step.substeps.iter().any(|substep| {
+            substep.title == "Registrar dominio del logaritmo"
+                && substep.before_latex.as_deref() == Some("\\ln(x)")
+                && substep.after_latex.as_deref() == Some("x > 0")
+        }),
+        "log residual should expose its positive-argument condition: {log_step:?}"
+    );
+
+    let additive_steps = step_payloads_on_for("integrate(tan(x^2)+sin(x^2), x)");
+    let additive_step = additive_steps
+        .iter()
+        .find(|step| step.rule == "Conservar integral residual")
+        .expect("expected residual integration step");
+    assert!(
+        additive_step.substeps.iter().any(|substep| {
+            substep
+                .after_latex
+                .as_deref()
+                .is_some_and(|latex| latex.contains("\\cos({x}^{2}) \\ne 0"))
+        }),
+        "additive residual should still expose the pole condition: {additive_step:?}"
+    );
+
+    let interval_steps = step_payloads_on_for("integrate(1/sqrt(1-x^2)+sin(x^2), x)");
+    let interval_step = interval_steps
+        .iter()
+        .find(|step| step.rule == "Conservar integral residual")
+        .expect("expected interval residual integration step");
+    assert!(
+        interval_step.substeps.iter().any(|substep| {
+            substep.title == "Registrar condición de dominio del residual"
+                && substep
+                    .after_latex
+                    .as_deref()
+                    .is_some_and(|latex| latex.contains("1 - {x}^{2}") && latex.contains("> 0"))
+        }),
+        "interval residual should expose the engine-provided domain condition: {interval_step:?}"
+    );
+
+    let exp_steps = step_payloads_on_for("integrate(exp(x^2), x)");
+    let exp_step = exp_steps
+        .iter()
+        .find(|step| step.rule == "Conservar integral residual")
+        .expect("expected residual integration step");
+    assert!(
+        exp_step.substeps.is_empty(),
+        "residual without a concrete direct domain condition should stay direct: {exp_step:?}"
+    );
+}
+
+#[test]
 fn step_wire_nonfinite_calculus_undefined_explains_domain_policy() {
     let diff_steps = step_payloads_on_for("diff(infinity, x)");
     let diff_step = diff_steps
@@ -1449,6 +1527,84 @@ fn step_wire_integral_result_does_not_double_wrap_after_highlight() {
         !step.after_latex.contains("\\frac{-2}{"),
         "after_latex should not keep the negative sign inside the numerator: {}",
         step.after_latex
+    );
+}
+
+#[test]
+fn step_wire_symbolic_shifted_inverse_sqrt_integral_explains_arcsin_argument() {
+    let steps = step_payloads_on_for("integrate(1/sqrt(a^2-(x+b)^2), x)");
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Calcular la integral")
+        .expect("expected symbolic integration step");
+
+    let titles: Vec<&str> = step
+        .substeps
+        .iter()
+        .map(|substep| substep.title.as_str())
+        .collect();
+    assert!(
+        titles.contains(&"Usar la regla de arcsin con derivada interna"),
+        "expected arcsin table-rule substep, got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Identificar el argumento afín"),
+        "expected affine-argument substep for symbolic shift, got {titles:?}"
+    );
+
+    let affine_substep = step
+        .substeps
+        .iter()
+        .find(|substep| substep.title == "Identificar el argumento afín")
+        .expect("expected affine-argument substep");
+    assert!(
+        affine_substep
+            .before_latex
+            .as_deref()
+            .is_some_and(|latex| latex.contains("b + x") && latex.contains("\\sqrt{{a}^{2}}")),
+        "expected concrete scaled symbolic affine argument, got {:?}",
+        affine_substep.before_latex
+    );
+}
+
+#[test]
+fn step_wire_symbolic_shifted_arctan_integral_explains_external_scale() {
+    let steps = step_payloads_on_for("integrate(1/((x+b)^2+a^2), x)");
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Calcular la integral")
+        .expect("expected symbolic integration step");
+
+    let titles: Vec<&str> = step
+        .substeps
+        .iter()
+        .map(|substep| substep.title.as_str())
+        .collect();
+    assert!(
+        titles.contains(&"Usar la regla de arctan con derivada interna"),
+        "expected arctan table-rule substep, got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Identificar el argumento afín"),
+        "expected affine-argument substep for symbolic shift, got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Ajustar el factor constante"),
+        "expected external-scale substep for symbolic radius, got {titles:?}"
+    );
+
+    let affine_substep = step
+        .substeps
+        .iter()
+        .find(|substep| substep.title == "Identificar el argumento afín")
+        .expect("expected affine-argument substep");
+    assert!(
+        affine_substep
+            .before_latex
+            .as_deref()
+            .is_some_and(|latex| latex.contains("b + x") && latex.contains("a")),
+        "expected concrete symbolic affine argument, got {:?}",
+        affine_substep.before_latex
     );
 }
 

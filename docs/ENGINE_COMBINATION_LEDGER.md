@@ -79,6 +79,153 @@ Good combination patterns:
 - `expensive fast path + cheap gate`
 - `repeated extraction + cache/reuse`
 
+## 2026-06-07 - Discovery observe-only: distributed symbolic `cosh^-4` primitive is refactored back by public presentation
+
+- area:
+  - calculus / integration / hyperbolic reciprocal fourth / public
+    presentation runtime
+- status:
+  - `resolved-retained`
+- observed:
+  - guardrail scorecard/runtime diagnostics pointed at
+    `symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_fourth_substitution`,
+    `integrate(2*k*x/cosh(x^2+b)^4, x)`, as the slowest
+    `integrate_cli_simplify` row in block 7
+  - a candidate changed only the nonnumeric-scale primitive construction from
+    `1/3*(3*k*tanh(u)-k*tanh(u)^3)` to the distributed form
+    `k*tanh(u)-1/3*k*tanh(u)^3`
+  - the direct `cas_math` integration unit produced the distributed primitive,
+    but the public CLI simplify path rendered the old factored form again and
+    the focused smoke row regressed to about `440ms` of `cli_simplify` before
+    promotion
+- decision:
+  - reject and revert the integration-construction change
+  - do not retry this as a local primitive-format tweak unless paired with a
+    bounded public presentation gate or a measured simplifier/presentation fix
+- retained learning:
+  - the reusable weakness is at the public presentation/simplification boundary,
+    not in the hyperbolic reciprocal table formula
+  - a future runtime cycle should profile why the public path refactors the
+    distributed symbolic primitive back to the factored shape and whether that
+    rewrite can be gated for calculus-owned primitives without changing
+    mathematical equivalence
+
+## 2026-06-07 - Discovery observe-only: direct diff(integrate) trig reciprocal derivative verification can hit depth pressure
+
+- area:
+  - calculus / integration / direct antiderivative verification / trig
+    reciprocal derivative products
+- status:
+  - `resolved-retained`
+- observed:
+  - while sweeping candidate clusters for direct `diff(integrate(...), x)`
+    promotion, the block 7 `trig_reciprocal_derivative_product` family was not
+    promoted
+  - `diff(integrate(k*a*csc(a*x+b)*cot(a*x+b), x), x)` returned the expected
+    shape `a*k*cos(a*x+b)/sin(a*x+b)^2` with condition
+    `sin(a*x+b) != 0`, but emitted `depth_overflow` warnings during core
+    simplification
+  - the sibling `diff(integrate(a*csc(a*x+b)*cot(a*x+b), x), x)` showed the
+    same depth-pressure signature
+  - a follow-up sweep found the secant/tangent sibling with negative symbolic
+    orientation and external scale,
+    `diff(integrate(-k*a*sec(b-a*x)*tan(b-a*x), x), x)`, had the same public
+    nested-verifier signature: expanded `sin/cos^2` output, about 17 seconds
+    locally, and repeated `depth_overflow` warnings
+- decision:
+  - resolved by adding a bounded raw-target preservation gate plus an exact
+    `diff(integrate(...), x)` shortcut for the positive symbolic
+    `csc(u)*cot(u)` derivative-product source
+  - promote the minimal symbolic external-scale cosecant/cotangent row to a
+    direct `diff(integrate(...), x)` guardrail
+  - follow-up retained the sibling `sec(u)*tan(u)` negative-orientation
+    external-scale row by reusing the same bounded raw-target preservation and
+    exact shortcut family; the direct probe now returns in milliseconds with
+    only the expected `cos(b - a*x) != 0` pole condition
+- retained learning:
+  - the reusable weakness is not the integration formula; it is deep
+    simplification pressure in the nested public verifier for parameterized
+    `csc*cot` antiderivatives
+  - the retained fix belongs at the architectural boundary before recursive
+    child simplification, then at the exact calculus shortcut; avoiding only
+    the final condition collector still leaves the deep path active
+
+## 2026-06-08 - Discovery observe-only: polynomial cosecant/cotangent source-return still emits depth pressure
+
+- area:
+  - calculus / integration / direct `diff(integrate(...), x)` / trig
+    reciprocal derivative products
+- status:
+  - `discovery/observe-only`
+- observed:
+  - a retained cycle generalized the reciprocal trig derivative-product
+    source matcher from a single `du` factor to a polynomial `du` split across
+    multiplicative factors, promoting
+    `diff(integrate(2*x*sec(x^2+b)*tan(x^2+b), x), x)` to exact
+    source-return with `cos(x^2+b) != 0`
+  - the sibling probe
+    `diff(integrate(2*x*csc(x^2+b)*cot(x^2+b), x), x)` also returns the exact
+    source shape and preserves `sin(x^2+b) != 0`, but still emits repeated
+    `depth_overflow` warnings before completion
+  - the symbolic external-scale sibling
+    `diff(integrate(2*k*x*sec(x^2+b)*tan(x^2+b), x), x)` remains an
+    equivalent quotient because the retained matcher deliberately avoids
+    treating symbolic non-`x` coefficients as polynomial scale
+- decision:
+  - retain only the clean secant/tangent polynomial row in the live integrate
+    command matrix
+  - do not promote the cosecant/cotangent polynomial sibling until the public
+    path avoids the warning-producing simplification route
+  - 2026-06-08 follow-up retained a narrow
+    `diff(integrate(...), x)` pre-simplify gate for verified reciprocal trig
+    derivative-product sources; the polynomial `csc*cot` sibling now returns
+    the exact source with `sin(x^2+b) != 0` and no `depth_overflow`, and is
+    promoted as the minimal dual matrix row
+- retained learning:
+  - the reusable weakness is not source detection alone; it is still the
+    public simplification/presentation path for polynomial `csc*cot`
+    derivative-product sources
+  - the retained fix belongs at the pre-simplify calculus boundary, before the
+    source integrand can be rewritten into the deep `sin/cos` quotient path
+
+## 2026-06-07 - Discovery observe-only: symbolic-radius asinh integral is blocked by conditioned abs/sqrt equivalence
+
+- area:
+  - calculus / integration / inverse hyperbolic symbolic-radius reciprocal
+    square-root family
+- status:
+  - `resolved-by-follow-up`
+- observed:
+  - numeric-radius and affine cases such as
+    `integrate(1/sqrt((x+1)^2+1), x)` and
+    `integrate(1/sqrt((2*x+1)^2+1), x)` are supported and verified
+  - the symbolic-radius sibling
+    `integrate(1/sqrt((x+b)^2+a^2), x)` initially remained a safe residual with
+    required condition `a^2 + b^2 + x^2 + 2*b*x > 0`
+  - the follow-up route now supports that sibling as
+    `asinh((b+x)/sqrt(a^2))` with explicit nonzero symbolic radius and composed
+    `diff(integrate(...))` verification
+  - the safe antiderivative shape
+    `asinh((b+x)/sqrt(a^2))` differentiates to
+    `1 / (|a|*sqrt(((b+x)^2+a^2)/a^2))`, and current equivalence does not
+    reduce that to `1/sqrt((b+x)^2+a^2)` under the needed `a != 0` and
+    positive-radicand conditions
+  - using `asinh((b+x)/a)` would hide a sign assumption, so it was rejected as
+    unsound for real-domain generic `a`
+- decision:
+  - do not use `asinh((b+x)/a)` because it hides an implicit `a > 0`
+    assumption
+  - promote the supported row only through the safe
+    `asinh((b+x)/sqrt(a^2))` primitive and a direct
+    `diff(integrate(...))` verification path
+- retained learning:
+  - the reusable blocker is conditioned equivalence around
+    `abs(a) * sqrt(R / a^2)` versus `sqrt(R)`, not the inverse-hyperbolic
+    table formula itself
+  - the retained functional route avoids changing global equivalence by using
+    a bounded integration recognizer plus composed verification for positive
+    `R` and nonzero symbolic radius
+
 ## 2026-06-06 - Observe-only discovery: exact-square atanh scaled-root runtime is not caused by the global empty-domain check
 
 - area:
@@ -219,6 +366,17 @@ The burden of proof stays the same:
   - future work should decide whether a bounded quotient-wrapper recovery can
     safely expose the existing rational assembly before generic quotient
     differentiation expands logs and poles into deep traffic
+- retained follow-up:
+  - 2026-06-07 retained a bounded wrapper derivative route for the minimal
+    positive-quadratic log plus matching linear pole case:
+    `diff((ln(abs(x^2+x+1))+1/(x+2))/(x+2), x)`
+  - the public result is now compact,
+    `(2*x+1)/((x^2+x+1)*(x+2)) - 2/(x+2)^3 - ln(x^2+x+1)/(x+2)^2`,
+    preserves `x != -2`, and the promoted diff matrix row forbids
+    `depth_overflow`
+  - validated with focused Rust/CLI tests, `make engine-fast`,
+    `make engine-scorecard`, and `make engine-scorecard-pressure`; this entry
+    should no longer be treated as an open observe-only candidate
 
 ## 2026-06-06 - Observe-only discovery: shifted explicit reciprocal cosine expands before substitution
 
@@ -16565,3 +16723,117 @@ The burden of proof stays the same:
     shortcut through composed `diff(integrate(...))` paths for
     `arctan(sqrt(q)*(a*x+b)/q)/(sqrt(q)*a)` before promoting positive rational
     non-square radii in integration
+
+## 2026-06-07 - Discovery observe-only: symbolic-radius arctan table still misses expanded affine squares
+
+- area:
+  - calculus / integration / rational positive quadratic arctan tables
+- status:
+  - `discovery/observe-only`
+- observed:
+  - a retained ROI cycle added the direct symbolic-radius case
+    `integrate(1/(x^2+a^2), x) -> arctan(x/a)/a` with required condition
+    `a != 0`
+  - cheap follow-up probes still leave shifted variants residual after
+    normalization expands the square:
+    `integrate(1/((x+b)^2+a^2), x)` becomes
+    `integrate(1/(a^2 + b^2 + x^2 + 2*b*x), x)`
+  - the same happens for the numeric-shift spelling
+    `integrate(1/(a^2+(x+1)^2), x)`, which becomes residual over
+    `a^2 + x^2 + 2*x + 1`
+- decision:
+  - do not promote the shifted symbolic-radius variants in the direct cycle
+    because they still need a separate expanded-square recognizer
+  - keep the retained minimal representative `x^2+a^2` as the live coverage
+    row for the newly supported orientation
+- retained learning:
+  - the reusable weakness is not the arctan primitive or nonzero-radius domain
+    condition; it is matching `affine_square + symbolic_square_radius` after
+    denominator normalization has expanded the affine square
+  - the next candidate should add a bounded recognizer for exactly one
+    variable-containing perfect-square remainder plus one non-variable square
+    radius, reusing the same `a != 0` condition and derivative verification
+
+## 2026-06-07 - Discovery observe-only: shifted symbolic-radius arctan primitive direct derivative can warn
+
+- area:
+  - calculus / integration / rational positive quadratic arctan verification
+- status:
+  - `discovery/observe-only`
+- observed:
+  - a retained ROI cycle promoted
+    `integrate(1/((x+b)^2+a^2), x) -> arctan((b+x)/a)/a` with required
+    condition `a != 0`
+  - direct public verification of the standalone primitive,
+    `diff(arctan((b+x)/a)/a, x) - 1/((x+b)^2+a^2)`, simplifies to `0` but can
+    emit a `depth_overflow` warning while reducing the intermediate quotient
+  - the composed public check `diff(integrate(1/((x+b)^2+a^2), x), x)` is clean
+    and returns `1 / ((b + x)^2 + a^2)` with the same `a != 0` condition
+- decision:
+  - retain the shifted symbolic-radius integration capability and verify its
+    matrix row through the clean composed public path
+  - do not promote standalone-primitive residual verification for this family
+    until the derivative/presentation route avoids the warning-producing
+    quotient simplification
+- retained learning:
+  - the reusable blocker is no longer denominator recognition; it is direct
+    derivative simplification of symbolic-radius arctan primitives with shifted
+    affine arguments
+  - the next candidate should consider a bounded derivative or presimplification
+    route for `arctan((linear)/a)/a` before expanding this verification style to
+    broader symbolic-radius arctan families
+
+## 2026-06-07 - Discovery observe-only: variable-power quadratic domain runtime is not solved by a generic sign fast-path
+
+- area:
+  - calculus / runtime / variable-power logarithmic differentiation
+- status:
+  - `discovery/observe-only`
+- observed:
+  - the retained matrix row `diff((x^2-1)^x, x)` exposes a reproducible
+    `diff` command-matrix runtime watch: about 190-210ms versus tens of
+    milliseconds for nearby rows
+  - sibling probes show `diff((x^2+1)^x, x)` is also heavier than linear-base
+    variable powers, but the disconnected-domain case is the clear maximum
+  - a bounded attempt to short-circuit univariate quadratic sign classification
+    in `calculus_domain_support` did not reduce the public command runtime and
+    risked changing closed inverse-trig boundary-domain behavior in unit tests
+- decision:
+  - reject the generic sign fast-path candidate for this cycle
+  - retain scorecard observability instead: `variable_power` now has an
+    explicit policy/runtime cluster in the `diff` command matrix
+- retained learning:
+  - the reusable hotspot is likely in public derivative simplification,
+    post-calculus presentation, or condition normalization around logarithmic
+    differentiation of non-linear bases, not in the simplest quadratic
+    positive/impossible sign predicate alone
+  - the next runtime candidate should profile the public `diff((x^2-1)^x, x)`
+    path by phase before changing domain proof semantics
+
+## 2026-06-07 - Discovery observe-only: hyperbolic reciprocal derivative direct gaps were harness visibility, not missing engine capability
+
+- area:
+  - calculus / integration / direct `diff(integrate(...), x)` coverage
+- status:
+  - `discovery/observe-only`
+- observed:
+  - the `integrate_command_matrix` showed seven direct `diff(integrate)` gaps
+    under `block7_hyperbolic_reciprocal_derivative_product`
+  - a bounded engine-side source-return helper for
+    `du*sinh(u)/cosh(u)^2` and `du*cosh(u)/sinh(u)^2` passed local unit probes
+    but did not move the public scorecard because the existing public route
+    already returns equivalent results and preserves the required `sinh(u) != 0`
+    conditions
+  - the reusable issue was that promoted matrix rows verified the antiderivative
+    derivative but did not run the composed public `diff(integrate(...), x)`
+    probe for this family
+- decision:
+  - reject the engine helper for this cycle
+  - retain a harness/corpus promotion instead: four exact affine/external-scale
+    probes and three equivalence-backed polynomial/external-scale probes
+- retained learning:
+  - do not add a calculus route solely to improve source-form presentation when
+    the public capability and conditions are already correct
+  - for mature integration families, first check whether a direct
+    `diff(integrate)` gap is a missing public probe before treating it as an
+    engine capability gap

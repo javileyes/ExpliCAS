@@ -1,4 +1,6 @@
-use crate::calculus_domain_support::real_domain_is_empty_for_static_expr;
+use crate::calculus_domain_support::{
+    known_positive_constant_exceeds_one, real_domain_is_empty_for_static_expr,
+};
 use crate::infinity_support::{mk_infinity, InfSign};
 use crate::limit_types::{
     Approach, FiniteLimitSide, LimitEvalOutcome, LimitOptions, PreSimplifyMode,
@@ -126,11 +128,8 @@ const LIMIT_STATIC_DOMAIN_SCAN_DEPTH: usize = 24;
 fn apply_static_empty_real_domain_rule(
     ctx: &mut Context,
     expr: ExprId,
-    var: ExprId,
+    _var: ExprId,
 ) -> Option<ExprId> {
-    if depends_on(ctx, expr, var) {
-        return None;
-    }
     if !real_domain_is_empty_for_static_expr(
         ctx,
         expr,
@@ -574,6 +573,51 @@ fn apply_finite_bilateral_abs_polynomial_ratio_rule(
         point,
         FiniteLimitSide::Right,
     )?;
+    matching_finite_bilateral_one_sided_result(ctx, left, right)
+}
+
+fn apply_finite_one_sided_sign_polynomial_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol);
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 || !ctx.is_builtin(fn_id, BuiltinFn::Sign) {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, args[0], var_name).ok()?;
+    let (order, derivative) =
+        finite_polynomial_local_order_and_derivative(&argument, &point_value)?;
+    let tail_sign = finite_local_tail_sign(&derivative, order, side)?;
+    Some(signed_unit_limit(ctx, tail_sign))
+}
+
+fn apply_finite_bilateral_sign_polynomial_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let left =
+        apply_finite_one_sided_sign_polynomial_rule(ctx, expr, var, point, FiniteLimitSide::Left)?;
+    let right =
+        apply_finite_one_sided_sign_polynomial_rule(ctx, expr, var, point, FiniteLimitSide::Right)?;
     matching_finite_bilateral_one_sided_result(ctx, left, right)
 }
 
@@ -1586,6 +1630,19 @@ fn apply_finite_one_sided_log_endpoint_rule(
 
     let total_scale = scale * unit_log_base_tail_coeff(&base);
     scale_infinity(ctx, &total_scale, InfSign::Neg)
+}
+
+fn apply_finite_bilateral_log_endpoint_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let left =
+        apply_finite_one_sided_log_endpoint_rule(ctx, expr, var, point, FiniteLimitSide::Left)?;
+    let right =
+        apply_finite_one_sided_log_endpoint_rule(ctx, expr, var, point, FiniteLimitSide::Right)?;
+    matching_finite_bilateral_one_sided_result(ctx, left, right)
 }
 
 fn apply_finite_one_sided_sqrt_endpoint_rule(
@@ -2951,6 +3008,9 @@ fn try_limit_rules_at_finite(
     if let Some(result) = apply_finite_bilateral_abs_polynomial_ratio_rule(ctx, expr, var, point) {
         return Some(result);
     }
+    if let Some(result) = apply_finite_bilateral_sign_polynomial_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
     if let Some(result) = apply_finite_bilateral_trig_power_pole_rule(ctx, expr, var, point) {
         return Some(result);
     }
@@ -2964,6 +3024,9 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_log_unit_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_bilateral_log_endpoint_rule(ctx, expr, var, point) {
         return Some(result);
     }
     if let Some(result) = apply_finite_elementary_polynomial_rule(ctx, expr, var, point) {
@@ -3077,7 +3140,12 @@ fn try_limit_rules_at_finite_one_sided(
     {
         return Some(result);
     }
-    apply_finite_one_sided_abs_polynomial_ratio_rule(ctx, expr, var, point, side)
+    if let Some(result) =
+        apply_finite_one_sided_abs_polynomial_ratio_rule(ctx, expr, var, point, side)
+    {
+        return Some(result);
+    }
+    apply_finite_one_sided_sign_polynomial_rule(ctx, expr, var, point, side)
 }
 
 /// Rule 2: Variable - lim x = ±∞ based on approach sign.
@@ -4150,19 +4218,12 @@ fn constant_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
-fn is_exact_named_gt_one_base(ctx: &Context, expr: ExprId) -> bool {
-    matches!(
-        ctx.get(expr),
-        Expr::Constant(Constant::E | Constant::Pi | Constant::Phi)
-    )
-}
-
 fn is_rational_one(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Number(value) if value == &rational_one())
 }
 
 fn exact_named_log_base_tail_sign(ctx: &Context, base: ExprId) -> Option<InfSign> {
-    if is_exact_named_gt_one_base(ctx, base) {
+    if known_positive_constant_exceeds_one(ctx, base) {
         return Some(InfSign::Pos);
     }
 
@@ -4745,10 +4806,7 @@ fn is_eventually_nonzero_expr_at_infinity(
     if constant_rational_value(ctx, expr).is_some_and(|value| !value.is_zero()) {
         return true;
     }
-    if matches!(
-        ctx.get(expr),
-        Expr::Constant(Constant::Pi | Constant::E | Constant::Phi)
-    ) {
+    if known_positive_constant_exceeds_one(ctx, expr) {
         return true;
     }
     if polynomial_argument_tail_sign(ctx, expr, var, approach).is_some() {
@@ -4773,10 +4831,7 @@ fn is_eventually_positive_expr_at_infinity(
     if constant_rational_value(ctx, expr).is_some_and(|value| value.is_positive()) {
         return true;
     }
-    if matches!(
-        ctx.get(expr),
-        Expr::Constant(Constant::Pi | Constant::E | Constant::Phi)
-    ) {
+    if known_positive_constant_exceeds_one(ctx, expr) {
         return true;
     }
     if polynomial_argument_tail_sign(ctx, expr, var, approach) == Some(InfSign::Pos) {
@@ -4798,13 +4853,15 @@ fn is_eventually_real_expr_at_infinity(
     var: ExprId,
     approach: InfSign,
 ) -> bool {
+    if known_positive_constant_exceeds_one(ctx, expr) {
+        return true;
+    }
     if polynomial_growth_info(ctx, expr, var).is_some() {
         return true;
     }
 
     match ctx.get(expr) {
         Expr::Variable(_) | Expr::Number(_) => true,
-        Expr::Constant(Constant::Pi | Constant::E | Constant::Phi) => true,
         Expr::Constant(Constant::I | Constant::Infinity | Constant::Undefined) => false,
         Expr::Neg(inner) | Expr::Hold(inner) => {
             is_eventually_real_expr_at_infinity(ctx, *inner, var, approach)
@@ -5944,6 +6001,51 @@ mod tests {
         .expect("expected left-sided abs orientation limit");
         assert_number_expr(&ctx, left_abs, -1, 1);
 
+        let sign_right = parse_expr(&mut ctx, "sign(x)");
+        let sign_right_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            sign_right,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected right-sided sign orientation limit");
+        assert_number_expr(&ctx, sign_right_out, 1, 1);
+
+        let sign_left = parse_expr(&mut ctx, "sign(x)");
+        let sign_left_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            sign_left,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided sign orientation limit");
+        assert_number_expr(&ctx, sign_left_out, -1, 1);
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let sign_quadratic_left = parse_expr(&mut ctx, "sign(x^2 - 1)");
+        let sign_quadratic_left_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            sign_quadratic_left,
+            x,
+            point_one,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected left-sided quadratic sign orientation limit");
+        assert_number_expr(&ctx, sign_quadratic_left_out, -1, 1);
+
+        let sign_even_left = parse_expr(&mut ctx, "sign(x^2)");
+        let sign_even_left_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            sign_even_left,
+            x,
+            point_zero,
+            FiniteLimitSide::Left,
+        )
+        .expect("expected even-order sign orientation limit");
+        assert_number_expr(&ctx, sign_even_left_out, 1, 1);
+
         let reciprocal = parse_expr(&mut ctx, "1/x");
         let right_pole = try_limit_rules_at_finite_one_sided(
             &mut ctx,
@@ -6347,16 +6449,17 @@ mod tests {
         );
 
         let atanh_above_domain_endpoint = parse_expr(&mut ctx, "atanh(1 + x^2)");
-        assert!(
-            try_limit_rules_at_finite_one_sided(
-                &mut ctx,
-                atanh_above_domain_endpoint,
-                x,
-                point_zero,
-                FiniteLimitSide::Right,
-            )
-            .is_none(),
-            "empty-domain one-sided atanh endpoint must remain residual"
+        let atanh_above_domain_endpoint_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            atanh_above_domain_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("expected empty-domain one-sided atanh endpoint to be undefined");
+        assert_eq!(
+            display_expr(&ctx, atanh_above_domain_endpoint_out),
+            "undefined"
         );
 
         let acos_sqrt_endpoint = parse_expr(&mut ctx, "acos(sqrt(x))");
@@ -6389,6 +6492,18 @@ mod tests {
         assert!(
             try_limit_rules_at_finite(&mut ctx, abs_orientation_jump, x, point_zero).is_none(),
             "bilateral abs orientation jump must remain residual when one-sided limits differ"
+        );
+
+        let sign_even_orientation = parse_expr(&mut ctx, "sign(x^2)");
+        let sign_even_orientation_out =
+            try_limit_rules_at_finite(&mut ctx, sign_even_orientation, x, point_zero)
+                .expect("expected matching bilateral sign polynomial limit");
+        assert_number_expr(&ctx, sign_even_orientation_out, 1, 1);
+
+        let sign_orientation_jump = parse_expr(&mut ctx, "sign(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, sign_orientation_jump, x, point_zero).is_none(),
+            "bilateral sign orientation jump must remain residual when one-sided limits differ"
         );
 
         let point_one = parse_expr(&mut ctx, "1");
@@ -7026,15 +7141,22 @@ mod tests {
         );
 
         let unit_base_log = parse_expr(&mut ctx, "log(1, 1+x)/x");
-        assert!(
-            try_limit_rules_at_finite(&mut ctx, unit_base_log, x, point_zero).is_none(),
-            "binary log quotient rule must not promote base one"
+        let unit_base_log_out = try_limit_rules_at_finite(&mut ctx, unit_base_log, x, point_zero)
+            .expect("constant-base log with base one has empty real domain");
+        assert_eq!(
+            display_expr(&ctx, unit_base_log_out),
+            "undefined",
+            "binary log quotient rule must reject base one as an empty real domain"
         );
 
         let negative_base_log = parse_expr(&mut ctx, "log(-2, 1+x)/x");
-        assert!(
-            try_limit_rules_at_finite(&mut ctx, negative_base_log, x, point_zero).is_none(),
-            "binary log quotient rule must not promote negative bases"
+        let negative_base_log_out =
+            try_limit_rules_at_finite(&mut ctx, negative_base_log, x, point_zero)
+                .expect("constant-base log with negative base has empty real domain");
+        assert_eq!(
+            display_expr(&ctx, negative_base_log_out),
+            "undefined",
+            "binary log quotient rule must reject negative bases as an empty real domain"
         );
 
         let binary_nonunit_argument = parse_expr(&mut ctx, "log(3, 2+x)/x");
@@ -7684,9 +7806,33 @@ mod tests {
         );
 
         let log_even_gap = parse_expr(&mut ctx, "ln(x^2)");
+        let log_even_gap_out = try_limit_rules_at_finite(&mut ctx, log_even_gap, x, point_zero)
+            .expect("expected bilateral log endpoint over positive even gap");
+        assert_eq!(display_expr(&ctx, log_even_gap_out), "-infinity");
+
+        let reciprocal_base_log_even_gap = parse_expr(&mut ctx, "log(1/2, x^2)");
+        let reciprocal_base_log_even_gap_out =
+            try_limit_rules_at_finite(&mut ctx, reciprocal_base_log_even_gap, x, point_zero)
+                .expect("expected reciprocal-base bilateral log endpoint over positive even gap");
+        assert_eq!(
+            display_expr(&ctx, reciprocal_base_log_even_gap_out),
+            "infinity"
+        );
+
+        let log_one_sided_only = parse_expr(&mut ctx, "ln(x)");
         assert!(
-            try_limit_rules_at_finite(&mut ctx, log_even_gap, x, point_zero).is_none(),
-            "log over a zero endpoint remains divergent and must not share sqrt policy"
+            try_limit_rules_at_finite(&mut ctx, log_one_sided_only, x, point_zero).is_none(),
+            "ln(x) at a finite endpoint must remain residual for bilateral limits"
+        );
+
+        let log_empty_punctured = parse_expr(&mut ctx, "ln(-x^2)");
+        let log_empty_punctured_out =
+            try_limit_rules_at_finite(&mut ctx, log_empty_punctured, x, point_zero)
+                .expect("log over an empty real domain should be undefined");
+        assert_eq!(
+            display_expr(&ctx, log_empty_punctured_out),
+            "undefined",
+            "log over an empty real domain must be undefined"
         );
     }
 
@@ -8017,16 +8163,15 @@ mod tests {
         );
 
         let log_base_one = parse_expr(&mut ctx, "log(1, x^2 + 1)");
-        assert!(
-            try_limit_rules_at_finite(&mut ctx, log_base_one, x, point_neg_two).is_none(),
-            "constant-base log with base one must remain residual"
-        );
+        let log_base_one_out = try_limit_rules_at_finite(&mut ctx, log_base_one, x, point_neg_two)
+            .expect("constant-base log with base one has empty real domain");
+        assert_eq!(display_expr(&ctx, log_base_one_out), "undefined");
 
         let log_negative_base = parse_expr(&mut ctx, "log(-2, x^2 + 1)");
-        assert!(
-            try_limit_rules_at_finite(&mut ctx, log_negative_base, x, point_neg_two).is_none(),
-            "constant-base log with negative base must remain residual"
-        );
+        let log_negative_base_out =
+            try_limit_rules_at_finite(&mut ctx, log_negative_base, x, point_neg_two)
+                .expect("constant-base log with negative base has empty real domain");
+        assert_eq!(display_expr(&ctx, log_negative_base_out), "undefined");
 
         let log_variable_base_one = parse_expr(&mut ctx, "log(x^2 - 3, x^2 + 1)");
         assert!(
@@ -10211,11 +10356,14 @@ mod tests {
         assert!(
             try_limit_rules_at_infinity(&mut ctx, bad_domain_base_log, x, InfSign::Neg).is_none()
         );
-        assert!(try_limit_rules_at_infinity(&mut ctx, invalid_base_log, x, InfSign::Pos).is_none());
-        assert!(
+        let invalid_base_log_out =
+            try_limit_rules_at_infinity(&mut ctx, invalid_base_log, x, InfSign::Pos)
+                .expect("invalid-base log has empty real domain");
+        assert_eq!(display_expr(&ctx, invalid_base_log_out), "undefined");
+        let negative_named_base_log_out =
             try_limit_rules_at_infinity(&mut ctx, negative_named_base_log, x, InfSign::Pos)
-                .is_none()
-        );
+                .expect("negative-base log has empty real domain");
+        assert_eq!(display_expr(&ctx, negative_named_base_log_out), "undefined");
         assert!(
             try_limit_rules_at_infinity(&mut ctx, zero_power_named_base_log, x, InfSign::Pos)
                 .is_none()
@@ -10543,17 +10691,24 @@ mod tests {
             try_limit_rules_at_infinity(&mut ctx, bad_domain_log_over_exp, x, InfSign::Neg)
                 .is_none()
         );
-        assert!(
+        let invalid_base_log_over_exp_out =
             try_limit_rules_at_infinity(&mut ctx, invalid_base_log_over_exp, x, InfSign::Pos)
-                .is_none()
+                .expect("invalid-base log over exp has empty real domain");
+        assert_eq!(
+            display_expr(&ctx, invalid_base_log_over_exp_out),
+            "undefined"
         );
-        assert!(try_limit_rules_at_infinity(
+        let negative_named_base_log_over_exp_out = try_limit_rules_at_infinity(
             &mut ctx,
             negative_named_base_log_over_exp,
             x,
             InfSign::Pos,
         )
-        .is_none());
+        .expect("negative-base log over exp has empty real domain");
+        assert_eq!(
+            display_expr(&ctx, negative_named_base_log_over_exp_out),
+            "undefined"
+        );
         assert!(try_limit_rules_at_infinity(
             &mut ctx,
             parametric_polynomial_exp_over_log,
