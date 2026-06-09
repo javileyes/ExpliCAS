@@ -4,6 +4,7 @@ Antes de tocar código, lee y sigue estas fuentes de verdad actuales del repo:
 - docs/ENGINE_IMPROVEMENT_AUTOMATION.md
 - docs/ENGINE_TEST_CORPUS_ROADMAP.md
 - docs/CALCULUS_ENGINE_STRATEGY.md
+- docs/GENERAL_INTEGRATION_BACKEND_ROADMAP.md
 - docs/METAMORPHIC_TESTING.md
 - docs/DERIVE_NEXT_LEVEL_ROADMAP.md
 - docs/DERIVE_ROADMAP.md sólo como contexto histórico/base
@@ -46,6 +47,13 @@ Objetivo:
   condiciones de dominio duplicadas, verificación residual profunda o steps
   didácticos acoplados a una ruta, evalúa primero si el mayor ROI retenible es
   arquitectura acotada dentro del bloque 11, no otro caso de cálculo.
+- La dirección de integración a largo plazo es híbrida: conservar una ruta
+  educativa real-domain, conservadora y didáctica, y preparar un backend
+  algorítmico general separado sólo detrás de una frontera explícita con
+  verificación, política de dominio/constante, residual seguro y runtime
+  aislado. Para trabajo de bloque 12, sigue
+  docs/GENERAL_INTEGRATION_BACKEND_ROADMAP.md. No conviertas la ruta educativa
+  actual en búsqueda amplia.
 
 Plan operativo de madurez de cálculo:
 - Usa la sección "Block-Based Calculus Maturity Plan" de
@@ -55,6 +63,10 @@ Plan operativo de madurez de cálculo:
   madurez general. El engine ya tiene una superficie de cálculo real educativo
   creíble, pero la meta activa sigue siendo sistematicidad: dominio,
   verificación, trazas, presentación, residuals y arquitectura.
+- Para integración general tipo CAS, usa
+  docs/GENERAL_INTEGRATION_BACKEND_ROADMAP.md como hoja de ruta activa: primero
+  frontera de backend y verificación; después probes discovery; sólo después
+  familias algorítmicas verificadas.
 - Si eliges `calculus`, o si una mejora de engine/cobertura nace de un fallo de
   cálculo, identifica un bloque concreto de madurez y un gate concreto que el
   ciclo avanza.
@@ -70,6 +82,7 @@ Plan operativo de madurez de cálculo:
   9. residuals y política de no-goals
   10. didáctica de cálculo
   11. arquitectura/observabilidad/runtime para generalizar sin fragilidad
+  12. backend algorítmico de integración separado y verificable
 - Un bloque no cuenta como maduro porque existan varios casos verdes. Cuenta
   sólo cuando su capacidad representativa tiene resultado correcto o residual
   seguro, condiciones de dominio real explícitas, steps explicables, celda de
@@ -79,8 +92,8 @@ Plan operativo de madurez de cálculo:
     explicables y conservadoras para tráfico curado
   - "maduro general" significa cobertura elemental sistemática con política de
     dominio, residual, presentación y arquitectura repetible
-  - "CAS universal", especialmente para integración, no es el objetivo de estos
-    ciclos
+  - "integración general tipo CAS" es un track híbrido de backend separado, no
+    una ampliación sin frontera de la ruta educativa de `integrate`
 - Cada ciclo debe elegir un checkbox pequeño dentro de un bloque. Si el
   candidato no avanza un gate de bloque, trátalo como discovery pressure o
   recházalo como near-duplicate.
@@ -116,6 +129,8 @@ Optimiza en este orden:
    - arquitectura: no seguir acumulando matchers locales si la repetición ya
      pide separar detección, dominio, transformación, verificación,
      presentación y steps
+   - backend algorítmico: preparar frontera, observabilidad, verificación y
+     residual seguro antes de añadir búsqueda general de integración
 6. expandir completitud matemática útil en dimensiones infracubiertas cuando
    alimente cálculo, derive o guardrails reales:
    - wrapper spread
@@ -185,6 +200,7 @@ Proceso obligatorio:
    - consolidation_check:
    - architecture_pressure_check:
    - extraction_or_consolidation_check:
+   - algorithmic_backend_boundary_check:
    - didactic_trace_check:
    - verification_check:
    - residual_policy_check:
@@ -223,6 +239,10 @@ Proceso obligatorio:
    - no introduzcas suposiciones implícitas de dominio/rama/constante
    - para `integrate`, decide cómo se representa la constante y si el
      antiderivado se verifica por diferenciación
+   - para trabajo de integración general, sólo avanza si el bloque 12 queda más
+     maduro: frontera de backend, método estructurado, assumptions,
+     verificación, residual reason, fallback conservador o una familia
+     algorítmica ya verificada; si sólo añade búsqueda amplia, recházalo
    - para `limit`, respeta la política vigente antes de ampliar continuidad,
      cancelación, infinito o límites laterales
    - si el fallo real está en simplificación/equivalencia, registra o ejecuta
@@ -291,7 +311,9 @@ Guardrails:
   fragilidad acumulada con pasos pequeños, preservando orden de rutas y
   comportamiento público salvo que el cambio esté declarado y validado.
 - No conviertas `integrate` en búsqueda general ni `limit` en heurísticas
-  especulativas: generalizar no significa abrir búsqueda no acotada.
+  especulativas dentro de las rutas actuales: generalizar no significa abrir
+  búsqueda no acotada. La integración general sólo es aceptable como bloque 12,
+  con backend separado, verificación y fallback residual.
 - Para refactors estructurales: extrae antes de abstraer, conserva orden de rutas y valida como trabajo de engine.
 
 Criterio de decisión:

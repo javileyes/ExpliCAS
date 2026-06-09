@@ -92,6 +92,7 @@ pub mod fraction_univar_gcd_support;
 pub mod fraction_zero_numerator_support;
 pub mod gcd_exact;
 pub mod gcd_zippel_modp;
+pub mod general_integration_backend;
 pub mod ground_eval_guard;
 pub mod ground_nonzero;
 pub mod hyperbolic_core_support;

@@ -862,10 +862,20 @@ around:
   and later one-sided policy
 - `integrate`: table, substitution, by-parts, antiderivative verification,
   constant policy, and residual explanations
+- future hybrid integration backend: keep algorithmic candidates separated from
+  the educational route until they carry method tags, assumptions,
+  verification status, residual reasons, domain/constant policy, and runtime
+  evidence
 
 Each promoted row should say what new matrix cell it covers. If it cannot name
 the new family, argument regime, domain regime, trace regime, or presentation
 regime, it is probably not worth promoting.
+
+General integration backend probes should start as discovery/stress, not live
+or frozen contracts. Promote only the minimal representative of a verified
+algorithmic family, and only after `diff(candidate, x)` verifies the
+antiderivative under the stated real-domain/constant policy. Unverified backend
+outputs should remain residual observations, not accepted answers.
 
 The existing embedded contextual guardrail remains important, but it should no
 longer be the default place to spend cycles when it is balanced and green:

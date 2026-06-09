@@ -51,6 +51,12 @@ CALCULUS_RUNTIME_PRESSURE_RISK_P95_MS = 250.0
 CALCULUS_RUNTIME_PRESSURE_WATCH_TOP3_SHARE_PERCENT = 50.0
 CALCULUS_RUNTIME_PRESSURE_RISK_TOP3_SHARE_PERCENT = 80.0
 CALCULUS_RUNTIME_PRESSURE_CONCENTRATION_MIN_CASES = 10
+BACKEND_VERIFICATION_PRESSURE_WATCH_CHECKS_PER_ATTEMPT = 1.0
+BACKEND_VERIFICATION_PRESSURE_RISK_CHECKS_PER_ATTEMPT = 2.0
+BACKEND_VERIFICATION_PRESSURE_WATCH_MAX_NORMALIZATION_PASSES = 2
+BACKEND_VERIFICATION_PRESSURE_RISK_MAX_NORMALIZATION_PASSES = 3
+BACKEND_VERIFICATION_PRESSURE_WATCH_ELAPSED_MS = 10.0
+BACKEND_VERIFICATION_PRESSURE_RISK_ELAPSED_MS = 50.0
 CALCULUS_CLUSTER_RUNTIME_CANDIDATE_MIN_CASES = 2
 CALCULUS_CLUSTER_RUNTIME_CANDIDATE_MIN_AVG_MS = 75.0
 CALCULUS_CLUSTER_RUNTIME_CANDIDATE_RATIO = 2.0
@@ -557,6 +563,28 @@ SUITES: dict[str, SuiteSpec] = {
         description=(
             "Cheap public integration compactness contract for fast calculus "
             "support-matrix visibility."
+        ),
+    ),
+    "calculus_integrate_backend_observability": SuiteSpec(
+        name="calculus_integrate_backend_observability",
+        category="observability",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "-q",
+            "-p",
+            "cas_math",
+            "--lib",
+            "backend_observability_reports_boundary_metrics",
+            "--",
+            "--nocapture",
+        ],
+        env={},
+        parser="algorithmic_backend_observability",
+        description=(
+            "Algorithmic integration backend boundary metrics over attempts, "
+            "verification outcomes, residual reasons, and verifier runtime."
         ),
     ),
     "calculus_integrate_command_matrix_smoke": SuiteSpec(
@@ -2773,6 +2801,1542 @@ def sanitize_string_list_map(value: Any) -> dict[str, list[str]]:
     return dict(sorted(sanitized.items()))
 
 
+def sanitize_int_count_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    sanitized: dict[str, int] = {}
+    for key, count in value.items():
+        if isinstance(key, str) and isinstance(count, int):
+            sanitized[key] = count
+    return dict(sorted(sanitized.items()))
+
+
+def split_compound_count_map(
+    counts: dict[str, int], *, label: str
+) -> tuple[dict[str, int], dict[str, int]]:
+    first_parts: dict[str, int] = {}
+    second_parts: dict[str, int] = {}
+    for key, count in counts.items():
+        first, separator, second = key.partition("/")
+        if separator != "/" or not first or not second:
+            raise ValueError(f"{label} keys must have method/status shape")
+        first_parts[first] = first_parts.get(first, 0) + count
+        second_parts[second] = second_parts.get(second, 0) + count
+    return dict(sorted(first_parts.items())), dict(sorted(second_parts.items()))
+
+
+def compound_count_map_prefix_for_suffix(
+    counts: dict[str, int], *, suffix: str, label: str
+) -> dict[str, int]:
+    prefix_counts: dict[str, int] = {}
+    for key, count in counts.items():
+        first, separator, second = key.partition("/")
+        if separator != "/" or not first or not second:
+            raise ValueError(f"{label} keys must have method/status shape")
+        if second == suffix:
+            prefix_counts[first] = prefix_counts.get(first, 0) + count
+    return dict(sorted(prefix_counts.items()))
+
+
+def validate_nonnegative_integer_key_count_map(
+    counts: dict[str, int], *, label: str
+) -> None:
+    for key, count in counts.items():
+        if count < 0:
+            raise ValueError(f"{label} counts must be non-negative")
+        try:
+            parsed_key = int(key)
+        except ValueError as exc:
+            raise ValueError(f"{label} keys must be non-negative integers") from exc
+        if parsed_key < 0 or str(parsed_key) != key:
+            raise ValueError(f"{label} keys must be non-negative integers")
+
+
+def classify_backend_verification_pressure(
+    *,
+    attempts: int,
+    verification_checks_used_total: int,
+    verification_elapsed_ms: float,
+    max_verification_normalization_passes: int,
+) -> dict[str, Any]:
+    checks_per_attempt = (
+        verification_checks_used_total / attempts if attempts else 0.0
+    )
+    signals: list[tuple[str, str, str]] = []
+    if (
+        checks_per_attempt
+        >= BACKEND_VERIFICATION_PRESSURE_RISK_CHECKS_PER_ATTEMPT
+    ):
+        signals.append(
+            (
+                "risk",
+                "checks_per_attempt",
+                f"checks_per_attempt={checks_per_attempt:.3f}",
+            )
+        )
+    elif (
+        checks_per_attempt
+        >= BACKEND_VERIFICATION_PRESSURE_WATCH_CHECKS_PER_ATTEMPT
+    ):
+        signals.append(
+            (
+                "watch",
+                "checks_per_attempt",
+                f"checks_per_attempt={checks_per_attempt:.3f}",
+            )
+        )
+
+    if (
+        max_verification_normalization_passes
+        >= BACKEND_VERIFICATION_PRESSURE_RISK_MAX_NORMALIZATION_PASSES
+    ):
+        signals.append(
+            (
+                "risk",
+                "normalization_passes",
+                f"max_passes={max_verification_normalization_passes}",
+            )
+        )
+    elif (
+        max_verification_normalization_passes
+        >= BACKEND_VERIFICATION_PRESSURE_WATCH_MAX_NORMALIZATION_PASSES
+    ):
+        signals.append(
+            (
+                "watch",
+                "normalization_passes",
+                f"max_passes={max_verification_normalization_passes}",
+            )
+        )
+
+    if verification_elapsed_ms >= BACKEND_VERIFICATION_PRESSURE_RISK_ELAPSED_MS:
+        signals.append(
+            ("risk", "elapsed_ms", f"elapsed_ms={verification_elapsed_ms:.3f}")
+        )
+    elif verification_elapsed_ms >= BACKEND_VERIFICATION_PRESSURE_WATCH_ELAPSED_MS:
+        signals.append(
+            ("watch", "elapsed_ms", f"elapsed_ms={verification_elapsed_ms:.3f}")
+        )
+
+    severity_rank = {"ok": 0, "watch": 1, "risk": 2}
+    status = "ok"
+    primary_signal = "none"
+    reason = "within backend verification pressure thresholds"
+    if signals:
+        status, primary_signal, reason = max(
+            signals,
+            key=lambda signal: severity_rank[signal[0]],
+        )
+
+    return {
+        "status": status,
+        "primary_signal": primary_signal,
+        "reason": reason,
+        "attempts": attempts,
+        "verification_checks_used_total": verification_checks_used_total,
+        "checks_per_attempt": round(checks_per_attempt, 3),
+        "max_verification_normalization_passes": (
+            max_verification_normalization_passes
+        ),
+        "verification_elapsed_ms": round(float(verification_elapsed_ms), 3),
+    }
+
+
+def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
+    match = re.search(r"algorithmic_backend_observability:\s*(\{[^\n]+\})", output)
+    if not match:
+        raise ValueError("missing algorithmic_backend_observability output")
+
+    raw = json.loads(match.group(1))
+    if not isinstance(raw, dict):
+        raise ValueError("algorithmic_backend_observability must be a JSON object")
+
+    attempts = raw.get("attempts")
+    public_accepted = raw.get("public_accepted")
+    unverified_public_acceptances = raw.get("unverified_public_acceptances")
+    fallback_eligible = raw.get("fallback_eligible", 0)
+    unverified_fallback_acceptances = raw.get("unverified_fallback_acceptances", 0)
+    method_probe_budget_exhausted = raw.get("method_probe_budget_exhausted", 0)
+    verification_budget_exceeded = raw.get("verification_budget_exceeded", 0)
+    method_probes_used_total = raw.get("method_probes_used_total", 0)
+    verification_checks_used_total = raw.get("verification_checks_used_total", 0)
+    verification_elapsed_ms = raw.get("verification_elapsed_ms")
+    max_verification_normalization_passes = raw.get(
+        "max_verification_normalization_passes", 0
+    )
+    public_max_verification_normalization_passes = raw.get(
+        "public_max_verification_normalization_passes", 0
+    )
+    fallback_max_verification_normalization_passes = raw.get(
+        "fallback_max_verification_normalization_passes", 0
+    )
+    assumption_exprs = raw.get("assumption_exprs", 0)
+    public_assumption_exprs = raw.get("public_assumption_exprs", 0)
+    fallback_assumption_exprs = raw.get("fallback_assumption_exprs", 0)
+    if not isinstance(attempts, int) or attempts < 0:
+        raise ValueError("algorithmic backend attempts must be a non-negative integer")
+    if not isinstance(public_accepted, int) or public_accepted < 0:
+        raise ValueError(
+            "algorithmic backend public_accepted must be a non-negative integer"
+        )
+    if (
+        not isinstance(unverified_public_acceptances, int)
+        or unverified_public_acceptances < 0
+    ):
+        raise ValueError(
+            "algorithmic backend unverified_public_acceptances must be a "
+            "non-negative integer"
+        )
+    if not isinstance(fallback_eligible, int) or fallback_eligible < 0:
+        raise ValueError(
+            "algorithmic backend fallback_eligible must be a non-negative integer"
+        )
+    if (
+        not isinstance(unverified_fallback_acceptances, int)
+        or unverified_fallback_acceptances < 0
+    ):
+        raise ValueError(
+            "algorithmic backend unverified_fallback_acceptances must be a "
+            "non-negative integer"
+        )
+    if (
+        not isinstance(method_probe_budget_exhausted, int)
+        or method_probe_budget_exhausted < 0
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_budget_exhausted must be a "
+            "non-negative integer"
+        )
+    if (
+        not isinstance(verification_budget_exceeded, int)
+        or verification_budget_exceeded < 0
+    ):
+        raise ValueError(
+            "algorithmic backend verification_budget_exceeded must be a "
+            "non-negative integer"
+        )
+    if (
+        not isinstance(method_probes_used_total, int)
+        or method_probes_used_total < 0
+    ):
+        raise ValueError(
+            "algorithmic backend method_probes_used_total must be a "
+            "non-negative integer"
+        )
+    if (
+        not isinstance(verification_checks_used_total, int)
+        or verification_checks_used_total < 0
+    ):
+        raise ValueError(
+            "algorithmic backend verification_checks_used_total must be a "
+            "non-negative integer"
+        )
+    if not isinstance(verification_elapsed_ms, (int, float)):
+        raise ValueError("algorithmic backend verification_elapsed_ms must be numeric")
+    if (
+        not isinstance(max_verification_normalization_passes, int)
+        or max_verification_normalization_passes < 0
+    ):
+        raise ValueError(
+            "algorithmic backend max_verification_normalization_passes must be "
+            "a non-negative integer"
+        )
+    if (
+        not isinstance(public_max_verification_normalization_passes, int)
+        or public_max_verification_normalization_passes < 0
+    ):
+        raise ValueError(
+            "algorithmic backend public_max_verification_normalization_passes "
+            "must be a non-negative integer"
+        )
+    if (
+        not isinstance(fallback_max_verification_normalization_passes, int)
+        or fallback_max_verification_normalization_passes < 0
+    ):
+        raise ValueError(
+            "algorithmic backend fallback_max_verification_normalization_passes "
+            "must be a non-negative integer"
+        )
+    if not isinstance(assumption_exprs, int) or assumption_exprs < 0:
+        raise ValueError(
+            "algorithmic backend assumption_exprs must be a non-negative integer"
+        )
+    if (
+        not isinstance(public_assumption_exprs, int)
+        or public_assumption_exprs < 0
+    ):
+        raise ValueError(
+            "algorithmic backend public_assumption_exprs must be a "
+            "non-negative integer"
+        )
+    if (
+        not isinstance(fallback_assumption_exprs, int)
+        or fallback_assumption_exprs < 0
+    ):
+        raise ValueError(
+            "algorithmic backend fallback_assumption_exprs must be a "
+            "non-negative integer"
+        )
+    if (
+        public_accepted > attempts
+        or unverified_public_acceptances > attempts
+        or fallback_eligible > attempts
+        or unverified_fallback_acceptances > attempts
+        or method_probe_budget_exhausted > attempts
+        or verification_budget_exceeded > attempts
+    ):
+        raise ValueError("algorithmic backend counts exceed attempts")
+    if (
+        public_assumption_exprs > assumption_exprs
+        or fallback_assumption_exprs > assumption_exprs
+    ):
+        raise ValueError("algorithmic backend assumption counts exceed total")
+
+    mode_counts = sanitize_int_count_map(raw.get("mode_counts"))
+    method_counts = sanitize_int_count_map(raw.get("method_counts"))
+    method_probe_usage_by_method = sanitize_int_count_map(
+        raw.get("method_probe_usage_by_method")
+    )
+    method_probe_attempt_counts = sanitize_int_count_map(
+        raw.get("method_probe_attempt_counts")
+    )
+    method_probe_candidate_counts = sanitize_int_count_map(
+        raw.get("method_probe_candidate_counts")
+    )
+    method_probe_no_match_counts = sanitize_int_count_map(
+        raw.get("method_probe_no_match_counts")
+    )
+    method_probe_no_match_reason_counts = sanitize_int_count_map(
+        raw.get("method_probe_no_match_reason_counts")
+    )
+    verification_check_usage_by_method = sanitize_int_count_map(
+        raw.get("verification_check_usage_by_method")
+    )
+    verification_status_by_method = sanitize_int_count_map(
+        raw.get("verification_status_by_method")
+    )
+    residual_reason_by_method = sanitize_int_count_map(
+        raw.get("residual_reason_by_method")
+    )
+    verification_blocker_counts = sanitize_int_count_map(
+        raw.get("verification_blocker_counts")
+    )
+    verification_blocker_by_method = sanitize_int_count_map(
+        raw.get("verification_blocker_by_method")
+    )
+    failure_class_counts = sanitize_int_count_map(raw.get("failure_class_counts"))
+    failure_class_by_method = sanitize_int_count_map(raw.get("failure_class_by_method"))
+    verification_residual_counts = sanitize_int_count_map(
+        raw.get("verification_residual_counts")
+    )
+    verification_residual_by_method = sanitize_int_count_map(
+        raw.get("verification_residual_by_method")
+    )
+    verification_residual_kind_counts = sanitize_int_count_map(
+        raw.get("verification_residual_kind_counts")
+    )
+    verification_residual_kind_by_method = sanitize_int_count_map(
+        raw.get("verification_residual_kind_by_method")
+    )
+    verification_residual_signature_counts = sanitize_int_count_map(
+        raw.get("verification_residual_signature_counts")
+    )
+    verification_residual_signature_by_method = sanitize_int_count_map(
+        raw.get("verification_residual_signature_by_method")
+    )
+    publication_status_counts = sanitize_int_count_map(
+        raw.get("publication_status_counts")
+    )
+    publication_status_by_method = sanitize_int_count_map(
+        raw.get("publication_status_by_method")
+    )
+    fallback_status_counts = sanitize_int_count_map(raw.get("fallback_status_counts"))
+    fallback_status_by_method = sanitize_int_count_map(
+        raw.get("fallback_status_by_method")
+    )
+    trace_level_counts = sanitize_int_count_map(raw.get("trace_level_counts"))
+    constant_policy_counts = sanitize_int_count_map(raw.get("constant_policy_counts"))
+    public_trace_level_counts = sanitize_int_count_map(
+        raw.get("public_trace_level_counts")
+    )
+    public_constant_policy_counts = sanitize_int_count_map(
+        raw.get("public_constant_policy_counts")
+    )
+    fallback_trace_level_counts = sanitize_int_count_map(
+        raw.get("fallback_trace_level_counts")
+    )
+    fallback_constant_policy_counts = sanitize_int_count_map(
+        raw.get("fallback_constant_policy_counts")
+    )
+    verification_evidence_counts = sanitize_int_count_map(
+        raw.get("verification_evidence_counts")
+    )
+    public_verification_evidence_counts = sanitize_int_count_map(
+        raw.get("public_verification_evidence_counts")
+    )
+    fallback_verification_evidence_counts = sanitize_int_count_map(
+        raw.get("fallback_verification_evidence_counts")
+    )
+    verification_evidence_by_method = sanitize_int_count_map(
+        raw.get("verification_evidence_by_method")
+    )
+    public_verification_evidence_by_method = sanitize_int_count_map(
+        raw.get("public_verification_evidence_by_method")
+    )
+    fallback_verification_evidence_by_method = sanitize_int_count_map(
+        raw.get("fallback_verification_evidence_by_method")
+    )
+    verification_normalization_reason_counts = sanitize_int_count_map(
+        raw.get("verification_normalization_reason_counts")
+    )
+    public_verification_normalization_reason_counts = sanitize_int_count_map(
+        raw.get("public_verification_normalization_reason_counts")
+    )
+    fallback_verification_normalization_reason_counts = sanitize_int_count_map(
+        raw.get("fallback_verification_normalization_reason_counts")
+    )
+    verification_normalization_reason_by_method = sanitize_int_count_map(
+        raw.get("verification_normalization_reason_by_method")
+    )
+    public_verification_normalization_reason_by_method = sanitize_int_count_map(
+        raw.get("public_verification_normalization_reason_by_method")
+    )
+    fallback_verification_normalization_reason_by_method = sanitize_int_count_map(
+        raw.get("fallback_verification_normalization_reason_by_method")
+    )
+    verification_normalization_pass_count_counts = sanitize_int_count_map(
+        raw.get("verification_normalization_pass_count_counts")
+    )
+    public_verification_normalization_pass_count_counts = sanitize_int_count_map(
+        raw.get("public_verification_normalization_pass_count_counts")
+    )
+    fallback_verification_normalization_pass_count_counts = sanitize_int_count_map(
+        raw.get("fallback_verification_normalization_pass_count_counts")
+    )
+    verification_normalization_pass_count_by_method = sanitize_int_count_map(
+        raw.get("verification_normalization_pass_count_by_method")
+    )
+    public_verification_normalization_pass_count_by_method = sanitize_int_count_map(
+        raw.get("public_verification_normalization_pass_count_by_method")
+    )
+    fallback_verification_normalization_pass_count_by_method = sanitize_int_count_map(
+        raw.get("fallback_verification_normalization_pass_count_by_method")
+    )
+    verification_status_counts = sanitize_int_count_map(
+        raw.get("verification_status_counts")
+    )
+    residual_reason_counts = sanitize_int_count_map(raw.get("residual_reason_counts"))
+    required_condition_counts = sanitize_int_count_map(
+        raw.get("required_condition_counts")
+    )
+    if mode_counts and sum(mode_counts.values()) != attempts:
+        raise ValueError("algorithmic backend mode_counts do not match attempts")
+    if sum(method_counts.values()) != attempts:
+        raise ValueError("algorithmic backend method_counts do not match attempts")
+    if sum(verification_status_counts.values()) != attempts:
+        raise ValueError(
+            "algorithmic backend verification_status_counts do not match attempts"
+        )
+    if sum(method_probe_usage_by_method.values()) != method_probes_used_total:
+        raise ValueError(
+            "algorithmic backend method_probe_usage_by_method does not match total"
+        )
+    if method_probes_used_total and not method_probe_attempt_counts:
+        raise ValueError(
+            "algorithmic backend method_probe_attempt_counts missing method probes"
+        )
+    if method_probes_used_total and "method_probe_candidate_counts" not in raw:
+        raise ValueError(
+            "algorithmic backend method_probe_candidate_counts missing method probes"
+        )
+    if method_probes_used_total and "method_probe_no_match_counts" not in raw:
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_counts missing method probes"
+        )
+    if sum(method_probe_attempt_counts.values()) != method_probes_used_total:
+        raise ValueError(
+            "algorithmic backend method_probe_attempt_counts does not match total"
+        )
+    if sum(method_probe_candidate_counts.values()) > method_probes_used_total:
+        raise ValueError(
+            "algorithmic backend method_probe_candidate_counts exceed method probes"
+        )
+    method_probe_methods = (
+        set(method_probe_attempt_counts)
+        | set(method_probe_candidate_counts)
+        | set(method_probe_no_match_counts)
+    )
+    for method in method_probe_methods:
+        attempt_count = method_probe_attempt_counts.get(method, 0)
+        candidate_count = method_probe_candidate_counts.get(method, 0)
+        no_match_count = method_probe_no_match_counts.get(method, 0)
+        if candidate_count + no_match_count != attempt_count:
+            raise ValueError(
+                "algorithmic backend method_probe candidate/no-match split "
+                "does not match attempts"
+            )
+    method_probe_no_match_total = sum(method_probe_no_match_counts.values())
+    if (
+        method_probe_no_match_total
+        and "method_probe_no_match_reason_counts" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_reason_counts missing "
+            "method probe no-matches"
+        )
+    if (
+        sum(method_probe_no_match_reason_counts.values())
+        != method_probe_no_match_total
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_reason_counts do not "
+            "match method_probe_no_match_counts"
+        )
+    if method_probe_no_match_reason_counts:
+        reason_by_method_prefix, _ = split_compound_count_map(
+            method_probe_no_match_reason_counts,
+            label="algorithmic backend method_probe_no_match_reason_counts",
+        )
+        if reason_by_method_prefix != method_probe_no_match_counts:
+            raise ValueError(
+                "algorithmic backend method_probe_no_match_reason_counts do not "
+                "match method_probe_no_match_counts by method"
+            )
+    if (
+        sum(verification_check_usage_by_method.values())
+        != verification_checks_used_total
+    ):
+        raise ValueError(
+            "algorithmic backend verification_check_usage_by_method does not "
+            "match total"
+        )
+    if verification_status_by_method:
+        if sum(verification_status_by_method.values()) != attempts:
+            raise ValueError(
+                "algorithmic backend verification_status_by_method does not "
+                "match attempts"
+            )
+        status_by_method_prefix, status_by_method_suffix = split_compound_count_map(
+            verification_status_by_method,
+            label="algorithmic backend verification_status_by_method",
+        )
+        if status_by_method_prefix != method_counts:
+            raise ValueError(
+                "algorithmic backend verification_status_by_method does not "
+                "match method_counts"
+            )
+        if status_by_method_suffix != verification_status_counts:
+            raise ValueError(
+                "algorithmic backend verification_status_by_method does not "
+                "match verification_status_counts"
+            )
+    if residual_reason_by_method:
+        if sum(residual_reason_by_method.values()) != sum(
+            residual_reason_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend residual_reason_by_method does not match "
+                "residual_reason_counts"
+            )
+        residual_by_method_prefix, residual_by_method_suffix = split_compound_count_map(
+            residual_reason_by_method,
+            label="algorithmic backend residual_reason_by_method",
+        )
+        unknown_residual_methods = set(residual_by_method_prefix) - set(method_counts)
+        if unknown_residual_methods:
+            raise ValueError(
+                "algorithmic backend residual_reason_by_method has unknown methods"
+            )
+        if residual_by_method_suffix != residual_reason_counts:
+            raise ValueError(
+                "algorithmic backend residual_reason_by_method does not match "
+                "residual_reason_counts"
+            )
+    if verification_blocker_counts:
+        if sum(verification_blocker_counts.values()) > attempts:
+            raise ValueError(
+                "algorithmic backend verification_blocker_counts exceed attempts"
+            )
+    if verification_blocker_by_method:
+        if sum(verification_blocker_by_method.values()) != sum(
+            verification_blocker_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend verification_blocker_by_method does not "
+                "match verification_blocker_counts"
+            )
+        blocker_by_method_prefix, blocker_by_method_suffix = split_compound_count_map(
+            verification_blocker_by_method,
+            label="algorithmic backend verification_blocker_by_method",
+        )
+        unknown_blocker_methods = set(blocker_by_method_prefix) - set(method_counts)
+        if unknown_blocker_methods:
+            raise ValueError(
+                "algorithmic backend verification_blocker_by_method has unknown "
+                "methods"
+            )
+        if blocker_by_method_suffix != verification_blocker_counts:
+            raise ValueError(
+                "algorithmic backend verification_blocker_by_method does not "
+                "match verification_blocker_counts"
+            )
+    rejected_count = attempts - public_accepted
+    if rejected_count and "failure_class_counts" not in raw:
+        raise ValueError(
+            "algorithmic backend failure_class_counts missing rejected candidates"
+        )
+    if failure_class_counts:
+        if sum(failure_class_counts.values()) != rejected_count:
+            raise ValueError(
+                "algorithmic backend failure_class_counts do not match rejected "
+                "candidates"
+            )
+    if failure_class_counts and "failure_class_by_method" not in raw:
+        raise ValueError(
+            "algorithmic backend failure_class_by_method missing rejected candidates"
+        )
+    if failure_class_by_method:
+        if sum(failure_class_by_method.values()) != sum(failure_class_counts.values()):
+            raise ValueError(
+                "algorithmic backend failure_class_by_method does not match "
+                "failure_class_counts"
+            )
+        failure_by_method_prefix, failure_by_method_suffix = split_compound_count_map(
+            failure_class_by_method,
+            label="algorithmic backend failure_class_by_method",
+        )
+        unknown_failure_methods = set(failure_by_method_prefix) - set(method_counts)
+        if unknown_failure_methods:
+            raise ValueError(
+                "algorithmic backend failure_class_by_method has unknown methods"
+            )
+        if failure_by_method_suffix != failure_class_counts:
+            raise ValueError(
+                "algorithmic backend failure_class_by_method does not match "
+                "failure_class_counts"
+            )
+    if verification_residual_counts:
+        if (
+            sum(verification_residual_counts.values())
+            > verification_evidence_counts.get("failed_differentiation", 0)
+        ):
+            raise ValueError(
+                "algorithmic backend verification_residual_counts exceed "
+                "failed_differentiation evidence"
+            )
+    if verification_residual_by_method:
+        if sum(verification_residual_by_method.values()) != sum(
+            verification_residual_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend verification_residual_by_method does not "
+                "match verification_residual_counts"
+            )
+        residual_by_method_prefix, residual_by_method_suffix = (
+            split_compound_count_map(
+                verification_residual_by_method,
+                label="algorithmic backend verification_residual_by_method",
+            )
+        )
+        unknown_residual_methods = set(residual_by_method_prefix) - set(
+            method_counts
+        )
+        if unknown_residual_methods:
+            raise ValueError(
+                "algorithmic backend verification_residual_by_method has "
+                "unknown methods"
+            )
+        if residual_by_method_suffix != verification_residual_counts:
+            raise ValueError(
+                "algorithmic backend verification_residual_by_method does not "
+                "match verification_residual_counts"
+            )
+        if verification_evidence_by_method:
+            failed_method_counts = compound_count_map_prefix_for_suffix(
+                verification_evidence_by_method,
+                suffix="failed_differentiation",
+                label="algorithmic backend verification_evidence_by_method",
+            )
+            if any(
+                residual_by_method_prefix.get(method, 0)
+                > failed_method_counts.get(method, 0)
+                for method in residual_by_method_prefix
+            ):
+                raise ValueError(
+                    "algorithmic backend verification_residual_by_method "
+                    "exceeds failed_differentiation evidence by method"
+                )
+    verification_residual_count_total = sum(verification_residual_counts.values())
+    if verification_residual_count_total and not verification_residual_kind_counts:
+        raise ValueError(
+            "algorithmic backend verification_residual_kind_counts missing "
+            "verification residuals"
+        )
+    if verification_residual_kind_counts:
+        if sum(verification_residual_kind_counts.values()) != sum(
+            verification_residual_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend verification_residual_kind_counts does not "
+                "match verification_residual_counts"
+            )
+    if verification_residual_by_method and not verification_residual_kind_by_method:
+        raise ValueError(
+            "algorithmic backend verification_residual_kind_by_method missing "
+            "verification residual methods"
+        )
+    if verification_residual_kind_by_method:
+        if sum(verification_residual_kind_by_method.values()) != sum(
+            verification_residual_kind_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend verification_residual_kind_by_method does "
+                "not match verification_residual_kind_counts"
+            )
+        kind_by_method_prefix, kind_by_method_suffix = split_compound_count_map(
+            verification_residual_kind_by_method,
+            label="algorithmic backend verification_residual_kind_by_method",
+        )
+        unknown_kind_methods = set(kind_by_method_prefix) - set(method_counts)
+        if unknown_kind_methods:
+            raise ValueError(
+                "algorithmic backend verification_residual_kind_by_method has "
+                "unknown methods"
+            )
+        if kind_by_method_suffix != verification_residual_kind_counts:
+            raise ValueError(
+                "algorithmic backend verification_residual_kind_by_method does "
+                "not match verification_residual_kind_counts"
+            )
+        if verification_residual_by_method:
+            residual_by_method_prefix, _ = split_compound_count_map(
+                verification_residual_by_method,
+                label="algorithmic backend verification_residual_by_method",
+            )
+            if kind_by_method_prefix != residual_by_method_prefix:
+                raise ValueError(
+                    "algorithmic backend verification_residual_kind_by_method "
+                    "does not match verification_residual_by_method methods"
+                )
+    if verification_residual_count_total and not verification_residual_signature_counts:
+        raise ValueError(
+            "algorithmic backend verification_residual_signature_counts missing "
+            "verification residuals"
+        )
+    if verification_residual_signature_counts:
+        if sum(verification_residual_signature_counts.values()) != sum(
+            verification_residual_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend verification_residual_signature_counts does "
+                "not match verification_residual_counts"
+            )
+    if verification_residual_by_method and not verification_residual_signature_by_method:
+        raise ValueError(
+            "algorithmic backend verification_residual_signature_by_method missing "
+            "verification residual methods"
+        )
+    if verification_residual_signature_by_method:
+        if sum(verification_residual_signature_by_method.values()) != sum(
+            verification_residual_signature_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend verification_residual_signature_by_method "
+                "does not match verification_residual_signature_counts"
+            )
+        signature_by_method_prefix, signature_by_method_suffix = split_compound_count_map(
+            verification_residual_signature_by_method,
+            label="algorithmic backend verification_residual_signature_by_method",
+        )
+        unknown_signature_methods = set(signature_by_method_prefix) - set(method_counts)
+        if unknown_signature_methods:
+            raise ValueError(
+                "algorithmic backend verification_residual_signature_by_method has "
+                "unknown methods"
+            )
+        if signature_by_method_suffix != verification_residual_signature_counts:
+            raise ValueError(
+                "algorithmic backend verification_residual_signature_by_method "
+                "does not match verification_residual_signature_counts"
+            )
+        if verification_residual_by_method:
+            residual_by_method_prefix, _ = split_compound_count_map(
+                verification_residual_by_method,
+                label="algorithmic backend verification_residual_by_method",
+            )
+            if signature_by_method_prefix != residual_by_method_prefix:
+                raise ValueError(
+                    "algorithmic backend verification_residual_signature_by_method "
+                    "does not match verification_residual_by_method methods"
+                )
+    if publication_status_counts:
+        if sum(publication_status_counts.values()) != attempts:
+            raise ValueError(
+                "algorithmic backend publication_status_counts do not match attempts"
+            )
+        if publication_status_counts.get("accepted", 0) != public_accepted:
+            raise ValueError(
+                "algorithmic backend publication_status_counts accepted does not "
+                "match public_accepted"
+            )
+    if publication_status_by_method:
+        if sum(publication_status_by_method.values()) != attempts:
+            raise ValueError(
+                "algorithmic backend publication_status_by_method does not "
+                "match attempts"
+            )
+        publication_by_method_prefix, publication_by_method_suffix = (
+            split_compound_count_map(
+                publication_status_by_method,
+                label="algorithmic backend publication_status_by_method",
+            )
+        )
+        if publication_by_method_prefix != method_counts:
+            raise ValueError(
+                "algorithmic backend publication_status_by_method does not "
+                "match method_counts"
+            )
+        if (
+            publication_status_counts
+            and publication_by_method_suffix != publication_status_counts
+        ):
+            raise ValueError(
+                "algorithmic backend publication_status_by_method does not "
+                "match publication_status_counts"
+            )
+    if fallback_status_counts:
+        if sum(fallback_status_counts.values()) != attempts:
+            raise ValueError(
+                "algorithmic backend fallback_status_counts do not match attempts"
+            )
+        if fallback_status_counts.get("eligible", 0) != fallback_eligible:
+            raise ValueError(
+                "algorithmic backend fallback_status_counts eligible does not "
+                "match fallback_eligible"
+            )
+    if fallback_status_by_method:
+        if sum(fallback_status_by_method.values()) != attempts:
+            raise ValueError(
+                "algorithmic backend fallback_status_by_method does not "
+                "match attempts"
+            )
+        fallback_by_method_prefix, fallback_by_method_suffix = (
+            split_compound_count_map(
+                fallback_status_by_method,
+                label="algorithmic backend fallback_status_by_method",
+            )
+        )
+        if fallback_by_method_prefix != method_counts:
+            raise ValueError(
+                "algorithmic backend fallback_status_by_method does not "
+                "match method_counts"
+            )
+        if fallback_status_counts and fallback_by_method_suffix != fallback_status_counts:
+            raise ValueError(
+                "algorithmic backend fallback_status_by_method does not "
+                "match fallback_status_counts"
+            )
+    if trace_level_counts and sum(trace_level_counts.values()) != attempts:
+        raise ValueError("algorithmic backend trace_level_counts do not match attempts")
+    if constant_policy_counts and sum(constant_policy_counts.values()) != attempts:
+        raise ValueError(
+            "algorithmic backend constant_policy_counts do not match attempts"
+        )
+    if (
+        public_trace_level_counts
+        and sum(public_trace_level_counts.values()) != public_accepted
+    ):
+        raise ValueError(
+            "algorithmic backend public_trace_level_counts do not match public_accepted"
+        )
+    if (
+        public_constant_policy_counts
+        and sum(public_constant_policy_counts.values()) != public_accepted
+    ):
+        raise ValueError(
+            "algorithmic backend public_constant_policy_counts do not match "
+            "public_accepted"
+        )
+    if (
+        fallback_trace_level_counts
+        and sum(fallback_trace_level_counts.values()) != fallback_eligible
+    ):
+        raise ValueError(
+            "algorithmic backend fallback_trace_level_counts do not match "
+            "fallback_eligible"
+        )
+    if (
+        fallback_constant_policy_counts
+        and sum(fallback_constant_policy_counts.values()) != fallback_eligible
+    ):
+        raise ValueError(
+            "algorithmic backend fallback_constant_policy_counts do not match "
+            "fallback_eligible"
+        )
+    if (
+        verification_evidence_counts
+        and sum(verification_evidence_counts.values()) != attempts
+    ):
+        raise ValueError(
+            "algorithmic backend verification_evidence_counts do not match attempts"
+        )
+    if (
+        public_verification_evidence_counts
+        and sum(public_verification_evidence_counts.values()) != public_accepted
+    ):
+        raise ValueError(
+            "algorithmic backend public_verification_evidence_counts do not match "
+            "public_accepted"
+        )
+    if (
+        fallback_verification_evidence_counts
+        and sum(fallback_verification_evidence_counts.values()) != fallback_eligible
+    ):
+        raise ValueError(
+            "algorithmic backend fallback_verification_evidence_counts do not match "
+            "fallback_eligible"
+        )
+    if verification_evidence_by_method:
+        if sum(verification_evidence_by_method.values()) != attempts:
+            raise ValueError(
+                "algorithmic backend verification_evidence_by_method does not "
+                "match attempts"
+            )
+        evidence_by_method_prefix, evidence_by_method_suffix = (
+            split_compound_count_map(
+                verification_evidence_by_method,
+                label="algorithmic backend verification_evidence_by_method",
+            )
+        )
+        if evidence_by_method_prefix != method_counts:
+            raise ValueError(
+                "algorithmic backend verification_evidence_by_method does not "
+                "match method_counts"
+            )
+        if (
+            verification_evidence_counts
+            and evidence_by_method_suffix != verification_evidence_counts
+        ):
+            raise ValueError(
+                "algorithmic backend verification_evidence_by_method does not "
+                "match verification_evidence_counts"
+            )
+    if public_verification_evidence_by_method:
+        if sum(public_verification_evidence_by_method.values()) != public_accepted:
+            raise ValueError(
+                "algorithmic backend public_verification_evidence_by_method does "
+                "not match public_accepted"
+            )
+        public_evidence_by_method_prefix, public_evidence_by_method_suffix = (
+            split_compound_count_map(
+                public_verification_evidence_by_method,
+                label=(
+                    "algorithmic backend "
+                    "public_verification_evidence_by_method"
+                ),
+            )
+        )
+        unknown_public_evidence_methods = set(public_evidence_by_method_prefix) - set(
+            method_counts
+        )
+        if unknown_public_evidence_methods:
+            raise ValueError(
+                "algorithmic backend public_verification_evidence_by_method has "
+                "unknown methods"
+            )
+        if (
+            public_verification_evidence_counts
+            and public_evidence_by_method_suffix != public_verification_evidence_counts
+        ):
+            raise ValueError(
+                "algorithmic backend public_verification_evidence_by_method does "
+                "not match public_verification_evidence_counts"
+            )
+    if fallback_verification_evidence_by_method:
+        if sum(fallback_verification_evidence_by_method.values()) != fallback_eligible:
+            raise ValueError(
+                "algorithmic backend fallback_verification_evidence_by_method does "
+                "not match fallback_eligible"
+            )
+        fallback_evidence_by_method_prefix, fallback_evidence_by_method_suffix = (
+            split_compound_count_map(
+                fallback_verification_evidence_by_method,
+                label=(
+                    "algorithmic backend "
+                    "fallback_verification_evidence_by_method"
+                ),
+            )
+        )
+        unknown_fallback_evidence_methods = set(
+            fallback_evidence_by_method_prefix
+        ) - set(method_counts)
+        if unknown_fallback_evidence_methods:
+            raise ValueError(
+                "algorithmic backend fallback_verification_evidence_by_method has "
+                "unknown methods"
+            )
+        if (
+            fallback_verification_evidence_counts
+            and fallback_evidence_by_method_suffix
+            != fallback_verification_evidence_counts
+        ):
+            raise ValueError(
+                "algorithmic backend fallback_verification_evidence_by_method does "
+                "not match fallback_verification_evidence_counts"
+            )
+    normalized_evidence_count = verification_evidence_counts.get(
+        "normalized_differentiation", 0
+    )
+    public_normalized_evidence_count = public_verification_evidence_counts.get(
+        "normalized_differentiation", 0
+    )
+    fallback_normalized_evidence_count = fallback_verification_evidence_counts.get(
+        "normalized_differentiation", 0
+    )
+    if normalized_evidence_count and not verification_normalization_reason_counts:
+        raise ValueError(
+            "algorithmic backend verification_normalization_reason_counts missing "
+            "normalized evidence"
+        )
+    if (
+        sum(verification_normalization_reason_counts.values())
+        != normalized_evidence_count
+    ):
+        raise ValueError(
+            "algorithmic backend verification_normalization_reason_counts do not "
+            "match normalized_differentiation evidence"
+        )
+    if (
+        public_normalized_evidence_count
+        and not public_verification_normalization_reason_counts
+    ):
+        raise ValueError(
+            "algorithmic backend public_verification_normalization_reason_counts "
+            "missing normalized evidence"
+        )
+    if (
+        sum(public_verification_normalization_reason_counts.values())
+        != public_normalized_evidence_count
+    ):
+        raise ValueError(
+            "algorithmic backend public_verification_normalization_reason_counts "
+            "do not match public normalized_differentiation evidence"
+        )
+    if (
+        fallback_normalized_evidence_count
+        and not fallback_verification_normalization_reason_counts
+    ):
+        raise ValueError(
+            "algorithmic backend fallback_verification_normalization_reason_counts "
+            "missing normalized evidence"
+        )
+    if (
+        sum(fallback_verification_normalization_reason_counts.values())
+        != fallback_normalized_evidence_count
+    ):
+        raise ValueError(
+            "algorithmic backend fallback_verification_normalization_reason_counts "
+            "do not match fallback normalized_differentiation evidence"
+        )
+    if verification_normalization_reason_by_method:
+        if sum(verification_normalization_reason_by_method.values()) != sum(
+            verification_normalization_reason_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend verification_normalization_reason_by_method "
+                "does not match verification_normalization_reason_counts"
+            )
+        reason_by_method_prefix, reason_by_method_suffix = split_compound_count_map(
+            verification_normalization_reason_by_method,
+            label="algorithmic backend verification_normalization_reason_by_method",
+        )
+        unknown_reason_methods = set(reason_by_method_prefix) - set(method_counts)
+        if unknown_reason_methods:
+            raise ValueError(
+                "algorithmic backend verification_normalization_reason_by_method "
+                "has unknown methods"
+            )
+        if reason_by_method_suffix != verification_normalization_reason_counts:
+            raise ValueError(
+                "algorithmic backend verification_normalization_reason_by_method "
+                "does not match verification_normalization_reason_counts"
+            )
+        if verification_evidence_by_method:
+            normalized_method_counts = compound_count_map_prefix_for_suffix(
+                verification_evidence_by_method,
+                suffix="normalized_differentiation",
+                label="algorithmic backend verification_evidence_by_method",
+            )
+            if reason_by_method_prefix != normalized_method_counts:
+                raise ValueError(
+                    "algorithmic backend verification_normalization_reason_by_method "
+                    "does not match normalized evidence by method"
+                )
+    if public_verification_normalization_reason_by_method:
+        if sum(public_verification_normalization_reason_by_method.values()) != sum(
+            public_verification_normalization_reason_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "public_verification_normalization_reason_by_method does not match "
+                "public_verification_normalization_reason_counts"
+            )
+        public_reason_by_method_prefix, public_reason_by_method_suffix = (
+            split_compound_count_map(
+                public_verification_normalization_reason_by_method,
+                label=(
+                    "algorithmic backend "
+                    "public_verification_normalization_reason_by_method"
+                ),
+            )
+        )
+        unknown_public_reason_methods = set(public_reason_by_method_prefix) - set(
+            method_counts
+        )
+        if unknown_public_reason_methods:
+            raise ValueError(
+                "algorithmic backend "
+                "public_verification_normalization_reason_by_method has unknown "
+                "methods"
+            )
+        if (
+            public_reason_by_method_suffix
+            != public_verification_normalization_reason_counts
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "public_verification_normalization_reason_by_method does not match "
+                "public_verification_normalization_reason_counts"
+            )
+        if public_verification_evidence_by_method:
+            public_normalized_method_counts = compound_count_map_prefix_for_suffix(
+                public_verification_evidence_by_method,
+                suffix="normalized_differentiation",
+                label=(
+                    "algorithmic backend "
+                    "public_verification_evidence_by_method"
+                ),
+            )
+            if public_reason_by_method_prefix != public_normalized_method_counts:
+                raise ValueError(
+                    "algorithmic backend "
+                    "public_verification_normalization_reason_by_method does not "
+                    "match public normalized evidence by method"
+                )
+    if fallback_verification_normalization_reason_by_method:
+        if sum(fallback_verification_normalization_reason_by_method.values()) != sum(
+            fallback_verification_normalization_reason_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "fallback_verification_normalization_reason_by_method does not "
+                "match fallback_verification_normalization_reason_counts"
+            )
+        fallback_reason_by_method_prefix, fallback_reason_by_method_suffix = (
+            split_compound_count_map(
+                fallback_verification_normalization_reason_by_method,
+                label=(
+                    "algorithmic backend "
+                    "fallback_verification_normalization_reason_by_method"
+                ),
+            )
+        )
+        unknown_fallback_reason_methods = set(
+            fallback_reason_by_method_prefix
+        ) - set(method_counts)
+        if unknown_fallback_reason_methods:
+            raise ValueError(
+                "algorithmic backend "
+                "fallback_verification_normalization_reason_by_method has unknown "
+                "methods"
+            )
+        if (
+            fallback_reason_by_method_suffix
+            != fallback_verification_normalization_reason_counts
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "fallback_verification_normalization_reason_by_method does not "
+                "match fallback_verification_normalization_reason_counts"
+            )
+        if fallback_verification_evidence_by_method:
+            fallback_normalized_method_counts = compound_count_map_prefix_for_suffix(
+                fallback_verification_evidence_by_method,
+                suffix="normalized_differentiation",
+                label=(
+                    "algorithmic backend "
+                    "fallback_verification_evidence_by_method"
+                ),
+            )
+            if fallback_reason_by_method_prefix != fallback_normalized_method_counts:
+                raise ValueError(
+                    "algorithmic backend "
+                    "fallback_verification_normalization_reason_by_method does not "
+                    "match fallback normalized evidence by method"
+                )
+    if attempts and "verification_normalization_pass_count_counts" not in raw:
+        raise ValueError(
+            "algorithmic backend verification_normalization_pass_count_counts "
+            "missing attempts"
+        )
+    if verification_normalization_pass_count_counts:
+        validate_nonnegative_integer_key_count_map(
+            verification_normalization_pass_count_counts,
+            label="algorithmic backend verification_normalization_pass_count_counts",
+        )
+        if sum(verification_normalization_pass_count_counts.values()) != attempts:
+            raise ValueError(
+                "algorithmic backend verification_normalization_pass_count_counts "
+                "do not match attempts"
+            )
+        if max(
+            int(key) for key in verification_normalization_pass_count_counts
+        ) != max_verification_normalization_passes:
+            raise ValueError(
+                "algorithmic backend max_verification_normalization_passes does "
+                "not match pass counts"
+            )
+    elif attempts:
+        raise ValueError(
+            "algorithmic backend verification_normalization_pass_count_counts "
+            "missing attempts"
+        )
+    if public_accepted and not public_verification_normalization_pass_count_counts:
+        raise ValueError(
+            "algorithmic backend public_verification_normalization_pass_count_counts "
+            "missing public accepted candidates"
+        )
+    if public_verification_normalization_pass_count_counts:
+        validate_nonnegative_integer_key_count_map(
+            public_verification_normalization_pass_count_counts,
+            label=(
+                "algorithmic backend "
+                "public_verification_normalization_pass_count_counts"
+            ),
+        )
+        if (
+            sum(public_verification_normalization_pass_count_counts.values())
+            != public_accepted
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "public_verification_normalization_pass_count_counts do not "
+                "match public_accepted"
+            )
+        if (
+            max(int(key) for key in public_verification_normalization_pass_count_counts)
+            != public_max_verification_normalization_passes
+        ):
+            raise ValueError(
+                "algorithmic backend public_max_verification_normalization_passes "
+                "does not match public pass counts"
+            )
+    if fallback_eligible and not fallback_verification_normalization_pass_count_counts:
+        raise ValueError(
+            "algorithmic backend fallback_verification_normalization_pass_count_counts "
+            "missing fallback accepted candidates"
+        )
+    if fallback_verification_normalization_pass_count_counts:
+        validate_nonnegative_integer_key_count_map(
+            fallback_verification_normalization_pass_count_counts,
+            label=(
+                "algorithmic backend "
+                "fallback_verification_normalization_pass_count_counts"
+            ),
+        )
+        if (
+            sum(fallback_verification_normalization_pass_count_counts.values())
+            != fallback_eligible
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "fallback_verification_normalization_pass_count_counts do not "
+                "match fallback_eligible"
+            )
+        if (
+            max(
+                int(key)
+                for key in fallback_verification_normalization_pass_count_counts
+            )
+            != fallback_max_verification_normalization_passes
+        ):
+            raise ValueError(
+                "algorithmic backend fallback_max_verification_normalization_passes "
+                "does not match fallback pass counts"
+            )
+    if attempts and "verification_normalization_pass_count_by_method" not in raw:
+        raise ValueError(
+            "algorithmic backend verification_normalization_pass_count_by_method "
+            "missing attempts"
+        )
+    if verification_normalization_pass_count_by_method:
+        if sum(verification_normalization_pass_count_by_method.values()) != attempts:
+            raise ValueError(
+                "algorithmic backend verification_normalization_pass_count_by_method "
+                "does not match attempts"
+            )
+        pass_by_method_prefix, pass_by_method_suffix = split_compound_count_map(
+            verification_normalization_pass_count_by_method,
+            label=(
+                "algorithmic backend "
+                "verification_normalization_pass_count_by_method"
+            ),
+        )
+        validate_nonnegative_integer_key_count_map(
+            pass_by_method_suffix,
+            label=(
+                "algorithmic backend "
+                "verification_normalization_pass_count_by_method suffixes"
+            ),
+        )
+        if pass_by_method_prefix != method_counts:
+            raise ValueError(
+                "algorithmic backend verification_normalization_pass_count_by_method "
+                "does not match method_counts"
+            )
+        if pass_by_method_suffix != verification_normalization_pass_count_counts:
+            raise ValueError(
+                "algorithmic backend verification_normalization_pass_count_by_method "
+                "does not match pass counts"
+            )
+    elif attempts:
+        raise ValueError(
+            "algorithmic backend verification_normalization_pass_count_by_method "
+            "missing attempts"
+        )
+    if public_verification_normalization_pass_count_by_method:
+        if (
+            sum(public_verification_normalization_pass_count_by_method.values())
+            != public_accepted
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "public_verification_normalization_pass_count_by_method does "
+                "not match public_accepted"
+            )
+        public_pass_by_method_prefix, public_pass_by_method_suffix = (
+            split_compound_count_map(
+                public_verification_normalization_pass_count_by_method,
+                label=(
+                    "algorithmic backend "
+                    "public_verification_normalization_pass_count_by_method"
+                ),
+            )
+        )
+        validate_nonnegative_integer_key_count_map(
+            public_pass_by_method_suffix,
+            label=(
+                "algorithmic backend "
+                "public_verification_normalization_pass_count_by_method suffixes"
+            ),
+        )
+        unknown_public_pass_methods = set(public_pass_by_method_prefix) - set(
+            method_counts
+        )
+        if unknown_public_pass_methods:
+            raise ValueError(
+                "algorithmic backend "
+                "public_verification_normalization_pass_count_by_method has "
+                "unknown methods"
+            )
+        if (
+            public_pass_by_method_suffix
+            != public_verification_normalization_pass_count_counts
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "public_verification_normalization_pass_count_by_method does "
+                "not match public pass counts"
+            )
+    if fallback_verification_normalization_pass_count_by_method:
+        if (
+            sum(fallback_verification_normalization_pass_count_by_method.values())
+            != fallback_eligible
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "fallback_verification_normalization_pass_count_by_method does "
+                "not match fallback_eligible"
+            )
+        fallback_pass_by_method_prefix, fallback_pass_by_method_suffix = (
+            split_compound_count_map(
+                fallback_verification_normalization_pass_count_by_method,
+                label=(
+                    "algorithmic backend "
+                    "fallback_verification_normalization_pass_count_by_method"
+                ),
+            )
+        )
+        validate_nonnegative_integer_key_count_map(
+            fallback_pass_by_method_suffix,
+            label=(
+                "algorithmic backend "
+                "fallback_verification_normalization_pass_count_by_method suffixes"
+            ),
+        )
+        unknown_fallback_pass_methods = set(fallback_pass_by_method_prefix) - set(
+            method_counts
+        )
+        if unknown_fallback_pass_methods:
+            raise ValueError(
+                "algorithmic backend "
+                "fallback_verification_normalization_pass_count_by_method has "
+                "unknown methods"
+            )
+        if (
+            fallback_pass_by_method_suffix
+            != fallback_verification_normalization_pass_count_counts
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "fallback_verification_normalization_pass_count_by_method does "
+                "not match fallback pass counts"
+            )
+
+    verified_count = verification_status_counts.get("verified", 0) + (
+        verification_status_counts.get("verified_under_conditions", 0)
+    )
+    failed_or_blocked_count = rejected_count
+    required_condition_count = sum(required_condition_counts.values())
+    budget_exceeded_count = residual_reason_counts.get("budget_exceeded", 0)
+    if (
+        method_probe_budget_exhausted + verification_budget_exceeded
+        > budget_exceeded_count
+    ):
+        raise ValueError("algorithmic backend budget split exceeds budget count")
+    backend_verification_pressure = classify_backend_verification_pressure(
+        attempts=attempts,
+        verification_checks_used_total=verification_checks_used_total,
+        verification_elapsed_ms=float(verification_elapsed_ms),
+        max_verification_normalization_passes=(
+            max_verification_normalization_passes
+        ),
+    )
+    failed = unverified_public_acceptances + unverified_fallback_acceptances
+    return {
+        "total_cases": attempts,
+        "passed": attempts - failed,
+        "failed": failed,
+        "backend_attempts": attempts,
+        "backend_public_accepted": public_accepted,
+        "backend_unverified_public_acceptances": unverified_public_acceptances,
+        "backend_fallback_eligible": fallback_eligible,
+        "backend_unverified_fallback_acceptances": unverified_fallback_acceptances,
+        "backend_verified_count": verified_count,
+        "backend_failed_or_blocked_count": failed_or_blocked_count,
+        "backend_required_condition_count": required_condition_count,
+        "backend_budget_exceeded_count": budget_exceeded_count,
+        "backend_method_probe_budget_exhausted_count": method_probe_budget_exhausted,
+        "backend_verification_budget_exceeded_count": verification_budget_exceeded,
+        "backend_method_probes_used_total": method_probes_used_total,
+        "backend_verification_checks_used_total": verification_checks_used_total,
+        "backend_verification_elapsed_ms": round(float(verification_elapsed_ms), 3),
+        "backend_verification_pressure": backend_verification_pressure,
+        "backend_verification_pressure_status": (
+            backend_verification_pressure["status"]
+        ),
+        "backend_max_verification_normalization_passes": (
+            max_verification_normalization_passes
+        ),
+        "backend_public_max_verification_normalization_passes": (
+            public_max_verification_normalization_passes
+        ),
+        "backend_fallback_max_verification_normalization_passes": (
+            fallback_max_verification_normalization_passes
+        ),
+        "backend_assumption_exprs": assumption_exprs,
+        "backend_public_assumption_exprs": public_assumption_exprs,
+        "backend_fallback_assumption_exprs": fallback_assumption_exprs,
+        "backend_mode_counts": mode_counts,
+        "backend_method_counts": method_counts,
+        "backend_method_probe_usage_by_method": method_probe_usage_by_method,
+        "backend_method_probe_attempt_counts": method_probe_attempt_counts,
+        "backend_method_probe_candidate_counts": method_probe_candidate_counts,
+        "backend_method_probe_no_match_counts": method_probe_no_match_counts,
+        "backend_method_probe_no_match_reason_counts": (
+            method_probe_no_match_reason_counts
+        ),
+        "backend_verification_check_usage_by_method": verification_check_usage_by_method,
+        "backend_verification_status_by_method": verification_status_by_method,
+        "backend_residual_reason_by_method": residual_reason_by_method,
+        "backend_verification_blocker_counts": verification_blocker_counts,
+        "backend_verification_blocker_by_method": verification_blocker_by_method,
+        "backend_failure_class_counts": failure_class_counts,
+        "backend_failure_class_by_method": failure_class_by_method,
+        "backend_verification_residual_counts": verification_residual_counts,
+        "backend_verification_residual_by_method": verification_residual_by_method,
+        "backend_verification_residual_kind_counts": verification_residual_kind_counts,
+        "backend_verification_residual_kind_by_method": (
+            verification_residual_kind_by_method
+        ),
+        "backend_verification_residual_signature_counts": (
+            verification_residual_signature_counts
+        ),
+        "backend_verification_residual_signature_by_method": (
+            verification_residual_signature_by_method
+        ),
+        "backend_publication_status_counts": publication_status_counts,
+        "backend_publication_status_by_method": publication_status_by_method,
+        "backend_fallback_status_counts": fallback_status_counts,
+        "backend_fallback_status_by_method": fallback_status_by_method,
+        "backend_trace_level_counts": trace_level_counts,
+        "backend_constant_policy_counts": constant_policy_counts,
+        "backend_public_trace_level_counts": public_trace_level_counts,
+        "backend_public_constant_policy_counts": public_constant_policy_counts,
+        "backend_fallback_trace_level_counts": fallback_trace_level_counts,
+        "backend_fallback_constant_policy_counts": fallback_constant_policy_counts,
+        "backend_verification_evidence_counts": verification_evidence_counts,
+        "backend_public_verification_evidence_counts": public_verification_evidence_counts,
+        "backend_fallback_verification_evidence_counts": fallback_verification_evidence_counts,
+        "backend_verification_evidence_by_method": verification_evidence_by_method,
+        "backend_public_verification_evidence_by_method": (
+            public_verification_evidence_by_method
+        ),
+        "backend_fallback_verification_evidence_by_method": (
+            fallback_verification_evidence_by_method
+        ),
+        "backend_verification_normalization_reason_counts": (
+            verification_normalization_reason_counts
+        ),
+        "backend_public_verification_normalization_reason_counts": (
+            public_verification_normalization_reason_counts
+        ),
+        "backend_fallback_verification_normalization_reason_counts": (
+            fallback_verification_normalization_reason_counts
+        ),
+        "backend_verification_normalization_reason_by_method": (
+            verification_normalization_reason_by_method
+        ),
+        "backend_public_verification_normalization_reason_by_method": (
+            public_verification_normalization_reason_by_method
+        ),
+        "backend_fallback_verification_normalization_reason_by_method": (
+            fallback_verification_normalization_reason_by_method
+        ),
+        "backend_verification_normalization_pass_count_counts": (
+            verification_normalization_pass_count_counts
+        ),
+        "backend_public_verification_normalization_pass_count_counts": (
+            public_verification_normalization_pass_count_counts
+        ),
+        "backend_fallback_verification_normalization_pass_count_counts": (
+            fallback_verification_normalization_pass_count_counts
+        ),
+        "backend_verification_normalization_pass_count_by_method": (
+            verification_normalization_pass_count_by_method
+        ),
+        "backend_public_verification_normalization_pass_count_by_method": (
+            public_verification_normalization_pass_count_by_method
+        ),
+        "backend_fallback_verification_normalization_pass_count_by_method": (
+            fallback_verification_normalization_pass_count_by_method
+        ),
+        "backend_verification_status_counts": verification_status_counts,
+        "backend_residual_reason_counts": residual_reason_counts,
+        "backend_required_condition_counts": required_condition_counts,
+    }
+
+
 def sanitize_runtime_case_rows(raw_rows: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_rows, list):
         return []
@@ -4720,6 +6284,36 @@ def calculus_runtime_pressure_fragment(raw_row: Any) -> str | None:
     return fragment
 
 
+def backend_verification_pressure_fragment(raw_row: Any) -> str | None:
+    if not isinstance(raw_row, dict):
+        return None
+    status = raw_row.get("status")
+    primary_signal = raw_row.get("primary_signal")
+    reason = raw_row.get("reason")
+    if (
+        not isinstance(status, str)
+        or not isinstance(primary_signal, str)
+        or not isinstance(reason, str)
+    ):
+        return None
+    fragment = f"status={status} primary={primary_signal} reason={reason}"
+    for key, label, precision in (
+        ("attempts", "attempts", None),
+        ("verification_checks_used_total", "checks", None),
+        ("checks_per_attempt", "checks_per_attempt", 3),
+        ("max_verification_normalization_passes", "max_passes", None),
+        ("verification_elapsed_ms", "elapsed_ms", 3),
+    ):
+        value = raw_row.get(key)
+        if not isinstance(value, (int, float)):
+            continue
+        if precision is None:
+            fragment += f" {label}={int(value)}"
+        else:
+            fragment += f" {label}={value:.{precision}f}"
+    return fragment
+
+
 def calculus_runtime_measurement_fragment(raw_row: Any) -> str | None:
     if not isinstance(raw_row, dict):
         return None
@@ -5362,6 +6956,7 @@ PARSERS = {
     "calculus_diff_command_matrix": parse_calculus_diff_command_matrix,
     "calculus_limit_command_matrix": parse_calculus_limit_command_matrix,
     "calculus_integrate_command_matrix": parse_calculus_integrate_command_matrix,
+    "algorithmic_backend_observability": parse_algorithmic_backend_observability,
 }
 
 
@@ -5411,6 +7006,60 @@ def suite_status(name: str, metrics: dict[str, Any], returncode: int) -> str:
             metrics.get(key, 0) > 0
             for key in unchecked_supported_step_keys
             if isinstance(metrics.get(key, 0), int)
+        ):
+            return "fail"
+        return "pass"
+    if name == "calculus_integrate_backend_observability":
+        if metrics.get("backend_unverified_public_acceptances", 0) > 0:
+            return "fail"
+        if metrics.get("backend_unverified_fallback_acceptances", 0) > 0:
+            return "fail"
+        public_trace_levels = metrics.get("backend_public_trace_level_counts", {})
+        if (
+            isinstance(public_trace_levels, dict)
+            and public_trace_levels.get("diagnostic_only", 0) > 0
+        ):
+            return "fail"
+        fallback_trace_levels = metrics.get("backend_fallback_trace_level_counts", {})
+        if (
+            isinstance(fallback_trace_levels, dict)
+            and fallback_trace_levels.get("diagnostic_only", 0) > 0
+        ):
+            return "fail"
+        public_constant_policies = metrics.get(
+            "backend_public_constant_policy_counts", {}
+        )
+        if (
+            isinstance(public_constant_policies, dict)
+            and public_constant_policies.get("unspecified", 0) > 0
+        ):
+            return "fail"
+        fallback_constant_policies = metrics.get(
+            "backend_fallback_constant_policy_counts", {}
+        )
+        if (
+            isinstance(fallback_constant_policies, dict)
+            and fallback_constant_policies.get("unspecified", 0) > 0
+        ):
+            return "fail"
+        if metrics.get("backend_public_assumption_exprs", 0) > 0:
+            return "fail"
+        if metrics.get("backend_fallback_assumption_exprs", 0) > 0:
+            return "fail"
+        public_verification_evidence = metrics.get(
+            "backend_public_verification_evidence_counts", {}
+        )
+        if isinstance(public_verification_evidence, dict) and (
+            public_verification_evidence.get("none", 0) > 0
+            or public_verification_evidence.get("failed_differentiation", 0) > 0
+        ):
+            return "fail"
+        fallback_verification_evidence = metrics.get(
+            "backend_fallback_verification_evidence_counts", {}
+        )
+        if isinstance(fallback_verification_evidence, dict) and (
+            fallback_verification_evidence.get("none", 0) > 0
+            or fallback_verification_evidence.get("failed_differentiation", 0) > 0
         ):
             return "fail"
         return "pass"
@@ -6614,6 +8263,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 scorecard["suites"].get("calculus_integrate_compact_contract"),
             ),
             (
+                "integrate_backend_observability",
+                scorecard["suites"].get("calculus_integrate_backend_observability"),
+            ),
+            (
                 "integrate_command_matrix",
                 scorecard["suites"].get("calculus_integrate_command_matrix_smoke"),
             ),
@@ -6744,6 +8397,43 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     "integrate_verified_supported_case_count"
                 )
                 integrate_family_count = metrics.get("integrate_family_count")
+                backend_attempts = metrics.get("backend_attempts")
+                backend_public_accepted = metrics.get("backend_public_accepted")
+                backend_unverified_public_acceptances = metrics.get(
+                    "backend_unverified_public_acceptances"
+                )
+                backend_fallback_eligible = metrics.get("backend_fallback_eligible")
+                backend_unverified_fallback_acceptances = metrics.get(
+                    "backend_unverified_fallback_acceptances"
+                )
+                backend_verified_count = metrics.get("backend_verified_count")
+                backend_failed_or_blocked_count = metrics.get(
+                    "backend_failed_or_blocked_count"
+                )
+                backend_required_condition_count = metrics.get(
+                    "backend_required_condition_count"
+                )
+                backend_budget_exceeded_count = metrics.get(
+                    "backend_budget_exceeded_count"
+                )
+                backend_method_probe_budget_exhausted_count = metrics.get(
+                    "backend_method_probe_budget_exhausted_count"
+                )
+                backend_verification_budget_exceeded_count = metrics.get(
+                    "backend_verification_budget_exceeded_count"
+                )
+                backend_method_probes_used_total = metrics.get(
+                    "backend_method_probes_used_total"
+                )
+                backend_verification_checks_used_total = metrics.get(
+                    "backend_verification_checks_used_total"
+                )
+                backend_verification_elapsed_ms = metrics.get(
+                    "backend_verification_elapsed_ms"
+                )
+                backend_verification_pressure_status = metrics.get(
+                    "backend_verification_pressure_status"
+                )
                 if isinstance(diff_supported_cases, int):
                     line += f" supported_cases={diff_supported_cases}"
                 if isinstance(diff_residual_cases, int):
@@ -6840,6 +8530,66 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     )
                 if isinstance(integrate_family_count, int):
                     line += f" families={integrate_family_count}"
+                if isinstance(backend_attempts, int):
+                    line += f" backend_attempts={backend_attempts}"
+                if isinstance(backend_public_accepted, int):
+                    line += f" backend_public_accepted={backend_public_accepted}"
+                if isinstance(backend_unverified_public_acceptances, int):
+                    line += (
+                        " backend_unverified_public="
+                        f"{backend_unverified_public_acceptances}"
+                    )
+                if isinstance(backend_fallback_eligible, int):
+                    line += f" backend_fallback_eligible={backend_fallback_eligible}"
+                if isinstance(backend_unverified_fallback_acceptances, int):
+                    line += (
+                        " backend_unverified_fallback="
+                        f"{backend_unverified_fallback_acceptances}"
+                    )
+                if isinstance(backend_verified_count, int):
+                    line += f" backend_verified={backend_verified_count}"
+                if isinstance(backend_failed_or_blocked_count, int):
+                    line += (
+                        " backend_failed_or_blocked="
+                        f"{backend_failed_or_blocked_count}"
+                    )
+                if isinstance(backend_required_condition_count, int):
+                    line += (
+                        " backend_required_conditions="
+                        f"{backend_required_condition_count}"
+                    )
+                if isinstance(backend_budget_exceeded_count, int):
+                    line += f" backend_budget_exceeded={backend_budget_exceeded_count}"
+                if isinstance(backend_method_probe_budget_exhausted_count, int):
+                    line += (
+                        " backend_method_budget_exhausted="
+                        f"{backend_method_probe_budget_exhausted_count}"
+                    )
+                if isinstance(backend_verification_budget_exceeded_count, int):
+                    line += (
+                        " backend_verification_budget_exceeded="
+                        f"{backend_verification_budget_exceeded_count}"
+                    )
+                if isinstance(backend_method_probes_used_total, int):
+                    line += (
+                        " backend_method_probes_used="
+                        f"{backend_method_probes_used_total}"
+                    )
+                if isinstance(backend_verification_checks_used_total, int):
+                    line += (
+                        " backend_verification_checks_used="
+                        f"{backend_verification_checks_used_total}"
+                    )
+                if isinstance(backend_verification_elapsed_ms, (int, float)):
+                    line += (
+                        " backend_verification_ms="
+                        f"{backend_verification_elapsed_ms:.3f}"
+                    )
+                if isinstance(backend_verification_pressure_status, str):
+                    line += (
+                        " backend_verification_pressure="
+                        f"{backend_verification_pressure_status}"
+                    )
                 lines.append(line)
                 if label == "diff_command_matrix":
                     lines.extend(
@@ -7001,6 +8751,560 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                                 f"- `{label}` slowest {phase_label} evaluations: "
                                 + ", ".join(slowest_phase)
                             )
+                elif label == "integrate_backend_observability":
+                    mode_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_mode_counts")
+                    )
+                    if mode_counts:
+                        lines.append(
+                            f"- `{label}` backend modes: " + ", ".join(mode_counts)
+                        )
+                    method_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_method_counts")
+                    )
+                    if method_counts:
+                        lines.append(
+                            f"- `{label}` backend methods: "
+                            + ", ".join(method_counts)
+                        )
+                    verification_status_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_verification_status_counts")
+                    )
+                    if verification_status_counts:
+                        lines.append(
+                            f"- `{label}` verification statuses: "
+                            + ", ".join(verification_status_counts)
+                        )
+                    residual_reason_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_residual_reason_counts")
+                    )
+                    if residual_reason_counts:
+                        lines.append(
+                            f"- `{label}` residual reasons: "
+                            + ", ".join(residual_reason_counts)
+                        )
+                    method_budget = metrics.get(
+                        "backend_method_probe_budget_exhausted_count"
+                    )
+                    verification_budget = metrics.get(
+                        "backend_verification_budget_exceeded_count"
+                    )
+                    method_probes_used = metrics.get("backend_method_probes_used_total")
+                    verification_checks_used = metrics.get(
+                        "backend_verification_checks_used_total"
+                    )
+                    if isinstance(method_budget, int) or isinstance(
+                        verification_budget, int
+                    ):
+                        budget_pieces = []
+                        if isinstance(method_budget, int):
+                            budget_pieces.append(
+                                f"method_probe_exhausted={method_budget}"
+                            )
+                        if isinstance(verification_budget, int):
+                            budget_pieces.append(
+                                f"verification_exceeded={verification_budget}"
+                            )
+                        lines.append(
+                            f"- `{label}` budget split: "
+                            + ", ".join(budget_pieces)
+                        )
+                    usage_pieces = []
+                    if isinstance(method_probes_used, int):
+                        usage_pieces.append(f"method_probes_used={method_probes_used}")
+                    if isinstance(verification_checks_used, int):
+                        usage_pieces.append(
+                            f"verification_checks_used={verification_checks_used}"
+                        )
+                    if usage_pieces:
+                        lines.append(
+                            f"- `{label}` budget usage: "
+                            + ", ".join(usage_pieces)
+                        )
+                    verification_pressure = backend_verification_pressure_fragment(
+                        metrics.get("backend_verification_pressure")
+                    )
+                    if verification_pressure:
+                        lines.append(
+                            f"- `{label}` backend verification pressure: "
+                            + verification_pressure
+                        )
+                    method_probe_usage = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_method_probe_usage_by_method")
+                    )
+                    if method_probe_usage:
+                        lines.append(
+                            f"- `{label}` method-probe usage by method: "
+                            + ", ".join(method_probe_usage)
+                        )
+                    method_probe_attempts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_method_probe_attempt_counts")
+                    )
+                    if method_probe_attempts:
+                        lines.append(
+                            f"- `{label}` method-probe attempts: "
+                            + ", ".join(method_probe_attempts)
+                        )
+                    method_probe_candidates = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_method_probe_candidate_counts")
+                    )
+                    if method_probe_candidates:
+                        lines.append(
+                            f"- `{label}` method-probe candidates: "
+                            + ", ".join(method_probe_candidates)
+                        )
+                    method_probe_no_matches = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_method_probe_no_match_counts")
+                    )
+                    if method_probe_no_matches:
+                        lines.append(
+                            f"- `{label}` method-probe no-matches: "
+                            + ", ".join(method_probe_no_matches)
+                        )
+                    method_probe_no_match_reasons = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_method_probe_no_match_reason_counts")
+                        )
+                    )
+                    if method_probe_no_match_reasons:
+                        lines.append(
+                            f"- `{label}` method-probe no-match reasons: "
+                            + ", ".join(method_probe_no_match_reasons)
+                        )
+                    verification_usage = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_verification_check_usage_by_method")
+                    )
+                    if verification_usage:
+                        lines.append(
+                            f"- `{label}` verification-check usage by method: "
+                            + ", ".join(verification_usage)
+                        )
+                    verification_status_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_status_by_method")
+                        )
+                    )
+                    if verification_status_by_method:
+                        lines.append(
+                            f"- `{label}` verification status by method: "
+                            + ", ".join(verification_status_by_method)
+                        )
+                    residual_reason_by_method = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_residual_reason_by_method")
+                    )
+                    if residual_reason_by_method:
+                        lines.append(
+                            f"- `{label}` residual reason by method: "
+                            + ", ".join(residual_reason_by_method)
+                        )
+                    verification_blocker_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_verification_blocker_counts")
+                    )
+                    if verification_blocker_counts:
+                        lines.append(
+                            f"- `{label}` verification blockers: "
+                            + ", ".join(verification_blocker_counts)
+                        )
+                    verification_blocker_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_blocker_by_method")
+                        )
+                    )
+                    if verification_blocker_by_method:
+                        lines.append(
+                            f"- `{label}` verification blocker by method: "
+                            + ", ".join(verification_blocker_by_method)
+                        )
+                    failure_class_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_failure_class_counts")
+                    )
+                    if failure_class_counts:
+                        lines.append(
+                            f"- `{label}` failure classes: "
+                            + ", ".join(failure_class_counts)
+                        )
+                    failure_class_by_method = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_failure_class_by_method")
+                    )
+                    if failure_class_by_method:
+                        lines.append(
+                            f"- `{label}` failure class by method: "
+                            + ", ".join(failure_class_by_method)
+                        )
+                    verification_residual_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_verification_residual_counts")
+                    )
+                    if verification_residual_counts:
+                        lines.append(
+                            f"- `{label}` verification residuals: "
+                            + ", ".join(verification_residual_counts)
+                        )
+                    verification_residual_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_residual_by_method")
+                        )
+                    )
+                    if verification_residual_by_method:
+                        lines.append(
+                            f"- `{label}` verification residual by method: "
+                            + ", ".join(verification_residual_by_method)
+                        )
+                    verification_residual_kind_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_residual_kind_counts")
+                        )
+                    )
+                    if verification_residual_kind_counts:
+                        lines.append(
+                            f"- `{label}` verification residual kinds: "
+                            + ", ".join(verification_residual_kind_counts)
+                        )
+                    verification_residual_kind_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_residual_kind_by_method")
+                        )
+                    )
+                    if verification_residual_kind_by_method:
+                        lines.append(
+                            f"- `{label}` verification residual kind by method: "
+                            + ", ".join(verification_residual_kind_by_method)
+                        )
+                    verification_residual_signature_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_residual_signature_counts")
+                        )
+                    )
+                    if verification_residual_signature_counts:
+                        lines.append(
+                            f"- `{label}` verification residual signatures: "
+                            + ", ".join(verification_residual_signature_counts)
+                        )
+                    verification_residual_signature_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_residual_signature_by_method"
+                            )
+                        )
+                    )
+                    if verification_residual_signature_by_method:
+                        lines.append(
+                            f"- `{label}` verification residual signature by method: "
+                            + ", ".join(verification_residual_signature_by_method)
+                        )
+                    publication_status_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_publication_status_counts")
+                    )
+                    if publication_status_counts:
+                        lines.append(
+                            f"- `{label}` publication statuses: "
+                            + ", ".join(publication_status_counts)
+                        )
+                    publication_status_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_publication_status_by_method")
+                        )
+                    )
+                    if publication_status_by_method:
+                        lines.append(
+                            f"- `{label}` publication status by method: "
+                            + ", ".join(publication_status_by_method)
+                        )
+                    fallback_status_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_fallback_status_counts")
+                    )
+                    if fallback_status_counts:
+                        lines.append(
+                            f"- `{label}` fallback statuses: "
+                            + ", ".join(fallback_status_counts)
+                        )
+                    fallback_status_by_method = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_fallback_status_by_method")
+                    )
+                    if fallback_status_by_method:
+                        lines.append(
+                            f"- `{label}` fallback status by method: "
+                            + ", ".join(fallback_status_by_method)
+                        )
+                    trace_level_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_trace_level_counts")
+                    )
+                    if trace_level_counts:
+                        lines.append(
+                            f"- `{label}` trace levels: "
+                            + ", ".join(trace_level_counts)
+                        )
+                    constant_policy_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_constant_policy_counts")
+                    )
+                    if constant_policy_counts:
+                        lines.append(
+                            f"- `{label}` constant policies: "
+                            + ", ".join(constant_policy_counts)
+                        )
+                    public_trace_level_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_public_trace_level_counts")
+                    )
+                    if public_trace_level_counts:
+                        lines.append(
+                            f"- `{label}` public trace levels: "
+                            + ", ".join(public_trace_level_counts)
+                        )
+                    public_constant_policy_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_public_constant_policy_counts")
+                        )
+                    )
+                    if public_constant_policy_counts:
+                        lines.append(
+                            f"- `{label}` public constant policies: "
+                            + ", ".join(public_constant_policy_counts)
+                        )
+                    fallback_trace_level_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_fallback_trace_level_counts")
+                    )
+                    if fallback_trace_level_counts:
+                        lines.append(
+                            f"- `{label}` fallback trace levels: "
+                            + ", ".join(fallback_trace_level_counts)
+                        )
+                    fallback_constant_policy_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_fallback_constant_policy_counts")
+                        )
+                    )
+                    if fallback_constant_policy_counts:
+                        lines.append(
+                            f"- `{label}` fallback constant policies: "
+                            + ", ".join(fallback_constant_policy_counts)
+                        )
+                    assumption_exprs = metrics.get("backend_assumption_exprs")
+                    public_assumption_exprs = metrics.get(
+                        "backend_public_assumption_exprs"
+                    )
+                    fallback_assumption_exprs = metrics.get(
+                        "backend_fallback_assumption_exprs"
+                    )
+                    if all(
+                        isinstance(value, int)
+                        for value in (
+                            assumption_exprs,
+                            public_assumption_exprs,
+                            fallback_assumption_exprs,
+                        )
+                    ):
+                        lines.append(
+                            f"- `{label}` assumption exprs: "
+                            f"total={assumption_exprs}, "
+                            f"public={public_assumption_exprs}, "
+                            f"fallback={fallback_assumption_exprs}"
+                        )
+                    verification_evidence_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_evidence_counts")
+                        )
+                    )
+                    if verification_evidence_counts:
+                        lines.append(
+                            f"- `{label}` verification evidence: "
+                            + ", ".join(verification_evidence_counts)
+                        )
+                    public_verification_evidence_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_public_verification_evidence_counts")
+                        )
+                    )
+                    if public_verification_evidence_counts:
+                        lines.append(
+                            f"- `{label}` public verification evidence: "
+                            + ", ".join(public_verification_evidence_counts)
+                        )
+                    fallback_verification_evidence_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_fallback_verification_evidence_counts")
+                        )
+                    )
+                    if fallback_verification_evidence_counts:
+                        lines.append(
+                            f"- `{label}` fallback verification evidence: "
+                            + ", ".join(fallback_verification_evidence_counts)
+                        )
+                    verification_evidence_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_evidence_by_method")
+                        )
+                    )
+                    if verification_evidence_by_method:
+                        lines.append(
+                            f"- `{label}` verification evidence by method: "
+                            + ", ".join(verification_evidence_by_method)
+                        )
+                    public_verification_evidence_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_public_verification_evidence_by_method"
+                            )
+                        )
+                    )
+                    if public_verification_evidence_by_method:
+                        lines.append(
+                            f"- `{label}` public verification evidence by method: "
+                            + ", ".join(public_verification_evidence_by_method)
+                        )
+                    fallback_verification_evidence_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_fallback_verification_evidence_by_method"
+                            )
+                        )
+                    )
+                    if fallback_verification_evidence_by_method:
+                        lines.append(
+                            f"- `{label}` fallback verification evidence by method: "
+                            + ", ".join(fallback_verification_evidence_by_method)
+                        )
+                    verification_normalization_reason_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_normalization_reason_counts"
+                            )
+                        )
+                    )
+                    if verification_normalization_reason_counts:
+                        lines.append(
+                            f"- `{label}` verification normalization reasons: "
+                            + ", ".join(verification_normalization_reason_counts)
+                        )
+                    public_verification_normalization_reason_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_public_verification_normalization_reason_counts"
+                            )
+                        )
+                    )
+                    if public_verification_normalization_reason_counts:
+                        lines.append(
+                            f"- `{label}` public verification normalization reasons: "
+                            + ", ".join(
+                                public_verification_normalization_reason_counts
+                            )
+                        )
+                    fallback_verification_normalization_reason_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_fallback_verification_normalization_reason_counts"
+                            )
+                        )
+                    )
+                    if fallback_verification_normalization_reason_counts:
+                        lines.append(
+                            f"- `{label}` fallback verification normalization reasons: "
+                            + ", ".join(
+                                fallback_verification_normalization_reason_counts
+                            )
+                        )
+                    verification_normalization_reason_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_normalization_reason_by_method"
+                            )
+                        )
+                    )
+                    if verification_normalization_reason_by_method:
+                        lines.append(
+                            f"- `{label}` verification normalization reason by method: "
+                            + ", ".join(verification_normalization_reason_by_method)
+                        )
+                    public_verification_normalization_reason_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_public_verification_normalization_reason_by_method"
+                            )
+                        )
+                    )
+                    if public_verification_normalization_reason_by_method:
+                        lines.append(
+                            f"- `{label}` public verification normalization reason by method: "
+                            + ", ".join(
+                                public_verification_normalization_reason_by_method
+                            )
+                        )
+                    fallback_verification_normalization_reason_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_fallback_verification_normalization_reason_by_method"
+                            )
+                        )
+                    )
+                    if fallback_verification_normalization_reason_by_method:
+                        lines.append(
+                            f"- `{label}` fallback verification normalization reason by method: "
+                            + ", ".join(
+                                fallback_verification_normalization_reason_by_method
+                            )
+                        )
+                    verification_normalization_pass_count_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_normalization_pass_count_counts"
+                            )
+                        )
+                    )
+                    if verification_normalization_pass_count_counts:
+                        lines.append(
+                            f"- `{label}` verification normalization passes: "
+                            f"max={metrics.get('backend_max_verification_normalization_passes', 0)}; "
+                            + ", ".join(verification_normalization_pass_count_counts)
+                        )
+                    public_verification_normalization_pass_count_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_public_verification_normalization_pass_count_counts"
+                            )
+                        )
+                    )
+                    if public_verification_normalization_pass_count_counts:
+                        lines.append(
+                            f"- `{label}` public verification normalization passes: "
+                            f"max={metrics.get('backend_public_max_verification_normalization_passes', 0)}; "
+                            + ", ".join(
+                                public_verification_normalization_pass_count_counts
+                            )
+                        )
+                    fallback_verification_normalization_pass_count_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_fallback_verification_normalization_pass_count_counts"
+                            )
+                        )
+                    )
+                    if fallback_verification_normalization_pass_count_counts:
+                        lines.append(
+                            f"- `{label}` fallback verification normalization passes: "
+                            f"max={metrics.get('backend_fallback_max_verification_normalization_passes', 0)}; "
+                            + ", ".join(
+                                fallback_verification_normalization_pass_count_counts
+                            )
+                        )
+                    verification_normalization_pass_count_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_normalization_pass_count_by_method"
+                            )
+                        )
+                    )
+                    if verification_normalization_pass_count_by_method:
+                        lines.append(
+                            f"- `{label}` verification normalization passes by method: "
+                            + ", ".join(verification_normalization_pass_count_by_method)
+                        )
+                    required_condition_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_required_condition_counts")
+                    )
+                    if required_condition_counts:
+                        lines.append(
+                            f"- `{label}` required conditions: "
+                            + ", ".join(required_condition_counts)
+                        )
                 elif label == "integrate_command_matrix":
                     lines.extend(
                         calculus_runtime_lines(
@@ -8384,6 +10688,66 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 )
             if "integrate_family_count" in metrics:
                 pieces.append(f"families={metrics['integrate_family_count']}")
+            if "backend_attempts" in metrics:
+                pieces.append(f"backend_attempts={metrics['backend_attempts']}")
+            if "backend_public_accepted" in metrics:
+                pieces.append(
+                    f"backend_public_accepted={metrics['backend_public_accepted']}"
+                )
+            if "backend_unverified_public_acceptances" in metrics:
+                pieces.append(
+                    "backend_unverified_public="
+                    f"{metrics['backend_unverified_public_acceptances']}"
+                )
+            if "backend_fallback_eligible" in metrics:
+                pieces.append(
+                    f"backend_fallback_eligible={metrics['backend_fallback_eligible']}"
+                )
+            if "backend_unverified_fallback_acceptances" in metrics:
+                pieces.append(
+                    "backend_unverified_fallback="
+                    f"{metrics['backend_unverified_fallback_acceptances']}"
+                )
+            if "backend_required_condition_count" in metrics:
+                pieces.append(
+                    "backend_required_conditions="
+                    f"{metrics['backend_required_condition_count']}"
+                )
+            if "backend_budget_exceeded_count" in metrics:
+                pieces.append(
+                    "backend_budget_exceeded="
+                    f"{metrics['backend_budget_exceeded_count']}"
+                )
+            if "backend_method_probe_budget_exhausted_count" in metrics:
+                pieces.append(
+                    "backend_method_budget_exhausted="
+                    f"{metrics['backend_method_probe_budget_exhausted_count']}"
+                )
+            if "backend_verification_budget_exceeded_count" in metrics:
+                pieces.append(
+                    "backend_verification_budget_exceeded="
+                    f"{metrics['backend_verification_budget_exceeded_count']}"
+                )
+            if "backend_method_probes_used_total" in metrics:
+                pieces.append(
+                    "backend_method_probes_used="
+                    f"{metrics['backend_method_probes_used_total']}"
+                )
+            if "backend_verification_checks_used_total" in metrics:
+                pieces.append(
+                    "backend_verification_checks_used="
+                    f"{metrics['backend_verification_checks_used_total']}"
+                )
+            if "backend_verification_elapsed_ms" in metrics:
+                pieces.append(
+                    "backend_verify="
+                    f"{metrics['backend_verification_elapsed_ms']:.3f}ms"
+                )
+            if "backend_verification_pressure_status" in metrics:
+                pieces.append(
+                    "backend_verification_pressure="
+                    f"{metrics['backend_verification_pressure_status']}"
+                )
             summary = " ".join(pieces)
         elif "derived" in metrics:
             pieces = []

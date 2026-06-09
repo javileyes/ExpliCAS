@@ -7,6 +7,9 @@ use crate::expr_extract::extract_abs_argument_view;
 use crate::expr_nary::{build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign};
 use crate::expr_predicates::{contains_named_var, contains_variable};
 use crate::factor::factor;
+use crate::general_integration_backend::{
+    verify_antiderivative_by_differentiation, AlgorithmicIntegrationCandidate,
+};
 use crate::polynomial::Polynomial;
 use crate::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
 use crate::symbolic_integration_derivative_cofactor_support::{
@@ -17960,6 +17963,29 @@ fn combine_factor_signs(outer: Sign, factor: Sign) -> Sign {
     }
 }
 
+fn table_reused_constant_integration_candidate(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> AlgorithmicIntegrationCandidate {
+    let var_expr = ctx.var(var);
+    let antiderivative = mul2_raw(ctx, expr, var_expr);
+    AlgorithmicIntegrationCandidate::verified_table_reused(expr, var, antiderivative)
+}
+
+fn table_reused_arctan_kernel_integration_candidate(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> AlgorithmicIntegrationCandidate {
+    let var_expr = ctx.var(var);
+    let antiderivative = ctx.call_builtin(BuiltinFn::Arctan, vec![var_expr]);
+    let mut candidate =
+        AlgorithmicIntegrationCandidate::unverified_table_reused(expr, var, antiderivative);
+    verify_antiderivative_by_differentiation(ctx, &mut candidate);
+    candidate
+}
+
 /// Integrate `expr` with respect to `var` using a small set of symbolic rules.
 pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     // Extract variant info in one borrow, then process with owned ExprId values.
@@ -18275,8 +18301,7 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if !contains_named_var(ctx, expr, var) {
-        let var_expr = ctx.var(var);
-        return Some(mul2_raw(ctx, expr, var_expr));
+        return table_reused_constant_integration_candidate(ctx, expr, var).public_antiderivative();
     }
 
     if let IntKind::Pow(base, exp) = kind {
@@ -18650,8 +18675,8 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         if let Expr::Number(n) = ctx.get(num) {
             if n.is_one() {
                 if is_var_square_plus_one(ctx, den, var) {
-                    let var_expr = ctx.var(var);
-                    return Some(ctx.call_builtin(BuiltinFn::Arctan, vec![var_expr]));
+                    return table_reused_arctan_kernel_integration_candidate(ctx, expr, var)
+                        .public_antiderivative();
                 }
 
                 if let Some(integral) = reciprocal_trig_square_antiderivative(ctx, den, var) {
@@ -18953,6 +18978,9 @@ mod tests {
         integrate_symbolic_required_nonzero_conditions,
         integrate_symbolic_required_positive_conditions,
     };
+    use crate::general_integration_backend::{
+        AlgorithmicIntegrationMethod, AlgorithmicIntegrationVerificationStatus,
+    };
     use crate::polynomial::Polynomial;
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
@@ -18977,6 +19005,28 @@ mod tests {
         let expr = parse("x^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "x^3 / 3");
+    }
+
+    #[test]
+    fn routes_constant_table_reuse_through_algorithmic_boundary_without_output_change() {
+        let mut ctx = Context::new();
+        let expr = parse("3", &mut ctx).expect("parse");
+
+        let candidate = super::table_reused_constant_integration_candidate(&mut ctx, expr, "x");
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::TableReused);
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::Verified
+        );
+        assert!(candidate.is_publicly_acceptable());
+        let public_antiderivative = candidate
+            .public_antiderivative()
+            .expect("verified table candidate should be public");
+        assert_eq!(rendered(&ctx, public_antiderivative), "3 * x");
+
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "3 * x");
     }
 
     #[test]
@@ -20215,6 +20265,21 @@ mod tests {
     fn integrates_arctan_kernel() {
         let mut ctx = Context::new();
         let expr = parse("1/(x^2+1)", &mut ctx).expect("parse");
+
+        let candidate =
+            super::table_reused_arctan_kernel_integration_candidate(&mut ctx, expr, "x");
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::TableReused);
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::Verified
+        );
+        assert!(candidate.is_publicly_acceptable());
+        let public_antiderivative = candidate
+            .public_antiderivative()
+            .expect("verified arctan table candidate should be public");
+        assert_eq!(rendered(&ctx, public_antiderivative), "arctan(x)");
+
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "arctan(x)");
     }

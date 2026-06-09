@@ -668,12 +668,20 @@ como filas reutilizables de una matriz de soporte:
 - verificación de antiderivadas soportadas:
   `diff(integrate(f, x), x) ~ f` sólo para integrales table-driven o
   sustituciones explícitamente soportadas
+- verificación de backend algorítmico de integración:
+  `diff(candidate_antiderivative, x) ~ f` sólo cuando el candidato viene de una
+  frontera de backend estructurada con método, assumptions, estado de
+  verificación, política de dominio/constante y residual reason
 - álgebra de límites bajo condiciones seguras:
   `limit(f + g) ~ limit(f) + limit(g)` sólo cuando ambos límites y sus dominios
   están dentro de política
 
 Estas propiedades deben tratarse como presión de engine, no como permiso para
 abrir búsqueda simbólica amplia.
+Para la futura vía híbrida de integración general, las pruebas metamórficas son
+un verificador y clasificador de candidatos, no una fuente de verdad: un
+candidato no verificado debe quedar como residual/discovery aunque parezca
+plausible.
 
 Reglas operativas:
 

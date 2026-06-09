@@ -864,7 +864,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
 
         self.assertEqual(
             case.expected_result,
-            "1/4·ln(4·x^2 + 12·x + 9 + phi) + (atan(phi^(-1/2)·(2·x + 3))·3)/(2·sqrt(phi))",
+            "1/4·ln(4·x^2 + 12·x + 9 + phi) + (atan((2·x + 3) / sqrt(phi))·3)/(2·sqrt(phi))",
         )
         self.assertEqual(
             case.expected_derivative_equivalent_to,

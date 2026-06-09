@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import io
 import importlib.util
+import json
 import pathlib
 import sys
 import unittest
@@ -244,6 +245,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "calculus_limit_presimplify_contract",
                 "calculus_limit_command_matrix_smoke",
                 "calculus_integrate_compact_contract",
+                "calculus_integrate_backend_observability",
                 "calculus_integrate_command_matrix_smoke",
                 "calculus_residual_matrix_smoke",
             ],
@@ -255,6 +257,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("calculus_limit_presimplify_contract", fast_embedded_names)
         self.assertIn("calculus_limit_command_matrix_smoke", fast_embedded_names)
         self.assertIn("calculus_integrate_compact_contract", fast_embedded_names)
+        self.assertIn("calculus_integrate_backend_observability", fast_embedded_names)
         self.assertIn("calculus_integrate_command_matrix_smoke", fast_embedded_names)
         self.assertIn("calculus_residual_matrix_smoke", fast_embedded_names)
         self.assertNotIn("calculus_limit_contract", fast_names)
@@ -283,6 +286,8 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("calculus_limit_presimplify_contract", full_names)
         self.assertIn("calculus_limit_command_matrix_smoke", guardrail_names)
         self.assertIn("calculus_limit_command_matrix_smoke", full_names)
+        self.assertIn("calculus_integrate_backend_observability", guardrail_names)
+        self.assertIn("calculus_integrate_backend_observability", full_names)
         self.assertIn("calculus_integrate_command_matrix_smoke", guardrail_names)
         self.assertIn("calculus_integrate_command_matrix_smoke", full_names)
         self.assertIn("calculus_residual_matrix_smoke", guardrail_names)
@@ -324,6 +329,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(
             MODULE.SUITES["calculus_integrate_command_matrix_smoke"].category,
             "calculus",
+        )
+        self.assertEqual(
+            MODULE.SUITES["calculus_integrate_backend_observability"].category,
+            "observability",
         )
         self.assertEqual(
             MODULE.SUITES["calculus_integrate_exhaustive_contract"].category,
@@ -382,6 +391,14 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         )
         self.assertIn("--ensure-release-cas-cli", integrate_matrix_command)
         self.assertIn("--summary-json", integrate_matrix_command)
+        integrate_backend_command = MODULE.SUITES[
+            "calculus_integrate_backend_observability"
+        ].command
+        self.assertIn("cas_math", integrate_backend_command)
+        self.assertIn(
+            "backend_observability_reports_boundary_metrics",
+            integrate_backend_command,
+        )
         integrate_exhaustive_command = MODULE.SUITES[
             "calculus_integrate_exhaustive_contract"
         ].command
@@ -1009,6 +1026,1159 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(
             MODULE.suite_status("calculus_integrate_command_matrix_smoke", metrics, 0),
             "pass",
+        )
+
+    def test_parse_algorithmic_backend_observability_extracts_boundary_metrics(
+        self,
+    ):
+        metrics = MODULE.parse_algorithmic_backend_observability(
+            """
+running 1 test
+algorithmic_backend_observability: {"assumption_exprs": 0, "attempts": 16, "constant_policy_counts": {"arbitrary_constant_omitted": 13, "unspecified": 3}, "failure_class_by_method": {"rational/budget_exceeded": 1, "table_reused/residual_affine_in_variable": 1, "table_reused/residual_function_of_variable": 1, "unsupported/budget_exceeded": 1, "unsupported/disabled_by_mode": 1, "unsupported/unsupported_method": 1}, "failure_class_counts": {"budget_exceeded": 2, "disabled_by_mode": 1, "residual_affine_in_variable": 1, "residual_function_of_variable": 1, "unsupported_method": 1}, "fallback_assumption_exprs": 0, "fallback_constant_policy_counts": {"arbitrary_constant_omitted": 1}, "fallback_eligible": 1, "fallback_max_verification_normalization_passes": 0, "fallback_status_by_method": {"hermite/blocked_by_mode": 4, "heurisch_probe/blocked_by_mode": 1, "rational/blocked_by_candidate_policy": 1, "rational/blocked_by_mode": 3, "rational/eligible": 1, "table_reused/blocked_by_candidate_policy": 2, "table_reused/blocked_by_mode": 1, "unsupported/blocked_by_candidate_policy": 3}, "fallback_status_counts": {"blocked_by_candidate_policy": 6, "blocked_by_mode": 9, "eligible": 1}, "fallback_trace_level_counts": {"algorithmic_summary": 1}, "fallback_verification_evidence_by_method": {"rational/direct_differentiation": 1}, "fallback_verification_evidence_counts": {"direct_differentiation": 1}, "fallback_verification_normalization_pass_count_by_method": {"rational/0": 1}, "fallback_verification_normalization_pass_count_counts": {"0": 1}, "fallback_verification_normalization_reason_by_method": {}, "fallback_verification_normalization_reason_counts": {}, "max_verification_normalization_passes": 2, "method_counts": {"hermite": 4, "heurisch_probe": 1, "rational": 5, "table_reused": 3, "unsupported": 3}, "method_probe_attempt_counts": {"hermite": 6, "heurisch_probe": 2, "rational": 11}, "method_probe_budget_exhausted": 1, "method_probe_candidate_counts": {"hermite": 4, "heurisch_probe": 1, "rational": 5}, "method_probe_no_match_counts": {"hermite": 2, "heurisch_probe": 1, "rational": 6}, "method_probe_no_match_reason_counts": {"hermite/denominator_policy_mismatch": 1, "hermite/shape_mismatch": 1, "heurisch_probe/shape_mismatch": 1, "rational/numerator_policy_mismatch": 5, "rational/shape_mismatch": 1}, "method_probe_usage_by_method": {"hermite": 8, "heurisch_probe": 3, "rational": 5, "unsupported": 3}, "method_probes_used_total": 19, "mode_counts": {"diagnostic_only": 14, "disabled": 1, "residual_fallback": 1}, "public_accepted": 10, "public_assumption_exprs": 0, "public_constant_policy_counts": {"arbitrary_constant_omitted": 10}, "public_max_verification_normalization_passes": 2, "public_trace_level_counts": {"algorithmic_summary": 10}, "public_verification_evidence_by_method": {"hermite/normalized_differentiation": 4, "heurisch_probe/direct_differentiation": 1, "rational/direct_differentiation": 2, "rational/normalized_differentiation": 2, "table_reused/direct_differentiation": 1}, "public_verification_evidence_counts": {"direct_differentiation": 4, "normalized_differentiation": 6}, "public_verification_normalization_pass_count_by_method": {"hermite/1": 3, "hermite/2": 1, "heurisch_probe/0": 1, "rational/0": 2, "rational/1": 1, "rational/2": 1, "table_reused/0": 1}, "public_verification_normalization_pass_count_counts": {"0": 4, "1": 4, "2": 2}, "public_verification_normalization_reason_by_method": {"hermite/numeric_scaled_quotient": 1, "hermite/power_one_elision": 2, "hermite/quotient_numeric_factor_cancellation": 1, "rational/numeric_scaled_quotient": 1, "rational/symbolic_scaled_quotient": 1}, "public_verification_normalization_reason_counts": {"numeric_scaled_quotient": 2, "power_one_elision": 2, "quotient_numeric_factor_cancellation": 1, "symbolic_scaled_quotient": 1}, "publication_status_by_method": {"hermite/accepted": 4, "heurisch_probe/accepted": 1, "rational/accepted": 4, "rational/rejected_residual_reason": 1, "table_reused/accepted": 1, "table_reused/rejected_residual_reason": 2, "unsupported/rejected_no_antiderivative": 3}, "publication_status_counts": {"accepted": 10, "rejected_no_antiderivative": 3, "rejected_residual_reason": 3}, "required_condition_counts": {"nonzero": 6}, "residual_reason_by_method": {"rational/budget_exceeded": 1, "table_reused/verification_failed": 2, "unsupported/budget_exceeded": 1, "unsupported/disabled_by_mode": 1, "unsupported/unsupported_method": 1}, "residual_reason_counts": {"budget_exceeded": 2, "disabled_by_mode": 1, "unsupported_method": 1, "verification_failed": 2}, "trace_level_counts": {"algorithmic_summary": 13, "diagnostic_only": 3}, "unverified_fallback_acceptances": 0, "unverified_public_acceptances": 0, "verification_blocker_by_method": {"rational/budget_exceeded": 1, "table_reused/derivative_mismatch": 2}, "verification_blocker_counts": {"budget_exceeded": 1, "derivative_mismatch": 2}, "verification_budget_exceeded": 1, "verification_check_usage_by_method": {"hermite": 4, "heurisch_probe": 1, "rational": 4}, "verification_checks_used_total": 9, "verification_elapsed_ms": 2.125, "verification_evidence_by_method": {"hermite/normalized_differentiation": 4, "heurisch_probe/direct_differentiation": 1, "rational/direct_differentiation": 2, "rational/none": 1, "rational/normalized_differentiation": 2, "table_reused/direct_differentiation": 1, "table_reused/failed_differentiation": 2, "unsupported/none": 3}, "verification_evidence_counts": {"direct_differentiation": 4, "failed_differentiation": 2, "none": 4, "normalized_differentiation": 6}, "verification_normalization_pass_count_by_method": {"hermite/1": 3, "hermite/2": 1, "heurisch_probe/0": 1, "rational/0": 3, "rational/1": 1, "rational/2": 1, "table_reused/0": 3, "unsupported/0": 3}, "verification_normalization_pass_count_counts": {"0": 10, "1": 4, "2": 2}, "verification_normalization_reason_by_method": {"hermite/numeric_scaled_quotient": 1, "hermite/power_one_elision": 2, "hermite/quotient_numeric_factor_cancellation": 1, "rational/numeric_scaled_quotient": 1, "rational/symbolic_scaled_quotient": 1}, "verification_normalization_reason_counts": {"numeric_scaled_quotient": 2, "power_one_elision": 2, "quotient_numeric_factor_cancellation": 1, "symbolic_scaled_quotient": 1}, "verification_residual_by_method": {"table_reused/derivative_minus_integrand": 2}, "verification_residual_counts": {"derivative_minus_integrand": 2}, "verification_residual_kind_by_method": {"table_reused/depends_on_variable": 2}, "verification_residual_kind_counts": {"depends_on_variable": 2}, "verification_residual_signature_by_method": {"table_reused/affine_in_variable": 1, "table_reused/function_of_variable": 1}, "verification_residual_signature_counts": {"affine_in_variable": 1, "function_of_variable": 1}, "verification_status_by_method": {"hermite/verified": 4, "heurisch_probe/verified_under_conditions": 1, "rational/inconclusive": 1, "rational/verified_under_conditions": 4, "table_reused/failed": 2, "table_reused/verified": 1, "unsupported/inconclusive": 1, "unsupported/not_attempted": 2}, "verification_status_counts": {"failed": 2, "inconclusive": 2, "not_attempted": 2, "verified": 5, "verified_under_conditions": 5}}
+test result: ok. 1 passed
+"""
+        )
+
+        self.assertEqual(metrics["total_cases"], 16)
+        self.assertEqual(metrics["passed"], 16)
+        self.assertEqual(metrics["failed"], 0)
+        self.assertEqual(metrics["backend_attempts"], 16)
+        self.assertEqual(metrics["backend_public_accepted"], 10)
+        self.assertEqual(metrics["backend_unverified_public_acceptances"], 0)
+        self.assertEqual(metrics["backend_fallback_eligible"], 1)
+        self.assertEqual(metrics["backend_unverified_fallback_acceptances"], 0)
+        self.assertEqual(metrics["backend_verified_count"], 10)
+        self.assertEqual(metrics["backend_failed_or_blocked_count"], 6)
+        self.assertEqual(metrics["backend_required_condition_count"], 6)
+        self.assertEqual(metrics["backend_budget_exceeded_count"], 2)
+        self.assertEqual(metrics["backend_method_probe_budget_exhausted_count"], 1)
+        self.assertEqual(metrics["backend_verification_budget_exceeded_count"], 1)
+        self.assertEqual(metrics["backend_method_probes_used_total"], 19)
+        self.assertEqual(metrics["backend_verification_checks_used_total"], 9)
+        self.assertEqual(metrics["backend_verification_elapsed_ms"], 2.125)
+        self.assertEqual(metrics["backend_verification_pressure_status"], "watch")
+        self.assertEqual(
+            metrics["backend_verification_pressure"],
+            {
+                "status": "watch",
+                "primary_signal": "normalization_passes",
+                "reason": "max_passes=2",
+                "attempts": 16,
+                "verification_checks_used_total": 9,
+                "checks_per_attempt": 0.562,
+                "max_verification_normalization_passes": 2,
+                "verification_elapsed_ms": 2.125,
+            },
+        )
+        self.assertEqual(metrics["backend_assumption_exprs"], 0)
+        self.assertEqual(metrics["backend_public_assumption_exprs"], 0)
+        self.assertEqual(metrics["backend_fallback_assumption_exprs"], 0)
+        self.assertEqual(
+            metrics["backend_verification_evidence_counts"],
+            {
+                "direct_differentiation": 4,
+                "failed_differentiation": 2,
+                "none": 4,
+                "normalized_differentiation": 6,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_public_verification_evidence_counts"],
+            {"direct_differentiation": 4, "normalized_differentiation": 6},
+        )
+        self.assertEqual(
+            metrics["backend_fallback_verification_evidence_counts"],
+            {"direct_differentiation": 1},
+        )
+        self.assertEqual(
+            metrics["backend_verification_evidence_by_method"],
+            {
+                "hermite/normalized_differentiation": 4,
+                "heurisch_probe/direct_differentiation": 1,
+                "rational/direct_differentiation": 2,
+                "rational/none": 1,
+                "rational/normalized_differentiation": 2,
+                "table_reused/direct_differentiation": 1,
+                "table_reused/failed_differentiation": 2,
+                "unsupported/none": 3,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_public_verification_evidence_by_method"],
+            {
+                "hermite/normalized_differentiation": 4,
+                "heurisch_probe/direct_differentiation": 1,
+                "rational/direct_differentiation": 2,
+                "rational/normalized_differentiation": 2,
+                "table_reused/direct_differentiation": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_fallback_verification_evidence_by_method"],
+            {"rational/direct_differentiation": 1},
+        )
+        self.assertEqual(
+            metrics["backend_verification_normalization_reason_counts"],
+            {
+                "numeric_scaled_quotient": 2,
+                "power_one_elision": 2,
+                "quotient_numeric_factor_cancellation": 1,
+                "symbolic_scaled_quotient": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_public_verification_normalization_reason_counts"],
+            {
+                "numeric_scaled_quotient": 2,
+                "power_one_elision": 2,
+                "quotient_numeric_factor_cancellation": 1,
+                "symbolic_scaled_quotient": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_fallback_verification_normalization_reason_counts"],
+            {},
+        )
+        self.assertEqual(
+            metrics["backend_verification_normalization_reason_by_method"],
+            {
+                "hermite/numeric_scaled_quotient": 1,
+                "hermite/power_one_elision": 2,
+                "hermite/quotient_numeric_factor_cancellation": 1,
+                "rational/numeric_scaled_quotient": 1,
+                "rational/symbolic_scaled_quotient": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_public_verification_normalization_reason_by_method"],
+            {
+                "hermite/numeric_scaled_quotient": 1,
+                "hermite/power_one_elision": 2,
+                "hermite/quotient_numeric_factor_cancellation": 1,
+                "rational/numeric_scaled_quotient": 1,
+                "rational/symbolic_scaled_quotient": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_fallback_verification_normalization_reason_by_method"],
+            {},
+        )
+        self.assertEqual(metrics["backend_max_verification_normalization_passes"], 2)
+        self.assertEqual(
+            metrics["backend_public_max_verification_normalization_passes"], 2
+        )
+        self.assertEqual(
+            metrics["backend_fallback_max_verification_normalization_passes"], 0
+        )
+        self.assertEqual(
+            metrics["backend_verification_normalization_pass_count_counts"],
+            {"0": 10, "1": 4, "2": 2},
+        )
+        self.assertEqual(
+            metrics["backend_public_verification_normalization_pass_count_counts"],
+            {"0": 4, "1": 4, "2": 2},
+        )
+        self.assertEqual(
+            metrics["backend_fallback_verification_normalization_pass_count_counts"],
+            {"0": 1},
+        )
+        self.assertEqual(
+            metrics["backend_verification_normalization_pass_count_by_method"],
+            {
+                "hermite/1": 3,
+                "hermite/2": 1,
+                "heurisch_probe/0": 1,
+                "rational/0": 3,
+                "rational/1": 1,
+                "rational/2": 1,
+                "table_reused/0": 3,
+                "unsupported/0": 3,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_public_verification_normalization_pass_count_by_method"],
+            {
+                "hermite/1": 3,
+                "hermite/2": 1,
+                "heurisch_probe/0": 1,
+                "rational/0": 2,
+                "rational/1": 1,
+                "rational/2": 1,
+                "table_reused/0": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_fallback_verification_normalization_pass_count_by_method"],
+            {"rational/0": 1},
+        )
+        self.assertEqual(
+            metrics["backend_publication_status_counts"],
+            {
+                "accepted": 10,
+                "rejected_no_antiderivative": 3,
+                "rejected_residual_reason": 3,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_publication_status_by_method"],
+            {
+                "hermite/accepted": 4,
+                "heurisch_probe/accepted": 1,
+                "rational/accepted": 4,
+                "rational/rejected_residual_reason": 1,
+                "table_reused/accepted": 1,
+                "table_reused/rejected_residual_reason": 2,
+                "unsupported/rejected_no_antiderivative": 3,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_fallback_status_counts"],
+            {
+                "blocked_by_candidate_policy": 6,
+                "blocked_by_mode": 9,
+                "eligible": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_fallback_status_by_method"],
+            {
+                "hermite/blocked_by_mode": 4,
+                "heurisch_probe/blocked_by_mode": 1,
+                "rational/blocked_by_candidate_policy": 1,
+                "rational/blocked_by_mode": 3,
+                "rational/eligible": 1,
+                "table_reused/blocked_by_candidate_policy": 2,
+                "table_reused/blocked_by_mode": 1,
+                "unsupported/blocked_by_candidate_policy": 3,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_mode_counts"],
+            {"diagnostic_only": 14, "disabled": 1, "residual_fallback": 1},
+        )
+        self.assertEqual(
+            metrics["backend_method_counts"],
+            {
+                "hermite": 4,
+                "heurisch_probe": 1,
+                "rational": 5,
+                "table_reused": 3,
+                "unsupported": 3,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_method_probe_usage_by_method"],
+            {"hermite": 8, "heurisch_probe": 3, "rational": 5, "unsupported": 3},
+        )
+        self.assertEqual(
+            metrics["backend_method_probe_attempt_counts"],
+            {"hermite": 6, "heurisch_probe": 2, "rational": 11},
+        )
+        self.assertEqual(
+            metrics["backend_method_probe_candidate_counts"],
+            {"hermite": 4, "heurisch_probe": 1, "rational": 5},
+        )
+        self.assertEqual(
+            metrics["backend_method_probe_no_match_counts"],
+            {"hermite": 2, "heurisch_probe": 1, "rational": 6},
+        )
+        self.assertEqual(
+            metrics["backend_method_probe_no_match_reason_counts"],
+            {
+                "hermite/denominator_policy_mismatch": 1,
+                "hermite/shape_mismatch": 1,
+                "heurisch_probe/shape_mismatch": 1,
+                "rational/numerator_policy_mismatch": 5,
+                "rational/shape_mismatch": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_verification_check_usage_by_method"],
+            {"hermite": 4, "heurisch_probe": 1, "rational": 4},
+        )
+        self.assertEqual(
+            metrics["backend_verification_status_by_method"],
+            {
+                "hermite/verified": 4,
+                "heurisch_probe/verified_under_conditions": 1,
+                "rational/inconclusive": 1,
+                "rational/verified_under_conditions": 4,
+                "table_reused/failed": 2,
+                "table_reused/verified": 1,
+                "unsupported/inconclusive": 1,
+                "unsupported/not_attempted": 2,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_residual_reason_by_method"],
+            {
+                "rational/budget_exceeded": 1,
+                "table_reused/verification_failed": 2,
+                "unsupported/budget_exceeded": 1,
+                "unsupported/disabled_by_mode": 1,
+                "unsupported/unsupported_method": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_verification_blocker_counts"],
+            {"budget_exceeded": 1, "derivative_mismatch": 2},
+        )
+        self.assertEqual(
+            metrics["backend_verification_blocker_by_method"],
+            {
+                "rational/budget_exceeded": 1,
+                "table_reused/derivative_mismatch": 2,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_failure_class_counts"],
+            {
+                "budget_exceeded": 2,
+                "disabled_by_mode": 1,
+                "residual_affine_in_variable": 1,
+                "residual_function_of_variable": 1,
+                "unsupported_method": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_failure_class_by_method"],
+            {
+                "rational/budget_exceeded": 1,
+                "table_reused/residual_affine_in_variable": 1,
+                "table_reused/residual_function_of_variable": 1,
+                "unsupported/budget_exceeded": 1,
+                "unsupported/disabled_by_mode": 1,
+                "unsupported/unsupported_method": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_verification_residual_counts"],
+            {"derivative_minus_integrand": 2},
+        )
+        self.assertEqual(
+            metrics["backend_verification_residual_by_method"],
+            {"table_reused/derivative_minus_integrand": 2},
+        )
+        self.assertEqual(
+            metrics["backend_verification_residual_kind_counts"],
+            {"depends_on_variable": 2},
+        )
+        self.assertEqual(
+            metrics["backend_verification_residual_kind_by_method"],
+            {"table_reused/depends_on_variable": 2},
+        )
+        self.assertEqual(
+            metrics["backend_verification_residual_signature_counts"],
+            {"affine_in_variable": 1, "function_of_variable": 1},
+        )
+        self.assertEqual(
+            metrics["backend_verification_residual_signature_by_method"],
+            {"table_reused/affine_in_variable": 1, "table_reused/function_of_variable": 1},
+        )
+        self.assertEqual(
+            metrics["backend_trace_level_counts"],
+            {"algorithmic_summary": 13, "diagnostic_only": 3},
+        )
+        self.assertEqual(
+            metrics["backend_constant_policy_counts"],
+            {"arbitrary_constant_omitted": 13, "unspecified": 3},
+        )
+        self.assertEqual(
+            metrics["backend_public_trace_level_counts"],
+            {"algorithmic_summary": 10},
+        )
+        self.assertEqual(
+            metrics["backend_public_constant_policy_counts"],
+            {"arbitrary_constant_omitted": 10},
+        )
+        self.assertEqual(
+            metrics["backend_fallback_trace_level_counts"],
+            {"algorithmic_summary": 1},
+        )
+        self.assertEqual(
+            metrics["backend_fallback_constant_policy_counts"],
+            {"arbitrary_constant_omitted": 1},
+        )
+        self.assertEqual(
+            metrics["backend_verification_status_counts"],
+            {
+                "failed": 2,
+                "inconclusive": 2,
+                "not_attempted": 2,
+                "verified": 5,
+                "verified_under_conditions": 5,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_residual_reason_counts"],
+            {
+                "budget_exceeded": 2,
+                "disabled_by_mode": 1,
+                "unsupported_method": 1,
+                "verification_failed": 2,
+            },
+        )
+        self.assertEqual(metrics["backend_required_condition_counts"], {"nonzero": 6})
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "pass",
+        )
+
+        metrics["backend_unverified_public_acceptances"] = 1
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_unverified_public_acceptances"] = 0
+        metrics["backend_unverified_fallback_acceptances"] = 1
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_unverified_fallback_acceptances"] = 0
+        metrics["backend_public_trace_level_counts"] = {"diagnostic_only": 1}
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_public_trace_level_counts"] = {"algorithmic_summary": 10}
+        metrics["backend_public_constant_policy_counts"] = {"unspecified": 1}
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_public_constant_policy_counts"] = {
+            "arbitrary_constant_omitted": 9
+        }
+        metrics["backend_public_assumption_exprs"] = 1
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_public_assumption_exprs"] = 0
+        metrics["backend_fallback_assumption_exprs"] = 1
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_fallback_assumption_exprs"] = 0
+        metrics["backend_public_verification_evidence_counts"] = {"none": 1}
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_public_verification_evidence_counts"] = {
+            "failed_differentiation": 1
+        }
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_public_verification_evidence_counts"] = {
+            "direct_differentiation": 4,
+            "normalized_differentiation": 6,
+        }
+        metrics["backend_fallback_verification_evidence_counts"] = {"none": 1}
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+        metrics["backend_fallback_verification_evidence_counts"] = {
+            "failed_differentiation": 1
+        }
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_observability",
+                metrics,
+                0,
+            ),
+            "fail",
+        )
+
+    def test_algorithmic_backend_observability_requires_residual_kind_counts(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        del payload["verification_residual_kind_counts"]
+        del payload["verification_residual_kind_by_method"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "verification_residual_kind_counts missing verification residuals",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_failure_class_counts(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        del payload["failure_class_counts"]
+        del payload["failure_class_by_method"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "failure_class_counts missing rejected candidates",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_failure_class_by_method(
+        self,
+    ):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        del payload["failure_class_by_method"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "failure_class_by_method missing rejected candidates",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_residual_kind_by_method(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        del payload["verification_residual_kind_by_method"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "verification_residual_kind_by_method missing verification residual methods",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_residual_signature_counts(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        del payload["verification_residual_signature_counts"]
+        del payload["verification_residual_signature_by_method"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "verification_residual_signature_counts missing verification residuals",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_probe_attempt_counts(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        payload["method_probes_used_total"] = 1
+        payload["method_probe_usage_by_method"] = {"table_reused": 1}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "method_probe_attempt_counts missing method probes",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_probe_candidate_counts(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        payload["method_probes_used_total"] = 1
+        payload["method_probe_usage_by_method"] = {"rational": 1}
+        payload["method_probe_attempt_counts"] = {"rational": 1}
+        payload["method_probe_no_match_counts"] = {"rational": 1}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "method_probe_candidate_counts missing method probes",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_probe_no_match_counts(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        payload["method_probes_used_total"] = 1
+        payload["method_probe_usage_by_method"] = {"rational": 1}
+        payload["method_probe_attempt_counts"] = {"rational": 1}
+        payload["method_probe_candidate_counts"] = {"rational": 1}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "method_probe_no_match_counts missing method probes",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_validates_probe_yield_split(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        payload["method_probes_used_total"] = 2
+        payload["method_probe_usage_by_method"] = {"unsupported": 2}
+        payload["method_probe_attempt_counts"] = {"rational": 2}
+        payload["method_probe_candidate_counts"] = {"rational": 1}
+        payload["method_probe_no_match_counts"] = {"rational": 2}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "method_probe candidate/no-match split does not match attempts",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_probe_no_match_reasons(self):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        payload["method_probes_used_total"] = 1
+        payload["method_probe_usage_by_method"] = {"unsupported": 1}
+        payload["method_probe_attempt_counts"] = {"rational": 1}
+        payload["method_probe_candidate_counts"] = {}
+        payload["method_probe_no_match_counts"] = {"rational": 1}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "method_probe_no_match_reason_counts missing method probe no-matches",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_validates_probe_no_match_reasons(
+        self,
+    ):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        payload["method_probes_used_total"] = 1
+        payload["method_probe_usage_by_method"] = {"unsupported": 1}
+        payload["method_probe_attempt_counts"] = {"rational": 1}
+        payload["method_probe_candidate_counts"] = {}
+        payload["method_probe_no_match_counts"] = {"rational": 1}
+        payload["method_probe_no_match_reason_counts"] = {
+            "hermite/shape_mismatch": 1
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "method_probe_no_match_reason_counts do not match "
+            "method_probe_no_match_counts by method",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    def test_algorithmic_backend_observability_requires_residual_signature_by_method(
+        self,
+    ):
+        payload = self.minimal_algorithmic_backend_residual_payload()
+        del payload["verification_residual_signature_by_method"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "verification_residual_signature_by_method missing verification residual methods",
+        ):
+            MODULE.parse_algorithmic_backend_observability(
+                self.algorithmic_backend_observability_output(payload)
+            )
+
+    @staticmethod
+    def minimal_algorithmic_backend_residual_payload():
+        return {
+            "attempts": 1,
+            "public_accepted": 0,
+            "unverified_public_acceptances": 0,
+            "fallback_eligible": 0,
+            "unverified_fallback_acceptances": 0,
+            "method_probe_budget_exhausted": 0,
+            "verification_budget_exceeded": 0,
+            "method_probes_used_total": 0,
+            "verification_checks_used_total": 0,
+            "verification_elapsed_ms": 0.0,
+            "max_verification_normalization_passes": 0,
+            "public_max_verification_normalization_passes": 0,
+            "fallback_max_verification_normalization_passes": 0,
+            "method_counts": {"table_reused": 1},
+            "verification_status_counts": {"failed": 1},
+            "verification_evidence_counts": {"failed_differentiation": 1},
+            "verification_evidence_by_method": {
+                "table_reused/failed_differentiation": 1
+            },
+            "verification_normalization_pass_count_counts": {"0": 1},
+            "verification_normalization_pass_count_by_method": {"table_reused/0": 1},
+            "failure_class_counts": {"residual_affine_in_variable": 1},
+            "failure_class_by_method": {
+                "table_reused/residual_affine_in_variable": 1
+            },
+            "verification_residual_counts": {"derivative_minus_integrand": 1},
+            "verification_residual_by_method": {
+                "table_reused/derivative_minus_integrand": 1
+            },
+            "verification_residual_kind_counts": {"depends_on_variable": 1},
+            "verification_residual_kind_by_method": {
+                "table_reused/depends_on_variable": 1
+            },
+            "verification_residual_signature_counts": {"affine_in_variable": 1},
+            "verification_residual_signature_by_method": {
+                "table_reused/affine_in_variable": 1
+            },
+            "residual_reason_counts": {"verification_failed": 1},
+        }
+
+    @staticmethod
+    def algorithmic_backend_observability_output(payload):
+        return (
+            "running 1 test\n"
+            f"algorithmic_backend_observability: {json.dumps(payload, sort_keys=True)}\n"
+            "test result: ok. 1 passed\n"
+        )
+
+    def test_algorithmic_backend_observability_renders_backend_signal(self):
+        metrics = {'backend_assumption_exprs': 0,
+         'backend_attempts': 16,
+         'backend_budget_exceeded_count': 2,
+         'backend_constant_policy_counts': {'arbitrary_constant_omitted': 13, 'unspecified': 3},
+         'backend_failure_class_by_method': {'rational/budget_exceeded': 1,
+                                             'table_reused/residual_affine_in_variable': 1,
+                                             'table_reused/residual_function_of_variable': 1,
+                                             'unsupported/budget_exceeded': 1,
+                                             'unsupported/disabled_by_mode': 1,
+                                             'unsupported/unsupported_method': 1},
+         'backend_failure_class_counts': {'budget_exceeded': 2,
+                                          'disabled_by_mode': 1,
+                                          'residual_affine_in_variable': 1,
+                                          'residual_function_of_variable': 1,
+                                          'unsupported_method': 1},
+         'backend_failed_or_blocked_count': 6,
+         'backend_fallback_assumption_exprs': 0,
+         'backend_fallback_constant_policy_counts': {'arbitrary_constant_omitted': 1},
+         'backend_fallback_eligible': 1,
+         'backend_fallback_status_by_method': {'hermite/blocked_by_mode': 4,
+                                               'heurisch_probe/blocked_by_mode': 1,
+                                               'rational/blocked_by_candidate_policy': 1,
+                                               'rational/blocked_by_mode': 3,
+                                               'rational/eligible': 1,
+                                               'table_reused/blocked_by_candidate_policy': 2,
+                                               'table_reused/blocked_by_mode': 1,
+                                               'unsupported/blocked_by_candidate_policy': 3},
+         'backend_fallback_status_counts': {'blocked_by_candidate_policy': 6,
+                                            'blocked_by_mode': 9,
+                                            'eligible': 1},
+         'backend_fallback_trace_level_counts': {'algorithmic_summary': 1},
+         'backend_fallback_verification_evidence_by_method': {'rational/direct_differentiation': 1},
+         'backend_fallback_verification_evidence_counts': {'direct_differentiation': 1},
+         'backend_fallback_verification_normalization_reason_by_method': {},
+         'backend_fallback_verification_normalization_reason_counts': {},
+         'backend_method_counts': {'hermite': 4,
+                                   'heurisch_probe': 1,
+                                   'rational': 5,
+                                   'table_reused': 3,
+                                   'unsupported': 3},
+         'backend_method_probe_attempt_counts': {'hermite': 6, 'heurisch_probe': 2, 'rational': 11},
+         'backend_method_probe_budget_exhausted_count': 1,
+         'backend_method_probe_candidate_counts': {'hermite': 4, 'heurisch_probe': 1, 'rational': 5},
+         'backend_method_probe_no_match_counts': {'hermite': 2, 'heurisch_probe': 1, 'rational': 6},
+         'backend_method_probe_no_match_reason_counts': {'hermite/denominator_policy_mismatch': 1,
+                                                         'hermite/shape_mismatch': 1,
+                                                         'heurisch_probe/shape_mismatch': 1,
+                                                         'rational/numerator_policy_mismatch': 5,
+                                                         'rational/shape_mismatch': 1},
+         'backend_method_probe_usage_by_method': {'hermite': 8,
+                                                  'heurisch_probe': 3,
+                                                  'rational': 5,
+                                                  'unsupported': 3},
+         'backend_method_probes_used_total': 19,
+         'backend_mode_counts': {'diagnostic_only': 14, 'disabled': 1, 'residual_fallback': 1},
+         'backend_public_accepted': 10,
+         'backend_public_assumption_exprs': 0,
+         'backend_public_constant_policy_counts': {'arbitrary_constant_omitted': 10},
+         'backend_public_trace_level_counts': {'algorithmic_summary': 10},
+         'backend_public_verification_evidence_by_method': {'hermite/normalized_differentiation': 4,
+                                                            'heurisch_probe/direct_differentiation': 1,
+                                                            'rational/direct_differentiation': 2,
+                                                            'rational/normalized_differentiation': 2,
+                                                            'table_reused/direct_differentiation': 1},
+         'backend_public_verification_evidence_counts': {'direct_differentiation': 4,
+                                                         'normalized_differentiation': 6},
+         'backend_public_verification_normalization_reason_by_method': {'hermite/numeric_scaled_quotient': 1,
+                                                                        'hermite/power_one_elision': 2,
+                                                                        'hermite/quotient_numeric_factor_cancellation': 1,
+                                                                        'rational/numeric_scaled_quotient': 1,
+                                                                        'rational/symbolic_scaled_quotient': 1},
+         'backend_public_verification_normalization_reason_counts': {'numeric_scaled_quotient': 2,
+                                                                     'power_one_elision': 2,
+                                                                     'quotient_numeric_factor_cancellation': 1,
+                                                                     'symbolic_scaled_quotient': 1},
+         'backend_publication_status_by_method': {'hermite/accepted': 4,
+                                                  'heurisch_probe/accepted': 1,
+                                                  'rational/accepted': 4,
+                                                  'rational/rejected_residual_reason': 1,
+                                                  'table_reused/accepted': 1,
+                                                  'table_reused/rejected_residual_reason': 2,
+                                                  'unsupported/rejected_no_antiderivative': 3},
+         'backend_publication_status_counts': {'accepted': 10,
+                                               'rejected_no_antiderivative': 3,
+                                               'rejected_residual_reason': 3},
+         'backend_required_condition_count': 6,
+         'backend_required_condition_counts': {'nonzero': 6},
+         'backend_residual_reason_by_method': {'rational/budget_exceeded': 1,
+                                               'table_reused/verification_failed': 2,
+                                               'unsupported/budget_exceeded': 1,
+                                               'unsupported/disabled_by_mode': 1,
+                                               'unsupported/unsupported_method': 1},
+         'backend_residual_reason_counts': {'budget_exceeded': 2,
+                                            'disabled_by_mode': 1,
+                                            'unsupported_method': 1,
+                                            'verification_failed': 2},
+         'backend_trace_level_counts': {'algorithmic_summary': 13, 'diagnostic_only': 3},
+         'backend_unverified_fallback_acceptances': 0,
+         'backend_unverified_public_acceptances': 0,
+         'backend_verification_blocker_by_method': {'rational/budget_exceeded': 1,
+                                                    'table_reused/derivative_mismatch': 2},
+         'backend_verification_blocker_counts': {'budget_exceeded': 1, 'derivative_mismatch': 2},
+         'backend_verification_budget_exceeded_count': 1,
+         'backend_verification_check_usage_by_method': {'hermite': 4, 'heurisch_probe': 1, 'rational': 4},
+         'backend_verification_checks_used_total': 9,
+         'backend_verification_elapsed_ms': 2.125,
+         'backend_verification_pressure': {'attempts': 16,
+                                           'checks_per_attempt': 0.562,
+                                           'max_verification_normalization_passes': 2,
+                                           'primary_signal': 'normalization_passes',
+                                           'reason': 'max_passes=2',
+                                           'status': 'watch',
+                                           'verification_checks_used_total': 9,
+                                           'verification_elapsed_ms': 2.125},
+         'backend_verification_pressure_status': 'watch',
+         'backend_max_verification_normalization_passes': 2,
+         'backend_public_max_verification_normalization_passes': 2,
+         'backend_fallback_max_verification_normalization_passes': 0,
+         'backend_verification_evidence_by_method': {'hermite/normalized_differentiation': 4,
+                                                     'heurisch_probe/direct_differentiation': 1,
+                                                     'rational/direct_differentiation': 2,
+                                                     'rational/none': 1,
+                                                     'rational/normalized_differentiation': 2,
+                                                     'table_reused/direct_differentiation': 1,
+                                                     'table_reused/failed_differentiation': 2,
+                                                     'unsupported/none': 3},
+         'backend_verification_evidence_counts': {'direct_differentiation': 4,
+                                                  'failed_differentiation': 2,
+                                                  'none': 4,
+                                                  'normalized_differentiation': 6},
+         'backend_verification_normalization_reason_by_method': {'hermite/numeric_scaled_quotient': 1,
+                                                                 'hermite/power_one_elision': 2,
+                                                                 'hermite/quotient_numeric_factor_cancellation': 1,
+                                                                 'rational/numeric_scaled_quotient': 1,
+                                                                 'rational/symbolic_scaled_quotient': 1},
+         'backend_verification_normalization_reason_counts': {'numeric_scaled_quotient': 2,
+                                                              'power_one_elision': 2,
+                                                              'quotient_numeric_factor_cancellation': 1,
+                                                              'symbolic_scaled_quotient': 1},
+         'backend_verification_normalization_pass_count_counts': {'0': 10, '1': 4, '2': 2},
+         'backend_public_verification_normalization_pass_count_counts': {'0': 4, '1': 4, '2': 2},
+         'backend_fallback_verification_normalization_pass_count_counts': {'0': 1},
+         'backend_verification_normalization_pass_count_by_method': {'hermite/1': 3,
+                                                                     'hermite/2': 1,
+                                                                     'heurisch_probe/0': 1,
+                                                                     'rational/0': 3,
+                                                                     'rational/1': 1,
+                                                                     'rational/2': 1,
+                                                                     'table_reused/0': 3,
+                                                                     'unsupported/0': 3},
+         'backend_public_verification_normalization_pass_count_by_method': {'hermite/1': 3,
+                                                                            'hermite/2': 1,
+                                                                            'heurisch_probe/0': 1,
+                                                                            'rational/0': 2,
+                                                                            'rational/1': 1,
+                                                                            'rational/2': 1,
+                                                                            'table_reused/0': 1},
+         'backend_fallback_verification_normalization_pass_count_by_method': {'rational/0': 1},
+         'backend_verification_residual_by_method': {'table_reused/derivative_minus_integrand': 2},
+         'backend_verification_residual_counts': {'derivative_minus_integrand': 2},
+         'backend_verification_residual_kind_by_method': {'table_reused/depends_on_variable': 2},
+         'backend_verification_residual_kind_counts': {'depends_on_variable': 2},
+         'backend_verification_residual_signature_by_method': {'table_reused/affine_in_variable': 1,
+                                                               'table_reused/function_of_variable': 1},
+         'backend_verification_residual_signature_counts': {'affine_in_variable': 1,
+                                                            'function_of_variable': 1},
+         'backend_verification_status_by_method': {'hermite/verified': 4,
+                                                   'heurisch_probe/verified_under_conditions': 1,
+                                                   'rational/inconclusive': 1,
+                                                   'rational/verified_under_conditions': 4,
+                                                   'table_reused/failed': 2,
+                                                   'table_reused/verified': 1,
+                                                   'unsupported/inconclusive': 1,
+                                                   'unsupported/not_attempted': 2},
+         'backend_verification_status_counts': {'failed': 2,
+                                                'inconclusive': 2,
+                                                'not_attempted': 2,
+                                                'verified': 5,
+                                                'verified_under_conditions': 5},
+         'backend_verified_count': 10,
+         'failed': 0,
+         'passed': 16,
+         'total_cases': 16}
+        scorecard = {
+            "generated_at": "2026-06-05T00:00:00+00:00",
+            "profile": "fast",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "calculus_integrate_backend_observability": {
+                    "category": "observability",
+                    "status": "pass",
+                    "elapsed_seconds": 0.25,
+                    "metrics": metrics,
+                    "delta": {},
+                },
+            },
+        }
+
+        rendered = MODULE.render_markdown(scorecard)
+
+        self.assertIn("integrate_backend_observability", rendered)
+        self.assertIn("backend_attempts=16", rendered)
+        self.assertIn("backend_public_accepted=10", rendered)
+        self.assertIn("backend_fallback_eligible=1", rendered)
+        self.assertIn("backend_unverified_fallback=0", rendered)
+        self.assertIn("backend_required_conditions=6", rendered)
+        self.assertIn("backend_budget_exceeded=2", rendered)
+        self.assertIn("backend_method_budget_exhausted=1", rendered)
+        self.assertIn("backend_verification_budget_exceeded=1", rendered)
+        self.assertIn("backend_method_probes_used=19", rendered)
+        self.assertIn("backend_verification_checks_used=9", rendered)
+        self.assertIn("backend_verify=2.125ms", rendered)
+        self.assertIn("backend_verification_pressure=watch", rendered)
+        self.assertIn(
+            "backend modes: diagnostic_only=14, disabled=1, residual_fallback=1",
+            rendered,
+        )
+        self.assertIn(
+            "backend methods: hermite=4, heurisch_probe=1, rational=5, table_reused=3, unsupported=3",
+            rendered,
+        )
+        self.assertIn(
+            "verification statuses: failed=2, inconclusive=2, not_attempted=2, verified=5, verified_under_conditions=5",
+            rendered,
+        )
+        self.assertIn(
+            "residual reasons: budget_exceeded=2, disabled_by_mode=1, unsupported_method=1, verification_failed=2",
+            rendered,
+        )
+        self.assertIn(
+            "budget split: method_probe_exhausted=1, verification_exceeded=1",
+            rendered,
+        )
+        self.assertIn(
+            "budget usage: method_probes_used=19, verification_checks_used=9",
+            rendered,
+        )
+        self.assertIn(
+            "backend verification pressure: status=watch primary=normalization_passes reason=max_passes=2 attempts=16 checks=9 checks_per_attempt=0.562 max_passes=2 elapsed_ms=2.125",
+            rendered,
+        )
+        self.assertIn(
+            "method-probe usage by method: hermite=8, heurisch_probe=3, rational=5, unsupported=3",
+            rendered,
+        )
+        self.assertIn(
+            "method-probe attempts: hermite=6, heurisch_probe=2, rational=11",
+            rendered,
+        )
+        self.assertIn(
+            "method-probe candidates: hermite=4, heurisch_probe=1, rational=5",
+            rendered,
+        )
+        self.assertIn(
+            "method-probe no-matches: hermite=2, heurisch_probe=1, rational=6",
+            rendered,
+        )
+        self.assertIn(
+            "method-probe no-match reasons: hermite/denominator_policy_mismatch=1, hermite/shape_mismatch=1, heurisch_probe/shape_mismatch=1, rational/numerator_policy_mismatch=5, rational/shape_mismatch=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification-check usage by method: hermite=4, heurisch_probe=1, rational=4",
+            rendered,
+        )
+        self.assertIn(
+            "verification status by method: hermite/verified=4, heurisch_probe/verified_under_conditions=1, rational/inconclusive=1, rational/verified_under_conditions=4, table_reused/failed=2, table_reused/verified=1, unsupported/inconclusive=1, unsupported/not_attempted=2",
+            rendered,
+        )
+        self.assertIn(
+            "residual reason by method: rational/budget_exceeded=1, table_reused/verification_failed=2, unsupported/budget_exceeded=1, unsupported/disabled_by_mode=1, unsupported/unsupported_method=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification blockers: budget_exceeded=1, derivative_mismatch=2",
+            rendered,
+        )
+        self.assertIn(
+            "verification blocker by method: rational/budget_exceeded=1, table_reused/derivative_mismatch=2",
+            rendered,
+        )
+        self.assertIn(
+            "failure classes: budget_exceeded=2, disabled_by_mode=1, residual_affine_in_variable=1, residual_function_of_variable=1, unsupported_method=1",
+            rendered,
+        )
+        self.assertIn(
+            "failure class by method: rational/budget_exceeded=1, table_reused/residual_affine_in_variable=1, table_reused/residual_function_of_variable=1, unsupported/budget_exceeded=1, unsupported/disabled_by_mode=1, unsupported/unsupported_method=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification residuals: derivative_minus_integrand=2",
+            rendered,
+        )
+        self.assertIn(
+            "verification residual by method: table_reused/derivative_minus_integrand=2",
+            rendered,
+        )
+        self.assertIn(
+            "verification residual kinds: depends_on_variable=2",
+            rendered,
+        )
+        self.assertIn(
+            "verification residual kind by method: table_reused/depends_on_variable=2",
+            rendered,
+        )
+        self.assertIn(
+            "verification residual signatures: affine_in_variable=1, function_of_variable=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification residual signature by method: table_reused/affine_in_variable=1, table_reused/function_of_variable=1",
+            rendered,
+        )
+        self.assertIn(
+            "publication statuses: accepted=10, rejected_no_antiderivative=3, rejected_residual_reason=3",
+            rendered,
+        )
+        self.assertIn(
+            "publication status by method: hermite/accepted=4, heurisch_probe/accepted=1, rational/accepted=4, rational/rejected_residual_reason=1, table_reused/accepted=1, table_reused/rejected_residual_reason=2, unsupported/rejected_no_antiderivative=3",
+            rendered,
+        )
+        self.assertIn(
+            "fallback statuses: blocked_by_candidate_policy=6, blocked_by_mode=9, eligible=1",
+            rendered,
+        )
+        self.assertIn(
+            "fallback status by method: hermite/blocked_by_mode=4, heurisch_probe/blocked_by_mode=1, rational/blocked_by_candidate_policy=1, rational/blocked_by_mode=3, rational/eligible=1, table_reused/blocked_by_candidate_policy=2, table_reused/blocked_by_mode=1, unsupported/blocked_by_candidate_policy=3",
+            rendered,
+        )
+        self.assertIn(
+            "trace levels: algorithmic_summary=13, diagnostic_only=3",
+            rendered,
+        )
+        self.assertIn(
+            "constant policies: arbitrary_constant_omitted=13, unspecified=3",
+            rendered,
+        )
+        self.assertIn(
+            "public trace levels: algorithmic_summary=10",
+            rendered,
+        )
+        self.assertIn(
+            "public constant policies: arbitrary_constant_omitted=10",
+            rendered,
+        )
+        self.assertIn(
+            "fallback trace levels: algorithmic_summary=1",
+            rendered,
+        )
+        self.assertIn(
+            "fallback constant policies: arbitrary_constant_omitted=1",
+            rendered,
+        )
+        self.assertIn(
+            "assumption exprs: total=0, public=0, fallback=0",
+            rendered,
+        )
+        self.assertIn(
+            "verification evidence: direct_differentiation=4, failed_differentiation=2, none=4, normalized_differentiation=6",
+            rendered,
+        )
+        self.assertIn(
+            "public verification evidence: direct_differentiation=4, normalized_differentiation=6",
+            rendered,
+        )
+        self.assertIn(
+            "fallback verification evidence: direct_differentiation=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification evidence by method: hermite/normalized_differentiation=4, heurisch_probe/direct_differentiation=1, rational/direct_differentiation=2, rational/none=1, rational/normalized_differentiation=2, table_reused/direct_differentiation=1, table_reused/failed_differentiation=2, unsupported/none=3",
+            rendered,
+        )
+        self.assertIn(
+            "public verification evidence by method: hermite/normalized_differentiation=4, heurisch_probe/direct_differentiation=1, rational/direct_differentiation=2, rational/normalized_differentiation=2, table_reused/direct_differentiation=1",
+            rendered,
+        )
+        self.assertIn(
+            "fallback verification evidence by method: rational/direct_differentiation=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification normalization reasons: numeric_scaled_quotient=2, power_one_elision=2, quotient_numeric_factor_cancellation=1, symbolic_scaled_quotient=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification normalization passes: max=2; 0=10, 1=4, 2=2",
+            rendered,
+        )
+        self.assertIn(
+            "public verification normalization passes: max=2; 0=4, 1=4, 2=2",
+            rendered,
+        )
+        self.assertIn(
+            "fallback verification normalization passes: max=0; 0=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification normalization passes by method: hermite/1=3, hermite/2=1, heurisch_probe/0=1, rational/0=3, rational/1=1, rational/2=1, table_reused/0=3, unsupported/0=3",
+            rendered,
+        )
+        self.assertIn(
+            "public verification normalization reasons: numeric_scaled_quotient=2, power_one_elision=2, quotient_numeric_factor_cancellation=1, symbolic_scaled_quotient=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification normalization reason by method: hermite/numeric_scaled_quotient=1, hermite/power_one_elision=2, hermite/quotient_numeric_factor_cancellation=1, rational/numeric_scaled_quotient=1, rational/symbolic_scaled_quotient=1",
+            rendered,
+        )
+        self.assertIn(
+            "public verification normalization reason by method: hermite/numeric_scaled_quotient=1, hermite/power_one_elision=2, hermite/quotient_numeric_factor_cancellation=1, rational/numeric_scaled_quotient=1, rational/symbolic_scaled_quotient=1",
+            rendered,
+        )
+        self.assertIn(
+            "required conditions: nonzero=6",
+            rendered,
         )
 
     def test_integrate_radical_inverse_sqrt_tables_are_shared_policy_not_candidate(

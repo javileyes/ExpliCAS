@@ -207,8 +207,23 @@ general maturity. The remaining work is mostly systematic:
 
 For planning purposes, treat a serious educational calculus surface as a
 dozens-of-retained-cycles target and a mature elementary real-domain calculus
-surface as a substantially longer campaign. A universal integration prover is
-not a bounded goal of this automation loop.
+surface as a substantially longer campaign.
+
+The long-term integration direction is hybrid, not "make the current table
+integrator search harder":
+
+- keep the educational real-domain `integrate` route conservative, verified,
+  and explainable
+- create a separate algorithmic integration backend only behind an explicit
+  boundary
+- require structured method tags, assumptions, verification status, residual
+  reasons, domain/constant policy, and runtime isolation before promoting broad
+  integration behavior
+
+A universal-style integration backend is therefore allowed as a future campaign
+track, but not as an unbounded shortcut inside ordinary calculus ROI cycles.
+Until the backend boundary exists, broad integration search remains a deferral
+signal rather than an implementation target.
 
 Post-calculus presentation is part of this strategy, but it is not a license to
 make the global simplifier prettier. The selector should treat presentation as a
@@ -259,7 +274,7 @@ materially risk runtime/guardrail regression.
 
 The selector should defer calculus candidates when they require:
 
-- general integration search
+- general integration search inside the current educational route
 - hidden domain assumptions
 - broad simplifier changes with unclear embedded runtime cost
 - answer-only behavior that would be a magical step in the UI
@@ -269,6 +284,20 @@ The selector should defer calculus candidates when they require:
 - adding another isolated calculus example inside a family that already has
   enough representatives, unless it exposes a new domain, trace, presentation,
   runtime, or verification axis
+
+The selector may choose early hybrid-backend work only when the retained output
+is bounded and explicit:
+
+- an integration method result boundary
+- observability over backend candidates, verification outcomes, and residual
+  reasons
+- behavior-preserving routing of an already verified family through the new
+  boundary
+- discovery-only probes for algorithmic methods that cannot affect public
+  results until verified
+
+Classify such work by retained value: usually `observability` or `robustness`;
+use `calculus` only when one verified algorithmic family becomes public behavior.
 
 If a calculus probe reveals that the real blocker is a reusable algebraic,
 normalization, or domain gap, the next retained work should usually be
@@ -306,6 +335,8 @@ retained output should be small and testable:
   broadening the integrator
 - add a support-matrix or profiling classification when ownership is still
   ambiguous
+- for hybrid integration, add the backend boundary before adding algorithmic
+  search
 
 This is not permission for a broad refactor. Architecture work has high ROI
 only when it removes a demonstrated blocker to safe calculus generalization and

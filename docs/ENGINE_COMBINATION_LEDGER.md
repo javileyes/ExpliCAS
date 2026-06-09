@@ -79,6 +79,282 @@ Good combination patterns:
 - `expensive fast path + cheap gate`
 - `repeated extraction + cache/reuse`
 
+## 2026-06-09 - Retained follow-up: unit-affine positive-quadratic backend center verification
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / Hermite
+    positive-quadratic verification
+- status:
+  - `retained`
+- observed:
+  - after external symbolic positive-radius numerators were retained for
+    `x^2+a`, the adjacent reusable gap was a unit affine center such as
+    `x+b`
+  - carrying the same center expression through the Hermite arctangent branch
+    lets the backend verify `c/((x+b)^2+a)` and
+    `(m*(x+b)+c)/((x+b)^2+a)` under the explicit condition `a > 0`
+  - the non-unit affine shape `1/((2*x+b)^2+a)` remains unsupported because it
+    needs an explicit chain-factor and orientation policy before it can be
+    public
+- decision:
+  - retain the bounded unit-affine center policy and one backend observability
+    representative
+  - do not widen to arbitrary affine centers in this iteration
+- retained learning:
+  - block 12 can generalize shifted positive-quadratic centers safely when
+    verification uses the exact center expression instead of reconstructing a
+    bare variable
+  - the next candidate should either add a slope-aware affine-center policy
+    with explicit `1/k` factor and required conditions, or improve the
+    structured no-match reason for non-unit affine centers without accepting a
+    hidden sign/orientation assumption
+
+## 2026-06-09 - Retained follow-up: external-symbolic positive-quadratic backend numerator verification
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / Hermite
+    positive-quadratic verification
+- status:
+  - `retained`
+- observed:
+  - after the conditional symbolic-radius backend policy was retained, the next
+    reusable blocker was a numeric-only verifier normalization for the arctan
+    radius quotient
+  - widening that local verifier normalization to bounded external coefficients
+    lets the Hermite probe verify `c/(x^2+a)` and `(b*x+c)/(x^2+a)` under the
+    explicit condition `a > 0`
+  - the same policy also promotes `(a*x+b)/(x^2+4)` from an old
+    verifier-policy rejection to a verified numeric-radius backend candidate
+- decision:
+  - retain the bounded verifier policy and the positive tests
+  - promote only the mixed symbolic-positive-radius representative to backend
+    observability; keep sibling coverage in unit tests rather than padding the
+    public corpus
+- retained learning:
+  - block 12 can generalize numerator coefficients when the verifier normalizes
+    through existing external-coefficient gates instead of assuming numeric
+    factors
+  - the next backend iteration should audit whether shifted positive-quadratic
+    denominators can reuse the same external-coefficient policy without adding
+    unbounded partial-fraction search
+
+## 2026-06-09 - Retained follow-up: conditional symbolic positive-radius backend verification
+
+- area:
+  - calculus / general integration backend / antiderivative verification /
+    positive quadratic rational decomposition
+- status:
+  - `retained`
+- observed:
+  - positive numeric shifted quadratics had a reusable widening point for
+    symbolic shifts such as `x^2+a`
+  - verifying `arctan(x/sqrt(a))/sqrt(a)` requires using `sqrt(a)^2 = a`,
+    which is only valid for this backend boundary when `Positive(a)` is carried
+    as an explicit required condition
+- decision:
+  - allow the Hermite positive-quadratic probe to emit candidates for
+    `1/(x^2+a)`, `2*x/(x^2+a)`, and `(x+1)/(x^2+a)` with
+    `ConditionPredicate::Positive(a)`
+  - keep the conditional `sqrt(a)^2 -> a` normalization local to backend
+    verification and gated by the candidate's required conditions
+  - leave broader symbolic mixed coefficients such as `(b*x+c)/(x^2+a)` out of
+    this promotion until coefficient/domain policies are explicit
+- retained learning:
+  - symbolic positive radii are a domain-policy upgrade, not a reason to add
+    global simplifier assumptions
+  - generated candidates may verify with different normalization reasons
+    depending on whether the log and arctangent branches recombine; the retained
+    invariant is verified-under-conditions with no residual, not a specific
+    pretty trace
+
+## 2026-06-09 - Retained follow-up: positive numeric sqrt-radius arctan backend verification
+
+- area:
+  - calculus / general integration backend / antiderivative verification /
+    positive quadratic rational decomposition
+- status:
+  - `retained`
+- observed:
+  - exact-square radius verification left a bounded widening path for
+    positive numeric non-square shifts such as `x^2+2`
+  - generated antiderivatives for `c/(x^2+n)` and `(a*x+b)/(x^2+n)` with
+    positive numeric `n` differentiate through products of reciprocal
+    `sqrt(n)` factors, not always through a single quotient node
+- decision:
+  - promote positive numeric `sqrt(n)` arctangent verification in the backend
+    verifier, including the same-denominator recombination needed for the
+    mixed log-plus-arctangent branch
+  - keep symbolic radii and symbolic positive constants residual until the
+    assumption/condition policy can represent branch and nonzero obligations
+- retained learning:
+  - non-exact numeric radii are still a verifier-normalization policy, not a
+    request for broad integration search
+  - fraction-product flattening is acceptable here only as a bounded prelude
+    to the existing arctangent-radius recognizer; it should not become a
+    general simplifier without separate scorecard pressure
+
+## 2026-06-09 - Retained follow-up: exact-square positive-quadratic arctan backend verification
+
+- area:
+  - calculus / general integration backend / antiderivative verification /
+    positive quadratic rational decomposition
+- status:
+  - `retained`
+- observed:
+  - the prior discovery correctly identified `arctan(x/r)/r` verification as
+    the blocker for pure arctangent branches
+  - for exact rational square radii, the backend can normalize the derivative
+    quotient for `c/r * arctan(x/r)` without invoking broad simplification
+- decision:
+  - promote the exact-square numeric branch `c/(x^2+r^2)` through the Hermite
+    backend probe, with `c` numeric nonzero and `r` a positive rational
+  - keep non-exact radii such as `1/(x^2+2)` and symbolic constants residual
+    until the verifier has an explicit policy for `sqrt(c)` or symbolic radius
+    factors
+- retained learning:
+  - exact-square arctangent verification is a bounded backend verifier policy,
+    not a reason to accept arbitrary positive quadratic arctangent candidates
+  - the next widening step should target non-exact positive numeric radii only
+    after the verifier can represent the `sqrt(c)` branch without depth
+    pressure or implicit branch assumptions
+
+## 2026-06-09 - Discovery observe-only: backend positive-quadratic arctan branch needs verifier policy
+
+- area:
+  - calculus / general integration backend / antiderivative verification /
+    positive quadratic rational decomposition
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while generalizing the backend mixed numerator probe from `x^2+1` toward
+    `x^2+c`, local CLI probes could simplify
+    `diff(arctan(x/sqrt(2))/sqrt(2), x)` to `1/(x^2+2)`
+  - the bounded backend verifier rejected candidates containing the
+    `sqrt(2)` arctangent branch, so `(x+1)/(x^2+2)` is now classified as
+    `hermite/radius_policy_mismatch` instead of being promoted
+  - the same iteration also found that pure arctangent branches such as
+    `1/(x^2+4)` and symbolic mixed constants such as
+    `(a*x+b)/(x^2+4)` should stay residual until the verifier has an explicit
+    policy for those shapes
+- decision:
+  - retain only the numeric mixed exact-square-radius family, for example
+    `(2*x+3)/(x^2+4)`, because it verifies through the current backend
+    boundary
+  - do not accept non-exact radii, pure arctangent branches, or symbolic
+    constant branches in this cycle
+- retained learning:
+  - future positive-quadratic backend work should improve the verifier for
+    `arctan(x/r)/r` branches before widening the detector to arbitrary
+    positive numeric radii or symbolic constants
+  - this is verification infrastructure, not a reason to bypass the backend
+    verification gate
+
+## 2026-06-09 - Discovery observe-only: backend mixed positive-quadratic numerator needs decomposition policy
+
+- area:
+  - calculus / general integration backend / method-probe observability /
+    positive quadratic rational decomposition
+- status:
+  - `discovery/observe-only`
+- observed:
+  - the diagnostic-only candidate `(x+1)/(x^2+2)` is intentionally not
+    accepted by the backend
+  - rational probing classifies the numerator as
+    `rational/numerator_policy_mismatch`
+  - Hermite probing now classifies the same near-family miss as
+    `hermite/numerator_derivative_mismatch`
+  - this distinguishes a real future decomposition gap from generic
+    `shape_mismatch` noise: the expression likely needs a bounded split into a
+    log-derivative part plus a positive-quadratic reciprocal part before any
+    backend promotion
+- decision:
+  - retain only the observability row and no-match attribution in this cycle
+  - do not promote public integration behavior or add broad search
+- retained learning:
+  - future backend work on positive quadratic rational forms should start from
+    an explicit decomposition policy and verifier contract, not from a wider
+    Hermite matcher
+  - promotion remains blocked until the split pieces carry real-domain,
+    constant, verification, and fallback policy
+
+## 2026-06-09 - Discovery observe-only: backend log-derivative verification misses unsimplified power decrement
+
+- area:
+  - calculus / general integration backend / antiderivative verification /
+    rational log-derivative probes
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while adding a second discovery-only backend probe, the candidate
+    `2*x/(x^2+1) -> ln(x^2+1)` was detected structurally but direct backend
+    verification rejected it
+  - the internal derivative rendered as `2 * x^(2 - 1) / (x^2 + 1)` instead
+    of reducing the exponent decrement to `2*x/(x^2+1)`
+  - the public CLI can simplify `diff(ln(x^2+1), x)` to `2*x/(x^2+1)`, so
+    the reusable weakness is the backend verification/equivalence boundary,
+    not the mathematical primitive
+- decision:
+  - do not retain the quadratic log-derivative backend probe in this cycle
+  - retain a different second probe only if it verifies through the current
+    bounded backend verifier without adding a workaround
+- retained learning:
+  - before promoting broader rational/Hermite backend probes, add or reuse a
+    bounded verification normalization that handles simple power-decrement
+    forms such as `x^(2 - 1) -> x`
+  - this should be treated as verification/equivalence infrastructure, not as
+    a one-off integration matcher
+
+## 2026-06-09 - Discovery observe-only: backend scaled log-derivative verification misses numeric quotient folding
+
+- area:
+  - calculus / general integration backend / antiderivative verification /
+    scaled rational log-derivative probes
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while generalizing the Hermite discovery probe from `2*x/(x^2+c)` to
+    `k*x/(x^2+c)`, the candidate `3*x/(x^2+2) -> (3/2)*ln(x^2+2)` was
+    detected structurally but backend verification initially rejected it
+  - the public CLI can simplify `diff((3/2)*ln(x^2+2), x)` to
+    `(x*3)/(x^2+2)`, so the reusable weakness was the backend
+    verification boundary, not the integration formula
+- decision:
+  - retain the probe only after adding a bounded backend-verifier
+    normalization for numeric factors over quotients
+  - keep the backend behavior discovery-only; do not promote this as a public
+    integration route in this cycle
+- retained learning:
+  - broader Hermite/rational backend probes need local verifier normalization
+    for shapes like `c*(n/d) -> (c*n)/d`
+  - this normalization belongs in the backend verification boundary unless a
+    future shared verifier service absorbs it with equivalent budget controls
+
+## 2026-06-09 - Discovery observe-only: backend symbolic-scale log-derivative verification misses quotient factor cancellation
+
+- area:
+  - calculus / general integration backend / antiderivative verification /
+    symbolic external-scale Hermite probes
+- status:
+  - `resolved-retained`
+- observed:
+  - while generalizing the Hermite discovery probe from numeric external
+    coefficients to symbolic external coefficients, the candidate
+    `a*x/(x^2+2) -> (a/2)*ln(x^2+2)` was detected structurally but backend
+    verification initially rejected it
+  - a cheap CLI probe simplified `diff((a/2)*ln(x^2+2), x) - a*x/(x^2+2)`
+    to `0`, so the reusable weakness was again the backend verifier boundary,
+    not the mathematical primitive
+- decision:
+  - retain the symbolic-scale Hermite probe only after adding bounded
+    backend-verifier normalization for `(A/c)*(c*B/D) -> (A*B)/D`
+  - keep the behavior discovery-only; do not promote this as a public
+    integration route in this cycle
+- retained learning:
+  - symbolic external-scale backend probes need quotient-factor cancellation in
+    the verifier before they can be safely observed or promoted
+  - the rule belongs behind the backend verification boundary because it is a
+    proof aid for candidate checking, not a new broad public simplifier rule
+
 ## 2026-06-07 - Discovery observe-only: distributed symbolic `cosh^-4` primitive is refactored back by public presentation
 
 - area:
@@ -16837,3 +17113,100 @@ The burden of proof stays the same:
   - for mature integration families, first check whether a direct
     `diff(integrate)` gap is a missing public probe before treating it as an
     engine capability gap
+
+## 2026-06-09 - Retained follow-up: numeric-slope positive-quadratic backend center verification
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / positive quadratic
+    affine centers
+- status:
+  - `retained`
+- observed:
+  - the previous Hermite positive-quadratic backend handled unit affine centers
+    such as `(x+b)^2+a`, but rejected or routed around reusable numeric-slope
+    siblings such as `(2*x+b)^2+a` and `(b-2*x)^2+a`
+  - the existing affine-slope helper was enough to scale the logarithmic and
+    arctangent primitive pieces by `1/k` for numeric non-unit slopes without
+    opening a broad matcher
+  - sibling probes covered positive numeric slope, negative numeric slope,
+    mixed external numerator, symbolic slope, and variable-dependent slope
+- decision:
+  - retain numeric non-unit affine centers in the Hermite backend with explicit
+    `Positive(a)` radius conditions and derivative verification
+  - promote one mixed numeric-slope observability row as the minimal
+    representative for the backend boundary
+  - keep symbolic and variable-dependent slopes unsupported until the verifier
+    can justify them without hidden assumptions
+- retained learning:
+  - `BackendAffineSlope` is reusable across the algorithmic backend, but Hermite
+    promotion should remain gated by antiderivative verification rather than
+    denominator recognition alone
+  - numeric orientation generalization is a low-risk block 12 increment when
+    the primitive is scaled structurally and the public residual path stays
+    safe for non-promoted siblings
+
+## 2026-06-09 - Discovery observe-only: symbolic-slope positive-quadratic backend verifier needs generated-numerator cancellation
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / antiderivative
+    verification / positive quadratic affine centers
+- status:
+  - `discovery/observe-only`
+- observed:
+  - a bounded symbolic-slope candidate for
+    `(m*(s*x+b)+c)/((s*x+b)^2+a)` carried the expected `Positive(a)` and
+    `NonZero(s)` conditions, but failed public acceptance because
+    antiderivative verification did not reduce the generated derivative back to
+    the source integrand
+  - the verifier reached an intermediate quotient equivalent to
+    `((s*x+b)*m*s*2/(s*2)+c)/((s*x+b)^2+a)`, while a freshly parsed equivalent
+    source shape could normalize to `(m*(s*x+b)+c)/((s*x+b)^2+a)`
+  - the gap is therefore a generated-AST verifier normalization weakness around
+    same-denominator recombination and factor cancellation, not evidence that a
+    broader Hermite matcher should be promoted
+- decision:
+  - reject symbolic-slope promotion in this cycle
+  - retain the safe unsupported/residual policy for symbolic slopes until a
+    bounded verifier service can normalize generated quotient factors without
+    broad simplification
+- retained learning:
+  - the next symbolic-slope candidate should first harden backend
+    antiderivative verification for generated quotient numerators, then enable
+    the Hermite symbolic-slope path with `Positive(a)` and `NonZero(s)`
+  - observe-only discoveries from block 12 should distinguish verifier
+    insufficiency from integration-rule insufficiency before expanding public
+    backend acceptance
+
+## 2026-06-09 - Retained follow-up: symbolic-slope positive-quadratic backend verifier and Hermite promotion
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / verifier fixed
+    point / positive quadratic affine centers
+- status:
+  - `retained`
+- observed:
+  - the previous observe-only candidate was blocked by generated AST shape, not
+    by the Hermite decomposition itself
+  - symbolic-slope primitives can differentiate through nested quotient forms
+    such as `(A/B)/C`, generated same-denominator numerators, and explicit
+    slope factors before matching the source integrand
+  - a bounded backend-only verifier fixed point with explicit
+    `NonZero(s)` evidence is enough to verify
+    `(m*(s*x+b)+c)/((s*x+b)^2+a)` without broadening public simplification
+- decision:
+  - retain symbolic affine-center Hermite support for this positive-quadratic
+    family under `Positive(a)` and `NonZero(s)`
+  - retain local verifier normalizations for nested quotient denominator
+    products and common-factor cancellation only when nonzero evidence is
+    numeric or present in required conditions
+  - promote one symbolic-slope observability row; keep variable-dependent
+    slopes unsupported
+- retained learning:
+  - block 12 promotions should harden the verifier before broadening method
+    recognition; denominator recognition alone is not a safe acceptance signal
+  - generated ASTs can require more normalization structure than equivalent
+    parsed expressions, so backend verifier tests should include generated
+    derivative AST probes, not only parsed-shape probes
+  - the next backend iteration can use the same verifier boundary for a
+    similarly structured rational/Hermite family only if it adds a new method
+    regime or condition policy, not merely a syntactic variant

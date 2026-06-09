@@ -36,10 +36,21 @@ Therefore the strategy is now:
 - treat calculus failures as structured feedback for simplification,
   equivalence, domains, and didactic trace quality
 
-This is not a license to implement a universal CAS or open broad unbounded
-search. It is a shift in default ROI: when several narrow calculus cases already
-work, the next cycle should ask what shared rule, domain policy, presentation
-layer, verification path, or didactic trace would make the family general.
+This is not a license to turn the current educational `integrate` route into
+broad unbounded search. It is a shift in default ROI: when several narrow
+calculus cases already work, the next cycle should ask what shared rule, domain
+policy, presentation layer, verification path, or didactic trace would make the
+family general.
+
+The long-term direction is hybrid:
+
+- keep a conservative, educational real-domain calculus surface as the public
+  default
+- add a separate algorithmic integration backend only behind an explicit
+  boundary, with verification, domain/constant policy, and conservative
+  fallback
+- never let a broad integration heuristic silently bypass the educational
+  route, required conditions, or didactic/residual policy
 
 ## Core Principle
 
@@ -130,16 +141,78 @@ Use these planning horizons as rough engineering heuristics, not commitments:
   one hundred or more retained cycles because the hard work is systematic
   coverage, domain policy, verification, didactic trace quality, and
   architecture
-- a universal integration engine is not a bounded target for this campaign;
-  integration should continue to grow through verified table, substitution,
-  rational, by-parts, trig/hyperbolic, radical, and inverse-family regimes with
-  conservative residuals
+- a universal integration engine is not a bounded target for ordinary ROI
+  cycles inside the existing educational route; if pursued, it should be a
+  separate hybrid backend track that starts with architecture, verification,
+  corpus, and policy boundaries before broad algorithms
 
 This gap assessment should influence ROI selection. A new green row is valuable
 only when it moves the engine toward a coherent block capability. If a proposed
 row does not improve family generality, domain safety, verification, didactic
 quality, or architecture, it should usually be rejected as another isolated
 example.
+
+## Hybrid General Integration Direction
+
+The project should allow a future "route C": a conservative educational
+calculus engine plus a more general algorithmic integration backend.
+The detailed roadmap for that backend lives in
+[GENERAL_INTEGRATION_BACKEND_ROADMAP.md](/Users/javiergimenezmoya/developer/math/docs/GENERAL_INTEGRATION_BACKEND_ROADMAP.md).
+
+This does not mean replacing the current integrator with broad heuristic search.
+It means creating a clear boundary where a general backend can be developed,
+measured, and rejected safely when it cannot produce a verified real-domain
+answer.
+
+Required properties for this backend track:
+
+- **Separate owner and entrypoint.** The algorithmic backend must not be hidden
+  inside table lookup, post-calculus presentation, or residual cleanup.
+- **Verification first.** A returned antiderivative must be checked by
+  differentiating it back to the integrand when the family is promoted. If
+  verification is unavailable or inconclusive, the educational route should
+  keep a residual rather than trust the backend.
+- **Domain and constant policy.** The backend must state whether its result is
+  real-domain, principal-branch, component-local, or conditional. Integration
+  constants and domain components must not be implicit.
+- **Fallback discipline.** Unsupported or unverified outputs remain residuals.
+  A more general backend is allowed to fail quietly; it is not allowed to invent
+  public certainty.
+- **Trace separation.** The educational route should keep detailed steps. The
+  general backend may expose a summarized method trace, but must not pretend to
+  have a full didactic derivation when it only has an algorithmic result.
+- **Corpus separation.** General backend probes should start as stress or
+  discovery cases. Promote to live/frozen only when they represent stable
+  method families and have verification/domain contracts.
+- **Runtime isolation.** Broad integration algorithms must not slow ordinary
+  `integrate` traffic unless a measured capability gain justifies it and the
+  relevant runtime guardrails stay green.
+
+Early backend work should be classified by retained value:
+
+- `observability` when mapping backend boundaries, method classes, or
+  verification gaps
+- `robustness` when preventing unbounded search, nontermination, or route churn
+- `calculus` only when a verified algorithmic family becomes public behavior
+
+Good initial backend milestones are:
+
+1. define an integration method result type that can carry candidate primitive,
+   method tag, assumptions, verification status, and residual reason
+2. route one existing verified family through that boundary without changing
+   public behavior
+3. add discovery-only probes for algorithmic rational integration or simple
+   heurisch-like substitutions, keeping unsupported cases residual
+4. require `diff(candidate, x) ~ integrand` or a documented domain-aware
+   verifier before promotion
+
+Rejected backend moves:
+
+- adding a broad substitution search directly to the current table integrator
+- accepting unverified antiderivatives because they look plausible
+- hiding branch or real-domain assumptions in display-only cleanup
+- making the educational trace claim a derivation the backend did not produce
+- slowing promoted calculus lanes for speculative coverage
 
 ## Current Risk: Architecture Pressure From Calculus Generalization
 
@@ -306,12 +379,27 @@ Use these blocks as the active checklist:
     - keep embedded and pressure lanes green; calculus maturity does not justify
       broad hot-path regressions
 
+12. **Hybrid algorithmic integration backend**
+    - introduce a separate backend boundary before adding general integration
+      algorithms
+    - carry method tags, assumptions, verification status, and residual reasons
+      as structured data
+    - start with behavior-preserving routing of existing verified families,
+      then add discovery-only algorithmic probes
+    - promote a backend family only when antiderivative verification, real-domain
+      policy, constant policy, runtime, and fallback behavior are explicit
+    - keep the educational route conservative and didactic even when a backend
+      can produce a broader result
+
 Selection rule:
 
 - every calculus cycle should name its `calculus_maturity_block`
 - every promoted calculus row should state which block gate it advances
 - if a candidate does not advance a block gate, treat it as discovery pressure
   or reject it as a near-duplicate
+- broad integration work must name block 12 and either improve the backend
+  boundary or promote one verified algorithmic family; otherwise reject it as
+  unsafe search
 - in ties, choose the candidate that moves an earlier incomplete block only
   when it also has high retention probability and does not hide a reusable
   pre-calculus blocker

@@ -1204,7 +1204,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="rational_positive_quadratic_linear_numerator_expanded_named_positive_radius_decomposition",
         expr="integrate((2*x+6)/(4*x^2+12*x+9+phi), x)",
-        expected_result="1/4·ln(4·x^2 + 12·x + 9 + phi) + (atan(phi^(-1/2)·(2·x + 3))·3)/(2·sqrt(phi))",
+        expected_result="1/4·ln(4·x^2 + 12·x + 9 + phi) + (atan((2·x + 3) / sqrt(phi))·3)/(2·sqrt(phi))",
         expected_derivative_equivalent_to="(2*x+6)/(4*x^2+12*x+9+phi)",
         expected_direct_diff_integrate_result="(2·x + 6) / (4·x^2 + 12·x + 9 + phi)",
         expected_step_substrings=(
