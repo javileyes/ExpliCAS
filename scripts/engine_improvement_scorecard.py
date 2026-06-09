@@ -3109,6 +3109,33 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
     method_probe_no_match_reason_counts = sanitize_int_count_map(
         raw.get("method_probe_no_match_reason_counts")
     )
+    method_probe_no_match_class_counts = sanitize_int_count_map(
+        raw.get("method_probe_no_match_class_counts")
+    )
+    method_probe_no_match_class_by_method = sanitize_int_count_map(
+        raw.get("method_probe_no_match_class_by_method")
+    )
+    method_probe_no_match_final_method_counts = sanitize_int_count_map(
+        raw.get("method_probe_no_match_final_method_counts")
+    )
+    method_probe_no_match_final_method_by_attempt = sanitize_int_count_map(
+        raw.get("method_probe_no_match_final_method_by_attempt")
+    )
+    method_probe_terminal_no_match_reason_counts = sanitize_int_count_map(
+        raw.get("method_probe_terminal_no_match_reason_counts")
+    )
+    method_probe_terminal_no_match_class_counts = sanitize_int_count_map(
+        raw.get("method_probe_terminal_no_match_class_counts")
+    )
+    method_probe_terminal_no_match_class_by_method = sanitize_int_count_map(
+        raw.get("method_probe_terminal_no_match_class_by_method")
+    )
+    method_probe_terminal_candidate_count = raw.get(
+        "method_probe_terminal_candidate_count", 0
+    )
+    method_probe_terminal_candidate_signature_counts = sanitize_int_count_map(
+        raw.get("method_probe_terminal_candidate_signature_counts")
+    )
     verification_check_usage_by_method = sanitize_int_count_map(
         raw.get("verification_check_usage_by_method")
     )
@@ -3156,17 +3183,31 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
     )
     trace_level_counts = sanitize_int_count_map(raw.get("trace_level_counts"))
     constant_policy_counts = sanitize_int_count_map(raw.get("constant_policy_counts"))
+    domain_policy_counts = sanitize_int_count_map(raw.get("domain_policy_counts"))
+    domain_policy_by_method = sanitize_int_count_map(raw.get("domain_policy_by_method"))
     public_trace_level_counts = sanitize_int_count_map(
         raw.get("public_trace_level_counts")
     )
     public_constant_policy_counts = sanitize_int_count_map(
         raw.get("public_constant_policy_counts")
     )
+    public_domain_policy_counts = sanitize_int_count_map(
+        raw.get("public_domain_policy_counts")
+    )
+    public_domain_policy_by_method = sanitize_int_count_map(
+        raw.get("public_domain_policy_by_method")
+    )
     fallback_trace_level_counts = sanitize_int_count_map(
         raw.get("fallback_trace_level_counts")
     )
     fallback_constant_policy_counts = sanitize_int_count_map(
         raw.get("fallback_constant_policy_counts")
+    )
+    fallback_domain_policy_counts = sanitize_int_count_map(
+        raw.get("fallback_domain_policy_counts")
+    )
+    fallback_domain_policy_by_method = sanitize_int_count_map(
+        raw.get("fallback_domain_policy_by_method")
     )
     verification_evidence_counts = sanitize_int_count_map(
         raw.get("verification_evidence_counts")
@@ -3302,6 +3343,228 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
                 "algorithmic backend method_probe_no_match_reason_counts do not "
                 "match method_probe_no_match_counts by method"
             )
+    if (
+        method_probe_no_match_total
+        and "method_probe_no_match_class_counts" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_class_counts missing "
+            "method probe no-matches"
+        )
+    if (
+        sum(method_probe_no_match_class_counts.values())
+        != method_probe_no_match_total
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_class_counts do not "
+            "match method_probe_no_match_counts"
+        )
+    if (
+        method_probe_no_match_total
+        and "method_probe_no_match_class_by_method" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_class_by_method missing "
+            "method probe no-matches"
+        )
+    if (
+        sum(method_probe_no_match_class_by_method.values())
+        != method_probe_no_match_total
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_class_by_method does not "
+            "match method_probe_no_match_counts"
+        )
+    if method_probe_no_match_class_by_method:
+        class_by_method_prefix, class_by_method_suffix = split_compound_count_map(
+            method_probe_no_match_class_by_method,
+            label="algorithmic backend method_probe_no_match_class_by_method",
+        )
+        if class_by_method_prefix != method_probe_no_match_counts:
+            raise ValueError(
+                "algorithmic backend method_probe_no_match_class_by_method does "
+                "not match method_probe_no_match_counts by method"
+            )
+        if class_by_method_suffix != method_probe_no_match_class_counts:
+            raise ValueError(
+                "algorithmic backend method_probe_no_match_class_by_method does "
+                "not match method_probe_no_match_class_counts"
+            )
+    if (
+        method_probe_no_match_total
+        and "method_probe_no_match_final_method_counts" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_final_method_counts "
+            "missing method probe no-matches"
+        )
+    if (
+        sum(method_probe_no_match_final_method_counts.values())
+        != method_probe_no_match_total
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_final_method_counts do "
+            "not match method_probe_no_match_counts"
+        )
+    if (
+        method_probe_no_match_total
+        and "method_probe_no_match_final_method_by_attempt" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_final_method_by_attempt "
+            "missing method probe no-matches"
+        )
+    if (
+        sum(method_probe_no_match_final_method_by_attempt.values())
+        != method_probe_no_match_total
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_no_match_final_method_by_attempt "
+            "does not match method_probe_no_match_counts"
+        )
+    if method_probe_no_match_final_method_by_attempt:
+        final_by_attempt_prefix, final_by_attempt_suffix = split_compound_count_map(
+            method_probe_no_match_final_method_by_attempt,
+            label="algorithmic backend method_probe_no_match_final_method_by_attempt",
+        )
+        if final_by_attempt_prefix != method_probe_no_match_counts:
+            raise ValueError(
+                "algorithmic backend method_probe_no_match_final_method_by_attempt "
+                "does not match method_probe_no_match_counts by attempted method"
+            )
+        if final_by_attempt_suffix != method_probe_no_match_final_method_counts:
+            raise ValueError(
+                "algorithmic backend method_probe_no_match_final_method_by_attempt "
+                "does not match method_probe_no_match_final_method_counts"
+            )
+    terminal_no_match_total = method_probe_no_match_final_method_counts.get(
+        "unsupported", 0
+    )
+    if (
+        terminal_no_match_total
+        and "method_probe_terminal_no_match_reason_counts" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_no_match_reason_counts "
+            "missing terminal method probe no-matches"
+        )
+    if (
+        sum(method_probe_terminal_no_match_reason_counts.values())
+        != terminal_no_match_total
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_no_match_reason_counts "
+            "do not match terminal method probe no-matches"
+        )
+    terminal_no_match_by_attempt = compound_count_map_prefix_for_suffix(
+        method_probe_no_match_final_method_by_attempt,
+        suffix="unsupported",
+        label="algorithmic backend method_probe_no_match_final_method_by_attempt",
+    )
+    if method_probe_terminal_no_match_reason_counts:
+        terminal_reason_prefix, _ = split_compound_count_map(
+            method_probe_terminal_no_match_reason_counts,
+            label="algorithmic backend method_probe_terminal_no_match_reason_counts",
+        )
+        if terminal_reason_prefix != terminal_no_match_by_attempt:
+            raise ValueError(
+                "algorithmic backend method_probe_terminal_no_match_reason_counts "
+                "do not match terminal no-matches by attempted method"
+            )
+    if (
+        terminal_no_match_total
+        and "method_probe_terminal_no_match_class_counts" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_no_match_class_counts "
+            "missing terminal method probe no-matches"
+        )
+    if (
+        sum(method_probe_terminal_no_match_class_counts.values())
+        != terminal_no_match_total
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_no_match_class_counts "
+            "do not match terminal method probe no-matches"
+        )
+    if (
+        terminal_no_match_total
+        and "method_probe_terminal_no_match_class_by_method" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_no_match_class_by_method "
+            "missing terminal method probe no-matches"
+        )
+    if (
+        sum(method_probe_terminal_no_match_class_by_method.values())
+        != terminal_no_match_total
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_no_match_class_by_method "
+            "does not match terminal method probe no-matches"
+        )
+    if method_probe_terminal_no_match_class_by_method:
+        terminal_class_prefix, terminal_class_suffix = split_compound_count_map(
+            method_probe_terminal_no_match_class_by_method,
+            label=(
+                "algorithmic backend "
+                "method_probe_terminal_no_match_class_by_method"
+            ),
+        )
+        if terminal_class_prefix != terminal_no_match_by_attempt:
+            raise ValueError(
+                "algorithmic backend method_probe_terminal_no_match_class_by_method "
+                "does not match terminal no-matches by attempted method"
+            )
+        if terminal_class_suffix != method_probe_terminal_no_match_class_counts:
+            raise ValueError(
+                "algorithmic backend method_probe_terminal_no_match_class_by_method "
+                "does not match method_probe_terminal_no_match_class_counts"
+            )
+    if (
+        not isinstance(method_probe_terminal_candidate_count, int)
+        or method_probe_terminal_candidate_count < 0
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_candidate_count must be "
+            "a non-negative integer"
+        )
+    if (
+        terminal_no_match_total
+        and "method_probe_terminal_candidate_count" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_candidate_count missing "
+            "terminal method probe no-matches"
+        )
+    if terminal_no_match_total and method_probe_terminal_candidate_count == 0:
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_candidate_count missing "
+            "terminal candidates"
+        )
+    if method_probe_terminal_candidate_count > terminal_no_match_total:
+        raise ValueError(
+            "algorithmic backend method_probe_terminal_candidate_count exceeds "
+            "terminal method probe no-matches"
+        )
+    if (
+        method_probe_terminal_candidate_count
+        and "method_probe_terminal_candidate_signature_counts" not in raw
+    ):
+        raise ValueError(
+            "algorithmic backend "
+            "method_probe_terminal_candidate_signature_counts missing terminal "
+            "candidates"
+        )
+    if (
+        sum(method_probe_terminal_candidate_signature_counts.values())
+        != method_probe_terminal_candidate_count
+    ):
+        raise ValueError(
+            "algorithmic backend "
+            "method_probe_terminal_candidate_signature_counts do not match "
+            "method_probe_terminal_candidate_count"
+        )
     if (
         sum(verification_check_usage_by_method.values())
         != verification_checks_used_total
@@ -3642,6 +3905,32 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
         raise ValueError(
             "algorithmic backend constant_policy_counts do not match attempts"
         )
+    if domain_policy_counts and sum(domain_policy_counts.values()) != attempts:
+        raise ValueError(
+            "algorithmic backend domain_policy_counts do not match attempts"
+        )
+    if domain_policy_by_method:
+        if sum(domain_policy_by_method.values()) != sum(domain_policy_counts.values()):
+            raise ValueError(
+                "algorithmic backend domain_policy_by_method does not match "
+                "domain_policy_counts"
+            )
+        domain_policy_by_method_prefix, domain_policy_by_method_suffix = (
+            split_compound_count_map(
+                domain_policy_by_method,
+                label="algorithmic backend domain_policy_by_method",
+            )
+        )
+        if domain_policy_by_method_prefix != method_counts:
+            raise ValueError(
+                "algorithmic backend domain_policy_by_method does not match "
+                "method_counts"
+            )
+        if domain_policy_by_method_suffix != domain_policy_counts:
+            raise ValueError(
+                "algorithmic backend domain_policy_by_method does not match "
+                "domain_policy_counts"
+            )
     if (
         public_trace_level_counts
         and sum(public_trace_level_counts.values()) != public_accepted
@@ -3658,6 +3947,43 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
             "public_accepted"
         )
     if (
+        public_domain_policy_counts
+        and sum(public_domain_policy_counts.values()) != public_accepted
+    ):
+        raise ValueError(
+            "algorithmic backend public_domain_policy_counts do not match "
+            "public_accepted"
+        )
+    if public_domain_policy_by_method:
+        if sum(public_domain_policy_by_method.values()) != sum(
+            public_domain_policy_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend public_domain_policy_by_method does not "
+                "match public_domain_policy_counts"
+            )
+        public_domain_policy_by_method_prefix, public_domain_policy_by_method_suffix = (
+            split_compound_count_map(
+                public_domain_policy_by_method,
+                label="algorithmic backend public_domain_policy_by_method",
+            )
+        )
+        accepted_by_method = compound_count_map_prefix_for_suffix(
+            publication_status_by_method,
+            suffix="accepted",
+            label="algorithmic backend publication_status_by_method",
+        )
+        if public_domain_policy_by_method_prefix != accepted_by_method:
+            raise ValueError(
+                "algorithmic backend public_domain_policy_by_method does not "
+                "match accepted publication methods"
+            )
+        if public_domain_policy_by_method_suffix != public_domain_policy_counts:
+            raise ValueError(
+                "algorithmic backend public_domain_policy_by_method does not "
+                "match public_domain_policy_counts"
+            )
+    if (
         fallback_trace_level_counts
         and sum(fallback_trace_level_counts.values()) != fallback_eligible
     ):
@@ -3673,6 +3999,43 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
             "algorithmic backend fallback_constant_policy_counts do not match "
             "fallback_eligible"
         )
+    if (
+        fallback_domain_policy_counts
+        and sum(fallback_domain_policy_counts.values()) != fallback_eligible
+    ):
+        raise ValueError(
+            "algorithmic backend fallback_domain_policy_counts do not match "
+            "fallback_eligible"
+        )
+    if fallback_domain_policy_by_method:
+        if sum(fallback_domain_policy_by_method.values()) != sum(
+            fallback_domain_policy_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend fallback_domain_policy_by_method does not "
+                "match fallback_domain_policy_counts"
+            )
+        fallback_domain_policy_by_method_prefix, fallback_domain_policy_by_method_suffix = (
+            split_compound_count_map(
+                fallback_domain_policy_by_method,
+                label="algorithmic backend fallback_domain_policy_by_method",
+            )
+        )
+        fallback_eligible_by_method = compound_count_map_prefix_for_suffix(
+            fallback_status_by_method,
+            suffix="eligible",
+            label="algorithmic backend fallback_status_by_method",
+        )
+        if fallback_domain_policy_by_method_prefix != fallback_eligible_by_method:
+            raise ValueError(
+                "algorithmic backend fallback_domain_policy_by_method does not "
+                "match eligible fallback methods"
+            )
+        if fallback_domain_policy_by_method_suffix != fallback_domain_policy_counts:
+            raise ValueError(
+                "algorithmic backend fallback_domain_policy_by_method does not "
+                "match fallback_domain_policy_counts"
+            )
     if (
         verification_evidence_counts
         and sum(verification_evidence_counts.values()) != attempts
@@ -4256,6 +4619,31 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
         "backend_method_probe_no_match_reason_counts": (
             method_probe_no_match_reason_counts
         ),
+        "backend_method_probe_no_match_class_counts": method_probe_no_match_class_counts,
+        "backend_method_probe_no_match_class_by_method": (
+            method_probe_no_match_class_by_method
+        ),
+        "backend_method_probe_no_match_final_method_counts": (
+            method_probe_no_match_final_method_counts
+        ),
+        "backend_method_probe_no_match_final_method_by_attempt": (
+            method_probe_no_match_final_method_by_attempt
+        ),
+        "backend_method_probe_terminal_no_match_reason_counts": (
+            method_probe_terminal_no_match_reason_counts
+        ),
+        "backend_method_probe_terminal_no_match_class_counts": (
+            method_probe_terminal_no_match_class_counts
+        ),
+        "backend_method_probe_terminal_no_match_class_by_method": (
+            method_probe_terminal_no_match_class_by_method
+        ),
+        "backend_method_probe_terminal_candidate_count": (
+            method_probe_terminal_candidate_count
+        ),
+        "backend_method_probe_terminal_candidate_signature_counts": (
+            method_probe_terminal_candidate_signature_counts
+        ),
         "backend_verification_check_usage_by_method": verification_check_usage_by_method,
         "backend_verification_status_by_method": verification_status_by_method,
         "backend_residual_reason_by_method": residual_reason_by_method,
@@ -4281,10 +4669,18 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
         "backend_fallback_status_by_method": fallback_status_by_method,
         "backend_trace_level_counts": trace_level_counts,
         "backend_constant_policy_counts": constant_policy_counts,
+        "backend_domain_policy_counts": domain_policy_counts,
+        "backend_domain_policy_by_method": domain_policy_by_method,
         "backend_public_trace_level_counts": public_trace_level_counts,
         "backend_public_constant_policy_counts": public_constant_policy_counts,
+        "backend_public_domain_policy_counts": public_domain_policy_counts,
+        "backend_public_domain_policy_by_method": public_domain_policy_by_method,
         "backend_fallback_trace_level_counts": fallback_trace_level_counts,
         "backend_fallback_constant_policy_counts": fallback_constant_policy_counts,
+        "backend_fallback_domain_policy_counts": fallback_domain_policy_counts,
+        "backend_fallback_domain_policy_by_method": (
+            fallback_domain_policy_by_method
+        ),
         "backend_verification_evidence_counts": verification_evidence_counts,
         "backend_public_verification_evidence_counts": public_verification_evidence_counts,
         "backend_fallback_verification_evidence_counts": fallback_verification_evidence_counts,
@@ -7042,6 +7438,26 @@ def suite_status(name: str, metrics: dict[str, Any], returncode: int) -> str:
             and fallback_constant_policies.get("unspecified", 0) > 0
         ):
             return "fail"
+        blocked_domain_policy_labels = {
+            "unspecified",
+            "domain_policy_missing",
+            "branch_policy_missing",
+            "assumption_policy_missing",
+        }
+        public_domain_policies = metrics.get("backend_public_domain_policy_counts", {})
+        if isinstance(public_domain_policies, dict) and any(
+            public_domain_policies.get(label, 0) > 0
+            for label in blocked_domain_policy_labels
+        ):
+            return "fail"
+        fallback_domain_policies = metrics.get(
+            "backend_fallback_domain_policy_counts", {}
+        )
+        if isinstance(fallback_domain_policies, dict) and any(
+            fallback_domain_policies.get(label, 0) > 0
+            for label in blocked_domain_policy_labels
+        ):
+            return "fail"
         if metrics.get("backend_public_assumption_exprs", 0) > 0:
             return "fail"
         if metrics.get("backend_fallback_assumption_exprs", 0) > 0:
@@ -8871,6 +9287,110 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` method-probe no-match reasons: "
                             + ", ".join(method_probe_no_match_reasons)
                         )
+                    method_probe_no_match_classes = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_method_probe_no_match_class_counts")
+                        )
+                    )
+                    if method_probe_no_match_classes:
+                        lines.append(
+                            f"- `{label}` method-probe no-match classes: "
+                            + ", ".join(method_probe_no_match_classes)
+                        )
+                    method_probe_no_match_class_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_method_probe_no_match_class_by_method"
+                            )
+                        )
+                    )
+                    if method_probe_no_match_class_by_method:
+                        lines.append(
+                            f"- `{label}` method-probe no-match class by method: "
+                            + ", ".join(method_probe_no_match_class_by_method)
+                        )
+                    method_probe_no_match_final_methods = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_method_probe_no_match_final_method_counts"
+                            )
+                        )
+                    )
+                    if method_probe_no_match_final_methods:
+                        lines.append(
+                            f"- `{label}` method-probe no-match final methods: "
+                            + ", ".join(method_probe_no_match_final_methods)
+                        )
+                    method_probe_no_match_final_by_attempt = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_method_probe_no_match_final_method_by_attempt"
+                            )
+                        )
+                    )
+                    if method_probe_no_match_final_by_attempt:
+                        lines.append(
+                            f"- `{label}` method-probe no-match final method by attempt: "
+                            + ", ".join(method_probe_no_match_final_by_attempt)
+                        )
+                    method_probe_terminal_no_match_reasons = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_method_probe_terminal_no_match_reason_counts"
+                            )
+                        )
+                    )
+                    if method_probe_terminal_no_match_reasons:
+                        lines.append(
+                            f"- `{label}` method-probe terminal no-match reasons: "
+                            + ", ".join(method_probe_terminal_no_match_reasons)
+                        )
+                    method_probe_terminal_no_match_classes = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_method_probe_terminal_no_match_class_counts"
+                            )
+                        )
+                    )
+                    if method_probe_terminal_no_match_classes:
+                        lines.append(
+                            f"- `{label}` method-probe terminal no-match classes: "
+                            + ", ".join(method_probe_terminal_no_match_classes)
+                        )
+                    method_probe_terminal_no_match_class_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_method_probe_terminal_no_match_class_by_method"
+                            )
+                        )
+                    )
+                    if method_probe_terminal_no_match_class_by_method:
+                        lines.append(
+                            f"- `{label}` method-probe terminal no-match class by method: "
+                            + ", ".join(
+                                method_probe_terminal_no_match_class_by_method
+                            )
+                        )
+                    method_probe_terminal_candidate_count = metrics.get(
+                        "backend_method_probe_terminal_candidate_count"
+                    )
+                    if method_probe_terminal_candidate_count:
+                        lines.append(
+                            f"- `{label}` method-probe terminal candidates: "
+                            f"count={method_probe_terminal_candidate_count}"
+                        )
+                    method_probe_terminal_candidate_signatures = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_method_probe_terminal_candidate_signature_counts"
+                            )
+                        )
+                    )
+                    if method_probe_terminal_candidate_signatures:
+                        lines.append(
+                            f"- `{label}` method-probe terminal candidate signatures: "
+                            + ", ".join(method_probe_terminal_candidate_signatures)
+                        )
                     verification_usage = calculus_matrix_count_map_fragments(
                         metrics.get("backend_verification_check_usage_by_method")
                     )
@@ -9041,6 +9561,22 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` constant policies: "
                             + ", ".join(constant_policy_counts)
                         )
+                    domain_policy_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_domain_policy_counts")
+                    )
+                    if domain_policy_counts:
+                        lines.append(
+                            f"- `{label}` domain policies: "
+                            + ", ".join(domain_policy_counts)
+                        )
+                    domain_policy_by_method = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_domain_policy_by_method")
+                    )
+                    if domain_policy_by_method:
+                        lines.append(
+                            f"- `{label}` domain policy by method: "
+                            + ", ".join(domain_policy_by_method)
+                        )
                     public_trace_level_counts = calculus_matrix_count_map_fragments(
                         metrics.get("backend_public_trace_level_counts")
                     )
@@ -9059,6 +9595,24 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` public constant policies: "
                             + ", ".join(public_constant_policy_counts)
                         )
+                    public_domain_policy_counts = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_public_domain_policy_counts")
+                    )
+                    if public_domain_policy_counts:
+                        lines.append(
+                            f"- `{label}` public domain policies: "
+                            + ", ".join(public_domain_policy_counts)
+                        )
+                    public_domain_policy_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_public_domain_policy_by_method")
+                        )
+                    )
+                    if public_domain_policy_by_method:
+                        lines.append(
+                            f"- `{label}` public domain policy by method: "
+                            + ", ".join(public_domain_policy_by_method)
+                        )
                     fallback_trace_level_counts = calculus_matrix_count_map_fragments(
                         metrics.get("backend_fallback_trace_level_counts")
                     )
@@ -9076,6 +9630,26 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         lines.append(
                             f"- `{label}` fallback constant policies: "
                             + ", ".join(fallback_constant_policy_counts)
+                        )
+                    fallback_domain_policy_counts = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_fallback_domain_policy_counts")
+                        )
+                    )
+                    if fallback_domain_policy_counts:
+                        lines.append(
+                            f"- `{label}` fallback domain policies: "
+                            + ", ".join(fallback_domain_policy_counts)
+                        )
+                    fallback_domain_policy_by_method = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_fallback_domain_policy_by_method")
+                        )
+                    )
+                    if fallback_domain_policy_by_method:
+                        lines.append(
+                            f"- `{label}` fallback domain policy by method: "
+                            + ", ".join(fallback_domain_policy_by_method)
                         )
                     assumption_exprs = metrics.get("backend_assumption_exprs")
                     public_assumption_exprs = metrics.get(
