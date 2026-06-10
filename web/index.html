@@ -1287,6 +1287,14 @@
                     <option value="principal">principal</option>
                 </select>
             </label>
+            <label class="mode-control" for="complex-mode-select"
+                title="Complex arithmetic: on treats i as the imaginary unit (i^2 = -1, Gaussian products)">
+                <span class="mode-label">Complex</span>
+                <select class="mode-select" id="complex-mode-select">
+                    <option value="off" selected>off</option>
+                    <option value="on">on</option>
+                </select>
+            </label>
             <input type="text" class="input-field" id="expression-input"
                 placeholder="Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
             <button class="submit-btn" id="submit-btn" onclick="evaluateExpression()">
@@ -1342,6 +1350,7 @@
         const DEFAULT_TIME_BUDGET_MS = window.EXPLICAS_BUILD_CONFIG?.defaultTimeBudgetMs ?? 1700;
         const DOMAIN_MODE_STORAGE_KEY = 'expliCAS_domain_mode';
         const BRANCH_MODE_STORAGE_KEY = 'expliCAS_branch_mode';
+        const COMPLEX_MODE_STORAGE_KEY = 'expliCAS_complex_arithmetic';
 
         // Input handling
         const input = document.getElementById('expression-input');
@@ -1365,6 +1374,16 @@
 
         branchModeSelect.addEventListener('change', () => {
             sessionStorage.setItem(BRANCH_MODE_STORAGE_KEY, branchModeSelect.value);
+        });
+
+        const complexModeSelect = document.getElementById('complex-mode-select');
+        const savedComplexMode = sessionStorage.getItem(COMPLEX_MODE_STORAGE_KEY);
+        if (savedComplexMode === 'off' || savedComplexMode === 'on') {
+            complexModeSelect.value = savedComplexMode;
+        }
+
+        complexModeSelect.addEventListener('change', () => {
+            sessionStorage.setItem(COMPLEX_MODE_STORAGE_KEY, complexModeSelect.value);
         });
 
         input.addEventListener('keydown', (e) => {
@@ -1422,6 +1441,7 @@
                         session_id: SESSION_ID,
                         domain: domainModeSelect.value,
                         branch: branchModeSelect.value,
+                        complex_arithmetic: complexModeSelect.value,
                         time_budget_ms: DEFAULT_TIME_BUDGET_MS
                     })
                 });

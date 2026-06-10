@@ -219,6 +219,23 @@ def _coerce_domain_mode(raw_value):
     return value
 
 
+def _coerce_complex_arithmetic(raw_value):
+    """Parse the web complex-arithmetic selector (off/on; default off).
+
+    Maps to the CLI flag --value-domain complex, the axis that activates
+    Gaussian arithmetic on `i` (i^2 = -1, conjugate products); --complex is
+    a different axis and does not gate this.
+    """
+    if raw_value is None or raw_value == "":
+        return "off"
+
+    value = str(raw_value).strip().lower()
+    if value not in {"off", "on"}:
+        raise ValueError("complex_arithmetic must be 'off' or 'on'")
+
+    return value
+
+
 def _coerce_branch_mode(raw_value):
     """Parse the web inverse-trig branch selector (strict/principal; default strict).
 
@@ -478,6 +495,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             time_budget_ms = _coerce_time_budget_ms(data.get("time_budget_ms"))
             domain_mode = _coerce_domain_mode(data.get("domain"))
             branch_mode = _coerce_branch_mode(data.get("branch"))
+            complex_arithmetic = _coerce_complex_arithmetic(data.get("complex_arithmetic"))
             session = get_session(session_id)
             
             if not expression:
@@ -496,6 +514,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     time_budget_ms,
                     domain_mode,
                     branch_mode,
+                    complex_arithmetic,
                 )
                 
                 if result.get('ok', False):
@@ -515,6 +534,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     time_budget_ms,
                     domain_mode,
                     branch_mode,
+                    complex_arithmetic,
                 )
                 # Only non-assignment evaluations get stored for UI references
                 session["results"].append(result)
@@ -526,6 +546,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             result['session_id'] = session_id
             result['domain'] = domain_mode
             result['branch'] = branch_mode
+            result['complex_arithmetic'] = complex_arithmetic
             
             self.send_json(result)
             
@@ -536,7 +557,15 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(str(e))
 
-    def eval_and_store(self, expression, session, time_budget_ms, domain_mode, branch_mode="strict"):
+    def eval_and_store(
+        self,
+        expression,
+        session,
+        time_budget_ms,
+        domain_mode,
+        branch_mode="strict",
+        complex_arithmetic="off",
+    ):
         """Evaluate via cas_cli using the per-session snapshot, tracking real stored ids."""
         session_file = session.get("session_file")
         lock_path = (session_file + ".lock") if session_file else None
@@ -548,6 +577,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 time_budget_ms,
                 domain_mode,
                 branch_mode,
+                complex_arithmetic,
             )
 
             cli_id = None
@@ -557,7 +587,15 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
 
             return result, cli_id
 
-    def eval_with_substitution(self, expression, session, time_budget_ms, domain_mode, branch_mode="strict"):
+    def eval_with_substitution(
+        self,
+        expression,
+        session,
+        time_budget_ms,
+        domain_mode,
+        branch_mode="strict",
+        complex_arithmetic="off",
+    ):
         """Evaluate expression, substituting variables and mapping UI #N refs to CLI session refs."""
         expr = expression
         session_results = session.get("results", [])
@@ -621,6 +659,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 time_budget_ms=time_budget_ms,
                 domain_mode=domain_mode,
                 branch_mode=branch_mode,
+                complex_arithmetic=complex_arithmetic,
             )
             if _equiv_result_is_true(equiv_result):
                 derive_result = self.call_cas_cli(
@@ -630,6 +669,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     time_budget_ms=time_budget_ms,
                     domain_mode=domain_mode,
                     branch_mode=branch_mode,
+                    complex_arithmetic=complex_arithmetic,
                 )
                 return _merge_equiv_with_derive_steps(equiv_result, derive_result)
             return _merge_equiv_with_derive_steps(equiv_result, None)
@@ -640,6 +680,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             time_budget_ms=time_budget_ms,
             domain_mode=domain_mode,
             branch_mode=branch_mode,
+            complex_arithmetic=complex_arithmetic,
         )
 
     def call_cas_cli(
@@ -650,6 +691,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         time_budget_ms=None,
         domain_mode="generic",
         branch_mode="strict",
+        complex_arithmetic="off",
     ):
         """Call cas_cli eval-json and return parsed result"""
         result = None  # Initialize to handle exception cases
@@ -675,6 +717,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "--inv-trig",
                 branch_mode,
             ]
+            if complex_arithmetic == "on":
+                cmd += ["--value-domain", "complex"]
             if time_budget_ms is not None:
                 cmd += ["--time-budget-ms", str(time_budget_ms)]
             if session_file:

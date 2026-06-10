@@ -81,6 +81,17 @@ def _coerce_domain_mode(raw_value):
         raise ValueError("domain must be 'strict', 'generic' or 'assume'")
 
 
+def _coerce_complex_arithmetic(raw_value):
+    if raw_value is None or raw_value == "":
+        return "off"
+
+    value = str(raw_value).strip().lower()
+    if value not in {"off", "on"}:
+        raise ValueError("complex_arithmetic must be 'off' or 'on'")
+
+    return value
+
+
 def _coerce_branch_mode(raw_value):
     if raw_value is None or raw_value == "":
         return "strict"
@@ -239,6 +250,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             time_budget_ms = _coerce_time_budget_ms(data.get("time_budget_ms"))
             domain_mode = _coerce_domain_mode(data.get("domain"))
             branch_mode = _coerce_branch_mode(data.get("branch"))
+            complex_arithmetic = _coerce_complex_arithmetic(data.get("complex_arithmetic"))
             if not expression:
                 self.send_json_error("No expression provided")
                 return
@@ -253,6 +265,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     time_budget_ms,
                     domain_mode,
                     branch_mode,
+                    complex_arithmetic,
                 )
                 if result.get("ok", False):
                     session_variables[var_name] = result.get("result", "")
@@ -264,6 +277,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     time_budget_ms,
                     domain_mode,
                     branch_mode,
+                    complex_arithmetic,
                 )
 
             session_results.append(result)
@@ -271,6 +285,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             result["variables"] = list(session_variables.keys())
             result["domain"] = domain_mode
             result["branch"] = branch_mode
+            result["complex_arithmetic"] = complex_arithmetic
             self.send_json(result)
 
         except json.JSONDecodeError:
@@ -280,7 +295,14 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(f"Server error: {e}")
 
-    def eval_with_substitution(self, expression: str, time_budget_ms, domain_mode, branch_mode="strict"):
+    def eval_with_substitution(
+        self,
+        expression: str,
+        time_budget_ms,
+        domain_mode,
+        branch_mode="strict",
+        complex_arithmetic="off",
+    ):
         expr = expression
 
         # Substitute refs: %n or #n
@@ -306,6 +328,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 time_budget_ms=time_budget_ms,
                 domain_mode=domain_mode,
                 branch_mode=branch_mode,
+                complex_arithmetic=complex_arithmetic,
             )
             if _equiv_result_is_true(equiv_result):
                 derive_result = self.call_cas_cli(
@@ -314,6 +337,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     time_budget_ms=time_budget_ms,
                     domain_mode=domain_mode,
                     branch_mode=branch_mode,
+                    complex_arithmetic=complex_arithmetic,
                 )
                 return _merge_equiv_with_derive_steps(equiv_result, derive_result)
             return _merge_equiv_with_derive_steps(equiv_result, None)
@@ -323,6 +347,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             time_budget_ms=time_budget_ms,
             domain_mode=domain_mode,
             branch_mode=branch_mode,
+            complex_arithmetic=complex_arithmetic,
         )
 
     def call_cas_cli(
@@ -332,6 +357,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         time_budget_ms=None,
         domain_mode="generic",
         branch_mode="strict",
+        complex_arithmetic="off",
     ):
         try:
             # Use absolute path if available
@@ -345,6 +371,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "--domain", domain_mode,
                 "--inv-trig", branch_mode,
             ]
+            if complex_arithmetic == "on":
+                cmd += ["--value-domain", "complex"]
             if time_budget_ms is not None:
                 cmd += ["--time-budget-ms", str(time_budget_ms)]
 

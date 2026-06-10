@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 48 (newest first)
+Active entries: 49 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -131,6 +131,7 @@ Active entries: 48 (newest first)
 - 2026-06-10 | `retained` | web UI / domain modes / inverse-trig branch policy / documentation | Retained harness: web mode/branch selectors and trig-branch doc coherence
 - 2026-06-10 | `retained` | CLI surface / inverse-trig branch policy / profile cache | Retained robustness: --branch becomes an honest alias of --inv-trig
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / verification | Retained calculus: algebraic zero-test graduates rational verification
+- 2026-06-10 | `retained` | strategy docs / deferred horizons / web UI / complex domain foundations | Retained harness: complex semantic model decision and web complex-arithmetic selector
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -1984,3 +1985,43 @@ Active entries: 48 (newest first)
     cas_engine and could not be imported by cas_math; the reimplementation
     was small, but if a third consumer appears the atom-map/quotient kit
     belongs in cas_math as a shared module
+
+## 2026-06-10 - Retained harness: complex semantic model decision and web complex-arithmetic selector
+
+- area:
+  - strategy docs / deferred horizons / web UI / complex domain foundations
+- status:
+  - `retained` (docs + web only; engine untouched)
+- capture:
+  - investment_class: observability (harness/product surface)
+  - cohesion_scope: CALCULUS_ENGINE_STRATEGY.md Deferred Horizons +
+    web/{index.html,server.py,server_colab.py,README.md}
+  - behavior_change_expected: web only (new opt-in selector); engine and
+    CLI unchanged
+- observed:
+  - probes pinned the flag semantics: --value-domain complex is the axis
+    that activates Gaussian i-arithmetic (i^2 -> -1, (2+3i)(2-3i) -> 13);
+    --complex on/off does NOT gate it (different axis); sqrt(-1), Euler,
+    (1+i)^n expansion and ln(-1) are outside the current capability
+    (stage 2 of the staged plan)
+- decision:
+  - wrote the binding complex semantic model into Deferred Horizons:
+    single-valued principal-branch CAS model (Arg in (-pi, pi], principal
+    Log, cuts on the negative real axis), complex results as a contract
+    carrying branch choices/Arg convention/cut conditions, unconditional
+    rules only when valid on all of C, and the three-stage growth plan
+    (C-algebra -> C-elementary -> complex analysis questioned for the
+    educational scope) following the hybrid contract-first pattern
+  - web gains a third per-tab selector Complex (off default | on) wired
+    end to end to --value-domain complex, mirroring the Branch selector
+    recipe; validated with curl including three-selector composition and
+    clean 400s on invalid values
+- retained learning:
+  - deciding the semantic model on paper now costs a doc section and
+    prevents future rules from assuming a different model; implementing a
+    complete complex architecture now would be abstraction-before-
+    extraction at maximum scale (no precedent of big-bang paying in 297
+    ledger cycles)
+  - indentation-substring replaces struck again when threading parameters
+    through the Colab server (12/16/20-space cascade); anchor multiline
+    edits on full call blocks, not single parameter lines

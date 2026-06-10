@@ -44,6 +44,7 @@ That build refreshes `web/build-config.js` from `.env`, and the Python server al
 - **Step-by-step Display**: Expandable derivation steps for each simplification
 - **Domain Mode Selector**: Switch per tab between `strict`, `generic` and `assume` semantics
 - **Branch Selector**: Inverse-trig branch policy per tab — `strict` (default, keeps `arctan(tan(x))`) or `principal` (simplifies assuming principal range, with a recorded assumption)
+- **Complex Selector**: Complex arithmetic per tab — `off` (default, `i` is a free variable) or `on` (`i` is the imaginary unit: `i^2 = -1`, Gaussian products like `(2+3i)(2-3i) = 13`)
 
 ## Session Management
 
@@ -107,13 +108,16 @@ Evaluate a mathematical expression.
   "expression": "x^2 + 2*x + 1",
   "session_id": "session-abc123...",
   "domain": "generic",
-  "branch": "strict"
+  "branch": "strict",
+  "complex_arithmetic": "off"
 }
 ```
 
 `domain` is optional and accepts `strict`, `generic` or `assume`; omitted requests use
 `generic`. `branch` is optional and accepts `strict` or `principal` (inverse-trig branch
 policy, mapped to the CLI flag `--inv-trig`); omitted requests use `strict`.
+`complex_arithmetic` is optional and accepts `off` or `on` (mapped to the CLI flag
+`--value-domain complex`); omitted requests use `off`.
 
 **Response**:
 ```json

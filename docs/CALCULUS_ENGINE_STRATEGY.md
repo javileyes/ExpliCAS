@@ -884,6 +884,31 @@ visible and so present-day decisions do not make them needlessly expensive:
   owned by the family that proves them, and keep condition predicates
   structured and extensible rather than hard-coding real-only assumptions
   into public contracts where a structured representation costs the same.
+
+  **Semantic model decision (2026-06-10, binding for future work).** When the
+  complex track starts, it uses the standard single-valued principal-branch
+  CAS model — not a multivalued/Riemann-surface model:
+
+  - every multivalued function denotes its principal branch: `Arg z` in
+    `(-pi, pi]`, `Log z = ln|z| + i*Arg z`, `sqrt(z) = exp(Log(z)/2)`,
+    `z^w = exp(w * Log z)`, with the branch cut on the negative real axis
+  - a complex result is a contract, mirroring the backend result model: it
+    must carry which branch choices were made, the Arg convention, and any
+    cut-crossing assumptions as structured conditions — never silent branch
+    hops in display cleanup (`sqrt(z^2) != z` in general; identities that
+    need `Arg` restrictions must state them)
+  - rules valid on all of `C` (Gaussian arithmetic, polynomial identities)
+    are unconditional; rules valid only off a cut carry the cut condition
+  - staged growth, hybrid-pattern style (contract first, then families):
+    (1) `C`-algebra — Gaussian arithmetic, `(a+b*i)^n` expansion,
+    conjugates, modulus, Gauss identities; already partially live behind
+    the `--value-domain complex` axis (`i^2 -> -1`,
+    `(2+3i)(2-3i) -> 13`); (2) `C`-elementary — Euler, principal
+    `Log`/`Arg`, powers with cuts (note: `ln(-1)` currently returns
+    `undefined` under the real semantics and is revisited here);
+    (3) complex analysis (holomorphic calculus, residues) — explicitly
+    questioned for the educational scope; do not plan it without a
+    curriculum case.
 - **Series and Taylor expansions.** Standard curriculum, not yet planned;
   belongs after definite integrals (block 13) earns a command surface.
 - **Improper integrals.** Tracked as the residual policy of block 13, not as
