@@ -230,6 +230,11 @@ completing this phase with general rational integration):
 - the 2026-06-10 combination-ledger learnings (builder canonicalization debt,
   folded-coefficient matching) are the two failure modes this graduation
   removes at the root
+- Status (2026-06-10): landed as `verification_algebraic.rs` — a fallback
+  decision procedure after the existing cascade (new evidence
+  `algebraic_zero_test`); rational shapes plus square-root atoms of
+  variable-free radicands via the `t^2 = radicand` quotient; existing
+  evidence labels and lane counters unchanged by construction
 
 ### Phase 5. Mode And Trace Policy
 
@@ -309,8 +314,9 @@ Before retaining a backend change, answer:
 7. [done — discovery probes] Add discovery-only rational integration probes.
 8. [in progress — Hermite positive-quadratic regimes promoted 2026-06-10, see combination ledger] Promote one verified rational backend family once the boundary and verifier
    are stable.
-9. [pending] Graduate rational-candidate verification to the multipoly
-   algebraic zero test (see the Phase 4 named workstream).
+9. [done — verification_algebraic.rs, 2026-06-10] Graduate rational-candidate
+   verification to the multipoly algebraic zero test (see the Phase 4 named
+   workstream).
 10. [pending] Elevate the first backend family (Hermite positive quadratic)
     to `educational_full` steps (Phase 6).
 

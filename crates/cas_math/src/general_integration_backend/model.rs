@@ -55,6 +55,7 @@ pub enum AlgorithmicIntegrationVerificationEvidence {
     DirectDifferentiation,
     MethodSpecificDifferentiation,
     NormalizedDifferentiation,
+    AlgebraicZeroTest,
     FailedDifferentiation,
 }
 
@@ -72,6 +73,7 @@ impl AlgorithmicIntegrationVerificationEvidence {
             AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation => {
                 "normalized_differentiation"
             }
+            AlgorithmicIntegrationVerificationEvidence::AlgebraicZeroTest => "algebraic_zero_test",
             AlgorithmicIntegrationVerificationEvidence::FailedDifferentiation => {
                 "failed_differentiation"
             }

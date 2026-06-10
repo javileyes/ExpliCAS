@@ -1,5 +1,6 @@
 use super::methods::*;
 use super::verification::*;
+use super::verification_algebraic::*;
 use super::verification_normalization::*;
 use super::*;
 
@@ -5753,5 +5754,93 @@ fn backend_difference_canceling_sum_term_folds_numeric_operands() {
     assert_eq!(
         numeric_value(&ctx, one),
         Some(num_rational::BigRational::from_integer(1.into()))
+    );
+}
+
+#[test]
+fn algebraic_zero_test_decides_compact_vs_expanded_rational_identity() {
+    let mut ctx = Context::new();
+    let derivative = cas_parser::parse("(x+b)/((x+b)^2+a)", &mut ctx).expect("derivative");
+    let integrand = cas_parser::parse("(x+b)/(x^2+2*b*x+b^2+a)", &mut ctx).expect("integrand");
+
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, derivative, integrand, "x", &[]),
+        Some(true)
+    );
+}
+
+#[test]
+fn algebraic_zero_test_reduces_sqrt_atoms_by_quotient_relation() {
+    let mut ctx = Context::new();
+    let derivative = cas_parser::parse("c/(sqrt(a)*sqrt(a)*(1+((x+b)/sqrt(a))^2))", &mut ctx)
+        .expect("derivative");
+    let integrand = cas_parser::parse("c/((x+b)^2+a)", &mut ctx).expect("integrand");
+    let radius = cas_parser::parse("a", &mut ctx).expect("radius");
+    let conditions = vec![ConditionPredicate::Positive(radius)];
+
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, derivative, integrand, "x", &conditions),
+        Some(true)
+    );
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, derivative, integrand, "x", &[]),
+        None,
+        "the quotient relation must not run without a represented \
+         non-negativity condition for the radicand"
+    );
+}
+
+#[test]
+fn algebraic_zero_test_refutes_genuine_mismatches() {
+    let mut ctx = Context::new();
+    let derivative = cas_parser::parse("1", &mut ctx).expect("derivative");
+    let integrand = cas_parser::parse("x", &mut ctx).expect("integrand");
+
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, derivative, integrand, "x", &[]),
+        Some(false)
+    );
+}
+
+#[test]
+fn algebraic_zero_test_bails_out_of_scope_shapes() {
+    let mut ctx = Context::new();
+    let one = cas_parser::parse("1", &mut ctx).expect("one");
+    let sine = cas_parser::parse("sin(x)", &mut ctx).expect("sine");
+    let variable_radicand = cas_parser::parse("1/sqrt(x)", &mut ctx).expect("variable radicand");
+    let half_power = cas_parser::parse("x/(2*sqrt(x))", &mut ctx).expect("half power");
+
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, one, sine, "x", &[]),
+        None
+    );
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, variable_radicand, half_power, "x", &[]),
+        None,
+        "radicands containing the integration variable are out of scope"
+    );
+}
+
+#[test]
+fn algebraic_zero_test_keeps_radicand_only_parameters_in_the_universe() {
+    // Regression for the silent-projection blocker: `b` occurs only inside
+    // the radicand, and dropping it from the variable universe degenerated
+    // the relation t^2 = b into t^2 = 1, proving sqrt(b)^2*x == x.
+    let mut ctx = Context::new();
+    let derivative = cas_parser::parse("sqrt(b)*sqrt(b)*x", &mut ctx).expect("derivative");
+    let integrand = cas_parser::parse("x", &mut ctx).expect("integrand");
+    let b = cas_parser::parse("b", &mut ctx).expect("b");
+    let conditions = vec![ConditionPredicate::Positive(b)];
+
+    assert_ne!(
+        algebraic_rational_zero_test(&ctx, derivative, integrand, "x", &conditions),
+        Some(true)
+    );
+
+    let true_match = cas_parser::parse("b*x", &mut ctx).expect("b*x");
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, derivative, true_match, "x", &conditions),
+        Some(true),
+        "the genuine identity sqrt(b)^2*x == b*x must still verify"
     );
 }

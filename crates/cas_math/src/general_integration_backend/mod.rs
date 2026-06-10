@@ -13,7 +13,12 @@
 //!   (`diff(candidate, x) ~ integrand`) with structured outcomes.
 //! - [`verification_normalization`]: bounded structural normalization used by
 //!   verification to match generated derivatives against integrands. New
-//!   `normalize_backend_*` cases for new families belong here.
+//!   `normalize_backend_*` cases belong here only for shapes the algebraic
+//!   zero test cannot decide.
+//! - [`verification_algebraic`]: multipoly zero-test for rational residuals
+//!   (Phase 4 workstream) — the decision procedure that replaces structural
+//!   normalization growth for rational shapes, including square-root atoms
+//!   of variable-free radicands via the quotient relation `t^2 = radicand`.
 //! - [`methods`]: method probes (rational, Hermite, heurisch) and the public
 //!   entry point [`try_algorithmic_integration_backend`].
 //!
@@ -32,6 +37,7 @@ mod methods;
 mod model;
 mod probe_runner;
 mod verification;
+mod verification_algebraic;
 mod verification_normalization;
 
 // Re-export the public API so `cas_math::general_integration_backend::X`

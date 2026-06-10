@@ -1,6 +1,7 @@
 //! Antiderivative verification service: diff(candidate, x) ~ integrand with structured outcomes.
 
 use super::methods::*;
+use super::verification_algebraic::*;
 use super::verification_normalization::*;
 use super::*;
 
@@ -113,6 +114,33 @@ pub fn antiderivative_verification_report(
             status,
             evidence: AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation,
             normalization_reason,
+            verification_normalization_passes_used: normalization_attempt.passes_used,
+            blocker: AlgorithmicIntegrationVerificationBlocker::None,
+            residual_reason: None,
+            derivative: Some(derivative),
+            verification_residual: None,
+            verification_residual_kind: None,
+            verification_residual_signature: None,
+        };
+    }
+
+    if algebraic_rational_zero_test(
+        ctx,
+        derivative,
+        candidate.integrand,
+        &candidate.variable,
+        &candidate.required_conditions,
+    ) == Some(true)
+    {
+        let status = if candidate.required_conditions.is_empty() {
+            AlgorithmicIntegrationVerificationStatus::Verified
+        } else {
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        };
+        return AlgorithmicIntegrationVerificationReport {
+            status,
+            evidence: AlgorithmicIntegrationVerificationEvidence::AlgebraicZeroTest,
+            normalization_reason: AlgorithmicIntegrationVerificationNormalizationReason::None,
             verification_normalization_passes_used: normalization_attempt.passes_used,
             blocker: AlgorithmicIntegrationVerificationBlocker::None,
             residual_reason: None,

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 47 (newest first)
+Active entries: 48 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -130,6 +130,7 @@ Active entries: 47 (newest first)
 - 2026-06-10 | `retained` | domain modes / required conditions / exponents / documentation | Retained robustness: power-zero family surfaces its definability conditions
 - 2026-06-10 | `retained` | web UI / domain modes / inverse-trig branch policy / documentation | Retained harness: web mode/branch selectors and trig-branch doc coherence
 - 2026-06-10 | `retained` | CLI surface / inverse-trig branch policy / profile cache | Retained robustness: --branch becomes an honest alias of --inv-trig
+- 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / verification | Retained calculus: algebraic zero-test graduates rational verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -1914,3 +1915,72 @@ Active entries: 47 (newest first)
     removing it or honoring it: alias-to-the-canonical-knob is the
     cheapest honest resolution when wire compatibility matters; pin it
     with a contract test at the surface where users feel it
+
+## 2026-06-10 - Retained calculus: algebraic zero-test graduates rational verification
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / verification
+    service / Phase 4 named workstream
+- status:
+  - `retained` (new verification capability as a strict fallback; existing
+    behavior and lane fingerprints unchanged by construction)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 12, Phase 4 named workstream
+    (roadmap recommended iteration 9 — now done)
+  - cohesion_scope: new general_integration_backend/verification_algebraic.rs
+    + evidence variant + one fallback call site in verification.rs
+  - behavior_change_expected: only for candidates that today FAIL the whole
+    cascade and are rational-decidable (none in current lanes; the two
+    synthetic lane failures are genuine mismatches the test correctly
+    refutes or bails on)
+- observed (scoping workflow, 3 parallel agents):
+  - multipoly already provides everything needed (sparse multivariate
+    polynomials over Q, align_vars, budgeted mul, from_map) and the repo
+    already had the atom-map + quotient-relation precedent
+    (polynomial_identity_support's try_opaque_zero and
+    try_reduce_by_reciprocal_power_relation), but in cas_engine — the
+    backend needed its own owned implementation in cas_math
+  - the only Failed verifications in the observability lane are deliberate
+    synthetic false antiderivatives (residuals 1-x and 1-sin(x)): true
+    negatives, so the fallback cannot change lane counters
+- decision:
+  - implement expr -> (num, den) rational construction over a shared
+    variable universe with hard budgets (nodes <= 160, vars <= 6, terms
+    <= 64, degree <= 16), square-root atoms of variable-free radicands
+    mapped to fresh `__alg` variables and reduced by `t^2 = radicand`
+    (general polynomial radicands, iterate-subtract with step cap), and a
+    zero decision: num reduced == 0 and den reduced != 0
+  - wire it strictly AFTER the existing cascade (direct, method-specific,
+    structural normalization), only on the path that today returns Failed;
+    success carries the new `algebraic_zero_test` evidence, failure leaves
+    today's report untouched
+  - freeze rule now enforceable: new normalize_backend_* cases are only
+    justified for shapes this procedure cannot decide
+- adversarial verification (2-lens workflow) found four real issues, all
+  fixed before retention:
+  - the repo's own contract test caught an implicit domain assumption: the
+    quotient t^2 = radicand presupposes non-negativity, so every radicand
+    now requires a represented Positive/NonNegative condition (mirrors
+    verification_report_requires_positive_condition_for_symbolic_radius_square)
+  - Some(false) was unsound with sqrt atoms (reducible quotients and
+    dependent radicands: sqrt(a^2) vs a, sqrt(4*a) vs 2*sqrt(a)); it is now
+    only emitted in the pure rational case
+  - a u32 exponent truncation let 2^(2^32+2) verify against 4; exponents
+    now use checked conversion plus the degree budget
+  - blocker: variables occurring only inside radicands were silently
+    projected out of the universe by align_vars, degenerating t^2 = b into
+    t^2 = 1 (sqrt(b)^2*x verified against x); the universe now includes
+    every radicand's variables, with a regression test
+- retained learning:
+  - the verifier's scaling path is decision procedures over algebraic
+    representations, not more structural cases: the sqrt-atom quotient
+    decided in one general rule what three retained cycles of
+    normalize_backend_* cases approximated shape by shape
+  - adversarial review earns its cost on decision procedures: four
+    soundness defects (one reachable as a wrong Verified) survived green
+    unit tests and were only exposed by targeted refutation probes
+  - cross-crate reuse boundary: the opaque-atom machinery lives in
+    cas_engine and could not be imported by cas_math; the reimplementation
+    was small, but if a third consumer appears the atom-map/quotient kit
+    belongs in cas_math as a shared module
