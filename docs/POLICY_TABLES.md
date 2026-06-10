@@ -21,6 +21,13 @@ The idea: **each rule declares its "soundness class"** and the engine decides wh
 | **BranchSensitivePrincipal** | Depends on the principal branch / discontinuities (complex log, atan, etc.) | ⛔ block (or ✅ only if `ValueDomain=RealOnly` with strong guards) | ✅ apply if `RealOnly` and conditions met; normally ⛔ in `ComplexEnabled` | ⛔ block (or requires extra verification) |
 | **NormalizationOnly** | Normal form rewriting (commutativity/ordering) without changing meaning | ✅ apply | ✅ apply | ✅ apply |
 
+> **Note on `BranchSensitivePrincipal`:** this class spans two orthogonal sub-axes that are gated differently:
+>
+> * **(a) Complex branch cut** — principal-branch choices for complex `log`/`sqrt`; gated by `BranchPolicy` and only relevant under `ValueDomain = ComplexEnabled`.
+> * **(b) Real inverse-trig principal range** — `arcfun(fun(x)) → x` rewrites (e.g., `arctan(tan(x)) → x`); gated by the `InverseTrigPolicy` axis (`--inv-trig strict|principal`), **not** by `DomainMode`.
+>
+> In particular, `DomainMode = Assume` does **not** enable these rules by itself.
+
 ---
 
 ## Table 2 — Additional Gate by ValueDomain (RealOnly vs ComplexEnabled)

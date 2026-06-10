@@ -32,7 +32,12 @@ cas_cli eval <EXPR> --format json [OPTIONS]
 | `--max-chars <N>` | 2000 | Maximum characters for result output. Truncates if larger. |
 | `--steps <MODE>` | off | Steps mode: `on`, `off`, `compact` |
 | `--context <MODE>` | auto | Context mode: `auto`, `standard`, `solve`, `integrate` |
-| `--branch <MODE>` | strict | Branch mode: `strict`, `principal` |
+| `--branch <MODE>` | strict | **Legacy, no effect** (kept for wire compatibility; only echoed in `options.branch_mode`). Use `--inv-trig` instead. |
+| `--inv-trig <MODE>` | strict | Inverse trig composition policy: `strict`, `principal`. With `principal`, e.g. `arctan(tan(2))` → `2` with a structured `InvTrigPrincipalRange` warning. |
+| `--domain <MODE>` | generic | Domain mode for cancellation rules: `strict`, `generic`, `assume` |
+| `--value-domain <MODE>` | real | Value domain: `real`, `complex` |
+| `--complex-branch <MODE>` | principal | Branch for multi-valued functions (placeholder: only `principal` accepted, value currently discarded; only relevant with `--value-domain complex`) |
+| `--const-fold <MODE>` | off | Constant folding mode: `off`, `safe` |
 | `--complex <MODE>` | auto | Complex mode: `auto`, `on`, `off` |
 | `--autoexpand <MODE>` | off | Expand policy: `off`, `auto` |
 | `--threads <N>` | (system) | Number of Rayon threads for parallel processing |
@@ -50,7 +55,7 @@ cas_cli eval "poly_gcd_exact(x^2-1, x^2-2*x+1)" --format json
 cas_cli eval "expand((x+1)^10)" --format json --max-chars 200
 
 # With specific options
-cas_cli eval "atan(tan(x))" --format json --branch principal --steps on
+cas_cli eval "atan(tan(x))" --format json --inv-trig principal --steps on
 ```
 
 ## JSON Output Format

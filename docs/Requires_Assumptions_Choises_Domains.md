@@ -70,7 +70,9 @@ Ejemplos:
 * `sqrt(x^2) → x` (en ℝ) elige la rama `x ≥ 0` (la identidad general es `sqrt(x^2)=|x|`).
 * Simplificaciones de trigonometría inversa usando rangos principales:
 
-  * `sin(arcsin(x)) → x` (válida si `arcsin` se entiende como inversa principal; requiere además `x∈[-1,1]` como dominio de `arcsin` en ℝ).
+  * `arcsin(sin(x)) → x` (solo válida asumiendo `x ∈ [-π/2, π/2]`, el rango principal de `arcsin`).
+
+**No** confundir con `sin(arcsin(x)) → x`: esa es una composición **segura** (clase `Defined`), sin elección de rama; solo necesita el require de definición `-1 ≤ x ≤ 1` (dominio de `arcsin` en ℝ).
 
 ---
 
@@ -244,12 +246,13 @@ Si el motor aplica `ln(a*b) → ln(a)+ln(b)`, entonces:
 
 ### 6.6 Trig inversa: rango principal
 
-**Entrada:** `sin(arcsin(x))` (en ℝ)
+**Entrada:** `arcsin(sin(x))` (en ℝ)
 
 * La regla usa inversa principal:
 
-  * **🔀 Branch choice:** “arcsin devuelve valores en [-π/2, π/2]”
-* Además, `arcsin(x)` requiere `x ∈ [-1,1]` (input requires si aparece `arcsin(x)`).
+  * **🔀 Branch choice:** “se asume `x ∈ [-π/2, π/2]` (rango principal de `arcsin`)”
+
+En cambio, `sin(arcsin(x)) → x` es composición segura (clase `Defined`): no hay branch choice; solo el require de definición `x ∈ [-1,1]` (input requires si aparece `arcsin(x)`).
 
 ---
 

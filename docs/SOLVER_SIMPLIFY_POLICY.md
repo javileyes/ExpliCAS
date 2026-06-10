@@ -206,7 +206,7 @@ pub enum ConditionPredicate {
     Positive(ExprId),
     NonNegative(ExprId),
     Defined(ExprId),
-    InvTrigPrincipalRange(ExprId),
+    InvTrigPrincipalRange { func: &'static str, arg: ExprId },
 
     // Specialized equality predicates used by the current solver
     EqZero(ExprId),

@@ -42,7 +42,8 @@ That build refreshes `web/build-config.js` from `.env`, and the Python server al
 - **Cell References**: Use `%1`, `%2`, etc. to reference previous results
 - **Session Isolation**: Each browser tab has its own isolated session
 - **Step-by-step Display**: Expandable derivation steps for each simplification
-- **Domain Mode Selector**: Switch per tab between `generic` and `assume` semantics
+- **Domain Mode Selector**: Switch per tab between `strict`, `generic` and `assume` semantics
+- **Branch Selector**: Inverse-trig branch policy per tab — `strict` (default, keeps `arctan(tan(x))`) or `principal` (simplifies assuming principal range, with a recorded assumption)
 
 ## Session Management
 
@@ -105,11 +106,14 @@ Evaluate a mathematical expression.
 {
   "expression": "x^2 + 2*x + 1",
   "session_id": "session-abc123...",
-  "domain": "generic"
+  "domain": "generic",
+  "branch": "strict"
 }
 ```
 
-`domain` is optional and currently accepts `generic` or `assume`; omitted requests use `generic`.
+`domain` is optional and accepts `strict`, `generic` or `assume`; omitted requests use
+`generic`. `branch` is optional and accepts `strict` or `principal` (inverse-trig branch
+policy, mapped to the CLI flag `--inv-trig`); omitted requests use `strict`.
 
 **Response**:
 ```json

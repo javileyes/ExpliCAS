@@ -248,7 +248,7 @@ Benchmarks show `steps off` provides modest performance gains:
 | `history` or `list` | Show all stored entries with their IDs |
 | `show #N` | Display details of entry `#N` (type, raw input, expression) |
 | `del #N [#M ...]` | Delete entries by ID (IDs are never reused) |
-| `mode [strict\|principal]` | Show or switch simplification mode (strict = safe, principal = educational) |
+| `semantics set inv_trig strict\|principal` | Set the inverse trig composition policy (strict = safe, principal = educational). Plain `semantics` shows the current state, including the legacy `branch` setting and `inv_trig` separately |
 | `reset` | Clear **all** session state (history + variables) |
 
 ### Example: `show #N`

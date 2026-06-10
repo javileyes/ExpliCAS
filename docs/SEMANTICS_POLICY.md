@@ -376,7 +376,7 @@ because `ln` is principal/multivalued around the exponential image.
 
 ---
 
-## Axis C: BranchPolicy (Planned PR1)
+## Axis C: BranchPolicy ✅ (Implemented — `--complex-branch`, principal only)
 
 Controls how multi-valued functions are resolved. **Only applies when `ValueDomain = ComplexEnabled`**.
 
@@ -393,7 +393,7 @@ Controls how multi-valued functions are resolved. **Only applies when `ValueDoma
 
 ---
 
-## Axis D: InverseTrigPolicy (Planned PR4)
+## Axis D: InverseTrigPolicy ✅ (Implemented — `--inv-trig`)
 
 Controls simplification of inverse∘function compositions like `arctan(tan(x))`.
 
@@ -408,7 +408,7 @@ Controls simplification of inverse∘function compositions like `arctan(tan(x))`
 
 ### Current State
 
-The existing REPL `mode principal/strict` command currently controls this behavior but is conflated with other settings. PR4 will extract it cleanly.
+Implemented. Controlled via the `--inv-trig strict|principal` CLI flag and the REPL command `semantics set inv_trig strict|principal` (the legacy `mode principal/strict` command no longer exists). Under `principal`, simplifications emit the structured `InvTrigPrincipalRange` warning (e.g., `2 in arctan principal range` for `arctan(tan(2)) → 2`).
 
 ---
 
@@ -692,24 +692,25 @@ Result: i
 
 ---
 
-## CLI Flags (Current and Planned)
+## CLI Flags
 
-| Flag | Current | Planned |
-|------|:-------:|:-------:|
+| Flag | Current | Notes |
+|------|:-------:|-------|
 | `--domain strict\|generic\|assume` | ✅ | - |
-| `--value-domain real\|complex` | - | PR3 |
-| `--inv-trig strict\|principal` | - | PR4 |
+| `--value-domain real\|complex` | ✅ | - |
+| `--inv-trig strict\|principal` | ✅ | - |
+| `--complex-branch principal` | ✅ | Placeholder: only `principal` is accepted; only relevant with `--value-domain complex` |
+| `--branch strict\|principal` | ✅ | Legacy, no-op (no rule consumes it); kept for wire compatibility, echoed in `options.branch_mode` |
 
 ---
 
 ## REPL Commands
 
-| Command | Current | After PR4 |
-|---------|---------|-----------|
-| `mode principal` | Changes branch + inv_trig | Changes only `inv_trig` |
-| `mode strict` | Changes branch + inv_trig | Changes only `inv_trig` |
-| `domain strict` | ✅ Sets DomainMode | Same |
-| `domain assume` | ✅ Sets DomainMode | Same |
+| Command | Behavior |
+|---------|----------|
+| `semantics set inv_trig strict\|principal` | Sets `InverseTrigPolicy` (replaces legacy `mode principal\|strict`) |
+| `domain strict` | ✅ Sets DomainMode |
+| `domain assume` | ✅ Sets DomainMode |
 
 ---
 

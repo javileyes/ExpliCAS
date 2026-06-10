@@ -184,7 +184,7 @@ Esto es valioso para:
 * CLI:
   * `--const-fold off|safe` (default: `off`)
   * `--value-domain real|complex`
-  * `--complex-branch principal`
+  * `--complex-branch principal` — el flag solo acepta `principal`; su valor es informativo/reservado (el código fuerza `BranchPolicy::Principal` incondicionalmente)
 * JSON output refleja:
   * `options.const_fold`
   * `semantics.value_domain`, `semantics.branch`

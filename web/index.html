@@ -1274,8 +1274,17 @@
             <label class="mode-control" for="domain-mode-select" title="Domain mode">
                 <span class="mode-label">Mode</span>
                 <select class="mode-select" id="domain-mode-select">
+                    <option value="strict">strict</option>
                     <option value="generic" selected>generic</option>
                     <option value="assume">assume</option>
+                </select>
+            </label>
+            <label class="mode-control" for="branch-mode-select"
+                title="Inverse trig branch policy: principal simplifies arctan(tan(x)) etc. assuming principal range">
+                <span class="mode-label">Branch</span>
+                <select class="mode-select" id="branch-mode-select">
+                    <option value="strict" selected>strict</option>
+                    <option value="principal">principal</option>
                 </select>
             </label>
             <input type="text" class="input-field" id="expression-input"
@@ -1332,19 +1341,30 @@
         const API_URL = '/api/eval';
         const DEFAULT_TIME_BUDGET_MS = window.EXPLICAS_BUILD_CONFIG?.defaultTimeBudgetMs ?? 1700;
         const DOMAIN_MODE_STORAGE_KEY = 'expliCAS_domain_mode';
+        const BRANCH_MODE_STORAGE_KEY = 'expliCAS_branch_mode';
 
         // Input handling
         const input = document.getElementById('expression-input');
         const submitBtn = document.getElementById('submit-btn');
         const domainModeSelect = document.getElementById('domain-mode-select');
+        const branchModeSelect = document.getElementById('branch-mode-select');
 
         const savedDomainMode = sessionStorage.getItem(DOMAIN_MODE_STORAGE_KEY);
-        if (savedDomainMode === 'generic' || savedDomainMode === 'assume') {
+        if (savedDomainMode === 'strict' || savedDomainMode === 'generic' || savedDomainMode === 'assume') {
             domainModeSelect.value = savedDomainMode;
         }
 
         domainModeSelect.addEventListener('change', () => {
             sessionStorage.setItem(DOMAIN_MODE_STORAGE_KEY, domainModeSelect.value);
+        });
+
+        const savedBranchMode = sessionStorage.getItem(BRANCH_MODE_STORAGE_KEY);
+        if (savedBranchMode === 'strict' || savedBranchMode === 'principal') {
+            branchModeSelect.value = savedBranchMode;
+        }
+
+        branchModeSelect.addEventListener('change', () => {
+            sessionStorage.setItem(BRANCH_MODE_STORAGE_KEY, branchModeSelect.value);
         });
 
         input.addEventListener('keydown', (e) => {
@@ -1401,6 +1421,7 @@
                         expression: expr,
                         session_id: SESSION_ID,
                         domain: domainModeSelect.value,
+                        branch: branchModeSelect.value,
                         time_budget_ms: DEFAULT_TIME_BUDGET_MS
                     })
                 });

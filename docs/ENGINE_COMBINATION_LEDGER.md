@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 45 (newest first)
+Active entries: 46 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -128,6 +128,7 @@ Active entries: 45 (newest first)
 - 2026-06-10 | `retained` | harness / documentation / auto-improvement loop steering | Retained harness: steering docs coherence pass and ledger rotation
 - 2026-06-10 | `retained` | harness / documentation / strategy direction | Retained harness: north star, didactic elevation phase, and block 13
 - 2026-06-10 | `retained` | domain modes / required conditions / exponents / documentation | Retained robustness: power-zero family surfaces its definability conditions
+- 2026-06-10 | `retained` | web UI / domain modes / inverse-trig branch policy / documentation | Retained harness: web mode/branch selectors and trig-branch doc coherence
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -1830,3 +1831,49 @@ Active entries: 45 (newest first)
   - the cached eval path discarding domain warnings
     (eval_command_runtime/prepare.rs:81) remains a latent loss channel for
     warning-only rules; observe-only candidate for a later cycle
+
+## 2026-06-10 - Retained harness: web mode/branch selectors and trig-branch doc coherence
+
+- area:
+  - web UI / domain modes / inverse-trig branch policy / documentation
+- status:
+  - `retained` (web feature + nine doc fixes; engine untouched)
+- capture:
+  - investment_class: observability (harness/product surface)
+  - cohesion_scope: web/{index.html,server.py,server_colab.py,README.md} +
+    7 branch/semantics docs
+  - behavior_change_expected: web only — the engine and CLI are unchanged
+- observed (3-lens scoping workflow):
+  - the web MODE selector only exposed generic/assume (server allowlist
+    rejected strict with a 400 even though the CLI supports it)
+  - the CLI has TWO strict|principal flags for real inverse-trig branching:
+    --inv-trig is the only one with effect (arctan(tan(2)) -> 2 with the
+    structured InvTrigPrincipalRange warning); --branch is a dead legacy
+    flag — the migration to InverseTrigPolicy self-gating completed
+    (simplifier.rs:130-132) but the flag was never retired; probes confirm
+    it changes nothing except the options.branch_mode echo
+  - --complex-branch is a single-variant placeholder (value discarded),
+    only meaningful with --value-domain complex — the real inverse-trig
+    principal-range axis and the complex branch-cut axis are distinct
+    and the docs partially conflated them (BranchSensitivePrincipal mixed
+    both; JSON_CLI_API taught the dead flag as the active one; SEMANTICS
+    POLICY still said Planned PR3/PR4 for shipped flags; an example used
+    sin(arcsin(x)) as branch choice when it is the safe Defined direction)
+- decision:
+  - web: MODE selector gains strict; new Branch selector (strict default |
+    principal) wired end to end (UI persistence, fetch payload, both
+    servers' allowlists and threading) to --inv-trig, the knob with real
+    effect; validated with curl probes including the structured warning
+    surfacing in the web response and clean 400s on invalid values
+  - docs: nine findings fixed across 7 docs (flag tables, planned markers,
+    REPL command, branch-class split note, example direction, struct
+    variant signature, backend condition-filter note)
+- discovery (observe-only):
+  - the dead --branch CLI flag is retained wire surface with zero effect;
+    retiring it (or making it an alias of --inv-trig) is a small follow-up
+    cycle that needs a deprecation note in JSON_CLI_API and a wire-compat
+    decision; do not let new surfaces wire to it
+- retained learning:
+  - when two knobs exist for one semantic axis, probe before wiring: the
+    web Branch selector would have silently done nothing if mapped to the
+    documented (--branch) instead of the real (--inv-trig) flag

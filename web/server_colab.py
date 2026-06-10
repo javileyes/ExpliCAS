@@ -77,8 +77,19 @@ def _coerce_domain_mode(raw_value):
         return "generic"
 
     value = str(raw_value).strip().lower()
-    if value not in {"generic", "assume"}:
-        raise ValueError("domain must be 'generic' or 'assume'")
+    if value not in {"strict", "generic", "assume"}:
+        raise ValueError("domain must be 'strict', 'generic' or 'assume'")
+
+
+def _coerce_branch_mode(raw_value):
+    if raw_value is None or raw_value == "":
+        return "strict"
+
+    value = str(raw_value).strip().lower()
+    if value not in {"strict", "principal"}:
+        raise ValueError("branch must be 'strict' or 'principal'")
+
+    return value
 
     return value
 
@@ -227,6 +238,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             expression = (data.get("expression") or "").strip()
             time_budget_ms = _coerce_time_budget_ms(data.get("time_budget_ms"))
             domain_mode = _coerce_domain_mode(data.get("domain"))
+            branch_mode = _coerce_branch_mode(data.get("branch"))
             if not expression:
                 self.send_json_error("No expression provided")
                 return
@@ -240,6 +252,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     expr_part,
                     time_budget_ms,
                     domain_mode,
+                    branch_mode,
                 )
                 if result.get("ok", False):
                     session_variables[var_name] = result.get("result", "")
@@ -250,12 +263,14 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     expression,
                     time_budget_ms,
                     domain_mode,
+                    branch_mode,
                 )
 
             session_results.append(result)
             result["ref"] = len(session_results)
             result["variables"] = list(session_variables.keys())
             result["domain"] = domain_mode
+            result["branch"] = branch_mode
             self.send_json(result)
 
         except json.JSONDecodeError:
@@ -265,7 +280,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(f"Server error: {e}")
 
-    def eval_with_substitution(self, expression: str, time_budget_ms, domain_mode):
+    def eval_with_substitution(self, expression: str, time_budget_ms, domain_mode, branch_mode="strict"):
         expr = expression
 
         # Substitute refs: %n or #n
@@ -290,6 +305,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 steps_on=False,
                 time_budget_ms=time_budget_ms,
                 domain_mode=domain_mode,
+                branch_mode=branch_mode,
             )
             if _equiv_result_is_true(equiv_result):
                 derive_result = self.call_cas_cli(
@@ -297,6 +313,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     steps_on=True,
                     time_budget_ms=time_budget_ms,
                     domain_mode=domain_mode,
+                    branch_mode=branch_mode,
                 )
                 return _merge_equiv_with_derive_steps(equiv_result, derive_result)
             return _merge_equiv_with_derive_steps(equiv_result, None)
@@ -305,6 +322,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             expr,
             time_budget_ms=time_budget_ms,
             domain_mode=domain_mode,
+            branch_mode=branch_mode,
         )
 
     def call_cas_cli(
@@ -313,6 +331,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         steps_on=True,
         time_budget_ms=None,
         domain_mode="generic",
+        branch_mode="strict",
     ):
         try:
             # Use absolute path if available
@@ -324,6 +343,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "--max-chars", "500000",
                 "--steps", "on" if steps_on else "off",
                 "--domain", domain_mode,
+                "--inv-trig", branch_mode,
             ]
             if time_budget_ms is not None:
                 cmd += ["--time-budget-ms", str(time_budget_ms)]

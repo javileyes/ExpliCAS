@@ -32,6 +32,8 @@ The taxonomy is defined in [cas_solver_core/src/solve_safety_policy.rs](../crate
 - `Analytic`: sign/range/branch restrictions.
   Examples: `x > 0`, `x ≥ 0`, inverse-trig principal range.
 
+> **Note:** the inverse-trig principal range *condition* is `Analytic`-class, but the `arcfun(fun(x)) -> x` rules carry an additional orthogonal gate: the `InverseTrigPolicy` axis (`--inv-trig strict|principal`, default `strict`). `domain=assume` does **not** enable them by itself.
+
 ## Core Matrix
 
 | Mode | Unproven Definability | Unproven Analytic | Typical meaning |

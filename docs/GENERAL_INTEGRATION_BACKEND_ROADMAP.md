@@ -77,6 +77,12 @@ A backend candidate result should be able to carry:
 Public behavior should only consume `verified` or `verified_under_conditions`
 results unless a mode explicitly asks for diagnostic output.
 
+Note on condition filtering: `include_backend_conditions`
+(`cas_engine` `integration_conditions.rs:64-68`) converts to requires only
+`NonZero`/`Positive`/`NonNegative`/`LowerBound` backend predicates and
+deliberately discards `Defined`/`InvTrigPrincipalRange`/`EqZero`/`EqOne` at
+this boundary.
+
 ## Orchestration Policy
 
 Default public `integrate` behavior should stay educational-first:
