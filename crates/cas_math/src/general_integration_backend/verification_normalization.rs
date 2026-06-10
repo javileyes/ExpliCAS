@@ -2035,6 +2035,9 @@ pub(super) fn build_backend_difference_canceling_sum_term(
     left: ExprId,
     right: ExprId,
 ) -> ExprId {
+    if backend_commutative_product_factors_match(ctx, left, right) {
+        return ctx.num(0);
+    }
     if let Some(remainder) = remove_matching_backend_additive_term(ctx, left, right) {
         return remainder;
     }

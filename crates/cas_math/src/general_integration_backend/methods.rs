@@ -527,13 +527,51 @@ fn positive_quadratic_log_derivative_parts(
             let (variable_expr, variable_slope, radius_square, required_condition) =
                 positive_shifted_quadratic_denominator_parts(ctx, denominator, variable)?;
             let coefficient =
-                affine_variable_coefficient_expr(ctx, numerator, variable_expr, variable)?;
+                affine_variable_coefficient_expr(ctx, numerator, variable_expr, variable).or_else(
+                    || {
+                        derivative_multiple_numerator_coefficient(
+                            ctx,
+                            numerator,
+                            variable_expr,
+                            &variable_slope,
+                            variable,
+                        )
+                    },
+                )?;
             let denominator =
                 build_positive_quadratic_denominator(ctx, variable_expr, radius_square);
             Some((coefficient, variable_slope, denominator, required_condition))
         }
         _ => None,
     }
+}
+
+/// Recognizes distributed derivative-multiple numerators against the
+/// reconstructed affine center, such as `m*s*x + b*m` over a denominator
+/// with center `s*x + b`. Accepts only decompositions whose constant
+/// component is exactly zero; mixed numerators stay owned by the
+/// linear-numerator route.
+fn derivative_multiple_numerator_coefficient(
+    ctx: &mut Context,
+    numerator: ExprId,
+    variable_expr: ExprId,
+    variable_slope: &BackendAffineSlope,
+    variable: &str,
+) -> Option<ExprId> {
+    let (coefficient, constant_term) =
+        linear_numerator_decomposition_terms(ctx, numerator, variable_expr, variable)?;
+    if !is_zero(ctx, constant_term) || is_zero(ctx, coefficient) {
+        return None;
+    }
+    if !is_supported_backend_linear_coefficient_for_affine_slope(
+        ctx,
+        coefficient,
+        variable,
+        variable_slope,
+    ) {
+        return None;
+    }
+    Some(coefficient)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

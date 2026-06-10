@@ -17513,3 +17513,62 @@ The burden of proof stays the same:
     to the family's own recognized structure (radius), not to generic
     external-condition heuristics; reusing the backend recognizer kept the
     policy single-owner and made the tightening cheap
+
+## 2026-06-10 - Retained calculus: expanded derivative-multiple numerator closes Hermite log-only regime
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / Hermite positive
+    quadratic / expanded argument regime / derivative-multiple (log-only)
+    numerator slice
+- status:
+  - `retained` (one residual slice becomes supported; one new matrix row)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 12
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_hermite_positive_quadratic` /
+    `expanded_symbolic_affine_positive_quadratic_derivative_multiple_numerator` /
+    `backend_verified_positive_radius_and_slope_nonzero_required` /
+    `algorithmic_backend_hermite_summary` /
+    `backend_summary_log_symbolic_affine_positive_radius`
+  - block_gate_check: completes the family numerator-regime grid for the
+    expanded source (mixed / arctan-only / log-only all supported), closing
+    the observe-only discovery recorded in the previous cycle
+  - precalculus_dependency: reuses `linear_numerator_decomposition_terms`
+    (existing decomposition capability) instead of adding a new matcher
+- observed:
+  - `(m*s*x+b*m)/(s^2*x^2+2*b*s*x+b^2+a)` stayed residual for two stacked
+    reasons: the log-derivative branch only recognized structural
+    `Mul(coefficient, center)` numerators (the distributed form is an
+    `Add`), and the shared cancellation builder
+    `build_backend_difference_canceling_sum_term` only canceled matching
+    terms inside sums, so the decomposition constant came back as the
+    literal `b*m - b*m` instead of zero and tripped the mixed-branch
+    zero-constant guard
+- decision:
+  - extend the log-derivative branch with a bounded fallback
+    (`derivative_multiple_numerator_coefficient`): reuse the existing
+    decomposition and accept only structurally-zero constants under the
+    same supported-coefficient policy; mixed numerators stay owned by the
+    linear-numerator route
+  - fix the cancellation builder at its owner: whole-expression commuted
+    product matches now return zero (benefits every backend caller, not
+    just this slice)
+  - promote one matrix row for the regime (150 cases); presentation matches
+    the compact route exactly (`(m·ln((s·x + b)^2 + a))/(s·2)`), conditions
+    `a > 0`, `s != 0`, exact `diff(integrate)` round-trip
+- sibling sweep:
+  - compact log-only, unscaled expanded, expanded mixed, expanded
+    arctan-only, and the indefinite-square family all unchanged
+  - numeric-slope expanded source `(x+2)/(x^2+4*x+4+a)` stays residual:
+    the expanded reconstruction currently requires the symbolic four-term
+    pattern; recorded as the remaining argument-regime gap of this family
+    (separate axis: slope regime x expanded source), candidate for a later
+    cycle, not widened here
+- retained learning:
+  - decomposition guards that compare built expressions need the builders
+    to produce canonical zeros; fixing the shared builder at its owner was
+    cheaper and broader than relaxing the consumer guard
+  - the eval-level condition compactor from the previous cycle composed
+    automatically: the redundant expanded-denominator condition disappears
+    for this new slice with no extra work

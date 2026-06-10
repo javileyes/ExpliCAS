@@ -5633,3 +5633,40 @@ fn backend_positive_quadratic_denominator_radius_recognizes_compact_and_expanded
         "indefinite square denominators must not be recognized as positive quadratics"
     );
 }
+
+#[test]
+fn expanded_scaled_derivative_multiple_numerator_decomposes_to_log_only_coefficient() {
+    let mut ctx = Context::new();
+    let numerator = cas_parser::parse("m*s*x+b*m", &mut ctx).expect("numerator");
+    let denominator = cas_parser::parse("s^2*x^2+2*b*s*x+b^2+a", &mut ctx).expect("denominator");
+
+    let (center, _slope, _radius, _condition) =
+        positive_shifted_quadratic_denominator_parts(&mut ctx, denominator, "x")
+            .expect("expanded denominator reconstructs the affine center");
+
+    let (coefficient, constant) =
+        linear_numerator_decomposition_terms(&mut ctx, numerator, center, "x")
+            .expect("distributed derivative-multiple numerator decomposes");
+
+    let m = cas_parser::parse("m", &mut ctx).expect("external coefficient");
+    assert!(crate::expr_domain::exprs_equivalent(
+        &mut ctx,
+        coefficient,
+        m
+    ));
+    assert!(
+        is_zero(&ctx, constant),
+        "whole-expression cancellation must yield a structural zero constant"
+    );
+}
+
+#[test]
+fn backend_difference_canceling_sum_term_cancels_whole_commuted_product() {
+    let mut ctx = Context::new();
+    let left = cas_parser::parse("b*m", &mut ctx).expect("left");
+    let right = cas_parser::parse("m*b", &mut ctx).expect("right");
+
+    let difference = build_backend_difference_canceling_sum_term(&mut ctx, left, right);
+
+    assert!(is_zero(&ctx, difference));
+}
