@@ -718,6 +718,40 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="backend_summary_log_abs_rational_part",
     ),
     IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_sophie_germain_quartic",
+        expr="integrate(1/(x^4+4), x)",
+        expected_result=(
+            "1/16·ln(x^2 + 2·x + 2) + 1/8·arctan(x + 1) + 1/8·arctan(x - 1)"
+            " - 1/16·ln(x^2 + 2 - 2·x)"
+        ),
+        expected_direct_diff_integrate_result="1 / (x^4 + 4)",
+        expected_direct_diff_integrate_required_display=(),
+        expected_required_display=(),
+        family="algorithmic_backend_rational_general",
+        argument_regime="even_quartic_symmetric_descent_factorization",
+        domain_regime="backend_verified_unconditional_real",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_arctan_log_shifted_pair",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_cyclotomic_style_quartic",
+        expr="integrate((x^2+1)/(x^4+x^2+1), x)",
+        expected_result=(
+            "(1·arctan((2·x + 1) / sqrt(3)))/sqrt(3)"
+            " + (1·arctan((2·x - 1) / sqrt(3)))/sqrt(3)"
+        ),
+        expected_direct_diff_integrate_result=(
+            "(x^2 + 1) / (x^4 + x^2 + 1)"
+        ),
+        expected_direct_diff_integrate_required_display=(),
+        expected_required_display=(),
+        family="algorithmic_backend_rational_general",
+        argument_regime="even_quartic_descent_irrational_radius_pair",
+        domain_regime="backend_verified_unconditional_real",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_arctan_doubled_center",
+    ),
+    IntegrateCommandMatrixCase(
         name="algorithmic_backend_hermite_symbolic_indefinite_square_denominator",
         expr="integrate(1/(x^2-a^2), x)",
         expected_result="((ln(|x - a|) - ln(|a + x|))·1·1/2)/a",

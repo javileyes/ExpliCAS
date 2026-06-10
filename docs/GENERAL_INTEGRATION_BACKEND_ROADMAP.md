@@ -119,9 +119,11 @@ Phase status (2026-06-10):
   rational families promoted 2026-06-10: multi-quadratic partial fractions,
   then general-degree rational integration via Ostrogradsky-Horowitz reduction
   with rational-root/biquadratic splitting — denominators of degree 3..=8,
-  expanded forms and repeated factors included; remaining: quartic classes
-  needing general factorization (x^4+4, x^4+x^2+1) via resolvent-cubic or
-  Lazard-Rioboo-Trager)
+  expanded forms and repeated factors included; the even-quartic
+  symmetric descent closed x^4+4 and x^4+x^2+1 the same day; remaining:
+  non-even quartics needing the full resolvent cubic, and irreducible
+  denominators (e.g. Phi_12 = x^4-x^2+1) that require irrational-coefficient
+  quadratics or Lazard-Rioboo-Trager)
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
 - Phase 6: not started (didactic elevation; first candidate Hermite positive
   quadratic)

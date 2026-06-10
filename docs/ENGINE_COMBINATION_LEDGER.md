@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 52 (newest first)
+Active entries: 53 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -135,6 +135,7 @@ Active entries: 52 (newest first)
 - 2026-06-10 | `retained` | web UI / session functions / CLI session reuse | Retained harness: web function-definition cells, panel, and deletion
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: multi-quadratic partial fractions land the rational backend family
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: Ostrogradsky reduction takes rational integration to general degree
+- 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: even-quartic descent closes the rational frontier classes
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -2189,3 +2190,41 @@ Active entries: 52 (newest first)
     antiderivative correctness: the algebraic verifier proves the
     derivative identity but cannot see a missing domain condition, so
     pole bookkeeping needs its own tests
+
+## 2026-06-10 - Retained calculus: even-quartic descent closes the rational frontier classes
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / rational
+    method / Phase 4 general rational integration
+- status:
+  - `retained` (closes the two residual classes named by the cycle-15
+    frontier analysis)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 12, Phase 4
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_rational_general` / {Sophie Germain x^4+4;
+    cyclotomic-style x^4+x^2+1} / `backend_verified_unconditional_real`
+    / `algorithmic_backend_rational_summary`
+  - behavior_change_expected: yes — even quartics x^4+p*x^2+r whose
+    resolvent has no rational roots now split into the symmetric pair
+    (x^2+a*x+b)(x^2-a*x+b) when b^2=r and a^2=2b-p are rational squares
+- decision:
+  - ~45-line extension of the cycle-15 splitter at its own seam
+    (split_even_residual's degree-2 resolvent pieces, previously an
+    unconditional bail): coefficient matching with zero odd term forces
+    the symmetric form, so the descent is two perfect-square tests plus
+    an irreducibility check per factor — no scoping workflow needed, the
+    cycle-15 frontier analysis had already named the classes and the
+    machinery (shifted-quadratic assembler, algebraic verifier) was in
+    place
+  - honest negatives verified mathematically: x^4+2*x^2+3 needs
+    irrational coefficients (r not a perfect square) and x^4-x^2+1 is
+    the irreducible cyclotomic Phi_12 (the x^6+1 residual is therefore
+    correct, not a gap)
+- retained learning:
+  - consecutive capability cycles compound at their seams: cycle 15
+    bailed at exactly one labeled point (resolvent piece of degree 2),
+    so closing the named frontier cost one helper there; designing
+    splitters as exhaustive matches with explicit bail arms makes the
+    next family's insertion point self-documenting

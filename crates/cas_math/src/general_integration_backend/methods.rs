@@ -539,10 +539,55 @@ fn split_even_residual(
                     return None;
                 }
             }
+            2 => {
+                let monic = piece.div_scalar(&piece.leading_coeff());
+                even_quartic_descent(&monic, factors)?;
+            }
             _ => return None,
         }
     }
     Some(())
+}
+
+/// Factor x^4 + p*x^2 + r (given as the irreducible-over-rational-roots
+/// resolvent u^2 + p*u + r) into the symmetric quadratic pair
+/// (x^2 + a*x + b)(x^2 - a*x + b): matching coefficients with the odd
+/// term zero forces b^2 = r and a^2 = 2b - p, so the descent succeeds
+/// exactly when r is a perfect rational square and 2b - p is a positive
+/// perfect rational square (Sophie Germain x^4+4, cyclotomic-style
+/// x^4+x^2+1). Both emitted quadratics must be irreducible.
+fn even_quartic_descent(
+    resolvent_piece: &crate::polynomial::Polynomial,
+    factors: &mut Vec<SquarefreeFactor>,
+) -> Option<()> {
+    let p = resolvent_piece.coeffs[1].clone();
+    let r = resolvent_piece.coeffs[0].clone();
+    let two = BigRational::from_integer(2.into());
+    let four = BigRational::from_integer(4.into());
+    let b_magnitude = rational_positive_square_root(&r)?;
+    for b in [b_magnitude.clone(), -b_magnitude] {
+        let a_square = &two * &b - &p;
+        if !a_square.is_positive() {
+            continue;
+        }
+        let Some(a) = rational_positive_square_root(&a_square) else {
+            continue;
+        };
+        // Each factor x^2 +- a*x + b must be irreducible: a^2 - 4b < 0.
+        if &a_square - &four * &b >= BigRational::zero() {
+            continue;
+        }
+        factors.push(SquarefreeFactor::Quadratic {
+            linear_b: a.clone(),
+            constant_c: b.clone(),
+        });
+        factors.push(SquarefreeFactor::Quadratic {
+            linear_b: -a,
+            constant_c: b,
+        });
+        return Some(());
+    }
+    None
 }
 
 fn push_quadratic_or_bail(
