@@ -2035,6 +2035,12 @@ pub(super) fn build_backend_difference_canceling_sum_term(
     left: ExprId,
     right: ExprId,
 ) -> ExprId {
+    if let (Some(left_value), Some(right_value)) = (
+        crate::numeric_eval::as_rational_const(ctx, left),
+        crate::numeric_eval::as_rational_const(ctx, right),
+    ) {
+        return ctx.add(Expr::Number(left_value - right_value));
+    }
     if backend_commutative_product_factors_match(ctx, left, right) {
         return ctx.num(0);
     }

@@ -986,7 +986,7 @@ fn expanded_positive_shifted_quadratic_denominator_parts(
 )> {
     let terms = add_terms_signed(ctx, expr);
     if terms.len() != 4 {
-        return None;
+        return expanded_numeric_positive_shifted_quadratic_denominator_parts(ctx, expr, variable);
     }
 
     for (radius_index, (radius_candidate, radius_sign)) in terms.iter().copied().enumerate() {
@@ -1066,7 +1066,155 @@ fn expanded_positive_shifted_quadratic_denominator_parts(
         }
     }
 
-    None
+    expanded_numeric_positive_shifted_quadratic_denominator_parts(ctx, expr, variable)
+}
+
+/// Numeric fallback for expanded positive-quadratic denominators whose folded
+/// coefficients defeat the structural symbolic pattern, such as
+/// `x^2 + 4*x + 4 + a` (center `x + 2`, radius `a`) or
+/// `4*x^2 + 16*x + 16 + a` (center `2*x + 4`). Coefficients are compared as
+/// rationals: the quadratic coefficient must be the square of a positive
+/// rational slope, the folded numeric constant must equal the squared
+/// intercept exactly, and exactly one plus-signed variable-free term remains
+/// as the radius under the family's existing radius policy. Fully numeric
+/// denominators (no symbolic radius term) are rejected here and stay owned by
+/// the educational route.
+fn expanded_numeric_positive_shifted_quadratic_denominator_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    variable: &str,
+) -> Option<(
+    ExprId,
+    BackendAffineSlope,
+    ExprId,
+    Option<ConditionPredicate>,
+)> {
+    let terms = add_terms_signed(ctx, expr);
+    let mut quadratic_coefficient = BigRational::zero();
+    let mut linear_coefficient = BigRational::zero();
+    let mut numeric_constant = BigRational::zero();
+    let mut radius: Option<(ExprId, Option<ConditionPredicate>)> = None;
+    for (term, sign) in terms {
+        let signed = |value: BigRational| match sign {
+            Sign::Pos => value,
+            Sign::Neg => -value,
+        };
+        if let Some(coefficient) = numeric_named_variable_square_coefficient(ctx, term, variable) {
+            quadratic_coefficient += signed(coefficient);
+            continue;
+        }
+        if let Some(coefficient) = numeric_named_variable_linear_coefficient(ctx, term, variable) {
+            linear_coefficient += signed(coefficient);
+            continue;
+        }
+        if let Some(value) = backend_numeric_constant_value(ctx, term, 0) {
+            numeric_constant += signed(value);
+            continue;
+        }
+        if sign == Sign::Pos && radius.is_none() {
+            if let Some(required_condition) =
+                positive_radius_square_required_condition(ctx, term, variable)
+            {
+                radius = Some((term, required_condition));
+                continue;
+            }
+        }
+        return None;
+    }
+    let (radius, required_condition) = radius?;
+    let slope = rational_positive_square_root(&quadratic_coefficient)?;
+    if linear_coefficient.is_zero() {
+        return None;
+    }
+    let two = BigRational::from_integer(2.into());
+    let intercept = linear_coefficient / (two * &slope);
+    if numeric_constant != &intercept * &intercept {
+        return None;
+    }
+
+    let variable_expr = ctx.var(variable);
+    let variable_term = if slope.is_one() {
+        variable_expr
+    } else {
+        let slope_expr = ctx.add(Expr::Number(slope.clone()));
+        build_backend_product(ctx, slope_expr, variable_expr)
+    };
+    let center = if intercept.is_negative() {
+        let magnitude = ctx.add(Expr::Number(-intercept.clone()));
+        build_backend_difference(ctx, variable_term, magnitude)
+    } else {
+        let intercept_expr = ctx.add(Expr::Number(intercept.clone()));
+        build_backend_sum(ctx, variable_term, intercept_expr)
+    };
+    Some((
+        center,
+        BackendAffineSlope::Numeric(slope),
+        radius,
+        required_condition,
+    ))
+}
+
+fn numeric_named_variable_square_coefficient(
+    ctx: &Context,
+    expr: ExprId,
+    variable: &str,
+) -> Option<BigRational> {
+    if is_named_variable_square_factor(ctx, expr, variable) {
+        return Some(BigRational::one());
+    }
+    let factors = backend_mul_factors(ctx, expr);
+    let mut coefficient = BigRational::one();
+    let mut variable_square_seen = false;
+    for factor in factors {
+        if is_named_variable_square_factor(ctx, factor, variable) {
+            if variable_square_seen {
+                return None;
+            }
+            variable_square_seen = true;
+            continue;
+        }
+        coefficient *= numeric_value(ctx, factor)?;
+    }
+    variable_square_seen.then_some(coefficient)
+}
+
+fn numeric_named_variable_linear_coefficient(
+    ctx: &Context,
+    expr: ExprId,
+    variable: &str,
+) -> Option<BigRational> {
+    if is_variable(ctx, expr, variable) {
+        return Some(BigRational::one());
+    }
+    let factors = backend_mul_factors(ctx, expr);
+    let mut coefficient = BigRational::one();
+    let mut variable_seen = false;
+    for factor in factors {
+        if is_variable(ctx, factor, variable) {
+            if variable_seen {
+                return None;
+            }
+            variable_seen = true;
+            continue;
+        }
+        coefficient *= numeric_value(ctx, factor)?;
+    }
+    variable_seen.then_some(coefficient)
+}
+
+fn rational_positive_square_root(value: &BigRational) -> Option<BigRational> {
+    if !value.is_positive() {
+        return None;
+    }
+    let numerator_root = value.numer().sqrt();
+    if &(&numerator_root * &numerator_root) != value.numer() {
+        return None;
+    }
+    let denominator_root = value.denom().sqrt();
+    if &(&denominator_root * &denominator_root) != value.denom() {
+        return None;
+    }
+    Some(BigRational::new(numerator_root, denominator_root))
 }
 
 fn expanded_affine_square_quadratic_slope(

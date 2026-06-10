@@ -17572,3 +17572,80 @@ The burden of proof stays the same:
   - the eval-level condition compactor from the previous cycle composed
     automatically: the redundant expanded-denominator condition disappears
     for this new slice with no extra work
+
+## 2026-06-10 - Retained calculus: numeric-center expanded positive-quadratic reconstruction
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / Hermite positive
+    quadratic / expanded numeric-center argument regime
+- status:
+  - `retained` (eight residual numeric-center slices become supported; two
+    matrix rows promoted)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 12
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_hermite_positive_quadratic` /
+    `expanded_numeric_center_positive_quadratic_{derivative_multiple,mixed}_numerator` /
+    `backend_verified_positive_radius_required` /
+    `algorithmic_backend_hermite_summary` /
+    `backend_summary_log[_arctan]_numeric_center_positive_radius`
+  - block_gate_check: completes the slope-regime axis of the family
+    (symbolic slope and numeric center both reconstruct from expanded
+    sources); the budget gate needed no change (verified: numeric expanded
+    inputs already reached the Hermite probe with two_probes and failed
+    only on denominator recognition)
+  - precalculus_dependency: coefficient arithmetic over BigRational
+    (rational perfect-square root) instead of structural Pow matching;
+    radius policy reused verbatim via
+    `positive_radius_square_required_condition`
+- observed (scoping workflow, 3 parallel agents):
+  - the symbolic expanded matcher requires literal `Pow(base, 2)` shapes;
+    the parser folds `2^2 -> 4`, so every numeric-center expanded source
+    (unit, scaled, negated, mixed, arctan-only, reciprocal) was residual
+    while the equivalent compact form was supported
+  - the cross-term matcher compares built `2*s*b*x` expressions without
+    numeric folding (`4*x` vs `2*1*2*x` fails semantic equality), so a
+    per-term patch was not viable; the numeric path compares folded
+    rational coefficients instead
+  - second shared root cause: the cancellation builder produced literal
+    `6 - 3*2` differences, so scaled/mixed/negated numerators tripped the
+    zero-constant guards; extended the cycle-4 owner fix with numeric
+    folding via `numeric_eval::as_rational_const`
+- adversarial verification (3-lens workflow):
+  - soundness: all nine new antiderivatives verified symbolically (max
+    error 1.1e-16) and numerically (central difference, max 1.3e-10);
+    `a > 0` confirmed sufficient, and necessary for the arctan slices and
+    for everywhere-valid log slices
+  - regression: ten educational/symbolic/indefinite-square probes exact;
+    full suites green
+  - code review found one real concern, fixed before retention: the
+    constant bucket only folded literal `Number` terms, so fractional
+    literals in `Div` form (`1/2`) escaped into the radius branch,
+    letting fully numeric denominators be recognized with vacuous or
+    identically-false `Positive` conditions; the bucket now folds with
+    `backend_numeric_constant_value`, fully numeric shapes stay
+    educational-owned (rejection unit tests added)
+- decision:
+  - add `expanded_numeric_positive_shifted_quadratic_denominator_parts` as
+    a fallback of the expanded recognizer: rational-square slope, exact
+    `N == b^2` intercept check, exactly one plus-signed radius term under
+    the family radius policy; rejects minus-signed radii,
+    non-perfect-square polynomials, irrational slopes, and fully numeric
+    denominators
+  - promote two matrix rows (152 cases): numeric-center derivative-multiple
+    and numeric-center mixed, both with exact `diff(integrate)` round trips
+    and `a > 0`
+- residual (observe-only):
+  - numeric-scaled radius terms (`... + 4*a`) are not accepted as radius by
+    `is_supported_external_coefficient`, consistently with the symbolic
+    path; if a future cycle widens radius shapes it should widen both
+    regimes through the shared radius policy, not locally
+- retained learning:
+  - structural matchers calibrated on parsed symbolic shapes silently
+    exclude folded numeric forms; coefficient-space reconstruction is the
+    reusable pattern for expanded sources
+  - builder canonicalization debt surfaces twice now (cycle 4: commuted
+    products; this cycle: numeric folding); any new guard comparing built
+    expressions should assume builders fold numerics and cancel
+    whole-expression matches

@@ -5670,3 +5670,92 @@ fn backend_difference_canceling_sum_term_cancels_whole_commuted_product() {
 
     assert!(is_zero(&ctx, difference));
 }
+
+#[test]
+fn expanded_numeric_center_positive_quadratic_denominator_reconstructs() {
+    let mut ctx = Context::new();
+    let unit = cas_parser::parse("x^2+4*x+4+a", &mut ctx).expect("unit slope denominator");
+    let scaled = cas_parser::parse("4*x^2+16*x+16+a", &mut ctx).expect("scaled denominator");
+    let negative_center =
+        cas_parser::parse("x^2-4*x+4+a", &mut ctx).expect("negative center denominator");
+
+    let (center, slope, radius, condition) =
+        positive_shifted_quadratic_denominator_parts(&mut ctx, unit, "x")
+            .expect("unit numeric expanded denominator reconstructs");
+    let expected_center = cas_parser::parse("x+2", &mut ctx).expect("expected center");
+    assert!(crate::expr_domain::exprs_equivalent(
+        &mut ctx,
+        center,
+        expected_center
+    ));
+    assert_eq!(
+        slope,
+        BackendAffineSlope::Numeric(num_rational::BigRational::from_integer(1.into()))
+    );
+    let a = cas_parser::parse("a", &mut ctx).expect("radius symbol");
+    assert!(crate::expr_domain::exprs_equivalent(&mut ctx, radius, a));
+    assert!(matches!(condition, Some(ConditionPredicate::Positive(_))));
+
+    let (scaled_center, scaled_slope, _, _) =
+        positive_shifted_quadratic_denominator_parts(&mut ctx, scaled, "x")
+            .expect("scaled numeric expanded denominator reconstructs");
+    let expected_scaled_center = cas_parser::parse("2*x+4", &mut ctx).expect("scaled center");
+    assert!(crate::expr_domain::exprs_equivalent(
+        &mut ctx,
+        scaled_center,
+        expected_scaled_center
+    ));
+    assert_eq!(
+        scaled_slope,
+        BackendAffineSlope::Numeric(num_rational::BigRational::from_integer(2.into()))
+    );
+
+    let (negative_center_expr, _, _, _) =
+        positive_shifted_quadratic_denominator_parts(&mut ctx, negative_center, "x")
+            .expect("negative numeric center reconstructs");
+    let expected_negative_center = cas_parser::parse("x-2", &mut ctx).expect("negative center");
+    assert!(crate::expr_domain::exprs_equivalent(
+        &mut ctx,
+        negative_center_expr,
+        expected_negative_center
+    ));
+}
+
+#[test]
+fn expanded_numeric_center_positive_quadratic_denominator_rejects_unsafe_shapes() {
+    let mut ctx = Context::new();
+    let rejects = [
+        "x^2+5*x+4+a",   // numeric constant != squared intercept
+        "2*x^2+8*x+8+a", // irrational slope sqrt(2)
+        "x^2+4*x+4",     // fully numeric: educational route owns it
+        "x^2+4*x+4+1/2", // fully numeric with fractional literal (Div form)
+        "x^2+4*x+4-1/2", // fully numeric with negative fractional remainder
+        "x^2+4*x+4-a",   // minus-signed radius term
+        "x^2+4*x+a",     // missing squared-intercept constant
+    ];
+    for source in rejects {
+        let denominator = cas_parser::parse(source, &mut ctx).expect(source);
+        assert!(
+            positive_shifted_quadratic_denominator_parts(&mut ctx, denominator, "x").is_none(),
+            "must reject {source}"
+        );
+    }
+}
+
+#[test]
+fn backend_difference_canceling_sum_term_folds_numeric_operands() {
+    let mut ctx = Context::new();
+    let six = cas_parser::parse("6", &mut ctx).expect("six");
+    let product = cas_parser::parse("3*2", &mut ctx).expect("product");
+    let three = cas_parser::parse("3", &mut ctx).expect("three");
+    let smaller = cas_parser::parse("1*2", &mut ctx).expect("smaller product");
+
+    let zero = build_backend_difference_canceling_sum_term(&mut ctx, six, product);
+    assert!(is_zero(&ctx, zero));
+
+    let one = build_backend_difference_canceling_sum_term(&mut ctx, three, smaller);
+    assert_eq!(
+        numeric_value(&ctx, one),
+        Some(num_rational::BigRational::from_integer(1.into()))
+    );
+}
