@@ -153,15 +153,21 @@
 }
 ```
 
-### B) `(x-y)/(sqrt(x)-sqrt(y))` → Assumed only
+### B) `(x-y)/(sqrt(x)-sqrt(y))` → Requires only (generic)
+
+Output of `cas_cli envelope "(x-y)/(sqrt(x)-sqrt(y))" --domain generic`: the cancellation surfaces its conditions through `required_conditions`; `assumptions_used` stays empty in generic mode.
 
 ```json
 {
+  "result": { "kind": "eval_result", "value": { "display": "x^(1/2) + y^(1/2)", "canonical": "x^(1/2) + y^(1/2)" } },
   "transparency": {
-    "required_conditions": [],
-    "assumptions_used": [
-      { "kind": "NonZero", "display": "x - y ≠ 0", "rule": "Cancel Common Factors" }
-    ]
+    "required_conditions": [
+      { "kind": "NonZero", "display": "sqrt(x) - sqrt(y) ≠ 0", "expr_canonical": "sqrt(x) - sqrt(y)" },
+      { "kind": "NonNegative", "display": "x ≥ 0", "expr_canonical": "x" },
+      { "kind": "NonNegative", "display": "y ≥ 0", "expr_canonical": "y" },
+      { "kind": "NonZero", "display": "y^(1/2) - (-(x^(1/2))) ≠ 0", "expr_canonical": "y^(1/2) - (-(x^(1/2)))" }
+    ],
+    "assumptions_used": []
   }
 }
 ```

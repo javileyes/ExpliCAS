@@ -97,6 +97,61 @@ fn cli_domain_strict_partial_cancel_contract() {
 }
 
 #[test]
+fn cli_domain_generic_pow_zero_emits_required_nonzero() {
+    // x^0 -> 1 must surface the definability condition on the wire
+    // (0^0 is undefined), mirroring the x/x cancellation contract.
+    let (output, _code) = run_cli(&["eval", "x^0", "--format", "json", "--domain", "generic"]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1");
+    let required = wire["required_display"].as_array().unwrap();
+    assert_eq!(
+        required.len(),
+        1,
+        "expected exactly the x ≠ 0 condition, got: {required:?}"
+    );
+    assert_eq!(required[0], "x ≠ 0");
+}
+
+#[test]
+fn cli_domain_assume_pow_zero_emits_required_nonzero() {
+    let (output, _code) = run_cli(&["eval", "x^0", "--format", "json", "--domain", "assume"]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1");
+    let required = wire["required_display"].as_array().unwrap();
+    assert_eq!(
+        required.len(),
+        1,
+        "expected exactly the x ≠ 0 condition, got: {required:?}"
+    );
+    assert_eq!(required[0], "x ≠ 0");
+}
+
+#[test]
+fn cli_domain_generic_pow_zero_proven_base_unconditional() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(x^2+1)^0",
+        "--format",
+        "json",
+        "--domain",
+        "generic",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1");
+    let required = wire["required_display"].as_array().unwrap();
+    assert!(
+        required.is_empty(),
+        "provably nonzero base needs no condition, got: {required:?}"
+    );
+}
+
+#[test]
 fn cli_domain_assume_emits_warning() {
     // Assume => x/x -> 1 WITH warning
     let (output, _code) = run_cli(&["eval", "x/x", "--format", "json", "--domain", "assume"]);

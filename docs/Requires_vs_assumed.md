@@ -13,8 +13,8 @@ Esta separación es clave para un uso **educativo** y también para integrar el 
 
 | Canal | Qué significa | Cuándo aparece |
 |-------|---------------|----------------|
-| **ℹ️ Requires** | Dominio **implícito** de la entrada | Siempre que se "consume" una restricción |
-| **⚠ Assumed** | Hipótesis **extra** aceptada por política | `Generic` (≠0) o `Assume` (todo) |
+| **ℹ️ Requires** | Dominio **implícito** de la entrada + condiciones de **definibilidad** consumidas | `Generic` y `Assume` (canal `required_conditions`) |
+| **⚠ Assumed** | Hipótesis **extra** aceptada por política | Solo `Assume` (reglas como `abs`, `log`) |
 | **Blocked** | Regla no aplicable en modo actual | Cuando modo lo impide + `hints on` |
 
 > **Invariante**: Requires ≠ Assumed — nunca se mezclan.
@@ -29,16 +29,17 @@ Esta separación es clave para un uso **educativo** y también para integrar el 
 ℹ️ Requires: x ≥ 0
 Result: x
 
-# 2. Assumed: agujero algebraico
-> x/x  # (en Generic)
-⚠ Assumed x ≠ 0
+# 2. Requires: agujero de definibilidad (en Generic)
+> x/x
+ℹ️ Requires: x ≠ 0
 Result: 1
+# (assumptions_used queda vacío)
 
-# 3. Witness survival: no emite Requires si sqrt sobrevive
+# 3. Definibilidad + dominio implícito del input
 > (x-y)/(sqrt(x)-sqrt(y))
-⚠ Assumed x - y ≠ 0
+ℹ️ Requires: sqrt(x) - sqrt(y) ≠ 0; x ≥ 0; y ≥ 0
 Result: √(x) + √(y)
-# (NO hay x≥0, y≥0)
+# (assumptions_used queda vacío)
 ```
 
 ---
@@ -65,10 +66,11 @@ Si el motor transforma una expresión y “se pierde” una de estas restriccion
 ### Assumed (suposiciones)
 Son condiciones que el motor **acepta** para poder aplicar reglas que no son universalmente válidas sin restricciones.
 
-Ejemplos:
-- Cancelar `(x-y)/(x-y)` ⇒ asumir `x-y ≠ 0`
+Ejemplos (solo en modo `Assume`, vía `assumptions_used`):
 - Expandir `ln(xy)` ⇒ asumir `x > 0` y `y > 0`
-- Simplificar `exp(ln(x)) → x` ⇒ asumir `x > 0`
+- Simplificar `abs(x) → x` ⇒ asumir `x ≥ 0`
+
+Ojo: las cancelaciones de **definibilidad** (`x/x ⇒ x ≠ 0`) y las condiciones Analytic **heredadas** del input (`exp(ln(x)) ⇒ x > 0`) **no** van por este canal: se publican como `Requires` (`required_conditions`) en `Generic` y `Assume`, con `assumptions_used` vacío.
 
 Estas suposiciones **dependen de la política de exploración** (modo semántico).
 
@@ -88,16 +90,16 @@ Cuando una transformación requeriría suponer algo que el modo actual **no perm
 Lo importante: **Requires siempre existe** (cuando se puede inferir) y se propaga de forma estable.
 Lo que cambia entre modos es **qué suposiciones** se permiten.
 
-| Modo | Requisitos (Requires) | Suposiciones Definibility (≠0) | Suposiciones Analytic (>0, ≥0, rangos) |
-|------|------------------------|---------------------------------|----------------------------------------|
-| Strict | ✅ Sí (se muestran) | ❌ No | ❌ No |
-| Generic | ✅ Sí (se muestran) | ✅ Sí | ❌ No |
-| Assume | ✅ Sí (se muestran) | ✅ Sí | ✅ Sí |
+| Modo | Requisitos (Requires) | Cancelaciones de definibilidad (≠0) | Analytic **heredadas** del input | Analytic **introducidas** (>0, rangos nuevos) |
+|------|------------------------|--------------------------------------|----------------------------------|------------------------------------------------|
+| Strict | ✅ Se listan como condición del input | ❌ No | ❌ No | ❌ No |
+| Generic *(por defecto)* | ✅ Sí (`required_conditions`) | ✅ Sí (vía Requires) | ✅ Sí (vía Requires) | ❌ No |
+| Assume | ✅ Sí (`required_conditions`) | ✅ Sí (vía Requires) | ✅ Sí (vía Requires) | ✅ Sí (`assumptions_used`) |
 
 **Lectura didáctica:**
-- **Strict**: “no acepto hipótesis extra”
-- **Generic**: “acepto agujeros algebraicos típicos (≠0)”
-- **Assume**: “acepto hipótesis analíticas (positividad, rangos, etc.) y lo dejo por escrito”
+- **Strict**: “no acepto hipótesis extra” (ej.: conserva `x^0` y lista `x ≠ 0` como condición del input)
+- **Generic** (por defecto): “acepto agujeros algebraicos típicos (≠0) y condiciones heredadas del input (ej.: `x^0 → 1` con `Requires: x ≠ 0`), pero **no introduzco** condiciones Analytic nuevas”
+- **Assume**: “además acepto hipótesis analíticas nuevas (positividad, rangos, etc.) y las registro en `assumptions_used`”
 
 ---
 
@@ -112,6 +114,7 @@ En ℝ, `sqrt(x)` ya implica `x ≥ 0`. Simplificar `sqrt(x)^2` a `x` **no inven
 ℹ️ Requires:
   - x ≥ 0
 Result: x
+```
 
 **Interpretación:**
 
@@ -130,39 +133,51 @@ Result: x
 Aquí ocurre algo sutil y valioso:
 
 * `sqrt(x)` y `sqrt(y)` ya traen `x≥0`, `y≥0` implícitos.
-* Al simplificar, el único “agujero” real es el denominador `sqrt(x)-sqrt(y)` (equivale a `x-y`).
+* Al simplificar, el “agujero” de definibilidad es el denominador `sqrt(x)-sqrt(y)`.
 
-En `Generic` el motor puede simplificar y solo asume el agujero típico:
+En `Generic` el motor simplifica y publica **todo** por el canal `Requires` (`required_conditions`):
 
 ```txt
 > (x - y) / (sqrt(x) - sqrt(y))
-⚠ Assumed x - y ≠ 0
+ℹ️ Requires:
+  - sqrt(x) - sqrt(y) ≠ 0
+  - x ≥ 0
+  - y ≥ 0
 Result: √(x) + √(y)
 ```
 
 Fíjate en lo importante:
 
-* **NO** aparece `x ≥ 0, y ≥ 0` como suposición,
-* porque el motor detecta que esas restricciones eran **implícitas** (y además el “testigo” `sqrt(...)` sigue presente: *witness survival*).
+* **Nada** de esto aparece como suposición: `assumptions_used` queda **vacío**.
+* `x ≥ 0, y ≥ 0` eran dominio **implícito** del input, y la cancelación del denominador es un agujero de **definibilidad**: ambos viajan como `Requires`, tanto en `Generic` como en `Assume`.
 
 ---
 
-### C) `exp(ln(x))` en Generic: bloqueado por condición Analytic
+### C) `exp(ln(x)) → x` en Generic: condición Analytic **heredada** (Requires)
 
-En ℝ, `ln(x)` requiere `x>0`, pero aquí **no está garantizado** que el usuario “acepte” esa positividad como hipótesis extra para reescrituras.
+En ℝ, `ln(x)` ya requiere `x>0`: la condición viene del **testigo `ln(x)` del propio input**, el motor no la introduce. Por eso, igual que con `sqrt(x)^2`, la reescritura **sí se aplica** en `Generic` (y en `Assume`):
 
 ```txt
 > exp(ln(x))
-Result: e^(ln(x))
+ℹ️ Requires:
+  - x > 0
+Result: x
+```
+
+Distinto es el caso de una condición Analytic **introducida**, como expandir `ln(x*y)`: ahí `x > 0` y `y > 0` **no** estaban implícitas en el input (basta `x*y > 0`). En `Generic` esa reescritura queda bloqueada:
+
+```txt
+> ln(x*y)
+Result: ln(x*y)
 ℹ️ Blocked simplifications:
-  - requires x > 0 [Exponential-Log Inverse]
+  - requires x > 0, y > 0 [Logarithm Product Expansion]
   tip: use `domain assume` to allow
 ```
 
-La diferencia con `Requires` del caso anterior:
+La diferencia clave:
 
-* Aquí la reescritura `exp(ln(x)) → x` **sí cambia** el significado fuera de `x>0`.
-* En `Generic`, las condiciones Analytic no se asumen.
+* `exp(ln(x)) → x`: la condición `x > 0` se **hereda** del witness `ln(x)` del input ⇒ se publica como `Requires` también en `Generic`.
+* `ln(x*y) → ln(x) + ln(y)`: la condición se **introduce** (cambia el significado fuera de `x>0, y>0`) ⇒ en `Generic` no se asume.
 
 ---
 
@@ -170,34 +185,35 @@ La diferencia con `Requires` del caso anterior:
 
 ```txt
 > semantics set domain assume
-> exp(ln(x))
-Result: x
+> ln(x*y)
+Result: ln(x) + ln(y)
 ℹ️ Assumptions used:
   - x > 0
+  - y > 0
 ```
 
 Y en timeline, el paso queda como:
 
-* `Assumed: x > 0`
+* `Assumed: x > 0, y > 0`
 
 ---
 
 ### E) Cancelación algebraica típica: `x/x → 1`
 
-* En **Strict**: se bloquea (no se asumen agujeros).
-* En **Generic**: se permite con `Assumed x ≠ 0` (definability hole).
+* En **Strict**: se bloquea (no se aceptan agujeros).
+* En **Generic** (y **Assume**): se permite con `Requires: x ≠ 0` (definability hole); `assumptions_used` queda vacío.
 
 ```txt
 > x/x
 Result: x/x
 ℹ️ Blocked:
   - requires x ≠ 0 [Cancel Common Factors]
-  tip: use `domain generic` to allow definability assumptions
+  tip: use `domain generic` to allow definability cancellations
 
 > semantics set domain generic
 > x/x
 Result: 1
-ℹ️ Assumptions used:
+ℹ️ Requires:
   - x ≠ 0
 ```
 

@@ -104,6 +104,8 @@ sin(x)^2+cos(x)^2,1,x,g
 | `branch_mode` | ver abajo | Modo de comparación numérica |
 | `filter` | spec | Filtro de muestreo |
 
+> Nota: el engine tiene tres DomainModes (`strict`/`generic`/`assume`, default `generic`); el harness metamórfico solo ejercita `generic` y `assume` porque `strict` bloquea la mayoría de identidades del corpus. Ver `DOMAIN_MODE_QUICK_REFERENCE.md`.
+
 ---
 
 ## Sistema de Buckets
@@ -1054,6 +1056,8 @@ Resultados del benchmark unificado (`metatest_unified_benchmark`) con pair count
 | `METATEST_SEED` | `u64` | `0xC0FFEE` | Semilla para LCG del muestreo estratificado |
 | `METATEST_NOSHUFFLE` | `0`/`1` | `0` | Modo legacy: ventana contígua en vez de estratificado |
 | `METATEST_START_OFFSET` | número | `0` | Offset para ventana legacy (solo con `METATEST_NOSHUFFLE=1`) |
+
+> Nota: el engine tiene tres DomainModes (`strict`/`generic`/`assume`, default `generic`); el harness metamórfico solo ejercita `generic` y `assume` porque `strict` bloquea la mayoría de identidades del corpus. Ver `DOMAIN_MODE_QUICK_REFERENCE.md`.
 
 ---
 

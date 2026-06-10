@@ -1165,6 +1165,36 @@ fn required_conditions_preserve_compact_shifted_power_gap_denominator() {
     );
 }
 
+/// CONTRACT: x^0 simplifies to 1 in Generic mode with required x ≠ 0
+/// (0^0 is undefined, so the definability condition must reach the public
+/// required-conditions channel — same pattern as x/x).
+#[test]
+fn required_conditions_pow_zero_simplifies_with_requires() {
+    let (result, required) = simplify_generic_with_required("x^0");
+
+    assert_eq!(result, "1", "x^0 should simplify to 1 in Generic mode");
+    assert!(
+        required
+            .iter()
+            .any(|c| c.contains("x ≠ 0") || c.contains("x != 0")),
+        "Should require x ≠ 0, got: {:?}",
+        required
+    );
+}
+
+/// CONTRACT: a provably nonzero base needs no condition for x^0 -> 1.
+#[test]
+fn required_conditions_pow_zero_proven_nonzero_base_unconditional() {
+    let (result, required) = simplify_generic_with_required("(x^2+1)^0");
+
+    assert_eq!(result, "1");
+    assert!(
+        required.is_empty(),
+        "provably nonzero base needs no condition, got: {:?}",
+        required
+    );
+}
+
 /// CONTRACT: sqrt(x)^2 does NOT simplify in Strict mode
 #[test]
 fn required_conditions_sqrt_x_squared_blocked_in_strict() {

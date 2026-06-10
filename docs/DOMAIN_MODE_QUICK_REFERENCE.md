@@ -23,6 +23,8 @@ Use this document when you need a fast answer to questions like:
 - `Generic`: allows unproven `Definability` conditions.
 - `Assume`: allows unproven `Definability` and `Analytic` conditions.
 
+These are the only **three** modes, and the **default is `Generic`**.
+
 The taxonomy is defined in [cas_solver_core/src/solve_safety_policy.rs](../crates/cas_solver_core/src/solve_safety_policy.rs):
 
 - `Definability`: small holes or definedness requirements.
@@ -54,12 +56,13 @@ Important: it matters only when `DomainMode = Assume`.
 | Expression | Strict | Generic | Assume | Why it matters |
 |---|---|---|---|---|
 | `x/x -> 1` | Block | Allow | Allow | `NonZero(x)` is `Definability` |
+| `x^0 -> 1` | Block (keeps `x^0`, still reports `x ≠ 0`) | Allow (requires `x ≠ 0`) | Allow (requires `x ≠ 0`) | canonical power `Definability`; `(x^2+1)^0 -> 1` needs no condition (base proven nonzero), `0^0` stays undefined |
 | `0*(1/x) -> 0` | Block | Allow | Allow | `Defined(1/x)` is `Definability` |
 | `ln(x*y) -> ln(x)+ln(y)` | Block | Block | Allow | `x>0`, `y>0` are `Analytic` |
 | `log(b, b^x) -> x` | Block | Block | Allow | symbolic `b>0`, `b≠1` is not allowed in `Generic` |
 | `exp(ln(x)) -> x` | Block | Allow | Allow | `x>0` is **inherited** from `ln(x)` already being in the AST |
 | `ln(exp(x)) -> x` in `RealOnly` | Allow | Allow | Allow | `exp(x) > 0` is provable, so no assumption is needed |
-| `sqrt(x)^2 -> x` | Block | Block | Allow | `x ≥ 0` is `Analytic` unless already inherited/proven |
+| `sqrt(x)^2 -> x` | Block | Allow (requires `x ≥ 0`) | Allow | `x ≥ 0` is `Analytic` but **inherited** from the `sqrt(x)` witness already in the AST |
 
 ### Important Nuance
 
@@ -72,7 +75,7 @@ It means:
 
 This is why:
 
-- `exp(ln(x)) -> x` is allowed in `Generic`,
+- `exp(ln(x)) -> x` and `sqrt(x)^2 -> x` are allowed in `Generic` (conditions inherited from the `ln(x)`/`sqrt(x)` witnesses),
 - but `ln(x*y) -> ln(x)+ln(y)` is not.
 
 ## Solver: Canonical Examples
@@ -106,7 +109,8 @@ Use introduced `Analytic`-class rewrites:
 
 - `ln(x*y)`
 - `log(b, b^x)`
-- `sqrt(x)^2`
+
+Do **not** use `sqrt(x)^2` here: its `x ≥ 0` is inherited from the `sqrt(x)` witness, so it is already allowed in `Generic`.
 
 Expected pattern:
 

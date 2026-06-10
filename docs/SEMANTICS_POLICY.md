@@ -181,7 +181,7 @@ Conditions required by transformations are classified into two types:
 | Mode | Definability | Analytic | Use Case |
 |------|--------------|----------|----------|
 | `Strict` | Only if proven | Only if proven | Formal proofs |
-| `Generic` | ✅ Accept (with warning) | ✅ if inherited from an intrinsic input witness; otherwise ❌ Block | Educational default |
+| `Generic` | ✅ Accept (surfaced as required condition) | ✅ if inherited from an intrinsic input witness; otherwise ❌ Block | Educational default |
 | `Assume` | ✅ Accept (with warning) | ✅ Accept (with warning) | Research, exploration |
 
 ### Canonical Examples
@@ -502,7 +502,7 @@ This is the "mother rule" for `DomainMode::Strict`. It justifies all gates (`pro
 
 In `Strict` mode: `Unknown` → rule **does not fire**.
 In `Assume` mode: `Unknown` → rule fires with `AssumptionEvent`.
-In `Generic` mode: `Unknown` → rule fires silently.
+In `Generic` mode: `Unknown` → rule fires and the condition is recorded (`required_conditions` / `assumption_events`).
 
 ---
 
@@ -555,6 +555,8 @@ These are the **only** rewrite patterns that can "erase" undefined points. Each 
 
 **Gate**: `prove_nonzero(x)` in `IdentityPowerRule`
 
+In `Generic`/`Assume`: `x^0 → 1` fires with required condition `x ≠ 0` (literal `0^0` → `undefined`).
+
 ### 6. Inverse Composition: `f⁻¹(f(x)) → x`
 
 | Condition | Action |
@@ -572,11 +574,11 @@ The following behaviors MUST hold (see `strict_definedness_contract_tests.rs`):
 
 | # | Expression | Strict | Assume | Generic |
 |---|------------|--------|--------|---------|
-| 1 | `0/(x+1)` | `0/(x+1)` | `0` + assumption | `0` |
-| 2 | `t-t` where `t=x/(x+1)` | `t-t` | `0` + assumption | `0` |
+| 1 | `0/(x+1)` | `0/(x+1)` | `0` + assumption | `0` + required condition |
+| 2 | `t-t` where `t=x/(x+1)` | `t-t` | `0` + assumption | `0` + required condition |
 | 3 | `0/2` | `0` | `0` | `0` |
-| 4 | `0*(x/(x+1))` | `0*(x/(x+1))` | `0` + assumption | `0` |
-| 5 | `x/x` | `x/x` | `1` + assumption | `1` |
+| 4 | `0*(x/(x+1))` | `0*(x/(x+1))` | `0` + assumption | `0` + required condition |
+| 5 | `x/x` | `x/x` | `1` + assumption | `1` + required condition |
 
 ---
 

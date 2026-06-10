@@ -445,6 +445,11 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
                             domain.add_nonnegative(*base);
                         }
                     }
+                    // x^0 is defined only for x != 0 (0^0 is undefined), so the
+                    // input itself carries the condition even before any rewrite.
+                    if n.is_zero() && !base_is_number {
+                        domain.add_nonzero(*base);
+                    }
                 }
                 stack.push((*base, inside_calculus_call));
                 stack.push((*exp, inside_calculus_call));

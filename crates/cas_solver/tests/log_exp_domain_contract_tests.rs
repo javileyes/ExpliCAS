@@ -270,7 +270,7 @@ mod exp_ln_inverse {
     // x > 0 is IMPLICIT from ln(x), not a new assumption
     // ------------------------------------------------------------------------
     #[test]
-    fn real_generic_blocks_analytic() {
+    fn real_generic_simplifies_with_implicit_domain() {
         let r = simplify_with_config("exp(ln(x))", ValueDomain::RealOnly, DomainMode::Generic);
 
         // V2.15.4: exp(ln(x)) SIMPLIFIES with implicit requires (like sqrt(x)^2)

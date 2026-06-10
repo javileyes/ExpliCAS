@@ -132,12 +132,12 @@ pub enum PreSimplifyArg {
 /// Domain mode for cancellation rules
 #[derive(ValueEnum, Debug, Clone, Copy, Default)]
 pub enum DomainArg {
-    /// Only cancel factors provably non-zero (safest)
+    /// Only apply rewrites whose conditions are proven (e.g. x/x stays unless x != 0 is provable)
     Strict,
-    /// Always cancel, silently (legacy behavior)
+    /// Apply rewrites that need definability conditions (x != 0) and surface them as required conditions; analytic conditions are only inherited from the input, never introduced
     #[default]
     Generic,
-    /// Cancel and emit warnings/assumptions
+    /// Additionally apply rewrites that introduce analytic conditions (x > 0), surfaced as required conditions or recorded assumptions
     Assume,
 }
 

@@ -132,6 +132,8 @@ When domain assumptions are made during simplification:
 }
 ```
 
+> **Note — Assumption surfaces across APIs**: eval JSON `warnings` (free string) / wire `W_ASSUME` codes / envelope `transparency.assumptions_used` (structured) / timeline `assumption_events` — see [WIRE_SCHEMA.md](WIRE_SCHEMA.md) and [ASSUMPTIONS_POLICY.md](ASSUMPTIONS_POLICY.md).
+
 ## Usage from Python/Colab
 
 ```python

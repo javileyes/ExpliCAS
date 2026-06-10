@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 44 (newest first)
+Active entries: 45 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -127,6 +127,7 @@ Active entries: 44 (newest first)
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite positive | Retained calculus: numeric-center expanded positive-quadratic reconstruction
 - 2026-06-10 | `retained` | harness / documentation / auto-improvement loop steering | Retained harness: steering docs coherence pass and ledger rotation
 - 2026-06-10 | `retained` | harness / documentation / strategy direction | Retained harness: north star, didactic elevation phase, and block 13
+- 2026-06-10 | `retained` | domain modes / required conditions / exponents / documentation | Retained robustness: power-zero family surfaces its definability conditions
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -1774,3 +1775,58 @@ Active entries: 44 (newest first)
     local gradient; the steering docs must state the end state so ties
     break toward it (didactic elevation and definite integrals were
     invisible to selection before this pass)
+
+## 2026-06-10 - Retained robustness: power-zero family surfaces its definability conditions
+
+- area:
+  - domain modes / required conditions / exponents / documentation
+- status:
+  - `retained` (public behavior change: x^0 family now surfaces conditions;
+    plus ten domain-mode documentation contradictions fixed)
+- capture:
+  - investment_class: robustness
+  - cohesion_scope: IdentityPowerRule + infer_implicit_domain + 7 domain
+    docs + CLI help
+  - behavior_change_expected: yes — x^0 -> 1 now carries required x != 0 in
+    generic/assume (strict keeps the form and reports the input condition);
+    0^x -> 0 carries required x > 0 in assume
+- observed (3-lens review workflow, 66-cell probe battery):
+  - 20 of 22 probed expressions already behaved correctly; the only engine
+    gaps were the power-with-zero family: x^0 and (x-1)^0 simplified with no
+    surfaced condition in generic/assume, 0^x with none in assume
+  - root cause was a five-link loss chain: the rule emitted only a step
+    assumption (kind DerivedFromRequires) without .requires(); the surface
+    dedup drops that kind assuming a required condition backs it; the
+    reclassification wrote into a local DomainContext that was discarded;
+    infer_implicit_domain had no Pow(base, 0) clause; and the cached eval
+    path drops domain warnings entirely
+  - ten documentation contradictions (three high): Requires_vs_assumed.md
+    claimed exp(ln(x)) is blocked in generic (engine simplifies it with
+    inherited x > 0 since V2.15.4); the quick-reference canonical table
+    marked sqrt(x)^2 as blocked in generic while its own nuance section
+    said the opposite; the CLI help described generic as "always cancel,
+    silently (legacy behavior)" against the transparency invariant;
+    METAMORPHIC_TESTING presented DomainMode as a two-value axis
+- decision:
+  - mirror the proven cancellation pattern: PowZero now emits
+    .requires(NonZero(base)) alongside the assumption when the base is not
+    provably nonzero (controls intact: (x^2+1)^0 unconditional, 0^0
+    undefined); ZeroPow mirrors exp(ln(x)) with .requires(Positive(exp)) in
+    the modes that allow it; infer_implicit_domain gains the Pow(base, 0)
+    clause as the structural net
+  - contracts at both levels: 2 engine tests (domain_contract_tests) and 3
+    wire tests (domain_cli_contract_tests) so the envelope can never drop
+    the condition silently again; renamed the obsolete
+    real_generic_blocks_analytic test to
+    real_generic_simplifies_with_implicit_domain
+  - fixed the ten documentation findings across 7 docs plus the CLI help;
+    the Android envelope example was regenerated from the real binary
+- retained learning:
+  - definability conditions must travel on the required-conditions channel
+    (.requires), not only as step assumption events: the surface dedup
+    deliberately drops assumption kinds that are supposed to be backed by a
+    required condition, so a rule that only assumes is invisible in every
+    public surface
+  - the cached eval path discarding domain warnings
+    (eval_command_runtime/prepare.rs:81) remains a latent loss channel for
+    warning-only rules; observe-only candidate for a later cycle

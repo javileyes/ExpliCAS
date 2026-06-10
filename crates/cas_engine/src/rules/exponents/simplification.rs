@@ -132,7 +132,13 @@ define_rule!(
                             let mut rewrite =
                                 Rewrite::new(ctx.num(1)).desc(format_pow_zero_desc(power_mode));
                             if assume_nonzero {
+                                // Mirror the cancellation rules (e.g. x/x): the
+                                // definability condition must reach the public
+                                // required-conditions channel, not only the step
+                                // assumption event (which the surface dedup drops
+                                // when no required condition backs it).
                                 rewrite = rewrite
+                                    .requires(crate::ImplicitCondition::NonZero(base))
                                     .assume(crate::AssumptionEvent::nonzero(
                                         ctx, base,
                                     ));
@@ -173,7 +179,12 @@ define_rule!(
                     );
 
                     if decision.allow {
-                        let mut rewrite = Rewrite::new(ctx.num(0)).desc("0^x → 0");
+                        // Mirror exp(ln(x)): the positivity condition must reach
+                        // the public required-conditions channel in the modes
+                        // that allow this rewrite.
+                        let mut rewrite = Rewrite::new(ctx.num(0))
+                            .desc("0^x → 0")
+                            .requires(crate::ImplicitCondition::Positive(exp));
                         for event in decision.assumption_events(ctx, exp) {
                             rewrite = rewrite.assume(event);
                         }
