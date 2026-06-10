@@ -12789,7 +12789,18 @@ fn linear_inverse_table_result_arg(
     expr: ExprId,
     var_name: &str,
 ) -> Option<(BuiltinFn, ExprId, BigRational, bool)> {
-    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    // Unwrap holds to a fixpoint: algorithmic-backend results arrive
+    // double-held (result preservation plus the backend summary wrap), and
+    // the second level is in Function(__hold) form, which a single unwrap
+    // misses - silencing the educational substeps for those families.
+    let mut expr = expr;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+        if unwrapped == expr {
+            break;
+        }
+        expr = unwrapped;
+    }
     match ctx.get(expr) {
         Expr::Function(fn_id, args) if args.len() == 1 => {
             let builtin = ctx.builtin_of(*fn_id)?;

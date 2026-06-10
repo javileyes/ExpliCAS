@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 53 (newest first)
+Active entries: 54 (newest first)
 
+- 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2228,3 +2229,55 @@ Active entries: 53 (newest first)
     so closing the named frontier cost one helper there; designing
     splitters as exhaustive matches with explicit bail arms makes the
     next family's insertion point self-documenting
+
+## 2026-06-11 - Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
+
+- area:
+  - didactics / integration / block 12 trace elevation / Phase 6
+- status:
+  - `retained` (first didactic elevation of a backend family shape)
+- capture:
+  - investment_class: calculus (didactic half of the north star)
+  - calculus_maturity_block: block 12, Phase 6 (first shape elevated)
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_hermite_positive_quadratic` / scaled reciprocal
+    positive quadratic, symbolic radius /
+    `backend_verified_positive_radius_required` /
+    `algorithmic_backend_hermite_educational_substeps` (NEW: first
+    backend row with expected_step_substrings)
+- observed (3-agent scoping workflow):
+  - the didactic rail already knew how to narrate the arctan derivation:
+    the post-hoc substep generators in cas_didactic pattern-match the
+    (before, after) pair of the single "Symbolic Integration" step, with
+    no dependence on the backend's trace_level (EducationalFull in the
+    backend model is an unconsumed placeholder)
+  - the ONLY reason backend results showed 0 substeps: results arrive
+    DOUBLE-held (result preservation wraps once, the backend summary path
+    wraps again), and the generator entry unwrapped one level only - the
+    second level, in Function(__hold) form, fell through the pattern
+    match
+  - the focused_rule_substeps god-file split is NOT needed for elevation
+    (independent concern; deferred on its own merits)
+- decision:
+  - first attempt fixed the engine (ensure-held instead of wrap-again)
+    and was REVERTED: the double hold is load-bearing - one level is
+    consumed by the simplifier lifecycle and the survivor protects the
+    backend result's presentation (the canonical display degraded from
+    arctan((b+x)/sqrt(a)) to a^(-1/2) form, caught by probing the display
+    before pinning)
+  - the owner fix is didactic-side: unwrap holds to a FIXPOINT at the
+    generator entry (handles both Expr::Hold and Function(__hold) forms,
+    any depth); engine behavior byte-identical, 158/158 matrix intact,
+    and the canonical reciprocal now emits the three-step arctan
+    derivation (inner-derivative rule, affine argument, constant factor)
+  - elevation pinned by a new matrix row with expected_step_substrings;
+    mixed-numerator (ln+arctan) and rational-family shapes still have no
+    matching generators and stay summary - the honest next rung
+- retained learning:
+  - before changing shared plumbing (holds, presentation wraps), probe
+    what the extra layer protects: a "redundant" wrapper can be consumed
+    by a downstream lifecycle, and the robust fix belongs to the consumer
+    (unwrap to fixpoint) rather than the producer
+  - didactic elevation can be unblocked by repair instead of authorship:
+    the cheapest elevation is making existing generators see the result,
+    not writing new ones

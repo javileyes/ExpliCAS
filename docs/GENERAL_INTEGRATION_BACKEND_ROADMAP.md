@@ -125,7 +125,7 @@ Phase status (2026-06-10):
   denominators (e.g. Phi_12 = x^4-x^2+1) that require irrational-coefficient
   quadratics or Lazard-Rioboo-Trager)
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
-- Phase 6: not started (didactic elevation; first candidate Hermite positive
+- Phase 6: started 2026-06-11 (didactic elevation; first candidate Hermite positive
   quadratic)
 
 ### Phase 0. Inventory And Ownership
@@ -285,8 +285,14 @@ A family may stay summary-only when the method is genuinely beyond
 curriculum scope; document that decision and its reason in the combination
 ledger.
 
-Phase status (2026-06-10): not started — first candidate: Hermite positive
-quadratic (regime grid completed and promoted 2026-06-10).
+Phase status (2026-06-11): started — the canonical Hermite
+positive-quadratic reciprocal emits the educational arctan derivation
+(inner-derivative rule, affine argument, constant factor), pinned by the
+first backend matrix row with expected_step_substrings. Root cause was
+didactic-side (double-held results hidden from the substep generators;
+fixed by fixpoint unwrap at the generator entry — engine untouched).
+Next rungs: mixed-numerator ln+arctan narration, then the rational
+families (partial fractions, Ostrogradsky).
 
 ## Promotion Checklist
 
