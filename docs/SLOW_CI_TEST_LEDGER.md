@@ -48,6 +48,8 @@ Do not create entries for:
 - file-lock waits
 - suite startup noise without a narrow repro
 
+Rotation: this ledger follows the same monthly rotation policy as ENGINE_COMBINATION_LEDGER.md once it exceeds ~2,000 lines (no rotation needed yet).
+
 ## Current Entries
 
 ### 2026-05-24: `eval_simplify_steps_off_diff_shifted_linear_times_cot_keeps_product_rule_shape`

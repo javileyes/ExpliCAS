@@ -723,30 +723,26 @@ Use [engine_improvement_scorecard.py](/Users/javiergimenezmoya/developer/math/sc
 Benchmark interpretation caveats and the next-level evaluation roadmap live in
 [ENGINE_BENCHMARK_IMPROVEMENT.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_BENCHMARK_IMPROVEMENT.md).
 
-These are the runnable profiles exposed by the current scorecard runner:
+These are the runnable profiles exposed by the current scorecard runner; the
+canonical suite list per profile is the `profile_tags` in
+[scripts/engine_improvement_scorecard.py](/Users/javiergimenezmoya/developer/math/scripts/engine_improvement_scorecard.py)
+(`SUITES`); the lists below drift — trust the script:
 
 - `fast`
-  - `metatest_csv_combinations_small`
-  - `metatest_csv_contextual_pairs_strict`
-  - `metatest_csv_contextual_radical_pairs`
-  - `diff_step_contract_tests`
+  - the cheapest metamorphic and step-contract lanes for the default inner loop
 - `fast_embedded`
-  - `fast`
-  - `embedded_equivalence_context`
-  - use when the change touches orchestration, contextual equivalence, or
-    broad simplify routing and `fast` alone would be too weak
+  - `fast` plus the embedded equivalence context corpus; use when the change
+    touches orchestration, contextual equivalence, or broad simplify routing
+    and `fast` alone would be too weak
 - `guardrail`
-  - embedded equivalence context corpus
-  - derive contract corpus
-  - derive shadow pressure over representative engine identity rows
-  - public differentiation, limit, safe limit pre-simplification, and
-    integration contract lanes
-  - unified simplification benchmark in `strict`
+  - the representative correctness, derive, and calculus contract guardrail
+    lanes plus the unified simplification benchmark in `strict`
 - `pressure`
-  - simplify-zero mixed corpus
-  - unified simplification benchmark in `nf-first`
+  - `simplify_zero_mixed` + `calculus_diff_exhaustive_contract` +
+    `calculus_integrate_exhaustive_contract`
 - `full`
   - `guardrail + pressure`
+  - unified simplification benchmark in `nf-first`
 
 When the runner is executed, it writes:
 
@@ -798,7 +794,7 @@ about.
 
 Important distinction:
 
-- `fast / guardrail / pressure / full`
+- `fast / fast_embedded / guardrail / pressure / full`
   - executable scorecard profiles that exist today
 - `frozen / live / stress`
   - benchmark roles the campaign should reason about, but which are not yet
@@ -851,7 +847,7 @@ There should also be a deliberately cheap iteration lane.
   - stable
   - fast enough to rerun often
   - catches semantic failures and timeouts
-- `nf-first` is the pressure lane:
+- `nf-first` is the pressure lane in the conceptual lane-role sense (it runs in the `full` profile, not the executable `pressure` profile):
   - expensive
   - closer to raw normalization power
   - useful when we want to know whether the engine itself is actually converging
@@ -969,6 +965,10 @@ to record:
 
 This prevents the campaign from forgetting good local hypotheses that only need
 better scoping.
+
+The combination ledger rotates monthly via
+[scripts/engine_combination_ledger_tool.py](/Users/javiergimenezmoya/developer/math/scripts/engine_combination_ledger_tool.py)
+(`--rotate` / `--reindex`); scorecard discovery metrics read active + archives.
 
 ## Calculus Runtime Budgets Are Block-Level Guardrails
 
@@ -1519,6 +1519,10 @@ Typical choices:
 - `make ci` when the campaign has accumulated enough retained changes
 
 ### Full closure loop
+
+Run `make clippy` (`cargo clippy --workspace --all-targets -- -D warnings`)
+before `make ci`; per-crate clippy does not lint test targets, so lint debt in
+tests stays invisible until CI otherwise.
 
 Run `make ci` when:
 

@@ -4,13 +4,15 @@ This document is a derived strategy under
 [ENGINE_IMPROVEMENT_AUTOMATION.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_IMPROVEMENT_AUTOMATION.md).
 
 It exists because some engine files have become large enough that continued
-feature growth now carries structural risk, especially:
+feature growth now carries structural risk, especially (line counts as of
+2026-06-10):
 
-- [orchestrator.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs)
-- [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs)
-- [calculus/mod.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/calculus/mod.rs)
-- [symbolic_integration_support.rs](/Users/javiergimenezmoya/developer/math/crates/cas_math/src/symbolic_integration_support.rs)
-- [focused_rule_substeps.rs](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/didactic/focused_rule_substeps.rs)
+- [orchestrator.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs) (41.7k lines)
+- [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs) (38.8k lines)
+- [symbolic_integration_support.rs](/Users/javiergimenezmoya/developer/math/crates/cas_math/src/symbolic_integration_support.rs) (23.3k lines)
+- [focused_rule_substeps.rs](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/didactic/focused_rule_substeps.rs) (19.7k lines)
+- [calculus_residual_support/mod.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/calculus_residual_support/mod.rs)
+  (12.4k lines, partially extracted; split into module directory 2026-06-10)
 
 The goal is not cosmetic cleanup.
 
@@ -81,6 +83,7 @@ Good first extraction targets:
 - scaled-root inverse-family detection and domain-condition construction
 - integration derivative-cofactor recognizers versus primitive presentation
 - bounded residual-verification routes used to prove antiderivatives
+  (started 2026-06-10, see Retained extractions)
 - limit residual result/step presentation cleanup
 - focused calculus step/substep builders once the route policy is stable
 
@@ -203,8 +206,9 @@ Retained extractions under this phase:
   same date for the seams it surfaced.
 - 2026-06-10: `cas_engine/src/calculus_residual_support.rs` (13,590 lines,
   fastest-accreting calculus file) converted to a module directory and the
-  affine trig power residual-verification family (1,139 lines, 17 fan-in-1
-  entries) extracted to `affine_trig_power.rs`. Family zones in the rest of
+  affine trig power residual-verification family (1,139 lines of moved body,
+  17 fan-in-1 entries) extracted to `affine_trig_power.rs` (1,145 lines
+  including the module header). Family zones in the rest of
   the file are interleaved, so further extractions should go family-by-family
   after a seam check (exp, hyperbolic, arctan_sqrt are candidates), not as a
   whole-file split.
@@ -305,6 +309,10 @@ Run `make engine-scorecard-pressure` when:
 - a broad matcher is generalized
 - deep composed traffic is touched
 - a helper is shared across multiple route families
+
+Note: nf-first runs only in the full profile; for normalizer changes run
+`make engine-scorecard-pressure` plus the full profile (or `simplify_nf_first`
+directly) for nf-first coverage.
 
 Run `make ci` only as a closure step for a retained batch or when the structural
 change touches broad repository contracts.

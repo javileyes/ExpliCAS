@@ -144,7 +144,10 @@ Use these planning horizons as rough engineering heuristics, not commitments:
 - a universal integration engine is not a bounded target for ordinary ROI
   cycles inside the existing educational route; if pursued, it should be a
   separate hybrid backend track that starts with architecture, verification,
-  corpus, and policy boundaries before broad algorithms
+  corpus, and policy boundaries before broad algorithms. Status (2026-06-10):
+  this track exists — boundary, shared verifier, probe runner, observability
+  lanes, and the first public family (Hermite positive quadratic) are live;
+  see GENERAL_INTEGRATION_BACKEND_ROADMAP.md phase status.
 
 This gap assessment should influence ROI selection. A new green row is valuable
 only when it moves the engine toward a coherent block capability. If a proposed
@@ -230,8 +233,9 @@ Signals that the next high-ROI move is architectural:
   displayed through family-specific compaction paths
 - the same detection or presentation pattern appears in adjacent inverse,
   root, trig, or hyperbolic families
-- `calculus/mod.rs`, `symbolic_integration_support.rs`, or didactic step
-  helpers absorb another route-specific shortcut without a clearer owner
+- `crates/cas_engine/src/calculus_residual_support/mod.rs`,
+  `symbolic_integration_support.rs`, or didactic step helpers absorb another
+  route-specific shortcut without a clearer owner
 - a candidate can be described more naturally as detection, domain reasoning,
   transformation, verification, rendering, or step construction than as a new
   calculus rule
@@ -275,9 +279,10 @@ Selection rule:
 ## Block-Based Calculus Maturity Plan
 
 The calculus campaign should now be planned by maturity blocks, not by an
-unbounded list of examples. Each auto-improvement cycle should select one small
-checkbox inside one block, then validate it with the normal ROI and guardrail
-process.
+unbounded list of examples. Each auto-improvement cycle should select one
+concrete sub-gate (block bullet) inside one block, then validate it with the
+normal ROI and guardrail process. The blocks are written as prose gates, not
+checkboxes.
 
 A calculus block is not mature just because several cases pass. Treat a block as
 retained only when its representative capability has:
@@ -292,7 +297,7 @@ retained only when its representative capability has:
   antiderivative when applicable
 - green `fast`, `guardrail`, and, for broad core changes, `pressure`
 
-Use these blocks as the active checklist:
+Use these blocks as the active plan:
 
 1. **Public calculus contracts and matrices**
    - keep `diff`, `limit`, and `integrate` matrices organized by command,
@@ -378,6 +383,11 @@ Use these blocks as the active checklist:
       cannot be localized safely
     - keep embedded and pressure lanes green; calculus maturity does not justify
       broad hot-path regressions
+    - Progress (2026-06-10): two retained Phase 1 extractions
+      (general_integration_backend module split; affine trig power residual
+      family) — see ENGINE_COHESION_REFACTORING_STRATEGY.md Retained
+      extractions; remaining interleaved zones in
+      calculus_residual_support/mod.rs (~12.4k lines) keep this block open.
 
 12. **Hybrid algorithmic integration backend**
     - introduce a separate backend boundary before adding general integration
@@ -390,6 +400,10 @@ Use these blocks as the active checklist:
       policy, constant policy, runtime, and fallback behavior are explicit
     - keep the educational route conservative and didactic even when a backend
       can produce a broader result
+    - Status (2026-06-10): boundary, shared verifier, probe runner,
+      observability lanes, and the first public family (Hermite positive
+      quadratic) are live; see GENERAL_INTEGRATION_BACKEND_ROADMAP.md phase
+      status.
 
 Selection rule:
 

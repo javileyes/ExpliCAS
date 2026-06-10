@@ -1146,10 +1146,17 @@ def embedded_corpus_structure_metrics(
 def generated_discovery_ledger_metrics(
     ledger_path: pathlib.Path = ENGINE_COMBINATION_LEDGER,
 ) -> dict[str, Any]:
-    """Summarize observe-only generated discoveries retained outside live corpus."""
+    """Summarize observe-only generated discoveries retained outside live corpus.
+
+    Reads the active ledger plus any rotated monthly archives
+    (``<stem>_ARCHIVE_*.md``) so ledger rotation never changes these metrics.
+    """
     if not ledger_path.exists():
         return {"parse_error": f"missing combination ledger: {ledger_path}"}
-    return parse_generated_discovery_ledger(ledger_path.read_text())
+    texts = [ledger_path.read_text()]
+    for archive in sorted(ledger_path.parent.glob(f"{ledger_path.stem}_ARCHIVE_*.md")):
+        texts.append(archive.read_text())
+    return parse_generated_discovery_ledger("\n".join(texts))
 
 
 def parse_generated_discovery_ledger(text: str) -> dict[str, Any]:

@@ -14,7 +14,7 @@ Antes de tocar código, lee y sigue estas fuentes de verdad actuales del repo:
 Fuentes condicionales:
 - Si el hotspot cae en orquestación, lee docs/ORCHESTRATOR_OBSERVABILITY_STRATEGY.md
 - Si el trabajo toca cohesión/refactor estructural de god files como orchestrator.rs o arithmetic.rs, lee docs/ENGINE_COHESION_REFACTORING_STRATEGY.md
-- Si tocas calidad didáctica de derive/steps, lee docs/DERIVE_DIDACTIC_AUDIT.md si existe
+- Si tocas calidad didáctica de derive/steps, lee docs/DERIVE_DIDACTIC_AUDIT.md (no confundir con el artefacto generado docs/generated/DERIVE_DIDACTIC_AUDIT.md)
 - Si una idea gana localmente pero pierde globalmente, registra el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md
 - Si un candidato generado falla en smoke antes de promoción pero los probes
   mínimos revelan una debilidad estructural reproducible, anótalo también en
@@ -83,6 +83,7 @@ Plan operativo de madurez de cálculo:
   10. didáctica de cálculo
   11. arquitectura/observabilidad/runtime para generalizar sin fragilidad
   12. backend algorítmico de integración separado y verificable
+  Los títulos canónicos de los bloques son los de docs/CALCULUS_ENGINE_STRATEGY.md (Block-Based Calculus Maturity Plan); esta lista es su paráfrasis operativa.
 - Un bloque no cuenta como maduro porque existan varios casos verdes. Cuenta
   sólo cuando su capacidad representativa tiene resultado correcto o residual
   seguro, condiciones de dominio real explícitas, steps explicables, celda de
@@ -94,7 +95,7 @@ Plan operativo de madurez de cálculo:
     dominio, residual, presentación y arquitectura repetible
   - "integración general tipo CAS" es un track híbrido de backend separado, no
     una ampliación sin frontera de la ruta educativa de `integrate`
-- Cada ciclo debe elegir un checkbox pequeño dentro de un bloque. Si el
+- Cada ciclo debe elegir un sub-gate concreto (un bullet de bloque) — los bloques son prosa, no checkboxes literales. Si el
   candidato no avanza un gate de bloque, trátalo como discovery pressure o
   recházalo como near-duplicate.
 - Si dos ciclos cercanos exponen la misma forma de pipeline
@@ -150,6 +151,7 @@ Optimiza en este orden:
 Modelo de trabajo:
 - Usa perfiles ejecutables actuales:
   - fast
+  - fast_embedded
   - guardrail
   - pressure
   - full
@@ -207,6 +209,7 @@ Proceso obligatorio:
 9. Elige una única hipótesis y aplica el cambio mínimo retenible.
 10. Valida con la cadencia adecuada:
    - inner loop: tests tocados + make engine-fast
+   - antes del cierre: make clippy (cargo clippy --workspace --all-targets -- -D warnings); clippy por crate no lintea los targets de test
    - calculus: tests unitarios/contract de `diff`, `limit` o `integrate` según
      corresponda; si generalizas una familia, añade o actualiza la celda mínima
      de matriz; más auditoría didáctica si cambian steps/highlights
@@ -261,7 +264,7 @@ Proceso obligatorio:
 14. Si la mejora gana localmente pero pierde en embedded o guardrails globales:
    - no la fuerces
    - revierte la parte no retenible
-   - conserva el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md
+   - conserva el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md y regenera el índice con scripts/engine_combination_ledger_tool.py --reindex
 15. Si un candidato generado falla antes de promoción:
    - acota la firma con uno o dos probes baratos cuando sea razonable
    - si el fallo apunta a una debilidad reutilizable, registra el aprendizaje en

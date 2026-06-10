@@ -102,6 +102,17 @@ with no behavior change. New normalization cases belong in
 `verification_normalization`, new method recognition in `methods`; the result
 contract and verifier service files should stay stable as families grow.
 
+Phase status (2026-06-10):
+
+- Phase 0: done
+- Phase 1: done (boundary + disabled-by-default modes + mode-boundary lane)
+- Phase 2: done (shared verifier with structured outcomes in
+  `general_integration_backend/verification*.rs`)
+- Phase 3: done (rational/Hermite/heurisch probes via shared probe runner)
+- Phase 4: in progress (Hermite positive-quadratic regime grid promoted to the
+  public matrix 2026-06-10; general rational integration pending)
+- Phase 5: partial (mode-boundary lane exists; trace policy summarized)
+
 ### Phase 0. Inventory And Ownership
 
 Goal: map what can be shared before adding any broad method.
@@ -236,17 +247,17 @@ Before retaining a backend change, answer:
 
 ## Recommended First Iterations
 
-1. Add a backend result model and disabled-by-default boundary.
-2. Route one already-supported integration family through the boundary without
+1. [done — model.rs] Add a backend result model and disabled-by-default boundary.
+2. [done — model.rs] Route one already-supported integration family through the boundary without
    changing output.
-3. Extract a shared antiderivative verifier with structured outcomes.
-4. Add backend scorecard metrics for attempts, verification outcomes, residual
+3. [done — verification.rs] Extract a shared antiderivative verifier with structured outcomes.
+4. [done — scorecard lanes] Add backend scorecard metrics for attempts, verification outcomes, residual
    reasons, and runtime.
-5. Add a shared probe runner and scorecard budget split for method-probe versus
+5. [done — probe_runner.rs] Add a shared probe runner and scorecard budget split for method-probe versus
    verification-budget exhaustion.
-6. Add method-probe candidate/no-match counts and no-match reason attribution.
-7. Add discovery-only rational integration probes.
-8. Promote one verified rational backend family once the boundary and verifier
+6. [done — no-match reasons] Add method-probe candidate/no-match counts and no-match reason attribution.
+7. [done — discovery probes] Add discovery-only rational integration probes.
+8. [in progress — Hermite positive-quadratic regimes promoted 2026-06-10, see combination ledger] Promote one verified rational backend family once the boundary and verifier
    are stable.
 
 ## Stop Conditions

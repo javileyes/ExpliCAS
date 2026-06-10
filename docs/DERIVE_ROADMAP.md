@@ -1,4 +1,4 @@
-# Derive Roadmap
+# Derive Roadmap (historical)
 
 This document defines the technical roadmap for turning `derive` into a first-class educational feature of ExpliCAS.
 

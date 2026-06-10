@@ -290,6 +290,9 @@ When that happens, the default action is:
 
 ## Benchmark Roles For Orchestrator Work
 
+These are conceptual benchmark roles, not the runnable scorecard profiles
+(fast / fast_embedded / guardrail / pressure / full).
+
 Orchestrator work should be read against three benchmark roles, not one moving
 number:
 
