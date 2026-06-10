@@ -5624,7 +5624,7 @@ fn backend_positive_quadratic_denominator_radius_recognizes_compact_and_expanded
         .expect("expanded radius");
 
     assert!(crate::expr_domain::exprs_equivalent(
-        &mut ctx,
+        &ctx,
         compact_radius,
         expanded_radius
     ));
@@ -5649,11 +5649,7 @@ fn expanded_scaled_derivative_multiple_numerator_decomposes_to_log_only_coeffici
             .expect("distributed derivative-multiple numerator decomposes");
 
     let m = cas_parser::parse("m", &mut ctx).expect("external coefficient");
-    assert!(crate::expr_domain::exprs_equivalent(
-        &mut ctx,
-        coefficient,
-        m
-    ));
+    assert!(crate::expr_domain::exprs_equivalent(&ctx, coefficient, m));
     assert!(
         is_zero(&ctx, constant),
         "whole-expression cancellation must yield a structural zero constant"
@@ -5684,7 +5680,7 @@ fn expanded_numeric_center_positive_quadratic_denominator_reconstructs() {
             .expect("unit numeric expanded denominator reconstructs");
     let expected_center = cas_parser::parse("x+2", &mut ctx).expect("expected center");
     assert!(crate::expr_domain::exprs_equivalent(
-        &mut ctx,
+        &ctx,
         center,
         expected_center
     ));
@@ -5693,7 +5689,7 @@ fn expanded_numeric_center_positive_quadratic_denominator_reconstructs() {
         BackendAffineSlope::Numeric(num_rational::BigRational::from_integer(1.into()))
     );
     let a = cas_parser::parse("a", &mut ctx).expect("radius symbol");
-    assert!(crate::expr_domain::exprs_equivalent(&mut ctx, radius, a));
+    assert!(crate::expr_domain::exprs_equivalent(&ctx, radius, a));
     assert!(matches!(condition, Some(ConditionPredicate::Positive(_))));
 
     let (scaled_center, scaled_slope, _, _) =
@@ -5701,7 +5697,7 @@ fn expanded_numeric_center_positive_quadratic_denominator_reconstructs() {
             .expect("scaled numeric expanded denominator reconstructs");
     let expected_scaled_center = cas_parser::parse("2*x+4", &mut ctx).expect("scaled center");
     assert!(crate::expr_domain::exprs_equivalent(
-        &mut ctx,
+        &ctx,
         scaled_center,
         expected_scaled_center
     ));
@@ -5715,7 +5711,7 @@ fn expanded_numeric_center_positive_quadratic_denominator_reconstructs() {
             .expect("negative numeric center reconstructs");
     let expected_negative_center = cas_parser::parse("x-2", &mut ctx).expect("negative center");
     assert!(crate::expr_domain::exprs_equivalent(
-        &mut ctx,
+        &ctx,
         negative_center_expr,
         expected_negative_center
     ));
