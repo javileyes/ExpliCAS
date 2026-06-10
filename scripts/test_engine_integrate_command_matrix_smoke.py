@@ -519,6 +519,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             step_checked,
             {
                 "algorithmic_backend_hermite_reciprocal_educational_substeps",
+                "algorithmic_backend_hermite_symbolic_positive_radius_mixed_numerator",
+                "algorithmic_backend_hermite_symbolic_affine_positive_radius_mixed_numerator",
                 "polynomial_power_direct",
                 "polynomial_sum_linearity",
                 "affine_trig_substitution",

@@ -291,8 +291,12 @@ positive-quadratic reciprocal emits the educational arctan derivation
 first backend matrix row with expected_step_substrings. Root cause was
 didactic-side (double-held results hidden from the substep generators;
 fixed by fixpoint unwrap at the generator entry — engine untouched).
-Next rungs: mixed-numerator ln+arctan narration, then the rational
-families (partial fractions, Ostrogradsky).
+The mixed-numerator ln+arctan narration landed the same day for the
+compact shapes (separate the log part, integrate the denominator's
+derivative as a log, arctan rule), pinned by substrings on both compact
+mixed rows. Next rungs: expanded-affine shapes (need the
+complete-the-square narration first), then the rational families
+(partial fractions, Ostrogradsky).
 
 ## Promotion Checklist
 

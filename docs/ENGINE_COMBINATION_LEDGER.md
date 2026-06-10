@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 54 (newest first)
+Active entries: 55 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
+- 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2281,3 +2282,41 @@ Active entries: 54 (newest first)
   - didactic elevation can be unblocked by repair instead of authorship:
     the cheapest elevation is making existing generators see the result,
     not writing new ones
+
+## 2026-06-11 - Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
+
+- area:
+  - didactics / integration / block 12 trace elevation / Phase 6 second rung
+- status:
+  - `retained` (first authored substep generator for a backend family)
+- capture:
+  - investment_class: calculus (didactic half of the north star)
+  - calculus_maturity_block: block 12, Phase 6
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_hermite_positive_quadratic` / mixed linear
+    numerator over compact positive quadratic (unit and affine symbolic
+    radius) / `backend_verified_positive_radius_required` / rows now
+    carry expected_step_substrings
+  - behavior_change_expected: didactic only - the two compact
+    mixed-numerator Hermite shapes now narrate "separate the log part of
+    the numerator -> integrate the denominator's derivative as a log ->
+    arctan rule"; engine results byte-identical
+- decision:
+  - new generator at the END of the focused-rule integration dispatch
+    chain (existing generators keep priority - educational partial
+    fractions, the cycle-1 arctan narration, and basic table shapes were
+    probed for non-capture), gated on a compact single positive-quadratic
+    denominator (Add with a squared side): factor products, expanded
+    quadratics, and quartic descents are structurally excluded and stay
+    summary
+  - display uses existing subexpressions only (the integrand, the
+    denominator, the ln and arctan terms found in the result), so no
+    scratch-context machinery was needed
+  - pinned by expected_step_substrings on the two compact mixed rows; the
+    expanded-affine rows remain the next rung (their denominators arrive
+    flat and need the complete-the-square narration first)
+- retained learning:
+  - inserting a new narrator at the END of a priority dispatch chain plus
+    a probe battery over the neighbors' shapes is the cheap recipe for
+    no-capture guarantees; the matrix substrings then pin both the new
+    narration and the neighbors' ownership

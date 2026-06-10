@@ -95,6 +95,12 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return integration_positive_quadratic_cube_substeps;
     }
 
+    let integration_mixed_numerator_substeps =
+        generate_positive_quadratic_mixed_numerator_integration_substeps(ctx, step);
+    if !integration_mixed_numerator_substeps.is_empty() {
+        return integration_mixed_numerator_substeps;
+    }
+
     let integration_trig_log_table_substeps =
         generate_trig_log_table_integration_substeps(ctx, step);
     if !integration_trig_log_table_substeps.is_empty() {
@@ -12708,6 +12714,155 @@ fn contains_linear_integration_by_parts_target(
                 || contains_linear_integration_by_parts_target(ctx, *right, var_name)
         }
         Expr::Neg(inner) => contains_linear_integration_by_parts_target(ctx, *inner, var_name),
+        _ => false,
+    }
+}
+
+/// Narrate the mixed-numerator positive-quadratic family produced by the
+/// algorithmic backend: integrate((m*(s*x+b)+c)/((s*x+b)^2+a), x) splits
+/// into a log part (the derivative of the denominator) and an arctan
+/// part. Fires only for a compact single positive-quadratic denominator
+/// (Add with a squared side), so partial-fraction and expanded shapes
+/// keep their own narrations.
+fn generate_positive_quadratic_mixed_numerator_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    let Expr::Variable(_) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+
+    let Expr::Div(_, denominator) = ctx.get(args[0]) else {
+        return Vec::new();
+    };
+    if !is_compact_positive_quadratic_denominator(ctx, *denominator) {
+        return Vec::new();
+    }
+
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+    let mut terms = Vec::new();
+    collect_additive_terms(ctx, result, &mut terms);
+    if terms.len() < 2 {
+        return Vec::new();
+    }
+    let log_term = terms
+        .iter()
+        .copied()
+        .find(|term| expr_contains_builtin(ctx, *term, BuiltinFn::Ln));
+    let arctan_term = terms.iter().copied().find(|term| {
+        expr_contains_builtin(ctx, *term, BuiltinFn::Arctan)
+            || expr_contains_builtin(ctx, *term, BuiltinFn::Atan)
+    });
+    let (Some(log_term), Some(arctan_term)) = (log_term, arctan_term) else {
+        return Vec::new();
+    };
+    if terms
+        .iter()
+        .any(|term| expr_contains_integrate_call(ctx, *term))
+    {
+        return Vec::new();
+    }
+
+    vec![
+        SubStep::new(
+            "Separar la parte logarítmica del numerador",
+            display_expr(ctx, args[0]),
+            display_expr(ctx, result),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(latex_expr(ctx, result)),
+        SubStep::new(
+            "Integrar la derivada del denominador como logaritmo",
+            display_expr(ctx, *denominator),
+            display_expr(ctx, log_term),
+        )
+        .with_before_latex(latex_expr(ctx, *denominator))
+        .with_after_latex(latex_expr(ctx, log_term)),
+        SubStep::new(
+            "Usar la regla de arctan con derivada interna",
+            display_expr(ctx, *denominator),
+            display_expr(ctx, arctan_term),
+        )
+        .with_before_latex(latex_expr(ctx, *denominator))
+        .with_after_latex(latex_expr(ctx, arctan_term)),
+    ]
+}
+
+/// A compact positive-quadratic denominator: Add with one side being a
+/// square (Pow(_, 2)). Expanded quadratics and factor products are out of
+/// scope here on purpose.
+fn is_compact_positive_quadratic_denominator(ctx: &Context, denominator: ExprId) -> bool {
+    let Expr::Add(left, right) = ctx.get(denominator) else {
+        return false;
+    };
+    [*left, *right].into_iter().any(|side| {
+        matches!(ctx.get(side), Expr::Pow(_, exponent)
+            if as_rational_const(ctx, *exponent, 4)
+                .is_some_and(|value| value == BigRational::from_integer(2.into())))
+    })
+}
+
+fn collect_additive_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            collect_additive_terms(ctx, *left, terms);
+            collect_additive_terms(ctx, *right, terms);
+        }
+        Expr::Sub(left, right) => {
+            collect_additive_terms(ctx, *left, terms);
+            collect_additive_terms(ctx, *right, terms);
+        }
+        _ => terms.push(expr),
+    }
+}
+
+fn expr_contains_builtin(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            ctx.is_builtin(*fn_id, builtin)
+                || args
+                    .iter()
+                    .any(|arg| expr_contains_builtin(ctx, *arg, builtin))
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            expr_contains_builtin(ctx, *l, builtin) || expr_contains_builtin(ctx, *r, builtin)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_builtin(ctx, *inner, builtin),
+        _ => false,
+    }
+}
+
+fn expr_contains_integrate_call(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            ctx.sym_name(*fn_id) == "integrate"
+                || args
+                    .iter()
+                    .any(|arg| expr_contains_integrate_call(ctx, *arg))
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            expr_contains_integrate_call(ctx, *l) || expr_contains_integrate_call(ctx, *r)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_integrate_call(ctx, *inner),
         _ => false,
     }
 }

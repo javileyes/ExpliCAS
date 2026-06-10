@@ -586,6 +586,11 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_direct_diff_integrate_result="(x + 1) / (x^2 + a)",
         expected_direct_diff_integrate_required_display=("a > 0",),
         expected_required_display=("a > 0",),
+        expected_step_substrings=(
+            "Separar la parte logarítmica del numerador",
+            "Integrar la derivada del denominador como logaritmo",
+            "Usar la regla de arctan con derivada interna",
+        ),
         family="algorithmic_backend_hermite_positive_quadratic",
         argument_regime="linear_numerator_unit_positive_quadratic_symbolic_radius",
         domain_regime="backend_verified_positive_radius_required",
@@ -604,6 +609,11 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         ),
         expected_direct_diff_integrate_required_display=("a > 0", "s ≠ 0"),
         expected_required_display=("a > 0", "s ≠ 0"),
+        expected_step_substrings=(
+            "Separar la parte logarítmica del numerador",
+            "Integrar la derivada del denominador como logaritmo",
+            "Usar la regla de arctan con derivada interna",
+        ),
         family="algorithmic_backend_hermite_positive_quadratic",
         argument_regime="symbolic_affine_positive_quadratic_mixed_numerator",
         domain_regime="backend_verified_positive_radius_and_slope_nonzero_required",
