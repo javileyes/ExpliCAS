@@ -17360,3 +17360,51 @@ The burden of proof stays the same:
   - expanded-form Hermite support needs both affine center reconstruction and
     numerator decomposition against that center; denominator recognition alone
     is not sufficient
+
+## 2026-06-10 - Retained internal: general integration backend module ownership split
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / block 11
+    architecture / cohesion extraction
+- status:
+  - `retained-internal` (behavior-preserving refactor, no public change)
+- capture:
+  - investment_class: observability
+  - cohesion_scope: `crates/cas_math/src/general_integration_backend.rs` ->
+    `general_integration_backend/{mod,probe_runner,model,verification,verification_normalization,methods,tests}.rs`
+  - behavior_change_expected: none
+- observed:
+  - the backend file reached 11,368 lines in a single file and grew by
+    +3,427 lines in one cycle, with four consecutive cycles editing it
+  - it mixed four concerns: result model/boundary types, antiderivative
+    verification service, case-by-case verification normalization
+    (34 `normalize_backend_*` functions), and method probes, plus ~5.6k
+    lines of tests
+  - the dominant growth zone is verification normalization: every new
+    family adds derivative-matching normalization cases
+- decision:
+  - split the file into a module directory with explicit ownership
+    boundaries (extract-before-abstract): `probe_runner` (modes, budgets,
+    probe accounting), `model` (result contract), `verification`
+    (structured verification service), `verification_normalization`
+    (bounded derivative-matching normalization, the expected growth zone),
+    `methods` (rational/Hermite/heurisch probes and the public entry
+    point), and `tests`
+  - public API preserved byte-identically through `pub use` re-exports;
+    the four dependents (`cas_engine` integration route and
+    `symbolic_integration_support`) were not modified
+  - extracted bodies were verified byte-identical to the original slices
+    before visibility adjustments; route order (Rational -> Hermite ->
+    HeurischProbe) and the verifier cascade were not touched
+- retained learning:
+  - new `normalize_backend_*` cases for new families belong in
+    `verification_normalization.rs`; method recognition belongs in
+    `methods.rs`; neither should grow the result model or the verifier
+    service file
+  - the split surfaced a real cross-boundary seam: `verification` reuses
+    affine-denominator part extraction owned by `methods`
+    (`affine_denominator_linear_numerator_parts`,
+    `BackendRadiusSquareValue`), and both lean on a shared expression
+    toolkit (numeric helpers and `build_backend_*` builders); that toolkit
+    is a Phase 2 consolidation candidate once another family confirms the
+    pattern, and should not be widened ad hoc

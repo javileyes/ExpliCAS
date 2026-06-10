@@ -193,6 +193,15 @@ Bad retained outcome:
 - a helper moves to a generic module before it has multiple real users
 - unrelated identities are now coupled through a shared abstraction
 
+Retained extractions under this phase:
+
+- 2026-06-10: `cas_math/src/general_integration_backend.rs` (11,368 lines,
+  fastest-growing god file) split into a module directory with explicit
+  ownership (`probe_runner`, `model`, `verification`,
+  `verification_normalization`, `methods`, `tests`), behavior-preserving,
+  public API re-exported unchanged. See the combination ledger entry of the
+  same date for the seams it surfaced.
+
 ### Phase 2: Consolidate Repeated Helper Shapes
 
 Only consolidate after at least two extracted families prove that the helper is

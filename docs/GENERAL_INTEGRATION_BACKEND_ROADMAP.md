@@ -96,6 +96,12 @@ make supported educational cases worse.
 
 ## Development Phases
 
+Status note (2026-06-10): the backend module was split into an ownership
+directory (`general_integration_backend/{probe_runner,model,verification,verification_normalization,methods,tests}.rs`)
+with no behavior change. New normalization cases belong in
+`verification_normalization`, new method recognition in `methods`; the result
+contract and verifier service files should stay stable as families grow.
+
 ### Phase 0. Inventory And Ownership
 
 Goal: map what can be shared before adding any broad method.
