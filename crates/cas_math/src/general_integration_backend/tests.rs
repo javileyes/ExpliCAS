@@ -5608,3 +5608,28 @@ fn json_string_count_map(counts: BTreeMap<String, usize>) -> String {
         .join(",");
     format!("{{{entries}}}")
 }
+
+#[test]
+fn backend_positive_quadratic_denominator_radius_recognizes_compact_and_expanded() {
+    let mut ctx = Context::new();
+    let compact = cas_parser::parse("(s*x+b)^2+a", &mut ctx).expect("compact denominator");
+    let expanded =
+        cas_parser::parse("s^2*x^2+2*b*s*x+b^2+a", &mut ctx).expect("expanded denominator");
+    let indefinite =
+        cas_parser::parse("(s*x+b)^2-a^2", &mut ctx).expect("indefinite square denominator");
+
+    let compact_radius = backend_positive_quadratic_denominator_radius(&mut ctx, compact, "x")
+        .expect("compact radius");
+    let expanded_radius = backend_positive_quadratic_denominator_radius(&mut ctx, expanded, "x")
+        .expect("expanded radius");
+
+    assert!(crate::expr_domain::exprs_equivalent(
+        &mut ctx,
+        compact_radius,
+        expanded_radius
+    ));
+    assert!(
+        backend_positive_quadratic_denominator_radius(&mut ctx, indefinite, "x").is_none(),
+        "indefinite square denominators must not be recognized as positive quadratics"
+    );
+}

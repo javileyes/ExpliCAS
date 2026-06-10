@@ -247,37 +247,37 @@ fn compact_algorithmic_backend_positive_quadratic_source_condition(
     resolved: ExprId,
     diagnostics: &mut crate::diagnostics::Diagnostics,
 ) {
-    let Some(call) =
-        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, resolved)
-    else {
+    let Some(call) = integrate_call_for_source_condition_compaction(ctx, resolved) else {
         return;
     };
-    if !crate::rules::calculus::is_public_algorithmic_backend_symbolic_positive_quadratic_fallback_shape(
-        ctx,
-        call.target,
-        &call.var_name,
-        0,
-    ) {
-        return;
-    }
     let Some(denominator) = integrate_target_denominator(ctx, call.target) else {
         return;
     };
-    let has_external_positive_backend_condition = diagnostics.requires.iter().any(|item| {
+    let Some(radius) =
+        cas_math::general_integration_backend::backend_positive_quadratic_denominator_radius(
+            ctx,
+            denominator,
+            &call.var_name,
+        )
+    else {
+        return;
+    };
+    let has_displayed_positive_radius_condition = diagnostics.requires.iter().any(|item| {
         let crate::ImplicitCondition::Positive(expr) = item.cond else {
             return false;
         };
-        !cas_math::expr_domain::exprs_equivalent(ctx, expr, denominator)
-            && !cas_math::expr_predicates::contains_named_var(ctx, expr, &call.var_name)
+        !cas_math::expr_predicates::contains_named_var(ctx, expr, &call.var_name)
+            && !cas_math::expr_domain::exprs_equivalent(ctx, expr, denominator)
+            && cas_math::expr_domain::exprs_equivalent(ctx, expr, radius)
     });
-    if !has_external_positive_backend_condition {
+    if !has_displayed_positive_radius_condition {
         return;
     }
 
     let mut retained = Vec::with_capacity(diagnostics.requires.len());
     for item in diagnostics.requires.drain(..) {
         let is_redundant_source_denominator = match item.cond {
-            crate::ImplicitCondition::Positive(expr) => {
+            crate::ImplicitCondition::Positive(expr) | crate::ImplicitCondition::NonZero(expr) => {
                 cas_math::expr_domain::exprs_equivalent(ctx, expr, denominator)
             }
             _ => false,
@@ -287,6 +287,19 @@ fn compact_algorithmic_backend_positive_quadratic_source_condition(
         }
     }
     diagnostics.requires = retained;
+}
+
+fn integrate_call_for_source_condition_compaction(
+    ctx: &cas_ast::Context,
+    resolved: ExprId,
+) -> Option<crate::symbolic_calculus_call_support::NamedVarCall> {
+    if let Some(call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, resolved)
+    {
+        return Some(call);
+    }
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, resolved)?;
+    crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
 }
 
 fn integrate_target_denominator(ctx: &cas_ast::Context, target: ExprId) -> Option<ExprId> {

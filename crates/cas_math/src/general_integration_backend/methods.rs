@@ -888,6 +888,22 @@ fn sine_log_derivative_denominator(ctx: &Context, expr: ExprId, variable: &str) 
     }
 }
 
+/// Public recognizer for denominators the Hermite positive-quadratic method
+/// accepts: compact `(s*x + b)^2 + a` or expanded
+/// `s^2*x^2 + 2*b*s*x + b^2 + a` with a variable-free radius. Returns the
+/// radius expression so condition presentation can drop source-denominator
+/// conditions that are already implied by the displayed `Positive(radius)`
+/// backend condition, without duplicating center reconstruction outside the
+/// backend.
+pub fn backend_positive_quadratic_denominator_radius(
+    ctx: &mut Context,
+    denominator: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    positive_shifted_quadratic_denominator_parts(ctx, denominator, variable)
+        .map(|(_, _, radius, _)| radius)
+}
+
 pub(super) fn positive_shifted_quadratic_denominator_parts(
     ctx: &mut Context,
     expr: ExprId,

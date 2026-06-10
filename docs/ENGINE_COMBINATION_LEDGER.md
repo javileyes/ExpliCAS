@@ -17451,3 +17451,65 @@ The burden of proof stays the same:
     decisions should now compare the seams both extractions surfaced
     (backend expression toolkit vs residual diff-matching helpers) before
     introducing any shared abstraction
+
+## 2026-06-10 - Retained calculus: expanded symbolic-slope Hermite source conditions and matrix promotion
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / Hermite positive
+    quadratic / expanded argument regime / condition presentation
+- status:
+  - `retained` (public behavior change: redundant source condition dropped;
+    one new matrix row)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 12 (plus block 9 condition presentation)
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_hermite_positive_quadratic` /
+    `expanded_symbolic_affine_positive_quadratic_mixed_numerator` /
+    `backend_verified_positive_radius_and_slope_nonzero_required` /
+    `algorithmic_backend_hermite_summary` /
+    `backend_summary_log_arctan_symbolic_affine_positive_radius`
+  - block_gate_check: closes the CLI promotion gate left by the
+    2026-06-10 "CLI gap" entry — command path, required conditions, and
+    direct `diff(integrate)` now agree for both compact and expanded
+    sources, so the matrix row is promotable
+  - precalculus_dependency: reuses the backend's own center reconstruction
+    (`positive_shifted_quadratic_denominator_parts`) as the public
+    recognizer instead of duplicating shape matching outside the backend
+  - domain_safety_check: the eval compactor guard was tightened, not
+    loosened — it now requires the displayed `Positive` condition to be
+    exprs-equivalent to the recognized radius of that denominator (the old
+    guard accepted any variable-free external `Positive`)
+- observed:
+  - `integrate(expanded)` and `diff(integrate(expanded))` carried a
+    redundant `s^2*x^2 + 2*b*s*x + b^2 + a != 0` display condition that the
+    compact source did not, because the eval-level compactor only
+    recognized the compact denominator shape and only drained `Positive`
+    conditions
+  - sibling sweep: compact source unchanged; sign-flipped slope supported;
+    `m = 0` (pure arctan slice) supported; indefinite-square family
+    untouched (negative control); `c = 0` expanded pure-log slice stays
+    residual and honestly keeps its denominator condition (soundness
+    control, no `Positive` radius displayed)
+- decision:
+  - expose `backend_positive_quadratic_denominator_radius` from the backend
+    methods module and re-export it; the eval compactor now recognizes
+    compact and expanded sources through it, accepts the
+    `diff(integrate(...))` round-trip wrapper, and drains both `Positive`
+    and `NonZero` source-denominator conditions anchored to the displayed
+    radius condition
+  - promote one matrix row for the expanded argument regime with
+    `a > 0`, `s != 0` and exact direct `diff(integrate)` expectations;
+    harness counters updated (149 cases)
+- discovery (observe-only):
+  - expanded pure-log slice `(m*s*x+b*m)/(s^2*x^2+2*b*s*x+b^2+a)` stays
+    residual while the mixed-numerator expanded form is supported; the
+    backend's expanded numerator decomposition appears to require the
+    non-derivative component, so the derivative-multiple-only slice is a
+    candidate backend gap with a reusable signature (do not widen
+    matchers ad hoc for it)
+- retained learning:
+  - condition-presentation policies for backend families should be anchored
+    to the family's own recognized structure (radius), not to generic
+    external-condition heuristics; reusing the backend recognizer kept the
+    policy single-owner and made the tightening cheap

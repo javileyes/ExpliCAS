@@ -593,6 +593,24 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="backend_summary_log_arctan_symbolic_affine_positive_radius",
     ),
     IntegrateCommandMatrixCase(
+        name="algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
+        expr="integrate((m*s*x+b*m+c)/(s^2*x^2+2*b*s*x+b^2+a), x)",
+        expected_result=(
+            "(c·arctan((s·x + b) / sqrt(a)))/(sqrt(a)·s) + "
+            "(m·ln((s·x + b)^2 + a))/(s·2)"
+        ),
+        expected_direct_diff_integrate_result=(
+            "(m·s·x + b·m + c) / (s^2·x^2 + 2·b·s·x + b^2 + a)"
+        ),
+        expected_direct_diff_integrate_required_display=("a > 0", "s ≠ 0"),
+        expected_required_display=("a > 0", "s ≠ 0"),
+        family="algorithmic_backend_hermite_positive_quadratic",
+        argument_regime="expanded_symbolic_affine_positive_quadratic_mixed_numerator",
+        domain_regime="backend_verified_positive_radius_and_slope_nonzero_required",
+        trace_regime="algorithmic_backend_hermite_summary",
+        presentation_regime="backend_summary_log_arctan_symbolic_affine_positive_radius",
+    ),
+    IntegrateCommandMatrixCase(
         name="algorithmic_backend_hermite_symbolic_indefinite_square_denominator",
         expr="integrate(1/(x^2-a^2), x)",
         expected_result="((ln(|x - a|) - ln(|a + x|))·1·1/2)/a",
