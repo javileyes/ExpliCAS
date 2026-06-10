@@ -201,6 +201,13 @@ Retained extractions under this phase:
   `verification_normalization`, `methods`, `tests`), behavior-preserving,
   public API re-exported unchanged. See the combination ledger entry of the
   same date for the seams it surfaced.
+- 2026-06-10: `cas_engine/src/calculus_residual_support.rs` (13,590 lines,
+  fastest-accreting calculus file) converted to a module directory and the
+  affine trig power residual-verification family (1,139 lines, 17 fan-in-1
+  entries) extracted to `affine_trig_power.rs`. Family zones in the rest of
+  the file are interleaved, so further extractions should go family-by-family
+  after a seam check (exp, hyperbolic, arctan_sqrt are candidates), not as a
+  whole-file split.
 
 ### Phase 2: Consolidate Repeated Helper Shapes
 

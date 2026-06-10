@@ -17408,3 +17408,46 @@ The burden of proof stays the same:
     toolkit (numeric helpers and `build_backend_*` builders); that toolkit
     is a Phase 2 consolidation candidate once another family confirms the
     pattern, and should not be widened ad hoc
+
+## 2026-06-10 - Retained internal: affine trig power residual verification extraction
+
+- area:
+  - calculus / residual verification / block 11 architecture / cohesion
+    extraction (second Phase 1 extraction)
+- status:
+  - `retained-internal` (behavior-preserving refactor, no public change)
+- capture:
+  - investment_class: observability
+  - cohesion_scope: `crates/cas_engine/src/calculus_residual_support.rs` ->
+    `calculus_residual_support/{mod,affine_trig_power}.rs`
+  - behavior_change_expected: none
+- observed:
+  - `calculus_residual_support.rs` is the fastest-accreting calculus file
+    (+5,375 lines over the last 15 commits with almost no deletions) and its
+    family zones are heavily interleaved (60+ family transitions), so a
+    whole-file ownership split does not have the contiguous seams the
+    backend split had
+  - one family zone is contiguous and self-contained: residual
+    verification for integrated affine trig powers
+    (tan/cot/sec/csc fourth/sixth/eighth, sin/cos odd/even powers),
+    1,139 lines with its own structs, exactly 17 entry points each with
+    fan-in 1 from the rest of the file, zero direct test references
+- decision:
+  - convert the file to a module directory and extract that family to
+    `affine_trig_power.rs` (cohesion strategy Phase 1 explicitly lists
+    "bounded residual-verification helpers for a verified derivative or
+    antiderivative family" as a preferred extraction unit)
+  - extracted body verified byte-identical; 17 entries marked
+    `pub(super)`; everything else stays private to the family module
+  - whole-file split rejected for now: interleaving would force function
+    regrouping, which loses byte-level verifiability
+- retained learning:
+  - residual-verification families in this file have a repeatable hook
+    shape: per-power `*_diff_matches` entries with fan-in 1 consumed by the
+    `try_*_residual_*` pub(crate) hooks; the next residual extraction
+    should follow the same recipe (exp, hyperbolic, and arctan_sqrt zones
+    are candidate families once their seams are checked)
+  - this is the second retained Phase 1 extraction; Phase 2 consolidation
+    decisions should now compare the seams both extractions surfaced
+    (backend expression toolkit vs residual diff-matching helpers) before
+    introducing any shared abstraction
