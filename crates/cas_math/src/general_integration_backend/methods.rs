@@ -37,6 +37,23 @@ fn try_rational_reciprocal_affine_probe(
                 verify_antiderivative_by_differentiation(ctx, &mut candidate);
                 return AlgorithmicIntegrationProbeResult::Candidate(candidate);
             }
+            if let Some(parts) =
+                general_rational_partial_fraction_antiderivative(ctx, integrand, variable)
+            {
+                let mut candidate = AlgorithmicIntegrationCandidate::unverified(
+                    integrand,
+                    variable,
+                    parts.antiderivative,
+                    AlgorithmicIntegrationMethod::Rational,
+                );
+                candidate.required_conditions = parts.pole_conditions;
+                if !probe_runner.try_verification_check() {
+                    candidate.mark_budget_exceeded();
+                    return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+                }
+                verify_antiderivative_by_differentiation(ctx, &mut candidate);
+                return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+            }
             return AlgorithmicIntegrationProbeResult::NoMatch(reason);
         }
     };
@@ -260,6 +277,409 @@ fn build_multi_quadratic_term_antiderivative(
     };
 
     build_backend_sum(ctx, log_part, arctan_part)
+}
+
+/// Degree window for the general rational pipeline: degree <= 2 stays
+/// owned by the existing routes (affine probe, educational quadratics,
+/// the observability lane fixtures), and degree > 8 exceeds the exact
+/// linear-algebra budget.
+const GENERAL_RATIONAL_MIN_DENOMINATOR_DEGREE: usize = 3;
+const GENERAL_RATIONAL_MAX_DENOMINATOR_DEGREE: usize = 8;
+/// factor_rational_roots trial-divides up to sqrt of the constant term;
+/// cap it so expanded high-degree denominators cannot stall the probe.
+const GENERAL_RATIONAL_MAX_ROOT_SEARCH_CONSTANT: u64 = 100_000_000;
+
+pub(super) struct GeneralRationalParts {
+    pub(super) antiderivative: ExprId,
+    pub(super) pole_conditions: Vec<ConditionPredicate>,
+}
+
+enum SquarefreeFactor {
+    Linear {
+        root: BigRational,
+    },
+    Quadratic {
+        linear_b: BigRational,
+        constant_c: BigRational,
+    },
+}
+
+/// General rational integration for numeric-coefficient integrands whose
+/// denominator splitting needs only rational roots and even-substitution
+/// (biquadratic) resolvents: Ostrogradsky-Horowitz reduction extracts the
+/// rational part P/D1 without factoring (D1 = gcd(D, D'), one exact
+/// linear system), and the remaining squarefree integral is decomposed by
+/// mixed linear/quadratic partial fractions. Quartics that only factor
+/// into quadratics with linear terms (x^4+4, x^4+x^2+1) stay residual.
+pub(super) fn general_rational_partial_fraction_antiderivative(
+    ctx: &mut Context,
+    integrand: ExprId,
+    variable: &str,
+) -> Option<GeneralRationalParts> {
+    let (numerator_expr, denominator_expr) = match ctx.get(integrand) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    let denominator =
+        crate::polynomial::Polynomial::from_expr(ctx, denominator_expr, variable).ok()?;
+    let degree = denominator.degree();
+    if !(GENERAL_RATIONAL_MIN_DENOMINATOR_DEGREE..=GENERAL_RATIONAL_MAX_DENOMINATOR_DEGREE)
+        .contains(&degree)
+    {
+        return None;
+    }
+    let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
+    if numerator.is_zero() || numerator.degree() >= degree {
+        return None;
+    }
+
+    // Normalize the denominator monic; fold its leading coefficient into
+    // the numerator so every later system works over monic polynomials.
+    let leading = denominator.leading_coeff();
+    let denominator = denominator.div_scalar(&leading);
+    let numerator = numerator.div_scalar(&leading);
+
+    let (repeated_part, squarefree_part) = squarefree_split(&denominator)?;
+    let (rational_part, squarefree_numerator) = if repeated_part.degree() == 0 {
+        (None, numerator)
+    } else {
+        let (p, q) = ostrogradsky_reduce(&numerator, &repeated_part, &squarefree_part, variable)?;
+        (Some((p, repeated_part)), q)
+    };
+
+    let factors = split_squarefree_factors(&squarefree_part)?;
+    let terms = mixed_partial_fraction_terms(ctx, &squarefree_numerator, &factors, variable)?;
+
+    let mut antiderivative = match &rational_part {
+        Some((p, d1)) if !p.is_zero() => {
+            let p_expr = p.to_expr(ctx);
+            let d1_expr = d1.to_expr(ctx);
+            ctx.add(Expr::Div(p_expr, d1_expr))
+        }
+        _ => ctx.num(0),
+    };
+    let mut pole_conditions = Vec::new();
+    for (factor, term) in factors.iter().zip(terms) {
+        match factor {
+            SquarefreeFactor::Linear { root } => {
+                let coefficient = term.alpha;
+                // A zero-residue pole emits no ln term, but if the factor
+                // also lives in the repeated part the pole survives inside
+                // P/D1 and its condition is still required.
+                let pole_in_rational_part = rational_part
+                    .as_ref()
+                    .is_some_and(|(_, d1)| d1.eval(root).is_zero());
+                if coefficient.is_zero() && !pole_in_rational_part {
+                    continue;
+                }
+                let variable_expr = ctx.var(variable);
+                let shift = -root.clone();
+                let pole = build_numeric_shifted_center(ctx, variable_expr, &shift);
+                pole_conditions.push(ConditionPredicate::NonZero(pole));
+                if coefficient.is_zero() {
+                    continue;
+                }
+                let abs_pole = ctx.call_builtin(BuiltinFn::Abs, vec![pole]);
+                let log_pole = ctx.call_builtin(BuiltinFn::Ln, vec![abs_pole]);
+                let coefficient_expr = ctx.add(Expr::Number(coefficient));
+                let piece = build_backend_product(ctx, coefficient_expr, log_pole);
+                antiderivative = build_backend_sum(ctx, antiderivative, piece);
+            }
+            SquarefreeFactor::Quadratic { .. } => {
+                let piece = build_multi_quadratic_term_antiderivative(ctx, &term, variable);
+                antiderivative = build_backend_sum(ctx, antiderivative, piece);
+            }
+        }
+    }
+
+    Some(GeneralRationalParts {
+        antiderivative,
+        pole_conditions,
+    })
+}
+
+/// D1 = gcd(D, D') (the repeated part), D2 = D/D1 (squarefree, carrying
+/// every distinct irreducible factor of D exactly once); both monic.
+fn squarefree_split(
+    denominator: &crate::polynomial::Polynomial,
+) -> Option<(crate::polynomial::Polynomial, crate::polynomial::Polynomial)> {
+    let derivative = denominator.derivative();
+    let gcd = denominator.gcd(&derivative);
+    let repeated = gcd.div_scalar(&gcd.leading_coeff());
+    let (squarefree, remainder) = denominator.div_rem(&repeated).ok()?;
+    if !remainder.is_zero() {
+        return None;
+    }
+    let squarefree = squarefree.div_scalar(&squarefree.leading_coeff());
+    Some((repeated, squarefree))
+}
+
+/// Horowitz-Ostrogradsky: solve N = P'*D2 - P*T + Q*D1 with
+/// T = D1'*D2/D1 (a polynomial), deg P < deg D1, deg Q < deg D2.
+/// The integral is then N/D = (P/D1)' + Q/D2 exactly.
+fn ostrogradsky_reduce(
+    numerator: &crate::polynomial::Polynomial,
+    repeated: &crate::polynomial::Polynomial,
+    squarefree: &crate::polynomial::Polynomial,
+    variable: &str,
+) -> Option<(crate::polynomial::Polynomial, crate::polynomial::Polynomial)> {
+    let repeated_derivative = repeated.derivative();
+    let (transfer, transfer_remainder) =
+        repeated_derivative.mul(squarefree).div_rem(repeated).ok()?;
+    if !transfer_remainder.is_zero() {
+        return None;
+    }
+
+    let p_unknowns = repeated.degree();
+    let q_unknowns = squarefree.degree();
+    let unknowns = p_unknowns + q_unknowns;
+    let mut columns: Vec<crate::polynomial::Polynomial> = Vec::with_capacity(unknowns);
+    for power in 0..p_unknowns {
+        // Column for the coefficient of x^power in P: derivative part
+        // minus the transfer part.
+        let mut basis_coeffs = vec![BigRational::zero(); power + 1];
+        basis_coeffs[power] = BigRational::one();
+        let basis = crate::polynomial::Polynomial::new(basis_coeffs, variable.to_string());
+        let column = basis
+            .derivative()
+            .mul(squarefree)
+            .sub(&basis.mul(&transfer));
+        columns.push(column);
+    }
+    for power in 0..q_unknowns {
+        let mut basis_coeffs = vec![BigRational::zero(); power + 1];
+        basis_coeffs[power] = BigRational::one();
+        let basis = crate::polynomial::Polynomial::new(basis_coeffs, variable.to_string());
+        columns.push(basis.mul(repeated));
+    }
+
+    let mut matrix = vec![vec![BigRational::zero(); unknowns]; unknowns];
+    let mut rhs = vec![BigRational::zero(); unknowns];
+    for row in 0..unknowns {
+        for (column_index, column) in columns.iter().enumerate() {
+            matrix[row][column_index] = column
+                .coeffs
+                .get(row)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+        }
+        rhs[row] = numerator
+            .coeffs
+            .get(row)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+    }
+    let solution = crate::symbolic_integration_support::solve_rational_linear_system(matrix, rhs)?;
+
+    let p =
+        crate::polynomial::Polynomial::new(solution[..p_unknowns].to_vec(), variable.to_string());
+    let q =
+        crate::polynomial::Polynomial::new(solution[p_unknowns..].to_vec(), variable.to_string());
+    Some((p, q))
+}
+
+/// Split a monic squarefree polynomial into rational-root linear factors
+/// plus irreducible numeric quadratics, using only rational roots and the
+/// even-substitution resolvent. Anything else (irrational real poles,
+/// quartics that need general factorization) returns None.
+fn split_squarefree_factors(
+    squarefree: &crate::polynomial::Polynomial,
+) -> Option<Vec<SquarefreeFactor>> {
+    if root_search_constant_too_large(squarefree) {
+        return None;
+    }
+    let mut factors = Vec::new();
+    for piece in squarefree.factor_rational_roots() {
+        match piece.degree() {
+            0 => continue,
+            1 => {
+                let root = -&piece.coeffs[0] / &piece.coeffs[1];
+                factors.push(SquarefreeFactor::Linear { root });
+            }
+            2 => {
+                let monic = piece.div_scalar(&piece.leading_coeff());
+                push_quadratic_or_bail(&monic, &mut factors)?;
+            }
+            _ => {
+                let monic = piece.div_scalar(&piece.leading_coeff());
+                split_even_residual(&monic, &mut factors)?;
+            }
+        }
+    }
+    Some(factors)
+}
+
+/// Resolve a monic residual of degree >= 3 through u = x^2: rational
+/// roots u0 < 0 give irreducible quadratics x^2 - u0, perfect-square
+/// roots u0 = s^2 give the linear pair x -+ s.
+fn split_even_residual(
+    residual: &crate::polynomial::Polynomial,
+    factors: &mut Vec<SquarefreeFactor>,
+) -> Option<()> {
+    let resolvent = residual.even_substitution()?;
+    if root_search_constant_too_large(&resolvent) {
+        return None;
+    }
+    for piece in resolvent.factor_rational_roots() {
+        match piece.degree() {
+            0 => continue,
+            1 => {
+                let root = -&piece.coeffs[0] / &piece.coeffs[1];
+                if root.is_negative() {
+                    factors.push(SquarefreeFactor::Quadratic {
+                        linear_b: BigRational::zero(),
+                        constant_c: -root,
+                    });
+                } else if let Some(square_root) = rational_positive_square_root(&root) {
+                    factors.push(SquarefreeFactor::Linear {
+                        root: square_root.clone(),
+                    });
+                    factors.push(SquarefreeFactor::Linear { root: -square_root });
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(())
+}
+
+fn push_quadratic_or_bail(
+    monic: &crate::polynomial::Polynomial,
+    factors: &mut Vec<SquarefreeFactor>,
+) -> Option<()> {
+    let b = monic.coeffs[1].clone();
+    let c = monic.coeffs[0].clone();
+    let four = BigRational::from_integer(4.into());
+    if &b * &b - four * &c >= BigRational::zero() {
+        // Real irrational poles: out of scope for exact partial fractions.
+        return None;
+    }
+    factors.push(SquarefreeFactor::Quadratic {
+        linear_b: b,
+        constant_c: c,
+    });
+    Some(())
+}
+
+fn root_search_constant_too_large(poly: &crate::polynomial::Polynomial) -> bool {
+    use num_traits::Signed;
+    let bound = num_bigint::BigInt::from(GENERAL_RATIONAL_MAX_ROOT_SEARCH_CONSTANT);
+    poly.coeffs
+        .first()
+        .is_some_and(|constant| constant.numer().abs() > bound || constant.denom().abs() > bound)
+}
+
+/// Mixed partial fractions over the split factors: one coefficient per
+/// linear factor (stored in `alpha`), an (alpha, beta) pair per quadratic.
+/// Every result is returned as a MultiQuadraticFactorTerm so quadratic
+/// pieces reuse the cycle-14 arctan/log assembler.
+fn mixed_partial_fraction_terms(
+    ctx: &mut Context,
+    numerator: &crate::polynomial::Polynomial,
+    factors: &[SquarefreeFactor],
+    variable: &str,
+) -> Option<Vec<MultiQuadraticFactorTerm>> {
+    let mut factor_polys: Vec<crate::polynomial::Polynomial> = Vec::with_capacity(factors.len());
+    for factor in factors {
+        match factor {
+            SquarefreeFactor::Linear { root } => {
+                factor_polys.push(crate::polynomial::Polynomial::new(
+                    vec![-root.clone(), BigRational::one()],
+                    variable.to_string(),
+                ));
+            }
+            SquarefreeFactor::Quadratic {
+                linear_b,
+                constant_c,
+            } => {
+                factor_polys.push(crate::polynomial::Polynomial::new(
+                    vec![constant_c.clone(), linear_b.clone(), BigRational::one()],
+                    variable.to_string(),
+                ));
+            }
+        }
+    }
+    let mut denominator = crate::polynomial::Polynomial::one(variable.to_string());
+    for poly in &factor_polys {
+        denominator = denominator.mul(poly);
+    }
+    let unknowns = denominator.degree();
+    if numerator.degree() >= unknowns {
+        return None;
+    }
+
+    let x_poly = crate::polynomial::Polynomial::new(
+        vec![BigRational::zero(), BigRational::one()],
+        variable.to_string(),
+    );
+    let mut columns: Vec<crate::polynomial::Polynomial> = Vec::new();
+    for (factor, poly) in factors.iter().zip(&factor_polys) {
+        let (cofactor, remainder) = denominator.div_rem(poly).ok()?;
+        if !remainder.is_zero() {
+            return None;
+        }
+        match factor {
+            SquarefreeFactor::Linear { .. } => columns.push(cofactor),
+            SquarefreeFactor::Quadratic { .. } => {
+                columns.push(cofactor.mul(&x_poly));
+                columns.push(cofactor);
+            }
+        }
+    }
+    if columns.len() != unknowns {
+        return None;
+    }
+
+    let mut matrix = vec![vec![BigRational::zero(); unknowns]; unknowns];
+    let mut rhs = vec![BigRational::zero(); unknowns];
+    for row in 0..unknowns {
+        for (column_index, column) in columns.iter().enumerate() {
+            matrix[row][column_index] = column
+                .coeffs
+                .get(row)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+        }
+        rhs[row] = numerator
+            .coeffs
+            .get(row)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+    }
+    let solution = crate::symbolic_integration_support::solve_rational_linear_system(matrix, rhs)?;
+
+    let mut terms = Vec::with_capacity(factors.len());
+    let mut cursor = 0;
+    for (factor, poly) in factors.iter().zip(&factor_polys) {
+        match factor {
+            SquarefreeFactor::Linear { .. } => {
+                terms.push(MultiQuadraticFactorTerm {
+                    factor_expr: poly.to_expr(ctx),
+                    linear_b: BigRational::zero(),
+                    constant_c: BigRational::zero(),
+                    alpha: solution[cursor].clone(),
+                    beta: BigRational::zero(),
+                });
+                cursor += 1;
+            }
+            SquarefreeFactor::Quadratic {
+                linear_b,
+                constant_c,
+            } => {
+                terms.push(MultiQuadraticFactorTerm {
+                    factor_expr: poly.to_expr(ctx),
+                    linear_b: linear_b.clone(),
+                    constant_c: constant_c.clone(),
+                    alpha: solution[cursor].clone(),
+                    beta: solution[cursor + 1].clone(),
+                });
+                cursor += 2;
+            }
+        }
+    }
+    Some(terms)
 }
 
 fn build_numeric_shifted_center(

@@ -5918,3 +5918,87 @@ fn algebraic_zero_test_folds_unfolded_numeric_exponents() {
         Some(true)
     );
 }
+
+#[test]
+fn general_rational_pipeline_reduces_and_verifies_expanded_sextic() {
+    let mut ctx = Context::new();
+    // (x^2+1)*(x^2+4)^2 expanded: Ostrogradsky extracts P/(x^2+4), the
+    // squarefree remainder splits as a rational-root biquadratic.
+    let integrand = cas_parser::parse("1/(x^6+9*x^4+24*x^2+16)", &mut ctx).expect("integrand");
+
+    let candidate = try_algorithmic_integration_backend(
+        &mut ctx,
+        integrand,
+        "x",
+        AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+    );
+
+    assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
+    assert_eq!(
+        candidate.verification_status,
+        AlgorithmicIntegrationVerificationStatus::Verified
+    );
+    assert!(candidate.required_conditions.is_empty());
+}
+
+#[test]
+fn general_rational_pipeline_emits_pole_conditions_for_linear_factors() {
+    let mut ctx = Context::new();
+    // x*(x^2+1)^2: one rational pole, repeated quadratic.
+    let integrand = cas_parser::parse("1/(x^5+2*x^3+x)", &mut ctx).expect("integrand");
+
+    let candidate = try_algorithmic_integration_backend(
+        &mut ctx,
+        integrand,
+        "x",
+        AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+    );
+
+    assert_eq!(
+        candidate.verification_status,
+        AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+    );
+    assert_eq!(candidate.required_conditions.len(), 1);
+    assert!(matches!(
+        candidate.required_conditions[0],
+        ConditionPredicate::NonZero(_)
+    ));
+}
+
+#[test]
+fn general_rational_pipeline_rejects_out_of_scope_shapes() {
+    let mut ctx = Context::new();
+    let rejects = [
+        "1/(x^4+4)",           // Sophie Germain: needs general quartic factorization
+        "(x^2+1)/(x^4+x^2+1)", // resolvent has no rational roots
+        "1/((x^2-2)*(x^2+1))", // irrational real poles
+        "1/(x^2+1)",           // degree window: <= 2 owned by existing routes
+        "1/(x^4+a)",           // symbolic coefficients
+    ];
+    for source in rejects {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        assert!(
+            general_rational_partial_fraction_antiderivative(&mut ctx, integrand, "x").is_none(),
+            "must reject {source}"
+        );
+    }
+}
+
+#[test]
+fn general_rational_pipeline_keeps_pole_condition_for_zero_residue_poles() {
+    let mut ctx = Context::new();
+    // -(x^2+1)/((x-1)^2*(x^2+1)) == -1/(x-1)^2: the ln term vanishes
+    // (zero residue) but the antiderivative 1/(x-1) keeps the pole, so
+    // the x != 1 condition must survive.
+    let integrand = cas_parser::parse("(-(x^2+1))/(x^4 - 2*x^3 + 2*x^2 - 2*x + 1)", &mut ctx)
+        .expect("integrand");
+
+    let parts = general_rational_partial_fraction_antiderivative(&mut ctx, integrand, "x");
+    if let Some(parts) = parts {
+        assert_eq!(
+            parts.pole_conditions.len(),
+            1,
+            "zero-residue pole inside P/D1 must keep its NonZero condition"
+        );
+    }
+}

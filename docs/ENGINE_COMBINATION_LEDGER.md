@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 51 (newest first)
+Active entries: 52 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -134,6 +134,7 @@ Active entries: 51 (newest first)
 - 2026-06-10 | `retained` | strategy docs / deferred horizons / web UI / complex domain foundations | Retained harness: complex semantic model decision and web complex-arithmetic selector
 - 2026-06-10 | `retained` | web UI / session functions / CLI session reuse | Retained harness: web function-definition cells, panel, and deletion
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: multi-quadratic partial fractions land the rational backend family
+- 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: Ostrogradsky reduction takes rational integration to general degree
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -2129,3 +2130,62 @@ Active entries: 51 (newest first)
     can silently block better-behaved successors; policy shapes should
     state intent (which condition sets are trusted) rather than mirror
     the incumbent family's exact signature
+
+## 2026-06-10 - Retained calculus: Ostrogradsky reduction takes rational integration to general degree
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / rational
+    method / Phase 4 general-degree rational integration
+- status:
+  - `retained` (second rational backend family, same cycle-14 gate)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 12, Phase 4 (squarefree/Hermite
+    reduction milestone)
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_rational_general` / {expanded sextic with
+    repeated quadratic; expanded quintic with rational pole} /
+    {`backend_verified_unconditional_real`,
+    `backend_verified_pole_nonzero_required`} /
+    `algorithmic_backend_rational_summary`
+  - behavior_change_expected: yes — numeric rational integrands of
+    denominator degree 3..=8 whose splitting needs only rational roots
+    and even-substitution resolvents now integrate publicly, including
+    expanded forms and repeated factors
+- observed (frontier workflow, 15 probes):
+  - the engine expands syntactic products before integrate sees them, so
+    factored input forms do not help: the bottleneck was purely
+    denominator factorization on expanded polynomials
+  - 9/15 frontier probes were residual; 7 are covered by
+    Ostrogradsky-Horowitz (D1 = gcd(D, D'), no factorization needed, one
+    exact linear system) plus squarefree splitting by rational roots and
+    biquadratic resolvents; x^4+4 (Sophie Germain) and x^4+x^2+1 need
+    general quartic factorization and stay honestly residual
+- decision:
+  - pipeline as a second attempt in the Rational probe's no-match arm,
+    after the cycle-14 multi-quadratic arm (whose syntactic-factor
+    presentation stays byte-identical): monic normalization -> squarefree
+    split (gcd/derivative, the scaled-gcd quirk is harmless after monic
+    renormalization) -> Horowitz linear system N = P'*D2 - P*T + Q*D1 ->
+    factor splitting (rational roots with a trial-division budget,
+    even_substitution resolvent added to Polynomial) -> mixed
+    linear/quadratic partial fractions reusing the cycle-14 term
+    assembler and the shared rational system solver
+  - degree window 3..=8 stated as intent: degree <= 2 is owned by the
+    existing routes, and the window keeps all 7 lane fixtures that the
+    pipeline would otherwise capture (verified: observability lane
+    structurally identical)
+  - self-caught soundness gap before validation: a zero-residue pole
+    emits no ln term, but when the factor also divides D1 the pole
+    survives inside P/D1 and its NonZero condition must still be emitted
+    (pinned by a dedicated test)
+- retained learning:
+  - Ostrogradsky-Horowitz is the factorization-free wedge: gcd plus one
+    linear system extracts the entire rational part, after which a much
+    weaker splitter (rational roots + biquadratic resolvent) finishes
+    most textbook integrands; full Lazard-Rioboo-Trager is only needed
+    for the residual quartic classes and can wait
+  - condition completeness is a separate proof obligation from
+    antiderivative correctness: the algebraic verifier proves the
+    derivative identity but cannot see a missing domain condition, so
+    pole bookkeeping needs its own tests

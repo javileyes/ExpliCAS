@@ -686,6 +686,38 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="backend_summary_arctan_multi_quadratic",
     ),
     IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_ostrogradsky_expanded_sextic",
+        expr="integrate(1/(x^6+9*x^4+24*x^2+16), x)",
+        expected_result=(
+            "1/9·arctan(x) - 11/72·arctan(x / 2)/2 - 1/24·x / (x^2 + 4)"
+        ),
+        expected_direct_diff_integrate_result=(
+            "1 / (x^6 + 9·x^4 + 24·x^2 + 16)"
+        ),
+        expected_direct_diff_integrate_required_display=(),
+        expected_required_display=(),
+        family="algorithmic_backend_rational_general",
+        argument_regime="expanded_sextic_repeated_quadratic_ostrogradsky",
+        domain_regime="backend_verified_unconditional_real",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_arctan_rational_part",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_general_pole_condition",
+        expr="integrate(1/(x^5+2*x^3+x), x)",
+        expected_result="ln(|x|) + 1/2 / (x^2 + 1) - 1/2·ln(x^2 + 1)",
+        expected_direct_diff_integrate_result=(
+            "1 / (x^5 + 2·x^3 + x)"
+        ),
+        expected_direct_diff_integrate_required_display=("x ≠ 0",),
+        expected_required_display=("x ≠ 0",),
+        family="algorithmic_backend_rational_general",
+        argument_regime="expanded_quintic_rational_pole_repeated_quadratic",
+        domain_regime="backend_verified_pole_nonzero_required",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_log_abs_rational_part",
+    ),
+    IntegrateCommandMatrixCase(
         name="algorithmic_backend_hermite_symbolic_indefinite_square_denominator",
         expr="integrate(1/(x^2-a^2), x)",
         expected_result="((ln(|x - a|) - ln(|a + x|))·1·1/2)/a",

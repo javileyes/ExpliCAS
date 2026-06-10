@@ -381,6 +381,25 @@ impl Polynomial {
         0
     }
 
+    /// If every odd-degree coefficient is zero, return q such that
+    /// self(x) = q(x^2) (the even-substitution resolvent used to split
+    /// biquadratic denominators by rational roots in x^2).
+    pub fn even_substitution(&self) -> Option<Polynomial> {
+        if self
+            .coeffs
+            .iter()
+            .skip(1)
+            .step_by(2)
+            .any(|coeff| !coeff.is_zero())
+        {
+            return None;
+        }
+        Some(Polynomial::new(
+            self.coeffs.iter().step_by(2).cloned().collect(),
+            self.var.clone(),
+        ))
+    }
+
     pub fn derivative(&self) -> Self {
         if self.degree() == 0 {
             return Polynomial::zero(self.var.clone());
