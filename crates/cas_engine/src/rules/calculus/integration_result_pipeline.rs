@@ -5,7 +5,9 @@
 //! source target: source/result preservation, result-implied conditions, and
 //! final public presentation.
 
-use super::integration::{integrate, integrate_rewrite_with_conditions};
+use super::integration::{
+    integrate_rewrite_with_conditions, integrate_with_trace, IntegrationTraceKind,
+};
 use super::integration_arctan_by_parts_result_presentation::compact_polynomial_arctan_by_parts_result_for_integration_presentation;
 use super::integration_conditions::IntegrationRequiredConditions;
 use super::integration_final_result_presentation::apply_integration_final_presentation;
@@ -42,7 +44,18 @@ fn integrate_with_result_preservation(
     required_conditions: &mut IntegrationRequiredConditions,
 ) -> Option<ExprId> {
     let source_preservation = integration_source_preservation_gates(ctx, target, var_name);
-    let mut result = integrate(ctx, target, var_name)?;
+    let outcome = integrate_with_trace(ctx, target, var_name)?;
+    let trace_kind = outcome.trace_kind;
+    if trace_kind == IntegrationTraceKind::AlgorithmicBackendSummary {
+        required_conditions.suppress_backend_positive_quadratic_source_condition(
+            ctx,
+            target,
+            var_name,
+            &outcome.required_conditions,
+        );
+    }
+    required_conditions.include_backend_conditions(ctx, outcome.required_conditions);
+    let mut result = outcome.result;
     let compact_polynomial_arctan_by_parts_result =
         compact_polynomial_arctan_by_parts_result_for_integration_presentation(
             ctx, var_name, result,
@@ -56,7 +69,11 @@ fn integrate_with_result_preservation(
         &source_preservation,
         compact_polynomial_arctan_by_parts_result,
     );
-    Some(apply_integration_final_presentation(ctx, result, var_name))
+    result = apply_integration_final_presentation(ctx, result, var_name);
+    if trace_kind == IntegrationTraceKind::AlgorithmicBackendSummary {
+        result = cas_ast::hold::wrap_hold(ctx, result);
+    }
+    Some(result)
 }
 
 #[cfg(test)]
@@ -113,5 +130,45 @@ mod tests {
 
         assert_eq!(rendered(&ctx, rewrite.new_expr), "ln(|x + 1|)");
         assert_eq!(rendered_required_conditions(&ctx, &rewrite), vec!["x ≠ -1"]);
+    }
+
+    #[test]
+    fn standard_rewrite_suppresses_backend_positive_quadratic_source_condition() {
+        let mut ctx = Context::new();
+        let target = parse("(m*(s*x+b)+c)/((s*x+b)^2+a)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+
+        let rewrite = standard_integration_rewrite(&mut ctx, &call).unwrap();
+        let rendered = rendered(&ctx, rewrite.new_expr);
+
+        assert!(!rendered.starts_with("integrate("));
+        assert!(rendered.contains("ln((s * x + b)^2 + a)"));
+        assert!(rendered.contains("arctan((s * x + b) / sqrt(a))"));
+        let mut required = rendered_required_conditions(&ctx, &rewrite);
+        required.sort();
+        assert_eq!(required, vec!["a > 0", "s ≠ 0"]);
+    }
+
+    #[test]
+    fn standard_rewrite_uses_backend_for_expanded_symbolic_slope_positive_quadratic() {
+        let mut ctx = Context::new();
+        let target = parse("(m*s*x+b*m+c)/(s^2*x^2+2*b*s*x+b^2+a)", &mut ctx).unwrap();
+        let call = NamedVarCall {
+            target,
+            var_name: "x".to_string(),
+        };
+
+        let rewrite = standard_integration_rewrite(&mut ctx, &call).unwrap();
+        let rendered = rendered(&ctx, rewrite.new_expr);
+
+        assert!(!rendered.starts_with("integrate("));
+        assert!(rendered.contains("ln((s * x + b)^2 + a)"));
+        assert!(rendered.contains("arctan((s * x + b) / sqrt(a))"));
+        let mut required = rendered_required_conditions(&ctx, &rewrite);
+        required.sort();
+        assert_eq!(required, vec!["a > 0", "s ≠ 0"]);
     }
 }

@@ -57,6 +57,16 @@ BACKEND_VERIFICATION_PRESSURE_WATCH_MAX_NORMALIZATION_PASSES = 2
 BACKEND_VERIFICATION_PRESSURE_RISK_MAX_NORMALIZATION_PASSES = 3
 BACKEND_VERIFICATION_PRESSURE_WATCH_ELAPSED_MS = 10.0
 BACKEND_VERIFICATION_PRESSURE_RISK_ELAPSED_MS = 50.0
+BACKEND_VERIFICATION_PRESSURE_WATCH_BUDGET_UTILIZATION_PERCENT = 90.0
+BACKEND_VERIFICATION_PRESSURE_RISK_BUDGET_UTILIZATION_PERCENT = 99.0
+BACKEND_VERIFICATION_PRESSURE_WATCH_BUDGET_REMAINING = 1
+BACKEND_VERIFICATION_PRESSURE_RISK_BUDGET_REMAINING = 0
+BACKEND_VERIFICATION_NORMALIZATION_WATCH_RATIO_PERCENT = 50.0
+BACKEND_VERIFICATION_NORMALIZATION_RISK_RATIO_PERCENT = 80.0
+BACKEND_VERIFICATION_NORMALIZATION_WATCH_DOMINANT_METHOD_PERCENT = 60.0
+BACKEND_VERIFICATION_NORMALIZATION_RISK_DOMINANT_METHOD_PERCENT = 80.0
+BACKEND_VERIFICATION_NORMALIZATION_WATCH_DOMINANT_REASON_PERCENT = 40.0
+BACKEND_VERIFICATION_NORMALIZATION_RISK_DOMINANT_REASON_PERCENT = 65.0
 CALCULUS_CLUSTER_RUNTIME_CANDIDATE_MIN_CASES = 2
 CALCULUS_CLUSTER_RUNTIME_CANDIDATE_MIN_AVG_MS = 75.0
 CALCULUS_CLUSTER_RUNTIME_CANDIDATE_RATIO = 2.0
@@ -585,6 +595,29 @@ SUITES: dict[str, SuiteSpec] = {
         description=(
             "Algorithmic integration backend boundary metrics over attempts, "
             "verification outcomes, residual reasons, and verifier runtime."
+        ),
+    ),
+    "calculus_integrate_backend_mode_boundary": SuiteSpec(
+        name="calculus_integrate_backend_mode_boundary",
+        category="observability",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_engine",
+            "--lib",
+            "test_integrate_algorithmic_backend_mode_boundary",
+            "--",
+            "--nocapture",
+        ],
+        env={},
+        parser="algorithmic_backend_mode_boundary",
+        description=(
+            "Engine-level algorithmic integration backend mode and public-budget "
+            "boundary over disabled, diagnostic-only, and residual-fallback publication."
         ),
     ),
     "calculus_integrate_command_matrix_smoke": SuiteSpec(
@@ -2525,6 +2558,53 @@ def parse_cargo_test_basic(output: str) -> dict[str, Any]:
     return metrics
 
 
+def parse_algorithmic_backend_mode_boundary(output: str) -> dict[str, Any]:
+    metrics = parse_cargo_test_basic(output)
+    match = re.search(r"algorithmic_backend_mode_boundary:\s*(\{[^\n]+\})", output)
+    if not match:
+        raise ValueError("missing algorithmic_backend_mode_boundary output")
+
+    raw = json.loads(match.group(1))
+    if not isinstance(raw, dict):
+        raise ValueError("algorithmic_backend_mode_boundary must be a JSON object")
+
+    direct_high_budget_method = raw.get("direct_high_budget_method")
+    public_budget_clamped = raw.get("public_budget_clamped")
+    public_clamp_rejected = raw.get("public_clamp_rejected")
+    if not isinstance(direct_high_budget_method, str) or not direct_high_budget_method:
+        raise ValueError(
+            "algorithmic backend mode boundary direct_high_budget_method must be "
+            "a non-empty string"
+        )
+    if not isinstance(public_budget_clamped, int) or public_budget_clamped < 0:
+        raise ValueError(
+            "algorithmic backend mode boundary public_budget_clamped must be a "
+            "non-negative integer"
+        )
+    if not isinstance(public_clamp_rejected, int) or public_clamp_rejected < 0:
+        raise ValueError(
+            "algorithmic backend mode boundary public_clamp_rejected must be a "
+            "non-negative integer"
+        )
+    if public_clamp_rejected > public_budget_clamped:
+        raise ValueError(
+            "algorithmic backend mode boundary clamp rejections exceed clamped "
+            "attempts"
+        )
+
+    metrics.update(
+        {
+            "total_cases": metrics["passed"] + metrics["failed"],
+            "backend_direct_high_budget_method_counts": {
+                direct_high_budget_method: 1
+            },
+            "backend_public_budget_clamped_count": public_budget_clamped,
+            "backend_public_clamp_rejected_count": public_clamp_rejected,
+        }
+    )
+    return metrics
+
+
 def cargo_test_source_path(command: list[str]) -> pathlib.Path | None:
     package = command_arg_value(command, "-p")
     test_name = command_arg_value(command, "--test")
@@ -2858,10 +2938,26 @@ def classify_backend_verification_pressure(
     verification_checks_used_total: int,
     verification_elapsed_ms: float,
     max_verification_normalization_passes: int,
+    verification_check_budget_limit_total: int | None = None,
+    verification_budget_exceeded_count: int = 0,
 ) -> dict[str, Any]:
     checks_per_attempt = (
         verification_checks_used_total / attempts if attempts else 0.0
     )
+    verification_budget_exceeded_count = max(0, verification_budget_exceeded_count)
+    verification_check_budget_remaining_total: int | None = None
+    verification_check_budget_utilization_percent: float | None = None
+    if verification_check_budget_limit_total is not None:
+        verification_check_budget_remaining_total = (
+            verification_check_budget_limit_total - verification_checks_used_total
+        )
+        verification_check_budget_utilization_percent = (
+            verification_checks_used_total
+            * 100.0
+            / verification_check_budget_limit_total
+            if verification_check_budget_limit_total
+            else 0.0
+        )
     signals: list[tuple[str, str, str]] = []
     if (
         checks_per_attempt
@@ -2885,6 +2981,78 @@ def classify_backend_verification_pressure(
                 f"checks_per_attempt={checks_per_attempt:.3f}",
             )
         )
+
+    if (
+        verification_check_budget_remaining_total is not None
+        and verification_check_budget_limit_total is not None
+        and verification_check_budget_limit_total > 0
+    ):
+        suppress_aggregate_budget_watch = (
+            verification_budget_exceeded_count == 0
+            and verification_check_budget_remaining_total
+            > BACKEND_VERIFICATION_PRESSURE_RISK_BUDGET_REMAINING
+            and checks_per_attempt
+            < BACKEND_VERIFICATION_PRESSURE_WATCH_CHECKS_PER_ATTEMPT
+            and max_verification_normalization_passes
+            < BACKEND_VERIFICATION_PRESSURE_WATCH_MAX_NORMALIZATION_PASSES
+            and verification_elapsed_ms < BACKEND_VERIFICATION_PRESSURE_WATCH_ELAPSED_MS
+        )
+        if (
+            verification_check_budget_remaining_total
+            <= BACKEND_VERIFICATION_PRESSURE_RISK_BUDGET_REMAINING
+        ):
+            signals.append(
+                (
+                    "risk",
+                    "budget_remaining",
+                    "verification_budget_remaining="
+                    f"{verification_check_budget_remaining_total}/"
+                    f"{verification_check_budget_limit_total}",
+                )
+            )
+        elif (
+            verification_budget_exceeded_count == 0
+            and not suppress_aggregate_budget_watch
+        ):
+            if (
+                verification_check_budget_utilization_percent is not None
+                and verification_check_budget_utilization_percent
+                >= BACKEND_VERIFICATION_PRESSURE_RISK_BUDGET_UTILIZATION_PERCENT
+            ):
+                signals.append(
+                    (
+                        "risk",
+                        "budget_utilization",
+                        "verification_budget_utilization="
+                        f"{verification_check_budget_utilization_percent:.1f}%",
+                    )
+                )
+            elif (
+                verification_check_budget_remaining_total
+                <= BACKEND_VERIFICATION_PRESSURE_WATCH_BUDGET_REMAINING
+            ):
+                signals.append(
+                    (
+                        "watch",
+                        "budget_remaining",
+                        "verification_budget_remaining="
+                        f"{verification_check_budget_remaining_total}/"
+                        f"{verification_check_budget_limit_total}",
+                    )
+                )
+            elif (
+                verification_check_budget_utilization_percent is not None
+                and verification_check_budget_utilization_percent
+                >= BACKEND_VERIFICATION_PRESSURE_WATCH_BUDGET_UTILIZATION_PERCENT
+            ):
+                signals.append(
+                    (
+                        "watch",
+                        "budget_utilization",
+                        "verification_budget_utilization="
+                        f"{verification_check_budget_utilization_percent:.1f}%",
+                    )
+                )
 
     if (
         max_verification_normalization_passes
@@ -2918,6 +3086,15 @@ def classify_backend_verification_pressure(
             ("watch", "elapsed_ms", f"elapsed_ms={verification_elapsed_ms:.3f}")
         )
 
+    if verification_budget_exceeded_count > 0:
+        signals.append(
+            (
+                "watch",
+                "budget_exceeded",
+                f"verification_budget_exceeded={verification_budget_exceeded_count}",
+            )
+        )
+
     severity_rank = {"ok": 0, "watch": 1, "risk": 2}
     status = "ok"
     primary_signal = "none"
@@ -2928,7 +3105,7 @@ def classify_backend_verification_pressure(
             key=lambda signal: severity_rank[signal[0]],
         )
 
-    return {
+    pressure = {
         "status": status,
         "primary_signal": primary_signal,
         "reason": reason,
@@ -2940,6 +3117,259 @@ def classify_backend_verification_pressure(
         ),
         "verification_elapsed_ms": round(float(verification_elapsed_ms), 3),
     }
+    if verification_check_budget_limit_total is not None:
+        pressure.update(
+            {
+                "verification_check_budget_limit_total": (
+                    verification_check_budget_limit_total
+                ),
+                "verification_check_budget_remaining_total": (
+                    verification_check_budget_remaining_total
+                ),
+                "verification_check_budget_utilization_percent": (
+                    round(
+                        float(verification_check_budget_utilization_percent),
+                        1,
+                    )
+                    if verification_check_budget_utilization_percent is not None
+                    else 0.0
+                ),
+            }
+        )
+    if verification_budget_exceeded_count > 0:
+        pressure["verification_budget_exceeded_count"] = (
+            verification_budget_exceeded_count
+        )
+    return pressure
+
+
+def backend_verification_check_top_methods(
+    usage_by_method: dict[str, int],
+    *,
+    verification_checks_used_total: int,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    if verification_checks_used_total <= 0 or limit <= 0:
+        return []
+    rows: list[dict[str, Any]] = []
+    for method, checks in sorted(
+        usage_by_method.items(), key=lambda item: (-item[1], item[0])
+    ):
+        if checks <= 0:
+            continue
+        rows.append(
+            {
+                "method": method,
+                "checks": checks,
+                "share_percent": round(
+                    checks * 100.0 / verification_checks_used_total,
+                    1,
+                ),
+            }
+        )
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def classify_backend_verification_normalization_pressure(
+    *,
+    verification_checks_used_total: int,
+    verification_check_usage_by_evidence: dict[str, int],
+    verification_check_usage_by_method_and_evidence: dict[str, int],
+    verification_normalization_reason_counts: dict[str, int],
+    verification_normalization_reason_by_method: dict[str, int],
+) -> dict[str, Any]:
+    normalized_checks = verification_check_usage_by_evidence.get(
+        "normalized_differentiation", 0
+    )
+    normalized_ratio_percent = (
+        normalized_checks * 100.0 / verification_checks_used_total
+        if verification_checks_used_total
+        else 0.0
+    )
+    normalized_usage_by_method = compound_count_map_prefix_for_suffix(
+        verification_check_usage_by_method_and_evidence,
+        suffix="normalized_differentiation",
+        label="algorithmic backend verification_check_usage_by_method_and_evidence",
+    )
+
+    dominant_method = None
+    dominant_method_checks = 0
+    dominant_method_share_percent = 0.0
+    if normalized_usage_by_method:
+        dominant_method, dominant_method_checks = sorted(
+            normalized_usage_by_method.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[0]
+        dominant_method_share_percent = (
+            dominant_method_checks * 100.0 / normalized_checks
+            if normalized_checks
+            else 0.0
+        )
+
+    dominant_reason = None
+    dominant_reason_count = 0
+    dominant_reason_share_percent = 0.0
+    if verification_normalization_reason_counts:
+        dominant_reason, dominant_reason_count = sorted(
+            verification_normalization_reason_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[0]
+        dominant_reason_share_percent = (
+            dominant_reason_count * 100.0 / normalized_checks
+            if normalized_checks
+            else 0.0
+        )
+
+    dominant_method_reason = None
+    dominant_method_reason_count = 0
+    dominant_method_reason_share_percent = 0.0
+    if verification_normalization_reason_by_method:
+        dominant_method_reason, dominant_method_reason_count = sorted(
+            verification_normalization_reason_by_method.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[0]
+        dominant_method_reason_share_percent = (
+            dominant_method_reason_count * 100.0 / normalized_checks
+            if normalized_checks
+            else 0.0
+        )
+
+    signals: list[tuple[str, str, str]] = []
+    if (
+        normalized_ratio_percent
+        >= BACKEND_VERIFICATION_NORMALIZATION_RISK_RATIO_PERCENT
+    ):
+        signals.append(
+            (
+                "risk",
+                "normalized_ratio",
+                f"normalized_checks={normalized_checks}/"
+                f"{verification_checks_used_total} "
+                f"({normalized_ratio_percent:.1f}%)",
+            )
+        )
+    elif (
+        normalized_ratio_percent
+        >= BACKEND_VERIFICATION_NORMALIZATION_WATCH_RATIO_PERCENT
+    ):
+        signals.append(
+            (
+                "watch",
+                "normalized_ratio",
+                f"normalized_checks={normalized_checks}/"
+                f"{verification_checks_used_total} "
+                f"({normalized_ratio_percent:.1f}%)",
+            )
+        )
+
+    if dominant_method:
+        if (
+            dominant_method_share_percent
+            >= BACKEND_VERIFICATION_NORMALIZATION_RISK_DOMINANT_METHOD_PERCENT
+        ):
+            signals.append(
+                (
+                    "risk",
+                    "dominant_normalized_method",
+                    f"dominant_method={dominant_method} "
+                    f"{dominant_method_checks}/{normalized_checks} "
+                    f"({dominant_method_share_percent:.1f}%)",
+                )
+            )
+        elif (
+            dominant_method_share_percent
+            >= BACKEND_VERIFICATION_NORMALIZATION_WATCH_DOMINANT_METHOD_PERCENT
+        ):
+            signals.append(
+                (
+                    "watch",
+                    "dominant_normalized_method",
+                    f"dominant_method={dominant_method} "
+                    f"{dominant_method_checks}/{normalized_checks} "
+                    f"({dominant_method_share_percent:.1f}%)",
+                )
+            )
+
+    if dominant_reason:
+        if (
+            dominant_reason_share_percent
+            >= BACKEND_VERIFICATION_NORMALIZATION_RISK_DOMINANT_REASON_PERCENT
+        ):
+            signals.append(
+                (
+                    "risk",
+                    "dominant_normalization_reason",
+                    f"dominant_reason={dominant_reason} "
+                    f"{dominant_reason_count}/{normalized_checks} "
+                    f"({dominant_reason_share_percent:.1f}%)",
+                )
+            )
+        elif (
+            dominant_reason_share_percent
+            >= BACKEND_VERIFICATION_NORMALIZATION_WATCH_DOMINANT_REASON_PERCENT
+        ):
+            signals.append(
+                (
+                    "watch",
+                    "dominant_normalization_reason",
+                    f"dominant_reason={dominant_reason} "
+                    f"{dominant_reason_count}/{normalized_checks} "
+                    f"({dominant_reason_share_percent:.1f}%)",
+                )
+            )
+
+    severity_rank = {"ok": 0, "watch": 1, "risk": 2}
+    status = "ok"
+    primary_signal = "none"
+    reason = "within backend normalization pressure thresholds"
+    if signals:
+        status, primary_signal, reason = max(
+            signals,
+            key=lambda signal: severity_rank[signal[0]],
+        )
+
+    pressure: dict[str, Any] = {
+        "status": status,
+        "primary_signal": primary_signal,
+        "reason": reason,
+        "verification_checks_used_total": verification_checks_used_total,
+        "normalized_checks": normalized_checks,
+        "normalized_ratio_percent": round(normalized_ratio_percent, 1),
+        "normalized_usage_by_method": normalized_usage_by_method,
+    }
+    if dominant_method:
+        pressure.update(
+            {
+                "dominant_method": dominant_method,
+                "dominant_method_checks": dominant_method_checks,
+                "dominant_method_share_percent": round(
+                    dominant_method_share_percent, 1
+                ),
+            }
+        )
+    if dominant_reason:
+        pressure.update(
+            {
+                "dominant_reason": dominant_reason,
+                "dominant_reason_count": dominant_reason_count,
+                "dominant_reason_share_percent": round(
+                    dominant_reason_share_percent, 1
+                ),
+            }
+        )
+    if dominant_method_reason:
+        pressure.update(
+            {
+                "dominant_method_reason": dominant_method_reason,
+                "dominant_method_reason_count": dominant_method_reason_count,
+                "dominant_method_reason_share_percent": round(
+                    dominant_method_reason_share_percent, 1
+                ),
+            }
+        )
+    return pressure
 
 
 def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
@@ -2958,8 +3388,15 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
     unverified_fallback_acceptances = raw.get("unverified_fallback_acceptances", 0)
     method_probe_budget_exhausted = raw.get("method_probe_budget_exhausted", 0)
     verification_budget_exceeded = raw.get("verification_budget_exceeded", 0)
+    verification_boundary_budget_exceeded = raw.get(
+        "verification_boundary_budget_exceeded", 0
+    )
     method_probes_used_total = raw.get("method_probes_used_total", 0)
     verification_checks_used_total = raw.get("verification_checks_used_total", 0)
+    method_probe_budget_limit_total = raw.get("method_probe_budget_limit_total")
+    verification_check_budget_limit_total = raw.get(
+        "verification_check_budget_limit_total"
+    )
     verification_elapsed_ms = raw.get("verification_elapsed_ms")
     max_verification_normalization_passes = raw.get(
         "max_verification_normalization_passes", 0
@@ -3016,6 +3453,14 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
             "non-negative integer"
         )
     if (
+        not isinstance(verification_boundary_budget_exceeded, int)
+        or verification_boundary_budget_exceeded < 0
+    ):
+        raise ValueError(
+            "algorithmic backend verification_boundary_budget_exceeded must be a "
+            "non-negative integer"
+        )
+    if (
         not isinstance(method_probes_used_total, int)
         or method_probes_used_total < 0
     ):
@@ -3031,6 +3476,34 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
             "algorithmic backend verification_checks_used_total must be a "
             "non-negative integer"
         )
+    if method_probe_budget_limit_total is not None:
+        if (
+            not isinstance(method_probe_budget_limit_total, int)
+            or method_probe_budget_limit_total < 0
+        ):
+            raise ValueError(
+                "algorithmic backend method_probe_budget_limit_total must be a "
+                "non-negative integer"
+            )
+        if method_probe_budget_limit_total < method_probes_used_total:
+            raise ValueError(
+                "algorithmic backend method_probe_budget_limit_total is below "
+                "method_probes_used_total"
+            )
+    if verification_check_budget_limit_total is not None:
+        if (
+            not isinstance(verification_check_budget_limit_total, int)
+            or verification_check_budget_limit_total < 0
+        ):
+            raise ValueError(
+                "algorithmic backend verification_check_budget_limit_total must "
+                "be a non-negative integer"
+            )
+        if verification_check_budget_limit_total < verification_checks_used_total:
+            raise ValueError(
+                "algorithmic backend verification_check_budget_limit_total is "
+                "below verification_checks_used_total"
+            )
     if not isinstance(verification_elapsed_ms, (int, float)):
         raise ValueError("algorithmic backend verification_elapsed_ms must be numeric")
     if (
@@ -3139,6 +3612,20 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
     verification_check_usage_by_method = sanitize_int_count_map(
         raw.get("verification_check_usage_by_method")
     )
+    verification_check_usage_by_evidence = sanitize_int_count_map(
+        raw.get("verification_check_usage_by_evidence")
+    )
+    verification_check_usage_by_method_and_evidence = sanitize_int_count_map(
+        raw.get("verification_check_usage_by_method_and_evidence")
+    )
+    verification_check_usage_by_publication_status = sanitize_int_count_map(
+        raw.get("verification_check_usage_by_publication_status")
+    )
+    verification_check_usage_by_method_and_publication_status = (
+        sanitize_int_count_map(
+            raw.get("verification_check_usage_by_method_and_publication_status")
+        )
+    )
     verification_status_by_method = sanitize_int_count_map(
         raw.get("verification_status_by_method")
     )
@@ -3244,6 +3731,9 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
     )
     fallback_verification_normalization_reason_by_method = sanitize_int_count_map(
         raw.get("fallback_verification_normalization_reason_by_method")
+    )
+    verification_normalization_reason_by_label = sanitize_int_count_map(
+        raw.get("verification_normalization_reason_by_label")
     )
     verification_normalization_pass_count_counts = sanitize_int_count_map(
         raw.get("verification_normalization_pass_count_counts")
@@ -3573,6 +4063,111 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
             "algorithmic backend verification_check_usage_by_method does not "
             "match total"
         )
+    if verification_check_usage_by_evidence:
+        if (
+            sum(verification_check_usage_by_evidence.values())
+            != verification_checks_used_total
+        ):
+            raise ValueError(
+                "algorithmic backend verification_check_usage_by_evidence does "
+                "not match total"
+            )
+        unknown_verification_evidence = set(
+            verification_check_usage_by_evidence
+        ) - set(verification_evidence_counts)
+        if unknown_verification_evidence:
+            raise ValueError(
+                "algorithmic backend verification_check_usage_by_evidence has "
+                "unknown evidence labels"
+            )
+    if verification_check_usage_by_method_and_evidence:
+        if (
+            sum(verification_check_usage_by_method_and_evidence.values())
+            != verification_checks_used_total
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "verification_check_usage_by_method_and_evidence does not "
+                "match total"
+            )
+        verification_evidence_by_method_prefix, verification_evidence_suffix = (
+            split_compound_count_map(
+                verification_check_usage_by_method_and_evidence,
+                label=(
+                    "algorithmic backend "
+                    "verification_check_usage_by_method_and_evidence"
+                ),
+            )
+        )
+        if verification_evidence_by_method_prefix != verification_check_usage_by_method:
+            raise ValueError(
+                "algorithmic backend "
+                "verification_check_usage_by_method_and_evidence does not "
+                "match verification_check_usage_by_method"
+            )
+        if (
+            verification_check_usage_by_evidence
+            and verification_evidence_suffix != verification_check_usage_by_evidence
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "verification_check_usage_by_method_and_evidence does not "
+                "match verification_check_usage_by_evidence"
+            )
+    if verification_check_usage_by_publication_status:
+        if (
+            sum(verification_check_usage_by_publication_status.values())
+            != verification_checks_used_total
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "verification_check_usage_by_publication_status does not "
+                "match total"
+            )
+        unknown_publication_statuses = set(
+            verification_check_usage_by_publication_status
+        ) - set(publication_status_counts)
+        if unknown_publication_statuses:
+            raise ValueError(
+                "algorithmic backend "
+                "verification_check_usage_by_publication_status has unknown "
+                "publication statuses"
+            )
+    if verification_check_usage_by_method_and_publication_status:
+        if (
+            sum(verification_check_usage_by_method_and_publication_status.values())
+            != verification_checks_used_total
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "verification_check_usage_by_method_and_publication_status does "
+                "not match total"
+            )
+        verification_usage_by_method_prefix, verification_usage_by_publication_suffix = (
+            split_compound_count_map(
+                verification_check_usage_by_method_and_publication_status,
+                label=(
+                    "algorithmic backend "
+                    "verification_check_usage_by_method_and_publication_status"
+                ),
+            )
+        )
+        if verification_usage_by_method_prefix != verification_check_usage_by_method:
+            raise ValueError(
+                "algorithmic backend "
+                "verification_check_usage_by_method_and_publication_status does "
+                "not match verification_check_usage_by_method"
+            )
+        if (
+            verification_check_usage_by_publication_status
+            and verification_usage_by_publication_suffix
+            != verification_check_usage_by_publication_status
+        ):
+            raise ValueError(
+                "algorithmic backend "
+                "verification_check_usage_by_method_and_publication_status does "
+                "not match verification_check_usage_by_publication_status"
+            )
     if verification_status_by_method:
         if sum(verification_status_by_method.values()) != attempts:
             raise ValueError(
@@ -4337,6 +4932,25 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
                     "fallback_verification_normalization_reason_by_method does not "
                     "match fallback normalized evidence by method"
                 )
+    if verification_normalization_reason_by_label:
+        if sum(verification_normalization_reason_by_label.values()) != sum(
+            verification_normalization_reason_counts.values()
+        ):
+            raise ValueError(
+                "algorithmic backend verification_normalization_reason_by_label "
+                "does not match verification_normalization_reason_counts"
+            )
+        _, reason_by_label_suffix = split_compound_count_map(
+            verification_normalization_reason_by_label,
+            label=(
+                "algorithmic backend verification_normalization_reason_by_label"
+            ),
+        )
+        if reason_by_label_suffix != verification_normalization_reason_counts:
+            raise ValueError(
+                "algorithmic backend verification_normalization_reason_by_label "
+                "does not match verification_normalization_reason_counts"
+            )
     if attempts and "verification_normalization_pass_count_counts" not in raw:
         raise ValueError(
             "algorithmic backend verification_normalization_pass_count_counts "
@@ -4563,7 +5177,9 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
     required_condition_count = sum(required_condition_counts.values())
     budget_exceeded_count = residual_reason_counts.get("budget_exceeded", 0)
     if (
-        method_probe_budget_exhausted + verification_budget_exceeded
+        method_probe_budget_exhausted
+        + verification_budget_exceeded
+        + verification_boundary_budget_exceeded
         > budget_exceeded_count
     ):
         raise ValueError("algorithmic backend budget split exceeds budget count")
@@ -4574,9 +5190,28 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
         max_verification_normalization_passes=(
             max_verification_normalization_passes
         ),
+        verification_check_budget_limit_total=(
+            verification_check_budget_limit_total
+        ),
+        verification_budget_exceeded_count=verification_budget_exceeded,
+    )
+    backend_verification_normalization_pressure = (
+        classify_backend_verification_normalization_pressure(
+            verification_checks_used_total=verification_checks_used_total,
+            verification_check_usage_by_evidence=verification_check_usage_by_evidence,
+            verification_check_usage_by_method_and_evidence=(
+                verification_check_usage_by_method_and_evidence
+            ),
+            verification_normalization_reason_counts=(
+                verification_normalization_reason_counts
+            ),
+            verification_normalization_reason_by_method=(
+                verification_normalization_reason_by_method
+            ),
+        )
     )
     failed = unverified_public_acceptances + unverified_fallback_acceptances
-    return {
+    metrics = {
         "total_cases": attempts,
         "passed": attempts - failed,
         "failed": failed,
@@ -4591,12 +5226,21 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
         "backend_budget_exceeded_count": budget_exceeded_count,
         "backend_method_probe_budget_exhausted_count": method_probe_budget_exhausted,
         "backend_verification_budget_exceeded_count": verification_budget_exceeded,
+        "backend_verification_boundary_budget_exceeded_count": (
+            verification_boundary_budget_exceeded
+        ),
         "backend_method_probes_used_total": method_probes_used_total,
         "backend_verification_checks_used_total": verification_checks_used_total,
         "backend_verification_elapsed_ms": round(float(verification_elapsed_ms), 3),
         "backend_verification_pressure": backend_verification_pressure,
         "backend_verification_pressure_status": (
             backend_verification_pressure["status"]
+        ),
+        "backend_verification_normalization_pressure": (
+            backend_verification_normalization_pressure
+        ),
+        "backend_verification_normalization_pressure_status": (
+            backend_verification_normalization_pressure["status"]
         ),
         "backend_max_verification_normalization_passes": (
             max_verification_normalization_passes
@@ -4645,6 +5289,24 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
             method_probe_terminal_candidate_signature_counts
         ),
         "backend_verification_check_usage_by_method": verification_check_usage_by_method,
+        "backend_verification_check_usage_by_evidence": (
+            verification_check_usage_by_evidence
+        ),
+        "backend_verification_check_usage_by_method_and_evidence": (
+            verification_check_usage_by_method_and_evidence
+        ),
+        "backend_verification_check_usage_by_publication_status": (
+            verification_check_usage_by_publication_status
+        ),
+        "backend_verification_check_usage_by_method_and_publication_status": (
+            verification_check_usage_by_method_and_publication_status
+        ),
+        "backend_verification_check_top_methods": (
+            backend_verification_check_top_methods(
+                verification_check_usage_by_method,
+                verification_checks_used_total=verification_checks_used_total,
+            )
+        ),
         "backend_verification_status_by_method": verification_status_by_method,
         "backend_residual_reason_by_method": residual_reason_by_method,
         "backend_verification_blocker_counts": verification_blocker_counts,
@@ -4709,6 +5371,9 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
         "backend_fallback_verification_normalization_reason_by_method": (
             fallback_verification_normalization_reason_by_method
         ),
+        "backend_verification_normalization_reason_by_label": (
+            verification_normalization_reason_by_label
+        ),
         "backend_verification_normalization_pass_count_counts": (
             verification_normalization_pass_count_counts
         ),
@@ -4731,6 +5396,55 @@ def parse_algorithmic_backend_observability(output: str) -> dict[str, Any]:
         "backend_residual_reason_counts": residual_reason_counts,
         "backend_required_condition_counts": required_condition_counts,
     }
+    if method_probe_budget_limit_total is not None:
+        method_probe_budget_remaining_total = (
+            method_probe_budget_limit_total - method_probes_used_total
+        )
+        metrics.update(
+            {
+                "backend_method_probe_budget_limit_total": (
+                    method_probe_budget_limit_total
+                ),
+                "backend_method_probe_budget_remaining_total": (
+                    method_probe_budget_remaining_total
+                ),
+                "backend_method_probe_budget_utilization_percent": (
+                    round(
+                        method_probes_used_total
+                        * 100.0
+                        / method_probe_budget_limit_total,
+                        1,
+                    )
+                    if method_probe_budget_limit_total
+                    else 0.0
+                ),
+            }
+        )
+    if verification_check_budget_limit_total is not None:
+        verification_check_budget_remaining_total = (
+            verification_check_budget_limit_total - verification_checks_used_total
+        )
+        metrics.update(
+            {
+                "backend_verification_check_budget_limit_total": (
+                    verification_check_budget_limit_total
+                ),
+                "backend_verification_check_budget_remaining_total": (
+                    verification_check_budget_remaining_total
+                ),
+                "backend_verification_check_budget_utilization_percent": (
+                    round(
+                        verification_checks_used_total
+                        * 100.0
+                        / verification_check_budget_limit_total,
+                        1,
+                    )
+                    if verification_check_budget_limit_total
+                    else 0.0
+                ),
+            }
+        )
+    return metrics
 
 
 def sanitize_runtime_case_rows(raw_rows: Any) -> list[dict[str, Any]]:
@@ -6696,7 +7410,15 @@ def backend_verification_pressure_fragment(raw_row: Any) -> str | None:
     for key, label, precision in (
         ("attempts", "attempts", None),
         ("verification_checks_used_total", "checks", None),
+        ("verification_budget_exceeded_count", "budget_exceeded", None),
         ("checks_per_attempt", "checks_per_attempt", 3),
+        ("verification_check_budget_limit_total", "check_limit", None),
+        ("verification_check_budget_remaining_total", "check_remaining", None),
+        (
+            "verification_check_budget_utilization_percent",
+            "check_utilization_percent",
+            1,
+        ),
         ("max_verification_normalization_passes", "max_passes", None),
         ("verification_elapsed_ms", "elapsed_ms", 3),
     ):
@@ -6708,6 +7430,73 @@ def backend_verification_pressure_fragment(raw_row: Any) -> str | None:
         else:
             fragment += f" {label}={value:.{precision}f}"
     return fragment
+
+
+def backend_verification_normalization_pressure_fragment(raw_row: Any) -> str | None:
+    if not isinstance(raw_row, dict):
+        return None
+    status = raw_row.get("status")
+    primary_signal = raw_row.get("primary_signal")
+    reason = raw_row.get("reason")
+    if (
+        not isinstance(status, str)
+        or not isinstance(primary_signal, str)
+        or not isinstance(reason, str)
+    ):
+        return None
+    fragment = f"status={status} primary={primary_signal} reason={reason}"
+    for key, label, precision in (
+        ("normalized_checks", "normalized_checks", None),
+        ("verification_checks_used_total", "checks", None),
+        ("normalized_ratio_percent", "normalized_ratio_percent", 1),
+        ("dominant_method_checks", "dominant_method_checks", None),
+        ("dominant_method_share_percent", "dominant_method_share_percent", 1),
+        ("dominant_reason_count", "dominant_reason_count", None),
+        ("dominant_reason_share_percent", "dominant_reason_share_percent", 1),
+        ("dominant_method_reason_count", "dominant_method_reason_count", None),
+        (
+            "dominant_method_reason_share_percent",
+            "dominant_method_reason_share_percent",
+            1,
+        ),
+    ):
+        value = raw_row.get(key)
+        if not isinstance(value, (int, float)):
+            continue
+        if precision is None:
+            fragment += f" {label}={int(value)}"
+        else:
+            fragment += f" {label}={value:.{precision}f}"
+    dominant_method = raw_row.get("dominant_method")
+    if isinstance(dominant_method, str):
+        fragment += f" dominant_method={dominant_method}"
+    dominant_reason = raw_row.get("dominant_reason")
+    if isinstance(dominant_reason, str):
+        fragment += f" dominant_reason={dominant_reason}"
+    dominant_method_reason = raw_row.get("dominant_method_reason")
+    if isinstance(dominant_method_reason, str):
+        fragment += f" dominant_method_reason={dominant_method_reason}"
+    return fragment
+
+
+def backend_verification_check_top_method_fragments(raw_rows: Any) -> list[str]:
+    if not isinstance(raw_rows, list):
+        return []
+    fragments: list[str] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        method = raw_row.get("method")
+        checks = raw_row.get("checks")
+        share_percent = raw_row.get("share_percent")
+        if (
+            not isinstance(method, str)
+            or not isinstance(checks, int)
+            or not isinstance(share_percent, (int, float))
+        ):
+            continue
+        fragments.append(f"{method}={checks} ({share_percent:.1f}%)")
+    return fragments
 
 
 def calculus_runtime_measurement_fragment(raw_row: Any) -> str | None:
@@ -7353,6 +8142,7 @@ PARSERS = {
     "calculus_limit_command_matrix": parse_calculus_limit_command_matrix,
     "calculus_integrate_command_matrix": parse_calculus_integrate_command_matrix,
     "algorithmic_backend_observability": parse_algorithmic_backend_observability,
+    "algorithmic_backend_mode_boundary": parse_algorithmic_backend_mode_boundary,
 }
 
 
@@ -8683,6 +9473,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 scorecard["suites"].get("calculus_integrate_backend_observability"),
             ),
             (
+                "integrate_backend_mode_boundary",
+                scorecard["suites"].get("calculus_integrate_backend_mode_boundary"),
+            ),
+            (
                 "integrate_command_matrix",
                 scorecard["suites"].get("calculus_integrate_command_matrix_smoke"),
             ),
@@ -8838,6 +9632,15 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 backend_verification_budget_exceeded_count = metrics.get(
                     "backend_verification_budget_exceeded_count"
                 )
+                backend_verification_boundary_budget_exceeded_count = metrics.get(
+                    "backend_verification_boundary_budget_exceeded_count"
+                )
+                backend_public_budget_clamped_count = metrics.get(
+                    "backend_public_budget_clamped_count"
+                )
+                backend_public_clamp_rejected_count = metrics.get(
+                    "backend_public_clamp_rejected_count"
+                )
                 backend_method_probes_used_total = metrics.get(
                     "backend_method_probes_used_total"
                 )
@@ -8849,6 +9652,9 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 )
                 backend_verification_pressure_status = metrics.get(
                     "backend_verification_pressure_status"
+                )
+                backend_verification_normalization_pressure_status = metrics.get(
+                    "backend_verification_normalization_pressure_status"
                 )
                 if isinstance(diff_supported_cases, int):
                     line += f" supported_cases={diff_supported_cases}"
@@ -8986,6 +9792,23 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         " backend_verification_budget_exceeded="
                         f"{backend_verification_budget_exceeded_count}"
                     )
+                if isinstance(
+                    backend_verification_boundary_budget_exceeded_count, int
+                ):
+                    line += (
+                        " backend_verification_boundary_budget_exceeded="
+                        f"{backend_verification_boundary_budget_exceeded_count}"
+                    )
+                if isinstance(backend_public_budget_clamped_count, int):
+                    line += (
+                        " backend_public_budget_clamped="
+                        f"{backend_public_budget_clamped_count}"
+                    )
+                if isinstance(backend_public_clamp_rejected_count, int):
+                    line += (
+                        " backend_public_clamp_rejected="
+                        f"{backend_public_clamp_rejected_count}"
+                    )
                 if isinstance(backend_method_probes_used_total, int):
                     line += (
                         " backend_method_probes_used="
@@ -9005,6 +9828,14 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     line += (
                         " backend_verification_pressure="
                         f"{backend_verification_pressure_status}"
+                    )
+                if isinstance(
+                    backend_verification_normalization_pressure_status,
+                    str,
+                ):
+                    line += (
+                        " backend_normalization_pressure="
+                        f"{backend_verification_normalization_pressure_status}"
                     )
                 lines.append(line)
                 if label == "diff_command_matrix":
@@ -9205,12 +10036,35 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     verification_budget = metrics.get(
                         "backend_verification_budget_exceeded_count"
                     )
+                    verification_boundary_budget = metrics.get(
+                        "backend_verification_boundary_budget_exceeded_count"
+                    )
+                    public_budget_clamped = metrics.get(
+                        "backend_public_budget_clamped_count"
+                    )
+                    public_clamp_rejected = metrics.get(
+                        "backend_public_clamp_rejected_count"
+                    )
                     method_probes_used = metrics.get("backend_method_probes_used_total")
                     verification_checks_used = metrics.get(
                         "backend_verification_checks_used_total"
                     )
-                    if isinstance(method_budget, int) or isinstance(
-                        verification_budget, int
+                    method_probe_limit = metrics.get(
+                        "backend_method_probe_budget_limit_total"
+                    )
+                    method_probe_remaining = metrics.get(
+                        "backend_method_probe_budget_remaining_total"
+                    )
+                    verification_check_limit = metrics.get(
+                        "backend_verification_check_budget_limit_total"
+                    )
+                    verification_check_remaining = metrics.get(
+                        "backend_verification_check_budget_remaining_total"
+                    )
+                    if (
+                        isinstance(method_budget, int)
+                        or isinstance(verification_budget, int)
+                        or isinstance(verification_boundary_budget, int)
                     ):
                         budget_pieces = []
                         if isinstance(method_budget, int):
@@ -9221,9 +10075,38 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             budget_pieces.append(
                                 f"verification_exceeded={verification_budget}"
                             )
+                        if isinstance(verification_boundary_budget, int):
+                            budget_pieces.append(
+                                "verification_boundary_exceeded="
+                                f"{verification_boundary_budget}"
+                            )
                         lines.append(
                             f"- `{label}` budget split: "
                             + ", ".join(budget_pieces)
+                        )
+                    if isinstance(public_budget_clamped, int) or isinstance(
+                        public_clamp_rejected, int
+                    ):
+                        public_budget_pieces = []
+                        if isinstance(public_budget_clamped, int):
+                            public_budget_pieces.append(
+                                f"public_budget_clamped={public_budget_clamped}"
+                            )
+                        if isinstance(public_clamp_rejected, int):
+                            public_budget_pieces.append(
+                                f"public_clamp_rejected={public_clamp_rejected}"
+                            )
+                        lines.append(
+                            f"- `{label}` public budget boundary: "
+                            + ", ".join(public_budget_pieces)
+                        )
+                    direct_high_budget_methods = calculus_matrix_count_map_fragments(
+                        metrics.get("backend_direct_high_budget_method_counts")
+                    )
+                    if direct_high_budget_methods:
+                        lines.append(
+                            f"- `{label}` direct high-budget methods: "
+                            + ", ".join(direct_high_budget_methods)
                         )
                     usage_pieces = []
                     if isinstance(method_probes_used, int):
@@ -9237,6 +10120,27 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"- `{label}` budget usage: "
                             + ", ".join(usage_pieces)
                         )
+                    capacity_pieces = []
+                    if isinstance(method_probe_limit, int):
+                        capacity_pieces.append(f"method_probe_limit={method_probe_limit}")
+                    if isinstance(method_probe_remaining, int):
+                        capacity_pieces.append(
+                            f"method_probe_remaining={method_probe_remaining}"
+                        )
+                    if isinstance(verification_check_limit, int):
+                        capacity_pieces.append(
+                            f"verification_check_limit={verification_check_limit}"
+                        )
+                    if isinstance(verification_check_remaining, int):
+                        capacity_pieces.append(
+                            "verification_check_remaining="
+                            f"{verification_check_remaining}"
+                        )
+                    if capacity_pieces:
+                        lines.append(
+                            f"- `{label}` budget capacity: "
+                            + ", ".join(capacity_pieces)
+                        )
                     verification_pressure = backend_verification_pressure_fragment(
                         metrics.get("backend_verification_pressure")
                     )
@@ -9244,6 +10148,18 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         lines.append(
                             f"- `{label}` backend verification pressure: "
                             + verification_pressure
+                        )
+                    normalization_pressure = (
+                        backend_verification_normalization_pressure_fragment(
+                            metrics.get(
+                                "backend_verification_normalization_pressure"
+                            )
+                        )
+                    )
+                    if normalization_pressure:
+                        lines.append(
+                            f"- `{label}` backend normalization pressure: "
+                            + normalization_pressure
                         )
                     method_probe_usage = calculus_matrix_count_map_fragments(
                         metrics.get("backend_method_probe_usage_by_method")
@@ -9398,6 +10314,62 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         lines.append(
                             f"- `{label}` verification-check usage by method: "
                             + ", ".join(verification_usage)
+                        )
+                    verification_usage_by_evidence = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get("backend_verification_check_usage_by_evidence")
+                        )
+                    )
+                    if verification_usage_by_evidence:
+                        lines.append(
+                            f"- `{label}` verification-check usage by evidence: "
+                            + ", ".join(verification_usage_by_evidence)
+                        )
+                    verification_usage_by_method_and_evidence = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_check_usage_by_method_and_evidence"
+                            )
+                        )
+                    )
+                    if verification_usage_by_method_and_evidence:
+                        lines.append(
+                            f"- `{label}` verification-check usage by method/evidence: "
+                            + ", ".join(verification_usage_by_method_and_evidence)
+                        )
+                    verification_usage_by_publication = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_check_usage_by_publication_status"
+                            )
+                        )
+                    )
+                    if verification_usage_by_publication:
+                        lines.append(
+                            f"- `{label}` verification-check usage by publication: "
+                            + ", ".join(verification_usage_by_publication)
+                        )
+                    verification_usage_by_method_and_publication = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_check_usage_by_method_and_publication_status"
+                            )
+                        )
+                    )
+                    if verification_usage_by_method_and_publication:
+                        lines.append(
+                            f"- `{label}` verification-check usage by method/publication: "
+                            + ", ".join(verification_usage_by_method_and_publication)
+                        )
+                    verification_top_methods = (
+                        backend_verification_check_top_method_fragments(
+                            metrics.get("backend_verification_check_top_methods")
+                        )
+                    )
+                    if verification_top_methods:
+                        lines.append(
+                            f"- `{label}` verification-check top methods: "
+                            + ", ".join(verification_top_methods)
                         )
                     verification_status_by_method = (
                         calculus_matrix_count_map_fragments(
@@ -9815,6 +10787,18 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             + ", ".join(
                                 fallback_verification_normalization_reason_by_method
                             )
+                        )
+                    verification_normalization_reason_by_label = (
+                        calculus_matrix_count_map_fragments(
+                            metrics.get(
+                                "backend_verification_normalization_reason_by_label"
+                            )
+                        )
+                    )
+                    if verification_normalization_reason_by_label:
+                        lines.append(
+                            f"- `{label}` verification normalization reason by label: "
+                            + ", ".join(verification_normalization_reason_by_label)
                         )
                     verification_normalization_pass_count_counts = (
                         calculus_matrix_count_map_fragments(
@@ -11302,15 +12286,40 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     "backend_verification_budget_exceeded="
                     f"{metrics['backend_verification_budget_exceeded_count']}"
                 )
+            if "backend_verification_boundary_budget_exceeded_count" in metrics:
+                pieces.append(
+                    "backend_verification_boundary_budget_exceeded="
+                    f"{metrics['backend_verification_boundary_budget_exceeded_count']}"
+                )
+            if "backend_public_budget_clamped_count" in metrics:
+                pieces.append(
+                    "backend_public_budget_clamped="
+                    f"{metrics['backend_public_budget_clamped_count']}"
+                )
+            if "backend_public_clamp_rejected_count" in metrics:
+                pieces.append(
+                    "backend_public_clamp_rejected="
+                    f"{metrics['backend_public_clamp_rejected_count']}"
+                )
             if "backend_method_probes_used_total" in metrics:
                 pieces.append(
                     "backend_method_probes_used="
                     f"{metrics['backend_method_probes_used_total']}"
                 )
+            if "backend_method_probe_budget_remaining_total" in metrics:
+                pieces.append(
+                    "backend_method_budget_remaining="
+                    f"{metrics['backend_method_probe_budget_remaining_total']}"
+                )
             if "backend_verification_checks_used_total" in metrics:
                 pieces.append(
                     "backend_verification_checks_used="
                     f"{metrics['backend_verification_checks_used_total']}"
+                )
+            if "backend_verification_check_budget_remaining_total" in metrics:
+                pieces.append(
+                    "backend_verification_budget_remaining="
+                    f"{metrics['backend_verification_check_budget_remaining_total']}"
                 )
             if "backend_verification_elapsed_ms" in metrics:
                 pieces.append(

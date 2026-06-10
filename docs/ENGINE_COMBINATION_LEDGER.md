@@ -79,6 +79,69 @@ Good combination patterns:
 - `expensive fast path + cheap gate`
 - `repeated extraction + cache/reuse`
 
+## 2026-06-10 - Retained follow-up: symbolic-slope affine quotient remainder verification
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / rational affine
+    quotient-remainder verification
+- status:
+  - `retained`
+- observed:
+  - the generated probe `(3*x+c)/(a*x+b)` produced a rational backend candidate,
+    but verification initially stalled on the derivative shape
+    `q + r/(a*x+b)`
+  - cheap probes showed this was not a reason to broaden global simplification:
+    the reusable weakness was backend-local cancellation of
+    `(a/(a*x+b))*(r/a)` under explicit `a != 0` evidence, followed by
+    reconstruction of `q*(a*x+b)+r`
+  - unrestricted symbolic division would be unsafe; the accepted divisor must
+    match the affine slope already carried as a required nonzero condition
+- decision:
+  - retain the condition-aware slope-divisor coefficient policy and the
+    affine-slope quotient-product verification normalization
+  - promote one observability representative for the symbolic-slope raw affine
+    quotient-remainder case
+  - keep higher-degree numerators such as `x^2/(a*x+b)` rejected
+- retained learning:
+  - symbolic-slope rational widening belongs in backend verification and
+    condition handling, not in a global assumption that arbitrary symbolic
+    quotients are coefficients
+  - future product-slope variants such as `(3*x+c)/(2*a*x+b)` should reuse the
+    same condition-aware path and require explicit nonzero evidence for the full
+    slope
+
+## 2026-06-10 - Retained follow-up: variable-free affine quotient remainder backend coefficients
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / rational affine
+    quotient-remainder verification
+- status:
+  - `retained`
+- observed:
+  - the generated probe `(3*x+c)/(2*x+1)` initially failed before promotion even
+    though the affine quotient-remainder decomposition existed
+  - cheap probes showed the structural blocker was not the denominator slope or
+    differentiation verification, but the backend-local coefficient predicate:
+    internally built remainders can appear as `Sub(Add(c,0), Mul(3/2,Add(1,0)))`
+    and were rejected despite being variable-free with respect to `x`
+  - accepting depth-bounded variable-free `Add`/`Sub`/`Mul`/numeric-denominator
+    `Div` only inside the backend coefficient policy lets the rational backend
+    verify the case under `denominator != 0` without widening the global
+    external-coefficient policy
+- decision:
+  - retain the bounded backend-local coefficient predicate and one
+    observability representative
+  - initially keep symbolic denominator slopes that require coefficients such as
+    `(3/a)` as a separate condition-aware coefficient policy candidate; this was
+    later retained by the symbolic-slope follow-up above
+- retained learning:
+  - block 12 rational generalization should normalize or tolerate internally
+    constructed variable-free coefficient forms before treating them as a
+    mathematical rejection
+  - future widening toward symbolic slopes must carry explicit nonzero
+    conditions and should not be implemented by making global simplification
+    assumptions about arbitrary symbolic division
+
 ## 2026-06-09 - Retained follow-up: unit-affine positive-quadratic backend center verification
 
 - area:
@@ -237,6 +300,13 @@ Good combination patterns:
     `(a*x+b)/(x^2+4)` should stay residual until the verifier has an explicit
     policy for those shapes
 - decision:
+  - superseded by: `2026-06-09 - Retained follow-up: positive numeric
+    sqrt-radius arctan backend verification`; current probes show
+    `integrate(1/(x^2+2), x)`,
+    `integrate(1/(x^2+4), x)`, and
+    `integrate((x+1)/(x^2+2), x)` are public, compact, and warning-free, so
+    this should no longer count as an open observe-only discovery for numeric
+    positive radii
   - retain only the numeric mixed exact-square-radius family, for example
     `(2*x+3)/(x^2+4)`, because it verifies through the current backend
     boundary
@@ -268,6 +338,10 @@ Good combination patterns:
     log-derivative part plus a positive-quadratic reciprocal part before any
     backend promotion
 - decision:
+  - superseded by: `2026-06-09 - Retained follow-up: positive numeric
+    sqrt-radius arctan backend verification`; current probes show
+    `integrate((x+1)/(x^2+2), x)` returns a verified
+    log-plus-arctangent primitive without warnings
   - retain only the observability row and no-match attribution in this cycle
   - do not promote public integration behavior or add broad search
 - retained learning:
@@ -294,6 +368,9 @@ Good combination patterns:
     the reusable weakness is the backend verification/equivalence boundary,
     not the mathematical primitive
 - decision:
+  - resolved by: current backend verifier behavior; probes show
+    `integrate(2*x/(x^2+1), x)` returns `ln(x^2 + 1)` and
+    `diff(integrate(2*x/(x^2+1), x), x)` returns the source without warnings
   - do not retain the quadratic log-derivative backend probe in this cycle
   - retain a different second probe only if it verifies through the current
     bounded backend verifier without adding a workaround
@@ -319,6 +396,9 @@ Good combination patterns:
     `(x*3)/(x^2+2)`, so the reusable weakness was the backend
     verification boundary, not the integration formula
 - decision:
+  - resolved by: current backend verifier behavior; probes show
+    `integrate(3*x/(x^2+2), x)` returns `3/2*ln(x^2 + 2)` and
+    `diff(integrate(3*x/(x^2+2), x), x)` returns the source without warnings
   - retain the probe only after adding a bounded backend-verifier
     normalization for numeric factors over quotients
   - keep the backend behavior discovery-only; do not promote this as a public
@@ -17165,6 +17245,8 @@ The burden of proof stays the same:
     same-denominator recombination and factor cancellation, not evidence that a
     broader Hermite matcher should be promoted
 - decision:
+  - superseded by: `2026-06-09 - Retained follow-up: symbolic-slope
+    positive-quadratic backend verifier and Hermite promotion`
   - reject symbolic-slope promotion in this cycle
   - retain the safe unsupported/residual policy for symbolic slopes until a
     bounded verifier service can normalize generated quotient factors without
@@ -17210,3 +17292,71 @@ The burden of proof stays the same:
   - the next backend iteration can use the same verifier boundary for a
     similarly structured rational/Hermite family only if it adds a new method
     regime or condition policy, not merely a syntactic variant
+
+## 2026-06-10 - Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / public fallback /
+    rational affine quotient
+- status:
+  - `discovery/observe-only`
+- observed:
+  - public fallback for `(3*x+c)/(2*a*x+b)` was accepted by the backend verifier
+    under `NonZero(2*a*x+b)` and `NonZero(2*a)`, but the public primitive
+    simplified into a large common-denominator form
+  - focused CLI probes showed `integrate((3*x+c)/(2*a*x+b), x)` produced a
+    `depth_overflow` warning, and `diff(integrate(...), x)` reached the right
+    value only after another warning-heavy path
+  - the same family with numeric denominator slope, `(3*x+c)/(2*x+b)`, stayed
+    compact enough for public `integrate` and required only the denominator
+    nonzero condition
+- decision:
+  - superseded by: `2026-06-10 - Retained follow-up: symbolic-slope affine
+    quotient remainder verification`; current probes show
+    `integrate((3*x+c)/(2*a*x+b), x)` and
+    `diff(integrate((3*x+c)/(2*a*x+b), x), x)` are compact and warning-free,
+    and the command matrix now carries
+    `algorithmic_backend_rational_affine_quotient_symbolic_slope`
+  - retain public backend fallback only for the one-condition numeric-slope
+    affine-quotient representative
+  - keep symbolic-slope affine quotients residual in public mode until backend
+    primitive presentation and/or direct `diff(integrate)` route ordering can
+    avoid warning-heavy simplification
+- retained learning:
+  - backend verification is necessary but not sufficient for public promotion;
+    public primitive shape and `diff(integrate)` runtime/noise must be part of
+    the block 12 gate
+  - symbolic-slope rational quotients should be revisited as a presentation and
+    shortcut-ordering problem rather than as a matcher-completeness problem
+
+## 2026-06-10 - Retained internal / observe-only CLI gap: expanded symbolic-slope positive-quadratic Hermite backend
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / Hermite positive
+    quadratic affine centers / CLI promotion boundary
+- status:
+  - `retained-internal + discovery/observe-only`
+- observed:
+  - the backend now verifies the expanded symbolic-slope Hermite shape
+    `(m*s*x+b*m+c)/(s^2*x^2+2*b*s*x+b^2+a)` under `Positive(a)` and
+    `NonZero(s)` after reconstructing the affine center and compact
+    denominator
+  - the standard engine integration pipeline returns a backend summary
+    antiderivative with required conditions `a > 0` and `s != 0`
+  - direct `cas_cli eval` probes for `integrate((m*(s*x+b)+c)/((s*x+b)^2+a), x)`
+    and the equivalent expanded input still preserve a residual with only the
+    expanded denominator nonzero condition, while
+    `diff(integrate(...), x)` uses the compact verified source form
+- decision:
+  - retain the backend matcher/verifier and engine pipeline tests because they
+    harden block 12 infrastructure without broad search
+  - do not promote a command-matrix row yet; the CLI/public command path must
+    route the same verified backend result before this becomes a public matrix
+    representative
+- retained learning:
+  - block 12 promotion should distinguish `cas_engine` pipeline acceptance from
+    `cas_cli eval` behavior; matrix rows should be added only when the command
+    path, required conditions, and direct `diff(integrate)` agree
+  - expanded-form Hermite support needs both affine center reconstruction and
+    numerator decomposition against that center; denominator recognition alone
+    is not sufficient

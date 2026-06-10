@@ -242,6 +242,61 @@ fn present_calculus_required_diagnostics(
     }
 }
 
+fn compact_algorithmic_backend_positive_quadratic_source_condition(
+    ctx: &mut cas_ast::Context,
+    resolved: ExprId,
+    diagnostics: &mut crate::diagnostics::Diagnostics,
+) {
+    let Some(call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, resolved)
+    else {
+        return;
+    };
+    if !crate::rules::calculus::is_public_algorithmic_backend_symbolic_positive_quadratic_fallback_shape(
+        ctx,
+        call.target,
+        &call.var_name,
+        0,
+    ) {
+        return;
+    }
+    let Some(denominator) = integrate_target_denominator(ctx, call.target) else {
+        return;
+    };
+    let has_external_positive_backend_condition = diagnostics.requires.iter().any(|item| {
+        let crate::ImplicitCondition::Positive(expr) = item.cond else {
+            return false;
+        };
+        !cas_math::expr_domain::exprs_equivalent(ctx, expr, denominator)
+            && !cas_math::expr_predicates::contains_named_var(ctx, expr, &call.var_name)
+    });
+    if !has_external_positive_backend_condition {
+        return;
+    }
+
+    let mut retained = Vec::with_capacity(diagnostics.requires.len());
+    for item in diagnostics.requires.drain(..) {
+        let is_redundant_source_denominator = match item.cond {
+            crate::ImplicitCondition::Positive(expr) => {
+                cas_math::expr_domain::exprs_equivalent(ctx, expr, denominator)
+            }
+            _ => false,
+        };
+        if !is_redundant_source_denominator {
+            retained.push(item);
+        }
+    }
+    diagnostics.requires = retained;
+}
+
+fn integrate_target_denominator(ctx: &cas_ast::Context, target: ExprId) -> Option<ExprId> {
+    match ctx.get(target) {
+        cas_ast::Expr::Div(_, denominator) => Some(*denominator),
+        cas_ast::Expr::Neg(inner) => integrate_target_denominator(ctx, *inner),
+        _ => None,
+    }
+}
+
 fn push_structural_requires(
     ctx: &mut cas_ast::Context,
     resolved: ExprId,
@@ -630,6 +685,11 @@ fn build_eval_diagnostics(input: EvalDiagnosticsInput<'_>) -> crate::diagnostics
     if resolved_is_calculus_call(ctx, resolved) {
         present_calculus_required_diagnostics(ctx, &mut diagnostics);
         compact_trig_log_source_residual_condition_aliases(ctx, resolved, &mut diagnostics);
+        compact_algorithmic_backend_positive_quadratic_source_condition(
+            ctx,
+            resolved,
+            &mut diagnostics,
+        );
         filter_proven_positive_calculus_required_diagnostics(ctx, &mut diagnostics);
     }
 

@@ -84,6 +84,17 @@ pub(crate) fn try_resolve_direct_symbolic_calculus_before_general_simplify(
             })
         })
         .or_else(|| {
+            try_resolve_direct_diff_integral_algorithmic_backend_before_general_simplify(ctx, expr)
+                .map(|(result, required_conditions)| {
+                    (
+                        result,
+                        required_conditions,
+                        "Symbolic Differentiation",
+                        "Use the verified algorithmic integration backend source shortcut",
+                    )
+                })
+        })
+        .or_else(|| {
             try_resolve_direct_diff_hyperbolic_coth_before_general_simplify(ctx, expr).map(
                 |(result, required_conditions)| {
                     (
@@ -285,6 +296,22 @@ fn try_resolve_direct_diff_integral_reciprocal_trig_derivative_product_before_ge
         source,
         vec![crate::ImplicitCondition::NonZero(required_nonzero)],
     ))
+}
+
+fn try_resolve_direct_diff_integral_algorithmic_backend_before_general_simplify(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+
+    super::integral_derivative_shortcut_presentation::algorithmic_backend_integral_source_with_conditions(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+        &diff_call.var_name,
+    )
 }
 
 fn try_resolve_direct_diff_integral_hyperbolic_reciprocal_fourth_before_general_simplify(
@@ -658,6 +685,66 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn direct_diff_integral_algorithmic_backend_affine_quotient_returns_source_and_domain() {
+        let mut ctx = Context::new();
+        let expr = parse("diff(integrate((3*x+c)/(2*x+b), x), x)", &mut ctx).unwrap();
+
+        let (result, required_conditions) =
+            try_resolve_direct_diff_integral_algorithmic_backend_before_general_simplify(
+                &mut ctx, expr,
+            )
+            .expect("direct algorithmic backend source route");
+
+        assert_eq!(rendered(&ctx, result), "(c + 3 * x) / (b + 2 * x)");
+        let required_displays: Vec<_> = required_conditions
+            .iter()
+            .map(|condition| condition.display(&ctx).to_string())
+            .collect();
+        assert_eq!(required_displays, vec!["b + 2 * x ≠ 0"]);
+    }
+
+    #[test]
+    fn direct_diff_integral_algorithmic_backend_symbolic_slope_returns_source_and_domain() {
+        let mut ctx = Context::new();
+        let expr = parse("diff(integrate((3*x+c)/(2*a*x+b), x), x)", &mut ctx).unwrap();
+
+        let (result, required_conditions) =
+            try_resolve_direct_diff_integral_algorithmic_backend_before_general_simplify(
+                &mut ctx, expr,
+            )
+            .expect("direct symbolic-slope algorithmic backend source route");
+
+        assert_eq!(rendered(&ctx, result), "(c + 3 * x) / (2 * a * x + b)");
+        let mut required_displays: Vec<_> = required_conditions
+            .iter()
+            .map(|condition| condition.display(&ctx).to_string())
+            .collect();
+        required_displays.sort();
+        assert_eq!(required_displays, vec!["2 * a * x + b ≠ 0", "a ≠ 0"]);
+    }
+
+    #[test]
+    fn direct_diff_integral_algorithmic_backend_external_scaled_zero_intercept_returns_source_and_domain(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("diff(integrate(a*x/(c*x+d), x), x)", &mut ctx).unwrap();
+
+        let (result, required_conditions) =
+            try_resolve_direct_diff_integral_algorithmic_backend_before_general_simplify(
+                &mut ctx, expr,
+            )
+            .expect("direct external-scale algorithmic backend source route");
+
+        assert_eq!(rendered(&ctx, result), "a * x / (c * x + d)");
+        let mut required_displays: Vec<_> = required_conditions
+            .iter()
+            .map(|condition| condition.display(&ctx).to_string())
+            .collect();
+        required_displays.sort();
+        assert_eq!(required_displays, vec!["c * x + d ≠ 0", "c ≠ 0"]);
     }
 
     #[test]

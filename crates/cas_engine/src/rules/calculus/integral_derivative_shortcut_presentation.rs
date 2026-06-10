@@ -56,13 +56,14 @@ use super::integral_derivative_presentation_route::SupportedIntegralDerivativePr
 use super::integral_derivative_verified_power_inverse_routes::power_inverse_verified_integral_derivative_route;
 use super::integral_derivative_verified_rational_substitution_routes::rational_substitution_verified_integral_derivative_route;
 use super::integral_derivative_verified_source_routes::initial_verified_source_integral_derivative_route;
+use super::integration::{integrate_with_trace, IntegrationTraceKind};
 use super::reciprocal_trig_derivative_product_source::{
     verified_affine_reciprocal_trig_derivative_product_source_with_domain,
     verified_reciprocal_trig_derivative_product_source_with_domain,
 };
 use crate::rule::Rewrite;
 use crate::symbolic_calculus_call_support::{try_extract_integrate_call, NamedVarCall};
-use cas_ast::{Context, ExprId};
+use cas_ast::{ConditionPredicate, Context, ExprId};
 
 pub(super) fn supported_integral_derivative_presentation(
     ctx: &mut Context,
@@ -229,6 +230,15 @@ pub(super) fn supported_integral_diff_shortcut_presentation(
         }
     }
 
+    if let Some((source, required_conditions)) = algorithmic_backend_integral_source_with_conditions(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+        var_name,
+    ) {
+        return Some((source, required_conditions));
+    }
+
     let compact = supported_integral_derivative_presentation_for_integrate_call(
         ctx,
         &integrate_call,
@@ -239,6 +249,48 @@ pub(super) fn supported_integral_diff_shortcut_presentation(
         compact,
         &integrate_call,
     ))
+}
+
+pub(super) fn algorithmic_backend_integral_source_with_conditions(
+    ctx: &mut Context,
+    target: ExprId,
+    integrate_var_name: &str,
+    diff_var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    if integrate_var_name != diff_var_name {
+        return None;
+    }
+
+    let outcome = integrate_with_trace(ctx, target, integrate_var_name)?;
+    if outcome.trace_kind != IntegrationTraceKind::AlgorithmicBackendSummary {
+        return None;
+    }
+
+    Some((
+        target,
+        outcome
+            .required_conditions
+            .into_iter()
+            .filter_map(backend_condition_to_implicit_condition)
+            .collect(),
+    ))
+}
+
+fn backend_condition_to_implicit_condition(
+    condition: ConditionPredicate,
+) -> Option<crate::ImplicitCondition> {
+    match condition {
+        ConditionPredicate::NonZero(expr) => Some(crate::ImplicitCondition::NonZero(expr)),
+        ConditionPredicate::Positive(expr) => Some(crate::ImplicitCondition::Positive(expr)),
+        ConditionPredicate::NonNegative(expr) => Some(crate::ImplicitCondition::NonNegative(expr)),
+        ConditionPredicate::LowerBound { expr, lower } => {
+            Some(crate::ImplicitCondition::LowerBound(expr, lower))
+        }
+        ConditionPredicate::Defined(_)
+        | ConditionPredicate::InvTrigPrincipalRange { .. }
+        | ConditionPredicate::EqZero(_)
+        | ConditionPredicate::EqOne(_) => None,
+    }
 }
 
 pub(super) fn reciprocal_trig_derivative_product_integral_diff_shortcut_rewrite(
@@ -337,6 +389,24 @@ mod tests {
 
         assert!(hold::is_hold(&ctx, held));
         assert!(conditions.is_empty());
+    }
+
+    #[test]
+    fn diff_shortcut_returns_algorithmic_backend_affine_quotient_source() {
+        let mut ctx = Context::new();
+        let target = parse("integrate((3*x+c)/(2*x+b), x)", &mut ctx).unwrap();
+        let integrate_call = try_extract_integrate_call(&ctx, target).unwrap();
+
+        let (result, required_conditions) =
+            supported_integral_diff_shortcut_presentation(&mut ctx, target, "x")
+                .expect("expected verified algorithmic backend shortcut");
+
+        assert_eq!(result, integrate_call.target);
+        let required_displays: Vec<_> = required_conditions
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+        assert_eq!(required_displays, vec!["b + 2 * x ≠ 0"]);
     }
 
     #[test]

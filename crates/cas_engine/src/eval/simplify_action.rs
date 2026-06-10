@@ -7641,6 +7641,10 @@ mod tests {
         let cases = [
             ("diff(ln(x)/sqrt(x), x)", vec!["x > 0"]),
             ("integrate(sec(2*x+1), x)", vec!["cos(2 * x + 1) ≠ 0"]),
+            (
+                "integrate((m*(s*x+b)+c)/((s*x+b)^2+a), x)",
+                vec!["a > 0", "s ≠ 0"],
+            ),
         ];
 
         for (expr_text, expected_display) in cases {

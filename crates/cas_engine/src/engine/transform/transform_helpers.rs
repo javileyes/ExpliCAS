@@ -59,6 +59,18 @@ fn integrate_call_should_preserve_raw_target_for_direct_integration(
         || integrate_target_is_sqrt_trig_log_derivative(ctx, args[0], var_name)
         || integrate_target_is_sqrt_reciprocal_trig_log_derivative(ctx, args[0], var_name)
         || integrate_target_is_inverse_trig_polynomial_substitution(ctx, args[0], var_name)
+        || crate::rules::calculus::is_public_algorithmic_backend_symbolic_positive_quadratic_fallback_shape(
+            ctx,
+            args[0],
+            var_name,
+            0,
+        )
+        || crate::rules::calculus::is_public_algorithmic_backend_symbolic_indefinite_square_fallback_shape(
+            ctx,
+            args[0],
+            var_name,
+            0,
+        )
         || integrate_target_is_repeated_trig_by_parts_kernel(ctx, args[0], var_name)
         || integrate_target_is_repeated_exp_by_parts_kernel(ctx, args[0], var_name)
         || (crate::rule::steps_enabled()
@@ -1382,6 +1394,45 @@ mod tests {
             "3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1)))",
             "3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1)))",
         ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                integrate_call_should_preserve_raw_target_for_direct_integration(
+                    &ctx,
+                    "integrate",
+                    &[target, variable],
+                ),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_integrate_target_for_algorithmic_positive_quadratic_backend() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "(m*(s*x+b)+c)/((s*x+b)^2+a)",
+            "(m*s*x+b*m+c)/(s^2*x^2+2*b*s*x+b^2+a)",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                integrate_call_should_preserve_raw_target_for_direct_integration(
+                    &ctx,
+                    "integrate",
+                    &[target, variable],
+                ),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_integrate_target_for_algorithmic_indefinite_square_backend() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in ["1/(x^2-a^2)", "(m*(s*x+b)+c)/((s*x+b)^2-a^2)"] {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
                 integrate_call_should_preserve_raw_target_for_direct_integration(

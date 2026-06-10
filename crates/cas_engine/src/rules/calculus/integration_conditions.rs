@@ -1,6 +1,6 @@
 use super::domain_checks::collect_atanh_open_interval_conditions;
 use super::reciprocal_trig_log_domain::collect_reciprocal_trig_log_denominator_conditions;
-use cas_ast::{Context, ExprId};
+use cas_ast::{ConditionPredicate, Context, ExprId};
 
 pub(crate) fn integrate_required_nonzero_conditions(
     ctx: &mut Context,
@@ -25,6 +25,7 @@ pub(crate) fn integrate_required_positive_conditions(
 pub(super) struct IntegrationRequiredConditions {
     nonzero: Vec<ExprId>,
     positive: Vec<ExprId>,
+    extra: Vec<crate::ImplicitCondition>,
 }
 
 impl IntegrationRequiredConditions {
@@ -32,6 +33,7 @@ impl IntegrationRequiredConditions {
         Self {
             nonzero: integrate_required_nonzero_conditions(ctx, target, var_name),
             positive: integrate_required_positive_conditions(ctx, target, var_name),
+            extra: Vec::new(),
         }
     }
 
@@ -42,6 +44,83 @@ impl IntegrationRequiredConditions {
     ) {
         self.include_reciprocal_trig_log_denominator_conditions(ctx, result);
         self.include_atanh_open_interval_conditions_if_source_positive_absent(ctx, result);
+    }
+
+    pub(super) fn include_backend_conditions(
+        &mut self,
+        ctx: &mut Context,
+        conditions: Vec<ConditionPredicate>,
+    ) {
+        for condition in conditions {
+            match condition {
+                ConditionPredicate::NonZero(expr) => self.include_nonzero(ctx, expr),
+                ConditionPredicate::Positive(expr) => self.include_positive(ctx, expr),
+                ConditionPredicate::NonNegative(expr) => {
+                    self.extra.push(crate::ImplicitCondition::NonNegative(expr))
+                }
+                ConditionPredicate::LowerBound { expr, lower } => self
+                    .extra
+                    .push(crate::ImplicitCondition::LowerBound(expr, lower)),
+                ConditionPredicate::Defined(_)
+                | ConditionPredicate::InvTrigPrincipalRange { .. }
+                | ConditionPredicate::EqZero(_)
+                | ConditionPredicate::EqOne(_) => {}
+            }
+        }
+    }
+
+    pub(super) fn suppress_backend_positive_quadratic_source_condition(
+        &mut self,
+        ctx: &mut Context,
+        target: ExprId,
+        var_name: &str,
+        backend_conditions: &[ConditionPredicate],
+    ) {
+        if !backend_conditions
+            .iter()
+            .any(|condition| matches!(condition, ConditionPredicate::Positive(_)))
+        {
+            return;
+        }
+        if !super::integration::is_public_algorithmic_backend_symbolic_positive_quadratic_fallback_shape(
+            ctx, target, var_name, 0,
+        ) {
+            return;
+        }
+        let Some(denominator) = target_denominator(ctx, target) else {
+            return;
+        };
+
+        let mut retained = Vec::with_capacity(self.positive.len());
+        for condition in self.positive.drain(..) {
+            if cas_math::expr_domain::exprs_equivalent(ctx, condition, denominator) {
+                continue;
+            }
+            retained.push(condition);
+        }
+        self.positive = retained;
+    }
+
+    fn include_nonzero(&mut self, ctx: &mut Context, expr: ExprId) {
+        if self
+            .nonzero
+            .iter()
+            .any(|existing| cas_math::expr_domain::exprs_equivalent(ctx, *existing, expr))
+        {
+            return;
+        }
+        self.nonzero.push(expr);
+    }
+
+    fn include_positive(&mut self, ctx: &mut Context, expr: ExprId) {
+        if self
+            .positive
+            .iter()
+            .any(|existing| cas_math::expr_domain::exprs_equivalent(ctx, *existing, expr))
+        {
+            return;
+        }
+        self.positive.push(expr);
     }
 
     fn include_reciprocal_trig_log_denominator_conditions(
@@ -86,6 +165,15 @@ impl IntegrationRequiredConditions {
                     .into_iter()
                     .map(crate::ImplicitCondition::Positive),
             )
+            .chain(self.extra)
+    }
+}
+
+fn target_denominator(ctx: &Context, target: ExprId) -> Option<ExprId> {
+    match ctx.get(target) {
+        cas_ast::Expr::Div(_, denominator) => Some(*denominator),
+        cas_ast::Expr::Neg(inner) => target_denominator(ctx, *inner),
+        _ => None,
     }
 }
 

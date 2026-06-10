@@ -23,11 +23,39 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 141)
+        self.assertEqual(len(cases), 148)
         names = {case.name for case in cases}
         self.assertIn("reciprocal_affine_log_abs_domain", names)
         self.assertIn("reciprocal_negative_affine_log_abs_domain", names)
         self.assertIn("reciprocal_negative_affine_derivative_log_abs_domain", names)
+        self.assertIn(
+            "algorithmic_backend_rational_affine_quotient_numeric_slope",
+            names,
+        )
+        self.assertIn(
+            "algorithmic_backend_rational_affine_quotient_symbolic_slope",
+            names,
+        )
+        self.assertIn(
+            "algorithmic_backend_rational_affine_quotient_external_scale_zero_intercept",
+            names,
+        )
+        self.assertIn(
+            "algorithmic_backend_hermite_symbolic_positive_radius_mixed_numerator",
+            names,
+        )
+        self.assertIn(
+            "algorithmic_backend_hermite_symbolic_affine_positive_radius_mixed_numerator",
+            names,
+        )
+        self.assertIn(
+            "algorithmic_backend_hermite_symbolic_indefinite_square_denominator",
+            names,
+        )
+        self.assertIn(
+            "algorithmic_backend_hermite_symbolic_affine_indefinite_square_mixed_numerator",
+            names,
+        )
         self.assertIn("log_derivative_positive_quadratic_substitution", names)
         self.assertIn(
             "log_derivative_positive_quadratic_negative_orientation_substitution",
@@ -390,7 +418,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 14, "supported": 125, "undefined": 2},
+            {"residual": 14, "supported": 132, "undefined": 2},
         )
         self.assertEqual(
             sum(
@@ -410,10 +438,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "undefined_not_verified": 2,
                 "verified_by_diff": 30,
                 "verified_by_diff_and_direct_diff_integrate": 88,
-                "verified_by_direct_diff_integrate": 7,
+                "verified_by_direct_diff_integrate": 14,
             },
         )
-        self.assertEqual(SMOKE.count_verified_supported_cases(cases), 125)
+        self.assertEqual(SMOKE.count_verified_supported_cases(cases), 132)
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
             {
@@ -479,7 +507,9 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         supported_step_unchecked = {
             case.name
             for case in cases
-            if case.outcome == "supported" and not case.expected_step_substrings
+            if case.outcome == "supported"
+            and not case.expected_step_substrings
+            and not SMOKE.is_algorithmic_backend_boundary_case(case)
         }
         self.assertEqual(
             step_checked,
@@ -632,6 +662,12 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_by(cases, "domain_regime"),
             {
                 "affine_shifted_sqrt_chain_nonzero_positive": 1,
+                "backend_verified_component_local_symbolic_poles_and_slope_required": 1,
+                "backend_verified_denominator_and_slope_nonzero_required": 2,
+                "backend_verified_denominator_nonzero_required": 1,
+                "backend_verified_component_local_symbolic_poles_required": 1,
+                "backend_verified_positive_radius_and_slope_nonzero_required": 1,
+                "backend_verified_positive_radius_required": 1,
                 "empty_real_domain": 1,
                 "explicit_denominator_source_condition": 1,
                 "explicit_hyperbolic_tangent_presimplified_condition_dedupe": 1,
@@ -735,11 +771,13 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block7_trig_hyperbolic_integration": 67,
                 "block8_radical_inverse_families": 17,
                 "block9_residuals_and_non_goals": 16,
+                "block12_hybrid_algorithmic_backend": 7,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
+                "algorithmic_backend_boundary_verified": 7,
                 "didactic_trace_and_verified_antiderivative": 33,
                 "domain_conditions_and_verified_antiderivative": 92,
                 "explicit_undefined_domain_policy": 2,
@@ -1227,10 +1265,68 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self,
     ) -> None:
         cases = SMOKE.build_cases()
+        cases_by_name = {case.name: case for case in cases}
+
+        backend_case = cases_by_name[
+            "algorithmic_backend_rational_affine_quotient_numeric_slope"
+        ]
+        self.assertEqual(
+            backend_case.expected_direct_diff_integrate_result,
+            "(c + 3·x) / (b + 2·x)",
+        )
+        self.assertEqual(
+            backend_case.expected_direct_diff_integrate_required_display,
+            ("b + 2·x ≠ 0",),
+        )
+        symbolic_backend_case = cases_by_name[
+            "algorithmic_backend_rational_affine_quotient_symbolic_slope"
+        ]
+        self.assertEqual(
+            symbolic_backend_case.expected_direct_diff_integrate_result,
+            "(c + 3·x) / (2·a·x + b)",
+        )
+        self.assertEqual(
+            symbolic_backend_case.expected_direct_diff_integrate_required_display,
+            ("2·a·x + b ≠ 0", "a ≠ 0"),
+        )
+        external_scale_backend_case = cases_by_name[
+            "algorithmic_backend_rational_affine_quotient_external_scale_zero_intercept"
+        ]
+        self.assertEqual(
+            external_scale_backend_case.expected_direct_diff_integrate_result,
+            "a·x / (c·x + d)",
+        )
+        self.assertEqual(
+            external_scale_backend_case.expected_direct_diff_integrate_required_display,
+            ("c ≠ 0", "c·x + d ≠ 0"),
+        )
+        hermite_backend_case = cases_by_name[
+            "algorithmic_backend_hermite_symbolic_positive_radius_mixed_numerator"
+        ]
+        self.assertEqual(
+            hermite_backend_case.expected_direct_diff_integrate_result,
+            "(x + 1) / (x^2 + a)",
+        )
+        self.assertEqual(
+            hermite_backend_case.expected_direct_diff_integrate_required_display,
+            ("a > 0",),
+        )
+        affine_hermite_backend_case = cases_by_name[
+            "algorithmic_backend_hermite_symbolic_affine_positive_radius_mixed_numerator"
+        ]
+        self.assertEqual(
+            affine_hermite_backend_case.expected_direct_diff_integrate_result,
+            "(m·(s·x + b) + c) / ((s·x + b)^2 + a)",
+        )
+        self.assertEqual(
+            affine_hermite_backend_case.expected_direct_diff_integrate_required_display,
+            ("a > 0", "s ≠ 0"),
+        )
 
         self.assertEqual(
             SMOKE.count_direct_diff_integrate_calculus_maturity_blocks(cases),
             {
+                "block12_hybrid_algorithmic_backend": 7,
                 "block4_base_integration": 8,
                 "block5_generalized_substitution": 11,
                 "block6_rational_integration": 22,
@@ -1241,6 +1337,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_direct_diff_integrate_calculus_block_gates(cases),
             {
+                "algorithmic_backend_boundary_verified": 7,
                 "didactic_trace_and_verified_antiderivative": 31,
                 "domain_conditions_and_verified_antiderivative": 64,
             },
@@ -1271,7 +1368,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block7_trig_reciprocal_log_table": 5,
             },
         )
-        self.assertEqual(len(SMOKE.direct_diff_integrate_exact_cases(cases)), 90)
+        self.assertEqual(len(SMOKE.direct_diff_integrate_exact_cases(cases)), 97)
         self.assertEqual(len(SMOKE.direct_diff_integrate_equivalence_cases(cases)), 5)
         self.assertEqual(
             len(SMOKE.derivative_verified_without_direct_diff_integrate_cases(cases)),

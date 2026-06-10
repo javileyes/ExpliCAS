@@ -246,6 +246,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "calculus_limit_command_matrix_smoke",
                 "calculus_integrate_compact_contract",
                 "calculus_integrate_backend_observability",
+                "calculus_integrate_backend_mode_boundary",
                 "calculus_integrate_command_matrix_smoke",
                 "calculus_residual_matrix_smoke",
             ],
@@ -258,6 +259,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("calculus_limit_command_matrix_smoke", fast_embedded_names)
         self.assertIn("calculus_integrate_compact_contract", fast_embedded_names)
         self.assertIn("calculus_integrate_backend_observability", fast_embedded_names)
+        self.assertIn("calculus_integrate_backend_mode_boundary", fast_embedded_names)
         self.assertIn("calculus_integrate_command_matrix_smoke", fast_embedded_names)
         self.assertIn("calculus_residual_matrix_smoke", fast_embedded_names)
         self.assertNotIn("calculus_limit_contract", fast_names)
@@ -288,6 +290,8 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("calculus_limit_command_matrix_smoke", full_names)
         self.assertIn("calculus_integrate_backend_observability", guardrail_names)
         self.assertIn("calculus_integrate_backend_observability", full_names)
+        self.assertIn("calculus_integrate_backend_mode_boundary", guardrail_names)
+        self.assertIn("calculus_integrate_backend_mode_boundary", full_names)
         self.assertIn("calculus_integrate_command_matrix_smoke", guardrail_names)
         self.assertIn("calculus_integrate_command_matrix_smoke", full_names)
         self.assertIn("calculus_residual_matrix_smoke", guardrail_names)
@@ -332,6 +336,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         )
         self.assertEqual(
             MODULE.SUITES["calculus_integrate_backend_observability"].category,
+            "observability",
+        )
+        self.assertEqual(
+            MODULE.SUITES["calculus_integrate_backend_mode_boundary"].category,
             "observability",
         )
         self.assertEqual(
@@ -398,6 +406,18 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn(
             "backend_observability_reports_boundary_metrics",
             integrate_backend_command,
+        )
+        integrate_backend_mode_command = MODULE.SUITES[
+            "calculus_integrate_backend_mode_boundary"
+        ].command
+        self.assertEqual(
+            MODULE.SUITES["calculus_integrate_backend_mode_boundary"].parser,
+            "algorithmic_backend_mode_boundary",
+        )
+        self.assertIn("cas_engine", integrate_backend_mode_command)
+        self.assertIn(
+            "test_integrate_algorithmic_backend_mode_boundary",
+            integrate_backend_mode_command,
         )
         integrate_exhaustive_command = MODULE.SUITES[
             "calculus_integrate_exhaustive_contract"
@@ -1034,7 +1054,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         metrics = MODULE.parse_algorithmic_backend_observability(
             """
 running 1 test
-algorithmic_backend_observability: {"assumption_exprs": 0, "attempts": 16, "constant_policy_counts": {"arbitrary_constant_omitted": 13, "unspecified": 3}, "domain_policy_by_method": {"hermite/unconditional_real": 4, "heurisch_probe/real_with_required_conditions": 1, "rational/real_with_required_conditions": 5, "table_reused/unconditional_real": 3, "unsupported/unspecified": 3}, "domain_policy_counts": {"real_with_required_conditions": 6, "unconditional_real": 7, "unspecified": 3}, "failure_class_by_method": {"rational/budget_exceeded": 1, "table_reused/residual_affine_in_variable": 1, "table_reused/residual_function_of_variable": 1, "unsupported/budget_exceeded": 1, "unsupported/disabled_by_mode": 1, "unsupported/unsupported_method": 1}, "failure_class_counts": {"budget_exceeded": 2, "disabled_by_mode": 1, "residual_affine_in_variable": 1, "residual_function_of_variable": 1, "unsupported_method": 1}, "fallback_assumption_exprs": 0, "fallback_constant_policy_counts": {"arbitrary_constant_omitted": 1}, "fallback_domain_policy_by_method": {"rational/real_with_required_conditions": 1}, "fallback_domain_policy_counts": {"real_with_required_conditions": 1}, "fallback_eligible": 1, "fallback_max_verification_normalization_passes": 0, "fallback_status_by_method": {"hermite/blocked_by_mode": 4, "heurisch_probe/blocked_by_mode": 1, "rational/blocked_by_candidate_policy": 1, "rational/blocked_by_mode": 3, "rational/eligible": 1, "table_reused/blocked_by_candidate_policy": 2, "table_reused/blocked_by_mode": 1, "unsupported/blocked_by_candidate_policy": 3}, "fallback_status_counts": {"blocked_by_candidate_policy": 6, "blocked_by_mode": 9, "eligible": 1}, "fallback_trace_level_counts": {"algorithmic_summary": 1}, "fallback_verification_evidence_by_method": {"rational/direct_differentiation": 1}, "fallback_verification_evidence_counts": {"direct_differentiation": 1}, "fallback_verification_normalization_pass_count_by_method": {"rational/0": 1}, "fallback_verification_normalization_pass_count_counts": {"0": 1}, "fallback_verification_normalization_reason_by_method": {}, "fallback_verification_normalization_reason_counts": {}, "max_verification_normalization_passes": 2, "method_counts": {"hermite": 4, "heurisch_probe": 1, "rational": 5, "table_reused": 3, "unsupported": 3}, "method_probe_attempt_counts": {"hermite": 6, "heurisch_probe": 2, "rational": 11}, "method_probe_budget_exhausted": 1, "method_probe_candidate_counts": {"hermite": 4, "heurisch_probe": 1, "rational": 5}, "method_probe_no_match_class_by_method": {"hermite/policy": 1, "hermite/shape": 1, "heurisch_probe/shape": 1, "rational/policy": 5, "rational/shape": 1}, "method_probe_no_match_class_counts": {"policy": 6, "shape": 3}, "method_probe_no_match_counts": {"hermite": 2, "heurisch_probe": 1, "rational": 6}, "method_probe_no_match_final_method_by_attempt": {"hermite/heurisch_probe": 1, "hermite/unsupported": 1, "heurisch_probe/unsupported": 1, "rational/hermite": 4, "rational/heurisch_probe": 1, "rational/unsupported": 1}, "method_probe_no_match_final_method_counts": {"hermite": 4, "heurisch_probe": 2, "unsupported": 3}, "method_probe_no_match_reason_counts": {"hermite/denominator_policy_mismatch": 1, "hermite/shape_mismatch": 1, "heurisch_probe/shape_mismatch": 1, "rational/numerator_policy_mismatch": 5, "rational/shape_mismatch": 1}, "method_probe_terminal_candidate_count": 1, "method_probe_terminal_candidate_signature_counts": {"synthetic_terminal_probe": 1}, "method_probe_terminal_no_match_class_by_method": {"hermite/shape": 1, "heurisch_probe/shape": 1, "rational/policy": 1}, "method_probe_terminal_no_match_class_counts": {"policy": 1, "shape": 2}, "method_probe_terminal_no_match_reason_counts": {"hermite/shape_mismatch": 1, "heurisch_probe/shape_mismatch": 1, "rational/numerator_policy_mismatch": 1}, "method_probe_usage_by_method": {"hermite": 8, "heurisch_probe": 3, "rational": 5, "unsupported": 3}, "method_probes_used_total": 19, "mode_counts": {"diagnostic_only": 14, "disabled": 1, "residual_fallback": 1}, "public_accepted": 10, "public_assumption_exprs": 0, "public_constant_policy_counts": {"arbitrary_constant_omitted": 10}, "public_domain_policy_by_method": {"hermite/unconditional_real": 4, "heurisch_probe/real_with_required_conditions": 1, "rational/real_with_required_conditions": 4, "table_reused/unconditional_real": 1}, "public_domain_policy_counts": {"real_with_required_conditions": 5, "unconditional_real": 5}, "public_max_verification_normalization_passes": 2, "public_trace_level_counts": {"algorithmic_summary": 10}, "public_verification_evidence_by_method": {"hermite/normalized_differentiation": 4, "heurisch_probe/direct_differentiation": 1, "rational/direct_differentiation": 2, "rational/normalized_differentiation": 2, "table_reused/direct_differentiation": 1}, "public_verification_evidence_counts": {"direct_differentiation": 4, "normalized_differentiation": 6}, "public_verification_normalization_pass_count_by_method": {"hermite/1": 3, "hermite/2": 1, "heurisch_probe/0": 1, "rational/0": 2, "rational/1": 1, "rational/2": 1, "table_reused/0": 1}, "public_verification_normalization_pass_count_counts": {"0": 4, "1": 4, "2": 2}, "public_verification_normalization_reason_by_method": {"hermite/numeric_scaled_quotient": 1, "hermite/power_one_elision": 2, "hermite/quotient_numeric_factor_cancellation": 1, "rational/numeric_scaled_quotient": 1, "rational/symbolic_scaled_quotient": 1}, "public_verification_normalization_reason_counts": {"numeric_scaled_quotient": 2, "power_one_elision": 2, "quotient_numeric_factor_cancellation": 1, "symbolic_scaled_quotient": 1}, "publication_status_by_method": {"hermite/accepted": 4, "heurisch_probe/accepted": 1, "rational/accepted": 4, "rational/rejected_residual_reason": 1, "table_reused/accepted": 1, "table_reused/rejected_residual_reason": 2, "unsupported/rejected_no_antiderivative": 3}, "publication_status_counts": {"accepted": 10, "rejected_no_antiderivative": 3, "rejected_residual_reason": 3}, "required_condition_counts": {"nonzero": 6}, "residual_reason_by_method": {"rational/budget_exceeded": 1, "table_reused/verification_failed": 2, "unsupported/budget_exceeded": 1, "unsupported/disabled_by_mode": 1, "unsupported/unsupported_method": 1}, "residual_reason_counts": {"budget_exceeded": 2, "disabled_by_mode": 1, "unsupported_method": 1, "verification_failed": 2}, "trace_level_counts": {"algorithmic_summary": 13, "diagnostic_only": 3}, "unverified_fallback_acceptances": 0, "unverified_public_acceptances": 0, "verification_blocker_by_method": {"rational/budget_exceeded": 1, "table_reused/derivative_mismatch": 2}, "verification_blocker_counts": {"budget_exceeded": 1, "derivative_mismatch": 2}, "verification_budget_exceeded": 1, "verification_check_usage_by_method": {"hermite": 4, "heurisch_probe": 1, "rational": 4}, "verification_checks_used_total": 9, "verification_elapsed_ms": 2.125, "verification_evidence_by_method": {"hermite/normalized_differentiation": 4, "heurisch_probe/direct_differentiation": 1, "rational/direct_differentiation": 2, "rational/none": 1, "rational/normalized_differentiation": 2, "table_reused/direct_differentiation": 1, "table_reused/failed_differentiation": 2, "unsupported/none": 3}, "verification_evidence_counts": {"direct_differentiation": 4, "failed_differentiation": 2, "none": 4, "normalized_differentiation": 6}, "verification_normalization_pass_count_by_method": {"hermite/1": 3, "hermite/2": 1, "heurisch_probe/0": 1, "rational/0": 3, "rational/1": 1, "rational/2": 1, "table_reused/0": 3, "unsupported/0": 3}, "verification_normalization_pass_count_counts": {"0": 10, "1": 4, "2": 2}, "verification_normalization_reason_by_method": {"hermite/numeric_scaled_quotient": 1, "hermite/power_one_elision": 2, "hermite/quotient_numeric_factor_cancellation": 1, "rational/numeric_scaled_quotient": 1, "rational/symbolic_scaled_quotient": 1}, "verification_normalization_reason_counts": {"numeric_scaled_quotient": 2, "power_one_elision": 2, "quotient_numeric_factor_cancellation": 1, "symbolic_scaled_quotient": 1}, "verification_residual_by_method": {"table_reused/derivative_minus_integrand": 2}, "verification_residual_counts": {"derivative_minus_integrand": 2}, "verification_residual_kind_by_method": {"table_reused/depends_on_variable": 2}, "verification_residual_kind_counts": {"depends_on_variable": 2}, "verification_residual_signature_by_method": {"table_reused/affine_in_variable": 1, "table_reused/function_of_variable": 1}, "verification_residual_signature_counts": {"affine_in_variable": 1, "function_of_variable": 1}, "verification_status_by_method": {"hermite/verified": 4, "heurisch_probe/verified_under_conditions": 1, "rational/inconclusive": 1, "rational/verified_under_conditions": 4, "table_reused/failed": 2, "table_reused/verified": 1, "unsupported/inconclusive": 1, "unsupported/not_attempted": 2}, "verification_status_counts": {"failed": 2, "inconclusive": 2, "not_attempted": 2, "verified": 5, "verified_under_conditions": 5}}
+algorithmic_backend_observability: {"assumption_exprs": 0, "attempts": 16, "constant_policy_counts": {"arbitrary_constant_omitted": 13, "unspecified": 3}, "domain_policy_by_method": {"hermite/unconditional_real": 4, "heurisch_probe/real_with_required_conditions": 1, "rational/real_with_required_conditions": 5, "table_reused/unconditional_real": 3, "unsupported/unspecified": 3}, "domain_policy_counts": {"real_with_required_conditions": 6, "unconditional_real": 7, "unspecified": 3}, "failure_class_by_method": {"rational/budget_exceeded": 1, "table_reused/residual_affine_in_variable": 1, "table_reused/residual_function_of_variable": 1, "unsupported/budget_exceeded": 1, "unsupported/disabled_by_mode": 1, "unsupported/unsupported_method": 1}, "failure_class_counts": {"budget_exceeded": 2, "disabled_by_mode": 1, "residual_affine_in_variable": 1, "residual_function_of_variable": 1, "unsupported_method": 1}, "fallback_assumption_exprs": 0, "fallback_constant_policy_counts": {"arbitrary_constant_omitted": 1}, "fallback_domain_policy_by_method": {"rational/real_with_required_conditions": 1}, "fallback_domain_policy_counts": {"real_with_required_conditions": 1}, "fallback_eligible": 1, "fallback_max_verification_normalization_passes": 0, "fallback_status_by_method": {"hermite/blocked_by_mode": 4, "heurisch_probe/blocked_by_mode": 1, "rational/blocked_by_candidate_policy": 1, "rational/blocked_by_mode": 3, "rational/eligible": 1, "table_reused/blocked_by_candidate_policy": 2, "table_reused/blocked_by_mode": 1, "unsupported/blocked_by_candidate_policy": 3}, "fallback_status_counts": {"blocked_by_candidate_policy": 6, "blocked_by_mode": 9, "eligible": 1}, "fallback_trace_level_counts": {"algorithmic_summary": 1}, "fallback_verification_evidence_by_method": {"rational/direct_differentiation": 1}, "fallback_verification_evidence_counts": {"direct_differentiation": 1}, "fallback_verification_normalization_pass_count_by_method": {"rational/0": 1}, "fallback_verification_normalization_pass_count_counts": {"0": 1}, "fallback_verification_normalization_reason_by_method": {}, "fallback_verification_normalization_reason_counts": {}, "max_verification_normalization_passes": 2, "method_counts": {"hermite": 4, "heurisch_probe": 1, "rational": 5, "table_reused": 3, "unsupported": 3}, "method_probe_attempt_counts": {"hermite": 6, "heurisch_probe": 2, "rational": 11}, "method_probe_budget_exhausted": 1, "method_probe_budget_limit_total": 42, "method_probe_candidate_counts": {"hermite": 4, "heurisch_probe": 1, "rational": 5}, "method_probe_no_match_class_by_method": {"hermite/policy": 1, "hermite/shape": 1, "heurisch_probe/shape": 1, "rational/policy": 5, "rational/shape": 1}, "method_probe_no_match_class_counts": {"policy": 6, "shape": 3}, "method_probe_no_match_counts": {"hermite": 2, "heurisch_probe": 1, "rational": 6}, "method_probe_no_match_final_method_by_attempt": {"hermite/heurisch_probe": 1, "hermite/unsupported": 1, "heurisch_probe/unsupported": 1, "rational/hermite": 4, "rational/heurisch_probe": 1, "rational/unsupported": 1}, "method_probe_no_match_final_method_counts": {"hermite": 4, "heurisch_probe": 2, "unsupported": 3}, "method_probe_no_match_reason_counts": {"hermite/denominator_policy_mismatch": 1, "hermite/shape_mismatch": 1, "heurisch_probe/shape_mismatch": 1, "rational/numerator_policy_mismatch": 5, "rational/shape_mismatch": 1}, "method_probe_terminal_candidate_count": 1, "method_probe_terminal_candidate_signature_counts": {"synthetic_terminal_probe": 1}, "method_probe_terminal_no_match_class_by_method": {"hermite/shape": 1, "heurisch_probe/shape": 1, "rational/policy": 1}, "method_probe_terminal_no_match_class_counts": {"policy": 1, "shape": 2}, "method_probe_terminal_no_match_reason_counts": {"hermite/shape_mismatch": 1, "heurisch_probe/shape_mismatch": 1, "rational/numerator_policy_mismatch": 1}, "method_probe_usage_by_method": {"hermite": 8, "heurisch_probe": 3, "rational": 5, "unsupported": 3}, "method_probes_used_total": 19, "mode_counts": {"diagnostic_only": 14, "disabled": 1, "residual_fallback": 1}, "public_accepted": 10, "public_assumption_exprs": 0, "public_constant_policy_counts": {"arbitrary_constant_omitted": 10}, "public_domain_policy_by_method": {"hermite/unconditional_real": 4, "heurisch_probe/real_with_required_conditions": 1, "rational/real_with_required_conditions": 4, "table_reused/unconditional_real": 1}, "public_domain_policy_counts": {"real_with_required_conditions": 5, "unconditional_real": 5}, "public_max_verification_normalization_passes": 2, "public_trace_level_counts": {"algorithmic_summary": 10}, "public_verification_evidence_by_method": {"hermite/normalized_differentiation": 4, "heurisch_probe/direct_differentiation": 1, "rational/direct_differentiation": 2, "rational/normalized_differentiation": 2, "table_reused/direct_differentiation": 1}, "public_verification_evidence_counts": {"direct_differentiation": 4, "normalized_differentiation": 6}, "public_verification_normalization_pass_count_by_method": {"hermite/1": 3, "hermite/2": 1, "heurisch_probe/0": 1, "rational/0": 2, "rational/1": 1, "rational/2": 1, "table_reused/0": 1}, "public_verification_normalization_pass_count_counts": {"0": 4, "1": 4, "2": 2}, "public_verification_normalization_reason_by_method": {"hermite/numeric_scaled_quotient": 1, "hermite/power_one_elision": 2, "hermite/quotient_numeric_factor_cancellation": 1, "rational/numeric_scaled_quotient": 1, "rational/symbolic_scaled_quotient": 1}, "public_verification_normalization_reason_counts": {"numeric_scaled_quotient": 2, "power_one_elision": 2, "quotient_numeric_factor_cancellation": 1, "symbolic_scaled_quotient": 1}, "publication_status_by_method": {"hermite/accepted": 4, "heurisch_probe/accepted": 1, "rational/accepted": 4, "rational/rejected_residual_reason": 1, "table_reused/accepted": 1, "table_reused/rejected_residual_reason": 2, "unsupported/rejected_no_antiderivative": 3}, "publication_status_counts": {"accepted": 10, "rejected_no_antiderivative": 3, "rejected_residual_reason": 3}, "required_condition_counts": {"nonzero": 6}, "residual_reason_by_method": {"rational/budget_exceeded": 1, "table_reused/verification_failed": 2, "unsupported/budget_exceeded": 1, "unsupported/disabled_by_mode": 1, "unsupported/unsupported_method": 1}, "residual_reason_counts": {"budget_exceeded": 2, "disabled_by_mode": 1, "unsupported_method": 1, "verification_failed": 2}, "trace_level_counts": {"algorithmic_summary": 13, "diagnostic_only": 3}, "unverified_fallback_acceptances": 0, "unverified_public_acceptances": 0, "verification_blocker_by_method": {"rational/budget_exceeded": 1, "table_reused/derivative_mismatch": 2}, "verification_blocker_counts": {"budget_exceeded": 1, "derivative_mismatch": 2}, "verification_boundary_budget_exceeded": 1, "verification_budget_exceeded": 0, "verification_check_budget_limit_total": 15, "verification_check_usage_by_evidence": {"direct_differentiation": 3, "normalized_differentiation": 6}, "verification_check_usage_by_method": {"hermite": 4, "heurisch_probe": 1, "rational": 4}, "verification_check_usage_by_method_and_evidence": {"hermite/normalized_differentiation": 4, "heurisch_probe/direct_differentiation": 1, "rational/direct_differentiation": 2, "rational/normalized_differentiation": 2}, "verification_check_usage_by_method_and_publication_status": {"hermite/accepted": 4, "heurisch_probe/accepted": 1, "rational/accepted": 4}, "verification_check_usage_by_publication_status": {"accepted": 9}, "verification_checks_used_total": 9, "verification_elapsed_ms": 2.125, "verification_evidence_by_method": {"hermite/normalized_differentiation": 4, "heurisch_probe/direct_differentiation": 1, "rational/direct_differentiation": 2, "rational/none": 1, "rational/normalized_differentiation": 2, "table_reused/direct_differentiation": 1, "table_reused/failed_differentiation": 2, "unsupported/none": 3}, "verification_evidence_counts": {"direct_differentiation": 4, "failed_differentiation": 2, "none": 4, "normalized_differentiation": 6}, "verification_normalization_pass_count_by_method": {"hermite/1": 3, "hermite/2": 1, "heurisch_probe/0": 1, "rational/0": 3, "rational/1": 1, "rational/2": 1, "table_reused/0": 3, "unsupported/0": 3}, "verification_normalization_pass_count_counts": {"0": 10, "1": 4, "2": 2}, "verification_normalization_reason_by_method": {"hermite/numeric_scaled_quotient": 1, "hermite/power_one_elision": 2, "hermite/quotient_numeric_factor_cancellation": 1, "rational/numeric_scaled_quotient": 1, "rational/symbolic_scaled_quotient": 1}, "verification_normalization_reason_counts": {"numeric_scaled_quotient": 2, "power_one_elision": 2, "quotient_numeric_factor_cancellation": 1, "symbolic_scaled_quotient": 1}, "verification_normalization_reason_by_label": {"hermite_constant_radius/numeric_scaled_quotient": 1, "hermite_power_one_pair/power_one_elision": 2, "hermite_radius_factor/quotient_numeric_factor_cancellation": 1, "rational_scaled_numeric/numeric_scaled_quotient": 1, "rational_scaled_symbolic/symbolic_scaled_quotient": 1}, "verification_residual_by_method": {"table_reused/derivative_minus_integrand": 2}, "verification_residual_counts": {"derivative_minus_integrand": 2}, "verification_residual_kind_by_method": {"table_reused/depends_on_variable": 2}, "verification_residual_kind_counts": {"depends_on_variable": 2}, "verification_residual_signature_by_method": {"table_reused/affine_in_variable": 1, "table_reused/function_of_variable": 1}, "verification_residual_signature_counts": {"affine_in_variable": 1, "function_of_variable": 1}, "verification_status_by_method": {"hermite/verified": 4, "heurisch_probe/verified_under_conditions": 1, "rational/inconclusive": 1, "rational/verified_under_conditions": 4, "table_reused/failed": 2, "table_reused/verified": 1, "unsupported/inconclusive": 1, "unsupported/not_attempted": 2}, "verification_status_counts": {"failed": 2, "inconclusive": 2, "not_attempted": 2, "verified": 5, "verified_under_conditions": 5}}
 test result: ok. 1 passed
 """
         )
@@ -1052,9 +1072,32 @@ test result: ok. 1 passed
         self.assertEqual(metrics["backend_required_condition_count"], 6)
         self.assertEqual(metrics["backend_budget_exceeded_count"], 2)
         self.assertEqual(metrics["backend_method_probe_budget_exhausted_count"], 1)
-        self.assertEqual(metrics["backend_verification_budget_exceeded_count"], 1)
+        self.assertEqual(metrics["backend_verification_budget_exceeded_count"], 0)
+        self.assertEqual(
+            metrics["backend_verification_boundary_budget_exceeded_count"], 1
+        )
         self.assertEqual(metrics["backend_method_probes_used_total"], 19)
         self.assertEqual(metrics["backend_verification_checks_used_total"], 9)
+        self.assertEqual(metrics["backend_method_probe_budget_limit_total"], 42)
+        self.assertEqual(metrics["backend_method_probe_budget_remaining_total"], 23)
+        self.assertEqual(
+            metrics["backend_method_probe_budget_utilization_percent"], 45.2
+        )
+        self.assertEqual(metrics["backend_verification_check_budget_limit_total"], 15)
+        self.assertEqual(
+            metrics["backend_verification_check_budget_remaining_total"], 6
+        )
+        self.assertEqual(
+            metrics["backend_verification_check_budget_utilization_percent"], 60.0
+        )
+        self.assertEqual(
+            metrics["backend_verification_check_top_methods"],
+            [
+                {"method": "hermite", "checks": 4, "share_percent": 44.4},
+                {"method": "rational", "checks": 4, "share_percent": 44.4},
+                {"method": "heurisch_probe", "checks": 1, "share_percent": 11.1},
+            ],
+        )
         self.assertEqual(metrics["backend_verification_elapsed_ms"], 2.125)
         self.assertEqual(metrics["backend_verification_pressure_status"], "watch")
         self.assertEqual(
@@ -1066,8 +1109,36 @@ test result: ok. 1 passed
                 "attempts": 16,
                 "verification_checks_used_total": 9,
                 "checks_per_attempt": 0.562,
+                "verification_check_budget_limit_total": 15,
+                "verification_check_budget_remaining_total": 6,
+                "verification_check_budget_utilization_percent": 60.0,
                 "max_verification_normalization_passes": 2,
                 "verification_elapsed_ms": 2.125,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_verification_normalization_pressure_status"],
+            "watch",
+        )
+        self.assertEqual(
+            metrics["backend_verification_normalization_pressure"],
+            {
+                "status": "watch",
+                "primary_signal": "normalized_ratio",
+                "reason": "normalized_checks=6/9 (66.7%)",
+                "verification_checks_used_total": 9,
+                "normalized_checks": 6,
+                "normalized_ratio_percent": 66.7,
+                "normalized_usage_by_method": {"hermite": 4, "rational": 2},
+                "dominant_method": "hermite",
+                "dominant_method_checks": 4,
+                "dominant_method_share_percent": 66.7,
+                "dominant_reason": "numeric_scaled_quotient",
+                "dominant_reason_count": 2,
+                "dominant_reason_share_percent": 33.3,
+                "dominant_method_reason": "hermite/power_one_elision",
+                "dominant_method_reason_count": 2,
+                "dominant_method_reason_share_percent": 33.3,
             },
         )
         self.assertEqual(metrics["backend_assumption_exprs"], 0)
@@ -1162,6 +1233,16 @@ test result: ok. 1 passed
         self.assertEqual(
             metrics["backend_fallback_verification_normalization_reason_by_method"],
             {},
+        )
+        self.assertEqual(
+            metrics["backend_verification_normalization_reason_by_label"],
+            {
+                "hermite_constant_radius/numeric_scaled_quotient": 1,
+                "hermite_power_one_pair/power_one_elision": 2,
+                "hermite_radius_factor/quotient_numeric_factor_cancellation": 1,
+                "rational_scaled_numeric/numeric_scaled_quotient": 1,
+                "rational_scaled_symbolic/symbolic_scaled_quotient": 1,
+            },
         )
         self.assertEqual(metrics["backend_max_verification_normalization_passes"], 2)
         self.assertEqual(
@@ -1349,6 +1430,33 @@ test result: ok. 1 passed
         self.assertEqual(
             metrics["backend_verification_check_usage_by_method"],
             {"hermite": 4, "heurisch_probe": 1, "rational": 4},
+        )
+        self.assertEqual(
+            metrics["backend_verification_check_usage_by_evidence"],
+            {"direct_differentiation": 3, "normalized_differentiation": 6},
+        )
+        self.assertEqual(
+            metrics["backend_verification_check_usage_by_method_and_evidence"],
+            {
+                "hermite/normalized_differentiation": 4,
+                "heurisch_probe/direct_differentiation": 1,
+                "rational/direct_differentiation": 2,
+                "rational/normalized_differentiation": 2,
+            },
+        )
+        self.assertEqual(
+            metrics["backend_verification_check_usage_by_publication_status"],
+            {"accepted": 9},
+        )
+        self.assertEqual(
+            metrics[
+                "backend_verification_check_usage_by_method_and_publication_status"
+            ],
+            {
+                "hermite/accepted": 4,
+                "heurisch_probe/accepted": 1,
+                "rational/accepted": 4,
+            },
         )
         self.assertEqual(
             metrics["backend_verification_status_by_method"],
@@ -1653,6 +1761,93 @@ test result: ok. 1 passed
                 0,
             ),
             "fail",
+        )
+
+    def test_backend_verification_pressure_uses_budget_capacity(self):
+        pressure = MODULE.classify_backend_verification_pressure(
+            attempts=39,
+            verification_checks_used_total=33,
+            verification_elapsed_ms=0.049,
+            max_verification_normalization_passes=1,
+            verification_check_budget_limit_total=33,
+        )
+
+        self.assertEqual(pressure["status"], "risk")
+        self.assertEqual(pressure["primary_signal"], "budget_remaining")
+        self.assertEqual(pressure["reason"], "verification_budget_remaining=0/33")
+        self.assertEqual(pressure["verification_check_budget_limit_total"], 33)
+        self.assertEqual(pressure["verification_check_budget_remaining_total"], 0)
+        self.assertEqual(
+            pressure["verification_check_budget_utilization_percent"], 100.0
+        )
+
+    def test_backend_verification_pressure_reports_budget_exceeded(self):
+        pressure = MODULE.classify_backend_verification_pressure(
+            attempts=39,
+            verification_checks_used_total=32,
+            verification_elapsed_ms=0.049,
+            max_verification_normalization_passes=1,
+            verification_check_budget_limit_total=33,
+            verification_budget_exceeded_count=1,
+        )
+
+        self.assertEqual(pressure["status"], "watch")
+        self.assertEqual(pressure["primary_signal"], "budget_exceeded")
+        self.assertEqual(pressure["reason"], "verification_budget_exceeded=1")
+        self.assertEqual(pressure["verification_budget_exceeded_count"], 1)
+        self.assertEqual(pressure["verification_check_budget_limit_total"], 33)
+        self.assertEqual(pressure["verification_check_budget_remaining_total"], 1)
+        self.assertEqual(
+            pressure["verification_check_budget_utilization_percent"], 97.0
+        )
+
+    def test_backend_verification_pressure_suppresses_aggregate_budget_noise(self):
+        pressure = MODULE.classify_backend_verification_pressure(
+            attempts=39,
+            verification_checks_used_total=32,
+            verification_elapsed_ms=0.049,
+            max_verification_normalization_passes=1,
+            verification_check_budget_limit_total=33,
+        )
+
+        self.assertEqual(pressure["status"], "ok")
+        self.assertEqual(pressure["primary_signal"], "none")
+        self.assertEqual(
+            pressure["reason"], "within backend verification pressure thresholds"
+        )
+        self.assertEqual(pressure["verification_check_budget_limit_total"], 33)
+        self.assertEqual(pressure["verification_check_budget_remaining_total"], 1)
+        self.assertEqual(
+            pressure["verification_check_budget_utilization_percent"], 97.0
+        )
+
+    def test_parse_algorithmic_backend_mode_boundary_extracts_public_clamp(self):
+        metrics = MODULE.parse_algorithmic_backend_mode_boundary(
+            """
+running 2 tests
+algorithmic_backend_mode_boundary: {"direct_high_budget_method":"heurisch_probe","public_budget_clamped":1,"public_clamp_rejected":1}
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2184 filtered out; finished in 0.01s
+"""
+        )
+
+        self.assertEqual(metrics["passed"], 2)
+        self.assertEqual(metrics["failed"], 0)
+        self.assertEqual(metrics["total_cases"], 2)
+        self.assertEqual(metrics["filtered_out"], 2184)
+        self.assertEqual(
+            metrics["backend_direct_high_budget_method_counts"],
+            {"heurisch_probe": 1},
+        )
+        self.assertEqual(metrics["backend_public_budget_clamped_count"], 1)
+        self.assertEqual(metrics["backend_public_clamp_rejected_count"], 1)
+        self.assertEqual(
+            MODULE.suite_status(
+                "calculus_integrate_backend_mode_boundary",
+                metrics,
+                0,
+            ),
+            "pass",
         )
 
     def test_algorithmic_backend_observability_requires_residual_kind_counts(self):
@@ -2339,6 +2534,9 @@ test result: ok. 1 passed
                                                   'heurisch_probe': 3,
                                                   'rational': 5,
                                                   'unsupported': 3},
+         'backend_method_probe_budget_limit_total': 42,
+         'backend_method_probe_budget_remaining_total': 23,
+         'backend_method_probe_budget_utilization_percent': 45.2,
          'backend_method_probes_used_total': 19,
          'backend_mode_counts': {'diagnostic_only': 14, 'disabled': 1, 'residual_fallback': 1},
          'backend_public_accepted': 10,
@@ -2394,8 +2592,31 @@ test result: ok. 1 passed
          'backend_verification_blocker_by_method': {'rational/budget_exceeded': 1,
                                                     'table_reused/derivative_mismatch': 2},
          'backend_verification_blocker_counts': {'budget_exceeded': 1, 'derivative_mismatch': 2},
-         'backend_verification_budget_exceeded_count': 1,
+         'backend_verification_budget_exceeded_count': 0,
+         'backend_verification_boundary_budget_exceeded_count': 1,
+         'backend_verification_check_usage_by_evidence': {'direct_differentiation': 3,
+                                                          'normalized_differentiation': 6},
          'backend_verification_check_usage_by_method': {'hermite': 4, 'heurisch_probe': 1, 'rational': 4},
+         'backend_verification_check_usage_by_method_and_evidence': {'hermite/normalized_differentiation': 4,
+                                                                     'heurisch_probe/direct_differentiation': 1,
+                                                                     'rational/direct_differentiation': 2,
+                                                                     'rational/normalized_differentiation': 2},
+         'backend_verification_check_usage_by_publication_status': {'accepted': 9},
+         'backend_verification_check_usage_by_method_and_publication_status': {'hermite/accepted': 4,
+                                                                               'heurisch_probe/accepted': 1,
+                                                                               'rational/accepted': 4},
+         'backend_verification_check_top_methods': [{'checks': 4,
+                                                     'method': 'hermite',
+                                                     'share_percent': 44.4},
+                                                    {'checks': 4,
+                                                     'method': 'rational',
+                                                     'share_percent': 44.4},
+                                                    {'checks': 1,
+                                                     'method': 'heurisch_probe',
+                                                     'share_percent': 11.1}],
+         'backend_verification_check_budget_limit_total': 15,
+         'backend_verification_check_budget_remaining_total': 6,
+         'backend_verification_check_budget_utilization_percent': 60.0,
          'backend_verification_checks_used_total': 9,
          'backend_verification_elapsed_ms': 2.125,
          'backend_verification_pressure': {'attempts': 16,
@@ -2404,9 +2625,30 @@ test result: ok. 1 passed
                                            'primary_signal': 'normalization_passes',
                                            'reason': 'max_passes=2',
                                            'status': 'watch',
+                                           'verification_check_budget_limit_total': 15,
+                                           'verification_check_budget_remaining_total': 6,
+                                           'verification_check_budget_utilization_percent': 60.0,
                                            'verification_checks_used_total': 9,
                                            'verification_elapsed_ms': 2.125},
          'backend_verification_pressure_status': 'watch',
+         'backend_verification_normalization_pressure': {'dominant_method': 'hermite',
+                                                         'dominant_method_checks': 4,
+                                                         'dominant_method_share_percent': 66.7,
+                                                         'dominant_method_reason': 'hermite/power_one_elision',
+                                                         'dominant_method_reason_count': 2,
+                                                         'dominant_method_reason_share_percent': 33.3,
+                                                         'dominant_reason': 'numeric_scaled_quotient',
+                                                         'dominant_reason_count': 2,
+                                                         'dominant_reason_share_percent': 33.3,
+                                                         'normalized_checks': 6,
+                                                         'normalized_ratio_percent': 66.7,
+                                                         'normalized_usage_by_method': {'hermite': 4,
+                                                                                        'rational': 2},
+                                                         'primary_signal': 'normalized_ratio',
+                                                         'reason': 'normalized_checks=6/9 (66.7%)',
+                                                         'status': 'watch',
+                                                         'verification_checks_used_total': 9},
+         'backend_verification_normalization_pressure_status': 'watch',
          'backend_max_verification_normalization_passes': 2,
          'backend_public_max_verification_normalization_passes': 2,
          'backend_fallback_max_verification_normalization_passes': 0,
@@ -2431,6 +2673,11 @@ test result: ok. 1 passed
                                                               'power_one_elision': 2,
                                                               'quotient_numeric_factor_cancellation': 1,
                                                               'symbolic_scaled_quotient': 1},
+         'backend_verification_normalization_reason_by_label': {'hermite_constant_radius/numeric_scaled_quotient': 1,
+                                                                'hermite_power_one_pair/power_one_elision': 2,
+                                                                'hermite_radius_factor/quotient_numeric_factor_cancellation': 1,
+                                                                'rational_scaled_numeric/numeric_scaled_quotient': 1,
+                                                                'rational_scaled_symbolic/symbolic_scaled_quotient': 1},
          'backend_verification_normalization_pass_count_counts': {'0': 10, '1': 4, '2': 2},
          'backend_public_verification_normalization_pass_count_counts': {'0': 4, '1': 4, '2': 2},
          'backend_fallback_verification_normalization_pass_count_counts': {'0': 1},
@@ -2500,11 +2747,17 @@ test result: ok. 1 passed
         self.assertIn("backend_required_conditions=6", rendered)
         self.assertIn("backend_budget_exceeded=2", rendered)
         self.assertIn("backend_method_budget_exhausted=1", rendered)
-        self.assertIn("backend_verification_budget_exceeded=1", rendered)
+        self.assertIn("backend_verification_budget_exceeded=0", rendered)
+        self.assertIn(
+            "backend_verification_boundary_budget_exceeded=1", rendered
+        )
         self.assertIn("backend_method_probes_used=19", rendered)
+        self.assertIn("backend_method_budget_remaining=23", rendered)
         self.assertIn("backend_verification_checks_used=9", rendered)
+        self.assertIn("backend_verification_budget_remaining=6", rendered)
         self.assertIn("backend_verify=2.125ms", rendered)
         self.assertIn("backend_verification_pressure=watch", rendered)
+        self.assertIn("backend_normalization_pressure=watch", rendered)
         self.assertIn(
             "backend modes: diagnostic_only=14, disabled=1, residual_fallback=1",
             rendered,
@@ -2522,7 +2775,8 @@ test result: ok. 1 passed
             rendered,
         )
         self.assertIn(
-            "budget split: method_probe_exhausted=1, verification_exceeded=1",
+            "budget split: method_probe_exhausted=1, verification_exceeded=0, "
+            "verification_boundary_exceeded=1",
             rendered,
         )
         self.assertIn(
@@ -2530,7 +2784,15 @@ test result: ok. 1 passed
             rendered,
         )
         self.assertIn(
-            "backend verification pressure: status=watch primary=normalization_passes reason=max_passes=2 attempts=16 checks=9 checks_per_attempt=0.562 max_passes=2 elapsed_ms=2.125",
+            "budget capacity: method_probe_limit=42, method_probe_remaining=23, verification_check_limit=15, verification_check_remaining=6",
+            rendered,
+        )
+        self.assertIn(
+            "backend verification pressure: status=watch primary=normalization_passes reason=max_passes=2 attempts=16 checks=9 checks_per_attempt=0.562 check_limit=15 check_remaining=6 check_utilization_percent=60.0 max_passes=2 elapsed_ms=2.125",
+            rendered,
+        )
+        self.assertIn(
+            "backend normalization pressure: status=watch primary=normalized_ratio reason=normalized_checks=6/9 (66.7%) normalized_checks=6 checks=9 normalized_ratio_percent=66.7 dominant_method_checks=4 dominant_method_share_percent=66.7 dominant_reason_count=2 dominant_reason_share_percent=33.3 dominant_method_reason_count=2 dominant_method_reason_share_percent=33.3 dominant_method=hermite dominant_reason=numeric_scaled_quotient dominant_method_reason=hermite/power_one_elision",
             rendered,
         )
         self.assertIn(
@@ -2591,6 +2853,26 @@ test result: ok. 1 passed
         )
         self.assertIn(
             "verification-check usage by method: hermite=4, heurisch_probe=1, rational=4",
+            rendered,
+        )
+        self.assertIn(
+            "verification-check usage by evidence: direct_differentiation=3, normalized_differentiation=6",
+            rendered,
+        )
+        self.assertIn(
+            "verification-check usage by method/evidence: hermite/normalized_differentiation=4, heurisch_probe/direct_differentiation=1, rational/direct_differentiation=2, rational/normalized_differentiation=2",
+            rendered,
+        )
+        self.assertIn(
+            "verification-check usage by publication: accepted=9",
+            rendered,
+        )
+        self.assertIn(
+            "verification-check usage by method/publication: hermite/accepted=4, heurisch_probe/accepted=1, rational/accepted=4",
+            rendered,
+        )
+        self.assertIn(
+            "verification-check top methods: hermite=4 (44.4%), rational=4 (44.4%), heurisch_probe=1 (11.1%)",
             rendered,
         )
         self.assertIn(
@@ -2759,6 +3041,10 @@ test result: ok. 1 passed
         )
         self.assertIn(
             "verification normalization reason by method: hermite/numeric_scaled_quotient=1, hermite/power_one_elision=2, hermite/quotient_numeric_factor_cancellation=1, rational/numeric_scaled_quotient=1, rational/symbolic_scaled_quotient=1",
+            rendered,
+        )
+        self.assertIn(
+            "verification normalization reason by label: hermite_constant_radius/numeric_scaled_quotient=1, hermite_power_one_pair/power_one_elision=2, hermite_radius_factor/quotient_numeric_factor_cancellation=1, rational_scaled_numeric/numeric_scaled_quotient=1, rational_scaled_symbolic/symbolic_scaled_quotient=1",
             rendered,
         )
         self.assertIn(
@@ -5046,6 +5332,25 @@ root.direct_small_zero_composition.candidate.three_core_groups
                     },
                     "delta": {},
                 },
+                "calculus_integrate_backend_mode_boundary": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.04,
+                    "metrics": {
+                        "cargo_status": "ok",
+                        "passed": 1,
+                        "failed": 0,
+                        "ignored": 0,
+                        "measured": 0,
+                        "filtered_out": 344,
+                        "timeouts": 0,
+                        "backend_direct_high_budget_method_counts": {
+                            "heurisch_probe": 1
+                        },
+                        "backend_public_budget_clamped_count": 1,
+                        "backend_public_clamp_rejected_count": 1,
+                    },
+                    "delta": {},
+                },
                 "calculus_integrate_exhaustive_contract": {
                     "status": "pass",
                     "elapsed_seconds": 1.7,
@@ -5389,6 +5694,11 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertNotIn("`residual_matrix` problem cases:", markdown)
         self.assertIn("`integrate`: passed=23 failed=0", markdown)
+        self.assertIn(
+            "`integrate_backend_mode_boundary`: passed=1 failed=0 "
+            "ignored=0 filtered_out=344",
+            markdown,
+        )
         self.assertIn(
             "`integrate_command_matrix`: passed=18 failed=0 total=18 slow=0 "
             "timeouts=0 supported_cases=17 residual_cases=1 warning_expected=0 "

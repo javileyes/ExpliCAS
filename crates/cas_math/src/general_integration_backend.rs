@@ -5,6 +5,7 @@
 //! consumed by public integration routes.
 
 use crate::expr_domain::exprs_equivalent;
+use crate::expr_nary::{add_terms_signed, Sign};
 use crate::expr_predicates::contains_named_var;
 use crate::semantic_equality::SemanticEqualityChecker;
 use crate::symbolic_differentiation_support::differentiate_symbolic_expr;
@@ -143,6 +144,8 @@ impl Default for AlgorithmicIntegrationBackendConfig {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AlgorithmicIntegrationProbeRunner {
+    method_probe_budget_limit: usize,
+    verification_check_budget_limit: usize,
     remaining_method_probes: usize,
     remaining_verification_checks: usize,
     method_probe_attempts: Vec<AlgorithmicIntegrationMethod>,
@@ -159,6 +162,8 @@ pub struct AlgorithmicIntegrationProbeRunner {
 impl AlgorithmicIntegrationProbeRunner {
     pub fn new(budget: AlgorithmicIntegrationBackendBudget) -> Self {
         Self {
+            method_probe_budget_limit: budget.max_method_probes,
+            verification_check_budget_limit: budget.max_verification_checks,
             remaining_method_probes: budget.max_method_probes,
             remaining_verification_checks: budget.max_verification_checks,
             method_probe_attempts: Vec::new(),
@@ -176,6 +181,14 @@ impl AlgorithmicIntegrationProbeRunner {
 
     pub fn remaining_verification_checks(&self) -> usize {
         self.remaining_verification_checks
+    }
+
+    pub fn method_probe_budget_limit(&self) -> usize {
+        self.method_probe_budget_limit
+    }
+
+    pub fn verification_check_budget_limit(&self) -> usize {
+        self.verification_check_budget_limit
     }
 
     pub fn method_probes_used(&self) -> usize {
@@ -340,6 +353,7 @@ pub enum AlgorithmicIntegrationVerificationEvidence {
     None,
     Preverified,
     DirectDifferentiation,
+    MethodSpecificDifferentiation,
     NormalizedDifferentiation,
     FailedDifferentiation,
 }
@@ -351,6 +365,9 @@ impl AlgorithmicIntegrationVerificationEvidence {
             AlgorithmicIntegrationVerificationEvidence::Preverified => "preverified",
             AlgorithmicIntegrationVerificationEvidence::DirectDifferentiation => {
                 "direct_differentiation"
+            }
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation => {
+                "method_specific_differentiation"
             }
             AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation => {
                 "normalized_differentiation"
@@ -373,6 +390,7 @@ pub enum AlgorithmicIntegrationVerificationNormalizationReason {
     QuotientNumericFactorCancellation,
     QuotientCommonFactorCancellation,
     SameDenominatorNumeratorCancellation,
+    AffineQuotientRemainderSum,
     ConjugateReciprocalDifference,
     NestedQuotientDenominatorProduct,
 }
@@ -404,6 +422,9 @@ impl AlgorithmicIntegrationVerificationNormalizationReason {
             }
             AlgorithmicIntegrationVerificationNormalizationReason::SameDenominatorNumeratorCancellation => {
                 "same_denominator_numerator_cancellation"
+            }
+            AlgorithmicIntegrationVerificationNormalizationReason::AffineQuotientRemainderSum => {
+                "affine_quotient_remainder_sum"
             }
             AlgorithmicIntegrationVerificationNormalizationReason::ConjugateReciprocalDifference => {
                 "conjugate_reciprocal_difference"
@@ -810,6 +831,8 @@ pub struct AlgorithmicIntegrationCandidate {
         AlgorithmicIntegrationMethod,
         AlgorithmicIntegrationProbeNoMatchReason,
     )>,
+    pub method_probe_budget_limit: usize,
+    pub verification_check_budget_limit: usize,
     pub method_probes_used: usize,
     pub verification_checks_used: usize,
 }
@@ -872,6 +895,8 @@ impl AlgorithmicIntegrationCandidate {
             trace_level: AlgorithmicIntegrationTraceLevel::AlgorithmicSummary,
             method_probe_attempts: Vec::new(),
             method_probe_no_match_reasons: Vec::new(),
+            method_probe_budget_limit: 0,
+            verification_check_budget_limit: 0,
             method_probes_used: 0,
             verification_checks_used: 0,
         }
@@ -917,6 +942,8 @@ impl AlgorithmicIntegrationCandidate {
             trace_level: AlgorithmicIntegrationTraceLevel::AlgorithmicSummary,
             method_probe_attempts: Vec::new(),
             method_probe_no_match_reasons: Vec::new(),
+            method_probe_budget_limit: 0,
+            verification_check_budget_limit: 0,
             method_probes_used: 0,
             verification_checks_used: 0,
         }
@@ -1143,6 +1170,8 @@ impl AlgorithmicIntegrationCandidate {
             trace_level: AlgorithmicIntegrationTraceLevel::DiagnosticOnly,
             method_probe_attempts: Vec::new(),
             method_probe_no_match_reasons: Vec::new(),
+            method_probe_budget_limit: 0,
+            verification_check_budget_limit: 0,
             method_probes_used: 0,
             verification_checks_used: 0,
         }
@@ -1164,6 +1193,8 @@ impl AlgorithmicIntegrationCandidate {
     fn record_probe_usage(&mut self, probe_runner: &AlgorithmicIntegrationProbeRunner) {
         self.method_probe_attempts = probe_runner.method_probe_attempts().to_vec();
         self.method_probe_no_match_reasons = probe_runner.method_probe_no_match_reasons().to_vec();
+        self.method_probe_budget_limit = probe_runner.method_probe_budget_limit();
+        self.verification_check_budget_limit = probe_runner.verification_check_budget_limit();
         self.method_probes_used = probe_runner.method_probes_used();
         self.verification_checks_used = probe_runner.verification_checks_used();
     }
@@ -1233,6 +1264,26 @@ pub fn antiderivative_verification_report(
         };
     }
 
+    if method_specific_derivative_matches_integrand(ctx, candidate, derivative) {
+        let status = if candidate.required_conditions.is_empty() {
+            AlgorithmicIntegrationVerificationStatus::Verified
+        } else {
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        };
+        return AlgorithmicIntegrationVerificationReport {
+            status,
+            evidence: AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation,
+            normalization_reason: AlgorithmicIntegrationVerificationNormalizationReason::None,
+            verification_normalization_passes_used: 0,
+            blocker: AlgorithmicIntegrationVerificationBlocker::None,
+            residual_reason: None,
+            derivative: Some(derivative),
+            verification_residual: None,
+            verification_residual_kind: None,
+            verification_residual_signature: None,
+        };
+    }
+
     let normalization_attempt = normalize_backend_verification_expr_to_match(
         ctx,
         derivative,
@@ -1287,6 +1338,429 @@ fn derivative_matches_integrand(ctx: &Context, derivative: ExprId, integrand: Ex
     derivative == integrand
         || SemanticEqualityChecker::new(ctx).are_equal(derivative, integrand)
         || exprs_equivalent(ctx, derivative, integrand)
+}
+
+fn method_specific_derivative_matches_integrand(
+    ctx: &mut Context,
+    candidate: &AlgorithmicIntegrationCandidate,
+    derivative: ExprId,
+) -> bool {
+    match candidate.method {
+        AlgorithmicIntegrationMethod::Rational => rational_affine_quotient_derivative_matches(
+            ctx,
+            derivative,
+            candidate.integrand,
+            &candidate.variable,
+            &candidate.required_conditions,
+        ),
+        AlgorithmicIntegrationMethod::Hermite => hermite_conjugate_reciprocal_derivative_matches(
+            ctx,
+            derivative,
+            candidate.integrand,
+            &candidate.variable,
+            &candidate.required_conditions,
+        ),
+        _ => false,
+    }
+}
+
+fn hermite_conjugate_reciprocal_derivative_matches(
+    ctx: &mut Context,
+    derivative: ExprId,
+    integrand: ExprId,
+    variable: &str,
+    required_conditions: &[ConditionPredicate],
+) -> bool {
+    if let Some(combined) = normalize_hermite_conjugate_reciprocal_derivative_expr(
+        ctx,
+        derivative,
+        variable,
+        required_conditions,
+        0,
+    ) {
+        if derivative_matches_integrand(ctx, combined, integrand) {
+            return true;
+        }
+        let cleanup_attempt = normalize_backend_verification_expr_to_match(
+            ctx,
+            combined,
+            integrand,
+            variable,
+            required_conditions,
+        );
+        if matches!(
+            cleanup_attempt.matched_reason,
+            Some(
+                AlgorithmicIntegrationVerificationNormalizationReason::QuotientCommonFactorCancellation
+                    | AlgorithmicIntegrationVerificationNormalizationReason::QuotientNumericFactorCancellation
+                    | AlgorithmicIntegrationVerificationNormalizationReason::ScaledArctanRadiusQuotient
+                    | AlgorithmicIntegrationVerificationNormalizationReason::SymbolicScaledQuotient,
+            )
+        ) {
+            return true;
+        }
+    }
+
+    let attempt = normalize_backend_verification_expr_to_match(
+        ctx,
+        derivative,
+        integrand,
+        variable,
+        required_conditions,
+    );
+    matches!(
+        attempt.matched_reason,
+        Some(
+            AlgorithmicIntegrationVerificationNormalizationReason::ConjugateReciprocalDifference
+                | AlgorithmicIntegrationVerificationNormalizationReason::QuotientNumericFactorCancellation
+                | AlgorithmicIntegrationVerificationNormalizationReason::ScaledArctanRadiusQuotient
+                | AlgorithmicIntegrationVerificationNormalizationReason::SymbolicScaledQuotient,
+        )
+    )
+}
+
+fn normalize_hermite_conjugate_reciprocal_derivative_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    variable: &str,
+    required_conditions: &[ConditionPredicate],
+    depth: usize,
+) -> Option<ExprId> {
+    if depth >= BACKEND_VERIFICATION_NORMALIZE_DEPTH {
+        return None;
+    }
+
+    if let Some(combined) = normalize_backend_conjugate_reciprocal_expr(ctx, expr, variable) {
+        return Some(combined);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            let normalized_left = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                left,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(left);
+            let normalized_left = method_specific_verification_term(
+                ctx,
+                normalized_left,
+                variable,
+                required_conditions,
+            );
+            let normalized_right = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                right,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(right);
+            let normalized_right = method_specific_verification_term(
+                ctx,
+                normalized_right,
+                variable,
+                required_conditions,
+            );
+            if let Some(combined) = normalize_backend_same_denominator_sum(
+                ctx,
+                normalized_left,
+                normalized_right,
+                BackendVerificationScope {
+                    variable,
+                    required_conditions,
+                    depth,
+                    in_power_exponent: false,
+                },
+                AlgorithmicIntegrationVerificationNormalizationReason::SameDenominatorNumeratorCancellation,
+            ) {
+                return Some(combined.expr);
+            }
+            (normalized_left != left || normalized_right != right)
+                .then(|| ctx.add(Expr::Add(normalized_left, normalized_right)))
+        }
+        Expr::Sub(left, right) => {
+            let normalized_left = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                left,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(left);
+            let normalized_right = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                right,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(right);
+            if let Some(combined) = normalize_backend_conjugate_reciprocal_difference(
+                ctx,
+                normalized_left,
+                normalized_right,
+                variable,
+            ) {
+                return Some(combined);
+            }
+            (normalized_left != left || normalized_right != right)
+                .then(|| ctx.add(Expr::Sub(normalized_left, normalized_right)))
+        }
+        Expr::Mul(left, right) => normalize_backend_scaled_conjugate_reciprocal_product(
+            ctx,
+            left,
+            right,
+            variable,
+            required_conditions,
+        )
+        .or_else(|| {
+            normalize_backend_fraction_product_conjugate_reciprocal_quotient(
+                ctx,
+                left,
+                right,
+                variable,
+                required_conditions,
+            )
+        })
+        .or_else(|| {
+            let normalized_left = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                left,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(left);
+            let normalized_right = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                right,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(right);
+            if normalized_left != left || normalized_right != right {
+                if let Some(combined) = normalize_backend_scaled_conjugate_reciprocal_product(
+                    ctx,
+                    normalized_left,
+                    normalized_right,
+                    variable,
+                    required_conditions,
+                ) {
+                    return Some(combined);
+                }
+                if let Some(combined) =
+                    normalize_backend_fraction_product_conjugate_reciprocal_quotient(
+                        ctx,
+                        normalized_left,
+                        normalized_right,
+                        variable,
+                        required_conditions,
+                    )
+                {
+                    return Some(combined);
+                }
+            }
+            let rebuilt_product = ctx.add(Expr::Mul(normalized_left, normalized_right));
+            let normalized_product = method_specific_verification_term(
+                ctx,
+                rebuilt_product,
+                variable,
+                required_conditions,
+            );
+            if normalized_product != rebuilt_product {
+                return Some(normalized_product);
+            }
+            (normalized_left != left || normalized_right != right).then_some(rebuilt_product)
+        }),
+        Expr::Div(left, right) => normalize_backend_conjugate_reciprocal_quotient(
+            ctx,
+            left,
+            right,
+            variable,
+            required_conditions,
+        )
+        .or_else(|| {
+            let normalized_left = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                left,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(left);
+            let normalized_right = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                right,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(right);
+            if normalized_left != left || normalized_right != right {
+                if let Some(combined) = normalize_backend_conjugate_reciprocal_quotient(
+                    ctx,
+                    normalized_left,
+                    normalized_right,
+                    variable,
+                    required_conditions,
+                ) {
+                    return Some(combined);
+                }
+            }
+            let rebuilt_quotient = ctx.add(Expr::Div(normalized_left, normalized_right));
+            let normalized_quotient = method_specific_verification_term(
+                ctx,
+                rebuilt_quotient,
+                variable,
+                required_conditions,
+            );
+            if normalized_quotient != rebuilt_quotient {
+                return Some(normalized_quotient);
+            }
+            (normalized_left != left || normalized_right != right).then_some(rebuilt_quotient)
+        }),
+        Expr::Pow(base, exponent) => {
+            let normalized_base = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                base,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(base);
+            let normalized_exponent = normalize_hermite_conjugate_reciprocal_derivative_expr(
+                ctx,
+                exponent,
+                variable,
+                required_conditions,
+                depth + 1,
+            )
+            .unwrap_or(exponent);
+            if is_one(ctx, normalized_exponent)
+                || backend_numeric_constant_value(ctx, normalized_exponent, 0)
+                    .map(|value| value.is_one())
+                    .unwrap_or(false)
+            {
+                return Some(normalized_base);
+            }
+            (normalized_base != base || normalized_exponent != exponent)
+                .then(|| ctx.add(Expr::Pow(normalized_base, normalized_exponent)))
+        }
+        _ => None,
+    }
+}
+
+fn rational_affine_quotient_derivative_matches(
+    ctx: &mut Context,
+    derivative: ExprId,
+    integrand: ExprId,
+    variable: &str,
+    required_conditions: &[ConditionPredicate],
+) -> bool {
+    let Ok(parts) = affine_denominator_linear_numerator_parts(ctx, integrand, variable) else {
+        return false;
+    };
+    let has_quotient_remainder = !is_zero(ctx, parts.quotient_coefficient);
+
+    if has_quotient_remainder {
+        let combined = match ctx.get(derivative).clone() {
+            Expr::Add(left, right) => {
+                let normalized_left =
+                    method_specific_verification_term(ctx, left, variable, required_conditions);
+                let normalized_right =
+                    method_specific_verification_term(ctx, right, variable, required_conditions);
+                normalize_backend_affine_quotient_remainder_sum(
+                    ctx,
+                    normalized_left,
+                    normalized_right,
+                    variable,
+                )
+            }
+            Expr::Sub(left, right) => {
+                let normalized_left =
+                    method_specific_verification_term(ctx, left, variable, required_conditions);
+                let normalized_right =
+                    method_specific_verification_term(ctx, right, variable, required_conditions);
+                normalize_backend_affine_quotient_remainder_difference(
+                    ctx,
+                    normalized_left,
+                    normalized_right,
+                    variable,
+                )
+            }
+            _ => None,
+        };
+
+        if combined
+            .map(|combined| derivative_matches_integrand(ctx, combined, integrand))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+
+    let attempt = normalize_backend_verification_expr_to_match(
+        ctx,
+        derivative,
+        integrand,
+        variable,
+        required_conditions,
+    );
+    matches!(
+        attempt.matched_reason,
+        Some(
+            AlgorithmicIntegrationVerificationNormalizationReason::PowerOneElision
+                | AlgorithmicIntegrationVerificationNormalizationReason::NumericScaledQuotient
+                | AlgorithmicIntegrationVerificationNormalizationReason::SymbolicScaledQuotient,
+        )
+    )
+}
+
+fn method_specific_verification_term(
+    ctx: &mut Context,
+    expr: ExprId,
+    variable: &str,
+    required_conditions: &[ConditionPredicate],
+) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Mul(left, right) => normalize_backend_affine_slope_quotient_product(
+            ctx,
+            left,
+            right,
+            variable,
+            required_conditions,
+        )
+        .or_else(|| normalize_backend_numeric_scaled_quotient(ctx, left, right))
+        .or_else(|| normalize_backend_symbolic_scaled_quotient(ctx, left, right, variable))
+        .or_else(|| normalize_backend_fraction_product_quotient(ctx, left, right))
+        .unwrap_or(expr),
+        Expr::Div(left, right) => normalize_backend_affine_denominator_common_factor_quotient(
+            ctx,
+            left,
+            right,
+            variable,
+            required_conditions,
+        )
+        .or_else(|| {
+            normalize_backend_scaled_arctan_radius_quotient(
+                ctx,
+                left,
+                right,
+                variable,
+                required_conditions,
+            )
+        })
+        .or_else(|| normalize_backend_quotient_numeric_factor_cancellation(ctx, left, right))
+        .or_else(|| {
+            normalize_backend_quotient_symbolic_factor_cancellation(ctx, left, right, variable)
+        })
+        .unwrap_or(expr),
+        _ => expr,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1525,10 +1999,21 @@ fn normalize_backend_verification_expr_inner(
             if let Some(combined) =
                 normalize_backend_conjugate_reciprocal_addition(ctx, left, right, variable)
             {
+                let reason =
+                    AlgorithmicIntegrationVerificationNormalizationReason::ConjugateReciprocalDifference;
                 return Some(BackendVerificationNormalization {
                     expr: combined,
-                    reason:
-                        AlgorithmicIntegrationVerificationNormalizationReason::ConjugateReciprocalDifference,
+                    reason,
+                });
+            }
+            if let Some(combined) =
+                normalize_backend_affine_quotient_remainder_sum(ctx, left, right, variable)
+            {
+                let reason =
+                    AlgorithmicIntegrationVerificationNormalizationReason::AffineQuotientRemainderSum;
+                return Some(BackendVerificationNormalization {
+                    expr: combined,
+                    reason,
                 });
             }
             let normalized =
@@ -1540,10 +2025,24 @@ fn normalize_backend_verification_expr_inner(
                     normalized_right,
                     variable,
                 ) {
+                    let reason =
+                        AlgorithmicIntegrationVerificationNormalizationReason::ConjugateReciprocalDifference;
                     return Some(BackendVerificationNormalization {
                         expr: combined,
-                        reason:
-                            AlgorithmicIntegrationVerificationNormalizationReason::ConjugateReciprocalDifference,
+                        reason,
+                    });
+                }
+                if let Some(combined) = normalize_backend_affine_quotient_remainder_sum(
+                    ctx,
+                    normalized_left,
+                    normalized_right,
+                    variable,
+                ) {
+                    let reason =
+                        AlgorithmicIntegrationVerificationNormalizationReason::AffineQuotientRemainderSum;
+                    return Some(BackendVerificationNormalization {
+                        expr: combined,
+                        reason,
                     });
                 }
                 if let Some(combined) = normalize_backend_same_denominator_sum(
@@ -1594,6 +2093,15 @@ fn normalize_backend_verification_expr_inner(
                     expr: combined,
                     reason:
                         AlgorithmicIntegrationVerificationNormalizationReason::ConjugateReciprocalDifference,
+                });
+            }
+            if let Some(combined) =
+                normalize_backend_affine_quotient_remainder_difference(ctx, left, right, variable)
+            {
+                return Some(BackendVerificationNormalization {
+                    expr: combined,
+                    reason:
+                        AlgorithmicIntegrationVerificationNormalizationReason::AffineQuotientRemainderSum,
                 });
             }
 
@@ -1720,6 +2228,20 @@ fn normalize_backend_verification_expr_inner(
                 });
             }
 
+            if let Some(scaled_quotient) = normalize_backend_affine_slope_quotient_product(
+                ctx,
+                normalized_left,
+                normalized_right,
+                variable,
+                required_conditions,
+            ) {
+                return Some(BackendVerificationNormalization {
+                    expr: scaled_quotient,
+                    reason:
+                        AlgorithmicIntegrationVerificationNormalizationReason::SymbolicScaledQuotient,
+                });
+            }
+
             if let Some(scaled_quotient) =
                 normalize_backend_numeric_scaled_quotient(ctx, normalized_left, normalized_right)
             {
@@ -1743,6 +2265,16 @@ fn normalize_backend_verification_expr_inner(
                 });
             }
 
+            if let Some(normalized) =
+                normalize_backend_fraction_product_quotient(ctx, normalized_left, normalized_right)
+            {
+                return Some(BackendVerificationNormalization {
+                    expr: normalized,
+                    reason:
+                        AlgorithmicIntegrationVerificationNormalizationReason::NestedQuotientDenominatorProduct,
+                });
+            }
+
             if normalized_left != left || normalized_right != right {
                 Some(BackendVerificationNormalization {
                     expr: ctx.add(Expr::Mul(normalized_left, normalized_right)),
@@ -1756,6 +2288,19 @@ fn normalize_backend_verification_expr_inner(
             }
         }
         Expr::Div(left, right) => {
+            if let Some(normalized) = normalize_backend_affine_denominator_common_factor_quotient(
+                ctx,
+                left,
+                right,
+                variable,
+                required_conditions,
+            ) {
+                return Some(BackendVerificationNormalization {
+                    expr: normalized,
+                    reason:
+                        AlgorithmicIntegrationVerificationNormalizationReason::QuotientCommonFactorCancellation,
+                });
+            }
             if let Some(normalized) = normalize_backend_conjugate_reciprocal_quotient(
                 ctx,
                 left,
@@ -1816,6 +2361,21 @@ fn normalize_backend_verification_expr_inner(
             let normalized =
                 normalize_backend_verification_binary(ctx, left, right, scope, Expr::Div)?;
             if let Expr::Div(normalized_left, normalized_right) = ctx.get(normalized.expr).clone() {
+                if let Some(normalized) =
+                    normalize_backend_affine_denominator_common_factor_quotient(
+                        ctx,
+                        normalized_left,
+                        normalized_right,
+                        variable,
+                        required_conditions,
+                    )
+                {
+                    return Some(BackendVerificationNormalization {
+                        expr: normalized,
+                        reason:
+                            AlgorithmicIntegrationVerificationNormalizationReason::QuotientCommonFactorCancellation,
+                    });
+                }
                 if let Some(normalized) = normalize_backend_conjugate_pole_product_denominator(
                     ctx,
                     normalized_left,
@@ -1885,7 +2445,11 @@ fn normalize_backend_verification_expr_inner(
                 .map(|normalization| normalization.expr)
                 .unwrap_or(exponent);
 
-            if is_one(ctx, normalized_exponent) {
+            if is_one(ctx, normalized_exponent)
+                || backend_numeric_constant_value(ctx, normalized_exponent, 0)
+                    .map(|value| value.is_one())
+                    .unwrap_or(false)
+            {
                 return Some(BackendVerificationNormalization {
                     expr: normalized_base,
                     reason: AlgorithmicIntegrationVerificationNormalizationReason::PowerOneElision,
@@ -2057,6 +2621,63 @@ fn normalize_backend_symbolic_scaled_quotient(
 ) -> Option<ExprId> {
     normalize_backend_symbolic_scaled_quotient_ordered(ctx, left, right, variable)
         .or_else(|| normalize_backend_symbolic_scaled_quotient_ordered(ctx, right, left, variable))
+}
+
+fn normalize_backend_affine_slope_quotient_product(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    variable: &str,
+    required_conditions: &[ConditionPredicate],
+) -> Option<ExprId> {
+    normalize_backend_affine_slope_quotient_product_ordered(
+        ctx,
+        left,
+        right,
+        variable,
+        required_conditions,
+    )
+    .or_else(|| {
+        normalize_backend_affine_slope_quotient_product_ordered(
+            ctx,
+            right,
+            left,
+            variable,
+            required_conditions,
+        )
+    })
+}
+
+fn normalize_backend_affine_slope_quotient_product_ordered(
+    ctx: &mut Context,
+    slope_quotient: ExprId,
+    coefficient_quotient: ExprId,
+    variable: &str,
+    required_conditions: &[ConditionPredicate],
+) -> Option<ExprId> {
+    let Expr::Div(slope_numerator, affine_denominator) = ctx.get(slope_quotient).clone() else {
+        return None;
+    };
+    let Expr::Div(coefficient, slope_denominator) = ctx.get(coefficient_quotient).clone() else {
+        return None;
+    };
+    let affine_slope = match affine_denominator_slope(ctx, affine_denominator, variable)? {
+        BackendAffineSlope::Symbolic(slope) => slope,
+        BackendAffineSlope::Numeric(_) => return None,
+    };
+    if !backend_factors_match(ctx, slope_numerator, affine_slope)
+        || !backend_factors_match(ctx, slope_denominator, affine_slope)
+        || !backend_factor_has_nonzero_evidence(ctx, affine_slope, variable, required_conditions)
+    {
+        return None;
+    }
+    let slope = BackendAffineSlope::Symbolic(affine_slope);
+    if !is_supported_backend_linear_coefficient_for_affine_slope(ctx, coefficient, variable, &slope)
+    {
+        return None;
+    }
+
+    Some(ctx.add(Expr::Div(coefficient, affine_denominator)))
 }
 
 fn normalize_backend_nested_quotient_denominator_product(
@@ -2299,6 +2920,36 @@ fn normalize_backend_fraction_product_conjugate_reciprocal_quotient(
         variable,
         required_conditions,
     )
+}
+
+fn normalize_backend_fraction_product_quotient(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<ExprId> {
+    let mut numerator_factors = Vec::new();
+    let mut denominator_factors = Vec::new();
+    collect_backend_fraction_factors(
+        ctx,
+        left,
+        false,
+        &mut numerator_factors,
+        &mut denominator_factors,
+    );
+    collect_backend_fraction_factors(
+        ctx,
+        right,
+        false,
+        &mut numerator_factors,
+        &mut denominator_factors,
+    );
+    if denominator_factors.is_empty() {
+        return None;
+    }
+
+    let numerator = build_backend_factor_product(ctx, numerator_factors);
+    let denominator = build_backend_factor_product(ctx, denominator_factors);
+    Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
 fn collect_backend_fraction_factors(
@@ -2593,6 +3244,13 @@ fn strip_backend_exact_factor(
     }
 
     match ctx.get(expr).clone() {
+        Expr::Pow(base, exponent)
+            if is_two(ctx, exponent)
+                && (base == factor
+                    || SemanticEqualityChecker::new(ctx).are_equal(base, factor)) =>
+        {
+            Some(base)
+        }
         Expr::Mul(left, right) => {
             if left == factor || SemanticEqualityChecker::new(ctx).are_equal(left, factor) {
                 return Some(right);
@@ -2650,7 +3308,9 @@ fn split_backend_numeric_factor(ctx: &Context, expr: ExprId) -> Option<(BigRatio
 }
 
 fn build_backend_product(ctx: &mut Context, left: ExprId, right: ExprId) -> ExprId {
-    if is_one(ctx, left) {
+    if is_zero(ctx, left) || is_zero(ctx, right) {
+        ctx.num(0)
+    } else if is_one(ctx, left) {
         right
     } else if is_one(ctx, right) {
         left
@@ -2666,6 +3326,285 @@ fn build_backend_sum(ctx: &mut Context, left: ExprId, right: ExprId) -> ExprId {
         left
     } else {
         ctx.add(Expr::Add(left, right))
+    }
+}
+
+fn normalize_backend_affine_quotient_remainder_sum(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    normalize_backend_affine_quotient_remainder_sum_ordered(ctx, left, right, variable).or_else(
+        || normalize_backend_affine_quotient_remainder_sum_ordered(ctx, right, left, variable),
+    )
+}
+
+fn normalize_backend_affine_quotient_remainder_difference(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    if let Some(negated_right_quotient) = negate_backend_quotient(ctx, right) {
+        if let Some(combined) = normalize_backend_affine_quotient_remainder_sum_ordered(
+            ctx,
+            left,
+            negated_right_quotient,
+            variable,
+        ) {
+            return Some(combined);
+        }
+    }
+
+    if matches!(ctx.get(left), Expr::Div(_, _)) {
+        let negated_right = negate_backend_expr(ctx, right);
+        return normalize_backend_affine_quotient_remainder_sum_ordered(
+            ctx,
+            negated_right,
+            left,
+            variable,
+        );
+    }
+
+    None
+}
+
+fn negate_backend_quotient(ctx: &mut Context, quotient: ExprId) -> Option<ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(quotient).clone() else {
+        return None;
+    };
+    let negated_numerator = negate_backend_expr(ctx, numerator);
+    Some(ctx.add(Expr::Div(negated_numerator, denominator)))
+}
+
+fn normalize_backend_affine_quotient_remainder_sum_ordered(
+    ctx: &mut Context,
+    coefficient: ExprId,
+    quotient: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(quotient).clone() else {
+        return None;
+    };
+    let denominator_slope = affine_denominator_slope(ctx, denominator, variable)?;
+    if !is_supported_backend_linear_coefficient_for_affine_slope(
+        ctx,
+        coefficient,
+        variable,
+        &denominator_slope,
+    ) || contains_named_var(ctx, coefficient, variable)
+    {
+        return None;
+    }
+
+    if let Some(combined_numerator) = normalize_backend_affine_quotient_remainder_numerator(
+        ctx,
+        coefficient,
+        numerator,
+        denominator,
+        &denominator_slope,
+        variable,
+    ) {
+        return Some(ctx.add(Expr::Div(combined_numerator, denominator)));
+    }
+
+    let scaled_coefficient = build_backend_product(ctx, coefficient, denominator);
+    let combined_numerator = build_backend_sum(ctx, scaled_coefficient, numerator);
+    Some(ctx.add(Expr::Div(combined_numerator, denominator)))
+}
+
+fn normalize_backend_affine_denominator_common_factor_quotient(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    variable: &str,
+    required_conditions: &[ConditionPredicate],
+) -> Option<ExprId> {
+    let (slope, intercept) = backend_affine_linear_terms(ctx, denominator, variable)?;
+    if let Some(factor) = backend_affine_denominator_numeric_factor(ctx, slope, intercept) {
+        let normalized_numerator = divide_backend_expr_by_numeric_factor(ctx, numerator, &factor)?;
+        let normalized_slope = divide_backend_expr_by_numeric_factor(ctx, slope, &factor)?;
+        let normalized_intercept = divide_backend_expr_by_numeric_factor(ctx, intercept, &factor)?;
+        let normalized_denominator =
+            build_backend_affine_expr(ctx, normalized_slope, normalized_intercept, variable);
+        return Some(ctx.add(Expr::Div(normalized_numerator, normalized_denominator)));
+    }
+
+    let factor = backend_affine_denominator_symbolic_factor(
+        ctx,
+        slope,
+        intercept,
+        variable,
+        required_conditions,
+    )?;
+    let normalized_numerator = divide_backend_expr_by_symbolic_factor(ctx, numerator, factor)?;
+    let normalized_slope = strip_backend_exact_factor(ctx, slope, factor, variable)?;
+    let normalized_intercept = strip_backend_exact_factor(ctx, intercept, factor, variable)?;
+    let normalized_denominator =
+        build_backend_affine_expr(ctx, normalized_slope, normalized_intercept, variable);
+    Some(ctx.add(Expr::Div(normalized_numerator, normalized_denominator)))
+}
+
+fn backend_affine_denominator_numeric_factor(
+    ctx: &Context,
+    slope: ExprId,
+    intercept: ExprId,
+) -> Option<BigRational> {
+    let slope_factor = backend_numeric_coefficient(ctx, slope)?;
+    let intercept_factor = backend_numeric_coefficient(ctx, intercept)?;
+    if slope_factor.is_zero() || intercept_factor.is_zero() {
+        return None;
+    }
+
+    let factor = intercept_factor.abs();
+    (!factor.is_one()).then_some(factor)
+}
+
+fn backend_numeric_coefficient(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    numeric_value(ctx, expr)
+        .or_else(|| split_backend_numeric_factor(ctx, expr).map(|(value, _)| value))
+}
+
+fn divide_backend_expr_by_numeric_factor(
+    ctx: &mut Context,
+    expr: ExprId,
+    factor: &BigRational,
+) -> Option<ExprId> {
+    if factor.is_zero() {
+        return None;
+    }
+    if let Some(value) = numeric_value(ctx, expr) {
+        return Some(ctx.add(Expr::Number(value / factor.clone())));
+    }
+    let (coefficient, core) = split_backend_numeric_factor(ctx, expr)?;
+    Some(multiply_backend_numeric_coefficient(
+        ctx,
+        coefficient / factor.clone(),
+        core,
+    ))
+}
+
+fn backend_affine_denominator_symbolic_factor(
+    ctx: &mut Context,
+    slope: ExprId,
+    intercept: ExprId,
+    variable: &str,
+    required_conditions: &[ConditionPredicate],
+) -> Option<ExprId> {
+    backend_mul_factors(ctx, intercept)
+        .into_iter()
+        .find(|factor| {
+            numeric_value(ctx, *factor).is_none()
+                && !contains_named_var(ctx, *factor, variable)
+                && backend_factor_has_nonzero_evidence(ctx, *factor, variable, required_conditions)
+                && strip_backend_exact_factor(ctx, slope, *factor, variable).is_some()
+                && strip_backend_exact_factor(ctx, intercept, *factor, variable).is_some()
+        })
+}
+
+fn divide_backend_expr_by_symbolic_factor(
+    ctx: &mut Context,
+    expr: ExprId,
+    factor: ExprId,
+) -> Option<ExprId> {
+    if expr == factor || SemanticEqualityChecker::new(ctx).are_equal(expr, factor) {
+        return Some(ctx.num(1));
+    }
+    if let Some(stripped) = strip_backend_exact_factor(ctx, expr, factor, "") {
+        return Some(stripped);
+    }
+    Some(ctx.add(Expr::Div(expr, factor)))
+}
+
+fn build_backend_affine_expr(
+    ctx: &mut Context,
+    slope: ExprId,
+    intercept: ExprId,
+    variable: &str,
+) -> ExprId {
+    let variable_expr = ctx.var(variable);
+    let variable_term = build_backend_product(ctx, slope, variable_expr);
+    build_backend_sum(ctx, variable_term, intercept)
+}
+
+fn normalize_backend_affine_quotient_remainder_numerator(
+    ctx: &mut Context,
+    quotient_coefficient: ExprId,
+    remainder: ExprId,
+    denominator: ExprId,
+    denominator_slope: &BackendAffineSlope,
+    variable: &str,
+) -> Option<ExprId> {
+    let (_, denominator_intercept) = backend_affine_linear_terms(ctx, denominator, variable)?;
+    let numerator_intercept = backend_affine_remainder_intercept(
+        ctx,
+        remainder,
+        quotient_coefficient,
+        denominator_intercept,
+        variable,
+    )?;
+    let variable_coefficient =
+        multiply_backend_coefficient_by_affine_slope(ctx, quotient_coefficient, denominator_slope)?;
+    let variable_expr = ctx.var(variable);
+    let variable_term = build_backend_product(ctx, variable_coefficient, variable_expr);
+    Some(build_backend_sum(ctx, numerator_intercept, variable_term))
+}
+
+fn backend_affine_remainder_intercept(
+    ctx: &mut Context,
+    remainder: ExprId,
+    quotient_coefficient: ExprId,
+    denominator_intercept: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    let scaled_denominator_intercept =
+        build_backend_product(ctx, quotient_coefficient, denominator_intercept);
+    let normalized_scaled_denominator_intercept = normalize_backend_symbolic_scaled_quotient(
+        ctx,
+        quotient_coefficient,
+        denominator_intercept,
+        variable,
+    )
+    .unwrap_or(scaled_denominator_intercept);
+
+    if let Expr::Neg(subtrahend) = ctx.get(remainder).clone() {
+        return (backend_factors_match(ctx, subtrahend, scaled_denominator_intercept)
+            || backend_factors_match(ctx, subtrahend, normalized_scaled_denominator_intercept)
+            || exprs_equivalent(ctx, subtrahend, scaled_denominator_intercept)
+            || exprs_equivalent(ctx, subtrahend, normalized_scaled_denominator_intercept))
+        .then(|| ctx.num(0));
+    }
+
+    let Expr::Sub(intercept, subtrahend) = ctx.get(remainder).clone() else {
+        return None;
+    };
+    (backend_factors_match(ctx, subtrahend, scaled_denominator_intercept)
+        || backend_factors_match(ctx, subtrahend, normalized_scaled_denominator_intercept)
+        || exprs_equivalent(ctx, subtrahend, scaled_denominator_intercept)
+        || exprs_equivalent(ctx, subtrahend, normalized_scaled_denominator_intercept))
+    .then_some(intercept)
+}
+
+fn multiply_backend_coefficient_by_affine_slope(
+    ctx: &mut Context,
+    coefficient: ExprId,
+    slope: &BackendAffineSlope,
+) -> Option<ExprId> {
+    match slope {
+        BackendAffineSlope::Numeric(value) => Some(multiply_backend_numeric_coefficient(
+            ctx,
+            value.clone(),
+            coefficient,
+        )),
+        BackendAffineSlope::Symbolic(slope_expr) => match ctx.get(coefficient).clone() {
+            Expr::Div(numerator, denominator)
+                if backend_factors_match(ctx, denominator, *slope_expr) =>
+            {
+                Some(numerator)
+            }
+            _ => Some(build_backend_product(ctx, coefficient, *slope_expr)),
+        },
     }
 }
 
@@ -2993,6 +3932,65 @@ fn build_backend_difference(ctx: &mut Context, left: ExprId, right: ExprId) -> E
     }
 }
 
+fn build_backend_difference_canceling_sum_term(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> ExprId {
+    if let Some(remainder) = remove_matching_backend_additive_term(ctx, left, right) {
+        return remainder;
+    }
+    build_backend_difference(ctx, left, right)
+}
+
+fn remove_matching_backend_additive_term(
+    ctx: &mut Context,
+    expr: ExprId,
+    target: ExprId,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            if backend_commutative_product_factors_match(ctx, left, target) {
+                return Some(right);
+            }
+            if backend_commutative_product_factors_match(ctx, right, target) {
+                return Some(left);
+            }
+            if let Some(reduced_left) = remove_matching_backend_additive_term(ctx, left, target) {
+                return Some(build_backend_sum(ctx, reduced_left, right));
+            }
+            if let Some(reduced_right) = remove_matching_backend_additive_term(ctx, right, target) {
+                return Some(build_backend_sum(ctx, left, reduced_right));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn backend_commutative_product_factors_match(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    if backend_factors_match(ctx, left, right) {
+        return true;
+    }
+
+    let left_factors = backend_mul_factors(ctx, left);
+    let mut right_factors = backend_mul_factors(ctx, right);
+    if left_factors.len() != right_factors.len() || left_factors.len() <= 1 {
+        return false;
+    }
+
+    for left_factor in left_factors {
+        let Some(index) = right_factors
+            .iter()
+            .position(|right_factor| backend_factors_match(ctx, left_factor, *right_factor))
+        else {
+            return false;
+        };
+        right_factors.remove(index);
+    }
+    true
+}
+
 fn negate_backend_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
     if let Some(value) = numeric_value(ctx, expr) {
         return ctx.add(Expr::Number(-value));
@@ -3024,21 +4022,21 @@ fn try_rational_reciprocal_affine_probe(
     variable: &str,
     probe_runner: &mut AlgorithmicIntegrationProbeRunner,
 ) -> AlgorithmicIntegrationProbeResult {
-    let (numerator, denominator, denominator_slope) =
-        match scaled_affine_reciprocal_parts(ctx, integrand, variable) {
-            Ok(parts) => parts,
-            Err(reason) => return AlgorithmicIntegrationProbeResult::NoMatch(reason),
-        };
-
-    let abs_denominator = ctx.call_builtin(BuiltinFn::Abs, vec![denominator]);
-    let log_denominator = ctx.call_builtin(BuiltinFn::Ln, vec![abs_denominator]);
-    let antiderivative_scale =
-        divide_backend_coefficient_by_slope(ctx, numerator, &denominator_slope);
-    let antiderivative = if is_one(ctx, antiderivative_scale) {
-        log_denominator
-    } else {
-        build_backend_product(ctx, antiderivative_scale, log_denominator)
+    let parts = match affine_denominator_linear_numerator_parts(ctx, integrand, variable) {
+        Ok(parts) => parts,
+        Err(reason) => return AlgorithmicIntegrationProbeResult::NoMatch(reason),
     };
+
+    let variable_expr = ctx.var(variable);
+    let quotient_antiderivative =
+        build_backend_product(ctx, parts.quotient_coefficient, variable_expr);
+    let log_antiderivative = build_affine_denominator_remainder_antiderivative(
+        ctx,
+        parts.remainder,
+        parts.denominator,
+        &parts.denominator_slope,
+    );
+    let antiderivative = build_backend_sum(ctx, quotient_antiderivative, log_antiderivative);
     let mut candidate = AlgorithmicIntegrationCandidate::unverified(
         integrand,
         variable,
@@ -3047,8 +4045,8 @@ fn try_rational_reciprocal_affine_probe(
     );
     candidate
         .required_conditions
-        .push(ConditionPredicate::NonZero(denominator));
-    if let Some(condition) = denominator_slope.required_condition() {
+        .push(ConditionPredicate::NonZero(parts.denominator));
+    if let Some(condition) = parts.denominator_slope.required_condition() {
         candidate.required_conditions.push(condition);
     }
     if !probe_runner.try_verification_check() {
@@ -3058,6 +4056,13 @@ fn try_rational_reciprocal_affine_probe(
     verify_antiderivative_by_differentiation(ctx, &mut candidate);
 
     AlgorithmicIntegrationProbeResult::Candidate(candidate)
+}
+
+struct AffineDenominatorLinearNumeratorParts {
+    quotient_coefficient: ExprId,
+    remainder: ExprId,
+    denominator: ExprId,
+    denominator_slope: BackendAffineSlope,
 }
 
 fn try_hermite_positive_quadratic_log_derivative_probe(
@@ -3178,23 +4183,221 @@ fn try_heurisch_sine_log_derivative_probe(
     AlgorithmicIntegrationProbeResult::Candidate(candidate)
 }
 
-fn scaled_affine_reciprocal_parts(
+fn affine_denominator_linear_numerator_parts(
     ctx: &mut Context,
     expr: ExprId,
     variable: &str,
-) -> Result<(ExprId, ExprId, BackendAffineSlope), AlgorithmicIntegrationProbeNoMatchReason> {
+) -> Result<AffineDenominatorLinearNumeratorParts, AlgorithmicIntegrationProbeNoMatchReason> {
     match ctx.get(expr).clone() {
         Expr::Div(numerator, denominator) => {
-            if !is_supported_scaled_affine_reciprocal_numerator(ctx, numerator, variable) {
-                return Err(AlgorithmicIntegrationProbeNoMatchReason::NumeratorPolicyMismatch);
+            affine_denominator_linear_numerator_div_parts(ctx, numerator, denominator, variable)
+        }
+        Expr::Mul(left, right) => {
+            if let Some(parts) =
+                scaled_affine_denominator_linear_numerator_parts(ctx, left, right, variable)
+                    .or_else(|| {
+                        scaled_affine_denominator_linear_numerator_parts(ctx, right, left, variable)
+                    })
+            {
+                return Ok(parts);
             }
-            let Some(denominator_slope) = affine_denominator_slope(ctx, denominator, variable)
-            else {
-                return Err(AlgorithmicIntegrationProbeNoMatchReason::DenominatorPolicyMismatch);
-            };
-            Ok((numerator, denominator, denominator_slope))
+            if matches!(ctx.get(left), Expr::Div(_, _)) || matches!(ctx.get(right), Expr::Div(_, _))
+            {
+                Err(AlgorithmicIntegrationProbeNoMatchReason::NumeratorPolicyMismatch)
+            } else {
+                Err(AlgorithmicIntegrationProbeNoMatchReason::ShapeMismatch)
+            }
+        }
+        Expr::Neg(inner) => {
+            let negative_one = ctx.num(-1);
+            scaled_affine_denominator_linear_numerator_parts(ctx, negative_one, inner, variable)
+                .ok_or(AlgorithmicIntegrationProbeNoMatchReason::ShapeMismatch)
         }
         _ => Err(AlgorithmicIntegrationProbeNoMatchReason::ShapeMismatch),
+    }
+}
+
+fn affine_denominator_linear_numerator_div_parts(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    variable: &str,
+) -> Result<AffineDenominatorLinearNumeratorParts, AlgorithmicIntegrationProbeNoMatchReason> {
+    if is_supported_scaled_affine_reciprocal_numerator(ctx, numerator, variable) {
+        let Some(denominator_slope) = affine_denominator_slope(ctx, denominator, variable) else {
+            return Err(AlgorithmicIntegrationProbeNoMatchReason::DenominatorPolicyMismatch);
+        };
+        return Ok(AffineDenominatorLinearNumeratorParts {
+            quotient_coefficient: ctx.num(0),
+            remainder: numerator,
+            denominator,
+            denominator_slope,
+        });
+    }
+
+    let Some(denominator_slope) = affine_denominator_slope(ctx, denominator, variable) else {
+        return Err(AlgorithmicIntegrationProbeNoMatchReason::NumeratorPolicyMismatch);
+    };
+    let Some((quotient_coefficient, remainder)) =
+        linear_numerator_decomposition_terms(ctx, numerator, denominator, variable).or_else(|| {
+            affine_quotient_remainder_from_linear_terms(
+                ctx,
+                numerator,
+                denominator,
+                &denominator_slope,
+                variable,
+            )
+        })
+    else {
+        return Err(AlgorithmicIntegrationProbeNoMatchReason::NumeratorPolicyMismatch);
+    };
+    if (is_zero(ctx, quotient_coefficient) && is_zero(ctx, remainder))
+        || !is_supported_backend_linear_coefficient_for_affine_slope(
+            ctx,
+            quotient_coefficient,
+            variable,
+            &denominator_slope,
+        )
+        || !is_supported_backend_linear_coefficient_for_affine_slope(
+            ctx,
+            remainder,
+            variable,
+            &denominator_slope,
+        )
+    {
+        return Err(AlgorithmicIntegrationProbeNoMatchReason::NumeratorPolicyMismatch);
+    }
+    Ok(AffineDenominatorLinearNumeratorParts {
+        quotient_coefficient,
+        remainder,
+        denominator,
+        denominator_slope,
+    })
+}
+
+fn scaled_affine_denominator_linear_numerator_parts(
+    ctx: &mut Context,
+    scale: ExprId,
+    quotient: ExprId,
+    variable: &str,
+) -> Option<AffineDenominatorLinearNumeratorParts> {
+    if contains_named_var(ctx, scale, variable)
+        || !is_supported_backend_linear_coefficient(ctx, scale, variable)
+    {
+        return None;
+    }
+    let Expr::Div(numerator, denominator) = ctx.get(quotient).clone() else {
+        return None;
+    };
+    let scaled_numerator = build_backend_product(ctx, scale, numerator);
+    affine_denominator_linear_numerator_div_parts(ctx, scaled_numerator, denominator, variable).ok()
+}
+
+fn affine_quotient_remainder_from_linear_terms(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    denominator_slope: &BackendAffineSlope,
+    variable: &str,
+) -> Option<(ExprId, ExprId)> {
+    let (numerator_slope, numerator_intercept) =
+        backend_affine_linear_terms(ctx, numerator, variable)?;
+    let (_, denominator_intercept) = backend_affine_linear_terms(ctx, denominator, variable)?;
+    if is_zero(ctx, numerator_slope) {
+        return None;
+    }
+
+    let quotient_coefficient =
+        divide_backend_coefficient_by_slope(ctx, numerator_slope, denominator_slope);
+    let scaled_denominator_intercept =
+        build_backend_product(ctx, quotient_coefficient, denominator_intercept);
+    let remainder =
+        build_backend_difference(ctx, numerator_intercept, scaled_denominator_intercept);
+    Some((quotient_coefficient, remainder))
+}
+
+fn backend_affine_linear_terms(
+    ctx: &mut Context,
+    expr: ExprId,
+    variable: &str,
+) -> Option<(ExprId, ExprId)> {
+    if is_variable(ctx, expr, variable) {
+        let one = ctx.num(1);
+        let zero = ctx.num(0);
+        return Some((one, zero));
+    }
+    if is_supported_backend_linear_coefficient(ctx, expr, variable) {
+        let zero = ctx.num(0);
+        return Some((zero, expr));
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            let (left_slope, left_intercept) = backend_affine_linear_terms(ctx, left, variable)?;
+            let (right_slope, right_intercept) = backend_affine_linear_terms(ctx, right, variable)?;
+            Some((
+                build_backend_sum(ctx, left_slope, right_slope),
+                build_backend_sum(ctx, left_intercept, right_intercept),
+            ))
+        }
+        Expr::Sub(left, right) => {
+            let (left_slope, left_intercept) = backend_affine_linear_terms(ctx, left, variable)?;
+            let (right_slope, right_intercept) = backend_affine_linear_terms(ctx, right, variable)?;
+            Some((
+                build_backend_difference(ctx, left_slope, right_slope),
+                build_backend_difference(ctx, left_intercept, right_intercept),
+            ))
+        }
+        Expr::Neg(inner) => {
+            let (slope, intercept) = backend_affine_linear_terms(ctx, inner, variable)?;
+            Some((
+                negate_backend_expr(ctx, slope),
+                negate_backend_expr(ctx, intercept),
+            ))
+        }
+        Expr::Mul(left, right) => {
+            if is_supported_backend_linear_coefficient(ctx, left, variable)
+                && !contains_named_var(ctx, left, variable)
+            {
+                let (slope, intercept) = backend_affine_linear_terms(ctx, right, variable)?;
+                return Some((
+                    build_backend_product(ctx, left, slope),
+                    build_backend_product(ctx, left, intercept),
+                ));
+            }
+            if is_supported_backend_linear_coefficient(ctx, right, variable)
+                && !contains_named_var(ctx, right, variable)
+            {
+                let (slope, intercept) = backend_affine_linear_terms(ctx, left, variable)?;
+                return Some((
+                    build_backend_product(ctx, right, slope),
+                    build_backend_product(ctx, right, intercept),
+                ));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn build_affine_denominator_remainder_antiderivative(
+    ctx: &mut Context,
+    remainder: ExprId,
+    denominator: ExprId,
+    denominator_slope: &BackendAffineSlope,
+) -> ExprId {
+    if is_zero(ctx, remainder) {
+        return ctx.num(0);
+    }
+
+    let abs_denominator = ctx.call_builtin(BuiltinFn::Abs, vec![denominator]);
+    let log_denominator = ctx.call_builtin(BuiltinFn::Ln, vec![abs_denominator]);
+    let antiderivative_scale =
+        divide_backend_coefficient_by_slope(ctx, remainder, denominator_slope);
+    if is_one(ctx, antiderivative_scale) {
+        log_denominator
+    } else {
+        build_backend_product(ctx, antiderivative_scale, log_denominator)
     }
 }
 
@@ -3210,11 +4413,102 @@ fn is_supported_scaled_affine_reciprocal_numerator(
 }
 
 fn is_supported_backend_linear_coefficient(ctx: &Context, expr: ExprId, variable: &str) -> bool {
-    is_zero(ctx, expr)
-        || numeric_value(ctx, expr)
-            .map(|value| !value.is_zero())
-            .unwrap_or(false)
-        || is_supported_external_coefficient(ctx, expr, variable)
+    is_supported_backend_linear_coefficient_inner(ctx, expr, variable, 0, None)
+}
+
+fn is_supported_backend_linear_coefficient_for_affine_slope(
+    ctx: &Context,
+    expr: ExprId,
+    variable: &str,
+    affine_slope: &BackendAffineSlope,
+) -> bool {
+    is_supported_backend_linear_coefficient_inner(ctx, expr, variable, 0, Some(affine_slope))
+}
+
+fn is_supported_backend_linear_coefficient_inner(
+    ctx: &Context,
+    expr: ExprId,
+    variable: &str,
+    depth: usize,
+    allowed_symbolic_divisor: Option<&BackendAffineSlope>,
+) -> bool {
+    if depth >= BACKEND_EXTERNAL_COEFFICIENT_DEPTH {
+        return false;
+    }
+    if is_zero(ctx, expr) {
+        return true;
+    }
+    if numeric_value(ctx, expr)
+        .map(|value| !value.is_zero())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    if is_supported_external_coefficient(ctx, expr, variable) {
+        return true;
+    }
+    if contains_named_var(ctx, expr, variable) {
+        return false;
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            is_supported_backend_linear_coefficient_inner(
+                ctx,
+                *left,
+                variable,
+                depth + 1,
+                allowed_symbolic_divisor,
+            ) && is_supported_backend_linear_coefficient_inner(
+                ctx,
+                *right,
+                variable,
+                depth + 1,
+                allowed_symbolic_divisor,
+            )
+        }
+        Expr::Div(numerator, denominator) => {
+            if let Some(denominator_value) = numeric_value(ctx, *denominator) {
+                return !denominator_value.is_zero()
+                    && is_supported_backend_linear_coefficient_inner(
+                        ctx,
+                        *numerator,
+                        variable,
+                        depth + 1,
+                        allowed_symbolic_divisor,
+                    );
+            }
+            backend_affine_slope_allows_divisor(ctx, *denominator, allowed_symbolic_divisor)
+                && is_supported_backend_linear_coefficient_inner(
+                    ctx,
+                    *numerator,
+                    variable,
+                    depth + 1,
+                    allowed_symbolic_divisor,
+                )
+        }
+        Expr::Neg(inner) => is_supported_backend_linear_coefficient_inner(
+            ctx,
+            *inner,
+            variable,
+            depth + 1,
+            allowed_symbolic_divisor,
+        ),
+        _ => false,
+    }
+}
+
+fn backend_affine_slope_allows_divisor(
+    ctx: &Context,
+    divisor: ExprId,
+    allowed_symbolic_divisor: Option<&BackendAffineSlope>,
+) -> bool {
+    let Some(BackendAffineSlope::Symbolic(allowed_divisor)) = allowed_symbolic_divisor else {
+        return false;
+    };
+
+    divisor == *allowed_divisor
+        || SemanticEqualityChecker::new(ctx).are_equal(divisor, *allowed_divisor)
 }
 
 fn is_supported_nonzero_backend_coefficient(ctx: &Context, expr: ExprId, variable: &str) -> bool {
@@ -3236,10 +4530,12 @@ fn positive_quadratic_log_derivative_parts(
 )> {
     match ctx.get(expr).clone() {
         Expr::Div(numerator, denominator) => {
-            let (variable_expr, variable_slope, _, required_condition) =
+            let (variable_expr, variable_slope, radius_square, required_condition) =
                 positive_shifted_quadratic_denominator_parts(ctx, denominator, variable)?;
             let coefficient =
                 affine_variable_coefficient_expr(ctx, numerator, variable_expr, variable)?;
+            let denominator =
+                build_positive_quadratic_denominator(ctx, variable_expr, radius_square);
             Some((coefficient, variable_slope, denominator, required_condition))
         }
         _ => None,
@@ -3271,12 +4567,22 @@ fn positive_quadratic_linear_numerator_parts(
             if is_zero(ctx, constant_term) {
                 return None;
             }
-            if !is_supported_backend_linear_coefficient(ctx, variable_coefficient, variable)
-                || !is_supported_backend_linear_coefficient(ctx, constant_term, variable)
-            {
+            if !is_supported_backend_linear_coefficient_for_affine_slope(
+                ctx,
+                variable_coefficient,
+                variable,
+                &variable_slope,
+            ) || !is_supported_backend_linear_coefficient_for_affine_slope(
+                ctx,
+                constant_term,
+                variable,
+                &variable_slope,
+            ) {
                 return None;
             }
             let radius = positive_radius_expr(ctx, radius_square, &required_condition)?;
+            let denominator =
+                build_positive_quadratic_denominator(ctx, variable_expr, radius_square);
             Some(PositiveQuadraticLinearNumeratorParts {
                 variable_coefficient,
                 constant_term,
@@ -3289,6 +4595,16 @@ fn positive_quadratic_linear_numerator_parts(
         }
         _ => None,
     }
+}
+
+fn build_positive_quadratic_denominator(
+    ctx: &mut Context,
+    variable_expr: ExprId,
+    radius_square: ExprId,
+) -> ExprId {
+    let two = ctx.num(2);
+    let variable_square = ctx.add(Expr::Pow(variable_expr, two));
+    build_backend_sum(ctx, variable_square, radius_square)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3604,9 +4920,174 @@ fn positive_shifted_quadratic_denominator_parts(
                     affine_variable_from_square(ctx, right, variable)?;
                 return Some((variable_expr, variable_slope, left, required_condition));
             }
-            None
+            expanded_positive_shifted_quadratic_denominator_parts(ctx, expr, variable)
         }
-        _ => None,
+        _ => expanded_positive_shifted_quadratic_denominator_parts(ctx, expr, variable),
+    }
+}
+
+fn expanded_positive_shifted_quadratic_denominator_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    variable: &str,
+) -> Option<(
+    ExprId,
+    BackendAffineSlope,
+    ExprId,
+    Option<ConditionPredicate>,
+)> {
+    let terms = add_terms_signed(ctx, expr);
+    if terms.len() != 4 {
+        return None;
+    }
+
+    for (radius_index, (radius_candidate, radius_sign)) in terms.iter().copied().enumerate() {
+        if radius_sign != Sign::Pos {
+            continue;
+        }
+        let Some(required_condition) =
+            positive_radius_square_required_condition(ctx, radius_candidate, variable)
+        else {
+            continue;
+        };
+
+        for (quadratic_index, (quadratic_candidate, quadratic_sign)) in
+            terms.iter().copied().enumerate()
+        {
+            if quadratic_index == radius_index || quadratic_sign != Sign::Pos {
+                continue;
+            }
+            let Some(variable_slope) =
+                expanded_affine_square_quadratic_slope(ctx, quadratic_candidate, variable)
+            else {
+                continue;
+            };
+
+            for (intercept_index, (intercept_square_candidate, intercept_sign)) in
+                terms.iter().copied().enumerate()
+            {
+                if intercept_index == radius_index
+                    || intercept_index == quadratic_index
+                    || intercept_sign != Sign::Pos
+                {
+                    continue;
+                }
+                let Some(intercept) =
+                    squared_external_radius_base(ctx, intercept_square_candidate, variable)
+                else {
+                    continue;
+                };
+
+                let Some((cross_candidate, cross_sign)) = terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .find(|(index, _)| {
+                        *index != radius_index
+                            && *index != quadratic_index
+                            && *index != intercept_index
+                    })
+                    .map(|(_, term)| term)
+                else {
+                    continue;
+                };
+                if !expanded_affine_square_cross_term_matches(
+                    ctx,
+                    cross_candidate,
+                    &variable_slope,
+                    intercept,
+                    variable,
+                ) {
+                    continue;
+                }
+
+                let variable_expr = build_expanded_affine_square_variable_expr(
+                    ctx,
+                    &variable_slope,
+                    intercept,
+                    cross_sign,
+                    variable,
+                );
+                return Some((
+                    variable_expr,
+                    variable_slope,
+                    radius_candidate,
+                    required_condition,
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+fn expanded_affine_square_quadratic_slope(
+    ctx: &mut Context,
+    expr: ExprId,
+    variable: &str,
+) -> Option<BackendAffineSlope> {
+    if is_named_variable_square_factor(ctx, expr, variable) {
+        return Some(BackendAffineSlope::Numeric(BigRational::one()));
+    }
+
+    let mut factors = backend_mul_factors(ctx, expr);
+    let variable_square_index = factors
+        .iter()
+        .position(|factor| is_named_variable_square_factor(ctx, *factor, variable))?;
+    factors.remove(variable_square_index);
+    if factors.is_empty() {
+        return Some(BackendAffineSlope::Numeric(BigRational::one()));
+    }
+    if factors.len() != 1 {
+        return None;
+    }
+    let slope_square_candidate = factors[0];
+    let slope = squared_external_radius_base(ctx, slope_square_candidate, variable)?;
+    affine_slope_coefficient(ctx, slope, variable)
+}
+
+fn is_named_variable_square_factor(ctx: &Context, expr: ExprId, variable: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exponent) if is_two(ctx, *exponent) => is_variable(ctx, *base, variable),
+        _ => false,
+    }
+}
+
+fn expanded_affine_square_cross_term_matches(
+    ctx: &mut Context,
+    expr: ExprId,
+    variable_slope: &BackendAffineSlope,
+    intercept: ExprId,
+    variable: &str,
+) -> bool {
+    let two = ctx.num(2);
+    let slope = backend_affine_slope_expr(ctx, variable_slope);
+    let variable_expr = ctx.var(variable);
+    let expected = build_backend_factor_product(ctx, vec![two, slope, intercept, variable_expr]);
+    expr == expected || SemanticEqualityChecker::new(ctx).are_equal(expr, expected)
+}
+
+fn build_expanded_affine_square_variable_expr(
+    ctx: &mut Context,
+    variable_slope: &BackendAffineSlope,
+    intercept: ExprId,
+    cross_sign: Sign,
+    variable: &str,
+) -> ExprId {
+    let slope = backend_affine_slope_expr(ctx, variable_slope);
+    let variable_expr = ctx.var(variable);
+    let variable_term = build_backend_product(ctx, slope, variable_expr);
+    let signed_intercept = match cross_sign {
+        Sign::Pos => intercept,
+        Sign::Neg => negate_backend_expr(ctx, intercept),
+    };
+    build_backend_sum(ctx, variable_term, signed_intercept)
+}
+
+fn backend_affine_slope_expr(ctx: &mut Context, slope: &BackendAffineSlope) -> ExprId {
+    match slope {
+        BackendAffineSlope::Numeric(value) => ctx.add(Expr::Number(value.clone())),
+        BackendAffineSlope::Symbolic(expr) => *expr,
     }
 }
 
@@ -3717,8 +5198,13 @@ fn linear_numerator_decomposition_terms(
         let zero = ctx.num(0);
         return Some((zero, expr));
     }
+    if let Some(decomposition) =
+        affine_linear_numerator_decomposition_terms(ctx, expr, variable_expr, variable)
+    {
+        return Some(decomposition);
+    }
 
-    match ctx.get(expr).clone() {
+    let direct = match ctx.get(expr).clone() {
         Expr::Add(left, right) => {
             let (left_coefficient, left_constant) =
                 linear_numerator_decomposition_terms(ctx, left, variable_expr, variable)?;
@@ -3746,7 +5232,31 @@ fn linear_numerator_decomposition_terms(
             ))
         }
         _ => None,
+    };
+    direct
+}
+
+fn affine_linear_numerator_decomposition_terms(
+    ctx: &mut Context,
+    expr: ExprId,
+    variable_expr: ExprId,
+    variable: &str,
+) -> Option<(ExprId, ExprId)> {
+    let variable_slope = affine_denominator_slope(ctx, variable_expr, variable)?;
+    let (_, variable_intercept) = backend_affine_linear_terms(ctx, variable_expr, variable)?;
+    let (numerator_slope, numerator_intercept) = backend_affine_linear_terms(ctx, expr, variable)?;
+    if is_zero(ctx, numerator_slope) {
+        return None;
     }
+
+    let coefficient = divide_backend_coefficient_by_slope(ctx, numerator_slope, &variable_slope);
+    let scaled_variable_intercept = build_backend_product(ctx, coefficient, variable_intercept);
+    let constant = build_backend_difference_canceling_sum_term(
+        ctx,
+        numerator_intercept,
+        scaled_variable_intercept,
+    );
+    Some((coefficient, constant))
 }
 
 fn halve_backend_coefficient(ctx: &mut Context, coefficient: ExprId) -> ExprId {
@@ -3789,6 +5299,9 @@ fn divide_backend_coefficient_by_symbolic(
 ) -> ExprId {
     if coefficient == divisor || SemanticEqualityChecker::new(ctx).are_equal(coefficient, divisor) {
         return ctx.num(1);
+    }
+    if let Some(stripped) = strip_backend_exact_factor(ctx, coefficient, divisor, "") {
+        return stripped;
     }
     ctx.add(Expr::Div(coefficient, divisor))
 }
@@ -3969,6 +5482,38 @@ fn is_numeric_constant(ctx: &Context, expr: ExprId) -> bool {
 fn numeric_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     match ctx.get(expr) {
         Expr::Number(value) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn backend_numeric_constant_value(
+    ctx: &Context,
+    expr: ExprId,
+    depth: usize,
+) -> Option<BigRational> {
+    if depth > 4 {
+        return None;
+    }
+    match ctx.get(expr) {
+        Expr::Number(value) => Some(value.clone()),
+        Expr::Add(left, right) => Some(
+            backend_numeric_constant_value(ctx, *left, depth + 1)?
+                + backend_numeric_constant_value(ctx, *right, depth + 1)?,
+        ),
+        Expr::Sub(left, right) => Some(
+            backend_numeric_constant_value(ctx, *left, depth + 1)?
+                - backend_numeric_constant_value(ctx, *right, depth + 1)?,
+        ),
+        Expr::Mul(left, right) => Some(
+            backend_numeric_constant_value(ctx, *left, depth + 1)?
+                * backend_numeric_constant_value(ctx, *right, depth + 1)?,
+        ),
+        Expr::Div(left, right) => {
+            let numerator = backend_numeric_constant_value(ctx, *left, depth + 1)?;
+            let denominator = backend_numeric_constant_value(ctx, *right, depth + 1)?;
+            (!denominator.is_zero()).then(|| numerator / denominator)
+        }
+        Expr::Neg(inner) => Some(-backend_numeric_constant_value(ctx, *inner, depth + 1)?),
         _ => None,
     }
 }
@@ -4200,6 +5745,8 @@ mod tests {
             .try_method_probe(AlgorithmicIntegrationMethod::Rational, |probe_runner| {
                 first_probe_ran = true;
                 assert_eq!(probe_runner.remaining_method_probes(), 0);
+                assert_eq!(probe_runner.method_probe_budget_limit(), 1);
+                assert_eq!(probe_runner.verification_check_budget_limit(), 1);
                 assert!(probe_runner.try_verification_check());
                 AlgorithmicIntegrationProbeResult::NoMatch(
                     AlgorithmicIntegrationProbeNoMatchReason::ShapeMismatch,
@@ -4283,6 +5830,8 @@ mod tests {
         );
         assert_eq!(candidate.method_probes_used, 0);
         assert_eq!(candidate.verification_checks_used, 0);
+        assert_eq!(candidate.method_probe_budget_limit, 0);
+        assert_eq!(candidate.verification_check_budget_limit, 0);
         assert!(!candidate.is_publicly_acceptable());
         assert_eq!(
             candidate.publication_status(),
@@ -4305,6 +5854,8 @@ mod tests {
         let candidate = try_algorithmic_integration_backend(&mut ctx, integrand, "x", config);
 
         assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Unsupported);
+        assert_eq!(candidate.method_probe_budget_limit, 0);
+        assert_eq!(candidate.verification_check_budget_limit, 0);
         assert_eq!(candidate.antiderivative, None);
         assert_eq!(
             candidate.verification_status,
@@ -4362,11 +5913,16 @@ mod tests {
             "x",
             AlgorithmicIntegrationBackendConfig::diagnostic_only(),
         );
-
         assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
         assert_eq!(
             candidate.verification_status,
-            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions,
+            "blocker: {:?}, evidence: {:?}, normalization: {:?}, passes: {:?}, residual: {:?}",
+            candidate.verification_blocker,
+            candidate.verification_evidence,
+            candidate.verification_normalization_reason,
+            candidate.verification_normalization_passes_used,
+            candidate.residual_reason
         );
         assert_eq!(
             candidate.verification_evidence,
@@ -4445,6 +6001,10 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
         );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(
             candidate.required_conditions,
@@ -4479,6 +6039,10 @@ mod tests {
         assert_eq!(
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(
@@ -4517,7 +6081,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.required_conditions,
@@ -4552,7 +6116,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.required_conditions,
@@ -4581,6 +6145,10 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
         );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.public_antiderivative().is_some());
     }
@@ -4601,6 +6169,10 @@ mod tests {
         assert_eq!(
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.public_antiderivative().is_some());
@@ -4635,7 +6207,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.required_conditions,
@@ -4679,11 +6251,11 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.verification_normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::SymbolicScaledQuotient
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(
             candidate.required_conditions,
@@ -4693,6 +6265,54 @@ mod tests {
             ]
         );
         assert_eq!(candidate.residual_reason, None);
+        assert_eq!(candidate.method_probes_used, 1);
+        assert_eq!(candidate.verification_checks_used, 1);
+        assert!(candidate.public_antiderivative().is_some());
+    }
+
+    #[test]
+    fn diagnostic_rational_probe_verifies_symbolic_slope_affine_quotient_remainder() {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse("(m*(a*x+b)+c)/(a*x+b)", &mut ctx).expect("integrand");
+        let denominator = match ctx.get(integrand) {
+            Expr::Div(_, denominator) => *denominator,
+            _ => panic!("expected affine quotient-remainder integrand"),
+        };
+        let slope = match affine_denominator_slope(&mut ctx, denominator, "x")
+            .expect("symbolic affine slope")
+        {
+            BackendAffineSlope::Symbolic(slope) => slope,
+            BackendAffineSlope::Numeric(_) => panic!("expected symbolic slope"),
+        };
+
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
+        assert_eq!(
+            candidate.verification_normalization_reason,
+            AlgorithmicIntegrationVerificationNormalizationReason::None
+        );
+        assert_eq!(candidate.residual_reason, None);
+        assert_eq!(
+            candidate.required_conditions,
+            vec![
+                ConditionPredicate::NonZero(denominator),
+                ConditionPredicate::NonZero(slope),
+            ]
+        );
         assert_eq!(candidate.method_probes_used, 1);
         assert_eq!(candidate.verification_checks_used, 1);
         assert!(candidate.public_antiderivative().is_some());
@@ -4766,9 +6386,265 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_rational_probe_rejects_variable_dependent_reciprocal_numerator() {
+    fn diagnostic_rational_probe_verifies_raw_affine_quotient_remainder() {
         let mut ctx = Context::new();
         let integrand = cas_parser::parse("x/(x+1)", &mut ctx).expect("integrand");
+        let denominator = match ctx.get(integrand) {
+            Expr::Div(_, denominator) => *denominator,
+            _ => panic!("expected raw affine quotient-remainder integrand"),
+        };
+
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
+        assert_eq!(
+            candidate.verification_normalization_reason,
+            AlgorithmicIntegrationVerificationNormalizationReason::None
+        );
+        assert_eq!(candidate.residual_reason, None);
+        assert_eq!(
+            candidate.required_conditions,
+            vec![ConditionPredicate::NonZero(denominator)]
+        );
+        assert_eq!(candidate.method_probes_used, 1);
+        assert_eq!(candidate.verification_checks_used, 1);
+        assert!(candidate.public_antiderivative().is_some());
+    }
+
+    #[test]
+    fn diagnostic_rational_probe_verifies_external_scaled_zero_intercept_affine_quotient() {
+        let mut ctx = Context::new();
+
+        for source in ["3*x/(2*x+b)", "-3*x/(2*x+b)", "a*x/(c*x+d)", "-a*x/(c*x+d)"] {
+            let integrand = cas_parser::parse(source, &mut ctx).expect("integrand");
+            let candidate = try_algorithmic_integration_backend(
+                &mut ctx,
+                integrand,
+                "x",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+            );
+
+            assert_eq!(
+                candidate.method,
+                AlgorithmicIntegrationMethod::Rational,
+                "{source}"
+            );
+            assert_eq!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions,
+                "{source}"
+            );
+            assert_eq!(candidate.residual_reason, None, "{source}");
+            assert_eq!(candidate.method_probes_used, 1, "{source}");
+            assert_eq!(candidate.verification_checks_used, 1, "{source}");
+            assert!(candidate.public_antiderivative().is_some(), "{source}");
+        }
+
+        let integrand = cas_parser::parse("a*x/(c*x+d)", &mut ctx).expect("integrand");
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        let mut required_displays: Vec<_> = candidate
+            .required_conditions
+            .iter()
+            .map(|condition| match condition {
+                ConditionPredicate::NonZero(expr) => format!(
+                    "{} ≠ 0",
+                    cas_formatter::DisplayExpr {
+                        context: &ctx,
+                        id: *expr,
+                    }
+                ),
+                _ => condition.display(),
+            })
+            .collect();
+        required_displays.sort();
+        assert_eq!(
+            required_displays,
+            vec!["c * x + d ≠ 0".to_string(), "c ≠ 0".to_string()]
+        );
+    }
+
+    #[test]
+    fn diagnostic_rational_probe_verifies_numeric_slope_affine_symbolic_intercept_quotient_remainder(
+    ) {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse("(3*x+c)/(2*x+1)", &mut ctx).expect("integrand");
+        let denominator = match ctx.get(integrand) {
+            Expr::Div(_, denominator) => *denominator,
+            _ => panic!("expected symbolic-intercept affine quotient-remainder integrand"),
+        };
+
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(candidate.residual_reason, None);
+        assert_eq!(
+            candidate.required_conditions,
+            vec![ConditionPredicate::NonZero(denominator)]
+        );
+        assert_eq!(candidate.method_probes_used, 1);
+        assert_eq!(candidate.verification_checks_used, 1);
+        assert!(candidate.public_antiderivative().is_some());
+    }
+
+    #[test]
+    fn diagnostic_rational_probe_verifies_symbolic_slope_raw_affine_quotient_remainder() {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse("(3*x+c)/(a*x+b)", &mut ctx).expect("integrand");
+        let denominator = match ctx.get(integrand) {
+            Expr::Div(_, denominator) => *denominator,
+            _ => panic!("expected symbolic-slope raw affine quotient-remainder integrand"),
+        };
+        let slope = match affine_denominator_slope(&mut ctx, denominator, "x")
+            .expect("symbolic affine slope")
+        {
+            BackendAffineSlope::Symbolic(slope) => slope,
+            BackendAffineSlope::Numeric(_) => panic!("expected symbolic slope"),
+        };
+
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(candidate.residual_reason, None);
+        assert_eq!(
+            candidate.required_conditions,
+            vec![
+                ConditionPredicate::NonZero(denominator),
+                ConditionPredicate::NonZero(slope),
+            ]
+        );
+        assert_eq!(candidate.method_probes_used, 1);
+        assert_eq!(candidate.verification_checks_used, 1);
+        assert!(candidate.public_antiderivative().is_some());
+    }
+
+    #[test]
+    fn diagnostic_rational_probe_verifies_product_symbolic_slope_raw_affine_quotient_remainder() {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse("(3*x+c)/(2*a*x+b)", &mut ctx).expect("integrand");
+        let denominator = match ctx.get(integrand) {
+            Expr::Div(_, denominator) => *denominator,
+            _ => panic!("expected product-symbolic-slope raw affine quotient-remainder integrand"),
+        };
+        let slope = match affine_denominator_slope(&mut ctx, denominator, "x")
+            .expect("product symbolic affine slope")
+        {
+            BackendAffineSlope::Symbolic(slope) => slope,
+            BackendAffineSlope::Numeric(_) => panic!("expected symbolic slope"),
+        };
+
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(candidate.residual_reason, None);
+        assert_eq!(
+            candidate.required_conditions,
+            vec![
+                ConditionPredicate::NonZero(denominator),
+                ConditionPredicate::NonZero(slope),
+            ]
+        );
+        assert_eq!(candidate.method_probes_used, 1);
+        assert_eq!(candidate.verification_checks_used, 1);
+        assert!(candidate.public_antiderivative().is_some());
+    }
+
+    #[test]
+    fn diagnostic_rational_probe_rejects_non_linear_reciprocal_numerator() {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse("x^2/(x+1)", &mut ctx).expect("integrand");
+
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Unsupported);
+        assert_eq!(
+            candidate.method_probe_no_match_reasons.first(),
+            Some(&(
+                AlgorithmicIntegrationMethod::Rational,
+                AlgorithmicIntegrationProbeNoMatchReason::NumeratorPolicyMismatch,
+            ))
+        );
+        assert!(!candidate.is_publicly_acceptable());
+        assert_eq!(candidate.public_antiderivative(), None);
+    }
+
+    #[test]
+    fn diagnostic_rational_probe_rejects_non_linear_symbolic_slope_reciprocal_numerator() {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse("x^2/(a*x+b)", &mut ctx).expect("integrand");
+
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Unsupported);
+        assert_eq!(
+            candidate.method_probe_no_match_reasons.first(),
+            Some(&(
+                AlgorithmicIntegrationMethod::Rational,
+                AlgorithmicIntegrationProbeNoMatchReason::NumeratorPolicyMismatch,
+            ))
+        );
+        assert!(!candidate.is_publicly_acceptable());
+        assert_eq!(candidate.public_antiderivative(), None);
+    }
+
+    #[test]
+    fn diagnostic_rational_probe_rejects_non_linear_product_symbolic_slope_reciprocal_numerator() {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse("x^2/(2*a*x+b)", &mut ctx).expect("integrand");
 
         let candidate = try_algorithmic_integration_backend(
             &mut ctx,
@@ -4828,6 +6704,8 @@ mod tests {
 
         assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
         assert!(candidate.antiderivative.is_some());
+        assert_eq!(candidate.method_probe_budget_limit, 1);
+        assert_eq!(candidate.verification_check_budget_limit, 0);
         assert_eq!(
             candidate.required_conditions,
             vec![ConditionPredicate::NonZero(denominator)]
@@ -4870,18 +6748,19 @@ mod tests {
             "x",
             AlgorithmicIntegrationBackendConfig::diagnostic_only(),
         );
-        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Hermite);
+        assert_eq!(
+            candidate.method,
+            AlgorithmicIntegrationMethod::Hermite,
+            "no-match reasons: {:?}",
+            candidate.method_probe_no_match_reasons
+        );
         assert_eq!(
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::Verified
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
-        );
-        assert_eq!(
-            candidate.verification_normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::PowerOneElision
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.required_conditions.is_empty());
@@ -4910,10 +6789,23 @@ mod tests {
             "x",
             AlgorithmicIntegrationBackendConfig::diagnostic_only(),
         );
-        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Hermite);
+        assert_eq!(
+            candidate.method,
+            AlgorithmicIntegrationMethod::Hermite,
+            "no-match reasons: {:?}",
+            candidate.method_probe_no_match_reasons
+        );
         assert_eq!(
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::Verified
+        );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
+        assert_eq!(
+            candidate.verification_normalization_reason,
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.required_conditions.is_empty());
@@ -4940,6 +6832,14 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::Verified
         );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
+        assert_eq!(
+            candidate.verification_normalization_reason,
+            AlgorithmicIntegrationVerificationNormalizationReason::None
+        );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.required_conditions.is_empty());
         assert_eq!(
@@ -4965,11 +6865,107 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::Verified
         );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
+        assert_eq!(
+            candidate.verification_normalization_reason,
+            AlgorithmicIntegrationVerificationNormalizationReason::None
+        );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.required_conditions.is_empty());
         assert_eq!(
             candidate.trace_level,
             AlgorithmicIntegrationTraceLevel::AlgorithmicSummary
+        );
+        assert!(candidate.public_antiderivative().is_some());
+    }
+
+    #[test]
+    fn diagnostic_hermite_probe_verifies_expanded_symbolic_slope_positive_quadratic_mixed_numerator(
+    ) {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse("(m*s*x+b*m+c)/(s^2*x^2+2*b*s*x+b^2+a)", &mut ctx)
+            .expect("integrand");
+        let (numerator, denominator) = match ctx.get(integrand) {
+            Expr::Div(numerator, denominator) => (*numerator, *denominator),
+            _ => panic!("expected quotient integrand"),
+        };
+        let (variable_expr, variable_slope, radius_square, required_condition) =
+            positive_shifted_quadratic_denominator_parts(&mut ctx, denominator, "x")
+                .expect("expanded positive quadratic denominator");
+        assert!(positive_radius_expr(&mut ctx, radius_square, &required_condition).is_some());
+        let decomposition =
+            linear_numerator_decomposition_terms(&mut ctx, numerator, variable_expr, "x");
+        assert!(
+            decomposition.is_some(),
+            "failed to decompose numerator {} against {}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: numerator
+            },
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: variable_expr
+            }
+        );
+        let (variable_coefficient, constant_term) = decomposition.expect("decomposition");
+        assert!(
+            is_supported_backend_linear_coefficient_for_affine_slope(
+                &ctx,
+                variable_coefficient,
+                "x",
+                &variable_slope,
+            ),
+            "unsupported variable coefficient {}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: variable_coefficient
+            }
+        );
+        assert!(
+            is_supported_backend_linear_coefficient_for_affine_slope(
+                &ctx,
+                constant_term,
+                "x",
+                &variable_slope,
+            ),
+            "unsupported constant term {}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: constant_term
+            }
+        );
+
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+
+        assert_eq!(
+            candidate.method,
+            AlgorithmicIntegrationMethod::Hermite,
+            "no-match reasons: {:?}",
+            candidate.method_probe_no_match_reasons
+        );
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions,
+            "blocker: {:?}, evidence: {:?}, normalization: {:?}, residual: {:?}",
+            candidate.verification_blocker,
+            candidate.verification_evidence,
+            candidate.verification_normalization_reason,
+            candidate.residual_reason
+        );
+        assert_eq!(candidate.residual_reason, None);
+        assert_eq!(
+            candidate.required_conditions.len(),
+            2,
+            "expected positive radius and symbolic slope conditions, got {:?}",
+            candidate.required_conditions
         );
         assert!(candidate.public_antiderivative().is_some());
     }
@@ -5120,7 +7116,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.required_conditions.is_empty());
@@ -5155,11 +7151,11 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.verification_normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::ScaledArctanRadiusQuotient
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.required_conditions.is_empty());
@@ -5194,11 +7190,11 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.verification_normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::ScaledArctanRadiusQuotient
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.required_conditions.is_empty());
@@ -5226,7 +7222,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.method_probe_no_match_reasons,
@@ -5261,7 +7257,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(candidate.residual_reason, None);
         assert!(candidate.required_conditions.is_empty());
@@ -5289,7 +7285,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.method_probe_no_match_reasons,
@@ -5360,11 +7356,11 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.verification_normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::ScaledArctanRadiusQuotient
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(
             candidate.required_conditions,
@@ -5403,11 +7399,11 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.verification_normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::ScaledArctanRadiusQuotient
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(
             candidate.required_conditions,
@@ -5446,11 +7442,11 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.verification_normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::NumericScaledQuotient
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(
             candidate.required_conditions,
@@ -5489,7 +7485,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.required_conditions,
@@ -5528,7 +7524,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.required_conditions,
@@ -5567,7 +7563,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.required_conditions,
@@ -5607,7 +7603,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.required_conditions,
@@ -5673,7 +7669,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.required_conditions,
@@ -5713,11 +7709,11 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             candidate.verification_normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::SymbolicScaledQuotient
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(
             candidate.required_conditions,
@@ -6106,11 +8102,11 @@ mod tests {
         );
         assert_eq!(
             conditioned_report.evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(
             conditioned_report.normalization_reason,
-            AlgorithmicIntegrationVerificationNormalizationReason::ScaledArctanRadiusQuotient
+            AlgorithmicIntegrationVerificationNormalizationReason::None
         );
         assert_eq!(conditioned_report.residual_reason, None);
     }
@@ -6158,6 +8154,10 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
         );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::DirectDifferentiation
+        );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(
             candidate.constant_policy,
@@ -6179,6 +8179,8 @@ mod tests {
         );
         assert_eq!(candidate.method_probes_used, 2);
         assert_eq!(candidate.verification_checks_used, 1);
+        assert_eq!(candidate.method_probe_budget_limit, 3);
+        assert_eq!(candidate.verification_check_budget_limit, 1);
         assert!(candidate.is_publicly_acceptable());
     }
 
@@ -6200,11 +8202,10 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
         );
-        assert!(matches!(
+        assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::DirectDifferentiation
-                | AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
-        ));
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(candidate.required_conditions.len(), 1);
         assert!(matches!(
@@ -6241,11 +8242,14 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
         );
-        assert!(matches!(
+        assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::DirectDifferentiation
-                | AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
-        ));
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
+        assert_eq!(
+            candidate.verification_normalization_reason,
+            AlgorithmicIntegrationVerificationNormalizationReason::None
+        );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(candidate.required_conditions.len(), 1);
         assert!(matches!(
@@ -6315,7 +8319,7 @@ mod tests {
         );
         assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(
@@ -6358,11 +8362,10 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
         );
-        assert!(matches!(
+        assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::DirectDifferentiation
-                | AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
-        ));
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(
             candidate.constant_policy,
@@ -6410,11 +8413,10 @@ mod tests {
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
         );
-        assert!(matches!(
+        assert_eq!(
             candidate.verification_evidence,
-            AlgorithmicIntegrationVerificationEvidence::DirectDifferentiation
-                | AlgorithmicIntegrationVerificationEvidence::NormalizedDifferentiation
-        ));
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
+        );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(
             candidate.constant_policy,
@@ -6461,6 +8463,10 @@ mod tests {
         assert_eq!(
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(
@@ -6509,6 +8515,10 @@ mod tests {
         assert_eq!(
             candidate.verification_status,
             AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+        );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::MethodSpecificDifferentiation
         );
         assert_eq!(candidate.residual_reason, None);
         assert_eq!(
@@ -6604,6 +8614,8 @@ mod tests {
         );
         assert_eq!(candidate.method_probes_used, 3);
         assert_eq!(candidate.verification_checks_used, 1);
+        assert_eq!(candidate.method_probe_budget_limit, 3);
+        assert_eq!(candidate.verification_check_budget_limit, 1);
         assert!(candidate.public_antiderivative().is_some());
         assert_eq!(
             candidate
@@ -7101,6 +9113,56 @@ mod tests {
             "x",
             AlgorithmicIntegrationBackendConfig::diagnostic_only(),
         );
+        let affine_quotient_remainder_rational_integrand =
+            cas_parser::parse("(m*(a*x+b)+c)/(a*x+b)", &mut ctx)
+                .expect("affine quotient-remainder rational integrand");
+        let diagnostic_affine_quotient_remainder_rational_probe =
+            try_algorithmic_integration_backend(
+                &mut ctx,
+                affine_quotient_remainder_rational_integrand,
+                "x",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+            );
+        let raw_affine_quotient_remainder_rational_integrand =
+            cas_parser::parse("x/(x+1)", &mut ctx)
+                .expect("raw affine quotient-remainder rational integrand");
+        let diagnostic_raw_affine_quotient_remainder_rational_probe =
+            try_algorithmic_integration_backend(
+                &mut ctx,
+                raw_affine_quotient_remainder_rational_integrand,
+                "x",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+            );
+        let symbolic_intercept_affine_quotient_remainder_rational_integrand =
+            cas_parser::parse("(3*x+c)/(2*x+1)", &mut ctx)
+                .expect("symbolic intercept affine quotient-remainder rational integrand");
+        let diagnostic_symbolic_intercept_affine_quotient_remainder_rational_probe =
+            try_algorithmic_integration_backend(
+                &mut ctx,
+                symbolic_intercept_affine_quotient_remainder_rational_integrand,
+                "x",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+            );
+        let symbolic_slope_raw_affine_quotient_remainder_rational_integrand =
+            cas_parser::parse("(3*x+c)/(a*x+b)", &mut ctx)
+                .expect("symbolic slope raw affine quotient-remainder rational integrand");
+        let diagnostic_symbolic_slope_raw_affine_quotient_remainder_rational_probe =
+            try_algorithmic_integration_backend(
+                &mut ctx,
+                symbolic_slope_raw_affine_quotient_remainder_rational_integrand,
+                "x",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+            );
+        let product_symbolic_slope_raw_affine_quotient_remainder_rational_integrand =
+            cas_parser::parse("(3*x+c)/(2*a*x+b)", &mut ctx)
+                .expect("product symbolic slope raw affine quotient-remainder rational integrand");
+        let diagnostic_product_symbolic_slope_raw_affine_quotient_remainder_rational_probe =
+            try_algorithmic_integration_backend(
+                &mut ctx,
+                product_symbolic_slope_raw_affine_quotient_remainder_rational_integrand,
+                "x",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+            );
         let hermite_integrand =
             cas_parser::parse("2*x/(x^2+1)", &mut ctx).expect("hermite integrand");
         let diagnostic_hermite_probe = try_algorithmic_integration_backend(
@@ -7265,6 +9327,16 @@ mod tests {
                 "x",
                 AlgorithmicIntegrationBackendConfig::diagnostic_only(),
             );
+        let indefinite_square_unit_mixed_numerator_integrand =
+            cas_parser::parse("(x+1)/(x^2-a^2)", &mut ctx)
+                .expect("indefinite square unit mixed numerator");
+        let diagnostic_indefinite_square_unit_mixed_numerator_probe =
+            try_algorithmic_integration_backend(
+                &mut ctx,
+                indefinite_square_unit_mixed_numerator_integrand,
+                "x",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+            );
         let symbolic_slope_indefinite_square_mixed_numerator_integrand =
             cas_parser::parse("(m*(s*x+b)+c)/((s*x+b)^2-a^2)", &mut ctx)
                 .expect("symbolic slope indefinite square mixed numerator");
@@ -7388,6 +9460,31 @@ mod tests {
                 diagnostic_product_symbolic_slope_rational_probe,
             ),
             (
+                "affine_quotient_remainder_rational",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+                diagnostic_affine_quotient_remainder_rational_probe,
+            ),
+            (
+                "raw_affine_quotient_remainder_rational",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+                diagnostic_raw_affine_quotient_remainder_rational_probe,
+            ),
+            (
+                "symbolic_intercept_affine_quotient_remainder_rational",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+                diagnostic_symbolic_intercept_affine_quotient_remainder_rational_probe,
+            ),
+            (
+                "symbolic_slope_raw_affine_quotient_remainder_rational",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+                diagnostic_symbolic_slope_raw_affine_quotient_remainder_rational_probe,
+            ),
+            (
+                "product_symbolic_slope_raw_affine_quotient_remainder_rational",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+                diagnostic_product_symbolic_slope_raw_affine_quotient_remainder_rational_probe,
+            ),
+            (
                 "positive_quadratic_log_derivative",
                 AlgorithmicIntegrationBackendConfig::diagnostic_only(),
                 diagnostic_hermite_probe,
@@ -7478,6 +9575,11 @@ mod tests {
                 diagnostic_symbolic_slope_indefinite_square_denominator_policy_gap_probe,
             ),
             (
+                "indefinite_square_unit_mixed_numerator",
+                AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+                diagnostic_indefinite_square_unit_mixed_numerator_probe,
+            ),
+            (
                 "indefinite_square_mixed_numerator",
                 AlgorithmicIntegrationBackendConfig::diagnostic_only(),
                 diagnostic_symbolic_slope_indefinite_square_mixed_numerator_probe,
@@ -7523,7 +9625,7 @@ mod tests {
                 .iter()
                 .filter(|(_, candidate)| candidate.is_publicly_acceptable())
                 .count(),
-            28
+            34
         );
         assert_eq!(
             observed
@@ -7553,13 +9655,13 @@ mod tests {
                 ("hermite/shape_mismatch".to_string(), 1),
                 ("heurisch_probe/shape_mismatch".to_string(), 1),
                 ("rational/denominator_policy_mismatch".to_string(), 4),
-                ("rational/numerator_policy_mismatch".to_string(), 16),
+                ("rational/numerator_policy_mismatch".to_string(), 17),
                 ("rational/shape_mismatch".to_string(), 1),
             ])
         );
         assert_eq!(
             method_probe_no_match_class_counts(&observed),
-            BTreeMap::from([("policy", 21), ("shape", 3),])
+            BTreeMap::from([("policy", 22), ("shape", 3),])
         );
         assert_eq!(
             method_probe_no_match_class_by_method(&observed),
@@ -7567,13 +9669,13 @@ mod tests {
                 ("hermite/policy".to_string(), 1),
                 ("hermite/shape".to_string(), 1),
                 ("heurisch_probe/shape".to_string(), 1),
-                ("rational/policy".to_string(), 20),
+                ("rational/policy".to_string(), 21),
                 ("rational/shape".to_string(), 1),
             ])
         );
         assert_eq!(
             method_probe_no_match_final_method_counts(&observed),
-            BTreeMap::from([("hermite", 19), ("heurisch_probe", 2), ("unsupported", 3),])
+            BTreeMap::from([("hermite", 20), ("heurisch_probe", 2), ("unsupported", 3),])
         );
         assert_eq!(
             method_probe_no_match_final_method_by_attempt(&observed),
@@ -7581,7 +9683,7 @@ mod tests {
                 ("hermite/heurisch_probe".to_string(), 1),
                 ("hermite/unsupported".to_string(), 1),
                 ("heurisch_probe/unsupported".to_string(), 1),
-                ("rational/hermite".to_string(), 19),
+                ("rational/hermite".to_string(), 20),
                 ("rational/heurisch_probe".to_string(), 1),
                 ("rational/unsupported".to_string(), 1),
             ])
@@ -7612,6 +9714,35 @@ mod tests {
             BTreeMap::from([("constant_integrand_backend_unsupported_baseline", 1),])
         );
         assert_eq!(
+            verification_check_usage_by_publication_status(&observed),
+            BTreeMap::from([("accepted", 33),])
+        );
+        assert_eq!(
+            verification_check_usage_by_evidence(&observed),
+            BTreeMap::from([
+                ("direct_differentiation", 5),
+                ("method_specific_differentiation", 28),
+            ])
+        );
+        assert_eq!(
+            verification_check_usage_by_method_and_evidence(&observed),
+            BTreeMap::from([
+                ("hermite/direct_differentiation".to_string(), 2),
+                ("hermite/method_specific_differentiation".to_string(), 18),
+                ("heurisch_probe/direct_differentiation".to_string(), 1),
+                ("rational/direct_differentiation".to_string(), 2),
+                ("rational/method_specific_differentiation".to_string(), 10),
+            ])
+        );
+        assert_eq!(
+            verification_check_usage_by_method_and_publication_status(&observed),
+            BTreeMap::from([
+                ("hermite/accepted".to_string(), 20),
+                ("heurisch_probe/accepted".to_string(), 1),
+                ("rational/accepted".to_string(), 12),
+            ])
+        );
+        assert_eq!(
             failure_class_counts(&observed),
             BTreeMap::from([
                 ("budget_exceeded", 2),
@@ -7632,12 +9763,15 @@ mod tests {
                 ("unsupported/unsupported_method".to_string(), 1),
             ])
         );
+        assert_eq!(method_probe_budget_exhausted_count(&observed), 1);
+        assert_eq!(verification_budget_exceeded_count(&observed), 0);
+        assert_eq!(verification_boundary_budget_exceeded_count(&observed), 1);
 
         let verification_elapsed_ms =
             (verified_elapsed + rejected_elapsed + function_rejected_elapsed).as_secs_f64()
                 * 1000.0;
         println!(
-            "algorithmic_backend_observability: {{\"attempts\":{},\"public_accepted\":{},\"unverified_public_acceptances\":{},\"fallback_eligible\":{},\"unverified_fallback_acceptances\":{},\"method_probe_budget_exhausted\":{},\"verification_budget_exceeded\":{},\"method_probes_used_total\":{},\"verification_checks_used_total\":{},\"verification_elapsed_ms\":{:.3},\"mode_counts\":{},\"method_counts\":{},\"method_probe_usage_by_method\":{},\"method_probe_attempt_counts\":{},\"method_probe_candidate_counts\":{},\"method_probe_no_match_counts\":{},\"method_probe_no_match_reason_counts\":{},\"method_probe_no_match_class_counts\":{},\"method_probe_no_match_class_by_method\":{},\"method_probe_no_match_final_method_counts\":{},\"method_probe_no_match_final_method_by_attempt\":{},\"method_probe_terminal_no_match_reason_counts\":{},\"method_probe_terminal_no_match_class_counts\":{},\"method_probe_terminal_no_match_class_by_method\":{},\"method_probe_terminal_candidate_count\":{},\"method_probe_terminal_candidate_signature_counts\":{},\"verification_check_usage_by_method\":{},\"verification_status_by_method\":{},\"residual_reason_by_method\":{},\"verification_blocker_counts\":{},\"verification_blocker_by_method\":{},\"failure_class_counts\":{},\"failure_class_by_method\":{},\"verification_residual_counts\":{},\"verification_residual_by_method\":{},\"verification_residual_kind_counts\":{},\"verification_residual_kind_by_method\":{},\"verification_residual_signature_counts\":{},\"verification_residual_signature_by_method\":{},\"publication_status_counts\":{},\"publication_status_by_method\":{},\"fallback_status_counts\":{},\"fallback_status_by_method\":{},\"trace_level_counts\":{},\"constant_policy_counts\":{},\"domain_policy_counts\":{},\"domain_policy_by_method\":{},\"public_trace_level_counts\":{},\"public_constant_policy_counts\":{},\"public_domain_policy_counts\":{},\"public_domain_policy_by_method\":{},\"fallback_trace_level_counts\":{},\"fallback_constant_policy_counts\":{},\"fallback_domain_policy_counts\":{},\"fallback_domain_policy_by_method\":{},\"assumption_exprs\":{},\"public_assumption_exprs\":{},\"fallback_assumption_exprs\":{},\"verification_evidence_counts\":{},\"public_verification_evidence_counts\":{},\"fallback_verification_evidence_counts\":{},\"verification_evidence_by_method\":{},\"public_verification_evidence_by_method\":{},\"fallback_verification_evidence_by_method\":{},\"verification_normalization_reason_counts\":{},\"public_verification_normalization_reason_counts\":{},\"fallback_verification_normalization_reason_counts\":{},\"verification_normalization_reason_by_method\":{},\"public_verification_normalization_reason_by_method\":{},\"fallback_verification_normalization_reason_by_method\":{},\"verification_normalization_pass_count_counts\":{},\"public_verification_normalization_pass_count_counts\":{},\"fallback_verification_normalization_pass_count_counts\":{},\"verification_normalization_pass_count_by_method\":{},\"public_verification_normalization_pass_count_by_method\":{},\"fallback_verification_normalization_pass_count_by_method\":{},\"max_verification_normalization_passes\":{},\"public_max_verification_normalization_passes\":{},\"fallback_max_verification_normalization_passes\":{},\"verification_status_counts\":{},\"residual_reason_counts\":{},\"required_condition_counts\":{}}}",
+            "algorithmic_backend_observability: {{\"attempts\":{},\"public_accepted\":{},\"unverified_public_acceptances\":{},\"fallback_eligible\":{},\"unverified_fallback_acceptances\":{},\"method_probe_budget_exhausted\":{},\"verification_budget_exceeded\":{},\"verification_boundary_budget_exceeded\":{},\"method_probes_used_total\":{},\"verification_checks_used_total\":{},\"method_probe_budget_limit_total\":{},\"verification_check_budget_limit_total\":{},\"verification_elapsed_ms\":{:.3},\"mode_counts\":{},\"method_counts\":{},\"method_probe_usage_by_method\":{},\"method_probe_attempt_counts\":{},\"method_probe_candidate_counts\":{},\"method_probe_no_match_counts\":{},\"method_probe_no_match_reason_counts\":{},\"method_probe_no_match_class_counts\":{},\"method_probe_no_match_class_by_method\":{},\"method_probe_no_match_final_method_counts\":{},\"method_probe_no_match_final_method_by_attempt\":{},\"method_probe_terminal_no_match_reason_counts\":{},\"method_probe_terminal_no_match_class_counts\":{},\"method_probe_terminal_no_match_class_by_method\":{},\"method_probe_terminal_candidate_count\":{},\"method_probe_terminal_candidate_signature_counts\":{},\"verification_check_usage_by_method\":{},\"verification_check_usage_by_evidence\":{},\"verification_check_usage_by_method_and_evidence\":{},\"verification_check_usage_by_publication_status\":{},\"verification_check_usage_by_method_and_publication_status\":{},\"verification_status_by_method\":{},\"residual_reason_by_method\":{},\"verification_blocker_counts\":{},\"verification_blocker_by_method\":{},\"failure_class_counts\":{},\"failure_class_by_method\":{},\"verification_residual_counts\":{},\"verification_residual_by_method\":{},\"verification_residual_kind_counts\":{},\"verification_residual_kind_by_method\":{},\"verification_residual_signature_counts\":{},\"verification_residual_signature_by_method\":{},\"publication_status_counts\":{},\"publication_status_by_method\":{},\"fallback_status_counts\":{},\"fallback_status_by_method\":{},\"trace_level_counts\":{},\"constant_policy_counts\":{},\"domain_policy_counts\":{},\"domain_policy_by_method\":{},\"public_trace_level_counts\":{},\"public_constant_policy_counts\":{},\"public_domain_policy_counts\":{},\"public_domain_policy_by_method\":{},\"fallback_trace_level_counts\":{},\"fallback_constant_policy_counts\":{},\"fallback_domain_policy_counts\":{},\"fallback_domain_policy_by_method\":{},\"assumption_exprs\":{},\"public_assumption_exprs\":{},\"fallback_assumption_exprs\":{},\"verification_evidence_counts\":{},\"public_verification_evidence_counts\":{},\"fallback_verification_evidence_counts\":{},\"verification_evidence_by_method\":{},\"public_verification_evidence_by_method\":{},\"fallback_verification_evidence_by_method\":{},\"verification_normalization_reason_counts\":{},\"public_verification_normalization_reason_counts\":{},\"fallback_verification_normalization_reason_counts\":{},\"verification_normalization_reason_by_method\":{},\"public_verification_normalization_reason_by_method\":{},\"fallback_verification_normalization_reason_by_method\":{},\"verification_normalization_reason_by_label\":{},\"verification_normalization_pass_count_counts\":{},\"public_verification_normalization_pass_count_counts\":{},\"fallback_verification_normalization_pass_count_counts\":{},\"verification_normalization_pass_count_by_method\":{},\"public_verification_normalization_pass_count_by_method\":{},\"fallback_verification_normalization_pass_count_by_method\":{},\"max_verification_normalization_passes\":{},\"public_max_verification_normalization_passes\":{},\"fallback_max_verification_normalization_passes\":{},\"verification_status_counts\":{},\"residual_reason_counts\":{},\"required_condition_counts\":{}}}",
             observed.len(),
             observed
                 .iter()
@@ -7667,12 +9801,15 @@ mod tests {
                             AlgorithmicIntegrationVerificationStatus::Verified
                                 | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
                         )
-                })
+            })
                 .count(),
             method_probe_budget_exhausted_count(&observed),
             verification_budget_exceeded_count(&observed),
+            verification_boundary_budget_exceeded_count(&observed),
             method_probes_used_total(&observed),
             verification_checks_used_total(&observed),
+            method_probe_budget_limit_total(&observed),
+            verification_check_budget_limit_total(&observed),
             verification_elapsed_ms,
             json_count_map(mode_counts(&observed)),
             json_count_map(method_counts(&observed)),
@@ -7693,6 +9830,14 @@ mod tests {
                 &labeled_observed
             )),
             json_count_map(verification_check_usage_by_method(&observed)),
+            json_count_map(verification_check_usage_by_evidence(&observed)),
+            json_string_count_map(verification_check_usage_by_method_and_evidence(
+                &observed
+            )),
+            json_count_map(verification_check_usage_by_publication_status(&observed)),
+            json_string_count_map(verification_check_usage_by_method_and_publication_status(
+                &observed
+            )),
             json_string_count_map(verification_status_by_method(&observed)),
             json_string_count_map(residual_reason_by_method(&observed)),
             json_count_map(verification_blocker_counts(&observed)),
@@ -7743,6 +9888,9 @@ mod tests {
             )),
             json_string_count_map(fallback_verification_normalization_reason_by_method(
                 &observed
+            )),
+            json_string_count_map(verification_normalization_reason_by_label(
+                &labeled_observed
             )),
             json_string_count_map(verification_normalization_pass_count_counts(&observed)),
             json_string_count_map(public_verification_normalization_pass_count_counts(
@@ -7795,6 +9943,26 @@ mod tests {
             .filter(|(config, candidate)| {
                 config.mode.attempts_backend()
                     && config.budget.max_method_probes > 0
+                    && config.budget.max_verification_checks > 0
+                    && candidate.verification_blocker
+                        == AlgorithmicIntegrationVerificationBlocker::BudgetExceeded
+                    && candidate.residual_reason.as_ref()
+                        == Some(&AlgorithmicIntegrationResidualReason::BudgetExceeded)
+            })
+            .count()
+    }
+
+    fn verification_boundary_budget_exceeded_count(
+        observed: &[(
+            AlgorithmicIntegrationBackendConfig,
+            AlgorithmicIntegrationCandidate,
+        )],
+    ) -> usize {
+        observed
+            .iter()
+            .filter(|(config, candidate)| {
+                config.mode.attempts_backend()
+                    && config.budget.max_method_probes > 0
                     && config.budget.max_verification_checks == 0
                     && candidate.antiderivative.is_some()
                     && candidate.residual_reason.as_ref()
@@ -7815,6 +9983,18 @@ mod tests {
             .sum()
     }
 
+    fn method_probe_budget_limit_total(
+        observed: &[(
+            AlgorithmicIntegrationBackendConfig,
+            AlgorithmicIntegrationCandidate,
+        )],
+    ) -> usize {
+        observed
+            .iter()
+            .map(|(_, candidate)| candidate.method_probe_budget_limit)
+            .sum()
+    }
+
     fn verification_checks_used_total(
         observed: &[(
             AlgorithmicIntegrationBackendConfig,
@@ -7824,6 +10004,18 @@ mod tests {
         observed
             .iter()
             .map(|(_, candidate)| candidate.verification_checks_used)
+            .sum()
+    }
+
+    fn verification_check_budget_limit_total(
+        observed: &[(
+            AlgorithmicIntegrationBackendConfig,
+            AlgorithmicIntegrationCandidate,
+        )],
+    ) -> usize {
+        observed
+            .iter()
+            .map(|(_, candidate)| candidate.verification_check_budget_limit)
             .sum()
     }
 
@@ -8077,6 +10269,80 @@ mod tests {
             if candidate.verification_checks_used > 0 {
                 *counts.entry(candidate.method.metric_label()).or_insert(0) +=
                     candidate.verification_checks_used;
+            }
+        }
+        counts
+    }
+
+    fn verification_check_usage_by_publication_status(
+        observed: &[(
+            AlgorithmicIntegrationBackendConfig,
+            AlgorithmicIntegrationCandidate,
+        )],
+    ) -> BTreeMap<&'static str, usize> {
+        let mut counts = BTreeMap::new();
+        for (_, candidate) in observed {
+            if candidate.verification_checks_used > 0 {
+                *counts
+                    .entry(candidate.publication_status().metric_label())
+                    .or_insert(0) += candidate.verification_checks_used;
+            }
+        }
+        counts
+    }
+
+    fn verification_check_usage_by_evidence(
+        observed: &[(
+            AlgorithmicIntegrationBackendConfig,
+            AlgorithmicIntegrationCandidate,
+        )],
+    ) -> BTreeMap<&'static str, usize> {
+        let mut counts = BTreeMap::new();
+        for (_, candidate) in observed {
+            if candidate.verification_checks_used > 0 {
+                *counts
+                    .entry(candidate.verification_evidence.metric_label())
+                    .or_insert(0) += candidate.verification_checks_used;
+            }
+        }
+        counts
+    }
+
+    fn verification_check_usage_by_method_and_evidence(
+        observed: &[(
+            AlgorithmicIntegrationBackendConfig,
+            AlgorithmicIntegrationCandidate,
+        )],
+    ) -> BTreeMap<String, usize> {
+        let mut counts = BTreeMap::new();
+        for (_, candidate) in observed {
+            if candidate.verification_checks_used > 0 {
+                let key = format!(
+                    "{}/{}",
+                    candidate.method.metric_label(),
+                    candidate.verification_evidence.metric_label()
+                );
+                *counts.entry(key).or_insert(0) += candidate.verification_checks_used;
+            }
+        }
+        counts
+    }
+
+    fn verification_check_usage_by_method_and_publication_status(
+        observed: &[(
+            AlgorithmicIntegrationBackendConfig,
+            AlgorithmicIntegrationCandidate,
+        )],
+    ) -> BTreeMap<String, usize> {
+        let mut counts = BTreeMap::new();
+        for (_, candidate) in observed {
+            if candidate.verification_checks_used > 0 {
+                let key = format!(
+                    "{}/{}",
+                    candidate.method.metric_label(),
+                    candidate.publication_status().metric_label()
+                );
+                *counts.entry(key).or_insert(0) += candidate.verification_checks_used;
             }
         }
         counts
@@ -8837,6 +11103,27 @@ mod tests {
                 let key = format!(
                     "{}/{}",
                     candidate.method.metric_label(),
+                    candidate.verification_normalization_reason.metric_label()
+                );
+                *counts.entry(key).or_insert(0) += 1;
+            }
+        }
+        counts
+    }
+
+    fn verification_normalization_reason_by_label(
+        labeled_observed: &[(
+            &str,
+            AlgorithmicIntegrationBackendConfig,
+            AlgorithmicIntegrationCandidate,
+        )],
+    ) -> BTreeMap<String, usize> {
+        let mut counts = BTreeMap::new();
+        for (label, _, candidate) in labeled_observed {
+            if candidate.verification_normalization_reason.is_present() {
+                let key = format!(
+                    "{}/{}",
+                    label,
                     candidate.verification_normalization_reason.metric_label()
                 );
                 *counts.entry(key).or_insert(0) += 1;

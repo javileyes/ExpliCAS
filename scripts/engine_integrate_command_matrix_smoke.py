@@ -523,6 +523,121 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="abs_log_exact_derivative",
     ),
     IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_affine_quotient_numeric_slope",
+        expr="integrate((3*x+c)/(2*x+b), x)",
+        expected_result="1/2·ln(|b + 2·x|)·(c - 3/2·b) + 3/2·x",
+        expected_direct_diff_integrate_result="(c + 3·x) / (b + 2·x)",
+        expected_direct_diff_integrate_required_display=("b + 2·x ≠ 0",),
+        expected_required_display=("b + 2·x ≠ 0",),
+        family="algorithmic_backend_rational_affine_quotient",
+        argument_regime="linear_numerator_affine_denominator_numeric_slope",
+        domain_regime="backend_verified_denominator_nonzero_required",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_log_affine_quotient",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_affine_quotient_symbolic_slope",
+        expr="integrate((3*x+c)/(2*a*x+b), x)",
+        expected_result="(3·x)/(2·a) + ((c - (3·b)/(2·a))·ln(|2·a·x + b|))/(2·a)",
+        expected_direct_diff_integrate_result="(c + 3·x) / (2·a·x + b)",
+        expected_direct_diff_integrate_required_display=("2·a·x + b ≠ 0", "a ≠ 0"),
+        expected_required_display=("2·a·x + b ≠ 0", "a ≠ 0"),
+        family="algorithmic_backend_rational_affine_quotient",
+        argument_regime="linear_numerator_affine_denominator_symbolic_slope",
+        domain_regime="backend_verified_denominator_and_slope_nonzero_required",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_log_affine_quotient_symbolic_slope",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_affine_quotient_external_scale_zero_intercept",
+        expr="integrate(a*x/(c*x+d), x)",
+        expected_result="(a·x)/c - a·d·ln(|c·x + d|)/(c·c)",
+        expected_direct_diff_integrate_result="a·x / (c·x + d)",
+        expected_direct_diff_integrate_required_display=("c ≠ 0", "c·x + d ≠ 0"),
+        expected_required_display=("c ≠ 0", "c·x + d ≠ 0"),
+        family="algorithmic_backend_rational_affine_quotient",
+        argument_regime="external_scaled_zero_intercept_linear_numerator_affine_denominator_symbolic_slope",
+        domain_regime="backend_verified_denominator_and_slope_nonzero_required",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_log_affine_quotient_external_scale_zero_intercept",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_hermite_symbolic_positive_radius_mixed_numerator",
+        expr="integrate((x+1)/(x^2+a), x)",
+        expected_result="1/2·ln(x^2 + a) + (1·arctan(x / sqrt(a)))/sqrt(a)",
+        expected_direct_diff_integrate_result="(x + 1) / (x^2 + a)",
+        expected_direct_diff_integrate_required_display=("a > 0",),
+        expected_required_display=("a > 0",),
+        family="algorithmic_backend_hermite_positive_quadratic",
+        argument_regime="linear_numerator_unit_positive_quadratic_symbolic_radius",
+        domain_regime="backend_verified_positive_radius_required",
+        trace_regime="algorithmic_backend_hermite_summary",
+        presentation_regime="backend_summary_log_arctan_symbolic_positive_radius",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_hermite_symbolic_affine_positive_radius_mixed_numerator",
+        expr="integrate((m*(s*x+b)+c)/((s*x+b)^2+a), x)",
+        expected_result=(
+            "(c·arctan((s·x + b) / sqrt(a)))/(sqrt(a)·s) + "
+            "(m·ln((s·x + b)^2 + a))/(s·2)"
+        ),
+        expected_direct_diff_integrate_result=(
+            "(m·(s·x + b) + c) / ((s·x + b)^2 + a)"
+        ),
+        expected_direct_diff_integrate_required_display=("a > 0", "s ≠ 0"),
+        expected_required_display=("a > 0", "s ≠ 0"),
+        family="algorithmic_backend_hermite_positive_quadratic",
+        argument_regime="symbolic_affine_positive_quadratic_mixed_numerator",
+        domain_regime="backend_verified_positive_radius_and_slope_nonzero_required",
+        trace_regime="algorithmic_backend_hermite_summary",
+        presentation_regime="backend_summary_log_arctan_symbolic_affine_positive_radius",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_hermite_symbolic_indefinite_square_denominator",
+        expr="integrate(1/(x^2-a^2), x)",
+        expected_result="((ln(|x - a|) - ln(|a + x|))·1·1/2)/a",
+        expected_direct_diff_integrate_result="1 / (x^2 - a^2)",
+        expected_direct_diff_integrate_required_display=(
+            "a + x ≠ 0",
+            "a ≠ 0",
+            "a - x ≠ 0",
+        ),
+        expected_required_display=("a + x ≠ 0", "a ≠ 0", "a - x ≠ 0"),
+        family="algorithmic_backend_hermite_indefinite_square",
+        argument_regime="reciprocal_indefinite_square_symbolic_radius",
+        domain_regime="backend_verified_component_local_symbolic_poles_required",
+        trace_regime="algorithmic_backend_hermite_summary",
+        presentation_regime="backend_summary_log_abs_component_local_indefinite_square",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_hermite_symbolic_affine_indefinite_square_mixed_numerator",
+        expr="integrate((m*(s*x+b)+c)/((s*x+b)^2-a^2), x)",
+        expected_result=(
+            "(m·ln(|(s·x + b)^2 - a^2|))/(s·2) + "
+            "((ln(|s·x + b - a|) - ln(|s·x + a + b|))·c·1/2)/(a·s)"
+        ),
+        expected_direct_diff_integrate_result=(
+            "(m·(s·x + b) + c) / ((s·x + b)^2 - a^2)"
+        ),
+        expected_direct_diff_integrate_required_display=(
+            "a ≠ 0",
+            "s ≠ 0",
+            "s·x + a + b ≠ 0",
+            "a - s·x - b ≠ 0",
+        ),
+        expected_required_display=(
+            "a ≠ 0",
+            "s ≠ 0",
+            "s·x + a + b ≠ 0",
+            "a - s·x - b ≠ 0",
+        ),
+        family="algorithmic_backend_hermite_indefinite_square",
+        argument_regime="symbolic_affine_indefinite_square_mixed_numerator",
+        domain_regime="backend_verified_component_local_symbolic_poles_and_slope_required",
+        trace_regime="algorithmic_backend_hermite_summary",
+        presentation_regime="backend_summary_log_abs_component_local_affine_indefinite_square_mixed_numerator",
+    ),
+    IntegrateCommandMatrixCase(
         name="log_derivative_positive_quadratic_substitution",
         expr="integrate((2*x+2)/(x^2+2*x+2), x)",
         expected_result="ln(x^2 + 2·x + 2)",
@@ -3890,6 +4005,9 @@ def calculus_maturity_block(case: IntegrateCommandMatrixCase) -> str:
     if case.outcome in {"residual", "undefined"}:
         return "block9_residuals_and_non_goals"
 
+    if "algorithmic_backend" in case.family or "algorithmic_backend" in case.trace_regime:
+        return "block12_hybrid_algorithmic_backend"
+
     cluster = trig_hyperbolic_policy_cluster(case)
     if cluster is not None and cluster.startswith("block7_"):
         return "block7_trig_hyperbolic_integration"
@@ -3926,7 +4044,16 @@ def calculus_maturity_block(case: IntegrateCommandMatrixCase) -> str:
     return "block4_base_integration"
 
 
+def is_algorithmic_backend_boundary_case(case: IntegrateCommandMatrixCase) -> bool:
+    return case.outcome == "supported" and (
+        "algorithmic_backend" in case.family
+        or "algorithmic_backend" in case.trace_regime
+    )
+
+
 def calculus_block_gate(case: IntegrateCommandMatrixCase) -> str:
+    if is_algorithmic_backend_boundary_case(case):
+        return "algorithmic_backend_boundary_verified"
     if case.outcome == "residual":
         return "safe_residual_policy"
     if case.outcome == "undefined":
@@ -3980,6 +4107,8 @@ def verification_regime(case: IntegrateCommandMatrixCase) -> str:
         return "verified_by_diff"
     if has_direct_diff_integrate_probe_value:
         return "verified_by_direct_diff_integrate"
+    if is_algorithmic_backend_boundary_case(case):
+        return "verified_by_algorithmic_backend_boundary"
     if case.outcome == "residual":
         return "residual_not_verified"
     if case.outcome == "undefined":
@@ -3996,6 +4125,8 @@ def verification_mode(case: IntegrateCommandMatrixCase) -> str:
         return "direct_diff_integrate_equivalence"
     if direct_diff_integrate_expected_result(case) is not None:
         return "direct_diff_integrate_exact"
+    if is_algorithmic_backend_boundary_case(case):
+        return "algorithmic_backend_boundary"
     if case.outcome == "residual":
         return "residual_not_verified"
     if case.outcome == "undefined":
@@ -4017,6 +4148,7 @@ def count_verified_supported_cases(
     cases: tuple[IntegrateCommandMatrixCase, ...],
 ) -> int:
     verified_regimes = {
+        "verified_by_algorithmic_backend_boundary",
         "verified_by_diff",
         "verified_by_diff_and_direct_diff_integrate",
         "verified_by_direct_diff_integrate",
@@ -4766,7 +4898,9 @@ def run_matrix(
     supported_step_unchecked_cases = [
         case.name
         for case in cases
-        if case.outcome == "supported" and not case.expected_step_substrings
+        if case.outcome == "supported"
+        and not case.expected_step_substrings
+        and not is_algorithmic_backend_boundary_case(case)
     ]
     residual_case_names = [case.name for case in cases if case.outcome == "residual"]
 
