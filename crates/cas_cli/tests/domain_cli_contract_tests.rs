@@ -152,6 +152,29 @@ fn cli_domain_generic_pow_zero_proven_base_unconditional() {
 }
 
 #[test]
+fn cli_branch_flag_is_alias_of_inv_trig() {
+    // --branch is a deprecated alias of --inv-trig: principal must actually
+    // apply the principal inverse-trig policy (it was a silent no-op before).
+    let (output, _code) = run_cli(&[
+        "eval",
+        "arctan(tan(2))",
+        "--format",
+        "json",
+        "--branch",
+        "principal",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "2");
+
+    // Default stays conservative.
+    let (default_output, _code) = run_cli(&["eval", "arctan(tan(2))", "--format", "json"]);
+    let default_wire = parse_wire(&default_output);
+    assert_eq!(default_wire["result"], "arctan(tan(2))");
+}
+
+#[test]
 fn cli_domain_assume_emits_warning() {
     // Assume => x/x -> 1 WITH warning
     let (output, _code) = run_cli(&["eval", "x/x", "--format", "json", "--domain", "assume"]);

@@ -32,7 +32,7 @@ cas_cli eval <EXPR> --format json [OPTIONS]
 | `--max-chars <N>` | 2000 | Maximum characters for result output. Truncates if larger. |
 | `--steps <MODE>` | off | Steps mode: `on`, `off`, `compact` |
 | `--context <MODE>` | auto | Context mode: `auto`, `standard`, `solve`, `integrate` |
-| `--branch <MODE>` | strict | **Legacy, no effect** (kept for wire compatibility; only echoed in `options.branch_mode`). Use `--inv-trig` instead. |
+| `--branch <MODE>` | strict | **Deprecated alias of `--inv-trig`**: `principal` applies the principal inverse-trig policy (it was a silent no-op until 2026-06-10). Prefer `--inv-trig`. |
 | `--inv-trig <MODE>` | strict | Inverse trig composition policy: `strict`, `principal`. With `principal`, e.g. `arctan(tan(2))` → `2` with a structured `InvTrigPrincipalRange` warning. |
 | `--domain <MODE>` | generic | Domain mode for cancellation rules: `strict`, `generic`, `assume` |
 | `--value-domain <MODE>` | real | Value domain: `real`, `complex` |

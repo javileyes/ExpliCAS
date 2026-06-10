@@ -70,7 +70,7 @@ pub(super) fn eval_command_config<'a>(
         const_fold: const_fold_mode(args.const_fold),
         value_domain: value_domain(args.value_domain),
         complex_branch: complex_branch_mode(args.complex_branch),
-        inv_trig: inv_trig_mode(args.inv_trig),
+        inv_trig: effective_inv_trig_mode(args.inv_trig, args.branch),
         assume_scope: assume_scope(args.assume_scope),
     }
 }
@@ -129,10 +129,15 @@ fn value_domain(vd: ValueDomainArg) -> EvalValueDomain {
     }
 }
 
-fn inv_trig_mode(mode: InvTrigArg) -> EvalInvTrigPolicy {
-    match mode {
-        InvTrigArg::Strict => EvalInvTrigPolicy::Strict,
-        InvTrigArg::Principal => EvalInvTrigPolicy::Principal,
+/// `--branch` is a deprecated alias of `--inv-trig`. The engine-side
+/// BranchMode axis was fully migrated to InverseTrigPolicy self-gating, so
+/// honoring the alias here is what makes `--branch principal` do what its
+/// help text always promised instead of being a silent no-op. Principal wins
+/// when either flag asks for it; both default to strict.
+fn effective_inv_trig_mode(inv_trig: InvTrigArg, branch: EvalBranchArg) -> EvalInvTrigPolicy {
+    match (inv_trig, branch) {
+        (InvTrigArg::Strict, EvalBranchArg::Strict) => EvalInvTrigPolicy::Strict,
+        _ => EvalInvTrigPolicy::Principal,
     }
 }
 

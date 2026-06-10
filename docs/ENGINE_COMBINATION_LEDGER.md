@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 46 (newest first)
+Active entries: 47 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -129,6 +129,7 @@ Active entries: 46 (newest first)
 - 2026-06-10 | `retained` | harness / documentation / strategy direction | Retained harness: north star, didactic elevation phase, and block 13
 - 2026-06-10 | `retained` | domain modes / required conditions / exponents / documentation | Retained robustness: power-zero family surfaces its definability conditions
 - 2026-06-10 | `retained` | web UI / domain modes / inverse-trig branch policy / documentation | Retained harness: web mode/branch selectors and trig-branch doc coherence
+- 2026-06-10 | `retained` | CLI surface / inverse-trig branch policy / profile cache | Retained robustness: --branch becomes an honest alias of --inv-trig
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -1877,3 +1878,39 @@ Active entries: 46 (newest first)
   - when two knobs exist for one semantic axis, probe before wiring: the
     web Branch selector would have silently done nothing if mapped to the
     documented (--branch) instead of the real (--inv-trig) flag
+
+## 2026-06-10 - Retained robustness: --branch becomes an honest alias of --inv-trig
+
+- area:
+  - CLI surface / inverse-trig branch policy / profile cache
+- status:
+  - `retained` (closes the observe-only discovery recorded earlier today)
+- capture:
+  - investment_class: robustness
+  - cohesion_scope: cas_cli eval mapping + cli_args help +
+    cas_engine ProfileKey + 2 doc rows + 1 wire contract test
+  - behavior_change_expected: yes — `--branch principal` now applies the
+    principal inverse-trig policy (it was a silent no-op); defaults
+    unchanged; `--inv-trig` unchanged; `options.branch_mode` echo preserved
+- observed:
+  - the BranchMode→InverseTrigPolicy migration finished but left three
+    remnants: a dead CLI flag whose help promised behavior it did not
+    deliver, a stale "until fully migrated" comment, and a dead
+    branch_mode dimension in the rule-profile cache key (identical rule
+    sets for both values, doubling potential cache entries)
+- decision:
+  - alias rather than retire: removal would break wire compatibility and
+    any caller of `--branch principal` would lose silently-expected
+    behavior a second time; the alias makes the flag finally do what every
+    historical doc said (`effective_inv_trig_mode`: principal wins when
+    either flag asks; both default strict)
+  - retired the dead ProfileKey.branch_mode dimension (behavior-preserving;
+    rule sets proven identical) and updated the stale migration comment
+  - wire contract test pins the alias (`arctan(tan(2)) --branch principal`
+    → 2) and the conservative default; JSON_CLI_API and SEMANTICS_POLICY
+    rows updated from "legacy no-op" to "deprecated alias, now effective"
+- retained learning:
+  - a deprecated flag that silently does nothing is worse than either
+    removing it or honoring it: alias-to-the-canonical-knob is the
+    cheapest honest resolution when wire compatibility matters; pin it
+    with a contract test at the surface where users feel it

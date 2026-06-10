@@ -288,7 +288,9 @@ pub struct EvalArgs {
     #[arg(long, value_enum, default_value_t = ContextArg::Auto)]
     pub context: ContextArg,
 
-    /// Branch mode: strict, principal
+    /// Deprecated alias of --inv-trig (the branch axis migrated to the
+    /// inverse-trig policy); principal applies the principal inverse-trig
+    /// policy, exactly like --inv-trig principal
     #[arg(long, value_enum, default_value_t = EvalBranchArg::Strict)]
     pub branch: EvalBranchArg,
 

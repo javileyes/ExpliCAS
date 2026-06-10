@@ -127,9 +127,10 @@ impl Simplifier {
     /// Create a simplifier based on evaluation options.
     /// This is the main entry point for context-aware simplification.
     ///
-    /// NOTE: PrincipalBranchInverseTrigRule is now self-gated by inv_trig_policy().
+    /// NOTE: PrincipalBranchInverseTrigRule is self-gated by inv_trig_policy().
     /// It is always registered but only applies when inv_trig == PrincipalValue.
-    /// The branch_mode check below is for backward compatibility until fully migrated.
+    /// The legacy BranchMode axis no longer affects rule selection (the CLI
+    /// --branch flag is a deprecated alias of --inv-trig).
     pub fn with_profile(opts: &crate::options::EvalOptions) -> Self {
         use crate::options::ContextMode;
 

@@ -3,7 +3,7 @@
 //! Caches rule profiles to avoid rebuilding rules on each evaluation.
 //! Profiles are keyed by (BranchMode, ContextMode, ComplexMode) combination.
 
-use crate::options::{BranchMode, ComplexMode, ContextMode, EvalOptions};
+use crate::options::{ComplexMode, ContextMode, EvalOptions};
 use crate::rule::Rule;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -26,7 +26,6 @@ pub(crate) fn phase_index(phase: crate::phase::SimplifyPhase) -> usize {
 /// Key for profile cache - combines all options that affect rule selection
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProfileKey {
-    pub branch_mode: BranchMode,
     pub context_mode: ContextMode,
     pub complex_mode: ComplexMode,
 }
@@ -34,7 +33,6 @@ pub struct ProfileKey {
 impl ProfileKey {
     pub fn from_options(opts: &EvalOptions) -> Self {
         Self {
-            branch_mode: opts.branch_mode,
             context_mode: opts.shared.context_mode,
             complex_mode: opts.complex_mode,
         }

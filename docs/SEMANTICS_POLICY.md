@@ -700,7 +700,7 @@ Result: i
 | `--value-domain real\|complex` | ✅ | - |
 | `--inv-trig strict\|principal` | ✅ | - |
 | `--complex-branch principal` | ✅ | Placeholder: only `principal` is accepted; only relevant with `--value-domain complex` |
-| `--branch strict\|principal` | ✅ | Legacy, no-op (no rule consumes it); kept for wire compatibility, echoed in `options.branch_mode` |
+| `--branch strict\|principal` | ✅ | Deprecated alias of `--inv-trig` (principal applies the principal inverse-trig policy; was a silent no-op until 2026-06-10); still echoed in `options.branch_mode` |
 
 ---
 
