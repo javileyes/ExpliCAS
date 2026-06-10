@@ -83,6 +83,7 @@ Plan operativo de madurez de cálculo:
   10. didáctica de cálculo
   11. arquitectura/observabilidad/runtime para generalizar sin fragilidad
   12. backend algorítmico de integración separado y verificable
+  13. integrales definidas y teorema fundamental (sin empezar)
   Los títulos canónicos de los bloques son los de docs/CALCULUS_ENGINE_STRATEGY.md (Block-Based Calculus Maturity Plan); esta lista es su paráfrasis operativa.
 - Un bloque no cuenta como maduro porque existan varios casos verdes. Cuenta
   sólo cuando su capacidad representativa tiene resultado correcto o residual
@@ -95,6 +96,12 @@ Plan operativo de madurez de cálculo:
     dominio, residual, presentación y arquitectura repetible
   - "integración general tipo CAS" es un track híbrido de backend separado, no
     una ampliación sin frontera de la ruta educativa de `integrate`
+- El destino final es un único engine universal Y educativo en dominio real
+  (ver North Star en docs/CALCULUS_ENGINE_STRATEGY.md): los tres alcances
+  anteriores son etapas, no estados finales alternativos. La traza
+  `algorithmic_summary` del backend es transicional: una familia backend no
+  está terminada hasta elevarse a derivación didáctica (Phase 6 del roadmap
+  del backend) o documentar por qué basta el resumen.
 - Cada ciclo debe elegir un sub-gate concreto (un bullet de bloque) — los bloques son prosa, no checkboxes literales. Si el
   candidato no avanza un gate de bloque, trátalo como discovery pressure o
   recházalo como near-duplicate.

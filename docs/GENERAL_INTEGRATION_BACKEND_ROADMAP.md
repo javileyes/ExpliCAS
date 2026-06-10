@@ -112,6 +112,8 @@ Phase status (2026-06-10):
 - Phase 4: in progress (Hermite positive-quadratic regime grid promoted to the
   public matrix 2026-06-10; general rational integration pending)
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
+- Phase 6: not started (didactic elevation; first candidate Hermite positive
+  quadratic)
 
 ### Phase 0. Inventory And Ownership
 
@@ -207,6 +209,22 @@ A family is promotable only when it has:
 Prefer rational integration before transcendental heuristics. It has clearer
 algebraic invariants, domain conditions, and verification routes.
 
+Named workstream — algebraic verification graduation (prerequisite for
+completing this phase with general rational integration):
+
+- today the verifier matches `diff(candidate)` against the integrand through
+  case-by-case structural normalization (`verification_normalization`); that
+  does not scale to algorithm-produced antiderivatives
+- graduate rational-candidate verification to an algebraic zero test: bring
+  `diff(candidate) - integrand` to rational normal form over a common
+  denominator via `multipoly` and decide equality by polynomial zero testing,
+  under the existing verification budgets
+- structural normalization stays for non-rational shapes; do not add new
+  `normalize_backend_*` cases for shapes the algebraic test can decide
+- the 2026-06-10 combination-ledger learnings (builder canonicalization debt,
+  folded-coefficient matching) are the two failure modes this graduation
+  removes at the root
+
 ### Phase 5. Mode And Trace Policy
 
 Goal: expose the backend without weakening the educational UX.
@@ -228,6 +246,30 @@ Trace policy:
 - diagnostic mode may expose rejected candidates, but ordinary users should see
   clear residual explanations instead of internal churn
 
+### Phase 6. Didactic Elevation
+
+Goal: close the gap between verified and teachable. The north star
+(CALCULUS_ENGINE_STRATEGY.md) is a universal *and* educational engine, so
+`algorithmic_summary` traces are transitional, not terminal.
+
+A stable backend family is elevated by:
+
+- authoring a real step-by-step derivation for the method (for Hermite
+  positive quadratic: complete the square, substitute `u`, table
+  arctan/log), reusing the educational route's step machinery instead of
+  inventing a parallel one
+- keeping the backend verification as the safety net behind the steps
+- promoting the family's trace level from `algorithmic_summary` to
+  `educational_full`, with a matrix row asserting step substrings
+
+Elevation order should follow public usage value, not implementation order.
+A family may stay summary-only when the method is genuinely beyond
+curriculum scope; document that decision and its reason in the combination
+ledger.
+
+Phase status (2026-06-10): not started — first candidate: Hermite positive
+quadratic (regime grid completed and promoted 2026-06-10).
+
 ## Promotion Checklist
 
 Before retaining a backend change, answer:
@@ -244,6 +286,8 @@ Before retaining a backend change, answer:
 - Which support-matrix cells were added or updated?
 - What runtime guardrail proves ordinary educational cases did not regress?
 - Is the trace educational-full, algorithmic-summary, or diagnostic-only?
+- Is the family elevated to `educational_full` steps, scheduled for didactic
+  elevation (Phase 6), or documented summary-only with a reason?
 
 ## Recommended First Iterations
 
@@ -259,6 +303,10 @@ Before retaining a backend change, answer:
 7. [done — discovery probes] Add discovery-only rational integration probes.
 8. [in progress — Hermite positive-quadratic regimes promoted 2026-06-10, see combination ledger] Promote one verified rational backend family once the boundary and verifier
    are stable.
+9. [pending] Graduate rational-candidate verification to the multipoly
+   algebraic zero test (see the Phase 4 named workstream).
+10. [pending] Elevate the first backend family (Hermite positive quadratic)
+    to `educational_full` steps (Phase 6).
 
 ## Stop Conditions
 

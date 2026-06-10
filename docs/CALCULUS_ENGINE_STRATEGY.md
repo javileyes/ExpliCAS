@@ -1,5 +1,26 @@
 # Calculus Engine Strategy
 
+## North Star
+
+The end goal of this track is one engine that is both:
+
+- **universal**: systematic differential and integral calculus coverage over
+  the real domain, not a curated demo set
+- **educational**: every supported result can explain itself step by step,
+  with honest domain conditions and honest residuals
+
+The three maturity scopes used by the auto-improvement loop ("serious
+educational", "generally mature", "CAS-style general integration") are stages
+toward that single goal, not alternative end states. In particular, the hybrid
+backend's `algorithmic_summary` trace level is transitional: a backend family
+is not finished until it is either elevated to a step-by-step educational
+derivation (see Phase 6, didactic elevation, in
+GENERAL_INTEGRATION_BACKEND_ROADMAP.md) or explicitly documented as
+summary-only with a reason.
+
+The complex domain is deliberately deferred (see Deferred Horizons below), but
+real-domain decisions should not paint it into a corner.
+
 This document is part of the engine auto-improvement loop. It defines how the
 campaign should turn the mature pre-calculus core and the existing calculus
 verticals into a serious real-domain calculus surface.
@@ -404,6 +425,20 @@ Use these blocks as the active plan:
       observability lanes, and the first public family (Hermite positive
       quadratic) are live; see GENERAL_INTEGRATION_BACKEND_ROADMAP.md phase
       status.
+
+13. **Definite integrals and the fundamental theorem**
+   - definite integration over the real domain via the fundamental theorem,
+     with continuity/pole checks on the integration interval before applying
+     it; interval domain checking is the mathematical core, not display sugar
+     over indefinite integration
+   - didactic trace: antiderivative step, evaluation at the bounds, and an
+     interval-condition explanation
+   - honest residuals for improper integrals and non-elementary
+     antiderivatives
+   - support-matrix rows once a minimal command surface exists
+   - Status (2026-06-10): not started — named here so cycles can select it;
+     no code, no matrix, and no command surface yet (`integrate(f, x, a, b)`
+     is not parsed).
 
 Selection rule:
 
@@ -837,6 +872,23 @@ Reject or defer a calculus candidate when it:
 
 Prefer recording a clear unsupported residual over returning a speculative
 calculus result.
+
+## Deferred Horizons
+
+These are explicitly out of the current block plan, named so their boundary is
+visible and so present-day decisions do not make them needlessly expensive:
+
+- **Complex domain.** Deferred until the real-domain north star is mature.
+  Guardrails for today: keep branch policy explicit and family-owned (never
+  implicit in display cleanup), keep `ln(|...|)` versus `ln(...)` decisions
+  owned by the family that proves them, and keep condition predicates
+  structured and extensible rather than hard-coding real-only assumptions
+  into public contracts where a structured representation costs the same.
+- **Series and Taylor expansions.** Standard curriculum, not yet planned;
+  belongs after definite integrals (block 13) earns a command surface.
+- **Improper integrals.** Tracked as the residual policy of block 13, not as
+  a separate engine track.
+- **Differential equations.** Out of scope for this strategy document.
 
 ## Relationship To `derive`
 

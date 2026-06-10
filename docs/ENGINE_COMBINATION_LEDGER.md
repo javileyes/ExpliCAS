@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 43 (newest first)
+Active entries: 44 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -126,6 +126,7 @@ Active entries: 43 (newest first)
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite positive | Retained calculus: expanded derivative-multiple numerator closes Hermite log-only regime
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite positive | Retained calculus: numeric-center expanded positive-quadratic reconstruction
 - 2026-06-10 | `retained` | harness / documentation / auto-improvement loop steering | Retained harness: steering docs coherence pass and ledger rotation
+- 2026-06-10 | `retained` | harness / documentation / strategy direction | Retained harness: north star, didactic elevation phase, and block 13
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -1731,3 +1732,45 @@ Active entries: 43 (newest first)
   - any metric that parses a document must be invariant under that
     document's maintenance operations (rotation, reindexing); reading
     active + archives made rotation safe to automate
+
+## 2026-06-10 - Retained harness: north star, didactic elevation phase, and block 13
+
+- area:
+  - harness / documentation / strategy direction
+- status:
+  - `retained` (harness/docs only; purely additive, 107 lines across three
+    steering docs)
+- capture:
+  - investment_class: observability (harness)
+  - cohesion_scope: CALCULUS_ENGINE_STRATEGY.md +
+    ENGINE_AUTO_IMPROVEMENT_PROMPT.txt + GENERAL_INTEGRATION_BACKEND_ROADMAP.md
+  - behavior_change_expected: none
+- observed:
+  - the stated product goal (a universal AND step-by-step educational
+    real-domain calculus engine, complex domain deferred) was not written
+    anywhere: the three maturity scopes read as alternative end states, the
+    backend's `algorithmic_summary` trace level was documented as terminal,
+    definite integrals had zero mentions in any steering doc (and no command
+    surface), the algebraic-verifier graduation existed only in ledger
+    entries, and the complex-domain horizon had no guardrails
+- decision:
+  - added a North Star section to CALCULUS_ENGINE_STRATEGY.md declaring the
+    union goal and the scopes as stages; declared `algorithmic_summary`
+    transitional
+  - added Phase 6 (Didactic Elevation) to the backend roadmap with a
+    promotion-checklist gate and recommended-iteration items 9-10; first
+    elevation candidate: Hermite positive quadratic
+  - named the algebraic verification graduation (multipoly rational
+    zero-test) as a Phase 4 workstream and froze new `normalize_backend_*`
+    cases for shapes the algebraic test can decide
+  - added block 13 (definite integrals and the fundamental theorem,
+    not started) to the strategy block plan and the prompt's block list,
+    with interval domain checking named as the mathematical core
+  - added a Deferred Horizons section (complex domain with
+    don't-paint-into-corners guardrails; series/Taylor; improper integrals
+    as block 13 residual policy; ODEs out of scope)
+- retained learning:
+  - a per-cycle ROI selector without a written destination optimizes the
+    local gradient; the steering docs must state the end state so ties
+    break toward it (didactic elevation and definite integrals were
+    invisible to selection before this pass)
