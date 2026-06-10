@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 49 (newest first)
+Active entries: 50 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -132,6 +132,7 @@ Active entries: 49 (newest first)
 - 2026-06-10 | `retained` | CLI surface / inverse-trig branch policy / profile cache | Retained robustness: --branch becomes an honest alias of --inv-trig
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / verification | Retained calculus: algebraic zero-test graduates rational verification
 - 2026-06-10 | `retained` | strategy docs / deferred horizons / web UI / complex domain foundations | Retained harness: complex semantic model decision and web complex-arithmetic selector
+- 2026-06-10 | `retained` | web UI / session functions / CLI session reuse | Retained harness: web function-definition cells, panel, and deletion
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -2025,3 +2026,51 @@ Active entries: 49 (newest first)
   - indentation-substring replaces struck again when threading parameters
     through the Colab server (12/16/20-space cascade); anchor multiline
     edits on full call blocks, not single parameter lines
+
+## 2026-06-10 - Retained harness: web function-definition cells, panel, and deletion
+
+- area:
+  - web UI / session functions / CLI session reuse
+- status:
+  - `retained` (web feature; engine and CLI untouched)
+- capture:
+  - investment_class: observability (harness/product surface)
+  - cohesion_scope: web/server.py + web/index.html
+  - behavior_change_expected: web only — f(x) := body now renders an amber
+    definition cell (mirror of the green variable cell), with a Functions
+    header button, panel, and per-function deletion
+- observed (scoping workflow):
+  - the CLI session natively supports function definitions end to end
+    (persistence across invocations, composition, multi-arg, redefinition,
+    correct parameter shadowing via Environment.functions), but has NO
+    selective deletion: REPL clear name only unsets variables (functions
+    survive — engine-side bug noted below), and repl does not accept
+    --session anyway
+- decision:
+  - the web owns names, the CLI owns evaluation: each definition is sent
+    to the CLI session under a fresh internal name (__webfnN) with the
+    public name mapped web-side; later expressions rewrite name( ->
+    __webfnN( (no parenthesis parsing needed), so deletion is dropping the
+    mapping — the orphaned internal binding is unreachable and harmless,
+    exactly like deleted variables' orphaned history entries
+  - definition-time semantics mirror variables: session variables
+    substitute into the body but formal parameters are protected
+    (skip_vars), verified by h(x) := x+a with a=5 giving x+5 and h(1)=6
+  - import invalidates the CLI snapshot, so functions re-register under
+    fresh internal names from their stored display bodies (verified:
+    imported p(x)=x^2+1 evaluates p(3)=10 in the new snapshot)
+  - validated by curl battery: define/call/compose/two-arg/redefine/
+    delete (clean CLI error after deletion) plus the variable-parameter
+    protection case
+- discovery (observe-only):
+  - engine-side: REPL clear name claims success paths for variables only;
+    clear_bindings_command never unsets Environment.functions — a small
+    engine fix candidate (unset_function + clear name parity)
+  - server_colab.py parity for the function flow is pending (the Colab
+    variant would 404 on /api/delete-function); follow-up if that
+    deployment is active
+- retained learning:
+  - name-indirection (public name -> fresh internal name) is the cheap
+    pattern for giving deletable, redefinable semantics on top of an
+    append-only session snapshot; it avoided both snapshot rewriting and
+    a web-side lambda-calculus reimplementation

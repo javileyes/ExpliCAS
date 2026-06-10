@@ -26,6 +26,7 @@
             --accent: #e94560;
             --accent-hover: #ff6b6b;
             --success: #4ade80;
+            --warning: #f59e0b;
             --border: #2a4a7f;
             --input-bg: #0d1b2a;
         }
@@ -149,6 +150,21 @@
             font-size: 0.9em;
         }
 
+        /* Function Definition Cards - Special styling (amber) */
+        .function-card {
+            background: linear-gradient(135deg, #2d2208, #3a2c0a);
+            border-color: var(--warning);
+        }
+
+        .function-card .expression-header {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.1));
+        }
+
+        .function-card .fn-badge {
+            padding: 6px 14px;
+            font-size: 0.9em;
+        }
+
         @keyframes slideIn {
             from {
                 opacity: 0;
@@ -223,6 +239,17 @@
 
         .var-badge {
             background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.8em;
+            margin-left: 8px;
+            font-family: 'Fira Code', monospace;
+        }
+
+        .fn-badge {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
             color: white;
             padding: 4px 10px;
             border-radius: 12px;
@@ -997,6 +1024,74 @@
             font-family: 'Fira Code', monospace;
         }
 
+        /* Functions panel overlay (mirrors the variables panel in amber;
+           list rows reuse .variable-list/.var-value/.var-delete styles) */
+        .functions-panel-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .functions-panel-overlay.visible {
+            display: flex;
+        }
+
+        .functions-panel {
+            background: var(--bg-secondary);
+            border: 2px solid var(--warning);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 70vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(245, 158, 11, 0.3);
+        }
+
+        .functions-panel h2 {
+            color: var(--warning);
+            margin-bottom: 16px;
+        }
+
+        .functions-panel .variable-list li {
+            background: rgba(245, 158, 11, 0.1);
+            border-left-color: var(--warning);
+        }
+
+        .fn-name {
+            color: var(--warning);
+            font-weight: 600;
+            font-family: 'Fira Code', monospace;
+        }
+
+        .header-btn.functions {
+            color: var(--warning);
+        }
+
+        .fn-count-badge {
+            background: var(--warning);
+            color: #1a1a2e;
+            border-radius: 10px;
+            padding: 1px 7px;
+            font-size: 0.75em;
+            font-weight: 700;
+            margin-left: 6px;
+        }
+
+        .no-functions {
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 12px 0;
+        }
+
         /* Variables panel overlay */
         .variables-panel-overlay {
             position: fixed;
@@ -1251,6 +1346,10 @@
                 title="View assigned variables">
                 📦 Variables<span id="var-count-badge" class="var-count-badge" style="display: none;">0</span>
             </button>
+            <button class="header-btn functions" id="functions-btn" onclick="showFunctionsPanel()"
+                title="View defined functions">
+                𝑓 Functions<span id="fn-count-badge" class="fn-count-badge" style="display: none;">0</span>
+            </button>
             <button class="header-btn help" id="help-btn" onclick="showExamplesPanel()" title="Show examples">
                 ❓ Examples
             </button>
@@ -1312,6 +1411,16 @@
         </div>
     </div>
 
+    <!-- Functions Panel Overlay -->
+    <div class="functions-panel-overlay" id="functions-panel-overlay" onclick="hideFunctionsPanel(event)">
+        <div class="functions-panel" onclick="event.stopPropagation()">
+            <h2>𝑓 Defined Functions</h2>
+            <div id="functions-list-container">
+                <p class="no-functions">No functions defined yet</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Examples Panel Overlay -->
     <div class="examples-panel-overlay" id="examples-panel-overlay" onclick="hideExamplesPanel(event)">
         <div class="examples-panel" onclick="event.stopPropagation()">
@@ -1341,6 +1450,7 @@
         let expressionCount = 0;
         let sessionResults = {};
         let sessionVariables = {};  // Track assigned variables: name -> value
+        let sessionFunctions = {};  // Track defined functions: name -> {params, display}
         const history = [];
         let historyIndex = -1;
 
@@ -1476,6 +1586,9 @@
                     // Variable assignment fields from server
                     assignment: data.assignment || null,
                     variables: data.variables || [],
+                    function_assignment: data.function_assignment || null,
+                    function_params: data.function_params || [],
+                    functions: data.functions || [],
                     ref: data.ref || null
                 };
             } catch (error) {
@@ -1575,15 +1688,25 @@
 
         function addExpressionCard(expr, result) {
             const isAssignment = result.assignment;
+            const isFunction = result.function_assignment;
 
-            // For non-assignment expressions, increment counter and track result
-            if (!isAssignment) {
+            // For non-definition expressions, increment counter and track result
+            if (!isAssignment && !isFunction) {
                 expressionCount++;
             }
-            const ref = isAssignment ? `var-${result.assignment}` : (result.ref || expressionCount);
+            const ref = isAssignment ? `var-${result.assignment}`
+                : isFunction ? `fn-${result.function_assignment}`
+                    : (result.ref || expressionCount);
 
-            if (!isAssignment) {
+            if (!isAssignment && !isFunction) {
                 sessionResults[ref] = result;
+            } else if (isFunction) {
+                // Track function definition
+                sessionFunctions[result.function_assignment] = {
+                    params: result.function_params || [],
+                    display: result.result
+                };
+                updateFunctionsBadge();
             } else {
                 // Track variable assignment
                 sessionVariables[result.assignment] = result.result;
@@ -1595,10 +1718,14 @@
             if (emptyState) emptyState.style.display = 'none';
 
             const card = document.createElement('div');
-            card.className = isAssignment ? 'expression-card variable-card' : 'expression-card';
+            card.className = isFunction ? 'expression-card function-card'
+                : isAssignment ? 'expression-card variable-card' : 'expression-card';
             card.id = `expr-${ref}`;
             if (isAssignment) {
                 card.dataset.varName = result.assignment;
+            }
+            if (isFunction) {
+                card.dataset.fnName = result.function_assignment;
             }
 
             const hasSteps = result.steps && result.steps.length > 0;
@@ -1609,7 +1736,34 @@
             const hasAssumptions = normalizeAssumptions(result.assumptions_used).length > 0;
             const hasEquivDiagnostics = result.equivalence_diagnostics && result.equivalence_diagnostics.residual;
 
-            if (isAssignment) {
+            if (isFunction) {
+                // Special card for function definitions - no #ref (amber)
+                const fnName = result.function_assignment;
+                const fnParams = (result.function_params || []).join(', ');
+                const fnLatex = result.result_latex;
+                const fnPlain = result.result || '';
+                card.innerHTML = `
+                    <div class="expression-header">
+                        <div class="expression-header-left">
+                            <span class="fn-badge">${escapeHtml(fnName)}(${escapeHtml(fnParams)}) :=</span>
+                            ${fnLatex
+                        ? `<span class="expression-input-wrapper">
+                                       <span class="expression-latex-main">$${fnLatex}$</span>
+                                       <span class="expression-plain-tooltip">
+                                           <span class="expression-plain-text">${escapeHtml(fnPlain)}</span>
+                                           <button class="copy-btn" onclick="event.stopPropagation(); copyExpression(this, '${escapeHtml(fnPlain).replace(/'/g, "\\'")}')">📋</button>
+                                       </span>
+                                   </span>`
+                        : `<span class="expression-input">${escapeHtml(fnPlain)}</span>`
+                    }
+                        </div>
+                        <div class="expression-header-right">
+                            <span class="expression-time">${timeMs}ms</span>
+                            <button class="delete-btn" onclick="deleteFunctionCard('${escapeHtml(fnName)}')" title="Delete function">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            } else if (isAssignment) {
                 // Special card for variable assignments - no #ref
                 const assignLatex = result.result_latex;
                 const assignPlain = result.result || '';
@@ -2002,6 +2156,91 @@
             }
         }
 
+        async function deleteFunctionCard(fnName) {
+            const card = document.getElementById(`expr-fn-${fnName}`);
+            if (card) {
+                card.style.animation = 'slideOut 0.3s ease-out forwards';
+                setTimeout(() => {
+                    card.remove();
+                    delete sessionFunctions[fnName];
+                    updateFunctionsBadge();
+
+                    const remaining = document.querySelectorAll('.expression-card');
+                    if (remaining.length === 0) {
+                        const emptyState = document.getElementById('empty-state');
+                        if (emptyState) emptyState.style.display = 'block';
+                    }
+                }, 300);
+            } else {
+                delete sessionFunctions[fnName];
+                updateFunctionsBadge();
+            }
+
+            // Also clear from server session (for this tab only)
+            try {
+                await fetch('/api/delete-function', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ function: fnName, session_id: SESSION_ID })
+                });
+            } catch (e) {
+                console.warn('Could not delete function from server:', e);
+            }
+        }
+
+        function updateFunctionsBadge() {
+            const badge = document.getElementById('fn-count-badge');
+            const count = Object.keys(sessionFunctions).length;
+            if (count > 0) {
+                badge.textContent = count;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        function showFunctionsPanel() {
+            updateFunctionsPanel();
+            document.getElementById('functions-panel-overlay').classList.add('visible');
+        }
+
+        function hideFunctionsPanel(event) {
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('functions-panel-overlay').classList.remove('visible');
+            }
+        }
+
+        function deleteFunction(fnName) {
+            deleteFunctionCard(fnName);
+            updateFunctionsPanel();
+        }
+
+        function updateFunctionsPanel() {
+            const container = document.getElementById('functions-list-container');
+            const fnNames = Object.keys(sessionFunctions);
+
+            if (fnNames.length === 0) {
+                container.innerHTML = '<p class="no-functions">No functions defined yet</p>';
+            } else {
+                container.innerHTML = `
+                    <ul class="variable-list">
+                        ${fnNames.map(name => {
+                    const meta = sessionFunctions[name] || {};
+                    const signature = `${name}(${(meta.params || []).join(', ')})`;
+                    const display = meta.display || '';
+                    return `
+                            <li>
+                                <span class="fn-name">${escapeHtml(signature)}</span>
+                                <span class="var-value" title="${escapeHtml(display)}">${escapeHtml(display)}</span>
+                                <button class="var-delete" onclick="deleteFunction('${escapeHtml(name)}')" title="Delete function">🗑️</button>
+                            </li>
+                        `;
+                }).join('')}
+                    </ul>
+                `;
+            }
+        }
+
         function escapeHtml(text) {
             if (!text) return '';
             const div = document.createElement('div');
@@ -2068,6 +2307,7 @@
                 exported: new Date().toISOString(),
                 expressionCount: expressionCount,
                 variables: { ...sessionVariables },
+                functions: { ...sessionFunctions },
                 // Convert sessionResults to array format for server
                 // Store both 'result' (parseable text) and 'result_latex' for proper re-import
                 serverResults: Object.entries(sessionResults).map(([refNum, resultObj]) => {
@@ -2095,11 +2335,14 @@
 
                 // Check if this is a variable assignment card
                 const isAssignment = card.classList.contains('variable-card');
+                const isFunction = card.classList.contains('function-card');
+                const functionName = card.dataset.fnName || null;
                 const assignmentName = card.dataset.varName || (varBadgeEl?.textContent?.replace(' :=', '').trim()) || null;
 
                 // Extract numeric reference from "#N" format (only for non-assignment cards)
-                const refText = refEl?.textContent?.trim() || (isAssignment ? `var-${assignmentName}` : `#${index + 1}`);
-                const refNum = isAssignment ? null : (parseInt(refText.replace('#', '')) || (index + 1));
+                const refText = refEl?.textContent?.trim()
+                    || (isFunction ? `fn-${functionName}` : isAssignment ? `var-${assignmentName}` : `#${index + 1}`);
+                const refNum = (isAssignment || isFunction) ? null : (parseInt(refText.replace('#', '')) || (index + 1));
 
                 // Get result from data attributes first (most reliable), then from sessionResults
                 const storedResult = sessionResults[refNum];
@@ -2116,6 +2359,10 @@
                     // Assignment-specific fields
                     is_assignment: isAssignment,
                     assignment_name: assignmentName,
+                    is_function: isFunction,
+                    function_name: functionName,
+                    function_params: (isFunction && sessionFunctions[functionName]?.params) || [],
+                    function_value: isFunction ? (sessionFunctions[functionName]?.display || '') : null,
                     assignment_value: isAssignment ? (inputEl?.textContent || '') : null,
                     // Save steps from sessionResults for proper re-rendering
                     steps: storedResult?.steps || [],
@@ -2179,6 +2426,7 @@
                     expressionCount = 0;
                     sessionResults = {};
                     sessionVariables = {};
+                    sessionFunctions = {};
                     history.length = 0;
                     historyIndex = -1;
                     document.getElementById('expressions').innerHTML = '';
@@ -2187,6 +2435,11 @@
                 // Restore variables
                 if (notebook.variables) {
                     Object.assign(sessionVariables, notebook.variables);
+                }
+
+                // Restore functions
+                if (notebook.functions) {
+                    Object.assign(sessionFunctions, notebook.functions);
                 }
 
                 // Determine the highest ref number from the notebook
@@ -2241,7 +2494,9 @@
 
                     // Create card element with proper ID (matching addExpressionCard)
                     const card = document.createElement('div');
-                    card.className = 'expression-card' + (isAssignment ? ' variable-card' : '');
+                    card.className = 'expression-card'
+                        + (isAssignment ? ' variable-card' : '')
+                        + (entry.is_function ? ' function-card' : '');
                     card.id = `expr-${refNum}`;
                     if (entry.assignment_name) {
                         card.dataset.varName = entry.assignment_name;
@@ -2250,7 +2505,24 @@
                     // Build card HTML using the SAME structure as addExpressionCard
                     let cardHtml;
 
-                    if (isAssignment && entry.assignment_name) {
+                    if (entry.is_function && entry.function_name) {
+                        // Function definition card (no #ref, amber)
+                        card.id = `expr-fn-${entry.function_name}`;
+                        card.dataset.fnName = entry.function_name;
+                        const fnSig = `${entry.function_name}(${(entry.function_params || []).join(', ')})`;
+                        const fnValue = entry.function_value || '';
+                        cardHtml = `
+                            <div class="expression-header">
+                                <div class="expression-header-left">
+                                    <span class="fn-badge">${escapeHtml(fnSig)} :=</span>
+                                    <span class="expression-input">${escapeHtml(fnValue)}</span>
+                                </div>
+                                <div class="expression-header-right">
+                                    <button class="delete-btn" onclick="deleteFunctionCard('${escapeHtml(entry.function_name)}')" title="Delete function">🗑️</button>
+                                </div>
+                            </div>
+                        `;
+                    } else if (isAssignment && entry.assignment_name) {
                         // Variable assignment card (no #ref)
                         card.id = `expr-var-${entry.assignment_name}`;
                         const displayValue = entry.assignment_value || entry.input || '';
@@ -2371,6 +2643,11 @@
                         // Track variable assignment in sessionVariables for the badge and future exports
                         const assignedValue = entry.assignment_value || entry.input || '';
                         sessionVariables[entry.assignment_name] = assignedValue;
+                    } else if (entry.is_function && entry.function_name) {
+                        sessionFunctions[entry.function_name] = {
+                            params: entry.function_params || [],
+                            display: entry.function_value || ''
+                        };
                     }
 
                     // Collect for server sync - use parseable result from serverResults if available
@@ -2385,6 +2662,7 @@
                 }
 
                 updateVariablesBadge();
+                updateFunctionsBadge();
 
                 // Sync with server so subsequent evaluations have correct references
                 try {
@@ -2397,6 +2675,7 @@
                         body: JSON.stringify({
                             session_id: SESSION_ID,
                             variables: sessionVariables,
+                            functions: sessionFunctions,
                             results: resultsForServer,
                             replace: replaceExisting
                         })
@@ -2447,9 +2726,11 @@
             expressionCount = 0;
             sessionResults = {};
             sessionVariables = {};
+            sessionFunctions = {};
             history.length = 0;
             historyIndex = -1;
             updateVariablesBadge();
+            updateFunctionsBadge();
 
             const container = document.getElementById('expressions');
             container.innerHTML = '<div class="empty-state" id="empty-state">' +

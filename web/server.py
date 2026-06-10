@@ -280,6 +280,8 @@ def get_session(session_id):
         sessions[session_id] = {
             "variables": {},          # name -> display value (for UI)
             "variable_refs": {},      # name -> cli history id (for fast substitution)
+            "functions": {},          # name -> {internal, params, display}
+            "fn_counter": 0,           # fresh internal function names (__webfnN)
             "results": [],             # list of eval results shown in UI
             "ref_map": [],             # UI ref N -> cli history id (or None if eval failed)
             "cli_ref": 0,              # last cli history id stored in snapshot
@@ -302,6 +304,8 @@ def clear_session(session_id):
         sessions[session_id] = {
             "variables": {},
             "variable_refs": {},
+            "functions": {},
+            "fn_counter": 0,
             "results": [],
             "ref_map": [],
             "cli_ref": 0,
@@ -345,6 +349,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_clear()
         elif self.path == '/api/import':
             self.handle_import()
+        elif self.path == '/api/delete-function':
+            self.handle_delete_function()
         elif self.path == '/api/delete-variable':
             self.handle_delete_variable()
         else:
@@ -405,6 +411,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             variables = data.get('variables', {})
+            functions = data.get('functions', {})
             results = data.get('results', [])
             mode = data.get('mode', 'replace')
 
@@ -433,10 +440,16 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     })
 
             if mode == 'replace':
+                merged_functions = dict(functions)
                 session["variables"] = dict(variables)
                 session["results"] = imported_results
                 session["ref_map"] = [None] * len(session["results"])
             else:  # append
+                merged_functions = {
+                    name: {"params": meta.get("params", []), "display": meta.get("display", "")}
+                    for name, meta in session.get("functions", {}).items()
+                }
+                merged_functions.update(functions)
                 session["variables"].update(variables)
                 session["results"].extend(imported_results)
                 session.setdefault("ref_map", [])
@@ -450,9 +463,36 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 _delete_file(session_file)
                 _delete_file(session_file + ".lock")
 
+            # The snapshot was invalidated, so every function (kept or
+            # imported) must be re-registered under a fresh internal name in
+            # the new snapshot; the stored display body is its definition.
+            session["functions"] = {}
+            session["fn_counter"] = 0
+            for name, meta in merged_functions.items():
+                params = [str(p) for p in meta.get("params", [])] or ["x"]
+                display = str(meta.get("display", "")).strip()
+                if not display or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+                    continue
+                session["fn_counter"] += 1
+                internal = f"__webfn{session['fn_counter']}"
+                definition = f"{internal}({', '.join(params)}) := {display}"
+                reg_result, _ = self.eval_and_store(
+                    definition,
+                    session,
+                    None,
+                    "generic",
+                    skip_vars=set(params),
+                )
+                if reg_result.get('ok', False):
+                    session["functions"][name] = {
+                        "internal": internal,
+                        "params": params,
+                        "display": reg_result.get('result', display),
+                    }
+
             self.send_json({
                 "ok": True,
-                "message": f"Imported {len(variables)} variables and {len(imported_results)} results",
+                "message": f"Imported {len(variables)} variables, {len(session['functions'])} functions and {len(imported_results)} results",
                 "session_id": session_id,
                 "next_ref": len(session["results"]) + 1
             })
@@ -483,6 +523,29 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(str(e))
     
+    def handle_delete_function(self):
+        """Delete a defined function from session (drops the web-side name
+        mapping; the orphaned internal definition in the CLI snapshot is
+        unreachable and harmless, mirroring variable deletion)."""
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8')
+
+        try:
+            data = json.loads(body)
+            session_id = data.get('session_id', 'default')
+            session = get_session(session_id)
+            fn_name = data.get('function', '')
+
+            if fn_name and fn_name in session.get("functions", {}):
+                del session["functions"][fn_name]
+                self.send_json({"ok": True, "message": f"Function '{fn_name}' deleted"})
+            else:
+                self.send_json({"ok": False, "error": f"Function '{fn_name}' not found"})
+        except json.JSONDecodeError:
+            self.send_json_error("Invalid JSON")
+        except Exception as e:
+            self.send_json_error(str(e))
+
     def handle_eval(self):
         # Read request body
         content_length = int(self.headers.get('Content-Length', 0))
@@ -502,6 +565,55 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json_error("No expression provided")
                 return
             
+            # Check for function definition: name(p1, p2, ...) := body
+            # The web owns the public name; the CLI session evaluates the
+            # definition under a fresh internal name (__webfnN), so deleting
+            # a function is just dropping the web-side mapping.
+            function_match = re.match(
+                r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*\(\s*'
+                r'([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)'
+                r'\s*\)\s*:=\s*(.+)$',
+                expression,
+            )
+
+            if function_match:
+                fn_name = function_match.group(1)
+                params = [p.strip() for p in function_match.group(2).split(',')]
+                body = function_match.group(3)
+                session["fn_counter"] = session.get("fn_counter", 0) + 1
+                internal = f"__webfn{session['fn_counter']}"
+                definition = f"{internal}({', '.join(params)}) := {body}"
+                result, _cli_id = self.eval_and_store(
+                    definition,
+                    session,
+                    time_budget_ms,
+                    domain_mode,
+                    branch_mode,
+                    complex_arithmetic,
+                    skip_vars=set(params),
+                )
+
+                if result.get('ok', False):
+                    session["functions"][fn_name] = {
+                        "internal": internal,
+                        "params": params,
+                        "display": result.get('result', ''),
+                    }
+                    result['function_assignment'] = fn_name
+                    result['function_params'] = params
+                    result['input'] = expression
+                    # Definitions don't get a ref - they don't consume reference numbers
+                    result['ref'] = None
+
+                result['variables'] = list(session["variables"].keys())
+                result['functions'] = list(session["functions"].keys())
+                result['session_id'] = session_id
+                result['domain'] = domain_mode
+                result['branch'] = branch_mode
+                result['complex_arithmetic'] = complex_arithmetic
+                self.send_json(result)
+                return
+
             # Check for assignment: name := expr
             assignment_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*:=\s*(.+)$', expression)
             
@@ -543,6 +655,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             
             # Include current variables and session_id in response
             result['variables'] = list(session["variables"].keys())
+            result['functions'] = list(session["functions"].keys())
             result['session_id'] = session_id
             result['domain'] = domain_mode
             result['branch'] = branch_mode
@@ -565,6 +678,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         domain_mode,
         branch_mode="strict",
         complex_arithmetic="off",
+        skip_vars=None,
     ):
         """Evaluate via cas_cli using the per-session snapshot, tracking real stored ids."""
         session_file = session.get("session_file")
@@ -578,6 +692,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 domain_mode,
                 branch_mode,
                 complex_arithmetic,
+                skip_vars=skip_vars,
             )
 
             cli_id = None
@@ -595,6 +710,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         domain_mode,
         branch_mode="strict",
         complex_arithmetic="off",
+        skip_vars=None,
     ):
         """Evaluate expression, substituting variables and mapping UI #N refs to CLI session refs."""
         expr = expression
@@ -640,8 +756,17 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "input": expression[:500],
             }
 
+        # Rewrite defined-function calls to their internal CLI names
+        # (longest names first so f2( is not shadowed by f(). The CLI
+        # session owns the actual evaluation, including param shadowing.
+        for fn_name in sorted(session.get("functions", {}), key=len, reverse=True):
+            internal = session["functions"][fn_name]["internal"]
+            expr = re.sub(r"\b" + re.escape(fn_name) + r"\s*\(", internal + "(", expr)
+
         # Substitute variables (word boundary to avoid partial replacements)
         for var_name, var_value in session_variables.items():
+            if skip_vars and var_name in skip_vars:
+                continue
             pattern = r"\b" + re.escape(var_name) + r"\b"
             if var_name in variable_refs:
                 # Substitute with CLI session ref (fast, avoids huge text expansions)
