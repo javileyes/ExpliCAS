@@ -685,14 +685,16 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         lock_path = (session_file + ".lock") if session_file else None
 
         with (_file_lock(lock_path) if lock_path else nullcontext()):
-            result = self.eval_with_substitution(
-                expression,
-                session,
-                time_budget_ms,
-                domain_mode,
-                branch_mode,
-                complex_arithmetic,
-                skip_vars=skip_vars,
+            result = self._filter_plumbing_steps(
+                self.eval_with_substitution(
+                    expression,
+                    session,
+                    time_budget_ms,
+                    domain_mode,
+                    branch_mode,
+                    complex_arithmetic,
+                    skip_vars=skip_vars,
+                )
             )
 
             cli_id = None
@@ -701,6 +703,27 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 session["cli_ref"] = max(session.get("cli_ref", 0), cli_id)
 
             return result, cli_id
+
+    # Internal session-machinery rules that are not didactic math steps:
+    # cached-ref resolution leaks CLI history ids (\#N) and meta-function
+    # unwrapping is plumbing, so neither belongs in the web step list.
+    PLUMBING_STEP_RULES = {"Use cached result", "Evaluate Meta Functions"}
+
+    @classmethod
+    def _filter_plumbing_steps(cls, result):
+        if not isinstance(result, dict):
+            return result
+        steps = result.get('steps')
+        if isinstance(steps, list) and steps:
+            kept = [s for s in steps if s.get('rule') not in cls.PLUMBING_STEP_RULES]
+            if len(kept) != len(steps):
+                for position, step in enumerate(kept, start=1):
+                    if isinstance(step, dict) and 'index' in step:
+                        step['index'] = str(position)
+                result['steps'] = kept
+                if 'steps_count' in result:
+                    result['steps_count'] = len(kept)
+        return result
 
     @staticmethod
     def _present_original_input(result, original, rewritten):
