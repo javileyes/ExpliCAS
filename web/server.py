@@ -702,6 +702,18 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
 
             return result, cli_id
 
+    @staticmethod
+    def _present_original_input(result, original, rewritten):
+        """When the server rewrote the expression (function internals, variable
+        and #N ref substitution), the CLI's input/input_latex echo the rewritten
+        form and would leak internals like __webfn1 into the card header. Show
+        the user's original input as plain text instead."""
+        has_ref_tokens = re.search(r'[%#]\d+', original) is not None
+        if isinstance(result, dict) and (rewritten != original or has_ref_tokens):
+            result['input'] = original
+            result.pop('input_latex', None)
+        return result
+
     def eval_with_substitution(
         self,
         expression,
@@ -796,16 +808,28 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     branch_mode=branch_mode,
                     complex_arithmetic=complex_arithmetic,
                 )
-                return _merge_equiv_with_derive_steps(equiv_result, derive_result)
-            return _merge_equiv_with_derive_steps(equiv_result, None)
+                return self._present_original_input(
+                    _merge_equiv_with_derive_steps(equiv_result, derive_result),
+                    expression,
+                    expr,
+                )
+            return self._present_original_input(
+                _merge_equiv_with_derive_steps(equiv_result, None),
+                expression,
+                expr,
+            )
 
-        return self.call_cas_cli(
+        return self._present_original_input(
+            self.call_cas_cli(
+                expr,
+                session.get("session_file"),
+                time_budget_ms=time_budget_ms,
+                domain_mode=domain_mode,
+                branch_mode=branch_mode,
+                complex_arithmetic=complex_arithmetic,
+            ),
+            expression,
             expr,
-            session.get("session_file"),
-            time_budget_ms=time_budget_ms,
-            domain_mode=domain_mode,
-            branch_mode=branch_mode,
-            complex_arithmetic=complex_arithmetic,
         )
 
     def call_cas_cli(
