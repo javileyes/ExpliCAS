@@ -14527,7 +14527,9 @@ fn grouped_linear_rational_factors(
     (total_degree == denominator.degree()).then_some(groups)
 }
 
-fn solve_rational_linear_system(
+/// Shared with the algorithmic integration backend's multi-quadratic
+/// partial-fraction probe; the decomposition family owns this solver.
+pub(crate) fn solve_rational_linear_system(
     mut matrix: Vec<Vec<BigRational>>,
     mut rhs: Vec<BigRational>,
 ) -> Option<Vec<BigRational>> {

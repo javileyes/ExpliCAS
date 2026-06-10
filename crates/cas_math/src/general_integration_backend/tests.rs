@@ -5844,3 +5844,77 @@ fn algebraic_zero_test_keeps_radicand_only_parameters_in_the_universe() {
         "the genuine identity sqrt(b)^2*x == b*x must still verify"
     );
 }
+
+#[test]
+fn multi_quadratic_partial_fraction_decomposes_distinct_irreducible_quadratics() {
+    let mut ctx = Context::new();
+    let integrand = cas_parser::parse("(x^3+x+1)/((x^2+1)*(x^2+4))", &mut ctx).expect("integrand");
+
+    let terms =
+        multi_quadratic_partial_fraction_terms(&mut ctx, integrand, "x").expect("decomposition");
+    assert_eq!(terms.len(), 2);
+    let third = num_rational::BigRational::new(1.into(), 3.into());
+    assert!(num_traits::Zero::is_zero(&terms[0].alpha));
+    assert_eq!(terms[0].beta, third);
+    assert_eq!(
+        terms[1].alpha,
+        num_rational::BigRational::from_integer(1.into())
+    );
+    assert_eq!(terms[1].beta, -third);
+}
+
+#[test]
+fn multi_quadratic_partial_fraction_rejects_out_of_scope_shapes() {
+    let mut ctx = Context::new();
+    let rejects = [
+        "1/((x^2+1)*(x^2+1))",   // repeated factor
+        "1/((x^2-1)*(x^2+4))",   // reducible factor
+        "x^4/((x^2+1)*(x^2+4))", // improper numerator
+        "1/(x^2+1)",             // single factor
+        "1/((x^2+a)*(x^2+4))",   // symbolic coefficients
+    ];
+    for source in rejects {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        assert!(
+            multi_quadratic_partial_fraction_terms(&mut ctx, integrand, "x").is_none(),
+            "must reject {source}"
+        );
+    }
+}
+
+#[test]
+fn multi_quadratic_candidate_is_verified_and_accepted() {
+    let mut ctx = Context::new();
+    let integrand = cas_parser::parse("(x^3+x+1)/((x^2+1)*(x^2+4))", &mut ctx).expect("integrand");
+
+    let candidate = try_algorithmic_integration_backend(
+        &mut ctx,
+        integrand,
+        "x",
+        AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+    );
+
+    assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
+    assert_eq!(
+        candidate.verification_status,
+        AlgorithmicIntegrationVerificationStatus::Verified
+    );
+    assert!(
+        candidate.required_conditions.is_empty(),
+        "irreducible numeric quadratics are strictly positive: unconditional"
+    );
+}
+
+#[test]
+fn algebraic_zero_test_folds_unfolded_numeric_exponents() {
+    // Regression: derivatives produce shapes like x^(2 - 1); literal-only
+    // exponent matching made the zero test bail on decidable rational pairs.
+    let mut ctx = Context::new();
+    let derivative = cas_parser::parse("(x^(2-1)*2*(1/2))/(x^2+4)", &mut ctx).expect("derivative");
+    let integrand = cas_parser::parse("x/(x^2+4)", &mut ctx).expect("integrand");
+
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, derivative, integrand, "x", &[]),
+        Some(true)
+    );
+}

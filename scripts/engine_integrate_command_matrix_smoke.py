@@ -654,6 +654,38 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="backend_summary_log_arctan_numeric_center_positive_radius",
     ),
     IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_multi_quadratic_mixed_numerator",
+        expr="integrate((x^3+x+1)/((x^2+1)*(x^2+4)), x)",
+        expected_result="1/3·arctan(x) + 1/2·ln(x^2 + 4) - 1/3·arctan(x / 2)/2",
+        expected_direct_diff_integrate_result=(
+            "(x^3 + x + 1) / ((x^2 + 1)·(x^2 + 4))"
+        ),
+        expected_direct_diff_integrate_required_display=(),
+        expected_required_display=(),
+        family="algorithmic_backend_rational_multi_quadratic",
+        argument_regime="proper_numerator_two_distinct_irreducible_quadratics",
+        domain_regime="backend_verified_unconditional_real",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_arctan_log_multi_quadratic",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_multi_quadratic_triple_product",
+        expr="integrate(1/((x^2+1)*(x^2+4)*(x^2+9)), x)",
+        expected_result=(
+            "1/24·arctan(x) - 1/15·arctan(x / 2)/2 + (1/40·arctan(x / 3))/3"
+        ),
+        expected_direct_diff_integrate_result=(
+            "1 / ((x^2 + 1)·(x^2 + 4)·(x^2 + 9))"
+        ),
+        expected_direct_diff_integrate_required_display=(),
+        expected_required_display=(),
+        family="algorithmic_backend_rational_multi_quadratic",
+        argument_regime="reciprocal_three_distinct_irreducible_quadratics",
+        domain_regime="backend_verified_unconditional_real",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_arctan_multi_quadratic",
+    ),
+    IntegrateCommandMatrixCase(
         name="algorithmic_backend_hermite_symbolic_indefinite_square_denominator",
         expr="integrate(1/(x^2-a^2), x)",
         expected_result="((ln(|x - a|) - ln(|a + x|))·1·1/2)/a",

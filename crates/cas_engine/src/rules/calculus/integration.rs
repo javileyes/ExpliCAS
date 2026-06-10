@@ -129,10 +129,14 @@ fn public_algorithmic_backend_fallback(
 }
 
 fn public_rational_backend_conditions_allowed(conditions: &[ConditionPredicate]) -> bool {
-    (1..=2).contains(&conditions.len())
-        && conditions
-            .iter()
-            .all(|condition| matches!(condition, ConditionPredicate::NonZero(_)))
+    // Empty is the safest case: unconditional antiderivatives (e.g. partial
+    // fractions over strictly positive irreducible quadratics) carry no
+    // conditions at all. Otherwise allow the established 1..=2 NonZero shape.
+    conditions.is_empty()
+        || ((1..=2).contains(&conditions.len())
+            && conditions
+                .iter()
+                .all(|condition| matches!(condition, ConditionPredicate::NonZero(_))))
 }
 
 fn public_positive_quadratic_hermite_conditions_allowed(conditions: &[ConditionPredicate]) -> bool {

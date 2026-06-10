@@ -215,7 +215,7 @@ fn sqrt_like_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             Some(args[0])
         }
         Expr::Pow(base, exponent) => {
-            let value = numeric_value(ctx, *exponent)?;
+            let value = crate::numeric_eval::as_rational_const(ctx, *exponent)?;
             (value == BigRational::new(1.into(), 2.into())).then_some(*base)
         }
         _ => None,
@@ -325,7 +325,9 @@ fn expr_to_rational(
         }
         Expr::Hold(inner) => expr_to_rational(ctx, inner, universe, budget),
         Expr::Pow(base, exponent) => {
-            let value = numeric_value(ctx, exponent)?;
+            // Fold the exponent (derivatives produce shapes like x^(2 - 1)):
+            // literal-only matching would silently bail on decidable inputs.
+            let value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
             if !value.is_integer() {
                 return None;
             }

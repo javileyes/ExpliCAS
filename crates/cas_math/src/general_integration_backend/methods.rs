@@ -18,7 +18,27 @@ fn try_rational_reciprocal_affine_probe(
 ) -> AlgorithmicIntegrationProbeResult {
     let parts = match affine_denominator_linear_numerator_parts(ctx, integrand, variable) {
         Ok(parts) => parts,
-        Err(reason) => return AlgorithmicIntegrationProbeResult::NoMatch(reason),
+        Err(reason) => {
+            if let Some(antiderivative) =
+                multi_quadratic_partial_fraction_antiderivative(ctx, integrand, variable)
+            {
+                // Distinct irreducible numeric quadratics are strictly
+                // positive, so the antiderivative is unconditional.
+                let mut candidate = AlgorithmicIntegrationCandidate::unverified(
+                    integrand,
+                    variable,
+                    antiderivative,
+                    AlgorithmicIntegrationMethod::Rational,
+                );
+                if !probe_runner.try_verification_check() {
+                    candidate.mark_budget_exceeded();
+                    return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+                }
+                verify_antiderivative_by_differentiation(ctx, &mut candidate);
+                return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+            }
+            return AlgorithmicIntegrationProbeResult::NoMatch(reason);
+        }
     };
 
     let variable_expr = ctx.var(variable);
@@ -57,6 +77,214 @@ pub(super) struct AffineDenominatorLinearNumeratorParts {
     pub(super) remainder: ExprId,
     pub(super) denominator: ExprId,
     pub(super) denominator_slope: BackendAffineSlope,
+}
+
+const MULTI_QUADRATIC_MAX_FACTORS: usize = 3;
+
+pub(super) struct MultiQuadraticFactorTerm {
+    factor_expr: ExprId,
+    pub(super) linear_b: BigRational,
+    pub(super) constant_c: BigRational,
+    pub(super) alpha: BigRational,
+    pub(super) beta: BigRational,
+}
+
+/// Partial fractions over a product of 2..=3 DISTINCT monic irreducible
+/// quadratics with numeric coefficients: N(x)/prod(x^2+b_i*x+c_i) with
+/// deg(N) < 2k decomposes as sum (alpha_i*x+beta_i)/q_i via a 2k x 2k
+/// rational linear system (the same shared solver the educational
+/// partial-fraction families use). Returns the assembled antiderivative
+/// sum of (alpha/2)*ln(q_i) + gamma_i-scaled arctan terms; the quadratics
+/// are strictly positive so no conditions are required.
+pub(super) fn multi_quadratic_partial_fraction_antiderivative(
+    ctx: &mut Context,
+    integrand: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    let terms = multi_quadratic_partial_fraction_terms(ctx, integrand, variable)?;
+    let mut antiderivative = ctx.num(0);
+    for term in terms {
+        let piece = build_multi_quadratic_term_antiderivative(ctx, &term, variable);
+        antiderivative = build_backend_sum(ctx, antiderivative, piece);
+    }
+    Some(antiderivative)
+}
+
+pub(super) fn multi_quadratic_partial_fraction_terms(
+    ctx: &mut Context,
+    integrand: ExprId,
+    variable: &str,
+) -> Option<Vec<MultiQuadraticFactorTerm>> {
+    let (numerator_expr, denominator_expr) = match ctx.get(integrand) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    let factor_exprs = backend_mul_factors(ctx, denominator_expr);
+    if factor_exprs.len() < 2 || factor_exprs.len() > MULTI_QUADRATIC_MAX_FACTORS {
+        return None;
+    }
+
+    let mut factors: Vec<(ExprId, crate::polynomial::Polynomial)> = Vec::new();
+    for factor_expr in factor_exprs {
+        let poly = crate::polynomial::Polynomial::from_expr(ctx, factor_expr, variable).ok()?;
+        if poly.degree() != 2 || !poly.leading_coeff().is_one() {
+            return None;
+        }
+        let b = poly.coeffs[1].clone();
+        let c = poly.coeffs[0].clone();
+        // Irreducible over Q (and hence strictly positive): b^2 - 4c < 0.
+        let four = BigRational::from_integer(4.into());
+        if &b * &b - four * &c >= BigRational::zero() {
+            return None;
+        }
+        if factors.iter().any(|(_, known)| known == &poly) {
+            return None;
+        }
+        factors.push((factor_expr, poly));
+    }
+
+    let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
+    let unknowns = 2 * factors.len();
+    if numerator.is_zero() || numerator.degree() >= unknowns {
+        return None;
+    }
+
+    // Denominator product and per-factor cofactors prod_{j != i} q_j.
+    let mut denominator_poly = crate::polynomial::Polynomial::one(variable.to_string());
+    for (_, poly) in &factors {
+        denominator_poly = denominator_poly.mul(poly);
+    }
+    let mut basis: Vec<crate::polynomial::Polynomial> = Vec::new();
+    let x_poly = crate::polynomial::Polynomial::new(
+        vec![BigRational::zero(), BigRational::one()],
+        variable.to_string(),
+    );
+    for (_, poly) in &factors {
+        let (cofactor, remainder) = denominator_poly.div_rem(poly).ok()?;
+        if !remainder.is_zero() {
+            return None;
+        }
+        basis.push(cofactor.mul(&x_poly));
+        basis.push(cofactor);
+    }
+
+    let mut matrix = vec![vec![BigRational::zero(); unknowns]; unknowns];
+    let mut rhs = vec![BigRational::zero(); unknowns];
+    for row in 0..unknowns {
+        for (column, column_poly) in basis.iter().enumerate() {
+            matrix[row][column] = column_poly
+                .coeffs
+                .get(row)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+        }
+        rhs[row] = numerator
+            .coeffs
+            .get(row)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+    }
+    let solution = crate::symbolic_integration_support::solve_rational_linear_system(matrix, rhs)?;
+
+    let mut terms = Vec::with_capacity(factors.len());
+    for (index, (factor_expr, poly)) in factors.into_iter().enumerate() {
+        terms.push(MultiQuadraticFactorTerm {
+            factor_expr,
+            linear_b: poly.coeffs[1].clone(),
+            constant_c: poly.coeffs[0].clone(),
+            alpha: solution[2 * index].clone(),
+            beta: solution[2 * index + 1].clone(),
+        });
+    }
+    Some(terms)
+}
+
+/// One partial-fraction piece (alpha*x + beta)/(x^2 + b*x + c):
+/// (alpha/2)*ln(q) + gamma-scaled arctan with gamma = beta - alpha*b/2.
+/// Presentation picks the half-center form (x + b/2) when b is even (so
+/// x^2+1 renders arctan(x), not arctan(2x/2)) and the doubled form
+/// (2x + b)/sqrt(4c - b^2) otherwise, matching the engine's own style for
+/// odd linear coefficients.
+fn build_multi_quadratic_term_antiderivative(
+    ctx: &mut Context,
+    term: &MultiQuadraticFactorTerm,
+    variable: &str,
+) -> ExprId {
+    let two = BigRational::from_integer(2.into());
+    let four = BigRational::from_integer(4.into());
+    let gamma = &term.beta - &term.alpha * &term.linear_b / &two;
+
+    let log_part = if term.alpha.is_zero() {
+        ctx.num(0)
+    } else {
+        let alpha_expr = ctx.add(Expr::Number(term.alpha.clone()));
+        build_positive_quadratic_log_derivative_antiderivative(
+            ctx,
+            alpha_expr,
+            &BackendAffineSlope::Numeric(BigRational::one()),
+            term.factor_expr,
+        )
+    };
+
+    let arctan_part = if gamma.is_zero() {
+        ctx.num(0)
+    } else {
+        let half_b = &term.linear_b / &two;
+        let variable_expr = ctx.var(variable);
+        let (center, slope, radius_square) = if half_b.is_integer() {
+            let center = build_numeric_shifted_center(ctx, variable_expr, &half_b);
+            let radius_square = &term.constant_c - &half_b * &half_b;
+            (center, BigRational::one(), radius_square)
+        } else {
+            let doubled = ctx.add(Expr::Number(two.clone()));
+            let doubled_variable = build_backend_product(ctx, doubled, variable_expr);
+            let center = build_numeric_shifted_center(ctx, doubled_variable, &term.linear_b);
+            let radius_square = &four * &term.constant_c - &term.linear_b * &term.linear_b;
+            (center, two.clone(), radius_square)
+        };
+        // q = ((s*x + h)^2 + radius_square)/s^2, so gamma/q contributes
+        // s^2*gamma/((s*x+h)^2 + r^2); the builder then divides once by the
+        // slope and once by the radius: (s^2*gamma/s/r)*arctan(center/r),
+        // which is exactly the integral for both the half (s=1) and the
+        // doubled (s=2) presentation forms.
+        let radius = build_numeric_radius_expr(ctx, &radius_square);
+        let gamma_scale = &gamma * &slope * &slope;
+        let gamma_expr = ctx.add(Expr::Number(gamma_scale));
+        build_positive_quadratic_constant_numerator_antiderivative(
+            ctx,
+            gamma_expr,
+            center,
+            &BackendAffineSlope::Numeric(slope),
+            radius,
+        )
+    };
+
+    build_backend_sum(ctx, log_part, arctan_part)
+}
+
+fn build_numeric_shifted_center(
+    ctx: &mut Context,
+    variable_term: ExprId,
+    shift: &BigRational,
+) -> ExprId {
+    if shift.is_zero() {
+        variable_term
+    } else if shift.is_negative() {
+        let magnitude = ctx.add(Expr::Number(-shift.clone()));
+        build_backend_difference(ctx, variable_term, magnitude)
+    } else {
+        let shift_expr = ctx.add(Expr::Number(shift.clone()));
+        build_backend_sum(ctx, variable_term, shift_expr)
+    }
+}
+
+fn build_numeric_radius_expr(ctx: &mut Context, radius_square: &BigRational) -> ExprId {
+    if let Some(root) = rational_positive_square_root(radius_square) {
+        ctx.add(Expr::Number(root))
+    } else {
+        let square_expr = ctx.add(Expr::Number(radius_square.clone()));
+        ctx.call_builtin(BuiltinFn::Sqrt, vec![square_expr])
+    }
 }
 
 fn try_hermite_positive_quadratic_log_derivative_probe(

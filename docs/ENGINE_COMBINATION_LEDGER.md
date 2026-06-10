@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 50 (newest first)
+Active entries: 51 (newest first)
 
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
@@ -133,6 +133,7 @@ Active entries: 50 (newest first)
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / verification | Retained calculus: algebraic zero-test graduates rational verification
 - 2026-06-10 | `retained` | strategy docs / deferred horizons / web UI / complex domain foundations | Retained harness: complex semantic model decision and web complex-arithmetic selector
 - 2026-06-10 | `retained` | web UI / session functions / CLI session reuse | Retained harness: web function-definition cells, panel, and deletion
+- 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: multi-quadratic partial fractions land the rational backend family
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: unit-affine positive-quadratic backend center verification
 - 2026-06-09 | `retained` | calculus / integration / block 12 algorithmic backend / Hermite | Retained follow-up: external-symbolic positive-quadratic backend numerator verification
 - 2026-06-09 | `retained` | calculus / general integration backend / antiderivative verification / | Retained follow-up: conditional symbolic positive-radius backend verification
@@ -2074,3 +2075,57 @@ Active entries: 50 (newest first)
     pattern for giving deletable, redefinable semantics on top of an
     append-only session snapshot; it avoided both snapshot rewriting and
     a web-side lambda-calculus reimplementation
+
+## 2026-06-10 - Retained calculus: multi-quadratic partial fractions land the rational backend family
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / rational
+    method / Phase 4 item 8
+- status:
+  - `retained` (new public family; one verifier completeness fix; one
+    public-policy widening)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 12, Phase 4 item 8 (first rational
+    backend family promoted with the algebraic verifier as its gate)
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_rational_multi_quadratic` /
+    {proper numerator x two distinct irreducible quadratics; reciprocal x
+    three} / `backend_verified_unconditional_real` /
+    `algorithmic_backend_rational_summary`
+  - behavior_change_expected: yes — products of 2..=3 distinct monic
+    irreducible numeric quadratics with proper numerators now integrate
+    publicly, unconditionally
+- observed (frontier probing + scoping workflow):
+  - educational rational coverage was far deeper than the lanes suggested
+    (repeated factors, cubics, mixed products all green); the one real
+    frontier was partial fractions over >= 2 distinct irreducible
+    quadratics, residual for every numerator except the pure odd
+    derivative pattern
+  - the decomposition machinery (shared rational linear-system solver,
+    per-quadratic arctan/log builders, irreducibility test) already
+    existed across the educational route and the backend; the cycle wired
+    them rather than inventing
+- decision:
+  - backend sub-probe inside the Rational method's no-match arm (matcher
+    order and probe budget unchanged; the lane's 17 rational no-match
+    fixtures are all single-quadratic, so observability counters cannot
+    shift): 2k x 2k rational system via the now pub(crate)
+    solve_rational_linear_system, assembly through the existing
+    positive-quadratic builders with a half-center (even b) or doubled
+    (odd b) presentation form
+  - two composing fixes found by the cycle: the algebraic zero test
+    bailed on derivative shapes like x^(2-1) (literal-only exponent
+    matching; now folds via numeric_eval, with a regression test) — the
+    cycle-5 lesson in mirror image; and the public rational conditions
+    policy required 1..=2 NonZero conditions, rejecting the SAFEST case
+    (verified and unconditional) — empty is now allowed
+- retained learning:
+  - the algebraic verifier earned its role as family gate on its first
+    real client: decomposition correctness was proven exactly, and the
+    only failures were translation completeness (exponent folding), not
+    soundness
+  - public-acceptance policies written for the first family of a method
+    can silently block better-behaved successors; policy shapes should
+    state intent (which condition sets are trusted) rather than mirror
+    the incumbent family's exact signature

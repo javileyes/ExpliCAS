@@ -115,8 +115,10 @@ Phase status (2026-06-10):
 - Phase 2: done (shared verifier with structured outcomes in
   `general_integration_backend/verification*.rs`)
 - Phase 3: done (rational/Hermite/heurisch probes via shared probe runner)
-- Phase 4: in progress (Hermite positive-quadratic regime grid promoted to the
-  public matrix 2026-06-10; general rational integration pending)
+- Phase 4: in progress (Hermite positive-quadratic regime grid and the first
+  rational family — multi-quadratic partial fractions, unconditional — promoted
+  2026-06-10; general-degree rational integration via squarefree/Hermite
+  reduction pending)
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
 - Phase 6: not started (didactic elevation; first candidate Hermite positive
   quadratic)
@@ -312,8 +314,10 @@ Before retaining a backend change, answer:
    verification-budget exhaustion.
 6. [done — no-match reasons] Add method-probe candidate/no-match counts and no-match reason attribution.
 7. [done — discovery probes] Add discovery-only rational integration probes.
-8. [in progress — Hermite positive-quadratic regimes promoted 2026-06-10, see combination ledger] Promote one verified rational backend family once the boundary and verifier
-   are stable.
+8. [done — multi-quadratic partial fractions promoted 2026-06-10 with the
+   algebraic verifier as its gate; Hermite positive-quadratic regime grid
+   promoted the same day, see combination ledger] Promote one verified
+   rational backend family once the boundary and verifier are stable.
 9. [done — verification_algebraic.rs, 2026-06-10] Graduate rational-candidate
    verification to the multipoly algebraic zero test (see the Phase 4 named
    workstream).
