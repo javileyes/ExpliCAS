@@ -440,9 +440,11 @@ Use these blocks as the active plan:
      (arity-4 whitelist), evaluates via FTC with the interval certificate
      before substitution (linear poles inside the closed interval ->
      undefined; uncertifiable conditions -> honest residual), and has five
-     matrix rows plus block13 harness axes. Next rungs: didactic narration
-     of the three-step story, bound display in the step trace, symbolic
-     bounds, and improper-integral policy.
+     matrix rows plus block13 harness axes. The three-step narration
+     landed the same day (antiderivative rebuilt on a scratch context,
+     evaluation at the bounds, pole detection for undefined results).
+     Next rungs: bound display in the step trace, symbolic bounds, and
+     improper-integral policy.
 
 Selection rule:
 

@@ -539,6 +539,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "definite_integral_polynomial_exact_value",
                 "definite_integral_arctan_exact_pi",
                 "definite_integral_log_certified_off_pole",
+                "definite_integral_pole_inside_interval_undefined",
                 "polynomial_power_direct",
                 "polynomial_sum_linearity",
                 "affine_trig_substitution",

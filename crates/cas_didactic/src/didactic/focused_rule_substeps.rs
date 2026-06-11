@@ -113,6 +113,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return integration_general_rational_substeps;
     }
 
+    let definite_integral_substeps = generate_definite_integral_substeps(ctx, step);
+    if !definite_integral_substeps.is_empty() {
+        return definite_integral_substeps;
+    }
+
     let integration_trig_log_table_substeps =
         generate_trig_log_table_integration_substeps(ctx, step);
     if !integration_trig_log_table_substeps.is_empty() {
@@ -12728,6 +12733,105 @@ fn contains_linear_integration_by_parts_target(
         Expr::Neg(inner) => contains_linear_integration_by_parts_target(ctx, *inner, var_name),
         _ => false,
     }
+}
+
+/// Narrate the fundamental-theorem story for definite integrals
+/// (block 13): find the antiderivative (rebuilt on a scratch context via
+/// the educational route, falling back to the verified algorithmic
+/// backend), evaluate it at the bounds, or - for undefined results -
+/// explain the pole inside the integration interval.
+fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 4 {
+        return Vec::new();
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym).to_string();
+    let integrand = args[0];
+    let var_expr = args[1];
+    let lower = args[2];
+    let upper = args[3];
+
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+    if expr_contains_integrate_call(ctx, result) {
+        return Vec::new();
+    }
+
+    if matches!(
+        ctx.get(result),
+        Expr::Constant(cas_ast::Constant::Undefined)
+    ) {
+        return vec![SubStep::new(
+            "Detectar un polo dentro del intervalo de integración",
+            display_expr(ctx, integrand),
+            display_expr(ctx, result),
+        )
+        .with_before_latex(latex_expr(ctx, integrand))
+        .with_after_latex(latex_expr(ctx, result))];
+    }
+
+    let mut scratch = ctx.clone();
+    let antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        &mut scratch,
+        integrand,
+        &var_name,
+    )
+    .or_else(|| {
+        let candidate = cas_math::general_integration_backend::try_algorithmic_integration_backend(
+            &mut scratch,
+            integrand,
+            &var_name,
+            cas_math::general_integration_backend::AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        match candidate.verification_status {
+            cas_math::general_integration_backend::AlgorithmicIntegrationVerificationStatus::Verified
+            | cas_math::general_integration_backend::AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions => {
+                candidate.antiderivative
+            }
+            _ => None,
+        }
+    });
+    let Some(antiderivative) = antiderivative else {
+        return Vec::new();
+    };
+
+    let at_upper = cas_ast::substitute_expr_by_id(&mut scratch, antiderivative, var_expr, upper);
+    let at_lower = cas_ast::substitute_expr_by_id(&mut scratch, antiderivative, var_expr, lower);
+    let raw_difference = scratch.add(Expr::Sub(at_upper, at_lower));
+
+    vec![
+        SubStep::new(
+            "Hallar la antiderivada",
+            display_expr(ctx, integrand),
+            display_expr(&scratch, antiderivative),
+        )
+        .with_before_latex(latex_expr(ctx, integrand))
+        .with_after_latex(latex_expr(&scratch, antiderivative)),
+        SubStep::new(
+            "Evaluar la antiderivada en los límites",
+            display_expr(&scratch, antiderivative),
+            display_expr(&scratch, raw_difference),
+        )
+        .with_before_latex(latex_expr(&scratch, antiderivative))
+        .with_after_latex(latex_expr(&scratch, raw_difference)),
+    ]
 }
 
 /// Narrate the general rational backend family (Ostrogradsky reduction,

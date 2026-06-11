@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 60 (newest first)
+Active entries: 61 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -123,6 +123,7 @@ Active entries: 60 (newest first)
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 fifth rung | Retained didactic: Ostrogradsky and quartic-descent results narrate their pipeline
 - 2026-06-11 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: resolvent cubic closes the non-even quartic frontier
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 first rung / command surface | Retained calculus: block 13 opens - definite integrals via the fundamental theorem
+- 2026-06-11 | `retained` | didactics / definite integration / block 13 second rung | Retained didactic: the fundamental theorem narrates its three-step story
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2525,3 +2526,34 @@ Active entries: 60 (newest first)
     verification_gap) actively push new families to declare their
     didactic and verification stories - extending the taxonomy honestly
     beats whitelisting exceptions
+
+## 2026-06-11 - Retained didactic: the fundamental theorem narrates its three-step story
+
+- area:
+  - didactics / definite integration / block 13 second rung
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus (didactic half)
+  - calculus_maturity_block: block 13
+  - calculus_matrix_cell: `integrate(f, x, a, b)` / `definite_integral_ftc*`
+    / all four non-residual rows now pin the real narration substrings
+  - behavior_change_expected: didactic only; engine byte-identical
+- decision:
+  - a definite-integral narrator at the end of the dispatch chain: value
+    results narrate "Hallar la antiderivada" (rebuilt on a scratch
+    context via the educational route, falling back to the VERIFIED
+    algorithmic backend - cas_didactic depends on cas_engine, so both
+    pub reconstruction paths from cas_math are reachable) and "Evaluar
+    la antiderivada en los límites" (quoting the raw F(b) - F(a) built
+    by scratch substitution); undefined results narrate "Detectar un
+    polo dentro del intervalo de integración"
+  - backend families compose: a definite Sophie Germain quartic
+    reconstructs its antiderivative through the backend fallback and
+    narrates the same two steps
+- retained learning:
+  - reconstruction-on-scratch generalizes from quoting intermediates to
+    quoting the WHOLE upstream pipeline: the narrator re-runs the
+    indefinite integration privately and the narration stays truthful
+    because the verified machinery, not the narrator, produces every
+    quoted form
