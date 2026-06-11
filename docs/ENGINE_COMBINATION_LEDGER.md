@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 67 (newest first)
+Active entries: 68 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -130,6 +130,7 @@ Active entries: 67 (newest first)
 - 2026-06-11 | `retained` | calculus / integration / educational route / exponential family / | Retained calculus: the normalized reciprocal exponential integrates
 - 2026-06-11 | `retained` | calculus / integration / educational route / by-parts exponential | Retained calculus: by-parts exponentials reach the normalized Div form
 - 2026-06-11 | `retained` | calculus / limits engine / improper integrals / block 13 | Retained calculus: abs-wrapped tails resolve at infinity, log divergences report their sign
+- 2026-06-11 | `retained` | didactics / integration / exponential family narration | Retained didactic: normalized exponential quotients narrate their rewrite
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2774,3 +2775,32 @@ Active entries: 67 (newest first)
     domain discipline), the limits engine must understand that wrapper
     or every downstream consumer hits the same wall: fix the composition
     once at the tail-sign level rather than per caller
+
+## 2026-06-11 - Retained didactic: normalized exponential quotients narrate their rewrite
+
+- area:
+  - didactics / integration / exponential family narration
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus (didactic half)
+  - calculus_maturity_block: block 4 narration
+  - calculus_matrix_cell: both normalized-exponential matrix rows now pin
+    the real narration ("Reescribir el cociente como producto
+    exponencial" + table rule or by-parts) instead of the main-step
+    placeholder
+  - behavior_change_expected: didactic only; engine byte-identical
+- decision:
+  - the narrator mirrors the engine's rebuild-and-delegate fix at the
+    didactic level: the product form (numerator * e^(-exponent)) is
+    rebuilt on a scratch context and quoted as the intermediate -
+    x/e^x -> x*e^(-x) -> e^(-x)*(-x-1) - with the second title chosen by
+    numerator shape (var-free -> "Usar la regla de la exponencial";
+    polynomial -> "Usar integración por partes")
+  - non-capture battery: product forms keep their by-parts narration,
+    arctan/PF/quartic narrators untouched, sin(x)/e^x stays silent
+    (residual integrand)
+- retained learning:
+  - when an engine fix is rebuild-and-delegate, its narration is the same
+    rewrite quoted as a substep: the didactic story falls out of the
+    engineering decision instead of needing new pedagogy

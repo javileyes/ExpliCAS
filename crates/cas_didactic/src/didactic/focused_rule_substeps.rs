@@ -113,6 +113,12 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return integration_general_rational_substeps;
     }
 
+    let exponential_div_substeps =
+        generate_normalized_exponential_div_integration_substeps(ctx, step);
+    if !exponential_div_substeps.is_empty() {
+        return exponential_div_substeps;
+    }
+
     let definite_integral_substeps = generate_definite_integral_substeps(ctx, step);
     if !definite_integral_substeps.is_empty() {
         return definite_integral_substeps;
@@ -12732,6 +12738,102 @@ fn contains_linear_integration_by_parts_target(
         }
         Expr::Neg(inner) => contains_linear_integration_by_parts_target(ctx, *inner, var_name),
         _ => false,
+    }
+}
+
+/// Narrate the normalized exponential quotients: the simplifier rewrites
+/// p(x)*e^(-u) into Div(p(x), e^u), so the story is "rewrite the quotient
+/// back as an exponential product" followed by the table rule (var-free
+/// numerator) or integration by parts (polynomial numerator). The product
+/// form is rebuilt on a scratch context and quoted as the intermediate.
+fn generate_normalized_exponential_div_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym).to_string();
+    let Expr::Div(numerator, denominator) = ctx.get(args[0]) else {
+        return Vec::new();
+    };
+    let (numerator, denominator) = (*numerator, *denominator);
+    let Some(exponent) = didactic_exp_like_arg(ctx, denominator) else {
+        return Vec::new();
+    };
+    let Ok(poly) = cas_math::polynomial::Polynomial::from_expr(ctx, exponent, &var_name) else {
+        return Vec::new();
+    };
+    if poly.degree() != 1 {
+        return Vec::new();
+    }
+
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+    if expr_contains_integrate_call(ctx, result) {
+        return Vec::new();
+    }
+
+    let mut scratch = ctx.clone();
+    let negated_exponent = scratch.add(Expr::Neg(exponent));
+    let exp_factor = scratch.call_builtin(BuiltinFn::Exp, vec![negated_exponent]);
+    let product = scratch.add(Expr::Mul(numerator, exp_factor));
+
+    let integration_title = if contains_named_var(ctx, numerator, &var_name) {
+        "Usar integración por partes"
+    } else {
+        "Usar la regla de la exponencial"
+    };
+
+    vec![
+        SubStep::new(
+            "Reescribir el cociente como producto exponencial",
+            display_expr(ctx, args[0]),
+            display_expr(&scratch, product),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(latex_expr(&scratch, product)),
+        SubStep::new(
+            integration_title,
+            display_expr(&scratch, product),
+            display_expr(ctx, result),
+        )
+        .with_before_latex(latex_expr(&scratch, product))
+        .with_after_latex(latex_expr(ctx, result)),
+    ]
+}
+
+fn didactic_exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Exp)) =>
+        {
+            Some(args[0])
+        }
+        Expr::Pow(base, exponent)
+            if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) =>
+        {
+            Some(*exponent)
+        }
+        _ => None,
     }
 }
 

@@ -968,7 +968,10 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_direct_diff_integrate_result="1 / e^x",
         expected_direct_diff_integrate_required_display=(),
         expected_required_display=(),
-        expected_step_substrings=("Calcular la integral",),
+        expected_step_substrings=(
+            "Reescribir el cociente como producto exponencial",
+            "Usar la regla de la exponencial",
+        ),
         family="elementary_exponential_table",
         argument_regime="reciprocal_exp_unit_negative_slope",
         domain_regime="total_real_function",
@@ -997,7 +1000,10 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_direct_diff_integrate_equivalent_to="x / e^x",
         expected_direct_diff_integrate_required_display=(),
         expected_required_display=(),
-        expected_step_substrings=("Calcular la integral",),
+        expected_step_substrings=(
+            "Reescribir el cociente como producto exponencial",
+            "Usar integración por partes",
+        ),
         family="by_parts_exponential_table",
         argument_regime="normalized_div_linear_times_exp",
         domain_regime="total_real_function",

@@ -455,9 +455,10 @@ Use these blocks as the active plan:
      closed next (rebuild-and-delegate from the Div arm; the Gamma-style
      integrate(x*exp(-x), x, 0, infinity) = 1 composes). The ln(|x|) gap closed
      next (abs-wrapped unbounded tails resolve at both infinities;
-     divergent log integrals report signed infinity). Remaining
-     candidates: cyclic by-parts (sin(x)/e^x) and a substep narrator for
-     the normalized exponential Div shapes.
+     divergent log integrals report signed infinity). The exponential-quotient
+     narrator landed next (rewrite quoted as the intermediate, table or
+     by-parts title by numerator shape). Remaining candidate: cyclic
+     by-parts (sin(x)/e^x, e^x*cos(x)).
 
 Selection rule:
 
