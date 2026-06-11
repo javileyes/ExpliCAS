@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 68 (newest first)
+Active entries: 69 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -131,6 +131,7 @@ Active entries: 68 (newest first)
 - 2026-06-11 | `retained` | calculus / integration / educational route / by-parts exponential | Retained calculus: by-parts exponentials reach the normalized Div form
 - 2026-06-11 | `retained` | calculus / limits engine / improper integrals / block 13 | Retained calculus: abs-wrapped tails resolve at infinity, log divergences report their sign
 - 2026-06-11 | `retained` | didactics / integration / exponential family narration | Retained didactic: normalized exponential quotients narrate their rewrite
+- 2026-06-11 | `retained` | calculus / integration / educational route / cyclic by-parts family | Retained calculus: the cyclic exp-trig family reaches the normalized Div form
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2804,3 +2805,37 @@ Active entries: 68 (newest first)
   - when an engine fix is rebuild-and-delegate, its narration is the same
     rewrite quoted as a substep: the didactic story falls out of the
     engineering decision instead of needing new pedagogy
+
+## 2026-06-11 - Retained calculus: the cyclic exp-trig family reaches the normalized Div form
+
+- area:
+  - calculus / integration / educational route / cyclic by-parts family
+- status:
+  - `retained` (one-line delegation extension)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 4 (plus the block-13 damped-oscillation
+    row it unblocks)
+  - calculus_matrix_cell: `integrate` / `by_parts_exponential_table` /
+    normalized Div damped sine / `total_real_function` / plus
+    `definite_integral_improper_damped_sine`
+  - behavior_change_expected: yes - integrate(sin(x)/e^x, x) ->
+    (-sin(x)-cos(x))/(2 e^x) with exact round-trip, and the classic
+    improper integrate(sin(x)/e^x, x, 0, infinity) = 1/2
+- observed (frontier probing):
+  - THIRD instance of the phantom normalization gap: the cyclic exp-trig
+    table already existed (e^x*sin(x), e^(2x)*sin(3x), even definite
+    integrate(e^x*sin(x), x, 0, pi) = (e^pi+1)/2 all worked) and only
+    the slope -1 Div normalization was unreachable
+- decision:
+  - ONE LINE: the cycle's rebuild-and-delegate recognizer
+    (div_exp_linear_by_parts_antiderivative) gains
+    exp_trig_same_linear_antiderivative in its delegation chain; the
+    exponential-quotient narrator from the previous cycle covered the
+    new shapes automatically (rewrite quoted, by-parts title);
+    tan(x)/e^x stays honestly residual
+- retained learning:
+  - a well-placed delegation chain turns each new phantom gap into a
+    one-line fix: the third instance cost two orders of magnitude less
+    than the first because the recognizer, the narrator, and the
+    improper machinery all compose at the same seam

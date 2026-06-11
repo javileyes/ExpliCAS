@@ -457,8 +457,10 @@ Use these blocks as the active plan:
      next (abs-wrapped unbounded tails resolve at both infinities;
      divergent log integrals report signed infinity). The exponential-quotient
      narrator landed next (rewrite quoted as the intermediate, table or
-     by-parts title by numerator shape). Remaining candidate: cyclic
-     by-parts (sin(x)/e^x, e^x*cos(x)).
+     by-parts title by numerator shape). The cyclic family closed next
+     (one-line delegation: sin(x)/e^x and the improper damped
+     oscillation = 1/2); tan(x)/e^x and Gaussian shapes remain honest
+     residuals.
 
 Selection rule:
 

@@ -11212,6 +11212,7 @@ fn div_exp_linear_by_parts_antiderivative(
     let product = mul2_raw(ctx, numerator, exp_factor);
     polynomial_times_exp_linear_antiderivative(ctx, product, var)
         .or_else(|| linear_times_exp_linear_antiderivative(ctx, product, var))
+        .or_else(|| exp_trig_same_linear_antiderivative(ctx, product, var))
 }
 
 fn nonzero_linear_polynomial_slope(poly: &Polynomial) -> Option<BigRational> {
@@ -23395,5 +23396,20 @@ mod tests {
                 "must stay residual: {source}"
             );
         }
+    }
+
+    #[test]
+    fn div_exp_delegation_reaches_the_cyclic_trig_family() {
+        let mut ctx = Context::new();
+        for source in ["sin(x)/e^x", "cos(x)/e^x", "sin(2*x)/e^(3*x)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+        // Honest residual: non-table trig cofactor.
+        let expr = parse("tan(x)/e^x", &mut ctx).expect("tan");
+        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
     }
 }
