@@ -149,14 +149,8 @@ fn interval_contains_rational(
     value: &BigRational,
 ) -> Option<bool> {
     let point = Endpoint::from_rational(value.clone());
-    let above = match point.try_cmp(low)? {
-        std::cmp::Ordering::Less => false,
-        _ => true,
-    };
-    let below = match point.try_cmp(high)? {
-        std::cmp::Ordering::Greater => false,
-        _ => true,
-    };
+    let above = !matches!(point.try_cmp(low)?, std::cmp::Ordering::Less);
+    let below = !matches!(point.try_cmp(high)?, std::cmp::Ordering::Greater);
     Some(above && below)
 }
 
