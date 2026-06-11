@@ -294,9 +294,12 @@ fixed by fixpoint unwrap at the generator entry — engine untouched).
 The mixed-numerator ln+arctan narration landed the same day for the
 compact shapes (separate the log part, integrate the denominator's
 derivative as a log, arctan rule), pinned by substrings on both compact
-mixed rows. Next rungs: expanded-affine shapes (need the
-complete-the-square narration first), then the rational families
-(partial fractions, Ostrogradsky).
+mixed rows. The expanded-affine shapes landed next (complete-the-square
+narration recovered from the result's own ln argument, with an ln-only
+branch for derivative-multiple numerators) - all six Hermite
+positive-quadratic matrix rows now assert educational substrings. Next
+rung: the rational families (multi-quadratic partial fractions,
+Ostrogradsky), which still trace as summary.
 
 ## Promotion Checklist
 

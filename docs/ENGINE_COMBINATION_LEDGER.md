@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 55 (newest first)
+Active entries: 56 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
+- 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2320,3 +2321,41 @@ Active entries: 55 (newest first)
     a probe battery over the neighbors' shapes is the cheap recipe for
     no-capture guarantees; the matrix substrings then pin both the new
     narration and the neighbors' ownership
+
+## 2026-06-11 - Retained didactic: expanded Hermite shapes narrate completing the square
+
+- area:
+  - didactics / integration / block 12 trace elevation / Phase 6 third rung
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus (didactic half)
+  - calculus_maturity_block: block 12, Phase 6
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_hermite_positive_quadratic` / expanded symbolic
+    affine (mixed and derivative-multiple) plus expanded numeric center /
+    rows now carry expected_step_substrings
+  - behavior_change_expected: didactic only; engine byte-identical
+- observed:
+  - frontier probing narrowed the gap to exactly three matrix rows: the
+    numeric expanded reciprocal and the symbolic expanded reciprocal
+    already narrate via the arctan generator, and the numeric expanded
+    mixed shape is owned by the educational partial-fraction narrator
+  - the key reuse: the backend result itself carries the completed-square
+    form as the ln argument, so the "complete the square" substep's
+    before/after pair is (expanded denominator, compact form from the
+    result) with no scratch construction and no re-derivation
+- decision:
+  - the cycle-2 mixed-numerator generator generalizes with an expanded
+    gate: flat Add denominator narrates "Completar el cuadrado" first
+    (compact form recovered from the result's ln argument), then the
+    mixed narration, with an ln-only branch for derivative-multiple
+    numerators; the compact ln-only shape stays with the existing
+    log-table narrators by explicit guard
+  - non-capture battery re-run over neighbors (partial fractions, arctan
+    table, substitution, quartic descent): all keep their own narrations
+- retained learning:
+  - verified results are a narration source: when a backend result
+    embeds the transformed form (completed square in the ln argument),
+    the didactic layer can narrate the transformation by quoting result
+    subexpressions instead of recomputing the algebra

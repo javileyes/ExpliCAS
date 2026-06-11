@@ -12747,9 +12747,8 @@ fn generate_positive_quadratic_mixed_numerator_integration_substeps(
     let Expr::Div(_, denominator) = ctx.get(args[0]) else {
         return Vec::new();
     };
-    if !is_compact_positive_quadratic_denominator(ctx, *denominator) {
-        return Vec::new();
-    }
+    let denominator = *denominator;
+    let compact_denominator = is_compact_positive_quadratic_denominator(ctx, denominator);
 
     let mut result = after;
     loop {
@@ -12761,7 +12760,11 @@ fn generate_positive_quadratic_mixed_numerator_integration_substeps(
     }
     let mut terms = Vec::new();
     collect_additive_terms(ctx, result, &mut terms);
-    if terms.len() < 2 {
+    if terms.is_empty()
+        || terms
+            .iter()
+            .any(|term| expr_contains_integrate_call(ctx, *term))
+    {
         return Vec::new();
     }
     let log_term = terms
@@ -12772,39 +12775,98 @@ fn generate_positive_quadratic_mixed_numerator_integration_substeps(
         expr_contains_builtin(ctx, *term, BuiltinFn::Arctan)
             || expr_contains_builtin(ctx, *term, BuiltinFn::Atan)
     });
-    let (Some(log_term), Some(arctan_term)) = (log_term, arctan_term) else {
+    let Some(log_term) = log_term else {
         return Vec::new();
     };
-    if terms
-        .iter()
-        .any(|term| expr_contains_integrate_call(ctx, *term))
-    {
+
+    // Expanded denominators narrate completing the square first; the
+    // compact form is recovered from the result's own ln argument (the
+    // backend verified their equality).
+    let mut substeps = Vec::new();
+    if !compact_denominator {
+        let Some(compact_form) = compact_quadratic_from_log_term(ctx, log_term) else {
+            return Vec::new();
+        };
+        substeps.push(
+            SubStep::new(
+                "Completar el cuadrado en el denominador",
+                display_expr(ctx, denominator),
+                display_expr(ctx, compact_form),
+            )
+            .with_before_latex(latex_expr(ctx, denominator))
+            .with_after_latex(latex_expr(ctx, compact_form)),
+        );
+    }
+
+    if arctan_term.is_some() {
+        substeps.push(
+            SubStep::new(
+                "Separar la parte logarítmica del numerador",
+                display_expr(ctx, args[0]),
+                display_expr(ctx, result),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(latex_expr(ctx, result)),
+        );
+    } else if compact_denominator || terms.len() > 1 {
+        // The compact ln-only shape is owned by the existing log-table
+        // narrators; only the expanded ln-only shape continues here.
         return Vec::new();
     }
 
-    vec![
-        SubStep::new(
-            "Separar la parte logarítmica del numerador",
-            display_expr(ctx, args[0]),
-            display_expr(ctx, result),
-        )
-        .with_before_latex(latex_expr(ctx, args[0]))
-        .with_after_latex(latex_expr(ctx, result)),
+    substeps.push(
         SubStep::new(
             "Integrar la derivada del denominador como logaritmo",
-            display_expr(ctx, *denominator),
+            display_expr(ctx, denominator),
             display_expr(ctx, log_term),
         )
-        .with_before_latex(latex_expr(ctx, *denominator))
+        .with_before_latex(latex_expr(ctx, denominator))
         .with_after_latex(latex_expr(ctx, log_term)),
-        SubStep::new(
-            "Usar la regla de arctan con derivada interna",
-            display_expr(ctx, *denominator),
-            display_expr(ctx, arctan_term),
-        )
-        .with_before_latex(latex_expr(ctx, *denominator))
-        .with_after_latex(latex_expr(ctx, arctan_term)),
-    ]
+    );
+    if let Some(arctan_term) = arctan_term {
+        substeps.push(
+            SubStep::new(
+                "Usar la regla de arctan con derivada interna",
+                display_expr(ctx, denominator),
+                display_expr(ctx, arctan_term),
+            )
+            .with_before_latex(latex_expr(ctx, denominator))
+            .with_after_latex(latex_expr(ctx, arctan_term)),
+        );
+    }
+    if substeps.len() < 2 {
+        return Vec::new();
+    }
+    substeps
+}
+
+/// Find the Ln call inside a result term and return its argument when it
+/// is a compact positive quadratic (the completed-square form).
+fn compact_quadratic_from_log_term(ctx: &Context, term: ExprId) -> Option<ExprId> {
+    match ctx.get(term) {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Ln) {
+                let arg = cas_ast::hold::unwrap_hold(ctx, args[0]);
+                let arg = match ctx.get(arg) {
+                    Expr::Function(abs_id, abs_args)
+                        if abs_args.len() == 1 && ctx.is_builtin(*abs_id, BuiltinFn::Abs) =>
+                    {
+                        abs_args[0]
+                    }
+                    _ => arg,
+                };
+                return is_compact_positive_quadratic_denominator(ctx, arg).then_some(arg);
+            }
+            args.iter()
+                .find_map(|inner| compact_quadratic_from_log_term(ctx, *inner))
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            compact_quadratic_from_log_term(ctx, *l)
+                .or_else(|| compact_quadratic_from_log_term(ctx, *r))
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => compact_quadratic_from_log_term(ctx, *inner),
+        _ => None,
+    }
 }
 
 /// A compact positive-quadratic denominator: Add with one side being a
