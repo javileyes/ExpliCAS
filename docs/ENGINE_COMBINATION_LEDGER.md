@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 73 (newest first)
+Active entries: 74 (newest first)
 
+- 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3010,3 +3011,43 @@ Active entries: 73 (newest first)
     been probed - the touched-endpoint semantics (substitute -> limit)
     dropped into the existing certificate/evaluation seams without
     touching any other path
+
+## 2026-06-12 - Retained calculus: product-to-sum trig products and Fourier orthogonality
+
+- area:
+  - calculus / integration / educational route / trig product family /
+    Fourier definites
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 7 trig integration (plus the block-13
+    Fourier rows it unblocks)
+  - calculus_matrix_cell: `integrate(sin(ax)*cos(bx))` family / two
+    definite rows: Fourier orthogonality
+    integrate(sin(2x)sin(3x), x, 0, 2pi) = 0 and the half-period value
+    integrate(sin(3x)cos(2x), x, 0, pi) = 6/5
+  - behavior_change_expected: yes - distinct-frequency trig products
+    integrate (sin*cos, sin*sin, cos*cos with rational a != +-b)
+- observed (frontier probing):
+  - same-frequency products and sin(x)sin(2x) already had owners; the
+    ledger's old warning held: delegating to the public route produces
+    power-expansion forms (sin(5x) integrates via cos-power expansion),
+    so the closed forms are built DIRECTLY from the three identities
+  - the simplifier expands the compact multiple-angle antiderivatives
+    into trig-power forms on display; values and round-trips are exact
+    (diff(F) - integrand simplifies to 0) but the classic
+    -cos(5x)/10 - cos(x)/2 presentation is not preserved, and the
+    matrix's derivative-verification subprocess times out re-simplifying
+    the power form - the indefinite row was withdrawn in favor of unit
+    tests plus the two definite Fourier rows
+  - one rewrite interference remains: cos(x)cos(2x) reaches integrate as
+    sin(4x)/(4sin(x)) (a quotient identity fired first) and stays
+    residual
+- retained learning:
+  - presentation expansion can defeat harness verification even when the
+    mathematics is exact: when diff-verification of a pinned display
+    times out, pin the capability through definite values and unit tests
+    instead, and record the compact-presentation protection as its own
+    rung (multiple-angle anti-expansion is a presentation-policy cycle,
+    not an integration cycle)

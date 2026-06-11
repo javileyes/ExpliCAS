@@ -11158,6 +11158,98 @@ fn polynomial_log_derivative_power_antiderivative(
     )
 }
 
+/// Product-to-sum for distinct-frequency trig products with pure k*x
+/// arguments: sin(ax)cos(bx), sin(ax)sin(bx), cos(ax)cos(bx) with
+/// rational a != +-b integrate via the closed forms of the three
+/// product-to-sum identities, built DIRECTLY (delegating sin(kx) to the
+/// public route can produce power-expansion forms). Equal frequencies
+/// keep their existing owners.
+fn trig_product_to_sum_antiderivative(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (left_is_sin, a) = pure_linear_trig_factor(ctx, left, var)?;
+    let (right_is_sin, b) = pure_linear_trig_factor(ctx, right, var)?;
+    if a == b || a == -b.clone() {
+        return None;
+    }
+
+    let sum = &a + &b;
+    let difference = &a - &b;
+    let half = BigRational::new(1.into(), 2.into());
+
+    // Each term: trig((a +- b) x) scaled; integral of sin(kx) is
+    // -cos(kx)/k and of cos(kx) is sin(kx)/k.
+    let term =
+        |ctx: &mut Context, freq: &BigRational, is_sin: bool, scale: BigRational| -> ExprId {
+            let freq_expr = ctx.add(Expr::Number(freq.clone()));
+            let var_expr = ctx.var(var);
+            let arg = mul2_raw(ctx, freq_expr, var_expr);
+            if is_sin {
+                // scale * integral(sin) = scale * (-cos(freq x)/freq)
+                let cosine = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+                let coefficient = ctx.add(Expr::Number(-(scale / freq)));
+                mul2_raw(ctx, coefficient, cosine)
+            } else {
+                let sine = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+                let coefficient = ctx.add(Expr::Number(scale / freq));
+                mul2_raw(ctx, coefficient, sine)
+            }
+        };
+
+    let (first, second) = match (left_is_sin, right_is_sin) {
+        // sin(ax)cos(bx) = 1/2 [ sin((a+b)x) + sin((a-b)x) ]
+        (true, false) => (
+            term(ctx, &sum, true, half.clone()),
+            term(ctx, &difference, true, half),
+        ),
+        // cos(ax)sin(bx): swap roles
+        (false, true) => {
+            let swapped_difference = &b - &a;
+            (
+                term(ctx, &sum, true, half.clone()),
+                term(ctx, &swapped_difference, true, half),
+            )
+        }
+        // sin sin = 1/2 [ cos((a-b)x) - cos((a+b)x) ]
+        (true, true) => (
+            term(ctx, &difference, false, half.clone()),
+            term(ctx, &sum, false, -half),
+        ),
+        // cos cos = 1/2 [ cos((a-b)x) + cos((a+b)x) ]
+        (false, false) => (
+            term(ctx, &difference, false, half.clone()),
+            term(ctx, &sum, false, half),
+        ),
+    };
+    Some(ctx.add(Expr::Add(first, second)))
+}
+
+/// A sin/cos factor with a pure rational-multiple argument k*x; returns
+/// (is_sin, k).
+fn pure_linear_trig_factor(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(bool, BigRational)> {
+    let (fn_id, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+        _ => return None,
+    };
+    let is_sin = match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Sin) => true,
+        Some(BuiltinFn::Cos) => false,
+        _ => return None,
+    };
+    let poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if poly.degree() != 1 || !poly.coeffs[0].is_zero() {
+        return None;
+    }
+    Some((is_sin, poly.coeffs[1].clone()))
+}
+
 fn exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Function(fn_id, args)
@@ -18305,6 +18397,9 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Mul(l, r) = kind {
+        if let Some(integral) = trig_product_to_sum_antiderivative(ctx, l, r, var) {
+            return Some(integral);
+        }
         if !contains_named_var(ctx, l, var) {
             if let Some(integral) =
                 constant_scaled_trig_reciprocal_derivative_antiderivative(ctx, l, r, var)
@@ -23411,5 +23506,33 @@ mod tests {
         // Honest residual: non-table trig cofactor.
         let expr = parse("tan(x)/e^x", &mut ctx).expect("tan");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn trig_product_to_sum_integrates_distinct_frequencies() {
+        let mut ctx = Context::new();
+        for source in [
+            "sin(3*x)*cos(2*x)",
+            "cos(2*x)*cos(3*x)",
+            "sin(2*x)*sin(3*x)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn trig_product_to_sum_leaves_equal_frequencies_to_their_owners() {
+        let mut ctx = Context::new();
+        // Equal frequencies decline here; other routes own them.
+        let expr = parse("sin(2*x)*cos(2*x)", &mut ctx).expect("same freq");
+        let l = parse("sin(2*x)", &mut ctx).expect("l");
+        let r = parse("cos(2*x)", &mut ctx).expect("r");
+        assert!(super::trig_product_to_sum_antiderivative(&mut ctx, l, r, "x").is_none());
+        // But the full route still integrates it (existing owner).
+        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_some());
     }
 }

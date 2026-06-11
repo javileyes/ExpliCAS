@@ -474,10 +474,13 @@ Use these blocks as the active plan:
      landed next: integrate(ln(x), x, 0, 1) = -1, 1/sqrt(x) and the
      sqrt-domain case evaluate via one-sided limits at touched
      endpoints, endpoint poles report signed divergence, and the
-     narrator renders lim notation. Next rungs: touches at finite
-     endpoints of unbounded intervals, fractional-power endpoint atoms
-     (integrate(sqrt(x), x, 0, 4)), and the product-to-sum trig rewrites
-     for Fourier-style definites.
+     narrator renders lim notation. The product-to-sum family
+     landed next (distinct-frequency sin/cos products via direct closed
+     forms; Fourier orthogonality integrate(sin(2x)sin(3x), x, 0, 2pi) =
+     0). Next rungs: touches at finite endpoints of unbounded intervals,
+     fractional-power endpoint atoms, compact multiple-angle
+     presentation (the simplifier expands -cos(5x)/10 forms into trig
+     powers), and the cos(x)cos(2x) quotient-rewrite interference.
 
 Selection rule:
 
