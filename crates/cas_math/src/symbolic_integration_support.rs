@@ -23389,7 +23389,7 @@ mod tests {
     #[test]
     fn div_exp_by_parts_rejects_unsupported_numerators() {
         let mut ctx = Context::new();
-        for source in ["sin(x)/e^x", "x/e^(x^2)"] {
+        for source in ["tan(x)/e^x", "x/e^(x^2)"] {
             let expr = parse(source, &mut ctx).expect(source);
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
