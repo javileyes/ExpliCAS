@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 57 (newest first)
+Active entries: 58 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 fourth rung | Retained didactic: multi-quadratic partial fractions narrate their real decomposition
+- 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 fifth rung | Retained didactic: Ostrogradsky and quartic-descent results narrate their pipeline
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2391,3 +2392,38 @@ Active entries: 57 (newest first)
     state its shape ownership (flat Add vs product vs compact) or
     neighbors silently steal each other's stories; the probe battery over
     neighbor shapes is the cheap detector for cross-capture
+
+## 2026-06-11 - Retained didactic: Ostrogradsky and quartic-descent results narrate their pipeline
+
+- area:
+  - didactics / integration / block 12 trace elevation / Phase 6 fifth rung
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus (didactic half)
+  - calculus_maturity_block: block 12, Phase 6
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_rational_general` / all four rows
+    (Ostrogradsky sextic, quintic with pole, Sophie Germain, cyclotomic
+    quartic) now carry expected_step_substrings
+  - behavior_change_expected: didactic only; engine byte-identical
+- decision:
+  - the general rational family narrates its actual pipeline with real
+    intermediates rebuilt on a scratch context via a new pub cas_math
+    parts function: optional "Separar la parte racional (reducción de
+    Ostrogradsky)" quoting P/D1 plus the literal remaining integral
+    (composed as display/latex strings - SubSteps carry strings, so the
+    integral sign needs no AST node), then "Factorizar el denominador",
+    "Descomponer en fracciones parciales", "Integrar los términos
+    simples"
+  - squarefree shapes (quartic descents, biquadratics) skip the
+    Ostrogradsky substep naturally; linear factors take constant
+    numerators in the decomposition display (a shape-aware variant of the
+    multi-quadratic loop)
+  - with this rung, EVERY supported backend family row in the matrix
+    asserts educational substrings: the algorithmic_summary trace level
+    is now narrated across the board for promoted families
+- retained learning:
+  - SubSteps carry rendered strings, not AST: narration can compose
+    forms (like "P/D1 + int Q/D2 dx") that the engine never builds,
+    which keeps didactic-only concepts out of the expression language

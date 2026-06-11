@@ -300,9 +300,13 @@ branch for derivative-multiple numerators) - all six Hermite
 positive-quadratic matrix rows now assert educational substrings. The
 multi-quadratic partial-fraction rows landed next with a REAL
 intermediate (the backend's decomposition rebuilt on a scratch context:
-N/prod(q_i) -> sum of simple terms -> result). Next rungs: Ostrogradsky
-and quartic-descent results (need a squarefree-split narration), and the
-Heurisch probe family.
+N/prod(q_i) -> sum of simple terms -> result). The Ostrogradsky and
+quartic-descent narrations landed next (rational-part separation quoted
+with the literal remaining integral, factorization, partial fractions,
+term-by-term integration) - every supported backend family row in the
+matrix now asserts educational substrings. Remaining: the Heurisch probe
+family (diagnostic-only today) and deciding which summary-only families,
+if any, are documented as beyond curriculum scope.
 
 ## Promotion Checklist
 

@@ -44,7 +44,9 @@ mod verification_normalization;
 // continues to work unchanged.
 pub use methods::{
     backend_positive_quadratic_denominator_radius,
+    general_rational_partial_fraction_narration_parts,
     multi_quadratic_partial_fraction_decomposition_expr, try_algorithmic_integration_backend,
+    GeneralRationalNarrationParts,
 };
 pub use model::*;
 pub use probe_runner::*;

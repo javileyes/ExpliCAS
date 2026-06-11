@@ -421,6 +421,84 @@ pub(super) fn general_rational_partial_fraction_antiderivative(
     })
 }
 
+/// Real intermediate forms of the general rational pipeline, for the
+/// didactic narration: the Ostrogradsky split (P/D1 plus the remaining
+/// squarefree integrand Q/D2), the factored squarefree denominator, and
+/// the partial-fraction decomposition. Returns Some exactly when the
+/// general rational probe would match.
+pub struct GeneralRationalNarrationParts {
+    pub rational_part: Option<(ExprId, ExprId)>,
+    pub factored_denominator: ExprId,
+    pub decomposition: ExprId,
+}
+
+pub fn general_rational_partial_fraction_narration_parts(
+    ctx: &mut Context,
+    integrand: ExprId,
+    variable: &str,
+) -> Option<GeneralRationalNarrationParts> {
+    let (numerator_expr, denominator_expr) = match ctx.get(integrand) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    let denominator =
+        crate::polynomial::Polynomial::from_expr(ctx, denominator_expr, variable).ok()?;
+    let degree = denominator.degree();
+    if !(GENERAL_RATIONAL_MIN_DENOMINATOR_DEGREE..=GENERAL_RATIONAL_MAX_DENOMINATOR_DEGREE)
+        .contains(&degree)
+    {
+        return None;
+    }
+    let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
+    if numerator.is_zero() || numerator.degree() >= degree {
+        return None;
+    }
+    let leading = denominator.leading_coeff();
+    let denominator = denominator.div_scalar(&leading);
+    let numerator = numerator.div_scalar(&leading);
+
+    let (repeated_part, squarefree_part) = squarefree_split(&denominator)?;
+    let (rational_part, squarefree_numerator) = if repeated_part.degree() == 0 {
+        (None, numerator)
+    } else {
+        let (p, q) = ostrogradsky_reduce(&numerator, &repeated_part, &squarefree_part, variable)?;
+        let p_expr = p.to_expr(ctx);
+        let d1_expr = repeated_part.to_expr(ctx);
+        let rational = ctx.add(Expr::Div(p_expr, d1_expr));
+        let q_expr = q.to_expr(ctx);
+        let d2_expr = squarefree_part.to_expr(ctx);
+        let remaining = ctx.add(Expr::Div(q_expr, d2_expr));
+        (Some((rational, remaining)), q)
+    };
+
+    let factors = split_squarefree_factors(&squarefree_part)?;
+    let terms = mixed_partial_fraction_terms(ctx, &squarefree_numerator, &factors, variable)?;
+
+    let variable_expr = ctx.var(variable);
+    let mut factored = ctx.num(1);
+    let mut decomposition = ctx.num(0);
+    for (factor, term) in factors.iter().zip(&terms) {
+        factored = build_backend_product(ctx, factored, term.factor_expr);
+        let piece_numerator = match factor {
+            SquarefreeFactor::Linear { .. } => ctx.add(Expr::Number(term.alpha.clone())),
+            SquarefreeFactor::Quadratic { .. } => {
+                let alpha_expr = ctx.add(Expr::Number(term.alpha.clone()));
+                let linear = build_backend_product(ctx, alpha_expr, variable_expr);
+                let beta_expr = ctx.add(Expr::Number(term.beta.clone()));
+                build_backend_sum(ctx, linear, beta_expr)
+            }
+        };
+        let piece = ctx.add(Expr::Div(piece_numerator, term.factor_expr));
+        decomposition = build_backend_sum(ctx, decomposition, piece);
+    }
+
+    Some(GeneralRationalNarrationParts {
+        rational_part,
+        factored_denominator: factored,
+        decomposition,
+    })
+}
+
 /// D1 = gcd(D, D') (the repeated part), D2 = D/D1 (squarefree, carrying
 /// every distinct irreducible factor of D exactly once); both monic.
 fn squarefree_split(

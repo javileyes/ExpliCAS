@@ -107,6 +107,12 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return integration_multi_quadratic_substeps;
     }
 
+    let integration_general_rational_substeps =
+        generate_general_rational_integration_substeps(ctx, step);
+    if !integration_general_rational_substeps.is_empty() {
+        return integration_general_rational_substeps;
+    }
+
     let integration_trig_log_table_substeps =
         generate_trig_log_table_integration_substeps(ctx, step);
     if !integration_trig_log_table_substeps.is_empty() {
@@ -12722,6 +12728,107 @@ fn contains_linear_integration_by_parts_target(
         Expr::Neg(inner) => contains_linear_integration_by_parts_target(ctx, *inner, var_name),
         _ => false,
     }
+}
+
+/// Narrate the general rational backend family (Ostrogradsky reduction,
+/// rational-root and quartic-descent splittings) with its real
+/// intermediates rebuilt on a scratch context: optional rational-part
+/// separation, denominator factorization, partial-fraction
+/// decomposition, and the term-by-term integration.
+fn generate_general_rational_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym).to_string();
+
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+    if expr_contains_integrate_call(ctx, result) {
+        return Vec::new();
+    }
+
+    let mut scratch = ctx.clone();
+    let Some(parts) =
+        cas_math::general_integration_backend::general_rational_partial_fraction_narration_parts(
+            &mut scratch,
+            args[0],
+            &var_name,
+        )
+    else {
+        return Vec::new();
+    };
+
+    let Expr::Div(_, denominator) = ctx.get(args[0]) else {
+        return Vec::new();
+    };
+    let mut substeps = Vec::new();
+    if let Some((rational_part, remaining)) = parts.rational_part {
+        substeps.push(
+            SubStep::new(
+                "Separar la parte racional (reducción de Ostrogradsky)",
+                display_expr(ctx, args[0]),
+                format!(
+                    "{} + ∫({}) d{}",
+                    display_expr(&scratch, rational_part),
+                    display_expr(&scratch, remaining),
+                    var_name
+                ),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(format!(
+                "{} + \\int {} \\, d{}",
+                latex_expr(&scratch, rational_part),
+                latex_expr(&scratch, remaining),
+                var_name
+            )),
+        );
+    }
+    substeps.push(
+        SubStep::new(
+            "Factorizar el denominador",
+            display_expr(ctx, *denominator),
+            display_expr(&scratch, parts.factored_denominator),
+        )
+        .with_before_latex(latex_expr(ctx, *denominator))
+        .with_after_latex(latex_expr(&scratch, parts.factored_denominator)),
+    );
+    substeps.push(
+        SubStep::new(
+            "Descomponer en fracciones parciales",
+            display_expr(&scratch, parts.factored_denominator),
+            display_expr(&scratch, parts.decomposition),
+        )
+        .with_before_latex(latex_expr(&scratch, parts.factored_denominator))
+        .with_after_latex(latex_expr(&scratch, parts.decomposition)),
+    );
+    substeps.push(
+        SubStep::new(
+            "Integrar los términos simples",
+            display_expr(&scratch, parts.decomposition),
+            display_expr(ctx, result),
+        )
+        .with_before_latex(latex_expr(&scratch, parts.decomposition))
+        .with_after_latex(latex_expr(ctx, result)),
+    );
+    substeps
 }
 
 /// Narrate the backend multi-quadratic partial-fraction family with the
