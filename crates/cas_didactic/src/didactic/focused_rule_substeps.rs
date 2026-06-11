@@ -12812,9 +12812,54 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         return Vec::new();
     };
 
-    let at_upper = cas_ast::substitute_expr_by_id(&mut scratch, antiderivative, var_expr, upper);
-    let at_lower = cas_ast::substitute_expr_by_id(&mut scratch, antiderivative, var_expr, lower);
-    let raw_difference = scratch.add(Expr::Sub(at_upper, at_lower));
+    // At infinite bounds the boundary value is a LIMIT, not a
+    // substitution: narrate lim_{x -> +-inf} F instead of quoting an
+    // infinity constant inside F.
+    let bound_is_infinite = |ctx: &Context, bound: ExprId| -> Option<&'static str> {
+        match ctx.get(bound) {
+            Expr::Constant(cas_ast::Constant::Infinity) => Some("∞"),
+            Expr::Neg(inner)
+                if matches!(ctx.get(*inner), Expr::Constant(cas_ast::Constant::Infinity)) =>
+            {
+                Some("-∞")
+            }
+            _ => None,
+        }
+    };
+    let boundary_strings = |scratch: &mut Context, bound: ExprId| -> (String, String) {
+        if let Some(sign) = bound_is_infinite(scratch, bound) {
+            let latex_sign = if sign == "∞" {
+                "\\infty".to_string()
+            } else {
+                "-\\infty".to_string()
+            };
+            (
+                format!(
+                    "lim_{{{} → {}}} {}",
+                    var_name,
+                    sign,
+                    display_expr(scratch, antiderivative)
+                ),
+                format!(
+                    "\\lim_{{{} \\to {}}} {}",
+                    var_name,
+                    latex_sign,
+                    latex_expr(scratch, antiderivative)
+                ),
+            )
+        } else {
+            let substituted =
+                cas_ast::substitute_expr_by_id(scratch, antiderivative, var_expr, bound);
+            (
+                display_expr(scratch, substituted),
+                latex_expr(scratch, substituted),
+            )
+        }
+    };
+    let (upper_display, upper_latex) = boundary_strings(&mut scratch, upper);
+    let (lower_display, lower_latex) = boundary_strings(&mut scratch, lower);
+    let difference_display = format!("{} - {}", upper_display, lower_display);
+    let difference_latex = format!("{} - {}", upper_latex, lower_latex);
 
     vec![
         SubStep::new(
@@ -12827,10 +12872,10 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         SubStep::new(
             "Evaluar la antiderivada en los límites",
             display_expr(&scratch, antiderivative),
-            display_expr(&scratch, raw_difference),
+            difference_display,
         )
         .with_before_latex(latex_expr(&scratch, antiderivative))
-        .with_after_latex(latex_expr(&scratch, raw_difference)),
+        .with_after_latex(difference_latex),
     ]
 }
 

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 63 (newest first)
+Active entries: 64 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -126,6 +126,7 @@ Active entries: 63 (newest first)
 - 2026-06-11 | `retained` | didactics / definite integration / block 13 second rung | Retained didactic: the fundamental theorem narrates its three-step story
 - 2026-06-11 | `retained` | didactics / presentation / definite integration / block 13 third rung | Retained didactic: definite integrals display their bounds
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 fourth rung / area function | Retained calculus: symbolic bounds for unconditional antiderivatives
+- 2026-06-11 | `retained` | calculus / definite integration / block 13 fifth rung / improper policy | Retained calculus: improper integrals via boundary limits close block 13's policy rung
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2617,3 +2618,47 @@ Active entries: 63 (newest first)
     when conditions exist, so gating on the condition set (already
     computed) supports the symbolic case for free where it is sound and
     refuses exactly where it is not
+
+## 2026-06-11 - Retained calculus: improper integrals via boundary limits close block 13's policy rung
+
+- area:
+  - calculus / definite integration / block 13 fifth rung / improper policy
+- status:
+  - `retained` (includes one soundness guard on the prior rung)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13
+  - calculus_matrix_cell: `integrate(f, x, a, infinity)` /
+    `definite_integral_ftc` / {convergent half-line, full line, honest
+    divergence} / {`improper_interval_certified`,
+    `improper_divergent_to_infinity`} / `definite_ftc_improper_limit`
+  - behavior_change_expected: yes - integrate(1/x^2, x, 1, infinity) -> 1,
+    integrate(1/(x^2+1), x, -infinity, infinity) -> pi, and divergence
+    reports the honest infinite value (integrate(x^2, x, 0, infinity) ->
+    infinity)
+- observed:
+  - SOUNDNESS GUARD: the symbolic-bound rung was swallowing the infinity
+    constant as if it were a symbol, substituting it into F and emitting
+    junk like arctan(infinity) and infinity^3/3; bounds are now
+    classified (finite / +-infinity / symbolic) before any path runs
+  - at an infinite bound the boundary value is the LIMIT of the
+    antiderivative via the existing limits engine; unresolved or warned
+    limits stay residual, and infinity - infinity is refused as
+    indeterminate
+  - the certificate extends to (half-)infinite intervals: linear poles
+    must lie strictly outside (1/x^2 on [-1, inf) -> undefined; on
+    [1, inf) -> certified)
+  - the FTC narrator now renders infinite boundaries as
+    lim_{x -> inf} F instead of quoting a substituted infinity constant
+    (SubSteps carry strings, so the limit notation needs no AST node)
+  - two honest residuals inherited from other layers, recorded as their
+    own candidates: integrate(exp(-x), x) is residual INDEFINITELY (the
+    parser normalizes to 1/e^x and the integrator declines that form),
+    and the limits engine does not resolve ln(|x|) at infinity (so the
+    divergence of integrate(1/x, x, 1, infinity) stays residual instead
+    of reporting infinity)
+- retained learning:
+  - special constants masquerade as symbols: any "symbolic input" path
+    must CLASSIFY its inputs (finite / infinite / symbolic) before
+    treating them generically, or infinity flows through substitution
+    machinery built for real values

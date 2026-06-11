@@ -446,8 +446,13 @@ Use these blocks as the active plan:
      Bound display landed next (\int_{a}^{b} in the trace). Symbolic bounds for
      unconditional antiderivatives landed next (the area function
      integrate(f, x, a, t); conditional integrands with symbolic bounds
-     stay honest residuals). Next rung: improper-integral policy
-     (infinite bounds via the limit machinery).
+     stay honest residuals). The improper policy landed next:
+     infinite bounds evaluate via boundary limits with the certificate
+     extended to (half-)infinite intervals, divergence reports the honest
+     infinite value, and the narrator renders lim notation. Known gaps
+     recorded as candidates: exp(-x) is residual indefinitely (parser
+     normalizes to 1/e^x), and ln(|x|) at infinity is unresolved in the
+     limits engine.
 
 Selection rule:
 
