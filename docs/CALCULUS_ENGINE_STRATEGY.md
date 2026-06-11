@@ -443,8 +443,11 @@ Use these blocks as the active plan:
      matrix rows plus block13 harness axes. The three-step narration
      landed the same day (antiderivative rebuilt on a scratch context,
      evaluation at the bounds, pole detection for undefined results).
-     Bound display landed next (\int_{a}^{b} in the trace). Next rungs:
-     symbolic bounds, and improper-integral policy.
+     Bound display landed next (\int_{a}^{b} in the trace). Symbolic bounds for
+     unconditional antiderivatives landed next (the area function
+     integrate(f, x, a, t); conditional integrands with symbolic bounds
+     stay honest residuals). Next rung: improper-integral policy
+     (infinite bounds via the limit machinery).
 
 Selection rule:
 

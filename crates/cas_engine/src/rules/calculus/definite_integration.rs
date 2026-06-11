@@ -27,19 +27,14 @@ pub(super) fn definite_integration_rewrite(
     ctx: &mut Context,
     call: &DefiniteIntegralCall,
 ) -> Option<Rewrite> {
-    let lower = as_rational_const(ctx, call.lower)?;
-    let upper = as_rational_const(ctx, call.upper)?;
-    if lower == upper {
-        let zero = ctx.num(0);
-        return Some(Rewrite::new(zero).desc("integrate(f, x, a, a) = 0"));
+    let lower = as_rational_const(ctx, call.lower);
+    let upper = as_rational_const(ctx, call.upper);
+    if let (Some(lower), Some(upper)) = (&lower, &upper) {
+        if lower == upper {
+            let zero = ctx.num(0);
+            return Some(Rewrite::new(zero).desc("integrate(f, x, a, a) = 0"));
+        }
     }
-    // F(upper) - F(lower) is already orientation-aware; the swap is only
-    // for the certificate's closed interval.
-    let (interval_low, interval_high) = if lower < upper {
-        (lower, upper)
-    } else {
-        (upper, lower)
-    };
 
     let mut required_conditions =
         IntegrationRequiredConditions::from_target(ctx, call.target, &call.var_name);
@@ -49,6 +44,40 @@ pub(super) fn definite_integration_rewrite(
         &call.var_name,
         &mut required_conditions,
     )?;
+    let (Some(lower), Some(upper)) = (lower, upper) else {
+        // Symbolic bounds: sound exactly when the antiderivative is
+        // unconditional - every condition-free antiderivative the engine
+        // emits is continuous on all of R, so there is no interval to
+        // certify (the curriculum "area function" integrate(f, x, a, t)).
+        if required_conditions
+            .into_implicit_conditions()
+            .next()
+            .is_some()
+        {
+            return None;
+        }
+        let mut antiderivative = antiderivative;
+        loop {
+            let unwrapped = cas_ast::hold::unwrap_hold(ctx, antiderivative);
+            if unwrapped == antiderivative {
+                break;
+            }
+            antiderivative = unwrapped;
+        }
+        let at_upper =
+            cas_ast::substitute_expr_by_id(ctx, antiderivative, call.var_expr, call.upper);
+        let at_lower =
+            cas_ast::substitute_expr_by_id(ctx, antiderivative, call.var_expr, call.lower);
+        let result = ctx.add(Expr::Sub(at_upper, at_lower));
+        return Some(Rewrite::new(result).desc("integrate(f, x, a, b)"));
+    };
+    // F(upper) - F(lower) is already orientation-aware; the swap is only
+    // for the certificate's closed interval.
+    let (interval_low, interval_high) = if lower < upper {
+        (lower, upper)
+    } else {
+        (upper, lower)
+    };
     let mut antiderivative = antiderivative;
     loop {
         let unwrapped = cas_ast::hold::unwrap_hold(ctx, antiderivative);
@@ -206,9 +235,19 @@ mod tests {
 
     #[test]
     fn unknown_certificates_stay_residual() {
-        // Symbolic bound: no rational interval.
-        assert!(eval_definite("integrate(x^2, x, 0, t)").is_none());
+        // Symbolic bound over a CONDITIONAL antiderivative: the pole
+        // location cannot be certified against a symbolic interval.
+        assert!(eval_definite("integrate(1/x, x, 1, t)").is_none());
         // Symbolic positivity condition cannot be certified.
         assert!(eval_definite("integrate(c/((x+b)^2+a), x, 0, 1)").is_none());
+    }
+
+    #[test]
+    fn symbolic_bounds_evaluate_for_unconditional_antiderivatives() {
+        // The curriculum "area function": condition-free antiderivatives
+        // are continuous on all of R, so symbolic bounds need no
+        // certificate.
+        assert!(eval_definite("integrate(x^2, x, 0, t)").is_some());
+        assert!(eval_definite("integrate(1/(x^2+1), x, a, b)").is_some());
     }
 }

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 62 (newest first)
+Active entries: 63 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -125,6 +125,7 @@ Active entries: 62 (newest first)
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 first rung / command surface | Retained calculus: block 13 opens - definite integrals via the fundamental theorem
 - 2026-06-11 | `retained` | didactics / definite integration / block 13 second rung | Retained didactic: the fundamental theorem narrates its three-step story
 - 2026-06-11 | `retained` | didactics / presentation / definite integration / block 13 third rung | Retained didactic: definite integrals display their bounds
+- 2026-06-11 | `retained` | calculus / definite integration / block 13 fourth rung / area function | Retained calculus: symbolic bounds for unconditional antiderivatives
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2583,3 +2584,36 @@ Active entries: 62 (newest first)
   - when a display bug shows in plain text, find which renderer is the
     SOURCE: here text is derived from latex, so the fix lands once in
     latex_core instead of being duplicated across formatters
+
+## 2026-06-11 - Retained calculus: symbolic bounds for unconditional antiderivatives
+
+- area:
+  - calculus / definite integration / block 13 fourth rung / area function
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13
+  - calculus_matrix_cell: `integrate(f, x, a, t)` / `definite_integral_ftc`
+    / symbolic bounds over condition-free antiderivatives /
+    `symbolic_bounds_condition_free` (NEW regime)
+  - behavior_change_expected: yes - the curriculum "area function"
+    integrate(x^2, x, 0, t) -> t^3/3, arctan(t), sin(t), fully symbolic
+    integrate(x^2, x, a, b) -> (b^3 - a^3)/3, and unconditional backend
+    families compose
+- decision:
+  - the soundness boundary is the CONDITION SET, not the bound type:
+    every condition-free antiderivative the engine emits is continuous
+    on all of R, so with empty required conditions there is no interval
+    to certify and F(b) - F(a) holds for any real bounds; with ANY
+    condition present and a symbolic bound, the pole location cannot be
+    checked and the call stays an honest residual
+    (integrate(1/x, x, 1, t) echoes with its x != 0 condition)
+  - the FTC narrator covered symbolic bounds with zero changes (the
+    cycle-1 narration quotes F and the raw difference regardless of
+    bound shape)
+- retained learning:
+  - "symbolic input" is not one feature: the bound's SHAPE only matters
+    when conditions exist, so gating on the condition set (already
+    computed) supports the symbolic case for free where it is sound and
+    refuses exactly where it is not
