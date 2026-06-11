@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 75 (newest first)
+Active entries: 76 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
+- 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3092,3 +3093,45 @@ Active entries: 75 (newest first)
     dominance arguments would resolve it (x*(3*ln(x)) at 0+ is a true 0
     but unprovable in that shape); leave those to the dominance rule and
     keep the refusal as the contract
+
+## 2026-06-12 - Retained calculus: monomial-log by parts widened to all rational powers
+
+- area:
+  - calculus / integration / educational route / by-parts log family
+    (monomial_times_ln_var_by_parts_antiderivative)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 4 base integration (log by-parts
+    cluster)
+  - calculus_matrix_cell: integrate(ln(x)/x^2) = (-ln(x)-1)/x,
+    integrate(ln(x)/sqrt(x)) = 4*sqrt(x)*(ln(x)/2 - 1),
+    integrate(ln(x)^2/x^2) = -(ln(x)^2 + 2 ln(x) + 2)/x
+  - behavior_change_expected: yes - x^p * ln(x)^m for rational p != -1
+    (negative and fractional powers included) now integrates with x > 0
+    and exact derivative round-trips
+- observed (frontier probing):
+  - the closed by-parts form already implemented for nonnegative integer
+    powers (monomial_log_power_by_parts_integral) is valid for ANY
+    rational next_power != 0: the gate rejecting negative/fractional
+    powers was a first-family acceptance policy, not a mathematical
+    limit - hand-verified p=-2 and p=-1/2 before widening
+  - widening the gate alone fixed fractional powers but NOT negative
+    integers: ln(x)/x^2 reaches the route as Div(ln(x), x^2) and
+    mul_leaves does not split Div - the fourth instance of the
+    rebuild-and-delegate normalization-artifact pattern (a Div arm that
+    rebuilds numerator * x^(-k) and recurses once) completed the family
+  - p = -1 (ln(x)/x) declared as owned by the u-substitution route via
+    the next_power.is_zero() bail; ln(x)/(x+1) and ln(x)/(x^2+1) stay
+    honest residuals (dilogarithm/arctan-log territory)
+- retained learning:
+  - first-family acceptance policies strike again (third ledger entry of
+    this kind): when a closed form is parameterized by a rational, test
+    the gate against the full rational range before assuming the gate
+    encodes mathematics; the cheap probe is hand-evaluating the formula
+    at one negative and one fractional parameter
+  - every quotient-shaped family needs its Div arm: integer-power
+    denominators normalize to Div while fractional ones normalize to
+    Mul with negative exponents - cover both shapes or the family
+    silently splits along a display convention

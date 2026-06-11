@@ -9653,6 +9653,25 @@ fn monomial_times_ln_var_by_parts_antiderivative(
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    // Normalization artifact: ln(x)^m / (c*x^k) arrives as Div; rebuild
+    // as a product with the reciprocal power and reuse the same route.
+    if let Expr::Div(numerator, denominator) = ctx.get(expr).clone() {
+        let (scale, power) = scaled_var_power_term(ctx, denominator, var)?;
+        if scale.is_zero() {
+            return None;
+        }
+        let negated = ctx.add(Expr::Number(-power));
+        let var_expr = ctx.var(var);
+        let reciprocal = ctx.add(Expr::Pow(var_expr, negated));
+        let product = mul2_raw(ctx, numerator, reciprocal);
+        let integral = monomial_times_ln_var_by_parts_antiderivative(ctx, product, var)?;
+        return Some(scale_rational_term(
+            ctx,
+            BigRational::one() / scale,
+            integral,
+        ));
+    }
+
     let factors = mul_leaves(ctx, expr);
     if factors.len() < 2 {
         return None;
@@ -9681,9 +9700,9 @@ fn monomial_times_ln_var_by_parts_antiderivative(
         }
         let cofactor = build_balanced_mul(ctx, &cofactor_factors);
         let (scale, power) = scaled_var_power_term(ctx, cofactor, var)?;
-        if !power.denom().is_one() || power.is_negative() {
-            return None;
-        }
+        // Any rational power works in the closed by-parts form except
+        // p = -1 (next_power 0): ln(x)/x belongs to the u-substitution
+        // owner (ln(x)^2/2).
         let next_power = power + BigRational::one();
         if next_power.is_zero() {
             return None;
@@ -23506,6 +23525,59 @@ mod tests {
         // Honest residual: non-table trig cofactor.
         let expr = parse("tan(x)/e^x", &mut ctx).expect("tan");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn monomial_ln_by_parts_covers_negative_and_fractional_powers() {
+        let mut ctx = Context::new();
+        // (source, expected derivative round-trip target)
+        for source in [
+            "ln(x)/x^2",
+            "ln(x)/x^3",
+            "ln(x)^2/x^2",
+            "ln(x)/(2*x^2)",
+            "ln(x)*x^(-1/2)",
+            "x^(3/2)*ln(x)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn monomial_ln_by_parts_exact_negative_power_form() {
+        let mut ctx = Context::new();
+        // p = -2, m = 1: the closed form is (-ln(x) - 1)/x.
+        let expr = parse("ln(x)/x^2", &mut ctx).expect("parse");
+        let integral = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integral");
+        let display = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: integral
+            }
+        );
+        assert!(
+            display.contains("ln(x)") && display.contains("- 1"),
+            "unexpected form: {display}"
+        );
+    }
+
+    #[test]
+    fn monomial_ln_by_parts_leaves_nonmonomial_cofactors_residual() {
+        let mut ctx = Context::new();
+        // ln(x)/x stays with the u-substitution owner (handled upstream),
+        // and non-power denominators are honest residuals (dilogarithm).
+        for source in ["ln(x)/(x+1)", "ln(x)/(x^2+1)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
+            );
+        }
     }
 
     #[test]

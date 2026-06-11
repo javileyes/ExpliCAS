@@ -482,10 +482,17 @@ Use these blocks as the active plan:
      rational), a conservative two-factor product rule, and a
      Div-by-constant arm, so integrate(sqrt(x), x, 0, 4) = 16/3,
      integrate(x^(1/3), x, 0, 8) = 12 and integrate(x*sqrt(x), x, 0, 1)
-     = 2/5 evaluate with their domain conditions. Next rungs: touches at
-     finite endpoints of unbounded intervals, compact multiple-angle
-     presentation (the simplifier expands -cos(5x)/10 forms into trig
-     powers), and the cos(x)cos(2x) quotient-rewrite interference.
+     = 2/5 evaluate with their domain conditions. The monomial-log
+     by-parts family then widened to all rational powers p != -1
+     (negative integers arrive as Div and rebuild-and-delegate;
+     integrate(ln(x)/x^2) = (-ln(x)-1)/x, ln(x)/sqrt(x), ln(x)^2/x^2).
+     Next rungs: touches at finite endpoints of unbounded intervals
+     (blocked today by quotient rationalization rewriting
+     1/(sqrt(x)(1+x)) before the definite rule and by
+     limit(arctan(sqrt(x)), x, infinity) not resolving), compact
+     multiple-angle presentation (the simplifier expands -cos(5x)/10
+     forms into trig powers), and the cos(x)cos(2x) quotient-rewrite
+     interference.
 
 Selection rule:
 
