@@ -76,7 +76,7 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "collect" => arity == 2,
         // Symbolic calculus calls handled by engine calculus rules.
         "diff" => arity == 2,
-        "integrate" => arity == 1 || arity == 2,
+        "integrate" => matches!(arity, 1 | 2 | 4),
         "sum" | "product" => arity == 4,
         // Number-theory calls dispatched by engine/math support.
         "fact" | "factorial" | "prime_factors" | "factors" => arity == 1,
@@ -192,6 +192,8 @@ mod unknown_function_tests {
         assert!(is_known_eval_engine_function("diff", 2));
         assert!(is_known_eval_engine_function("integrate", 1));
         assert!(is_known_eval_engine_function("integrate", 2));
+        assert!(is_known_eval_engine_function("integrate", 4));
+        assert!(!is_known_eval_engine_function("integrate", 3));
         assert!(is_known_eval_engine_function("sum", 4));
         assert!(is_known_eval_engine_function("product", 4));
         assert!(is_known_eval_engine_function("fact", 1));

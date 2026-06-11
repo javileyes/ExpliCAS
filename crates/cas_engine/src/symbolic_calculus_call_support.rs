@@ -9,6 +9,38 @@ pub struct NamedVarCall {
 }
 
 /// Parse `integrate(target, var)` and `integrate(target)` (defaults to `x`).
+pub struct DefiniteIntegralCall {
+    pub target: ExprId,
+    pub var_expr: ExprId,
+    pub var_name: String,
+    pub lower: ExprId,
+    pub upper: ExprId,
+}
+
+/// integrate(f, x, a, b): the definite-integral call shape (mirror of the
+/// finite-aggregate sum/product extractor).
+pub fn try_extract_definite_integrate_call(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<DefiniteIntegralCall> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 4 {
+        return None;
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return None;
+    };
+    Some(DefiniteIntegralCall {
+        target: args[0],
+        var_expr: args[1],
+        var_name: ctx.sym_name(*var_sym).to_string(),
+        lower: args[2],
+        upper: args[3],
+    })
+}
+
 pub fn try_extract_integrate_call(ctx: &Context, expr: ExprId) -> Option<NamedVarCall> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;

@@ -96,6 +96,7 @@ mod integration_final_result_presentation;
 mod integration_fractional_power_result_presentation;
 mod integration_inverse_argument_presentation;
 mod integration_power_result_preservation;
+mod definite_integration;
 mod integration_result_pipeline;
 mod integration_source_preservation;
 mod integration_source_route_hits;

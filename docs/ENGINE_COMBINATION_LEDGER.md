@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 59 (newest first)
+Active entries: 60 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -122,6 +122,7 @@ Active entries: 59 (newest first)
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 fourth rung | Retained didactic: multi-quadratic partial fractions narrate their real decomposition
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 fifth rung | Retained didactic: Ostrogradsky and quartic-descent results narrate their pipeline
 - 2026-06-11 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: resolvent cubic closes the non-even quartic frontier
+- 2026-06-11 | `retained` | calculus / definite integration / block 13 first rung / command surface | Retained calculus: block 13 opens - definite integrals via the fundamental theorem
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2472,3 +2473,55 @@ Active entries: 59 (newest first)
     inference layer (no-real-roots certificates for non-even quartics)
     would clean these conditions engine-wide, but needs its own blast
     radius analysis at that layer
+
+## 2026-06-11 - Retained calculus: block 13 opens - definite integrals via the fundamental theorem
+
+- area:
+  - calculus / definite integration / block 13 first rung / command surface
+- status:
+  - `retained` (new block opened)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13 (definite integrals; new
+    block13_definite_integrals maturity classification in the harness)
+  - calculus_matrix_cell: `integrate(f, x, a, b)` /
+    `definite_integral_ftc*` / 5 rows covering exact values (1/3, pi/4,
+    ln(2)), the pole-inside-interval undefined policy, and the
+    symbolic-bound residual
+  - behavior_change_expected: yes - integrate gains arity 4
+- observed (3-agent scoping workflow):
+  - the arity gate is a single whitelist line (cas_session_core eval.rs)
+    with sum/product as the exact 4-arg template on the adjacent line;
+    the parser never validates arity, and every collateral guard filters
+    args.len() != 2 safely
+  - the engine's simplifier already evaluates FTC differences exactly
+    (arctan(1) -> pi/4, log combination), so the rewrite emits raw
+    F(b) - F(a) and lets simplification produce the value
+  - CRITICAL probe finding that shaped the design: ln(|2-2|) evaluates
+    to -infinity, not undefined - so the interval certificate must run
+    BEFORE any substitution at the bounds
+- decision:
+  - the INTERVAL CERTIFICATE is the mathematical core, exactly as the
+    strategy doc demands: every condition required by the indefinite
+    antiderivative is classified on the closed [a, b] - linear NonZero
+    with rational root inside -> undefined (divergent for the supported
+    rational families), outside -> certified; negative-discriminant
+    quadratics -> certified; anything else (symbolic positivity,
+    higher-degree, non-rational bounds) -> honest residual
+  - orientation is automatic in F(upper) - F(lower); a first swap+negate
+    implementation double-counted it (caught by probing integrate(x, x,
+    1, 0) -> must be -1/2) and was fixed before pinning
+  - the harness gained first-class block-13 axes: a
+    block13_definite_integrals maturity block, a
+    definite_ftc_from_verified_antiderivative verification category (FTC
+    values are constants - verification lives upstream in the
+    diff-verified antiderivative plus exact bound arithmetic), and a
+    definite_interval_not_certifiable residual cause
+- retained learning:
+  - probe the failure mode BEFORE designing the policy: one CLI probe
+    (ln(|2-2|) -> -infinity) dictated the certificate-before-substitution
+    architecture that a plausible design would have gotten wrong
+  - harness invariants (supported_step_unchecked == set(),
+    verification_gap) actively push new families to declare their
+    didactic and verification stories - extending the taxonomy honestly
+    beats whitelisting exceptions

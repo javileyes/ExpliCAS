@@ -37,7 +37,7 @@ pub(super) fn standard_integration_rewrite(
     ))
 }
 
-fn integrate_with_result_preservation(
+pub(super) fn integrate_with_result_preservation(
     ctx: &mut Context,
     target: ExprId,
     var_name: &str,

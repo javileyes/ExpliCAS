@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 161)
+        self.assertEqual(len(cases), 166)
         names = {case.name for case in cases}
         self.assertIn(
             "algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
@@ -422,7 +422,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 14, "supported": 145, "undefined": 2},
+            {"residual": 15, "supported": 148, "undefined": 3},
         )
         self.assertEqual(
             sum(
@@ -438,8 +438,9 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
             {
-                "residual_not_verified": 14,
-                "undefined_not_verified": 2,
+                "residual_not_verified": 15,
+                "undefined_not_verified": 3,
+                "definite_ftc_from_verified_antiderivative": 3,
                 "verified_by_diff": 30,
                 "verified_by_diff_and_direct_diff_integrate": 88,
                 "verified_by_direct_diff_integrate": 27,
@@ -452,11 +453,13 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "branch_sensitive_interval_residual": 1,
                 "non_elementary_composition": 7,
                 "special_function_method_required": 6,
+                "definite_interval_not_certifiable": 1,
             },
         )
         self.assertEqual(
             SMOKE.count_residual_families(cases),
             {
+                "definite_integral_ftc_residual": 1,
                 "explicit_reciprocal_trig_residual_domain": 7,
                 "inverse_sqrt_additive_residual_domain": 1,
                 "log_rational_residual": 1,
@@ -469,6 +472,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_residual_cause_families(cases),
             {
                 "branch_sensitive_interval_residual/inverse_sqrt_additive_residual_domain": 1,
+                "definite_interval_not_certifiable/definite_integral_ftc_residual": 1,
                 "non_elementary_composition/explicit_reciprocal_trig_residual_domain": 2,
                 "non_elementary_composition/non_elementary_exp_quadratic": 1,
                 "non_elementary_composition/trig_additive_residual_domain": 1,
@@ -532,6 +536,9 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "algorithmic_backend_rational_cyclotomic_style_quartic",
                 "algorithmic_backend_rational_resolvent_cubic_quartic",
                 "algorithmic_backend_rational_resolvent_cubic_quartic_mixed_factors",
+                "definite_integral_polynomial_exact_value",
+                "definite_integral_arctan_exact_pi",
+                "definite_integral_log_certified_off_pole",
                 "polynomial_power_direct",
                 "polynomial_sum_linearity",
                 "affine_trig_substitution",
@@ -687,6 +694,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "backend_verified_positive_radius_and_slope_nonzero_required": 3,
                 "backend_verified_unconditional_real": 5,
                 "backend_verified_conservative_denominator_nonzero": 2,
+                "interval_certified_unconditional": 2,
+                "interval_certified_with_source_condition": 1,
+                "interval_pole_divergent": 1,
+                "interval_not_certifiable": 1,
                 "backend_verified_pole_nonzero_required": 1,
                 "backend_verified_positive_radius_required": 4,
                 "empty_real_domain": 1,
@@ -793,16 +804,17 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block8_radical_inverse_families": 17,
                 "block9_residuals_and_non_goals": 16,
                 "block12_hybrid_algorithmic_backend": 20,
+                "block13_definite_integrals": 5,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
                 "algorithmic_backend_boundary_verified": 20,
-                "didactic_trace_and_verified_antiderivative": 33,
-                "domain_conditions_and_verified_antiderivative": 92,
-                "explicit_undefined_domain_policy": 2,
-                "safe_residual_policy": 14,
+                "didactic_trace_and_verified_antiderivative": 35,
+                "domain_conditions_and_verified_antiderivative": 93,
+                "explicit_undefined_domain_policy": 3,
+                "safe_residual_policy": 15,
             },
         )
         self.assertGreaterEqual(len({case.family for case in cases}), 10)

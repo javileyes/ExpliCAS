@@ -436,9 +436,13 @@ Use these blocks as the active plan:
    - honest residuals for improper integrals and non-elementary
      antiderivatives
    - support-matrix rows once a minimal command surface exists
-   - Status (2026-06-10): not started — named here so cycles can select it;
-     no code, no matrix, and no command surface yet (`integrate(f, x, a, b)`
-     is not parsed).
+   - Status (2026-06-11): first rung live — `integrate(f, x, a, b)` parses
+     (arity-4 whitelist), evaluates via FTC with the interval certificate
+     before substitution (linear poles inside the closed interval ->
+     undefined; uncertifiable conditions -> honest residual), and has five
+     matrix rows plus block13 harness axes. Next rungs: didactic narration
+     of the three-step story, bound display in the step trace, symbolic
+     bounds, and improper-integral policy.
 
 Selection rule:
 

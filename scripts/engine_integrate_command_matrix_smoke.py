@@ -873,6 +873,67 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="backend_summary_arctan_log_mixed_radii",
     ),
     IntegrateCommandMatrixCase(
+        name="definite_integral_polynomial_exact_value",
+        expr="integrate(x^2, x, 0, 1)",
+        expected_result="1/3",
+        expected_required_display=(),
+        expected_step_substrings=("Calcular la integral",),
+        family="definite_integral_ftc",
+        argument_regime="polynomial_numeric_bounds",
+        domain_regime="interval_certified_unconditional",
+        trace_regime="definite_ftc_evaluation",
+        presentation_regime="exact_rational_value",
+    ),
+    IntegrateCommandMatrixCase(
+        name="definite_integral_arctan_exact_pi",
+        expr="integrate(1/(x^2+1), x, 0, 1)",
+        expected_result="1/4·pi",
+        expected_required_display=(),
+        expected_step_substrings=("Calcular la integral",),
+        family="definite_integral_ftc",
+        argument_regime="positive_quadratic_numeric_bounds",
+        domain_regime="interval_certified_unconditional",
+        trace_regime="definite_ftc_evaluation",
+        presentation_regime="exact_pi_value",
+    ),
+    IntegrateCommandMatrixCase(
+        name="definite_integral_log_certified_off_pole",
+        expr="integrate(1/x, x, 1, 2)",
+        expected_result="ln(2)",
+        expected_required_display=("x ≠ 0",),
+        expected_step_substrings=("Calcular la integral",),
+        family="definite_integral_ftc",
+        argument_regime="reciprocal_pole_outside_interval",
+        domain_regime="interval_certified_with_source_condition",
+        trace_regime="definite_ftc_evaluation",
+        presentation_regime="exact_log_value",
+    ),
+    IntegrateCommandMatrixCase(
+        name="definite_integral_pole_inside_interval_undefined",
+        expr="integrate(1/x, x, -1, 1)",
+        expected_result="undefined",
+        expected_required_display=("x ≠ 0",),
+        family="definite_integral_ftc_undefined",
+        argument_regime="reciprocal_pole_inside_interval",
+        domain_regime="interval_pole_divergent",
+        trace_regime="definite_ftc_interval_check",
+        presentation_regime="undefined",
+        outcome="undefined",
+    ),
+    IntegrateCommandMatrixCase(
+        name="definite_integral_symbolic_bound_residual",
+        expr="integrate(x^2, x, 0, t)",
+        expected_result="integrate(x^2, x, 0, t)",
+        expected_required_display=(),
+        family="definite_integral_ftc_residual",
+        argument_regime="symbolic_upper_bound",
+        domain_regime="interval_not_certifiable",
+        trace_regime="definite_ftc_residual",
+        presentation_regime="residual_echo",
+        outcome="residual",
+        residual_cause="definite_interval_not_certifiable",
+    ),
+    IntegrateCommandMatrixCase(
         name="algorithmic_backend_hermite_symbolic_indefinite_square_denominator",
         expr="integrate(1/(x^2-a^2), x)",
         expected_result="((ln(|x - a|) - ln(|a + x|))·1·1/2)/a",
@@ -4282,6 +4343,9 @@ def count_direct_diff_integrate_equivalence_base_integration_policy_clusters(
 
 
 def calculus_maturity_block(case: IntegrateCommandMatrixCase) -> str:
+    if case.family.startswith("definite_integral"):
+        return "block13_definite_integrals"
+
     if case.outcome in {"residual", "undefined"}:
         return "block9_residuals_and_non_goals"
 
@@ -4393,6 +4457,10 @@ def verification_regime(case: IntegrateCommandMatrixCase) -> str:
         return "residual_not_verified"
     if case.outcome == "undefined":
         return "undefined_not_verified"
+    if case.family.startswith("definite_integral"):
+        # FTC values are constants: verification lives upstream in the
+        # diff-verified antiderivative plus exact bound arithmetic.
+        return "definite_ftc_from_verified_antiderivative"
     return "verification_gap"
 
 
@@ -4411,6 +4479,8 @@ def verification_mode(case: IntegrateCommandMatrixCase) -> str:
         return "residual_not_verified"
     if case.outcome == "undefined":
         return "undefined_not_verified"
+    if case.family.startswith("definite_integral"):
+        return "definite_ftc_from_verified_antiderivative"
     return "verification_gap"
 
 
