@@ -449,10 +449,12 @@ Use these blocks as the active plan:
      stay honest residuals). The improper policy landed next:
      infinite bounds evaluate via boundary limits with the certificate
      extended to (half-)infinite intervals, divergence reports the honest
-     infinite value, and the narrator renders lim notation. Known gaps
-     recorded as candidates: exp(-x) is residual indefinitely (parser
-     normalizes to 1/e^x), and ln(|x|) at infinity is unresolved in the
-     limits engine.
+     infinite value, and the narrator renders lim notation. The exp(-x) gap closed
+     next (a reciprocal-exp recognizer at the educational Div arm;
+     integrate(exp(-x), x, 0, infinity) = 1 composes). Remaining
+     candidates: ln(|x|) at infinity in the limits engine, x/e^x
+     by-parts over the normalized Div form, and a substep narrator for
+     reciprocal-exp shapes.
 
 Selection rule:
 

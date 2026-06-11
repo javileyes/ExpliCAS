@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 64 (newest first)
+Active entries: 65 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -127,6 +127,7 @@ Active entries: 64 (newest first)
 - 2026-06-11 | `retained` | didactics / presentation / definite integration / block 13 third rung | Retained didactic: definite integrals display their bounds
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 fourth rung / area function | Retained calculus: symbolic bounds for unconditional antiderivatives
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 fifth rung / improper policy | Retained calculus: improper integrals via boundary limits close block 13's policy rung
+- 2026-06-11 | `retained` | calculus / integration / educational route / exponential family / | Retained calculus: the normalized reciprocal exponential integrates
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2662,3 +2663,41 @@ Active entries: 64 (newest first)
     must CLASSIFY its inputs (finite / infinite / symbolic) before
     treating them generically, or infinity flows through substitution
     machinery built for real values
+
+## 2026-06-11 - Retained calculus: the normalized reciprocal exponential integrates
+
+- area:
+  - calculus / integration / educational route / exponential family /
+    block 4 base integration
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 4 (plus the block-13 improper row it
+    unblocks)
+  - calculus_matrix_cell: `integrate` / `elementary_exponential_table` /
+    reciprocal exp with numeric nonzero slope / `total_real_function`
+    (NEW regime) / plus `definite_integral_improper_exponential_decay`
+  - behavior_change_expected: yes - integrate(exp(-x), x) -> -1/e^x and
+    integrate(exp(-x), x, 0, infinity) -> 1
+- observed (frontier probing):
+  - e^(-2x) and e^(-3x+1) already integrated; ONLY the slope -1 case
+    failed, because the simplifier normalizes e^(-x) to 1/e^x (a Div the
+    exponential table never matched) - the gap was a normalization
+    artifact, not a missing family
+- decision:
+  - a reciprocal-exp recognizer at the head of the educational Div arm:
+    Div(numerator-free-of-var, exp-like(linear, numeric nonzero slope))
+    -> -(numerator/slope)/e^(linear); Gaussian exponents, variable
+    numerators (x/e^x is by-parts territory), and symbolic slopes fall
+    through honestly
+  - the block-13 improper machinery composed immediately:
+    integrate(exp(-x), x, 0, infinity) = 1 with the limit-based boundary
+    evaluation from the previous cycle
+  - the Div-exp shape has no substep narrator yet (pinned with the main
+    step only); recorded as a didactic rung
+- retained learning:
+  - normalization artifacts create phantom frontier gaps: when shape A
+    works and its trivial special case fails, suspect the simplifier
+    rewrote the special case into a form no matcher owns - probe the
+    NORMALIZED form, then put the recognizer at the owner of that form

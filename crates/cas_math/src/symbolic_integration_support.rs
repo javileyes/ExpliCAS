@@ -11170,6 +11170,27 @@ fn exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+/// integrate(c / e^(a*x+b), x) = -(c/a) / e^(a*x+b): the simplifier
+/// normalizes e^(-x) to 1/e^x, so the reciprocal-exponential shape must
+/// be owned here (numeric nonzero slope only; e^(x^2)-style exponents
+/// and variable numerators fall through).
+fn reciprocal_exp_linear_antiderivative(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let exponent = exp_like_arg(ctx, denominator)?;
+    if contains_named_var(ctx, numerator, var) {
+        return None;
+    }
+    let poly = Polynomial::from_expr(ctx, exponent, var).ok()?;
+    let slope = nonzero_linear_polynomial_slope(&poly)?;
+    let scale = ctx.add(Expr::Number(-slope.recip()));
+    let scaled_numerator = mul2_raw(ctx, scale, numerator);
+    Some(ctx.add(Expr::Div(scaled_numerator, denominator)))
+}
+
 fn nonzero_linear_polynomial_slope(poly: &Polynomial) -> Option<BigRational> {
     if poly.degree() != 1 {
         return None;
@@ -18469,6 +18490,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Div(num, den) = kind {
+        if let Some(integral) = reciprocal_exp_linear_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = arctan_sqrt_var_reciprocal_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
@@ -23268,5 +23293,42 @@ mod tests {
         let (a, b) = get_linear_coeffs(&mut ctx, expr, "x").expect("negated affine coeffs");
         assert_eq!(rendered(&ctx, a), "-2");
         assert_eq!(rendered(&ctx, b), "-1");
+    }
+
+    #[test]
+    fn reciprocal_exp_linear_integrates_normalized_negative_exponentials() {
+        let mut ctx = Context::new();
+        let cases = [
+            ("1/e^x", "-1 / e^x"),
+            ("2/e^x", "-2 / e^x"),
+            ("1/e^(2*x)", "-1/2 / e^(2 * x)"),
+        ];
+        for (source, expected) in cases {
+            let expr = parse(source, &mut ctx).expect(source);
+            let integral = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            assert_eq!(
+                format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &ctx,
+                        id: integral
+                    }
+                ),
+                expected,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn reciprocal_exp_rejects_nonlinear_and_variable_numerators() {
+        let mut ctx = Context::new();
+        for source in ["1/e^(x^2)", "x/e^x", "c/e^(s*x)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
+            );
+        }
     }
 }
