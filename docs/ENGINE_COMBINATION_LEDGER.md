@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 71 (newest first)
+Active entries: 72 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -134,6 +134,7 @@ Active entries: 71 (newest first)
 - 2026-06-11 | `retained` | calculus / integration / educational route / cyclic by-parts family | Retained calculus: the cyclic exp-trig family reaches the normalized Div form
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 interval certificate / | Retained calculus: the interval certificate becomes self-contained and learns polynomials and trig
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 / exam trig bounds | Retained calculus: pi-multiple bounds via exact r + q*pi endpoints
+- 2026-06-11 | `retained` | calculus / limits engine / one-sided finite limits | Retained calculus: one-sided finite limits learn composition
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2930,3 +2931,40 @@ Active entries: 71 (newest first)
     r + q*pi form keeps every exam comparison exact and reserves the
     enclosure for genuinely mixed cases, so precision loss can never
     flip a certificate - the conservative refusal is structural
+
+## 2026-06-11 - Retained calculus: one-sided finite limits learn composition
+
+- area:
+  - calculus / limits engine / one-sided finite limits
+- status:
+  - `retained` (rescoped in-cycle: the boundary-convergent improper
+    target is BLOCKED on this capability, so the cycle moved one level
+    down to the enabler)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: limits enabler for block 13's next rung
+  - behavior_change_expected: yes - limit(x*ln(x), x, 0+) -> 0,
+    limit(x*ln(x) - x, x, 0+) -> 0, limit(2*sqrt(x), x, 0+) -> 0,
+    limit(-sqrt(1-x^2), x, 1-) -> 0, limit(3*ln(x), x, 0+) -> -infinity
+- observed (frontier probing):
+  - the one-sided chain already resolves the ATOMS (sqrt(x) -> 0,
+    ln(x) -> -infinity, sqrt(1-x^2) at 1-) but had NO composition: no
+    scaling, no additive combination, no power-log dominance - exactly
+    the forms that FTC antiderivatives take at touched boundary
+    endpoints (x*ln(x) - x for integrate(ln(x), x, 0, 1))
+- decision:
+  - one composition rule at the end of the one-sided chain: constant
+    scaling (with the 0 * infinity indeterminate refused), additive
+    combination with infinity awareness (infinity - infinity refused,
+    pinned by test), and the power-log dominance table
+    (var - point)^p * ln(var - point)^q -> 0 for p > 0 from the right;
+    children recurse through the full chain so the existing atoms
+    compose
+  - numeric folding inside the combiners keeps limit displays clean
+    (0 instead of 0 + 0)
+- retained learning:
+  - when a target is blocked on a missing capability one layer down,
+    rescope the cycle to the enabler instead of wiring around it: the
+    composition rule is curriculum value by itself (one-sided limits are
+    exam material) and the blocked target becomes the next cycle's
+    mechanical wiring

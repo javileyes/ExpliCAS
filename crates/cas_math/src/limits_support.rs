@@ -3100,6 +3100,234 @@ fn try_limit_rules_at_finite(
     }
 }
 
+/// One-sided composition: scaling by constants, additive combination
+/// with infinity awareness (infinity - infinity refuses), and the
+/// power-log dominance u^p * ln(u)^q -> 0 (p > 0) as u -> 0+ with
+/// u = var - point. Children resolve recursively through the full
+/// one-sided chain, so the existing endpoint atoms compose.
+fn apply_finite_one_sided_composition_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let value = try_limit_rules_at_finite_one_sided(ctx, inner, var, point, side)?;
+            Some(negate_limit_value(ctx, value))
+        }
+        Expr::Sub(left, right) => {
+            let negated = ctx.add(Expr::Neg(right));
+            let as_sum = ctx.add(Expr::Add(left, negated));
+            apply_finite_one_sided_composition_rule(ctx, as_sum, var, point, side)
+        }
+        Expr::Add(left, right) => {
+            let left_value = try_limit_rules_at_finite_one_sided(ctx, left, var, point, side)?;
+            let right_value = try_limit_rules_at_finite_one_sided(ctx, right, var, point, side)?;
+            combine_limit_sum(ctx, left_value, right_value)
+        }
+        Expr::Mul(left, right) => {
+            if let Some(value) = power_log_dominance_zero_limit(ctx, left, right, var, point, side)
+            {
+                return Some(value);
+            }
+            if let Some(scale) = crate::numeric_eval::as_rational_const(ctx, left) {
+                let value = try_limit_rules_at_finite_one_sided(ctx, right, var, point, side)?;
+                return scale_limit_value(ctx, value, &scale);
+            }
+            if let Some(scale) = crate::numeric_eval::as_rational_const(ctx, right) {
+                let value = try_limit_rules_at_finite_one_sided(ctx, left, var, point, side)?;
+                return scale_limit_value(ctx, value, &scale);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn limit_value_infinite_sign(ctx: &Context, value: ExprId) -> Option<i32> {
+    match ctx.get(value) {
+        Expr::Constant(Constant::Infinity) => Some(1),
+        Expr::Neg(inner) if matches!(ctx.get(*inner), Expr::Constant(Constant::Infinity)) => {
+            Some(-1)
+        }
+        _ => None,
+    }
+}
+
+fn negate_limit_value(ctx: &mut Context, value: ExprId) -> ExprId {
+    match limit_value_infinite_sign(ctx, value) {
+        Some(1) => {
+            let infinity = ctx.add(Expr::Constant(Constant::Infinity));
+            ctx.add(Expr::Neg(infinity))
+        }
+        Some(_) => ctx.add(Expr::Constant(Constant::Infinity)),
+        None => ctx.add(Expr::Neg(value)),
+    }
+}
+
+fn combine_limit_sum(ctx: &mut Context, left: ExprId, right: ExprId) -> Option<ExprId> {
+    match (
+        limit_value_infinite_sign(ctx, left),
+        limit_value_infinite_sign(ctx, right),
+    ) {
+        (None, None) => {
+            if let (Some(a), Some(b)) = (
+                crate::numeric_eval::as_rational_const(ctx, left),
+                crate::numeric_eval::as_rational_const(ctx, right),
+            ) {
+                return Some(ctx.add(Expr::Number(a + b)));
+            }
+            Some(ctx.add(Expr::Add(left, right)))
+        }
+        (Some(sign), None) | (None, Some(sign)) => Some(if sign > 0 {
+            ctx.add(Expr::Constant(Constant::Infinity))
+        } else {
+            let infinity = ctx.add(Expr::Constant(Constant::Infinity));
+            ctx.add(Expr::Neg(infinity))
+        }),
+        (Some(a), Some(b)) if a == b => Some(if a > 0 {
+            ctx.add(Expr::Constant(Constant::Infinity))
+        } else {
+            let infinity = ctx.add(Expr::Constant(Constant::Infinity));
+            ctx.add(Expr::Neg(infinity))
+        }),
+        // infinity - infinity: indeterminate.
+        _ => None,
+    }
+}
+
+fn scale_limit_value(ctx: &mut Context, value: ExprId, scale: &BigRational) -> Option<ExprId> {
+    if scale.is_zero() {
+        // 0 * infinity is indeterminate; plain zero scaling is exact.
+        return if limit_value_infinite_sign(ctx, value).is_some() {
+            None
+        } else {
+            Some(ctx.num(0))
+        };
+    }
+    match limit_value_infinite_sign(ctx, value) {
+        Some(sign) => {
+            let scaled_sign = if scale.is_positive() { sign } else { -sign };
+            Some(if scaled_sign > 0 {
+                ctx.add(Expr::Constant(Constant::Infinity))
+            } else {
+                let infinity = ctx.add(Expr::Constant(Constant::Infinity));
+                ctx.add(Expr::Neg(infinity))
+            })
+        }
+        None => {
+            if let Some(inner) = crate::numeric_eval::as_rational_const(ctx, value) {
+                return Some(ctx.add(Expr::Number(scale * inner)));
+            }
+            let scale_expr = ctx.add(Expr::Number(scale.clone()));
+            Some(ctx.add(Expr::Mul(scale_expr, value)))
+        }
+    }
+}
+
+/// u^p * ln(u)^q -> 0 as u -> 0 from the side where u > 0, for p > 0 and
+/// q >= 1, with u = var - point (or var itself at point 0).
+fn power_log_dominance_zero_limit(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    // u must approach 0 from the positive side: right of the point.
+    if !matches!(side, FiniteLimitSide::Right) {
+        return None;
+    }
+    let (power_factor, log_factor) =
+        if one_sided_log_power_of_shift(ctx, right, var, point).is_some() {
+            (left, right)
+        } else if one_sided_log_power_of_shift(ctx, left, var, point).is_some() {
+            (right, left)
+        } else {
+            return None;
+        };
+    one_sided_log_power_of_shift(ctx, log_factor, var, point)?;
+    let exponent = one_sided_positive_power_of_shift(ctx, power_factor, var, point)?;
+    if exponent.is_positive() {
+        Some(ctx.num(0))
+    } else {
+        None
+    }
+}
+
+/// Recognize (var - point)^p with rational p (var itself when point = 0),
+/// including the sqrt form; returns p.
+fn one_sided_positive_power_of_shift(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<BigRational> {
+    if is_var_shift(ctx, expr, var, point) {
+        return Some(rational_one());
+    }
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) if is_var_shift(ctx, base, var, point) => {
+            crate::numeric_eval::as_rational_const(ctx, exp)
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sqrt))
+                && is_var_shift(ctx, args[0], var, point) =>
+        {
+            Some(BigRational::new(1.into(), 2.into()))
+        }
+        _ => None,
+    }
+}
+
+/// Recognize ln(var - point)^q (q >= 1 rational; q = 1 for the bare ln).
+fn one_sided_log_power_of_shift(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<BigRational> {
+    let is_ln_of_shift = |ctx: &Context, candidate: ExprId| -> bool {
+        matches!(ctx.get(candidate), Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Ln))
+                && is_var_shift(ctx, args[0], var, point))
+    };
+    if is_ln_of_shift(ctx, expr) {
+        return Some(rational_one());
+    }
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) if is_ln_of_shift(ctx, base) => {
+            let value = crate::numeric_eval::as_rational_const(ctx, exp)?;
+            (value >= rational_one()).then_some(value)
+        }
+        _ => None,
+    }
+}
+
+/// var - point structurally: the bare var at point 0, or Sub(var, point)
+/// up to numeric equality of the point.
+fn is_var_shift(ctx: &Context, expr: ExprId, var: ExprId, point: ExprId) -> bool {
+    let point_value = crate::numeric_eval::as_rational_const(ctx, point);
+    if expr == var {
+        return matches!(point_value, Some(value) if value.is_zero());
+    }
+    match ctx.get(expr) {
+        Expr::Sub(l, r) => {
+            *l == var
+                && match (crate::numeric_eval::as_rational_const(ctx, *r), point_value) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => *r == point,
+                }
+        }
+        _ => false,
+    }
+}
+
 fn try_limit_rules_at_finite_one_sided(
     ctx: &mut Context,
     expr: ExprId,
@@ -3130,6 +3358,9 @@ fn try_limit_rules_at_finite_one_sided(
         return Some(result);
     }
     if let Some(result) = apply_finite_one_sided_acosh_endpoint_rule(ctx, expr, var, point, side) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_one_sided_composition_rule(ctx, expr, var, point, side) {
         return Some(result);
     }
     if let Some(result) = apply_finite_one_sided_atanh_endpoint_rule(ctx, expr, var, point, side) {
@@ -11075,6 +11306,64 @@ mod tests {
                 ),
                 expected,
                 "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn one_sided_composition_resolves_endpoint_combinations() {
+        let mut ctx = Context::new();
+        let cases = [
+            ("x*ln(x)", "0"),
+            ("x*ln(x) - x", "0"),
+            ("2*sqrt(x)", "0"),
+            ("sqrt(x)*ln(x)", "0"),
+            ("3*ln(x)", "-infinity"),
+        ];
+        for (source, expected) in cases {
+            let expr = cas_parser::parse(source, &mut ctx).expect(source);
+            let var = ctx.var("x");
+            let zero = ctx.num(0);
+            let result = try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                expr,
+                var,
+                zero,
+                FiniteLimitSide::Right,
+            )
+            .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_eq!(
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &ctx,
+                        id: result
+                    }
+                ),
+                expected,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn one_sided_composition_refuses_indeterminate_forms() {
+        let mut ctx = Context::new();
+        // -infinity + infinity and the left side of the log domain.
+        for source in ["ln(x) + 1/x", "ln(x) - ln(x)"] {
+            let expr = cas_parser::parse(source, &mut ctx).expect(source);
+            let var = ctx.var("x");
+            let zero = ctx.num(0);
+            assert!(
+                try_limit_rules_at_finite_one_sided(
+                    &mut ctx,
+                    expr,
+                    var,
+                    zero,
+                    FiniteLimitSide::Right,
+                )
+                .is_none(),
+                "must refuse: {source}"
             );
         }
     }

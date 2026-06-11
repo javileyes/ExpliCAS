@@ -467,10 +467,13 @@ Use these blocks as the active plan:
      polynomial positivity and the derivative-cofactor route - certified
      conditions are discharged from the display. Pi-multiple bounds landed
      next (exact r + q*pi endpoints; sec^2 on [pi/4, pi/3] = sqrt(3)-1,
-     poles at pi/2 located exactly). Next rungs: boundary-convergent
-     improper integrals (integrate(ln(x), x, 0, 1) is an honest residual
-     instead of correct-by-luck), and the product-to-sum trig rewrites
-     for Fourier-style definites.
+     poles at pi/2 located exactly). One-sided finite limits
+     learned composition next (scaling, additive combination with
+     infinity awareness, power-log dominance: limit(x*ln(x), x, 0+) = 0)
+     - the enabler for boundary-convergent improper integrals, whose
+     wiring (one-sided boundary values at touched endpoints in the
+     definite path) is the next rung, together with the product-to-sum
+     trig rewrites for Fourier-style definites.
 
 Selection rule:
 
