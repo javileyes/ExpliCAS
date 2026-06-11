@@ -216,6 +216,29 @@ pub(super) fn multi_quadratic_partial_fraction_terms(
     Some(terms)
 }
 
+/// Build the partial-fraction decomposition expression for the
+/// multi-quadratic family - the sum of (alpha_i*x + beta_i)/q_i with the
+/// user's syntactic factors as denominators. Didactic narration support:
+/// returns Some exactly when the multi-quadratic probe would match.
+pub fn multi_quadratic_partial_fraction_decomposition_expr(
+    ctx: &mut Context,
+    integrand: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    let terms = multi_quadratic_partial_fraction_terms(ctx, integrand, variable)?;
+    let variable_expr = ctx.var(variable);
+    let mut sum = ctx.num(0);
+    for term in &terms {
+        let alpha_expr = ctx.add(Expr::Number(term.alpha.clone()));
+        let linear = build_backend_product(ctx, alpha_expr, variable_expr);
+        let beta_expr = ctx.add(Expr::Number(term.beta.clone()));
+        let numerator = build_backend_sum(ctx, linear, beta_expr);
+        let piece = ctx.add(Expr::Div(numerator, term.factor_expr));
+        sum = build_backend_sum(ctx, sum, piece);
+    }
+    Some(sum)
+}
+
 /// One partial-fraction piece (alpha*x + beta)/(x^2 + b*x + c):
 /// (alpha/2)*ln(q) + gamma-scaled arctan with gamma = beta - alpha*b/2.
 /// Presentation picks the half-center form (x + b/2) when b is even (so

@@ -524,6 +524,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
                 "algorithmic_backend_hermite_expanded_symbolic_affine_derivative_multiple_numerator",
                 "algorithmic_backend_hermite_expanded_numeric_center_derivative_multiple_numerator",
+                "algorithmic_backend_rational_multi_quadratic_mixed_numerator",
+                "algorithmic_backend_rational_multi_quadratic_triple_product",
                 "polynomial_power_direct",
                 "polynomial_sum_linearity",
                 "affine_trig_substitution",

@@ -101,6 +101,12 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return integration_mixed_numerator_substeps;
     }
 
+    let integration_multi_quadratic_substeps =
+        generate_multi_quadratic_partial_fraction_integration_substeps(ctx, step);
+    if !integration_multi_quadratic_substeps.is_empty() {
+        return integration_multi_quadratic_substeps;
+    }
+
     let integration_trig_log_table_substeps =
         generate_trig_log_table_integration_substeps(ctx, step);
     if !integration_trig_log_table_substeps.is_empty() {
@@ -12718,6 +12724,73 @@ fn contains_linear_integration_by_parts_target(
     }
 }
 
+/// Narrate the backend multi-quadratic partial-fraction family with the
+/// REAL intermediate decomposition: the backend's own decomposition is
+/// rebuilt on a scratch context, so the first substep shows
+/// N/prod(q_i) -> sum (alpha_i*x+beta_i)/q_i and the second shows the
+/// term-by-term integration to the verified result.
+fn generate_multi_quadratic_partial_fraction_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym).to_string();
+
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+    if expr_contains_integrate_call(ctx, result) {
+        return Vec::new();
+    }
+
+    let mut scratch = ctx.clone();
+    let Some(decomposition) =
+        cas_math::general_integration_backend::multi_quadratic_partial_fraction_decomposition_expr(
+            &mut scratch,
+            args[0],
+            &var_name,
+        )
+    else {
+        return Vec::new();
+    };
+
+    vec![
+        SubStep::new(
+            "Descomponer en fracciones parciales",
+            display_expr(ctx, args[0]),
+            display_expr(&scratch, decomposition),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(latex_expr(&scratch, decomposition)),
+        SubStep::new(
+            "Integrar los términos simples",
+            display_expr(&scratch, decomposition),
+            display_expr(ctx, result),
+        )
+        .with_before_latex(latex_expr(&scratch, decomposition))
+        .with_after_latex(latex_expr(ctx, result)),
+    ]
+}
+
 /// Narrate the mixed-numerator positive-quadratic family produced by the
 /// algorithmic backend: integrate((m*(s*x+b)+c)/((s*x+b)^2+a), x) splits
 /// into a log part (the derivative of the denominator) and an arctan
@@ -12784,6 +12857,12 @@ fn generate_positive_quadratic_mixed_numerator_integration_substeps(
     // backend verified their equality).
     let mut substeps = Vec::new();
     if !compact_denominator {
+        // The completing-the-square story only applies to a flat expanded
+        // polynomial denominator; products of factors belong to the
+        // partial-fraction narrators.
+        if !matches!(ctx.get(denominator), Expr::Add(..)) {
+            return Vec::new();
+        }
         let Some(compact_form) = compact_quadratic_from_log_term(ctx, log_term) else {
             return Vec::new();
         };

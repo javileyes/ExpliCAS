@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 56 (newest first)
+Active entries: 57 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
+- 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 fourth rung | Retained didactic: multi-quadratic partial fractions narrate their real decomposition
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2359,3 +2360,34 @@ Active entries: 56 (newest first)
     embeds the transformed form (completed square in the ln argument),
     the didactic layer can narrate the transformation by quoting result
     subexpressions instead of recomputing the algebra
+
+## 2026-06-11 - Retained didactic: multi-quadratic partial fractions narrate their real decomposition
+
+- area:
+  - didactics / integration / block 12 trace elevation / Phase 6 fourth rung
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus (didactic half)
+  - calculus_maturity_block: block 12, Phase 6
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_rational_multi_quadratic` / both rows now carry
+    expected_step_substrings
+  - behavior_change_expected: didactic only; engine byte-identical
+- decision:
+  - first narration with a REAL intermediate built on a scratch context:
+    the backend's own decomposition is re-derived via a new pub
+    cas_math function (multi_quadratic_partial_fraction_decomposition_expr,
+    wrapping the cycle-14 terms solver) and quoted as the middle form -
+    N/prod(q_i) -> sum (alpha_i*x+beta_i)/q_i -> verified result - with
+    the educational partial-fraction titles for consistency
+  - a cross-capture surfaced and was fixed before pinning: the expanded
+    gate of the mixed-numerator narrator also matched PRODUCT
+    denominators (narrating "complete the square" over (x^2+1)(x^2+4));
+    the gate now requires a flat Add denominator, sending products to the
+    partial-fraction narrators
+- retained learning:
+  - didactic narrators form a precedence ecosystem: every new gate must
+    state its shape ownership (flat Add vs product vs compact) or
+    neighbors silently steal each other's stories; the probe battery over
+    neighbor shapes is the cheap detector for cross-capture

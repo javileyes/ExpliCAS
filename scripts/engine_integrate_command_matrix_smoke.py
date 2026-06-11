@@ -704,6 +704,10 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         ),
         expected_direct_diff_integrate_required_display=(),
         expected_required_display=(),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
         family="algorithmic_backend_rational_multi_quadratic",
         argument_regime="proper_numerator_two_distinct_irreducible_quadratics",
         domain_regime="backend_verified_unconditional_real",
@@ -721,6 +725,10 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         ),
         expected_direct_diff_integrate_required_display=(),
         expected_required_display=(),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
         family="algorithmic_backend_rational_multi_quadratic",
         argument_regime="reciprocal_three_distinct_irreducible_quadratics",
         domain_regime="backend_verified_unconditional_real",

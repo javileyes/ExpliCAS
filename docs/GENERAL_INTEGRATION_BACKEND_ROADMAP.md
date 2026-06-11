@@ -297,9 +297,12 @@ derivative as a log, arctan rule), pinned by substrings on both compact
 mixed rows. The expanded-affine shapes landed next (complete-the-square
 narration recovered from the result's own ln argument, with an ln-only
 branch for derivative-multiple numerators) - all six Hermite
-positive-quadratic matrix rows now assert educational substrings. Next
-rung: the rational families (multi-quadratic partial fractions,
-Ostrogradsky), which still trace as summary.
+positive-quadratic matrix rows now assert educational substrings. The
+multi-quadratic partial-fraction rows landed next with a REAL
+intermediate (the backend's decomposition rebuilt on a scratch context:
+N/prod(q_i) -> sum of simple terms -> result). Next rungs: Ostrogradsky
+and quartic-descent results (need a squarefree-split narration), and the
+Heurisch probe family.
 
 ## Promotion Checklist
 

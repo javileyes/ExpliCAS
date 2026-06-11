@@ -43,7 +43,8 @@ mod verification_normalization;
 // Re-export the public API so `cas_math::general_integration_backend::X`
 // continues to work unchanged.
 pub use methods::{
-    backend_positive_quadratic_denominator_radius, try_algorithmic_integration_backend,
+    backend_positive_quadratic_denominator_radius,
+    multi_quadratic_partial_fraction_decomposition_expr, try_algorithmic_integration_backend,
 };
 pub use model::*;
 pub use probe_runner::*;
