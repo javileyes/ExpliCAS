@@ -243,16 +243,23 @@ fn boundary_value(
     Some(outcome.expr)
 }
 
-fn expr_contains_limit_call(ctx: &Context, expr: ExprId) -> bool {
+fn expr_contains_limit_call(ctx: &mut Context, expr: ExprId) -> bool {
+    let limit_symbol = ctx.intern_symbol("limit");
+    expr_contains_call_to(ctx, expr, limit_symbol)
+}
+
+fn expr_contains_call_to(ctx: &Context, expr: ExprId, target: cas_ast::symbol::SymbolId) -> bool {
     match ctx.get(expr) {
         Expr::Function(fn_id, args) => {
-            ctx.sym_name(*fn_id) == "limit"
-                || args.iter().any(|arg| expr_contains_limit_call(ctx, *arg))
+            *fn_id == target
+                || args
+                    .iter()
+                    .any(|arg| expr_contains_call_to(ctx, *arg, target))
         }
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            expr_contains_limit_call(ctx, *l) || expr_contains_limit_call(ctx, *r)
+            expr_contains_call_to(ctx, *l, target) || expr_contains_call_to(ctx, *r, target)
         }
-        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_limit_call(ctx, *inner),
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_call_to(ctx, *inner, target),
         _ => false,
     }
 }
