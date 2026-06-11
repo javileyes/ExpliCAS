@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 66 (newest first)
+Active entries: 67 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -129,6 +129,7 @@ Active entries: 66 (newest first)
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 fifth rung / improper policy | Retained calculus: improper integrals via boundary limits close block 13's policy rung
 - 2026-06-11 | `retained` | calculus / integration / educational route / exponential family / | Retained calculus: the normalized reciprocal exponential integrates
 - 2026-06-11 | `retained` | calculus / integration / educational route / by-parts exponential | Retained calculus: by-parts exponentials reach the normalized Div form
+- 2026-06-11 | `retained` | calculus / limits engine / improper integrals / block 13 | Retained calculus: abs-wrapped tails resolve at infinity, log divergences report their sign
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2739,3 +2740,37 @@ Active entries: 66 (newest first)
     artifacts: rather than teaching each family matcher every normalized
     form, one recognizer at the normalized shape's owner converts back to
     the canonical input and reuses the family's existing machinery
+
+## 2026-06-11 - Retained calculus: abs-wrapped tails resolve at infinity, log divergences report their sign
+
+- area:
+  - calculus / limits engine / improper integrals / block 13
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13 (limits-engine enabler)
+  - calculus_matrix_cell: `integrate(1/x, x, 1, infinity)` -> infinity and
+    `integrate(1/x, x, -infinity, -1)` -> -infinity /
+    `definite_integral_ftc` / `improper_divergent_to_infinity`
+  - behavior_change_expected: yes - ln(|x|) and |poly| tails resolve at
+    both infinities, so logarithmic improper divergences report their
+    honest signed value instead of staying residual
+- decision:
+  - the owner fix is one recursive arm in
+    unbounded_argument_tail_sign: |inner| tends to +infinity whenever the
+    inner is unbounded toward EITHER sign (antiderivatives emit ln|.|
+    forms, so this composition is what every divergent log integral
+    needs); the Abs case of the elementary composition table widened
+    from linear to general unbounded tails as the same intent
+  - the sign of the divergence flows through the existing
+    boundary-combination logic with no changes:
+    integrate(1/x, x, -infinity, -1) = ln(1) - lim ln|x| = -infinity,
+    matching the negative integrand on that interval
+  - ln(|x|) at a FINITE point stays residual (different machinery,
+    honest)
+- retained learning:
+  - when antiderivatives systematically emit a wrapper (ln|.| from real
+    domain discipline), the limits engine must understand that wrapper
+    or every downstream consumer hits the same wall: fix the composition
+    once at the tail-sign level rather than per caller

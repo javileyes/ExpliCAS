@@ -453,10 +453,11 @@ Use these blocks as the active plan:
      next (a reciprocal-exp recognizer at the educational Div arm;
      integrate(exp(-x), x, 0, infinity) = 1 composes). The x/e^x by-parts gap
      closed next (rebuild-and-delegate from the Div arm; the Gamma-style
-     integrate(x*exp(-x), x, 0, infinity) = 1 composes). Remaining
-     candidates: ln(|x|) at infinity in the limits engine, cyclic
-     by-parts (sin(x)/e^x), and a substep narrator for the normalized
-     exponential Div shapes.
+     integrate(x*exp(-x), x, 0, infinity) = 1 composes). The ln(|x|) gap closed
+     next (abs-wrapped unbounded tails resolve at both infinities;
+     divergent log integrals report signed infinity). Remaining
+     candidates: cyclic by-parts (sin(x)/e^x) and a substep narrator for
+     the normalized exponential Div shapes.
 
 Selection rule:
 

@@ -534,9 +534,16 @@ mod improper_tests {
     }
 
     #[test]
-    fn unresolved_boundary_limits_stay_residual() {
-        // F = ln|x| and the limits engine does not resolve ln(|x|) at
-        // infinity yet: honest residual instead of a wrong value.
-        assert!(eval_definite("integrate(1/x, x, 1, infinity)").is_none());
+    fn logarithmic_divergence_reports_signed_infinity() {
+        // F = ln|x| now resolves at both infinities, so the divergent
+        // half-line integrals report their honest signed value.
+        assert_eq!(
+            eval_definite("integrate(1/x, x, 1, infinity)").as_deref(),
+            Some("infinity")
+        );
+        assert_eq!(
+            eval_definite("integrate(1/x, x, -infinity, -1)").as_deref(),
+            Some("-infinity")
+        );
     }
 }

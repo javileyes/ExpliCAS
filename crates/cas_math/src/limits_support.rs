@@ -4075,6 +4075,26 @@ fn unbounded_argument_tail_sign(
 ) -> Option<InfSign> {
     polynomial_argument_tail_sign(ctx, arg, var, approach)
         .or_else(|| rational_polynomial_argument_tail_sign(ctx, arg, var, approach))
+        .or_else(|| abs_unbounded_argument_tail_sign(ctx, arg, var, approach))
+}
+
+/// |inner| tends to +infinity whenever the inner argument is unbounded
+/// toward either sign, which lets compositions like ln(|x|) resolve at
+/// both infinities (antiderivatives emit ln|.| forms).
+fn abs_unbounded_argument_tail_sign(
+    ctx: &Context,
+    arg: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<InfSign> {
+    match ctx.get(arg) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Abs)) =>
+        {
+            unbounded_argument_tail_sign(ctx, args[0], var, approach).map(|_| InfSign::Pos)
+        }
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -4440,7 +4460,7 @@ fn elementary_argument_limit_at_infinity(
     }
 
     let arg_tail = match builtin {
-        BuiltinFn::Acosh => unbounded_argument_tail_sign(ctx, arg, var, approach)?,
+        BuiltinFn::Acosh | BuiltinFn::Abs => unbounded_argument_tail_sign(ctx, arg, var, approach)?,
         BuiltinFn::Exp
         | BuiltinFn::Cbrt
         | BuiltinFn::Asinh
@@ -11030,5 +11050,32 @@ mod tests {
         let expr = parse_expr(&mut ctx, "x/x");
         let out = presimplify_safe_for_limit(&mut ctx, expr);
         assert!(matches!(ctx.get(out), Expr::Div(_, _)));
+    }
+
+    #[test]
+    fn abs_wrapped_unbounded_arguments_resolve_at_both_infinities() {
+        let mut ctx = Context::new();
+        let cases = [
+            ("ln(|x|)", InfSign::Pos, "infinity"),
+            ("ln(|x|)", InfSign::Neg, "infinity"),
+            ("|x^2+1|", InfSign::Pos, "infinity"),
+        ];
+        for (source, approach, expected) in cases {
+            let expr = cas_parser::parse(source, &mut ctx).expect(source);
+            let var = ctx.var("x");
+            let result = try_limit_rules_at_infinity(&mut ctx, expr, var, approach)
+                .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_eq!(
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &ctx,
+                        id: result
+                    }
+                ),
+                expected,
+                "{source}"
+            );
+        }
     }
 }
