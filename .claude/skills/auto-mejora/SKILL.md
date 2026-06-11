@@ -159,3 +159,10 @@ repitas en bucle).
   mónico tras cada gcd/div.
 - En la web/server, los multiline-replace por indentación (12⊂16⊂20
   espacios) cascadean: ancla en bloques de llamada completos.
+- `make ci` tiene lints EXTRA que la cadena del ciclo no cubre: fmt
+  global (declaraciones `mod` en orden alfabético — los inserts por
+  ancla de wiring lo rompen) y `lint_string_compares` (prohibido
+  `sym_name(...) == "..."` sobre nombres de función en cas_engine: usa
+  `is_call_named` o interna el símbolo una vez y compara por SymbolId).
+  Tras tocar cas_engine, corre `cargo fmt -p cas_engine` y, si añadiste
+  comparaciones de nombres de función, verifica con `make ci`.
