@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 70 (newest first)
+Active entries: 71 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -133,6 +133,7 @@ Active entries: 70 (newest first)
 - 2026-06-11 | `retained` | didactics / integration / exponential family narration | Retained didactic: normalized exponential quotients narrate their rewrite
 - 2026-06-11 | `retained` | calculus / integration / educational route / cyclic by-parts family | Retained calculus: the cyclic exp-trig family reaches the normalized Div form
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 interval certificate / | Retained calculus: the interval certificate becomes self-contained and learns polynomials and trig
+- 2026-06-11 | `retained` | calculus / definite integration / block 13 / exam trig bounds | Retained calculus: pi-multiple bounds via exact r + q*pi endpoints
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2896,3 +2897,36 @@ Active entries: 70 (newest first)
     object, refuse the undecidable) converts silent wrongness into
     honest residuals - and the adversarial-review mandate for decision
     procedures caught what green unit tests and a green matrix could not
+
+## 2026-06-11 - Retained calculus: pi-multiple bounds via exact r + q*pi endpoints
+
+- area:
+  - calculus / definite integration / block 13 / exam trig bounds
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13
+  - calculus_matrix_cell: `integrate(f, x, a, q*pi)` / three new rows:
+    sec^2 on [0, pi/4] -> 1, sec^2 on [pi/4, pi/3] -> sqrt(3)-1, tan on
+    [0, 3pi/4] -> undefined
+  - behavior_change_expected: yes - the exam-standard trig definites with
+    pi bounds evaluate; unconditional pi-bound integrals already worked
+    via the symbolic path (frontier probing narrowed the gap to
+    CONDITIONAL integrands only)
+- decision:
+  - interval endpoints become the exact form r + q*pi (Endpoint):
+    comparisons are EXACT whenever the pi parts agree - in particular
+    trig zeros at k*pi/2 against pi-multiple bounds, which is precisely
+    the exam case - and fall back to the rational pi enclosure for mixed
+    comparisons, refusing (residual) when the enclosure straddles
+  - the polynomial certificates compose for free: root-membership and
+    sign probes work through enclosure-derived rational probe points
+    (integrate(x/(x^2+1), x, 0, pi) = ln(pi^2+1)/2)
+  - a bound INSIDE the pi/2 enclosure stays residual by construction
+    (pinned by test): the undecidable case refuses rather than guesses
+- retained learning:
+  - extending a certificate's number domain beats approximating: the
+    r + q*pi form keeps every exam comparison exact and reserves the
+    enclosure for genuinely mixed cases, so precision loss can never
+    flip a certificate - the conservative refusal is structural

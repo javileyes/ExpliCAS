@@ -465,10 +465,12 @@ Use these blocks as the active plan:
      domains, trig poles via a rational pi enclosure) fixing four
      pre-existing wrong-finite-value soundness bugs, and learned
      polynomial positivity and the derivative-cofactor route - certified
-     conditions are discharged from the display. Next rungs: bounds at
-     rational multiples of pi (integrate(tan(x), x, 0, pi/4)), and
-     boundary-convergent improper integrals (integrate(ln(x), x, 0, 1)
-     is now an honest residual instead of correct-by-luck).
+     conditions are discharged from the display. Pi-multiple bounds landed
+     next (exact r + q*pi endpoints; sec^2 on [pi/4, pi/3] = sqrt(3)-1,
+     poles at pi/2 located exactly). Next rungs: boundary-convergent
+     improper integrals (integrate(ln(x), x, 0, 1) is an honest residual
+     instead of correct-by-luck), and the product-to-sum trig rewrites
+     for Fourier-style definites.
 
 Selection rule:
 

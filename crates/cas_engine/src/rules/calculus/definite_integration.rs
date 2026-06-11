@@ -25,15 +25,101 @@ enum IntervalCertificate {
 }
 
 enum DefiniteBound {
-    Finite(BigRational),
+    Finite(Endpoint),
     PosInfinity,
     NegInfinity,
     Symbolic,
 }
 
+/// Exact interval endpoint of the form `rational + pi_multiple * pi`,
+/// covering both rational bounds and the exam-standard rational multiples
+/// of pi. Comparisons are exact whenever the pi parts agree (in
+/// particular for two pi-pure values, which is how trig zeros at
+/// k*pi/2 compare against pi-multiple bounds); mixed comparisons fall
+/// back to the rational pi enclosure and refuse when undecidable.
+#[derive(Clone, PartialEq)]
+struct Endpoint {
+    rational: BigRational,
+    pi_multiple: BigRational,
+}
+
+impl Endpoint {
+    fn from_rational(value: BigRational) -> Self {
+        Endpoint {
+            rational: value,
+            pi_multiple: BigRational::from_integer(0.into()),
+        }
+    }
+
+    fn from_pi_multiple(multiple: BigRational) -> Self {
+        Endpoint {
+            rational: BigRational::from_integer(0.into()),
+            pi_multiple: multiple,
+        }
+    }
+
+    fn enclosure(&self) -> (BigRational, BigRational) {
+        let (pi_low, pi_high) = pi_enclosure();
+        if self.pi_multiple >= BigRational::from_integer(0.into()) {
+            (
+                &self.rational + &self.pi_multiple * pi_low,
+                &self.rational + &self.pi_multiple * pi_high,
+            )
+        } else {
+            (
+                &self.rational + &self.pi_multiple * pi_high,
+                &self.rational + &self.pi_multiple * pi_low,
+            )
+        }
+    }
+
+    fn try_cmp(&self, other: &Endpoint) -> Option<std::cmp::Ordering> {
+        if self.pi_multiple == other.pi_multiple {
+            return Some(self.rational.cmp(&other.rational));
+        }
+        let (self_low, self_high) = self.enclosure();
+        let (other_low, other_high) = other.enclosure();
+        if self_high < other_low {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self_low > other_high {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        None
+    }
+}
+
+/// Recognize rational multiples of pi: pi, q*pi, pi/n and negations.
+fn pi_multiple_of(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Constant(Constant::Pi) => Some(BigRational::from_integer(1.into())),
+        Expr::Neg(inner) => pi_multiple_of(ctx, *inner).map(|value| -value),
+        Expr::Mul(l, r) => {
+            if let Some(scale) = as_rational_const(ctx, *l) {
+                return pi_multiple_of(ctx, *r).map(|value| scale * value);
+            }
+            if let Some(scale) = as_rational_const(ctx, *r) {
+                return pi_multiple_of(ctx, *l).map(|value| scale * value);
+            }
+            None
+        }
+        Expr::Div(numerator, denominator) => {
+            let divisor = as_rational_const(ctx, *denominator)?;
+            if divisor.is_zero() {
+                return None;
+            }
+            pi_multiple_of(ctx, *numerator).map(|value| value / divisor)
+        }
+        _ => None,
+    }
+}
+
 fn classify_bound(ctx: &Context, bound: ExprId) -> DefiniteBound {
     if let Some(value) = as_rational_const(ctx, bound) {
-        return DefiniteBound::Finite(value);
+        return DefiniteBound::Finite(Endpoint::from_rational(value));
+    }
+    if let Some(multiple) = pi_multiple_of(ctx, bound) {
+        return DefiniteBound::Finite(Endpoint::from_pi_multiple(multiple));
     }
     match ctx.get(bound) {
         Expr::Constant(Constant::Infinity) => DefiniteBound::PosInfinity,
@@ -42,6 +128,36 @@ fn classify_bound(ctx: &Context, bound: ExprId) -> DefiniteBound {
         }
         _ => DefiniteBound::Symbolic,
     }
+}
+
+/// A rational point strictly inside the (possibly pi-valued) interval,
+/// via the enclosures; None when the enclosures overlap.
+fn interval_rational_probe(low: &Endpoint, high: &Endpoint) -> Option<BigRational> {
+    let (_, low_high) = low.enclosure();
+    let (high_low, _) = high.enclosure();
+    if low_high < high_low {
+        Some((low_high + high_low) / BigRational::from_integer(2.into()))
+    } else {
+        None
+    }
+}
+
+/// Closed-interval membership of a rational point; None when undecidable.
+fn interval_contains_rational(
+    low: &Endpoint,
+    high: &Endpoint,
+    value: &BigRational,
+) -> Option<bool> {
+    let point = Endpoint::from_rational(value.clone());
+    let above = match point.try_cmp(low)? {
+        std::cmp::Ordering::Less => false,
+        _ => true,
+    };
+    let below = match point.try_cmp(high)? {
+        std::cmp::Ordering::Greater => false,
+        _ => true,
+    };
+    Some(above && below)
 }
 
 pub(super) fn definite_integration_rewrite(
@@ -104,10 +220,10 @@ pub(super) fn definite_integration_rewrite(
     };
     // F(upper) - F(lower) is already orientation-aware; the swap is only
     // for the certificate's closed interval.
-    let (interval_low, interval_high) = if lower < upper {
-        (lower, upper)
-    } else {
-        (upper, lower)
+    let (interval_low, interval_high) = match lower.try_cmp(&upper) {
+        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal) => (lower, upper),
+        Some(std::cmp::Ordering::Greater) => (upper, lower),
+        None => return None,
     };
     let mut antiderivative = antiderivative;
     loop {
@@ -379,14 +495,23 @@ fn nonzero_on_unbounded_interval(
         }
         1 => {
             let root = -&poly.coeffs[0] / &poly.coeffs[1];
+            let point = Endpoint::from_rational(root);
             let above_lower = match lower_bound {
                 DefiniteBound::NegInfinity => true,
-                DefiniteBound::Finite(lower) => &root >= lower,
+                DefiniteBound::Finite(lower) => match point.try_cmp(lower) {
+                    Some(std::cmp::Ordering::Less) => false,
+                    Some(_) => true,
+                    None => return IntervalCertificate::Unknown,
+                },
                 _ => return IntervalCertificate::Unknown,
             };
             let below_upper = match upper_bound {
                 DefiniteBound::PosInfinity => true,
-                DefiniteBound::Finite(upper) => &root <= upper,
+                DefiniteBound::Finite(upper) => match point.try_cmp(upper) {
+                    Some(std::cmp::Ordering::Greater) => false,
+                    Some(_) => true,
+                    None => return IntervalCertificate::Unknown,
+                },
                 _ => return IntervalCertificate::Unknown,
             };
             if above_lower && below_upper {
@@ -449,8 +574,8 @@ fn certify_interval(
     ctx: &mut Context,
     conditions: &[ImplicitCondition],
     var_name: &str,
-    interval_low: &BigRational,
-    interval_high: &BigRational,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
 ) -> IntervalCertificate {
     let mut outcome = IntervalCertificate::Certified;
     for condition in conditions {
@@ -502,8 +627,8 @@ fn integrand_risks_certified(
     ctx: &mut Context,
     expr: ExprId,
     var_name: &str,
-    interval_low: &BigRational,
-    interval_high: &BigRational,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
 ) -> IntervalCertificate {
     scan_expr_risks(ctx, expr, var_name, &mut |ctx, risk| match risk {
         RiskKind::DenominatorNonZero(factor) => {
@@ -733,8 +858,8 @@ fn positive_on_interval(
     ctx: &mut Context,
     expr: ExprId,
     var_name: &str,
-    interval_low: &BigRational,
-    interval_high: &BigRational,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
 ) -> IntervalCertificate {
     if let Some(value) = as_rational_const(ctx, expr) {
         return if value.is_positive() {
@@ -757,8 +882,9 @@ fn positive_on_interval(
             0 => {}
             1 => {
                 let root = -&factor.coeffs[0] / &factor.coeffs[1];
-                if &root >= interval_low && &root <= interval_high {
-                    return IntervalCertificate::Unknown;
+                match interval_contains_rational(interval_low, interval_high, &root) {
+                    Some(false) => {}
+                    _ => return IntervalCertificate::Unknown,
                 }
             }
             2 => {
@@ -777,11 +903,12 @@ fn positive_on_interval(
     }
     let _ = residual_has_real_roots_ruled_out;
 
-    // No root in [low, high]: the sign is constant there; probe the
-    // midpoint exactly.
-    let two = BigRational::from_integer(2.into());
-    let midpoint = (interval_low + interval_high) / two;
-    if poly.eval(&midpoint).is_positive() {
+    // No root in [low, high]: the sign is constant there; probe a
+    // rational point strictly inside.
+    let Some(probe) = interval_rational_probe(interval_low, interval_high) else {
+        return IntervalCertificate::Unknown;
+    };
+    if poly.eval(&probe).is_positive() {
         IntervalCertificate::Certified
     } else {
         IntervalCertificate::Unknown
@@ -818,14 +945,19 @@ fn positive_on_unbounded_interval(
     }
 
     let inside = |root: &BigRational| -> bool {
+        let point = Endpoint::from_rational(root.clone());
         let above_lower = match lower_bound {
             DefiniteBound::NegInfinity => true,
-            DefiniteBound::Finite(lower) => root >= lower,
+            DefiniteBound::Finite(lower) => {
+                !matches!(point.try_cmp(lower), Some(std::cmp::Ordering::Less))
+            }
             _ => return true, // conservador: trátalo como dentro
         };
         let below_upper = match upper_bound {
             DefiniteBound::PosInfinity => true,
-            DefiniteBound::Finite(upper) => root <= upper,
+            DefiniteBound::Finite(upper) => {
+                !matches!(point.try_cmp(upper), Some(std::cmp::Ordering::Greater))
+            }
             _ => return true,
         };
         above_lower && below_upper
@@ -869,10 +1001,15 @@ fn positive_on_unbounded_interval(
         }
     }
 
-    // Probe a point inside the certified root-free region.
+    // Probe a point inside the certified root-free region (the enclosure
+    // bound is rational even for pi-valued endpoints).
     let probe_point = match (lower_bound, upper_bound) {
-        (DefiniteBound::Finite(lower), _) => lower + BigRational::from_integer(1.into()),
-        (_, DefiniteBound::Finite(upper)) => upper - BigRational::from_integer(1.into()),
+        (DefiniteBound::Finite(lower), _) => {
+            lower.enclosure().1 + BigRational::from_integer(1.into())
+        }
+        (_, DefiniteBound::Finite(upper)) => {
+            upper.enclosure().0 - BigRational::from_integer(1.into())
+        }
         _ => BigRational::from_integer(0.into()),
     };
     if poly.eval(&probe_point).is_positive() {
@@ -902,8 +1039,8 @@ fn trig_nonzero_on_interval(
     ctx: &Context,
     expr: ExprId,
     var_name: &str,
-    interval_low: &BigRational,
-    interval_high: &BigRational,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
 ) -> Option<IntervalCertificate> {
     let builtin = match ctx.get(expr) {
         Expr::Function(fn_id, args) if args.len() == 1 => {
@@ -930,22 +1067,28 @@ fn trig_nonzero_on_interval(
     let (pi_low, pi_high) = pi_enclosure();
 
     // Multiplier window covering the interval generously.
-    let approx_low = interval_low / &pi_high - BigRational::from_integer(2.into());
-    let approx_high = interval_high / &pi_low + BigRational::from_integer(2.into());
+    let approx_low = &interval_low.enclosure().0 / &pi_high - BigRational::from_integer(2.into());
+    let approx_high = &interval_high.enclosure().1 / &pi_low + BigRational::from_integer(2.into());
     let k_low = approx_low.floor().to_integer();
     let k_high = approx_high.ceil().to_integer();
 
     let mut k = k_low;
     while k <= k_high {
         let multiplier = &start + &step * BigRational::from_integer(k.clone());
-        let (zero_low, zero_high) = if multiplier >= BigRational::from_integer(0.into()) {
-            (&multiplier * &pi_low, &multiplier * &pi_high)
-        } else {
-            (&multiplier * &pi_high, &multiplier * &pi_low)
-        };
-        let disjoint = &zero_high < interval_low || &zero_low > interval_high;
-        if !disjoint {
-            let strictly_inside = &zero_low > interval_low && &zero_high < interval_high;
+        // The zero is exactly multiplier * pi: pi-pure, so comparisons
+        // against pi-multiple bounds are exact rational comparisons.
+        let zero = Endpoint::from_pi_multiple(multiplier);
+        let before_interval = matches!(zero.try_cmp(interval_low), Some(std::cmp::Ordering::Less));
+        let after_interval = matches!(
+            zero.try_cmp(interval_high),
+            Some(std::cmp::Ordering::Greater)
+        );
+        if !(before_interval || after_interval) {
+            let strictly_inside =
+                matches!(
+                    zero.try_cmp(interval_low),
+                    Some(std::cmp::Ordering::Greater)
+                ) && matches!(zero.try_cmp(interval_high), Some(std::cmp::Ordering::Less));
             return Some(if strictly_inside {
                 IntervalCertificate::Undefined
             } else {
@@ -961,8 +1104,8 @@ fn nonzero_on_interval(
     ctx: &mut Context,
     expr: ExprId,
     var_name: &str,
-    interval_low: &BigRational,
-    interval_high: &BigRational,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
 ) -> IntervalCertificate {
     if let Some(certificate) =
         trig_nonzero_on_interval(ctx, expr, var_name, interval_low, interval_high)
@@ -989,12 +1132,12 @@ fn nonzero_on_interval(
         }
         1 => {
             let root = -&poly.coeffs[0] / &poly.coeffs[1];
-            if &root >= interval_low && &root <= interval_high {
+            match interval_contains_rational(interval_low, interval_high, &root) {
                 // A pole of the supported rational families inside the
                 // closed interval: the integral diverges.
-                IntervalCertificate::Undefined
-            } else {
-                IntervalCertificate::Certified
+                Some(true) => IntervalCertificate::Undefined,
+                Some(false) => IntervalCertificate::Certified,
+                None => IntervalCertificate::Unknown,
             }
         }
         2 => {
@@ -1137,6 +1280,38 @@ mod certificate_tests {
         assert_eq!(
             eval_definite("integrate(tan(x), x, 0, infinity)").as_deref(),
             Some("undefined")
+        );
+    }
+}
+
+#[cfg(test)]
+mod pi_bound_tests {
+    use super::tests::eval_definite;
+
+    #[test]
+    fn pi_multiple_bounds_certify_exactly_against_trig_zeros() {
+        // [0, pi/4] inside (-pi/2, pi/2): exact pi-pure comparison.
+        assert!(eval_definite("integrate(1/cos(x)^2, x, 0, pi/4)").is_some());
+        // pi/2 strictly inside [0, 3pi/4]: undefined, also exactly.
+        assert_eq!(
+            eval_definite("integrate(tan(x), x, 0, 3*pi/4)").as_deref(),
+            Some("undefined")
+        );
+    }
+
+    #[test]
+    fn pi_endpoints_compose_with_polynomial_certificates() {
+        // Positive(x^2+1)-style risks certify against the pi enclosure.
+        assert!(eval_definite("integrate(x/(x^2+1), x, 0, pi)").is_some());
+    }
+
+    #[test]
+    fn mixed_undecidable_endpoints_stay_residual() {
+        // A bound inside the pi enclosure of pi/2 cannot be decided and
+        // must refuse rather than guess.
+        assert!(
+            eval_definite("integrate(1/cos(x)^2, x, 0, 15707963267948966/10000000000000000)")
+                .is_none()
         );
     }
 }
