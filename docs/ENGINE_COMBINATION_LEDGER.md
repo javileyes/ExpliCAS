@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 65 (newest first)
+Active entries: 66 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -128,6 +128,7 @@ Active entries: 65 (newest first)
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 fourth rung / area function | Retained calculus: symbolic bounds for unconditional antiderivatives
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 fifth rung / improper policy | Retained calculus: improper integrals via boundary limits close block 13's policy rung
 - 2026-06-11 | `retained` | calculus / integration / educational route / exponential family / | Retained calculus: the normalized reciprocal exponential integrates
+- 2026-06-11 | `retained` | calculus / integration / educational route / by-parts exponential | Retained calculus: by-parts exponentials reach the normalized Div form
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2701,3 +2702,40 @@ Active entries: 65 (newest first)
     works and its trivial special case fails, suspect the simplifier
     rewrote the special case into a form no matcher owns - probe the
     NORMALIZED form, then put the recognizer at the owner of that form
+
+## 2026-06-11 - Retained calculus: by-parts exponentials reach the normalized Div form
+
+- area:
+  - calculus / integration / educational route / by-parts exponential
+    family / block 4
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 4 (plus the block-13 Gamma row it
+    unblocks)
+  - calculus_matrix_cell: `integrate` / `by_parts_exponential_table` /
+    normalized Div(p(x), e^linear) / `total_real_function` / plus
+    `definite_integral_improper_gamma_two`
+  - behavior_change_expected: yes - integrate(x/e^x, x) -> (-x-1)/e^x,
+    x^2/e^x -> (-x^2-2x-2)/e^x, and the Gamma-style improper
+    integrate(x*exp(-x), x, 0, infinity) = 1
+- observed (frontier probing):
+  - the exact phantom-gap pattern predicted by the previous cycle's
+    learning: x*e^(-2x) integrated while x/e^x (slope -1, normalized to
+    Div) did not - the by-parts family never saw the normalized form
+- decision:
+  - a Div-arm recognizer that REBUILDS the equivalent product
+    (numerator * exp(-exponent)) and DELEGATES to the existing by-parts
+    handlers (polynomial_times_exp_linear, linear_times_exp_linear) -
+    zero new integration mathematics, pure reachability; sin(x)/e^x
+    (cyclic by-parts) and Gaussian exponents fall through honestly
+  - the matrix roundtrip uses the equivalence field
+    (expected_direct_diff_integrate_equivalent_to) because the
+    derivative displays as x*e^x/e^(2x), equivalent but not syntactically
+    identical to the integrand
+- retained learning:
+  - the rebuild-and-delegate pattern is the cheap cure for normalization
+    artifacts: rather than teaching each family matcher every normalized
+    form, one recognizer at the normalized shape's owner converts back to
+    the canonical input and reuses the family's existing machinery

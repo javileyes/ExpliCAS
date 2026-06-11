@@ -451,10 +451,12 @@ Use these blocks as the active plan:
      extended to (half-)infinite intervals, divergence reports the honest
      infinite value, and the narrator renders lim notation. The exp(-x) gap closed
      next (a reciprocal-exp recognizer at the educational Div arm;
-     integrate(exp(-x), x, 0, infinity) = 1 composes). Remaining
-     candidates: ln(|x|) at infinity in the limits engine, x/e^x
-     by-parts over the normalized Div form, and a substep narrator for
-     reciprocal-exp shapes.
+     integrate(exp(-x), x, 0, infinity) = 1 composes). The x/e^x by-parts gap
+     closed next (rebuild-and-delegate from the Div arm; the Gamma-style
+     integrate(x*exp(-x), x, 0, infinity) = 1 composes). Remaining
+     candidates: ln(|x|) at infinity in the limits engine, cyclic
+     by-parts (sin(x)/e^x), and a substep narrator for the normalized
+     exponential Div shapes.
 
 Selection rule:
 

@@ -11191,6 +11191,29 @@ fn reciprocal_exp_linear_antiderivative(
     Some(ctx.add(Expr::Div(scaled_numerator, denominator)))
 }
 
+/// integrate(p(x) / e^(a*x+b), x): the simplifier normalizes
+/// p(x)*e^(-(a*x+b)) into this Div shape, so the by-parts exponential
+/// family must be reachable from it. The integrand is rebuilt as the
+/// equivalent product and delegated to the existing by-parts handlers.
+fn div_exp_linear_by_parts_antiderivative(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let exponent = exp_like_arg(ctx, denominator)?;
+    if !contains_named_var(ctx, numerator, var) {
+        return None;
+    }
+    let poly = Polynomial::from_expr(ctx, exponent, var).ok()?;
+    nonzero_linear_polynomial_slope(&poly)?;
+    let negated_exponent = ctx.add(Expr::Neg(exponent));
+    let exp_factor = ctx.call_builtin(BuiltinFn::Exp, vec![negated_exponent]);
+    let product = mul2_raw(ctx, numerator, exp_factor);
+    polynomial_times_exp_linear_antiderivative(ctx, product, var)
+        .or_else(|| linear_times_exp_linear_antiderivative(ctx, product, var))
+}
+
 fn nonzero_linear_polynomial_slope(poly: &Polynomial) -> Option<BigRational> {
     if poly.degree() != 1 {
         return None;
@@ -18494,6 +18517,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        if let Some(integral) = div_exp_linear_by_parts_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = arctan_sqrt_var_reciprocal_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
@@ -23323,7 +23350,45 @@ mod tests {
     #[test]
     fn reciprocal_exp_rejects_nonlinear_and_variable_numerators() {
         let mut ctx = Context::new();
-        for source in ["1/e^(x^2)", "x/e^x", "c/e^(s*x)"] {
+        for source in ["1/e^(x^2)", "c/e^(s*x)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn div_exp_linear_by_parts_integrates_normalized_products() {
+        let mut ctx = Context::new();
+        // Raw integrator output (the engine simplifier later displays
+        // these as (-x - 1)/e^x etc., pinned by the matrix rows).
+        let cases = [
+            ("x/e^x", "exp(-x) * (-x - 1)"),
+            ("x^2/e^x", "exp(-x) * (-x^2 - 2 * x - 2)"),
+        ];
+        for (source, expected) in cases {
+            let expr = parse(source, &mut ctx).expect(source);
+            let integral = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            assert_eq!(
+                format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &ctx,
+                        id: integral
+                    }
+                ),
+                expected,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn div_exp_by_parts_rejects_unsupported_numerators() {
+        let mut ctx = Context::new();
+        for source in ["sin(x)/e^x", "x/e^(x^2)"] {
             let expr = parse(source, &mut ctx).expect(source);
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
