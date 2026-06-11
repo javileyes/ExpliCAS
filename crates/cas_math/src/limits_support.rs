@@ -6559,17 +6559,15 @@ mod tests {
         assert_eq!(display_expr(&ctx, sqrt_even_endpoint_out), "0");
 
         let sqrt_abs_endpoint = parse_expr(&mut ctx, "sqrt(abs(x))");
-        assert!(
-            try_limit_rules_at_finite_one_sided(
-                &mut ctx,
-                sqrt_abs_endpoint,
-                x,
-                point_zero,
-                FiniteLimitSide::Right,
-            )
-            .is_none(),
-            "non-polynomial sqrt endpoint remains residual for a later policy"
-        );
+        let sqrt_abs_out = try_limit_rules_at_finite_one_sided(
+            &mut ctx,
+            sqrt_abs_endpoint,
+            x,
+            point_zero,
+            FiniteLimitSide::Right,
+        )
+        .expect("abs resolves by approach side: |x| = x from the right");
+        assert_eq!(display_expr(&ctx, sqrt_abs_out), "0");
 
         let point_one = parse_expr(&mut ctx, "1");
         let acosh_right_endpoint = parse_expr(&mut ctx, "acosh(x)");
