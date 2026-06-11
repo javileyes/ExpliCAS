@@ -20,6 +20,13 @@ use num_traits::{Signed, Zero};
 
 enum IntervalCertificate {
     Certified,
+    /// Every obstruction is a root exactly AT a boundary endpoint of the
+    /// sorted interval: the integral may converge as an improper one,
+    /// decided by one-sided limits of the antiderivative.
+    BoundaryTouch {
+        lower: bool,
+        upper: bool,
+    },
     Undefined,
     Unknown,
 }
@@ -142,16 +149,27 @@ fn interval_rational_probe(low: &Endpoint, high: &Endpoint) -> Option<BigRationa
     }
 }
 
-/// Closed-interval membership of a rational point; None when undecidable.
-fn interval_contains_rational(
-    low: &Endpoint,
-    high: &Endpoint,
-    value: &BigRational,
-) -> Option<bool> {
+enum RootPosition {
+    Outside,
+    AtLower,
+    AtUpper,
+    Inside,
+}
+
+/// Position of a rational root relative to the closed interval; None
+/// when undecidable.
+fn root_position(low: &Endpoint, high: &Endpoint, value: &BigRational) -> Option<RootPosition> {
     let point = Endpoint::from_rational(value.clone());
-    let above = !matches!(point.try_cmp(low)?, std::cmp::Ordering::Less);
-    let below = !matches!(point.try_cmp(high)?, std::cmp::Ordering::Greater);
-    Some(above && below)
+    match point.try_cmp(low)? {
+        std::cmp::Ordering::Less => return Some(RootPosition::Outside),
+        std::cmp::Ordering::Equal => return Some(RootPosition::AtLower),
+        std::cmp::Ordering::Greater => {}
+    }
+    match point.try_cmp(high)? {
+        std::cmp::Ordering::Greater => Some(RootPosition::Outside),
+        std::cmp::Ordering::Equal => Some(RootPosition::AtUpper),
+        std::cmp::Ordering::Less => Some(RootPosition::Inside),
+    }
 }
 
 pub(super) fn definite_integration_rewrite(
@@ -245,6 +263,20 @@ pub(super) fn definite_integration_rewrite(
         ),
     ) {
         IntervalCertificate::Certified => {}
+        IntervalCertificate::BoundaryTouch {
+            lower: touch_low,
+            upper: touch_high,
+        } => {
+            return boundary_touch_evaluation(
+                ctx,
+                call,
+                antiderivative,
+                &interval_low,
+                &interval_high,
+                touch_low,
+                touch_high,
+            );
+        }
         IntervalCertificate::Undefined => {
             let undefined = ctx.add(Expr::Constant(Constant::Undefined));
             return Some(
@@ -258,6 +290,78 @@ pub(super) fn definite_integration_rewrite(
     let at_upper = cas_ast::substitute_expr_by_id(ctx, antiderivative, call.var_expr, call.upper);
     let at_lower = cas_ast::substitute_expr_by_id(ctx, antiderivative, call.var_expr, call.lower);
     let result = ctx.add(Expr::Sub(at_upper, at_lower));
+    Some(Rewrite::new(result).desc("integrate(f, x, a, b)"))
+}
+
+/// Boundary-touched endpoints: the obstruction sits exactly at an
+/// endpoint of the sorted interval, so the boundary value is the
+/// ONE-SIDED LIMIT of the antiderivative approaching from inside the
+/// interval (curriculum improper integrals like the unit-interval
+/// natural-log integral evaluating to -1). Finite limits converge;
+/// signed infinities report honest
+/// divergence; unresolved limits stay residual.
+#[allow(clippy::too_many_arguments)]
+fn boundary_touch_evaluation(
+    ctx: &mut Context,
+    call: &DefiniteIntegralCall,
+    antiderivative: ExprId,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
+    touch_low: bool,
+    touch_high: bool,
+) -> Option<Rewrite> {
+    let bound_value = |ctx: &mut Context, bound_expr: ExprId| -> Option<ExprId> {
+        let endpoint = match classify_bound(ctx, bound_expr) {
+            DefiniteBound::Finite(endpoint) => endpoint,
+            _ => return None,
+        };
+        let touched =
+            (touch_low && endpoint == *interval_low) || (touch_high && endpoint == *interval_high);
+        if !touched {
+            return Some(cas_ast::substitute_expr_by_id(
+                ctx,
+                antiderivative,
+                call.var_expr,
+                bound_expr,
+            ));
+        }
+        // Approach from inside the sorted interval.
+        let side = if endpoint == *interval_low {
+            cas_math::limit_types::FiniteLimitSide::Right
+        } else {
+            cas_math::limit_types::FiniteLimitSide::Left
+        };
+        let opts = LimitOptions::default();
+        let mut budget = crate::budget::Budget::preset_cli();
+        let outcome = crate::limits::limit(
+            ctx,
+            antiderivative,
+            call.var_expr,
+            Approach::FiniteOneSided(bound_expr, side),
+            &opts,
+            &mut budget,
+        )
+        .ok()?;
+        if outcome.warning.is_some() || expr_contains_limit_call(ctx, outcome.expr) {
+            return None;
+        }
+        if matches!(ctx.get(outcome.expr), Expr::Constant(Constant::Undefined)) {
+            return None;
+        }
+        Some(outcome.expr)
+    };
+
+    let upper_value = bound_value(ctx, call.upper)?;
+    let lower_value = bound_value(ctx, call.lower)?;
+
+    let upper_sign = infinite_sign(ctx, upper_value);
+    let lower_sign = infinite_sign(ctx, lower_value);
+    let result = match (upper_sign, lower_sign) {
+        (Some(_), Some(_)) => return None, // infinity - infinity: indeterminate
+        (Some(sign), None) => build_signed_infinity(ctx, sign),
+        (None, Some(sign)) => build_signed_infinity(ctx, -sign),
+        (None, None) => ctx.add(Expr::Sub(upper_value, lower_value)),
+    };
     Some(Rewrite::new(result).desc("integrate(f, x, a, b)"))
 }
 
@@ -285,6 +389,9 @@ fn improper_integration_rewrite(
         ),
     ) {
         IntervalCertificate::Certified => {}
+        // Touches at the finite endpoint of an unbounded interval need
+        // mixed one-sided/at-infinity evaluation: next rung, residual.
+        IntervalCertificate::BoundaryTouch { .. } => return None,
         IntervalCertificate::Undefined => {
             let undefined = ctx.add(Expr::Constant(Constant::Undefined));
             return Some(
@@ -413,9 +520,8 @@ fn certify_unbounded_interval(
                 }
                 match nonzero_on_unbounded_interval(ctx, *expr, var_name, lower_bound, upper_bound)
                 {
-                    IntervalCertificate::Certified => {}
                     IntervalCertificate::Undefined => return IntervalCertificate::Undefined,
-                    IntervalCertificate::Unknown => outcome = IntervalCertificate::Unknown,
+                    other => outcome = combine_certificates(outcome, other),
                 }
             }
             ImplicitCondition::Positive(expr) | ImplicitCondition::NonNegative(expr) => {
@@ -576,16 +682,14 @@ fn certify_interval(
         match condition {
             ImplicitCondition::NonZero(expr) => {
                 match nonzero_on_interval(ctx, *expr, var_name, interval_low, interval_high) {
-                    IntervalCertificate::Certified => {}
                     IntervalCertificate::Undefined => return IntervalCertificate::Undefined,
-                    IntervalCertificate::Unknown => outcome = IntervalCertificate::Unknown,
+                    other => outcome = combine_certificates(outcome, other),
                 }
             }
             ImplicitCondition::Positive(expr) | ImplicitCondition::NonNegative(expr) => {
                 match positive_on_interval(ctx, *expr, var_name, interval_low, interval_high) {
-                    IntervalCertificate::Certified => {}
                     IntervalCertificate::Undefined => return IntervalCertificate::Undefined,
-                    IntervalCertificate::Unknown => outcome = IntervalCertificate::Unknown,
+                    other => outcome = combine_certificates(outcome, other),
                 }
             }
             _ => outcome = IntervalCertificate::Unknown,
@@ -598,14 +702,20 @@ fn combine_certificates(
     first: IntervalCertificate,
     second: IntervalCertificate,
 ) -> IntervalCertificate {
+    use IntervalCertificate::*;
     match (first, second) {
-        (IntervalCertificate::Undefined, _) | (_, IntervalCertificate::Undefined) => {
-            IntervalCertificate::Undefined
+        (Undefined, _) | (_, Undefined) => Undefined,
+        (Unknown, _) | (_, Unknown) => Unknown,
+        (BoundaryTouch { lower: a, upper: b }, BoundaryTouch { lower: c, upper: d }) => {
+            BoundaryTouch {
+                lower: a || c,
+                upper: b || d,
+            }
         }
-        (IntervalCertificate::Unknown, _) | (_, IntervalCertificate::Unknown) => {
-            IntervalCertificate::Unknown
+        (touch @ BoundaryTouch { .. }, Certified) | (Certified, touch @ BoundaryTouch { .. }) => {
+            touch
         }
-        _ => IntervalCertificate::Certified,
+        (Certified, Certified) => Certified,
     }
 }
 
@@ -870,14 +980,33 @@ fn positive_on_interval(
     }
 
     let mut residual_has_real_roots_ruled_out = false;
+    let mut touches = IntervalCertificate::Certified;
     let factors = poly.factor_rational_roots();
     for factor in &factors {
         match factor.degree() {
             0 => {}
             1 => {
                 let root = -&factor.coeffs[0] / &factor.coeffs[1];
-                match interval_contains_rational(interval_low, interval_high, &root) {
-                    Some(false) => {}
+                match root_position(interval_low, interval_high, &root) {
+                    Some(RootPosition::Outside) => {}
+                    Some(RootPosition::AtLower) => {
+                        touches = combine_certificates(
+                            touches,
+                            IntervalCertificate::BoundaryTouch {
+                                lower: true,
+                                upper: false,
+                            },
+                        );
+                    }
+                    Some(RootPosition::AtUpper) => {
+                        touches = combine_certificates(
+                            touches,
+                            IntervalCertificate::BoundaryTouch {
+                                lower: false,
+                                upper: true,
+                            },
+                        );
+                    }
                     _ => return IntervalCertificate::Unknown,
                 }
             }
@@ -897,13 +1026,13 @@ fn positive_on_interval(
     }
     let _ = residual_has_real_roots_ruled_out;
 
-    // No root in [low, high]: the sign is constant there; probe a
-    // rational point strictly inside.
+    // No root strictly inside: the sign is constant in the interior;
+    // probe a rational point strictly inside.
     let Some(probe) = interval_rational_probe(interval_low, interval_high) else {
         return IntervalCertificate::Unknown;
     };
     if poly.eval(&probe).is_positive() {
-        IntervalCertificate::Certified
+        touches
     } else {
         IntervalCertificate::Unknown
     }
@@ -1083,11 +1212,22 @@ fn trig_nonzero_on_interval(
                     zero.try_cmp(interval_low),
                     Some(std::cmp::Ordering::Greater)
                 ) && matches!(zero.try_cmp(interval_high), Some(std::cmp::Ordering::Less));
-            return Some(if strictly_inside {
-                IntervalCertificate::Undefined
-            } else {
-                IntervalCertificate::Unknown
-            });
+            if strictly_inside {
+                return Some(IntervalCertificate::Undefined);
+            }
+            if matches!(zero.try_cmp(interval_low), Some(std::cmp::Ordering::Equal)) {
+                return Some(IntervalCertificate::BoundaryTouch {
+                    lower: true,
+                    upper: false,
+                });
+            }
+            if matches!(zero.try_cmp(interval_high), Some(std::cmp::Ordering::Equal)) {
+                return Some(IntervalCertificate::BoundaryTouch {
+                    lower: false,
+                    upper: true,
+                });
+            }
+            return Some(IntervalCertificate::Unknown);
         }
         k += 1;
     }
@@ -1126,11 +1266,18 @@ fn nonzero_on_interval(
         }
         1 => {
             let root = -&poly.coeffs[0] / &poly.coeffs[1];
-            match interval_contains_rational(interval_low, interval_high, &root) {
-                // A pole of the supported rational families inside the
-                // closed interval: the integral diverges.
-                Some(true) => IntervalCertificate::Undefined,
-                Some(false) => IntervalCertificate::Certified,
+            match root_position(interval_low, interval_high, &root) {
+                // A pole strictly inside the interval: divergent.
+                Some(RootPosition::Inside) => IntervalCertificate::Undefined,
+                Some(RootPosition::Outside) => IntervalCertificate::Certified,
+                Some(RootPosition::AtLower) => IntervalCertificate::BoundaryTouch {
+                    lower: true,
+                    upper: false,
+                },
+                Some(RootPosition::AtUpper) => IntervalCertificate::BoundaryTouch {
+                    lower: false,
+                    upper: true,
+                },
                 None => IntervalCertificate::Unknown,
             }
         }
@@ -1183,8 +1330,10 @@ mod tests {
     fn pole_inside_closed_interval_is_undefined() {
         let result = eval_definite("integrate(1/x, x, -1, 1)").expect("rewrite");
         assert_eq!(result, "undefined");
+        // An endpoint pole is a boundary touch: the one-sided limit of
+        // ln|x| reports the honest signed divergence instead.
         let endpoint = eval_definite("integrate(1/x, x, 0, 1)").expect("rewrite");
-        assert_eq!(endpoint, "undefined");
+        assert_eq!(endpoint, "infinity");
     }
 
     #[test]
@@ -1256,8 +1405,9 @@ mod certificate_tests {
     fn polynomial_positivity_certifies_away_from_roots() {
         // Positive(1-x^2) with roots +-1 strictly outside [0, 1/2].
         assert!(eval_definite("integrate(x/sqrt(1-x^2), x, 0, 1/2)").is_some());
-        // Root on the boundary: conservatively residual.
-        assert!(eval_definite("integrate(x/sqrt(1-x^2), x, 0, 1)").is_none());
+        // Root on the boundary: now a boundary touch that converges via
+        // the one-sided limit of the antiderivative.
+        assert!(eval_definite("integrate(x/sqrt(1-x^2), x, 0, 1)").is_some());
     }
 
     #[test]
@@ -1306,6 +1456,35 @@ mod pi_bound_tests {
         assert!(
             eval_definite("integrate(1/cos(x)^2, x, 0, 15707963267948966/10000000000000000)")
                 .is_none()
+        );
+    }
+}
+
+#[cfg(test)]
+mod boundary_touch_tests {
+    use super::tests::eval_definite;
+
+    #[test]
+    fn boundary_convergent_improper_integrals_evaluate() {
+        // The textbook trio: F's one-sided limit at the touched endpoint.
+        assert!(eval_definite("integrate(ln(x), x, 0, 1)").is_some());
+        assert!(eval_definite("integrate(x*(1-x^2)^(-1/2), x, 0, 1)").is_some());
+        assert!(eval_definite("integrate(x^(-1/2), x, 0, 1)").is_some());
+    }
+
+    #[test]
+    fn boundary_divergence_reports_signed_infinity() {
+        assert_eq!(
+            eval_definite("integrate(1/x^2, x, 0, 1)").as_deref(),
+            Some("infinity")
+        );
+    }
+
+    #[test]
+    fn interior_roots_still_refuse_or_diverge() {
+        assert_eq!(
+            eval_definite("integrate(1/x, x, -1, 1)").as_deref(),
+            Some("undefined")
         );
     }
 }

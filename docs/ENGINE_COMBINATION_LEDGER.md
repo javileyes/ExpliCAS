@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 72 (newest first)
+Active entries: 73 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -135,6 +135,7 @@ Active entries: 72 (newest first)
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 interval certificate / | Retained calculus: the interval certificate becomes self-contained and learns polynomials and trig
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 / exam trig bounds | Retained calculus: pi-multiple bounds via exact r + q*pi endpoints
 - 2026-06-11 | `retained` | calculus / limits engine / one-sided finite limits | Retained calculus: one-sided finite limits learn composition
+- 2026-06-11 | `retained` | calculus / definite integration / block 13 / boundary-touched endpoints | Retained calculus: boundary-convergent improper integrals via one-sided limits
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2968,3 +2969,44 @@ Active entries: 72 (newest first)
     composition rule is curriculum value by itself (one-sided limits are
     exam material) and the blocked target becomes the next cycle's
     mechanical wiring
+
+## 2026-06-11 - Retained calculus: boundary-convergent improper integrals via one-sided limits
+
+- area:
+  - calculus / definite integration / block 13 / boundary-touched endpoints
+- status:
+  - `retained` (the mechanical wiring of the previous cycle's enabler)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13
+  - calculus_matrix_cell: `integrate(f, x, a, b)` / four new rows:
+    integrate(ln(x), x, 0, 1) = -1, integrate(1/sqrt(x), x, 0, 1) = 2,
+    integrate(x/sqrt(1-x^2), x, 0, 1) = 1, and the endpoint pole
+    integrate(1/x, x, 0, 1) = infinity (refined from undefined)
+  - behavior_change_expected: yes - the curriculum boundary-improper trio
+    evaluates, and endpoint-pole divergence reports its honest signed
+    value
+- decision:
+  - the certificates gain a BoundaryTouch outcome: a root exactly AT a
+    sorted-interval endpoint (decided by the exact Endpoint comparisons)
+    no longer collapses to Unknown/Undefined; the finite path evaluates
+    touched endpoints as ONE-SIDED LIMITS of the antiderivative
+    (approaching from inside), composing with the previous cycle's
+    composition rule - finite limits converge, signed infinities report
+    divergence, unresolved limits stay residual
+  - the one-sided chain learned to resolve |var - point| by approach
+    side (ln|x| at 0+ -> ln(x) -> -infinity), which the divergent
+    endpoint-pole cases need
+  - the FTC narrator renders touched endpoints as lim notation instead
+    of quoting undefined substituted forms like 0*ln(0)
+  - touches at the finite endpoint of an UNBOUNDED interval stay
+    residual (mixed one-sided/at-infinity evaluation: next rung), as
+    does integrate(sqrt(x), x, 0, 4) (fractional-power atoms at the
+    endpoint not yet in the one-sided chain)
+- retained learning:
+  - enabler-then-wiring across two cycles kept both sides honest: the
+    limits cycle shipped standalone curriculum value, and this cycle's
+    wiring was mechanical because the capability boundary had already
+    been probed - the touched-endpoint semantics (substitute -> limit)
+    dropped into the existing certificate/evaluation seams without
+    touching any other path

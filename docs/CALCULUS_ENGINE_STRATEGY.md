@@ -470,10 +470,14 @@ Use these blocks as the active plan:
      poles at pi/2 located exactly). One-sided finite limits
      learned composition next (scaling, additive combination with
      infinity awareness, power-log dominance: limit(x*ln(x), x, 0+) = 0)
-     - the enabler for boundary-convergent improper integrals, whose
-     wiring (one-sided boundary values at touched endpoints in the
-     definite path) is the next rung, together with the product-to-sum
-     trig rewrites for Fourier-style definites.
+     - and the boundary-touch wiring
+     landed next: integrate(ln(x), x, 0, 1) = -1, 1/sqrt(x) and the
+     sqrt-domain case evaluate via one-sided limits at touched
+     endpoints, endpoint poles report signed divergence, and the
+     narrator renders lim notation. Next rungs: touches at finite
+     endpoints of unbounded intervals, fractional-power endpoint atoms
+     (integrate(sqrt(x), x, 0, 4)), and the product-to-sum trig rewrites
+     for Fourier-style definites.
 
 Selection rule:
 

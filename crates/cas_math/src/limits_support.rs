@@ -3100,7 +3100,102 @@ fn try_limit_rules_at_finite(
     }
 }
 
-/// One-sided composition: scaling by constants, additive combination
+/// Resolve |var - point| by the approach side anywhere in the
+/// expression (|u| = u from the right, |u| = -u from the left), then
+/// re-run the one-sided chain: antiderivatives emit ln|.| forms whose
+/// absolute value is sign-determined at the endpoint.
+fn apply_finite_one_sided_abs_resolution(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    let rewritten = resolve_abs_shifts_for_side(ctx, expr, var, point, side);
+    if rewritten == expr {
+        return None;
+    }
+    try_limit_rules_at_finite_one_sided(ctx, rewritten, var, point, side)
+}
+
+fn resolve_abs_shifts_for_side(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> ExprId {
+    let node = ctx.get(expr).clone();
+    match node {
+        Expr::Function(fn_id, args) => {
+            if args.len() == 1
+                && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Abs))
+                && is_var_shift(ctx, args[0], var, point)
+            {
+                return match side {
+                    FiniteLimitSide::Right => args[0],
+                    FiniteLimitSide::Left => ctx.add(Expr::Neg(args[0])),
+                };
+            }
+            let new_args: Vec<ExprId> = args
+                .iter()
+                .map(|arg| resolve_abs_shifts_for_side(ctx, *arg, var, point, side))
+                .collect();
+            if new_args == args {
+                expr
+            } else {
+                ctx.add(Expr::Function(fn_id, new_args))
+            }
+        }
+        Expr::Add(l, r) => {
+            let nl = resolve_abs_shifts_for_side(ctx, l, var, point, side);
+            let nr = resolve_abs_shifts_for_side(ctx, r, var, point, side);
+            if nl == l && nr == r {
+                expr
+            } else {
+                ctx.add(Expr::Add(nl, nr))
+            }
+        }
+        Expr::Sub(l, r) => {
+            let nl = resolve_abs_shifts_for_side(ctx, l, var, point, side);
+            let nr = resolve_abs_shifts_for_side(ctx, r, var, point, side);
+            if nl == l && nr == r {
+                expr
+            } else {
+                ctx.add(Expr::Sub(nl, nr))
+            }
+        }
+        Expr::Mul(l, r) => {
+            let nl = resolve_abs_shifts_for_side(ctx, l, var, point, side);
+            let nr = resolve_abs_shifts_for_side(ctx, r, var, point, side);
+            if nl == l && nr == r {
+                expr
+            } else {
+                ctx.add(Expr::Mul(nl, nr))
+            }
+        }
+        Expr::Div(l, r) => {
+            let nl = resolve_abs_shifts_for_side(ctx, l, var, point, side);
+            let nr = resolve_abs_shifts_for_side(ctx, r, var, point, side);
+            if nl == l && nr == r {
+                expr
+            } else {
+                ctx.add(Expr::Div(nl, nr))
+            }
+        }
+        Expr::Neg(inner) => {
+            let ni = resolve_abs_shifts_for_side(ctx, inner, var, point, side);
+            if ni == inner {
+                expr
+            } else {
+                ctx.add(Expr::Neg(ni))
+            }
+        }
+        _ => expr,
+    }
+}
+
+/// One-sided composition: scaling by constants, additive combination/// One-sided composition: scaling by constants, additive combination
 /// with infinity awareness (infinity - infinity refuses), and the
 /// power-log dominance u^p * ln(u)^q -> 0 (p > 0) as u -> 0+ with
 /// u = var - point. Children resolve recursively through the full
@@ -3361,6 +3456,9 @@ fn try_limit_rules_at_finite_one_sided(
         return Some(result);
     }
     if let Some(result) = apply_finite_one_sided_composition_rule(ctx, expr, var, point, side) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_one_sided_abs_resolution(ctx, expr, var, point, side) {
         return Some(result);
     }
     if let Some(result) = apply_finite_one_sided_atanh_endpoint_rule(ctx, expr, var, point, side) {

@@ -12928,6 +12928,37 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
             _ => None,
         }
     };
+    // A substituted boundary form containing ln(0), x/0 or 0^negative is
+    // a boundary-touched endpoint: narrate the one-sided limit instead of
+    // quoting the undefined form.
+    fn substituted_form_is_undefined(ctx: &Context, expr: ExprId) -> bool {
+        let is_zero = |ctx: &Context, candidate: ExprId| -> bool {
+            matches!(ctx.get(candidate), Expr::Number(value) if value == &num_rational::BigRational::from_integer(0.into()))
+        };
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args)
+                if args.len() == 1
+                    && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Ln))
+                    && is_zero(ctx, args[0]) =>
+            {
+                true
+            }
+            Expr::Function(_, args) => args
+                .iter()
+                .any(|arg| substituted_form_is_undefined(ctx, *arg)),
+            Expr::Div(l, r) => {
+                is_zero(ctx, *r)
+                    || substituted_form_is_undefined(ctx, *l)
+                    || substituted_form_is_undefined(ctx, *r)
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                substituted_form_is_undefined(ctx, *l) || substituted_form_is_undefined(ctx, *r)
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => substituted_form_is_undefined(ctx, *inner),
+            _ => false,
+        }
+    }
+
     let boundary_strings = |scratch: &mut Context, bound: ExprId| -> (String, String) {
         if let Some(sign) = bound_is_infinite(scratch, bound) {
             let latex_sign = if sign == "∞" {
@@ -12952,6 +12983,26 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         } else {
             let substituted =
                 cas_ast::substitute_expr_by_id(scratch, antiderivative, var_expr, bound);
+            if substituted_form_is_undefined(scratch, substituted) {
+                // Touched endpoint: one-sided limit notation. The side is
+                // a presentation choice; the lower bound approaches from
+                // the right and the upper from the left in the common
+                // oriented case.
+                let arrow = format!("{} → {}", var_name, display_expr(scratch, bound));
+                return (
+                    format!(
+                        "lim_{{{}}} {}",
+                        arrow,
+                        display_expr(scratch, antiderivative)
+                    ),
+                    format!(
+                        "\\lim_{{{} \\to {}}} {}",
+                        var_name,
+                        latex_expr(scratch, bound),
+                        latex_expr(scratch, antiderivative)
+                    ),
+                );
+            }
             (
                 display_expr(scratch, substituted),
                 latex_expr(scratch, substituted),
