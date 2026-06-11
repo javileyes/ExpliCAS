@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 58 (newest first)
+Active entries: 59 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 fourth rung | Retained didactic: multi-quadratic partial fractions narrate their real decomposition
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 fifth rung | Retained didactic: Ostrogradsky and quartic-descent results narrate their pipeline
+- 2026-06-11 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: resolvent cubic closes the non-even quartic frontier
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2427,3 +2428,47 @@ Active entries: 58 (newest first)
   - SubSteps carry rendered strings, not AST: narration can compose
     forms (like "P/D1 + int Q/D2 dx") that the engine never builds,
     which keeps didactic-only concepts out of the expression language
+
+## 2026-06-11 - Retained calculus: resolvent cubic closes the non-even quartic frontier
+
+- area:
+  - calculus / integration / block 12 algorithmic backend / rational
+    method / general rational splitting
+- status:
+  - `retained` (capability); one suppression attempt reverted (wrong layer)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 12, Phase 4 splitting ladder
+  - calculus_matrix_cell: `integrate` /
+    `algorithmic_backend_rational_general` / non-even expanded quartics
+    via resolvent-cubic descent /
+    `backend_verified_conservative_denominator_nonzero` (NEW regime) /
+    narrated automatically by the Phase 6 general-rational narrator
+  - behavior_change_expected: yes — expanded non-even quartics that
+    factor over Q into two irreducible quadratics now integrate (e.g.
+    1/(x^4+x^3+3x^2+2x+2) and 1/(x^4+2x^3+4x^2+2x+3)); Phi_5 and
+    forms needing irrational coefficients stay honestly residual
+- decision:
+  - the splitter's labeled deg>=3 bail arm gained the general quartic
+    descent: depress with y = x + c3/4, find a rational perfect-square
+    root t0 = a^2 of the resolvent cubic t^3+2pt^2+(p^2-4r)t-q^2,
+    recover (y^2+ay+b)(y^2-ay+c) by coefficient matching (bc == r checked
+    defensively), un-shift, and require both factors irreducible
+  - the Phase 6 narrator covered the new shapes with zero didactic work
+    (factor/decompose/integrate substrings pinned in both matrix rows) -
+    the narrate-the-pipeline investment pays forward automatically
+  - REVERTED mid-cycle: a vacuous "denominator != 0" condition appears on
+    these results because expression-level domain inference cannot see
+    the product-of-positive-quadratics positivity (its syntactic prover
+    handles even-positive forms only); a suppression in the integration
+    pipeline was the WRONG LAYER (the condition is added by the
+    expression-level requires system) and was cleanly reverted - the
+    conservative condition is sound and is pinned as current behavior
+- retained learning:
+  - before suppressing a condition, identify which LAYER emits it: probes
+    of the bare expression (without integrate) separate expression-level
+    domain inference from integration-pipeline conditions in one command
+  - observe-only candidate: a positivity prover upgrade at the domain
+    inference layer (no-real-roots certificates for non-even quartics)
+    would clean these conditions engine-wide, but needs its own blast
+    radius analysis at that layer

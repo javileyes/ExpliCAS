@@ -6038,3 +6038,35 @@ fn even_quartic_descent_rejects_irrational_and_irreducible_quartics() {
         );
     }
 }
+
+#[test]
+fn resolvent_cubic_splits_non_even_quartics() {
+    let mut ctx = Context::new();
+    // (x^2+x+1)*(x^2+2) and (x^2+1)*(x^2+2x+3), both expanded.
+    for source in ["1/(x^4+x^3+3*x^2+2*x+2)", "1/(x^4+2*x^3+4*x^2+2*x+3)"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::Verified,
+            "{source} must verify"
+        );
+    }
+}
+
+#[test]
+fn resolvent_cubic_rejects_irreducible_non_even_quartics() {
+    let mut ctx = Context::new();
+    // Phi_5 cyclotomic: irreducible over Q (resolvent has no rational
+    // perfect-square root).
+    let integrand = cas_parser::parse("1/(x^4+x^3+x^2+x+1)", &mut ctx).expect("integrand");
+    assert!(
+        general_rational_partial_fraction_antiderivative(&mut ctx, integrand, "x").is_none(),
+        "must reject Phi_5"
+    );
+}

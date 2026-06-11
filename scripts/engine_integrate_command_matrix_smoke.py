@@ -824,6 +824,55 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="backend_summary_arctan_doubled_center",
     ),
     IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_resolvent_cubic_quartic",
+        expr="integrate(1/(x^4+2*x^3+4*x^2+2*x+3), x)",
+        expected_result=(
+            "1/8·ln(x^2 + 2·x + 3) + 1/4·arctan(x) - 1/8·ln(x^2 + 1)"
+        ),
+        expected_direct_diff_integrate_result=(
+            "1 / (x^4 + 2·x^3 + 4·x^2 + 2·x + 3)"
+        ),
+        expected_direct_diff_integrate_required_display=(
+            "x^4 + 2·x^3 + 4·x^2 + 2·x + 3 ≠ 0",
+        ),
+        expected_required_display=("x^4 + 2·x^3 + 4·x^2 + 2·x + 3 ≠ 0",),
+        expected_step_substrings=(
+            "Factorizar el denominador",
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="algorithmic_backend_rational_general",
+        argument_regime="non_even_quartic_resolvent_cubic_descent",
+        domain_regime="backend_verified_conservative_denominator_nonzero",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_arctan_log_shifted_pair",
+    ),
+    IntegrateCommandMatrixCase(
+        name="algorithmic_backend_rational_resolvent_cubic_quartic_mixed_factors",
+        expr="integrate(1/(x^4+x^3+3*x^2+2*x+2), x)",
+        expected_result=(
+            "1/6·ln(x^2 + x + 1) - 1/3·arctan(x / sqrt(2))/sqrt(2)"
+            " + (1·arctan((2·x + 1) / sqrt(3)))/sqrt(3) - 1/6·ln(x^2 + 2)"
+        ),
+        expected_direct_diff_integrate_result=(
+            "1 / (x^4 + x^3 + 3·x^2 + 2·x + 2)"
+        ),
+        expected_direct_diff_integrate_required_display=(
+            "x^4 + x^3 + 3·x^2 + 2·x + 2 ≠ 0",
+        ),
+        expected_required_display=("x^4 + x^3 + 3·x^2 + 2·x + 2 ≠ 0",),
+        expected_step_substrings=(
+            "Factorizar el denominador",
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="algorithmic_backend_rational_general",
+        argument_regime="non_even_quartic_resolvent_cubic_mixed_radii",
+        domain_regime="backend_verified_conservative_denominator_nonzero",
+        trace_regime="algorithmic_backend_rational_summary",
+        presentation_regime="backend_summary_arctan_log_mixed_radii",
+    ),
+    IntegrateCommandMatrixCase(
         name="algorithmic_backend_hermite_symbolic_indefinite_square_denominator",
         expr="integrate(1/(x^2-a^2), x)",
         expected_result="((ln(|x - a|) - ln(|a + x|))·1·1/2)/a",

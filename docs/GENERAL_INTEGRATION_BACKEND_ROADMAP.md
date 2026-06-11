@@ -120,9 +120,11 @@ Phase status (2026-06-10):
   then general-degree rational integration via Ostrogradsky-Horowitz reduction
   with rational-root/biquadratic splitting — denominators of degree 3..=8,
   expanded forms and repeated factors included; the even-quartic
-  symmetric descent closed x^4+4 and x^4+x^2+1 the same day; remaining:
-  non-even quartics needing the full resolvent cubic, and irreducible
-  denominators (e.g. Phi_12 = x^4-x^2+1) that require irrational-coefficient
+  symmetric descent closed x^4+4 and x^4+x^2+1 the same day; the resolvent-cubic
+  descent closed non-even quartics 2026-06-11 (conservative
+  denominator-nonzero condition pinned: expression-level positivity proving
+  for non-even products is an observe-only candidate); remaining: irreducible
+  denominators (e.g. Phi_5, Phi_12) that require irrational-coefficient
   quadratics or Lazard-Rioboo-Trager)
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
 - Phase 6: started 2026-06-11 (didactic elevation; first candidate Hermite positive

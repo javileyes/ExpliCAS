@@ -603,11 +603,97 @@ fn split_squarefree_factors(
             }
             _ => {
                 let monic = piece.div_scalar(&piece.leading_coeff());
-                split_even_residual(&monic, &mut factors)?;
+                if monic.even_substitution().is_some() {
+                    split_even_residual(&monic, &mut factors)?;
+                } else if monic.degree() == 4 {
+                    split_general_quartic(&monic, &mut factors)?;
+                } else {
+                    return None;
+                }
             }
         }
     }
     Some(factors)
+}
+
+/// Factor a monic squarefree quartic with no rational roots and a
+/// nonzero odd part over Q via the resolvent cubic: depress with
+/// y = x + c3/4 to y^4 + p*y^2 + q*y + r, find a rational root t0 = a^2
+/// of t^3 + 2p*t^2 + (p^2 - 4r)*t - q^2 that is a perfect square, and
+/// recover (y^2 + a*y + b)(y^2 - a*y + c) with b, c from coefficient
+/// matching, un-shifting back to x. Both factors must be irreducible.
+fn split_general_quartic(
+    quartic: &crate::polynomial::Polynomial,
+    factors: &mut Vec<SquarefreeFactor>,
+) -> Option<()> {
+    let two = BigRational::from_integer(2.into());
+    let four = BigRational::from_integer(4.into());
+    let c3 = quartic.coeffs[3].clone();
+    let c2 = quartic.coeffs[2].clone();
+    let c1 = quartic.coeffs[1].clone();
+    let c0 = quartic.coeffs[0].clone();
+    let shift = &c3 / &four;
+    let shift2 = &shift * &shift;
+    let p = &c2 - BigRational::from_integer(6.into()) * &shift2;
+    let q = BigRational::from_integer(8.into()) * &shift2 * &shift - &two * &c2 * &shift + &c1;
+    let r = -BigRational::from_integer(3.into()) * &shift2 * &shift2 + &c2 * &shift2 - &c1 * &shift
+        + &c0;
+    if q.is_zero() {
+        // Depressed-even quartic with a nonzero original odd part is rare;
+        // out of scope for this arm (the even path owns even inputs).
+        return None;
+    }
+
+    let resolvent = crate::polynomial::Polynomial::new(
+        vec![
+            -(&q * &q),
+            &p * &p - &four * &r,
+            &two * &p,
+            BigRational::one(),
+        ],
+        quartic.var.clone(),
+    );
+    if root_search_constant_too_large(&resolvent) {
+        return None;
+    }
+    for piece in resolvent.factor_rational_roots() {
+        if piece.degree() != 1 {
+            continue;
+        }
+        let root = -&piece.coeffs[0] / &piece.coeffs[1];
+        if !root.is_positive() {
+            continue;
+        }
+        let Some(a) = rational_positive_square_root(&root) else {
+            continue;
+        };
+        let q_over_a = &q / &a;
+        let b = (&p + &root - &q_over_a) / &two;
+        let c = (&p + &root + &q_over_a) / &two;
+        if &b * &c != r {
+            continue;
+        }
+        // Un-shift y = x + s: y^2 +- a*y + k -> x^2 + (2s +- a)x + (s^2 +- a*s + k).
+        let candidates = [
+            (&two * &shift + &a, &shift2 + &a * &shift + &b),
+            (&two * &shift - &a, &shift2 - &a * &shift + &c),
+        ];
+        if candidates
+            .iter()
+            .any(|(lin, con)| lin * lin - &four * con >= BigRational::zero())
+        {
+            // A reducible factor here means irrational real poles.
+            return None;
+        }
+        for (lin, con) in candidates {
+            factors.push(SquarefreeFactor::Quadratic {
+                linear_b: lin,
+                constant_c: con,
+            });
+        }
+        return Some(());
+    }
+    None
 }
 
 /// Resolve a monic residual of degree >= 3 through u = x^2: rational
