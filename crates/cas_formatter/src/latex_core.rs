@@ -821,6 +821,13 @@ pub trait LaTeXRenderer {
                 let var = self.expr_to_latex(args[1], false);
                 format!("\\frac{{d}}{{d{}}}({})", var, expr)
             }
+            "integrate" if args.len() == 4 => {
+                let expr = self.expr_to_latex(args[0], false);
+                let var = self.expr_to_latex(args[1], false);
+                let lower = self.expr_to_latex(args[2], false);
+                let upper = self.expr_to_latex(args[3], false);
+                format!("\\int_{{{}}}^{{{}}} {} \\, d{}", lower, upper, expr, var)
+            }
             "integrate" if args.len() >= 2 => {
                 let expr = self.expr_to_latex(args[0], false);
                 let var = self.expr_to_latex(args[1], false);
@@ -2367,6 +2374,13 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                 let expr = self.render_with_path(args[0], false, &self.child_path(path, 0));
                 let var = self.render_with_path(args[1], false, &self.child_path(path, 1));
                 format!("\\frac{{d}}{{d{}}}({})", var, expr)
+            }
+            "integrate" if args.len() == 4 => {
+                let expr = self.render_with_path(args[0], false, &self.child_path(path, 0));
+                let var = self.render_with_path(args[1], false, &self.child_path(path, 1));
+                let lower = self.render_with_path(args[2], false, &self.child_path(path, 2));
+                let upper = self.render_with_path(args[3], false, &self.child_path(path, 3));
+                format!("\\int_{{{}}}^{{{}}} {} \\, d{}", lower, upper, expr, var)
             }
             "integrate" if args.len() >= 2 => {
                 let expr = self.render_with_path(args[0], false, &self.child_path(path, 0));

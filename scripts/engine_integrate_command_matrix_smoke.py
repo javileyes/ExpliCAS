@@ -878,6 +878,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="1/3",
         expected_required_display=(),
         expected_step_substrings=(
+            "int_0^1",
             "Hallar la antiderivada",
             "Evaluar la antiderivada en los límites",
         ),

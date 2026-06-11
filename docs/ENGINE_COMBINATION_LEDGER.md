@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 61 (newest first)
+Active entries: 62 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -124,6 +124,7 @@ Active entries: 61 (newest first)
 - 2026-06-11 | `retained` | calculus / integration / block 12 algorithmic backend / rational | Retained calculus: resolvent cubic closes the non-even quartic frontier
 - 2026-06-11 | `retained` | calculus / definite integration / block 13 first rung / command surface | Retained calculus: block 13 opens - definite integrals via the fundamental theorem
 - 2026-06-11 | `retained` | didactics / definite integration / block 13 second rung | Retained didactic: the fundamental theorem narrates its three-step story
+- 2026-06-11 | `retained` | didactics / presentation / definite integration / block 13 third rung | Retained didactic: definite integrals display their bounds
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2557,3 +2558,28 @@ Active entries: 61 (newest first)
     indefinite integration privately and the narration stays truthful
     because the verified machinery, not the narrator, produces every
     quoted form
+
+## 2026-06-11 - Retained didactic: definite integrals display their bounds
+
+- area:
+  - didactics / presentation / definite integration / block 13 third rung
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus (presentation surface of the didactic half)
+  - calculus_maturity_block: block 13
+  - behavior_change_expected: display only - the definite step now renders
+    \\int_{a}^{b} f dx in latex (proper MathJax definite integral) and
+    int_a^b f , dx in plain text, instead of silently dropping the bounds
+- decision:
+  - the step's plain text derives from the latex (render_human_expr is
+    latex -> plain), so the single fix point is latex_core's integrate
+    arms: a 4-arg branch with sub/superscript bounds added BEFORE the
+    >= 2 branch, in both renderers (plain to_latex and the colored
+    render_with_path); the generic DisplayExpr echo for residual rows is
+    untouched, keeping the residual matrix pins byte-identical
+  - pinned by an "int_0^1" step substring on the polynomial block-13 row
+- retained learning:
+  - when a display bug shows in plain text, find which renderer is the
+    SOURCE: here text is derived from latex, so the fix lands once in
+    latex_core instead of being duplicated across formatters

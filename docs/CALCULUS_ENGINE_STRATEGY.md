@@ -443,8 +443,8 @@ Use these blocks as the active plan:
      matrix rows plus block13 harness axes. The three-step narration
      landed the same day (antiderivative rebuilt on a scratch context,
      evaluation at the bounds, pole detection for undefined results).
-     Next rungs: bound display in the step trace, symbolic bounds, and
-     improper-integral policy.
+     Bound display landed next (\int_{a}^{b} in the trace). Next rungs:
+     symbolic bounds, and improper-integral policy.
 
 Selection rule:
 
