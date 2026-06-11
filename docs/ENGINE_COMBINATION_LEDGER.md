@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 74 (newest first)
+Active entries: 75 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
+- 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3051,3 +3052,43 @@ Active entries: 74 (newest first)
     instead, and record the compact-presentation protection as its own
     rung (multiple-angle anti-expansion is a presentation-policy cycle,
     not an integration cycle)
+
+## 2026-06-12 - Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
+
+- area:
+  - calculus / definite integration (block 13) / boundary-touch limits /
+    one-sided limit composition (cas_math limits_support)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13 definite integrals (boundary-touch
+    rung) plus the shared one-sided limit chain
+  - calculus_matrix_cell: integrate(sqrt(x), x, 0, 4) = 16/3,
+    integrate(x^(1/3), x, 0, 8) = 12, integrate(x*sqrt(x), x, 0, 1) = 2/5
+  - behavior_change_expected: yes - definite integrals of positive
+    fractional powers touching their domain root at an endpoint now
+    evaluate via the FTC one-sided limit
+- observed (frontier probing):
+  - the blocker was never the certificate: the risk scan already
+    classified fractional Pow as MustBePositive and produced
+    BoundaryTouch; the one-sided limit of the ANTIDERIVATIVE failed
+    because resolve_indefinite_for_definite hands the limit chain
+    unsimplified forms (2/3*sqrt(x)*x; x^(1/3+1)/(1/3+1)) - CLI probes of
+    limit(x^(3/2), x, 0+) were misleading because the CLI simplifies first
+  - three small composition gaps, not one: (a) the power atom
+    (var-point)^q -> 0 from the right for rational q > 0; (b) a general
+    product rule for two variable factors (finite*finite folds, numeric
+    nonzero * infinite carries sign, 0*infinite and symbolic*infinite
+    refuse); (c) a Div-by-foldable-rational-constant arm (the power rule
+    emits x^(1/3+1)/(1/3+1) and as_rational_const folds the denominator)
+- retained learning:
+  - probe the layer you are fixing with the layer's own inputs: limit
+    probes through the CLI see post-simplifier expressions, but the
+    definite path feeds the limit chain raw antiderivatives - the gap
+    list (atom, product, division) only became visible by instrumenting
+    resolve_indefinite_for_definite's actual output
+  - conservative product combination must refuse 0*infinity even when
+    dominance arguments would resolve it (x*(3*ln(x)) at 0+ is a true 0
+    but unprovable in that shape); leave those to the dominance rule and
+    keep the refusal as the contract

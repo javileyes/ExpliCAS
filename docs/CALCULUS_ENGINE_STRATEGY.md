@@ -477,8 +477,13 @@ Use these blocks as the active plan:
      narrator renders lim notation. The product-to-sum family
      landed next (distinct-frequency sin/cos products via direct closed
      forms; Fourier orthogonality integrate(sin(2x)sin(3x), x, 0, 2pi) =
-     0). Next rungs: touches at finite endpoints of unbounded intervals,
-     fractional-power endpoint atoms, compact multiple-angle
+     0). Fractional-power endpoint atoms landed next: the one-sided
+     chain gained the power atom ((x-a)^q -> 0 from the right, q > 0
+     rational), a conservative two-factor product rule, and a
+     Div-by-constant arm, so integrate(sqrt(x), x, 0, 4) = 16/3,
+     integrate(x^(1/3), x, 0, 8) = 12 and integrate(x*sqrt(x), x, 0, 1)
+     = 2/5 evaluate with their domain conditions. Next rungs: touches at
+     finite endpoints of unbounded intervals, compact multiple-angle
      presentation (the simplifier expands -cos(5x)/10 forms into trig
      powers), and the cos(x)cos(2x) quotient-rewrite interference.
 

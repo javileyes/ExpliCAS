@@ -1465,6 +1465,15 @@ mod boundary_touch_tests {
     use super::tests::eval_definite;
 
     #[test]
+    fn boundary_touch_fractional_power_atoms_evaluate() {
+        // Positive fractional powers touching x = 0: the antiderivative's
+        // one-sided limit resolves via the power atom + product/scale rules.
+        assert!(eval_definite("integrate(x^(1/2), x, 0, 4)").is_some());
+        assert!(eval_definite("integrate(x^(1/3), x, 0, 8)").is_some());
+        assert!(eval_definite("integrate(x^(3/2), x, 0, 1)").is_some());
+    }
+
+    #[test]
     fn boundary_convergent_improper_integrals_evaluate() {
         // The textbook trio: F's one-sided limit at the touched endpoint.
         assert!(eval_definite("integrate(ln(x), x, 0, 1)").is_some());

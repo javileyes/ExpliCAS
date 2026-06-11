@@ -3222,6 +3222,18 @@ fn apply_finite_one_sided_composition_rule(
             let right_value = try_limit_rules_at_finite_one_sided(ctx, right, var, point, side)?;
             combine_limit_sum(ctx, left_value, right_value)
         }
+        Expr::Pow(base, exponent) => {
+            // (var - point)^q -> 0 from the right for rational q > 0
+            // (fractional powers included: the x^(3/2) endpoint atom).
+            if !matches!(side, FiniteLimitSide::Right) {
+                return None;
+            }
+            if !is_var_shift(ctx, base, var, point) {
+                return None;
+            }
+            let value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            value.is_positive().then(|| ctx.num(0))
+        }
         Expr::Mul(left, right) => {
             if let Some(value) = power_log_dominance_zero_limit(ctx, left, right, var, point, side)
             {
@@ -3235,9 +3247,59 @@ fn apply_finite_one_sided_composition_rule(
                 let value = try_limit_rules_at_finite_one_sided(ctx, left, var, point, side)?;
                 return scale_limit_value(ctx, value, &scale);
             }
-            None
+            let left_value = try_limit_rules_at_finite_one_sided(ctx, left, var, point, side)?;
+            let right_value = try_limit_rules_at_finite_one_sided(ctx, right, var, point, side)?;
+            combine_limit_product(ctx, left_value, right_value)
+        }
+        Expr::Div(numerator, denominator) => {
+            // Unsimplified antiderivatives reach this chain as f / c
+            // (e.g. x^(1/3 + 1) / (1/3 + 1) from the power rule).
+            let scale = crate::numeric_eval::as_rational_const(ctx, denominator)?;
+            if scale.is_zero() {
+                return None;
+            }
+            let value = try_limit_rules_at_finite_one_sided(ctx, numerator, var, point, side)?;
+            scale_limit_value(ctx, value, &scale.recip())
         }
         _ => None,
+    }
+}
+
+fn combine_limit_product(ctx: &mut Context, left: ExprId, right: ExprId) -> Option<ExprId> {
+    let left_sign = limit_value_infinite_sign(ctx, left);
+    let right_sign = limit_value_infinite_sign(ctx, right);
+    match (left_sign, right_sign) {
+        (None, None) => {
+            if let (Some(a), Some(b)) = (
+                crate::numeric_eval::as_rational_const(ctx, left),
+                crate::numeric_eval::as_rational_const(ctx, right),
+            ) {
+                return Some(ctx.add(Expr::Number(a * b)));
+            }
+            Some(ctx.add(Expr::Mul(left, right)))
+        }
+        // An infinite factor needs a NUMERIC nonzero cofactor to decide
+        // the sign; zero times infinity is indeterminate.
+        (Some(sign), None) | (None, Some(sign)) => {
+            let finite = if left_sign.is_some() { right } else { left };
+            let value = crate::numeric_eval::as_rational_const(ctx, finite)?;
+            if value.is_zero() {
+                return None;
+            }
+            let product_sign = if value.is_positive() { sign } else { -sign };
+            Some(if product_sign > 0 {
+                ctx.add(Expr::Constant(Constant::Infinity))
+            } else {
+                let infinity = ctx.add(Expr::Constant(Constant::Infinity));
+                ctx.add(Expr::Neg(infinity))
+            })
+        }
+        (Some(a), Some(b)) => Some(if a * b > 0 {
+            ctx.add(Expr::Constant(Constant::Infinity))
+        } else {
+            let infinity = ctx.add(Expr::Constant(Constant::Infinity));
+            ctx.add(Expr::Neg(infinity))
+        }),
     }
 }
 
@@ -11415,6 +11477,14 @@ mod tests {
             ("2*sqrt(x)", "0"),
             ("sqrt(x)*ln(x)", "0"),
             ("3*ln(x)", "-infinity"),
+            // Power atom: (x - 0)^q -> 0 from the right for rational q > 0.
+            ("x^(3/2)", "0"),
+            ("x^(1/3)", "0"),
+            // Product of two variable factors (no constant cofactor).
+            ("sqrt(x)*x", "0"),
+            // Division by a foldable rational constant.
+            ("x^(1/3 + 1) / (1/3 + 1)", "0"),
+            ("ln(x)/2", "-infinity"),
         ];
         for (source, expected) in cases {
             let expr = cas_parser::parse(source, &mut ctx).expect(source);
@@ -11462,5 +11532,56 @@ mod tests {
                 "must refuse: {source}"
             );
         }
+    }
+
+    #[test]
+    fn one_sided_product_combination_guards_indeterminate_signs() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let two = ctx.num(2);
+        let infinity = ctx.add(Expr::Constant(Constant::Infinity));
+        let neg_infinity = ctx.add(Expr::Neg(infinity));
+        let pi = ctx.add(Expr::Constant(Constant::Pi));
+
+        // 0 * infinity is indeterminate.
+        assert!(combine_limit_product(&mut ctx, zero, infinity).is_none());
+        // Symbolic finite cofactor: sign unknown, refuse.
+        assert!(combine_limit_product(&mut ctx, pi, infinity).is_none());
+        // Numeric nonzero cofactor decides the sign.
+        let scaled = combine_limit_product(&mut ctx, two, neg_infinity).expect("signed");
+        assert_eq!(
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: scaled
+                }
+            ),
+            "-infinity"
+        );
+        // infinity * -infinity carries the product sign.
+        let crossed = combine_limit_product(&mut ctx, infinity, neg_infinity).expect("signed");
+        assert_eq!(
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: crossed
+                }
+            ),
+            "-infinity"
+        );
+        // Finite * finite folds numerically.
+        let folded = combine_limit_product(&mut ctx, two, two).expect("folded");
+        assert_eq!(
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: folded
+                }
+            ),
+            "4"
+        );
     }
 }
