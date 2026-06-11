@@ -460,7 +460,15 @@ Use these blocks as the active plan:
      by-parts title by numerator shape). The cyclic family closed next
      (one-line delegation: sin(x)/e^x and the improper damped
      oscillation = 1/2); tan(x)/e^x and Gaussian shapes remain honest
-     residuals.
+     residuals. The interval certificate then became SELF-CONTAINED
+     (risk scan of the integrand: denominators factor by factor, ln/sqrt
+     domains, trig poles via a rational pi enclosure) fixing four
+     pre-existing wrong-finite-value soundness bugs, and learned
+     polynomial positivity and the derivative-cofactor route - certified
+     conditions are discharged from the display. Next rungs: bounds at
+     rational multiples of pi (integrate(tan(x), x, 0, pi/4)), and
+     boundary-convergent improper integrals (integrate(ln(x), x, 0, 1)
+     is now an honest residual instead of correct-by-luck).
 
 Selection rule:
 

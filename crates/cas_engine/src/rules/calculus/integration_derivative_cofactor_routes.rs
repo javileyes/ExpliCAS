@@ -24,7 +24,7 @@ pub(super) fn polynomial_trig_reciprocal_derivative_root_gate_rewrite(
     ))
 }
 
-fn polynomial_trig_reciprocal_derivative_root_gate_route(
+pub(super) fn polynomial_trig_reciprocal_derivative_root_gate_route(
     ctx: &mut Context,
     target: ExprId,
     var_name: &str,

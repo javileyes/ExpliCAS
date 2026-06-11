@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 69 (newest first)
+Active entries: 70 (newest first)
 
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
@@ -132,6 +132,7 @@ Active entries: 69 (newest first)
 - 2026-06-11 | `retained` | calculus / limits engine / improper integrals / block 13 | Retained calculus: abs-wrapped tails resolve at infinity, log divergences report their sign
 - 2026-06-11 | `retained` | didactics / integration / exponential family narration | Retained didactic: normalized exponential quotients narrate their rewrite
 - 2026-06-11 | `retained` | calculus / integration / educational route / cyclic by-parts family | Retained calculus: the cyclic exp-trig family reaches the normalized Div form
+- 2026-06-11 | `retained` | calculus / definite integration / block 13 interval certificate / | Retained calculus: the interval certificate becomes self-contained and learns polynomials and trig
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: symbolic-slope affine quotient remainder verification
 - 2026-06-10 | `retained` | calculus / integration / block 12 algorithmic backend / rational affine | Retained follow-up: variable-free affine quotient remainder backend coefficients
 - 2026-06-10 | `discovery/observe-only` | calculus / integration / block 12 algorithmic backend / public fallback / | Discovery observe-only: symbolic-slope affine-quotient backend fallback is verified but too heavy for public promotion
@@ -2839,3 +2840,59 @@ Active entries: 69 (newest first)
     one-line fix: the third instance cost two orders of magnitude less
     than the first because the recognizer, the narrator, and the
     improper machinery all compose at the same seam
+
+## 2026-06-11 - Retained calculus: the interval certificate becomes self-contained and learns polynomials and trig
+
+- area:
+  - calculus / definite integration / block 13 interval certificate /
+    soundness
+- status:
+  - `retained` (capability + 4 pre-existing soundness blockers fixed)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13
+  - calculus_matrix_cell: `integrate(f, x, a, b)` / four new rows:
+    cofactor sqrt chain (sqrt(2)-1), positive-polynomial certification
+    ((2-sqrt(3))/2), trig pole-free (tan(1), conditions DISCHARGED by
+    certification), trig pole-inside (undefined)
+  - behavior_change_expected: yes - and four wrong finite values for
+    divergent/undefined integrals are gone
+- observed (curriculum sweep workflow, 47 probes, 4 categories + ranking):
+  - the #1 ROI gap was "the primitive exists but the definite will not
+    evaluate": the certificate only knew numeric Positive and polynomial
+    NonZero, and the definite path missed the derivative-cofactor route
+    entirely (x/sqrt(x^2+1) resolved indefinitely but not definitely)
+  - ADVERSARIAL REVIEW (mandated for decision procedures) found 4
+    blockers - ALL PRE-EXISTING: the certificate trusted the condition
+    collectors to be complete, and ln-conditions are systematically
+    absent, so integrate(1/(x*ln(x)^2), x, 1/2, 2) certified on
+    [NonZero(x)] alone and returned -2.885 for a divergent positive
+    integral (plus an improper variant, a principal-value leak, and a
+    negative-domain ln case)
+- decision:
+  - certificate extensions as scoped: resolve_indefinite_for_definite
+    mirrors the rule's route order (cofactor first); positive_on_interval
+    certifies polynomials by rational-root location + no-real-root
+    residuals + an exact midpoint probe; trig_nonzero_on_interval
+    locates cos/sin zeros through a rational pi enclosure
+    (Certified/Undefined/Unknown by enclosure-interval position)
+  - the SELF-CONTAINED RISK SCAN is the soundness core: certification
+    now additionally requires every risky subterm of the integrand
+    itself to be certified - denominators factor by factor (exp-like
+    never zero; ln(u) = 0 exactly at u = 1, certified via u-1 nonzero
+    plus the ln domain), ln/sqrt/fractional-power arguments positive,
+    unknown function shapes refuse - so collector incompleteness can no
+    longer produce wrong finite values
+  - conditions certified on the interval are DISCHARGED from the public
+    display (tan(1) with no cos(x) != 0 residue): the FTC contract
+  - two conservative regressions surfaced and were recovered in-cycle
+    (variable-exponent positive-constant bases are total and never zero;
+    polynomial positivity on half-lines via root location + tail sign +
+    probe), with integrate(1/(x*ln(x)^2), x, 2, infinity) = 1/ln(2) as
+    the bonus convergent case
+- retained learning:
+  - a certificate that trusts an upstream completeness contract is only
+    as sound as that contract: making it self-contained (scan the actual
+    object, refuse the undecidable) converts silent wrongness into
+    honest residuals - and the adversarial-review mandate for decision
+    procedures caught what green unit tests and a green matrix could not

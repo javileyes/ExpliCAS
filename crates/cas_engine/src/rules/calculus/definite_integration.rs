@@ -59,14 +59,7 @@ pub(super) fn definite_integration_rewrite(
         }
     }
 
-    let mut required_conditions =
-        IntegrationRequiredConditions::from_target(ctx, call.target, &call.var_name);
-    let antiderivative = integrate_with_result_preservation(
-        ctx,
-        call.target,
-        &call.var_name,
-        &mut required_conditions,
-    )?;
+    let (antiderivative, conditions) = resolve_indefinite_for_definite(ctx, call)?;
 
     if matches!(
         lower_bound,
@@ -79,7 +72,7 @@ pub(super) fn definite_integration_rewrite(
             ctx,
             call,
             antiderivative,
-            required_conditions,
+            conditions,
             &lower_bound,
             &upper_bound,
         );
@@ -91,11 +84,7 @@ pub(super) fn definite_integration_rewrite(
         // unconditional - every condition-free antiderivative the engine
         // emits is continuous on all of R, so there is no interval to
         // certify (the curriculum "area function" integrate(f, x, a, t)).
-        if required_conditions
-            .into_implicit_conditions()
-            .next()
-            .is_some()
-        {
+        if !conditions.is_empty() {
             return None;
         }
         let mut antiderivative = antiderivative;
@@ -129,12 +118,21 @@ pub(super) fn definite_integration_rewrite(
         antiderivative = unwrapped;
     }
 
-    match certify_interval(
-        ctx,
-        required_conditions,
-        &call.var_name,
-        &interval_low,
-        &interval_high,
+    match combine_certificates(
+        certify_interval(
+            ctx,
+            &conditions,
+            &call.var_name,
+            &interval_low,
+            &interval_high,
+        ),
+        integrand_risks_certified(
+            ctx,
+            call.target,
+            &call.var_name,
+            &interval_low,
+            &interval_high,
+        ),
     ) {
         IntervalCertificate::Certified => {}
         IntervalCertificate::Undefined => {
@@ -162,16 +160,19 @@ fn improper_integration_rewrite(
     ctx: &mut Context,
     call: &DefiniteIntegralCall,
     antiderivative: ExprId,
-    required_conditions: IntegrationRequiredConditions,
+    conditions: Vec<ImplicitCondition>,
     lower_bound: &DefiniteBound,
     upper_bound: &DefiniteBound,
 ) -> Option<Rewrite> {
-    match certify_unbounded_interval(
-        ctx,
-        required_conditions,
-        &call.var_name,
-        lower_bound,
-        upper_bound,
+    match combine_certificates(
+        certify_unbounded_interval(ctx, &conditions, &call.var_name, lower_bound, upper_bound),
+        integrand_risks_certified_unbounded(
+            ctx,
+            call.target,
+            &call.var_name,
+            lower_bound,
+            upper_bound,
+        ),
     ) {
         IntervalCertificate::Certified => {}
         IntervalCertificate::Undefined => {
@@ -287,29 +288,68 @@ fn build_signed_infinity(ctx: &mut Context, sign: i32) -> ExprId {
 /// strictly outside the unbounded closed interval.
 fn certify_unbounded_interval(
     ctx: &mut Context,
-    required_conditions: IntegrationRequiredConditions,
+    conditions: &[ImplicitCondition],
     var_name: &str,
     lower_bound: &DefiniteBound,
     upper_bound: &DefiniteBound,
 ) -> IntervalCertificate {
     let mut outcome = IntervalCertificate::Certified;
-    for condition in required_conditions.into_implicit_conditions() {
+    for condition in conditions {
         match condition {
             ImplicitCondition::NonZero(expr) => {
-                match nonzero_on_unbounded_interval(ctx, expr, var_name, lower_bound, upper_bound) {
+                // cos/sin have zeros in every unbounded interval.
+                if trig_condition_target(ctx, *expr, var_name) {
+                    return IntervalCertificate::Undefined;
+                }
+                match nonzero_on_unbounded_interval(ctx, *expr, var_name, lower_bound, upper_bound)
+                {
                     IntervalCertificate::Certified => {}
                     IntervalCertificate::Undefined => return IntervalCertificate::Undefined,
                     IntervalCertificate::Unknown => outcome = IntervalCertificate::Unknown,
                 }
             }
-            ImplicitCondition::Positive(expr) => match as_rational_const(ctx, expr) {
-                Some(value) if value.is_positive() => {}
-                _ => outcome = IntervalCertificate::Unknown,
-            },
+            ImplicitCondition::Positive(expr) | ImplicitCondition::NonNegative(expr) => {
+                match globally_positive(ctx, *expr, var_name) {
+                    true => {}
+                    false => outcome = IntervalCertificate::Unknown,
+                }
+            }
             _ => outcome = IntervalCertificate::Unknown,
         }
     }
     outcome
+}
+
+fn trig_condition_target(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            matches!(
+                ctx.builtin_of(*fn_id),
+                Some(cas_ast::BuiltinFn::Cos | cas_ast::BuiltinFn::Sin)
+            ) && matches!(ctx.get(args[0]),
+                Expr::Variable(sym) if ctx.sym_name(*sym) == var_name)
+        }
+        _ => false,
+    }
+}
+
+/// Positivity on all of R: variable-free positive numerics, or quadratics
+/// with negative discriminant and positive leading coefficient.
+fn globally_positive(ctx: &mut Context, expr: ExprId, var_name: &str) -> bool {
+    if let Some(value) = as_rational_const(ctx, expr) {
+        return value.is_positive();
+    }
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
+        return false;
+    };
+    if poly.degree() != 2 {
+        return false;
+    }
+    let a = poly.coeffs[2].clone();
+    let b = poly.coeffs[1].clone();
+    let c = poly.coeffs[0].clone();
+    let discriminant = &b * &b - BigRational::from_integer(4.into()) * &a * &c;
+    discriminant.is_negative() && a.is_positive()
 }
 
 fn nonzero_on_unbounded_interval(
@@ -374,34 +414,547 @@ fn nonzero_on_unbounded_interval(
 /// construction: only conditions provably independent of the interval (or
 /// provably violated inside it) are decided; everything else is Unknown
 /// and the call stays residual.
+/// Resolve the indefinite antiderivative for a definite call, mirroring
+/// the indefinite rule's route order: the derivative-cofactor route
+/// first (it owns u'/sqrt(u)-style shapes the standard pipeline
+/// declines), then the standard pipeline.
+fn resolve_indefinite_for_definite(
+    ctx: &mut Context,
+    call: &DefiniteIntegralCall,
+) -> Option<(ExprId, Vec<ImplicitCondition>)> {
+    if let Some((result, condition)) =
+        super::integration_derivative_cofactor_routes::polynomial_trig_reciprocal_derivative_root_gate_route(
+            ctx,
+            call.target,
+            &call.var_name,
+        )
+    {
+        return Some((result, vec![condition]));
+    }
+    let mut required_conditions =
+        IntegrationRequiredConditions::from_target(ctx, call.target, &call.var_name);
+    let antiderivative = integrate_with_result_preservation(
+        ctx,
+        call.target,
+        &call.var_name,
+        &mut required_conditions,
+    )?;
+    Some((
+        antiderivative,
+        required_conditions.into_implicit_conditions().collect(),
+    ))
+}
+
 fn certify_interval(
     ctx: &mut Context,
-    required_conditions: IntegrationRequiredConditions,
+    conditions: &[ImplicitCondition],
     var_name: &str,
     interval_low: &BigRational,
     interval_high: &BigRational,
 ) -> IntervalCertificate {
     let mut outcome = IntervalCertificate::Certified;
-    for condition in required_conditions.into_implicit_conditions() {
+    for condition in conditions {
         match condition {
             ImplicitCondition::NonZero(expr) => {
-                match nonzero_on_interval(ctx, expr, var_name, interval_low, interval_high) {
+                match nonzero_on_interval(ctx, *expr, var_name, interval_low, interval_high) {
                     IntervalCertificate::Certified => {}
                     IntervalCertificate::Undefined => return IntervalCertificate::Undefined,
                     IntervalCertificate::Unknown => outcome = IntervalCertificate::Unknown,
                 }
             }
-            ImplicitCondition::Positive(expr) => {
-                // Only variable-free numeric positivity is certifiable here.
-                match as_rational_const(ctx, expr) {
-                    Some(value) if value.is_positive() => {}
-                    _ => outcome = IntervalCertificate::Unknown,
+            ImplicitCondition::Positive(expr) | ImplicitCondition::NonNegative(expr) => {
+                match positive_on_interval(ctx, *expr, var_name, interval_low, interval_high) {
+                    IntervalCertificate::Certified => {}
+                    IntervalCertificate::Undefined => return IntervalCertificate::Undefined,
+                    IntervalCertificate::Unknown => outcome = IntervalCertificate::Unknown,
                 }
             }
             _ => outcome = IntervalCertificate::Unknown,
         }
     }
     outcome
+}
+
+fn combine_certificates(
+    first: IntervalCertificate,
+    second: IntervalCertificate,
+) -> IntervalCertificate {
+    match (first, second) {
+        (IntervalCertificate::Undefined, _) | (_, IntervalCertificate::Undefined) => {
+            IntervalCertificate::Undefined
+        }
+        (IntervalCertificate::Unknown, _) | (_, IntervalCertificate::Unknown) => {
+            IntervalCertificate::Unknown
+        }
+        _ => IntervalCertificate::Certified,
+    }
+}
+
+/// SELF-CONTAINED risk scan of the integrand: the condition collectors
+/// are not guaranteed complete (adversarial review found ln-denominator
+/// conditions systematically absent), so certification additionally
+/// requires every risky subterm of the integrand itself to be certified
+/// on the interval - denominators factor by factor, ln arguments
+/// positive AND away from 1 (ln(u) = 0 at u = 1), fractional-power bases
+/// positive, trig denominators via the pi enclosure. Anything the scan
+/// cannot decide refuses certification.
+fn integrand_risks_certified(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    interval_low: &BigRational,
+    interval_high: &BigRational,
+) -> IntervalCertificate {
+    scan_expr_risks(ctx, expr, var_name, &mut |ctx, risk| match risk {
+        RiskKind::DenominatorNonZero(factor) => {
+            nonzero_on_interval(ctx, factor, var_name, interval_low, interval_high)
+        }
+        RiskKind::MustBePositive(arg) => {
+            positive_on_interval(ctx, arg, var_name, interval_low, interval_high)
+        }
+    })
+}
+
+fn integrand_risks_certified_unbounded(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> IntervalCertificate {
+    scan_expr_risks(ctx, expr, var_name, &mut |ctx, risk| match risk {
+        RiskKind::DenominatorNonZero(factor) => {
+            if trig_condition_target(ctx, factor, var_name) {
+                return IntervalCertificate::Undefined;
+            }
+            nonzero_on_unbounded_interval(ctx, factor, var_name, lower_bound, upper_bound)
+        }
+        RiskKind::MustBePositive(arg) => {
+            positive_on_unbounded_interval(ctx, arg, var_name, lower_bound, upper_bound)
+        }
+    })
+}
+
+enum RiskKind {
+    DenominatorNonZero(ExprId),
+    MustBePositive(ExprId),
+}
+
+fn scan_expr_risks(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    certify: &mut dyn FnMut(&mut Context, RiskKind) -> IntervalCertificate,
+) -> IntervalCertificate {
+    let node = ctx.get(expr).clone();
+    let mut outcome = IntervalCertificate::Certified;
+    let merge = |certificate: IntervalCertificate, outcome: &mut IntervalCertificate| {
+        *outcome = combine_certificates(
+            std::mem::replace(outcome, IntervalCertificate::Certified),
+            certificate,
+        );
+    };
+    match node {
+        Expr::Div(numerator, denominator) => {
+            merge(
+                certify_denominator_factors(ctx, denominator, var_name, certify),
+                &mut outcome,
+            );
+            merge(
+                scan_expr_risks(ctx, numerator, var_name, certify),
+                &mut outcome,
+            );
+            merge(
+                scan_expr_risks(ctx, denominator, var_name, certify),
+                &mut outcome,
+            );
+        }
+        Expr::Pow(base, exponent) => {
+            let exponent_value = as_rational_const(ctx, exponent);
+            match exponent_value {
+                Some(value) if value.is_integer() && value.is_positive() => {}
+                Some(value) if value.is_integer() => {
+                    merge(
+                        certify_denominator_factors(ctx, base, var_name, certify),
+                        &mut outcome,
+                    );
+                }
+                Some(_) => {
+                    // Fractional exponent: real-domain base positivity.
+                    merge(certify(ctx, RiskKind::MustBePositive(base)), &mut outcome);
+                }
+                None => {
+                    // Variable exponent: total and positive only for a
+                    // positive constant base (e included).
+                    let base_safe = matches!(ctx.get(base), Expr::Constant(Constant::E))
+                        || as_rational_const(ctx, base).is_some_and(|value| value.is_positive());
+                    if !base_safe {
+                        merge(IntervalCertificate::Unknown, &mut outcome);
+                    }
+                    merge(
+                        scan_expr_risks(ctx, exponent, var_name, certify),
+                        &mut outcome,
+                    );
+                }
+            }
+            merge(scan_expr_risks(ctx, base, var_name, certify), &mut outcome);
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            merge(scan_expr_risks(ctx, l, var_name, certify), &mut outcome);
+            merge(scan_expr_risks(ctx, r, var_name, certify), &mut outcome);
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            merge(scan_expr_risks(ctx, inner, var_name, certify), &mut outcome);
+        }
+        Expr::Function(fn_id, args) => {
+            let recurse_args =
+                |ctx: &mut Context,
+                 certify: &mut dyn FnMut(&mut Context, RiskKind) -> IntervalCertificate,
+                 outcome: &mut IntervalCertificate| {
+                    for arg in &args {
+                        let cert = scan_expr_risks(ctx, *arg, var_name, certify);
+                        *outcome = combine_certificates(
+                            std::mem::replace(outcome, IntervalCertificate::Certified),
+                            cert,
+                        );
+                    }
+                };
+            match ctx.builtin_of(fn_id) {
+                Some(
+                    cas_ast::BuiltinFn::Sin
+                    | cas_ast::BuiltinFn::Cos
+                    | cas_ast::BuiltinFn::Exp
+                    | cas_ast::BuiltinFn::Arctan
+                    | cas_ast::BuiltinFn::Atan
+                    | cas_ast::BuiltinFn::Sinh
+                    | cas_ast::BuiltinFn::Cosh
+                    | cas_ast::BuiltinFn::Tanh
+                    | cas_ast::BuiltinFn::Abs,
+                ) => recurse_args(ctx, certify, &mut outcome),
+                Some(cas_ast::BuiltinFn::Ln) if args.len() == 1 => {
+                    merge(
+                        certify(ctx, RiskKind::MustBePositive(args[0])),
+                        &mut outcome,
+                    );
+                    recurse_args(ctx, certify, &mut outcome);
+                }
+                Some(cas_ast::BuiltinFn::Sqrt) if args.len() == 1 => {
+                    merge(
+                        certify(ctx, RiskKind::MustBePositive(args[0])),
+                        &mut outcome,
+                    );
+                    recurse_args(ctx, certify, &mut outcome);
+                }
+                Some(cas_ast::BuiltinFn::Tan) if args.len() == 1 => {
+                    // tan's poles are cos zeros.
+                    let cos_arg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![args[0]]);
+                    merge(
+                        certify(ctx, RiskKind::DenominatorNonZero(cos_arg)),
+                        &mut outcome,
+                    );
+                    recurse_args(ctx, certify, &mut outcome);
+                }
+                _ => merge(IntervalCertificate::Unknown, &mut outcome),
+            }
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => {}
+        _ => merge(IntervalCertificate::Unknown, &mut outcome),
+    }
+    outcome
+}
+
+/// Certify a denominator factor by factor: polynomials by root location,
+/// integer powers by their base, exp-like factors are never zero,
+/// ln(u) = 0 exactly at u = 1 (certified via u - 1 nonzero plus the ln
+/// domain), trig factors via the pi enclosure.
+#[allow(clippy::only_used_in_recursion)]
+fn certify_denominator_factors(
+    ctx: &mut Context,
+    denominator: ExprId,
+    var_name: &str,
+    certify: &mut dyn FnMut(&mut Context, RiskKind) -> IntervalCertificate,
+) -> IntervalCertificate {
+    let node = ctx.get(denominator).clone();
+    match node {
+        Expr::Mul(l, r) => combine_certificates(
+            certify_denominator_factors(ctx, l, var_name, certify),
+            certify_denominator_factors(ctx, r, var_name, certify),
+        ),
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            certify_denominator_factors(ctx, inner, var_name, certify)
+        }
+        Expr::Pow(base, exponent) => {
+            // A positive constant base (e included) is never zero,
+            // whatever the exponent.
+            let base_never_zero = matches!(ctx.get(base), Expr::Constant(Constant::E))
+                || as_rational_const(ctx, base).is_some_and(|value| value.is_positive());
+            if base_never_zero {
+                return IntervalCertificate::Certified;
+            }
+            match as_rational_const(ctx, exponent) {
+                Some(value) if !value.is_zero() => {
+                    certify_denominator_factors(ctx, base, var_name, certify)
+                }
+                _ => IntervalCertificate::Unknown,
+            }
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(fn_id) {
+            Some(cas_ast::BuiltinFn::Exp) => IntervalCertificate::Certified,
+            Some(cas_ast::BuiltinFn::Ln) => {
+                let one = ctx.num(1);
+                let shifted = ctx.add(Expr::Sub(args[0], one));
+                combine_certificates(
+                    certify(ctx, RiskKind::MustBePositive(args[0])),
+                    certify(ctx, RiskKind::DenominatorNonZero(shifted)),
+                )
+            }
+            Some(cas_ast::BuiltinFn::Cos | cas_ast::BuiltinFn::Sin) => {
+                certify(ctx, RiskKind::DenominatorNonZero(denominator))
+            }
+            Some(cas_ast::BuiltinFn::Sqrt) => {
+                // sqrt(u) = 0 exactly at u = 0; strict positivity of u
+                // certifies both the domain and the nonzero denominator.
+                certify(ctx, RiskKind::MustBePositive(args[0]))
+            }
+            _ => IntervalCertificate::Unknown,
+        },
+        _ => certify(ctx, RiskKind::DenominatorNonZero(denominator)),
+    }
+}
+
+/// Strict positivity of a polynomial condition on the closed interval:
+/// variable-free numerics decide directly; otherwise every rational root
+/// must lie strictly outside [low, high], the non-root residual must have
+/// no real roots (negative discriminant or constant), and a sign probe at
+/// an interior root-free point confirms the sign. Roots touching or
+/// inside the interval are conservatively Unknown (the boundary case may
+/// be a convergent improper integral, which this rung does not decide).
+fn positive_on_interval(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    interval_low: &BigRational,
+    interval_high: &BigRational,
+) -> IntervalCertificate {
+    if let Some(value) = as_rational_const(ctx, expr) {
+        return if value.is_positive() {
+            IntervalCertificate::Certified
+        } else {
+            IntervalCertificate::Unknown
+        };
+    }
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
+        return IntervalCertificate::Unknown;
+    };
+    if poly.is_zero() {
+        return IntervalCertificate::Unknown;
+    }
+
+    let mut residual_has_real_roots_ruled_out = false;
+    let factors = poly.factor_rational_roots();
+    for factor in &factors {
+        match factor.degree() {
+            0 => {}
+            1 => {
+                let root = -&factor.coeffs[0] / &factor.coeffs[1];
+                if &root >= interval_low && &root <= interval_high {
+                    return IntervalCertificate::Unknown;
+                }
+            }
+            2 => {
+                let a = factor.coeffs[2].clone();
+                let b = factor.coeffs[1].clone();
+                let c = factor.coeffs[0].clone();
+                let discriminant = &b * &b - BigRational::from_integer(4.into()) * &a * &c;
+                if !discriminant.is_negative() {
+                    // Irrational real roots could lie anywhere.
+                    return IntervalCertificate::Unknown;
+                }
+                residual_has_real_roots_ruled_out = true;
+            }
+            _ => return IntervalCertificate::Unknown,
+        }
+    }
+    let _ = residual_has_real_roots_ruled_out;
+
+    // No root in [low, high]: the sign is constant there; probe the
+    // midpoint exactly.
+    let two = BigRational::from_integer(2.into());
+    let midpoint = (interval_low + interval_high) / two;
+    if poly.eval(&midpoint).is_positive() {
+        IntervalCertificate::Certified
+    } else {
+        IntervalCertificate::Unknown
+    }
+}
+
+/// Positivity of a polynomial on a (half-)infinite interval: globally
+/// positive quadratics certify directly; otherwise every rational root
+/// must lie strictly outside, quadratic residuals must have no real
+/// roots, infinite tails must point positive (leading-coefficient sign),
+/// and a probe inside confirms.
+fn positive_on_unbounded_interval(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> IntervalCertificate {
+    if globally_positive(ctx, expr, var_name) {
+        return IntervalCertificate::Certified;
+    }
+    if let Some(value) = as_rational_const(ctx, expr) {
+        return if value.is_positive() {
+            IntervalCertificate::Certified
+        } else {
+            IntervalCertificate::Unknown
+        };
+    }
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
+        return IntervalCertificate::Unknown;
+    };
+    if poly.is_zero() {
+        return IntervalCertificate::Unknown;
+    }
+
+    let inside = |root: &BigRational| -> bool {
+        let above_lower = match lower_bound {
+            DefiniteBound::NegInfinity => true,
+            DefiniteBound::Finite(lower) => root >= lower,
+            _ => return true, // conservador: trátalo como dentro
+        };
+        let below_upper = match upper_bound {
+            DefiniteBound::PosInfinity => true,
+            DefiniteBound::Finite(upper) => root <= upper,
+            _ => return true,
+        };
+        above_lower && below_upper
+    };
+    for factor in poly.factor_rational_roots() {
+        match factor.degree() {
+            0 => {}
+            1 => {
+                let root = -&factor.coeffs[0] / &factor.coeffs[1];
+                if inside(&root) {
+                    return IntervalCertificate::Unknown;
+                }
+            }
+            2 => {
+                let a = factor.coeffs[2].clone();
+                let b = factor.coeffs[1].clone();
+                let c = factor.coeffs[0].clone();
+                let discriminant = &b * &b - BigRational::from_integer(4.into()) * &a * &c;
+                if !discriminant.is_negative() {
+                    return IntervalCertificate::Unknown;
+                }
+            }
+            _ => return IntervalCertificate::Unknown,
+        }
+    }
+
+    // Infinite tails must be positive.
+    let leading = poly.leading_coeff();
+    if matches!(upper_bound, DefiniteBound::PosInfinity) && !leading.is_positive() {
+        return IntervalCertificate::Unknown;
+    }
+    if matches!(lower_bound, DefiniteBound::NegInfinity) {
+        let degree_even = poly.degree() % 2 == 0;
+        let tail_positive = if degree_even {
+            leading.is_positive()
+        } else {
+            leading.is_negative()
+        };
+        if !tail_positive {
+            return IntervalCertificate::Unknown;
+        }
+    }
+
+    // Probe a point inside the certified root-free region.
+    let probe_point = match (lower_bound, upper_bound) {
+        (DefiniteBound::Finite(lower), _) => lower + BigRational::from_integer(1.into()),
+        (_, DefiniteBound::Finite(upper)) => upper - BigRational::from_integer(1.into()),
+        _ => BigRational::from_integer(0.into()),
+    };
+    if poly.eval(&probe_point).is_positive() {
+        IntervalCertificate::Certified
+    } else {
+        IntervalCertificate::Unknown
+    }
+}
+
+/// Rational enclosure of pi, tight enough for textbook bounds.
+fn pi_enclosure() -> (BigRational, BigRational) {
+    let denom = num_bigint::BigInt::from(100_000_000_000_000u64);
+    (
+        BigRational::new(
+            num_bigint::BigInt::from(314_159_265_358_979u64),
+            denom.clone(),
+        ),
+        BigRational::new(num_bigint::BigInt::from(314_159_265_358_980u64), denom),
+    )
+}
+
+/// Zeros of cos (odd multiples of pi/2) or sin (integer multiples of pi)
+/// against the closed rational interval, via the pi enclosure: every zero
+/// enclosure disjoint from [low, high] certifies; an enclosure fully
+/// inside is a pole; overlap with the boundary stays Unknown.
+fn trig_nonzero_on_interval(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    interval_low: &BigRational,
+    interval_high: &BigRational,
+) -> Option<IntervalCertificate> {
+    let builtin = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let inner_is_var = matches!(ctx.get(args[0]),
+                Expr::Variable(sym) if ctx.sym_name(*sym) == var_name);
+            if !inner_is_var {
+                return None;
+            }
+            ctx.builtin_of(*fn_id)?
+        }
+        _ => return None,
+    };
+    let half = BigRational::new(1.into(), 2.into());
+    // Zeros at multiplier * pi with multiplier in the arithmetic
+    // progression below.
+    let (start, step) = match builtin {
+        cas_ast::BuiltinFn::Cos => (half, BigRational::from_integer(1.into())),
+        cas_ast::BuiltinFn::Sin => (
+            BigRational::from_integer(0.into()),
+            BigRational::from_integer(1.into()),
+        ),
+        _ => return None,
+    };
+    let (pi_low, pi_high) = pi_enclosure();
+
+    // Multiplier window covering the interval generously.
+    let approx_low = interval_low / &pi_high - BigRational::from_integer(2.into());
+    let approx_high = interval_high / &pi_low + BigRational::from_integer(2.into());
+    let k_low = approx_low.floor().to_integer();
+    let k_high = approx_high.ceil().to_integer();
+
+    let mut k = k_low;
+    while k <= k_high {
+        let multiplier = &start + &step * BigRational::from_integer(k.clone());
+        let (zero_low, zero_high) = if multiplier >= BigRational::from_integer(0.into()) {
+            (&multiplier * &pi_low, &multiplier * &pi_high)
+        } else {
+            (&multiplier * &pi_high, &multiplier * &pi_low)
+        };
+        let disjoint = &zero_high < interval_low || &zero_low > interval_high;
+        if !disjoint {
+            let strictly_inside = &zero_low > interval_low && &zero_high < interval_high;
+            return Some(if strictly_inside {
+                IntervalCertificate::Undefined
+            } else {
+                IntervalCertificate::Unknown
+            });
+        }
+        k += 1;
+    }
+    Some(IntervalCertificate::Certified)
 }
 
 fn nonzero_on_interval(
@@ -411,6 +964,11 @@ fn nonzero_on_interval(
     interval_low: &BigRational,
     interval_high: &BigRational,
 ) -> IntervalCertificate {
+    if let Some(certificate) =
+        trig_nonzero_on_interval(ctx, expr, var_name, interval_low, interval_high)
+    {
+        return certificate;
+    }
     if let Some(value) = as_rational_const(ctx, expr) {
         return if value.is_zero() {
             IntervalCertificate::Undefined
@@ -544,6 +1102,41 @@ mod improper_tests {
         assert_eq!(
             eval_definite("integrate(1/x, x, -infinity, -1)").as_deref(),
             Some("-infinity")
+        );
+    }
+}
+
+#[cfg(test)]
+mod certificate_tests {
+    use super::tests::eval_definite;
+
+    #[test]
+    fn cofactor_route_antiderivatives_evaluate_definitely() {
+        assert!(eval_definite("integrate(x/sqrt(x^2+1), x, 0, 1)").is_some());
+    }
+
+    #[test]
+    fn polynomial_positivity_certifies_away_from_roots() {
+        // Positive(1-x^2) with roots +-1 strictly outside [0, 1/2].
+        assert!(eval_definite("integrate(x/sqrt(1-x^2), x, 0, 1/2)").is_some());
+        // Root on the boundary: conservatively residual.
+        assert!(eval_definite("integrate(x/sqrt(1-x^2), x, 0, 1)").is_none());
+    }
+
+    #[test]
+    fn trig_nonzero_certificate_locates_cosine_zeros() {
+        // [0, 1] is inside (-pi/2, pi/2): certified. (The raw unit
+        // context sees the simplifier-normalized 1/cos^2 form.)
+        assert!(eval_definite("integrate(1/cos(x)^2, x, 0, 1)").is_some());
+        // pi/2 inside [0, 2]: pole, undefined.
+        assert_eq!(
+            eval_definite("integrate(tan(x), x, 0, 2)").as_deref(),
+            Some("undefined")
+        );
+        // Unbounded interval always contains cosine zeros.
+        assert_eq!(
+            eval_definite("integrate(tan(x), x, 0, infinity)").as_deref(),
+            Some("undefined")
         );
     }
 }
