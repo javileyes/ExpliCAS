@@ -489,7 +489,12 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The general monomial-times-arcsine by-parts family then
+     composes). The hyperbolic radicand mirror landed next
+     (x^n/sqrt(b x^2 + a) for both signs of a via the mirrored
+     recurrence; asinh/acosh closed forms with layered honest
+     conditions; next rungs: completed-square radicands
+     x^2+x+1 and offset arguments arcsin(x+b)). The general
+     monomial-times-arcsine by-parts family before that
      completed the pair of cycles (x^n arcsin(kx) for n = 1..5 with the
      radical tail delegated to the reduction family;
      integrate(x^2*arcsin(x), x, 0, 1) = (pi - 4/3)/6; the half-power

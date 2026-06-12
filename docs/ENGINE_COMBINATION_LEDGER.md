@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 87 (newest first)
+Active entries: 88 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -130,6 +130,7 @@ Active entries: 87 (newest first)
 - 2026-06-12 | `retained` | simplifier / fraction cancellation (CancelIdenticalFractionRule) / | Retained soundness: 0/0 no longer cancels to 1
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical reduction | Retained calculus: monomial over sqrt(a - b x^2) reduction family
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: general monomial times arcsine/arccosine by parts
+- 2026-06-12 | `retained` | calculus / integration / educational route / radical reduction | Retained calculus: hyperbolic radicands complete the monomial-over-radical reduction
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3618,3 +3619,41 @@ Active entries: 87 (newest first)
   - both rows of the pair verify by equivalence INCLUDING direct-diff;
     verification_gap stays at 7 for the second cycle running - the
     shortcut investment from cycle 11 is compounding
+
+## 2026-06-12 - Retained calculus: hyperbolic radicands complete the monomial-over-radical reduction
+
+- area:
+  - calculus / integration / educational route / radical reduction
+    (block 8) / hyperbolic sign pattern
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families
+  - calculus_matrix_cell: integrate(x^2/sqrt(1+x^2)) =
+    (x sqrt(1+x^2) - asinh x)/2, integrate(x^2/sqrt(x^2-1)) =
+    (acosh x + x sqrt(x^2-1))/2, scaled radicands, the n = 3/4 chain,
+    definite integrate(x^2/sqrt(1+x^2), x, 0, 1) = sqrt(2)/2 - asinh(1)/2
+  - behavior_change_expected: yes - x^n/sqrt(b x^2 + a) for b > 0 and
+    nonzero a (both signs) integrates via the mirrored recurrence
+    I_n = x^(n-1) sqrt(.)/(bn) - a(n-1)/(bn) I_{n-2}
+- observed (frontier probing):
+  - the exact mirror of the circle family one goal earlier: n = 0/1
+    bases already owned (asinh/acosh tables, derivative substitution),
+    n >= 2 residual; the existing matcher only needed its sign gate
+    split into the two recurrences (a - b x^2 circle vs b x^2 + a
+    hyperbolic), reusing the same surface shapes, Div arm, scale
+    extraction and cap
+  - both rows verify by equivalence INCLUDING direct-diff out of the
+    box: 1 + x^2 is a strictly positive base (no conditions) and the
+    acosh side reports honest layered conditions (radicand region plus
+    the acosh-branch x >= 1); verification_gap stays at 7 for a third
+    consecutive cycle
+  - a = 0 (pure square root of x^2) declines to the abs owner;
+    quadratics with linear terms stay residual (completed-square
+    radicands are the queued next rung alongside arcsin(x+b) offsets)
+- retained learning:
+  - sign-pattern mirrors of a retained family are the cheapest
+    capability cycles in the queue: same matcher, same wiring, same
+    harness shape - probe for the mirror IMMEDIATELY after retaining
+    any sign-gated family and queue it explicitly

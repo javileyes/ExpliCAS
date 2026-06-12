@@ -9092,13 +9092,58 @@ fn monomial_over_sqrt_negative_quadratic_antiderivative(
         .get(2)
         .cloned()
         .unwrap_or_else(BigRational::zero);
-    let b = -neg_b;
-    if !linear.is_zero() || !a.is_positive() || !b.is_positive() {
+    if !linear.is_zero() || neg_b.is_zero() || a.is_zero() {
         return None;
     }
-
-    let integral = monomial_over_sqrt_reduction(ctx, n, &a, &b, radicand, var)?;
+    let integral = if neg_b.is_negative() {
+        // Circle family a - b x^2 (a > 0): the arcsin-flavored recurrence.
+        let b = -neg_b;
+        if !a.is_positive() {
+            return None;
+        }
+        monomial_over_sqrt_reduction(ctx, n, &a, &b, radicand, var)?
+    } else {
+        // Hyperbolic family b x^2 + a (any nonzero a): the asinh/acosh
+        // flavored recurrence I_n = x^(n-1) sqrt(.)/(bn) - a(n-1)/(bn)
+        // I_{n-2}, delegating n = 0/1 bases to their owners.
+        monomial_over_sqrt_hyperbolic_reduction(ctx, n, &a, &neg_b, radicand, var)?
+    };
     Some(scale_rational_term(ctx, scale, integral))
+}
+
+fn monomial_over_sqrt_hyperbolic_reduction(
+    ctx: &mut Context,
+    n: usize,
+    a: &BigRational,
+    b: &BigRational,
+    radicand: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if n <= 1 {
+        let var_expr = ctx.var(var);
+        let sqrt_term = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+        let one = ctx.num(1);
+        let base_integrand = if n == 0 {
+            ctx.add(Expr::Div(one, sqrt_term))
+        } else {
+            ctx.add(Expr::Div(var_expr, sqrt_term))
+        };
+        return integrate_symbolic_expr(ctx, base_integrand, var);
+    }
+    let n_rational = BigRational::from_integer((n as i64).into());
+    let n_minus_one = BigRational::from_integer(((n - 1) as i64).into());
+    let lower = monomial_over_sqrt_hyperbolic_reduction(ctx, n - 2, a, b, radicand, var)?;
+    let lower_scale = -(a * &n_minus_one) / (b * &n_rational);
+    let lower_term = scale_rational_term(ctx, lower_scale, lower);
+
+    let var_expr = ctx.var(var);
+    let head_power = ctx.num((n - 1) as i64);
+    let head_monomial = ctx.add(Expr::Pow(var_expr, head_power));
+    let sqrt_term = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let head_raw = mul2_raw(ctx, head_monomial, sqrt_term);
+    let head_scale = BigRational::one() / (b * &n_rational);
+    let head_term = scale_rational_term(ctx, head_scale, head_raw);
+    Some(ctx.add(Expr::Add(lower_term, head_term)))
 }
 
 fn monomial_over_sqrt_reduction(
@@ -24489,6 +24534,80 @@ mod tests {
     }
 
     #[test]
+    fn monomial_over_sqrt_hyperbolic_reduces_with_exact_values() {
+        let mut ctx = Context::new();
+        for source in [
+            "x^2/sqrt(1+x^2)",
+            "x^3/sqrt(1+x^2)",
+            "x^4/sqrt(1+x^2)",
+            "x^2/sqrt(x^2-1)",
+            "x^2/sqrt(4+x^2)",
+            "3*x^2/sqrt(1+x^2)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn monomial_over_sqrt_hyperbolic_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("x^2/sqrt(1+x^2)", [-1.3_f64, 0.4, 2.1]),
+            ("x^2/sqrt(x^2-1)", [1.5, 2.0, 3.7]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn monomial_over_sqrt_hyperbolic_declines_degenerate_radicands() {
+        let mut ctx = Context::new();
+        // a = 0 (pure square), linear terms, and powers over the cap
+        // stay with other owners or honestly residual.
+        for source in ["x^2/sqrt(x^2)", "x^2/sqrt(x^2+x+1)", "x^7/sqrt(1+x^2)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let Some(integral) = integrate_symbolic_expr(&mut ctx, expr, "x") else {
+                continue;
+            };
+            // If another owner integrates it, fine - but the result must
+            // not contain an unevaluated integrate call.
+            let display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: integral
+                }
+            );
+            assert!(
+                !display.contains("integrate"),
+                "must be a closed form or residual: {source} -> {display}"
+            );
+        }
+    }
+
+    #[test]
     fn monomial_over_sqrt_negative_quadratic_reduces_with_exact_values() {
         let mut ctx = Context::new();
         for source in [
@@ -24534,9 +24653,9 @@ mod tests {
     #[test]
     fn monomial_over_sqrt_negative_quadratic_declines_other_sign_patterns() {
         let mut ctx = Context::new();
-        // 1+x^2 and x^2-1 radicands belong to hyperbolic-family territory;
-        // n above the cap stays honestly residual.
-        for source in ["x^2/sqrt(1+x^2)", "x^2/sqrt(x^2-1)", "x^7/sqrt(1-x^2)"] {
+        // The hyperbolic radicands graduated to the mirrored recurrence;
+        // n above the cap and linear-term radicands stay residual.
+        for source in ["x^7/sqrt(1-x^2)", "x^7/sqrt(1+x^2)", "x^2/sqrt(x^2+x+1)"] {
             let expr = parse(source, &mut ctx).expect(source);
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
