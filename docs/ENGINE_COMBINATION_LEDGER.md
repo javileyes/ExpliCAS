@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 90 (newest first)
+Active entries: 91 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -133,6 +133,7 @@ Active entries: 90 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical reduction | Retained calculus: hyperbolic radicands complete the monomial-over-radical reduction
 - 2026-06-12 | `retained` | calculus / integration / educational route / shifted quadratic | Retained calculus: linear numerators over completed-square radicals
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical algorithms | Retained calculus: Hermite-style split for polynomial numerators over sqrt quadratics
+- 2026-06-12 | `retained` | simplifier / half-power residual shortcut / verification-channel | Retained simplifier: factored half-power bases merge with per-factor conditions
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3746,3 +3747,43 @@ Active entries: 90 (newest first)
     bases for one pattern, simplifier churn timeouts for another):
     pin per-channel and document per-row instead of forcing one
     channel across a family
+
+## 2026-06-12 - Retained simplifier: factored half-power bases merge with per-factor conditions
+
+- area:
+  - simplifier / half-power residual shortcut / verification-channel
+    cancellation / factored radical bases
+- status:
+  - `retained` (adversarially verified: two lenses)
+- capture:
+  - investment_class: soundness/verification infrastructure
+  - calculus_maturity_block: cross-cutting (graduates the acosh
+    Hermite pattern; unblocks every scaled/shifted radical family
+    whose derivatives emit factored radical products)
+  - calculus_matrix_cell: x^(-1/2) (x+2)^(-1/2) - (x^2+2x)^(-1/2) -> 0
+    with x > 0; (x+1)^(-1/2) (x-1)^(-1/2) - (x^2-1)^(-1/2) -> 0 with
+    x > 1; the acosh Hermite row verifies by equivalence INCLUDING
+    direct-diff
+  - behavior_change_expected: yes - products of half-power factors with
+    distinct polynomial bases merge against the shared base
+- observed (implementation + adversarial):
+  - the merge identity prod u_i^(-d_i) = B^(-dmax) prod u_i^(dmax-d_i)
+    (B = prod u_i) is only valid where EVERY u_i > 0: product
+    positivity is not enough ((x^2-1)^(-1/2) is defined on x < -1
+    where both factors are negative) - per-factor Positive(u_i)
+    conditions are emitted and the raw layer reports the full set
+    (shared-base region + each factor) which the display pipeline
+    intersects (x > 1)
+  - implemented as a PENDING second pass in the term collector: terms
+    the regular parser rejects re-parse against the already-known
+    shared base via the existing proportional-ratio/rational-sqrt
+    machinery; all-factored sums conservatively bail (no shared base)
+  - refutation probes: mismatched bases (x(x+3)), wrong scales, wrong
+    signs, irrational sqrt ratios all refuse; regression suites and
+    canonical CLI probes unchanged
+- retained learning:
+  - merged-domain identities need conditions from the FACTORED side,
+    not the merged side: any rewrite that combines partial functions
+    must carry each operand's domain, because the combined expression
+    can be defined where the original was not - this is the same
+    asymmetry as the 0/0 gate, seen from the other direction

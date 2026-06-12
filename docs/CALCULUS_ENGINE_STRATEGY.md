@@ -489,7 +489,11 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The Hermite-style split then consolidated the corner
+     composes). Factored half-power bases then learned to merge with
+     per-factor conditions (the acosh Hermite pattern verifies end to
+     end; any scaled/shifted radical family whose derivative emits
+     factored products is unblocked). The Hermite-style split before
+     that consolidated the corner
      (p(x)/sqrt(q) for any quadratic q and deg p <= 6, ordered after
      the specialized owners so their displays survive; next rungs:
      factored-base merging in the half-power shortcut, arcsin(x+b)

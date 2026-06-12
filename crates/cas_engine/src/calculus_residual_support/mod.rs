@@ -1498,7 +1498,7 @@ fn power_rational(base: &BigRational, exponent: i32) -> BigRational {
 fn half_power_polynomial_sum_combined(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<(Polynomial, ExprId)> {
+) -> Option<(Polynomial, ExprId, Vec<ExprId>)> {
     let raw_terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
     if !(2..=4).contains(&raw_terms.len()) {
         return None;
@@ -1548,6 +1548,8 @@ fn half_power_polynomial_sum_combined(
     let mut shared_base: Option<ExprId> = None;
     let mut max_denominator_exponent = BigRational::zero();
     let mut var_name: Option<String> = None;
+    let mut pending_factored: Vec<(BigRational, ExprId)> = Vec::new();
+    let mut extra_positive_bases: Vec<ExprId> = Vec::new();
     for (scale, core) in scaled_terms {
         let inferred_var = if let Some(existing_var) = var_name.as_deref() {
             existing_var.to_string()
@@ -1558,8 +1560,14 @@ fn half_power_polynomial_sum_combined(
             }
             vars.iter().next()?.to_string()
         };
-        let (numerator, base, denominator_exponent) =
-            half_power_polynomial_term(ctx, core, &inferred_var)?;
+        let Some((numerator, base, denominator_exponent)) =
+            half_power_polynomial_term(ctx, core, &inferred_var)
+        else {
+            // Factored half-power products (x^(-1/2) (x+2)^(-1/2)) merge
+            // against the shared base in a second pass once it is known.
+            pending_factored.push((scale, core));
+            continue;
+        };
         let mut scale = scale;
         if let Some(existing_base) = shared_base {
             if !exprs_match(ctx, existing_base, base) {
@@ -1599,6 +1607,21 @@ fn half_power_polynomial_sum_combined(
         return None;
     }
 
+    for (scale, core) in pending_factored {
+        let (adjusted_scale, numerator, denominator_exponent, factor_bases) =
+            factored_half_power_product_term(ctx, core, &var_name, &base_poly, scale)?;
+        if denominator_exponent > max_denominator_exponent {
+            max_denominator_exponent = denominator_exponent.clone();
+        }
+        extra_positive_bases.extend(factor_bases);
+        parsed_terms.push((
+            adjusted_scale,
+            numerator,
+            denominator_exponent,
+            var_name.clone(),
+        ));
+    }
+
     let mut combined = Polynomial::zero(var_name);
     for (scale, numerator, denominator_exponent, term_var) in parsed_terms {
         if combined.var != term_var {
@@ -1613,7 +1636,75 @@ fn half_power_polynomial_sum_combined(
         combined = combined.add(&scale_polynomial(&lifted, &scale));
     }
 
-    Some((combined, base))
+    Some((combined, base, extra_positive_bases))
+}
+
+/// Merge a PRODUCT of half-power factors with distinct polynomial bases
+/// against the shared base: prod u_i^(-d_i) = B^(-dmax) * prod
+/// u_i^(dmax - d_i) with B = prod u_i, valid where every u_i > 0 (the
+/// per-factor conditions are returned; product positivity is NOT
+/// enough: u = x, v = x+2 at x = -3 has uv > 0 with both factors
+/// undefined). B must be proportional to the shared base with a
+/// rational square-root ratio, exactly like single proportional bases.
+fn factored_half_power_product_term(
+    ctx: &mut Context,
+    core: ExprId,
+    var_name: &str,
+    shared_base_poly: &Polynomial,
+    scale: BigRational,
+) -> Option<(BigRational, Polynomial, BigRational, Vec<ExprId>)> {
+    let core = cas_ast::hold::strip_all_holds(ctx, core);
+    if !matches!(ctx.get(core), Expr::Mul(_, _)) {
+        return None;
+    }
+    let mut numerator = Polynomial::one(var_name.to_string());
+    let mut factors: Vec<(Polynomial, ExprId, BigRational)> = Vec::new();
+    for factor in cas_math::expr_nary::mul_leaves(ctx, core) {
+        let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+        if let Expr::Pow(base, exponent) = ctx.get(factor).clone() {
+            if let Some(exponent) = cas_math::numeric_eval::as_rational_const(ctx, exponent) {
+                if exponent.is_negative() && half_integer_offset(&(-exponent.clone())).is_some() {
+                    let base_poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
+                    factors.push((base_poly, base, -exponent));
+                    continue;
+                }
+            }
+        }
+        let factor_poly = Polynomial::from_expr(ctx, factor, var_name).ok()?;
+        numerator = numerator.mul(&factor_poly);
+    }
+    if factors.len() < 2 {
+        return None;
+    }
+    let max_exponent = factors
+        .iter()
+        .map(|(_, _, exponent)| exponent.clone())
+        .max()?;
+    let mut combined_base = Polynomial::one(var_name.to_string());
+    let mut extra_bases = Vec::new();
+    for (base_poly, base_expr, exponent) in &factors {
+        combined_base = combined_base.mul(base_poly);
+        // Lift to the common exponent: u^(-d) = u^(dmax - d) * u^(-dmax).
+        let gap = max_exponent.clone() - exponent;
+        if gap.is_negative() || !gap.is_integer() {
+            return None;
+        }
+        let gap: usize = gap.to_integer().try_into().ok()?;
+        numerator = numerator.mul(&polynomial_power(base_poly, gap));
+        extra_bases.push(*base_expr);
+    }
+    let ratio = proportional_polynomial_ratio(shared_base_poly, &combined_base)?;
+    if !ratio.is_positive() {
+        return None;
+    }
+    let sqrt_ratio = rational_square_root(&ratio)?;
+    let doubled = max_exponent.clone() * BigRational::from_integer(2.into());
+    if !doubled.is_integer() {
+        return None;
+    }
+    let exponent_int = i32::try_from(i64::try_from(&doubled.to_integer()).ok()?).ok()?;
+    let adjusted_scale = scale * power_rational(&sqrt_ratio, exponent_int);
+    Some((adjusted_scale, numerator, max_exponent, extra_bases))
 }
 
 fn half_power_base_required_conditions(
@@ -1631,20 +1722,34 @@ fn half_power_polynomial_sum_required_conditions(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<Vec<crate::ImplicitCondition>> {
-    let (combined, base) = half_power_polynomial_sum_combined(ctx, expr)?;
+    let (combined, base, extra_positive_bases) = half_power_polynomial_sum_combined(ctx, expr)?;
     if !combined.is_zero() {
         return None;
     }
 
-    Some(half_power_base_required_conditions(ctx, base))
+    let mut conditions = half_power_base_required_conditions(ctx, base);
+    for factor_base in extra_positive_bases {
+        if !strictly_positive_quadratic_base(ctx, factor_base) {
+            conditions.push(crate::ImplicitCondition::Positive(factor_base));
+        }
+    }
+    Some(conditions)
 }
 
 fn half_power_polynomial_sum_nonzero_required_conditions(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<Vec<crate::ImplicitCondition>> {
-    let (combined, base) = half_power_polynomial_sum_combined(ctx, expr)?;
-    (!combined.is_zero()).then(|| half_power_base_required_conditions(ctx, base))
+    let (combined, base, extra_positive_bases) = half_power_polynomial_sum_combined(ctx, expr)?;
+    (!combined.is_zero()).then(|| {
+        let mut conditions = half_power_base_required_conditions(ctx, base);
+        for factor_base in extra_positive_bases {
+            if !strictly_positive_quadratic_base(ctx, factor_base) {
+                conditions.push(crate::ImplicitCondition::Positive(factor_base));
+            }
+        }
+        conditions
+    })
 }
 
 fn two_term_residual_difference_terms(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
@@ -9799,6 +9904,51 @@ mod tests {
             ),
             Some(("0".to_string(), vec![]))
         );
+    }
+
+    #[test]
+    fn half_power_residual_merges_factored_bases_with_per_factor_conditions() {
+        // prod u_i^(-1/2) merges against the expanded shared base; the
+        // conditions must be PER FACTOR (x > 1 excludes the x < -1
+        // region where (x^2-1)^(-1/2) is defined but the factors are not).
+        // Raw layer: shared-base condition plus BOTH per-factor
+        // conditions (the display pipeline intersects them downstream:
+        // x > 0, and x > 1 for the second case).
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "x^(-1/2)*(x+2)^(-1/2) - (x^2+2*x)^(-1/2)"
+            ),
+            Some((
+                "0".to_string(),
+                vec![
+                    "x < -2 or x > 0".to_string(),
+                    "x > 0".to_string(),
+                    "x > -2".to_string(),
+                ]
+            ))
+        );
+        let shifted = reciprocal_half_power_shared_denominator_result(
+            "(x+1)^(-1/2)*(x-1)^(-1/2) - (x^2-1)^(-1/2)",
+        )
+        .expect("must cancel");
+        assert_eq!(shifted.0, "0");
+        assert!(
+            shifted.1.iter().any(|c| c == "x > 1") && shifted.1.iter().any(|c| c == "x > -1"),
+            "per-factor conditions must be present: {:?}",
+            shifted.1
+        );
+        // Mismatched products, scales and signs refuse.
+        for source in [
+            "x^(-1/2)*(x+3)^(-1/2) - (x^2+2*x)^(-1/2)",
+            "x^(-1/2)*(x+2)^(-1/2) - 2*(x^2+2*x)^(-1/2)",
+            "x^(-1/2)*(x+2)^(-1/2) + (x^2+2*x)^(-1/2)",
+        ] {
+            assert_eq!(
+                reciprocal_half_power_shared_denominator_result(source),
+                None,
+                "must refuse: {source}"
+            );
+        }
     }
 
     #[test]
