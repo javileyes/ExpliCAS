@@ -121,8 +121,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   Quedan: u=√x radicales lineales, y la superficie 1/(eˣ+e⁻ˣ) que el
   pre-simplificador reescribe a 1/(2cosh(x)) antes de llegar al
   integrador — peldaño hiperbólico aparte)*
-- [ ] **(F) Weierstrass t=tan(x/2)**: `1/(2+cos(x))`, `1/(1+sin(x))` —
+- [x] **(F) Weierstrass t=tan(x/2)**: `1/(2+cos(x))`, `1/(1+sin(x))` —
   estándar de examen universitario.
+  *(graduado 2026-06-13 c6107abd5: racionales de sin(kx)/cos(kx) con
+  argumento lineal compartido vía t=tan(kx/2) + pares polinómicos +
+  gcd mónico + fallback al backend solo-incondicional: 1/(2+cos x)→
+  (2/√3)arctan(tan(x/2)/√3), 1/(1+sin x), 1/(1+cos x)→tan(x/2),
+  1/(3+2cos x), 1/(5+4sin x), sin x/(1+sin x), 1/(2+cos 2x),
+  1/(sin x+cos x)→atanh. Quedan como peldaños: múltiplos mixtos
+  (sin x con cos 2x, necesita pre-expansión de ángulo doble), offsets
+  de fase, átomos tan/sec, canal de condiciones a través de la ruta
+  de soporte, y el techo de profundidad del simplificador que deja
+  4/6 filas como verification_gap)*
 - [ ] **(A) Motor 0/0 componible en punto finito**: la allowlist no
   invierte (`x/sin(x)` falla siendo `sin(x)/x` soportado), no compone
   (`sin(3x)/sin(5x)` → 3/5, `(1-cos x)/x²` → 1/2, `(sin x - x)/x³` →
