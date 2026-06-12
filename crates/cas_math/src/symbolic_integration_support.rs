@@ -9164,7 +9164,9 @@ fn monomial_times_bounded_inverse_trig_antiderivative(
         ) {
             continue;
         }
-        if !is_var(ctx, args[0], var) {
+        let (slope_expr, offset) = get_linear_coeffs(ctx, args[0], var)?;
+        let slope = rational_constant_value(ctx, slope_expr)?;
+        if slope.is_zero() || !is_number(ctx, offset, 0) {
             return None;
         }
         let cofactor_factors: Vec<ExprId> = factors
@@ -9177,8 +9179,47 @@ fn monomial_times_bounded_inverse_trig_antiderivative(
         }
         let cofactor = build_balanced_mul(ctx, &cofactor_factors);
         let (scale, power) = scaled_var_power_term(ctx, cofactor, var)?;
-        if power != BigRational::from_integer(1.into()) {
+        if !power.denom().is_one() || !power.is_positive() {
             return None;
+        }
+        let n = usize::try_from(i64::try_from(&power.to_integer()).ok()?).ok()?;
+        if n > 5 {
+            return None;
+        }
+        if n != 1 || !slope.is_one() {
+            // General by parts: x^(n+1)/(n+1) * inv(kx) -/+
+            // k/(n+1) * integral of x^(n+1)/sqrt(1 - k^2 x^2), the tail
+            // delegated to the monomial-over-radical reduction family.
+            let inverse = *factor;
+            let var_expr = ctx.var(var);
+            let head_exponent = ctx.num((n + 1) as i64);
+            let head_monomial = ctx.add(Expr::Pow(var_expr, head_exponent));
+            let head_raw = mul2_raw(ctx, head_monomial, inverse);
+            let over_n_plus_one =
+                BigRational::one() / BigRational::from_integer(((n + 1) as i64).into());
+            let head = scale_rational_term(ctx, over_n_plus_one.clone(), head_raw);
+
+            let one = ctx.num(1);
+            let slope_square = &slope * &slope;
+            let x_squared_exponent = ctx.num(2);
+            let x_squared = ctx.add(Expr::Pow(var_expr, x_squared_exponent));
+            let scaled_square = scale_rational_term(ctx, slope_square.clone(), x_squared);
+            let radicand = ctx.add(Expr::Sub(one, scaled_square));
+            let tail = monomial_over_sqrt_reduction(
+                ctx,
+                n + 1,
+                &BigRational::one(),
+                &slope_square,
+                radicand,
+                var,
+            )?;
+            let tail_signed = match builtin {
+                BuiltinFn::Arcsin | BuiltinFn::Asin => -(&slope * &over_n_plus_one),
+                _ => &slope * &over_n_plus_one,
+            };
+            let tail_term = scale_rational_term(ctx, tail_signed, tail);
+            let primitive = ctx.add(Expr::Add(head, tail_term));
+            return Some(scale_rational_term(ctx, scale, primitive));
         }
 
         let var_expr = ctx.var(var);
@@ -24390,6 +24431,64 @@ mod tests {
     }
 
     #[test]
+    fn monomial_inverse_trig_by_parts_generalizes_powers_and_slopes() {
+        let mut ctx = Context::new();
+        for source in [
+            "x^2*arcsin(x)",
+            "x^3*arcsin(x)",
+            "x^2*arccos(x)",
+            "x*arcsin(2*x)",
+            "x^2*arcsin(3*x)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn monomial_inverse_trig_by_parts_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for source in ["x^2*arcsin(x)", "x*arcsin(2*x)", "x^2*arccos(x)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in [-0.3_f64, 0.2, 0.45] {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn monomial_inverse_trig_by_parts_declines_offsets_and_high_powers() {
+        let mut ctx = Context::new();
+        // Offset arguments need shifted radicands; n > 5 exceeds the
+        // radical-tail cap. Both stay honestly residual.
+        for source in ["x*arcsin(x+1)", "x^6*arcsin(x)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
+            );
+        }
+    }
+
+    #[test]
     fn monomial_over_sqrt_negative_quadratic_reduces_with_exact_values() {
         let mut ctx = Context::new();
         for source in [
@@ -24485,9 +24584,12 @@ mod tests {
     #[test]
     fn monomial_times_bounded_inverse_trig_declines_other_shapes() {
         let mut ctx = Context::new();
-        // Scaled/quadratic shapes stay honest residuals for now; the
-        // arctan family keeps its own general by-parts owner.
-        for source in ["x^2*arcsin(x)", "x*arcsin(2*x)"] {
+        // x^2*arcsin(x) and x*arcsin(2x) graduated to the general
+        // by-parts path (radical tails via the reduction family); the
+        // remaining honest residuals are offset arguments and powers
+        // over the tail cap, and the arctan family keeps its own
+        // general by-parts owner.
+        for source in ["x*arcsin(x+1)", "x^6*arcsin(x)"] {
             let expr = parse(source, &mut ctx).expect(source);
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),

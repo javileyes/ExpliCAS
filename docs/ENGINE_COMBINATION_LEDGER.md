@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 86 (newest first)
+Active entries: 87 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -129,6 +129,7 @@ Active entries: 86 (newest first)
 - 2026-06-12 | `retained` | simplifier / root shortcuts (Reciprocal Half-Power Residual) / | Retained simplifier: half-power residual shortcut covers scaled roots and re-probes post-phase
 - 2026-06-12 | `retained` | simplifier / fraction cancellation (CancelIdenticalFractionRule) / | Retained soundness: 0/0 no longer cancels to 1
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical reduction | Retained calculus: monomial over sqrt(a - b x^2) reduction family
+- 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: general monomial times arcsine/arccosine by parts
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3568,3 +3569,52 @@ Active entries: 86 (newest first)
   - verification residuals preserve the antiderivative's factored
     presentation: zero-residual shortcuts must flatten rational-scaled
     groups or every factored closed form re-opens the verification gap
+
+## 2026-06-12 - Retained calculus: general monomial times arcsine/arccosine by parts
+
+- area:
+  - calculus / integration / educational route / bounded inverse trig
+    by-parts (block 8) / half-power residual proportional bases
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families
+  - calculus_matrix_cell: integrate(x^2*arcsin(x)) =
+    (3x^3 arcsin x + (x^2+2) sqrt(1-x^2))/9,
+    integrate(x*arcsin(2x)), powers n = 1..5, slopes k rational,
+    arccos twins, and the definite
+    integrate(x^2*arcsin(x), x, 0, 1) = (pi - 4/3)/6
+  - behavior_change_expected: yes - c x^n arcsin(kx)/arccos(kx)
+    integrates by parts delegating the radical tail to the
+    cycle-1 monomial-over-radical reduction family
+- observed (frontier probing + implementation):
+  - the enabler-then-wiring pattern completed in adjacent cycles
+    exactly as designed: the wrapper is x^(n+1)/(n+1) inv(kx) -/+
+    k/(n+1) * tail with the tail one call into
+    monomial_over_sqrt_reduction; the n=1, k=1 closed form kept its
+    pinned display by short-circuiting before the general path
+  - TWO shortcut extensions were needed for full harness verification:
+    (a) the one-level flatten became a bounded RECURSIVE flatten with
+    merge-of-equal-cores (arcsin terms cancel pairwise as
+    rational-scaled identical exprs before the half-power parse);
+    (b) proportional bases rescale exactly (1 - 4x^2 = 4(1/4 - x^2)
+    from scaled-argument derivatives) when the ratio's square root is
+    rational - base^(-d) = c^d shared^(-d) with 2d integer
+  - a pre-existing contract pinned a DUPLICATED interval condition
+    ("x < 0 or x > 1" twice) for scaled-radicand cancellations; the
+    proportional-base normalization shares one base and reports the
+    condition once - contract updated by intent (dedupe is the
+    improvement, not a regression)
+  - offset arguments arcsin(x+1) and n > 5 stay honestly residual
+    (shifted radicands and the tail cap; reject-tested)
+- retained learning:
+  - scaled-argument families systematically produce
+    proportional-but-not-identical radical bases in their verification
+    residuals (the diff engine normalizes arcsin(kx) derivatives to
+    monic-style radicands); any shared-base zero-residual procedure
+    needs the proportional-base rescale or every k != 1 member of the
+    family re-opens the verification gap
+  - both rows of the pair verify by equivalence INCLUDING direct-diff;
+    verification_gap stays at 7 for the second cycle running - the
+    shortcut investment from cycle 11 is compounding

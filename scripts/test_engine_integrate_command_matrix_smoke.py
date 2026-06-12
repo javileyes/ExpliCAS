@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 218)
+        self.assertEqual(len(cases), 220)
         names = {case.name for case in cases}
         self.assertIn(
             "algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
@@ -422,7 +422,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 15, "supported": 198, "undefined": 5},
+            {"residual": 15, "supported": 200, "undefined": 5},
         )
         self.assertEqual(
             sum(
@@ -433,7 +433,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     or case.expected_derivative_equivalent_to is not None
                 )
             ),
-            125,
+            127,
         )
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
@@ -443,11 +443,11 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "definite_ftc_from_verified_antiderivative": 34,
                 "verification_gap": 7,
                 "verified_by_diff": 30,
-                "verified_by_diff_and_direct_diff_integrate": 95,
+                "verified_by_diff_and_direct_diff_integrate": 97,
                 "verified_by_direct_diff_integrate": 32,
             },
         )
-        self.assertEqual(SMOKE.count_verified_supported_cases(cases), 157)
+        self.assertEqual(SMOKE.count_verified_supported_cases(cases), 159)
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
             {
@@ -679,6 +679,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "by_parts_log_domain",
                 "by_parts_monomial_arcsine_domain",
                 "by_parts_monomial_arccosine_domain",
+                "by_parts_square_arcsine_radical_tail",
+                "by_parts_monomial_scaled_arcsine_radical_tail",
                 "monomial_over_sqrt_reduction_square",
                 "monomial_over_sqrt_reduction_scaled_radicand",
                 "definite_integral_monomial_over_sqrt_quarter_pi",
@@ -750,7 +752,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "backend_verified_conservative_denominator_nonzero": 2,
                 "interval_certified_unconditional": 5,
                 "interval_certified_trig_discharged": 5,
-                "bounded_interval_required": 2,
+                "bounded_interval_required": 4,
                 "boundary_touch_one_sided_limit": 7,
                 "improper_interval_certified": 7,
                 "improper_divergent_to_infinity": 4,
@@ -843,7 +845,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_radical_inverse_policy_clusters(cases),
             {
-                "block8_bounded_inverse_trig_by_parts": 2,
+                "block8_bounded_inverse_trig_by_parts": 4,
                 "block8_inverse_hyperbolic_rational_interval": 2,
                 "block8_inverse_sqrt_tables": 9,
                 "block8_inverse_trig_root_reciprocal": 6,
@@ -865,7 +867,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block5_generalized_substitution": 13,
                 "block6_rational_integration": 22,
                 "block7_trig_hyperbolic_integration": 67,
-                "block8_radical_inverse_families": 21,
+                "block8_radical_inverse_families": 23,
                 "block9_residuals_and_non_goals": 16,
                 "block12_hybrid_algorithmic_backend": 20,
                 "block13_definite_integrals": 38,
@@ -876,7 +878,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "algorithmic_backend_boundary_verified": 20,
                 "didactic_trace_and_verified_antiderivative": 60,
-                "domain_conditions_and_verified_antiderivative": 118,
+                "domain_conditions_and_verified_antiderivative": 120,
                 "explicit_undefined_domain_policy": 5,
                 "safe_residual_policy": 15,
             },
@@ -1428,7 +1430,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block5_generalized_substitution": 13,
                 "block6_rational_integration": 22,
                 "block7_trig_hyperbolic_integration": 37,
-                "block8_radical_inverse_families": 21,
+                "block8_radical_inverse_families": 23,
             },
         )
         self.assertEqual(
@@ -1436,7 +1438,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "algorithmic_backend_boundary_verified": 20,
                 "didactic_trace_and_verified_antiderivative": 36,
-                "domain_conditions_and_verified_antiderivative": 71,
+                "domain_conditions_and_verified_antiderivative": 73,
             },
         )
         self.assertEqual(
@@ -1450,7 +1452,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_direct_diff_integrate_radical_inverse_policy_clusters(cases),
             {
-                "block8_bounded_inverse_trig_by_parts": 2,
+                "block8_bounded_inverse_trig_by_parts": 4,
                 "block8_inverse_hyperbolic_rational_interval": 2,
                 "block8_inverse_sqrt_tables": 9,
                 "block8_inverse_trig_root_reciprocal": 6,
@@ -1468,7 +1470,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             },
         )
         self.assertEqual(len(SMOKE.direct_diff_integrate_exact_cases(cases)), 115)
-        self.assertEqual(len(SMOKE.direct_diff_integrate_equivalence_cases(cases)), 12)
+        self.assertEqual(len(SMOKE.direct_diff_integrate_equivalence_cases(cases)), 14)
         self.assertEqual(
             len(SMOKE.derivative_verified_without_direct_diff_integrate_cases(cases)),
             30,
@@ -1552,7 +1554,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block4_base_integration": 1,
                 "block5_generalized_substitution": 2,
                 "block7_trig_hyperbolic_integration": 5,
-                "block8_radical_inverse_families": 4,
+                "block8_radical_inverse_families": 6,
             },
         )
         self.assertEqual(

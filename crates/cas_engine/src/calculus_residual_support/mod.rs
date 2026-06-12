@@ -1448,6 +1448,53 @@ fn half_power_polynomial_term(
     }
 }
 
+/// shared = c * candidate for a single rational constant c.
+fn proportional_polynomial_ratio(
+    shared: &Polynomial,
+    candidate: &Polynomial,
+) -> Option<BigRational> {
+    if shared.coeffs.len() != candidate.coeffs.len() || candidate.is_zero() {
+        return None;
+    }
+    let mut ratio: Option<BigRational> = None;
+    for (left, right) in shared.coeffs.iter().zip(candidate.coeffs.iter()) {
+        match (left.is_zero(), right.is_zero()) {
+            (true, true) => continue,
+            (true, false) | (false, true) => return None,
+            (false, false) => {
+                let candidate_ratio = left / right;
+                if let Some(existing) = &ratio {
+                    if *existing != candidate_ratio {
+                        return None;
+                    }
+                } else {
+                    ratio = Some(candidate_ratio);
+                }
+            }
+        }
+    }
+    ratio
+}
+
+fn rational_square_root(value: &BigRational) -> Option<BigRational> {
+    let numer = value.numer().sqrt();
+    let denom = value.denom().sqrt();
+    let candidate = BigRational::new(numer, denom);
+    (&candidate * &candidate == *value).then_some(candidate)
+}
+
+fn power_rational(base: &BigRational, exponent: i32) -> BigRational {
+    let mut acc = BigRational::from_integer(1.into());
+    for _ in 0..exponent.unsigned_abs() {
+        acc *= base;
+    }
+    if exponent < 0 {
+        acc.recip()
+    } else {
+        acc
+    }
+}
+
 fn half_power_polynomial_sum_combined(
     ctx: &mut Context,
     expr: ExprId,
@@ -1457,27 +1504,42 @@ fn half_power_polynomial_sum_combined(
         return None;
     }
 
-    // One-level flatten: a rational-scaled additive GROUP distributes
-    // exactly (1/2 * (A - B) contributes 1/2*A and -1/2*B), which is how
-    // verification residuals keep factored antiderivative shapes.
-    let mut scaled_terms = Vec::with_capacity(raw_terms.len());
+    // Bounded recursive flatten: a rational-scaled additive GROUP
+    // distributes exactly (1/2 * (A - B) contributes 1/2*A and -1/2*B),
+    // which is how verification residuals keep factored (and nested)
+    // antiderivative shapes. Then merge structurally equal cores: their
+    // rational scales add exactly, which cancels non-radical pairs
+    // (arcsin terms) before the half-power parse sees them.
+    let mut worklist: Vec<(BigRational, ExprId, usize)> = Vec::with_capacity(raw_terms.len());
     for (term, sign) in raw_terms {
         let (scale, core) = signed_rational_scaled_term(ctx, term, sign);
+        worklist.push((scale, core, 0));
+    }
+    let mut scaled_terms: Vec<(BigRational, ExprId)> = Vec::new();
+    while let Some((scale, core, depth)) = worklist.pop() {
         if scale.is_zero() {
             continue;
         }
-        if matches!(ctx.get(core), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        if depth < 3 && matches!(ctx.get(core), Expr::Add(_, _) | Expr::Sub(_, _)) {
             for (sub_term, sub_sign) in cas_math::expr_nary::add_terms_signed(ctx, core) {
                 let (sub_scale, sub_core) = signed_rational_scaled_term(ctx, sub_term, sub_sign);
-                if sub_scale.is_zero() {
-                    continue;
-                }
-                scaled_terms.push((scale.clone() * sub_scale, sub_core));
+                worklist.push((scale.clone() * sub_scale, sub_core, depth + 1));
             }
             continue;
         }
+        if let Some((existing_scale, _)) = scaled_terms
+            .iter_mut()
+            .find(|(_, existing_core)| exprs_match(ctx, *existing_core, core))
+        {
+            *existing_scale += scale;
+            continue;
+        }
         scaled_terms.push((scale, core));
+        if scaled_terms.len() > 12 {
+            return None;
+        }
     }
+    scaled_terms.retain(|(scale, _)| !scale.is_zero());
     if scaled_terms.len() > 8 {
         return None;
     }
@@ -1498,9 +1560,27 @@ fn half_power_polynomial_sum_combined(
         };
         let (numerator, base, denominator_exponent) =
             half_power_polynomial_term(ctx, core, &inferred_var)?;
+        let mut scale = scale;
         if let Some(existing_base) = shared_base {
             if !exprs_match(ctx, existing_base, base) {
-                return None;
+                // Proportional bases rescale exactly: base = shared/c
+                // with rational c > 0 whose square root is rational
+                // (the 1 - 4x^2 vs 1/4 - x^2 pair from scaled-argument
+                // derivatives) gives base^(-d) = c^d * shared^(-d).
+                let shared_poly = Polynomial::from_expr(ctx, existing_base, &inferred_var).ok()?;
+                let candidate_poly = Polynomial::from_expr(ctx, base, &inferred_var).ok()?;
+                let ratio = proportional_polynomial_ratio(&shared_poly, &candidate_poly)?;
+                if !ratio.is_positive() {
+                    return None;
+                }
+                let sqrt_ratio = rational_square_root(&ratio)?;
+                // c^d with d half-integer: (sqrt c)^(2d), 2d integer.
+                let doubled = denominator_exponent.clone() * BigRational::from_integer(2.into());
+                if !doubled.is_integer() {
+                    return None;
+                }
+                let exponent = i32::try_from(i64::try_from(&doubled.to_integer()).ok()?).ok()?;
+                scale *= power_rational(&sqrt_ratio, exponent);
             }
         } else {
             shared_base = Some(base);
@@ -9727,19 +9807,17 @@ mod tests {
             reciprocal_half_power_shared_denominator_result(
                 "2*(2*x*(2*x-2))^(-1/2) - (x^2-x)^(-1/2)"
             ),
-            Some((
-                "0".to_string(),
-                vec!["x < 0 or x > 1".to_string(), "x < 0 or x > 1".to_string()]
-            ))
+            // Proportional-base normalization shares one base, so the
+            // previously duplicated interval condition reports once.
+            Some(("0".to_string(), vec!["x < 0 or x > 1".to_string()]))
         );
         assert_eq!(
             reciprocal_half_power_shared_denominator_result(
                 "(x^2-x)^(-1/2) - 2*(-2*x*(2-2*x))^(-1/2)"
             ),
-            Some((
-                "0".to_string(),
-                vec!["x < 0 or x > 1".to_string(), "x < 0 or x > 1".to_string()]
-            ))
+            // Proportional-base normalization shares one base, so the
+            // previously duplicated interval condition reports once.
+            Some(("0".to_string(), vec!["x < 0 or x > 1".to_string()]))
         );
     }
 

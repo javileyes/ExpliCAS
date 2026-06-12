@@ -489,7 +489,13 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The monomial-over-radical reduction family landed next
+     composes). The general monomial-times-arcsine by-parts family then
+     completed the pair of cycles (x^n arcsin(kx) for n = 1..5 with the
+     radical tail delegated to the reduction family;
+     integrate(x^2*arcsin(x), x, 0, 1) = (pi - 4/3)/6; the half-power
+     shortcut learned recursive flattening with equal-core merging and
+     proportional-base rescaling, so all rows verify with direct-diff).
+     The monomial-over-radical reduction family landed just before
      (x^n/sqrt(a - b x^2) for n = 2..6 via the textbook recurrence;
      integrate(x^2/sqrt(1-x^2), x, 0, 1) = pi/4 composes; the half-power
      residual shortcut learned to flatten rational-scaled groups so the
