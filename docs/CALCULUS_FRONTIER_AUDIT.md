@@ -72,7 +72,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (el resultado tan(x) no aparece en ningún paso); pasos no-op
   before==after y ciclos expandir/refactorizar. Filtro de saneado de
   traza (eliminar no-ops, verificar que el último after == resultado).
-  *(parcial 2026-06-12 PENDING_HASH: etiqueta falsa corregida — el
+  *(parcial 2026-06-12 3a43f063e: etiqueta falsa corregida — el
   preámbulo de valores exactos de sec/csc/cot llamaba la tabla trig
   SIN restringir el builtin y reclamaba cos(π)/cos(0) bajo su nombre;
   ahora gatea por su propia función + 2 traducciones nuevas. Quedan:
