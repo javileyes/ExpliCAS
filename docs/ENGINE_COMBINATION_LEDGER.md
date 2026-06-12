@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 97 (newest first)
+Active entries: 98 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -140,6 +140,7 @@ Active entries: 97 (newest first)
 - 2026-06-12 | `retained` | simplifier / speculative exact-zero probes / termination (P0-A of | Retained soundness: probe budget ends the trig zero-equivalence hang class
 - 2026-06-12 | `retained` | didactic trace quality / rule naming (P0-F of the frontier audit, | Retained didactic: trig table evaluation reclaims its own rule name
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical numerators | Retained calculus: radical numerators land the trig-substitution chapter by delegation
+- 2026-06-12 | `retained` | calculus / integration / educational route / exponential rational | Retained calculus: rationals of e^x via u-substitution into the rational owners
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -4051,3 +4052,49 @@ Active entries: 97 (newest first)
     substitution (the textbook route), check whether multiplying by
     q/q lands the integrand in an owned quotient family - delegation
     beats new machinery AND inherits its verification channels
+
+## 2026-06-12 - Retained calculus: rationals of e^x via u-substitution into the rational owners
+
+- area:
+  - calculus / integration / educational route / exponential rational
+    substitution (block 5, P1 of the frontier audit, u=e^x half of
+    "general algebraic substitution")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 5 generalized substitution (new
+    exponential_rational_substitution family, 6 rows, 13 -> 19)
+  - calculus_matrix_cell: 1/(1+e^x) = ln(e^x/(e^x+1)),
+    e^x/(1+e^(2x)) = arctan(e^x), e^(2x)/(1+e^x) = e^x - ln(e^x+1),
+    (e^x-1)/(e^x+1) = 2 ln(e^x+1) - x, 1/(e^(2x)-1) with its pole
+    condition, and the fractional-slope e^(x/2)/(1+e^x) = 2 arctan(e^(x/2))
+  - behavior_change_expected: yes - any rational expression over
+    e^(k x) atoms with rational k and rational coefficients integrates
+    by substitution u = e^(cx), c = gcd of the slopes
+- observed (frontier probing + implementation):
+  - the rational owners dispatch on RAW AST: handing them a nested
+    Div((1/(1+u)), u) returns None even though the flat 1/((1+u)*u)
+    integrates - the recognizer therefore builds the single quotient
+    num(u)/(den(u)*c*u) with Polynomial arithmetic (rational-function
+    pairs per subtree) instead of rewriting the expression tree
+  - partial-fraction owners wrap results in an internal hold;
+    unwrap_internal_hold before back-substitution or the antiderivative
+    is opaque to differentiate_symbolic_expr (diff returned None on a
+    correct result)
+  - |e^t| = e^t: stripping the Abs wrappers the back-substitution
+    leaves around exponentials both fixes the diff channel and lets the
+    public pipeline simplify ln(e^x) -> x (display: 2 ln(e^x+1) - x)
+  - ordering: the first insertion point (general chain) captured
+    1/e^(2x) from the reciprocal-exp owner and broke its pinned
+    -1/2 / e^(2x) display; the dispatch lives AFTER the whole
+    IntKind::Div owner block
+- retained learning:
+  - recursive integrate-in-u inherits every rational-backend capability
+    (partial fractions, Ostrogradsky, arctan builders) for free, but
+    the handoff form must match the owner's accepted SURFACE: flatten
+    to a single polynomial quotient before delegating, because support
+    routes never get the pre-simplifier pass that public inputs get
+  - back-substitution must repair what the u-domain owners assume:
+    holds (unwrap) and abs-positivity (e^t > 0) are u-domain artifacts
+    that block downstream verification if left in place

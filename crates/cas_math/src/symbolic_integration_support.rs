@@ -9367,6 +9367,318 @@ fn polynomial_over_sqrt_quadratic_hermite_antiderivative(
 /// x^2 sqrt(1-x^2), sqrt(x^2 +/- a^2), completed squares - in one
 /// recognizer. Built INTERNALLY (Mul with Pow(q,-1/2)) because the
 /// public pre-simplifier cancels q/sqrt(q) back to sqrt(q).
+/// Rational functions of e^x: substitute u = e^(c x) with c the gcd of
+/// all exponent slopes, build the SINGLE flattened quotient
+/// num(u)/(den(u) * c * u) via Polynomial arithmetic (the rational
+/// owners dispatch on raw AST and do not flatten nested Divs), then
+/// integrate in u and back-substitute. Covers 1/(1+e^x),
+/// e^x/(1+e^(2x)) -> arctan(e^x), e^(2x)/(1+e^x), (e^x-1)/(e^x+1)...
+/// Symbolic coefficients decline (rational constants only). Ordered
+/// AFTER the linear-exponential owners so their displays survive.
+fn exponential_rational_substitution_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut slopes: Vec<BigRational> = Vec::new();
+    if !collect_exponential_rational_slopes(ctx, expr, var, &mut slopes) || slopes.is_empty() {
+        return None;
+    }
+    let mut numer_gcd = slopes[0].numer().clone();
+    let mut denom_lcm = slopes[0].denom().clone();
+    for slope in &slopes[1..] {
+        numer_gcd = num_integer::Integer::gcd(&numer_gcd, slope.numer());
+        denom_lcm = num_integer::Integer::lcm(&denom_lcm, slope.denom());
+    }
+    if numer_gcd.is_zero() {
+        return None;
+    }
+    let c = BigRational::new(numer_gcd, denom_lcm);
+
+    let used = cas_ast::collect_variables(ctx, expr);
+    let u_name = ["u", "u_", "u_sub"]
+        .iter()
+        .find(|candidate| !used.contains(**candidate) && *candidate != &var)?
+        .to_string();
+
+    let (num, mut den) = exponential_rational_function_parts(ctx, expr, var, &c, &u_name)?;
+    // Divide by c*u (du = c*u dx).
+    let mut cu = Polynomial::zero(u_name.clone());
+    cu.coeffs = vec![BigRational::zero(), c.clone()];
+    den = den.mul(&cu);
+    if num.degree() > 10 || den.degree() > 10 || den.is_zero() {
+        return None;
+    }
+    let numerator_expr = polynomial_to_expr(ctx, &num, &u_name);
+    let denominator_expr = polynomial_to_expr(ctx, &den, &u_name);
+    let integrand_u = ctx.add(Expr::Div(numerator_expr, denominator_expr));
+    let integral_u = integrate_symbolic_expr(ctx, integrand_u, &u_name)?;
+    // Partial-fraction owners wrap in an internal hold; unwrap so the
+    // back-substituted antiderivative stays differentiable downstream.
+    let integral_u = cas_ast::hold::unwrap_internal_hold(ctx, integral_u);
+
+    let var_expr = ctx.var(var);
+    let scaled_var = scale_rational_term(ctx, c, var_expr);
+    let e_const = ctx.add(Expr::Constant(cas_ast::Constant::E));
+    let replacement = ctx.add(Expr::Pow(e_const, scaled_var));
+    let target = ctx.var(&u_name);
+    let substituted = crate::substitute::substitute_power_aware(
+        ctx,
+        integral_u,
+        target,
+        replacement,
+        crate::substitute::SubstituteOptions::exact(),
+    );
+    Some(strip_redundant_exponential_abs(ctx, substituted))
+}
+
+/// |e^t| = e^t for real t: drop Abs wrappers the back-substitution
+/// leaves around exponentials (ln(|u|) -> ln(|e^(c x)|)).
+fn strip_redundant_exponential_abs(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let node = ctx.get(expr).clone();
+    if let Expr::Function(fn_id, args) = &node {
+        if args.len() == 1 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Abs)) {
+            let inner = ctx.get(args[0]).clone();
+            let is_exponential = match inner {
+                Expr::Pow(base, _) => {
+                    matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E))
+                }
+                Expr::Function(inner_fn, inner_args) => {
+                    inner_args.len() == 1
+                        && matches!(ctx.builtin_of(inner_fn), Some(BuiltinFn::Exp))
+                }
+                _ => false,
+            };
+            if is_exponential {
+                return strip_redundant_exponential_abs(ctx, args[0]);
+            }
+        }
+    }
+    match node {
+        Expr::Add(l, r) => {
+            let l = strip_redundant_exponential_abs(ctx, l);
+            let r = strip_redundant_exponential_abs(ctx, r);
+            ctx.add(Expr::Add(l, r))
+        }
+        Expr::Sub(l, r) => {
+            let l = strip_redundant_exponential_abs(ctx, l);
+            let r = strip_redundant_exponential_abs(ctx, r);
+            ctx.add(Expr::Sub(l, r))
+        }
+        Expr::Mul(l, r) => {
+            let l = strip_redundant_exponential_abs(ctx, l);
+            let r = strip_redundant_exponential_abs(ctx, r);
+            ctx.add(Expr::Mul(l, r))
+        }
+        Expr::Div(l, r) => {
+            let l = strip_redundant_exponential_abs(ctx, l);
+            let r = strip_redundant_exponential_abs(ctx, r);
+            ctx.add(Expr::Div(l, r))
+        }
+        Expr::Neg(inner) => {
+            let inner = strip_redundant_exponential_abs(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Pow(base, exponent) => {
+            let base = strip_redundant_exponential_abs(ctx, base);
+            let exponent = strip_redundant_exponential_abs(ctx, exponent);
+            ctx.add(Expr::Pow(base, exponent))
+        }
+        Expr::Function(fn_id, args) => {
+            let args: Vec<_> = args
+                .iter()
+                .map(|arg| strip_redundant_exponential_abs(ctx, *arg))
+                .collect();
+            ctx.add(Expr::Function(fn_id, args))
+        }
+        _ => expr,
+    }
+}
+
+fn polynomial_to_expr(ctx: &mut Context, poly: &Polynomial, var: &str) -> ExprId {
+    let var_expr = ctx.var(var);
+    let mut terms = Vec::new();
+    for (degree, coeff) in poly.coeffs.iter().enumerate() {
+        if coeff.is_zero() {
+            continue;
+        }
+        let term = match degree {
+            0 => ctx.num(1),
+            1 => var_expr,
+            _ => {
+                let exponent = ctx.num(degree as i64);
+                ctx.add(Expr::Pow(var_expr, exponent))
+            }
+        };
+        terms.push(scale_rational_term(ctx, coeff.clone(), term));
+    }
+    if terms.is_empty() {
+        return ctx.num(0);
+    }
+    build_balanced_add(ctx, &terms)
+}
+
+/// Build (num, den) Polynomials in u for a rational expression over
+/// e^(k*var) atoms with RATIONAL constant coefficients. Negative
+/// u-powers land in the denominator.
+fn exponential_rational_function_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    c: &BigRational,
+    u_name: &str,
+) -> Option<(Polynomial, Polynomial)> {
+    let one = Polynomial::one(u_name.to_string());
+    if let Some(slope) = exponential_atom_slope(ctx, expr, var) {
+        let power = slope / c;
+        if !power.is_integer() {
+            return None;
+        }
+        let p = i64::try_from(&power.to_integer()).ok()?;
+        let mut mono = Polynomial::zero(u_name.to_string());
+        let degree = usize::try_from(p.unsigned_abs()).ok()?;
+        mono.coeffs = vec![BigRational::zero(); degree + 1];
+        mono.coeffs[degree] = BigRational::from_integer(1.into());
+        return if p >= 0 {
+            Some((mono, one))
+        } else {
+            Some((one, mono))
+        };
+    }
+    if !contains_named_var(ctx, expr, var) {
+        let value = crate::numeric_eval::as_rational_const(ctx, expr)?;
+        let mut constant = Polynomial::zero(u_name.to_string());
+        constant.coeffs = vec![value];
+        return Some((constant, one));
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) => {
+            let (n1, d1) = exponential_rational_function_parts(ctx, l, var, c, u_name)?;
+            let (n2, d2) = exponential_rational_function_parts(ctx, r, var, c, u_name)?;
+            Some((n1.mul(&d2).add(&n2.mul(&d1)), d1.mul(&d2)))
+        }
+        Expr::Sub(l, r) => {
+            let (n1, d1) = exponential_rational_function_parts(ctx, l, var, c, u_name)?;
+            let (n2, d2) = exponential_rational_function_parts(ctx, r, var, c, u_name)?;
+            let neg_n2 = scale_polynomial_rational(&n2, &-BigRational::from_integer(1.into()));
+            Some((n1.mul(&d2).add(&neg_n2.mul(&d1)), d1.mul(&d2)))
+        }
+        Expr::Mul(l, r) => {
+            let (n1, d1) = exponential_rational_function_parts(ctx, l, var, c, u_name)?;
+            let (n2, d2) = exponential_rational_function_parts(ctx, r, var, c, u_name)?;
+            Some((n1.mul(&n2), d1.mul(&d2)))
+        }
+        Expr::Div(l, r) => {
+            let (n1, d1) = exponential_rational_function_parts(ctx, l, var, c, u_name)?;
+            let (n2, d2) = exponential_rational_function_parts(ctx, r, var, c, u_name)?;
+            if n2.is_zero() {
+                return None;
+            }
+            Some((n1.mul(&d2), d1.mul(&n2)))
+        }
+        Expr::Neg(inner) => {
+            let (n, d) = exponential_rational_function_parts(ctx, inner, var, c, u_name)?;
+            Some((
+                scale_polynomial_rational(&n, &-BigRational::from_integer(1.into())),
+                d,
+            ))
+        }
+        Expr::Pow(base, exponent) => {
+            let value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            if !value.is_integer() {
+                return None;
+            }
+            let p = i64::try_from(&value.to_integer()).ok()?;
+            let (n, d) = exponential_rational_function_parts(ctx, base, var, c, u_name)?;
+            let times = usize::try_from(p.unsigned_abs()).ok()?;
+            let mut acc_n = Polynomial::one(u_name.to_string());
+            let mut acc_d = Polynomial::one(u_name.to_string());
+            for _ in 0..times {
+                acc_n = acc_n.mul(&n);
+                acc_d = acc_d.mul(&d);
+            }
+            if p >= 0 {
+                Some((acc_n, acc_d))
+            } else {
+                if acc_n.is_zero() {
+                    return None;
+                }
+                Some((acc_d, acc_n))
+            }
+        }
+        _ => None,
+    }
+}
+
+/// True when expr is built purely from rational operations over
+/// e^(k*var) atoms (k rational nonzero) and var-free subtrees; collects
+/// every k. Any other occurrence of var refuses.
+fn collect_exponential_rational_slopes(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    slopes: &mut Vec<BigRational>,
+) -> bool {
+    if let Some(slope) = exponential_atom_slope(ctx, expr, var) {
+        slopes.push(slope);
+        return true;
+    }
+    if !contains_named_var(ctx, expr, var) {
+        return true;
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            collect_exponential_rational_slopes(ctx, l, var, slopes)
+                && collect_exponential_rational_slopes(ctx, r, var, slopes)
+        }
+        Expr::Neg(inner) => collect_exponential_rational_slopes(ctx, inner, var, slopes),
+        Expr::Pow(base, exponent) => {
+            if contains_named_var(ctx, exponent, var) {
+                return false;
+            }
+            let Some(value) = crate::numeric_eval::as_rational_const(ctx, exponent) else {
+                return false;
+            };
+            if !value.is_integer() {
+                return false;
+            }
+            collect_exponential_rational_slopes(ctx, base, var, slopes)
+        }
+        _ => false,
+    }
+}
+
+/// e^(k*var) (or exp(k*var)) with rational nonzero k and zero offset.
+fn exponential_atom_slope(ctx: &mut Context, expr: ExprId, var: &str) -> Option<BigRational> {
+    let exponent = match ctx.get(expr).clone() {
+        Expr::Pow(base, exponent)
+            if matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E)) =>
+        {
+            exponent
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Exp)) =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+    let (slope_expr, offset) = get_linear_coeffs(ctx, exponent, var)?;
+    if !is_number(ctx, offset, 0) {
+        return None;
+    }
+    let slope = rational_constant_value(ctx, slope_expr)?;
+    (!slope.is_zero()).then_some(slope)
+}
+
+fn scale_polynomial_rational(poly: &Polynomial, scale: &BigRational) -> Polynomial {
+    let mut scaled = poly.clone();
+    for coeff in &mut scaled.coeffs {
+        *coeff *= scale;
+    }
+    scaled
+}
+
 fn radical_numerator_polynomial_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -20119,6 +20431,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         }
     }
 
+    if let Some(integral) = exponential_rational_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let IntKind::Function(fn_id, args) = kind {
         if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log) && args.len() == 2 {
             let base = args[0];
@@ -25035,6 +25351,80 @@ mod tests {
             integrate_symbolic_expr(&mut ctx, cubic_rad, "x").is_none(),
             "cubic radicand must stay residual"
         );
+    }
+
+    #[test]
+    fn exponential_rational_substitution_integrates_the_family() {
+        let mut ctx = Context::new();
+        for source in [
+            "1/(1+e^x)",
+            "e^x/(1+e^(2*x))",
+            "e^(2*x)/(1+e^x)",
+            "(e^x-1)/(e^x+1)",
+            "1/(e^(2*x)-1)",
+            "e^(x/2)/(1+e^x)",
+            "1/(2+3*e^(2*x))",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn exponential_rational_substitution_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("1/(1+e^x)", [-1.3_f64, 0.4, 1.8]),
+            ("e^x/(1+e^(2*x))", [-1.0, 0.2, 1.5]),
+            ("e^(2*x)/(1+e^x)", [-0.8, 0.5, 1.2]),
+            ("(e^x-1)/(e^x+1)", [-1.5, 0.3, 2.0]),
+            ("1/(e^(2*x)-1)", [0.4, 1.0, 1.9]),
+            ("e^(x/2)/(1+e^x)", [-1.2, 0.6, 1.4]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn exponential_rational_substitution_declines_foreign_shapes() {
+        let mut ctx = Context::new();
+        // Mixed polynomial/trig occurrences of x, nonlinear exponents,
+        // exponent offsets, and non-e bases stay outside this owner.
+        for source in [
+            "x/(1+e^x)",
+            "sin(x)/(1+e^x)",
+            "1/(1+e^(x^2))",
+            "1/(1+e^(x+1))",
+            "1/(1+2^x)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                super::exponential_rational_substitution_antiderivative(&mut ctx, expr, "x")
+                    .is_none(),
+                "must decline: {source}"
+            );
+        }
     }
 
     #[test]
