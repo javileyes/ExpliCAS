@@ -49,6 +49,8 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Hyperbolic Quotient Identity" => "Aplicar identidad hiperbólica de cociente",
         "Evaluate Hyperbolic Functions" => "Evaluar valor hiperbólico especial",
         "Evaluate Trigonometric Functions" => "Evaluar valor trigonométrico especial",
+        "Evaluate Trigonometric Functions (Table)" => "Evaluar valor trigonométrico especial",
+        "Evaluate Trig at Integer Multiple of π" => "Evaluar en múltiplo entero de π",
         "Hyperbolic Composition" => "Cancelar funciones hiperbólicas inversas",
         "Inverse Hyperbolic Log Identity" => "Convertir tangente hiperbólica inversa en logaritmo",
         "Hyperbolic Parity (Odd/Even)" => "Aplicar paridad hiperbólica",

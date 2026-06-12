@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 95 (newest first)
+Active entries: 96 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -138,6 +138,7 @@ Active entries: 95 (newest first)
 - 2026-06-12 | `observe-only` | process / candidate selection / coverage measurement | Observe-only: frontier audit wired into the auto-improvement loop
 - 2026-06-12 | `retained` | parser / definite integral bounds / perceived correctness (P0 of | Retained soundness: inf and oo parse as infinity
 - 2026-06-12 | `retained` | simplifier / speculative exact-zero probes / termination (P0-A of | Retained soundness: probe budget ends the trig zero-equivalence hang class
+- 2026-06-12 | `retained` | didactic trace quality / rule naming (P0-F of the frontier audit, | Retained didactic: trig table evaluation reclaims its own rule name
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3967,3 +3968,47 @@ Active entries: 95 (newest first)
     log expansions) is a fixture the cap can silently starve - the
     scorecard corpora are the calibration set, run them before
     trusting any budget number
+
+## 2026-06-12 - Retained didactic: trig table evaluation reclaims its own rule name
+
+- area:
+  - didactic trace quality / rule naming (P0-F of the frontier audit,
+    part a: false labels)
+- status:
+  - `retained`
+- capture:
+  - investment_class: didactic
+  - calculus_maturity_block: block 10 didactic trace maturity
+  - calculus_matrix_cell: integrate(sin(x), x, 0, pi) traces now read
+    "Calcular la integral" -> "Evaluar en multiplo entero de pi" ->
+    "Evaluar valor trigonometrico especial" instead of labeling
+    cos(pi)/cos(0) evaluation as "Expandir secante como reciproco de
+    coseno"
+  - behavior_change_expected: only step labels - values identical
+- observed (frontier probing):
+  - the sec/csc/cot canonicalization rules run an exact-value PREAMBLE
+    so sec(pi/4) evaluates before expanding to 1/cos(pi/4); the
+    preamble called the UNRESTRICTED trig table, so any trig constant
+    that reached those rules first (cos(pi) in FTC bound substitution)
+    was rewritten under the canonicalization rule's name - the
+    dedicated EvaluateTrigTableRule with the right name already
+    existed and was being preempted
+  - fix by intent: the preamble now requires the expression to be the
+    rule's OWN function (BuiltinFn::Sec/Csc/Cot); two surfacing rule
+    names gained Spanish translations; sec(pi/4) = sqrt(2) and
+    csc(pi/6) = 2 still evaluate exactly; all 4 matrix rows that
+    legitimately pin the sec-expansion label still pass (they expand
+    real sec() calls)
+  - REMAINING from the audit item (documented rungs): the sec^2/csc^2
+    integration step VANISHES from traces when pre-simplify steps
+    exist (result tan(x) appears in no step; the direct 1/cos^2 path
+    keeps its macro step) - the drop happens between step assembly and
+    the semantic optimizer, needs its own focused cycle; no-op
+    before==after steps; BONUS finding: integrate(sec(x)^2 + 1, x)
+    goes RESIDUAL because the pre-simplifier mangles the integrand -
+    live example added to the audit's pre-simplifier item
+- retained learning:
+  - preambles that borrow another rule's machinery inherit its WHOLE
+    match surface unless explicitly restricted: any rule that runs a
+    shared table/helper "for its own cases" must gate on its own head
+    symbol or it will claim foreign rewrites under its name in traces

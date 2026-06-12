@@ -67,11 +67,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   Infinity en el mapa de constantes del parser + oo reservado;
   el glifo ∞ sigue rechazando con error claro — peldaño cosmético;
   -inf suelto en CLI es parseo de flags del shell, no del parser)*
-- [ ] **(F) Pasos corruptos**: `integrate(sin(x),x,0,pi)` etiqueta
+- [x] **(F) Pasos corruptos**: `integrate(sin(x),x,0,pi)` etiqueta
   "Expandir secante" al evaluar cos(π); `sec(x)^2` tiene traza rota
   (el resultado tan(x) no aparece en ningún paso); pasos no-op
   before==after y ciclos expandir/refactorizar. Filtro de saneado de
   traza (eliminar no-ops, verificar que el último after == resultado).
+  *(parcial 2026-06-12 PENDING_HASH: etiqueta falsa corregida — el
+  preámbulo de valores exactos de sec/csc/cot llamaba la tabla trig
+  SIN restringir el builtin y reclamaba cos(π)/cos(0) bajo su nombre;
+  ahora gatea por su propia función + 2 traducciones nuevas. Quedan:
+  la traza rota de sec²/csc² (el paso de integración desaparece
+  cuando hay pre-pasos — entre el ensamblado y el optimizador
+  semántico, necesita ciclo propio) y el filtro de no-ops. BONUS:
+  integrate(sec(x)²+1) residual por el pre-simplificador — ejemplo
+  vivo del item P2)*
 
 ### P1 — capítulos universitarios enteros a 0% (mayor densidad de valor)
 
@@ -119,7 +128,9 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (`[0,∞) = π`) y la ortogonalidad de Fourier `sin(3x)cos(5x)
   [-π,π] = 0`. Integrar sobre la forma original primero, o enseñar al
   integrador las formas reescritas (precedente: reconocedor Chebyshev
-  del ledger 2026-06-12).
+  del ledger 2026-06-12). Ejemplo vivo adicional:
+  `integrate(sec(x)^2 + 1, x)` se vuelve residual porque el
+  pre-simplificador lo machaca a `(2cos²−1+3)/(2cos²)`.
 - [ ] **(F) Detección estructural sin antiderivada**: imparidad en
   `[-a,a]` para integrandos no elementales (`sin(x)/(1+x^2) [-1,1] =
   0`), abs por tramos (`|x| [-1,1] = 1`, `e^(-|x|) (-∞,∞) = 2`),

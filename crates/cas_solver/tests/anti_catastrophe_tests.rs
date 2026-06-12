@@ -41,6 +41,63 @@ fn simplify(input: &str) -> String {
 // =============================================================================
 
 #[test]
+fn test_trig_constant_evaluation_keeps_its_own_rule_name() {
+    // Evaluating cos(pi)/cos(0) used to be labeled "Secant to
+    // Reciprocal Cosine": the sec/csc/cot canonicalization rules ran an
+    // UNRESTRICTED trig-table preamble, claiming plain table
+    // evaluation under their names in FTC traces (frontier audit P0).
+    let opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
+        shared: cas_solver::runtime::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut ctx = Context::new();
+    let expr = parse("cos(pi) + cos(0)", &mut ctx).expect("parse");
+    let mut simplifier = Simplifier::with_profile(&opts);
+    simplifier.context = ctx;
+    let (result, steps) = simplifier.simplify(expr);
+    assert_eq!(
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        ),
+        "0"
+    );
+    for step in &steps {
+        assert_ne!(
+            step.rule_name.as_str(),
+            "Secant to Reciprocal Cosine",
+            "table evaluation must not run under the sec rule's name"
+        );
+        assert_ne!(step.rule_name.as_str(), "Cosecant to Reciprocal Sine");
+    }
+    // The sec rule still owns ITS exact values.
+    let mut ctx2 = Context::new();
+    let sec_expr = parse("sec(pi/4)", &mut ctx2).expect("parse sec");
+    let mut simplifier2 = Simplifier::with_profile(&opts);
+    simplifier2.context = ctx2;
+    let (sec_result, _) = simplifier2.simplify(sec_expr);
+    assert_eq!(
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier2.context,
+                id: sec_result
+            }
+        ),
+        "sqrt(2)"
+    );
+}
+
+#[test]
 fn test_trig_probe_explosion_terminates() {
     // The speculative exact-zero probes (double-angle / power-reduction
     // pair) used to regenerate their own input one level deeper every

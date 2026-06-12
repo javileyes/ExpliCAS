@@ -24,10 +24,22 @@ fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'sta
     }
 }
 
+/// Exact special-angle values for THIS rule's own function only
+/// (sec(pi/4) should evaluate before expanding to 1/cos(pi/4)).
+/// Restricting the builtin matters: unrestricted, this preamble used
+/// to evaluate cos(pi)/cos(0) in FTC traces under the rule's name,
+/// mislabeling plain table evaluation as "Secant to Reciprocal
+/// Cosine" - table evaluation belongs to EvaluateTrigTableRule.
 fn try_exact_reciprocal_trig_value_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
+    own_builtin: cas_ast::BuiltinFn,
 ) -> Option<Rewrite> {
+    match ctx.get(expr) {
+        cas_ast::Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(own_builtin) => {}
+        _ => return None,
+    }
     let rewrite = try_rewrite_trig_eval_table_expr(ctx, expr)?;
     match rewrite.kind {
         TrigEvalRewriteKind::Table(desc) => Some(Rewrite::new(rewrite.rewritten).desc(desc)),
@@ -48,7 +60,9 @@ define_rule!(
         | crate::phase::PhaseMask::TRANSFORM
         | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
-        if let Some(rewrite) = try_exact_reciprocal_trig_value_rewrite(ctx, expr) {
+        if let Some(rewrite) =
+            try_exact_reciprocal_trig_value_rewrite(ctx, expr, cas_ast::BuiltinFn::Sec)
+        {
             return Some(rewrite);
         }
         let rewrite = try_rewrite_sec_to_recip_cos_function_expr(ctx, expr)?;
@@ -70,7 +84,9 @@ define_rule!(
         | crate::phase::PhaseMask::TRANSFORM
         | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
-        if let Some(rewrite) = try_exact_reciprocal_trig_value_rewrite(ctx, expr) {
+        if let Some(rewrite) =
+            try_exact_reciprocal_trig_value_rewrite(ctx, expr, cas_ast::BuiltinFn::Csc)
+        {
             return Some(rewrite);
         }
         let rewrite = try_rewrite_csc_to_recip_sin_function_expr(ctx, expr)?;
@@ -93,7 +109,9 @@ define_rule!(
         | crate::phase::PhaseMask::TRANSFORM
         | crate::phase::PhaseMask::RATIONALIZE,
     |ctx, expr| {
-        if let Some(rewrite) = try_exact_reciprocal_trig_value_rewrite(ctx, expr) {
+        if let Some(rewrite) =
+            try_exact_reciprocal_trig_value_rewrite(ctx, expr, cas_ast::BuiltinFn::Cot)
+        {
             return Some(rewrite);
         }
         let rewrite = try_rewrite_cot_to_cos_sin_function_expr(ctx, expr)?;
