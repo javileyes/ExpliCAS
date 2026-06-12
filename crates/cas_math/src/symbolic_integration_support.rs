@@ -12849,6 +12849,26 @@ fn polynomial_substitution_antiderivative(
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    // Normalization artifact: c*u' * e^(-u) arrives as Div(c*u', e^u);
+    // rebuild as a product with the reciprocal exponential and reuse the
+    // same route. Nonlinear arguments only: linear exponential quotients
+    // belong to the reciprocal/by-parts/cyclic family and its narrators.
+    if let Expr::Div(numerator, denominator) = ctx.get(expr).clone() {
+        let (kernel, kernel_arg) = polynomial_substitution_kernel(ctx, denominator)?;
+        if !matches!(kernel, PolynomialSubstitutionKernel::Exp) {
+            return None;
+        }
+        let arg_poly = Polynomial::from_expr(ctx, kernel_arg, var).ok()?;
+        if arg_poly.degree() < 2 {
+            return None;
+        }
+        let negated = ctx.add(Expr::Neg(kernel_arg));
+        let e = ctx.add(Expr::Constant(Constant::E));
+        let reciprocal = ctx.add(Expr::Pow(e, negated));
+        let product = mul2_raw(ctx, numerator, reciprocal);
+        return polynomial_substitution_antiderivative(ctx, product, var);
+    }
+
     let factors = mul_leaves(ctx, expr);
     let (kernel_index, kernel, kernel_arg) =
         factors.iter().enumerate().find_map(|(idx, factor)| {
@@ -23503,7 +23523,10 @@ mod tests {
     #[test]
     fn div_exp_by_parts_rejects_unsupported_numerators() {
         let mut ctx = Context::new();
-        for source in ["tan(x)/e^x", "x/e^(x^2)"] {
+        // x/e^(x^2) graduated to the polynomial-derivative substitution
+        // owner (Div arm); the by-parts family still declines non-table
+        // numerators and non-derivative nonlinear quotients.
+        for source in ["tan(x)/e^x", "x^3/e^(x^2)"] {
             let expr = parse(source, &mut ctx).expect(source);
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
@@ -23525,6 +23548,31 @@ mod tests {
         // Honest residual: non-table trig cofactor.
         let expr = parse("tan(x)/e^x", &mut ctx).expect("tan");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn exp_polynomial_substitution_covers_normalized_div_shapes() {
+        let mut ctx = Context::new();
+        // c*u' / e^u normalizations of c*u'*e^(-u) for nonlinear u.
+        for source in ["x/e^(x^2)", "2*x/e^(x^2)", "x^2/e^(x^3)", "x*e^(-x^2)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn exp_polynomial_substitution_div_arm_keeps_owners_and_residuals() {
+        let mut ctx = Context::new();
+        // Linear exponents stay with the reciprocal/by-parts/cyclic
+        // family; non-derivative numerators are honest residuals (erf).
+        for source in ["1/e^(x^2)", "x^2/e^(x^2)", "x^3/e^(x^2 + x)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let result = integrate_symbolic_expr(&mut ctx, expr, "x");
+            assert!(result.is_none(), "must stay residual: {source}");
+        }
     }
 
     #[test]

@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 76 (newest first)
+Active entries: 77 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
+- 2026-06-12 | `retained` | calculus / integration / educational route / polynomial-derivative | Retained calculus: exponential substitution Div arm lands the damped-Gaussian family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3135,3 +3136,42 @@ Active entries: 76 (newest first)
     denominators normalize to Div while fractional ones normalize to
     Mul with negative exponents - cover both shapes or the family
     silently splits along a display convention
+
+## 2026-06-12 - Retained calculus: exponential substitution Div arm lands the damped-Gaussian family
+
+- area:
+  - calculus / integration / educational route / polynomial-derivative
+    exponential substitution (block 5) / improper definite composition
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 5 generalized substitution (plus the
+    block-13 improper row it unlocks)
+  - calculus_matrix_cell: integrate(x*e^(-x^2)) = -1/(2 e^(x^2)),
+    integrate(x^2*e^(-x^3)) = -1/(3 e^(x^3)), and the improper
+    integrate(x*e^(-x^2), x, 0, infinity) = 1/2
+  - behavior_change_expected: yes - c*u'*e^(-u) shapes with nonlinear u
+    integrate via the existing substitution owner
+- observed (frontier probing):
+  - the blocker was the INDEFINITE, not the limit: x*e^(-x^2)
+    normalizes to Div(x, e^(x^2)) and polynomial_substitution_antiderivative
+    only walks mul_leaves - fifth instance of the Div normalization
+    artifact; the at-infinity limit of -1/(2 e^(x^2)) already resolved
+  - the Div arm is gated to NONLINEAR exponent arguments by declared
+    intent: linear exponential quotients (1/e^x, x/e^x, sin(x)/e^x)
+    belong to the reciprocal/by-parts/cyclic family whose narrators the
+    matrix pins; constant_polynomial_ratio already protects against
+    non-derivative numerators (x^2/e^(x^2) stays honestly residual - erf)
+  - probing also surfaced the next at-infinity composition gaps:
+    limit(2*arctan(x), x, infinity) and limit(arctan(sqrt(x)), x,
+    infinity) do not resolve while the unscaled/polynomial-inner forms do
+    - the mirror of the cycle-2 one-sided gaps, queued as its own rung
+- retained learning:
+  - when a definite integral stays residual, bisect indefinite-vs-limit
+    FIRST with the indefinite probe alone: the cycle-2 instinct (blame
+    the limit chain) was wrong here and one probe falsified it in
+    seconds
+  - normalization-artifact Div arms are now a five-instance pattern
+    spanning three families (exp linear, monomial log, exp polynomial):
+    any future Mul-walking matcher should budget a Div arm from day one
