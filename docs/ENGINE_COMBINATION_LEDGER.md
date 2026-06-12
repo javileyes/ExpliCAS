@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 81 (newest first)
+Active entries: 82 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -124,6 +124,7 @@ Active entries: 81 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / reciprocal trig power | Retained calculus: odd secant/cosecant powers via reduction closed forms
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig power family | Retained calculus: odd tangent/cotangent powers complete the trig power ladder
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: monomial times arcsine/arccosine by-parts pair
+- 2026-06-12 | `retained` | calculus / definite integration (block 13) / interval certificate | Retained calculus: interval certificate learns bounded inverse trig domains
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3354,3 +3355,41 @@ Active entries: 81 (newest first)
     eval_f64 in unit tests is the standing workaround and a shared
     simplifier rule would graduate several verification_gap rows at
     once - high-leverage future cycle
+
+## 2026-06-12 - Retained calculus: interval certificate learns bounded inverse trig domains
+
+- area:
+  - calculus / definite integration (block 13) / interval certificate
+    risk scan / bounded inverse trig
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13 definite integrals (certificate
+    coverage rung)
+  - calculus_matrix_cell: integrate(x*arcsin(x), x, 0, 1) = pi/8,
+    integrate(arccos(x), x, 0, 1) = 1, full closed domain [-1, 1]
+    certifies, out-of-domain [0, 2] refuses honestly
+  - behavior_change_expected: yes - definite integrals of
+    arcsin/arccos integrands evaluate when the interval sits inside
+    the closed unit domain
+- observed (frontier probing):
+  - one cycle after the indefinite pair landed, the definite rows were
+    blocked ONLY by the risk scan declaring arcsin/arccos Unknown; the
+    new RiskKind::DefinedOnUnitInterval certifies -1 <= u <= 1 via two
+    slack positivity checks (1-u and 1+u) where an endpoint TOUCH maps
+    to Certified because the functions are defined on the CLOSED
+    interval (only their derivative is singular at +-1) - the integrand
+    x*arcsin(x) is finite at 1, so no boundary-touch limit is needed
+  - unbounded intervals conservatively refuse (no nonconstant argument
+    stays within [-1,1] at infinity)
+- retained learning:
+  - the enabler-then-wiring pattern across cycles keeps paying: the
+    cycle-8 indefinite pair made this cycle a pure certificate
+    extension with textbook payoffs (pi/8) one risk-variant away;
+    when landing an indefinite family, immediately queue the
+    certificate's view of the SAME integrand as the next rung
+  - closed-domain functions need their own touch semantics in interval
+    certificates: BoundaryTouch is a statement about the INTEGRAND's
+    domain openness, not about every risky subterm - map touches to
+    Certified per risk kind, not globally

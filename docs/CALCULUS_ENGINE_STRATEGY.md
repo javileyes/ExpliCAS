@@ -489,7 +489,11 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The bounded inverse by-parts pair landed next
+     composes). The interval certificate then learned bounded inverse
+     trig domains (RiskKind::DefinedOnUnitInterval with closed-domain
+     touch semantics; integrate(x*arcsin(x), x, 0, 1) = pi/8 and
+     out-of-domain refusals). The bounded inverse by-parts pair landed
+     just before
      (integrate(x*arcsin(x)) and the arccos twin via direct closed
      forms; numeric round-trip pinning via eval_f64 because the
      simplifier cannot collapse a*sqrt(u) + b/sqrt(u) radical residuals

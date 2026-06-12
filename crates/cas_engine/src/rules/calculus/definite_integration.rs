@@ -741,7 +741,35 @@ fn integrand_risks_certified(
         RiskKind::MustBePositive(arg) => {
             positive_on_interval(ctx, arg, var_name, interval_low, interval_high)
         }
+        RiskKind::DefinedOnUnitInterval(arg) => {
+            unit_interval_certificate(ctx, arg, var_name, interval_low, interval_high)
+        }
     })
+}
+
+/// -1 <= u <= 1 over the closed interval: certify 1 - u >= 0 and
+/// 1 + u >= 0, where an endpoint TOUCH (u = +-1 exactly at a bound) is
+/// still certified because arcsin/arccos are defined there.
+fn unit_interval_certificate(
+    ctx: &mut Context,
+    arg: ExprId,
+    var_name: &str,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
+) -> IntervalCertificate {
+    let one = ctx.num(1);
+    let upper_slack = ctx.add(Expr::Sub(one, arg));
+    let one = ctx.num(1);
+    let lower_slack = ctx.add(Expr::Add(one, arg));
+    let mut outcome = IntervalCertificate::Certified;
+    for slack in [upper_slack, lower_slack] {
+        let cert = match positive_on_interval(ctx, slack, var_name, interval_low, interval_high) {
+            IntervalCertificate::BoundaryTouch { .. } => IntervalCertificate::Certified,
+            other => other,
+        };
+        outcome = combine_certificates(outcome, cert);
+    }
+    outcome
 }
 
 fn integrand_risks_certified_unbounded(
@@ -761,12 +789,18 @@ fn integrand_risks_certified_unbounded(
         RiskKind::MustBePositive(arg) => {
             positive_on_unbounded_interval(ctx, arg, var_name, lower_bound, upper_bound)
         }
+        // arcsin/arccos cannot stay within [-1, 1] on an unbounded
+        // interval for any nonconstant argument the scan certifies today.
+        RiskKind::DefinedOnUnitInterval(_) => IntervalCertificate::Unknown,
     })
 }
 
 enum RiskKind {
     DenominatorNonZero(ExprId),
     MustBePositive(ExprId),
+    /// arcsin/arccos argument: defined on the CLOSED unit interval, so
+    /// endpoint touches certify (only the derivative is singular there).
+    DefinedOnUnitInterval(ExprId),
 }
 
 fn scan_expr_risks(
@@ -860,6 +894,18 @@ fn scan_expr_risks(
                     | cas_ast::BuiltinFn::Tanh
                     | cas_ast::BuiltinFn::Abs,
                 ) => recurse_args(ctx, certify, &mut outcome),
+                Some(
+                    cas_ast::BuiltinFn::Arcsin
+                    | cas_ast::BuiltinFn::Asin
+                    | cas_ast::BuiltinFn::Arccos
+                    | cas_ast::BuiltinFn::Acos,
+                ) if args.len() == 1 => {
+                    merge(
+                        certify(ctx, RiskKind::DefinedOnUnitInterval(args[0])),
+                        &mut outcome,
+                    );
+                    recurse_args(ctx, certify, &mut outcome);
+                }
                 Some(cas_ast::BuiltinFn::Ln) if args.len() == 1 => {
                     merge(
                         certify(ctx, RiskKind::MustBePositive(args[0])),
@@ -1463,6 +1509,17 @@ mod pi_bound_tests {
 #[cfg(test)]
 mod boundary_touch_tests {
     use super::tests::eval_definite;
+
+    #[test]
+    fn bounded_inverse_trig_integrands_certify_on_the_unit_interval() {
+        // arcsin/arccos are defined on the CLOSED unit interval: the
+        // endpoint touch at x = 1 certifies, out-of-domain refuses.
+        assert!(eval_definite("integrate(x*arcsin(x), x, 0, 1)").is_some());
+        assert!(eval_definite("integrate(arccos(x), x, 0, 1)").is_some());
+        assert!(eval_definite("integrate(arcsin(x), x, -1, 1)").is_some());
+        assert!(eval_definite("integrate(arcsin(x), x, 0, 2)").is_none());
+        assert!(eval_definite("integrate(x*arcsin(x), x, -2, 0)").is_none());
+    }
 
     #[test]
     fn boundary_touch_fractional_power_atoms_evaluate() {
