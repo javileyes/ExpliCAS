@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 89 (newest first)
+Active entries: 90 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -132,6 +132,7 @@ Active entries: 89 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: general monomial times arcsine/arccosine by parts
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical reduction | Retained calculus: hyperbolic radicands complete the monomial-over-radical reduction
 - 2026-06-12 | `retained` | calculus / integration / educational route / shifted quadratic | Retained calculus: linear numerators over completed-square radicals
+- 2026-06-12 | `retained` | calculus / integration / educational route / radical algorithms | Retained calculus: Hermite-style split for polynomial numerators over sqrt quadratics
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3697,3 +3698,51 @@ Active entries: 89 (newest first)
     (constant tail): when the n = 0 bases are owned, each next
     numerator degree is one split away - probe the n = 0/1 boundary
     FIRST for any new radicand pattern before building recurrences
+
+## 2026-06-12 - Retained calculus: Hermite-style split for polynomial numerators over sqrt quadratics
+
+- area:
+  - calculus / integration / educational route / radical algorithms
+    (block 8) / consolidation step over the reduction families
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families (new
+    block8_polynomial_over_sqrt_hermite_split cluster)
+  - calculus_matrix_cell: integrate(x^2/sqrt(x^2+x+1)) =
+    (x/2 - 3/4) sqrt(q) - asinh((2x+1)/sqrt(3))/8,
+    integrate(x^2/sqrt(2x-x^2)) = (3 arcsin(x-1) - (x+3) sqrt(.))/2,
+    the acosh pattern, cross terms (x^2+1), degree up to 6, exact
+    definites
+  - behavior_change_expected: yes - p(x)/sqrt(q) for ANY quadratic q
+    and 2 <= deg p <= 6 integrates via p = r' q + r q'/2 + c with
+    deg r = deg p - 1 (triangular system, diagonal k*a2, solved by
+    back-substitution), delegating the c/sqrt(q) tail to the n = 0
+    owners
+- observed (frontier probing + implementation):
+  - the consolidation candidate recorded one cycle earlier: the split
+    subsumes both reduction families mathematically but is ORDERED
+    AFTER them in dispatch, so their pinned displays stay owned - the
+    cheap way to consolidate capability without a presentation
+    migration
+  - hand-verified r = x/2 - 3/4, c = -1/8 for the showcase before
+    implementing; the engine output matched exactly
+  - two verification-channel limits surfaced: the acosh pattern's
+    derivative emits FACTORED radical products (sqrt(x) sqrt(x+2)
+    instead of sqrt(x^2+2x)) which the shared-base shortcut cannot
+    merge (queued: factored-base merging), and the asinh row's
+    COMPOSED direct-diff channel times out on simplifier churn (the
+    two-step channel passes; gap documented in the counter test with
+    numeric unit round-trips as the pin)
+  - x^2/sqrt(x^3+1) turned out to be OWNED by derivative substitution
+    (the reject probe was wrong; replaced by the elliptic x/sqrt(x^3+1))
+- retained learning:
+  - consolidations can land WITHOUT migrating presentation: order the
+    general algorithm after the specialized owners and the specialized
+    displays survive while the general one catches everything new -
+    the reverse order would have been a footprint fight
+  - verification channels have independent failure modes (factored
+    bases for one pattern, simplifier churn timeouts for another):
+    pin per-channel and document per-row instead of forcing one
+    channel across a family

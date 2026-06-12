@@ -3311,6 +3311,36 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="factored_by_parts",
     ),
     IntegrateCommandMatrixCase(
+        name="hermite_split_square_over_completed_square",
+        expr="integrate(x^2/sqrt(x^2+x+1), x)",
+        expected_result="(1/2·x - 3/4)·sqrt(x^2 + x + 1) - 1/8·asinh((2·x + 1) / sqrt(3))",
+        expected_derivative_equivalent_to="x^2/sqrt(x^2+x+1)",
+        expected_derivative_required_display=(),
+        expected_required_display=(),
+        expected_step_substrings=("Calcular la integral",),
+        family="polynomial_over_sqrt_hermite_split",
+        argument_regime="square_over_completed_square_positive",
+        domain_regime="total_real_function",
+        trace_regime="hermite_radical_split",
+        presentation_regime="polynomial_sqrt_plus_asinh_split",
+    ),
+    IntegrateCommandMatrixCase(
+        name="hermite_split_square_over_circle_shifted",
+        expr="integrate(x^2/sqrt(2*x-x^2), x)",
+        expected_result="1/2·(3·arcsin(x - 1) + (2·x - x^2)^(1/2)·(-x - 3))",
+        expected_derivative_equivalent_to="x^2/sqrt(2*x-x^2)",
+        expected_direct_diff_integrate_equivalent_to="x^2/sqrt(2*x-x^2)",
+        expected_direct_diff_integrate_required_display=("0 < x < 2",),
+        expected_derivative_required_display=("0 < x < 2",),
+        expected_required_display=("0 < x < 2",),
+        expected_step_substrings=("Calcular la integral",),
+        family="polynomial_over_sqrt_hermite_split",
+        argument_regime="square_over_completed_square_circle",
+        domain_regime="open_interval_required",
+        trace_regime="hermite_radical_split",
+        presentation_regime="polynomial_sqrt_plus_arcsin_split",
+    ),
+    IntegrateCommandMatrixCase(
         name="linear_over_sqrt_completed_square_asinh",
         expr="integrate(x/sqrt(x^2+x+1), x)",
         expected_result="sqrt(x^2 + x + 1) - 1/2·asinh((2·x + 1) / sqrt(3))",
@@ -4996,6 +5026,8 @@ def radical_inverse_policy_cluster(
         return "block8_monomial_over_sqrt_reduction"
     if case.family == "linear_over_sqrt_shifted_quadratic":
         return "block8_linear_over_sqrt_shifted_quadratic"
+    if case.family == "polynomial_over_sqrt_hermite_split":
+        return "block8_polynomial_over_sqrt_hermite_split"
     if case.family in {
         "inverse_hyperbolic_rational_affine",
         "inverse_hyperbolic_rational_table",

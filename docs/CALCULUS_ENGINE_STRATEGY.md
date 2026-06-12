@@ -489,7 +489,12 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). Linear numerators over completed-square radicals landed
+     composes). The Hermite-style split then consolidated the corner
+     (p(x)/sqrt(q) for any quadratic q and deg p <= 6, ordered after
+     the specialized owners so their displays survive; next rungs:
+     factored-base merging in the half-power shortcut, arcsin(x+b)
+     cofactors over the now-available shifted tails).
+     Linear numerators over completed-square radicals landed
      next ((alpha x + beta)/sqrt(q) via the derivative split for all
      three shifted patterns; next rungs: general polynomial numerators
      via the Hermite-style split - the consolidation candidate that

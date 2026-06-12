@@ -9213,6 +9213,154 @@ fn linear_over_sqrt_shifted_quadratic_antiderivative(
     Some(ctx.add(Expr::Add(head, tail)))
 }
 
+/// p(x)/sqrt(q) for ANY quadratic q (a2 != 0) and 2 <= deg p <= 6 via
+/// the Hermite-style split p = r' q + r q'/2 + c with deg r = deg p - 1:
+/// the triangular system solves top-down (diagonal k*a2), giving
+/// r(x) sqrt(q) + c * integral of 1/sqrt(q) (delegated). Ordered AFTER
+/// the pure-radicand reduction families so their displays stay owned.
+fn polynomial_over_sqrt_quadratic_hermite_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (numerator, radicand) = match ctx.get(expr).clone() {
+        Expr::Div(num, den) => {
+            let rad = match ctx.get(den).clone() {
+                Expr::Function(fn_id, args)
+                    if args.len() == 1
+                        && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sqrt)) =>
+                {
+                    args[0]
+                }
+                Expr::Pow(base, exponent)
+                    if crate::numeric_eval::as_rational_const(ctx, exponent)
+                        .is_some_and(|value| value == BigRational::new(1.into(), 2.into())) =>
+                {
+                    base
+                }
+                _ => return None,
+            };
+            (num, rad)
+        }
+        Expr::Mul(_, _) | Expr::Neg(_) => {
+            let mut numerator_factors = Vec::new();
+            let mut radicand = None;
+            for factor in mul_leaves(ctx, expr) {
+                if let Expr::Pow(base, exponent) = ctx.get(factor).clone() {
+                    if crate::numeric_eval::as_rational_const(ctx, exponent)
+                        .is_some_and(|value| value == BigRational::new((-1).into(), 2.into()))
+                        && radicand.is_none()
+                    {
+                        radicand = Some(base);
+                        continue;
+                    }
+                }
+                numerator_factors.push(factor);
+            }
+            let radicand = radicand?;
+            if numerator_factors.is_empty() {
+                return None;
+            }
+            let numerator = build_balanced_mul(ctx, &numerator_factors);
+            (numerator, radicand)
+        }
+        _ => return None,
+    };
+
+    let quad = Polynomial::from_expr(ctx, radicand, var).ok()?;
+    if quad.degree() != 2 {
+        return None;
+    }
+    let a0 = quad
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let a1 = quad
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let a2 = quad
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if a2.is_zero() {
+        return None;
+    }
+    let p = Polynomial::from_expr(ctx, numerator, var).ok()?;
+    let m = p.degree();
+    if !(2..=6).contains(&m) {
+        return None;
+    }
+    let coeff = |poly: &Polynomial, k: usize| {
+        poly.coeffs
+            .get(k)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+    };
+
+    // Back-substitution: r_{k-1} = [p_k - (2k+1) a1/2 r_k - (k+1) a0
+    // r_{k+1}] / (k a2) for k = m..1; then c from the degree-0 row.
+    let mut r = vec![BigRational::zero(); m];
+    for k in (1..=m).rev() {
+        let r_k = if k < m {
+            r[k].clone()
+        } else {
+            BigRational::zero()
+        };
+        let r_k1 = if k + 1 < m {
+            r[k + 1].clone()
+        } else {
+            BigRational::zero()
+        };
+        let half = BigRational::new(1.into(), 2.into());
+        let numerator_value = coeff(&p, k)
+            - BigRational::from_integer(((2 * k + 1) as i64).into()) * &a1 * &half * &r_k
+            - BigRational::from_integer(((k + 1) as i64).into()) * &a0 * &r_k1;
+        r[k - 1] = numerator_value / (BigRational::from_integer((k as i64).into()) * &a2);
+    }
+    let r1 = if m > 1 {
+        r[1].clone()
+    } else {
+        BigRational::zero()
+    };
+    let c = coeff(&p, 0) - &r1 * &a0 - &r[0] * &a1 * BigRational::new(1.into(), 2.into());
+
+    let var_expr = ctx.var(var);
+    let mut r_terms = Vec::new();
+    for (degree, value) in r.iter().enumerate() {
+        if value.is_zero() {
+            continue;
+        }
+        let term = match degree {
+            0 => ctx.num(1),
+            1 => var_expr,
+            _ => {
+                let exponent = ctx.num(degree as i64);
+                ctx.add(Expr::Pow(var_expr, exponent))
+            }
+        };
+        r_terms.push(scale_rational_term(ctx, value.clone(), term));
+    }
+    if r_terms.is_empty() {
+        return None;
+    }
+    let r_expr = build_balanced_add(ctx, &r_terms);
+    let sqrt_term = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let head = mul2_raw(ctx, r_expr, sqrt_term);
+    if c.is_zero() {
+        return Some(head);
+    }
+    let one = ctx.num(1);
+    let sqrt_again = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let base_integrand = ctx.add(Expr::Div(one, sqrt_again));
+    let base = integrate_symbolic_expr(ctx, base_integrand, var)?;
+    let tail = scale_rational_term(ctx, c, base);
+    Some(ctx.add(Expr::Add(head, tail)))
+}
+
 fn monomial_over_sqrt_hyperbolic_reduction(
     ctx: &mut Context,
     n: usize,
@@ -19315,6 +19463,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = polynomial_over_sqrt_quadratic_hermite_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = polynomial_times_exp_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -24640,6 +24792,69 @@ mod tests {
     }
 
     #[test]
+    fn polynomial_over_sqrt_hermite_split_integrates_general_numerators() {
+        let mut ctx = Context::new();
+        for source in [
+            "x^2/sqrt(x^2+x+1)",
+            "x^3/sqrt(x^2+x+1)",
+            "x^2/sqrt(2*x-x^2)",
+            "(x^2+1)/sqrt(x^2+2*x)",
+            "(x^2+x)/sqrt(2*x-x^2)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn polynomial_over_sqrt_hermite_split_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("x^2/sqrt(x^2+x+1)", [-1.5_f64, 0.4, 2.2]),
+            ("x^2/sqrt(2*x-x^2)", [0.3, 1.1, 1.8]),
+            ("(x^2+1)/sqrt(x^2+2*x)", [0.5, 1.7, 3.0]),
+            ("x^3/sqrt(x^2+x+1)", [-1.2, 0.6, 2.5]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn polynomial_over_sqrt_hermite_split_declines_foreign_shapes() {
+        let mut ctx = Context::new();
+        // Elliptic cubic radicands and degree over the cap stay
+        // residual (x^2/sqrt(x^3+1) is OWNED by derivative substitution).
+        for source in ["x/sqrt(x^3+1)", "x^7/sqrt(x^2+x+1)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
+            );
+        }
+    }
+
+    #[test]
     fn linear_over_sqrt_shifted_quadratic_integrates_all_patterns() {
         let mut ctx = Context::new();
         for source in [
@@ -24823,9 +25038,10 @@ mod tests {
     #[test]
     fn monomial_over_sqrt_negative_quadratic_declines_other_sign_patterns() {
         let mut ctx = Context::new();
-        // The hyperbolic radicands graduated to the mirrored recurrence;
-        // n above the cap and linear-term radicands stay residual.
-        for source in ["x^7/sqrt(1-x^2)", "x^7/sqrt(1+x^2)", "x^2/sqrt(x^2+x+1)"] {
+        // The hyperbolic radicands graduated to the mirrored recurrence
+        // and the linear-term radicands to the Hermite split; only
+        // powers above the tail cap stay residual here.
+        for source in ["x^7/sqrt(1-x^2)", "x^7/sqrt(1+x^2)", "x^7/sqrt(x^2+x+1)"] {
             let expr = parse(source, &mut ctx).expect(source);
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
