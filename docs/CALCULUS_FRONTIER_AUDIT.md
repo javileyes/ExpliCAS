@@ -84,13 +84,19 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P1 — capítulos universitarios enteros a 0% (mayor densidad de valor)
 
-- [ ] **(F×3) Sustitución trigonométrica**: `sqrt(1-x^2)`,
+- [x] **(F×3) Sustitución trigonométrica**: `sqrt(1-x^2)`,
   `x^2*sqrt(1-x^2)`, `sqrt(4-x^2)/x`, `1/(x*sqrt(x^2-1))` (→ arcsec),
   `1/(x^2*sqrt(x^2+4))`, `sqrt(x^2±a^2)` — capítulo completo de Calc
   II ausente; el semicírculo `∫√(1-x²) [-1,1] = π/2` falla. Nota: las
   formas 1/√(cuadrática) y p(x)/√(cuadrática) SÍ están (split
   Hermite); lo que falta es √(cuadrática) en el NUMERADOR y los
   cocientes con x en el denominador.
+  *(parcial 2026-06-12 PENDING_HASH: el lado NUMERADOR completo vía
+  p·√q = (p·q)/√q delegado al split Hermite — √(1−x²), x²√(1−x²),
+  √(4−x²), √(x²±1) asinh/acosh, √(2x−x²), y el semicírculo
+  ∫₋₁¹√(1−x²) = π/2 por doble touch. Quedan: los cocientes con x en
+  el DENOMINADOR — √(4−x²)/x, 1/(x·√(x²−1)) → arcsec,
+  1/(x²·√(x²+4)) — que necesitan sustitución real u otra identidad)*
 - [ ] **(F) Sustitución algebraica general** (u=eˣ, u=√x, u=ax+b bajo
   radical): bloquea DOS familias de golpe — racionales de eˣ
   (`1/(1+e^x)`, `e^x/(1+e^(2x))` → arctan(eˣ), `1/(e^x+e^(-x))`) y

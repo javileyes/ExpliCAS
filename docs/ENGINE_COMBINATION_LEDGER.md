@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 96 (newest first)
+Active entries: 97 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -139,6 +139,7 @@ Active entries: 96 (newest first)
 - 2026-06-12 | `retained` | parser / definite integral bounds / perceived correctness (P0 of | Retained soundness: inf and oo parse as infinity
 - 2026-06-12 | `retained` | simplifier / speculative exact-zero probes / termination (P0-A of | Retained soundness: probe budget ends the trig zero-equivalence hang class
 - 2026-06-12 | `retained` | didactic trace quality / rule naming (P0-F of the frontier audit, | Retained didactic: trig table evaluation reclaims its own rule name
+- 2026-06-12 | `retained` | calculus / integration / educational route / radical numerators | Retained calculus: radical numerators land the trig-substitution chapter by delegation
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -4012,3 +4013,41 @@ Active entries: 96 (newest first)
     match surface unless explicitly restricted: any rule that runs a
     shared table/helper "for its own cases" must gate on its own head
     symbol or it will claim foreign rewrites under its name in traces
+
+## 2026-06-12 - Retained calculus: radical numerators land the trig-substitution chapter by delegation
+
+- area:
+  - calculus / integration / educational route / radical numerators
+    (block 8, P1 of the frontier audit) / semicircle definite
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families (new
+    block8_radical_numerator_polynomial cluster; plus the block-13
+    semicircle row)
+  - calculus_matrix_cell: integrate(sqrt(1-x^2)) =
+    (arcsin x + x sqrt(1-x^2))/2, scaled radicands, x^2 sqrt(1-x^2),
+    sqrt(x^2 +/- 1) (asinh/acosh), completed squares sqrt(2x - x^2),
+    and THE SEMICIRCLE integrate(sqrt(1-x^2), x, -1, 1) = pi/2 via
+    double boundary touch
+  - behavior_change_expected: yes - p(x) sqrt(q) for quadratic q and
+    deg(p*q) <= 6 integrates; the audit's zero-coverage chapter
+    (Calc II trig substitution, numerator side) is covered
+- observed (frontier probing + implementation):
+  - the entire chapter is ONE identity away from machinery built four
+    goals ago: p sqrt(q) = (p*q)/sqrt(q), and the Hermite split owns
+    every polynomial-over-sqrt-quadratic quotient - the recognizer
+    rebuilds INTERNALLY (Mul with Pow(q,-1/2)) because the public
+    pre-simplifier cancels q/sqrt(q) right back to sqrt(q), hiding the
+    quotient from any string-level route (probed: (1-x^2)/sqrt(1-x^2)
+    as INPUT re-cancels; (x^2-x^4)/sqrt(1-x^2) reaches Hermite fine)
+  - the semicircle composes through DOUBLE boundary touch (sqrt domain
+    touched at both -1 and 1) with honest -1 <= x <= 1 conditions;
+    elliptic cubics sqrt(x^3+1) and over-cap cofactors stay residual
+- retained learning:
+  - "missing chapter" sometimes means "missing one REWRITE to an owned
+    form", not missing machinery: before building per-pattern trig
+    substitution (the textbook route), check whether multiplying by
+    q/q lands the integrand in an owned quotient family - delegation
+    beats new machinery AND inherits its verification channels

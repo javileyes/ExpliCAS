@@ -9361,6 +9361,77 @@ fn polynomial_over_sqrt_quadratic_hermite_antiderivative(
     Some(ctx.add(Expr::Add(head, tail)))
 }
 
+/// p(x) * sqrt(q) for quadratic q: rewrite as (p*q)/sqrt(q) and
+/// delegate to the quotient owners (reduction families, Hermite
+/// split). Covers the whole radical-numerator chapter - sqrt(1-x^2),
+/// x^2 sqrt(1-x^2), sqrt(x^2 +/- a^2), completed squares - in one
+/// recognizer. Built INTERNALLY (Mul with Pow(q,-1/2)) because the
+/// public pre-simplifier cancels q/sqrt(q) back to sqrt(q).
+fn radical_numerator_polynomial_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut cofactor_factors: Vec<ExprId> = Vec::new();
+    let mut radicand: Option<ExprId> = None;
+    for factor in mul_leaves(ctx, expr) {
+        match ctx.get(factor).clone() {
+            Expr::Function(fn_id, args)
+                if args.len() == 1
+                    && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sqrt))
+                    && radicand.is_none()
+                    && Polynomial::from_expr(ctx, args[0], var).is_ok_and(|p| p.degree() == 2) =>
+            {
+                radicand = Some(args[0]);
+            }
+            Expr::Pow(base, exponent)
+                if crate::numeric_eval::as_rational_const(ctx, exponent)
+                    .is_some_and(|value| value == BigRational::new(1.into(), 2.into()))
+                    && radicand.is_none()
+                    && Polynomial::from_expr(ctx, base, var).is_ok_and(|p| p.degree() == 2) =>
+            {
+                radicand = Some(base);
+            }
+            _ => cofactor_factors.push(factor),
+        }
+    }
+    let radicand = radicand?;
+    let quad = Polynomial::from_expr(ctx, radicand, var).ok()?;
+
+    let cofactor_poly = if cofactor_factors.is_empty() {
+        Polynomial::one(var.to_string())
+    } else {
+        let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+        Polynomial::from_expr(ctx, cofactor, var).ok()?
+    };
+    let numerator_poly = cofactor_poly.mul(&quad);
+    if numerator_poly.degree() > 6 || numerator_poly.is_zero() {
+        return None;
+    }
+
+    let var_expr = ctx.var(var);
+    let mut terms = Vec::new();
+    for (degree, coeff) in numerator_poly.coeffs.iter().enumerate() {
+        if coeff.is_zero() {
+            continue;
+        }
+        let term = match degree {
+            0 => ctx.num(1),
+            1 => var_expr,
+            _ => {
+                let exponent = ctx.num(degree as i64);
+                ctx.add(Expr::Pow(var_expr, exponent))
+            }
+        };
+        terms.push(scale_rational_term(ctx, coeff.clone(), term));
+    }
+    let numerator_expr = build_balanced_add(ctx, &terms);
+    let neg_half = ctx.add(Expr::Number(BigRational::new((-1).into(), 2.into())));
+    let reciprocal = ctx.add(Expr::Pow(radicand, neg_half));
+    let rebuilt = mul2_raw(ctx, numerator_expr, reciprocal);
+    integrate_symbolic_expr(ctx, rebuilt, var)
+}
+
 fn monomial_over_sqrt_hyperbolic_reduction(
     ctx: &mut Context,
     n: usize,
@@ -19479,6 +19550,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = radical_numerator_polynomial_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = polynomial_times_exp_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -24960,6 +25035,71 @@ mod tests {
             integrate_symbolic_expr(&mut ctx, cubic_rad, "x").is_none(),
             "cubic radicand must stay residual"
         );
+    }
+
+    #[test]
+    fn radical_numerator_polynomial_integrates_the_trig_substitution_chapter() {
+        let mut ctx = Context::new();
+        for source in [
+            "sqrt(1-x^2)",
+            "sqrt(4-x^2)",
+            "x^2*sqrt(1-x^2)",
+            "sqrt(x^2+1)",
+            "sqrt(x^2-1)",
+            "sqrt(2*x-x^2)",
+            "x*sqrt(x^2+1)",
+            "3*sqrt(1-4*x^2)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn radical_numerator_polynomial_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("sqrt(1-x^2)", [-0.7_f64, 0.2, 0.8]),
+            ("x^2*sqrt(1-x^2)", [-0.6, 0.3, 0.9]),
+            ("sqrt(x^2+1)", [-1.5, 0.4, 2.0]),
+            ("sqrt(2*x-x^2)", [0.3, 1.0, 1.7]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn radical_numerator_polynomial_declines_foreign_radicands() {
+        let mut ctx = Context::new();
+        // Elliptic cubics and over-cap numerators stay residual.
+        for source in ["sqrt(x^3+1)", "x^5*sqrt(1-x^2)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
+            );
+        }
     }
 
     #[test]
