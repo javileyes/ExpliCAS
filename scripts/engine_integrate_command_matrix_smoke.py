@@ -3311,6 +3311,38 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="factored_by_parts",
     ),
     IntegrateCommandMatrixCase(
+        name="linear_over_sqrt_completed_square_asinh",
+        expr="integrate(x/sqrt(x^2+x+1), x)",
+        expected_result="sqrt(x^2 + x + 1) - 1/2·asinh((2·x + 1) / sqrt(3))",
+        expected_derivative_equivalent_to="x/sqrt(x^2+x+1)",
+        expected_direct_diff_integrate_equivalent_to="x/sqrt(x^2+x+1)",
+        expected_direct_diff_integrate_required_display=(),
+        expected_derivative_required_display=(),
+        expected_required_display=(),
+        expected_step_substrings=("Calcular la integral",),
+        family="linear_over_sqrt_shifted_quadratic",
+        argument_regime="linear_over_completed_square_positive",
+        domain_regime="total_real_function",
+        trace_regime="linear_radical_split",
+        presentation_regime="sqrt_plus_asinh_split",
+    ),
+    IntegrateCommandMatrixCase(
+        name="linear_over_sqrt_completed_square_arcsin",
+        expr="integrate(x/sqrt(2*x-x^2), x)",
+        expected_result="arcsin(x - 1) - (2·x - x^2)^(1/2)",
+        expected_derivative_equivalent_to="x/sqrt(2*x-x^2)",
+        expected_direct_diff_integrate_equivalent_to="x/sqrt(2*x-x^2)",
+        expected_direct_diff_integrate_required_display=("0 < x < 2",),
+        expected_derivative_required_display=("0 < x < 2",),
+        expected_required_display=("0 < x < 2",),
+        expected_step_substrings=("Calcular la integral",),
+        family="linear_over_sqrt_shifted_quadratic",
+        argument_regime="linear_over_completed_square_circle",
+        domain_regime="open_interval_required",
+        trace_regime="linear_radical_split",
+        presentation_regime="sqrt_plus_arcsin_split",
+    ),
+    IntegrateCommandMatrixCase(
         name="monomial_over_sqrt_hyperbolic_asinh",
         expr="integrate(x^2/sqrt(1+x^2), x)",
         expected_result="1/2·(x·(x^2 + 1)^(1/2) - asinh(x))",
@@ -4962,6 +4994,8 @@ def radical_inverse_policy_cluster(
         return "block8_bounded_inverse_trig_by_parts"
     if case.family == "monomial_over_sqrt_reduction":
         return "block8_monomial_over_sqrt_reduction"
+    if case.family == "linear_over_sqrt_shifted_quadratic":
+        return "block8_linear_over_sqrt_shifted_quadratic"
     if case.family in {
         "inverse_hyperbolic_rational_affine",
         "inverse_hyperbolic_rational_table",

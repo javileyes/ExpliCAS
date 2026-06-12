@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 88 (newest first)
+Active entries: 89 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -131,6 +131,7 @@ Active entries: 88 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical reduction | Retained calculus: monomial over sqrt(a - b x^2) reduction family
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: general monomial times arcsine/arccosine by parts
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical reduction | Retained calculus: hyperbolic radicands complete the monomial-over-radical reduction
+- 2026-06-12 | `retained` | calculus / integration / educational route / shifted quadratic | Retained calculus: linear numerators over completed-square radicals
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3657,3 +3658,42 @@ Active entries: 88 (newest first)
     capability cycles in the queue: same matcher, same wiring, same
     harness shape - probe for the mirror IMMEDIATELY after retaining
     any sign-gated family and queue it explicitly
+
+## 2026-06-12 - Retained calculus: linear numerators over completed-square radicals
+
+- area:
+  - calculus / integration / educational route / shifted quadratic
+    radicals (block 8)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families (new
+    block8_linear_over_sqrt_shifted_quadratic cluster)
+  - calculus_matrix_cell: integrate(x/sqrt(x^2+x+1)) =
+    sqrt(x^2+x+1) - asinh((2x+1)/sqrt(3))/2,
+    integrate(x/sqrt(2x-x^2)) = arcsin(x-1) - sqrt(2x-x^2) with
+    0 < x < 2, the acosh pattern x^2+2x, and general linear numerators
+  - behavior_change_expected: yes - (alpha x + beta)/sqrt(q) for any
+    quadratic q with NONZERO linear coefficient integrates by the
+    derivative split alpha x + beta = (alpha/(2a2)) q' + c0
+- observed (frontier probing):
+  - probing the completed-square queue showed n = 0 owned for all
+    three patterns (asinh/acosh/arcsin with shifted arguments) but
+    n = 1 residual everywhere - the gap was one derivative-split away,
+    delegating the constant tail to the n = 0 owners
+  - the a1 != 0 gate is the intent declaration: pure-quadratic
+    radicands keep their derivative-substitution owners, and the
+    matcher reuses the same two surface shapes (Div with Sqrt, Mul
+    with Pow(-1/2)) as the reduction family
+  - both rows verify by equivalence including direct-diff;
+    verification_gap holds at 7 for a fourth consecutive cycle
+  - the remaining rung for this corner: GENERAL polynomial numerators
+    over shifted quadratics (the Hermite-style r(x) sqrt(q) + c
+    integral split solving a small linear system) which would subsume
+    both reduction families - recorded as the consolidation candidate
+- retained learning:
+  - completed-square families decompose into (derivative multiple) +
+    (constant tail): when the n = 0 bases are owned, each next
+    numerator degree is one split away - probe the n = 0/1 boundary
+    FIRST for any new radicand pattern before building recurrences
