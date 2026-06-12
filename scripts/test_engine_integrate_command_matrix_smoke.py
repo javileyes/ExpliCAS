@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 227)
+        self.assertEqual(len(cases), 228)
         names = {case.name for case in cases}
         self.assertIn(
             "algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
@@ -422,7 +422,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 15, "supported": 207, "undefined": 5},
+            {"residual": 15, "supported": 208, "undefined": 5},
         )
         self.assertEqual(
             sum(
@@ -433,7 +433,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     or case.expected_derivative_equivalent_to is not None
                 )
             ),
-            134,
+            135,
         )
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
@@ -442,12 +442,12 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "undefined_not_verified": 5,
                 "definite_ftc_from_verified_antiderivative": 34,
                 "verification_gap": 7,
-                "verified_by_diff": 31,
+                "verified_by_diff": 32,
                 "verified_by_diff_and_direct_diff_integrate": 103,
                 "verified_by_direct_diff_integrate": 32,
             },
         )
-        self.assertEqual(SMOKE.count_verified_supported_cases(cases), 166)
+        self.assertEqual(SMOKE.count_verified_supported_cases(cases), 167)
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
             {
@@ -679,6 +679,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "by_parts_log_domain",
                 "by_parts_monomial_arcsine_domain",
                 "by_parts_monomial_arccosine_domain",
+                "by_parts_monomial_shifted_arcsine_domain",
                 "hermite_split_cross_terms_over_acosh_radical",
                 "hermite_split_square_over_completed_square",
                 "hermite_split_square_over_circle_shifted",
@@ -759,7 +760,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "backend_verified_conservative_denominator_nonzero": 2,
                 "interval_certified_unconditional": 5,
                 "interval_certified_trig_discharged": 5,
-                "bounded_interval_required": 4,
+                "bounded_interval_required": 5,
                 "boundary_touch_one_sided_limit": 7,
                 "improper_interval_certified": 7,
                 "improper_divergent_to_infinity": 4,
@@ -852,7 +853,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_radical_inverse_policy_clusters(cases),
             {
-                "block8_bounded_inverse_trig_by_parts": 4,
+                "block8_bounded_inverse_trig_by_parts": 5,
                 "block8_inverse_hyperbolic_rational_interval": 2,
                 "block8_inverse_sqrt_tables": 9,
                 "block8_inverse_trig_root_reciprocal": 6,
@@ -876,7 +877,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block5_generalized_substitution": 13,
                 "block6_rational_integration": 22,
                 "block7_trig_hyperbolic_integration": 67,
-                "block8_radical_inverse_families": 30,
+                "block8_radical_inverse_families": 31,
                 "block9_residuals_and_non_goals": 16,
                 "block12_hybrid_algorithmic_backend": 20,
                 "block13_definite_integrals": 38,
@@ -887,7 +888,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "algorithmic_backend_boundary_verified": 20,
                 "didactic_trace_and_verified_antiderivative": 63,
-                "domain_conditions_and_verified_antiderivative": 124,
+                "domain_conditions_and_verified_antiderivative": 125,
                 "explicit_undefined_domain_policy": 5,
                 "safe_residual_policy": 15,
             },
@@ -1484,20 +1485,20 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(len(SMOKE.direct_diff_integrate_equivalence_cases(cases)), 20)
         self.assertEqual(
             len(SMOKE.derivative_verified_without_direct_diff_integrate_cases(cases)),
-            31,
+            32,
         )
         self.assertEqual(
             SMOKE.count_direct_diff_integrate_gap_calculus_maturity_blocks(cases),
             {
                 "block7_trig_hyperbolic_integration": 30,
-                "block8_radical_inverse_families": 1,
+                "block8_radical_inverse_families": 2,
             },
         )
         self.assertEqual(
             SMOKE.count_direct_diff_integrate_gap_calculus_block_gates(cases),
             {
                 "didactic_trace_and_verified_antiderivative": 3,
-                "domain_conditions_and_verified_antiderivative": 28,
+                "domain_conditions_and_verified_antiderivative": 29,
             },
         )
         self.assertEqual(
@@ -1511,9 +1512,15 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 cases
             ),
             # The asinh Hermite row's composed direct-diff channel times
-            # out (simplifier churn); derivative-equivalence plus numeric
-            # unit round-trips pin it instead.
-            {"block8_polynomial_over_sqrt_hermite_split": 1},
+            # out (simplifier churn), and the shifted-arcsine row's
+            # composed channel reaches a form the late closure misses
+            # (pipeline ordering; the isolated residual collapses).
+            # Derivative-equivalence plus numeric unit round-trips pin
+            # both.
+            {
+                "block8_bounded_inverse_trig_by_parts": 1,
+                "block8_polynomial_over_sqrt_hermite_split": 1,
+            },
         )
         self.assertEqual(
             SMOKE.count_direct_diff_integrate_gap_trig_hyperbolic_policy_clusters(

@@ -9461,7 +9461,11 @@ fn monomial_times_bounded_inverse_trig_antiderivative(
         }
         let (slope_expr, offset) = get_linear_coeffs(ctx, args[0], var)?;
         let slope = rational_constant_value(ctx, slope_expr)?;
-        if slope.is_zero() || !is_number(ctx, offset, 0) {
+        if slope.is_zero() {
+            return None;
+        }
+        let zero_offset = is_number(ctx, offset, 0);
+        if !zero_offset && rational_constant_value(ctx, offset).is_none() {
             return None;
         }
         let cofactor_factors: Vec<ExprId> = factors
@@ -9481,10 +9485,11 @@ fn monomial_times_bounded_inverse_trig_antiderivative(
         if n > 5 {
             return None;
         }
-        if n != 1 || !slope.is_one() {
-            // General by parts: x^(n+1)/(n+1) * inv(kx) -/+
-            // k/(n+1) * integral of x^(n+1)/sqrt(1 - k^2 x^2), the tail
-            // delegated to the monomial-over-radical reduction family.
+        if n != 1 || !slope.is_one() || !zero_offset {
+            // General by parts: x^(n+1)/(n+1) * inv(u) -/+ k/(n+1) *
+            // integral of x^(n+1)/sqrt(1 - u^2) with u = kx + b, the
+            // tail delegated to the radical reduction families (pure
+            // radicands) or the Hermite split (shifted radicands).
             let inverse = *factor;
             let var_expr = ctx.var(var);
             let head_exponent = ctx.num((n + 1) as i64);
@@ -9495,19 +9500,26 @@ fn monomial_times_bounded_inverse_trig_antiderivative(
             let head = scale_rational_term(ctx, over_n_plus_one.clone(), head_raw);
 
             let one = ctx.num(1);
-            let slope_square = &slope * &slope;
-            let x_squared_exponent = ctx.num(2);
-            let x_squared = ctx.add(Expr::Pow(var_expr, x_squared_exponent));
-            let scaled_square = scale_rational_term(ctx, slope_square.clone(), x_squared);
-            let radicand = ctx.add(Expr::Sub(one, scaled_square));
-            let tail = monomial_over_sqrt_reduction(
-                ctx,
-                n + 1,
-                &BigRational::one(),
-                &slope_square,
-                radicand,
-                var,
-            )?;
+            let two = ctx.num(2);
+            let arg_squared = ctx.add(Expr::Pow(args[0], two));
+            let radicand = ctx.add(Expr::Sub(one, arg_squared));
+            let tail = if zero_offset {
+                let slope_square = &slope * &slope;
+                monomial_over_sqrt_reduction(
+                    ctx,
+                    n + 1,
+                    &BigRational::one(),
+                    &slope_square,
+                    radicand,
+                    var,
+                )?
+            } else {
+                let tail_exponent = ctx.num((n + 1) as i64);
+                let tail_monomial = ctx.add(Expr::Pow(var_expr, tail_exponent));
+                let sqrt_term = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+                let tail_integrand = ctx.add(Expr::Div(tail_monomial, sqrt_term));
+                integrate_symbolic_expr(ctx, tail_integrand, var)?
+            };
             let tail_signed = match builtin {
                 BuiltinFn::Arcsin | BuiltinFn::Asin => -(&slope * &over_n_plus_one),
                 _ => &slope * &over_n_plus_one,
@@ -24778,11 +24790,43 @@ mod tests {
     }
 
     #[test]
+    fn monomial_inverse_trig_by_parts_covers_offset_arguments() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("x*arcsin(x+1)", [-1.6_f64, -0.8, -0.3]),
+            ("x*arccos(x-1)", [0.3, 1.0, 1.6]),
+            ("x^2*arcsin(x+1)", [-1.4, -0.9, -0.4]),
+            ("x*arcsin(2*x-1)", [0.2, 0.5, 0.8]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn monomial_inverse_trig_by_parts_declines_offsets_and_high_powers() {
         let mut ctx = Context::new();
-        // Offset arguments need shifted radicands; n > 5 exceeds the
-        // radical-tail cap. Both stay honestly residual.
-        for source in ["x*arcsin(x+1)", "x^6*arcsin(x)"] {
+        // Offset arguments graduated to the shifted-tail by-parts path;
+        // n > 5 exceeds the radical-tail cap and symbolic offsets stay
+        // honestly residual.
+        for source in ["x^6*arcsin(x)", "x*arcsin(x+b)"] {
             let expr = parse(source, &mut ctx).expect(source);
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
@@ -25089,12 +25133,10 @@ mod tests {
     #[test]
     fn monomial_times_bounded_inverse_trig_declines_other_shapes() {
         let mut ctx = Context::new();
-        // x^2*arcsin(x) and x*arcsin(2x) graduated to the general
-        // by-parts path (radical tails via the reduction family); the
-        // remaining honest residuals are offset arguments and powers
-        // over the tail cap, and the arctan family keeps its own
-        // general by-parts owner.
-        for source in ["x*arcsin(x+1)", "x^6*arcsin(x)"] {
+        // Offset arguments graduated alongside the scaled ones; the
+        // remaining honest residuals are powers over the tail cap and
+        // symbolic offsets, and the arctan family keeps its own owner.
+        for source in ["x^6*arcsin(x)", "x*arcsin(x+c)"] {
             let expr = parse(source, &mut ctx).expect(source);
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),

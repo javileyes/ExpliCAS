@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 91 (newest first)
+Active entries: 92 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -134,6 +134,7 @@ Active entries: 91 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / shifted quadratic | Retained calculus: linear numerators over completed-square radicals
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical algorithms | Retained calculus: Hermite-style split for polynomial numerators over sqrt quadratics
 - 2026-06-12 | `retained` | simplifier / half-power residual shortcut / verification-channel | Retained simplifier: factored half-power bases merge with per-factor conditions
+- 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: shifted-argument arcsine/arccosine cofactors
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3787,3 +3788,44 @@ Active entries: 91 (newest first)
     must carry each operand's domain, because the combined expression
     can be defined where the original was not - this is the same
     asymmetry as the 0/0 gate, seen from the other direction
+
+## 2026-06-12 - Retained calculus: shifted-argument arcsine/arccosine cofactors
+
+- area:
+  - calculus / integration / educational route / bounded inverse trig
+    by-parts (block 8) / offset arguments
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families
+  - calculus_matrix_cell: integrate(x*arcsin(x+1)) = (2x^2 arcsin(x+1)
+    + (x-3) sqrt(-x^2-2x) - 3 arcsin(x+1))/4 with -2 <= x <= 0,
+    arccos(x-1) twins, n up to 5, mixed slope+offset arcsin(2x-1)
+  - behavior_change_expected: yes - c x^n arcsin(kx+b)/arccos(kx+b)
+    with rational k != 0 and rational b integrates by parts
+- observed (frontier probing):
+  - the enabler-then-wiring chain closed across goals: the shifted
+    tails x^(n+1)/sqrt(1-(kx+b)^2) became integrable when the Hermite
+    split landed, so dropping the offset gate plus delegating the tail
+    through integrate_symbolic_expr (instead of calling the pure-radicand
+    recurrence directly) was the whole cycle; the n=1,k=1,b=0 closed
+    form keeps its pinned display
+  - the COMPOSED direct-diff channel reaches a final form the late
+    closure misses even though the isolated residual collapses to 0
+    (pipeline ordering: the closure probes once before Best-So-Far,
+    and the composed pipeline's last form emerges after) - queued as
+    the pipeline-ordering investigation; the two-step derivative
+    channel verifies and numeric round-trips pin all four shapes
+  - symbolic offsets (arcsin(x+b) with symbolic b) stay honestly
+    residual (reject-tested)
+- retained learning:
+  - delegating tails through the public dispatch
+    (integrate_symbolic_expr) instead of a specific family fn makes
+    by-parts wrappers automatically inherit every future radicand
+    capability - wire wrappers to the dispatch unless display
+    ownership demands a direct call
+  - the composed verification channel (diff(integrate(.)) in one
+    pipeline) and the two-step channel diverge on WHERE the final form
+    emerges relative to the late closure probe: when composed fails
+    but isolated collapses, suspect ordering, not mathematics

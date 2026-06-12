@@ -489,7 +489,12 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). Factored half-power bases then learned to merge with
+     composes). Shifted-argument arcsine/arccosine cofactors then
+     closed the offset queue (x^n arcsin(kx+b) by parts with tails
+     delegated through the public dispatch; next rungs: the composed
+     direct-diff pipeline-ordering investigation, touch+unbounded
+     rationalization interference, limit display folding).
+     Factored half-power bases before that learned to merge with
      per-factor conditions (the acosh Hermite pattern verifies end to
      end; any scaled/shifted radical family whose derivative emits
      factored products is unblocked). The Hermite-style split before
