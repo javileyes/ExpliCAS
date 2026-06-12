@@ -9432,6 +9432,283 @@ fn exponential_rational_substitution_antiderivative(
     Some(strip_redundant_exponential_abs(ctx, substituted))
 }
 
+/// Quotients k * x^p * sqrt(q)^J / (x^m q^n) with q = a x^2 + c a pure
+/// quadratic (rational a != 0, c != 0) and net radical power J odd:
+/// the x-in-denominator side of the trig-substitution chapter, on both
+/// the raw surface (1/(x sqrt(q))) and the rationalized one
+/// (sqrt(q)/(x q), expanded denominators like x^4 + 4 x^2). The form
+/// is normalized to u/(x^M q^N) via u^J = u q^((J-1)/2). Odd M
+/// substitutes u = sqrt(q) (x dx = u du / a), giving the rational
+/// integrand a^((M+1)/2-1) u^(2-2N)/(u^2-c)^((M+1)/2) delegated to the
+/// rational owners (kernel 1/(x sqrt(q)) -> arctan/atanh of sqrt(q):
+/// the arcsec chapter). Even M covers the two textbook shapes:
+/// 1/(x^2 sqrt(q)) = -sqrt(q)/(c x) and sqrt(q)/x^2 = -sqrt(q)/x +
+/// a * integral(1/sqrt(q)) via the owned inverse-sqrt tables.
+fn quadratic_radical_over_monomial_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    // Split the Div/Mul tree into numerator and denominator factors.
+    let mut num_factors: Vec<ExprId> = Vec::new();
+    let mut den_factors: Vec<ExprId> = Vec::new();
+    fn split_factors(
+        ctx: &Context,
+        expr: ExprId,
+        inverted: bool,
+        num: &mut Vec<ExprId>,
+        den: &mut Vec<ExprId>,
+    ) {
+        match ctx.get(expr) {
+            Expr::Mul(l, r) => {
+                let (l, r) = (*l, *r);
+                split_factors(ctx, l, inverted, num, den);
+                split_factors(ctx, r, inverted, num, den);
+            }
+            Expr::Div(l, r) => {
+                let (l, r) = (*l, *r);
+                split_factors(ctx, l, inverted, num, den);
+                split_factors(ctx, r, !inverted, num, den);
+            }
+            _ => {
+                if inverted {
+                    den.push(expr);
+                } else {
+                    num.push(expr);
+                }
+            }
+        }
+    }
+    split_factors(ctx, expr, false, &mut num_factors, &mut den_factors);
+    if den_factors.is_empty() {
+        return None;
+    }
+
+    // Classify factors: half-integer powers of one shared radicand vs
+    // polynomial cofactors.
+    let mut radicand: Option<(ExprId, Polynomial)> = None;
+    let mut net_j: i64 = 0;
+    let mut num_polys: Vec<Polynomial> = Vec::new();
+    let mut den_polys: Vec<Polynomial> = Vec::new();
+    for (factors, sign) in [(num_factors.clone(), 1i64), (den_factors.clone(), -1i64)] {
+        for factor in factors {
+            let atom = match ctx.get(factor).clone() {
+                Expr::Pow(base, exponent) => crate::numeric_eval::as_rational_const(ctx, exponent)
+                    .filter(|value| *value.denom() == 2.into())
+                    .and_then(|value| i64::try_from(value.numer()).ok())
+                    .map(|j| (base, j)),
+                Expr::Function(fn_id, args)
+                    if args.len() == 1
+                        && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sqrt)) =>
+                {
+                    Some((args[0], 1))
+                }
+                _ => None,
+            };
+            if let Some((base, j)) = atom {
+                let base_poly = Polynomial::from_expr(ctx, base, var).ok()?;
+                if base_poly.degree() != 2 || !base_poly.coeffs[1].is_zero() {
+                    return None;
+                }
+                match &radicand {
+                    None => radicand = Some((base, base_poly)),
+                    Some((_, existing)) => {
+                        if existing.coeffs != base_poly.coeffs {
+                            return None;
+                        }
+                    }
+                }
+                net_j += sign * j;
+                continue;
+            }
+            let poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+            if poly.is_zero() {
+                return None;
+            }
+            if sign > 0 {
+                num_polys.push(poly);
+            } else {
+                den_polys.push(poly);
+            }
+        }
+    }
+    let (radicand_expr, radicand_poly) = radicand?;
+    if net_j <= -7 || net_j >= 7 || net_j % 2 == 0 {
+        return None;
+    }
+    let a = radicand_poly.coeffs[2].clone();
+    let c = radicand_poly.coeffs[0].clone();
+    if a.is_zero() || c.is_zero() {
+        return None;
+    }
+
+    // Numerator polynomial part must be a monomial k x^p.
+    let mut num_poly = Polynomial::one(var.to_string());
+    for poly in &num_polys {
+        num_poly = num_poly.mul(poly);
+    }
+    let p = num_poly
+        .coeffs
+        .iter()
+        .take_while(|coeff| coeff.is_zero())
+        .count();
+    if p >= num_poly.coeffs.len()
+        || num_poly.coeffs[p + 1..]
+            .iter()
+            .any(|coeff| !coeff.is_zero())
+    {
+        return None;
+    }
+    let k_num = num_poly.coeffs[p].clone();
+
+    // Denominator polynomial part: scale * x^m * q^n.
+    let mut den_poly = Polynomial::one(var.to_string());
+    for poly in &den_polys {
+        den_poly = den_poly.mul(poly);
+    }
+    let m_raw = den_poly
+        .coeffs
+        .iter()
+        .take_while(|coeff| coeff.is_zero())
+        .count();
+    if m_raw >= den_poly.coeffs.len() {
+        return None;
+    }
+    let even_part: Vec<BigRational> = den_poly.coeffs[m_raw..].to_vec();
+    if even_part
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .any(|coeff| !coeff.is_zero())
+    {
+        return None;
+    }
+    let y_coeffs: Vec<BigRational> = even_part.iter().cloned().step_by(2).collect();
+    let n = y_coeffs.len() - 1;
+    if n > 3 {
+        return None;
+    }
+    let mut q_power = vec![BigRational::from_integer(1.into())];
+    for _ in 0..n {
+        let mut next = vec![BigRational::zero(); q_power.len() + 1];
+        for (idx, coeff) in q_power.iter().enumerate() {
+            next[idx] += coeff * &c;
+            next[idx + 1] += coeff * &a;
+        }
+        q_power = next;
+    }
+    let lead = q_power.last()?.clone();
+    if lead.is_zero() {
+        return None;
+    }
+    let scale = y_coeffs.last()? / &lead;
+    if scale.is_zero() || (0..=n).any(|idx| y_coeffs[idx] != &q_power[idx] * &scale) {
+        return None;
+    }
+
+    // Canonical form k_total * u / (x^M q^N): u^J = u * q^((J-1)/2).
+    let m_eff = i64::try_from(m_raw).ok()? - i64::try_from(p).ok()?;
+    if !(1..=7).contains(&m_eff) {
+        return None;
+    }
+    let n_eff = i64::try_from(n).ok()? + (1 - net_j) / 2;
+    if !(0..=4).contains(&n_eff) {
+        return None;
+    }
+    let k_total = k_num / (&scale);
+    if k_total.is_zero() {
+        return None;
+    }
+    let half = BigRational::new(1.into(), 2.into());
+
+    if m_eff % 2 == 1 {
+        let used = cas_ast::collect_variables(ctx, expr);
+        let u_name = ["u", "u_", "u_sub"]
+            .iter()
+            .find(|candidate| !used.contains(**candidate) && *candidate != &var)?
+            .to_string();
+        let half_m = u32::try_from((m_eff + 1) / 2).ok()?;
+        let mut factor = k_total;
+        for _ in 0..(half_m - 1) {
+            factor *= &a;
+        }
+        let u_exp = 2 - 2 * n_eff;
+        let mut numer_u = Polynomial::zero(u_name.clone());
+        let numer_degree = usize::try_from(u_exp.max(0)).ok()?;
+        numer_u.coeffs = vec![BigRational::zero(); numer_degree + 1];
+        numer_u.coeffs[numer_degree] = factor;
+        let mut den_u = Polynomial::one(u_name.clone());
+        let mut u2_minus_c = Polynomial::zero(u_name.clone());
+        u2_minus_c.coeffs = vec![
+            -c.clone(),
+            BigRational::zero(),
+            BigRational::from_integer(1.into()),
+        ];
+        for _ in 0..half_m {
+            den_u = den_u.mul(&u2_minus_c);
+        }
+        if u_exp < 0 {
+            let extra = usize::try_from(-u_exp).ok()?;
+            let mut mono = Polynomial::zero(u_name.clone());
+            mono.coeffs = vec![BigRational::zero(); extra + 1];
+            mono.coeffs[extra] = BigRational::from_integer(1.into());
+            den_u = den_u.mul(&mono);
+        }
+        if numer_u.degree() > 10 || den_u.degree() > 10 {
+            return None;
+        }
+        let numerator_expr = polynomial_to_expr(ctx, &numer_u, &u_name);
+        let denominator_expr = polynomial_to_expr(ctx, &den_u, &u_name);
+        let integrand_u = ctx.add(Expr::Div(numerator_expr, denominator_expr));
+        let integral_u = integrate_symbolic_expr(ctx, integrand_u, &u_name).or_else(|| {
+            let config = crate::general_integration_backend::AlgorithmicIntegrationBackendConfig::residual_fallback();
+            let candidate = crate::general_integration_backend::try_algorithmic_integration_backend(
+                ctx, integrand_u, &u_name, config,
+            );
+            if !candidate.required_conditions.is_empty() {
+                return None;
+            }
+            candidate.fallback_antiderivative(config)
+        })?;
+        let integral_u = cas_ast::hold::unwrap_internal_hold(ctx, integral_u);
+        let half_expr = ctx.add(Expr::Number(half));
+        let replacement = ctx.add(Expr::Pow(radicand_expr, half_expr));
+        let target = ctx.var(&u_name);
+        let substituted = crate::substitute::substitute_power_aware(
+            ctx,
+            integral_u,
+            target,
+            replacement,
+            crate::substitute::SubstituteOptions::exact(),
+        );
+        return Some(strip_redundant_sqrt_abs(ctx, substituted));
+    }
+    if m_eff == 2 {
+        let half_expr = ctx.add(Expr::Number(half));
+        let sqrt_q = ctx.add(Expr::Pow(radicand_expr, half_expr));
+        let var_expr = ctx.var(var);
+        if n_eff == 1 {
+            // u/(x^2 q) = 1/(x^2 sqrt(q)): antiderivative -sqrt(q)/(c x).
+            let coeff = ctx.add(Expr::Number(-(&k_total / &c)));
+            let scaled_sqrt = ctx.add(Expr::Mul(coeff, sqrt_q));
+            return Some(ctx.add(Expr::Div(scaled_sqrt, var_expr)));
+        }
+        if n_eff == 0 {
+            // sqrt(q)/x^2 = d/dx[-sqrt(q)/x] + a/sqrt(q): delegate the
+            // owned inverse-sqrt tail.
+            let one = ctx.num(1);
+            let inv_sqrt = ctx.add(Expr::Div(one, sqrt_q));
+            let tail = integrate_symbolic_expr(ctx, inv_sqrt, var)?;
+            let scaled_tail = scale_rational_term(ctx, &a * &k_total, tail);
+            let neg_k = ctx.add(Expr::Number(-k_total));
+            let scaled_sqrt = ctx.add(Expr::Mul(neg_k, sqrt_q));
+            let head = ctx.add(Expr::Div(scaled_sqrt, var_expr));
+            return Some(ctx.add(Expr::Add(head, scaled_tail)));
+        }
+    }
+    None
+}
+
 /// Rational functions of sin(k x) and cos(k x) sharing ONE linear
 /// argument (rational k != 0, zero offset) with rational coefficients:
 /// Weierstrass substitution t = tan(k x / 2), sin = 2t/(1+t^2),
@@ -21037,6 +21314,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = quadratic_radical_over_monomial_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let IntKind::Function(fn_id, args) = kind {
         if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log) && args.len() == 2 {
             let base = args[0];
@@ -25953,6 +26234,86 @@ mod tests {
             integrate_symbolic_expr(&mut ctx, cubic_rad, "x").is_none(),
             "cubic radicand must stay residual"
         );
+    }
+
+    #[test]
+    fn quadratic_radical_over_monomial_integrates_the_family() {
+        let mut ctx = Context::new();
+        for source in [
+            "sqrt(4-x^2)/x",
+            "1/(x*sqrt(x^2-1))",
+            "1/(x*sqrt(x^2+4))",
+            "1/(x^2*sqrt(x^2+4))",
+            "sqrt(x^2-1)/x",
+            "sqrt(x^2+1)/x",
+            "1/(x*sqrt(1-x^2))",
+            "sqrt(1-x^2)/x^2",
+            "1/(x^3*sqrt(x^2+1))",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn quadratic_radical_over_monomial_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("sqrt(4-x^2)/x", [0.5_f64, 1.0, 1.8]),
+            ("1/(x*sqrt(x^2-1))", [1.2, 2.0, 3.0]),
+            ("1/(x*sqrt(x^2+4))", [0.5, 1.0, 2.0]),
+            ("1/(x^2*sqrt(x^2+4))", [-1.0, 0.5, 2.0]),
+            ("sqrt(x^2+1)/x", [0.4, 1.0, 2.5]),
+            ("1/(x*sqrt(1-x^2))", [0.3, 0.6, 0.9]),
+            ("sqrt(1-x^2)/x^2", [0.3, 0.6, 0.9]),
+            ("1/(x^3*sqrt(x^2+1))", [0.5, 1.2, 2.0]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn quadratic_radical_over_monomial_declines_foreign_shapes() {
+        let mut ctx = Context::new();
+        // Linear terms in the radicand, cubic radicands, non-monomial
+        // denominators, non-radical numerators, symbolic coefficients
+        // and the unimplemented even powers stay outside this owner.
+        for source in [
+            "sqrt(x^2+x+1)/x",
+            "sqrt(x^3+1)/x",
+            "sqrt(x^2+1)/(x+1)",
+            "x/sqrt(x^2+1)",
+            "sqrt(a-x^2)/x",
+            "sqrt(x^2+4)/x^4",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                super::quadratic_radical_over_monomial_antiderivative(&mut ctx, expr, "x")
+                    .is_none(),
+                "must decline: {source}"
+            );
+        }
     }
 
     #[test]

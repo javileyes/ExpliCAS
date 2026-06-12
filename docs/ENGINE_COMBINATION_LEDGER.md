@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 100 (newest first)
+Active entries: 101 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
+- 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4204,3 +4205,52 @@ Active entries: 100 (newest first)
   - the simplifier's depth budget is now the visible ceiling for trig
     verification channels: half-angle identities and arctan-tan
     compositions overflow before closing - an (A)-class candidate
+
+## 2026-06-13 - Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
+
+- area:
+  - calculus / integration / educational route / x-in-denominator
+    quadratic radical quotients (block 8 cluster
+    block8_quadratic_radical_over_monomial, P1 remnant of the
+    trig-substitution chapter)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families (new
+    quadratic_radical_over_monomial family, 6 rows, block8 40 -> 46)
+  - calculus_matrix_cell: 1/(x sqrt(x^2-1)) = arctan(sqrt(x^2-1))
+    (arcsec) with honest "x < -1 or x > 1", 1/(x^2 sqrt(x^2+4)) =
+    -sqrt(x^2+4)/(4x), sqrt(4-x^2)/x, sqrt(1-x^2)/x^2 =
+    -sqrt(1-x^2)/x - arcsin(x), 1/(x sqrt(x^2+4)) log kernel,
+    sqrt(x^2-1)/x; unit-only: m=3 (1/(x^3 sqrt(x^2+1)))
+  - behavior_change_expected: yes - k x^p sqrt(q)^J/(x^m q^n) with
+    q = a x^2 + c pure quadratic and net J odd integrates: odd
+    effective m via u = sqrt(q) (rational in u), even m=2 via the two
+    textbook closed forms
+- observed (fifth instantiation of the template):
+  - ONE family, TWO surfaces: the raw input 1/(x sqrt(q)) and the
+    pre-simplifier's rationalization sqrt(q)/(x q) with EXPANDED
+    denominators (x^4 + 4 x^2) - the matcher splits the Div/Mul factor
+    tree, classifies radical vs polynomial factors, and factors
+    x^m q^n out of Polynomial coefficients; a matcher written for only
+    the CLI-observed surface fails the raw unit-test surface
+  - normalization u^J = u q^((J-1)/2) collapses every odd net radical
+    power onto the canonical u/(x^M q^N) - without it, numerator
+    radicals (sqrt(q)/x) and denominator radicals (1/(x sqrt(q))) look
+    like different families
+  - the whole chapter reduces to the kernel int 1/(x sqrt(q)) =
+    int du/(u^2 - c): c < 0 gives arctan (the arcsec identity
+    arcsec|x| = arctan(sqrt(x^2-1))), c > 0 gives the log/atanh form -
+    delegation gets both from the rational owners for free
+  - 4 of 6 rows carry FULL verification channels (the radical families
+    verify better than trig: no half-angle residues); the 2 gap rows
+    are a verification timeout and an unclosed zero residue
+- retained learning:
+  - when the pre-simplifier rewrites a family's input surface, the
+    recognizer must match BOTH the raw and rewritten forms - unit tests
+    exercise raw ASTs while the CLI exercises rewritten ones, so
+    passing one does not imply the other; probe both before scoping
+  - Polynomial-coefficient factoring (trailing zeros for x^m, stride-2
+    slices for even parts, binomial reconstruction for q^n) recognizes
+    expanded products without any structural factorization machinery
