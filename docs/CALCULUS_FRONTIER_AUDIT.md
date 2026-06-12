@@ -97,12 +97,22 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   ∫₋₁¹√(1−x²) = π/2 por doble touch. Quedan: los cocientes con x en
   el DENOMINADOR — √(4−x²)/x, 1/(x·√(x²−1)) → arcsec,
   1/(x²·√(x²+4)) — que necesitan sustitución real u otra identidad)*
-- [ ] **(F) Sustitución algebraica general** (u=eˣ, u=√x, u=ax+b bajo
+- [x] **(F) Sustitución algebraica general** (u=eˣ, u=√x, u=ax+b bajo
   radical): bloquea DOS familias de golpe — racionales de eˣ
   (`1/(1+e^x)`, `e^x/(1+e^(2x))` → arctan(eˣ), `1/(e^x+e^(-x))`) y
   radicales lineales (`x*sqrt(x+1)`, `exp(sqrt(x))/sqrt(x)`,
   `1/(sqrt(x)+1)`). Mejor ROI según la sonda: una pasada de
   rewrite+integrate-recursivo resuelve ambas.
+  *(graduado 2026-06-12 8298dce96: la mitad u=√(ax+b) completa —
+  racionales de (x, √(ax+b)) con coeficientes racionales vía
+  x=(u²−b)/a, dx=(2u/a)du delegando a los dueños racionales:
+  x·√(x+1), x²·√(x+1), x·√(2x−1), x·(x+1)^(3/2), 1/(√x+1),
+  √x/(1+x), √(x+1)/x, pendientes negativas (2x+3)√(5−x), con
+  condiciones de dominio honestas por canal (x≥−1 integral vs x>−1
+  derivada). Quedan como peldaños: cofactores no racionales en u
+  (e^√x/√x, sin(√x)), radicandos mixtos √x·√(x+1), y el cierre
+  simbólico de diff(F)−integrando para superficies racionalizadas —
+  dos filas van como verification_gap con round-trip numérico)*
   *(parcial 2026-06-12 ec314325b: la mitad u=eˣ completa — todo
   racional sobre átomos e^(kx) con k racional integra vía u=e^(cx),
   c=gcd de pendientes, delegando al backend racional y
