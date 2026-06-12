@@ -97,6 +97,13 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   ∫₋₁¹√(1−x²) = π/2 por doble touch. Quedan: los cocientes con x en
   el DENOMINADOR — √(4−x²)/x, 1/(x·√(x²−1)) → arcsec,
   1/(x²·√(x²+4)) — que necesitan sustitución real u otra identidad)*
+  *(completado 2026-06-13 069c38a1d: el lado DENOMINADOR entero vía
+  u=√q sobre denominadores monomiales — 1/(x√(x²−1))→arctan(√(x²−1))
+  (arcsec, condición honesta x<−1 or x>1), 1/(x²√(x²+4))=−√(x²+4)/(4x),
+  √(4−x²)/x, √(1−x²)/x², √(x²±1)/x, m=3. El capítulo de sustitución
+  trigonométrica de Calc II queda cubierto en ambos lados. Peldaños:
+  radicandos con término lineal (completar cuadrado), m par ≥4,
+  denominadores no monomiales (x+1)·√q)*
 - [x] **(F) Sustitución algebraica general** (u=eˣ, u=√x, u=ax+b bajo
   radical): bloquea DOS familias de golpe — racionales de eˣ
   (`1/(1+e^x)`, `e^x/(1+e^(2x))` → arctan(eˣ), `1/(e^x+e^(-x))`) y
