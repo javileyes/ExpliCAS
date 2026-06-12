@@ -9432,6 +9432,339 @@ fn exponential_rational_substitution_antiderivative(
     Some(strip_redundant_exponential_abs(ctx, substituted))
 }
 
+/// Rational functions of x and sqrt(a x + b) with rational a != 0, b:
+/// substitute u = sqrt(a x + b), so x = (u^2 - b)/a and dx = (2u/a) du,
+/// build the SINGLE flattened quotient num(u)/den(u) via Polynomial
+/// arithmetic, integrate in u with the mature rational owners, and
+/// back-substitute. Covers x*sqrt(x+1), x^2*sqrt(x+1), x*sqrt(2x-1),
+/// sqrt(x)/(1+x), sqrt(x+1)/x and the rationalized 1/(sqrt(x)+1)
+/// surface (sqrt(x)-1)/(x-1). Non-rational cofactors (e^sqrt(x)) and
+/// mixed radicands decline. Ordered AFTER the specialized Div owners
+/// so their pinned displays survive.
+fn linear_radical_substitution_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut radicands: Vec<(ExprId, BigRational, BigRational)> = Vec::new();
+    if !collect_linear_radical_radicands(ctx, expr, var, &mut radicands) || radicands.is_empty() {
+        return None;
+    }
+    let (radicand_expr, slope, offset) = radicands[0].clone();
+    if slope.is_zero() {
+        return None;
+    }
+    if radicands[1..]
+        .iter()
+        .any(|(_, a, b)| *a != slope || *b != offset)
+    {
+        return None;
+    }
+
+    let used = cas_ast::collect_variables(ctx, expr);
+    let u_name = ["u", "u_", "u_sub"]
+        .iter()
+        .find(|candidate| !used.contains(**candidate) && *candidate != &var)?
+        .to_string();
+
+    let (num, den) =
+        linear_radical_rational_function_parts(ctx, expr, var, &slope, &offset, &u_name)?;
+    // dx = (2u/a) du.
+    let mut two_u = Polynomial::zero(u_name.clone());
+    two_u.coeffs = vec![BigRational::zero(), BigRational::from_integer(2.into())];
+    let num = num.mul(&two_u);
+    let den = scale_polynomial_rational(&den, &slope);
+    if num.degree() > 10 || den.degree() > 10 || den.is_zero() {
+        return None;
+    }
+    let integrand_u = if den.degree() == 0 {
+        // Constant denominator: hand the owners a plain polynomial, the
+        // degenerate Div(p(u), c) quotient has no rational owner.
+        let scaled = scale_polynomial_rational(
+            &num,
+            &(BigRational::from_integer(1.into()) / &den.coeffs[0]),
+        );
+        polynomial_to_expr(ctx, &scaled, &u_name)
+    } else {
+        let numerator_expr = polynomial_to_expr(ctx, &num, &u_name);
+        let denominator_expr = polynomial_to_expr(ctx, &den, &u_name);
+        ctx.add(Expr::Div(numerator_expr, denominator_expr))
+    };
+    let integral_u = integrate_symbolic_expr(ctx, integrand_u, &u_name)?;
+    // Partial-fraction owners wrap in an internal hold; unwrap so the
+    // back-substituted antiderivative stays differentiable downstream.
+    let integral_u = cas_ast::hold::unwrap_internal_hold(ctx, integral_u);
+
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let replacement = ctx.add(Expr::Pow(radicand_expr, half));
+    let target = ctx.var(&u_name);
+    let substituted = crate::substitute::substitute_power_aware(
+        ctx,
+        integral_u,
+        target,
+        replacement,
+        crate::substitute::SubstituteOptions::exact(),
+    );
+    Some(strip_redundant_sqrt_abs(ctx, substituted))
+}
+
+/// True when expr is built purely from rational operations over the
+/// variable, sqrt(linear) atoms (half-integer powers of a linear
+/// radicand), and var-free subtrees; collects every radicand with its
+/// rational (slope, offset). Any other occurrence of var refuses.
+fn collect_linear_radical_radicands(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    radicands: &mut Vec<(ExprId, BigRational, BigRational)>,
+) -> bool {
+    if let Some(atom) = linear_radical_atom(ctx, expr, var) {
+        radicands.push((atom.radicand, atom.slope, atom.offset));
+        return true;
+    }
+    if !contains_named_var(ctx, expr, var) {
+        return true;
+    }
+    if matches!(ctx.get(expr), Expr::Variable(sym) if ctx.sym_name(*sym) == var) {
+        return true;
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            collect_linear_radical_radicands(ctx, l, var, radicands)
+                && collect_linear_radical_radicands(ctx, r, var, radicands)
+        }
+        Expr::Neg(inner) => collect_linear_radical_radicands(ctx, inner, var, radicands),
+        Expr::Pow(base, exponent) => {
+            if contains_named_var(ctx, exponent, var) {
+                return false;
+            }
+            let Some(value) = crate::numeric_eval::as_rational_const(ctx, exponent) else {
+                return false;
+            };
+            if !value.is_integer() {
+                return false;
+            }
+            collect_linear_radical_radicands(ctx, base, var, radicands)
+        }
+        _ => false,
+    }
+}
+
+struct LinearRadicalAtom {
+    radicand: ExprId,
+    slope: BigRational,
+    offset: BigRational,
+    /// Exponent numerator k: the atom is radicand^(k/2) with k odd.
+    half_power: i64,
+}
+
+/// (a x + b)^(k/2) with k odd (sqrt(...) counts as k = 1) and rational
+/// nonzero slope a.
+fn linear_radical_atom(ctx: &mut Context, expr: ExprId, var: &str) -> Option<LinearRadicalAtom> {
+    let (radicand, half_power) = match ctx.get(expr).clone() {
+        Expr::Pow(base, exponent) => {
+            let value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            if *value.denom() != 2.into() {
+                return None;
+            }
+            (base, i64::try_from(value.numer()).ok()?)
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sqrt)) =>
+        {
+            (args[0], 1)
+        }
+        _ => return None,
+    };
+    if !contains_named_var(ctx, radicand, var) {
+        return None;
+    }
+    let (slope_expr, offset_expr) = get_linear_coeffs(ctx, radicand, var)?;
+    let slope = rational_constant_value(ctx, slope_expr)?;
+    if slope.is_zero() {
+        return None;
+    }
+    let offset = rational_constant_value(ctx, offset_expr)?;
+    Some(LinearRadicalAtom {
+        radicand,
+        slope,
+        offset,
+        half_power,
+    })
+}
+
+/// Build (num, den) Polynomials in u = sqrt(a x + b) for a rational
+/// expression over x and half-integer powers of the radicand, with
+/// x = (u^2 - b)/a. Negative u-powers land in the denominator.
+fn linear_radical_rational_function_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    slope: &BigRational,
+    offset: &BigRational,
+    u_name: &str,
+) -> Option<(Polynomial, Polynomial)> {
+    let one = Polynomial::one(u_name.to_string());
+    if let Some(atom) = linear_radical_atom(ctx, expr, var) {
+        let mut mono = Polynomial::zero(u_name.to_string());
+        let degree = usize::try_from(atom.half_power.unsigned_abs()).ok()?;
+        mono.coeffs = vec![BigRational::zero(); degree + 1];
+        mono.coeffs[degree] = BigRational::from_integer(1.into());
+        return if atom.half_power >= 0 {
+            Some((mono, one))
+        } else {
+            Some((one, mono))
+        };
+    }
+    if !contains_named_var(ctx, expr, var) {
+        let value = crate::numeric_eval::as_rational_const(ctx, expr)?;
+        let mut constant = Polynomial::zero(u_name.to_string());
+        constant.coeffs = vec![value];
+        return Some((constant, one));
+    }
+    if matches!(ctx.get(expr), Expr::Variable(sym) if ctx.sym_name(*sym) == var) {
+        // x = (u^2 - b)/a.
+        let mut x_poly = Polynomial::zero(u_name.to_string());
+        x_poly.coeffs = vec![
+            -offset / slope,
+            BigRational::zero(),
+            BigRational::from_integer(1.into()) / slope,
+        ];
+        return Some((x_poly, one));
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) => {
+            let (n1, d1) =
+                linear_radical_rational_function_parts(ctx, l, var, slope, offset, u_name)?;
+            let (n2, d2) =
+                linear_radical_rational_function_parts(ctx, r, var, slope, offset, u_name)?;
+            Some((n1.mul(&d2).add(&n2.mul(&d1)), d1.mul(&d2)))
+        }
+        Expr::Sub(l, r) => {
+            let (n1, d1) =
+                linear_radical_rational_function_parts(ctx, l, var, slope, offset, u_name)?;
+            let (n2, d2) =
+                linear_radical_rational_function_parts(ctx, r, var, slope, offset, u_name)?;
+            let neg_n2 = scale_polynomial_rational(&n2, &-BigRational::from_integer(1.into()));
+            Some((n1.mul(&d2).add(&neg_n2.mul(&d1)), d1.mul(&d2)))
+        }
+        Expr::Mul(l, r) => {
+            let (n1, d1) =
+                linear_radical_rational_function_parts(ctx, l, var, slope, offset, u_name)?;
+            let (n2, d2) =
+                linear_radical_rational_function_parts(ctx, r, var, slope, offset, u_name)?;
+            Some((n1.mul(&n2), d1.mul(&d2)))
+        }
+        Expr::Div(l, r) => {
+            let (n1, d1) =
+                linear_radical_rational_function_parts(ctx, l, var, slope, offset, u_name)?;
+            let (n2, d2) =
+                linear_radical_rational_function_parts(ctx, r, var, slope, offset, u_name)?;
+            if n2.is_zero() {
+                return None;
+            }
+            Some((n1.mul(&d2), d1.mul(&n2)))
+        }
+        Expr::Neg(inner) => {
+            let (n, d) =
+                linear_radical_rational_function_parts(ctx, inner, var, slope, offset, u_name)?;
+            Some((
+                scale_polynomial_rational(&n, &-BigRational::from_integer(1.into())),
+                d,
+            ))
+        }
+        Expr::Pow(base, exponent) => {
+            let value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            if !value.is_integer() {
+                return None;
+            }
+            let p = i64::try_from(&value.to_integer()).ok()?;
+            let (n, d) =
+                linear_radical_rational_function_parts(ctx, base, var, slope, offset, u_name)?;
+            let times = usize::try_from(p.unsigned_abs()).ok()?;
+            let mut acc_n = Polynomial::one(u_name.to_string());
+            let mut acc_d = Polynomial::one(u_name.to_string());
+            for _ in 0..times {
+                acc_n = acc_n.mul(&n);
+                acc_d = acc_d.mul(&d);
+            }
+            if p >= 0 {
+                Some((acc_n, acc_d))
+            } else {
+                if acc_n.is_zero() {
+                    return None;
+                }
+                Some((acc_d, acc_n))
+            }
+        }
+        _ => None,
+    }
+}
+
+/// |t^(k/2)| = t^(k/2) for positive half-integer powers (the radical
+/// is the nonnegative square root): drop Abs wrappers the
+/// back-substitution leaves around radical atoms (ln(|u|) ->
+/// ln(|sqrt(a x + b)|)).
+fn strip_redundant_sqrt_abs(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let node = ctx.get(expr).clone();
+    if let Expr::Function(fn_id, args) = &node {
+        if args.len() == 1 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Abs)) {
+            let inner = ctx.get(args[0]).clone();
+            let is_nonnegative_radical = match inner {
+                Expr::Pow(_, exponent) => crate::numeric_eval::as_rational_const(ctx, exponent)
+                    .is_some_and(|value| *value.denom() == 2.into() && value > BigRational::zero()),
+                Expr::Function(inner_fn, inner_args) => {
+                    inner_args.len() == 1
+                        && matches!(ctx.builtin_of(inner_fn), Some(BuiltinFn::Sqrt))
+                }
+                _ => false,
+            };
+            if is_nonnegative_radical {
+                return strip_redundant_sqrt_abs(ctx, args[0]);
+            }
+        }
+    }
+    match node {
+        Expr::Add(l, r) => {
+            let l = strip_redundant_sqrt_abs(ctx, l);
+            let r = strip_redundant_sqrt_abs(ctx, r);
+            ctx.add(Expr::Add(l, r))
+        }
+        Expr::Sub(l, r) => {
+            let l = strip_redundant_sqrt_abs(ctx, l);
+            let r = strip_redundant_sqrt_abs(ctx, r);
+            ctx.add(Expr::Sub(l, r))
+        }
+        Expr::Mul(l, r) => {
+            let l = strip_redundant_sqrt_abs(ctx, l);
+            let r = strip_redundant_sqrt_abs(ctx, r);
+            ctx.add(Expr::Mul(l, r))
+        }
+        Expr::Div(l, r) => {
+            let l = strip_redundant_sqrt_abs(ctx, l);
+            let r = strip_redundant_sqrt_abs(ctx, r);
+            ctx.add(Expr::Div(l, r))
+        }
+        Expr::Neg(inner) => {
+            let inner = strip_redundant_sqrt_abs(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Pow(base, exponent) => {
+            let base = strip_redundant_sqrt_abs(ctx, base);
+            let exponent = strip_redundant_sqrt_abs(ctx, exponent);
+            ctx.add(Expr::Pow(base, exponent))
+        }
+        Expr::Function(fn_id, args) => {
+            let args: Vec<_> = args
+                .iter()
+                .map(|arg| strip_redundant_sqrt_abs(ctx, *arg))
+                .collect();
+            ctx.add(Expr::Function(fn_id, args))
+        }
+        _ => expr,
+    }
+}
+
 /// |e^t| = e^t for real t: drop Abs wrappers the back-substitution
 /// leaves around exponentials (ln(|u|) -> ln(|e^(c x)|)).
 fn strip_redundant_exponential_abs(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -20435,6 +20768,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = linear_radical_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let IntKind::Function(fn_id, args) = kind {
         if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log) && args.len() == 2 {
             let base = args[0];
@@ -25351,6 +25688,83 @@ mod tests {
             integrate_symbolic_expr(&mut ctx, cubic_rad, "x").is_none(),
             "cubic radicand must stay residual"
         );
+    }
+
+    #[test]
+    fn linear_radical_substitution_integrates_the_family() {
+        let mut ctx = Context::new();
+        for source in [
+            "x*sqrt(x+1)",
+            "x^2*sqrt(x+1)",
+            "x*sqrt(2*x-1)",
+            "x*(x+1)^(3/2)",
+            "sqrt(x)/(1+x)",
+            "(sqrt(x)-1)/(x-1)",
+            "sqrt(x+1)/x",
+            "(2*x+3)*sqrt(5-x)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn linear_radical_substitution_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("x*sqrt(x+1)", [-0.6_f64, 0.5, 2.0]),
+            ("x^2*sqrt(x+1)", [-0.4, 0.8, 1.5]),
+            ("x*sqrt(2*x-1)", [0.7, 1.2, 2.5]),
+            ("sqrt(x)/(1+x)", [0.3, 1.0, 2.4]),
+            ("(sqrt(x)-1)/(x-1)", [0.2, 0.6, 2.2]),
+            ("sqrt(x+1)/x", [0.4, 1.3, 3.0]),
+            ("(2*x+3)*sqrt(5-x)", [-1.0, 0.5, 4.0]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn linear_radical_substitution_declines_foreign_shapes() {
+        let mut ctx = Context::new();
+        // Quadratic/cubic radicands have their own owners (or stay
+        // residual), mixed radicands are non-rational in one u, and
+        // non-rational cofactors (exp, sin) are outside this owner.
+        for source in [
+            "sqrt(1-x^2)",
+            "sqrt(x^3+1)",
+            "sqrt(x)*sqrt(x+1)",
+            "e^sqrt(x)/sqrt(x)",
+            "sin(sqrt(x))",
+            "sqrt(a*x+1)*x",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                super::linear_radical_substitution_antiderivative(&mut ctx, expr, "x").is_none(),
+                "must decline: {source}"
+            );
+        }
     }
 
     #[test]

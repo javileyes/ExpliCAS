@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 98 (newest first)
+Active entries: 99 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -141,6 +141,7 @@ Active entries: 98 (newest first)
 - 2026-06-12 | `retained` | didactic trace quality / rule naming (P0-F of the frontier audit, | Retained didactic: trig table evaluation reclaims its own rule name
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical numerators | Retained calculus: radical numerators land the trig-substitution chapter by delegation
 - 2026-06-12 | `retained` | calculus / integration / educational route / exponential rational | Retained calculus: rationals of e^x via u-substitution into the rational owners
+- 2026-06-12 | `retained` | calculus / integration / educational route / linear radical | Retained calculus: linear radicals via u = sqrt(ax+b) into the rational owners
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -4098,3 +4099,56 @@ Active entries: 98 (newest first)
   - back-substitution must repair what the u-domain owners assume:
     holds (unwrap) and abs-positivity (e^t > 0) are u-domain artifacts
     that block downstream verification if left in place
+
+## 2026-06-12 - Retained calculus: linear radicals via u = sqrt(ax+b) into the rational owners
+
+- area:
+  - calculus / integration / educational route / linear radical
+    substitution (block 8 cluster block8_linear_radical_substitution,
+    P1 of the frontier audit, u=sqrt(x) half of "general algebraic
+    substitution")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families (new
+    linear_radical_substitution family, 6 rows, block8 34 -> 40)
+  - calculus_matrix_cell: x*sqrt(x+1), x^2*sqrt(x+1), x*sqrt(2x-1),
+    x*(x+1)^(3/2), 1/(sqrt(x)+1) = 2 sqrt(x) - 2 ln(sqrt(x)+1),
+    sqrt(x)/(1+x) = 2 sqrt(x) - 2 arctan(sqrt(x)); unit-only:
+    sqrt(x+1)/x, (2x+3)*sqrt(5-x) (negative slope)
+  - behavior_change_expected: yes - any rational expression over x and
+    half-integer powers of ONE linear radicand with rational
+    coefficients integrates by u = sqrt(ax+b), x = (u^2-b)/a,
+    dx = (2u/a) du
+- observed (frontier probing + implementation):
+  - same skeleton as the e^x cycle (rational-function Polynomial pairs,
+    flatten before delegating, unwrap hold, strip redundant Abs) - the
+    pattern transfers wholesale; the only new math is the x-atom map
+    x -> (u^2-b)/a and the dx factor
+  - NEW degenerate case the e^x cycle never hit: pure-polynomial
+    cofactors yield den(u) = constant, and Div(p(u), c) has NO rational
+    owner - hand the owners a plain polynomial instead (the constant
+    folds into the coefficients)
+  - per-channel domain conditions DIFFER honestly: the integral
+    requires x >= -1 (radicand domain) while its derivative requires
+    x > -1 (1/sqrt at the endpoint); two rows even disagree between
+    two-step (strict) and composed (non-strict) channels - pin each
+    channel separately, do not force one string
+  - the simplifier cannot close diff(F) - integrand to 0 for
+    1/(sqrt(x)+1) and sqrt(x)/(1+x) (rationalization-shaped residue):
+    those rows ship as verification_gap with numeric round-trips in
+    unit tests, precedent from the radical-numerator cycle
+  - diff(integrate(sqrt(x+1)/x)) hits a depth-51 overflow WARN in
+    simplify (combined-log antiderivative) - capability kept unit-only,
+    fragile surface documented instead of pinned
+- retained learning:
+  - the substitution-delegation skeleton is now a TEMPLATE: recognizer
+    (atoms + rational ops) -> Polynomial pair flatten -> recurse ->
+    unwrap hold -> back-substitute -> strip impossible Abs; the
+    variable part is only the atom map and the du factor - Weierstrass
+    t = tan(x/2) should reuse it directly
+  - degenerate handoffs (constant denominator, single term) need their
+    own surface check: owners accept mathematical CLASSES through
+    specific AST shapes, and a quotient that is "morally a polynomial"
+    is not a polynomial to the dispatcher
