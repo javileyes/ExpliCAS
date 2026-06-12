@@ -26,6 +26,11 @@ contexto — son tu memoria externa):
    estado, y la recomendación de siguiente iteración.
 5. `docs/ENGINE_COHESION_REFACTORING_STRATEGY.md` — cuándo una iteración
    debe ser arquitectura (extracción) en vez de capacidad.
+6. `docs/CALCULUS_FRONTIER_AUDIT.md` — la cola priorizada de huecos
+   medidos contra curso universitario y CAS profesional (P0 soundness,
+   P1 capítulos a 0%, P2 familias, P3 educativo), con clase de ciclo
+   (F familia / A arquitectónico / I fuera del norte) y la lista de
+   residuales honestos que NUNCA deben "resolverse".
 
 ## Protocolo de un ciclo
 
@@ -38,7 +43,10 @@ contexto — son tu memoria externa):
 
 ### 1. Selección del candidato (mayor ROI)
 - Parte de la "siguiente iteración recomendada" del informe del ciclo
-  anterior (ledger/roadmap) y de los items `[in progress]`/`[pending]`.
+  anterior (ledger/roadmap), de los items `[in progress]`/`[pending]`,
+  y de la cola priorizada de `docs/CALCULUS_FRONTIER_AUDIT.md`
+  (P0 antes que P1 antes que P2/P3 a igualdad de coste; los items
+  clase A exigen scoping workflow primero; los clase I no son ciclos).
 - Criterios: avanza un gate incompleto del north star; acotado a un
   ciclo; retenible (capacidad nueva verificable, fix de soundness, o
   extracción behavior-preserving); reutiliza maquinaria existente antes
@@ -113,6 +121,13 @@ repitas en bucle).
 - `python3 scripts/engine_combination_ledger_tool.py --reindex`
 - Actualiza el estado en el roadmap (items done/in-progress, "siguiente
   peldaño" para lo que quede fuera).
+- Si el ciclo gradúa (total o parcialmente) un item de
+  `docs/CALCULUS_FRONTIER_AUDIT.md`, márcalo ahí con `[x]` +
+  `*(graduado FECHA commit: qué quedó cubierto y qué queda como
+  peldaño)*` — con el hash REAL del commit del ciclo, nunca
+  marcar por adelantado. Las verificaciones de honestidad del audit
+  (residuales no-elementales) cuentan como contratos: si un ciclo las
+  rompe, es soundness, no capacidad.
 
 ### 8. Commit e informe
 - Un commit por ciclo: título imperativo describiendo la capacidad o el

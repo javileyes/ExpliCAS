@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 92 (newest first)
+Active entries: 93 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -135,6 +135,7 @@ Active entries: 92 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / radical algorithms | Retained calculus: Hermite-style split for polynomial numerators over sqrt quadratics
 - 2026-06-12 | `retained` | simplifier / half-power residual shortcut / verification-channel | Retained simplifier: factored half-power bases merge with per-factor conditions
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: shifted-argument arcsine/arccosine cofactors
+- 2026-06-12 | `observe-only` | process / candidate selection / coverage measurement | Observe-only: frontier audit wired into the auto-improvement loop
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3829,3 +3830,39 @@ Active entries: 92 (newest first)
     pipeline) and the two-step channel diverge on WHERE the final form
     emerges relative to the late closure probe: when composed fails
     but isolated collapses, suspect ordering, not mathematics
+
+## 2026-06-12 - Observe-only: frontier audit wired into the auto-improvement loop
+
+- area:
+  - process / candidate selection / coverage measurement
+- status:
+  - `observe-only` (no engine behavior change)
+- capture:
+  - investment_class: observability
+  - behavior_change_expected: none - documentation and skill wiring
+- observed (6-agent audit, ~150 CLI probes + doctrine read):
+  - measured coverage: diff ~80% university / ~45-50% CAS-pro;
+    indefinite integration ~60-65% (58/92 elementary probes) / ~35-40%;
+    limits ~45-50% / ~20-25% (pattern allowlist, not an algorithm - the
+    constant e is unreachable by limit); definite/improper ~70-75% /
+    ~35-40%; educational narration ~55% well-narrated
+  - highest-impact findings: a SIMPLIFIER HANG on
+    diff(sin(x)^3*cos(x)^2, x) (depth_overflow, >30s); `inf` parsed as
+    a free symbol producing silent garbage in definite integrals; the
+    trig-substitution chapter (sqrt(a^2-x^2) in numerators) at 0%;
+    by-parts narration mute outside x*ln(x); corrupt step labels
+  - velocity context: ~19-20 retained cycles/day across 2026-06-10/12,
+    inflated by cheap family cycles; remaining work splits into
+    F (family), A (architectural - scoping first) and I
+    (research-grade, not cycles)
+- decision:
+  - persisted as docs/CALCULUS_FRONTIER_AUDIT.md with a prioritized
+    queue (P0 soundness, P1 zero-coverage chapters, P2 families,
+    P3 educational) and an honesty list of non-elementary residuals
+    that must NEVER be "solved"; the auto-mejora skill now consumes the
+    queue in candidate selection and marks graduations in place
+- retained learning:
+  - probing the frontier at goal-selection granularity (not just
+    cycle granularity) exposes whole missing CHAPTERS that per-cycle
+    "next rung" recommendations never surface, because rungs are
+    adjacent to what exists while chapters are adjacent to nothing
