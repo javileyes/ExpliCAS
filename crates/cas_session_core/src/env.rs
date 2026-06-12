@@ -82,6 +82,7 @@ const RESERVED_NAMES: &[&str] = &[
     "e",
     "i",
     "inf",
+    "oo",
     "infinity",
     "undefined",
 ];

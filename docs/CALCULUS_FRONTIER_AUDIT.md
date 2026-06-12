@@ -51,10 +51,13 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `diff((x*ln(x))/(exp(x)*sin(x)), x)`. Respuestas correctas que no
   llegan valen cero. Relacionado: el bucle tan↔sin/cos que obligó a
   construir tan⁵ en forma expandida (ledger 2026-06-12).
-- [ ] **(F) `inf` como símbolo libre**: `integrate(e^(-x), x, 0, inf)`
+- [x] **(F) `inf` como símbolo libre**: `integrate(e^(-x), x, 0, inf)`
   produce `(e^inf-1)/e^inf` sin aviso; solo `infinity` activa la
   maquinaria. Parsear `inf`/`oo` como infinito o rechazarlos con
-  mensaje.
+  mensaje. *(graduado 2026-06-12 4acb1b3a0: inf/oo → Constant::
+  Infinity en el mapa de constantes del parser + oo reservado;
+  el glifo ∞ sigue rechazando con error claro — peldaño cosmético;
+  -inf suelto en CLI es parseo de flags del shell, no del parser)*
 - [ ] **(F) Pasos corruptos**: `integrate(sin(x),x,0,pi)` etiqueta
   "Expandir secante" al evaluar cos(π); `sec(x)^2` tiene traza rota
   (el resultado tan(x) no aparece en ningún paso); pasos no-op

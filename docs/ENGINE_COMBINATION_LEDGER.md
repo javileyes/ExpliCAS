@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 93 (newest first)
+Active entries: 94 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -136,6 +136,7 @@ Active entries: 93 (newest first)
 - 2026-06-12 | `retained` | simplifier / half-power residual shortcut / verification-channel | Retained simplifier: factored half-power bases merge with per-factor conditions
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: shifted-argument arcsine/arccosine cofactors
 - 2026-06-12 | `observe-only` | process / candidate selection / coverage measurement | Observe-only: frontier audit wired into the auto-improvement loop
+- 2026-06-12 | `retained` | parser / definite integral bounds / perceived correctness (P0 of | Retained soundness: inf and oo parse as infinity
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3866,3 +3867,39 @@ Active entries: 93 (newest first)
     cycle granularity) exposes whole missing CHAPTERS that per-cycle
     "next rung" recommendations never surface, because rungs are
     adjacent to what exists while chapters are adjacent to nothing
+
+## 2026-06-12 - Retained soundness: inf and oo parse as infinity
+
+- area:
+  - parser / definite integral bounds / perceived correctness (P0 of
+    the frontier audit)
+- status:
+  - `retained`
+- capture:
+  - investment_class: soundness
+  - calculus_maturity_block: cross-cutting (every command taking
+    bounds or approach points)
+  - calculus_matrix_cell: integrate(e^(-x), x, 0, inf) = 1 (was the
+    silent garbage (e^inf - 1)/e^inf), integrate(x*e^(-x^2), x, 0, oo)
+    = 1/2, 1/inf = 0, symmetric bounds [-inf, inf] compose
+  - behavior_change_expected: yes - inf/oo are now the Infinity
+    constant everywhere instead of free symbols
+- observed (frontier probing):
+  - the intent already existed in three places: inf was RESERVED in
+    the session env (cannot be assigned), and the limit-approach
+    parsers in cas_api_models and cas_solver already accepted
+    inf/-inf - only the EXPRESSION parser's constant map was missing
+    the aliases, so limit(1/x, x, inf) worked while
+    integrate(..., 0, inf) silently treated inf as a variable
+  - no fixture, test or script used inf/oo as a symbol name (checked
+    before changing); oo added to the reserved list for symmetry
+  - the unicode glyph (infinity symbol) still rejects, but with a
+    CLEAR parse error in the limit-direction parser - honest, queued
+    as cosmetic; -inf standalone on the CLI is shell flag parsing
+    (-pi fails identically), not the expression parser
+- retained learning:
+  - alias soundness bugs hide in the seam BETWEEN parsers: each
+    sub-parser (limit approach, wire types, session env) had its own
+    alias list and the one that mattered most (expression constants)
+    was the only one missing it - when adding an alias, grep for the
+    existing alias's other spellings to find every map that must agree

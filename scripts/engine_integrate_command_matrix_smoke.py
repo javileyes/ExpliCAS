@@ -1069,6 +1069,21 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="exact_pi_value",
     ),
     IntegrateCommandMatrixCase(
+        name="definite_integral_improper_inf_alias_spelling",
+        expr="integrate(e^(-x), x, 0, inf)",
+        expected_result="1",
+        expected_required_display=(),
+        expected_step_substrings=(
+            "Hallar la antiderivada",
+            "Evaluar la antiderivada en los límites",
+        ),
+        family="definite_integral_ftc",
+        argument_regime="improper_exponential_decay_inf_alias",
+        domain_regime="improper_interval_certified",
+        trace_regime="definite_ftc_improper_limit",
+        presentation_regime="exact_rational_value",
+    ),
+    IntegrateCommandMatrixCase(
         name="definite_integral_improper_gamma_two",
         expr="integrate(x*exp(-x), x, 0, infinity)",
         expected_result="1",

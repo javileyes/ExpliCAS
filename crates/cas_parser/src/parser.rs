@@ -369,7 +369,10 @@ fn parse_identifier_atom(input: &str) -> IResult<&str, ParseNode> {
     }
 
     let node = match name {
-        "infinity" => ParseNode::Constant(Constant::Infinity),
+        // inf/oo are RESERVED in the session env: accepting them as free
+        // symbols produced silent garbage (arctan(inf)) in definite
+        // integrals while only "infinity" reached the limits machinery.
+        "infinity" | "inf" | "oo" => ParseNode::Constant(Constant::Infinity),
         "undefined" => ParseNode::Constant(Constant::Undefined),
         "pi" => ParseNode::Constant(Constant::Pi),
         "phi" => ParseNode::Constant(Constant::Phi),
@@ -866,6 +869,39 @@ mod tests {
     use super::*;
     use cas_ast::BuiltinFn;
     use cas_formatter::DisplayExpr;
+
+    #[test]
+    fn test_inf_and_oo_parse_as_infinity() {
+        // inf/oo are reserved names: as free symbols they produced
+        // silent garbage (arctan(inf)) in definite integral bounds.
+        let mut ctx = Context::new();
+        for source in ["inf", "oo", "infinity"] {
+            let e = parse(source, &mut ctx).unwrap();
+            assert_eq!(
+                format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &ctx,
+                        id: e
+                    }
+                ),
+                "infinity",
+                "{source}"
+            );
+        }
+        // Composition keeps working through the constant.
+        let e = parse("2*inf", &mut ctx).unwrap();
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e
+                }
+            ),
+            "2 * infinity"
+        );
+    }
 
     #[test]
     fn test_parse_number() {
