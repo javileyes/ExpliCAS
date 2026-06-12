@@ -1996,6 +1996,41 @@ fn trig_ratio_square_affine_antiderivative(
     ))
 }
 
+fn trig_tan_cot_odd_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let power = if is_number(ctx, exp, 3) {
+        3
+    } else if is_number(ctx, exp, 5) {
+        5
+    } else {
+        return None;
+    };
+    let (fn_id, args) = match ctx.get(base).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
+        _ => return None,
+    };
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(builtin, BuiltinFn::Tan | BuiltinFn::Cot) {
+        return None;
+    }
+    let arg = args[0];
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+    Some(match (builtin, power) {
+        (BuiltinFn::Tan, 3) => trig_tan_third_antiderivative_from_parts(ctx, arg, a),
+        (BuiltinFn::Tan, _) => trig_tan_fifth_antiderivative_from_parts(ctx, arg, a),
+        (_, 3) => trig_cot_third_antiderivative_from_parts(ctx, arg, a),
+        _ => trig_cot_fifth_antiderivative_from_parts(ctx, arg, a),
+    })
+}
+
 fn trig_tan_fourth_affine_antiderivative(
     ctx: &mut Context,
     base: ExprId,
@@ -2459,6 +2494,128 @@ fn trig_ratio_square_antiderivative_from_parts(
     };
     let var_expr = ctx.var(var);
     ctx.add(Expr::Sub(scaled_primitive, var_expr))
+}
+
+fn trig_abs_log_term(ctx: &mut Context, builtin: BuiltinFn, arg: ExprId) -> ExprId {
+    let inner = ctx.call_builtin(builtin, vec![arg]);
+    let abs_inner = ctx.call_builtin(BuiltinFn::Abs, vec![inner]);
+    ctx.call_builtin(BuiltinFn::Ln, vec![abs_inner])
+}
+
+fn trig_tan_third_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    // d/du [tan^2(u)/2 + ln|cos(u)|] = tan^3(u).
+    let tan_arg = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+    let two = ctx.num(2);
+    let tan_squared = ctx.add(Expr::Pow(tan_arg, two));
+    let square = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(2.into()) * a.clone()),
+        tan_squared,
+    );
+    let log_raw = trig_abs_log_term(ctx, BuiltinFn::Cos, arg);
+    let log_term = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / a,
+        log_raw,
+    );
+    ctx.add(Expr::Add(square, log_term))
+}
+
+fn trig_cot_third_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    // d/du [-cot^2(u)/2 - ln|sin(u)|] = cot^3(u).
+    let cot_arg = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
+    let two = ctx.num(2);
+    let cot_squared = ctx.add(Expr::Pow(cot_arg, two));
+    let square = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / (BigRational::from_integer(2.into()) * a.clone()),
+        cot_squared,
+    );
+    let log_raw = trig_abs_log_term(ctx, BuiltinFn::Sin, arg);
+    let log_term = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / a,
+        log_raw,
+    );
+    ctx.add(Expr::Add(square, log_term))
+}
+
+fn trig_tan_fifth_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    // d/du [tan^4(u)/4 - tan^2(u)/2 - ln|cos(u)|] = tan^5(u).
+    // Built in expanded sin/cos form: Pow(Tan, 4) sends the
+    // post-integration rewrite into a non-terminating tan <-> sin/cos
+    // ping-pong (cot^4 forms do not loop).
+    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let four = ctx.num(4);
+    let two = ctx.num(2);
+    let sin_fourth = ctx.add(Expr::Pow(sin_arg, four));
+    let cos_fourth = ctx.add(Expr::Pow(cos_arg, four));
+    let sin_squared = ctx.add(Expr::Pow(sin_arg, two));
+    let cos_squared = ctx.add(Expr::Pow(cos_arg, two));
+    let tan_fourth = ctx.add(Expr::Div(sin_fourth, cos_fourth));
+    let tan_squared = ctx.add(Expr::Div(sin_squared, cos_squared));
+    let quartic = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(4.into()) * a.clone()),
+        tan_fourth,
+    );
+    let square = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / (BigRational::from_integer(2.into()) * a.clone()),
+        tan_squared,
+    );
+    let log_raw = trig_abs_log_term(ctx, BuiltinFn::Cos, arg);
+    let log_term = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / a,
+        log_raw,
+    );
+    let head = ctx.add(Expr::Add(quartic, square));
+    ctx.add(Expr::Add(head, log_term))
+}
+
+fn trig_cot_fifth_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    // d/du [-cot^4(u)/4 + cot^2(u)/2 + ln|sin(u)|] = cot^5(u).
+    let cot_arg = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
+    let four = ctx.num(4);
+    let two = ctx.num(2);
+    let cot_fourth = ctx.add(Expr::Pow(cot_arg, four));
+    let cot_squared = ctx.add(Expr::Pow(cot_arg, two));
+    let quartic = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / (BigRational::from_integer(4.into()) * a.clone()),
+        cot_fourth,
+    );
+    let square = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(2.into()) * a.clone()),
+        cot_squared,
+    );
+    let log_raw = trig_abs_log_term(ctx, BuiltinFn::Sin, arg);
+    let log_term = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / a,
+        log_raw,
+    );
+    let head = ctx.add(Expr::Add(quartic, square));
+    ctx.add(Expr::Add(head, log_term))
 }
 
 fn trig_tan_fourth_antiderivative_from_parts(
@@ -3282,6 +3439,32 @@ fn trig_ratio_square_quotient_antiderivative(
 ) -> Option<ExprId> {
     let parts = trig_ratio_square_quotient_parts(ctx, num, den, var)?;
     Some(trig_ratio_square_antiderivative_from_parts(ctx, parts, var))
+}
+
+fn trig_tan_cot_odd_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    for (numerator_fn, denominator_fn, power, tan_owner) in [
+        (BuiltinFn::Sin, BuiltinFn::Cos, 3, true),
+        (BuiltinFn::Cos, BuiltinFn::Sin, 3, false),
+        (BuiltinFn::Sin, BuiltinFn::Cos, 5, true),
+        (BuiltinFn::Cos, BuiltinFn::Sin, 5, false),
+    ] {
+        if let Some(parts) =
+            trig_power_quotient_parts(ctx, num, den, var, numerator_fn, denominator_fn, power)
+        {
+            return Some(match (tan_owner, power) {
+                (true, 3) => trig_tan_third_antiderivative_from_parts(ctx, parts.arg, parts.a),
+                (true, _) => trig_tan_fifth_antiderivative_from_parts(ctx, parts.arg, parts.a),
+                (false, 3) => trig_cot_third_antiderivative_from_parts(ctx, parts.arg, parts.a),
+                _ => trig_cot_fifth_antiderivative_from_parts(ctx, parts.arg, parts.a),
+            });
+        }
+    }
+    None
 }
 
 fn trig_tan_fourth_quotient_antiderivative(
@@ -18739,6 +18922,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        if let Some(integral) = trig_tan_cot_odd_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = trig_tan_fourth_affine_antiderivative(ctx, base, exp, var) {
             return Some(integral);
         }
@@ -18958,6 +19145,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         }
 
         if let Some(integral) = trig_ratio_square_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_tan_cot_odd_quotient_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
 
@@ -23811,6 +24002,65 @@ mod tests {
         // Honest residual: non-table trig cofactor.
         let expr = parse("tan(x)/e^x", &mut ctx).expect("tan");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn tangent_cotangent_odd_powers_integrate_with_reduction_closed_forms() {
+        let mut ctx = Context::new();
+        for source in [
+            "tan(x)^3",
+            "cot(x)^3",
+            "tan(x)^5",
+            "cot(x)^5",
+            "tan(2*x)^3",
+            "sin(x)^3/cos(x)^3",
+            "cos(x)^3/sin(x)^3",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn tangent_odd_power_owners_keep_even_and_linear_rungs() {
+        let mut ctx = Context::new();
+        let one = BigRational::from_integer(1.into());
+        let arg = parse("x", &mut ctx).expect("x");
+        // The closed forms differentiate back to tan^3 / cot^3:
+        // d/du [tan^2/2 + ln|cos|] = tan^3; the cot twin flips signs.
+        let tan_form = super::trig_tan_third_antiderivative_from_parts(&mut ctx, arg, one.clone());
+        let tan_display = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: tan_form
+            }
+        );
+        assert!(
+            tan_display.contains("tan(x)") && tan_display.contains("ln(|cos(x)|)"),
+            "unexpected tan^3 form: {tan_display}"
+        );
+        let cot_form = super::trig_cot_third_antiderivative_from_parts(&mut ctx, arg, one);
+        let cot_display = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: cot_form
+            }
+        );
+        assert!(
+            cot_display.contains("cot(x)") && cot_display.contains("ln(|sin(x)|)"),
+            "unexpected cot^3 form: {cot_display}"
+        );
+        // Even powers decline this owner (they keep theirs).
+        let even = parse("tan(x)^4", &mut ctx).expect("tan4");
+        let cas_ast::Expr::Pow(base, exp) = ctx.get(even).clone() else {
+            panic!("pow");
+        };
+        assert!(super::trig_tan_cot_odd_affine_antiderivative(&mut ctx, base, exp, "x").is_none());
     }
 
     #[test]

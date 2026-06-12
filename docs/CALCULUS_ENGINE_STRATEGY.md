@@ -489,7 +489,12 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The odd secant/cosecant power ladder landed next
+     composes). The odd tangent/cotangent rungs then completed the trig
+     power ladder (tan^2/2 + ln|cos| closed forms for n = 3/5 in both
+     Pow and rewritten sin^n/cos^n shapes; the tan^5 form must be built
+     in expanded sin/cos to avoid a post-integration rewrite loop -
+     queued as a simplifier-policy rung). The odd secant/cosecant
+     power ladder landed before that
      (reduction closed forms for n = 3 and 5, affine arguments, and the
      pi-bound definite integrate(1/cos(x)^3, x, 0, pi/4); the
      diff-verification WARN on depth keeps the indefinite rows under

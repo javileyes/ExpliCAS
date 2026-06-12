@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 79 (newest first)
+Active entries: 80 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -122,6 +122,7 @@ Active entries: 79 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / polynomial-derivative | Retained calculus: exponential substitution Div arm lands the damped-Gaussian family
 - 2026-06-12 | `retained` | calculus / limits at infinity (cas_math limits_support) / saturating | Retained calculus: at-infinity composition closes symbolic-finite factors and radical tails
 - 2026-06-12 | `retained` | calculus / integration / educational route / reciprocal trig power | Retained calculus: odd secant/cosecant powers via reduction closed forms
+- 2026-06-12 | `retained` | calculus / integration / educational route / trig power family | Retained calculus: odd tangent/cotangent powers complete the trig power ladder
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3268,3 +3269,46 @@ Active entries: 79 (newest first)
     pin through definite values plus unit tests (cycle-1 lesson now
     confirmed as the standing pattern) and document the
     verification_gap rows in the ledger rather than silently shipping
+
+## 2026-06-12 - Retained calculus: odd tangent/cotangent powers complete the trig power ladder
+
+- area:
+  - calculus / integration / educational route / trig power family
+    (block 7) / pi-bound definite composition
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 7 trig integration (tan/cot odd
+    rungs; plus the block-13 pi-bound row it unlocks)
+  - calculus_matrix_cell: integrate(tan(x)^3) = tan^2/2 + ln|cos|,
+    the cot twin, fifth powers, affine arguments (tan(2x)^3), the
+    rewritten sin^n/cos^n quotient shapes, and the definite
+    integrate(tan(x)^3, x, 0, pi/4) = (1 - ln 2)/2 with the trig
+    condition discharged by the interval certificate
+  - behavior_change_expected: yes - odd powers 3 and 5 of tan/cot
+    integrate in both Pow and rewritten-quotient surface shapes
+- observed (frontier probing):
+  - same ladder gap as the sec/csc cycle and the same reuse: the
+    shared trig_power_quotient_parts extractor accepted n=3/5
+    unchanged; tan(x)^n arrives REWRITTEN as sin^n/cos^n (the quotient
+    identity fires first) while tan(kx)^n keeps its Pow shape - both
+    wrappers are needed, one builder pair serves both
+  - NEW failure mode: the tan^5 closed form built with Pow(Tan, 4)
+    HANGS the post-integration pipeline (a non-terminating
+    tan <-> sin/cos rewrite ping-pong); the cot^4 twin does not loop.
+    Building the same form in expanded sin/cos quotients avoids the
+    loop entirely - the standalone expression simplifies fine, so the
+    loop lives in the post-integration rewrite path, queued as a
+    simplifier-policy investigation rung
+  - the pi/4 definite row needs NO conditions: the interval certificate
+    discharges cos != 0 on [0, pi/4] (certificate working as designed)
+- retained learning:
+  - probe every member of a new family with a TIMEOUT before wiring it
+    into the matrix: a hang is invisible in is_some() unit tests and
+    surfaces as a matrix timeout only after counters are updated -
+    timeout-probing the six target shapes caught it in one round
+  - when a closed form can be expressed over multiple trig bases, the
+    base choice is a TERMINATION decision, not just presentation: pick
+    the base the rewrite system already normalizes toward (sin/cos)
+    when the natural base loops
