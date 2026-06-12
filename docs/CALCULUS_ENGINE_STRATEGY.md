@@ -489,15 +489,16 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). Next rungs: at-infinity composition scale/product arms
-     (limit(2*arctan(x), x, infinity) and limit(arctan(sqrt(x)), x,
-     infinity) do not resolve while the unscaled/polynomial-inner forms
-     do - the mirror of the cycle-2 one-sided gaps), touches at finite
-     endpoints of unbounded intervals (also blocked by quotient
+     composes). At-infinity composition then closed its mirror gaps
+     (symbolic finite factors compose multiplicatively, radical
+     unbounded tails reach the saturating table; integrate(2/(1+x^2),
+     x, 0, infinity) = pi composes). Next rungs: touches at finite
+     endpoints of unbounded intervals (still blocked by quotient
      rationalization rewriting 1/(sqrt(x)(1+x)) before the definite
-     rule), compact multiple-angle presentation (the simplifier expands
-     -cos(5x)/10 forms into trig powers), and the cos(x)cos(2x)
-     quotient-rewrite interference.
+     rule), limit-value display folding ((pi*2)/2 ships unsimplified -
+     a presentation rung), compact multiple-angle presentation (the
+     simplifier expands -cos(5x)/10 forms into trig powers), and the
+     cos(x)cos(2x) quotient-rewrite interference.
 
 Selection rule:
 

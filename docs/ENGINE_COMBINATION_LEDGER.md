@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 77 (newest first)
+Active entries: 78 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
 - 2026-06-12 | `retained` | calculus / integration / educational route / polynomial-derivative | Retained calculus: exponential substitution Div arm lands the damped-Gaussian family
+- 2026-06-12 | `retained` | calculus / limits at infinity (cas_math limits_support) / saturating | Retained calculus: at-infinity composition closes symbolic-finite factors and radical tails
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3175,3 +3176,50 @@ Active entries: 77 (newest first)
   - normalization-artifact Div arms are now a five-instance pattern
     spanning three families (exp linear, monomial log, exp polynomial):
     any future Mul-walking matcher should budget a Div arm from day one
+
+## 2026-06-12 - Retained calculus: at-infinity composition closes symbolic-finite factors and radical tails
+
+- area:
+  - calculus / limits at infinity (cas_math limits_support) / saturating
+    composition table / multiplicative combiners / block-13 improper
+    composition
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 3 real-domain limits (plus the
+    block-13 improper row it unlocks)
+  - calculus_matrix_cell: limit(2*arctan(x), x, inf), limit(arctan(sqrt(x)),
+    x, inf) = pi/2, limit(e^(-sqrt(x)), x, inf) = 0, and the definite
+    showcase integrate(2/(1+x^2), x, 0, infinity) = pi
+  - behavior_change_expected: yes - the mirror of the cycle-2 one-sided
+    gaps, on the at-infinity side
+- observed (frontier probing):
+  - two independent gaps again: (a) combine_mul/div_limit_results
+    required numeric_limit_value on BOTH finite sides, so any symbolic
+    finite sublimit (pi/2) refused composition - the additive combiner
+    already composed symbolic sums (pi - pi/2), so the multiplicative
+    fallback mirrors that policy, folding rational factors through
+    scale_limit_value so 0 * finite still collapses to 0; (b) the
+    saturating composition table classified arctan/tanh/exp inners with
+    polynomial_argument_tail_sign only - widened to
+    unbounded_argument_tail_sign plus a new radical arm (sqrt, positive
+    fractional powers, Neg) since saturating maps only consume the
+    tail SIGN
+  - first attempt regressed arctan(x)*e^(-x): the bounded*decaying rule
+    sits AFTER the multiplicative combiner in the dispatch, and the raw
+    symbolic fallback returned Mul(pi/2, 0) - caught by the existing
+    unit contract, fixed by folding rational factors before falling back
+  - limit results do NOT pass through the simplifier (pre-existing:
+    pi - pi/2 ships unsimplified), so 2*arctan(x) displays as (pi*2)/2;
+    the definite-integral consumer DOES simplify (the pi showcase is
+    clean) - limit display folding is queued as a presentation rung
+- retained learning:
+  - when extending a combiner that sits early in a dispatch chain, the
+    fallback must preserve every absorbing element (zero, infinity
+    signs) that later rules relied on - run the suite of the FILE you
+    touched before the workspace to catch this in seconds
+  - symmetric machinery accumulates asymmetrically: the one-sided and
+    at-infinity chains needed the same three arms (scale, product,
+    composition atom) discovered one frontier apart; when fixing one
+    side of a mirrored pair, probe the other side in the same cycle

@@ -1054,6 +1054,21 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="exact_rational_value",
     ),
     IntegrateCommandMatrixCase(
+        name="definite_integral_improper_scaled_arctan_pi",
+        expr="integrate(2/(1+x^2), x, 0, infinity)",
+        expected_result="pi",
+        expected_required_display=(),
+        expected_step_substrings=(
+            "Hallar la antiderivada",
+            "Evaluar la antiderivada en los límites",
+        ),
+        family="definite_integral_ftc",
+        argument_regime="improper_scaled_arctan_integral",
+        domain_regime="improper_interval_certified",
+        trace_regime="definite_ftc_improper_limit",
+        presentation_regime="exact_pi_value",
+    ),
+    IntegrateCommandMatrixCase(
         name="definite_integral_improper_gamma_two",
         expr="integrate(x*exp(-x), x, 0, infinity)",
         expected_result="1",

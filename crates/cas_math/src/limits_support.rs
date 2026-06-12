@@ -4296,9 +4296,17 @@ fn combine_mul_limit_results(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Opt
         (None, None) => {}
     }
 
-    let lhs_value = numeric_limit_value(ctx, lhs)?;
-    let rhs_value = numeric_limit_value(ctx, rhs)?;
-    Some(ctx.add(Expr::Number(lhs_value * rhs_value)))
+    // Both sides are resolved FINITE limit values; a symbolic factor
+    // (pi/2 from arctan, e, ...) multiplies exactly like the additive
+    // combiner already composes symbolic sums. Rational factors fold
+    // through scale_limit_value so 0 * finite collapses to 0.
+    if let Some(lhs_value) = numeric_limit_value(ctx, lhs) {
+        return scale_limit_value(ctx, rhs, &lhs_value);
+    }
+    if let Some(rhs_value) = numeric_limit_value(ctx, rhs) {
+        return scale_limit_value(ctx, lhs, &rhs_value);
+    }
+    Some(ctx.add(Expr::Mul(lhs, rhs)))
 }
 
 fn combine_div_limit_results(ctx: &mut Context, num: ExprId, den: ExprId) -> Option<ExprId> {
@@ -4325,12 +4333,16 @@ fn combine_div_limit_results(ctx: &mut Context, num: ExprId, den: ExprId) -> Opt
         (None, None) => {}
     }
 
-    let num_value = numeric_limit_value(ctx, num)?;
     let den_value = numeric_limit_value(ctx, den)?;
     if den_value.is_zero() {
         return None;
     }
-    Some(ctx.add(Expr::Number(num_value / den_value)))
+    match numeric_limit_value(ctx, num) {
+        Some(num_value) => Some(ctx.add(Expr::Number(num_value / den_value))),
+        // Finite symbolic numerator over a nonzero rational divides
+        // exactly; symbolic denominators stay refused (sign unknown).
+        None => Some(ctx.add(Expr::Div(num, den))),
+    }
 }
 
 fn limit_growth_sign(leading_coeff: &BigRational, degree: u32, approach: InfSign) -> InfSign {
@@ -4467,6 +4479,39 @@ fn unbounded_argument_tail_sign(
     polynomial_argument_tail_sign(ctx, arg, var, approach)
         .or_else(|| rational_polynomial_argument_tail_sign(ctx, arg, var, approach))
         .or_else(|| abs_unbounded_argument_tail_sign(ctx, arg, var, approach))
+        .or_else(|| radical_unbounded_argument_tail_sign(ctx, arg, var, approach))
+}
+
+/// sqrt(inner) and inner^q (rational q > 0) tend to +infinity whenever
+/// the inner argument is unbounded toward +infinity, which lets
+/// saturating compositions like arctan(sqrt(x)) resolve.
+fn radical_unbounded_argument_tail_sign(
+    ctx: &Context,
+    arg: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<InfSign> {
+    match ctx.get(arg) {
+        Expr::Neg(inner) => match unbounded_argument_tail_sign(ctx, *inner, var, approach)? {
+            InfSign::Pos => Some(InfSign::Neg),
+            InfSign::Neg => Some(InfSign::Pos),
+        },
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sqrt)) =>
+        {
+            (unbounded_argument_tail_sign(ctx, args[0], var, approach)? == InfSign::Pos)
+                .then_some(InfSign::Pos)
+        }
+        Expr::Pow(base, exponent) => {
+            let value = crate::numeric_eval::as_rational_const(ctx, *exponent)?;
+            if !value.is_positive() || value.is_integer() {
+                return None;
+            }
+            (unbounded_argument_tail_sign(ctx, *base, var, approach)? == InfSign::Pos)
+                .then_some(InfSign::Pos)
+        }
+        _ => None,
+    }
 }
 
 /// |inner| tends to +infinity whenever the inner argument is unbounded
@@ -4851,15 +4896,17 @@ fn elementary_argument_limit_at_infinity(
     }
 
     let arg_tail = match builtin {
-        BuiltinFn::Acosh | BuiltinFn::Abs => unbounded_argument_tail_sign(ctx, arg, var, approach)?,
-        BuiltinFn::Exp
-        | BuiltinFn::Cbrt
-        | BuiltinFn::Asinh
+        // Saturating maps (and exp's signed tails) only consume the
+        // tail SIGN, so any certified unbounded inner is sound.
+        BuiltinFn::Acosh
+        | BuiltinFn::Abs
+        | BuiltinFn::Exp
         | BuiltinFn::Atan
         | BuiltinFn::Arctan
-        | BuiltinFn::Tanh
-        | BuiltinFn::Sinh
-        | BuiltinFn::Cosh => polynomial_argument_tail_sign(ctx, arg, var, approach)?,
+        | BuiltinFn::Tanh => unbounded_argument_tail_sign(ctx, arg, var, approach)?,
+        BuiltinFn::Cbrt | BuiltinFn::Asinh | BuiltinFn::Sinh | BuiltinFn::Cosh => {
+            polynomial_argument_tail_sign(ctx, arg, var, approach)?
+        }
         _ => linear_argument_tail_sign(ctx, arg, var, approach)?,
     };
     match (builtin, arg_tail) {
@@ -10240,6 +10287,48 @@ mod tests {
         assert!(
             matches!(ctx.get(poly_cancel_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
         );
+    }
+
+    #[test]
+    fn at_infinity_composition_handles_symbolic_finite_factors_and_radical_tails() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        // Symbolic finite factors compose (pi/2 from arctan).
+        for source in ["2*arctan(x)", "arctan(x)/2", "arctan(x)*arctan(x)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_some(),
+                "must resolve: {source}"
+            );
+        }
+        // Radical unbounded tails reach the saturating composition table.
+        let cases = [
+            ("arctan(sqrt(x))", "pi / 2"),
+            ("arctan(-sqrt(x))", "-pi / 2"),
+            ("tanh(sqrt(x))", "1"),
+            ("e^(-sqrt(x))", "0"),
+            ("arctan(x^(3/2))", "pi / 2"),
+        ];
+        for (source, expected) in cases {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_eq!(
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &ctx,
+                        id: out
+                    }
+                ),
+                expected,
+                "{source}"
+            );
+        }
+        // x * arctan(x) stays refused here: infinite times symbolic
+        // finite needs a numeric scale to fix the sign.
+        let mixed = parse_expr(&mut ctx, "x*arctan(x)");
+        assert!(try_limit_rules_at_infinity(&mut ctx, mixed, x, InfSign::Pos).is_none());
     }
 
     #[test]
