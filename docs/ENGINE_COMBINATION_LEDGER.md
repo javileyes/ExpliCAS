@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 85 (newest first)
+Active entries: 86 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -128,6 +128,7 @@ Active entries: 85 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig quotient | Retained calculus: Chebyshev recognizer dissolves the multiple-angle quotient interference
 - 2026-06-12 | `retained` | simplifier / root shortcuts (Reciprocal Half-Power Residual) / | Retained simplifier: half-power residual shortcut covers scaled roots and re-probes post-phase
 - 2026-06-12 | `retained` | simplifier / fraction cancellation (CancelIdenticalFractionRule) / | Retained soundness: 0/0 no longer cancels to 1
+- 2026-06-12 | `retained` | calculus / integration / educational route / radical reduction | Retained calculus: monomial over sqrt(a - b x^2) reduction family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3523,3 +3524,47 @@ Active entries: 85 (newest first)
   - adversarial refutation lenses pay twice: the cycle-11 probe list
     surfaced this pre-existing bug for free, and the fix was a
     one-cycle follow-up with its own contract test
+
+## 2026-06-12 - Retained calculus: monomial over sqrt(a - b x^2) reduction family
+
+- area:
+  - calculus / integration / educational route / radical reduction
+    (block 8) / half-power residual term flattening
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families (new
+    block8_monomial_over_sqrt_reduction cluster; plus the block-13
+    boundary-touch row it unlocks)
+  - calculus_matrix_cell: integrate(x^2/sqrt(1-x^2)) =
+    (arcsin x - x sqrt(1-x^2))/2, scaled radicands (4 - x^2, 1 - 4x^2),
+    the n = 3/4 chain, and the definite
+    integrate(x^2/sqrt(1-x^2), x, 0, 1) = pi/4 via boundary touch
+  - behavior_change_expected: yes - x^n / sqrt(a - b x^2) for rational
+    a, b > 0 and 2 <= n <= 6 integrates via the textbook reduction
+    I_n = a(n-1)/(bn) I_{n-2} - x^(n-1) sqrt(a - b x^2)/(bn),
+    delegating the n = 0/1 bases to their existing owners
+- observed (frontier probing):
+  - probing x^2*arcsin(x) revealed the real blocker was the radical
+    TAIL family x^n/sqrt(1-x^2) (n >= 2 all residual) - the enabler
+    selected itself; the arcsin cofactor wiring is the queued next rung
+  - sixth Div-arm instance: the raw surface Div(c x^n, sqrt(...)) does
+    not normalize in unit contexts (the CLI pipeline normalizes to
+    Mul with Pow(-1/2), unit tests see the raw Div) - both shapes wired
+  - the verification residual kept a FACTORED shape
+    Mul(1/2, Add(...)) - Mul(x^2, pow): the cycle-11 shortcut's term
+    collector needed a one-level flatten (a rational-scaled additive
+    group distributes exactly; cap 8 terms post-flatten); with it BOTH
+    rows verify by equivalence INCLUDING direct-diff (no
+    verification_gap growth this cycle), refutation probes confirm
+    partial cancellation keeps nonzero parts
+  - sign-pattern rejects stay honest: 1 + x^2 and x^2 - 1 radicands
+    (hyperbolic territory) and n = 7 over the cap
+- retained learning:
+  - when a desired capability (x^2 arcsin) probes as blocked, integrate
+    the BLOCKER family first: the tail family is more general than the
+    original target and the by-parts wrapper becomes a thin next rung
+  - verification residuals preserve the antiderivative's factored
+    presentation: zero-residual shortcuts must flatten rational-scaled
+    groups or every factored closed form re-opens the verification gap

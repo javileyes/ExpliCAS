@@ -3311,6 +3311,53 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="factored_by_parts",
     ),
     IntegrateCommandMatrixCase(
+        name="monomial_over_sqrt_reduction_square",
+        expr="integrate(x^2/sqrt(1-x^2), x)",
+        expected_result="1/2·(arcsin(x) - x·(1 - x^2)^(1/2))",
+        expected_derivative_equivalent_to="x^2/sqrt(1-x^2)",
+        expected_direct_diff_integrate_equivalent_to="x^2/sqrt(1-x^2)",
+        expected_direct_diff_integrate_required_display=("-1 < x < 1",),
+        expected_derivative_required_display=("-1 < x < 1",),
+        expected_required_display=("-1 < x < 1",),
+        expected_step_substrings=("Calcular la integral",),
+        family="monomial_over_sqrt_reduction",
+        argument_regime="square_over_unit_circle_radical",
+        domain_regime="open_interval_required",
+        trace_regime="monomial_radical_reduction",
+        presentation_regime="arcsin_radical_reduction_closed_form",
+    ),
+    IntegrateCommandMatrixCase(
+        name="monomial_over_sqrt_reduction_scaled_radicand",
+        expr="integrate(x^2/sqrt(4-x^2), x)",
+        expected_result="1/2·(4·arcsin(x / 2) - x·(4 - x^2)^(1/2))",
+        expected_derivative_equivalent_to="x^2/sqrt(4-x^2)",
+        expected_direct_diff_integrate_equivalent_to="x^2/sqrt(4-x^2)",
+        expected_direct_diff_integrate_required_display=("-2 < x < 2",),
+        expected_derivative_required_display=("-2 < x < 2",),
+        expected_required_display=("-2 < x < 2",),
+        expected_step_substrings=("Calcular la integral",),
+        family="monomial_over_sqrt_reduction",
+        argument_regime="square_over_scaled_circle_radical",
+        domain_regime="open_interval_required",
+        trace_regime="monomial_radical_reduction",
+        presentation_regime="arcsin_radical_reduction_closed_form",
+    ),
+    IntegrateCommandMatrixCase(
+        name="definite_integral_monomial_over_sqrt_quarter_pi",
+        expr="integrate(x^2/sqrt(1-x^2), x, 0, 1)",
+        expected_result="1/4·pi",
+        expected_required_display=("-1 < x < 1",),
+        expected_step_substrings=(
+            "Hallar la antiderivada",
+            "Evaluar la antiderivada en los límites",
+        ),
+        family="definite_integral_ftc",
+        argument_regime="monomial_radical_boundary_touch",
+        domain_regime="boundary_touch_one_sided_limit",
+        trace_regime="definite_ftc_boundary_limit",
+        presentation_regime="exact_pi_value",
+    ),
+    IntegrateCommandMatrixCase(
         name="by_parts_monomial_arcsine_domain",
         expr="integrate(x*arcsin(x), x)",
         expected_result="1/4·(2·arcsin(x)·x^2 + x·(1 - x^2)^(1/2) - arcsin(x))",
@@ -4846,6 +4893,8 @@ def radical_inverse_policy_cluster(
         return "block8_inverse_trig_root_reciprocal"
     if case.family == "by_parts_bounded_inverse_trig":
         return "block8_bounded_inverse_trig_by_parts"
+    if case.family == "monomial_over_sqrt_reduction":
+        return "block8_monomial_over_sqrt_reduction"
     if case.family in {
         "inverse_hyperbolic_rational_affine",
         "inverse_hyperbolic_rational_table",

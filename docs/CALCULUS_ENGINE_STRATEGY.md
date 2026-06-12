@@ -489,7 +489,13 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The 0/0 soundness hole closed next ((x-x)/0 was 1 via
+     composes). The monomial-over-radical reduction family landed next
+     (x^n/sqrt(a - b x^2) for n = 2..6 via the textbook recurrence;
+     integrate(x^2/sqrt(1-x^2), x, 0, 1) = pi/4 composes; the half-power
+     residual shortcut learned to flatten rational-scaled groups so the
+     rows verify by equivalence; next rung: x^n * arcsin(kx) by parts
+     delegating to this family). The 0/0 soundness hole closed before
+     that ((x-x)/0 was 1 via
      the structural cancel-identical match; now undefined). The
      half-power residual shortcut before that learned scaled
      roots plus a post-phase closure (adversarially verified; graduates

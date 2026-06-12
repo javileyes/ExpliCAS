@@ -1452,21 +1452,41 @@ fn half_power_polynomial_sum_combined(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(Polynomial, ExprId)> {
-    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
-    if !(2..=4).contains(&terms.len()) {
+    let raw_terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if !(2..=4).contains(&raw_terms.len()) {
         return None;
     }
 
-    let mut parsed_terms = Vec::with_capacity(terms.len());
-    let mut shared_base: Option<ExprId> = None;
-    let mut max_denominator_exponent = BigRational::zero();
-    let mut var_name: Option<String> = None;
-    for (term, sign) in terms {
+    // One-level flatten: a rational-scaled additive GROUP distributes
+    // exactly (1/2 * (A - B) contributes 1/2*A and -1/2*B), which is how
+    // verification residuals keep factored antiderivative shapes.
+    let mut scaled_terms = Vec::with_capacity(raw_terms.len());
+    for (term, sign) in raw_terms {
         let (scale, core) = signed_rational_scaled_term(ctx, term, sign);
         if scale.is_zero() {
             continue;
         }
+        if matches!(ctx.get(core), Expr::Add(_, _) | Expr::Sub(_, _)) {
+            for (sub_term, sub_sign) in cas_math::expr_nary::add_terms_signed(ctx, core) {
+                let (sub_scale, sub_core) = signed_rational_scaled_term(ctx, sub_term, sub_sign);
+                if sub_scale.is_zero() {
+                    continue;
+                }
+                scaled_terms.push((scale.clone() * sub_scale, sub_core));
+            }
+            continue;
+        }
+        scaled_terms.push((scale, core));
+    }
+    if scaled_terms.len() > 8 {
+        return None;
+    }
 
+    let mut parsed_terms = Vec::with_capacity(scaled_terms.len());
+    let mut shared_base: Option<ExprId> = None;
+    let mut max_denominator_exponent = BigRational::zero();
+    let mut var_name: Option<String> = None;
+    for (scale, core) in scaled_terms {
         let inferred_var = if let Some(existing_var) = var_name.as_deref() {
             existing_var.to_string()
         } else {

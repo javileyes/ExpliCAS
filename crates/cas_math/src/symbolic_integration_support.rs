@@ -9005,6 +9005,138 @@ fn bounded_inverse_trig_scaled_sqrt_term(
     Some((radicand, sqrt_term))
 }
 
+/// c * x^n / sqrt(a - b*x^2) for rational a, b > 0 and 2 <= n <= 6: the
+/// textbook reduction I_n = a(n-1)/(bn) * I_{n-2} - x^(n-1)
+/// sqrt(a - b x^2)/(bn), delegating the n = 0/1 bases to their owners
+/// (arcsin table, derivative substitution).
+fn monomial_over_sqrt_negative_quadratic_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    // Normalization artifact (sixth Div-arm instance): the raw surface
+    // is Div(c*x^n, sqrt(a - b x^2)); rebuild as a product with the
+    // negative half power and reuse the same matcher.
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        let rad = match ctx.get(den).clone() {
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sqrt)) =>
+            {
+                args[0]
+            }
+            Expr::Pow(base, exponent)
+                if crate::numeric_eval::as_rational_const(ctx, exponent)
+                    .is_some_and(|value| value == BigRational::new(1.into(), 2.into())) =>
+            {
+                base
+            }
+            _ => return None,
+        };
+        let neg_half = ctx.add(Expr::Number(BigRational::new((-1).into(), 2.into())));
+        let reciprocal = ctx.add(Expr::Pow(rad, neg_half));
+        let product = mul2_raw(ctx, num, reciprocal);
+        return monomial_over_sqrt_negative_quadratic_antiderivative(ctx, product, var);
+    }
+
+    let mut scale = BigRational::one();
+    let mut power: Option<BigRational> = None;
+    let mut radicand: Option<ExprId> = None;
+    for factor in mul_leaves(ctx, expr) {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+        if let Some(factor_power) = var_power(ctx, factor, var) {
+            if power.is_some() {
+                return None;
+            }
+            power = Some(factor_power);
+            continue;
+        }
+        let Expr::Pow(base, exponent) = ctx.get(factor).clone() else {
+            return None;
+        };
+        let exponent_value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+        if exponent_value != BigRational::new((-1).into(), 2.into()) || radicand.is_some() {
+            return None;
+        }
+        radicand = Some(base);
+    }
+    let radicand = radicand?;
+    let power = power?;
+    if !power.denom().is_one() {
+        return None;
+    }
+    let n = power.to_integer();
+    if n < 2.into() || n > 6.into() {
+        return None;
+    }
+    let n = usize::try_from(i64::try_from(&n).ok()?).ok()?;
+
+    let quad = Polynomial::from_expr(ctx, radicand, var).ok()?;
+    if quad.degree() != 2 {
+        return None;
+    }
+    let a = quad
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let linear = quad
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let neg_b = quad
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let b = -neg_b;
+    if !linear.is_zero() || !a.is_positive() || !b.is_positive() {
+        return None;
+    }
+
+    let integral = monomial_over_sqrt_reduction(ctx, n, &a, &b, radicand, var)?;
+    Some(scale_rational_term(ctx, scale, integral))
+}
+
+fn monomial_over_sqrt_reduction(
+    ctx: &mut Context,
+    n: usize,
+    a: &BigRational,
+    b: &BigRational,
+    radicand: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if n <= 1 {
+        // Delegate the base cases to their existing owners.
+        let var_expr = ctx.var(var);
+        let sqrt_term = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+        let one = ctx.num(1);
+        let base_integrand = if n == 0 {
+            ctx.add(Expr::Div(one, sqrt_term))
+        } else {
+            ctx.add(Expr::Div(var_expr, sqrt_term))
+        };
+        return integrate_symbolic_expr(ctx, base_integrand, var);
+    }
+    let n_rational = BigRational::from_integer((n as i64).into());
+    let n_minus_one = BigRational::from_integer(((n - 1) as i64).into());
+    let lower = monomial_over_sqrt_reduction(ctx, n - 2, a, b, radicand, var)?;
+    let lower_scale = a * &n_minus_one / (b * &n_rational);
+    let lower_term = scale_rational_term(ctx, lower_scale, lower);
+
+    let var_expr = ctx.var(var);
+    let head_power = ctx.num((n - 1) as i64);
+    let head_monomial = ctx.add(Expr::Pow(var_expr, head_power));
+    let sqrt_term = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let head_raw = mul2_raw(ctx, head_monomial, sqrt_term);
+    let head_scale = -BigRational::one() / (b * &n_rational);
+    let head_term = scale_rational_term(ctx, head_scale, head_raw);
+    Some(ctx.add(Expr::Add(lower_term, head_term)))
+}
+
 fn monomial_times_bounded_inverse_trig_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -18987,6 +19119,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = monomial_over_sqrt_negative_quadratic_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = polynomial_times_exp_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -24249,6 +24385,63 @@ mod tests {
             assert!(
                 super::sine_multiple_angle_ratio_antiderivative(&mut ctx, num, den, "x").is_none(),
                 "must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn monomial_over_sqrt_negative_quadratic_reduces_with_exact_values() {
+        let mut ctx = Context::new();
+        for source in [
+            "x^2/sqrt(1-x^2)",
+            "x^3/sqrt(1-x^2)",
+            "x^4/sqrt(1-x^2)",
+            "x^2/sqrt(4-x^2)",
+            "x^2/sqrt(1-4*x^2)",
+            "3*x^2/sqrt(1-x^2)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn monomial_over_sqrt_negative_quadratic_round_trips_numerically() {
+        let mut ctx = Context::new();
+        let expr = parse("x^2/sqrt(1-x^2)", &mut ctx).expect("parse");
+        let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integral");
+        let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+            &mut ctx,
+            antiderivative,
+            "x",
+        )
+        .expect("derivative");
+        let target = parse("x^2/sqrt(1-x^2)", &mut ctx).expect("target");
+        for sample in [-0.6_f64, 0.3, 0.8] {
+            let mut vars = std::collections::HashMap::new();
+            vars.insert("x".to_string(), sample);
+            let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+            let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+            assert!(
+                (lhs - rhs).abs() < 1e-9,
+                "mismatch at {sample}: {lhs} vs {rhs}"
+            );
+        }
+    }
+
+    #[test]
+    fn monomial_over_sqrt_negative_quadratic_declines_other_sign_patterns() {
+        let mut ctx = Context::new();
+        // 1+x^2 and x^2-1 radicands belong to hyperbolic-family territory;
+        // n above the cap stays honestly residual.
+        for source in ["x^2/sqrt(1+x^2)", "x^2/sqrt(x^2-1)", "x^7/sqrt(1-x^2)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
             );
         }
     }
