@@ -54,7 +54,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 - [x] **(F) `inf` como símbolo libre**: `integrate(e^(-x), x, 0, inf)`
   produce `(e^inf-1)/e^inf` sin aviso; solo `infinity` activa la
   maquinaria. Parsear `inf`/`oo` como infinito o rechazarlos con
-  mensaje. *(graduado 2026-06-12 4acb1b3a0: inf/oo → Constant::
+  mensaje. *(graduado 2026-06-12 ca78c8164: inf/oo → Constant::
   Infinity en el mapa de constantes del parser + oo reservado;
   el glifo ∞ sigue rechazando con error claro — peldaño cosmético;
   -inf suelto en CLI es parseo de flags del shell, no del parser)*
