@@ -103,6 +103,14 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   radicales lineales (`x*sqrt(x+1)`, `exp(sqrt(x))/sqrt(x)`,
   `1/(sqrt(x)+1)`). Mejor ROI según la sonda: una pasada de
   rewrite+integrate-recursivo resuelve ambas.
+  *(parcial 2026-06-12 ec314325b: la mitad u=eˣ completa — todo
+  racional sobre átomos e^(kx) con k racional integra vía u=e^(cx),
+  c=gcd de pendientes, delegando al backend racional y
+  back-sustituyendo: 1/(1+eˣ), eˣ/(1+e²ˣ)→arctan(eˣ), e²ˣ/(1+eˣ),
+  (eˣ−1)/(eˣ+1), 1/(e²ˣ−1) con su condición de polo, e^(x/2)/(1+eˣ).
+  Quedan: u=√x radicales lineales, y la superficie 1/(eˣ+e⁻ˣ) que el
+  pre-simplificador reescribe a 1/(2cosh(x)) antes de llegar al
+  integrador — peldaño hiperbólico aparte)*
 - [ ] **(F) Weierstrass t=tan(x/2)**: `1/(2+cos(x))`, `1/(1+sin(x))` —
   estándar de examen universitario.
 - [ ] **(A) Motor 0/0 componible en punto finito**: la allowlist no
