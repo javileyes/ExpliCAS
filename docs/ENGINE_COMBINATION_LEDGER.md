@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 80 (newest first)
+Active entries: 81 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -123,6 +123,7 @@ Active entries: 80 (newest first)
 - 2026-06-12 | `retained` | calculus / limits at infinity (cas_math limits_support) / saturating | Retained calculus: at-infinity composition closes symbolic-finite factors and radical tails
 - 2026-06-12 | `retained` | calculus / integration / educational route / reciprocal trig power | Retained calculus: odd secant/cosecant powers via reduction closed forms
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig power family | Retained calculus: odd tangent/cotangent powers complete the trig power ladder
+- 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: monomial times arcsine/arccosine by-parts pair
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3312,3 +3313,44 @@ Active entries: 80 (newest first)
     base choice is a TERMINATION decision, not just presentation: pick
     the base the rewrite system already normalizes toward (sin/cos)
     when the natural base loops
+
+## 2026-06-12 - Retained calculus: monomial times arcsine/arccosine by-parts pair
+
+- area:
+  - calculus / integration / educational route / bounded inverse trig
+    by-parts (block 8)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 8 radical/inverse families (new
+    block8_bounded_inverse_trig_by_parts policy cluster)
+  - calculus_matrix_cell: integrate(x*arcsin(x)) =
+    (2x^2 arcsin(x) + x sqrt(1-x^2) - arcsin(x))/4 and the arccos twin
+    (radical sign flipped), rational scales included, with the
+    -1 <= x <= 1 condition auto-derived
+  - behavior_change_expected: yes - c*x times arcsin/arccos integrates
+- observed (frontier probing):
+  - the arctan cofactor family generalizes through a rational tail
+    integral (u'/(1+u^2)) and never covered the BOUNDED inverses whose
+    tails are radicals; the classic n=1 pair has a direct closed form
+    (hand-verified) so no general radical-tail machinery was needed
+  - the derivative round-trip is exact but the simplifier cannot
+    collapse the radical residual a*sqrt(u) + b/sqrt(u) -> 0, so even
+    the equivalence-mode harness verification fails on a nonzero
+    residual display; the rows ship without derivative fields and the
+    round-trip is pinned NUMERICALLY in unit tests via eval_f64 at
+    four interior samples (new pattern for radical families)
+  - definite [0,1] stays residual: the certificate risk scan does not
+    classify arcsin/arccos integrands yet - queued as the natural next
+    rung (inverse-trig risk classification, BoundaryTouch at domain
+    endpoints +-1)
+  - x^2*arcsin(x) and scaled arguments arcsin(2x) stay honest
+    residuals (need the general radical-tail by-parts step)
+- retained learning:
+  - radical-residual cancellation (a*sqrt(u) + b/sqrt(u)) is the
+    simplifier gap that blocks harness verification for EVERY
+    radical-antiderivative family; numeric round-trip pinning via
+    eval_f64 in unit tests is the standing workaround and a shared
+    simplifier rule would graduate several verification_gap rows at
+    once - high-leverage future cycle

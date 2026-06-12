@@ -3242,6 +3242,30 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="factored_by_parts",
     ),
     IntegrateCommandMatrixCase(
+        name="by_parts_monomial_arcsine_domain",
+        expr="integrate(x*arcsin(x), x)",
+        expected_result="1/4·(2·arcsin(x)·x^2 + x·(1 - x^2)^(1/2) - arcsin(x))",
+        expected_required_display=("-1 ≤ x ≤ 1",),
+        expected_step_substrings=("Calcular la integral",),
+        family="by_parts_bounded_inverse_trig",
+        argument_regime="monomial_times_arcsine",
+        domain_regime="bounded_interval_required",
+        trace_regime="by_parts_bounded_inverse_trig",
+        presentation_regime="quarter_factored_inverse_radical",
+    ),
+    IntegrateCommandMatrixCase(
+        name="by_parts_monomial_arccosine_domain",
+        expr="integrate(x*arccos(x), x)",
+        expected_result="1/4·(arccos(x)·(2·x^2 - 1) - x·(1 - x^2)^(1/2))",
+        expected_required_display=("-1 ≤ x ≤ 1",),
+        expected_step_substrings=("Calcular la integral",),
+        family="by_parts_bounded_inverse_trig",
+        argument_regime="monomial_times_arccosine",
+        domain_regime="bounded_interval_required",
+        trace_regime="by_parts_bounded_inverse_trig",
+        presentation_regime="quarter_factored_inverse_radical",
+    ),
+    IntegrateCommandMatrixCase(
         name="by_parts_log_negative_power_quotient",
         expr="integrate(ln(x)/x^2, x)",
         expected_result="(-ln(x) - 1)/x",
@@ -4743,6 +4767,8 @@ def radical_inverse_policy_cluster(
 ) -> str | None:
     if case.family == "inverse_trig_root_reciprocal":
         return "block8_inverse_trig_root_reciprocal"
+    if case.family == "by_parts_bounded_inverse_trig":
+        return "block8_bounded_inverse_trig_by_parts"
     if case.family in {
         "inverse_hyperbolic_rational_affine",
         "inverse_hyperbolic_rational_table",

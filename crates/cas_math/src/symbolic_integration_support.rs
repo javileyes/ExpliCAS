@@ -8895,6 +8895,74 @@ fn bounded_inverse_trig_scaled_sqrt_term(
     Some((radicand, sqrt_term))
 }
 
+fn monomial_times_bounded_inverse_trig_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    // c*x * arcsin(x) / arccos(x): the classic by-parts pair
+    // (2x^2 - 1)/4 * inv(x) +/- x*sqrt(1 - x^2)/4 (sign by family).
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+    for (inverse_index, factor) in factors.iter().enumerate() {
+        let Expr::Function(fn_id, args) = ctx.get(*factor).clone() else {
+            continue;
+        };
+        if args.len() != 1 {
+            continue;
+        }
+        let Some(builtin) = ctx.builtin_of(fn_id) else {
+            continue;
+        };
+        if !matches!(
+            builtin,
+            BuiltinFn::Arcsin | BuiltinFn::Asin | BuiltinFn::Arccos | BuiltinFn::Acos
+        ) {
+            continue;
+        }
+        if !is_var(ctx, args[0], var) {
+            return None;
+        }
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != inverse_index).then_some(*factor))
+            .collect();
+        if cofactor_factors.is_empty() {
+            return None;
+        }
+        let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+        let (scale, power) = scaled_var_power_term(ctx, cofactor, var)?;
+        if power != BigRational::from_integer(1.into()) {
+            return None;
+        }
+
+        let var_expr = ctx.var(var);
+        let two = ctx.num(2);
+        let one = ctx.num(1);
+        let x_squared = ctx.add(Expr::Pow(var_expr, two));
+        let doubled = scale_rational_term(ctx, BigRational::from_integer(2.into()), x_squared);
+        let quad = ctx.add(Expr::Sub(doubled, one));
+        let inverse = *factor;
+        let inverse_term_raw = mul2_raw(ctx, quad, inverse);
+        let radicand = unit_minus_square(ctx, var_expr);
+        let sqrt_term = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+        let sqrt_product = mul2_raw(ctx, var_expr, sqrt_term);
+        let quarter = BigRational::new(1.into(), 4.into());
+        let inverse_term = scale_rational_term(ctx, quarter.clone(), inverse_term_raw);
+        let sqrt_signed = match builtin {
+            BuiltinFn::Arcsin | BuiltinFn::Asin => quarter,
+            _ => -quarter,
+        };
+        let sqrt_scaled = scale_rational_term(ctx, sqrt_signed, sqrt_product);
+        let primitive = ctx.add(Expr::Add(inverse_term, sqrt_scaled));
+        return Some(scale_rational_term(ctx, scale, primitive));
+    }
+    None
+}
+
 fn bounded_inverse_trig_linear_antiderivative(
     ctx: &mut Context,
     builtin: BuiltinFn,
@@ -18805,6 +18873,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = monomial_times_bounded_inverse_trig_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = polynomial_times_exp_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -24002,6 +24074,58 @@ mod tests {
         // Honest residual: non-table trig cofactor.
         let expr = parse("tan(x)/e^x", &mut ctx).expect("tan");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn monomial_times_bounded_inverse_trig_integrates_and_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, target) in [
+            ("x*arcsin(x)", "x*arcsin(x)"),
+            ("x*arccos(x)", "x*arccos(x)"),
+            ("2*x*arcsin(x)", "2*x*arcsin(x)"),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x")
+                .unwrap_or_else(|| panic!("must integrate: {source}"));
+            // The simplifier cannot collapse the radical residual
+            // a*sqrt(u) + b/sqrt(u) yet, so the round-trip is pinned
+            // NUMERICALLY: d/dx F == integrand at interior samples.
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .unwrap_or_else(|| panic!("must differentiate: {source}"));
+            let target_expr = parse(target, &mut ctx).expect(target);
+            for sample in [-0.7_f64, -0.2, 0.3, 0.8] {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars)
+                    .unwrap_or_else(|| panic!("eval diff at {sample}: {source}"));
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target_expr, &vars)
+                    .unwrap_or_else(|| panic!("eval target at {sample}: {source}"));
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "round-trip mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn monomial_times_bounded_inverse_trig_declines_other_shapes() {
+        let mut ctx = Context::new();
+        // Scaled/quadratic shapes stay honest residuals for now; the
+        // arctan family keeps its own general by-parts owner.
+        for source in ["x^2*arcsin(x)", "x*arcsin(2*x)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
+            );
+        }
+        let arctan = parse("x*arctan(x)", &mut ctx).expect("arctan");
+        assert!(integrate_symbolic_expr(&mut ctx, arctan, "x").is_some());
     }
 
     #[test]

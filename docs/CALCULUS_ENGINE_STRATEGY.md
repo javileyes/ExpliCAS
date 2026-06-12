@@ -489,7 +489,13 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The odd tangent/cotangent rungs then completed the trig
+     composes). The bounded inverse by-parts pair landed next
+     (integrate(x*arcsin(x)) and the arccos twin via direct closed
+     forms; numeric round-trip pinning via eval_f64 because the
+     simplifier cannot collapse a*sqrt(u) + b/sqrt(u) radical residuals
+     - a shared cancellation rule would graduate several
+     verification_gap rows at once). The odd tangent/cotangent rungs
+     before that completed the trig
      power ladder (tan^2/2 + ln|cos| closed forms for n = 3/5 in both
      Pow and rewritten sin^n/cos^n shapes; the tan^5 form must be built
      in expanded sin/cos to avoid a post-integration rewrite loop -
