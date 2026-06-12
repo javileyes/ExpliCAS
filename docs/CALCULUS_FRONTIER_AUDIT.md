@@ -91,7 +91,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   formas 1/√(cuadrática) y p(x)/√(cuadrática) SÍ están (split
   Hermite); lo que falta es √(cuadrática) en el NUMERADOR y los
   cocientes con x en el denominador.
-  *(parcial 2026-06-12 PENDING_HASH: el lado NUMERADOR completo vía
+  *(parcial 2026-06-12 77ea29595: el lado NUMERADOR completo vía
   p·√q = (p·q)/√q delegado al split Hermite — √(1−x²), x²√(1−x²),
   √(4−x²), √(x²±1) asinh/acosh, √(2x−x²), y el semicírculo
   ∫₋₁¹√(1−x²) = π/2 por doble touch. Quedan: los cocientes con x en
