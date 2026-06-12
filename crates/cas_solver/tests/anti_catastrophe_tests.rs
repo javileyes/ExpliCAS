@@ -41,6 +41,32 @@ fn simplify(input: &str) -> String {
 // =============================================================================
 
 #[test]
+fn test_trig_probe_explosion_terminates() {
+    // The speculative exact-zero probes (double-angle / power-reduction
+    // pair) used to regenerate their own input one level deeper every
+    // round, hanging these indefinitely (frontier audit P0). The
+    // nesting cap + per-pipeline probe budget must keep them fast AND
+    // keep the zero identities proving zero.
+    for source in [
+        "sin(x)^2*cos(x)^2 - sin(x)^4",
+        "3*sin(x)^2*cos(x)^2 - sin(x)^4",
+    ] {
+        let result = simplify(source);
+        assert!(!result.is_empty(), "must terminate with a result: {source}");
+        assert_ne!(result, "0", "must NOT claim zero (it is not): {source}");
+    }
+    for zero_identity in [
+        "sin(x)^2+cos(x)^2-1",
+        "(sin(x)+cos(x))^2-(1+sin(2*x))",
+        "sin(x)^4 - (1-cos(x)^2)^2",
+        "cos(2*x) - (1-2*sin(x)^2)",
+        "sin(2*x) - 2*sin(x)*cos(x)",
+    ] {
+        assert_eq!(simplify(zero_identity), "0", "{zero_identity}");
+    }
+}
+
+#[test]
 fn test_budget_bailout_large_power() {
     // Large power difference should not hang
     // Even if not fully simplified, must complete in reasonable time

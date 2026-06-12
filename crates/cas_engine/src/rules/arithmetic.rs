@@ -1644,6 +1644,58 @@ fn default_simplify_nesting_depth() -> usize {
     DEFAULT_SIMPLIFY_NESTING.with(|depth| depth.get())
 }
 
+// Deterministic breadth cap for speculative exact-zero probes: each
+// top-level pipeline may launch at most this many nested default
+// simplifies. The subset-enumeration probes otherwise multiply (terms
+// x candidates x 8 comparisons), each one a FULL pipeline, hanging
+// sums like sin^2 cos^2 - sin^4 indefinitely. A counter (not a
+// deadline) keeps scorecard fingerprints machine-independent. The
+// budget is ACTIVE only inside a top-level pipeline scope: direct
+// unit-test calls to the probe helpers stay ungated (tests share
+// threads, so a consumable TLS would drain across unrelated tests).
+const DEFAULT_SIMPLIFY_PROBE_BUDGET: u32 = 48;
+
+// The first few probes of a pipeline may run a FULL nested simplify
+// (some equivalences - the phase-shift quotient pair - only prove
+// through root shortcuts that the local passes skip); the rest run
+// the cheap local passes. Successful matches happen in the first
+// probes; only runaway enumerations reach the tail.
+const DEFAULT_SIMPLIFY_FULL_PROBE_BUDGET: u32 = 24;
+
+thread_local! {
+    static DEFAULT_SIMPLIFY_PROBES_LEFT: std::cell::Cell<Option<u32>> =
+        const { std::cell::Cell::new(None) };
+}
+
+pub(crate) struct DefaultSimplifyProbeBudgetScope {
+    saved: Option<Option<u32>>,
+}
+
+impl Drop for DefaultSimplifyProbeBudgetScope {
+    fn drop(&mut self) {
+        // Restore (not clear): internal residual pipelines also run at
+        // nesting 0 inside an outer pipeline, and clearing here would
+        // strip the OUTER pipeline's remaining budget mid-flight.
+        if let Some(saved) = self.saved {
+            DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.set(saved));
+        }
+    }
+}
+
+/// Arm the per-pipeline probe budget for a TOP-LEVEL simplify pipeline
+/// (nested probe pipelines run with nesting > 0 and must not re-arm
+/// it). The returned guard restores the previous budget state when the
+/// pipeline exits.
+pub(crate) fn enter_default_simplify_probe_budget_scope() -> DefaultSimplifyProbeBudgetScope {
+    if default_simplify_nesting_depth() == 0 {
+        let saved = DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.get());
+        DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.set(Some(DEFAULT_SIMPLIFY_PROBE_BUDGET)));
+        DefaultSimplifyProbeBudgetScope { saved: Some(saved) }
+    } else {
+        DefaultSimplifyProbeBudgetScope { saved: None }
+    }
+}
+
 fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> cas_ast::ExprId {
     struct DefaultSimplifyNestingGuard;
 
@@ -1662,7 +1714,37 @@ fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> ca
     });
     let _nesting_guard = DefaultSimplifyNestingGuard;
 
-    if nesting > 0 {
+    // Speculative exact-zero probes may nest at most TWO default
+    // simplifies: observed successful matches happen at nesting 0-1
+    // (the phase-shift quotient pair needs one nested probe inside its
+    // full-pipeline probe); nesting 2-3 only burns CPU. The
+    // double-angle/power-reduction probe pair otherwise regenerates
+    // cos(4x)+1 one level deeper each round at x20-40 the work,
+    // hanging sums like sin(x)^2 cos(x)^2 - sin(x)^4 indefinitely.
+    if nesting >= 2 {
+        return expr;
+    }
+
+    // Breadth cap: the subset-enumeration probes each launch a
+    // simplify here; past the per-pipeline budget they fall back to
+    // the syntactic fast path. Outside an armed pipeline scope (unit
+    // contexts) the budget is inactive.
+    let mut force_local = false;
+    match DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.get()) {
+        Some(0) => return expr,
+        Some(probes_left) => {
+            DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.set(Some(probes_left - 1)));
+            // Only the first FULL_PROBE_BUDGET probes may launch a
+            // full fresh pipeline: a full pipeline per probe is what
+            // turned the subset enumeration into a hang (16 probes x
+            // 1-2s pipelines on sin^4 + cos^4 - 1 + 2 sin^2 cos^2).
+            force_local =
+                probes_left <= DEFAULT_SIMPLIFY_PROBE_BUDGET - DEFAULT_SIMPLIFY_FULL_PROBE_BUDGET;
+        }
+        None => {}
+    }
+
+    if nesting > 0 || force_local {
         let mut simplifier = crate::Simplifier::with_default_rules();
         simplifier.set_collect_steps(false);
         std::mem::swap(&mut simplifier.context, ctx);
@@ -11627,18 +11709,21 @@ fn try_build_exact_trig_square_zero_scope_rewrite(
         }
         let remaining_expr = build_signed_sum_expr(ctx, &remaining_terms);
 
+        let nested_default_simplify = default_simplify_nesting_depth() > 0;
         let matches = match term_sign {
             Sign::Pos => {
                 expr_matches_negation_for_cancellation(ctx, remaining_expr, target_expr)
-                    || expr_matches_negation_after_default_simplify(
-                        ctx,
-                        remaining_expr,
-                        target_expr,
-                    )
+                    || (!nested_default_simplify
+                        && expr_matches_negation_after_default_simplify(
+                            ctx,
+                            remaining_expr,
+                            target_expr,
+                        ))
             }
             Sign::Neg => {
                 exprs_match_for_cancellation(ctx, remaining_expr, target_expr)
-                    || exprs_match_after_default_simplify(ctx, remaining_expr, target_expr)
+                    || (!nested_default_simplify
+                        && exprs_match_after_default_simplify(ctx, remaining_expr, target_expr))
             }
         };
         if matches {
@@ -18025,48 +18110,53 @@ pub(crate) fn try_build_exact_zero_trig_double_angle_cos_variant_zero_scope_rewr
             let distributed_neg_adjusted_rewritten =
                 negate_additive_scope_expr(ctx, adjusted_rewritten);
 
+            // Cheap syntactic probes stay unconditional; the
+            // default-simplify probes are gated like the two-term
+            // exact-equivalence path (each one launches a FULL
+            // simplifier pipeline - unguarded they explode in breadth
+            // and the double-angle/power-reduction pair regenerates
+            // its own input one level deeper every round).
+            let nested_default_simplify = default_simplify_nesting_depth() > 0;
             if expr_matches_negation_for_cancellation(ctx, adjusted_rewritten, remaining_expr)
                 || expr_matches_negation_for_cancellation(
                     ctx,
                     adjusted_rewritten,
                     normalized_remaining_expr,
                 )
-                || expr_matches_negation_after_default_simplify(
-                    ctx,
-                    adjusted_rewritten,
-                    remaining_expr,
-                )
-                || expr_matches_negation_after_default_simplify(
-                    ctx,
-                    adjusted_rewritten,
-                    normalized_remaining_expr,
-                )
-                || exprs_match_after_default_simplify(ctx, neg_adjusted_rewritten, remaining_expr)
-                || exprs_match_after_default_simplify(
-                    ctx,
-                    neg_adjusted_rewritten,
-                    normalized_remaining_expr,
-                )
-                || exprs_match_after_default_simplify(
-                    ctx,
-                    distributed_neg_adjusted_rewritten,
-                    remaining_expr,
-                )
-                || exprs_match_after_default_simplify(
-                    ctx,
-                    distributed_neg_adjusted_rewritten,
-                    normalized_remaining_expr,
-                )
-                || additive_scopes_match_after_default_simplify(
-                    ctx,
-                    distributed_neg_adjusted_rewritten,
-                    remaining_expr,
-                )
-                || additive_scopes_match_after_default_simplify(
-                    ctx,
-                    distributed_neg_adjusted_rewritten,
-                    normalized_remaining_expr,
-                )
+                || (!nested_default_simplify
+                    && (expr_matches_negation_after_default_simplify(
+                        ctx,
+                        adjusted_rewritten,
+                        remaining_expr,
+                    ) || expr_matches_negation_after_default_simplify(
+                        ctx,
+                        adjusted_rewritten,
+                        normalized_remaining_expr,
+                    ) || exprs_match_after_default_simplify(
+                        ctx,
+                        neg_adjusted_rewritten,
+                        remaining_expr,
+                    ) || exprs_match_after_default_simplify(
+                        ctx,
+                        neg_adjusted_rewritten,
+                        normalized_remaining_expr,
+                    ) || exprs_match_after_default_simplify(
+                        ctx,
+                        distributed_neg_adjusted_rewritten,
+                        remaining_expr,
+                    ) || exprs_match_after_default_simplify(
+                        ctx,
+                        distributed_neg_adjusted_rewritten,
+                        normalized_remaining_expr,
+                    ) || additive_scopes_match_after_default_simplify(
+                        ctx,
+                        distributed_neg_adjusted_rewritten,
+                        remaining_expr,
+                    ) || additive_scopes_match_after_default_simplify(
+                        ctx,
+                        distributed_neg_adjusted_rewritten,
+                        normalized_remaining_expr,
+                    )))
             {
                 return Some(Rewrite::with_local(
                     ctx.num(0),

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 94 (newest first)
+Active entries: 95 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -137,6 +137,7 @@ Active entries: 94 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: shifted-argument arcsine/arccosine cofactors
 - 2026-06-12 | `observe-only` | process / candidate selection / coverage measurement | Observe-only: frontier audit wired into the auto-improvement loop
 - 2026-06-12 | `retained` | parser / definite integral bounds / perceived correctness (P0 of | Retained soundness: inf and oo parse as infinity
+- 2026-06-12 | `retained` | simplifier / speculative exact-zero probes / termination (P0-A of | Retained soundness: probe budget ends the trig zero-equivalence hang class
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3903,3 +3904,66 @@ Active entries: 94 (newest first)
     alias list and the one that mattered most (expression constants)
     was the only one missing it - when adding an alias, grep for the
     existing alias's other spellings to find every map that must agree
+
+## 2026-06-12 - Retained soundness: probe budget ends the trig zero-equivalence hang class
+
+- area:
+  - simplifier / speculative exact-zero probes / termination (P0-A of
+    the frontier audit)
+- status:
+  - `retained` (scoping workflow + adversarially verified, two lenses)
+- capture:
+  - investment_class: soundness
+  - calculus_maturity_block: cross-cutting (every command that
+    simplifies trig sums)
+  - calculus_matrix_cell: simplify(sin^2 cos^2 - sin^4) terminates in
+    ~0.4s (was an infinite hang), diff(sin^3 cos x) ~0.4s,
+    diff(sin^3 cos^2 x) ~50ms, and the PRE-EXISTING sibling hang
+    sin^4 + cos^4 - 1 + 2 sin^2 cos^2 now PROVES 0 in ~1.5s
+  - behavior_change_expected: yes - runaway probe enumerations fall
+    back to syntactic comparison; observed zero-proofs are preserved
+    (23/24 corpus identities, the 24th byte-identical to baseline)
+    with TWO gains (former baseline timeouts now prove 0)
+- observed (scoping + implementation + adversarial):
+  - the hang was NOT a two-rule ping-pong: the exact-zero shortcut's
+    subset enumeration launches run_default_simplify probes, each a
+    FULL pipeline with a FRESH budget; the double-angle/power-reduction
+    pair regenerates cos(4x)+1 one level deeper each round at x20-40
+    the work (measured: 2.7k/12.4k/20k probe frames at depth 1/2/3 in
+    10s); the depth_overflow WARN was a contained SECONDARY symptom
+  - the fix is three deterministic caps (counters, not deadlines, so
+    fingerprints stay machine-independent): nesting cap (probes nest
+    at most 2 default simplifies - the phase-shift quotient needs one
+    nested probe), a per-pipeline budget of 48 probes ARMED only
+    inside top-level pipelines via a save/restore scope guard (unit
+    contexts stay ungated; tests share threads, a bare consumable TLS
+    drained across unrelated tests, and residual inner pipelines at
+    nesting 0 must restore - not clear - the outer budget), and a
+    full-pipeline allowance (first 24 probes; the rest run cheap local
+    passes - per-rule guards alone were proven insufficient)
+  - calibration was empirical against three successively discovered
+    consumers: the phase-shift quotient contract (needed nesting cap 2
+    + full allowance), the log-expansion corpus rows (needed 48/24),
+    and the sibling hang (terminates at any setting; FASTER with more
+    full allowance - 19.5s at 32/16, 1.5s at 48/24, because it finds
+    the zero instead of grinding through local fallbacks)
+  - adversarial: zero lost zero-proofs, zero false zeros, results
+    numerically verified, deterministic across runs; the audited
+    12s quotient-with-product diffs are an UNRELATED pre-existing
+    slowness (now 12.5s vs 23.9s baseline - improved as a side
+    effect); flagged follow-ups: a wide 3-identity sum got slower
+    (9s -> ~45s, budget pushes work to a slower non-probe path),
+    constructive (non-probe) users of run_default_simplify lose
+    nested simplification capability at depth >= 1 (no observed
+    regression), depth=51 WARN noise now surfaces in PostCleanup
+- retained learning:
+  - speculative probe machinery needs BOTH a depth cap and a breadth
+    budget, and the budget must be scope-armed: each protection alone
+    was defeated (depth alone -> breadth explosion; budget alone ->
+    drained across unit tests; per-rule guards -> bypassed by direct
+    helper calls in the probe chain)
+  - calibrate caps against the CONSUMERS, not the bug: every corpus
+    that legitimately needs deep/wide probes (phase-shift quotients,
+    log expansions) is a fixture the cap can silently starve - the
+    scorecard corpora are the calibration set, run them before
+    trusting any budget number

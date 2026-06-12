@@ -26209,6 +26209,8 @@ impl Orchestrator {
         simplifier: &mut Simplifier,
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         self.initialize_deadline_if_needed();
+        let _probe_budget_scope =
+            crate::rules::arithmetic::enter_default_simplify_probe_budget_scope();
 
         if self.time_budget_exceeded() {
             return self.finish_timed_out_pipeline(

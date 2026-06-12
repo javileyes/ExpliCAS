@@ -45,12 +45,21 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
-- [ ] **(A) Cuelgue del simplificador**: `diff(sin(x)^3*cos(x)^2, x)`
+- [x] **(A) Cuelgue del simplificador**: `diff(sin(x)^3*cos(x)^2, x)`
   timeout >30s con `depth_overflow depth=51 phase=Core`; mismo patrón
   da 12s en `diff((x^2*sin(x))/(x+1), x)` y
   `diff((x*ln(x))/(exp(x)*sin(x)), x)`. Respuestas correctas que no
   llegan valen cero. Relacionado: el bucle tan↔sin/cos que obligó a
   construir tan⁵ en forma expandida (ledger 2026-06-12).
+  *(graduado 2026-06-12 PENDING_HASH: la clase-cuelgue era explosión
+  de probes especulativos de equivalencia-cero — cap de profundidad 2
+  + presupuesto 48/pipeline con guard save/restore + franja de 24
+  pipelines completos; sin²cos²−sin⁴ 0.4s, diff(sin³cos²) 50ms, el
+  hermano preexistente sin⁴+cos⁴−1+2sin²cos² ahora prueba 0 en 1.5s,
+  2 timeouts del corpus baseline ahora prueban 0. Quedan como
+  peldaños: los cocientes-con-producto de 10-12s — preexistente,
+  mejorado de 23.9s→12.5s de rebote —, la suma ancha de 3 identidades
+  9s→45s, y el ruido WARN depth=51 en PostCleanup)*
 - [x] **(F) `inf` como símbolo libre**: `integrate(e^(-x), x, 0, inf)`
   produce `(e^inf-1)/e^inf` sin aviso; solo `infinity` activa la
   maquinaria. Parsear `inf`/`oo` como infinito o rechazarlos con
