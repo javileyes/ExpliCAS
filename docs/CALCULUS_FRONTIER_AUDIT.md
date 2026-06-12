@@ -51,7 +51,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `diff((x*ln(x))/(exp(x)*sin(x)), x)`. Respuestas correctas que no
   llegan valen cero. Relacionado: el bucle tan↔sin/cos que obligó a
   construir tan⁵ en forma expandida (ledger 2026-06-12).
-  *(graduado 2026-06-12 PENDING_HASH: la clase-cuelgue era explosión
+  *(graduado 2026-06-12 ab8591792: la clase-cuelgue era explosión
   de probes especulativos de equivalencia-cero — cap de profundidad 2
   + presupuesto 48/pipeline con guard save/restore + franja de 24
   pipelines completos; sin²cos²−sin⁴ 0.4s, diff(sin³cos²) 50ms, el
