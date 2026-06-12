@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 84 (newest first)
+Active entries: 85 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -127,6 +127,7 @@ Active entries: 84 (newest first)
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / interval certificate | Retained calculus: interval certificate learns bounded inverse trig domains
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig quotient | Retained calculus: Chebyshev recognizer dissolves the multiple-angle quotient interference
 - 2026-06-12 | `retained` | simplifier / root shortcuts (Reciprocal Half-Power Residual) / | Retained simplifier: half-power residual shortcut covers scaled roots and re-probes post-phase
+- 2026-06-12 | `retained` | simplifier / fraction cancellation (CancelIdenticalFractionRule) / | Retained soundness: 0/0 no longer cancels to 1
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3485,3 +3486,40 @@ Active entries: 84 (newest first)
     agent map (mechanism + insertion point + footprint risk) turned a
     simplifier-core change into a two-edit cycle with a clean
     fingerprint on the first try
+
+## 2026-06-12 - Retained soundness: 0/0 no longer cancels to 1
+
+- area:
+  - simplifier / fraction cancellation (CancelIdenticalFractionRule) /
+    real-domain soundness
+- status:
+  - `retained`
+- capture:
+  - investment_class: soundness
+  - calculus_maturity_block: cross-cutting (real-domain semantics)
+  - calculus_matrix_cell: (x-x)/0 and (x^2-x^2)/0 now evaluate to
+    undefined instead of 1; x/x, (x+1)/(x+1), sin(x)/sin(x) keep
+    cancelling to 1 with their NonZero conditions
+  - behavior_change_expected: yes - a wrong finite value becomes an
+    honest undefined
+- observed (from the cycle-11 adversarial refutation lens):
+  - numerators that simplify to the literal zero share the
+    denominator's interned ExprId, so Div(0, 0) satisfied the
+    STRUCTURAL equality match of the cancel-identical rule and the
+    domain gate (which asks "is the denominator provably nonzero")
+    allowed it in default mode via assumption instead of refusing the
+    provably-ZERO literal
+  - one guard in the plan extractor (refuse when the shared expression
+    is the rational constant zero) fixes it; the downstream pipeline
+    then correctly reports undefined
+  - literal 0/0 entered directly still echoes unsimplified (the
+    numerator is not re-simplified inside a literal Div) - honest
+    either way, noted for completeness
+- retained learning:
+  - assumption-based domain gates assume UNKNOWNS, but a literal zero
+    is a KNOWN: every gate that asks "provably nonzero, else assume"
+    must first check "provably zero, then refuse" - the asymmetry is
+    invisible until interning makes 0/0 structurally equal
+  - adversarial refutation lenses pay twice: the cycle-11 probe list
+    surfaced this pre-existing bug for free, and the fix was a
+    one-cycle follow-up with its own contract test

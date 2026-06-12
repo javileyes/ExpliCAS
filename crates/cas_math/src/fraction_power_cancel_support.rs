@@ -285,6 +285,12 @@ pub fn try_rewrite_cancel_identical_fraction_expr(
     if compare_expr(ctx, num, den) != std::cmp::Ordering::Equal {
         return None;
     }
+    // 0/0 is undefined, never 1: a numerator that simplified to the
+    // literal zero shares the denominator's ExprId and would otherwise
+    // satisfy the structural-equality match.
+    if as_rational_const(ctx, den).is_some_and(|value| value.is_zero()) {
+        return None;
+    }
 
     Some(CancelIdenticalFractionRewrite {
         rewritten: ctx.num(1),
@@ -460,6 +466,16 @@ mod tests {
         let rw = try_rewrite_cancel_identical_fraction_expr(&mut ctx, expr).expect("rewrite");
         let expected = parse("1", &mut ctx).expect("expected");
         assert!(poly_eq(&ctx, rw.rewritten, expected));
+    }
+
+    #[test]
+    fn cancel_identical_fraction_refuses_literal_zero() {
+        // 0/0 is undefined, never 1: numerators that simplify to zero
+        // share the denominator's interned ExprId and must not cancel.
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let expr = ctx.add(cas_ast::Expr::Div(zero, zero));
+        assert!(try_rewrite_cancel_identical_fraction_expr(&mut ctx, expr).is_none());
     }
 
     #[test]
