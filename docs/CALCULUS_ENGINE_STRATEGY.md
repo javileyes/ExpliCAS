@@ -489,7 +489,12 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The Chebyshev quotient recognizer then dissolved the
+     composes). The half-power residual shortcut then learned scaled
+     roots plus a post-phase closure (adversarially verified; graduates
+     the bounded-inverse rows to equivalence-verified and unblocks
+     future radical families; pre-existing (expr)/0 -> 1 bug recorded
+     as a soundness candidate). The Chebyshev quotient recognizer
+     before that dissolved the
      cos(x)cos(2x) interference (sin(n*d)/(c*sin(d)) = U_{n-1}(cos d)/c
      delegating to the cosine-power owners; the definite orthogonality
      integrate(cos(x)cos(2x), x, 0, pi) = 0 composes). The interval

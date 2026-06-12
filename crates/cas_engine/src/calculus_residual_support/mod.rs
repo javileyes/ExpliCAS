@@ -1612,6 +1612,25 @@ pub(crate) fn try_reciprocal_half_power_shared_denominator_residual_root_zero(
         return Some((zero, required_conditions));
     }
 
+    // Mirror of the Div branch: a NONZERO rational scale multiplying the
+    // whole sum is irrelevant when the residual is exactly zero
+    // (Mul(1/4, Add(...)) roots reach here before Combine Constants
+    // normalizes them to Div form, and shortcuts run only once).
+    if let Expr::Mul(left, right) = ctx.get(expr).clone() {
+        let scaled_inner = [(left, right), (right, left)]
+            .into_iter()
+            .find_map(|(scale, inner)| {
+                let value = cas_math::numeric_eval::as_rational_const(ctx, scale)?;
+                (!value.is_zero()).then_some(inner)
+            });
+        if let Some(inner) = scaled_inner {
+            let (zero, required_conditions) =
+                try_reciprocal_half_power_shared_denominator_residual_root_zero(ctx, inner)?;
+            return Some((zero, required_conditions));
+        }
+        return None;
+    }
+
     if let Some(required_conditions) = half_power_polynomial_sum_required_conditions(ctx, expr) {
         return Some((ctx.num(0), required_conditions));
     }

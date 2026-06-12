@@ -29508,6 +29508,37 @@ impl Orchestrator {
             all_steps.append(&mut late_steps);
         }
 
+        // Late closure for the half-power residual shortcut: the early
+        // root probe runs before any phase, but Sub(diff(...), target)
+        // roots only EXPOSE the scaled half-power sum after Core
+        // evaluates the derivative (verification residuals). The
+        // matcher gates are cheap and only fire when the residual is
+        // exactly zero as a Polynomial.
+        if matches!(
+            simplifier.context.get(current),
+            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
+        ) {
+            if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+                try_reciprocal_half_power_shared_denominator_residual_root_zero(
+                    &mut simplifier.context,
+                    current,
+                )
+            {
+                simplifier.extend_required_conditions(required_conditions.clone());
+                if collect_steps {
+                    let mut step = build_root_shortcut_compact_step(
+                        current,
+                        zero,
+                        "Cancel matching reciprocal half-power residual",
+                        "Reciprocal Half-Power Residual",
+                    );
+                    step.meta_mut().required_conditions = required_conditions;
+                    all_steps.push(step);
+                }
+                current = zero;
+            }
+        }
+
         // Filter and optimize steps
         let filtered_steps = if collect_steps {
             cas_solver_core::step_productivity_runtime::filter_non_productive_solver_steps_with_runtime_recompose_mul(

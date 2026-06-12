@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 83 (newest first)
+Active entries: 84 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -126,6 +126,7 @@ Active entries: 83 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: monomial times arcsine/arccosine by-parts pair
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / interval certificate | Retained calculus: interval certificate learns bounded inverse trig domains
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig quotient | Retained calculus: Chebyshev recognizer dissolves the multiple-angle quotient interference
+- 2026-06-12 | `retained` | simplifier / root shortcuts (Reciprocal Half-Power Residual) / | Retained simplifier: half-power residual shortcut covers scaled roots and re-probes post-phase
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3434,3 +3435,53 @@ Active entries: 83 (newest first)
     more general than suppressing the rewrite: the quotient recognizer
     covers the whole sin(nx)/sin(x) family, not just the product that
     exposed it
+
+## 2026-06-12 - Retained simplifier: half-power residual shortcut covers scaled roots and re-probes post-phase
+
+- area:
+  - simplifier / root shortcuts (Reciprocal Half-Power Residual) /
+    verification-channel cancellation / matrix verification graduation
+- status:
+  - `retained` (adversarially verified: two lenses, sound)
+- capture:
+  - investment_class: soundness/verification infrastructure
+  - calculus_maturity_block: cross-cutting (graduates block-8
+    verification_gap rows; unblocks future radical families)
+  - calculus_matrix_cell: diff-verification residuals of x*arcsin(x)
+    and x*arccos(x) now collapse to 0 with the honest strict condition
+    -1 < x < 1; both rows graduated from verification_gap to
+    equivalence-verified with direct-diff coverage
+  - behavior_change_expected: yes - Mul(rational, half-power-sum) roots
+    cancel, and verification residuals that only EXPOSE the sum after
+    Core evaluates the derivative now cancel via a late closure
+- observed (scoping workflow + implementation):
+  - the cancellation knowledge lives ONLY in a root shortcut that runs
+    once before any phase; it had a Div(num, rational) branch but no
+    Mul(rational, sum) branch, and Combine Constants normalizes
+    Mul(1/4, ...) to Div(.., 4) AFTER the shortcuts already ran - a
+    linear pipeline with no fixpoint between stages
+  - two fixes: (a) a mirror Mul branch (nonzero rational scale is
+    irrelevant when the residual is exactly zero); (b) a late closure
+    after try_finalize_trivial_additive_closure_root re-probing the
+    shortcut on the final form (Sub(diff(...), target) roots only
+    expose the scaled sum after Core) - precedent existed for
+    post-phase closures
+  - adversarial verification (refutation lens + regression lens):
+    no false zeros across scaled/symbolic/different-base/different-var
+    probes, partial cancellation preserves the nonzero part (1/4*x),
+    conditions report by region (x > 0, |x| > 1, none for strictly
+    positive bases), nested Mul recursion works, baseline comparison
+    via git stash confirmed the late closure is what closes the
+    residual; fingerprint shifted ONLY in the intended matrix counters
+  - PRE-EXISTING bug surfaced by the refutation lens (not introduced):
+    (anything)/0 evaluates to 1 ((x-x)/0 -> 1 in baseline too) -
+    recorded here as a soundness candidate for a future cycle
+- retained learning:
+  - root-shortcut layers are one-shot: any knowledge they hold is
+    invisible to forms that only emerge during phases; when a shortcut
+    family matters for VERIFICATION residuals, it needs both the raw
+    root probe and a post-phase closure probe
+  - the scoping-workflow-then-implement pattern paid for itself: the
+    agent map (mechanism + insertion point + footprint risk) turned a
+    simplifier-core change into a two-edit cycle with a clean
+    fingerprint on the first try
