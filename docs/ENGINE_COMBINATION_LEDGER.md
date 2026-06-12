@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 82 (newest first)
+Active entries: 83 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
@@ -125,6 +125,7 @@ Active entries: 82 (newest first)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig power family | Retained calculus: odd tangent/cotangent powers complete the trig power ladder
 - 2026-06-12 | `retained` | calculus / integration / educational route / bounded inverse trig | Retained calculus: monomial times arcsine/arccosine by-parts pair
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / interval certificate | Retained calculus: interval certificate learns bounded inverse trig domains
+- 2026-06-12 | `retained` | calculus / integration / educational route / trig quotient | Retained calculus: Chebyshev recognizer dissolves the multiple-angle quotient interference
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3393,3 +3394,43 @@ Active entries: 82 (newest first)
     certificates: BoundaryTouch is a statement about the INTEGRAND's
     domain openness, not about every risky subterm - map touches to
     Certified per risk kind, not globally
+
+## 2026-06-12 - Retained calculus: Chebyshev recognizer dissolves the multiple-angle quotient interference
+
+- area:
+  - calculus / integration / educational route / trig quotient
+    interference (block 7) / Fourier orthogonality definites
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 7 trig integration (plus the
+    block-13 orthogonality row it unlocks)
+  - calculus_matrix_cell: integrate(cos(x)*cos(2*x)) =
+    (3 sin x - 2 sin^3 x)/3, the Dirichlet-style quotient surface
+    integrate(sin(4x)/(4 sin x)) with its honest sin(x) != 0 source
+    condition, sin(3x)/(3 sin x), sin(6x)/(6 sin x), shifted arguments,
+    and the definite orthogonality integrate(cos(x)cos(2x), x, 0, pi)=0
+  - behavior_change_expected: yes - the cos(x)cos(2x) quotient-rewrite
+    interference recorded since the product-to-sum cycle is dissolved
+- observed (frontier probing):
+  - the pre-integration rewrite turns cos(x)cos(2x) into
+    sin(4x)/(4 sin(x)) before any integration route sees it; rather
+    than fighting the rewrite, the new recognizer accepts the quotient
+    ITSELF: sin(n*d)/(c*sin(d)) = U_{n-1}(cos d)/c (Chebyshev second
+    kind, n <= 8, exact polynomial argument match including offsets)
+    and delegates the cosine polynomial to its existing owners
+  - the identity holds by continuity across sin(d) = 0, and the
+    quotient SURFACE keeps its sin(x) != 0 source condition while the
+    product surface stays condition-free - both honest
+  - foreign shapes decline: sin(x^2)/sin(x), mismatched offsets,
+    cosine denominators (reject-tested); diff round-trip is exact
+    (cos(x)(2cos^2-1)) but WARNs on depth, so rows ship under
+    verification_gap with a NUMERIC unit-test round-trip (standing
+    pattern), and the orthogonality definite verifies via FTC cleanly
+- retained learning:
+  - when a pre-simplification rewrite keeps stealing an integrand,
+    teaching the integrator the REWRITTEN form is often cheaper and
+    more general than suppressing the rewrite: the quotient recognizer
+    covers the whole sin(nx)/sin(x) family, not just the product that
+    exposed it

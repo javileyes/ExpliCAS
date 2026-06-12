@@ -3539,6 +3539,116 @@ fn trig_cot_eighth_quotient_antiderivative(
     ))
 }
 
+fn sine_multiple_angle_ratio_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    // sin(n*d) / (c * sin(d)) = U_{n-1}(cos d) / c (Chebyshev, second
+    // kind): the Dirichlet-style quotient that the pre-integration
+    // rewrite produces from multiple-angle cosine products.
+    let (numerator_builtin, numerator_arg) = {
+        let Expr::Function(fn_id, args) = ctx.get(num).clone() else {
+            return None;
+        };
+        if args.len() != 1 {
+            return None;
+        }
+        (ctx.builtin_of(fn_id)?, args[0])
+    };
+    if !matches!(numerator_builtin, BuiltinFn::Sin) {
+        return None;
+    }
+
+    let mut scale = BigRational::one();
+    let mut sine_arg = None;
+    for factor in mul_leaves(ctx, den) {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+        let Expr::Function(fn_id, args) = ctx.get(factor).clone() else {
+            return None;
+        };
+        if args.len() != 1
+            || !matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sin))
+            || sine_arg.is_some()
+        {
+            return None;
+        }
+        sine_arg = Some(args[0]);
+    }
+    let sine_arg = sine_arg?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let num_poly = Polynomial::from_expr(ctx, numerator_arg, var).ok()?;
+    let den_poly = Polynomial::from_expr(ctx, sine_arg, var).ok()?;
+    if den_poly.degree() != 1 {
+        return None;
+    }
+    // numerator arg must be EXACTLY n * denominator arg (offsets scale too).
+    let den_lead = den_poly.coeffs.get(1)?.clone();
+    if den_lead.is_zero() {
+        return None;
+    }
+    let num_lead = num_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let ratio = num_lead / den_lead;
+    if !ratio.is_integer() || ratio < BigRational::from_integer(2.into()) {
+        return None;
+    }
+    let n = ratio.to_integer();
+    if n > 8.into() {
+        return None;
+    }
+    let scaled: Vec<BigRational> = den_poly.coeffs.iter().map(|coeff| coeff * &ratio).collect();
+    if scaled != num_poly.coeffs {
+        return None;
+    }
+
+    // U_{k}(cos) by recurrence over rational coefficient vectors.
+    let n_usize = usize::try_from(i64::try_from(&n).ok()?).ok()?;
+    let mut previous: Vec<BigRational> = vec![BigRational::one()];
+    let mut current: Vec<BigRational> =
+        vec![BigRational::zero(), BigRational::from_integer(2.into())];
+    for _ in 2..n_usize {
+        let mut next = vec![BigRational::zero(); current.len() + 1];
+        for (i, c) in current.iter().enumerate() {
+            next[i + 1] += BigRational::from_integer(2.into()) * c;
+        }
+        for (i, c) in previous.iter().enumerate() {
+            next[i] -= c.clone();
+        }
+        previous = std::mem::replace(&mut current, next);
+    }
+
+    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![sine_arg]);
+    let mut terms = Vec::new();
+    for (degree, coeff) in current.iter().enumerate() {
+        if coeff.is_zero() {
+            continue;
+        }
+        let term = match degree {
+            0 => ctx.num(1),
+            1 => cos_arg,
+            _ => {
+                let exponent = ctx.num(i64::try_from(degree).ok()?);
+                ctx.add(Expr::Pow(cos_arg, exponent))
+            }
+        };
+        terms.push(scale_rational_term(ctx, coeff.clone(), term));
+    }
+    let polynomial_form = build_balanced_add(ctx, &terms);
+    let rebuilt = scale_rational_term(ctx, BigRational::one() / scale, polynomial_form);
+    integrate_symbolic_expr(ctx, rebuilt, var)
+}
+
 fn trig_sec_third_quotient_antiderivative(
     ctx: &mut Context,
     num: ExprId,
@@ -19248,6 +19358,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        if let Some(integral) = sine_multiple_angle_ratio_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = trig_sec_third_quotient_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
@@ -24074,6 +24188,69 @@ mod tests {
         // Honest residual: non-table trig cofactor.
         let expr = parse("tan(x)/e^x", &mut ctx).expect("tan");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn sine_multiple_angle_ratios_integrate_via_chebyshev_rewrite() {
+        let mut ctx = Context::new();
+        for source in [
+            "sin(3*x)/(3*sin(x))",
+            "sin(4*x)/(4*sin(x))",
+            "sin(6*x)/(6*sin(x))",
+            "sin(4*(x+1))/(4*sin(x+1))",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn sine_multiple_angle_ratio_round_trips_numerically() {
+        let mut ctx = Context::new();
+        // U_3(cos x)/4 = cos(x)cos(2x): pin the Chebyshev rewrite by value.
+        let expr = parse("sin(4*x)/(4*sin(x))", &mut ctx).expect("parse");
+        let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integral");
+        let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+            &mut ctx,
+            antiderivative,
+            "x",
+        )
+        .expect("derivative");
+        let target = parse("cos(x)*cos(2*x)", &mut ctx).expect("target");
+        for sample in [0.4_f64, 1.1, 2.3] {
+            let mut vars = std::collections::HashMap::new();
+            vars.insert("x".to_string(), sample);
+            let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+            let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+            assert!(
+                (lhs - rhs).abs() < 1e-9,
+                "mismatch at {sample}: {lhs} vs {rhs}"
+            );
+        }
+    }
+
+    #[test]
+    fn sine_multiple_angle_ratio_declines_foreign_shapes() {
+        let mut ctx = Context::new();
+        // Non-integer multiples, mismatched offsets, and non-sine
+        // denominators stay with their owners or honestly residual.
+        for source in [
+            "sin(x^2)/sin(x)",
+            "sin(3*x)/(3*sin(x+1))",
+            "sin(3*x)/(3*cos(x))",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let cas_ast::Expr::Div(num, den) = ctx.get(expr).clone() else {
+                panic!("div: {source}");
+            };
+            assert!(
+                super::sine_multiple_angle_ratio_antiderivative(&mut ctx, num, den, "x").is_none(),
+                "must decline: {source}"
+            );
+        }
     }
 
     #[test]

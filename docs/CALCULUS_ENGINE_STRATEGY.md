@@ -489,7 +489,11 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). The interval certificate then learned bounded inverse
+     composes). The Chebyshev quotient recognizer then dissolved the
+     cos(x)cos(2x) interference (sin(n*d)/(c*sin(d)) = U_{n-1}(cos d)/c
+     delegating to the cosine-power owners; the definite orthogonality
+     integrate(cos(x)cos(2x), x, 0, pi) = 0 composes). The interval
+     certificate before that learned bounded inverse
      trig domains (RiskKind::DefinedOnUnitInterval with closed-domain
      touch semantics; integrate(x*arcsin(x), x, 0, 1) = pi/8 and
      out-of-domain refusals). The bounded inverse by-parts pair landed
