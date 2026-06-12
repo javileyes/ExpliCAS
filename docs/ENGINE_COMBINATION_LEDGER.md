@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 99 (newest first)
+Active entries: 100 (newest first)
 
+- 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4152,3 +4153,54 @@ Active entries: 99 (newest first)
     own surface check: owners accept mathematical CLASSES through
     specific AST shapes, and a quotient that is "morally a polynomial"
     is not a polynomial to the dispatcher
+
+## 2026-06-13 - Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
+
+- area:
+  - calculus / integration / educational route / Weierstrass rational
+    trig substitution (block 5 generalized substitution, P1 of the
+    frontier audit)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 5 generalized substitution (new
+    weierstrass_rational_substitution family, 6 rows, 19 -> 25)
+  - calculus_matrix_cell: 1/(2+cos x) = (2/sqrt(3)) arctan(tan(x/2)/sqrt(3)),
+    1/(1+sin x), 1/(1+cos x) = tan(x/2), 1/(5+4 sin x), sin x/(1+sin x),
+    1/(2+cos 2x) (shared multiple angles); unit-only: 1/(3+2 cos x),
+    cos x/(2+cos x), 1/(sin x + cos x) (atanh window)
+  - behavior_change_expected: yes - rational expressions over sin(kx)
+    and cos(kx) sharing one linear argument integrate via t = tan(kx/2)
+- observed (third instantiation of the template):
+  - two NEW template requirements beyond the e^x/radical cycles:
+    (1) Weierstrass atoms share (1+t^2) denominators, so num/den are
+    routinely non-coprime and the rational owners do NOT cancel -
+    divide out the monic-renormalized Polynomial gcd before handoff;
+    (2) strictly-positive-quadratic denominators (2/(t^2+3)) live in
+    the algorithmic BACKEND, not the support owners - the route calls
+    try_algorithmic_integration_backend as a fallback and accepts ONLY
+    unconditional candidates (required_conditions empty), because the
+    support route has no channel to surface conditions
+  - the backend fallback turned 1/(sin x + cos x) into
+    (2/sqrt(2)) atanh((tan(x/2)-1)/sqrt(2)) - planned as a reject, it
+    integrates (numerically verified inside the atanh window); rejects
+    must be probed, not assumed, even mid-cycle
+  - 4 of 6 matrix rows ship as verification_gap: the simplifier cannot
+    close half-angle residues (1/(sin(x/2)+cos(x/2))^2 vs
+    1/(1+2 sin(x/2) cos(x/2))) and diff of arctan(tan(x/2)/r) trips
+    depth_overflow WARNs - same simplifier-scaling symptom as
+    sqrt(x+1)/x last cycle, now with a repeat count of 2
+- retained learning:
+  - the substitution-delegation template generalizes cleanly but each
+    new atom family adds a STRUCTURAL obligation: exponentials needed
+    abs-stripping, radicals needed degenerate-denominator handling,
+    trig needed gcd cancellation + backend fallback; budget one such
+    discovery per instantiation
+  - "accept only unconditional results" is a sound cross-boundary
+    policy when a richer interface (conditions channel) does not exist
+    yet; the rung is to thread ConditionPredicates through the support
+    route so conditional backend families (NonZero poles) can cross too
+  - the simplifier's depth budget is now the visible ceiling for trig
+    verification channels: half-angle identities and arctan-tan
+    compositions overflow before closing - an (A)-class candidate

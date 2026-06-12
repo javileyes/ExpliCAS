@@ -9432,6 +9432,267 @@ fn exponential_rational_substitution_antiderivative(
     Some(strip_redundant_exponential_abs(ctx, substituted))
 }
 
+/// Rational functions of sin(k x) and cos(k x) sharing ONE linear
+/// argument (rational k != 0, zero offset) with rational coefficients:
+/// Weierstrass substitution t = tan(k x / 2), sin = 2t/(1+t^2),
+/// cos = (1-t^2)/(1+t^2), dx = 2 dt / (k (1+t^2)). Builds the SINGLE
+/// flattened quotient via Polynomial arithmetic and delegates to the
+/// rational owners. Covers 1/(2+cos x), 1/(1+sin x), 1/(sin x + cos x),
+/// sin(x)/(1+sin x), 1/(3+2 cos x). Mixed multiples (sin x with
+/// cos 2x), phase offsets, tan/sec atoms and trig-polynomial mixes
+/// decline. Ordered AFTER the specialized trig owners so their pinned
+/// displays (sec, csc, odd/even powers) survive.
+fn weierstrass_rational_substitution_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut slopes: Vec<BigRational> = Vec::new();
+    if !collect_weierstrass_rational_slopes(ctx, expr, var, &mut slopes) || slopes.is_empty() {
+        return None;
+    }
+    let k = slopes[0].clone();
+    if slopes[1..].iter().any(|slope| *slope != k) {
+        return None;
+    }
+
+    let used = cas_ast::collect_variables(ctx, expr);
+    let u_name = ["u", "u_", "u_sub"]
+        .iter()
+        .find(|candidate| !used.contains(**candidate) && *candidate != &var)?
+        .to_string();
+
+    let (num, den) = weierstrass_rational_function_parts(ctx, expr, var, &u_name)?;
+    // dx = 2 dt / (k (1 + t^2)).
+    let num = scale_polynomial_rational(&num, &BigRational::from_integer(2.into()));
+    let mut one_plus_t2 = Polynomial::zero(u_name.clone());
+    one_plus_t2.coeffs = vec![
+        BigRational::from_integer(1.into()),
+        BigRational::zero(),
+        BigRational::from_integer(1.into()),
+    ];
+    let mut den = scale_polynomial_rational(&den.mul(&one_plus_t2), &k);
+    let mut num = num;
+    // Weierstrass atoms share (1+t^2) denominators, so num/den are
+    // routinely non-coprime (sin/(1+sin) -> 4t(1+t^2)/((1+t^2)^2(t+1)^2))
+    // and the rational owners do not cancel: divide out the gcd, monic
+    // renormalized (Polynomial::gcd returns arbitrary rational scale).
+    let gcd = num.gcd(&den);
+    if gcd.degree() >= 1 {
+        let lead = gcd.coeffs.last()?.clone();
+        if lead.is_zero() {
+            return None;
+        }
+        let monic_gcd =
+            scale_polynomial_rational(&gcd, &(BigRational::from_integer(1.into()) / lead));
+        let (num_q, num_r) = num.div_rem(&monic_gcd).ok()?;
+        let (den_q, den_r) = den.div_rem(&monic_gcd).ok()?;
+        if num_r.is_zero() && den_r.is_zero() {
+            num = num_q;
+            den = den_q;
+        }
+    }
+    if num.degree() > 10 || den.degree() > 10 || den.is_zero() {
+        return None;
+    }
+    let integrand_u = if den.degree() == 0 {
+        let scaled = scale_polynomial_rational(
+            &num,
+            &(BigRational::from_integer(1.into()) / &den.coeffs[0]),
+        );
+        polynomial_to_expr(ctx, &scaled, &u_name)
+    } else {
+        let numerator_expr = polynomial_to_expr(ctx, &num, &u_name);
+        let denominator_expr = polynomial_to_expr(ctx, &den, &u_name);
+        ctx.add(Expr::Div(numerator_expr, denominator_expr))
+    };
+    let integral_u = integrate_symbolic_expr(ctx, integrand_u, &u_name).or_else(|| {
+        // Strictly positive quadratic denominators (1/(2+cos x) ->
+        // 2/(t^2+3)) live in the algorithmic backend, not the support
+        // owners. Accept backend results ONLY when unconditional: this
+        // route has no channel to surface required conditions.
+        let config = crate::general_integration_backend::AlgorithmicIntegrationBackendConfig::residual_fallback();
+        let candidate = crate::general_integration_backend::try_algorithmic_integration_backend(
+            ctx, integrand_u, &u_name, config,
+        );
+        if !candidate.required_conditions.is_empty() {
+            return None;
+        }
+        candidate.fallback_antiderivative(config)
+    })?;
+    // Partial-fraction owners wrap in an internal hold; unwrap so the
+    // back-substituted antiderivative stays differentiable downstream.
+    let integral_u = cas_ast::hold::unwrap_internal_hold(ctx, integral_u);
+
+    let var_expr = ctx.var(var);
+    let half_k = k / BigRational::from_integer(2.into());
+    let half_angle = scale_rational_term(ctx, half_k, var_expr);
+    let replacement = ctx.call_builtin(BuiltinFn::Tan, vec![half_angle]);
+    let target = ctx.var(&u_name);
+    Some(crate::substitute::substitute_power_aware(
+        ctx,
+        integral_u,
+        target,
+        replacement,
+        crate::substitute::SubstituteOptions::exact(),
+    ))
+}
+
+/// True when expr is built purely from rational operations over
+/// sin(k*var)/cos(k*var) atoms and var-free subtrees; collects every k.
+/// Any other occurrence of var (bare x, tan, nested args) refuses.
+fn collect_weierstrass_rational_slopes(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    slopes: &mut Vec<BigRational>,
+) -> bool {
+    if let Some((slope, _)) = weierstrass_trig_atom(ctx, expr, var) {
+        slopes.push(slope);
+        return true;
+    }
+    if !contains_named_var(ctx, expr, var) {
+        return true;
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            collect_weierstrass_rational_slopes(ctx, l, var, slopes)
+                && collect_weierstrass_rational_slopes(ctx, r, var, slopes)
+        }
+        Expr::Neg(inner) => collect_weierstrass_rational_slopes(ctx, inner, var, slopes),
+        Expr::Pow(base, exponent) => {
+            if contains_named_var(ctx, exponent, var) {
+                return false;
+            }
+            let Some(value) = crate::numeric_eval::as_rational_const(ctx, exponent) else {
+                return false;
+            };
+            if !value.is_integer() {
+                return false;
+            }
+            collect_weierstrass_rational_slopes(ctx, base, var, slopes)
+        }
+        _ => false,
+    }
+}
+
+/// sin(k*var) or cos(k*var) with rational nonzero k and zero offset.
+/// Returns (k, is_sine).
+fn weierstrass_trig_atom(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(BigRational, bool)> {
+    let (arg, is_sine) = match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(fn_id) {
+            Some(BuiltinFn::Sin) => (args[0], true),
+            Some(BuiltinFn::Cos) => (args[0], false),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let (slope_expr, offset) = get_linear_coeffs(ctx, arg, var)?;
+    if !is_number(ctx, offset, 0) {
+        return None;
+    }
+    let slope = rational_constant_value(ctx, slope_expr)?;
+    (!slope.is_zero()).then_some((slope, is_sine))
+}
+
+/// Build (num, den) Polynomials in t = tan(k x / 2) for a rational
+/// expression over sin/cos atoms: sin -> 2t/(1+t^2),
+/// cos -> (1-t^2)/(1+t^2).
+fn weierstrass_rational_function_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    u_name: &str,
+) -> Option<(Polynomial, Polynomial)> {
+    let one = Polynomial::one(u_name.to_string());
+    if let Some((_, is_sine)) = weierstrass_trig_atom(ctx, expr, var) {
+        let mut den = Polynomial::zero(u_name.to_string());
+        den.coeffs = vec![
+            BigRational::from_integer(1.into()),
+            BigRational::zero(),
+            BigRational::from_integer(1.into()),
+        ];
+        let mut num = Polynomial::zero(u_name.to_string());
+        if is_sine {
+            num.coeffs = vec![BigRational::zero(), BigRational::from_integer(2.into())];
+        } else {
+            num.coeffs = vec![
+                BigRational::from_integer(1.into()),
+                BigRational::zero(),
+                BigRational::from_integer((-1).into()),
+            ];
+        }
+        return Some((num, den));
+    }
+    if !contains_named_var(ctx, expr, var) {
+        let value = crate::numeric_eval::as_rational_const(ctx, expr)?;
+        let mut constant = Polynomial::zero(u_name.to_string());
+        constant.coeffs = vec![value];
+        return Some((constant, one));
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) => {
+            let (n1, d1) = weierstrass_rational_function_parts(ctx, l, var, u_name)?;
+            let (n2, d2) = weierstrass_rational_function_parts(ctx, r, var, u_name)?;
+            Some((n1.mul(&d2).add(&n2.mul(&d1)), d1.mul(&d2)))
+        }
+        Expr::Sub(l, r) => {
+            let (n1, d1) = weierstrass_rational_function_parts(ctx, l, var, u_name)?;
+            let (n2, d2) = weierstrass_rational_function_parts(ctx, r, var, u_name)?;
+            let neg_n2 = scale_polynomial_rational(&n2, &-BigRational::from_integer(1.into()));
+            Some((n1.mul(&d2).add(&neg_n2.mul(&d1)), d1.mul(&d2)))
+        }
+        Expr::Mul(l, r) => {
+            let (n1, d1) = weierstrass_rational_function_parts(ctx, l, var, u_name)?;
+            let (n2, d2) = weierstrass_rational_function_parts(ctx, r, var, u_name)?;
+            Some((n1.mul(&n2), d1.mul(&d2)))
+        }
+        Expr::Div(l, r) => {
+            let (n1, d1) = weierstrass_rational_function_parts(ctx, l, var, u_name)?;
+            let (n2, d2) = weierstrass_rational_function_parts(ctx, r, var, u_name)?;
+            if n2.is_zero() {
+                return None;
+            }
+            Some((n1.mul(&d2), d1.mul(&n2)))
+        }
+        Expr::Neg(inner) => {
+            let (n, d) = weierstrass_rational_function_parts(ctx, inner, var, u_name)?;
+            Some((
+                scale_polynomial_rational(&n, &-BigRational::from_integer(1.into())),
+                d,
+            ))
+        }
+        Expr::Pow(base, exponent) => {
+            let value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            if !value.is_integer() {
+                return None;
+            }
+            let p = i64::try_from(&value.to_integer()).ok()?;
+            let (n, d) = weierstrass_rational_function_parts(ctx, base, var, u_name)?;
+            let times = usize::try_from(p.unsigned_abs()).ok()?;
+            let mut acc_n = Polynomial::one(u_name.to_string());
+            let mut acc_d = Polynomial::one(u_name.to_string());
+            for _ in 0..times {
+                acc_n = acc_n.mul(&n);
+                acc_d = acc_d.mul(&d);
+            }
+            if p >= 0 {
+                Some((acc_n, acc_d))
+            } else {
+                if acc_n.is_zero() {
+                    return None;
+                }
+                Some((acc_d, acc_n))
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Rational functions of x and sqrt(a x + b) with rational a != 0, b:
 /// substitute u = sqrt(a x + b), so x = (u^2 - b)/a and dx = (2u/a) du,
 /// build the SINGLE flattened quotient num(u)/den(u) via Polynomial
@@ -20772,6 +21033,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = weierstrass_rational_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let IntKind::Function(fn_id, args) = kind {
         if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log) && args.len() == 2 {
             let base = args[0];
@@ -25688,6 +25953,85 @@ mod tests {
             integrate_symbolic_expr(&mut ctx, cubic_rad, "x").is_none(),
             "cubic radicand must stay residual"
         );
+    }
+
+    #[test]
+    fn weierstrass_substitution_integrates_the_family() {
+        let mut ctx = Context::new();
+        for source in [
+            "1/(2+cos(x))",
+            "1/(1+sin(x))",
+            "1/(1+cos(x))",
+            "1/(3+2*cos(x))",
+            "1/(5+4*sin(x))",
+            "sin(x)/(1+sin(x))",
+            "cos(x)/(2+cos(x))",
+            "1/(2+cos(2*x))",
+            "1/(sin(x)+cos(x))",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn weierstrass_substitution_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("1/(2+cos(x))", [-1.2_f64, 0.4, 2.0]),
+            ("1/(1+sin(x))", [-0.8, 0.3, 1.2]),
+            ("1/(3+2*cos(x))", [-2.0, 0.5, 1.7]),
+            ("1/(5+4*sin(x))", [-1.5, 0.2, 2.3]),
+            ("sin(x)/(1+sin(x))", [-0.9, 0.6, 1.4]),
+            ("1/(2+cos(2*x))", [-0.7, 0.3, 1.1]),
+            // atanh window: |tan(x/2) - 1| < sqrt(2).
+            ("1/(sin(x)+cos(x))", [0.3, 1.0, 2.0]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn weierstrass_substitution_declines_foreign_shapes() {
+        let mut ctx = Context::new();
+        // Bare x mixes, nonlinear/offset arguments, mixed multiples,
+        // tan atoms and symbolic coefficients are outside this owner.
+        for source in [
+            "x/(2+cos(x))",
+            "1/(2+cos(x^2))",
+            "1/(2+cos(x+1))",
+            "1/(sin(x)+cos(2*x))",
+            "1/(2+tan(x))",
+            "1/(a+cos(x))",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                super::weierstrass_rational_substitution_antiderivative(&mut ctx, expr, "x")
+                    .is_none(),
+                "must decline: {source}"
+            );
+        }
     }
 
     #[test]
