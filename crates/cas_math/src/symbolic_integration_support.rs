@@ -2669,6 +2669,105 @@ fn trig_cot_eighth_antiderivative_from_parts(
     ctx.add(Expr::Add(cot_terms, variable))
 }
 
+fn reciprocal_trig_abs_log_term(
+    ctx: &mut Context,
+    reciprocal_builtin: BuiltinFn,
+    arg: ExprId,
+) -> ExprId {
+    let log_arg = build_reciprocal_trig_log_argument(ctx, reciprocal_builtin, arg)
+        .expect("sec/csc log argument");
+    let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![log_arg]);
+    ctx.call_builtin(BuiltinFn::Ln, vec![abs_arg])
+}
+
+fn trig_sec_third_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    // d/du [sec(u)tan(u) + ln|sec(u)+tan(u)|] = 2 sec^3(u).
+    let sec_arg = ctx.call_builtin(BuiltinFn::Sec, vec![arg]);
+    let tan_arg = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+    let product = ctx.add(Expr::Mul(sec_arg, tan_arg));
+    let log_term = reciprocal_trig_abs_log_term(ctx, BuiltinFn::Sec, arg);
+    let sum = ctx.add(Expr::Add(product, log_term));
+    scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(2.into()) * a),
+        sum,
+    )
+}
+
+fn trig_csc_third_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    // d/du [-csc(u)cot(u) + ln|csc(u)-cot(u)|] = 2 csc^3(u).
+    let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
+    let cot_arg = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
+    let product_raw = ctx.add(Expr::Mul(csc_arg, cot_arg));
+    let product = ctx.add(Expr::Neg(product_raw));
+    let log_term = reciprocal_trig_abs_log_term(ctx, BuiltinFn::Csc, arg);
+    let sum = ctx.add(Expr::Add(product, log_term));
+    scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(2.into()) * a),
+        sum,
+    )
+}
+
+fn trig_sec_fifth_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    // sec^5 reduction: sec^3(u)tan(u)/4 + (3/4) * integral of sec^3.
+    let sec_arg = ctx.call_builtin(BuiltinFn::Sec, vec![arg]);
+    let tan_arg = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+    let three = ctx.num(3);
+    let sec_cubed = ctx.add(Expr::Pow(sec_arg, three));
+    let product_raw = ctx.add(Expr::Mul(sec_cubed, tan_arg));
+    let leading = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(4.into()) * a.clone()),
+        product_raw,
+    );
+    let lower = trig_sec_third_antiderivative_from_parts(ctx, arg, a);
+    let scaled_lower = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::new(3.into(), 4.into()),
+        lower,
+    );
+    ctx.add(Expr::Add(leading, scaled_lower))
+}
+
+fn trig_csc_fifth_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    // csc^5 reduction: -csc^3(u)cot(u)/4 + (3/4) * integral of csc^3.
+    let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
+    let cot_arg = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
+    let three = ctx.num(3);
+    let csc_cubed = ctx.add(Expr::Pow(csc_arg, three));
+    let product_raw = ctx.add(Expr::Mul(csc_cubed, cot_arg));
+    let product = ctx.add(Expr::Neg(product_raw));
+    let leading = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(4.into()) * a.clone()),
+        product,
+    );
+    let lower = trig_csc_third_antiderivative_from_parts(ctx, arg, a);
+    let scaled_lower = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::new(3.into(), 4.into()),
+        lower,
+    );
+    ctx.add(Expr::Add(leading, scaled_lower))
+}
+
 fn trig_sec_fourth_antiderivative_from_parts(
     ctx: &mut Context,
     arg: ExprId,
@@ -2787,6 +2886,54 @@ fn reciprocal_trig_power_affine_parts(
     let (a, _) = get_linear_coeffs(ctx, arg, var)?;
     let a = rational_constant_value(ctx, a)?;
     (!a.is_zero()).then_some(ReciprocalTrigPowerAffineParts { arg, a })
+}
+
+fn trig_sec_third_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = reciprocal_trig_power_affine_parts(ctx, base, exp, var, BuiltinFn::Sec, 3)?;
+    Some(trig_sec_third_antiderivative_from_parts(
+        ctx, parts.arg, parts.a,
+    ))
+}
+
+fn trig_csc_third_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = reciprocal_trig_power_affine_parts(ctx, base, exp, var, BuiltinFn::Csc, 3)?;
+    Some(trig_csc_third_antiderivative_from_parts(
+        ctx, parts.arg, parts.a,
+    ))
+}
+
+fn trig_sec_fifth_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = reciprocal_trig_power_affine_parts(ctx, base, exp, var, BuiltinFn::Sec, 5)?;
+    Some(trig_sec_fifth_antiderivative_from_parts(
+        ctx, parts.arg, parts.a,
+    ))
+}
+
+fn trig_csc_fifth_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = reciprocal_trig_power_affine_parts(ctx, base, exp, var, BuiltinFn::Csc, 5)?;
+    Some(trig_csc_fifth_antiderivative_from_parts(
+        ctx, parts.arg, parts.a,
+    ))
 }
 
 fn trig_sec_fourth_affine_antiderivative(
@@ -3206,6 +3353,54 @@ fn trig_cot_eighth_quotient_antiderivative(
     let parts = trig_cot_eighth_quotient_parts(ctx, num, den, var)?;
     Some(trig_cot_eighth_antiderivative_from_parts(
         ctx, parts.arg, parts.a, var,
+    ))
+}
+
+fn trig_sec_third_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = reciprocal_trig_power_quotient_parts(ctx, num, den, var, BuiltinFn::Cos, 3)?;
+    Some(trig_sec_third_antiderivative_from_parts(
+        ctx, parts.arg, parts.a,
+    ))
+}
+
+fn trig_csc_third_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = reciprocal_trig_power_quotient_parts(ctx, num, den, var, BuiltinFn::Sin, 3)?;
+    Some(trig_csc_third_antiderivative_from_parts(
+        ctx, parts.arg, parts.a,
+    ))
+}
+
+fn trig_sec_fifth_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = reciprocal_trig_power_quotient_parts(ctx, num, den, var, BuiltinFn::Cos, 5)?;
+    Some(trig_sec_fifth_antiderivative_from_parts(
+        ctx, parts.arg, parts.a,
+    ))
+}
+
+fn trig_csc_fifth_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = reciprocal_trig_power_quotient_parts(ctx, num, den, var, BuiltinFn::Sin, 5)?;
+    Some(trig_csc_fifth_antiderivative_from_parts(
+        ctx, parts.arg, parts.a,
     ))
 }
 
@@ -4705,6 +4900,42 @@ pub fn integrate_symbolic_is_cot_eighth_affine_target(
         }
         Expr::Div(num, den) => {
             trig_cot_eighth_quotient_antiderivative(ctx, num, den, var).is_some()
+        }
+        _ => false,
+    }
+}
+
+pub fn integrate_symbolic_is_sec_third_affine_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            trig_sec_third_affine_antiderivative(ctx, base, exp, var).is_some()
+                || trig_sec_fifth_affine_antiderivative(ctx, base, exp, var).is_some()
+        }
+        Expr::Div(num, den) => {
+            trig_sec_third_quotient_antiderivative(ctx, num, den, var).is_some()
+                || trig_sec_fifth_quotient_antiderivative(ctx, num, den, var).is_some()
+        }
+        _ => false,
+    }
+}
+
+pub fn integrate_symbolic_is_csc_third_affine_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            trig_csc_third_affine_antiderivative(ctx, base, exp, var).is_some()
+                || trig_csc_fifth_affine_antiderivative(ctx, base, exp, var).is_some()
+        }
+        Expr::Div(num, den) => {
+            trig_csc_third_quotient_antiderivative(ctx, num, den, var).is_some()
+                || trig_csc_fifth_quotient_antiderivative(ctx, num, den, var).is_some()
         }
         _ => false,
     }
@@ -18532,6 +18763,22 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        if let Some(integral) = trig_sec_third_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_csc_third_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_sec_fifth_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_csc_fifth_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = trig_sec_fourth_affine_antiderivative(ctx, base, exp, var) {
             return Some(integral);
         }
@@ -18735,6 +18982,22 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         }
 
         if let Some(integral) = trig_cot_eighth_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_sec_third_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_csc_third_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_sec_fifth_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_csc_fifth_quotient_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
 
@@ -23548,6 +23811,71 @@ mod tests {
         // Honest residual: non-table trig cofactor.
         let expr = parse("tan(x)/e^x", &mut ctx).expect("tan");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+    }
+
+    #[test]
+    fn reciprocal_trig_odd_powers_integrate_with_reduction_closed_forms() {
+        let mut ctx = Context::new();
+        for source in [
+            "1/cos(x)^3",
+            "1/sin(x)^3",
+            "1/cos(x)^5",
+            "1/sin(x)^5",
+            "1/cos(2*x+1)^3",
+            "sec(x)^3",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn reciprocal_trig_odd_cube_closed_forms_are_exact() {
+        let mut ctx = Context::new();
+        // d/du [sec(u)tan(u) + ln|sec(u)+tan(u)|] = 2 sec^3(u) and the
+        // csc twin: verified by direct differentiation of the parts.
+        let arg = parse("x", &mut ctx).expect("x");
+        let one = BigRational::from_integer(1.into());
+        let sec_form = super::trig_sec_third_antiderivative_from_parts(&mut ctx, arg, one.clone());
+        let sec_display = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: sec_form
+            }
+        );
+        assert!(
+            sec_display.contains("sec(x)") && sec_display.contains("tan(x)"),
+            "unexpected sec^3 form: {sec_display}"
+        );
+        let csc_form = super::trig_csc_third_antiderivative_from_parts(&mut ctx, arg, one);
+        let csc_display = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: csc_form
+            }
+        );
+        assert!(
+            csc_display.contains("csc(x)") && csc_display.contains("cot(x)"),
+            "unexpected csc^3 form: {csc_display}"
+        );
+    }
+
+    #[test]
+    fn reciprocal_trig_odd_power_targets_decline_other_owners() {
+        let mut ctx = Context::new();
+        // Even powers and the n = 1 log forms keep their owners.
+        for source in ["1/cos(x)", "1/cos(x)^2", "1/cos(x)^4", "1/sin(x)^4"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                !super::integrate_symbolic_is_sec_third_affine_target(&mut ctx, expr, "x"),
+                "must not claim: {source}"
+            );
+        }
     }
 
     #[test]

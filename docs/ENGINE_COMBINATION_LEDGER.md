@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 78 (newest first)
+Active entries: 79 (newest first)
 
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
 - 2026-06-12 | `retained` | calculus / integration / educational route / polynomial-derivative | Retained calculus: exponential substitution Div arm lands the damped-Gaussian family
 - 2026-06-12 | `retained` | calculus / limits at infinity (cas_math limits_support) / saturating | Retained calculus: at-infinity composition closes symbolic-finite factors and radical tails
+- 2026-06-12 | `retained` | calculus / integration / educational route / reciprocal trig power | Retained calculus: odd secant/cosecant powers via reduction closed forms
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 | Retained didactic: Phase 6 opens - backend Hermite reciprocal gains educational substeps
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 second rung | Retained didactic: mixed-numerator ln+arctan narration for the Hermite family
 - 2026-06-11 | `retained` | didactics / integration / block 12 trace elevation / Phase 6 third rung | Retained didactic: expanded Hermite shapes narrate completing the square
@@ -3223,3 +3224,47 @@ Active entries: 78 (newest first)
     at-infinity chains needed the same three arms (scale, product,
     composition atom) discovered one frontier apart; when fixing one
     side of a mirrored pair, probe the other side in the same cycle
+
+## 2026-06-12 - Retained calculus: odd secant/cosecant powers via reduction closed forms
+
+- area:
+  - calculus / integration / educational route / reciprocal trig power
+    family (block 7) / pi-bound definite composition
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 7 trig integration (sec/csc power
+    ladder; plus the block-13 pi-bound row it unlocks)
+  - calculus_matrix_cell: integrate(1/cos(x)^3) =
+    (sec*tan + ln|sec+tan|)/2, the csc twin, fifth powers by one
+    reduction step, affine arguments, and the definite
+    integrate(1/cos(x)^3, x, 0, pi/4) = (ln(1+sqrt(2)) + sqrt(2))/2
+  - behavior_change_expected: yes - odd powers 3 and 5 of sec/csc
+    (Pow and 1/cos^n quotient shapes, affine arguments) integrate
+- observed (frontier probing):
+  - the even-power ladder (4/6/8) had per-power from_parts builders and
+    affine/quotient wrappers; the odd rungs were simply absent - the
+    same parts extractors (reciprocal_trig_power_affine_parts,
+    reciprocal_trig_power_quotient_parts) accepted n=3/5 unchanged, so
+    the cycle is four closed-form builders plus mechanical wiring
+  - closed forms verified by hand differentiation before implementing
+    (d/du[sec u tan u + ln|sec u + tan u|] = 2 sec^3 u; csc twin with
+    the sign flipped; fifth powers recurse one step to the third)
+  - harness lesson repeated with a new nuance: diff-verification of the
+    sec^3 closed form is EXACT (returns 1/cos(x)^3) but the simplifier
+    emits a depth_overflow WARN on intermediates, and the matrix treats
+    stderr WARN as fragile - the three indefinite rows ship under the
+    harness's verification_gap regime (first occurrences; documented
+    intent, round-trips pinned by unit tests) plus a clean pi-bound
+    definite row that classifies as definite_ftc
+- retained learning:
+  - per-power ladders hide their gaps in plain sight: when a family is
+    built as explicit rungs (4/6/8), grep for the rung list before
+    assuming a missing case needs new machinery - odd rungs reused
+    every part extractor unchanged
+  - stderr fragility is a verification-channel constraint independent of
+    mathematical correctness: when diff-verification WARNs on depth,
+    pin through definite values plus unit tests (cycle-1 lesson now
+    confirmed as the standing pattern) and document the
+    verification_gap rows in the ledger rather than silently shipping

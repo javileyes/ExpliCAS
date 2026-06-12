@@ -489,7 +489,12 @@ Use these blocks as the active plan:
      The damped-Gaussian substitution family landed next (a Div arm on
      the polynomial-derivative exponential substitution owner, gated to
      nonlinear exponents; integrate(x*e^(-x^2), x, 0, infinity) = 1/2
-     composes). At-infinity composition then closed its mirror gaps
+     composes). The odd secant/cosecant power ladder landed next
+     (reduction closed forms for n = 3 and 5, affine arguments, and the
+     pi-bound definite integrate(1/cos(x)^3, x, 0, pi/4); the
+     diff-verification WARN on depth keeps the indefinite rows under
+     verification_gap with unit-test round-trips).
+     At-infinity composition previously closed its mirror gaps
      (symbolic finite factors compose multiplicatively, radical
      unbounded tails reach the saturating table; integrate(2/(1+x^2),
      x, 0, infinity) = pi composes). Next rungs: touches at finite

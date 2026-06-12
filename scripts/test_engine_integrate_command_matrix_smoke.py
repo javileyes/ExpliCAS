@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 201)
+        self.assertEqual(len(cases), 205)
         names = {case.name for case in cases}
         self.assertIn(
             "algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
@@ -422,7 +422,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 15, "supported": 181, "undefined": 5},
+            {"residual": 15, "supported": 185, "undefined": 5},
         )
         self.assertEqual(
             sum(
@@ -440,7 +440,8 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "residual_not_verified": 15,
                 "undefined_not_verified": 5,
-                "definite_ftc_from_verified_antiderivative": 28,
+                "definite_ftc_from_verified_antiderivative": 29,
+                "verification_gap": 3,
                 "verified_by_diff": 30,
                 "verified_by_diff_and_direct_diff_integrate": 91,
                 "verified_by_direct_diff_integrate": 32,
@@ -683,6 +684,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "exp_substitution_cubic_damped_indefinite",
                 "definite_integral_improper_gaussian_damped",
                 "definite_integral_improper_scaled_arctan_pi",
+                "reciprocal_cosine_odd_cube_affine_reduction",
+                "reciprocal_sine_odd_cube_reduction",
+                "definite_integral_sec_cube_pi_bound",
+                "reciprocal_cosine_odd_cube_reduction",
                 "by_parts_affine_log_domain",
                 "affine_secant_tangent_derivative_product_domain",
                 "affine_cosecant_cotangent_derivative_product_domain",
@@ -731,7 +736,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "backend_verified_unconditional_real": 5,
                 "backend_verified_conservative_denominator_nonzero": 2,
                 "interval_certified_unconditional": 3,
-                "interval_certified_trig_discharged": 3,
+                "interval_certified_trig_discharged": 4,
                 "boundary_touch_one_sided_limit": 6,
                 "improper_interval_certified": 7,
                 "improper_divergent_to_infinity": 4,
@@ -761,7 +766,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "explicit_tangent_presimplified_condition_dedupe": 1,
                 "hyperbolic_sine_pole_required": 11,
                 "linear_poles_required": 9,
-                "nonzero_required": 3,
+                "nonzero_required": 6,
                 "nonfinite_undefined": 1,
                 "positive_log_argument_required": 1,
                 "positive_log_argument_and_trig_poles": 1,
@@ -839,14 +844,14 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block4_base_integration": 14,
+                "block4_base_integration": 17,
                 "block5_generalized_substitution": 13,
                 "block6_rational_integration": 22,
                 "block7_trig_hyperbolic_integration": 67,
                 "block8_radical_inverse_families": 17,
                 "block9_residuals_and_non_goals": 16,
                 "block12_hybrid_algorithmic_backend": 20,
-                "block13_definite_integrals": 32,
+                "block13_definite_integrals": 33,
             },
         )
         self.assertEqual(
@@ -854,7 +859,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "algorithmic_backend_boundary_verified": 20,
                 "didactic_trace_and_verified_antiderivative": 55,
-                "domain_conditions_and_verified_antiderivative": 106,
+                "domain_conditions_and_verified_antiderivative": 110,
                 "explicit_undefined_domain_policy": 5,
                 "safe_residual_policy": 15,
             },
