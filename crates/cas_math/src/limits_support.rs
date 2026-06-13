@@ -7627,7 +7627,54 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = bounded_noise_rational_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = rational_difference_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     rational_poly_limit(ctx, expr, var, approach)
+}
+
+/// An additive combination of rational functions at infinity that the
+/// per-term additive rule leaves as `inf - inf` (e.g. `(x^2+1)/(x+1) - x`):
+/// place the terms over a common denominator and reuse the rational quotient
+/// limit. Runs only after the structural additive rules decline, so a sum of
+/// terms that each have a finite limit keeps its existing trace. Non-rational
+/// operands (sqrt, sin, ...) make the multipoly conversion fail, so the
+/// conjugate/elementary paths keep their forms.
+fn rational_difference_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let (lhs, rhs, subtract) = match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) => (lhs, rhs, true),
+        Expr::Add(lhs, rhs) => (lhs, rhs, false),
+        _ => return None,
+    };
+    let (a_num, a_den) = rational_numerator_denominator(ctx, lhs);
+    let (b_num, b_den) = rational_numerator_denominator(ctx, rhs);
+    // (a_num/a_den) +/- (b_num/b_den) = (a_num b_den +/- b_num a_den)/(a_den b_den).
+    let left_cross = ctx.add(Expr::Mul(a_num, b_den));
+    let right_cross = ctx.add(Expr::Mul(b_num, a_den));
+    let numerator = if subtract {
+        ctx.add(Expr::Sub(left_cross, right_cross))
+    } else {
+        ctx.add(Expr::Add(left_cross, right_cross))
+    };
+    let denominator = ctx.add(Expr::Mul(a_den, b_den));
+    let combined = ctx.add(Expr::Div(numerator, denominator));
+    rational_poly_limit(ctx, combined, var, approach)
+}
+
+/// `(numerator, denominator)` of an expression viewed as a fraction: a Div
+/// splits, anything else is over 1.
+fn rational_numerator_denominator(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId) {
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        (*num, *den)
+    } else {
+        let one = ctx.num(1);
+        (expr, one)
+    }
 }
 
 /// A rational quotient at infinity where one or both sides are a polynomial
@@ -13757,6 +13804,43 @@ mod tests {
         assert!(
             matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
         );
+    }
+
+    #[test]
+    fn rational_difference_at_infinity_combines_into_one_fraction() {
+        // inf - inf of rational functions: the per-term additive rule leaves it
+        // residual; combining over a common denominator resolves it.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("(x^2+1)/(x+1) - x", "-1"),
+            ("x^2/(x-1) - x", "1"),
+            ("(x^3+1)/(x^2+1) - x", "0"),
+            ("x - x^2/(x+1)", "1"),
+            ("x^2/(x+1) - x^2/(x+2)", "1"),
+            ("(2*x^2)/(x+1) - 2*x", "-2"),
+            ("x^3/(x+1) - x", "infinity"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = rational_difference_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("rational difference must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn rational_difference_at_infinity_declines_non_rational_operands() {
+        // Non-rational operands (sqrt/sin/exp) make the multipoly conversion
+        // fail, so the conjugate/elementary/dominance paths keep their forms.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in ["sqrt(x^2+1) - x", "sin(x) - x", "exp(x) - x"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                rational_difference_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "rational difference must decline non-rational operands: {source}"
+            );
+        }
     }
 
     #[test]

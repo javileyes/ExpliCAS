@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 129 (newest first)
+Active entries: 130 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
+- 2026-06-14 | `retained` | calculus / limits / additive inf - inf of rational functions (block 3) | Retained limits: rational inf - inf at infinity
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5645,3 +5646,43 @@ Active entries: 129 (newest first)
     prototyping precisely because adversarial probing of it EXPOSES
     pre-existing soundness holes reachable by simpler direct inputs. The
     substitution itself was reverted; the bug it found was the real prize
+
+
+## 2026-06-14 - Retained limits: rational inf - inf at infinity
+
+- area:
+  - calculus / limits / additive inf - inf of rational functions (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    rational-minus-polynomial, difference of two quotients)
+  - limit_matrix_cell: limit((x^2+1)/(x+1)-x,x,inf)=-1,
+    limit(x^2/(x+1)-x^2/(x+2),x,inf)=1
+  - behavior_change_expected: yes - a difference of rational functions that
+    the per-term additive rule left as inf - inf now resolves
+- observed (common denominator reuses the rational quotient limit):
+  - additive_limit_at_infinity sums the per-term limits, so a difference of
+    two terms that each diverge to +inf yields inf - inf and declines.
+    rational_difference_limit_at_infinity catches Sub/Add at the END of the
+    chain, places the operands over a common denominator
+    ((a_num b_den -/+ b_num a_den)/(a_den b_den)) and hands the single
+    fraction to the existing rational_poly_limit (degree comparison). A bare
+    polynomial is treated as p/1
+  - footprint-minimal: runs only after every structural infinity rule has
+    declined, so a difference whose terms have finite limits keeps its trace
+    (1/(x-1)-1/(x+1) stays additive). Non-rational operands (sqrt, sin, exp)
+    make the multipoly conversion fail, so the conjugate / exponential
+    dominance paths keep owning sqrt(x^2+1)-x and exp(x)-x
+- retained learning:
+  - inf - inf is only indeterminate term-by-term: for rational functions it
+    is a single rational limit once over a common denominator. The
+    additive-then-combine split mirrors the ln(P)-ln(Q)=ln(P/Q) cycle - the
+    indeterminate additive shape has a determinate combined form, so add a
+    LATE rule that rewrites to the combined form and reuses the determinate
+    machinery rather than teaching the additive rule to cancel infinities
+  - delegating to a stricter sub-rule (rational_poly_limit, which fails on
+    non-polynomial parts) is its own gate: build the combined candidate
+    unconditionally and let the reused rule's own preconditions reject the
+    out-of-class inputs, instead of duplicating a rationality check
