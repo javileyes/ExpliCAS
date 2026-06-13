@@ -3405,6 +3405,9 @@ fn try_limit_rules_at_finite(
     {
         return Some(result);
     }
+    if let Some(result) = apply_finite_taylor_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
     if let Some(result) = apply_finite_bilateral_log_endpoint_rule(ctx, expr, var, point) {
         return Some(result);
     }
@@ -3669,6 +3672,266 @@ fn argument_is_real_rational_function(ctx: &Context, arg: ExprId, var_name: &str
                 .is_ok_and(|den_poly| !den_poly.is_zero());
     }
     false
+}
+
+/// Highest Taylor order tracked by the higher-order 0/0 quotient rule.
+const TAYLOR_QUOTIENT_MAX_ORDER: usize = 12;
+
+/// Higher-order 0/0 limits at a finite point via Taylor series:
+/// `(1 - cos x)/x^2 -> 1/2`, `(sin x - x)/x^3 -> -1/6`,
+/// `(e^x - 1 - x)/x^2 -> 1/2`. Both numerator and denominator are expanded
+/// to a bounded order; the limit is the ratio of the lowest-order
+/// coefficients when the numerator does not vanish slower than the
+/// denominator. Coefficients up to the denominator's order are EXACT
+/// (truncation only drops higher orders), so the value is exact.
+///
+/// Runs after the first-order equivalent engine, which owns the simple
+/// `sin x / x` cases; this rule resolves the cancellation cases that need
+/// the second/third Taylor term.
+fn apply_finite_taylor_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    use num_traits::Zero;
+    // Only the point 0 (the Taylor series are expanded at 0).
+    if !crate::numeric_eval::as_rational_const(ctx, point).is_some_and(|p| p.is_zero()) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let num_series = taylor_at_zero(ctx, num, &var_name, TAYLOR_QUOTIENT_MAX_ORDER)?;
+    let den_series = taylor_at_zero(ctx, den, &var_name, TAYLOR_QUOTIENT_MAX_ORDER)?;
+    let num_low = lowest_nonzero_order(&num_series.coeffs);
+    let den_low = lowest_nonzero_order(&den_series.coeffs)?;
+    // Genuine 0/0 only: the denominator must vanish at 0.
+    if den_low == 0 {
+        return None;
+    }
+    let den_coeff = den_series.coeffs[den_low].clone();
+    match num_low {
+        // Numerator is identically 0 up to the tracked order: 0 / (x^d) -> 0
+        // only if it truly vanishes to order > den_low. We only know that when
+        // den_low <= tracked order, which it is here; a higher-order numerator
+        // term cannot change a 0 leading behaviour against x^den_low.
+        None => Some(ctx.num(0)),
+        Some(m) if m > den_low => Some(ctx.num(0)),
+        Some(m) if m == den_low => {
+            let value = &num_series.coeffs[m] / &den_coeff;
+            Some(ctx.add(Expr::Number(value)))
+        }
+        // m < den_low: numerator vanishes slower -> divergent (DNE bilateral).
+        Some(_) => None,
+    }
+}
+
+/// The lowest index with a nonzero coefficient, or None when all are zero.
+fn lowest_nonzero_order(coeffs: &[BigRational]) -> Option<usize> {
+    coeffs.iter().position(|c| !c.is_zero())
+}
+
+/// Taylor coefficients of `expr` at 0 as a polynomial truncated to `order`,
+/// for expressions built from polynomials, the standard analytic functions
+/// (sin, cos, tan, exp, sinh, cosh, atan, asin, ln), and their sums,
+/// products, integer powers, and compositions with a zero-at-0 argument.
+fn taylor_at_zero(ctx: &Context, expr: ExprId, var_name: &str, order: usize) -> Option<Polynomial> {
+    if let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) {
+        return Some(truncate_polynomial(&poly, order, var_name));
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => Some(
+            taylor_at_zero(ctx, lhs, var_name, order)?
+                .add(&taylor_at_zero(ctx, rhs, var_name, order)?),
+        ),
+        Expr::Sub(lhs, rhs) => Some(
+            taylor_at_zero(ctx, lhs, var_name, order)?
+                .sub(&taylor_at_zero(ctx, rhs, var_name, order)?),
+        ),
+        Expr::Neg(inner) => {
+            let minus_one = Polynomial::new(vec![-rational_one()], var_name.to_string());
+            Some(taylor_at_zero(ctx, inner, var_name, order)?.mul(&minus_one))
+        }
+        Expr::Mul(lhs, rhs) => {
+            let l = taylor_at_zero(ctx, lhs, var_name, order)?;
+            let r = taylor_at_zero(ctx, rhs, var_name, order)?;
+            Some(truncate_polynomial(&l.mul(&r), order, var_name))
+        }
+        Expr::Pow(base, exponent) => {
+            // e^arg, or [series]^n for a non-negative integer n.
+            if matches!(ctx.get(base), Expr::Constant(Constant::E)) {
+                let inner = taylor_at_zero(ctx, exponent, var_name, order)?;
+                return compose_standard_series(BuiltinFn::Exp, &inner, order, var_name);
+            }
+            let exp_value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            if !exp_value.is_integer() || exp_value.is_negative() {
+                return None;
+            }
+            let n: u32 = exp_value.to_integer().try_into().ok()?;
+            let base_series = taylor_at_zero(ctx, base, var_name, order)?;
+            let mut acc = Polynomial::one(var_name.to_string());
+            for _ in 0..n {
+                acc = truncate_polynomial(&acc.mul(&base_series), order, var_name);
+            }
+            Some(acc)
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let builtin = ctx.builtin_of(fn_id)?;
+            let inner = taylor_at_zero(ctx, args[0], var_name, order)?;
+            compose_standard_series(builtin, &inner, order, var_name)
+        }
+        _ => None,
+    }
+}
+
+/// Compose a standard analytic function with the already-expanded inner
+/// series. The inner series must satisfy the function's expansion point
+/// (0 for everything except ln, which needs 1).
+fn compose_standard_series(
+    builtin: BuiltinFn,
+    inner: &Polynomial,
+    order: usize,
+    var_name: &str,
+) -> Option<Polynomial> {
+    use num_traits::Zero;
+    let zero = BigRational::zero();
+    let inner_const = inner
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(|| zero.clone());
+
+    if matches!(builtin, BuiltinFn::Ln) {
+        // ln(arg) = ln(1 + (arg - 1)); the argument must tend to 1 at 0.
+        if inner_const != rational_one() {
+            return None;
+        }
+        let shifted = inner.sub(&Polynomial::new(vec![rational_one()], var_name.to_string()));
+        let coeffs = standard_taylor_coeffs(BuiltinFn::Ln, order)?;
+        return Some(compose_with_zero_inner(&coeffs, &shifted, order, var_name));
+    }
+
+    // Every other supported function expands at 0, so the inner series must
+    // vanish at 0 for the composition to use the standard series.
+    if !inner_const.is_zero() {
+        return None;
+    }
+    let coeffs = standard_taylor_coeffs(builtin, order)?;
+    Some(compose_with_zero_inner(&coeffs, inner, order, var_name))
+}
+
+/// Horner evaluation of `sum_k coeffs[k] * inner^k` truncated to `order`,
+/// valid when `inner(0) = 0` (so `inner^k` has order >= k).
+fn compose_with_zero_inner(
+    coeffs: &[BigRational],
+    inner: &Polynomial,
+    order: usize,
+    var_name: &str,
+) -> Polynomial {
+    let mut acc = Polynomial::new(vec![], var_name.to_string());
+    for c in coeffs.iter().rev() {
+        let c_poly = Polynomial::new(vec![c.clone()], var_name.to_string());
+        acc = truncate_polynomial(&acc.mul(inner), order, var_name).add(&c_poly);
+    }
+    truncate_polynomial(&acc, order, var_name)
+}
+
+/// Coefficients `[c_0 .. c_order]` of the standard analytic functions at 0
+/// (Ln is the series of `ln(1 + u)`); the i-th coefficient is generated as a
+/// pure function of the index i.
+fn standard_taylor_coeffs(builtin: BuiltinFn, order: usize) -> Option<Vec<BigRational>> {
+    use num_bigint::BigInt;
+    use num_traits::{One, Zero};
+    let factorial =
+        |k: usize| -> BigInt { (2..=k).fold(BigInt::one(), |acc, i| acc * BigInt::from(i)) };
+    // (-1)^k as a BigInt.
+    let alternating = |k: usize| -> BigInt {
+        if k.is_multiple_of(2) {
+            BigInt::one()
+        } else {
+            -BigInt::one()
+        }
+    };
+    let zero = BigRational::zero();
+    // Tan has no closed per-index formula; divide sin by cos.
+    if matches!(builtin, BuiltinFn::Tan) {
+        let sin = standard_taylor_coeffs(BuiltinFn::Sin, order)?;
+        let cos = standard_taylor_coeffs(BuiltinFn::Cos, order)?;
+        return power_series_divide(&sin, &cos, order);
+    }
+    let coeff = |i: usize| -> BigRational {
+        let odd = !i.is_multiple_of(2);
+        match builtin {
+            BuiltinFn::Exp => BigRational::new(BigInt::one(), factorial(i)),
+            BuiltinFn::Sin if odd => BigRational::new(alternating(i / 2), factorial(i)),
+            BuiltinFn::Sinh if odd => BigRational::new(BigInt::one(), factorial(i)),
+            BuiltinFn::Cos if !odd => BigRational::new(alternating(i / 2), factorial(i)),
+            BuiltinFn::Cosh if !odd => BigRational::new(BigInt::one(), factorial(i)),
+            BuiltinFn::Atan | BuiltinFn::Arctan if odd => {
+                BigRational::new(alternating(i / 2), BigInt::from(i))
+            }
+            BuiltinFn::Asin | BuiltinFn::Arcsin if odd => {
+                // c_(2k+1) = (2k)! / (4^k (k!)^2 (2k+1)), i = 2k+1.
+                let k = i / 2;
+                let denominator =
+                    BigInt::from(4).pow(k as u32) * factorial(k).pow(2) * BigInt::from(i);
+                BigRational::new(factorial(2 * k), denominator)
+            }
+            // ln(1 + u) = sum_{k>=1} (-1)^(k+1) u^k / k.
+            BuiltinFn::Ln if i >= 1 => BigRational::new(alternating(i + 1), BigInt::from(i)),
+            _ => zero.clone(),
+        }
+    };
+    // Reject unsupported builtins (every supported one is matched above).
+    if !matches!(
+        builtin,
+        BuiltinFn::Exp
+            | BuiltinFn::Sin
+            | BuiltinFn::Sinh
+            | BuiltinFn::Cos
+            | BuiltinFn::Cosh
+            | BuiltinFn::Atan
+            | BuiltinFn::Arctan
+            | BuiltinFn::Asin
+            | BuiltinFn::Arcsin
+            | BuiltinFn::Ln
+    ) {
+        return None;
+    }
+    Some((0..=order).map(coeff).collect())
+}
+
+/// Divide two power series `num / den` (den_0 != 0) to `order` terms.
+fn power_series_divide(
+    num: &[BigRational],
+    den: &[BigRational],
+    order: usize,
+) -> Option<Vec<BigRational>> {
+    use num_traits::Zero;
+    let den0 = den.first()?;
+    if den0.is_zero() {
+        return None;
+    }
+    let mut q = vec![BigRational::zero(); order + 1];
+    for n in 0..=order {
+        let mut acc = num.get(n).cloned().unwrap_or_else(BigRational::zero);
+        for (k, item) in den.iter().enumerate().take(n + 1).skip(1) {
+            acc -= item * &q[n - k];
+        }
+        q[n] = acc / den0;
+    }
+    Some(q)
+}
+
+/// Keep only the coefficients up to `order` (drop higher-degree terms).
+fn truncate_polynomial(poly: &Polynomial, order: usize, var_name: &str) -> Polynomial {
+    let coeffs: Vec<BigRational> = poly.coeffs.iter().take(order + 1).cloned().collect();
+    Polynomial::new(coeffs, var_name.to_string())
 }
 
 /// Resolve |var - point| by the approach side anywhere in the
@@ -9020,6 +9283,63 @@ mod tests {
         assert!(
             apply_finite_general_exp_zero_quotient_rule(&mut ctx, exp_form, x, zero).is_none(),
             "natural base is left to the exp rule"
+        );
+    }
+
+    #[test]
+    fn finite_taylor_quotient_resolves_higher_order_zero_over_zero() {
+        // Both sides vanish at 0; the limit is the ratio of leading Taylor
+        // coefficients once the numerator's order matches the denominator's.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("(1 - cos(x))/x^2", "1/2"),
+            ("(sin(x) - x)/x^3", "-1/6"),
+            ("(x - sin(x))/x^3", "1/6"),
+            ("(tan(x) - x)/x^3", "1/3"),
+            ("(exp(x) - 1 - x)/x^2", "1/2"),
+            ("(cosh(x) - 1)/x^2", "1/2"),
+            ("(sinh(x) - x)/x^3", "1/6"),
+            ("(1 - cos(2*x))/x^2", "2"),
+            ("(ln(1+x) - x)/x^2", "-1/2"),
+            ("(arctan(x) - x)/x^3", "-1/3"),
+            ("(arcsin(x) - x)/x^3", "1/6"),
+            ("(1 - cos(x))/(x*sin(x))", "1/2"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = apply_finite_taylor_quotient_rule(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("taylor quotient must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn finite_taylor_quotient_declines_non_vanishing_and_unsupported() {
+        // Honest declines: a numerator that does not out-vanish the denominator
+        // (m < d), an oscillation whose argument does not tend to 0, a constant
+        // numerator (den vanishes alone), and a nonzero approach point.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        let one = parse_expr(&mut ctx, "1");
+        for source in [
+            "(1 - cos(x))/x^3", // numerator order 2 < denominator order 3
+            "sin(1/x)/x",       // argument 1/x does not tend to 0 (honesty list)
+            "cos(x)/x",         // numerator does not vanish at 0
+            "x/sin(1/x)",       // unsupported inner series
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_taylor_quotient_rule(&mut ctx, expr, x, zero).is_none(),
+                "taylor quotient must decline: {source}"
+            );
+        }
+        // A nonzero approach point is out of scope for the at-zero series.
+        let expr = parse_expr(&mut ctx, "(1 - cos(x))/x^2");
+        assert!(
+            apply_finite_taylor_quotient_rule(&mut ctx, expr, x, one).is_none(),
+            "taylor quotient is only defined at the origin"
         );
     }
 

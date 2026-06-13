@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 125 (newest first)
+Active entries: 126 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -142,6 +142,7 @@ Active entries: 125 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / rational growth at infinity (block 3, frontier | Retained limits: rational quotient with bounded additive noise
 - 2026-06-13 | `retained` | calculus / limits / logarithmic difference at infinity (block 3) | Retained limits: ln(P) - ln(Q) at infinity collapses to ln(ratio)
 - 2026-06-13 | `retained` | calculus / limits / finite-point 0/0 quotient (block 3) | Retained limits: (a^x - 1)/x -> ln(a) (general-base 0/0)
+- 2026-06-13 | `retained` | calculus / limits / finite-point 0/0 quotient with sum cancellation | Retained limits: higher-order Taylor 0/0 quotient at the origin
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5422,3 +5423,59 @@ Active entries: 125 (newest first)
   - reuse the sibling rule's offset recognizer SHAPE (Sub/Add(-1)/Neg/Mul
     scale) but swap the atom (e^u -> a^g with a numeric base); the
     derivative-at-0 family is the exp family with ln(a) reinstated
+
+
+## 2026-06-13 - Retained limits: higher-order Taylor 0/0 quotient at the origin
+
+- area:
+  - calculus / limits / finite-point 0/0 quotient with sum cancellation
+    (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (3 matrix rows:
+    cosine even-order, sine cubic, arctan cubic)
+  - limit_matrix_cell: limit((1-cos x)/x^2,x,0)=1/2,
+    limit((sin x - x)/x^3,x,0)=-1/6, limit((arctan x - x)/x^3,x,0)=-1/3
+  - behavior_change_expected: yes - 0/0 limits whose numerator and
+    denominator both vanish to ORDER > 1 (where first-order equivalent
+    infinitesimals are invalid because the leading terms cancel) now
+    resolve to the exact ratio of leading Taylor coefficients
+- observed (a self-contained Taylor engine on top of the existing chain):
+  - the first-order equivalent-infinitesimal rule (339496d6e) declines
+    differences like (sin x - x)/x^3 honestly: the first-order parts cancel
+    and what remains is the higher-order tail. apply_finite_taylor_quotient
+    _rule computes the Maclaurin series (truncation order 12) of numerator
+    and denominator, finds each side's lowest nonzero order, and divides
+    the leading coefficients: num_low > den_low -> 0, num_low == den_low ->
+    exact coefficient ratio, num_low < den_low (or non-vanishing) -> declines
+  - taylor_at_zero builds series structurally: exact polynomials, Add/Sub/
+    Neg/Mul, Pow(E,arg) and Pow(base, nonneg int n), and Function(f,[arg])
+    by composing the standard series of f (exp, sin, cos, sinh, cosh,
+    atan, asin, ln(1+u), tan=sin/cos) with the inner series via Horner.
+    standard_taylor_coeffs generates the i-th coefficient as a pure
+    function of i (no closed form for tan -> power_series_divide(sin,cos))
+  - gates: fires only at the point x=0 (the at-zero series); the inner
+    series must exist (1/x, sqrt, general powers decline -> residual);
+    the denominator must vanish (den_low >= 1) for a genuine 0/0
+- retained learning:
+  - truncation at a fixed order is SOUND for a leading-order limit, not an
+    approximation: coefficients up to the denominator order are EXACT
+    (truncation only drops strictly-higher orders), and a numerator that is
+    zero through the whole truncation window vanishes faster than any
+    denominator that resolves inside it, so it is exactly 0. The honesty
+    list survives for free: sin(1/x) declines because its argument 1/x is
+    Pow(x,-1), which the series builder rejects - the engine only sees
+    functions whose argument provably tends to 0
+  - a higher-order 0/0 engine belongs AFTER the first-order equivalent rule,
+    not instead of it: the cheap first-order path keeps owning the cases it
+    can (a single series multiply is dearer than an equivalent substitution),
+    and the Taylor engine only catches what first-order honestly declined
+    (the sum-cancellation tail). Order the chain cheap-to-general
+  - operational: the integrate scorecard's integrate_residual_public_phase_
+    by_cause_family picks a single REPRESENTATIVE residual case per bucket,
+    and which case wins is nondeterministic run-to-run (confirmed by two
+    identical-code regenerations flipping trig_additive_residual_domain <->
+    log_rational_residual). Treat it like slowest_case: filter it from the
+    fingerprint, compare timing-sorted lists as multisets
