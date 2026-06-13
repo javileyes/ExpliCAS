@@ -9709,6 +9709,134 @@ fn quadratic_radical_over_monomial_antiderivative(
     None
 }
 
+/// Quartic denominators (a x^2 + b)/(x^4 + 1) via the symmetric
+/// substitution. Split a x^2 + b = c1 (x^2+1) + c2 (x^2-1); the
+/// (x^2+1) piece divides by x^2 to (1+1/x^2)/((x-1/x)^2+2) so u=x-1/x
+/// gives int du/(u^2+2) -> arctan, and the (x^2-1) piece gives
+/// u=x+1/x, int du/(u^2-2) -> the irrational-root log form. Covers the
+/// famous 1/(x^4+1), x^2/(x^4+1), (x^2+1)/(x^4+1), (x^2-1)/(x^4+1)
+/// without irrational-coefficient factorization. Ordered after the
+/// rational owners (x^4+4 etc. factor rationally and keep theirs).
+fn quartic_symmetric_substitution_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let den_poly = Polynomial::from_expr(ctx, den, var).ok()?;
+    // Denominator exactly x^4 + 1.
+    if den_poly.degree() != 4 {
+        return None;
+    }
+    let expected = [
+        BigRational::from_integer(1.into()),
+        BigRational::zero(),
+        BigRational::zero(),
+        BigRational::zero(),
+        BigRational::from_integer(1.into()),
+    ];
+    if den_poly.coeffs.len() != 5 || den_poly.coeffs != expected {
+        return None;
+    }
+    // Numerator a x^2 + b (only even powers, degree <= 2).
+    let num_poly = Polynomial::from_expr(ctx, num, var).ok()?;
+    if num_poly.degree() > 2 {
+        return None;
+    }
+    let coeff = |i: usize| {
+        num_poly
+            .coeffs
+            .get(i)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+    };
+    if !coeff(1).is_zero() {
+        return None;
+    }
+    let a = coeff(2);
+    let b = coeff(0);
+    if a.is_zero() && b.is_zero() {
+        return None;
+    }
+    let two = BigRational::from_integer(2.into());
+    let c1 = (&a + &b) / &two; // weight of the (x^2+1) -> arctan piece
+    let c2 = (&a - &b) / &two; // weight of the (x^2-1) -> log piece
+
+    let used = cas_ast::collect_variables(ctx, expr);
+    let u_name = ["u", "u_", "u_sub"]
+        .iter()
+        .find(|candidate| !used.contains(**candidate) && *candidate != &var)?
+        .to_string();
+    let var_expr = ctx.var(var);
+    let x_squared = {
+        let two_expr = ctx.num(2);
+        ctx.add(Expr::Pow(var_expr, two_expr))
+    };
+
+    let mut pieces: Vec<ExprId> = Vec::new();
+
+    if !c1.is_zero() {
+        // u = x - 1/x = (x^2 - 1)/x ; int 1/(u^2 + 2) du.
+        let u = ctx.var(&u_name);
+        let u_sq = {
+            let two_expr = ctx.num(2);
+            ctx.add(Expr::Pow(u, two_expr))
+        };
+        let two_const = ctx.num(2);
+        let denom = ctx.add(Expr::Add(u_sq, two_const));
+        let one = ctx.num(1);
+        let integrand = ctx.add(Expr::Div(one, denom));
+        let integral_u = integrate_symbolic_expr(ctx, integrand, &u_name)?;
+        let integral_u = cas_ast::hold::unwrap_internal_hold(ctx, integral_u);
+        let one_b = ctx.num(1);
+        let numerator = ctx.add(Expr::Sub(x_squared, one_b));
+        let replacement = ctx.add(Expr::Div(numerator, var_expr));
+        let target = ctx.var(&u_name);
+        let substituted = crate::substitute::substitute_power_aware(
+            ctx,
+            integral_u,
+            target,
+            replacement,
+            crate::substitute::SubstituteOptions::exact(),
+        );
+        pieces.push(scale_rational_term(ctx, c1, substituted));
+    }
+
+    if !c2.is_zero() {
+        // u = x + 1/x = (x^2 + 1)/x ; int 1/(u^2 - 2) du.
+        let u = ctx.var(&u_name);
+        let u_sq = {
+            let two_expr = ctx.num(2);
+            ctx.add(Expr::Pow(u, two_expr))
+        };
+        let two_const = ctx.num(2);
+        let denom = ctx.add(Expr::Sub(u_sq, two_const));
+        let one = ctx.num(1);
+        let integrand = ctx.add(Expr::Div(one, denom));
+        let integral_u = integrate_symbolic_expr(ctx, integrand, &u_name)?;
+        let integral_u = cas_ast::hold::unwrap_internal_hold(ctx, integral_u);
+        let one_b = ctx.num(1);
+        let numerator = ctx.add(Expr::Add(x_squared, one_b));
+        let replacement = ctx.add(Expr::Div(numerator, var_expr));
+        let target = ctx.var(&u_name);
+        let substituted = crate::substitute::substitute_power_aware(
+            ctx,
+            integral_u,
+            target,
+            replacement,
+            crate::substitute::SubstituteOptions::exact(),
+        );
+        pieces.push(scale_rational_term(ctx, c2, substituted));
+    }
+
+    if pieces.is_empty() {
+        return None;
+    }
+    Some(build_balanced_add(ctx, &pieces))
+}
+
 /// Products sin(k x)^m cos(k x)^n sharing ONE linear argument (rational
 /// k != 0, zero offset) with at least one ODD power: substitute
 /// u = sin(k x) when n is odd (du = k cos dx, cos^n = cos (1-u^2)^((n-1)/2))
@@ -21509,6 +21637,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = quartic_symmetric_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = quadratic_radical_over_monomial_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -26581,6 +26713,74 @@ mod tests {
             assert!(
                 super::quadratic_radical_over_monomial_antiderivative(&mut ctx, expr, "x")
                     .is_none(),
+                "must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn quartic_symmetric_substitution_integrates_the_family() {
+        let mut ctx = Context::new();
+        for source in [
+            "1/(x^4+1)",
+            "x^2/(x^4+1)",
+            "(x^2+1)/(x^4+1)",
+            "(x^2-1)/(x^4+1)",
+            "(2*x^2+3)/(x^4+1)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn quartic_symmetric_substitution_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("1/(x^4+1)", [0.4_f64, 1.0, 2.1]),
+            ("x^2/(x^4+1)", [-0.6, 0.7, 1.8]),
+            ("(x^2+1)/(x^4+1)", [0.3, 1.2, 2.5]),
+            ("(x^2-1)/(x^4+1)", [0.5, 1.4, 2.0]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn quartic_symmetric_substitution_declines_foreign_shapes() {
+        let mut ctx = Context::new();
+        // x^4+4 factors rationally (owner), odd numerators and higher
+        // numerator degrees and non-x^4+1 denominators decline here.
+        for source in [
+            "x/(x^4+1)",
+            "x^3/(x^4+1)",
+            "1/(x^4+x^2+1)",
+            "(x^3+1)/(x^4+1)",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                super::quartic_symmetric_substitution_antiderivative(&mut ctx, expr, "x").is_none(),
                 "must decline: {source}"
             );
         }

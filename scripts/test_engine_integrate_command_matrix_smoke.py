@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 267)
+        self.assertEqual(len(cases), 271)
         names = {case.name for case in cases}
         self.assertIn(
             "algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
@@ -422,7 +422,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 15, "supported": 247, "undefined": 5},
+            {"residual": 15, "supported": 251, "undefined": 5},
         )
         self.assertEqual(
             sum(
@@ -441,7 +441,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "residual_not_verified": 15,
                 "undefined_not_verified": 5,
                 "definite_ftc_from_verified_antiderivative": 36,
-                "verification_gap": 20,
+                "verification_gap": 24,
                 "verified_by_diff": 34,
                 "verified_by_diff_and_direct_diff_integrate": 125,
                 "verified_by_direct_diff_integrate": 32,
@@ -523,6 +523,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             step_checked,
             {
+                "quartic_symmetric_reciprocal",
+                "quartic_symmetric_square_numerator",
+                "quartic_symmetric_even_arctan_piece",
+                "quartic_symmetric_odd_log_piece",
                 "reciprocal_quadratic_irrational_monic",
                 "reciprocal_quadratic_irrational_scaled",
                 "reciprocal_quadratic_irrational_completed_square",
@@ -805,6 +809,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "improper_divergent_to_infinity": 4,
                 "exterior_interval_required": 1,
                 "irrational_pole_pair_required": 4,
+                "symmetric_substitution_pole_required": 4,
                 "nonzero_denominator_required": 5,
                 "punctured_bounded_interval": 2,
                 "punctured_exterior_interval": 1,
@@ -923,7 +928,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_calculus_maturity_blocks(cases),
             {
                 "block4_base_integration": 25,
-                "block5_generalized_substitution": 31,
+                "block5_generalized_substitution": 35,
                 "block6_rational_integration": 22,
                 "block7_trig_hyperbolic_integration": 67,
                 "block8_radical_inverse_families": 46,
@@ -937,7 +942,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "algorithmic_backend_boundary_verified": 20,
                 "didactic_trace_and_verified_antiderivative": 78,
-                "domain_conditions_and_verified_antiderivative": 149,
+                "domain_conditions_and_verified_antiderivative": 153,
                 "explicit_undefined_domain_policy": 5,
                 "safe_residual_policy": 15,
             },

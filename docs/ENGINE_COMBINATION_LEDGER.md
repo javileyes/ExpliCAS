@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 104 (newest first)
+Active entries: 105 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
 - 2026-06-13 | `retained` | calculus / integration / educational route / mixed trig powers | Retained calculus: mixed trig powers sin^m cos^n by odd-power substitution
 - 2026-06-13 | `retained` | calculus / integration / educational route / reciprocal quadratics | Retained calculus: 1/(quadratic with irrational real roots) via symbolic-surd log form
+- 2026-06-13 | `retained` | calculus / integration / educational route / quartic denominators | Retained calculus: the famous 1/(x^4+1) via symmetric substitution
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4397,3 +4398,46 @@ Active entries: 104 (newest first)
   - symbolic radicals in antiderivatives outrun the verification
     simplifier's budget: log-of-surd-ratio derivatives do not fold to
     zero in time, so this family verifies numerically by policy
+
+## 2026-06-13 - Retained calculus: the famous 1/(x^4+1) via symmetric substitution
+
+- area:
+  - calculus / integration / educational route / quartic denominators
+    (block 5 generalized substitution, P? frontier audit
+    "Cuárticas+ irreducibles")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 5 generalized substitution (new
+    quartic_symmetric_substitution family, 4 rows, 31 -> 35)
+  - calculus_matrix_cell: 1/(x^4+1), x^2/(x^4+1), (x^2+1)/(x^4+1) and
+    (x^2-1)/(x^4+1) - the famous quartic that no rational
+    factorization reaches
+  - behavior_change_expected: yes - (a x^2 + b)/(x^4 + 1) integrates by
+    splitting into the two symmetric pieces and substituting u = x -+ 1/x
+- observed (the kernel from the prior cycle paying off):
+  - a x^2 + b = c1 (x^2+1) + c2 (x^2-1); the (x^2+1) piece divides by
+    x^2 to (1+1/x^2)/((x-1/x)^2+2) so u=x-1/x gives int du/(u^2+2) ->
+    arctan, the (x^2-1) piece gives u=x+1/x, int du/(u^2-2) -> the
+    irrational-root log form THIS family could not produce before the
+    1/(x^2-2) cycle (3a267bdf2) - a two-cycle compound where cycle N
+    built the kernel and cycle N+1 the recognizer that consumes it
+  - the antiderivative carries an HONEST x != 0 condition: u=x-+1/x is
+    undefined at x=0 so the formula has a jump there (the textbook
+    sqrt(2) partial-fraction form is continuous; this substitution form
+    is valid on each side of 0). The condition is surfaced, not hidden
+  - all four ship as verification_gap: the nested-radical arctan/log
+    derivatives do not fold to zero in the verifier's budget (same
+    ceiling as cycle 5), numerically verified in unit round-trips
+- retained learning:
+  - compound cycles are a real pattern: when a family is blocked by a
+    missing KERNEL, build the kernel as its own retainable cycle first
+    (it stands alone and has its own consumers), then the recognizer
+    that needs it becomes a clean follow-up - do not try to land both
+    in one cycle
+  - substitutions that are singular at a point (u=x-+1/x at x=0) yield
+    antiderivatives valid only off that point; surface the condition
+    rather than pretending global continuity - a definite integral
+    across the singularity would need the continuous form, noted as the
+    next rung
