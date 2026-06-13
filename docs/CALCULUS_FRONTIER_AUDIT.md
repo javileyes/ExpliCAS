@@ -320,6 +320,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `cosh(1/√x)`/`cosh(ln x)` declinan por lado indefinido). Peldaño
   preexistente anotado: `cos(1/x²)`/`sin(1/x²)` filtran `cos(infinity)`
   sin plegar — el combine bilateral de inner oscilante de potencia par)*
+  *(fuga cos/sin cerrada 2026-06-13 055929883:
+  `apply_finite_total_real_unary_composition_rule` declina cuando el outer
+  es Sin/Cos y el argumento → ±∞ — sin/cos oscilan en ∞, sin límite. Era
+  honestidad: el outer saturante (atan/exp/tanh/cosh) filtra
+  `outer(infinity)` que la capa eval pliega, pero sin/cos no pliegan y
+  filtraban `cos(infinity)` como pseudo-valor en la familia `sin(1/x)` que
+  nunca debe resolver. Sustractivo (solo añade decline); el polo impar
+  `cos(1/x)` ya estaba bien por el gate "fold changed it" unilateral.
+  Verificado adversarialmente (41 sondas, 0 violaciones; saturantes y
+  squeeze intactos))*
 - [~] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
   0`, `(x+sin x)/x → 1 en ∞`, `ln(x)/sqrt(x) → 0 en ∞` (la dominancia
   entera `ln(x)/x` sí funciona).
