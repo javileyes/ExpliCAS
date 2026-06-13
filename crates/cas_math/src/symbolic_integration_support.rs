@@ -9709,6 +9709,173 @@ fn quadratic_radical_over_monomial_antiderivative(
     None
 }
 
+/// Products sin(k x)^m cos(k x)^n sharing ONE linear argument (rational
+/// k != 0, zero offset) with at least one ODD power: substitute
+/// u = sin(k x) when n is odd (du = k cos dx, cos^n = cos (1-u^2)^((n-1)/2))
+/// or u = cos(k x) when m is odd, giving a polynomial integrand in u
+/// delegated to the polynomial integrator. Covers sin^2 cos^3,
+/// sin^4 cos^3, sin^3 cos^2, sin^5 cos^2 and shared multiples like
+/// sin(2x)^3 cos(2x)^2. The f^n f' single-factor cases (sin^3 cos),
+/// the both-even power-reduction cases (sin^2 cos^2) and pure single
+/// powers (cos^3) keep their existing owners - this route is ordered
+/// AFTER them and only sees the genuinely residual mixed products.
+fn mixed_trig_power_substitution_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut sin_power: i64 = 0;
+    let mut cos_power: i64 = 0;
+    let mut slope: Option<BigRational> = None;
+    if !collect_mixed_trig_powers(ctx, expr, var, &mut sin_power, &mut cos_power, &mut slope) {
+        return None;
+    }
+    let k = slope?;
+    // Both factors must carry power >= 2: products with a power-1
+    // companion factor (sin^m cos, sin cos^n) are the f^n f' pattern
+    // and keep their owners; single powers and both-even products are
+    // owned too. This route claims only the genuinely residual mixed
+    // products with at least one ODD power.
+    if sin_power < 2 || cos_power < 2 {
+        return None;
+    }
+    let sin_odd = sin_power % 2 == 1;
+    let cos_odd = cos_power % 2 == 1;
+    if !(sin_odd || cos_odd) {
+        return None;
+    }
+
+    let used = cas_ast::collect_variables(ctx, expr);
+    let u_name = ["u", "u_", "u_sub"]
+        .iter()
+        .find(|candidate| !used.contains(**candidate) && *candidate != &var)?
+        .to_string();
+
+    // Prefer substituting against the odd power. When BOTH are odd,
+    // u = sin (cos carries the spare factor) keeps displays compact.
+    let (substitute_sine, kept_power, spare_half) = if cos_odd {
+        (true, sin_power, (cos_power - 1) / 2)
+    } else {
+        (false, cos_power, (sin_power - 1) / 2)
+    };
+
+    // integrand in u: u^kept_power * (1 - u^2)^spare_half, scaled by
+    // +1/k (u = sin) or -1/k (u = cos).
+    let mut poly = vec![BigRational::zero(); (kept_power + 2 * spare_half + 1) as usize];
+    // (1 - u^2)^spare_half = sum_j C(spare_half, j) (-1)^j u^(2j).
+    let mut binom = BigRational::from_integer(1.into());
+    for j in 0..=spare_half {
+        let exponent = (kept_power + 2 * j) as usize;
+        let sign = if j % 2 == 0 {
+            BigRational::from_integer(1.into())
+        } else {
+            BigRational::from_integer((-1).into())
+        };
+        poly[exponent] += &binom * &sign;
+        // Update binomial coefficient C(spare_half, j+1).
+        if j < spare_half {
+            binom = &binom * BigRational::from_integer((spare_half - j).into())
+                / BigRational::from_integer((j + 1).into());
+        }
+    }
+    let scale = if substitute_sine {
+        BigRational::from_integer(1.into()) / &k
+    } else {
+        -BigRational::from_integer(1.into()) / &k
+    };
+    for coeff in &mut poly {
+        *coeff *= &scale;
+    }
+
+    let mut poly_struct = Polynomial::zero(u_name.clone());
+    poly_struct.coeffs = poly;
+    let integrand_u = polynomial_to_expr(ctx, &poly_struct, &u_name);
+    let integral_u = integrate_symbolic_expr(ctx, integrand_u, &u_name)?;
+    let integral_u = cas_ast::hold::unwrap_internal_hold(ctx, integral_u);
+
+    let var_expr = ctx.var(var);
+    let arg = scale_rational_term(ctx, k, var_expr);
+    let replacement = if substitute_sine {
+        ctx.call_builtin(BuiltinFn::Sin, vec![arg])
+    } else {
+        ctx.call_builtin(BuiltinFn::Cos, vec![arg])
+    };
+    let target = ctx.var(&u_name);
+    Some(crate::substitute::substitute_power_aware(
+        ctx,
+        integral_u,
+        target,
+        replacement,
+        crate::substitute::SubstituteOptions::exact(),
+    ))
+}
+
+/// Accumulate sin/cos powers from a product of sin(k var)^p / cos(k var)^p
+/// factors sharing one rational nonzero slope. Returns false on any
+/// foreign factor or argument mismatch.
+fn collect_mixed_trig_powers(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    sin_power: &mut i64,
+    cos_power: &mut i64,
+    slope: &mut Option<BigRational>,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Mul(l, r) => {
+            collect_mixed_trig_powers(ctx, l, var, sin_power, cos_power, slope)
+                && collect_mixed_trig_powers(ctx, r, var, sin_power, cos_power, slope)
+        }
+        Expr::Pow(base, exponent) => {
+            let Some(value) = crate::numeric_eval::as_rational_const(ctx, exponent) else {
+                return false;
+            };
+            if !value.is_integer() || value <= BigRational::zero() {
+                return false;
+            }
+            let Ok(power) = i64::try_from(value.numer()) else {
+                return false;
+            };
+            let Some((atom_slope, is_sine)) = weierstrass_trig_atom(ctx, base, var) else {
+                return false;
+            };
+            if !mixed_trig_slope_consistent(slope, atom_slope) {
+                return false;
+            }
+            if is_sine {
+                *sin_power += power;
+            } else {
+                *cos_power += power;
+            }
+            true
+        }
+        _ => {
+            let Some((atom_slope, is_sine)) = weierstrass_trig_atom(ctx, expr, var) else {
+                return false;
+            };
+            if !mixed_trig_slope_consistent(slope, atom_slope) {
+                return false;
+            }
+            if is_sine {
+                *sin_power += 1;
+            } else {
+                *cos_power += 1;
+            }
+            true
+        }
+    }
+}
+
+fn mixed_trig_slope_consistent(slope: &mut Option<BigRational>, atom_slope: BigRational) -> bool {
+    match slope {
+        Some(existing) => *existing == atom_slope,
+        None => {
+            *slope = Some(atom_slope);
+            true
+        }
+    }
+}
+
 /// Rational functions of sin(k x) and cos(k x) sharing ONE linear
 /// argument (rational k != 0, zero offset) with rational coefficients:
 /// Weierstrass substitution t = tan(k x / 2), sin = 2t/(1+t^2),
@@ -21314,6 +21481,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = mixed_trig_power_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = quadratic_radical_over_monomial_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -26311,6 +26482,81 @@ mod tests {
             assert!(
                 super::quadratic_radical_over_monomial_antiderivative(&mut ctx, expr, "x")
                     .is_none(),
+                "must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn mixed_trig_power_substitution_integrates_the_family() {
+        let mut ctx = Context::new();
+        for source in [
+            "sin(x)^2*cos(x)^3",
+            "sin(x)^4*cos(x)^3",
+            "sin(x)^3*cos(x)^2",
+            "sin(x)^3*cos(x)^4",
+            "sin(x)^5*cos(x)^2",
+            "sin(x)^3*cos(x)^3",
+            "sin(2*x)^3*cos(2*x)^2",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn mixed_trig_power_substitution_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("sin(x)^2*cos(x)^3", [0.4_f64, 1.0, 2.1]),
+            ("sin(x)^4*cos(x)^3", [-0.6, 0.7, 1.8]),
+            ("sin(x)^3*cos(x)^2", [0.3, 1.2, 2.5]),
+            ("sin(x)^3*cos(x)^4", [-0.9, 0.5, 1.6]),
+            ("sin(x)^5*cos(x)^2", [0.4, 1.1, 2.0]),
+            ("sin(x)^3*cos(x)^3", [-0.5, 0.8, 1.9]),
+            ("sin(2*x)^3*cos(2*x)^2", [0.3, 0.9, 1.4]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_trig_power_substitution_declines_foreign_shapes() {
+        let mut ctx = Context::new();
+        // Both-even products (power reduction), single odd factors and
+        // f^n f' single-factor cases keep their owners; mismatched
+        // arguments, offsets and tan/sec atoms decline here.
+        for source in [
+            "sin(x)^2*cos(x)^4",
+            "sin(x)*cos(x)^3",
+            "sin(x)^2*cos(2*x)^3",
+            "sin(x+1)^2*cos(x+1)^3",
+            "sin(x)^2*tan(x)^3",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                super::mixed_trig_power_substitution_antiderivative(&mut ctx, expr, "x").is_none(),
                 "must decline: {source}"
             );
         }

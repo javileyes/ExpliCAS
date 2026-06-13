@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 102 (newest first)
+Active entries: 103 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
+- 2026-06-13 | `retained` | calculus / integration / educational route / mixed trig powers | Retained calculus: mixed trig powers sin^m cos^n by odd-power substitution
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4304,3 +4305,48 @@ Active entries: 102 (newest first)
     definite-FTC traces end one arithmetic reduction short (1+1 shown,
     result 2). These are pre-existing, outside this cycle's scope, and
     now documented as the broad "filtro de no-ops" follow-up
+
+## 2026-06-13 - Retained calculus: mixed trig powers sin^m cos^n by odd-power substitution
+
+- area:
+  - calculus / integration / educational route / mixed trig powers
+    (block 5 generalized substitution, P? frontier audit family
+    "Potencias trig mixtas incoherentes")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 5 generalized substitution (new
+    mixed_trig_power_substitution family, 6 rows, 25 -> 31)
+  - calculus_matrix_cell: sin^2 cos^3, sin^3 cos^2, sin^4 cos^3,
+    sin^5 cos^2, sin^3 cos^4 and the shared multiple sin(2x)^3 cos(2x)^2
+  - behavior_change_expected: yes - products sin(kx)^m cos(kx)^n with a
+    shared linear argument and at least one ODD power, both >= 2,
+    integrate by u = sin (cos odd) or u = cos (sin odd)
+- observed (fourth instantiation of the substitution-delegation template):
+  - the integrand in u is a pure POLYNOMIAL (u^kept (1-u^2)^spare), so
+    this is the template's simplest delegation: build the binomial
+    expansion coefficients directly and hand a polynomial to the
+    polynomial integrator - no rational owner, no backend fallback
+  - the gate is INTENT, not pattern: require both powers >= 2 so the
+    f^n f' single-companion cases (sin^3 cos, sin^2 cos) keep their
+    owner and the both-even power-reduction cases (sin^2 cos^2) keep
+    theirs; this route claims only the genuinely residual mixed
+    products. Probed first that every min(m,n)==1 case is owned before
+    gating
+  - sin^5 cos^2 ships as verification_gap: BOTH symbolic channels fail
+    to close diff(F) - f to zero (the answer is a degree-7 polynomial
+    in cos whose derivative the simplifier cannot re-collapse), yet the
+    numeric eval_f64 round-trip confirms correctness - higher trig
+    powers outrun the simplifier's collection, same ceiling as the
+    Weierstrass and sqrt(x+1)/x rows
+- retained learning:
+  - the substitution-delegation template now spans four atom families
+    (exp, linear radical, Weierstrass rational, trig odd-power) with a
+    consistent shape; the trig odd-power case is the degenerate one
+    where the u-integrand is polynomial, confirming the template
+    subsumes both rational and polynomial delegations
+  - "is this residual or just owned elsewhere?" must be probed per
+    boundary case before writing a decline contract: sin cos^3 LOOKS
+    like this family but the f^n f' owner claims it first, so the
+    decline test would wrongly fail without the min>=2 intent gate
