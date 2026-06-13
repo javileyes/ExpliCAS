@@ -365,6 +365,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   enteras ya funcionan; falta extender a `x^(p/q)`). Gaps cosméticos de
   completitud del squeeze: argumentos sin normalizar `x^(-1)`, `1/x+x²`
   declinan conservadoramente aunque el límite real es 0)*
+  *(dominancia fraccionaria graduada 2026-06-13 da56c3a08:
+  `polylog_power_dominance_limit_at_infinity` resuelve `c·ln(x)^a/x^b→0`
+  y `c·x^b/(c'·ln(x)^a)→sign(c/c')·∞` con a≥1 entero y b>0 racional —
+  `ln(x)/√x=0`, `ln(x)²/x=0`, `ln(x)³/x=0`, `ln(x)/x^(1/3)=0`,
+  `√x/ln(x)=∞`, `x/ln(x)²=∞`. `positive_power_tail` reconoce el exponente
+  RACIONAL (x^(1/2), x^(2/3) de primera clase). Gating: solo +∞ (ln
+  indefinido en −∞), coeficientes no-cero, potencia genuinamente positiva
+  (`ln(x)/x^(-2)=ln·x²→∞`, no 0). Verificado adversarialmente (70 sondas,
+  0 violaciones; cerrado un brazo Neg faltante). Peldaño restante: el
+  cociente con ruido aditivo acotado `(x+sin x)/x → 1`)*
 - [x] **(F) Producto-a-suma residual mutilado**: `sin(3x)cos(5x)`
   indefinida queda residual Y mutilada (expandida en potencias de
   cos); el reconocedor producto-a-suma cubre frecuencias distintas
