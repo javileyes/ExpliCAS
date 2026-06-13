@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 280)
+        self.assertEqual(len(cases), 284)
         names = {case.name for case in cases}
         self.assertIn(
             "algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
@@ -422,7 +422,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 15, "supported": 260, "undefined": 5},
+            {"residual": 15, "supported": 264, "undefined": 5},
         )
         self.assertEqual(
             sum(
@@ -441,7 +441,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "residual_not_verified": 15,
                 "undefined_not_verified": 5,
                 "definite_ftc_from_verified_antiderivative": 39,
-                "verification_gap": 24,
+                "verification_gap": 28,
                 "verified_by_diff": 34,
                 "verified_by_diff_and_direct_diff_integrate": 131,
                 "verified_by_direct_diff_integrate": 32,
@@ -525,6 +525,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "reciprocal_hyperbolic_sech_squared_tanh",
                 "reciprocal_hyperbolic_csch_squared_coth",
+                "gaussian_half_line_unit",
+                "gaussian_full_line",
+                "gaussian_second_moment_half_line",
+                "gaussian_scaled_decay_half_line",
                 "product_to_sum_sin_cos_distinct_frequencies",
                 "product_to_sum_cos_cos_distinct_frequencies",
                 "product_to_sum_sin_sin_distinct_frequencies",
@@ -824,7 +828,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "punctured_exterior_interval": 1,
                 "punctured_real_line": 2,
                 "radicand_halfline_required": 6,
-                "total_real_function": 28,
+                "total_real_function": 32,
                 "symbolic_bounds_condition_free": 4,
                 "interval_certified_with_source_condition": 5,
                 "interval_pole_divergent": 3,
@@ -936,7 +940,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block4_base_integration": 31,
+                "block4_base_integration": 35,
                 "block5_generalized_substitution": 35,
                 "block6_rational_integration": 22,
                 "block7_trig_hyperbolic_integration": 67,
@@ -950,7 +954,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             SMOKE.count_calculus_block_gates(cases),
             {
                 "algorithmic_backend_boundary_verified": 20,
-                "didactic_trace_and_verified_antiderivative": 83,
+                "didactic_trace_and_verified_antiderivative": 87,
                 "domain_conditions_and_verified_antiderivative": 157,
                 "explicit_undefined_domain_policy": 5,
                 "safe_residual_policy": 15,

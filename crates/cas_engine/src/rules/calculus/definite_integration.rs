@@ -158,6 +158,217 @@ fn e_multiple_of(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
+/// Gaussian moment integrals over a half-line or the full line:
+///   int_0^inf x^(2n) e^(-a x^2) dx = (1/2) (2n)!/(4^n n!) sqrt(pi) / a^(n+1/2)
+/// for rational a > 0 and even cofactor degree 2n. The full line doubles
+/// it (even integrand); (-inf, 0] equals [0, inf). Only these exact
+/// infinite-bound patterns resolve - the indefinite integral and any
+/// finite-bound or odd-cofactor variant stay residual / honest.
+fn gaussian_definite_integral_rewrite(
+    ctx: &mut Context,
+    call: &DefiniteIntegralCall,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> Option<Rewrite> {
+    use num_bigint::BigInt;
+    use num_traits::{One, Zero};
+
+    // The interval must be a half-line from 0 or the full real line.
+    #[derive(Clone, Copy)]
+    enum GaussianInterval {
+        HalfLine, // [0, inf) or (-inf, 0]
+        FullLine, // (-inf, inf)
+    }
+    let interval = match (lower_bound, upper_bound) {
+        (DefiniteBound::Finite(low), DefiniteBound::PosInfinity)
+            if low.rational.is_zero() && low.pi_multiple.is_zero() && low.e_multiple.is_zero() =>
+        {
+            GaussianInterval::HalfLine
+        }
+        (DefiniteBound::NegInfinity, DefiniteBound::Finite(high))
+            if high.rational.is_zero()
+                && high.pi_multiple.is_zero()
+                && high.e_multiple.is_zero() =>
+        {
+            GaussianInterval::HalfLine
+        }
+        (DefiniteBound::NegInfinity, DefiniteBound::PosInfinity) => GaussianInterval::FullLine,
+        _ => return None,
+    };
+
+    let (a, cofactor_coeff, two_n) = match_gaussian_integrand(ctx, call.target, &call.var_name)?;
+    if !a.is_positive() || two_n % 2 != 0 {
+        return None;
+    }
+    let n = (two_n / 2) as u32;
+
+    // coeff = (cofactor leading coeff) * (1/2) * (2n)! / (4^n n!).
+    let factorial = |k: u32| -> BigInt {
+        let mut acc = BigInt::one();
+        for i in 1..=k {
+            acc *= BigInt::from(i);
+        }
+        acc
+    };
+    let two = BigRational::from_integer(BigInt::from(2));
+    let mut coeff =
+        BigRational::new(factorial(2 * n), factorial(n) * BigInt::from(4).pow(n)) / &two;
+    coeff *= &cofactor_coeff; // the integrand's leading constant factor.
+    if matches!(interval, GaussianInterval::FullLine) {
+        coeff *= &two; // even integrand over the symmetric interval.
+    }
+
+    // value = coeff * sqrt(pi) / a^(n + 1/2) = coeff/a^n * sqrt(pi)/sqrt(a)
+    //       = coeff/a^n * sqrt(pi/a).
+    let pi = ctx.add(Expr::Constant(Constant::Pi));
+    let ratio_const = if a.is_one() {
+        pi
+    } else {
+        let a_expr = ctx.add(Expr::Number(a.clone()));
+        ctx.add(Expr::Div(pi, a_expr))
+    };
+    let half = ctx.add(Expr::Number(BigRational::new(
+        BigInt::one(),
+        BigInt::from(2),
+    )));
+    let sqrt_ratio = ctx.add(Expr::Pow(ratio_const, half));
+
+    // Fold the rational a^n into coeff.
+    let a_pow_n = {
+        let mut acc = BigRational::one();
+        for _ in 0..n {
+            acc *= &a;
+        }
+        acc
+    };
+    let scalar = coeff / a_pow_n;
+    let result = if scalar.is_one() {
+        sqrt_ratio
+    } else {
+        let scalar_expr = ctx.add(Expr::Number(scalar));
+        ctx.add(Expr::Mul(scalar_expr, sqrt_ratio))
+    };
+    Some(Rewrite::new(result).desc("Gaussian moment integral (table)"))
+}
+
+/// Match `x^(2n) e^(-a x^2)` with rational a > 0, in either engine form:
+///   `x^(2n) / e^(a x^2)`  (Div, e^(positive a x^2) in the denominator)
+///   `x^(2n) e^(-a x^2)`   (Mul, e^(negative coefficient x^2))
+/// Returns (a, cofactor_leading_coeff, 2n). Refuses non-pure-quadratic
+/// exponents (any linear or constant term), odd cofactor degrees, and
+/// foreign variable factors.
+fn match_gaussian_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var: &str,
+) -> Option<(BigRational, BigRational, i64)> {
+    use num_traits::Zero;
+    if let Expr::Div(num, den) = ctx.get(integrand) {
+        let (num, den) = (*num, *den);
+        // integrand = num / e^(c x^2) = num e^(-c x^2), so the decay rate
+        // a (integrand ~ e^(-a x^2)) equals the denominator coefficient c.
+        let a = gaussian_exp_coefficient(ctx, den, var)?;
+        if !a.is_positive() {
+            return None;
+        }
+        let (coeff, two_n) = monomial_even_degree(ctx, std::slice::from_ref(&num), var)?;
+        return Some((a, coeff, two_n));
+    }
+    // Mul form (or a bare exponential): one e^(c x^2) factor with c < 0.
+    let factors = flatten_mul(ctx, integrand);
+    let mut cofactor = Vec::new();
+    let mut coefficient: Option<BigRational> = None;
+    for f in &factors {
+        if let Some(c) = gaussian_exp_coefficient(ctx, *f, var) {
+            if coefficient.is_some() {
+                return None;
+            }
+            coefficient = Some(c);
+        } else {
+            cofactor.push(*f);
+        }
+    }
+    let c = coefficient?;
+    let a = -c;
+    if !a.is_positive() || a.is_zero() {
+        return None;
+    }
+    let (coeff, two_n) = monomial_even_degree(ctx, &cofactor, var)?;
+    Some((a, coeff, two_n))
+}
+
+/// Coefficient c when `factor == e^(c * var^2)` (pure quadratic exponent,
+/// no linear or constant term); None otherwise.
+fn gaussian_exp_coefficient(ctx: &Context, factor: ExprId, var: &str) -> Option<BigRational> {
+    let Expr::Pow(base, exponent) = ctx.get(factor) else {
+        return None;
+    };
+    if !matches!(ctx.get(*base), Expr::Constant(Constant::E)) {
+        return None;
+    }
+    let exponent = *exponent;
+    let poly = Polynomial::from_expr(ctx, exponent, var).ok()?;
+    if poly.degree() != 2 {
+        return None;
+    }
+    // Pure quadratic: no x^1 or x^0 term.
+    if !poly.coeffs.first().map(|c| c.is_zero()).unwrap_or(true)
+        || !poly.coeffs.get(1).map(|c| c.is_zero()).unwrap_or(true)
+    {
+        return None;
+    }
+    poly.coeffs.get(2).cloned()
+}
+
+/// The product of `factors` must be `c * var^(2n)` with an EVEN
+/// nonnegative degree; returns (c, 2n). A bare constant gives (c, 0).
+fn monomial_even_degree(
+    ctx: &Context,
+    factors: &[ExprId],
+    var: &str,
+) -> Option<(BigRational, i64)> {
+    use num_traits::Zero;
+    let mut product = Polynomial::one(var.to_string());
+    for &f in factors {
+        let poly = Polynomial::from_expr(ctx, f, var).ok()?;
+        product = product.mul(&poly);
+    }
+    // Must be a single monomial term c * x^(2n): all lower coeffs zero.
+    let degree = product.degree();
+    if !degree.is_multiple_of(2) {
+        return None;
+    }
+    let leading = product.coeffs.get(degree)?.clone();
+    if leading.is_zero() {
+        return None;
+    }
+    if product
+        .coeffs
+        .iter()
+        .take(degree)
+        .any(|coeff| !coeff.is_zero())
+    {
+        return None;
+    }
+    Some((leading, degree as i64))
+}
+
+/// Flatten a multiplicative chain into leaf factors.
+fn flatten_mul(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut out = Vec::new();
+    let mut stack = vec![expr];
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Mul(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            _ => out.push(e),
+        }
+    }
+    out
+}
+
 fn classify_bound(ctx: &Context, bound: ExprId) -> DefiniteBound {
     if let Some(value) = as_rational_const(ctx, bound) {
         return DefiniteBound::Finite(Endpoint::from_rational(value));
@@ -225,6 +436,15 @@ pub(super) fn definite_integration_rewrite(
             let zero = ctx.num(0);
             return Some(Rewrite::new(zero).desc("integrate(f, x, a, a) = 0"));
         }
+    }
+
+    // Gaussian table for the famous non-elementary improper integrals,
+    // BEFORE the antiderivative attempt (which has no closed form). The
+    // INDEFINITE integral stays residual; only these exact infinite-bound
+    // patterns resolve.
+    if let Some(rewrite) = gaussian_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
+    {
+        return Some(rewrite);
     }
 
     let (antiderivative, conditions) = resolve_indefinite_for_definite(ctx, call)?;
@@ -1604,6 +1824,53 @@ mod boundary_touch_tests {
             eval_definite("integrate(1/x, x, -1, 1)").as_deref(),
             Some("undefined")
         );
+    }
+
+    #[test]
+    fn gaussian_moment_integrals_resolve_to_table_values() {
+        for (source, expected) in [
+            ("integrate(e^(-x^2), x, 0, infinity)", "1/2 * pi^(1/2)"),
+            ("integrate(e^(-x^2), x, -infinity, infinity)", "pi^(1/2)"),
+            ("integrate(x^2*e^(-x^2), x, 0, infinity)", "1/4 * pi^(1/2)"),
+            (
+                "integrate(x^2*e^(-x^2), x, -infinity, infinity)",
+                "1/2 * pi^(1/2)",
+            ),
+            ("integrate(x^4*e^(-x^2), x, 0, infinity)", "3/8 * pi^(1/2)"),
+            (
+                "integrate(e^(-2*x^2), x, 0, infinity)",
+                "1/2 * (pi / 2)^(1/2)",
+            ),
+            ("integrate(e^(-x^2), x, -infinity, 0)", "1/2 * pi^(1/2)"),
+            // Constant numerator coefficients must scale the result
+            // (regression: the Div form once dropped the coefficient).
+            ("integrate(2/e^(x^2), x, 0, infinity)", "pi^(1/2)"),
+            ("integrate(3/e^(x^2), x, 0, infinity)", "3/2 * pi^(1/2)"),
+            ("integrate((-2)/e^(x^2), x, 0, infinity)", "-pi^(1/2)"),
+        ] {
+            assert_eq!(eval_definite(source).as_deref(), Some(expected), "{source}");
+        }
+    }
+
+    #[test]
+    fn gaussian_table_keeps_honesty_residuals() {
+        // The indefinite Gaussian, finite bounds, growing exponential,
+        // non-quadratic exponents, and a linear-shifted exponent must NOT
+        // resolve through the table (honesty list).
+        for source in [
+            "integrate(e^(-x^2), x, 0, 1)",
+            "integrate(e^(x^2), x, 0, infinity)",
+            "integrate(e^(-x^3), x, 0, infinity)",
+            "integrate(e^(-x^2+x), x, 0, infinity)",
+            "integrate(e^(-x^2), x, 1, infinity)",
+        ] {
+            // eval_definite returns None when the recognizer declines and
+            // no antiderivative exists (the residual case).
+            assert!(
+                eval_definite(source).is_none(),
+                "must stay residual: {source}"
+            );
+        }
     }
 
     #[test]

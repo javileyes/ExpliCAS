@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 113 (newest first)
+Active entries: 114 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -130,6 +130,7 @@ Active entries: 113 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / infinity / radical differences (block 3 real | Retained limits: sqrt(P) - sqrt(Q) at infinity (matching leading radicands)
 - 2026-06-13 | `retained` | calculus / limits / finite point / radical conjugate (block 3 real | Retained limits: finite-point 0/0 radical conjugate (removable holes)
 - 2026-06-13 | `retained` | calculus / integration / pre-simplifier vs integrator boundary | Retained calculus: product-to-sum integration for distinct trig frequencies
+- 2026-06-13 | `retained` | calculus / definite integration / special-value table (block 4 | Retained calculus: Gaussian moment definite-integral table
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4804,3 +4805,54 @@ Active entries: 113 (newest first)
   - recognizers that only ADD results on previously-None inputs are the
     safest extension shape: a no-coefficient sibling that bails on every
     shape the existing owner handles cannot regress anything
+
+## 2026-06-13 - Retained calculus: Gaussian moment definite-integral table
+
+- area:
+  - calculus / definite integration / special-value table (block 4
+    base, P? frontier audit "Gaussiana/Gamma por tabla")
+- status:
+  - `retained` (a coefficient-drop soundness bug was caught and fixed
+    by the adversarial pass before retention)
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 4 base integration (4 rows;
+    gaussian_moment_table family)
+  - calculus_matrix_cell: integrate(e^(-x^2),x,0,inf)=sqrt(pi)/2,
+    (-inf,inf)=sqrt(pi), x^2 e^(-x^2)[0,inf)=sqrt(pi)/4,
+    e^(-2x^2)[0,inf)=(1/2)sqrt(pi/2); plus x^4 and full-line moments
+  - behavior_change_expected: yes - int x^(2n) e^(-a x^2) over a
+    half-line or the full line resolves to the moment value; the
+    INDEFINITE integral stays residual (honesty list intact)
+- observed (the recognizer runs BEFORE the antiderivative attempt):
+  - e^(-x^2) has no elementary antiderivative, so resolve_indefinite_
+    for_definite bails and the whole definite path returns residual. A
+    dedicated recognizer at the TOP of definite_integration_rewrite
+    matches the exact infinite-bound moment patterns and returns the
+    table value via int_0^inf x^(2n) e^(-a x^2) = (1/2)(2n)!/(4^n n!)
+    sqrt(pi)/a^(n+1/2), doubled on the symmetric interval
+  - tightly gated: infinite bounds from 0 or the full line, pure
+    quadratic exponent (no linear/constant term), even cofactor degree,
+    rational a > 0. The indefinite, finite bounds, e^(x^2), e^(-x^3),
+    e^(-x^2+x), and odd cofactors all decline - the honesty list holds
+  - ADVERSARIAL CATCH: the first version dropped the numerator constant
+    coefficient in the Div form (2/e^(x^2) -> sqrt(pi)/2 instead of
+    sqrt(pi); negatives lost their sign). monomial_even_degree returned
+    only the degree, never the leading coefficient. The soundness lens
+    found 10 wrong-value probes (all coefficient drops); the regression
+    lens confirmed zero regressions and that the odd-cofactor
+    x e^(-x^2) correctly declines to the elementary route (=1/2). Fix:
+    monomial_even_degree returns (coeff, degree) and the coefficient
+    scales the moment
+- retained learning:
+  - special-value tables are exactly where adversarial verification
+    earns its cost: the unit tests (monic cofactors) were all green
+    while c/e^(x^2) silently returned c=1 values. A green test suite
+    that only exercises the canonical shape hides coefficient/sign bugs
+    in the parametric ones - the refutation lens that sweeps c != 1 and
+    negatives is what caught it
+  - a recognizer that runs before the antiderivative path must be
+    SURGICALLY gated: it intercepts every infinite-bound definite
+    integral, so the decline conditions (pure quadratic, even cofactor,
+    rational a>0) are load-bearing for not stealing cases that the
+    elementary route handles correctly (x e^(-x^2) -> 1/2)
