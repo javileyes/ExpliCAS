@@ -20,7 +20,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_limit_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 141)
+        self.assertEqual(len(cases), 144)
         names = {case.name for case in cases}
         self.assertIn("finite_removable_rational_cancellation", names)
         self.assertIn("finite_rational_simple_pole_residual", names)
@@ -234,13 +234,16 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("infinity_bounded_polynomial_exp_decay", names)
         self.assertIn("negative_infinity_bounded_over_divergent_orientation_supported", names)
         self.assertIn("infinity_bounded_over_divergent_domain_conflict_residual", names)
+        self.assertIn("finite_squeeze_bounded_oscillator_zero", names)
+        self.assertIn("finite_squeeze_even_power_cosine_zero", names)
+        self.assertIn("finite_squeeze_scaled_oscillator_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "point_regime"),
-            {"finite": 65, "finite_one_sided": 39, "infinity": 37},
+            {"finite": 68, "finite_one_sided": 39, "infinity": 37},
         )
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 26, "supported": 112, "undefined": 3},
+            {"residual": 27, "supported": 114, "undefined": 3},
         )
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
@@ -248,6 +251,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_discontinuity_or_orientation": 3,
                 "finite_endpoint_empty_punctured_domain_policy": 4,
                 "finite_endpoint_or_boundary_policy": 7,
+                "finite_oscillatory_no_infinitesimal": 1,
                 "finite_rational_pole_policy": 1,
                 "finite_trig_symbolic_orientation_policy": 1,
                 "finite_trig_pole_policy": 2,
@@ -262,6 +266,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "binary_log_domain_policy": 3,
                 "bounded_domain_policy": 1,
                 "discontinuous": 2,
+                "finite_squeeze_bounded_product": 1,
                 "fixed_base_log_domain_policy": 1,
                 "inverse_hyperbolic": 2,
                 "inverse_hyperbolic_domain_policy": 1,
@@ -292,6 +297,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_endpoint_or_boundary_policy/fixed_base_log_domain_policy": 1,
                 "finite_endpoint_or_boundary_policy/log_domain_policy": 1,
                 "finite_endpoint_or_boundary_policy/root": 2,
+                "finite_oscillatory_no_infinitesimal/finite_squeeze_bounded_product": 1,
                 "finite_rational_pole_policy/rational": 1,
                 "finite_trig_pole_policy/reciprocal_trig": 1,
                 "finite_trig_pole_policy/trig_special_angle": 1,
@@ -323,17 +329,17 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block3_real_domain_limits": 112,
-                "block9_residuals_and_non_goals": 29,
+                "block3_real_domain_limits": 114,
+                "block9_residuals_and_non_goals": 30,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
                 "didactic_trace_and_limit_policy": 43,
-                "domain_conditions_and_limit_policy": 69,
+                "domain_conditions_and_limit_policy": 71,
                 "explicit_undefined_domain_policy": 3,
-                "safe_residual_policy": 26,
+                "safe_residual_policy": 27,
             },
         )
         self.assertEqual(
@@ -411,7 +417,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_removable_hole": 1,
                 "finite_removable_radical_hole": 3,
                 "finite_small_angle_denominator_domain": 1,
-                "finite_source_definedness": 8,
+                "finite_source_definedness": 11,
                 "finite_trig_sine_pole_residual_domain": 1,
                 "finite_trig_pole_residual_domain": 1,
                 "infinity_path_compatible_domain": 3,
@@ -432,7 +438,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             sum(1 for case in cases if case.expected_step_substrings),
-            141,
+            144,
         )
         self.assertEqual(
             [

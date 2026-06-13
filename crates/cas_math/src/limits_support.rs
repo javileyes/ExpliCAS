@@ -3197,6 +3197,9 @@ fn try_limit_rules_at_finite(
     if let Some(result) = apply_finite_total_real_unary_composition_rule(ctx, expr, var, point) {
         return Some(result);
     }
+    if let Some(result) = apply_finite_squeeze_bounded_product_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
 
     match ctx.get(expr).clone() {
         Expr::Add(lhs, rhs) => {
@@ -3225,6 +3228,160 @@ fn try_limit_rules_at_finite(
         }
         _ => None,
     }
+}
+
+/// Squeeze theorem at a finite point: a product converges to 0 when at
+/// least one factor tends to 0 and every other factor stays bounded near
+/// the point. This is the only path by which `x * sin(1/x) -> 0`
+/// resolves, because `sin(1/x)` itself oscillates and has no limit.
+///
+/// Footprint-minimal by design: the rule fires only when at least one
+/// factor is bounded WITHOUT a resolvable limit (a genuine oscillator
+/// like `sin(1/x)`). When every factor has a limit, the generic Mul
+/// branch already handles the product, so this rule defers (returns
+/// None) and no existing result moves. Honesty is preserved because a
+/// bare `sin(1/x)` is not a product (declines here) and a product with
+/// no infinitesimal factor (`2*sin(1/x)`) also declines.
+fn apply_finite_squeeze_bounded_product_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+        return None;
+    }
+    let mut has_infinitesimal = false;
+    let mut has_bounded_oscillator = false;
+    for factor in collect_mul_factors(ctx, expr) {
+        match classify_squeeze_factor(ctx, factor, var, point)? {
+            SqueezeFactorClass::Infinitesimal => has_infinitesimal = true,
+            SqueezeFactorClass::BoundedOscillator => has_bounded_oscillator = true,
+            SqueezeFactorClass::FiniteLimit => {}
+        }
+    }
+    // Need a genuine 0 factor (otherwise the product oscillates) AND a
+    // bounded-but-limitless factor (otherwise the generic path owns it).
+    (has_infinitesimal && has_bounded_oscillator)
+        .then(|| ctx.add(Expr::Number(BigRational::zero())))
+}
+
+enum SqueezeFactorClass {
+    /// Resolves to 0.
+    Infinitesimal,
+    /// Resolves to a finite nonzero value (bounded cofactor).
+    FiniteLimit,
+    /// No limit, but globally bounded near the point (e.g. sin(1/x)).
+    BoundedOscillator,
+}
+
+fn classify_squeeze_factor(
+    ctx: &mut Context,
+    factor: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<SqueezeFactorClass> {
+    if let Some(value) = try_limit_rules_at_finite(ctx, factor, var, point) {
+        // A divergent factor makes the product 0 * infinity indeterminate.
+        if limit_value_infinite_sign(ctx, value).is_some() {
+            return None;
+        }
+        let is_zero =
+            crate::numeric_eval::as_rational_const(ctx, value).is_some_and(|v| v.is_zero());
+        return Some(if is_zero {
+            SqueezeFactorClass::Infinitesimal
+        } else {
+            SqueezeFactorClass::FiniteLimit
+        });
+    }
+    // No limit: admissible only as a globally bounded oscillator.
+    is_globally_bounded_near_finite_point(ctx, factor, var)
+        .then_some(SqueezeFactorClass::BoundedOscillator)
+}
+
+fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut factors = Vec::new();
+    let mut stack = vec![expr];
+    while let Some(node) = stack.pop() {
+        match ctx.get(node) {
+            Expr::Mul(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            _ => factors.push(node),
+        }
+    }
+    factors
+}
+
+/// True when `expr` has a globally bounded range near the point, so it
+/// can act as a squeeze cofactor even with no limit. The bounded outer
+/// functions (sin/cos/atan/arctan/tanh) saturate regardless of how their
+/// argument behaves; the argument is gated to a rational function of the
+/// variable, which is real on a two-sided punctured neighbourhood (a
+/// real rational function is never complex where defined). That gate
+/// excludes domain-restricted arguments like `ln(x)` or `sqrt(x)` whose
+/// one-sided undefinedness would break the bilateral bound.
+fn is_globally_bounded_near_finite_point(ctx: &Context, expr: ExprId, var: ExprId) -> bool {
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return false;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    is_globally_bounded_near_finite_point_inner(ctx, expr, &var_name)
+}
+
+fn is_globally_bounded_near_finite_point_inner(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            matches!(
+                ctx.builtin_of(*fn_id),
+                Some(
+                    BuiltinFn::Sin
+                        | BuiltinFn::Cos
+                        | BuiltinFn::Atan
+                        | BuiltinFn::Arctan
+                        | BuiltinFn::Tanh,
+                )
+            ) && argument_is_real_rational_function(ctx, args[0], var_name)
+        }
+        Expr::Neg(inner) => is_globally_bounded_near_finite_point_inner(ctx, *inner, var_name),
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) | Expr::Mul(lhs, rhs) => {
+            is_globally_bounded_near_finite_point_inner(ctx, *lhs, var_name)
+                && is_globally_bounded_near_finite_point_inner(ctx, *rhs, var_name)
+        }
+        Expr::Div(num, den) => {
+            // A nonzero constant denominator keeps the quotient bounded;
+            // constant_rational_value is Some only for var-free constants.
+            is_globally_bounded_near_finite_point_inner(ctx, *num, var_name)
+                && constant_rational_value(ctx, *den).is_some_and(|value| !value.is_zero())
+        }
+        _ => false,
+    }
+}
+
+/// A rational function of the variable (polynomial, or a ratio of two
+/// polynomials such as `1/x`). Real wherever defined, hence bounded near
+/// any point for a saturating outer function.
+fn argument_is_real_rational_function(ctx: &Context, arg: ExprId, var_name: &str) -> bool {
+    if Polynomial::from_expr(ctx, arg, var_name).is_ok() {
+        return true;
+    }
+    if let Expr::Div(num, den) = ctx.get(arg) {
+        // The denominator must be a NONZERO polynomial. An identically-zero
+        // denominator (1/(x - x) = 1/0) makes the quotient undefined on the
+        // WHOLE punctured neighbourhood, so sin/cos/... of it is nowhere
+        // defined and has no limit - it must not count as bounded. A
+        // denominator that merely vanishes at isolated points (1/x) is fine:
+        // the quotient is defined on the punctured neighbourhood.
+        return Polynomial::from_expr(ctx, *num, var_name).is_ok()
+            && Polynomial::from_expr(ctx, *den, var_name)
+                .is_ok_and(|den_poly| !den_poly.is_zero());
+    }
+    false
 }
 
 /// Resolve |var - point| by the approach side anywhere in the
@@ -6806,6 +6963,57 @@ mod tests {
                 )
                 .is_none(),
                 "must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn finite_squeeze_bounded_product_collapses_to_zero() {
+        // Squeeze theorem: an infinitesimal times a bounded oscillator
+        // tends to 0 even though the oscillator itself has no limit.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, point) in [
+            ("x * sin(1/x)", "0"),
+            ("x^2 * cos(1/x)", "0"),
+            ("sin(x) * sin(1/x)", "0"),
+            ("x * sin(1/x^2)", "0"),
+            ("-x * sin(1/x)", "0"),
+            ("3 * x * sin(1/x) * cos(1/x)", "0"),
+            ("(x - 2) * sin(1/(x - 2))", "2"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let point_expr = parse_expr(&mut ctx, point);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, point_expr)
+                .unwrap_or_else(|| panic!("squeeze must resolve: {source} at {point}"));
+            assert_eq!(display_expr(&ctx, out), "0", "{source} at {point}");
+        }
+    }
+
+    #[test]
+    fn finite_squeeze_declines_unsound_shapes() {
+        // Each of these must stay residual: a bare oscillator (no
+        // infinitesimal), a scaled oscillator (no infinitesimal), an
+        // unbounded outer (tan), a divergent cofactor (1/x), and a
+        // domain-restricted argument (ln/sqrt are not two-sided).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in [
+            "sin(1/x)",
+            "2 * sin(1/x)",
+            "x * tan(1/x)",
+            "x * sin(ln(x))",
+            "x * sin(1/sqrt(x))",
+            // Identically-zero denominator: sin(1/(x - x)) = sin(1/0) is
+            // undefined on the whole neighbourhood, so it is NOT a bounded
+            // oscillator and the product has no limit.
+            "x * sin(1/(x - x))",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_squeeze_bounded_product_rule(&mut ctx, expr, x, zero).is_none(),
+                "squeeze must decline: {source}"
             );
         }
     }

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 115 (newest first)
+Active entries: 116 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -132,6 +132,7 @@ Active entries: 115 (newest first)
 - 2026-06-13 | `retained` | calculus / integration / pre-simplifier vs integrator boundary | Retained calculus: product-to-sum integration for distinct trig frequencies
 - 2026-06-13 | `retained` | calculus / definite integration / special-value table (block 4 | Retained calculus: Gaussian moment definite-integral table
 - 2026-06-13 | `retained` | calculus / limits / one-sided finite-point composition (block 3 | Retained limits: one-sided composition saturation (inner -> +-inf)
+- 2026-06-13 | `retained` | calculus / limits / finite-point product (block 3 domain | Retained limits: finite-point squeeze (infinitesimal x bounded -> 0)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4923,3 +4924,79 @@ Active entries: 115 (newest first)
     presentation gaps in the combiner (0*finite). When a factor newly
     resolves to 0, the combiner must fold the zero against a non-rational
     finite cofactor, not just against other rationals
+
+## 2026-06-13 - Retained limits: finite-point squeeze (infinitesimal x bounded -> 0)
+
+- area:
+  - calculus / limits / finite-point product (block 3 domain
+    conditions, frontier audit "(F) Squeeze y dominancia fraccionaria" -
+    the squeeze rung; neighbours the honesty residual sin(1/x) at 0)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 domain conditions (3 matrix rows: two
+    supported squeezes + one honesty residual)
+  - limit_matrix_cell: limit(x*sin(1/x),x,0)=0,
+    limit(x^2*cos(1/x),x,0)=0, and the honesty contract
+    limit(2*sin(1/x),x,0) stays residual
+  - behavior_change_expected: yes - a product with an infinitesimal
+    factor and a bounded-oscillator factor resolves to 0; bare or scaled
+    oscillators with no infinitesimal stay residual (honesty)
+- observed (squeeze theorem, gated to never touch the honesty residual):
+  - the generic finite Mul branch requires BOTH factors to have a limit,
+    so x*sin(1/x) declined (sin(1/x) oscillates, no limit). A new
+    apply_finite_squeeze_bounded_product_rule flattens the product and
+    classifies each factor as Infinitesimal (limit 0), FiniteLimit
+    (bounded), or BoundedOscillator (no limit but globally bounded). It
+    returns 0 only when there is >=1 Infinitesimal AND >=1
+    BoundedOscillator and NO divergent factor
+  - bounded detection mirrors the at-infinity helper: sin/cos/atan/
+    arctan/tanh have bounded RANGE regardless of argument. The argument
+    is gated to a rational function of the variable (polynomial or
+    polynomial ratio via Polynomial::from_expr), which is real on a
+    two-sided punctured neighbourhood. That gate is load-bearing: it
+    drops x*sin(ln(x)) and x*sin(1/sqrt(x)) whose one-sided
+    undefinedness would make the bilateral limit not exist
+  - footprint-minimal by construction: the rule fires ONLY when a factor
+    is bounded WITHOUT a limit (a genuine oscillator). Products whose
+    factors all have limits (x*sin(x)) still flow through the generic
+    path, so no pre-existing result moves - the fingerprint confirmed
+    only the limit matrix lane changed
+  - honesty preserved by three independent gates: (a) a bare sin(1/x) is
+    not a Mul, (b) a product with no infinitesimal (2*sin(1/x)) lacks the
+    zero factor, (c) the divergent forms (1/x)*sin(1/x) normalize to a
+    Div, not a Mul, so they never enter the rule. Unbounded outers
+    (tan/sec/csc and 1/sin) are not in the bounded set and decline
+  - ADVERSARIAL CATCH: the rational-function gate accepted any
+    Div(num, den) where both parse as polynomials, but never required the
+    denominator to be NONZERO. The identically-zero denominator
+    1/(x - x) = 1/0 makes sin(1/(x - x)) undefined on the WHOLE punctured
+    neighbourhood (no limit), yet the rule collapsed x*sin(1/(x - x)) to
+    0. The soundness lens found 5 instances (sin/cos/atan/tanh, plus a
+    shifted point). Fix: argument_is_real_rational_function rejects the
+    Div when the denominator polynomial .is_zero(); a denominator with
+    only isolated zeros (1/x, 1/(x*(x-1))) stays accepted because the
+    quotient is still defined on the punctured neighbourhood
+- retained learning:
+  - the squeeze theorem implements cleanly as a FACTOR-CLASSIFIER over a
+    flattened product (infinitesimal / bounded-with-limit / bounded-
+    without-limit / reject), firing on the conjunction "a zero factor and
+    a limitless-but-bounded factor". The "bounded without a limit" class
+    is what the generic combiner cannot express, and gating on its
+    presence makes the rule additive-only (cannot move existing results)
+  - boundedness near a finite point is a RANGE property of the outer
+    function (sin/cos/atan/tanh saturate), decoupled from the argument's
+    behaviour - but the argument still needs a two-sided real domain, so
+    gate it to rational functions. A saturating outer over a domain-
+    restricted argument (ln/sqrt) is one-sided and must decline bilaterally
+  - keying a product rule on Expr::Mul automatically excludes the
+    divergent sibling forms, because the simplifier normalizes
+    (1/x)*sin(1/x) into a Div - the AST shape itself separates the
+    convergent squeeze from the divergent quotient
+  - a "structurally real" gate (parses as a rational function) is NOT the
+    same as "defined somewhere": the zero polynomial parses fine yet
+    1/0 is defined nowhere. Any predicate that admits a denominator must
+    carry the NONZERO check alongside the polynomial check - the
+    adversarial degenerate-input sweep (x - x, 0*x, x^2 - x^2) is what
+    forces that pairing, which canonical unit tests never exercise
