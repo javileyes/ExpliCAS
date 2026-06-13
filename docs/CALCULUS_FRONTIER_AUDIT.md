@@ -163,7 +163,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `(1+1/x)^x → e`, `(1+2/x)^x → e²`, `(1+x)^(1/x) → e`, `x^x → 1 en
   0+`, `(2^x+3^x)^(1/x) → 3`. Hoy la constante `e` es inalcanzable
   por límite — invalida un capítulo del temario.
-- [~] **(F) ∞−∞ con radicales** (racionalización por conjugado):
+- [x] **(F) ∞−∞ con radicales** (racionalización por conjugado):
   `sqrt(x^2+x)-x → 1/2`, `sqrt(x+1)-sqrt(x) → 0`, y en punto finito
   `(sqrt(x)-2)/(x-4) → 1/4`.
   *(parcial 2026-06-13 d78ce2c0e: `sqrt(ax²+bx+c) − (dx+e)` a ±∞ con
@@ -175,8 +175,14 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   del mismo grado (1 o 2) y mismo líder — `sqrt(x+1)−sqrt(x)=0`,
   `sqrt(x²+x)−sqrt(x²−x)=1`, `sqrt(4x²+x)−sqrt(4x²−x)=1/2` vía
   `(b_P−b_Q)/(2√a)`. El lado +∞ del item queda cubierto. Peldaños:
-  √a irracional (`sqrt(2x²+x)−sqrt(2x²−x)=1/√2`), grado ≥3, y la
-  versión en punto finito `(√x−2)/(x−4)`)*
+  √a irracional (`sqrt(2x²+x)−sqrt(2x²−x)=1/√2`), grado ≥3)*
+  *(graduado 2026-06-13 15bc39585: el lado PUNTO FINITO completado —
+  `(scale·√(ax+b)+k)/den` en 0/0 vía conjugado: `(√x−2)/(x−4)=1/4`,
+  `(√x−3)/(x−9)=1/6`, `(√(2x+1)−3)/(x−4)=1/3`, denominador cuadrático
+  `(√x−2)/(x²−16)=1/32`. Gate de seguridad: numerador 0 en el punto +
+  raíz racional + conjugado ≠0; los polos no-0/0 y las raíces
+  irracionales declinan, con condiciones de dominio honestas. Item
+  cerrado salvo los peldaños √a irracional y grado ≥3 anotados)*
 
 ### P2 — familias y mejoras de alto valor (1 ciclo cada una)
 
