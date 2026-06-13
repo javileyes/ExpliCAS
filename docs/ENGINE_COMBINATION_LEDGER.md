@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 126 (newest first)
+Active entries: 127 (newest first)
 
+- 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5479,3 +5480,61 @@ Active entries: 126 (newest first)
     identical-code regenerations flipping trig_additive_residual_domain <->
     log_rational_residual). Treat it like slowest_case: filter it from the
     fingerprint, compare timing-sorted lists as multisets
+
+
+## 2026-06-14 - Retained integration: odd integrand over a symmetric interval = 0
+
+- area:
+  - calculus / definite integration / structural symmetry without an
+    antiderivative (block 13)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_maturity_block: block 13 definite integrals (2 matrix rows:
+    odd over positive-definite denominator, odd times an entire even factor)
+  - integrate_matrix_cell: integrate(sin(x)/(1+x^2),x,-1,1)=0,
+    integrate(sin(x)*exp(x^2),x,-1,1)=0
+  - behavior_change_expected: yes - definite integrals of an ODD integrand
+    over a symmetric interval [-a, a] resolve to 0 even when the
+    antiderivative is non-elementary; FTC keeps everything it already owned
+- observed (a structural fallback when no antiderivative exists):
+  - the FTC path returns None for a non-elementary integrand (no closed
+    antiderivative), which previously meant residual. odd_symmetric_definite_
+    integral_rewrite runs exactly at that None and resolves the integral to
+    0 when three independent obligations hold: finite symmetric bounds
+    (lower = -upper, compared component-wise on the rational+pi+e endpoint),
+    provable oddness, and integrability (no interior singularity)
+  - parity_in_var is a sound, conservative parity classifier: a foreign
+    symbol is even (constant in the variable), a sum keeps a parity only when
+    both terms share it, a product/quotient adds parities (odd*odd = even), an
+    integer power carries the base parity by the exponent parity, a positive
+    constant base b^g is even iff g is even (b^g = e^{g ln b}, so e^(x^2) is
+    even), and a composition follows the outer builtin's parity class
+    (sin/tan/sinh/asin/atan/cbrt odd; cos/cosh/sec/abs even; exp/ln/sqrt even
+    only over an even argument). Anything undecidable returns None
+  - the integrability gate reuses integrand_risks_certified - the SAME scan
+    that makes int(1/x, x, -1, 1) undefined - and requires the strict
+    Certified verdict (a boundary touch or interior pole is not
+    integrable-to-zero by symmetry)
+- retained learning:
+  - parity is a structural property that needs no antiderivative and no
+    simplifier: a recursive {Odd, Even, Unknown} classifier where each arm is
+    a parity identity is sound and robust for transcendental integrands,
+    where polynomial-equivalence checks (substitute x -> -x then compare) are
+    blind. Conservatism (Unknown -> decline) is free safety: a missed odd
+    function is a residual, never a wrong 0
+  - the soundness of a "= 0" shortcut lives ENTIRELY in the integrability
+    gate, not the parity proof: 1/x is perfectly odd yet its symmetric
+    integral diverges. Reuse the existing interval certificate rather than
+    inventing a weaker positivity check - it already enclosures trig zeros
+    (tan's pole at pi/2) and factors rational denominators, so the same scan
+    that powers "pole inside -> undefined" powers "no pole -> safe to apply
+    symmetry"
+  - run the structural rule only on what the antiderivative path leaves
+    residual (fire at the None), the same cheap-owns-its-cases discipline as
+    the higher-order Taylor limit engine: x^3 and x/(1+x^2) keep their FTC
+    trace, and symmetry only catches the non-elementary odd integrands
+  - remaining educational rung: the resolved step is the generic "Calcular
+    la integral" wrapper, not a symmetry-specific narration ("integrando
+    impar en intervalo simetrico => 0")

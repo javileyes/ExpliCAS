@@ -641,6 +641,158 @@ fn root_position(low: &Endpoint, high: &Endpoint, value: &BigRational) -> Option
     }
 }
 
+/// Parity of an expression in the integration variable. A sound, conservative
+/// classifier: every arm is a parity identity and anything undecidable is None.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VarParity {
+    Odd,
+    Even,
+}
+
+/// Parity behaviour of a single-argument builtin as the OUTER function.
+enum OuterParity {
+    /// f(-y) = -f(y): f(g) inherits the parity of g.
+    Odd,
+    /// f(-y) = f(y): f(g) is even for any g of defined parity.
+    Even,
+    /// Neither, but f(g) is even when g is even (f(g(-x)) = f(g(x))); an odd
+    /// inner argument yields no usable parity.
+    EvenWhenInnerEven,
+}
+
+fn builtin_outer_parity(builtin: cas_ast::BuiltinFn) -> Option<OuterParity> {
+    use cas_ast::BuiltinFn::{
+        Abs, Arcsin, Arctan, Asin, Asinh, Atan, Atanh, Cbrt, Cos, Cosh, Cot, Csc, Exp, Ln, Log,
+        Log10, Log2, Sec, Sin, Sinh, Sqrt, Tan, Tanh,
+    };
+    Some(match builtin {
+        Sin | Tan | Csc | Cot | Sinh | Tanh | Asin | Arcsin | Atan | Arctan | Asinh | Atanh
+        | Cbrt => OuterParity::Odd,
+        Cos | Sec | Cosh | Abs => OuterParity::Even,
+        Exp | Ln | Log | Log2 | Log10 | Sqrt => OuterParity::EvenWhenInnerEven,
+        _ => return None,
+    })
+}
+
+/// Parity of `expr` in `var_name`, or None when undecidable. Sound: a foreign
+/// symbol is a constant in the integration variable (even); a sum keeps a
+/// parity only when both terms share it; a product/quotient adds parities
+/// (odd*odd = even); an integer power carries the base's parity by exponent
+/// parity; and a composition follows the outer function's parity class.
+fn parity_in_var(ctx: &Context, expr: ExprId, var_name: &str) -> Option<VarParity> {
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Constant(_) => Some(VarParity::Even),
+        Expr::Variable(sym) => Some(if ctx.sym_name(*sym) == var_name {
+            VarParity::Odd
+        } else {
+            VarParity::Even
+        }),
+        Expr::Neg(inner) => parity_in_var(ctx, *inner, var_name),
+        Expr::Add(a, b) | Expr::Sub(a, b) => {
+            let pa = parity_in_var(ctx, *a, var_name)?;
+            let pb = parity_in_var(ctx, *b, var_name)?;
+            (pa == pb).then_some(pa)
+        }
+        Expr::Mul(a, b) | Expr::Div(a, b) => {
+            let pa = parity_in_var(ctx, *a, var_name)?;
+            let pb = parity_in_var(ctx, *b, var_name)?;
+            Some(if pa == pb {
+                VarParity::Even
+            } else {
+                VarParity::Odd
+            })
+        }
+        Expr::Pow(base, exp) => {
+            use num_integer::Integer;
+            // A positive x-free base is an exponential b^g = e^{g ln b}: even
+            // exactly when the exponent g is even (e^(x^2)), undecidable when g
+            // is odd. Covers e^g and rational bases like 2^(x^2).
+            let base_is_positive_constant = match as_rational_const(ctx, *base) {
+                Some(value) => value.is_positive(),
+                None => matches!(ctx.get(*base), Expr::Constant(Constant::E)),
+            };
+            if base_is_positive_constant {
+                let exp_parity = parity_in_var(ctx, *exp, var_name)?;
+                return (exp_parity == VarParity::Even).then_some(VarParity::Even);
+            }
+            // Otherwise the base carries the variable: an x-free integer
+            // exponent carries the base's parity by the exponent's parity.
+            let exponent = as_rational_const(ctx, *exp)?;
+            if !exponent.is_integer() {
+                return None;
+            }
+            let base_parity = parity_in_var(ctx, *base, var_name)?;
+            Some(match base_parity {
+                VarParity::Even => VarParity::Even,
+                VarParity::Odd if exponent.to_integer().is_even() => VarParity::Even,
+                VarParity::Odd => VarParity::Odd,
+            })
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let inner = parity_in_var(ctx, args[0], var_name)?;
+            match builtin_outer_parity(ctx.builtin_of(*fn_id)?)? {
+                OuterParity::Odd => Some(inner),
+                OuterParity::Even => Some(VarParity::Even),
+                OuterParity::EvenWhenInnerEven => {
+                    (inner == VarParity::Even).then_some(VarParity::Even)
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Structural fallback when no antiderivative exists: an ODD integrand over a
+/// symmetric interval [-a, a] integrates to 0 with no antiderivative needed.
+/// Soundness rests on three independent obligations — symmetric finite bounds,
+/// provable oddness in the variable, and integrability (no interior
+/// singularity, certified by the same scan that makes int(1/x, x, -1, 1)
+/// undefined). The orientation of the bounds does not matter: a reversed
+/// interval only flips the sign of 0.
+fn odd_symmetric_definite_integral_rewrite(
+    ctx: &mut Context,
+    call: &DefiniteIntegralCall,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> Option<Rewrite> {
+    let (DefiniteBound::Finite(low), DefiniteBound::Finite(high)) = (lower_bound, upper_bound)
+    else {
+        return None;
+    };
+    // Symmetric interval: lower = -upper component by component.
+    let symmetric = (&low.rational + &high.rational).is_zero()
+        && (&low.pi_multiple + &high.pi_multiple).is_zero()
+        && (&low.e_multiple + &high.e_multiple).is_zero();
+    if !symmetric {
+        return None;
+    }
+    if parity_in_var(ctx, call.target, &call.var_name) != Some(VarParity::Odd) {
+        return None;
+    }
+    // Sort the endpoints for the certificate's closed interval, then require
+    // full continuity (Certified) - a boundary touch or an interior pole is
+    // not integrable-to-zero by symmetry.
+    let (interval_low, interval_high) = match low.try_cmp(high) {
+        Some(std::cmp::Ordering::Greater) => (high, low),
+        Some(_) => (low, high),
+        None => return None,
+    };
+    if !matches!(
+        integrand_risks_certified(
+            ctx,
+            call.target,
+            &call.var_name,
+            interval_low,
+            interval_high
+        ),
+        IntervalCertificate::Certified
+    ) {
+        return None;
+    }
+    let zero = ctx.num(0);
+    Some(Rewrite::new(zero).desc("odd integrand over symmetric interval [-a, a] = 0"))
+}
+
 pub(super) fn definite_integration_rewrite(
     ctx: &mut Context,
     call: &DefiniteIntegralCall,
@@ -675,7 +827,12 @@ pub(super) fn definite_integration_rewrite(
         return Some(rewrite);
     }
 
-    let (antiderivative, conditions) = resolve_indefinite_for_definite(ctx, call)?;
+    let Some((antiderivative, conditions)) = resolve_indefinite_for_definite(ctx, call) else {
+        // No elementary antiderivative: try the structural symmetry fallback
+        // before conceding a residual. This keeps the FTC path's ownership of
+        // everything that DOES have an antiderivative (x^3, tan x, ...) intact.
+        return odd_symmetric_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound);
+    };
 
     if matches!(
         lower_bound,
@@ -1898,6 +2055,51 @@ mod tests {
         // certificate.
         assert!(eval_definite("integrate(x^2, x, 0, t)").is_some());
         assert!(eval_definite("integrate(1/(x^2+1), x, a, b)").is_some());
+    }
+}
+
+#[cfg(test)]
+mod odd_symmetry_tests {
+    use super::tests::eval_definite;
+
+    #[test]
+    fn odd_integrand_over_symmetric_interval_is_zero() {
+        // No elementary antiderivative, but odd + continuous + symmetric -> 0.
+        for source in [
+            "integrate(sin(x)/(1+x^2), x, -1, 1)",
+            "integrate(sin(x)*exp(x^2), x, -1, 1)",
+            "integrate(sin(x^3), x, -2, 2)",
+            "integrate(x^3*sin(x^2)*exp(x^4), x, -1, 1)",
+            // tan is odd and continuous on [-1, 1] (the pole is at pi/2 > 1).
+            "integrate(tan(x)*exp(x^2), x, -1, 1)",
+            // a rational-base exponential 2^(x^2) = e^(x^2 ln 2) is even.
+            "integrate(sin(x)*2^(x^2), x, -1, 1)",
+        ] {
+            assert_eq!(eval_definite(source).as_deref(), Some("0"), "{source}");
+        }
+    }
+
+    #[test]
+    fn symmetry_declines_unsound_and_inapplicable_shapes() {
+        // Interior pole (1/x is odd but NOT integrable to 0).
+        assert_eq!(
+            eval_definite("integrate(1/x, x, -1, 1)").as_deref(),
+            Some("undefined"),
+        );
+        // tan has a pole at pi/2 inside [-2, 2]: not certified, stays residual.
+        assert!(eval_definite("integrate(tan(x)*exp(x^2), x, -2, 2)").is_none());
+        // Denominator roots at +-1/2 inside [-1, 1].
+        assert!(eval_definite("integrate(sin(x)/(x^2-1/4), x, -1, 1)").is_none());
+        // Even integrand, not odd.
+        assert!(eval_definite("integrate(cos(x)/(1+x^2), x, -1, 1)").is_none());
+        assert!(eval_definite("integrate(exp(x^2), x, -1, 1)").is_none());
+        // Asymmetric interval.
+        assert!(eval_definite("integrate(sin(x)/(1+x^2), x, 0, 1)").is_none());
+        assert!(eval_definite("integrate(sin(x)*exp(x^2), x, -1, 2)").is_none());
+        // sin(x)*exp(x) is neither odd nor even (exp(x) is neither); the
+        // classifier declines and FTC owns it (elementary antiderivative).
+        let ftc = eval_definite("integrate(sin(x)*exp(x), x, -1, 1)").expect("FTC");
+        assert_ne!(ftc, "0");
     }
 }
 

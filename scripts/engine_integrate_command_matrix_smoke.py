@@ -934,6 +934,34 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         outcome="undefined",
     ),
     IntegrateCommandMatrixCase(
+        name="definite_integral_odd_symmetry_rational",
+        # No elementary antiderivative, but odd integrand + symmetric interval
+        # + certified continuity (1 + x^2 has no real root) collapses to 0.
+        expr="integrate(sin(x)/(1+x^2), x, -1, 1)",
+        expected_result="0",
+        expected_required_display=(),
+        expected_step_substrings=("Calcular la integral",),
+        family="definite_integral_symmetry_odd",
+        argument_regime="odd_over_positive_definite_denominator",
+        domain_regime="interval_certified_odd_symmetry",
+        trace_regime="definite_odd_symmetry",
+        presentation_regime="symmetry_zero_value",
+    ),
+    IntegrateCommandMatrixCase(
+        name="definite_integral_odd_symmetry_entire",
+        # sin(x) (odd) times exp(x^2) (even, an entire factor with no
+        # elementary antiderivative): the product is odd and pole-free.
+        expr="integrate(sin(x)*exp(x^2), x, -1, 1)",
+        expected_result="0",
+        expected_required_display=(),
+        expected_step_substrings=("Calcular la integral",),
+        family="definite_integral_symmetry_odd",
+        argument_regime="odd_times_even_entire_factor",
+        domain_regime="interval_certified_odd_symmetry",
+        trace_regime="definite_odd_symmetry",
+        presentation_regime="symmetry_zero_value",
+    ),
+    IntegrateCommandMatrixCase(
         name="definite_integral_symbolic_bound_area_function",
         expr="integrate(x^2, x, 0, t)",
         expected_result="1/3·t^3",
