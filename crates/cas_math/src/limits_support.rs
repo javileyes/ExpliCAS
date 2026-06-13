@@ -3972,6 +3972,105 @@ fn scaled_abs_base(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)>
     }
 }
 
+/// Limit of `sqrt(a x^2 + b x + c) - (d x + e)` (or the reverse) at
+/// +-infinity via the conjugate / leading-term expansion. With sqrt(a)
+/// rational and the leading terms cancelling, the limit is finite:
+/// sqrt(a x^2 + b x + c) = sqrt(a)|x| + b/(2 sqrt(a)) sign(x) + o(1).
+/// Covers the classic sqrt(x^2+x) - x = 1/2, sqrt(x^2+1) - x = 0,
+/// x - sqrt(x^2-x) = 1/2. Diverging cases (leading terms differ) decline
+/// here and fall through to the polynomial-dominance rules.
+fn sqrt_quadratic_minus_linear_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Variable(var_sym) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_sym).to_string();
+    let (left, right) = match ctx.get(expr).clone() {
+        Expr::Sub(l, r) => (l, r),
+        Expr::Add(l, r) => match ctx.get(r).clone() {
+            Expr::Neg(inner) => (l, inner),
+            _ => match ctx.get(l).clone() {
+                Expr::Neg(inner) => (r, inner),
+                _ => return None,
+            },
+        },
+        _ => return None,
+    };
+    sqrt_quadratic_minus_linear_oriented(ctx, left, right, true, &var_name, approach).or_else(
+        || sqrt_quadratic_minus_linear_oriented(ctx, right, left, false, &var_name, approach),
+    )
+}
+
+/// One orientation: `sqrt_side - linear_side` when `sqrt_first`, else
+/// `linear_side - sqrt_side`. Returns the finite limit or None.
+fn sqrt_quadratic_minus_linear_oriented(
+    ctx: &mut Context,
+    sqrt_side: ExprId,
+    linear_side: ExprId,
+    sqrt_first: bool,
+    var_name: &str,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let (sqrt_scale, radicand) = scaled_square_root_base(ctx, sqrt_side)?;
+    if !sqrt_scale.is_positive() {
+        return None;
+    }
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    if radicand_poly.degree() != 2 {
+        return None;
+    }
+    let a = radicand_poly.coeffs.get(2)?.clone();
+    if !a.is_positive() {
+        return None;
+    }
+    let b = radicand_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| BigRational::from_integer(BigInt::from(0)));
+    let sqrt_a = rational_sqrt(&a)?;
+
+    let linear_poly = Polynomial::from_expr(ctx, linear_side, var_name).ok()?;
+    if linear_poly.degree() > 1 {
+        return None;
+    }
+    let zero = BigRational::from_integer(BigInt::from(0));
+    let d = linear_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| zero.clone());
+    let e = linear_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(|| zero.clone());
+
+    let two = BigRational::from_integer(BigInt::from(2));
+    // sqrt(a x^2 + b x + c) ~ sqrt(a)|x| + sign(x) b/(2 sqrt(a)).
+    let (sqrt_leading, b_constant) = match approach {
+        InfSign::Pos => (&sqrt_scale * &sqrt_a, &sqrt_scale * &b / (&two * &sqrt_a)),
+        InfSign::Neg => (
+            -(&sqrt_scale * &sqrt_a),
+            -(&sqrt_scale * &b) / (&two * &sqrt_a),
+        ),
+    };
+    let (leading, constant) = if sqrt_first {
+        (&sqrt_leading - &d, &b_constant - &e)
+    } else {
+        (&d - &sqrt_leading, &e - &b_constant)
+    };
+    // Finite limit only when the leading terms cancel exactly.
+    if !leading.is_zero() {
+        return None;
+    }
+    Some(ctx.add(Expr::Number(constant)))
+}
+
 fn sqrt_polynomial_ratio_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -5927,6 +6026,9 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) =
         bounded_elementary_times_decaying_exp_limit_at_infinity(ctx, expr, var, approach)
     {
+        return Some(r);
+    }
+    if let Some(r) = sqrt_quadratic_minus_linear_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = sqrt_polynomial_ratio_limit_at_infinity(ctx, expr, var, approach) {
@@ -8826,6 +8928,47 @@ mod tests {
 
         assert!(out1.is_none());
         assert!(out2.is_none());
+    }
+
+    #[test]
+    fn sqrt_quadratic_minus_linear_limit_resolves_finite_cancellations() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, num, den) in [
+            ("sqrt(x^2 + x) - x", 1, 2),
+            ("sqrt(x^2 + 1) - x", 0, 1),
+            ("x - sqrt(x^2 - x)", 1, 2),
+            ("sqrt(x^2 + 3*x) - x", 3, 2),
+            ("sqrt(4*x^2 + x) - 2*x", 1, 4),
+            ("sqrt(x^2 + x + 1) - x", 1, 2),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out =
+                sqrt_quadratic_minus_linear_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                    .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_number_expr(&ctx, out, num, den);
+        }
+    }
+
+    #[test]
+    fn sqrt_quadratic_minus_linear_limit_declines_divergent_and_irrational() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        // Leading terms that do not cancel diverge; irrational sqrt(a)
+        // and non-quadratic radicands have no rational closed form here.
+        for source in [
+            "sqrt(x^2 + 1) - 2*x",
+            "sqrt(2*x^2 + x) - x",
+            "sqrt(x^2 + 1) + x",
+            "sqrt(x^3 + 1) - x",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                sqrt_quadratic_minus_linear_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                    .is_none(),
+                "must decline: {source}"
+            );
+        }
     }
 
     #[test]

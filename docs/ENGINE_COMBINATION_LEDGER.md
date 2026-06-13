@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 109 (newest first)
+Active entries: 110 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -126,6 +126,7 @@ Active entries: 109 (newest first)
 - 2026-06-13 | `retained` | calculus / definite integration / FTC bound certificate | Retained calculus: definite integrals with e-valued bounds
 - 2026-06-13 | `retained` | calculus / differentiation / fundamental theorem (block 2 real | Retained calculus: FTC / Leibniz rule for derivatives of definite integrals
 - 2026-06-13 | `retained` | parser / calculus surface coverage (block 4/7 hyperbolic, P? | Retained calculus: reciprocal hyperbolics parse via cosh/sinh desugar
+- 2026-06-13 | `retained` | calculus / limits / infinity / radical differences (block 3 real | Retained limits: sqrt(quadratic) - linear at infinity (conjugate cancellation)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4625,3 +4626,48 @@ Active entries: 109 (newest first)
     rewrite inherits all of it for free and touches one file instead of
     the whole builtin surface. Reserve new builtins for functions whose
     definitional form the pipeline does NOT already handle well
+
+## 2026-06-13 - Retained limits: sqrt(quadratic) - linear at infinity (conjugate cancellation)
+
+- area:
+  - calculus / limits / infinity / radical differences (block 3 real
+    domain limits, P? frontier audit "∞−∞ con radicales")
+- status:
+  - `retained`
+- capture:
+  - investment_class: limits
+  - calculus_maturity_block: block 3 real-domain limits (new
+    radical_difference_conjugate family, 4 rows, infinity 30 -> 34)
+  - calculus_matrix_cell: limit(sqrt(x^2+x)-x,x,inf)=1/2,
+    limit(sqrt(x^2+1)-x)=0, limit(sqrt(4x^2+x)-2x)=1/4,
+    limit(x-sqrt(x^2-x))=1/2
+  - behavior_change_expected: yes - sqrt(a x^2 + b x + c) - (d x + e)
+    at +-inf with sqrt(a) rational and cancelling leading terms
+- observed (closed form beats the conjugate transform):
+  - the obvious approach (multiply by the conjugate) does NOT work
+    end-to-end: x/(sqrt(x^2+x)+x) at infinity stays residual because
+    the limits engine lacks sqrt(quadratic) leading-term asymptotics in
+    a denominator. So the recognizer computes the limit DIRECTLY from
+    the expansion sqrt(a x^2 + b x + c) = sqrt(a)|x| + sign(x) b/(2
+    sqrt(a)) + o(1): when the leading sqrt(a) matches the linear slope
+    d, the x-terms cancel and the limit is b/(2 sqrt(a)) - e
+  - requires sqrt(a) rational (perfect-square leading coefficient) for
+    a rational closed form; sqrt(2 x^2 + x) - x declines (irrational
+    surd) as an honest rung, and it diverges anyway
+  - tightly gated: only fires when the leading terms cancel EXACTLY
+    (leading == 0), so divergent differences (sqrt(x^2+1) - 2x) and
+    additive forms (sqrt(x^2+1) + x) decline and fall through. Both
+    +-inf via the sign(x) factor; the matcher accepts Sub and
+    Add(_, Neg(_)) orientations and the reversed linear-minus-sqrt form
+  - sqrt(P) - sqrt(Q) (two radicals, e.g. sqrt(x+1)-sqrt(x)) is a
+    sibling rung: the non-sqrt side must be linear here
+- retained learning:
+  - when the engine lacks an intermediate capability (sqrt-asymptotics
+    in a quotient), a direct closed-form recognizer for the whole
+    target family is more reliable than a transform that depends on the
+    missing piece: don't rewrite into a form the engine can't finish
+  - leading-cancellation gates are self-protecting: computing the
+    asymptotic leading coefficient and refusing unless it is exactly
+    zero means the rule can never return a finite value for a divergent
+    limit, so the honesty boundary is enforced by the math, not a
+    separate check
