@@ -20,7 +20,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_limit_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 159)
+        self.assertEqual(len(cases), 161)
         names = {case.name for case in cases}
         self.assertIn("finite_removable_rational_cancellation", names)
         self.assertIn("finite_rational_simple_pole_residual", names)
@@ -32,6 +32,8 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("infinity_power_over_polylog_diverges", names)
         self.assertIn("infinity_bounded_noise_equal_degree_ratio", names)
         self.assertIn("infinity_bounded_noise_higher_degree_diverges", names)
+        self.assertIn("infinity_log_difference_finite_ratio", names)
+        self.assertIn("infinity_log_difference_diverges", names)
         self.assertIn("finite_one_sided_removable_rational_cancellation", names)
         self.assertIn(
             "finite_one_sided_removable_rational_cancellation_with_nonlocal_pole",
@@ -254,11 +256,11 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("finite_first_order_equiv_tanh_quotient", names)
         self.assertEqual(
             SMOKE.count_by(cases, "point_regime"),
-            {"finite": 78, "finite_one_sided": 39, "infinity": 42},
+            {"finite": 78, "finite_one_sided": 39, "infinity": 44},
         )
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 28, "supported": 128, "undefined": 3},
+            {"residual": 28, "supported": 130, "undefined": 3},
         )
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
@@ -346,14 +348,14 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block3_real_domain_limits": 128,
+                "block3_real_domain_limits": 130,
                 "block9_residuals_and_non_goals": 31,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
-                "didactic_trace_and_limit_policy": 48,
+                "didactic_trace_and_limit_policy": 50,
                 "domain_conditions_and_limit_policy": 80,
                 "explicit_undefined_domain_policy": 3,
                 "safe_residual_policy": 28,
@@ -451,12 +453,12 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "infinity_path_total_real_function": 1,
                 "infinity_path_total_real_rational_finite_tail_domain": 1,
                 "infinity_source_definedness": 1,
-                "none": 27,
+                "none": 29,
             },
         )
         self.assertEqual(
             sum(1 for case in cases if case.expected_step_substrings),
-            159,
+            161,
         )
         self.assertEqual(
             [

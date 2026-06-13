@@ -6026,6 +6026,61 @@ pub fn elementary_function_limit_at_infinity(
     }
 }
 
+/// `ln(P(x)) - ln(Q(x))` at +inf collapses the indeterminate inf - inf to
+/// `ln(lim P/Q)`: a finite `ln(lc_P/lc_Q)` when the degrees match, `+inf`
+/// when P outgrows Q, and `-inf` when Q outgrows P. P and Q must be
+/// polynomials tending to +inf (positive leading coefficient) so each
+/// logarithm is eventually real. Runs before the generic Sub handling,
+/// which would otherwise return the unresolved inf - inf.
+fn log_difference_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if approach != InfSign::Pos {
+        return None;
+    }
+    let Expr::Sub(lhs, rhs) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let p = bare_natural_log_argument(ctx, lhs)?;
+    let q = bare_natural_log_argument(ctx, rhs)?;
+    let p_growth = polynomial_growth_info(ctx, p, var)?;
+    let q_growth = polynomial_growth_info(ctx, q, var)?;
+    // Both arguments must tend to +inf so the logarithms are eventually real.
+    if !p_growth.leading_coeff.is_positive() || !q_growth.leading_coeff.is_positive() {
+        return None;
+    }
+    use std::cmp::Ordering;
+    match p_growth.degree.cmp(&q_growth.degree) {
+        Ordering::Equal => {
+            let ratio = p_growth.leading_coeff / q_growth.leading_coeff;
+            // ln(1) = 0; the raw limit output is not fully simplified, so fold
+            // the unit ratio here rather than emit a bare ln(1).
+            if ratio.is_one() {
+                return Some(ctx.num(0));
+            }
+            let ratio_expr = ctx.add(Expr::Number(ratio));
+            Some(ctx.call_builtin(BuiltinFn::Ln, vec![ratio_expr]))
+        }
+        Ordering::Greater => Some(mk_infinity(ctx, InfSign::Pos)),
+        Ordering::Less => Some(mk_infinity(ctx, InfSign::Neg)),
+    }
+}
+
+/// The argument `P` of a bare `ln(P)` (natural logarithm, single argument).
+fn bare_natural_log_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Ln)) =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
 pub fn additive_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -6865,6 +6920,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = elementary_function_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = log_difference_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = additive_limit_at_infinity(ctx, expr, var, approach) {
@@ -12384,6 +12442,48 @@ mod tests {
                 .unwrap_or_else(|| panic!("bounded-noise quotient must resolve: {source}"));
             assert_eq!(display_expr(&ctx, out), expected, "{source}");
         }
+    }
+
+    #[test]
+    fn log_difference_at_infinity_collapses_to_log_of_ratio() {
+        // ln(P) - ln(Q) -> ln(lim P/Q): a finite ln(lc_P/lc_Q) when degrees
+        // match, +inf when P outgrows Q, -inf when Q outgrows P.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("ln(x+1) - ln(x)", "0"),
+            ("ln(2*x) - ln(x)", "ln(2)"),
+            ("ln(x^2+x) - ln(x^2-x)", "0"),
+            ("ln(3*x+1) - ln(x)", "ln(3)"),
+            ("ln(x) - ln(2*x)", "ln(1/2)"),
+            ("ln(x^2) - ln(x)", "infinity"),
+            ("ln(x) - ln(x^2)", "-infinity"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("log difference must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn log_difference_at_infinity_declines_non_polynomial_or_negative() {
+        // A non-polynomial log argument, a negative-leading argument (ln
+        // undefined as x -> +inf), and the wrong approach must decline.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in ["ln(sin(x)) - ln(x)", "ln(-x) - ln(x)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                log_difference_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "log difference must decline: {source}"
+            );
+        }
+        let neg_approach = parse_expr(&mut ctx, "ln(x+1) - ln(x)");
+        assert!(
+            log_difference_limit_at_infinity(&mut ctx, neg_approach, x, InfSign::Neg).is_none(),
+            "x -> -inf makes ln undefined, so the rule must decline"
+        );
     }
 
     #[test]

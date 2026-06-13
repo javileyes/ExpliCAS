@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 123 (newest first)
+Active entries: 124 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -140,6 +140,7 @@ Active entries: 123 (newest first)
 - 2026-06-13 | `retained` | calculus / definite integration / special-value table (block 4, | Retained integration: half-integer Gamma moment table
 - 2026-06-13 | `retained` | calculus / limits / growth dominance at infinity (block 3, frontier | Retained limits: polylog over a fractional power at infinity
 - 2026-06-13 | `retained` | calculus / limits / rational growth at infinity (block 3, frontier | Retained limits: rational quotient with bounded additive noise
+- 2026-06-13 | `retained` | calculus / limits / logarithmic difference at infinity (block 3) | Retained limits: ln(P) - ln(Q) at infinity collapses to ln(ratio)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5351,3 +5352,37 @@ Active entries: 123 (newest first)
     denominator is eventually nonzero and ~ its leading term, so the ratio
     is the leading-coefficient ratio. The soundness lives entirely in the
     "is the perturbation bounded" predicate
+
+
+## 2026-06-13 - Retained limits: ln(P) - ln(Q) at infinity collapses to ln(ratio)
+
+- area:
+  - calculus / limits / logarithmic difference at infinity (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    finite ln(ratio) and divergent)
+  - limit_matrix_cell: limit(ln(2x)-ln(x),x,inf)=ln(2),
+    limit(ln(x^2)-ln(x),x,inf)=infinity
+  - behavior_change_expected: yes - the inf - inf difference of two
+    polynomial-argument logarithms resolves to ln(lim P/Q)
+- observed (collapses an inf - inf the generic Sub path could not):
+  - additive_limit_at_infinity took ln(P) - ln(Q) to inf - inf and
+    declined. log_difference_limit_at_infinity recognizes Sub(ln P, ln Q),
+    compares the polynomial growths, and returns ln(lc_P/lc_Q) on equal
+    degree (ratio 1 folds to 0), +inf when P outgrows Q, -inf otherwise
+  - gates: +inf approach only (ln undefined as x -> -inf), and BOTH
+    arguments must have a positive leading coefficient so they tend to
+    +inf and the logs are eventually real (ln(-x) - ln(x) declines)
+- retained learning:
+  - an inf - inf of logarithms is not really indeterminate: ln(P) - ln(Q)
+    = ln(P/Q), so it is the log of a rational LIMIT, computable by the
+    existing degree comparison. Recognize the syntactic ln-minus-ln shape
+    BEFORE the generic additive path forces the inf - inf, and reuse
+    polynomial_growth_info for the ratio
+  - the raw limit output is not fully simplified, so a unit ratio must be
+    folded to 0 in the rule (ln(1) would otherwise leak); fold known
+    identities at the point of construction, do not rely on a downstream
+    simplify of the limit result
