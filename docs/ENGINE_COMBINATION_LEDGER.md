@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 111 (newest first)
+Active entries: 112 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -128,6 +128,7 @@ Active entries: 111 (newest first)
 - 2026-06-13 | `retained` | parser / calculus surface coverage (block 4/7 hyperbolic, P? | Retained calculus: reciprocal hyperbolics parse via cosh/sinh desugar
 - 2026-06-13 | `retained` | calculus / limits / infinity / radical differences (block 3 real | Retained limits: sqrt(quadratic) - linear at infinity (conjugate cancellation)
 - 2026-06-13 | `retained` | calculus / limits / infinity / radical differences (block 3 real | Retained limits: sqrt(P) - sqrt(Q) at infinity (matching leading radicands)
+- 2026-06-13 | `retained` | calculus / limits / finite point / radical conjugate (block 3 real | Retained limits: finite-point 0/0 radical conjugate (removable holes)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4712,3 +4713,45 @@ Active entries: 111 (newest first)
     with P-Q in place of the linear slope - sibling recognizers that
     share a closed-form derivation are cheap to add once the first
     proves the gating discipline
+
+## 2026-06-13 - Retained limits: finite-point 0/0 radical conjugate (removable holes)
+
+- area:
+  - calculus / limits / finite point / radical conjugate (block 3 real
+    domain limits, finite-point side of the "∞−∞ con radicales" item)
+- status:
+  - `retained`
+- capture:
+  - investment_class: limits
+  - calculus_maturity_block: block 3 real-domain limits (new
+    radical_conjugate_removable family, 3 rows, finite 62 -> 65)
+  - calculus_matrix_cell: limit((sqrt(x)-2)/(x-4),x,4)=1/4,
+    limit((sqrt(x)-3)/(x-9),x,9)=1/6,
+    limit((sqrt(2x+1)-3)/(x-4),x,4)=1/3
+  - behavior_change_expected: yes - (scale sqrt(a x+b) + k)/den(x) at a
+    finite removable 0/0 point resolves via conjugate rationalization
+- observed (the finite-point sibling of the infinity radical cycles):
+  - the engine resolves finite removable RATIONAL holes ((x^2-1)/(x-1))
+    and direct substitution of continuous forms (1/(sqrt(x)+2) at 4 =
+    1/4), but the 0/0 radical numerator stayed residual under the
+    "finite point limits not supported safely yet" policy. The
+    rationalized form already evaluates, so the recognizer multiplies by
+    the conjugate: (scale sqrt + k)(scale sqrt - k) = scale^2(ax+b) - k^2
+    is a removable rational hole, and the conjugate is continuous and
+    nonzero at the point; limit = rational_part / conjugate(point)
+  - reuses finite_rational_polynomial_value for the polynomial part and
+    rational_sqrt to require the radical value rational at the point
+  - sound by construction: fires only when the numerator vanishes at the
+    point (0/0) AND the radical value is rational AND the conjugate is
+    nonzero - non-0/0 poles ((sqrt(x)-2)/(x-1) at 1) and irrational
+    radical values ((sqrt(x)-1)/(x-2) at 2) decline. Honest domain
+    conditions surface (x != hole, x >= radicand-zero)
+  - this closes the finite-point half of the frontier audit's
+    radical-difference item alongside the +infinity recognizers
+- retained learning:
+  - a conservative "not supported safely yet" residual policy is a
+    selection signal, not a wall: the safe sub-cases (0/0 with a
+    rational-valued radical conjugate) can be carved out with a tightly
+    gated recognizer while the general finite-point engine stays
+    deferred. The gate (numerator zero + rational radical + nonzero
+    conjugate) IS the safety proof
