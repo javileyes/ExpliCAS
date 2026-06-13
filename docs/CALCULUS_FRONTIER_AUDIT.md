@@ -186,8 +186,17 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `(tan x−x)/x³=1/3`, `(e^x−1−x)/x²=1/2`, `(cosh x−1)/x²=1/2`,
   `(arctan x−x)/x³=−1/3`, `(arcsin x−x)/x³=1/6`, composiciones anidadas
   (`(sin(sin x)−x)/x³=−1/3`) y `(sin(tan x)−tan(sin x))/x⁷=−1/30`. Verificado
-  adversarialmente (2-lente, 55 sondas vs SymPy, 0 unsound). Peldaños
-  restantes: (2) átomo con argumento NO-cero en el punto
+  adversarialmente (2-lente, 55 sondas vs SymPy, 0 unsound).)*
+  *(parcial 2026-06-14 9ae1f606c: la franja EXPONENCIAL de (4) L'Hôpital
+  general — combinaciones lineales de exponenciales de base general sobre un
+  polinomio de primer orden — GRADUADA vía
+  `apply_finite_exp_linear_combination_quotient_rule`: lee el numerador como
+  Σ c_i a_i^(g_i) (+ ctes), acumula valor en 0 (=0 para 0/0 genuino) y
+  derivada N'(0)=Σ c_i g_i'(0) ln(a_i) simbólica, y devuelve N'(0)/h'(0).
+  `(2^x−3^x)/x=ln2−ln3`, `(2^(3x)−3^x)/x=3ln2−ln3`, `(e^x−2^x)/x=1−ln2`.
+  Sound por construcción (L'Hôpital de primer orden, derivadas exactas);
+  declina fuera de la clase. Peldaños restantes del item: (2) átomo con
+  argumento NO-cero en el punto
   (`tan x/sin x` en π=−1, `sin x/(x−π)` en π=−1) — necesita el
   equivalente local en el cero del argumento; (3) log en el numerador/
   composición (`ln(1+x)/sin x`) — excluido por la ruta de base no-natural
