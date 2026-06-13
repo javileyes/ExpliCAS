@@ -6447,6 +6447,141 @@ pub fn subpolynomial_polynomial_dominance_limit_at_infinity(
     }
 }
 
+/// Any positive power of the variable dominates any power of the logarithm:
+/// `c ln(x)^a / x^b -> 0` and `c x^b / ln(x)^a -> sign(c) * inf`, for a >= 1
+/// integer and b > 0 rational (fractional included). This generalizes the
+/// subpolynomial/polynomial rule (single `ln(x)` over an INTEGER power) to
+/// higher log powers (`ln(x)^2 / x`) and fractional powers (`ln(x)/sqrt(x)`).
+/// Only meaningful as `var -> +inf` (the logarithm needs `x > 0`).
+fn polylog_power_dominance_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if approach != InfSign::Pos {
+        return None;
+    }
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    // c ln(x)^a / x^b -> 0 (both coefficients nonzero).
+    if let (Some((num_coeff, _)), Some((den_coeff, _))) = (
+        constant_times_log_power(ctx, num, var, approach),
+        positive_power_tail(ctx, den, var),
+    ) {
+        if !num_coeff.is_zero() && !den_coeff.is_zero() {
+            return Some(ctx.num(0));
+        }
+    }
+    // c x^b / (c' ln(x)^a) -> sign(c / c') * inf.
+    if let (Some((num_coeff, _)), Some((den_coeff, _))) = (
+        positive_power_tail(ctx, num, var),
+        constant_times_log_power(ctx, den, var, approach),
+    ) {
+        if !num_coeff.is_zero() && !den_coeff.is_zero() {
+            let sign = if (num_coeff / den_coeff).is_positive() {
+                InfSign::Pos
+            } else {
+                InfSign::Neg
+            };
+            return Some(mk_infinity(ctx, sign));
+        }
+    }
+    None
+}
+
+/// `c * ln(x)^a` (a >= 1 integer, c != 0) with the logarithm's argument
+/// tending to +inf; returns (c, a). Recognizes the bare log, its integer
+/// powers, a numeric scale, and a negation.
+fn constant_times_log_power(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<(BigRational, i64)> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (c, a) = constant_times_log_power(ctx, inner, var, approach)?;
+            Some((-c, a))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = numeric_limit_value(ctx, lhs) {
+                let (c, a) = constant_times_log_power(ctx, rhs, var, approach)?;
+                return Some((scale * c, a));
+            }
+            if let Some(scale) = numeric_limit_value(ctx, rhs) {
+                let (c, a) = constant_times_log_power(ctx, lhs, var, approach)?;
+                return Some((scale * c, a));
+            }
+            None
+        }
+        Expr::Pow(base, exponent) if is_unbounded_log(ctx, base, var, approach) => {
+            let exp = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            if exp.is_integer() && exp.is_positive() {
+                Some((rational_one(), exp.to_integer().try_into().ok()?))
+            } else {
+                None
+            }
+        }
+        _ if is_unbounded_log(ctx, expr, var, approach) => Some((rational_one(), 1)),
+        _ => None,
+    }
+}
+
+/// `ln(arg)` / `log2(arg)` / `log10(arg)` with `arg -> +inf`.
+fn is_unbounded_log(ctx: &Context, expr: ExprId, var: ExprId, approach: InfSign) -> bool {
+    matches!(ctx.get(expr), Expr::Function(fn_id, args)
+        if args.len() == 1
+            && matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Ln | BuiltinFn::Log2 | BuiltinFn::Log10)
+            )
+            && log_argument_tail_coeff(ctx, args[0], var, approach).is_some_and(|c| c.is_positive()))
+}
+
+/// `c * x^b` with `b > 0` rational (fractional included): the bare variable,
+/// its rational powers, `sqrt(var)`, and a numeric scale. Returns (c, b).
+fn positive_power_tail(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+) -> Option<(BigRational, BigRational)> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (c, b) = positive_power_tail(ctx, inner, var)?;
+            Some((-c, b))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = numeric_limit_value(ctx, lhs) {
+                let (c, b) = positive_power_tail(ctx, rhs, var)?;
+                return Some((scale * c, b));
+            }
+            if let Some(scale) = numeric_limit_value(ctx, rhs) {
+                let (c, b) = positive_power_tail(ctx, lhs, var)?;
+                return Some((scale * c, b));
+            }
+            None
+        }
+        Expr::Pow(base, exponent) if base == var => {
+            let exp = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            exp.is_positive().then_some((rational_one(), exp))
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sqrt))
+                && args[0] == var =>
+        {
+            Some((
+                rational_one(),
+                BigRational::new(BigInt::from(1), BigInt::from(2)),
+            ))
+        }
+        _ if expr == var => Some((rational_one(), rational_one())),
+        _ => None,
+    }
+}
+
 fn scaled_exp_subpoly_product_limit(
     ctx: &mut Context,
     exp_info: ScaledPolynomialExpTailInfo,
@@ -6769,6 +6904,9 @@ pub fn try_limit_rules_at_infinity(
     }
     if let Some(r) = subpolynomial_polynomial_dominance_limit_at_infinity(ctx, expr, var, approach)
     {
+        return Some(r);
+    }
+    if let Some(r) = polylog_power_dominance_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = exponential_subpolynomial_dominance_limit_at_infinity(ctx, expr, var, approach)
@@ -12147,11 +12285,65 @@ mod tests {
             InfSign::Pos
         )
         .is_none());
-        assert!(
-            try_limit_rules_at_infinity(&mut ctx, subpoly_over_subpoly, x, InfSign::Pos).is_none()
-        );
+        // ln(x)/sqrt(x): the subpolynomial/polynomial rule declines (sqrt is
+        // not an integer-degree polynomial), but the polylog/power dominance
+        // rule now resolves it to 0 (a positive power dominates the logarithm).
+        let subpoly_over_subpoly_out =
+            try_limit_rules_at_infinity(&mut ctx, subpoly_over_subpoly, x, InfSign::Pos)
+                .expect("ln(x)/sqrt(x) resolves via polylog/power dominance");
+        assert_eq!(display_expr(&ctx, subpoly_over_subpoly_out), "0");
         assert!(
             try_limit_rules_at_infinity(&mut ctx, zero_scaled_log_den, x, InfSign::Pos).is_none()
+        );
+    }
+
+    #[test]
+    fn polylog_power_dominance_at_infinity_resolves_fractional_and_higher_log() {
+        // A positive power of x dominates any power of the logarithm:
+        // ln(x)^a / x^b -> 0 and x^b / ln(x)^a -> +inf, for fractional b and
+        // higher log powers a that the subpolynomial/polynomial rule misses.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("ln(x)/sqrt(x)", "0"),
+            ("ln(x)/x^(1/3)", "0"),
+            ("ln(x)^2/x", "0"),
+            ("ln(x)^3/x", "0"),
+            ("ln(x)^2/x^2", "0"),
+            ("ln(x)^2/sqrt(x)", "0"),
+            ("sqrt(x)/ln(x)", "infinity"),
+            ("x/ln(x)^2", "infinity"),
+            // Negated power numerator (top-level Neg) flips the sign.
+            ("-x/ln(x)", "-infinity"),
+            ("-sqrt(x)/ln(x)^2", "-infinity"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("polylog/power dominance must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn polylog_power_dominance_declines_non_dominating_shapes() {
+        // Not a polylog-over-power (or vice versa): a zero scale, a log/log
+        // ratio, an oscillating factor, and the left (x -> -inf) approach
+        // where the logarithm is undefined.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in ["x/(0*ln(x))", "ln(x)/ln(x)", "sin(x)/x^(1/2)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                polylog_power_dominance_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                    .is_none(),
+                "polylog/power dominance must decline: {source}"
+            );
+        }
+        let log_over_sqrt = parse_expr(&mut ctx, "ln(x)/sqrt(x)");
+        assert!(
+            polylog_power_dominance_limit_at_infinity(&mut ctx, log_over_sqrt, x, InfSign::Neg)
+                .is_none(),
+            "ln(x) is undefined as x -> -inf, so the rule must decline"
         );
     }
 

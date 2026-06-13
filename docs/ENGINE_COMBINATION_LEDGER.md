@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 121 (newest first)
+Active entries: 122 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -138,6 +138,7 @@ Active entries: 121 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / finite-point bilateral composition (block 3 | Retained limits: even cosh over a reciprocal pole (cosh(1/x) -> +inf)
 - 2026-06-13 | `retained` | calculus / limits / finite-point composition (honesty/soundness; | Honesty fix: sin/cos over an even pole stay residual (no cos(infinity) leak)
 - 2026-06-13 | `retained` | calculus / definite integration / special-value table (block 4, | Retained integration: half-integer Gamma moment table
+- 2026-06-13 | `retained` | calculus / limits / growth dominance at infinity (block 3, frontier | Retained limits: polylog over a fractional power at infinity
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5258,3 +5259,47 @@ Active entries: 121 (newest first)
     sign flip) subsumes the per-shape Div/Mul branching: it is both shorter
     and more general, and the honesty gates (linear exponent, half-integer
     power, convergence m>=0) sit naturally on the accumulated totals
+
+
+## 2026-06-13 - Retained limits: polylog over a fractional power at infinity
+
+- area:
+  - calculus / limits / growth dominance at infinity (block 3, frontier
+    audit "(F) Squeeze y dominancia fraccionaria" - the fractional/higher
+    log-power dominance rung)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (3 matrix rows:
+    polylog fractional power, higher log power, and the reverse)
+  - limit_matrix_cell: limit(ln(x)/sqrt(x),x,inf)=0,
+    limit(ln(x)^2/x,x,inf)=0, limit(sqrt(x)/ln(x),x,inf)=infinity
+  - behavior_change_expected: yes - a positive power of x dominates any
+    power of the logarithm, fractional powers and higher log powers
+    included
+- observed (generalizes the subpolynomial/polynomial dominance):
+  - the existing rule resolved only ln(x) (single log) over an INTEGER
+    power: ln(x)/x=0, x/ln(x)=inf. It declined ln(x)^2/x (higher log
+    power, not recognized as a subpolynomial tail) and ln(x)/sqrt(x)
+    (sqrt is not an integer-degree polynomial, so polynomial_growth_info
+    failed). polylog_power_dominance_limit_at_infinity adds c ln(x)^a / x^b
+    -> 0 and c x^b / (c' ln(x)^a) -> sign(c/c') inf for a >= 1 integer and
+    b > 0 RATIONAL (fractional)
+  - gates: approach = +inf only (ln undefined as x -> -inf), nonzero
+    coefficients (a zero-scaled log denominator x/(0 ln x) stays residual),
+    and a genuine positive power of x (a negative power like ln(x)/x^(-2)
+    is really ln(x) x^2 -> +inf, never 0)
+  - this UPGRADED a limitation-pin: a contract test asserting
+    ln(x)/sqrt(x) residual now asserts 0 (a correct capability gain, not a
+    soundness break)
+- retained learning:
+  - a growth-dominance rule keyed on Polynomial::from_expr silently
+    excludes fractional powers (sqrt, x^(1/3)); when extending "power
+    dominates X", recognize the power as a rational EXPONENT (positive_
+    power_tail) rather than an integer-degree polynomial, so x^(1/2) and
+    x^(2/3) are first-class
+  - "subpolynomial" in the existing taxonomy bundles log AND sqrt/cbrt
+    (sub-linear powers); the cleaner axis for log dominance is
+    polylog (any integer power of ln) versus positive power of x - keep
+    that distinction explicit so ln(x)^a and x^b compare directly
