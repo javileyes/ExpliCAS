@@ -457,3 +457,84 @@ fn test_layer25_tensor_grid_labeling() {
         descriptions
     );
 }
+
+#[test]
+fn test_integration_step_survives_trig_rewrite_cycle() {
+    // integrate(sec(x)^2) used to LOSE its "Symbolic Integration" step:
+    // always-keep steps grow the filtered list without recording a
+    // state, so the tan -> sin/cos -> tan cycle trim truncated one
+    // position short and dropped the producing step (frontier audit:
+    // broken sec^2 trace). The trace must show the integration step and
+    // its last after must be the final result.
+    let opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
+        shared: cas_solver::runtime::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    for (source, expected) in [
+        ("integrate(sec(x)^2, x)", "tan(x)"),
+        ("integrate(csc(x)^2, x)", "-cot(x)"),
+    ] {
+        let mut ctx = Context::new();
+        let expr = parse(source, &mut ctx).expect(source);
+        let mut simplifier = Simplifier::with_profile(&opts);
+        simplifier.context = ctx;
+        let (result, steps) = simplifier.simplify(expr);
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        assert_eq!(rendered, expected, "{source}");
+        assert!(
+            steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Integration"),
+            "integration step must survive for {source}; got: {:?}",
+            steps
+                .iter()
+                .map(|s| s.rule_name.clone())
+                .collect::<Vec<_>>()
+        );
+        let last = steps.last().expect("steps");
+        let last_after = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: last.global_after.unwrap_or(last.after)
+            }
+        );
+        assert_eq!(
+            last_after, expected,
+            "trace must end at the result for {source}"
+        );
+        for step in &steps {
+            let before = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: step.before
+                }
+            );
+            let after = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: step.after
+                }
+            );
+            assert_ne!(
+                before, after,
+                "display no-op step {} must be filtered for {source}",
+                step.rule_name
+            );
+        }
+    }
+}

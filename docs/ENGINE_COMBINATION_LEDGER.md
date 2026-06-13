@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 101 (newest first)
+Active entries: 102 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
+- 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4254,3 +4255,52 @@ Active entries: 101 (newest first)
   - Polynomial-coefficient factoring (trailing zeros for x^m, stride-2
     slices for even parts, binomial reconstruction for q^n) recognizes
     expanded products without any structural factorization machinery
+
+## 2026-06-13 - Retained didactic: repair the broken sec^2/csc^2 integration trace
+
+- area:
+  - calculus / educational route / step trace sanitation (block 9
+    didactic, P? remnant of the frontier audit's "Pasos corruptos"
+    item) / step-productivity filter in cas_solver_core
+- status:
+  - `retained`
+- capture:
+  - investment_class: didactic
+  - calculus_matrix_cell: integrate(sec(x)^2) = tan(x) and
+    integrate(csc(x)^2) = -cot(x) now show the "Calcular la integral"
+    step; before the trace ended at "int 1/cos(x)^2, dx" with the
+    producing step silently dropped
+  - behavior_change_expected: yes - trace content only, results and
+    fingerprints unchanged
+- observed (root cause + adversarial verification):
+  - the step-productivity cycle filter
+    (cas_solver_core::step_productivity::filter_non_productive_steps_with)
+    trimmed rewrite cycles by truncating the kept-step list at the
+    repeated STATE INDEX. But always-keep steps (Evaluate Numeric
+    Power, etc.) grow the kept list WITHOUT recording a state, so the
+    state index and the kept-list length drift apart: sec^2's
+    tan -> sin/cos -> tan loop trimmed one position short and erased
+    the "Symbolic Integration" step that produced tan(x)
+  - fix: record filtered.len() per state in a parallel vector and trim
+    at filtered_len_at_state[idx]; also drop always-keep steps that are
+    pure display no-ops (1 => 1)
+  - an adversarial 2-lens workflow (opus logic review + sonnet
+    refutation probes over 25+ expressions) confirmed ZERO regressions:
+    the cycle-trim length is provably <= filtered.len() (no panic/
+    over-cut), surviving always-keep effects stay in current_global,
+    and guardrail+pressure fingerprints are byte-identical (no fixture
+    asserts the indefinite sec^2 trace, so the repair is invisible to
+    the lanes while fixing the user-visible trace)
+- retained learning:
+  - parallel bookkeeping vectors that index DIFFERENT spaces (state
+    space vs kept-step space) are a latent bug class: any filter that
+    conditionally skips recording in one space while always growing the
+    other must store the cross-space offset explicitly, never assume
+    index equality
+  - the adversarial probe surfaced the NEXT rung with evidence: the
+    no-op filter is incomplete for NON-always-keep rules (Convert exp
+    to Power and Agrupar terminos semejantes emit before==after display
+    steps in integrate(x/e^x), integrate(sin(x)^2,x,0,pi)), and
+    definite-FTC traces end one arithmetic reduction short (1+1 shown,
+    result 2). These are pre-existing, outside this cycle's scope, and
+    now documented as the broad "filtro de no-ops" follow-up

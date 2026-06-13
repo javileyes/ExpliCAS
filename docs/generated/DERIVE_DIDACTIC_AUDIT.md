@@ -4620,7 +4620,7 @@ Result: x^(2) + 2 * x + 1
 
 1. `Expandir binomio`
    - before: `(x + 1)^2`
-   - after: `1 + x^2 + 2 · x`
+   - after: `x^2 + 2 · x + 1`
    - substeps: none
 
 ## expand_common_factor_difference (expand)
