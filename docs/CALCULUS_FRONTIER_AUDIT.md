@@ -204,6 +204,13 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 - [ ] **(F) Cuárticas+ irreducibles**: `1/(x^4+1)`, `1/(x^6-1)` —
   factorización real en cuadráticas con coeficientes irracionales
   (√2) para fracciones parciales.
+  *(precursor 2026-06-13 3a267bdf2: el kernel `1/(cuadrática con
+  raíces irracionales)` ya integra — `1/(x²−2)`, `(x+b)²−a` vía forma
+  log con √c simbólico, desbloqueando `1/(u²−2)`. Peldaño restante:
+  un reconocedor de sustitución simétrica u=x∓1/x para `(ax²+b)/(x⁴+1)`
+  que descomponga en los dos pedazos `1/(u²±√2·...)` y delegue; y para
+  `1/(x⁶−1)` levantar el cap de factores del backend racional, y para
+  `1/(x⁵−1)` las cuárticas ciclotómicas Φ5 con √5)*
 - [ ] **(F) Composición de límites con interno conocido**:
   `e^(1/x) en 0±` (→ ∞ / 0), `atan(1/x) en 0+` (→ π/2) fallan aunque
   `1/x → ±∞` resuelve; regla de composición continua/monótona barata
