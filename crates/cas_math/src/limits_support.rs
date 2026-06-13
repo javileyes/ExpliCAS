@@ -3327,6 +3327,33 @@ fn resolve_abs_shifts_for_side(
 /// power-log dominance u^p * ln(u)^q -> 0 (p > 0) as u -> 0+ with
 /// u = var - point. Children resolve recursively through the full
 /// one-sided chain, so the existing endpoint atoms compose.
+/// The signed infinity of the one-sided limit of `inner`, or None when
+/// it is finite or undecidable.
+fn one_sided_inner_infinity_sign(
+    ctx: &mut Context,
+    inner: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<InfSign> {
+    let value = try_limit_rules_at_finite_one_sided(ctx, inner, var, point, side)?;
+    infinity_sign_of_expr(ctx, value)
+}
+
+/// Build `outer(+-inf)` and resolve it via the saturation fold; returns
+/// the folded value only when the fold actually changed it (so
+/// oscillating outers like sin/cos, which do not fold, decline).
+fn saturate_outer_at_infinity(
+    ctx: &mut Context,
+    build_outer: impl FnOnce(&mut Context, ExprId) -> ExprId,
+    sign: InfSign,
+) -> Option<ExprId> {
+    let inf = mk_infinity(ctx, sign);
+    let candidate = build_outer(ctx, inf);
+    let folded = crate::infinity_support::fold_infinity_saturation(ctx, candidate);
+    (folded != candidate).then_some(folded)
+}
+
 fn apply_finite_one_sided_composition_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -3350,6 +3377,19 @@ fn apply_finite_one_sided_composition_rule(
             combine_limit_sum(ctx, left_value, right_value)
         }
         Expr::Pow(base, exponent) => {
+            // e^(g(x)) where g -> +-inf one-sided: e^(+inf)=inf, e^(-inf)=0
+            // via the saturation fold (composition with a known inner
+            // divergence; the bilateral case is handled at the eval layer).
+            if matches!(ctx.get(base), Expr::Constant(Constant::E)) {
+                if let Some(sign) = one_sided_inner_infinity_sign(ctx, exponent, var, point, side) {
+                    return saturate_outer_at_infinity(
+                        ctx,
+                        |ctx, inf| ctx.add(Expr::Pow(base, inf)),
+                        sign,
+                    );
+                }
+                return None;
+            }
             // (var - point)^q -> 0 from the right for rational q > 0
             // (fractional powers included: the x^(3/2) endpoint atom).
             if !matches!(side, FiniteLimitSide::Right) {
@@ -3360,6 +3400,18 @@ fn apply_finite_one_sided_composition_rule(
             }
             let value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
             value.is_positive().then(|| ctx.num(0))
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            // f(g(x)) where g -> +-inf one-sided and f saturates
+            // (arctan/tanh/exp/ln/sqrt/sinh/cosh). Oscillating functions
+            // do not fold, so the saturation check returns None for them.
+            let arg = args[0];
+            let sign = one_sided_inner_infinity_sign(ctx, arg, var, point, side)?;
+            saturate_outer_at_infinity(
+                ctx,
+                |ctx, inf| ctx.add(Expr::Function(fn_id, vec![inf])),
+                sign,
+            )
         }
         Expr::Mul(left, right) => {
             if let Some(value) = power_log_dominance_zero_limit(ctx, left, right, var, point, side)
@@ -3397,10 +3449,18 @@ fn combine_limit_product(ctx: &mut Context, left: ExprId, right: ExprId) -> Opti
     let right_sign = limit_value_infinite_sign(ctx, right);
     match (left_sign, right_sign) {
         (None, None) => {
-            if let (Some(a), Some(b)) = (
-                crate::numeric_eval::as_rational_const(ctx, left),
-                crate::numeric_eval::as_rational_const(ctx, right),
-            ) {
+            let left_const = crate::numeric_eval::as_rational_const(ctx, left);
+            let right_const = crate::numeric_eval::as_rational_const(ctx, right);
+            // Both factors are finite, so 0 * finite = 0 even when the other
+            // factor is a non-rational symbolic value (e.g. -pi/2). The
+            // indeterminate 0 * infinity case never reaches here; it is
+            // resolved by the (Some, None) arms below.
+            if left_const.as_ref().is_some_and(BigRational::is_zero)
+                || right_const.as_ref().is_some_and(BigRational::is_zero)
+            {
+                return Some(ctx.add(Expr::Number(BigRational::zero())));
+            }
+            if let (Some(a), Some(b)) = (left_const, right_const) {
                 return Some(ctx.add(Expr::Number(a * b)));
             }
             Some(ctx.add(Expr::Mul(left, right)))
@@ -6687,6 +6747,66 @@ mod tests {
                 ));
             }
             _ => panic!("expected negative infinity argument"),
+        }
+    }
+
+    #[test]
+    fn one_sided_composition_saturates_inner_infinity() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, side, expected) in [
+            ("e^(1/x)", FiniteLimitSide::Right, "infinity"),
+            ("e^(1/x)", FiniteLimitSide::Left, "0"),
+            ("atan(1/x)", FiniteLimitSide::Right, "pi / 2"),
+            ("atan(1/x)", FiniteLimitSide::Left, "-pi / 2"),
+            ("tanh(1/x)", FiniteLimitSide::Right, "1"),
+            ("e^(-1/x)", FiniteLimitSide::Right, "0"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_finite_one_sided(&mut ctx, expr, x, zero, side)
+                .unwrap_or_else(|| panic!("must resolve: {source} {side:?}"));
+            // The one-sided rule returns f(+-inf); the eval layer folds it,
+            // but fold_infinity_saturation already runs inside the helper.
+            assert_eq!(display_expr(&ctx, out), expected, "{source} {side:?}");
+        }
+    }
+
+    #[test]
+    fn one_sided_product_of_zero_and_finite_collapses_to_zero() {
+        // e^(1/x) -> 0 and atan(1/x) -> -pi/2 from the left, so their product
+        // is 0 * (-pi/2) = 0. combine_limit_product must fold the zero factor
+        // instead of emitting the un-normalized product `-0 * pi/2`.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        let expr = parse_expr(&mut ctx, "e^(1/x) * atan(1/x)");
+        let out =
+            try_limit_rules_at_finite_one_sided(&mut ctx, expr, x, zero, FiniteLimitSide::Left)
+                .expect("0 * finite must resolve");
+        assert_eq!(display_expr(&ctx, out), "0");
+    }
+
+    #[test]
+    fn one_sided_composition_declines_oscillating_outers() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        // sin/cos at infinity do not converge; the saturation fold leaves
+        // them symbolic, so the rule must decline (stay residual).
+        for source in ["sin(1/x)", "cos(1/x)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                try_limit_rules_at_finite_one_sided(
+                    &mut ctx,
+                    expr,
+                    x,
+                    zero,
+                    FiniteLimitSide::Right
+                )
+                .is_none(),
+                "must decline: {source}"
+            );
         }
     }
 

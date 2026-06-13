@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 114 (newest first)
+Active entries: 115 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -131,6 +131,7 @@ Active entries: 114 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / finite point / radical conjugate (block 3 real | Retained limits: finite-point 0/0 radical conjugate (removable holes)
 - 2026-06-13 | `retained` | calculus / integration / pre-simplifier vs integrator boundary | Retained calculus: product-to-sum integration for distinct trig frequencies
 - 2026-06-13 | `retained` | calculus / definite integration / special-value table (block 4 | Retained calculus: Gaussian moment definite-integral table
+- 2026-06-13 | `retained` | calculus / limits / one-sided finite-point composition (block 3 | Retained limits: one-sided composition saturation (inner -> +-inf)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4856,3 +4857,69 @@ Active entries: 114 (newest first)
     integral, so the decline conditions (pure quadratic, even cofactor,
     rational a>0) are load-bearing for not stealing cases that the
     elementary route handles correctly (x e^(-x^2) -> 1/2)
+
+## 2026-06-13 - Retained limits: one-sided composition saturation (inner -> +-inf)
+
+- area:
+  - calculus / limits / one-sided finite-point composition (block 3
+    domain conditions, frontier audit "(F) Composicion de limites con
+    interno conocido" - the unilateral rung the bilateral cycle left
+    open)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 domain conditions (3 matrix rows:
+    finite_one_sided_exp_reciprocal_diverges/decays,
+    finite_one_sided_arctan_reciprocal_half_pi)
+  - limit_matrix_cell: limit(e^(1/x),x,0,+)=infinity, (...,0,-)=0,
+    limit(atan(1/x),x,0,+)=pi/2, (...,0,-)=-pi/2, limit(tanh(1/x),x,0,+)=1,
+    limit(e^(-1/x),x,0,+)=0, limit(ln(1/x),x,0,+)=infinity
+  - behavior_change_expected: yes - a one-sided finite limit whose inner
+    diverges to +-inf with a definite sign now saturates the outer
+    function; the BILATERAL form with disagreeing sides stays residual
+- observed (reuses cycle-7 saturation from the other side):
+  - cycle 7 folded f(+-inf) only on the BILATERAL path (even poles like
+    1/x^2 where both sides agree). The one-sided rule
+    (apply_finite_one_sided_composition_rule) never propagated the inner
+    divergence, so e^(1/x) at 0+ and atan(1/x) at 0+- declined though the
+    bilateral evaluator already knew the saturation table
+  - added two branches to the one-sided composition rule: Pow(E, g) and
+    Function(f, [g]). Each resolves the inner one-sided limit, reads its
+    infinity sign, builds f(+-inf), and folds it through the SAME
+    fold_infinity_saturation. The oscillation gate is the fold itself:
+    saturate_outer_at_infinity returns the folded expr only when
+    `folded != candidate`, so sin/cos/tan (which the fold leaves
+    symbolic) decline automatically - no separate oscillation list
+  - honesty preserved by construction: the bilateral evaluator only
+    resolves via matching_finite_bilateral_one_sided_result (both sides
+    must AGREE), so differing-side bilaterals (e^(1/x) at 0,
+    atan(1/x) at 0, tanh(1/x) at 0) stay residual even though each side
+    now resolves. Adversarial verification (60+ probes, 2 lenses)
+    confirmed: zero soundness violations, every differing-side bilateral
+    residual, all oscillating outers decline, cycle-7 even-pole
+    bilaterals unregressed
+  - cosmetic follow-on caught by the adversarial pass: enabling both
+    sides of a product (e^(1/x)*atan(1/x) at 0- = 0*(-pi/2)) exposed a
+    pre-existing combine_limit_product gap - the (finite, finite) branch
+    emitted the raw `-0*pi/2` because it only folded when BOTH factors
+    were rational consts. Added a 0*finite -> 0 fold (value was always
+    correct; only the presentation was un-normalized). The 0*infinity
+    indeterminate case is untouched - it is handled by the (Some, None)
+    arms that already require a nonzero rational cofactor
+- retained learning:
+  - when a saturation/fold capability exists on one evaluation path
+    (bilateral), the cheapest next rung is wiring the SAME fold into the
+    sibling path (one-sided) rather than reimplementing the table. The
+    "fold changed it?" check (`folded != candidate`) doubles as the
+    oscillation gate for free - convergent outers fold, oscillating ones
+    don't, so the decline set needs no explicit enumeration
+  - honesty for one-sided->bilateral is structural, not a special case:
+    because the bilateral path requires both sides to agree, making each
+    SIDE resolve cannot make a divergent bilateral resolve. Verify this
+    is the actual code path (it routes through
+    matching_finite_bilateral_one_sided_result) rather than assuming it
+  - widening what resolves on a product's factors can surface latent
+    presentation gaps in the combiner (0*finite). When a factor newly
+    resolves to 0, the combiner must fold the zero against a non-rational
+    finite cofactor, not just against other rationals
