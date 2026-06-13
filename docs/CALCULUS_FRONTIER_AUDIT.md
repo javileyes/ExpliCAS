@@ -250,10 +250,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 - [ ] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
   0`, `(x+sin x)/x → 1 en ∞`, `ln(x)/sqrt(x) → 0 en ∞` (la dominancia
   entera `ln(x)/x` sí funciona).
-- [ ] **(F) Producto-a-suma residual mutilado**: `sin(3x)cos(5x)`
+- [x] **(F) Producto-a-suma residual mutilado**: `sin(3x)cos(5x)`
   indefinida queda residual Y mutilada (expandida en potencias de
   cos); el reconocedor producto-a-suma cubre frecuencias distintas
   con a≠±b — revisar por qué esta combinación escapa.
+  *(graduado 2026-06-13 2cd81323b: la mutilación era una regla — la
+  "Quintuple Angle Identity" expandía cos(5x)/sin(5x) antes del
+  producto-a-suma y NO estaba en la lista de desactivadas de
+  IntegratePrep. Añadida a la lista (scoping de 3 agentes: footprint
+  bajo, además ARREGLA `integrate(cos(5x))→sin(5x)/5` y
+  `integrate(cos(5x)²)` que era residual). Y un sibling Werner
+  sin-coeficiente con `/2` explícito cubre sin·cos/cos·cos/sin·sin
+  con gate A≠B: `sin(3x)cos(5x)=1/16(4cos2x−cos8x)`,
+  `cos(3x)cos(5x)`, `sin(3x)sin(5x)`. Resuelve parcialmente el item
+  clase A "Pre-simplificador vs integrador" para este caso)*
 - [x] **(F) Potencias trig mixtas incoherentes**: `sin^2(x)cos^3(x)`
   residual mientras `sin^3*cos` y `sin^5` funcionan.
   *(graduado 2026-06-13 59c742081: productos sin(kx)^m·cos(kx)^n con
