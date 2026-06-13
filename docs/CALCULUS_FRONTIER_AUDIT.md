@@ -250,9 +250,17 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   de grado 7, verificado numéricamente)*
 - [ ] **(F) sech/csch no parsean**: `sech(x)^2` da "función no
   definida".
-- [ ] **(F) Bounds con e**: `integrate(1/x, x, 1, e)` residual
+- [~] **(F) Bounds con e**: `integrate(1/x, x, 1, e)` residual
   (`ln(e)` no se evalúa); `tan(x) [0,π/4]` devuelve
   `ln(|cos(0)/cos(π/4)|)` sin plegar `cos(0)=1`.
+  *(parcial 2026-06-13 a41cc8e55: la mitad de los bounds con e ya
+  certifica — `e` y múltiplos racionales (2e, e/2, −e) son endpoints
+  finitos con enclosure racional en el certificado de polo:
+  `∫1/x [1,e]=1`, `∫1/x² [1,e]=(e−1)/e`, `∫2/x [1,e]=2`, y los polos
+  se ubican (1/(x−2) en [1,e] diverge, 1/(x−3) certifica). Peldaños:
+  `e²` (potencia, no múltiplo) y `√2` (algebraico) siguen Symbolic;
+  el plegado `cos(0)=1` en la sustitución FTC de `tan [0,π/4]` es
+  cosmético aparte)*
 - [ ] **(F) FTC/Leibniz en diff**: `diff(integrate(f(t),t,0,x), x)`
   → `f(x)` (+ regla de Leibniz con límites variables).
 - [ ] **(F) Diagnóstico de no-existencia en límites**: `sin(1/x)` en 0
