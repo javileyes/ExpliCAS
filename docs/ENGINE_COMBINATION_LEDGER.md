@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 116 (newest first)
+Active entries: 117 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -133,6 +133,7 @@ Active entries: 116 (newest first)
 - 2026-06-13 | `retained` | calculus / definite integration / special-value table (block 4 | Retained calculus: Gaussian moment definite-integral table
 - 2026-06-13 | `retained` | calculus / limits / one-sided finite-point composition (block 3 | Retained limits: one-sided composition saturation (inner -> +-inf)
 - 2026-06-13 | `retained` | calculus / limits / finite-point product (block 3 domain | Retained limits: finite-point squeeze (infinitesimal x bounded -> 0)
+- 2026-06-13 | `retained` | calculus / limits / finite-point 0/0 quotient (block 3 domain | Retained limits: first-order equivalent-infinitesimals 0/0 engine
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5000,3 +5001,63 @@ Active entries: 116 (newest first)
     carry the NONZERO check alongside the polynomial check - the
     adversarial degenerate-input sweep (x - x, 0*x, x^2 - x^2) is what
     forces that pairing, which canonical unit tests never exercise
+
+## 2026-06-13 - Retained limits: first-order equivalent-infinitesimals 0/0 engine
+
+- area:
+  - calculus / limits / finite-point 0/0 quotient (block 3 domain
+    conditions, frontier audit P1 "(A) Motor 0/0 componible en punto
+    finito" - the highest-frequency item in any course)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 domain conditions (8 supported matrix
+    rows: inversion, sin/sin composition x2, tan/asin/arctan/sinh/tanh)
+  - limit_matrix_cell: limit(x/sin(x),x,0)=1, sin(3x)/sin(5x)=3/5,
+    sin(x)/sin(2x)=1/2, tan(x)/x=1, asin(x)/x=1, arctan(x)/x=1,
+    sinh(x)/x=1, tanh(x)/x=1
+  - behavior_change_expected: yes - a 0/0 quotient of products of
+    first-order equivalent infinitesimals resolves to the leading-
+    coefficient ratio; sum-cancellation and higher-order forms stay
+    residual (honesty)
+- observed (generalizes the existing small-angle rules; class-A scoping):
+  - the existing engine apply_finite_zero_quotient_rule handled only
+    [sin/exp/log atom] / [polynomial]: inversion failed (num=x not an
+    atom), composition failed (den=sin(5x) not a polynomial), and tan/
+    asin/atan/sinh/tanh had no recognizer. A 3-lens scoping workflow
+    confirmed the unifying move: extract a FIRST-ORDER EQUIVALENT
+    POLYNOMIAL from BOTH sides via first_order_equivalent_poly (atom
+    f(u)~u for the 8 functions, exp(u)-1~u, exact polynomials, products,
+    Neg) and feed the existing finite_rational_polynomial_value (symbolic
+    L'Hopital on polynomials), which is provably never-over-firing
+  - footprint-minimal: the new rule runs AFTER the sine/exp/log rules, so
+    existing rows keep their owner; it only fires on previously-residual
+    inversion/composition/new-atom cases. Fingerprint confirmed only the
+    limit matrix lane moved. Log is EXCLUDED (its non-natural base path
+    returns value/ln(base), which the polynomial-ratio cannot express) -
+    left as a follow-on rung
+  - THREE load-bearing guards (from the scoping math lens, all enforced):
+    (a) ARGUMENT-ZERO: each atom's argument must vanish at the point, or
+    sin(x)/x at pi would wrongly give 1 instead of 0; (b) top-level
+    Add/Sub of atoms DECLINES (equivalents are invalid where leading
+    terms cancel - sin(x)-x ~ x-x=0 is wrong, true -x^3/6); (c) exp(u)-1
+    is matched as an atom BEFORE the generic Add/Sub decline. cos/cosh are
+    excluded (they ~1, not first-order zeros)
+- retained learning:
+  - equivalent infinitesimals implement as a "replace each factor by its
+    first-order equivalent polynomial, then take the polynomial ratio"
+    transform - and the EXISTING polynomial-L'Hopital helper does the
+    order arithmetic for free (p==q -> leading ratio, p>q -> 0, p<q ->
+    residual pole). The whole capability is a recognizer feeding an
+    existing sound primitive; no new limit arithmetic was written
+  - the validity boundary of equivalent infinitesimals (products/quotients
+    yes, sums/differences no) maps EXACTLY to an AST shape gate: decline a
+    top-level Add/Sub of atoms, but a Sub/Add INSIDE an atom's argument is
+    the exact argument polynomial and is fine (sin(x^2-x)/x -> -1). The
+    soundness of a "replace by leading term" rule lives entirely in the
+    argument-zero guard plus the sum-decline
+  - a parametrized rule (apply_finite_zero_quotient_rule took a recognizer
+    fn) is the seam to generalize from: unify the per-atom recognizers
+    into one both-sides extractor rather than adding a fourth, fifth,
+    sixth sibling rule

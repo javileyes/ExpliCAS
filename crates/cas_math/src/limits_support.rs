@@ -2217,6 +2217,128 @@ fn apply_finite_log_unit_quotient_rule(
     Some(finite_log_unit_quotient_result(ctx, value, base))
 }
 
+/// Functions `f` with `f(u) ~ u` as `u -> 0` (Taylor leading term exactly
+/// `u`, i.e. `f(u)/u -> 1`). These are the first-order equivalent
+/// infinitesimals. Cos/cosh are EXCLUDED: they tend to 1, not 0.
+fn is_first_order_zero_atom(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Sin
+            | BuiltinFn::Tan
+            | BuiltinFn::Asin
+            | BuiltinFn::Arcsin
+            | BuiltinFn::Atan
+            | BuiltinFn::Arctan
+            | BuiltinFn::Sinh
+            | BuiltinFn::Tanh
+    )
+}
+
+/// Extracts the first-order equivalent polynomial of `expr` as `var -> point`,
+/// for use as a numerator/denominator in a 0/0 quotient. The equivalent
+/// infinitesimal theorem makes `lim(num/den) = lim(equiv_num/equiv_den)` for
+/// PRODUCTS and QUOTIENTS of these atoms; it is invalid inside a sum/difference
+/// where the leading terms cancel, so a top-level `Add`/`Sub` of atoms declines.
+///
+/// Recognized shapes, in order:
+/// - an exact polynomial in the variable (e.g. `x`, `x^2`, `3*x`),
+/// - `exp(u) - 1 ~ u` (matched before the generic sum decline),
+/// - `f(u) ~ u` for `f` a first-order zero atom, gated on `u -> 0` at the point,
+/// - `-g ~ -equiv(g)`,
+/// - `a * b ~ equiv(a) * equiv(b)`.
+///
+/// Everything else (notably a top-level `Add`/`Sub` of atoms, and `cos`/`cosh`)
+/// declines, keeping `(1 - cos x)/x^2`, `(sin x - x)/x^3` honestly residual.
+fn first_order_equivalent_poly(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    point_value: &BigRational,
+) -> Option<Polynomial> {
+    if let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) {
+        return Some(poly);
+    }
+    // `exp(u) - 1` is syntactically a Sub, so it must be recognized as an atom
+    // BEFORE the generic Add/Sub decline below.
+    if let Some((scale, exponent)) = scaled_exp_zero_offset_argument(ctx, expr) {
+        let exponent_poly = Polynomial::from_expr(ctx, exponent, var_name).ok()?;
+        if !exponent_poly.eval(point_value).is_zero() {
+            return None;
+        }
+        let scale_poly = Polynomial::new(vec![scale], var_name.to_string());
+        return Some(exponent_poly.mul(&scale_poly));
+    }
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let builtin = ctx.builtin_of(fn_id)?;
+            if !is_first_order_zero_atom(builtin) {
+                return None;
+            }
+            let argument_poly = Polynomial::from_expr(ctx, args[0], var_name).ok()?;
+            // The equivalent `f(u) ~ u` only holds where `u -> 0`. Without this
+            // guard, `sin(x)/x` at pi would wrongly resolve to 1 instead of 0.
+            if !argument_poly.eval(point_value).is_zero() {
+                return None;
+            }
+            Some(argument_poly)
+        }
+        Expr::Neg(inner) => {
+            let inner_poly = first_order_equivalent_poly(ctx, inner, var_name, point_value)?;
+            let minus_one = Polynomial::new(vec![-BigRational::one()], var_name.to_string());
+            Some(inner_poly.mul(&minus_one))
+        }
+        Expr::Mul(lhs, rhs) => {
+            let lhs_poly = first_order_equivalent_poly(ctx, lhs, var_name, point_value)?;
+            let rhs_poly = first_order_equivalent_poly(ctx, rhs, var_name, point_value)?;
+            Some(lhs_poly.mul(&rhs_poly))
+        }
+        _ => None,
+    }
+}
+
+/// 0/0 finite-point limits resolved by replacing every factor of the numerator
+/// and denominator with its first-order equivalent infinitesimal, then taking
+/// the polynomial ratio. Generalizes the sine/exp small-angle rules to handle
+/// inversion (`x/sin(x) -> 1`), composition (`sin(3x)/sin(5x) -> 3/5`), and the
+/// missing equivalents (`tan/asin/arctan/sinh/tanh`).
+///
+/// Runs AFTER the sine/exp/log rules, so it only fires on the cases they leave
+/// residual (a non-polynomial denominator, or a numerator with no existing
+/// recognizer). Only acts on a genuine 0/0 form: both equivalents must vanish
+/// at the point.
+fn apply_finite_equivalent_infinitesimal_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let numerator = first_order_equivalent_poly(ctx, num, &var_name, &point_value)?;
+    let denominator = first_order_equivalent_poly(ctx, den, &var_name, &point_value)?;
+    // Genuine 0/0 only: a non-vanishing denominator is a continuous case owned
+    // by ordinary substitution, and a non-vanishing numerator over a vanishing
+    // denominator is a pole that must stay residual.
+    if !numerator.eval(&point_value).is_zero() || !denominator.eval(&point_value).is_zero() {
+        return None;
+    }
+    let value = finite_rational_polynomial_value(&numerator, &denominator, &point_value)?;
+    Some(ctx.add(Expr::Number(value)))
+}
+
 fn is_finite_total_real_unary_builtin(builtin: BuiltinFn) -> bool {
     matches!(
         builtin,
@@ -3151,6 +3273,10 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_log_unit_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_equivalent_infinitesimal_quotient_rule(ctx, expr, var, point)
+    {
         return Some(result);
     }
     if let Some(result) = apply_finite_bilateral_log_endpoint_rule(ctx, expr, var, point) {
@@ -8096,6 +8222,62 @@ mod tests {
             try_limit_rules_at_finite(&mut ctx, finite_pole, x, point_zero).is_none(),
             "sine quotient rule must not promote finite poles"
         );
+    }
+
+    #[test]
+    fn finite_equivalent_infinitesimal_quotient_resolves_ratios() {
+        // Ratio of first-order equivalent infinitesimals: inversion,
+        // composition, the missing atoms (tan/asin/arctan/sinh/tanh),
+        // exp, sign, and a Sub INSIDE an atom argument (which is exact).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("x / sin(x)", "1"),
+            ("sin(3*x) / sin(5*x)", "3/5"),
+            ("sin(x) / sin(2*x)", "1/2"),
+            ("tan(x) / x", "1"),
+            ("asin(x) / x", "1"),
+            ("arctan(x) / x", "1"),
+            ("sinh(x) / x", "1"),
+            ("tanh(x) / x", "1"),
+            ("sin(-3*x) / sin(x)", "-3"),
+            ("tan(2*x) / sin(3*x)", "2/3"),
+            ("(exp(x) - 1) / sin(x)", "1"),
+            ("sin(x^2 - x) / x", "-1"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, zero).unwrap_or_else(|| {
+                panic!("equivalent-infinitesimal quotient must resolve: {source}")
+            });
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn finite_equivalent_infinitesimal_quotient_declines_unsound_shapes() {
+        // Each must stay residual: higher-order (cos / cubic Taylor) and
+        // sum-cancellation forms (first-order equivalents are invalid inside
+        // a difference), cos (not a zero atom), a finite pole, and an atom
+        // whose argument does NOT tend to 0 at the point.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in [
+            "(1 - cos(x)) / x^2",
+            "(sin(x) - x) / x^3",
+            "(tan(x) - x) / x^3",
+            "cos(x) / sin(x)",
+            "sin(x) / x^2",
+            "sin(x + 1) / x",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_equivalent_infinitesimal_quotient_rule(&mut ctx, expr, x, zero)
+                    .is_none(),
+                "equivalent-infinitesimal quotient must decline: {source}"
+            );
+        }
     }
 
     #[test]
