@@ -147,6 +147,11 @@ impl Simplifier {
                 s.disabled_rules.insert("Triple Angle Identity".to_string());
                 s.disabled_rules
                     .insert("Recursive Trig Expansion".to_string());
+                // Quintuple expansion mutilates cos(5x)/sin(5x) into power
+                // polynomials before product-to-sum can match (and before
+                // the linear-argument rule can give sin(5x)/5).
+                s.disabled_rules
+                    .insert("Quintuple Angle Identity".to_string());
             }
             ContextMode::Solve => {
                 // Disable rules that introduce abs() which can cause issues with solver strategies

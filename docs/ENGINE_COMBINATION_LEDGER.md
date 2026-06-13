@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 112 (newest first)
+Active entries: 113 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -129,6 +129,7 @@ Active entries: 112 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / infinity / radical differences (block 3 real | Retained limits: sqrt(quadratic) - linear at infinity (conjugate cancellation)
 - 2026-06-13 | `retained` | calculus / limits / infinity / radical differences (block 3 real | Retained limits: sqrt(P) - sqrt(Q) at infinity (matching leading radicands)
 - 2026-06-13 | `retained` | calculus / limits / finite point / radical conjugate (block 3 real | Retained limits: finite-point 0/0 radical conjugate (removable holes)
+- 2026-06-13 | `retained` | calculus / integration / pre-simplifier vs integrator boundary | Retained calculus: product-to-sum integration for distinct trig frequencies
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4755,3 +4756,51 @@ Active entries: 112 (newest first)
     gated recognizer while the general finite-point engine stays
     deferred. The gate (numerator zero + rational radical + nonzero
     conjugate) IS the safety proof
+
+## 2026-06-13 - Retained calculus: product-to-sum integration for distinct trig frequencies
+
+- area:
+  - calculus / integration / pre-simplifier vs integrator boundary
+    (block 4/7 trig, P? frontier audit "Producto-a-suma mutilado" /
+    "Pre-simplificador vs integrador")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 4 base integration (4 rows:
+    product_to_sum_distinct_frequency x3 + multiple_angle_power_reduction)
+  - calculus_matrix_cell: integrate(sin(3x)cos(5x))=1/16(4cos2x-cos8x),
+    integrate(cos(3x)cos(5x)), integrate(sin(3x)sin(5x)), and the bonus
+    integrate(cos(5x)^2)=sin(10x)/20 + x/2 (was residual)
+  - behavior_change_expected: yes - products of trig with DISTINCT
+    multiple-angle frequencies integrate via product-to-sum
+- observed (class-A scoping workflow paid off):
+  - the mutilation was a single rule: "Quintuple Angle Identity"
+    expanded cos(5x)/sin(5x) into power polynomials BEFORE the
+    product-to-sum rule could match, and unlike Double/Triple it was NOT
+    in the IntegratePrep disabled set. A 3-agent scoping workflow proved
+    the footprint LOW (zero endangered fixtures) and that disabling it
+    also FIXES integrate(cos(5x)) (was a messy expansion, now sin(5x)/5)
+    and integrate(cos(5x)^2) (was residual) - the rule was actively
+    harmful, not load-bearing
+  - the Werner ProductToSumRule required a literal factor of 2 and only
+    sin*cos, so bare sin(3x)*cos(5x) never matched. Added a sibling
+    try_rewrite_product_to_sum_no_coefficient_expr emitting an explicit
+    /2 and covering all four combinations, gated on A != B so the
+    equal-argument owners (sin(x)cos(x)->sin^2/2, sin^2/cos^2 power
+    reduction) keep their forms
+  - the no-2 function returns None on every input the literal-2 path
+    already handled, so it can only add results on previously-residual
+    products - no existing result changes (fingerprint confirmed: only
+    the matrix lane moved, the embedded corpus and trig fixtures are
+    byte-identical)
+- retained learning:
+  - a "pre-simplifier mutilates the integrand" class-A item can collapse
+    to a one-line rule-disable once you find WHICH expansion rule fires
+    in the integrate path and confirm (via scoping) it is not
+    load-bearing. The scoping workflow's highest value here was the
+    footprint proof: it found the disable also fixes two unrelated
+    residuals, turning a feared regression into a net win
+  - recognizers that only ADD results on previously-None inputs are the
+    safest extension shape: a no-coefficient sibling that bails on every
+    shape the existing owner handles cannot regress anything

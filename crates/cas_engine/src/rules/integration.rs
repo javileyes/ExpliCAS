@@ -11,7 +11,9 @@ use crate::integration_prep_support::try_rewrite_cos_product_telescoping_expr;
 use crate::parent_context::ParentContext;
 use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, ExprId};
-use cas_math::trig_sum_product_support::try_rewrite_product_to_sum_werner_expr;
+use cas_math::trig_sum_product_support::{
+    try_rewrite_product_to_sum_no_coefficient_expr, try_rewrite_product_to_sum_werner_expr,
+};
 
 fn format_product_to_sum_werner_desc() -> &'static str {
     "2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)"
@@ -43,7 +45,8 @@ impl Rule for ProductToSumRule {
         expr: ExprId,
         _parent_ctx: &ParentContext,
     ) -> Option<Rewrite> {
-        let rewrite = try_rewrite_product_to_sum_werner_expr(ctx, expr)?;
+        let rewrite = try_rewrite_product_to_sum_werner_expr(ctx, expr)
+            .or_else(|| try_rewrite_product_to_sum_no_coefficient_expr(ctx, expr))?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_product_to_sum_werner_desc()))
     }
 }

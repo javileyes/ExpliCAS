@@ -571,6 +571,92 @@ pub fn try_rewrite_product_to_sum_werner_expr(
     })
 }
 
+/// Product-to-sum (Werner) WITHOUT a literal factor of 2, emitting the
+/// explicit `/2`. Covers all four combinations of a single sin/cos
+/// product with DIFFERENT arguments:
+///   sin(A) cos(B) -> (sin(A+B) + sin(A-B)) / 2
+///   cos(A) cos(B) -> (cos(A+B) + cos(A-B)) / 2
+///   sin(A) sin(B) -> (cos(A-B) - cos(A+B)) / 2
+/// Gated on A != B so the equal-argument owners (sin(x)cos(x) -> sin^2/2,
+/// sin^2, cos^2 power reduction) keep their forms. Used by the
+/// integration-prep product-to-sum rule so integrate(sin(3x)cos(5x))
+/// reaches a sum of single-frequency terms the integrator owns.
+pub fn try_rewrite_product_to_sum_no_coefficient_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigSumProductRewrite> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    // Collect exactly two single-argument sin/cos factors; everything
+    // else is a passthrough multiplier.
+    let mut trig: Vec<(usize, bool, ExprId)> = Vec::new();
+    for (idx, &factor) in factors.iter().enumerate() {
+        if let Expr::Function(fn_id, args) = ctx.get(factor) {
+            if args.len() == 1 {
+                match ctx.builtin_of(*fn_id) {
+                    Some(cas_ast::BuiltinFn::Sin) => trig.push((idx, true, args[0])),
+                    Some(cas_ast::BuiltinFn::Cos) => trig.push((idx, false, args[0])),
+                    _ => {}
+                }
+            }
+        }
+    }
+    if trig.len() != 2 {
+        return None;
+    }
+    let (idx1, is_sin1, arg1) = trig[0];
+    let (idx2, is_sin2, arg2) = trig[1];
+    // A != B: equal arguments belong to the power-reduction / f*f' owners.
+    if cas_ast::ordering::compare_expr(ctx, arg1, arg2) == Ordering::Equal {
+        return None;
+    }
+
+    let inner = match (is_sin1, is_sin2) {
+        (true, false) | (false, true) => {
+            // sin(A) cos(B): A is the sine argument, B the cosine argument.
+            let (sin_arg, cos_arg) = if is_sin1 { (arg1, arg2) } else { (arg2, arg1) };
+            let sum = ctx.add(Expr::Add(sin_arg, cos_arg));
+            let diff = ctx.add(Expr::Sub(sin_arg, cos_arg));
+            let sin_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![sum]);
+            let sin_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![diff]);
+            ctx.add(Expr::Add(sin_sum, sin_diff))
+        }
+        (false, false) => {
+            // cos(A) cos(B) -> cos(A+B) + cos(A-B).
+            let sum = ctx.add(Expr::Add(arg1, arg2));
+            let diff = ctx.add(Expr::Sub(arg1, arg2));
+            let cos_sum = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![sum]);
+            let cos_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![diff]);
+            ctx.add(Expr::Add(cos_sum, cos_diff))
+        }
+        (true, true) => {
+            // sin(A) sin(B) -> cos(A-B) - cos(A+B).
+            let sum = ctx.add(Expr::Add(arg1, arg2));
+            let diff = ctx.add(Expr::Sub(arg1, arg2));
+            let cos_sum = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![sum]);
+            let cos_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![diff]);
+            ctx.add(Expr::Sub(cos_diff, cos_sum))
+        }
+    };
+
+    // Multiply back the non-trig passthrough factors.
+    let rewritten = factors
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != idx1 && idx != idx2).then_some(factor))
+        .fold(inner, |acc, factor| smart_mul(ctx, acc, factor));
+    let two = ctx.num(2);
+    let rewritten = ctx.add(Expr::Div(rewritten, two));
+
+    Some(TrigSumProductRewrite {
+        rewritten,
+        kind: TrigSumProductRewriteKind::Werner,
+    })
+}
+
 /// Standalone sum-to-product identities for two-term trig sums/differences.
 ///
 /// Gating policy matches current engine behavior: apply only when both
@@ -981,6 +1067,44 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sin(x)*cos(y)", &mut ctx).expect("parse");
         assert!(try_rewrite_product_to_sum_werner_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn no_coefficient_product_to_sum_covers_all_combinations() {
+        let mut ctx = Context::new();
+        for (source, expected) in [
+            (
+                "sin(3*x)*cos(5*x)",
+                "(sin(3 * x + 5 * x) + sin(3 * x - 5 * x)) / 2",
+            ),
+            (
+                "cos(3*x)*cos(5*x)",
+                "(cos(3 * x + 5 * x) + cos(3 * x - 5 * x)) / 2",
+            ),
+            (
+                "sin(3*x)*sin(5*x)",
+                "(cos(3 * x - 5 * x) - cos(3 * x + 5 * x)) / 2",
+            ),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let rewrite = try_rewrite_product_to_sum_no_coefficient_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("must rewrite: {source}"));
+            assert_eq!(rendered(&ctx, rewrite.rewritten), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn no_coefficient_product_to_sum_declines_equal_arguments() {
+        // Equal arguments keep their power-reduction / f*f' owners; a
+        // single non-product trig factor has nothing to pair with.
+        let mut ctx = Context::new();
+        for source in ["sin(x)*cos(x)", "cos(2*x)*cos(2*x)", "sin(3*x)", "sin(x)*x"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                try_rewrite_product_to_sum_no_coefficient_expr(&mut ctx, expr).is_none(),
+                "must decline: {source}"
+            );
+        }
     }
 
     #[test]
