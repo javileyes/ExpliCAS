@@ -81,6 +81,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   semántico, necesita ciclo propio) y el filtro de no-ops. BONUS:
   integrate(sec(x)²+1) residual por el pre-simplificador — ejemplo
   vivo del item P2)*
+  *(parcial 2026-06-13 025d98333: traza rota de sec²/csc² resuelta —
+  el filtro de productividad de pasos truncaba los ciclos por ÍNDICE
+  de estado, pero los pasos always-keep crecen la lista sin registrar
+  estado, así que el ciclo tan→sin/cos→tan de sec² recortaba una
+  posición de más y borraba el paso "Calcular la integral". Fix:
+  registrar filtered.len() por estado y truncar ahí + descartar
+  always-keep que sean no-ops de display. Verificado adversarialmente
+  (2 lentes, 0 regresiones; huellas byte-idénticas). BONUS confirmado:
+  integrate(sec(x)²+1) ahora resuelve vía la ruta Weierstrass del
+  ciclo c6107abd5. Quedan como peldaño: el filtro de no-ops para
+  reglas NON-always-keep — "Convert exp to Power" y "Agrupar términos
+  semejantes" emiten pasos before==after en integrate(x/e^x),
+  integrate(sin(x)²,x,0,π) — y las trazas FTC definidas terminan una
+  reducción aritmética antes del resultado (muestran 1+1, resultado 2))*
 
 ### P1 — capítulos universitarios enteros a 0% (mayor densidad de valor)
 
