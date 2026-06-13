@@ -242,7 +242,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   integrales definidas que crucen 0; `1/(x⁶−1)` levantar el cap de
   factores del backend racional; `1/(x⁵−1)` las cuárticas ciclotómicas
   Φ5 con √5)*
-- [~] **(F) Composición de límites con interno conocido**:
+- [x] **(F) Composición de límites con interno conocido**:
   `e^(1/x) en 0±` (→ ∞ / 0), `atan(1/x) en 0+` (→ π/2) fallan aunque
   `1/x → ±∞` resuelve; regla de composición continua/monótona barata
   (la tabla saturante en ∞ ya existe — reutilizarla desde laterales).
@@ -252,11 +252,25 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   la salida del límite (arctan/tanh/exp/ln/sqrt/sinh/cosh; excluye
   sin/cos/tan oscilantes). Verificado adversarialmente: el caso
   bilateral con laterales DISTINTOS (`e^(1/x)` en 0) queda correctamente
-  residual. Peldaño restante: los UNILATERALES `e^(1/x) en 0±`,
-  `atan(1/x) en 0+` — el motor de límites finito unilateral no propaga
-  `1/x → ±∞` al argumento todavía. Nota de soundness: el fold NO se
+  residual. Nota de soundness: el fold NO se
   registró como regla global (ensanchaba el bug preexistente ∞−∞=0 en
   aritmética cruda); queda confinado a salidas de límite vetadas)*
+  *(graduado 2026-06-13 393388fbb: cubierto el peldaño UNILATERAL —
+  `apply_finite_one_sided_composition_rule` ganó ramas `Pow(E,g)` y
+  `Function(f,[g])` que resuelven el límite interno lateral, leen su
+  signo de ∞ y pliegan f(±∞) con el MISMO `fold_infinity_saturation`. La
+  puerta de oscilación es el propio fold (`folded != candidate`), sin
+  lista explícita. Honestidad estructural: el bilateral solo resuelve vía
+  `matching_finite_bilateral_one_sided_result` (ambos lados deben
+  coincidir), así que `e^(1/x)`/`atan(1/x)`/`tanh(1/x)` en 0 siguen
+  residuales. Verificación adversarial 60+ sondas: cero violaciones de
+  soundness, oscilantes declinan, bilaterales de poste par del ciclo 7
+  sin regresión. Bonus: el fold `0·finito→0` en `combine_limit_product`
+  normaliza productos cuyos dos factores ahora resuelven. Peldaños
+  abiertos fuera de alcance: `cosh(1/x)` bilateral (ambos lados → +∞
+  pero declina), `asinh/acosh/coth/sech` (folds no implementados),
+  coeficientes irracionales `e^(π/x)`, y `∞·(π/2)` lateral que necesita
+  cofactor racional)*
 - [ ] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
   0`, `(x+sin x)/x → 1 en ∞`, `ln(x)/sqrt(x) → 0 en ∞` (la dominancia
   entera `ln(x)/x` sí funciona).
