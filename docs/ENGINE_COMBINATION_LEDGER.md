@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 128 (newest first)
+Active entries: 129 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
+- 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5591,3 +5592,56 @@ Active entries: 128 (newest first)
     (a^x-1)/x keeps the (a^g-1) rule's trace, e-base differences keep the
     Taylor trace, and this rule only catches the general-base combinations
     they leave residual
+
+
+## 2026-06-14 - SOUNDNESS FIX: 0 * unbounded function at a finite point
+
+- area:
+  - calculus / limits / finite-point products (block 3) - soundness
+- status:
+  - `retained` (P0 soundness fix)
+- capture:
+  - investment_class: soundness
+  - limit_maturity_block: block 3 real-domain limits (internal fix; no public
+    fixture captured the bug, scorecard fingerprint unchanged)
+  - behavior_change_expected: yes - a WRONG finite value becomes an honest
+    residual; x*sinh(1/x^2) at 0 returned 0, the true limit is +inf
+  - reject_if: any previously-correct finite product regresses, or a new
+    test failure outside the intended cases
+- observed (a wrong 0 for 0 * infinity):
+  - the bilateral generic-Mul branch evaluated each factor and multiplied via
+    finite_mul_result, which returned 0 whenever EITHER factor was numeric
+    zero - WITHOUT checking the other was finite. For x*sinh(1/x^2): x -> 0,
+    sinh(1/x^2) -> +inf, and 0 * (+inf) is indeterminate, not 0. Compounding
+    it, the composition rule (finite_total_real_unary_result) returned the
+    cofactor's limit as an UNFOLDED sinh(inf): the saturation fold
+    (finite_total_real_unary_exact_expr_result) covered exp/abs/sin/cos/atan
+    but NOT sinh/cosh/tanh, so even an explicit infinity test missed it
+  - two complementary fixes: (1) saturate the fallback of
+    finite_total_real_unary_result with infinity_support::fold_infinity_
+    saturation so sinh(inf) -> inf, cosh(inf) -> inf, tanh(inf) -> 1,
+    exp(-inf) -> 0 become bare values; (2) finite_mul_result declines (None)
+    when one factor is 0 and the other is a (now bare) infinity, keeping the
+    product an honest residual. Covers x*sinh(1/x^2), x*cosh(1/x^2),
+    x*exp(1/x^2), x*cosh(1/x) at 0 and 0+; x*exp(-1/x^2) -> 0 and
+    x*tanh(1/x^2) -> 0 stay correct because their cofactor saturates to a
+    finite value
+- retained learning:
+  - a "0 * cofactor -> 0" collapse is sound ONLY when the cofactor is
+    provably FINITE. Bounded oscillators (sin(1/x)) go through the squeeze
+    rule, which already checks boundedness; the generic numeric path must
+    additionally reject a divergent cofactor, or 0 * infinity silently
+    becomes 0. The two failure modes are a bare infinity (x * 1/x) and an
+    UNFOLDED growing function of infinity (x * sinh(1/x^2)) - fold the latter
+    to a bare infinity at the source so one infinity test catches both
+  - a saturation fold must be COMPLETE across its function family: covering
+    exp/cos/atan but silently dropping sinh/cosh/tanh leaves an unfolded
+    atom that reads as "bounded" to every downstream rule. The gap is
+    invisible standalone (a higher-level fold cleaned sinh(1/x^2) -> inf) but
+    surfaces the moment the value flows into another rule (the product)
+  - methodology: a broad new lever (the reciprocal substitution u = 1/x for
+    infinity limits, explored and REJECTED this run for triggering exactly
+    this latent bug on x*sinh(1/x^2) mapped to sinh(1/u^2)) is worth
+    prototyping precisely because adversarial probing of it EXPOSES
+    pre-existing soundness holes reachable by simpler direct inputs. The
+    substitution itself was reverted; the bug it found was the real prize

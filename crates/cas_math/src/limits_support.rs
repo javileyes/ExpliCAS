@@ -2797,7 +2797,12 @@ fn finite_total_real_unary_result(
         return exact_result;
     }
 
-    ctx.call_builtin(builtin, vec![argument_limit])
+    // Saturate a growing function of an unbounded argument: sinh(inf) -> inf,
+    // cosh(inf) -> inf, tanh(inf) -> 1, exp(-inf) -> 0, etc. Without this the
+    // composition leaks an unfolded sinh(inf), which downstream `0 * value`
+    // wrongly reads as bounded (x * sinh(1/x^2) -> 0 instead of +inf).
+    let candidate = ctx.call_builtin(builtin, vec![argument_limit]);
+    crate::infinity_support::fold_infinity_saturation(ctx, candidate)
 }
 
 fn finite_total_real_unary_exact_expr_result(
@@ -3730,7 +3735,7 @@ fn try_limit_rules_at_finite(
         Expr::Mul(lhs, rhs) => {
             let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
             let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
-            Some(finite_mul_result(ctx, lhs_limit, rhs_limit))
+            finite_mul_result(ctx, lhs_limit, rhs_limit)
         }
         Expr::Div(num, den) => {
             let num_limit = try_limit_rules_at_finite(ctx, num, var, point)?;
@@ -4995,22 +5000,32 @@ fn finite_sub_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
     ctx.add(Expr::Sub(lhs, rhs))
 }
 
-fn finite_mul_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
+fn finite_mul_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
     if let (Some(lhs_value), Some(rhs_value)) =
         (numeric_limit_value(ctx, lhs), numeric_limit_value(ctx, rhs))
     {
-        return finite_numeric_expr(ctx, lhs_value * rhs_value);
+        return Some(finite_numeric_expr(ctx, lhs_value * rhs_value));
     }
     if finite_limit_is_numeric_zero(ctx, lhs) || finite_limit_is_numeric_zero(ctx, rhs) {
-        return ctx.num(0);
+        // 0 * infinity is INDETERMINATE, not 0: decline rather than collapse a
+        // divergent cofactor (x * sinh(1/x^2) -> +inf, not 0). The cofactor's
+        // resolved limit is a saturated infinity here because the composition
+        // rule now folds sinh(inf)/cosh(inf)/... to a bare infinity. Returning
+        // None keeps the limit an honest residual instead of a wrong value.
+        if limit_value_infinite_sign(ctx, lhs).is_some()
+            || limit_value_infinite_sign(ctx, rhs).is_some()
+        {
+            return None;
+        }
+        return Some(ctx.num(0));
     }
     if finite_limit_is_numeric_one(ctx, lhs) {
-        return rhs;
+        return Some(rhs);
     }
     if finite_limit_is_numeric_one(ctx, rhs) {
-        return lhs;
+        return Some(lhs);
     }
-    ctx.add(Expr::Mul(lhs, rhs))
+    Some(ctx.add(Expr::Mul(lhs, rhs)))
 }
 
 fn finite_div_result(ctx: &mut Context, num: ExprId, den: ExprId) -> Option<ExprId> {
@@ -8261,6 +8276,54 @@ mod tests {
                 apply_finite_squeeze_bounded_product_rule(&mut ctx, expr, x, zero).is_none(),
                 "squeeze must decline: {source}"
             );
+        }
+    }
+
+    #[test]
+    fn finite_zero_times_unbounded_function_stays_residual() {
+        // SOUNDNESS: 0 * infinity is indeterminate. An infinitesimal times an
+        // UNBOUNDED function (sinh/cosh/exp of an argument that diverges) must
+        // NOT collapse to 0 - the divergent cofactor can dominate
+        // (x * sinh(1/x^2) -> +inf). These stay honest residuals.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in [
+            "x * sinh(1/x^2)",
+            "x * cosh(1/x^2)",
+            "x * exp(1/x^2)",
+            "x * cosh(1/x)",
+            "2 * x * sinh(1/x^2)",
+            "x^2 * sinh(1/x^2)",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                try_limit_rules_at_finite(&mut ctx, expr, x, zero).is_none(),
+                "0 * unbounded must stay residual: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn finite_unbounded_function_saturates_and_bounded_product_collapses() {
+        // The saturation fold makes a growing function of a divergent argument
+        // resolve (sinh(1/x^2) -> inf, tanh(1/x^2) -> 1, exp(-1/x^2) -> 0), and
+        // a genuinely DECAYING or BOUNDED cofactor still collapses the product.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("sinh(1/x^2)", "infinity"),
+            ("cosh(1/x^2)", "infinity"),
+            ("tanh(1/x^2)", "1"),
+            ("x * exp(-1/x^2)", "0"),
+            ("x * tanh(1/x^2)", "0"),
+            ("x * sin(1/x^2)", "0"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
         }
     }
 
