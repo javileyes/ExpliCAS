@@ -205,10 +205,25 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P2 — familias y mejoras de alto valor (1 ciclo cada una)
 
-- [ ] **(F) Touch con límite x^a·ln(x)^b → 0**: `ln(x)^2 [0,1]` (=2),
+- [x] **(F) Touch con límite x^a·ln(x)^b → 0**: `ln(x)^2 [0,1]` (=2),
   `x*ln(x) [0,1]` (=−1/4), `ln(x)/sqrt(x) [0,1]` (=−4) residuales con
   antiderivadas elementales; la dominancia potencia-log existe en el
   lado lateral pero no cubre estas combinaciones. Arregla 3+ familias.
+  *(graduado 2026-06-13 52f0fb4f9: el hueco estaba en el MOTOR DE
+  LÍMITES, no en el integrador — las antiderivadas ya se conocen y el
+  borde definido ya las evalúa por límite lateral de F. La dominancia
+  `power_log_dominance_zero_limit` resolvía solo el monomio `u^p·ln(u)^q`;
+  `apply_finite_one_sided_power_log_polynomial_zero` la generaliza a
+  `Σ c·(var-pt)^a·P(ln(var-pt))` con todos a>0 → 0 (potencia × polinomio
+  en ln, sumados). Resuelve `∫₀¹ ln²=2`, `x·ln=−1/4`, `ln/√x=−4`,
+  `x²·ln=−1/9`, `√x·ln=−4/9`. Gate de soundness: potencia neta
+  estrictamente positiva + al menos una potencia presente (un término
+  constante o de log-puro bloquea: `x ln x + 5 → 5`), y ln gateado a
+  potencias ENTERAS no-negativas (ln<0 cerca de 0). Verificado
+  adversarialmente (2 lentes, 115 sondas, 0 violaciones; el trap
+  `x·e^(1/x)` queda residual = +∞). Peldaños: touches con exp/trig en el
+  borde, y la forma exponencial `1^∞/0^0` que necesita el interno `∞·0`
+  robusto)*
 - [~] **(F) Gaussiana/Gamma por tabla**: `e^(-x^2) [0,∞) = √π/2`,
   `(-∞,∞) = √π`, `x^2*e^(-x^2) [0,∞) = √π/4`, `e^(-x)/sqrt(x) = √π` —
   la impropia más famosa de la universidad; tabla pequeña de formas
