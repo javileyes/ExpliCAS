@@ -163,9 +163,15 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `(1+1/x)^x → e`, `(1+2/x)^x → e²`, `(1+x)^(1/x) → e`, `x^x → 1 en
   0+`, `(2^x+3^x)^(1/x) → 3`. Hoy la constante `e` es inalcanzable
   por límite — invalida un capítulo del temario.
-- [ ] **(F) ∞−∞ con radicales** (racionalización por conjugado):
+- [~] **(F) ∞−∞ con radicales** (racionalización por conjugado):
   `sqrt(x^2+x)-x → 1/2`, `sqrt(x+1)-sqrt(x) → 0`, y en punto finito
   `(sqrt(x)-2)/(x-4) → 1/4`.
+  *(parcial 2026-06-13 d78ce2c0e: `sqrt(ax²+bx+c) − (dx+e)` a ±∞ con
+  √a racional y cancelación de términos líderes ya resuelve vía forma
+  cerrada `b/(2√a)−e` — `sqrt(x²+x)−x=1/2`, `sqrt(x²+1)−x=0`,
+  `sqrt(4x²+x)−2x=1/4`, `x−sqrt(x²−x)=1/2`. Gate de cancelación exacta
+  (los divergentes declinan). Peldaños: sqrt−sqrt (`sqrt(x+1)−sqrt(x)`),
+  √a irracional, y la versión en punto finito `(√x−2)/(x−4)`)*
 
 ### P2 — familias y mejoras de alto valor (1 ciclo cada una)
 
