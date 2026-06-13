@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 107 (newest first)
+Active entries: 108 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -124,6 +124,7 @@ Active entries: 107 (newest first)
 - 2026-06-13 | `retained` | calculus / integration / educational route / quartic denominators | Retained calculus: the famous 1/(x^4+1) via symmetric substitution
 - 2026-06-13 | `retained` | calculus / limits / composition with known inner divergence | Retained limits: saturate f(±∞) inside limit composition outputs
 - 2026-06-13 | `retained` | calculus / definite integration / FTC bound certificate | Retained calculus: definite integrals with e-valued bounds
+- 2026-06-13 | `retained` | calculus / differentiation / fundamental theorem (block 2 real | Retained calculus: FTC / Leibniz rule for derivatives of definite integrals
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4535,3 +4536,53 @@ Active entries: 107 (newest first)
     when both endpoints share the same constant (e vs e is rational
     cmp, no enclosure rounding) - the generalization preserves that
     exactness per-constant
+
+## 2026-06-13 - Retained calculus: FTC / Leibniz rule for derivatives of definite integrals
+
+- area:
+  - calculus / differentiation / fundamental theorem (block 2 real
+    domain differentiation, P? frontier audit "FTC/Leibniz en diff")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 2 real-domain differentiation (new
+    fundamental_theorem_leibniz family, 5 diff-matrix rows, 64 -> 69)
+  - calculus_matrix_cell: diff(integrate(e^(t^2),t,0,x),x)=e^(x^2),
+    diff(integrate(sin(t^2),t,0,x),x)=sin(x^2),
+    diff(integrate(e^(t^2),t,0,x^2),x)=2x e^(x^4) (chain rule),
+    diff(integrate(sin(t)/t,t,1,x),x)=sin(x)/x,
+    diff(integrate(e^(-t^2),t,x,1),x)=-e^(-x^2) (lower bound sign flip)
+  - behavior_change_expected: yes - d/dx int_a(x)^b(x) f(t) dt =
+    f(b(x)) b'(x) - f(a(x)) a'(x) now applies even when f has no
+    closed-form antiderivative
+- observed (the gap is the NON-elementary integrand, not opaque f):
+  - the audit framed this as diff(integrate(f(t),t,0,x),x)=f(x) for
+    symbolic f, but the engine rejects unknown functions (f(t) ->
+    "funcion no definida"), so a truly opaque f can never reach the
+    rule - symbolic function support is a separate, larger gap
+  - the REAL win is non-elementary-but-known integrands: e^(t^2),
+    sin(t^2), sin(t)/t have NO elementary antiderivative (the indefinite
+    integrals correctly stay residual, honesty list intact), yet their
+    FTC derivative IS computable. The rule fires late (after the
+    known-integrand shortcuts), so for elementary f the inner integral
+    evaluates away first and the rule only sees the residual cases
+  - implementation reuses the substitution-delegation primitives:
+    substitute the bound into the integrand (substitute_power_aware
+    exact), differentiate each bound, assemble f(b)b' - f(a)a'. Chain
+    rule (x^2 bound -> 2x factor) and lower-bound sign flip fall out
+    for free
+  - the integration variable must differ from the differentiation
+    variable: diff(integrate(e^(x^2),x,0,x),x) shares x and is refused
+    (ambiguous bound/dummy collision)
+- retained learning:
+  - an audit item framed around a capability the engine lacks (opaque
+    symbolic functions) can still have a sound, valuable SUBSET that
+    IS reachable (non-elementary known integrands) - probe what the
+    engine actually accepts before scoping, and graduate the reachable
+    half
+  - the FTC derivative of a non-integrable function is the cleanest
+    demonstration that the honesty-list residuals (e^(-x^2) indefinite)
+    are a PRESENTATION boundary, not a knowledge gap: the engine knows
+    d/dx of their integral exactly, it just cannot write the integral
+    in closed form

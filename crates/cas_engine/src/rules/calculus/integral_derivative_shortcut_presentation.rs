@@ -334,11 +334,108 @@ pub(super) fn supported_integral_diff_shortcut_rewrite(
     ))
 }
 
+/// Fundamental theorem of calculus / Leibniz rule for a derivative of a
+/// definite integral with variable bounds:
+///
+/// `d/dx integrate(f(t), t, a(x), b(x)) = f(b(x))*b'(x) - f(a(x))*a'(x)`
+///
+/// Applies even when the integrand has no closed-form antiderivative
+/// (the inner integral is residual), which is exactly the case the
+/// known-integrand shortcuts miss: for an integrable f the definite
+/// integral evaluates away before the derivative runs, so this rule
+/// only sees the opaque/non-elementary integrands. The integration
+/// variable must differ from the differentiation variable.
+pub(super) fn definite_integral_leibniz_diff_rewrite(
+    ctx: &mut Context,
+    call: &NamedVarCall,
+    target: ExprId,
+) -> Option<Rewrite> {
+    use cas_ast::Expr;
+    let definite =
+        crate::symbolic_calculus_call_support::try_extract_definite_integrate_call(ctx, target)?;
+    if definite.var_name == call.var_name {
+        return None;
+    }
+    // The bound variable must not also be the differentiation variable
+    // inside the integrand-substituted bounds (a clean Leibniz form).
+    let diff_var = call.var_name.clone();
+    let int_var_expr = definite.var_expr;
+    let integrand = definite.target;
+    let lower = definite.lower;
+    let upper = definite.upper;
+
+    let diff = |ctx: &mut Context, expr: ExprId| -> Option<ExprId> {
+        cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+            ctx, expr, &diff_var,
+        )
+    };
+    let upper_prime = diff(ctx, upper)?;
+    let lower_prime = diff(ctx, lower)?;
+
+    let substitute = |ctx: &mut Context, bound: ExprId| -> ExprId {
+        cas_math::substitute::substitute_power_aware(
+            ctx,
+            integrand,
+            int_var_expr,
+            bound,
+            cas_math::substitute::SubstituteOptions::exact(),
+        )
+    };
+    let f_at_upper = substitute(ctx, upper);
+    let f_at_lower = substitute(ctx, lower);
+
+    let upper_term = ctx.add(Expr::Mul(f_at_upper, upper_prime));
+    let lower_term = ctx.add(Expr::Mul(f_at_lower, lower_prime));
+    let result = ctx.add(Expr::Sub(upper_term, lower_term));
+
+    Some(finalize_diff_rewrite_with_conditions(
+        ctx,
+        call,
+        target,
+        result,
+        Vec::new(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use cas_ast::hold;
     use cas_parser::parse;
+
+    #[test]
+    fn leibniz_rule_differentiates_non_elementary_definite_integral() {
+        // FTC for an integrand with no closed-form antiderivative: the
+        // inner integral is residual, but d/dx int_0^x e^(t^2) dt = e^(x^2).
+        let mut ctx = Context::new();
+        let diff_expr = parse("diff(integrate(e^(t^2), t, 0, x), x)", &mut ctx).unwrap();
+        let call =
+            crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, diff_expr).unwrap();
+        let target = call.target;
+        let rewrite =
+            definite_integral_leibniz_diff_rewrite(&mut ctx, &call, target).expect("leibniz");
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        );
+        // f(x)*1 - f(0)*0 before the simplifier folds it.
+        assert!(rendered.contains("e^(x^2)"), "got: {rendered}");
+    }
+
+    #[test]
+    fn leibniz_rule_refuses_when_integration_var_is_diff_var() {
+        // integrate(e^(x^2), x, 0, x) shares x as both the bound and the
+        // differentiation variable: an ambiguous form the rule must decline.
+        let mut ctx = Context::new();
+        let diff_expr = parse("diff(integrate(e^(x^2), x, 0, x), x)", &mut ctx).unwrap();
+        let call =
+            crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, diff_expr).unwrap();
+        let target = call.target;
+        assert!(definite_integral_leibniz_diff_rewrite(&mut ctx, &call, target).is_none());
+    }
 
     #[test]
     fn derivative_presentation_accepts_default_integrate_variable() {

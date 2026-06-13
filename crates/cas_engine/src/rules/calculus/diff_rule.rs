@@ -14,6 +14,7 @@ use super::diff_rule_support::{
 };
 use super::domain_checks::diff_target_known_undefined_or_empty_domain_over_reals;
 use super::integral_derivative_shortcut_presentation::{
+    definite_integral_leibniz_diff_rewrite,
     reciprocal_trig_derivative_product_integral_diff_shortcut_rewrite,
     supported_integral_diff_shortcut_rewrite,
 };
@@ -146,6 +147,13 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
     if let Some(rewrite) =
         atanh_sqrt_constant_over_polynomial_derivative_rewrite(ctx, &call, target)
     {
+        return Some(rewrite);
+    }
+
+    // Fundamental theorem / Leibniz rule for a definite integral with
+    // variable bounds and an opaque integrand: tried late, after the
+    // known-integrand shortcuts, so it only catches the residual cases.
+    if let Some(rewrite) = definite_integral_leibniz_diff_rewrite(ctx, &call, target) {
         return Some(rewrite);
     }
 

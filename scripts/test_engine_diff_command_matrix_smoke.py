@@ -303,7 +303,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_diff_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 80)
+        self.assertEqual(len(cases), 85)
         names = {case.name for case in cases}
         self.assertIn(
             "log_quadratic_empty_positive_argument_domain_undefined",
@@ -485,20 +485,20 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("quadratic_base_variable_power_disconnected_domain", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"supported": 64, "undefined": 16},
+            {"supported": 69, "undefined": 16},
         )
         self.assertEqual(
             SMOKE.count_calculus_maturity_blocks(cases),
             {
-                "block2_real_domain_differentiation": 64,
+                "block2_real_domain_differentiation": 69,
                 "block9_residuals_and_non_goals": 16,
             },
         )
         self.assertEqual(
             SMOKE.count_calculus_block_gates(cases),
             {
-                "didactic_trace_and_diff_policy": 11,
-                "domain_conditions_and_diff_policy": 53,
+                "didactic_trace_and_diff_policy": 15,
+                "domain_conditions_and_diff_policy": 54,
                 "explicit_undefined_domain_policy": 16,
             },
         )
@@ -531,6 +531,11 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             step_checked,
             {
+                "ftc_gaussian_upper_bound",
+                "ftc_fresnel_upper_bound",
+                "ftc_gaussian_chain_rule_square_bound",
+                "ftc_sine_integral_si_function",
+                "ftc_gaussian_variable_lower_bound_sign_flip",
                 "product_log_required_condition",
                 "product_log_root_domain_dedupe_compact",
                 "log_over_sqrt_root_denominator_compact",
@@ -631,6 +636,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "linear_wrapper_pole_required": 1,
                 "negative_base_undefined": 1,
                 "nonfinite_undefined": 1,
+                "nonzero_denominator_required": 1,
                 "open_interval_required": 3,
                 "positive_exponent_required": 1,
                 "positive_dominates_nonnegative_source_trig_domain": 1,
@@ -640,6 +646,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "shifted_positive_base_required": 1,
                 "structurally_satisfied_lower_bound_domain": 1,
                 "symbolic_radius_minimal_nonzero_parameter": 2,
+                "total_real_function": 4,
                 "trig_sine_pole_required": 1,
                 "unconditional": 6,
                 "unconditional_cosh_positive": 1,
