@@ -3885,6 +3885,137 @@ fn power_log_dominance_zero_limit(
     }
 }
 
+/// `sum_i c_i (var-point)^{a_i} P_i(ln(var-point)) -> 0` as `var -> point+`,
+/// where every additive term carries a STRICTLY POSITIVE total power of
+/// `(var-point)` and otherwise only a polynomial in `ln(var-point)` and
+/// var-free constants. A positive power dominates any polynomial in the
+/// logarithm, so each term -> 0 and the sum -> 0.
+///
+/// This generalizes `power_log_dominance_zero_limit` (a single
+/// `u^p * ln(u)^q` product) to the antiderivatives of `x^a ln(x)^b`, e.g.
+/// `int ln(x)^2 dx = x(ln(x)^2 - 2 ln(x) + 2)` and
+/// `int ln(x)/sqrt(x) dx = 2 sqrt(x) ln(x) - 4 sqrt(x)`, whose lower
+/// endpoint touches 0 and whose boundary value the definite integrator
+/// needs as a one-sided limit.
+fn apply_finite_one_sided_power_log_polynomial_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    // ln(var - point) is real only to the right of the point.
+    if !matches!(side, FiniteLimitSide::Right) {
+        return None;
+    }
+    if !depends_on(ctx, expr, var) {
+        return None;
+    }
+    power_log_polynomial_sum_to_zero(ctx, expr, var, point).then(|| ctx.num(0))
+}
+
+/// Every additive term of `expr` is power-log dominated to zero.
+fn power_log_polynomial_sum_to_zero(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => {
+            power_log_polynomial_sum_to_zero(ctx, lhs, var, point)
+                && power_log_polynomial_sum_to_zero(ctx, rhs, var, point)
+        }
+        Expr::Neg(inner) => power_log_polynomial_sum_to_zero(ctx, inner, var, point),
+        _ => power_log_term_dominated_to_zero(ctx, expr, var, point),
+    }
+}
+
+/// A single multiplicative term tends to 0 from the right: its factors are
+/// powers of `(var-point)`, polynomials in `ln(var-point)`, and var-free
+/// constants, and the total `(var-point)` exponent is strictly positive.
+fn power_log_term_dominated_to_zero(
+    ctx: &Context,
+    term: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> bool {
+    let mut total_power = BigRational::zero();
+    let mut saw_power = false;
+    for factor in collect_mul_factors(ctx, term) {
+        if let Some(exponent) = shift_power_exponent(ctx, factor, var, point) {
+            total_power += exponent;
+            saw_power = true;
+        } else if is_var_shift_log_polynomial(ctx, factor, var, point) {
+            // ln-polynomial growth is dominated by any positive power.
+        } else if depends_on(ctx, factor, var) {
+            // A factor that is neither a (var-point) power nor a log
+            // polynomial (e.g. sin, exp, a foreign variable) is unclassified.
+            return false;
+        }
+        // A var-free constant factor neither vanishes nor adds power.
+    }
+    saw_power && total_power.is_positive()
+}
+
+/// The exponent of a `(var-point)` power factor: the bare shift (1), its
+/// sqrt (1/2), or `(var-point)^p` for rational p. None when the factor is
+/// not such a power.
+fn shift_power_exponent(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<BigRational> {
+    if is_var_shift(ctx, expr, var, point) {
+        return Some(rational_one());
+    }
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) if is_var_shift(ctx, *base, var, point) => {
+            crate::numeric_eval::as_rational_const(ctx, *exp)
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sqrt))
+                && is_var_shift(ctx, args[0], var, point) =>
+        {
+            Some(BigRational::new(1.into(), 2.into()))
+        }
+        _ => None,
+    }
+}
+
+/// `expr` is a polynomial in `ln(var-point)`: var-free constants, the bare
+/// `ln(var-point)`, its non-negative integer powers, and their sums and
+/// products. Restricted to integer powers because `ln(var-point) < 0` near
+/// the point makes fractional powers leave the reals.
+fn is_var_shift_log_polynomial(ctx: &Context, expr: ExprId, var: ExprId, point: ExprId) -> bool {
+    if !depends_on(ctx, expr, var) {
+        return true;
+    }
+    let is_ln_of_shift = |candidate: ExprId| -> bool {
+        matches!(ctx.get(candidate), Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Ln))
+                && is_var_shift(ctx, args[0], var, point))
+    };
+    if is_ln_of_shift(expr) {
+        return true;
+    }
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) if is_ln_of_shift(*base) => {
+            crate::numeric_eval::as_rational_const(ctx, *exp)
+                .is_some_and(|value| value.is_integer() && !value.is_negative())
+        }
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) | Expr::Mul(lhs, rhs) => {
+            is_var_shift_log_polynomial(ctx, *lhs, var, point)
+                && is_var_shift_log_polynomial(ctx, *rhs, var, point)
+        }
+        Expr::Neg(inner) => is_var_shift_log_polynomial(ctx, *inner, var, point),
+        _ => false,
+    }
+}
+
 /// Recognize (var - point)^p with rational p (var itself when point = 0),
 /// including the sqrt form; returns p.
 fn one_sided_positive_power_of_shift(
@@ -3963,6 +4094,11 @@ fn try_limit_rules_at_finite_one_sided(
     side: FiniteLimitSide,
 ) -> Option<ExprId> {
     if let Some(result) = try_limit_rules_at_finite(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) =
+        apply_finite_one_sided_power_log_polynomial_zero(ctx, expr, var, point, side)
+    {
         return Some(result);
     }
     if let Some(result) =
@@ -8276,6 +8412,57 @@ mod tests {
                 apply_finite_equivalent_infinitesimal_quotient_rule(&mut ctx, expr, x, zero)
                     .is_none(),
                 "equivalent-infinitesimal quotient must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn power_log_polynomial_dominance_resolves_antiderivative_endpoints() {
+        // The one-sided limits of x^a ln(x)^b antiderivatives at 0+, which the
+        // definite integrator needs to certify int_0^1 ln(x)^2 = 2 etc.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in [
+            "x * (ln(x)^2 - 2*ln(x) + 2)",
+            "x^2 * (2*ln(x) - 1)",
+            "2*sqrt(x)*ln(x) - 4*sqrt(x)",
+            "x * (ln(x) - 1)",
+            "x^(3/2) * ln(x)^3",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_finite_one_sided(
+                &mut ctx,
+                expr,
+                x,
+                zero,
+                FiniteLimitSide::Right,
+            )
+            .unwrap_or_else(|| panic!("power-log dominance must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), "0", "{source}");
+        }
+    }
+
+    #[test]
+    fn power_log_polynomial_dominance_declines_non_vanishing() {
+        // Each must NOT be folded to 0: no positive power (pure log diverges),
+        // a bare constant term (tends to that constant), a negative power
+        // (diverges), and a non-power/non-log factor.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in ["ln(x)^2", "x * ln(x) + 5", "ln(x) / x", "sin(x) * ln(x)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_one_sided_power_log_polynomial_zero(
+                    &mut ctx,
+                    expr,
+                    x,
+                    zero,
+                    FiniteLimitSide::Right
+                )
+                .is_none(),
+                "power-log dominance must decline: {source}"
             );
         }
     }

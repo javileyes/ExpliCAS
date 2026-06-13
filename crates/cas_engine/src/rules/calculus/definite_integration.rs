@@ -1811,6 +1811,30 @@ mod boundary_touch_tests {
     }
 
     #[test]
+    fn boundary_power_log_improper_integrals_evaluate() {
+        // int_0^1 x^a ln(x)^b: the antiderivative's lower endpoint touches 0
+        // through x^a ln(x)^b -> 0 terms (power dominates the log polynomial).
+        // The raw rewrite is the unsimplified F(1) - F(0+); the simplifier and
+        // the matrix smoke pin the exact values (2, -1/4, -4, -1/9, -4/9). Here
+        // we only certify the lower endpoint resolves (no residual limit call).
+        // The fractional-power forms (ln(x)/sqrt(x), sqrt(x)*ln(x)) only reach
+        // the integrator after the pre-simplifier rewrites their radicals to
+        // x^(p/q), so they are pinned by the CLI-driven matrix smoke instead of
+        // here; these polynomial-coefficient forms exercise the same boundary.
+        for source in [
+            "integrate(ln(x)^2, x, 0, 1)",
+            "integrate(x*ln(x), x, 0, 1)",
+            "integrate(x^2*ln(x), x, 0, 1)",
+        ] {
+            let result = eval_definite(source).unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert!(
+                !result.contains("limit("),
+                "{source} left a residual: {result}"
+            );
+        }
+    }
+
+    #[test]
     fn boundary_divergence_reports_signed_infinity() {
         assert_eq!(
             eval_definite("integrate(1/x^2, x, 0, 1)").as_deref(),

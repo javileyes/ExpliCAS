@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 117 (newest first)
+Active entries: 118 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -134,6 +134,7 @@ Active entries: 117 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / one-sided finite-point composition (block 3 | Retained limits: one-sided composition saturation (inner -> +-inf)
 - 2026-06-13 | `retained` | calculus / limits / finite-point product (block 3 domain | Retained limits: finite-point squeeze (infinitesimal x bounded -> 0)
 - 2026-06-13 | `retained` | calculus / limits / finite-point 0/0 quotient (block 3 domain | Retained limits: first-order equivalent-infinitesimals 0/0 engine
+- 2026-06-13 | `retained` | calculus / definite integration boundary touch / limits | Retained integration: x^a ln(x)^b improper integrals via power-log dominance
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5061,3 +5062,55 @@ Active entries: 117 (newest first)
     fn) is the seam to generalize from: unify the per-atom recognizers
     into one both-sides extractor rather than adding a fourth, fifth,
     sixth sibling rule
+
+## 2026-06-13 - Retained integration: x^a ln(x)^b improper integrals via power-log dominance
+
+- area:
+  - calculus / definite integration boundary touch / limits
+    (block 13 definite integrals, frontier audit P2 "(F) Touch con
+    limite x^a ln(x)^b -> 0")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_maturity_block: block 13 definite integrals (5 matrix rows:
+    ln(x)^2, x ln(x), ln(x)/sqrt(x), x^2 ln(x), sqrt(x) ln(x) over [0,1])
+  - integrate_matrix_cell: int_0^1 ln(x)^2=2, x ln(x)=-1/4,
+    ln(x)/sqrt(x)=-4, x^2 ln(x)=-1/9, sqrt(x) ln(x)=-4/9
+  - behavior_change_expected: yes - convergent improper integrals whose
+    antiderivative touches 0 through x^a ln(x)^b terms now evaluate; the
+    indefinite form and divergent improper integrals are unchanged
+- observed (the gap was in the LIMIT engine, not the integrator):
+  - the antiderivatives are already known (int ln(x)^2 = x(ln^2-2ln+2),
+    int ln(x)/sqrt(x) = 2 sqrt(x) ln(x) - 4 sqrt(x)), and the definite
+    integrator already computes boundary values via one-sided limits of
+    F. The blocker was that the limit engine resolved a single monomial
+    u^p ln(u)^q -> 0 (power_log_dominance_zero_limit) but NOT a power
+    times a POLYNOMIAL in ln, nor a SUM of such monomials - so the full
+    antiderivative limit x(ln^2-2ln+2) at 0+ stayed residual
+  - added apply_finite_one_sided_power_log_polynomial_zero: split the
+    expression into additive terms; each term must be a constant times a
+    strictly positive total (var-point) power times a polynomial in
+    ln(var-point); then the sum -> 0. Reuses is_var_shift and the power-
+    exponent recogniser; a new is_var_shift_log_polynomial gates the log
+    factor to non-negative INTEGER powers (ln < 0 near 0, so fractional
+    powers leave the reals)
+  - footprint: only the intended integrate matrix lane moved (5 rows);
+    the limit matrix and all other lanes are byte-identical. The fix is
+    additive - it fires only on previously-residual power-log sums at 0+
+- retained learning:
+  - when a definite integral is residual but its antiderivative is known,
+    the gap is almost always the BOUNDARY LIMIT, not the integration:
+    probe lim F at the touched endpoint directly. Here the integrator was
+    already correct; one limit recogniser unblocked a whole P2 family
+  - "power dominates log" generalizes from a single u^p ln(u)^q monomial
+    to "positive power times any log-polynomial, summed" by classifying
+    each multiplicative factor (power / log-polynomial / constant) and
+    summing only the power exponents - the log factors contribute growth
+    that any positive net power swallows. The soundness gate is exactly
+    "net power strictly positive AND at least one power present"; a bare
+    constant or pure-log term (net power 0) must block the fold, or
+    x ln x + 5 -> 5 would wrongly read as 0
+  - a log-polynomial must be restricted to non-negative INTEGER powers of
+    ln: near 0 the logarithm is negative, so ln(x)^(1/2) is not real and
+    ln(x)^(-1) -> 0 is a different (non-dominance) fact
