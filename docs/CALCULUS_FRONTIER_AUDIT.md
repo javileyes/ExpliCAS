@@ -305,6 +305,21 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   pero declina), `asinh/acosh/coth/sech` (folds no implementados),
   coeficientes irracionales `e^(π/x)`, y `∞·(π/2)` lateral que necesita
   cofactor racional)*
+  *(peldaño cosh cerrado 2026-06-13 b349e056e:
+  `apply_finite_bilateral_even_saturating_pole_rule` resuelve
+  `cosh(1/x)→∞` bilateral — cosh es PAR, así que cosh(±∞)=+∞ vale en
+  ambos lados pese a que el polo impar 1/x diverge con signos opuestos.
+  Gateado a Cosh + inner divergente en ambos lados (reutiliza
+  `one_sided_inner_infinity_sign` y `saturate_outer_at_infinity`). Nota
+  de alcance: se prototipó la regla GENERAL "bilateral = valor lateral
+  común" (sólida por el teorema, resolvía `1/|x|`, `log_b(|x|)`,
+  `sqrt|x|`, `exp(ln|x|)`) pero flipeaba ~6 contratos conservadores de
+  "composición finita no soportada con seguridad" de golpe; se redujo a
+  cosh (par, fold independiente del signo), que NO toca ningún contrato.
+  Verificado adversarialmente (52 sondas, 0 violaciones; semi-definidos
+  `cosh(1/√x)`/`cosh(ln x)` declinan por lado indefinido). Peldaño
+  preexistente anotado: `cos(1/x²)`/`sin(1/x²)` filtran `cos(infinity)`
+  sin plegar — el combine bilateral de inner oscilante de potencia par)*
 - [~] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
   0`, `(x+sin x)/x → 1 en ∞`, `ln(x)/sqrt(x) → 0 en ∞` (la dominancia
   entera `ln(x)/x` sí funciona).
