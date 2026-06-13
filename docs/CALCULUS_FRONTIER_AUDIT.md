@@ -224,7 +224,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `x·e^(1/x)` queda residual = +∞). Peldaños: touches con exp/trig en el
   borde, y la forma exponencial `1^∞/0^0` que necesita el interno `∞·0`
   robusto)*
-- [~] **(F) Gaussiana/Gamma por tabla**: `e^(-x^2) [0,∞) = √π/2`,
+- [x] **(F) Gaussiana/Gamma por tabla**: `e^(-x^2) [0,∞) = √π/2`,
   `(-∞,∞) = √π`, `x^2*e^(-x^2) [0,∞) = √π/4`, `e^(-x)/sqrt(x) = √π` —
   la impropia más famosa de la universidad; tabla pequeña de formas
   patrón (la indefinida debe SEGUIR residual).
@@ -238,6 +238,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   arregló un bug de coeficiente perdido). Peldaños: las formas Gamma
   (`e^(-x)/√x`, `x^n e^(-x)=n!`), el cofactor con cuadrado completado
   `e^(-x²+x)`, y `c·e^(-x²)` en forma Mul anidada)*
+  *(Gamma graduada 2026-06-13 5ee37ea63: la familia Gamma de
+  medio-entero `∫₀^∞ x^(m-1/2) e^(-ax) = (2m)!/(4^m m!)/a^m √(π/a)` —
+  `e^(-x)/√x=√π`, `√x·e^(-x)=√π/2`, `x^(3/2)e^(-x)=3√π/4`,
+  `e^(-2x)/√x=√(π/2)`. El entero `x^n e^(-x)=n!` ya resolvía vía
+  antiderivada elemental. `match_gamma_integrand` ACUMULA sobre Mul/Div/Neg
+  (potencia neta + decay lineal + constante) — un walker para todas las
+  formas. Gating: exponente decay lineal puro, potencia medio-entera
+  (los enteros caen a la antiderivada), s≥−1/2 (divergentes residuales),
+  a>0, solo [0,∞). Verificado adversarialmente (58 sondas, valores
+  exactos sin coefficient/sign drop; cazó un gap de coeficiente −1 unitario
+  → arreglado con el brazo Neg). Peldaños restantes del item Gaussiano:
+  cuadrado completado `e^(-x²+x)` y `c·e^(-x²)` Mul anidada)*
 - [ ] **(A) Pre-simplificador vs integrador**: reescribe
   `1/(sqrt(x)*(1+x))` a `(x^(3/2)-x^(1/2))/(x^3-x)` y `cos(5x)` a
   Chebyshev en cos(x), destruyendo la sustitución obvia
