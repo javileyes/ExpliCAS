@@ -215,10 +215,21 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   integrales definidas que crucen 0; `1/(x⁶−1)` levantar el cap de
   factores del backend racional; `1/(x⁵−1)` las cuárticas ciclotómicas
   Φ5 con √5)*
-- [ ] **(F) Composición de límites con interno conocido**:
+- [~] **(F) Composición de límites con interno conocido**:
   `e^(1/x) en 0±` (→ ∞ / 0), `atan(1/x) en 0+` (→ π/2) fallan aunque
   `1/x → ±∞` resuelve; regla de composición continua/monótona barata
   (la tabla saturante en ∞ ya existe — reutilizarla desde laterales).
+  *(parcial 2026-06-13 457b8d5d8: el lado BILATERAL con interno → ∞ con
+  signo definido ya resuelve — `e^(-1/x²)→0`, `e^(1/x²)→∞`,
+  `atan(1/x²)→π/2`, `tanh(1/x²)→1` — vía fold de saturación f(±∞) sobre
+  la salida del límite (arctan/tanh/exp/ln/sqrt/sinh/cosh; excluye
+  sin/cos/tan oscilantes). Verificado adversarialmente: el caso
+  bilateral con laterales DISTINTOS (`e^(1/x)` en 0) queda correctamente
+  residual. Peldaño restante: los UNILATERALES `e^(1/x) en 0±`,
+  `atan(1/x) en 0+` — el motor de límites finito unilateral no propaga
+  `1/x → ±∞` al argumento todavía. Nota de soundness: el fold NO se
+  registró como regla global (ensanchaba el bug preexistente ∞−∞=0 en
+  aritmética cruda); queda confinado a salidas de límite vetadas)*
 - [ ] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
   0`, `(x+sin x)/x → 1 en ∞`, `ln(x)/sqrt(x) → 0 en ∞` (la dominancia
   entera `ln(x)/x` sí funciona).
