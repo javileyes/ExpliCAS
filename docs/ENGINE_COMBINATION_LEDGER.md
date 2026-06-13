@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 110 (newest first)
+Active entries: 111 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -127,6 +127,7 @@ Active entries: 110 (newest first)
 - 2026-06-13 | `retained` | calculus / differentiation / fundamental theorem (block 2 real | Retained calculus: FTC / Leibniz rule for derivatives of definite integrals
 - 2026-06-13 | `retained` | parser / calculus surface coverage (block 4/7 hyperbolic, P? | Retained calculus: reciprocal hyperbolics parse via cosh/sinh desugar
 - 2026-06-13 | `retained` | calculus / limits / infinity / radical differences (block 3 real | Retained limits: sqrt(quadratic) - linear at infinity (conjugate cancellation)
+- 2026-06-13 | `retained` | calculus / limits / infinity / radical differences (block 3 real | Retained limits: sqrt(P) - sqrt(Q) at infinity (matching leading radicands)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4671,3 +4672,43 @@ Active entries: 110 (newest first)
     zero means the rule can never return a finite value for a divergent
     limit, so the honesty boundary is enforced by the math, not a
     separate check
+
+## 2026-06-13 - Retained limits: sqrt(P) - sqrt(Q) at infinity (matching leading radicands)
+
+- area:
+  - calculus / limits / infinity / radical differences (block 3 real
+    domain limits, completes the "∞−∞ con radicales" frontier item)
+- status:
+  - `retained`
+- capture:
+  - investment_class: limits
+  - calculus_maturity_block: block 3 real-domain limits (3 rows added
+    to the radical_difference_conjugate family, infinity 34 -> 37)
+  - calculus_matrix_cell: limit(sqrt(x+1)-sqrt(x))=0,
+    limit(sqrt(x^2+x)-sqrt(x^2-x))=1,
+    limit(sqrt(4x^2+x)-sqrt(4x^2-x))=1/2
+  - behavior_change_expected: yes - sqrt(P) - sqrt(Q) at +-inf for P, Q
+    of equal degree n in {1,2} with the same positive leading coeff
+- observed (the natural sibling of the prior cycle's recognizer):
+  - the conjugate expansion sqrt(P) = sqrt(a) x^(n/2) +
+    (b_P/(2 sqrt(a))) x^(n/2-1) + ... makes the difference finite iff
+    n <= 2: degree-1 radicands cancel the x^(1/2) term and the next is
+    x^(-1/2) -> 0; degree-2 radicands give (b_P - b_Q)/(2 sqrt(a)).
+    Higher degrees (sqrt(x^3+x)-sqrt(x^3-x)) leave an x^(1/2) term and
+    diverge - correctly declined
+  - sound gates inherited from the leading-cancellation discipline:
+    same degree, same leading coefficient, sqrt(a) rational; mismatched
+    degree, irrational surd, and additive (sum) forms decline. The
+    irrational-surd case (sqrt(2x^2+x)-sqrt(2x^2-x)=1/sqrt(2)) is a true
+    finite limit left as a rung rather than emit an irrational form
+  - together with the prior sqrt(quadratic)-linear recognizer this
+    closes the +inf side of the frontier audit's radical-difference
+    item; the finite-point variant (sqrt(x)-2)/(x-4) remains separate
+- retained learning:
+  - the conjugate/leading-expansion framework generalizes across the
+    radical-difference family by a single parameter (which side is a
+    sqrt vs a polynomial, and the radicand degree); building the second
+    recognizer was mostly reusing the first cycle's expansion identity
+    with P-Q in place of the linear slope - sibling recognizers that
+    share a closed-form derivation are cheap to add once the first
+    proves the gating discipline

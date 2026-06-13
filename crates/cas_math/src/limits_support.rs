@@ -3972,6 +3972,72 @@ fn scaled_abs_base(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)>
     }
 }
 
+/// Limit of `sqrt(P) - sqrt(Q)` at +-infinity for polynomials P, Q with
+/// the SAME positive leading coefficient and the same degree n in
+/// {1, 2}. The conjugate expansion gives sqrt(P) = sqrt(a) x^(n/2) +
+/// (b_P/(2 sqrt(a))) x^(n/2 - 1) + ..., so the difference is finite when
+/// n <= 2: degree-1 radicands always cancel to 0, degree-2 radicands
+/// give (b_P - b_Q)/(2 sqrt(a)). Covers sqrt(x+1) - sqrt(x) = 0 and
+/// sqrt(x^2+x) - sqrt(x^2-x) = 1. Higher degrees and mismatched leading
+/// terms decline.
+fn sqrt_minus_sqrt_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Variable(var_sym) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_sym).to_string();
+    let (left, right) = match ctx.get(expr).clone() {
+        Expr::Sub(l, r) => (l, r),
+        Expr::Add(l, r) => match ctx.get(r).clone() {
+            Expr::Neg(inner) => (l, inner),
+            _ => match ctx.get(l).clone() {
+                Expr::Neg(inner) => (inner, r),
+                _ => return None,
+            },
+        },
+        _ => return None,
+    };
+    let one = BigRational::from_integer(BigInt::from(1));
+    let (left_scale, left_radicand) = scaled_square_root_base(ctx, left)?;
+    let (right_scale, right_radicand) = scaled_square_root_base(ctx, right)?;
+    if left_scale != one || right_scale != one {
+        return None;
+    }
+    let p = Polynomial::from_expr(ctx, left_radicand, &var_name).ok()?;
+    let q = Polynomial::from_expr(ctx, right_radicand, &var_name).ok()?;
+    let degree = p.degree();
+    if degree != q.degree() || degree == 0 || degree > 2 {
+        return None;
+    }
+    let a = p.coeffs.get(degree)?.clone();
+    if !a.is_positive() || q.coeffs.get(degree) != Some(&a) {
+        return None;
+    }
+    let zero = BigRational::from_integer(BigInt::from(0));
+    if degree == 1 {
+        // sqrt(linear) - sqrt(linear): both -> +inf, difference -> 0.
+        // Only defined as x -> +inf (radicand goes negative at -inf).
+        if approach != InfSign::Pos {
+            return None;
+        }
+        return Some(ctx.add(Expr::Number(zero)));
+    }
+    // degree == 2: (b_P - b_Q)/(2 sqrt(a)), sign flips at -inf.
+    let sqrt_a = rational_sqrt(&a)?;
+    let b_p = p.coeffs.get(1).cloned().unwrap_or_else(|| zero.clone());
+    let b_q = q.coeffs.get(1).cloned().unwrap_or_else(|| zero.clone());
+    let two = BigRational::from_integer(BigInt::from(2));
+    let mut value = (&b_p - &b_q) / (&two * &sqrt_a);
+    if approach == InfSign::Neg {
+        value = -value;
+    }
+    Some(ctx.add(Expr::Number(value)))
+}
+
 /// Limit of `sqrt(a x^2 + b x + c) - (d x + e)` (or the reverse) at
 /// +-infinity via the conjugate / leading-term expansion. With sqrt(a)
 /// rational and the leading terms cancelling, the limit is finite:
@@ -6029,6 +6095,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = sqrt_quadratic_minus_linear_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = sqrt_minus_sqrt_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = sqrt_polynomial_ratio_limit_at_infinity(ctx, expr, var, approach) {
@@ -8966,6 +9035,44 @@ mod tests {
             assert!(
                 sqrt_quadratic_minus_linear_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
                     .is_none(),
+                "must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn sqrt_minus_sqrt_limit_resolves_matching_leading_radicands() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, num, den) in [
+            ("sqrt(x + 1) - sqrt(x)", 0, 1),
+            ("sqrt(x^2 + x) - sqrt(x^2 - x)", 1, 1),
+            ("sqrt(x^2 + 1) - sqrt(x^2 - 1)", 0, 1),
+            ("sqrt(x^2 + 3*x) - sqrt(x^2 + x)", 1, 1),
+            ("sqrt(4*x^2 + x) - sqrt(4*x^2 - x)", 1, 2),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = sqrt_minus_sqrt_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_number_expr(&ctx, out, num, den);
+        }
+    }
+
+    #[test]
+    fn sqrt_minus_sqrt_limit_declines_mismatched_and_high_degree() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        // Different degrees, irrational leading sqrt, degree > 2
+        // (divergent), and additive (non-difference) forms decline.
+        for source in [
+            "sqrt(x^2 + x) - sqrt(x - 1)",
+            "sqrt(2*x^2 + x) - sqrt(2*x^2 - x)",
+            "sqrt(x^3 + x) - sqrt(x^3 - x)",
+            "sqrt(x^2 + 1) + sqrt(x^2 - 1)",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                sqrt_minus_sqrt_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
                 "must decline: {source}"
             );
         }
