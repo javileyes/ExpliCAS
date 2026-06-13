@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 127 (newest first)
+Active entries: 128 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
+- 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5538,3 +5539,55 @@ Active entries: 127 (newest first)
   - remaining educational rung: the resolved step is the generic "Calcular
     la integral" wrapper, not a symmetry-specific narration ("integrando
     impar en intervalo simetrico => 0")
+
+
+## 2026-06-14 - Retained limits: difference of general-base exponentials
+
+- area:
+  - calculus / limits / finite-point 0/0 quotient of exponential
+    combinations (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    base difference, scaled-exponent difference)
+  - limit_matrix_cell: limit((2^x-3^x)/x,x,0)=ln(2)-ln(3),
+    limit((2^(3x)-3^x)/x,x,0)=3 ln(2)-ln(3)
+  - behavior_change_expected: yes - a difference/combination of general-base
+    exponentials over x resolves to the corresponding combination of logs;
+    the single-power (a^x-1)/x and the natural-base e^(2x)-e^(3x) already
+    resolved via the sibling rule and the rational Taylor engine
+- observed (first-order L'Hopital on the exponential class):
+  - (e^(2x)-e^(3x))/x already resolved because the Taylor engine expands
+    Pow(E, arg), but (2^x-3^x)/x stayed residual: the rational-coefficient
+    Taylor engine cannot expand a^x (its coefficient ln(a) is
+    transcendental), and the single-power rule only matches scale*(a^g - 1).
+    apply_finite_exp_linear_combination_quotient_rule reads the numerator as
+    a linear combination of exponentials c_i a_i^(g_i) (+ constants),
+    accumulates the value at 0 (sum c_i, must be 0 for a genuine 0/0) and the
+    first derivative N'(0) = sum c_i g_i'(0) ln(a_i) [or c_i g_i'(0) for base
+    e], and returns N'(0)/h'(0) for a polynomial denominator vanishing to
+    first order
+  - gates: each exponent g_i a polynomial with g_i(0)=0 and degree>=1 (so
+    a^g -> 1); at least one genuine exponential; the denominator a polynomial
+    with h(0)=0 and h'(0) != 0 (first order). Anything outside the class
+    (a bare variable term, a foreign-variable exponent, a non-vanishing or
+    higher-order denominator) declines
+- retained learning:
+  - the "transcendental coefficient cannot live in the rational Polynomial"
+    seam (first met at (a^x-1)/x) generalizes: do not try to teach the
+    rational Taylor engine general bases - instead read off the symbolic
+    derivative directly as sum c_i g_i'(0) ln(a_i), keeping each ln(a_i) as
+    an emitted symbol and only the RATIONAL parts (c_i, g_i'(0), 1/h'(0)) in
+    the arithmetic. The result is a symbolic linear combination of logs
+  - first-order L'Hopital is sound and bounded for a NAMED class (here
+    exponential-linear-combinations over a polynomial): compute f(0) and
+    f'(0) exactly from structure, require f(0)=g(0)=0 and g'(0)!=0, and
+    decline (residual, never wrong) the moment a term leaves the class or the
+    denominator vanishes deeper. This is the safe slice of the open
+    "general L'Hopital chaining" rung
+  - place it AFTER the single-power and Taylor rules (cheap-owns-its-cases):
+    (a^x-1)/x keeps the (a^g-1) rule's trace, e-base differences keep the
+    Taylor trace, and this rule only catches the general-base combinations
+    they leave residual

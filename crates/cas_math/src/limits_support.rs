@@ -2293,6 +2293,260 @@ fn numeric_base_power(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprI
     }
 }
 
+/// An exponential atom `base^(g)`: returns `(Some(rational_base), g)` for a
+/// numeric base != 1, or `(None, g)` for the natural base e (ln(e) = 1). Both
+/// `Pow(E, g)` and `exp(g)` are recognized.
+fn exponential_base_and_exponent(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(Option<BigRational>, ExprId)> {
+    use num_traits::One;
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Exp) =>
+        {
+            Some((None, args[0]))
+        }
+        Expr::Pow(base, exponent) => {
+            if matches!(ctx.get(*base), Expr::Constant(Constant::E)) {
+                return Some((None, *exponent));
+            }
+            let base_value = constant_rational_value(ctx, *base)?;
+            if !base_value.is_positive() || base_value.is_one() {
+                return None;
+            }
+            Some((Some(base_value), *exponent))
+        }
+        _ => None,
+    }
+}
+
+/// Accumulate `expr` (under overall `sign`) as a linear combination of
+/// exponentials `c * a^(g)` (a a positive rational != 1, or e) plus constants,
+/// reading off the value at 0 and the first derivative at 0. Each exponential
+/// requires `g` a polynomial with `g(0) = 0` and degree >= 1, so `a^g -> 1`
+/// and the derivative contribution is `c * g'(0) * ln(a)` (or `c * g'(0)` for
+/// the base e). Returns None for any term outside the class.
+#[allow(clippy::too_many_arguments)]
+fn accumulate_exp_combination(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    sign: &BigRational,
+    value: &mut BigRational,
+    log_terms: &mut Vec<(BigRational, BigRational)>,
+    const_deriv: &mut BigRational,
+    saw_exp: &mut bool,
+) -> Option<()> {
+    use num_traits::Zero;
+    // A pure constant contributes to the value, nothing to the derivative.
+    if let Some(c) = constant_rational_value(ctx, expr) {
+        *value += sign * &c;
+        return Some(());
+    }
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let neg = -sign.clone();
+            accumulate_exp_combination(
+                ctx,
+                inner,
+                var_name,
+                &neg,
+                value,
+                log_terms,
+                const_deriv,
+                saw_exp,
+            )
+        }
+        Expr::Add(a, b) => {
+            accumulate_exp_combination(
+                ctx,
+                a,
+                var_name,
+                sign,
+                value,
+                log_terms,
+                const_deriv,
+                saw_exp,
+            )?;
+            accumulate_exp_combination(
+                ctx,
+                b,
+                var_name,
+                sign,
+                value,
+                log_terms,
+                const_deriv,
+                saw_exp,
+            )
+        }
+        Expr::Sub(a, b) => {
+            accumulate_exp_combination(
+                ctx,
+                a,
+                var_name,
+                sign,
+                value,
+                log_terms,
+                const_deriv,
+                saw_exp,
+            )?;
+            let neg = -sign.clone();
+            accumulate_exp_combination(
+                ctx,
+                b,
+                var_name,
+                &neg,
+                value,
+                log_terms,
+                const_deriv,
+                saw_exp,
+            )
+        }
+        Expr::Mul(a, b) => {
+            // Exactly one factor must be an x-free rational scale.
+            if let Some(scale) = constant_rational_value(ctx, a) {
+                let s = sign * &scale;
+                return accumulate_exp_combination(
+                    ctx,
+                    b,
+                    var_name,
+                    &s,
+                    value,
+                    log_terms,
+                    const_deriv,
+                    saw_exp,
+                );
+            }
+            if let Some(scale) = constant_rational_value(ctx, b) {
+                let s = sign * &scale;
+                return accumulate_exp_combination(
+                    ctx,
+                    a,
+                    var_name,
+                    &s,
+                    value,
+                    log_terms,
+                    const_deriv,
+                    saw_exp,
+                );
+            }
+            None
+        }
+        _ => {
+            let (base_opt, g) = exponential_base_and_exponent(ctx, expr)?;
+            let g_poly = Polynomial::from_expr(ctx, g, var_name).ok()?;
+            if !g_poly.eval(&BigRational::zero()).is_zero() || g_poly.degree() < 1 {
+                return None;
+            }
+            let slope = g_poly
+                .coeffs
+                .get(1)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+            *saw_exp = true;
+            // a^(g(0)) = a^0 = 1 contributes to the value at 0.
+            *value += sign.clone();
+            let coeff = sign * &slope;
+            match base_opt {
+                Some(base) => {
+                    if !coeff.is_zero() {
+                        log_terms.push((coeff, base));
+                    }
+                }
+                None => *const_deriv += coeff, // ln(e) = 1
+            }
+            Some(())
+        }
+    }
+}
+
+/// `(c0 a^(g0) + c1 a^(g1) + ...) / h` at 0 where the numerator is a linear
+/// combination of exponentials that vanishes at 0 and `h` is a polynomial
+/// vanishing to first order: the limit is the ratio of first derivatives
+/// `N'(0) / h'(0) = (sum c_i g_i'(0) ln a_i) / h'(0)`. Resolves the difference
+/// of general-base exponentials `(a^x - b^x)/x -> ln(a) - ln(b)`, which the
+/// single-power rule and the rational Taylor engine cannot reach (ln a is
+/// transcendental).
+fn apply_finite_exp_linear_combination_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    use num_traits::{One, Zero};
+    if !crate::numeric_eval::as_rational_const(ctx, point).is_some_and(|p| p.is_zero()) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let mut value = BigRational::zero();
+    let mut log_terms: Vec<(BigRational, BigRational)> = Vec::new();
+    let mut const_deriv = BigRational::zero();
+    let mut saw_exp = false;
+    accumulate_exp_combination(
+        ctx,
+        num,
+        &var_name,
+        &rational_one(),
+        &mut value,
+        &mut log_terms,
+        &mut const_deriv,
+        &mut saw_exp,
+    )?;
+    // A genuine 0/0 over a real exponential combination.
+    if !saw_exp || !value.is_zero() {
+        return None;
+    }
+    // Denominator: a polynomial vanishing to exactly first order at 0.
+    let den_poly = Polynomial::from_expr(ctx, den, &var_name).ok()?;
+    if !den_poly.eval(&BigRational::zero()).is_zero() {
+        return None;
+    }
+    let den_slope = den_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if den_slope.is_zero() {
+        return None;
+    }
+
+    // result = (const_deriv + sum coeff_i ln(base_i)) / den_slope.
+    let mut result: Option<ExprId> = None;
+    let scaled_const = &const_deriv / &den_slope;
+    if !scaled_const.is_zero() {
+        result = Some(ctx.add(Expr::Number(scaled_const)));
+    }
+    for (coeff, base) in log_terms {
+        let scaled = &coeff / &den_slope;
+        if scaled.is_zero() {
+            continue;
+        }
+        let base_expr = ctx.add(Expr::Number(base));
+        let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base_expr]);
+        let term = if scaled.is_one() {
+            ln_base
+        } else if scaled == -rational_one() {
+            ctx.add(Expr::Neg(ln_base))
+        } else {
+            let coeff_expr = ctx.add(Expr::Number(scaled));
+            ctx.add(Expr::Mul(coeff_expr, ln_base))
+        };
+        result = Some(match result {
+            Some(acc) => ctx.add(Expr::Add(acc, term)),
+            None => term,
+        });
+    }
+    Some(result.unwrap_or_else(|| ctx.num(0)))
+}
+
 fn apply_finite_log_unit_quotient_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -3406,6 +3660,9 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_taylor_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_exp_linear_combination_quotient_rule(ctx, expr, var, point) {
         return Some(result);
     }
     if let Some(result) = apply_finite_bilateral_log_endpoint_rule(ctx, expr, var, point) {
@@ -9283,6 +9540,59 @@ mod tests {
         assert!(
             apply_finite_general_exp_zero_quotient_rule(&mut ctx, exp_form, x, zero).is_none(),
             "natural base is left to the exp rule"
+        );
+    }
+
+    #[test]
+    fn finite_exp_linear_combination_yields_difference_of_logs() {
+        // (a^x - b^x)/x -> ln(a) - ln(b): the derivative of a difference of
+        // general-base exponentials at 0, where ln(a) is transcendental.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("(2^x - 3^x)/x", "ln(2) - ln(3)"),
+            ("(3^x - 2^x)/x", "ln(3) - ln(2)"),
+            ("(2^(3*x) - 3^x)/x", "3 * ln(2) - ln(3)"),
+            ("(5*2^x - 5*3^x)/x", "5 * ln(2) - 5 * ln(3)"),
+            ("(exp(x) - 2^x)/x", "-ln(2) + 1"),
+            ("(2*exp(x) - 2^x - 1)/x", "-ln(2) + 2"),
+            ("(2^x + 3^x - 2)/x", "ln(2) + ln(3)"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = apply_finite_exp_linear_combination_quotient_rule(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("exp combination must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn finite_exp_linear_combination_declines_non_class_and_non_indeterminate() {
+        // Honest declines: a non-vanishing numerator (not 0/0), a higher-order
+        // denominator, a foreign-variable exponent, and a bare oscillation.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        let one = parse_expr(&mut ctx, "1");
+        for source in [
+            "(2^x + 3^x)/x",   // numerator -> 2, not 0/0
+            "2^x/x",           // numerator -> 1, not 0/0
+            "(2^x - 3^x)/x^2", // denominator vanishes to second order
+            "(2^x - 3^y)/x",   // foreign-variable exponent is not a polynomial in x
+            "sin(1/x)",        // not a quotient of this class (honesty list)
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_exp_linear_combination_quotient_rule(&mut ctx, expr, x, zero)
+                    .is_none(),
+                "exp combination must decline: {source}"
+            );
+        }
+        // Only defined at the origin (a^x -> 1 needs the exponent at 0).
+        let expr = parse_expr(&mut ctx, "(2^x - 3^x)/x");
+        assert!(
+            apply_finite_exp_linear_combination_quotient_rule(&mut ctx, expr, x, one).is_none(),
+            "exp combination is only defined at the origin"
         );
     }
 
