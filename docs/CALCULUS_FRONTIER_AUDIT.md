@@ -170,8 +170,13 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   √a racional y cancelación de términos líderes ya resuelve vía forma
   cerrada `b/(2√a)−e` — `sqrt(x²+x)−x=1/2`, `sqrt(x²+1)−x=0`,
   `sqrt(4x²+x)−2x=1/4`, `x−sqrt(x²−x)=1/2`. Gate de cancelación exacta
-  (los divergentes declinan). Peldaños: sqrt−sqrt (`sqrt(x+1)−sqrt(x)`),
-  √a irracional, y la versión en punto finito `(√x−2)/(x−4)`)*
+  (los divergentes declinan).)*
+  *(parcial 2026-06-13 d7dd00024: sqrt−sqrt completado para radicandos
+  del mismo grado (1 o 2) y mismo líder — `sqrt(x+1)−sqrt(x)=0`,
+  `sqrt(x²+x)−sqrt(x²−x)=1`, `sqrt(4x²+x)−sqrt(4x²−x)=1/2` vía
+  `(b_P−b_Q)/(2√a)`. El lado +∞ del item queda cubierto. Peldaños:
+  √a irracional (`sqrt(2x²+x)−sqrt(2x²−x)=1/√2`), grado ≥3, y la
+  versión en punto finito `(√x−2)/(x−4)`)*
 
 ### P2 — familias y mejoras de alto valor (1 ciclo cada una)
 
