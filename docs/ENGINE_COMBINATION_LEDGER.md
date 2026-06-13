@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 124 (newest first)
+Active entries: 125 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -141,6 +141,7 @@ Active entries: 124 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / growth dominance at infinity (block 3, frontier | Retained limits: polylog over a fractional power at infinity
 - 2026-06-13 | `retained` | calculus / limits / rational growth at infinity (block 3, frontier | Retained limits: rational quotient with bounded additive noise
 - 2026-06-13 | `retained` | calculus / limits / logarithmic difference at infinity (block 3) | Retained limits: ln(P) - ln(Q) at infinity collapses to ln(ratio)
+- 2026-06-13 | `retained` | calculus / limits / finite-point 0/0 quotient (block 3) | Retained limits: (a^x - 1)/x -> ln(a) (general-base 0/0)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5386,3 +5387,38 @@ Active entries: 124 (newest first)
     folded to 0 in the rule (ln(1) would otherwise leak); fold known
     identities at the point of construction, do not rely on a downstream
     simplify of the limit result
+
+
+## 2026-06-13 - Retained limits: (a^x - 1)/x -> ln(a) (general-base 0/0)
+
+- area:
+  - calculus / limits / finite-point 0/0 quotient (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    general-base and scaled-exponent)
+  - limit_matrix_cell: limit((2^x-1)/x,x,0)=ln(2),
+    limit((2^(3x)-1)/x,x,0)=3 ln(2)
+  - behavior_change_expected: yes - the derivative of a^x at 0 resolves to
+    ln(a); the natural base e^x-1 keeps its 1 via the existing exp rule
+- observed (extends the exp 0/0 rule to a general numeric base):
+  - apply_finite_exp_zero_quotient_rule only matched the natural base
+    (e^u - 1 ~ u). For a numeric base a, a^g ~ 1 + g ln(a), so
+    (a^g - 1)/h -> ln(a) lim(g/h). apply_finite_general_exp_zero_quotient_
+    rule recognizes scale*(a^g - 1) (Sub, Add(-1), and 1 - a^g forms),
+    builds g and h as polynomials, and returns ln(a) times the existing
+    finite_rational_polynomial_value(scale*g, h)
+  - gates: base a positive rational != 1 (e is left to the exp rule for the
+    cleaner 1; base 1 has ln(1)=0 and is declined; symbolic/negative bases
+    decline), and the exponent must vanish at the point (so a^g - 1 -> 0)
+- retained learning:
+  - a first-order equivalent with a TRANSCENDENTAL coefficient (g ln a)
+    cannot live in the rational-coefficient Polynomial engine; factor the
+    transcendental out as a scalar (ln a) and run the RATIONAL part
+    (g/h) through the existing polynomial-L'Hopital, then multiply. The
+    seam is "rational limit times a symbolic constant"
+  - reuse the sibling rule's offset recognizer SHAPE (Sub/Add(-1)/Neg/Mul
+    scale) but swap the atom (e^u -> a^g with a numeric base); the
+    derivative-at-0 family is the exp family with ln(a) reinstated

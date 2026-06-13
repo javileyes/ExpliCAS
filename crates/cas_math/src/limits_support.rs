@@ -2181,6 +2181,118 @@ fn apply_finite_exp_zero_quotient_rule(
     apply_finite_zero_quotient_rule(ctx, expr, var, point, scaled_exp_zero_offset_argument)
 }
 
+/// `(a^(g) - 1) / h(x) -> ln(a) * lim(g/h)` as `var -> point`, the
+/// derivative-of-`a^x`-at-0 family: `(2^x - 1)/x = ln 2`, `(3^x - 1)/x = ln 3`,
+/// `(2^(3x) - 1)/x = 3 ln 2`. The base `a` must be a positive rational != 1
+/// (the natural base `e^x - 1` is left to apply_finite_exp_zero_quotient_rule,
+/// which gives the cleaner 1 instead of ln(e)). Since `a^g ~ 1 + g ln a` as
+/// `g -> 0`, the numerator's first-order equivalent is `g ln a`, and the limit
+/// is `ln(a)` times the rational limit of `g/h`.
+fn apply_finite_general_exp_zero_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let (scale, base, exponent) = scaled_general_power_zero_offset(ctx, num)?;
+    if !base.is_positive() || base.is_one() {
+        return None;
+    }
+    let exponent_poly = Polynomial::from_expr(ctx, exponent, &var_name).ok()?;
+    // a^g -> 1 (so a^g - 1 -> 0) requires the exponent to vanish at the point.
+    if !exponent_poly.eval(&point_value).is_zero() {
+        return None;
+    }
+    let scale_poly = Polynomial::new(vec![scale], var_name.clone());
+    let numerator = exponent_poly.mul(&scale_poly);
+    let denominator = Polynomial::from_expr(ctx, den, &var_name).ok()?;
+    let ratio = finite_rational_polynomial_value(&numerator, &denominator, &point_value)?;
+    // 0 * ln(a) = 0 (g vanishes faster than h); fold it rather than emit 0*ln(a).
+    if ratio.is_zero() {
+        return Some(ctx.num(0));
+    }
+    let base_expr = ctx.add(Expr::Number(base));
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base_expr]);
+    if ratio.is_one() {
+        return Some(ln_base);
+    }
+    let ratio_expr = ctx.add(Expr::Number(ratio));
+    Some(ctx.add(Expr::Mul(ratio_expr, ln_base)))
+}
+
+/// Recognize `scale * (a^(g) - 1)` with `a` a numeric base; returns
+/// `(scale, a, g)`. Handles the Sub and Add(-1) offset forms, a numeric
+/// scale factor, and a negation.
+fn scaled_general_power_zero_offset(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BigRational, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if expr_is_one(ctx, rhs) => {
+            let (base, exponent) = numeric_base_power(ctx, lhs)?;
+            Some((rational_one(), base, exponent))
+        }
+        // 1 - a^g = -(a^g - 1).
+        Expr::Sub(lhs, rhs) if expr_is_one(ctx, lhs) => {
+            let (base, exponent) = numeric_base_power(ctx, rhs)?;
+            Some((-rational_one(), base, exponent))
+        }
+        Expr::Add(lhs, rhs) => {
+            if constant_rational_value(ctx, rhs).is_some_and(|v| v == -rational_one()) {
+                let (base, exponent) = numeric_base_power(ctx, lhs)?;
+                return Some((rational_one(), base, exponent));
+            }
+            if constant_rational_value(ctx, lhs).is_some_and(|v| v == -rational_one()) {
+                let (base, exponent) = numeric_base_power(ctx, rhs)?;
+                return Some((rational_one(), base, exponent));
+            }
+            None
+        }
+        Expr::Neg(inner) => {
+            let (scale, base, exponent) = scaled_general_power_zero_offset(ctx, inner)?;
+            Some((-scale, base, exponent))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = constant_rational_value(ctx, lhs) {
+                let (inner_scale, base, exponent) = scaled_general_power_zero_offset(ctx, rhs)?;
+                return Some((scale * inner_scale, base, exponent));
+            }
+            if let Some(scale) = constant_rational_value(ctx, rhs) {
+                let (inner_scale, base, exponent) = scaled_general_power_zero_offset(ctx, lhs)?;
+                return Some((scale * inner_scale, base, exponent));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// `a^(exponent)` with `a` a numeric rational base; returns `(a, exponent)`.
+fn numeric_base_power(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exponent) => {
+            let base_value = constant_rational_value(ctx, *base)?;
+            Some((base_value, *exponent))
+        }
+        _ => None,
+    }
+}
+
 fn apply_finite_log_unit_quotient_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -3281,6 +3393,9 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_exp_zero_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_general_exp_zero_quotient_rule(ctx, expr, var, point) {
         return Some(result);
     }
     if let Some(result) = apply_finite_log_unit_quotient_rule(ctx, expr, var, point) {
@@ -8862,6 +8977,49 @@ mod tests {
         assert!(
             try_limit_rules_at_finite(&mut ctx, finite_pole, x, point_zero).is_none(),
             "exp quotient rule must not promote finite poles"
+        );
+    }
+
+    #[test]
+    fn finite_general_exp_zero_quotient_yields_log_of_base() {
+        // (a^g - 1)/h -> ln(a) lim(g/h): the derivative of a^x at 0.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("(2^x - 1)/x", "ln(2)"),
+            ("(3^x - 1)/x", "ln(3)"),
+            ("(2^(3*x) - 1)/x", "3 * ln(2)"),
+            ("(2^x - 1)/(2*x)", "1/2 * ln(2)"),
+            ("(10^x - 1)/x", "ln(10)"),
+            ("(1 - 5^x)/x", "-ln(5)"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("general exp quotient must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn finite_general_exp_zero_quotient_declines_e_unit_base_and_poles() {
+        // Base e is left to the exp rule; base 1 has no log; a finite pole and a
+        // non-vanishing exponent stay residual via this rule.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in ["(1^x - 1)/x", "(2^x - 1)/x^2", "(2^(x+1) - 1)/x"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_general_exp_zero_quotient_rule(&mut ctx, expr, x, zero).is_none(),
+                "general exp quotient must decline: {source}"
+            );
+        }
+        // e^x - 1 is NOT matched here (base E is not a numeric rational base).
+        let exp_form = parse_expr(&mut ctx, "(exp(x) - 1)/x");
+        assert!(
+            apply_finite_general_exp_zero_quotient_rule(&mut ctx, exp_form, x, zero).is_none(),
+            "natural base is left to the exp rule"
         );
     }
 
