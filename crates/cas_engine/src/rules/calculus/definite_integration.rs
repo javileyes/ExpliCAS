@@ -275,7 +275,7 @@ fn match_gaussian_integrand(
         return Some((a, coeff, two_n));
     }
     // Mul form (or a bare exponential): one e^(c x^2) factor with c < 0.
-    let factors = flatten_mul(ctx, integrand);
+    let factors = cas_math::expr_nary::mul_factors(ctx, integrand);
     let mut cofactor = Vec::new();
     let mut coefficient: Option<BigRational> = None;
     for f in &factors {
@@ -354,21 +354,6 @@ fn monomial_even_degree(
 }
 
 /// Flatten a multiplicative chain into leaf factors.
-fn flatten_mul(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    let mut out = Vec::new();
-    let mut stack = vec![expr];
-    while let Some(e) = stack.pop() {
-        match ctx.get(e) {
-            Expr::Mul(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            _ => out.push(e),
-        }
-    }
-    out
-}
-
 fn classify_bound(ctx: &Context, bound: ExprId) -> DefiniteBound {
     if let Some(value) = as_rational_const(ctx, bound) {
         return DefiniteBound::Finite(Endpoint::from_rational(value));
