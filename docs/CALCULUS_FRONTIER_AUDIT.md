@@ -190,10 +190,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `x*ln(x) [0,1]` (=−1/4), `ln(x)/sqrt(x) [0,1]` (=−4) residuales con
   antiderivadas elementales; la dominancia potencia-log existe en el
   lado lateral pero no cubre estas combinaciones. Arregla 3+ familias.
-- [ ] **(F) Gaussiana/Gamma por tabla**: `e^(-x^2) [0,∞) = √π/2`,
+- [~] **(F) Gaussiana/Gamma por tabla**: `e^(-x^2) [0,∞) = √π/2`,
   `(-∞,∞) = √π`, `x^2*e^(-x^2) [0,∞) = √π/4`, `e^(-x)/sqrt(x) = √π` —
   la impropia más famosa de la universidad; tabla pequeña de formas
   patrón (la indefinida debe SEGUIR residual).
+  *(graduado 2026-06-13 cda9fbca5: la familia Gaussiana de momentos
+  `∫ x^(2n) e^(-a x²)` sobre semirrecta o recta completa vía
+  `(1/2)(2n)!/(4^n n!)√π/a^(n+1/2)` — `e^(-x²)[0,∞)=√π/2`,
+  `[-∞,∞]=√π`, `x²e^(-x²)=√π/4`, `x⁴e^(-x²)=3√π/8`,
+  `e^(-2x²)=½√(π/2)`. Gating fuerte: bounds infinitos, exponente puro
+  cuadrático, cofactor par, a>0 — indefinida/bounds finitos/no-cuadrático
+  declinan (honestidad intacta, verificada adversarialmente — cazó y
+  arregló un bug de coeficiente perdido). Peldaños: las formas Gamma
+  (`e^(-x)/√x`, `x^n e^(-x)=n!`), el cofactor con cuadrado completado
+  `e^(-x²+x)`, y `c·e^(-x²)` en forma Mul anidada)*
 - [ ] **(A) Pre-simplificador vs integrador**: reescribe
   `1/(sqrt(x)*(1+x))` a `(x^(3/2)-x^(1/2))/(x^3-x)` y `cos(5x)` a
   Chebyshev en cos(x), destruyendo la sustitución obvia
