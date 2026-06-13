@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 108 (newest first)
+Active entries: 109 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -125,6 +125,7 @@ Active entries: 108 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / composition with known inner divergence | Retained limits: saturate f(±∞) inside limit composition outputs
 - 2026-06-13 | `retained` | calculus / definite integration / FTC bound certificate | Retained calculus: definite integrals with e-valued bounds
 - 2026-06-13 | `retained` | calculus / differentiation / fundamental theorem (block 2 real | Retained calculus: FTC / Leibniz rule for derivatives of definite integrals
+- 2026-06-13 | `retained` | parser / calculus surface coverage (block 4/7 hyperbolic, P? | Retained calculus: reciprocal hyperbolics parse via cosh/sinh desugar
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4586,3 +4587,41 @@ Active entries: 108 (newest first)
     are a PRESENTATION boundary, not a knowledge gap: the engine knows
     d/dx of their integral exactly, it just cannot write the integral
     in closed form
+
+## 2026-06-13 - Retained calculus: reciprocal hyperbolics parse via cosh/sinh desugar
+
+- area:
+  - parser / calculus surface coverage (block 4/7 hyperbolic, P?
+    frontier audit "sech/csch no parsean")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 4 base integration (2 matrix rows;
+    the capability spans diff + integrate of sech/csch/coth)
+  - calculus_matrix_cell: integrate(sech(x)^2)=tanh(x),
+    integrate(csch(x)^2)=-coth(x); plus diff(sech)=-sinh/cosh^2,
+    diff(coth)=-1/sinh^2, sech(0)=1 - all now parse and evaluate
+  - behavior_change_expected: yes - sech/csch/coth parse instead of
+    "funcion no definida"
+- observed (parser desugar beats new builtins):
+  - sech/csch/coth are NOT builtins; adding them as proper AST builtins
+    would touch eval, diff, display, simplify across many files. But
+    the whole pipeline already handles their cosh/sinh definitions
+    (integrate(1/cosh^2)=tanh, diff(1/cosh)=-sinh/cosh^2), so a
+    parse-time desugar sech->1/cosh, csch->1/sinh, coth->cosh/sinh
+    makes everything downstream work with a single recognizer in the
+    parser's lowering
+  - the desugar is gated to the exact three names with exactly one
+    argument: sech_like(x) still resolves as an ordinary (unknown)
+    function call, sech as a bare symbol stays a symbol
+  - integrate(sech(x)) stays residual (gudermannian / 2 arctan(tanh(x/2))
+    is a separate rung); the desugar covers the squared and derivative
+    forms that have owners
+- retained learning:
+  - "function X does not parse" is often best fixed by DESUGARING to an
+    owned definition rather than adding a builtin: if the engine already
+    integrates/differentiates the definitional form, a parse-time
+    rewrite inherits all of it for free and touches one file instead of
+    the whole builtin surface. Reserve new builtins for functions whose
+    definitional form the pipeline does NOT already handle well

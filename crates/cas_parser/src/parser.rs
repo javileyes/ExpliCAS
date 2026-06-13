@@ -145,6 +145,30 @@ impl ParseNode {
                 for a in args {
                     arg_ids.push(a.lower(ctx)?);
                 }
+                // Desugar the reciprocal hyperbolic functions, which are
+                // not builtins, into their cosh/sinh definitions so the
+                // whole pipeline (diff, integrate, simplify) handles them:
+                // sech = 1/cosh, csch = 1/sinh, coth = cosh/sinh.
+                if arg_ids.len() == 1 {
+                    let arg = arg_ids[0];
+                    let one = ctx.num(1);
+                    match name.as_str() {
+                        "sech" => {
+                            let cosh = ctx.call("cosh", vec![arg]);
+                            return Ok(ctx.add(Expr::Div(one, cosh)));
+                        }
+                        "csch" => {
+                            let sinh = ctx.call("sinh", vec![arg]);
+                            return Ok(ctx.add(Expr::Div(one, sinh)));
+                        }
+                        "coth" => {
+                            let cosh = ctx.call("cosh", vec![arg]);
+                            let sinh = ctx.call("sinh", vec![arg]);
+                            return Ok(ctx.add(Expr::Div(cosh, sinh)));
+                        }
+                        _ => {}
+                    }
+                }
                 Ok(ctx.call(name.as_str(), arg_ids))
             }
             ParseNode::Matrix(rows) => {
@@ -900,6 +924,45 @@ mod tests {
                 }
             ),
             "2 * infinity"
+        );
+    }
+
+    #[test]
+    fn test_reciprocal_hyperbolics_desugar_to_cosh_sinh() {
+        // sech/csch/coth are not builtins; the parser desugars them into
+        // their cosh/sinh definitions so the whole pipeline handles them.
+        let mut ctx = Context::new();
+        for (source, expected) in [
+            ("sech(x)", "1 / cosh(x)"),
+            ("csch(x)", "1 / sinh(x)"),
+            ("coth(x)", "cosh(x) / sinh(x)"),
+            ("sech(2*x)", "1 / cosh(2 * x)"),
+        ] {
+            let e = parse(source, &mut ctx).unwrap();
+            assert_eq!(
+                format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &ctx,
+                        id: e
+                    }
+                ),
+                expected,
+                "{source}"
+            );
+        }
+        // Only the exact reciprocal-hyperbolic names desugar; unrelated
+        // names still resolve as ordinary (unknown) function calls.
+        let e = parse("sech_like(x)", &mut ctx).unwrap();
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e
+                }
+            ),
+            "sech_like(x)"
         );
     }
 
