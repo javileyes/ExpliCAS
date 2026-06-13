@@ -201,16 +201,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   no lo soporta" (`sqrt(1-x²)`, `|x|`, `1/(x⁴+1)` son elementales y
   quedan igual que `e^(-x²)`). Campo de motivo como el warning de
   límites.
-- [ ] **(F) Cuárticas+ irreducibles**: `1/(x^4+1)`, `1/(x^6-1)` —
+- [~] **(F) Cuárticas+ irreducibles**: `1/(x^4+1)`, `1/(x^6-1)` —
   factorización real en cuadráticas con coeficientes irracionales
   (√2) para fracciones parciales.
   *(precursor 2026-06-13 3a267bdf2: el kernel `1/(cuadrática con
   raíces irracionales)` ya integra — `1/(x²−2)`, `(x+b)²−a` vía forma
-  log con √c simbólico, desbloqueando `1/(u²−2)`. Peldaño restante:
-  un reconocedor de sustitución simétrica u=x∓1/x para `(ax²+b)/(x⁴+1)`
-  que descomponga en los dos pedazos `1/(u²±√2·...)` y delegue; y para
-  `1/(x⁶−1)` levantar el cap de factores del backend racional, y para
-  `1/(x⁵−1)` las cuárticas ciclotómicas Φ5 con √5)*
+  log con √c simbólico, desbloqueando `1/(u²−2)`.)*
+  *(parcial 2026-06-13 962a01ddb: `(ax²+b)/(x⁴+1)` graduado vía
+  sustitución simétrica u=x∓1/x — `1/(x⁴+1)`, `x²/(x⁴+1)`,
+  `(x²±1)/(x⁴+1)`, con condición honesta x≠0 (la sustitución salta en
+  0). Peldaños restantes: generalizar a `(ax²+b)/(x⁴+e)` con e no
+  cuadrado perfecto (radicales anidados); la forma continua para
+  integrales definidas que crucen 0; `1/(x⁶−1)` levantar el cap de
+  factores del backend racional; `1/(x⁵−1)` las cuárticas ciclotómicas
+  Φ5 con √5)*
 - [ ] **(F) Composición de límites con interno conocido**:
   `e^(1/x) en 0±` (→ ∞ / 0), `atan(1/x) en 0+` (→ π/2) fallan aunque
   `1/x → ±∞` resuelve; regla de composición continua/monótona barata
