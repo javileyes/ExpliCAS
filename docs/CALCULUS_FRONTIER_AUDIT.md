@@ -342,7 +342,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `cos(1/x)` ya estaba bien por el gate "fold changed it" unilateral.
   Verificado adversarialmente (41 sondas, 0 violaciones; saturantes y
   squeeze intactos))*
-- [~] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
+- [x] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
   0`, `(x+sin x)/x → 1 en ∞`, `ln(x)/sqrt(x) → 0 en ∞` (la dominancia
   entera `ln(x)/x` sí funciona).
   *(parcial 2026-06-13 74544e793: cubierto el SQUEEZE en punto finito —
@@ -375,6 +375,15 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (`ln(x)/x^(-2)=ln·x²→∞`, no 0). Verificado adversarialmente (70 sondas,
   0 violaciones; cerrado un brazo Neg faltante). Peldaño restante: el
   cociente con ruido aditivo acotado `(x+sin x)/x → 1`)*
+  *(ruido aditivo graduado 2026-06-13 ac4dd379f — ITEM CERRADO:
+  `bounded_noise_rational_limit_at_infinity` resuelve cocientes
+  `poly+ruido_acotado / poly+ruido_acotado` por la parte polinómica —
+  `(x+sin x)/x=1`, `(2x+cos x)/x=2`, `(x²+sin x)/(x²-1)=1`,
+  `(x+sin x)/(2x+1)=1/2`, `x/(x+sin x)=1`, `(x+cos x)/x²=0`,
+  `(x²+sin x)/x=∞`. Cablea `polynomial_growth_info_with_bounded_additive_
+  noise` al cociente racional con la misma comparación de grados. El ruido
+  NO acotado (`x·sin x`) declina. Verificado adversarialmente (54 sondas,
+  0 violaciones))*
 - [x] **(F) Producto-a-suma residual mutilado**: `sin(3x)cos(5x)`
   indefinida queda residual Y mutilada (expandida en potencias de
   cos); el reconocedor producto-a-suma cubre frecuencias distintas
