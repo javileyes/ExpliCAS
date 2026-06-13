@@ -169,11 +169,25 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   2/3`) y los átomos que faltaban (`tan/asin/arctan/sinh/tanh /x=1`).
   Footprint-mínimo: corre tras las reglas sin/exp/log, solo dispara en
   0/0 genuino previamente residual. Verificado adversarialmente (3-lente
-  scoping + 2-lente refutación, 141 sondas, 0 violaciones). Peldaños
-  restantes: (1) el orden SUPERIOR / Taylor con cancelación de sumas —
-  `(1-cos x)/x²=1/2`, `(sin x − x)/x³=−1/6`, `(tan x − x)/x³` — declina
-  honestamente (los equivalentes de primer orden son inválidos en
-  diferencias); (2) átomo con argumento NO-cero en el punto
+  scoping + 2-lente refutación, 141 sondas, 0 violaciones).)*
+  *(parcial 2026-06-13 4ccd1b930: peldaño (1) el orden SUPERIOR / Taylor con
+  cancelación de sumas GRADUADO — `apply_finite_taylor_quotient_rule` añade
+  un motor de Maclaurin autocontenido (orden de truncado 12) que corre TRAS
+  la regla de equivalentes y solo sobre 0/0 en x=0 que esos pasos dejaron
+  residual. `taylor_at_zero` expande estructuralmente (polinomios exactos,
+  Add/Sub/Neg/Mul, Pow(E,arg), Pow(base,n entero≥0), y Function(f,[arg])
+  componiendo la serie estándar de f vía Horner; tan=sin/cos por división
+  de series). Compara los órdenes mínimos no-nulos: num>den→0, num==den→
+  cociente exacto de coeficientes líderes, si no declina. SOUND: el
+  truncado es EXACTO para un límite de orden líder (solo descarta órdenes
+  estrictamente mayores); la lista honesta sobrevive gratis (`sin(1/x)`
+  declina porque su argumento `1/x` es `Pow(x,-1)`, que el constructor de
+  series rechaza). Cubre `(1-cos x)/x²=1/2`, `(sin x−x)/x³=−1/6`,
+  `(tan x−x)/x³=1/3`, `(e^x−1−x)/x²=1/2`, `(cosh x−1)/x²=1/2`,
+  `(arctan x−x)/x³=−1/3`, `(arcsin x−x)/x³=1/6`, composiciones anidadas
+  (`(sin(sin x)−x)/x³=−1/3`) y `(sin(tan x)−tan(sin x))/x⁷=−1/30`. Verificado
+  adversarialmente (2-lente, 55 sondas vs SymPy, 0 unsound). Peldaños
+  restantes: (2) átomo con argumento NO-cero en el punto
   (`tan x/sin x` en π=−1, `sin x/(x−π)` en π=−1) — necesita el
   equivalente local en el cero del argumento; (3) log en el numerador/
   composición (`ln(1+x)/sin x`) — excluido por la ruta de base no-natural
