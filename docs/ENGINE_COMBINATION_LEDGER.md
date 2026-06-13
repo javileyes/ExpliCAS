@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 119 (newest first)
+Active entries: 120 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -136,6 +136,7 @@ Active entries: 119 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / finite-point 0/0 quotient (block 3 domain | Retained limits: first-order equivalent-infinitesimals 0/0 engine
 - 2026-06-13 | `retained` | calculus / definite integration boundary touch / limits | Retained integration: x^a ln(x)^b improper integrals via power-log dominance
 - 2026-06-13 | `retained` | calculus / limits / finite-point bilateral composition (block 3 | Retained limits: even cosh over a reciprocal pole (cosh(1/x) -> +inf)
+- 2026-06-13 | `retained` | calculus / limits / finite-point composition (honesty/soundness; | Honesty fix: sin/cos over an even pole stay residual (no cos(infinity) leak)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5165,3 +5166,50 @@ Active entries: 119 (newest first)
     1/x themselves genuinely two-sided-divergent (DNE). The rule encodes
     exactly that - match only the even saturating outer, demand the inner
     diverge, and reuse the one-sided saturator's fold
+
+
+## 2026-06-13 - Honesty fix: sin/cos over an even pole stay residual (no cos(infinity) leak)
+
+- area:
+  - calculus / limits / finite-point composition (honesty/soundness;
+    the sin(1/x) oscillation family on the audit's no-resolve list)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 9 residuals and non-goals (1 matrix row:
+    finite_oscillating_outer_even_pole_residual)
+  - limit_matrix_cell: limit(cos(1/x^2),x,0) stays residual (was leaking
+    cos(infinity))
+  - behavior_change_expected: yes (subtractive) - sin/cos of an inner that
+    diverges to infinity now decline instead of leaking an unfolded atom
+- observed (an honesty leak the cosh cycle's adversarial flagged):
+  - apply_finite_total_real_unary_composition_rule resolved the argument
+    limit and built outer(arg_limit) unconditionally. For an EVEN pole
+    (1/x^2 -> +inf both sides) the saturating outers (atan/exp/tanh/cosh)
+    leak outer(infinity) raw, which the eval-layer fold_infinity_saturation
+    cleans up (atan->pi/2, exp->inf). But sin/cos do NOT fold (they
+    oscillate at +-inf), so cos(1/x^2) leaked the literal cos(infinity)
+    as the bilateral result instead of staying residual - a false
+    pseudo-value on an oscillation case that must never resolve
+  - the ODD-pole sibling (cos(1/x)) was already correct: it routes through
+    the one-sided saturator whose "fold changed it" gate declines when the
+    fold leaves the outer symbolic. The even-pole bilateral path had no
+    such gate. Fix: decline in the composition rule when builtin is
+    Sin/Cos and the argument limit is infinite (infinity_sign_of_expr)
+  - purely subtractive: it can only add a decline, never newly resolve.
+    Footprint: only the intended limit matrix lane (one residual row);
+    saturating outers and finite-argument sin/cos are untouched, and the
+    cycle-4 squeeze x*cos(1/x^2) -> 0 still holds (it needs cos bounded,
+    not resolved)
+- retained learning:
+  - a "resolve the argument, then apply the outer" composition rule must
+    distinguish SATURATING outers (a real limit at +-inf) from OSCILLATING
+    ones (no limit) BEFORE emitting outer(infinity). Relying on a
+    downstream fold to clean up is unsound for the oscillating outers it
+    cannot fold - they leak a pseudo-value. The decline must live at the
+    point the infinite argument is detected, mirroring the one-sided
+    saturator's "fold changed it" gate on the bilateral path
+  - an adversarial pass on one cycle (cosh) surfaced a pre-existing leak
+    in a neighbouring path; logging it as a next-rung note made it the
+    next cycle's candidate - cheap, high-value honesty repair

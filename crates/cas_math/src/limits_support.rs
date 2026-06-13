@@ -3141,6 +3141,17 @@ fn apply_finite_total_real_unary_composition_rule(
     }
 
     let argument_limit = try_limit_rules_at_finite(ctx, argument_expr, var, point)?;
+    // sin/cos oscillate at +-infinity: their limit does not exist there.
+    // Decline instead of leaking an unfolded sin(infinity)/cos(infinity)
+    // atom (the saturation fold cleans up exp/atan/tanh/cosh but cannot
+    // fold an oscillating outer). The odd-pole sibling already declines via
+    // the one-sided saturator's "fold changed it" gate; this is the
+    // even-pole bilateral path (cos(1/x^2)).
+    if matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos)
+        && infinity_sign_of_expr(ctx, argument_limit).is_some()
+    {
+        return None;
+    }
     Some(finite_total_real_unary_result(ctx, builtin, argument_limit))
 }
 
@@ -7299,6 +7310,36 @@ mod tests {
                 "even-cosh pole rule must decline: {source}"
             );
         }
+    }
+
+    #[test]
+    fn oscillating_outer_over_even_pole_stays_residual() {
+        // sin/cos of an even pole (inner -> +inf both sides) oscillate, so the
+        // limit does not exist. The composition rule must decline rather than
+        // leak an unfolded sin(infinity)/cos(infinity) atom. Finite arguments
+        // and saturating outers (atan/cosh) are unaffected.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in ["cos(1/x^2)", "sin(1/x^2)", "cos(1/x^4)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_total_real_unary_composition_rule(&mut ctx, expr, x, zero).is_none(),
+                "oscillating outer over an even pole must decline: {source}"
+            );
+        }
+        // A saturating sibling still resolves (raw atan(infinity), which the
+        // eval layer folds to pi/2 - foldable, unlike the oscillating atoms),
+        // and a finite argument folds cleanly here.
+        let atan_pole = parse_expr(&mut ctx, "atan(1/x^2)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, atan_pole, x, zero).is_some(),
+            "atan over an even pole must still resolve"
+        );
+        let cos_finite = parse_expr(&mut ctx, "cos(x^2)");
+        let cos_finite_out = try_limit_rules_at_finite(&mut ctx, cos_finite, x, zero)
+            .expect("cos of a finite-argument limit must resolve");
+        assert_eq!(display_expr(&ctx, cos_finite_out), "1");
     }
 
     #[test]
