@@ -215,8 +215,17 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   indefinida queda residual Y mutilada (expandida en potencias de
   cos); el reconocedor producto-a-suma cubre frecuencias distintas
   con a≠±b — revisar por qué esta combinación escapa.
-- [ ] **(F) Potencias trig mixtas incoherentes**: `sin^2(x)cos^3(x)`
+- [x] **(F) Potencias trig mixtas incoherentes**: `sin^2(x)cos^3(x)`
   residual mientras `sin^3*cos` y `sin^5` funcionan.
+  *(graduado 2026-06-13 59c742081: productos sin(kx)^m·cos(kx)^n con
+  argumento lineal compartido y una potencia impar (ambas ≥2) vía
+  u=sin (cos impar) o u=cos (sin impar) → integrando polinómico
+  u^kept·(1−u²)^spare delegado al integrador de polinomios. Cubre
+  sin²cos³, sin³cos², sin⁴cos³, sin⁵cos², sin³cos⁴, sin(2x)³cos(2x)².
+  Gate de intención min(m,n)≥2: los casos f^n·f' (sin³cos) y
+  ambas-pares (sin²cos²) conservan su dueño. sin⁵cos² va como
+  verification_gap — ambos canales simbólicos no recolapsan la derivada
+  de grado 7, verificado numéricamente)*
 - [ ] **(F) sech/csch no parsean**: `sech(x)^2` da "función no
   definida".
 - [ ] **(F) Bounds con e**: `integrate(1/x, x, 1, e)` residual
