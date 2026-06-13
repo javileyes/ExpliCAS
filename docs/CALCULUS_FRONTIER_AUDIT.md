@@ -248,8 +248,14 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   ambas-pares (sin²cos²) conservan su dueño. sin⁵cos² va como
   verification_gap — ambos canales simbólicos no recolapsan la derivada
   de grado 7, verificado numéricamente)*
-- [ ] **(F) sech/csch no parsean**: `sech(x)^2` da "función no
+- [x] **(F) sech/csch no parsean**: `sech(x)^2` da "función no
   definida".
+  *(graduado 2026-06-13 758e54e73: el parser desugariza sech→1/cosh,
+  csch→1/sinh, coth→cosh/sinh en el lowering — `sech(x)²`,
+  `integrate(sech(x)²)=tanh(x)`, `integrate(csch(x)²)=−coth(x)`,
+  `diff(sech(x))=−sinh/cosh²`, `diff(coth(x))=−1/sinh²`, `sech(0)=1`.
+  Gated a los tres nombres exactos con un argumento. `integrate(sech(x))`
+  sigue residual — gudermannian es peldaño aparte)*
 - [~] **(F) Bounds con e**: `integrate(1/x, x, 1, e)` residual
   (`ln(e)` no se evalúa); `tan(x) [0,π/4]` devuelve
   `ln(|cos(0)/cos(π/4)|)` sin plegar `cos(0)=1`.
