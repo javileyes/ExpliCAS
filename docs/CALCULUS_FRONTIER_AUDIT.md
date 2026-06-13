@@ -154,11 +154,30 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   de fase, átomos tan/sec, canal de condiciones a través de la ruta
   de soporte, y el techo de profundidad del simplificador que deja
   4/6 filas como verification_gap)*
-- [ ] **(A) Motor 0/0 componible en punto finito**: la allowlist no
+- [~] **(A) Motor 0/0 componible en punto finito**: la allowlist no
   invierte (`x/sin(x)` falla siendo `sin(x)/x` soportado), no compone
   (`sin(3x)/sin(5x)` → 3/5, `(1-cos x)/x²` → 1/2, `(sin x - x)/x³` →
   −1/6, `asin(x)/x`, `sinh(x)/x`), no encadena L'Hôpital/Taylor. El
   item de mayor frecuencia en cualquier curso.
+  *(parcial 2026-06-13 339496d6e: motor de INFINITÉSIMOS EQUIVALENTES de
+  primer orden — `first_order_equivalent_poly` extrae el equivalente
+  polinómico de AMBOS lados (`f(u)~u` para sin/tan/asin/arcsin/atan/
+  arctan/sinh/tanh con guard `u→0`, `e^u−1~u`, polinomios exactos,
+  productos, Neg) y delega al `finite_rational_polynomial_value`
+  existente (L'Hôpital polinómico). Cubre INVERSIÓN (`x/sin x=1`),
+  COMPOSICIÓN (`sin 3x/sin 5x=3/5`, `sin x/sin 2x=1/2`, `tan 2x/sin 3x=
+  2/3`) y los átomos que faltaban (`tan/asin/arctan/sinh/tanh /x=1`).
+  Footprint-mínimo: corre tras las reglas sin/exp/log, solo dispara en
+  0/0 genuino previamente residual. Verificado adversarialmente (3-lente
+  scoping + 2-lente refutación, 141 sondas, 0 violaciones). Peldaños
+  restantes: (1) el orden SUPERIOR / Taylor con cancelación de sumas —
+  `(1-cos x)/x²=1/2`, `(sin x − x)/x³=−1/6`, `(tan x − x)/x³` — declina
+  honestamente (los equivalentes de primer orden son inválidos en
+  diferencias); (2) átomo con argumento NO-cero en el punto
+  (`tan x/sin x` en π=−1, `sin x/(x−π)` en π=−1) — necesita el
+  equivalente local en el cero del argumento; (3) log en el numerador/
+  composición (`ln(1+x)/sin x`) — excluido por la ruta de base no-natural
+  `valor/ln(base)`; (4) encadenamiento L'Hôpital general)*
 - [ ] **(A) Formas exponenciales 1^∞/0^0/∞^0** vía `exp(lim g·ln f)`:
   `(1+1/x)^x → e`, `(1+2/x)^x → e²`, `(1+x)^(1/x) → e`, `x^x → 1 en
   0+`, `(2^x+3^x)^(1/x) → 3`. Hoy la constante `e` es inalcanzable
