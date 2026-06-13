@@ -251,6 +251,239 @@ fn gaussian_definite_integral_rewrite(
     Some(Rewrite::new(result).desc("Gaussian moment integral (table)"))
 }
 
+/// Half-integer Gamma moments `int_0^inf c x^(m-1/2) e^(-a x) dx` with
+/// rational `a > 0` and `m >= 0` integer, evaluating to
+/// `c (2m)!/(4^m m!) / a^m * sqrt(pi / a)` (since `Gamma(m+1/2) =
+/// (2m)!/(4^m m!) sqrt(pi)` and `int_0^inf x^s e^(-a x) = Gamma(s+1)/a^(s+1)`).
+/// Examples: `e^(-x)/sqrt(x) = sqrt(pi)`, `sqrt(x) e^(-x) = sqrt(pi)/2`,
+/// `e^(-2x)/sqrt(x) = sqrt(pi/2)`.
+///
+/// Runs after the Gaussian table and before the antiderivative attempt.
+/// Gated to `[0, inf)` only, a pure-linear decay exponent, and a HALF-integer
+/// total power of the variable, so the integer moments (`x^n e^(-x) = n!`,
+/// which DO have an elementary antiderivative) and the indefinite/divergent
+/// forms stay residual.
+fn gamma_half_integer_definite_integral_rewrite(
+    ctx: &mut Context,
+    call: &DefiniteIntegralCall,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> Option<Rewrite> {
+    use num_bigint::BigInt;
+    use num_traits::{One, Zero};
+
+    // Only the half-line [0, inf): x^(m-1/2) is not real for x < 0, and the
+    // integrand is not even, so the full line / (-inf, 0] do not apply.
+    match (lower_bound, upper_bound) {
+        (DefiniteBound::Finite(low), DefiniteBound::PosInfinity)
+            if low.rational.is_zero() && low.pi_multiple.is_zero() && low.e_multiple.is_zero() => {}
+        _ => return None,
+    }
+
+    let (a, coeff_lead, m) = match_gamma_integrand(ctx, call.target, &call.var_name)?;
+    if !a.is_positive() {
+        return None;
+    }
+
+    // scalar = c * (2m)! / (4^m m!) / a^m, result = scalar * sqrt(pi / a).
+    let factorial = |k: u32| -> BigInt {
+        let mut acc = BigInt::one();
+        for i in 1..=k {
+            acc *= BigInt::from(i);
+        }
+        acc
+    };
+    let mut scalar =
+        BigRational::new(factorial(2 * m), factorial(m) * BigInt::from(4).pow(m)) * &coeff_lead;
+    let mut a_pow_m = BigRational::one();
+    for _ in 0..m {
+        a_pow_m *= &a;
+    }
+    scalar /= &a_pow_m;
+
+    let pi = ctx.add(Expr::Constant(Constant::Pi));
+    let ratio_const = if a.is_one() {
+        pi
+    } else {
+        let a_expr = ctx.add(Expr::Number(a.clone()));
+        ctx.add(Expr::Div(pi, a_expr))
+    };
+    let half = ctx.add(Expr::Number(BigRational::new(
+        BigInt::one(),
+        BigInt::from(2),
+    )));
+    let sqrt_ratio = ctx.add(Expr::Pow(ratio_const, half));
+
+    let result = if scalar.is_one() {
+        sqrt_ratio
+    } else {
+        let scalar_expr = ctx.add(Expr::Number(scalar));
+        ctx.add(Expr::Mul(scalar_expr, sqrt_ratio))
+    };
+    Some(Rewrite::new(result).desc("Half-integer Gamma moment integral (table)"))
+}
+
+/// Match `c x^s e^(-a x)` with rational `a > 0` and `s = m - 1/2` a half
+/// integer (so `m = s + 1/2` is a non-negative integer). Returns
+/// `(a, c, m)`. Accumulates the net power of the variable and the linear
+/// decay coefficient across Mul/Div factors; rejects a non-linear exponent,
+/// an integer power of the variable, `s < -1/2` (divergent), a foreign
+/// variable, or any factor that is neither a variable power nor `e^(linear)`.
+fn match_gamma_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var: &str,
+) -> Option<(BigRational, BigRational, u32)> {
+    use num_traits::{One, Zero};
+    let mut x_exponent = BigRational::zero();
+    let mut decay = BigRational::zero();
+    let mut saw_exp = false;
+    let mut constant = BigRational::one();
+    collect_gamma_factors(
+        ctx,
+        integrand,
+        var,
+        true,
+        &mut x_exponent,
+        &mut decay,
+        &mut saw_exp,
+        &mut constant,
+    )?;
+    if !saw_exp {
+        return None;
+    }
+    // integrand ~ e^(decay x); convergence on [0, inf) needs decay < 0.
+    let a = -decay;
+    if !a.is_positive() {
+        return None;
+    }
+    // s = x_exponent must be a HALF-integer with m = s + 1/2 a non-negative
+    // integer (s >= -1/2). Integer s is left to the elementary antiderivative.
+    let m_rational = &x_exponent + BigRational::new(num_bigint::BigInt::from(1), 2.into());
+    if !m_rational.is_integer() || m_rational.is_negative() {
+        return None;
+    }
+    let m = m_rational.to_integer().try_into().ok()?;
+    Some((a, constant, m))
+}
+
+/// Walk a Mul/Div chain, accumulating the net power of `var`, the linear
+/// decay coefficient of any `e^(linear)` factor, and the var-free constant.
+/// `positive` tracks whether the current factor sits in a numerator (Div
+/// inverts it). Returns None on any unclassifiable factor.
+#[allow(clippy::too_many_arguments)]
+fn collect_gamma_factors(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    positive: bool,
+    x_exponent: &mut BigRational,
+    decay: &mut BigRational,
+    saw_exp: &mut bool,
+    constant: &mut BigRational,
+) -> Option<()> {
+    match ctx.get(expr).clone() {
+        Expr::Mul(l, r) => {
+            collect_gamma_factors(ctx, l, var, positive, x_exponent, decay, saw_exp, constant)?;
+            collect_gamma_factors(ctx, r, var, positive, x_exponent, decay, saw_exp, constant)
+        }
+        Expr::Div(num, den) => {
+            collect_gamma_factors(
+                ctx, num, var, positive, x_exponent, decay, saw_exp, constant,
+            )?;
+            collect_gamma_factors(
+                ctx, den, var, !positive, x_exponent, decay, saw_exp, constant,
+            )
+        }
+        // A unit-magnitude negative coefficient normalizes to a top-level
+        // Neg wrapper (e.g. -e^(-x)/sqrt(x) = Neg(...)); -1 is its own
+        // reciprocal, so it negates the constant whether in num or den.
+        Expr::Neg(inner) => {
+            *constant = -std::mem::take(constant);
+            collect_gamma_factors(
+                ctx, inner, var, positive, x_exponent, decay, saw_exp, constant,
+            )
+        }
+        _ => collect_gamma_leaf(
+            ctx, expr, var, positive, x_exponent, decay, saw_exp, constant,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_gamma_leaf(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    positive: bool,
+    x_exponent: &mut BigRational,
+    decay: &mut BigRational,
+    saw_exp: &mut bool,
+    constant: &mut BigRational,
+) -> Option<()> {
+    use num_traits::{One, Zero};
+    let sign = if positive {
+        BigRational::one()
+    } else {
+        -BigRational::one()
+    };
+    // e^(c x): a pure-linear exponent contributes c to the decay.
+    if let Expr::Pow(base, exponent) = ctx.get(expr) {
+        if matches!(ctx.get(*base), Expr::Constant(Constant::E)) {
+            let poly = Polynomial::from_expr(ctx, *exponent, var).ok()?;
+            if poly.degree() != 1 {
+                return None;
+            }
+            // Pure linear: no constant term (e^(c x + d) carries a transcendental e^d).
+            if !poly.coeffs.first().map(|c| c.is_zero()).unwrap_or(true) {
+                return None;
+            }
+            let c = poly.coeffs.get(1)?.clone();
+            *decay += &sign * c;
+            *saw_exp = true;
+            return Some(());
+        }
+        // x^k: rational power of the variable.
+        if is_var_named(ctx, *base, var) {
+            let k = as_rational_const(ctx, *exponent)?;
+            *x_exponent += &sign * k;
+            return Some(());
+        }
+    }
+    // sqrt(x) = x^(1/2).
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1
+            && matches!(ctx.builtin_of(*fn_id), Some(cas_ast::BuiltinFn::Sqrt))
+            && is_var_named(ctx, args[0], var)
+        {
+            *x_exponent += &sign * BigRational::new(num_bigint::BigInt::from(1), 2.into());
+            return Some(());
+        }
+    }
+    // Bare variable: x^1.
+    if is_var_named(ctx, expr, var) {
+        *x_exponent += &sign;
+        return Some(());
+    }
+    // A var-free rational constant factor scales the result.
+    if let Some(value) = as_rational_const(ctx, expr) {
+        if value.is_zero() {
+            return None;
+        }
+        if positive {
+            *constant *= value;
+        } else {
+            *constant /= value;
+        }
+        return Some(());
+    }
+    None
+}
+
+fn is_var_named(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    matches!(ctx.get(expr), Expr::Variable(sym) if ctx.sym_name(*sym) == var)
+}
+
 /// Match `x^(2n) e^(-a x^2)` with rational a > 0, in either engine form:
 ///   `x^(2n) / e^(a x^2)`  (Div, e^(positive a x^2) in the denominator)
 ///   `x^(2n) e^(-a x^2)`   (Mul, e^(negative coefficient x^2))
@@ -428,6 +661,16 @@ pub(super) fn definite_integration_rewrite(
     // INDEFINITE integral stays residual; only these exact infinite-bound
     // patterns resolve.
     if let Some(rewrite) = gaussian_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
+    {
+        return Some(rewrite);
+    }
+
+    // Gamma table for the half-integer moments int_0^inf x^(m-1/2) e^(-a x),
+    // whose antiderivative is non-elementary (Gamma function). Same gating
+    // discipline: only [0, inf) with a pure-linear decay; the indefinite
+    // form and integer/divergent powers stay residual.
+    if let Some(rewrite) =
+        gamma_half_integer_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
     {
         return Some(rewrite);
     }
@@ -1880,6 +2123,60 @@ mod boundary_touch_tests {
                 "must stay residual: {source}"
             );
         }
+    }
+
+    #[test]
+    fn gamma_half_integer_moment_integrals_resolve_to_table_values() {
+        // int_0^inf x^(m-1/2) e^(-a x) = (2m)!/(4^m m!)/a^m sqrt(pi/a).
+        for (source, expected) in [
+            ("integrate(e^(-x)/sqrt(x), x, 0, infinity)", "pi^(1/2)"),
+            (
+                "integrate(sqrt(x)*e^(-x), x, 0, infinity)",
+                "1/2 * pi^(1/2)",
+            ),
+            (
+                "integrate(x^(3/2)*e^(-x), x, 0, infinity)",
+                "3/4 * pi^(1/2)",
+            ),
+            (
+                "integrate(e^(-2*x)/sqrt(x), x, 0, infinity)",
+                "(pi / 2)^(1/2)",
+            ),
+            (
+                "integrate(3*e^(-x)/sqrt(x), x, 0, infinity)",
+                "3 * pi^(1/2)",
+            ),
+            // Unit-magnitude negative coefficient (a top-level Neg wrapper).
+            ("integrate(-e^(-x)/sqrt(x), x, 0, infinity)", "-pi^(1/2)"),
+            (
+                "integrate(-x^(3/2)*e^(-x), x, 0, infinity)",
+                "-3/4 * pi^(1/2)",
+            ),
+        ] {
+            assert_eq!(eval_definite(source).as_deref(), Some(expected), "{source}");
+        }
+    }
+
+    #[test]
+    fn gamma_half_integer_table_keeps_honesty_residuals() {
+        // The indefinite form, finite bounds, integer powers (elementary
+        // antiderivative), a divergent power (s < -1/2), a non-linear decay,
+        // and a constant-shifted exponent must NOT resolve through the table.
+        for source in [
+            "integrate(e^(-x)/sqrt(x), x, 0, 1)",
+            "integrate(e^(-x)/x^(3/2), x, 0, infinity)",
+            "integrate(e^(-x^2)/sqrt(x), x, 0, infinity)",
+            "integrate(e^(-x+1)/sqrt(x), x, 0, infinity)",
+            "integrate(sqrt(x)*e^(x), x, 0, infinity)",
+        ] {
+            assert!(
+                eval_definite(source).is_none(),
+                "must stay residual: {source}"
+            );
+        }
+        // Integer moments still resolve via the elementary antiderivative
+        // (raw F(inf) - F(0) here; the simplifier and CLI fold it to 1).
+        assert!(eval_definite("integrate(x*e^(-x), x, 0, infinity)").is_some());
     }
 
     #[test]

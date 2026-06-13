@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 120 (newest first)
+Active entries: 121 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -137,6 +137,7 @@ Active entries: 120 (newest first)
 - 2026-06-13 | `retained` | calculus / definite integration boundary touch / limits | Retained integration: x^a ln(x)^b improper integrals via power-log dominance
 - 2026-06-13 | `retained` | calculus / limits / finite-point bilateral composition (block 3 | Retained limits: even cosh over a reciprocal pole (cosh(1/x) -> +inf)
 - 2026-06-13 | `retained` | calculus / limits / finite-point composition (honesty/soundness; | Honesty fix: sin/cos over an even pole stay residual (no cos(infinity) leak)
+- 2026-06-13 | `retained` | calculus / definite integration / special-value table (block 4, | Retained integration: half-integer Gamma moment table
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5213,3 +5214,47 @@ Active entries: 120 (newest first)
   - an adversarial pass on one cycle (cosh) surfaced a pre-existing leak
     in a neighbouring path; logging it as a next-rung note made it the
     next cycle's candidate - cheap, high-value honesty repair
+
+
+## 2026-06-13 - Retained integration: half-integer Gamma moment table
+
+- area:
+  - calculus / definite integration / special-value table (block 4,
+    frontier audit P2 "(F) Gaussiana/Gamma por tabla" - the Gamma rung)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_maturity_block: block 4 base integration (4 matrix rows:
+    gamma_half_integer_table family)
+  - integrate_matrix_cell: int_0^inf e^(-x)/sqrt(x)=sqrt(pi),
+    sqrt(x)e^(-x)=sqrt(pi)/2, x^(3/2)e^(-x)=3sqrt(pi)/4,
+    e^(-2x)/sqrt(x)=sqrt(pi/2)
+  - behavior_change_expected: yes - int_0^inf x^(m-1/2) e^(-a x) resolves
+    to the Gamma table value; the indefinite, integer powers, divergent
+    powers and finite bounds stay residual
+- observed (sibling of the Gaussian table; same gating discipline):
+  - the INTEGER moments x^n e^(-x) = n! already resolve via the elementary
+    antiderivative; the HALF-integer moments (Gamma function, no elementary
+    antiderivative) were residual. A recognizer at the top of
+    definite_integration_rewrite (after the Gaussian table) matches
+    c x^(m-1/2) e^(-a x) and returns c (2m)!/(4^m m!)/a^m sqrt(pi/a)
+  - match_gamma_integrand ACCUMULATES across Mul/Div factors: a net x-power
+    exponent, a linear decay coefficient, and a leading constant, with the
+    Div sign inverting numerator/denominator. This one walker handles every
+    form (e^(-x)/sqrt(x), sqrt(x)/e^x, x^(-1/2) e^(-x), x^(3/2)/e^x) without
+    a per-shape branch - cleaner than the Gaussian's separate Div/Mul arms
+  - gates carry the honesty: pure-LINEAR decay exponent (rejects e^(-x^2),
+    and a constant term whose e^d is transcendental), HALF-integer net
+    x-power (integer powers fall through to the antiderivative), s >= -1/2
+    i.e. m >= 0 (divergent powers stay residual), a > 0, and [0, inf) only
+- retained learning:
+  - a "moment table" generalizes from one special function to its sibling
+    by swapping the kernel exponent's degree (quadratic e^(-a x^2) -> linear
+    e^(-a x)) and the moment index parity (even 2n -> half-integer m-1/2) -
+    the sqrt(pi/a) tail and the (k)!/(4^m m!) combinatorial factor are
+    shared. Model the new table on the old one and reuse its result builder
+  - an ACCUMULATING factor-walker (net power + decay + constant with a Div
+    sign flip) subsumes the per-shape Div/Mul branching: it is both shorter
+    and more general, and the honesty gates (linear exponent, half-integer
+    power, convergence m>=0) sit naturally on the accumulated totals
