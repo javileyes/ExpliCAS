@@ -261,8 +261,17 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `e²` (potencia, no múltiplo) y `√2` (algebraico) siguen Symbolic;
   el plegado `cos(0)=1` en la sustitución FTC de `tan [0,π/4]` es
   cosmético aparte)*
-- [ ] **(F) FTC/Leibniz en diff**: `diff(integrate(f(t),t,0,x), x)`
+- [~] **(F) FTC/Leibniz en diff**: `diff(integrate(f(t),t,0,x), x)`
   → `f(x)` (+ regla de Leibniz con límites variables).
+  *(parcial 2026-06-13 aea379c97: la regla de Leibniz
+  `d/dx ∫_a(x)^b(x) f = f(b)b' − f(a)a'` ya aplica a integrandos
+  ELEMENTALES no-integrables — `diff(∫e^(t²) [0,x]) = e^(x²)` (gaussiana),
+  Fresnel `sin(t²)`, Si `sin(t)/t`, con regla de la cadena (`[0,x²] →
+  2x·e^(x⁴)`) y bound inferior con cambio de signo. Las indefinidas
+  siguen residuales (honestidad intacta): demuestra que esos residuales
+  son frontera de PRESENTACIÓN, no de conocimiento. Peldaño restante:
+  `f` OPACA simbólica (`diff(∫f(t)[0,x])=f(x)`) — el engine rechaza
+  funciones desconocidas; necesita soporte de funciones simbólicas)*
 - [ ] **(F) Diagnóstico de no-existencia en límites**: `sin(1/x)` en 0
   y laterales discrepantes deberían reportar "no existe" con motivo,
   no un residual genérico.
