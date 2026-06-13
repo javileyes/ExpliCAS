@@ -45,6 +45,21 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
+- [x] **(F) `0·∞` plegado a 0 en punto finito**: `limit(x·sinh(1/x²),x,0)`
+  devolvía `0` cuando el límite real es `+∞` (sinh(1/x²)→+∞, y 0·∞ es
+  indeterminado, no 0); mismo error en `x·cosh(1/x²)`, `x·exp(1/x²)`,
+  `x·cosh(1/x)` (valor finito FALSO, no residual honesto).
+  *(graduado 2026-06-14 e0710101b: dos causas — (1)
+  `finite_total_real_unary_result` devolvía el cofactor como `sinh(∞)` SIN
+  plegar (el fold de saturación cubría exp/abs/sin/cos/atan pero no
+  sinh/cosh/tanh), leyéndose como acotado aguas abajo; ahora el fallback
+  corre `fold_infinity_saturation` (sinh(∞)→∞, cosh(∞)→∞, tanh(∞)→1,
+  exp(−∞)→0); (2) `finite_mul_result` devolvía 0 si CUALQUIER factor era 0
+  sin comprobar que el otro fuese finito; ahora declina (residual honesto)
+  cuando un factor es 0 y el otro ∞. `x·exp(−1/x²)→0` y `x·tanh(1/x²)→0`
+  siguen correctos. Descubierto al prototipar la sustitución recíproca
+  u=1/x para límites en ∞ — revertida por disparar justo este hueco —;
+  huella de scorecard sin cambios, ningún fixture público lo capturaba.)*
 - [x] **(A) Cuelgue del simplificador**: `diff(sin(x)^3*cos(x)^2, x)`
   timeout >30s con `depth_overflow depth=51 phase=Core`; mismo patrón
   da 12s en `diff((x^2*sin(x))/(x+1), x)` y
