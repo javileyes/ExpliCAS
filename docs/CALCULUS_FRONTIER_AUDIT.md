@@ -273,11 +273,29 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   del ledger 2026-06-12). Ejemplo vivo adicional:
   `integrate(sec(x)^2 + 1, x)` se vuelve residual porque el
   pre-simplificador lo machaca a `(2cos²−1+3)/(2cos²)`.
-- [ ] **(F) Detección estructural sin antiderivada**: imparidad en
+- [~] **(F) Detección estructural sin antiderivada**: imparidad en
   `[-a,a]` para integrandos no elementales (`sin(x)/(1+x^2) [-1,1] =
   0`), abs por tramos (`|x| [-1,1] = 1`, `e^(-|x|) (-∞,∞) = 2`),
   test-p completo (`1/sqrt(x) [1,∞) = ∞`, hoy residual mientras `1/x`
   sí diverge), divergencia oscilatoria declarada (`sin(x) [0,∞)`).
+  *(parcial 2026-06-14 b5f80b09f: IMPARIDAD en `[-a,a]` GRADUADA —
+  `odd_symmetric_definite_integral_rewrite` corre como fallback estructural
+  donde la antiderivada es None y resuelve a 0 bajo tres obligaciones
+  independientes: bornes finitos simétricos (lower=-upper sobre el endpoint
+  racional+pi+e), imparidad probada por `parity_in_var` (clasificador sound
+  y conservador {Odd, Even, Unknown}: símbolo ajeno=par, suma conserva
+  paridad solo si ambos términos coinciden, producto/cociente suma paridades,
+  potencia entera por paridad del exponente, base constante positiva b^g par
+  sii g par, composición por la clase del builtin externo) e INTEGRABILIDAD
+  vía el MISMO certificado que hace `int(1/x,-1,1)` undefined (Certified
+  estricto). Resuelve `sin(x)/(1+x^2)`, `sin(x)e^(x^2)`, `sin(x^3)`,
+  `tan(x)e^(x^2)` en `[-1,1]`; declina con corrección `1/x` (undefined),
+  `tan e^(x^2) [-2,2]` (polo en π/2), integrandos pares e intervalos
+  asimétricos. Verificado adversarialmente (2-lente, 80 sondas, 0 unsound).
+  Peldaños restantes: abs por tramos (`|x| [-1,1]=1`, `e^(-|x|)`), test-p
+  completo, divergencia oscilatoria declarada, y la narración educativa
+  específica de simetría — hoy el paso es el envoltorio genérico "Calcular
+  la integral".)*
 - [ ] **(F) Por partes narrada**: la plantilla completa ('Elegir u y
   dv' → 'Calcular du y v' → 'Aplicar la fórmula') existe y la usa
   `x·ln(x)`, pero `x·eˣ`, `x·cos x`, `arctan(x)`, `x²eˣ`, `eˣ·sin x`
