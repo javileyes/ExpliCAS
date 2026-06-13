@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 118 (newest first)
+Active entries: 119 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -135,6 +135,7 @@ Active entries: 118 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / finite-point product (block 3 domain | Retained limits: finite-point squeeze (infinitesimal x bounded -> 0)
 - 2026-06-13 | `retained` | calculus / limits / finite-point 0/0 quotient (block 3 domain | Retained limits: first-order equivalent-infinitesimals 0/0 engine
 - 2026-06-13 | `retained` | calculus / definite integration boundary touch / limits | Retained integration: x^a ln(x)^b improper integrals via power-log dominance
+- 2026-06-13 | `retained` | calculus / limits / finite-point bilateral composition (block 3 | Retained limits: even cosh over a reciprocal pole (cosh(1/x) -> +inf)
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5114,3 +5115,53 @@ Active entries: 118 (newest first)
   - a log-polynomial must be restricted to non-negative INTEGER powers of
     ln: near 0 the logarithm is negative, so ln(x)^(1/2) is not real and
     ln(x)^(-1) -> 0 is a different (non-dominance) fact
+
+## 2026-06-13 - Retained limits: even cosh over a reciprocal pole (cosh(1/x) -> +inf)
+
+- area:
+  - calculus / limits / finite-point bilateral composition (block 3
+    domain conditions; completes the cosh rung the one-sided saturation
+    cycle left open)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 domain conditions (1 matrix row:
+    finite_even_cosh_reciprocal_pole_bilateral_supported)
+  - limit_matrix_cell: limit(cosh(1/x),x,0)=infinity (and scaled/shifted
+    poles cosh(3/x), cosh(1/(x-2)))
+  - behavior_change_expected: yes - cosh of an inner that diverges to
+    infinity on both sides (any sign) folds bilaterally to +infinity
+- observed (narrow by deliberate choice after a sprawl):
+  - the one-sided saturation cycle already resolved cosh(1/x) per side
+    (+inf both), but the bilateral evaluator declined because the two
+    sides reach +inf from OPPOSITE inner signs (odd pole), and no
+    bilateral rule combined them. apply_finite_bilateral_even_saturating_
+    pole_rule matches only Function(Cosh,[g]), requires both one-sided
+    inner limits infinite (verified one_sided_inner_infinity_sign), and
+    folds cosh(+inf) via the verified saturate_outer_at_infinity
+  - SCOPE DECISION: a general "bilateral = common one-sided value" rule
+    was prototyped first. It is sound (the bilateral-limit theorem) and
+    resolved a broad correct class (cosh(1/x), 1/|x|, log_b(|x|), sqrt|x|,
+    exp(ln|x|)), but it FLIPPED ~6 conservative "keep unsafe finite
+    composition residual" contracts at once and risked propagating any
+    latent one-sided error bilaterally. For a clean retention it was
+    narrowed to cosh only (an even outer whose fold is sign-independent),
+    which flips ZERO contracts and still graduates the motivating rung
+  - footprint: only the intended limit matrix lane moved; sqrt(|x|),
+    log(2,|x|) and the other f(|x|) safety contracts stay residual.
+    Honesty: sinh/tanh (odd, sides disagree), cos/sin (oscillate), and a
+    convergent or oscillating inner (cosh(x), cosh(sin(1/x))) all decline
+- retained learning:
+  - "bilateral = common one-sided value" is a true theorem but a
+    DANGEROUS rule to apply generally: it inherits every one-sided
+    incompleteness AND overrides a pile of deliberate "not supported
+    safely yet" conservatism in one stroke. Gate it to a shape whose
+    soundness is self-evident (an EVEN outer, where both sides saturate
+    to the same value independent of the inner's sign) instead of trusting
+    the general agreement across the whole engine
+  - the even-ness of the outer is what makes the odd pole safe: cosh
+    collapses the sign distinction that makes sinh(1/x), tanh(1/x), and
+    1/x themselves genuinely two-sided-divergent (DNE). The rule encodes
+    exactly that - match only the even saturating outer, demand the inner
+    diverge, and reuse the one-sided saturator's fold

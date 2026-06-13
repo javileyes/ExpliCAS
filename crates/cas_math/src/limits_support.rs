@@ -3326,6 +3326,9 @@ fn try_limit_rules_at_finite(
     if let Some(result) = apply_finite_squeeze_bounded_product_rule(ctx, expr, var, point) {
         return Some(result);
     }
+    if let Some(result) = apply_finite_bilateral_even_saturating_pole_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
 
     match ctx.get(expr).clone() {
         Expr::Add(lhs, rhs) => {
@@ -3390,6 +3393,38 @@ fn apply_finite_squeeze_bounded_product_rule(
     // bounded-but-limitless factor (otherwise the generic path owns it).
     (has_infinitesimal && has_bounded_oscillator)
         .then(|| ctx.add(Expr::Number(BigRational::zero())))
+}
+
+/// `cosh(g(x)) -> +infinity` bilaterally when the inner argument diverges to
+/// infinity on BOTH sides, regardless of sign. cosh is even, so the odd pole
+/// `cosh(1/x)` (inner -> -inf on the left, +inf on the right) still saturates
+/// to the same +infinity on each side — a case the one-sided composition rule
+/// resolves per side but the bilateral evaluator left residual because the two
+/// sides reach +inf from opposite inner signs. The even outer makes the
+/// bilateral limit well-defined; oscillating or sign-flipping outers are not
+/// admitted (only cosh, whose fold is sign-independent).
+fn apply_finite_bilateral_even_saturating_pole_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 || !matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Cosh)) {
+        return None;
+    }
+    let inner = args[0];
+    // The inner must diverge to infinity on BOTH sides (either sign).
+    one_sided_inner_infinity_sign(ctx, inner, var, point, FiniteLimitSide::Left)?;
+    one_sided_inner_infinity_sign(ctx, inner, var, point, FiniteLimitSide::Right)?;
+    // cosh is even: cosh(+-inf) = +inf, so the bilateral value is +inf.
+    saturate_outer_at_infinity(
+        ctx,
+        |ctx, inf| ctx.add(Expr::Function(fn_id, vec![inf])),
+        InfSign::Pos,
+    )
 }
 
 enum SqueezeFactorClass {
@@ -7225,6 +7260,43 @@ mod tests {
                 )
                 .is_none(),
                 "must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn bilateral_even_cosh_over_pole_saturates_to_infinity() {
+        // cosh is even, so cosh(1/x) -> +inf from both sides even though the
+        // inner pole 1/x diverges with opposite signs; shifted and scaled
+        // poles behave the same.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, point) in [
+            ("cosh(1/x)", "0"),
+            ("cosh(3/x)", "0"),
+            ("cosh(1/(x - 2))", "2"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let point_expr = parse_expr(&mut ctx, point);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, point_expr)
+                .unwrap_or_else(|| panic!("cosh pole must saturate: {source} at {point}"));
+            assert_eq!(display_expr(&ctx, out), "infinity", "{source} at {point}");
+        }
+    }
+
+    #[test]
+    fn bilateral_even_cosh_rule_declines_non_cosh_and_non_pole() {
+        // Odd outers (sinh: sides disagree), oscillating inners (cosh(sin(1/x))
+        // has no inner infinity), and a convergent inner (cosh(x): inner -> 0)
+        // must not be folded to +inf by this rule.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in ["sinh(1/x)", "cosh(sin(1/x))", "cosh(x)", "cos(1/x)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_bilateral_even_saturating_pole_rule(&mut ctx, expr, x, zero).is_none(),
+                "even-cosh pole rule must decline: {source}"
             );
         }
     }
