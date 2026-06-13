@@ -240,6 +240,13 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   raíz racional + conjugado ≠0; los polos no-0/0 y las raíces
   irracionales declinan, con condiciones de dominio honestas. Item
   cerrado salvo los peldaños √a irracional y grado ≥3 anotados)*
+  *(hermano RACIONAL 2026-06-14 1881980a6: el ∞−∞ de funciones racionales
+  (sin radicales) también resuelve — `rational_difference_limit_at_infinity`
+  pone los operandos sobre denominador común y reutiliza
+  `rational_poly_limit`: `(x²+1)/(x+1)−x=−1`, `x²/(x−1)−x=1`,
+  `x²/(x+1)−x²/(x+2)=1`, `x³/(x+1)−x=+∞`. Corre al final de la cadena (las
+  diferencias con límites finitos conservan su traza aditiva; operandos no
+  racionales declinan al conjugado/dominancia).)*
 
 ### P2 — familias y mejoras de alto valor (1 ciclo cada una)
 
