@@ -15836,14 +15836,38 @@ fn polynomial_square_minus_constant_log_antiderivative(
     let denominator = Polynomial::from_expr(ctx, den, var).ok()?;
     let (arg_poly, offset_square) =
         exact_positive_constant_minus_polynomial_square(&denominator.neg())?;
-    let offset = exact_rational_sqrt(&offset_square)?;
-    if offset.is_zero() {
+    if offset_square.is_zero() {
         return None;
     }
 
     let derivative = arg_poly.derivative();
     let scale = constant_polynomial_ratio(&numerator, &derivative)?;
     if scale.is_zero() {
+        return None;
+    }
+
+    let Some(offset) = exact_rational_sqrt(&offset_square) else {
+        // Irrational sqrt(c): build the log ratio with a symbolic
+        // radical. p'(x)/(p(x)^2 - c) -> scale/(2 sqrt(c)) *
+        // ln|(p - sqrt(c))/(p + sqrt(c))| for sqrt(c) the positive
+        // surd. Covers 1/(x^2 - 2), 1/(x^2 + 2x - 1), and the
+        // 1/(u^2 - 2) kernel the x^4+1 substitution needs.
+        let offset_expr = positive_rational_sqrt_expr(ctx, &offset_square)?;
+        let arg_expr = arg_poly.to_expr(ctx);
+        let numerator_arg = ctx.add(Expr::Sub(arg_expr, offset_expr));
+        let denominator_arg = ctx.add(Expr::Add(arg_expr, offset_expr));
+        let ratio = ctx.add(Expr::Div(numerator_arg, denominator_arg));
+        let log_abs_ratio = ln_abs(ctx, ratio);
+        let two = BigRational::from_integer(2.into());
+        let half_scale = scale / two;
+        if half_scale.is_one() {
+            return Some(ctx.add(Expr::Div(log_abs_ratio, offset_expr)));
+        }
+        let half_scale_expr = ctx.add(Expr::Number(half_scale));
+        let coefficient = ctx.add(Expr::Div(half_scale_expr, offset_expr));
+        return Some(mul2_raw(ctx, coefficient, log_abs_ratio));
+    };
+    if offset.is_zero() {
         return None;
     }
 
@@ -23696,6 +23720,81 @@ mod tests {
         let expr = parse("x/(x^4-4)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "1/8 * ln(|(x^2 - 2) / (x^2 + 2)|)");
+    }
+
+    #[test]
+    fn integrates_reciprocal_quadratic_with_irrational_roots() {
+        // 1/(p^2 - c) with sqrt(c) irrational: the log form carries a
+        // symbolic radical instead of bailing on exact_rational_sqrt.
+        let mut ctx = Context::new();
+        let expr = parse("1/(x^2-2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(ln(|(x - sqrt(2)) / (sqrt(2) + x)|) * 1/2)/sqrt(2)"
+        );
+
+        // 2/(x^2-3): scale 2 cancels the 1/2 to a bare log over the surd.
+        let expr = parse("2/(x^2-3)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "ln(|(x - sqrt(3)) / (sqrt(3) + x)|) / sqrt(3)"
+        );
+
+        // Completed square (x-1)^2 - 3 from x^2 - 2x - 2.
+        let expr = parse("1/(x^2-2*x-2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(ln(|(x - 1 - sqrt(3)) / (sqrt(3) + x - 1)|) * 1/2)/sqrt(3)"
+        );
+    }
+
+    #[test]
+    fn reciprocal_quadratic_irrational_round_trips_numerically() {
+        let mut ctx = Context::new();
+        for (source, samples) in [
+            ("1/(x^2-2)", [-3.0_f64, 0.5, 2.5]),
+            ("1/(x^2-5)", [-4.0, 1.0, 3.5]),
+            ("1/(x^2+2*x-1)", [-4.0, 0.2, 2.0]),
+            ("1/(x^2-2*x-2)", [-2.0, 0.5, 4.0]),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x").expect(source);
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .expect("derivative");
+            let target = parse(source, &mut ctx).expect(source);
+            for sample in samples {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars).expect("lhs");
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target, &vars).expect("rhs");
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reciprocal_quadratic_irrational_declines_harder_shapes() {
+        let mut ctx = Context::new();
+        // Non-monic leading (needs an irrational leading root) and
+        // linear numerators (need a derivative split) stay residual as
+        // honest follow-up rungs.
+        for source in ["1/(2*x^2-3)", "(x+1)/(x^2-2)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual: {source}"
+            );
+        }
     }
 
     #[test]

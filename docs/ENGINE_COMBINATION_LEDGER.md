@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 103 (newest first)
+Active entries: 104 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
 - 2026-06-13 | `retained` | calculus / integration / educational route / mixed trig powers | Retained calculus: mixed trig powers sin^m cos^n by odd-power substitution
+- 2026-06-13 | `retained` | calculus / integration / educational route / reciprocal quadratics | Retained calculus: 1/(quadratic with irrational real roots) via symbolic-surd log form
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4350,3 +4351,49 @@ Active entries: 103 (newest first)
     boundary case before writing a decline contract: sin cos^3 LOOKS
     like this family but the f^n f' owner claims it first, so the
     decline test would wrongly fail without the min>=2 intent gate
+
+## 2026-06-13 - Retained calculus: 1/(quadratic with irrational real roots) via symbolic-surd log form
+
+- area:
+  - calculus / integration / educational route / reciprocal quadratics
+    with irrational roots (block 4 base integration, P? frontier audit
+    "Cuárticas+ irreducibles" precursor)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 4 base integration (new
+    reciprocal_quadratic_irrational_log family, 4 rows, 21 -> 25)
+  - calculus_matrix_cell: 1/(x^2-2) = (1/(2 sqrt(2))) ln|(x-sqrt(2))/
+    (x+sqrt(2))|, 2/(x^2-3), 1/(x^2+2x-1) and 1/(x^2-2x-2) (completed
+    squares with irrational offset)
+  - behavior_change_expected: yes - 1/(p^2 - c) with sqrt(c) irrational
+    integrates to the log/atanh form instead of staying residual
+- observed (one-helper extension, asymmetry repair):
+  - the engine already integrated 1/(a - x^2) (atanh owner, handles
+    irrational sqrt(a)) and 1/(x^2 - 1) (rational partial fractions),
+    but 1/(x^2 - 2) was residual: the log owner
+    polynomial_square_minus_constant_log_antiderivative reaches the
+    case but bailed at exact_rational_sqrt(c) when c is not a perfect
+    square - a pure sign/representation asymmetry, not a missing method
+  - fix is a single irrational branch: build the offset as a symbolic
+    positive_rational_sqrt_expr and assemble the ratio
+    (p - sqrt(c))/(p + sqrt(c)) with ExprIds instead of a rational
+    Polynomial offset; the rational fast path is untouched
+  - completed squares fall out for free (the recognizer already
+    extracts (x+b)^2 - c), so 1/(x^2+2x-1) and 1/(x^2-2x-2) graduate
+    with the same change
+  - the 1/2-coefficient rows ship as verification_gap (the symbolic
+    verifier TIMES OUT folding diff of a log-of-surd-ratio, both
+    channels), numerically verified in unit round-trips; the bare-log
+    scaled row (2/(x^2-3)) keeps its two-step derivative channel
+- retained learning:
+  - "X works but its sign-flip X' is residual" is a high-leverage smell:
+    the asymmetry usually lives in ONE rationality guard (here
+    exact_rational_sqrt), and lifting it with a symbolic-surd branch
+    unblocks a whole family plus downstream consumers (this is exactly
+    the 1/(u^2-2) kernel the x^4+1 symmetric substitution needs - that
+    quartic recognizer is now a clean follow-up rung)
+  - symbolic radicals in antiderivatives outrun the verification
+    simplifier's budget: log-of-surd-ratio derivatives do not fold to
+    zero in time, so this family verifies numerically by policy
