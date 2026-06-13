@@ -307,6 +307,173 @@ pub fn try_rewrite_inf_div_finite_expr(
     })
 }
 
+/// Saturating / monotone functions evaluated at ±∞ on the extended
+/// real line. Handles both the function form `f(±∞)` and the
+/// exponential power form `e^(±∞)`:
+/// - `arctan(±∞) -> ±π/2`, `tanh(±∞) -> ±1`
+/// - `exp(+∞) -> +∞`, `exp(-∞) -> 0` (function and `e^x` power form)
+/// - `ln(+∞) -> +∞`, `sqrt(+∞) -> +∞`
+/// - `sinh(±∞) -> ±∞`, `cosh(±∞) -> +∞`
+///
+/// Conservative: only fires when the single argument is exactly ±∞.
+/// Oscillating functions (sin, cos, tan) and domain-bounded inverses
+/// (arcsin, arccos) are intentionally excluded - their limit at ∞ does
+/// not exist or is undefined.
+///
+/// NOT a global simplification rule: it is applied ONLY to limit
+/// outputs (via [`fold_infinity_saturation`]), where the limit engine
+/// has already committed to a single signed infinity. Folding it
+/// globally would materialize a bare `infinity` literal into raw
+/// arithmetic, where pre-existing cancellation rules (a-a=0, a/a=1,
+/// x^0=1) mishandle it - e.g. `sinh(∞) - cosh(∞)` would wrongly
+/// collapse to 0 instead of staying an honest ∞ - ∞ form.
+pub fn try_rewrite_function_at_infinity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<InfinityRewritePlan> {
+    use cas_ast::BuiltinFn;
+
+    // e^(±∞) power form: Pow(E, ±∞). Also sqrt as Pow(±∞, 1/2).
+    if let Expr::Pow(base, exponent) = ctx.get(expr).clone() {
+        if matches!(ctx.get(base), Expr::Constant(Constant::E)) {
+            return match inf_sign(ctx, exponent)? {
+                InfSign::Pos => Some(InfinityRewritePlan {
+                    rewritten: mk_infinity(ctx, InfSign::Pos),
+                    description: "e^(+∞) -> +∞".to_string(),
+                }),
+                InfSign::Neg => Some(InfinityRewritePlan {
+                    rewritten: ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+                        0.into(),
+                    ))),
+                    description: "e^(-∞) -> 0".to_string(),
+                }),
+            };
+        }
+        // (+∞)^positive_literal -> +∞ (covers sqrt(∞) = ∞^(1/2)).
+        if inf_sign(ctx, base) == Some(InfSign::Pos) && is_positive_literal(ctx, exponent) {
+            return Some(InfinityRewritePlan {
+                rewritten: mk_infinity(ctx, InfSign::Pos),
+                description: "(+∞)^positive -> +∞".to_string(),
+            });
+        }
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    let sign = inf_sign(ctx, args[0])?;
+
+    let half_pi = |ctx: &mut Context, negative: bool| -> ExprId {
+        let pi = ctx.add(Expr::Constant(Constant::Pi));
+        let two = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+            2.into(),
+        )));
+        let half = ctx.add(Expr::Div(pi, two));
+        if negative {
+            ctx.add(Expr::Neg(half))
+        } else {
+            half
+        }
+    };
+    let signed_one = |ctx: &mut Context, negative: bool| -> ExprId {
+        let one = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+            1.into(),
+        )));
+        if negative {
+            ctx.add(Expr::Neg(one))
+        } else {
+            one
+        }
+    };
+    let zero = |ctx: &mut Context| {
+        ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+            0.into(),
+        )))
+    };
+
+    let (rewritten, description) = match (builtin, sign) {
+        // Arctan and its `atan` alias (the limit machinery substitutes
+        // before atan -> arctan canonicalization).
+        (BuiltinFn::Arctan | BuiltinFn::Atan, InfSign::Pos) => {
+            (half_pi(ctx, false), "arctan(+∞) -> π/2")
+        }
+        (BuiltinFn::Arctan | BuiltinFn::Atan, InfSign::Neg) => {
+            (half_pi(ctx, true), "arctan(-∞) -> -π/2")
+        }
+        (BuiltinFn::Tanh, InfSign::Pos) => (signed_one(ctx, false), "tanh(+∞) -> 1"),
+        (BuiltinFn::Tanh, InfSign::Neg) => (signed_one(ctx, true), "tanh(-∞) -> -1"),
+        (BuiltinFn::Exp, InfSign::Pos) => (mk_infinity(ctx, InfSign::Pos), "exp(+∞) -> +∞"),
+        (BuiltinFn::Exp, InfSign::Neg) => (zero(ctx), "exp(-∞) -> 0"),
+        (BuiltinFn::Ln, InfSign::Pos) => (mk_infinity(ctx, InfSign::Pos), "ln(+∞) -> +∞"),
+        (BuiltinFn::Sinh, InfSign::Pos) => (mk_infinity(ctx, InfSign::Pos), "sinh(+∞) -> +∞"),
+        (BuiltinFn::Sinh, InfSign::Neg) => (mk_infinity(ctx, InfSign::Neg), "sinh(-∞) -> -∞"),
+        (BuiltinFn::Cosh, InfSign::Pos) | (BuiltinFn::Cosh, InfSign::Neg) => {
+            (mk_infinity(ctx, InfSign::Pos), "cosh(±∞) -> +∞")
+        }
+        (BuiltinFn::Sqrt, InfSign::Pos) => (mk_infinity(ctx, InfSign::Pos), "sqrt(+∞) -> +∞"),
+        _ => return None,
+    };
+    Some(InfinityRewritePlan {
+        rewritten,
+        description: description.to_string(),
+    })
+}
+
+/// Recursively fold saturating functions at ±∞ bottom-up. Used to
+/// clean limit outputs that substitute an infinite inner value into a
+/// saturating outer function (e.g. `exp(-∞) -> 0`, `atan(∞) -> π/2`)
+/// without running the full simplifier.
+pub fn fold_infinity_saturation(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let node = ctx.get(expr).clone();
+    let rebuilt = match node {
+        Expr::Add(l, r) => {
+            let l = fold_infinity_saturation(ctx, l);
+            let r = fold_infinity_saturation(ctx, r);
+            ctx.add(Expr::Add(l, r))
+        }
+        Expr::Sub(l, r) => {
+            let l = fold_infinity_saturation(ctx, l);
+            let r = fold_infinity_saturation(ctx, r);
+            ctx.add(Expr::Sub(l, r))
+        }
+        Expr::Mul(l, r) => {
+            let l = fold_infinity_saturation(ctx, l);
+            let r = fold_infinity_saturation(ctx, r);
+            ctx.add(Expr::Mul(l, r))
+        }
+        Expr::Div(l, r) => {
+            let l = fold_infinity_saturation(ctx, l);
+            let r = fold_infinity_saturation(ctx, r);
+            ctx.add(Expr::Div(l, r))
+        }
+        Expr::Neg(inner) => {
+            let inner = fold_infinity_saturation(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Pow(base, exponent) => {
+            let base = fold_infinity_saturation(ctx, base);
+            let exponent = fold_infinity_saturation(ctx, exponent);
+            ctx.add(Expr::Pow(base, exponent))
+        }
+        Expr::Function(fn_id, args) => {
+            let args: Vec<_> = args
+                .iter()
+                .map(|arg| fold_infinity_saturation(ctx, *arg))
+                .collect();
+            ctx.add(Expr::Function(fn_id, args))
+        }
+        _ => expr,
+    };
+    if let Some(plan) = try_rewrite_function_at_infinity_expr(ctx, rebuilt) {
+        return plan.rewritten;
+    }
+    rebuilt
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,6 +601,85 @@ mod tests {
             )),
             _ => panic!("expected negative infinity"),
         }
+    }
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn function_at_infinity_folds_saturating_functions() {
+        let cases = [
+            ("arctan(infinity)", "pi / 2"),
+            ("arctan(-infinity)", "-pi / 2"),
+            ("tanh(infinity)", "1"),
+            ("tanh(-infinity)", "-1"),
+            ("exp(infinity)", "infinity"),
+            ("exp(-infinity)", "0"),
+            ("ln(infinity)", "infinity"),
+            ("sinh(infinity)", "infinity"),
+            ("sinh(-infinity)", "-infinity"),
+            ("cosh(-infinity)", "infinity"),
+        ];
+        for (source, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse_expr(&mut ctx, source);
+            let plan = try_rewrite_function_at_infinity_expr(&mut ctx, expr).expect(source);
+            assert_eq!(rendered(&ctx, plan.rewritten), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn function_at_infinity_folds_exponential_power_form() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "e^infinity");
+        let plan = try_rewrite_function_at_infinity_expr(&mut ctx, expr).expect("e^inf");
+        assert_eq!(rendered(&ctx, plan.rewritten), "infinity");
+
+        let expr = parse_expr(&mut ctx, "e^(-infinity)");
+        let plan = try_rewrite_function_at_infinity_expr(&mut ctx, expr).expect("e^-inf");
+        assert_eq!(rendered(&ctx, plan.rewritten), "0");
+
+        // sqrt(infinity) = infinity^(1/2).
+        let expr = parse_expr(&mut ctx, "sqrt(infinity)");
+        let plan = try_rewrite_function_at_infinity_expr(&mut ctx, expr).expect("sqrt inf");
+        assert_eq!(rendered(&ctx, plan.rewritten), "infinity");
+    }
+
+    #[test]
+    fn function_at_infinity_declines_oscillating_and_finite_args() {
+        // Oscillating functions and finite arguments must NOT fold:
+        // their limit at infinity does not exist.
+        for source in [
+            "sin(infinity)",
+            "cos(infinity)",
+            "tan(infinity)",
+            "arctan(2)",
+            "exp(3)",
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                try_rewrite_function_at_infinity_expr(&mut ctx, expr).is_none(),
+                "must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn fold_infinity_saturation_handles_atan_alias_and_nesting() {
+        // The limit machinery emits the `atan` alias (BuiltinFn::Atan)
+        // before canonicalization; the fold must still resolve it.
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "atan(infinity)");
+        let folded = fold_infinity_saturation(&mut ctx, expr);
+        assert_eq!(rendered(&ctx, folded), "pi / 2");
+
+        // Nested: exp(-infinity) inside a sum folds bottom-up.
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "exp(-infinity) + 5");
+        let folded = fold_infinity_saturation(&mut ctx, expr);
+        assert_eq!(rendered(&ctx, folded), "0 + 5");
     }
 
     #[test]

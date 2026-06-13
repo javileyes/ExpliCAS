@@ -484,10 +484,14 @@ impl Engine {
             &mut budget,
         ) {
             Ok(result) => {
+                let folded = cas_math::infinity_support::fold_infinity_saturation(
+                    &mut self.simplifier.context,
+                    result.expr,
+                );
                 let output_expr = if result.warning.is_some() {
-                    cleanup_residual_limit_output_expr(&mut self.simplifier.context, result.expr)
+                    cleanup_residual_limit_output_expr(&mut self.simplifier.context, folded)
                 } else {
-                    result.expr
+                    folded
                 };
                 let mut steps = Vec::new();
                 if !matches!(options.steps_mode, crate::options::StepsMode::Off) {

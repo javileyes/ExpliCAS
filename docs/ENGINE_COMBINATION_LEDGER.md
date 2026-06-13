@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 105 (newest first)
+Active entries: 106 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -122,6 +122,7 @@ Active entries: 105 (newest first)
 - 2026-06-13 | `retained` | calculus / integration / educational route / mixed trig powers | Retained calculus: mixed trig powers sin^m cos^n by odd-power substitution
 - 2026-06-13 | `retained` | calculus / integration / educational route / reciprocal quadratics | Retained calculus: 1/(quadratic with irrational real roots) via symbolic-surd log form
 - 2026-06-13 | `retained` | calculus / integration / educational route / quartic denominators | Retained calculus: the famous 1/(x^4+1) via symmetric substitution
+- 2026-06-13 | `retained` | calculus / limits / composition with known inner divergence | Retained limits: saturate f(±∞) inside limit composition outputs
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4441,3 +4442,51 @@ Active entries: 105 (newest first)
     rather than pretending global continuity - a definite integral
     across the singularity would need the continuous form, noted as the
     next rung
+
+## 2026-06-13 - Retained limits: saturate f(±∞) inside limit composition outputs
+
+- area:
+  - calculus / limits / composition with known inner divergence
+    (block 3 real-domain limits, P? frontier audit "Composición de
+    límites con interno conocido")
+- status:
+  - `retained` (scope narrowed after adversarial verification)
+- capture:
+  - investment_class: limits
+  - calculus_matrix_cell: limit(e^(-1/x^2),x,0)=0,
+    limit(e^(1/x^2),x,0)=infinity, limit(atan(1/x^2),x,0)=pi/2,
+    limit(tanh(1/x^2),x,0)=1 - the limit engine substituted the inner
+    +-infinity into the outer saturating function but never folded it
+  - behavior_change_expected: yes - limit OUTPUTS only; raw f(±∞)
+    expressions are unchanged
+- observed (adversarial 2-lens verification reshaped the scope):
+  - the saturation table (arctan/tanh/exp/ln/sqrt/sinh/cosh at ±∞) is
+    internally correct and the limit-output fold is sound: the limit
+    engine never pre-substitutes a single infinity for a two-sided
+    DNE case (limit(e^(1/x),x,0) stays residual), so the fold only
+    ever sees a single committed signed infinity
+  - BUT the first design wired it as a GLOBAL simplification rule.
+    Adversarial probes (opus soundness lens) found this widened a
+    pre-existing defect: the rule materializes a bare `infinity`
+    literal, and core cancellation rules (a-a=0, a/a=1, x^0=1) then
+    mishandle it - sinh(inf)-cosh(inf) wrongly collapsed to 0,
+    exp(inf)^0 to 1. The regression lens confirmed all improper
+    integrals still passed, isolating the damage to raw infinity
+    arithmetic
+  - fix: DROP the global rule, keep ONLY the limit-output fold
+    (fold_infinity_saturation at the eval_limit call site, the path
+    the soundness lens explicitly certified). Raw f(±∞) now behaves
+    exactly as before the cycle; the pre-existing inf-inf=0 / inf/inf=1
+    baseline bugs are untouched and out of scope
+  - the `atan` alias (BuiltinFn::Atan, distinct from Arctan) must be
+    matched: the limit machinery emits it before canonicalization
+- retained learning:
+  - a fold that is correct IN ISOLATION can still be unsound by
+    COMPOSITION: emitting a canonical literal (infinity) into a context
+    with pre-existing buggy algebra (a-a on infinity) is the defect,
+    not the fold itself. Confine such folds to the vetted call site
+    (limit output) rather than registering them globally
+  - the adversarial regression lens is what proved the narrowing was
+    safe (improper integrals untouched) and the soundness lens is what
+    proved the global rule was unsafe - the two lenses together
+    converted a would-be-rejected cycle into a sound retained one
