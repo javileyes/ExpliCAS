@@ -271,9 +271,29 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   pero declina), `asinh/acosh/coth/sech` (folds no implementados),
   coeficientes irracionales `e^(π/x)`, y `∞·(π/2)` lateral que necesita
   cofactor racional)*
-- [ ] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
+- [~] **(F) Squeeze y dominancia fraccionaria**: `x*sin(1/x) → 0 en
   0`, `(x+sin x)/x → 1 en ∞`, `ln(x)/sqrt(x) → 0 en ∞` (la dominancia
   entera `ln(x)/x` sí funciona).
+  *(parcial 2026-06-13 74544e793: cubierto el SQUEEZE en punto finito —
+  `apply_finite_squeeze_bounded_product_rule` resuelve a 0 todo producto
+  con un factor infinitésimo y un factor oscilante globalmente acotado
+  sin límite (`sin/cos/atan/arctan/tanh` de una función racional de la
+  variable): `x·sin(1/x)`, `x²·cos(1/x)`, `sin(x)·sin(1/x)`,
+  `(x-2)·sin(1/(x-2))` en 2 → 0. Footprint-mínimo: solo dispara cuando
+  hay un factor acotado SIN límite, así que `x·sin(x)` sigue por la ruta
+  genérica. Honestidad triple-gateada: `sin(1/x)` solo y `2·sin(1/x)`
+  (sin infinitésimo) quedan residuales, `(1/x)·sin(1/x)` normaliza a Div.
+  Verificado adversarialmente (2 pasadas, ~230 sondas): cazado y
+  corregido un bug de soundness — denominador idénticamente cero
+  `1/(x-x)` daba `sin(1/0)` indefinido como "acotado"; el gate ahora
+  exige denominador no-cero. Peldaños restantes: el cociente con ruido
+  aditivo acotado `(x+sin x)/x → 1 en ∞` (la maquinaria
+  `polynomial_growth_info_with_bounded_additive_noise` existe pero no
+  está cableada al cociente racional general) y la dominancia
+  log-potencia FRACCIONARIA `ln(x)/√x → 0 en ∞` (`ln(x)/x` y `ln(x)/x²`
+  enteras ya funcionan; falta extender a `x^(p/q)`). Gaps cosméticos de
+  completitud del squeeze: argumentos sin normalizar `x^(-1)`, `1/x+x²`
+  declinan conservadoramente aunque el límite real es 0)*
 - [x] **(F) Producto-a-suma residual mutilado**: `sin(3x)cos(5x)`
   indefinida queda residual Y mutilada (expandida en potencias de
   cos); el reconocedor producto-a-suma cubre frecuencias distintas
