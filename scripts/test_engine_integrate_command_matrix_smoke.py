@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 271)
+        self.assertEqual(len(cases), 274)
         names = {case.name for case in cases}
         self.assertIn(
             "algorithmic_backend_hermite_expanded_symbolic_affine_positive_radius_mixed_numerator",
@@ -422,7 +422,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 15, "supported": 251, "undefined": 5},
+            {"residual": 15, "supported": 254, "undefined": 5},
         )
         self.assertEqual(
             sum(
@@ -440,7 +440,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "residual_not_verified": 15,
                 "undefined_not_verified": 5,
-                "definite_ftc_from_verified_antiderivative": 36,
+                "definite_ftc_from_verified_antiderivative": 39,
                 "verification_gap": 24,
                 "verified_by_diff": 34,
                 "verified_by_diff_and_direct_diff_integrate": 125,
@@ -523,6 +523,9 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(
             step_checked,
             {
+                "definite_integral_reciprocal_e_bound_unit_log",
+                "definite_integral_reciprocal_square_e_bound",
+                "definite_integral_scaled_reciprocal_e_bound",
                 "quartic_symmetric_reciprocal",
                 "quartic_symmetric_square_numerator",
                 "quartic_symmetric_even_arctan_piece",
@@ -817,7 +820,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "radicand_halfline_required": 6,
                 "total_real_function": 23,
                 "symbolic_bounds_condition_free": 4,
-                "interval_certified_with_source_condition": 2,
+                "interval_certified_with_source_condition": 5,
                 "interval_pole_divergent": 3,
                 "interval_not_certifiable": 1,
                 "backend_verified_pole_nonzero_required": 1,
@@ -934,7 +937,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "block8_radical_inverse_families": 46,
                 "block9_residuals_and_non_goals": 16,
                 "block12_hybrid_algorithmic_backend": 20,
-                "block13_definite_integrals": 40,
+                "block13_definite_integrals": 43,
             },
         )
         self.assertEqual(
@@ -942,7 +945,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "algorithmic_backend_boundary_verified": 20,
                 "didactic_trace_and_verified_antiderivative": 78,
-                "domain_conditions_and_verified_antiderivative": 153,
+                "domain_conditions_and_verified_antiderivative": 156,
                 "explicit_undefined_domain_policy": 5,
                 "safe_residual_policy": 15,
             },

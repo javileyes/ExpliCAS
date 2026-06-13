@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 106 (newest first)
+Active entries: 107 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -123,6 +123,7 @@ Active entries: 106 (newest first)
 - 2026-06-13 | `retained` | calculus / integration / educational route / reciprocal quadratics | Retained calculus: 1/(quadratic with irrational real roots) via symbolic-surd log form
 - 2026-06-13 | `retained` | calculus / integration / educational route / quartic denominators | Retained calculus: the famous 1/(x^4+1) via symmetric substitution
 - 2026-06-13 | `retained` | calculus / limits / composition with known inner divergence | Retained limits: saturate f(±∞) inside limit composition outputs
+- 2026-06-13 | `retained` | calculus / definite integration / FTC bound certificate | Retained calculus: definite integrals with e-valued bounds
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -4490,3 +4491,47 @@ Active entries: 106 (newest first)
     safe (improper integrals untouched) and the soundness lens is what
     proved the global rule was unsafe - the two lenses together
     converted a would-be-rejected cycle into a sound retained one
+
+## 2026-06-13 - Retained calculus: definite integrals with e-valued bounds
+
+- area:
+  - calculus / definite integration / FTC bound certificate
+    (block 13 definite integrals, P? frontier audit "Bounds con e")
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - calculus_maturity_block: block 13 definite integrals (3 new rows,
+    40 -> 43)
+  - calculus_matrix_cell: integrate(1/x,x,1,e)=1, integrate(1/x^2,x,1,e)=
+    (e-1)/e, integrate(2/x,x,1,e)=2 - reciprocal integrands with an
+    e-valued upper bound used to stay residual
+  - behavior_change_expected: yes - rational multiples of e (e, 2e,
+    e/2, -e) are now finite endpoints with a rational enclosure
+- observed (one missing branch in classify_bound):
+  - the pole-avoidance certificate places poles by comparing the
+    Endpoint enclosures. classify_bound recognized rational constants
+    and rational multiples of PI (pi_multiple_of) but routed e and
+    sqrt(2) to DefiniteBound::Symbolic, so the certificate could not
+    place the pole and bailed - 1/x to e was residual while 1/x to pi
+    gave ln(pi)
+  - fix: add an e_multiple field to Endpoint mirroring pi_multiple,
+    an e_enclosure() (2.718... rational bracket), an e_multiple_of()
+    recognizer, and the classify_bound branch. The certificate now
+    decides e-bounded intervals: 1/(x-2) on [1,e] diverges (2 inside
+    e~2.718), 1/(x-3) on [1,e] certifies (3 outside) - the enclosure
+    is tight enough for textbook bounds
+  - e^2 (Pow(E,2), not a multiple) and sqrt(2) (algebraic) stay
+    Symbolic as honest rungs; the FTC fold of ln(e)->1 was already
+    sound, so once the certificate passes the value comes out clean
+- retained learning:
+  - a "constant X works but constant Y is residual" asymmetry in a
+    certificate is almost always a missing recognizer branch, not a
+    missing method: the whole machinery (enclosure comparison, FTC
+    fold) was already there for PI; e needed only the same three pieces
+    (multiple recognizer + enclosure + struct field). Mirror the
+    existing symbolic-constant path rather than special-casing
+  - the Endpoint's pi_multiple/e_multiple split keeps comparisons EXACT
+    when both endpoints share the same constant (e vs e is rational
+    cmp, no enclosure rounding) - the generalization preserves that
+    exactness per-constant

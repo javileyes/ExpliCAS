@@ -48,6 +48,7 @@ enum DefiniteBound {
 struct Endpoint {
     rational: BigRational,
     pi_multiple: BigRational,
+    e_multiple: BigRational,
 }
 
 impl Endpoint {
@@ -55,6 +56,7 @@ impl Endpoint {
         Endpoint {
             rational: value,
             pi_multiple: BigRational::from_integer(0.into()),
+            e_multiple: BigRational::from_integer(0.into()),
         }
     }
 
@@ -62,26 +64,36 @@ impl Endpoint {
         Endpoint {
             rational: BigRational::from_integer(0.into()),
             pi_multiple: multiple,
+            e_multiple: BigRational::from_integer(0.into()),
+        }
+    }
+
+    fn from_e_multiple(multiple: BigRational) -> Self {
+        Endpoint {
+            rational: BigRational::from_integer(0.into()),
+            pi_multiple: BigRational::from_integer(0.into()),
+            e_multiple: multiple,
         }
     }
 
     fn enclosure(&self) -> (BigRational, BigRational) {
-        let (pi_low, pi_high) = pi_enclosure();
-        if self.pi_multiple >= BigRational::from_integer(0.into()) {
-            (
-                &self.rational + &self.pi_multiple * pi_low,
-                &self.rational + &self.pi_multiple * pi_high,
-            )
-        } else {
-            (
-                &self.rational + &self.pi_multiple * pi_high,
-                &self.rational + &self.pi_multiple * pi_low,
-            )
-        }
+        let signed = |multiple: &BigRational, (low, high): (BigRational, BigRational)| {
+            if *multiple >= BigRational::from_integer(0.into()) {
+                (multiple * low, multiple * high)
+            } else {
+                (multiple * high, multiple * low)
+            }
+        };
+        let (pi_low, pi_high) = signed(&self.pi_multiple, pi_enclosure());
+        let (e_low, e_high) = signed(&self.e_multiple, e_enclosure());
+        (
+            &self.rational + &pi_low + &e_low,
+            &self.rational + &pi_high + &e_high,
+        )
     }
 
     fn try_cmp(&self, other: &Endpoint) -> Option<std::cmp::Ordering> {
-        if self.pi_multiple == other.pi_multiple {
+        if self.pi_multiple == other.pi_multiple && self.e_multiple == other.e_multiple {
             return Some(self.rational.cmp(&other.rational));
         }
         let (self_low, self_high) = self.enclosure();
@@ -121,12 +133,40 @@ fn pi_multiple_of(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
+/// Recognize rational multiples of e: e, q*e, e/n and negations.
+fn e_multiple_of(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Constant(Constant::E) => Some(BigRational::from_integer(1.into())),
+        Expr::Neg(inner) => e_multiple_of(ctx, *inner).map(|value| -value),
+        Expr::Mul(l, r) => {
+            if let Some(scale) = as_rational_const(ctx, *l) {
+                return e_multiple_of(ctx, *r).map(|value| scale * value);
+            }
+            if let Some(scale) = as_rational_const(ctx, *r) {
+                return e_multiple_of(ctx, *l).map(|value| scale * value);
+            }
+            None
+        }
+        Expr::Div(numerator, denominator) => {
+            let divisor = as_rational_const(ctx, *denominator)?;
+            if divisor.is_zero() {
+                return None;
+            }
+            e_multiple_of(ctx, *numerator).map(|value| value / divisor)
+        }
+        _ => None,
+    }
+}
+
 fn classify_bound(ctx: &Context, bound: ExprId) -> DefiniteBound {
     if let Some(value) = as_rational_const(ctx, bound) {
         return DefiniteBound::Finite(Endpoint::from_rational(value));
     }
     if let Some(multiple) = pi_multiple_of(ctx, bound) {
         return DefiniteBound::Finite(Endpoint::from_pi_multiple(multiple));
+    }
+    if let Some(multiple) = e_multiple_of(ctx, bound) {
+        return DefiniteBound::Finite(Endpoint::from_e_multiple(multiple));
     }
     match ctx.get(bound) {
         Expr::Constant(Constant::Infinity) => DefiniteBound::PosInfinity,
@@ -1200,6 +1240,18 @@ fn pi_enclosure() -> (BigRational, BigRational) {
     )
 }
 
+/// Rational enclosure of e, tight enough for textbook bounds.
+fn e_enclosure() -> (BigRational, BigRational) {
+    let denom = num_bigint::BigInt::from(100_000_000_000_000u64);
+    (
+        BigRational::new(
+            num_bigint::BigInt::from(271_828_182_845_904u64),
+            denom.clone(),
+        ),
+        BigRational::new(num_bigint::BigInt::from(271_828_182_845_905u64), denom),
+    )
+}
+
 /// Zeros of cos (odd multiples of pi/2) or sin (integer multiples of pi)
 /// against the closed rational interval, via the pi enclosure: every zero
 /// enclosure disjoint from [low, high] certifies; an enclosure fully
@@ -1552,5 +1604,31 @@ mod boundary_touch_tests {
             eval_definite("integrate(1/x, x, -1, 1)").as_deref(),
             Some("undefined")
         );
+    }
+
+    #[test]
+    fn e_multiple_bounds_certify_reciprocal_integrals() {
+        // e and rational multiples of e are now finite endpoints with a
+        // rational enclosure, so the pole certificate can place poles
+        // and the FTC evaluates (1/x to e used to stay residual).
+        for source in [
+            "integrate(1/x, x, 1, e)",
+            "integrate(1/x^2, x, 1, e)",
+            "integrate(2/x, x, 1, e)",
+            "integrate(1/x, x, 1, 2*e)",
+        ] {
+            assert!(eval_definite(source).is_some(), "must certify: {source}");
+        }
+    }
+
+    #[test]
+    fn e_bound_places_poles_via_enclosure() {
+        // Pole at 2 is inside [1, e] (e ~ 2.718): diverges. Pole at 3 is
+        // outside: certifies. The e enclosure decides both.
+        assert_eq!(
+            eval_definite("integrate(1/(x-2), x, 1, e)").as_deref(),
+            Some("undefined")
+        );
+        assert!(eval_definite("integrate(1/(x-3), x, 1, e)").is_some());
     }
 }
