@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 122 (newest first)
+Active entries: 123 (newest first)
 
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
@@ -139,6 +139,7 @@ Active entries: 122 (newest first)
 - 2026-06-13 | `retained` | calculus / limits / finite-point composition (honesty/soundness; | Honesty fix: sin/cos over an even pole stay residual (no cos(infinity) leak)
 - 2026-06-13 | `retained` | calculus / definite integration / special-value table (block 4, | Retained integration: half-integer Gamma moment table
 - 2026-06-13 | `retained` | calculus / limits / growth dominance at infinity (block 3, frontier | Retained limits: polylog over a fractional power at infinity
+- 2026-06-13 | `retained` | calculus / limits / rational growth at infinity (block 3, frontier | Retained limits: rational quotient with bounded additive noise
 - 2026-06-12 | `retained` | calculus / integration / educational route / trig product family / | Retained calculus: product-to-sum trig products and Fourier orthogonality
 - 2026-06-12 | `retained` | calculus / definite integration (block 13) / boundary-touch limits / | Retained calculus: fractional-power endpoint atoms close the boundary-touch radical gap
 - 2026-06-12 | `retained` | calculus / integration / educational route / by-parts log family | Retained calculus: monomial-log by parts widened to all rational powers
@@ -5303,3 +5304,50 @@ Active entries: 122 (newest first)
     (sub-linear powers); the cleaner axis for log dominance is
     polylog (any integer power of ln) versus positive power of x - keep
     that distinction explicit so ln(x)^a and x^b compare directly
+
+
+## 2026-06-13 - Retained limits: rational quotient with bounded additive noise
+
+- area:
+  - calculus / limits / rational growth at infinity (block 3, frontier
+    audit "(F) Squeeze y dominancia fraccionaria" - the bounded-additive-
+    noise rung that closes the item)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    equal-degree ratio and higher-degree divergence with noise)
+  - limit_matrix_cell: limit((x+sin x)/x,x,inf)=1,
+    limit((x^2+sin x)/x,x,inf)=infinity
+  - behavior_change_expected: yes - a polynomial-plus-bounded-noise
+    numerator/denominator resolves by the polynomial part's growth
+- observed (wired existing machinery into the rational quotient):
+  - rational_poly_limit converts num/den via multipoly_from_expr, which
+    FAILS on a bounded-noise term (sin x is not a polynomial), so
+    (x+sin x)/x stayed residual. The growth analyzer
+    polynomial_growth_info_with_bounded_additive_noise already existed
+    (used by radical ratios) but was never wired to the plain rational
+    quotient. bounded_noise_rational_limit_at_infinity computes both
+    sides' growth (degree + leading coeff, the noise dominated) and runs
+    the SAME degree comparison as the exact rule (deg< -> 0, deg= ->
+    ratio, deg> -> sign*inf via limit_growth_sign)
+  - gated to fire only when at least one side is NOT a pure polynomial, so
+    rational_poly_limit keeps the exact poly/poly case; unbounded "noise"
+    (x sin x) is rejected by is_bounded_elementary_expr_at_infinity, so
+    (x + x sin x)/x stays residual (genuinely oscillating, no limit)
+  - this closes the "(F) Squeeze y dominancia fraccionaria" item (the
+    squeeze, fractional log-power dominance, and now bounded-noise quotient
+    rungs are all done)
+- retained learning:
+  - when a quotient rule is built on an EXACT polynomial conversion
+    (multipoly_from_expr), it silently rejects "polynomial plus bounded
+    perturbation" inputs; the fix is not to extend the converter but to
+    compute a GROWTH SUMMARY (degree + leading coeff) that tolerates
+    bounded additive noise, then run the same degree comparison. The
+    growth-summary abstraction is the reusable seam
+  - a bounded-noise quotient is sound because the polynomial part fixes
+    the eventual sign and magnitude of BOTH numerator and denominator; the
+    denominator is eventually nonzero and ~ its leading term, so the ratio
+    is the leading-coefficient ratio. The soundness lives entirely in the
+    "is the perturbation bounded" predicate

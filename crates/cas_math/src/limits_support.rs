@@ -6916,7 +6916,47 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = polynomial_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = bounded_noise_rational_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     rational_poly_limit(ctx, expr, var, approach)
+}
+
+/// A rational quotient at infinity where one or both sides are a polynomial
+/// plus BOUNDED additive noise (e.g. `(x + sin x)/x -> 1`): the polynomial
+/// part sets the growth, the bounded noise is dominated. Reuses
+/// polynomial_growth_info_with_bounded_additive_noise and compares degrees
+/// exactly as the pure rational rule does. Gated to fire only when at least
+/// one side is NOT a pure polynomial, so rational_poly_limit keeps ownership
+/// of the exact poly/poly case.
+fn bounded_noise_rational_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if polynomial_growth_info(ctx, num, var).is_some()
+        && polynomial_growth_info(ctx, den, var).is_some()
+    {
+        return None;
+    }
+    let num_growth = polynomial_growth_info_with_bounded_additive_noise(ctx, num, var, approach)?;
+    let den_growth = polynomial_growth_info_with_bounded_additive_noise(ctx, den, var, approach)?;
+    if den_growth.leading_coeff.is_zero() {
+        return None;
+    }
+    if num_growth.degree < den_growth.degree {
+        return Some(ctx.num(0));
+    }
+    let ratio = num_growth.leading_coeff / den_growth.leading_coeff;
+    if num_growth.degree == den_growth.degree {
+        return Some(ctx.add(Expr::Number(ratio)));
+    }
+    let sign = limit_growth_sign(&ratio, num_growth.degree - den_growth.degree, approach);
+    Some(mk_infinity(ctx, sign))
 }
 
 const FINITE_POINT_LIMIT_UNSUPPORTED_WARNING: &str =
@@ -12322,6 +12362,48 @@ mod tests {
                 .unwrap_or_else(|| panic!("polylog/power dominance must resolve: {source}"));
             assert_eq!(display_expr(&ctx, out), expected, "{source}");
         }
+    }
+
+    #[test]
+    fn bounded_noise_rational_quotient_at_infinity_uses_leading_ratio() {
+        // A polynomial plus bounded additive noise has the polynomial's
+        // growth: (x + sin x)/x -> 1, the noise is dominated.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("(x + sin(x))/x", "1"),
+            ("(2*x + cos(x))/x", "2"),
+            ("(x^2 + sin(x))/(x^2 - 1)", "1"),
+            ("(x + sin(x))/(2*x + 1)", "1/2"),
+            ("x/(x + sin(x))", "1"),
+            ("(x + cos(x))/x^2", "0"),
+            ("(x^2 + sin(x))/x", "infinity"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("bounded-noise quotient must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn bounded_noise_rational_quotient_declines_unbounded_noise() {
+        // x*sin(x) is unbounded, so (x + x sin x)/x has no limit and must
+        // stay residual; a pure poly/poly ratio is left to the exact rule.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let unbounded = parse_expr(&mut ctx, "(x + x*sin(x))/x");
+        assert!(
+            bounded_noise_rational_limit_at_infinity(&mut ctx, unbounded, x, InfSign::Pos)
+                .is_none(),
+            "unbounded noise must decline"
+        );
+        let pure_poly = parse_expr(&mut ctx, "(x^2 + 1)/(2*x^2 - 3)");
+        assert!(
+            bounded_noise_rational_limit_at_infinity(&mut ctx, pure_poly, x, InfSign::Pos)
+                .is_none(),
+            "pure poly/poly is left to the exact rational rule"
+        );
     }
 
     #[test]
