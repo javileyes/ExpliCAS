@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 141 (newest first)
+Active entries: 142 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -131,6 +131,7 @@ Active entries: 141 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / ratio of general-exp infinitesimals at 0 (block 3) | Retained limits: (a^x-1)/(b^x-1) -> ln a / ln b
 - 2026-06-14 | `retained` | calculus / limits / ratio of exponential combinations at 0 (block 3) | Retained limits: (sum exp)/(sum exp) -> ratio of derivatives
 - 2026-06-14 | `retained` | calculus / limits / radical conjugate products at +infinity (block 3) | Retained limits: factor * (radical conjugate difference -> 0) = 0*inf
+- 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 4, Phase 6 educational) | Retained educational: by-parts narration for polynomial*{exp,sin,cos,sinh}
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6153,3 +6154,52 @@ Active entries: 141 (newest first)
     a thin asymptotic layer on top that only needs to recognize the decay and
     weigh it against the factor. Division of labor with the multiplicative rule
     is clean: it answers inf*(finite/inf), this answers the inf*0 it declines
+
+
+## 2026-06-14 - Retained educational: by-parts narration for polynomial*{exp,sin,cos,sinh}
+
+- area:
+  - calculus / integration / didactic by-parts trace (block 4, Phase 6 educational)
+- status:
+  - `retained`
+- capture:
+  - investment_class: educational (didactic step trace; results unchanged)
+  - behavior_change_expected: presentation-only - the integrate RESULT and
+    required_conditions are byte-identical; only the didactic substep trace gains
+    the u/dv/du/v narration for the linear-polynomial * {exp,sin,cos,sinh} family
+  - success_condition: the by-parts step now narrates Elegir u y dv / Calcular du
+    y v / Aplicar la fórmula, with u=polynomial and dv=elementary factor; the ln
+    family keeps its own (u=ln) narration un-duplicated; results untouched
+- observed (the narrator already existed - only the family was missing):
+  - generate_integration_by_parts_substeps emitted the bare title 'Usar
+    integración por partes' and then .extend()ed with a FULL narrator
+    (generate_polynomial_affine_log_by_parts_substeps) that fired ONLY for
+    polynomial*ln. The x*{exp,sin,cos,sinh} family, atan, asin got the title only.
+    The fix clones that narrator into a sibling with the OPPOSITE u/dv assignment
+    (u=polynomial, dv=elementary), computing v via the public integrate_symbolic_
+    expr and du via differentiate_symbolic_expr - both already imported in the file
+  - factor disambiguation by ELIMINATION: pick the degree-1 polynomial factor as u
+    (Polynomial::from_expr ok && degree==1); the OTHER factor is dv iff it is NOT a
+    polynomial AND NOT a logarithm (the ln narrator owns u=ln). This sidesteps the
+    exp-as-Function-vs-Pow representation question entirely and cannot double-narrate
+  - the u factor must be grouped (group_*_for_product) in the 'Aplicar' uv term:
+    u=2x+3 rendered as the ambiguous `2x + 3*v` until parenthesized to `(2x+3)*v`;
+    the ln narrator never hit this because u=ln(x) is atomic
+- decision (bounded, extract-before-invent, graceful no-op):
+  - scope cycle to the LINEAR-polynomial degree-1 case; defer the repeated
+    degree>=2 'repetida' tabular narration and the inverse-trig (u=inverse fn)
+    narration to a follow-up cycle (they stay title-only, honest). Return an empty
+    trace on any None (no antiderivative / no derivative / not the right shape) so a
+    trace is NEVER corrupted; results are presentation-independent
+- retained learning:
+  - when a didactic narrator exists for one family, a sibling family is a CLONE
+    with the role swap, not new machinery - the u/dv assignment is the only real
+    difference (poly*ln puts u=ln; poly*elementary puts u=poly). Reuse the public
+    integrate/differentiate entry points to fill the v/du the template needs
+  - factor-role disambiguation is most robust by elimination + a single explicit
+    exclusion (here: ln), not by enumerating the accepted forms - it is immune to
+    AST representation drift (exp as Function vs Pow(e,.)) and to future routes
+  - the integrate smoke step matcher and the by-parts contract assertions are
+    SUBSET/containment (.any / `expected in step_text`), so ENRICHING an existing
+    row's expected_step_substrings is a zero-counter, self-documenting footprint -
+    no new rows, no histogram churn, when the change is presentation-only

@@ -12410,6 +12410,9 @@ fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     substeps.extend(generate_polynomial_affine_log_by_parts_substeps(
         ctx, args[0], after, var_name,
     ));
+    substeps.extend(generate_polynomial_elementary_by_parts_substeps(
+        ctx, args[0], after, var_name,
+    ));
     substeps
 }
 
@@ -12473,6 +12476,149 @@ fn generate_polynomial_affine_log_by_parts_substeps(
         ))
         .with_after_latex(latex_expr(ctx, after)),
     ]
+}
+
+/// Narrate one integration-by-parts application for the
+/// `polynomial(linear) * {exp, sin, cos, sinh, cosh}(affine)` family, mirroring
+/// `generate_polynomial_affine_log_by_parts_substeps` but with the OTHER u/dv
+/// assignment: `u = polynomial`, `dv = elementary factor` (the log narrator
+/// keeps `u = ln`). `v` is the antiderivative of the elementary factor and
+/// `du = p'(x)`. Presentation only -- the integration result is untouched.
+/// Returns an empty trace (graceful no-op) for the ln family (owned by the log
+/// narrator), the repeated degree>=2 case (kept title-only), and anything whose
+/// antiderivative or derivative is unavailable, so a trace is never corrupted.
+fn generate_polynomial_elementary_by_parts_substeps(
+    ctx: &Context,
+    integrand: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Vec<SubStep> {
+    let Some((left, right)) = as_mul(ctx, integrand) else {
+        return Vec::new();
+    };
+    let Some((u_factor, dv_factor)) = linear_times_elementary_factors(ctx, left, right, var_name)
+    else {
+        return Vec::new();
+    };
+
+    let mut scratch = ctx.clone();
+    let Some(v_expr) = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        &mut scratch,
+        dv_factor,
+        var_name,
+    ) else {
+        return Vec::new();
+    };
+    let v_expr = simplify_expr_in_context(&mut scratch, v_expr);
+    let Some(du_expr) = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        u_factor,
+        var_name,
+    ) else {
+        return Vec::new();
+    };
+    let du_expr = simplify_expr_in_context(&mut scratch, du_expr);
+
+    let u_display = display_expr(&scratch, u_factor);
+    let u_latex = latex_expr(&scratch, u_factor);
+    let v_display = display_expr(&scratch, v_expr);
+    let v_latex = latex_expr(&scratch, v_expr);
+    let du_display = display_expr(&scratch, du_expr);
+    let du_latex = latex_expr(&scratch, du_expr);
+    let dv_display = format!("{} dx", display_expr(&scratch, dv_factor));
+    let dv_latex = format!("{}\\,dx", latex_expr(&scratch, dv_factor));
+
+    let u_display_factor = group_display_for_product(&u_display);
+    let u_latex_factor = group_latex_for_product(&u_latex);
+    let v_display_factor = group_display_for_product(&v_display);
+    let v_latex_factor = group_latex_for_product(&v_latex);
+    let choice_display = format!("u = {}, dv = {}", u_display, dv_display);
+    let choice_latex = format!("u = {},\\; dv = {}", u_latex, dv_latex);
+
+    // The remaining integral is `int v du`; drop the redundant `* 1` when du = 1.
+    let (remaining_display, remaining_latex) = if du_display == "1" {
+        (v_display_factor.clone(), v_latex_factor.clone())
+    } else {
+        (
+            format!(
+                "{}·{}",
+                v_display_factor,
+                group_display_for_product(&du_display)
+            ),
+            format!(
+                "{}\\cdot {}",
+                v_latex_factor,
+                group_latex_for_product(&du_latex)
+            ),
+        )
+    };
+
+    vec![
+        SubStep::new(
+            "Elegir u y dv",
+            display_expr(&scratch, integrand),
+            choice_display.clone(),
+        )
+        .with_before_latex(latex_expr(&scratch, integrand))
+        .with_after_latex(choice_latex.clone()),
+        SubStep::new(
+            "Calcular du y v",
+            choice_display,
+            format!("du = {} dx, v = {}", du_display, v_display),
+        )
+        .with_before_latex(choice_latex)
+        .with_after_latex(format!("du = {}\\,dx,\\; v = {}", du_latex, v_latex)),
+        SubStep::new(
+            "Aplicar la fórmula de integración por partes",
+            format!(
+                "{}·{} - integrate({}, {})",
+                u_display_factor, v_display_factor, remaining_display, var_name
+            ),
+            display_expr(&scratch, after),
+        )
+        .with_before_latex(format!(
+            "{}\\cdot {} - \\int {}\\,d{}",
+            u_latex_factor, v_latex_factor, remaining_latex, var_name
+        ))
+        .with_after_latex(latex_expr(&scratch, after)),
+    ]
+}
+
+/// Returns `(u = linear polynomial, dv = elementary factor)` when exactly one of
+/// the two product factors is a degree-1 polynomial in `var_name` and the other
+/// is a non-polynomial, non-logarithm factor. The ln family is excluded so the
+/// dedicated log narrator owns it (it assigns `u = ln`, not `u = polynomial`).
+fn linear_times_elementary_factors(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, ExprId)> {
+    oriented_linear_times_elementary(ctx, left, right, var_name)
+        .or_else(|| oriented_linear_times_elementary(ctx, right, left, var_name))
+}
+
+fn oriented_linear_times_elementary(
+    ctx: &Context,
+    poly_candidate: ExprId,
+    elem_candidate: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, ExprId)> {
+    // u must be a genuine degree-1 polynomial (defer the repeated degree>=2 case).
+    let poly = Polynomial::from_expr(ctx, poly_candidate, var_name).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+    // dv must be the transcendental factor: not a polynomial, and not a logarithm.
+    if Polynomial::from_expr(ctx, elem_candidate, var_name).is_ok() {
+        return None;
+    }
+    if let Expr::Function(fn_id, _) = ctx.get(elem_candidate) {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Ln) {
+            return None;
+        }
+    }
+    Some((poly_candidate, elem_candidate))
 }
 
 fn polynomial_affine_log_by_parts_factors(

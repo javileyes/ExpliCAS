@@ -2060,6 +2060,105 @@ fn integrate_contract_affine_octic_sin_by_parts_verifies_publicly() {
     );
 }
 
+fn integration_substeps(input: &str) -> Vec<Value> {
+    let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on")
+        .clone();
+    steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .and_then(|step| step["substeps"].as_array())
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn substep_after_latex<'a>(substeps: &'a [Value], title: &str) -> Option<&'a str> {
+    substeps
+        .iter()
+        .find(|substep| substep["title"] == title)
+        .and_then(|substep| substep["after_latex"].as_str())
+}
+
+#[test]
+fn integrate_contract_linear_elementary_by_parts_narrates_u_dv_du_v() {
+    // The polynomial(linear) * {exp,sin,cos,sinh} family now narrates the full
+    // by-parts choice (u = polynomial, dv = elementary factor), mirroring the
+    // log narrator with the opposite u/dv assignment.
+    for (input, dv_latex, v_latex) in [
+        ("integrate(x*cos(x), x)", "\\cos(x)", "\\sin(x)"),
+        ("integrate(x*sin(x), x)", "\\sin(x)", "-\\cos(x)"),
+        ("integrate(x*exp(x), x)", "{e}^{x}", "{e}^{x}"),
+        ("integrate(x*sinh(x), x)", "\\sinh(x)", "\\cosh(x)"),
+    ] {
+        let substeps = integration_substeps(input);
+        assert_eq!(
+            substep_after_latex(&substeps, "Elegir u y dv"),
+            Some(format!("u = x,\\; dv = {dv_latex}\\,dx").as_str()),
+            "u/dv narration mismatch for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            substep_after_latex(&substeps, "Calcular du y v"),
+            Some(format!("du = 1\\,dx,\\; v = {v_latex}").as_str()),
+            "du/v narration mismatch for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|s| s["title"] == "Aplicar la fórmula de integración por partes"),
+            "missing apply-formula substep for {input}, got {substeps:?}"
+        );
+    }
+
+    // Affine inner argument: v carries the 1/2 chain factor; non-unit du shows.
+    let affine = integration_substeps("integrate((2*x+3)*exp(x), x)");
+    assert_eq!(
+        substep_after_latex(&affine, "Elegir u y dv"),
+        Some("u = 2\\cdot x + 3,\\; dv = {e}^{x}\\,dx"),
+        "u/dv for (2x+3)exp(x), got {affine:?}"
+    );
+    assert_eq!(
+        substep_after_latex(&affine, "Calcular du y v"),
+        Some("du = 2\\,dx,\\; v = {e}^{x}"),
+        "du/v for (2x+3)exp(x), got {affine:?}"
+    );
+
+    // Regression: the ln family keeps ITS narration (u = ln), not duplicated by
+    // the new poly-elementary narrator.
+    let log = integration_substeps("integrate(x*ln(x), x)");
+    assert_eq!(
+        substep_after_latex(&log, "Elegir u y dv"),
+        Some("u = \\ln(x),\\; dv = x\\,dx"),
+        "ln by-parts narration regressed, got {log:?}"
+    );
+
+    // Deferred: the repeated degree>=2 case stays title-only (no u/dv narration).
+    let repeated = integration_substeps("integrate(x^2*exp(x), x)");
+    assert!(
+        repeated
+            .iter()
+            .any(|s| s["title"] == "Usar integración por partes repetida"),
+        "expected repeated title for x^2*exp(x), got {repeated:?}"
+    );
+    assert!(
+        substep_after_latex(&repeated, "Elegir u y dv").is_none(),
+        "repeated case must not narrate u/dv yet, got {repeated:?}"
+    );
+
+    // No polynomial factor: the new narrator must not fire (different route).
+    let product = integration_substeps("integrate(cos(x)*exp(x), x)");
+    assert!(
+        substep_after_latex(&product, "Elegir u y dv").is_none(),
+        "cos(x)*exp(x) must not get poly-elementary narration, got {product:?}"
+    );
+
+    // Results are untouched (presentation-only change).
+    assert_antiderivative_verifies("integrate(x*cos(x), x)");
+    assert_antiderivative_verifies("integrate(x*exp(x), x)");
+    assert_antiderivative_verifies("integrate((2*x+3)*exp(x), x)");
+}
+
 #[test]
 fn integrate_contract_affine_octic_cos_by_parts_verifies_publicly() {
     let input = "integrate(x^8*cos(2*x+1), x)";
