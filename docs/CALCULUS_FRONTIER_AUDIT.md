@@ -216,10 +216,23 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   equivalente local en el cero del argumento; (3) log en el numerador/
   composición (`ln(1+x)/sin x`) — excluido por la ruta de base no-natural
   `valor/ln(base)`; (4) encadenamiento L'Hôpital general)*
-- [ ] **(A) Formas exponenciales 1^∞/0^0/∞^0** vía `exp(lim g·ln f)`:
+- [~] **(A) Formas exponenciales 1^∞/0^0/∞^0** vía `exp(lim g·ln f)`:
   `(1+1/x)^x → e`, `(1+2/x)^x → e²`, `(1+x)^(1/x) → e`, `x^x → 1 en
   0+`, `(2^x+3^x)^(1/x) → 3`. Hoy la constante `e` es inalcanzable
   por límite — invalida un capítulo del temario.
+  *(parcial 2026-06-14 a723ff67d: la forma 1^∞ EN INFINITO graduada — la
+  constante `e` ya es alcanzable por límite. `one_to_infinity_power_limit_
+  at_infinity` reduce 1^∞ a `exp(lim exp·(base−1))` usando `ln(1+h)~h`
+  (válido porque la base→1 fuerza h→0), racionaliza el producto sobre
+  denominador común (`rationalize_to_fraction`) y reutiliza el límite
+  racional; pliega `e^0=1, e^1=e, e^(±∞)=∞/0`. Cubre `(1+a/x)^x=e^a`,
+  `(1+1/x)^(kx)=e^k`, `((2x+1)/(2x-1))^x=e`, `(1+1/x²)^x=1`,
+  `(1+1/x)^(x²)=∞`. Verificado adversarialmente (2-lente, 85 sondas, 0
+  unsound): la trampa de SEGUNDO ORDEN `cos(1/x)^(x²)=e^(−1/2)` declina
+  (base transcendente opaca al racionalizador) — nunca emite valor erróneo.
+  Peldaños restantes: 0^0 (`x^x` en 0+), ∞^0 (`(2^x+3^x)^(1/x)=3`), el
+  1^∞ en PUNTO FINITO (`(1+x)^(1/x)` en 0), y las bases transcendentes de
+  segundo orden.)*
 - [x] **(F) ∞−∞ con radicales** (racionalización por conjugado):
   `sqrt(x^2+x)-x → 1/2`, `sqrt(x+1)-sqrt(x) → 0`, y en punto finito
   `(sqrt(x)-2)/(x-4) → 1/4`.
