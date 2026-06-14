@@ -14377,6 +14377,38 @@ pub fn integrate_symbolic_is_exp_trig_same_linear_target(
     exp_trig_same_linear_antiderivative(ctx, expr, var).is_some()
 }
 
+/// `integral cos(ln(u)) du = u/2 (cos(ln u) + sin(ln u))` and
+/// `integral sin(ln(u)) du = u/2 (sin(ln u) - cos(ln u))` for an affine inner
+/// `u` in `x`. Substituting `t = ln u` turns the integrand into the cyclic
+/// `cos(t) e^t` / `sin(t) e^t` form; the `1/u'` affine cofactor scales it. Only
+/// fires on a bare `cos(ln(affine))` / `sin(ln(affine))`, so a non-logarithmic
+/// or non-affine inner stays an honest residual.
+fn trig_of_log_antiderivative(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    let (builtin, ln_arg) = match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Cos | BuiltinFn::Sin)) => (b, args[0]),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let inner = unary_builtin_arg(ctx, ln_arg, BuiltinFn::Ln)?;
+    let (inner, slope) = nonzero_linear_arg_and_slope(ctx, inner, var)?;
+    let slope = rational_constant_value(ctx, slope)?;
+    // scale = 1 / (2 u'); the affine cofactor of the inner substitution.
+    let scale = BigRational::one() / (BigRational::from_integer(2.into()) * slope);
+
+    let cos_ln = ctx.call_builtin(BuiltinFn::Cos, vec![ln_arg]);
+    let sin_ln = ctx.call_builtin(BuiltinFn::Sin, vec![ln_arg]);
+    let combo = match builtin {
+        BuiltinFn::Cos => ctx.add(Expr::Add(cos_ln, sin_ln)),
+        BuiltinFn::Sin => ctx.add(Expr::Sub(sin_ln, cos_ln)),
+        _ => unreachable!("trig_of_log only matches cos/sin"),
+    };
+    let inner_combo = mul2_raw(ctx, inner, combo);
+    let scale_expr = ctx.add(Expr::Number(scale));
+    Some(mul2_raw(ctx, scale_expr, inner_combo))
+}
+
 fn is_polynomial_times_linear_function_target<F>(
     ctx: &mut Context,
     expr: ExprId,
@@ -21067,6 +21099,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let Some(integral) = exp_trig_same_linear_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = trig_of_log_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 

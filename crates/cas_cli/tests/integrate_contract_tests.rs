@@ -1103,6 +1103,66 @@ fn integrate_contract_reciprocal_hyperbolic_first_power_resolves_sech_csch() {
 }
 
 #[test]
+fn integrate_contract_trig_of_logarithm_resolves_and_respects_boundary() {
+    // cos/sin of ln(affine) integrate via the cyclic substitution u = ln(inner),
+    // carrying the ln-positivity domain. The result round-trips to the integrand.
+    for (input, expected_result, expected_required) in [
+        (
+            "integrate(cos(ln(x)), x)",
+            "1/2 * x * (sin(ln(x)) + cos(ln(x)))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(sin(ln(x)), x)",
+            "1/2 * x * (sin(ln(x)) - cos(ln(x)))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(cos(ln(2*x+1)), x)",
+            "1/4 * (2 * x + 1) * (sin(ln(2 * x + 1)) + cos(ln(2 * x + 1)))",
+            vec!["x > -1/2".to_string()],
+        ),
+    ] {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+        assert_eq!(result, expected_result, "result for {input}");
+        assert_eq!(required, expected_required, "required for {input}");
+        let (rt, _) = evaluated_expr_with_required_conditions(&format!(
+            "diff(integrate({}, x), x) - ({})",
+            &input[10..input.len() - 4],
+            &input[10..input.len() - 4]
+        ));
+        assert_eq!(rt, "0", "round-trip for {input}");
+    }
+
+    // Boundary: only a bare cos/sin of ln(affine) fires. A non-logarithmic or
+    // non-affine inner stays an honest residual, and the u=ln/x and bare-ln
+    // owners keep their results (the new detector must not hijack them).
+    for input in [
+        "integrate(cos(ln(x) + 1), x)",
+        "integrate(cos(x*ln(x)), x)",
+        "integrate(cos(ln(x^2)), x)",
+    ] {
+        let (result, _) = evaluated_expr_with_required_conditions(input);
+        assert!(
+            result.starts_with("integrate("),
+            "{input} should stay an honest residual, got {result}"
+        );
+    }
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(ln(x)/x, x)").0,
+        "1/2 * ln(x)^2"
+    );
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(ln(x), x)").0,
+        "x * ln(x) - x"
+    );
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(cos(x), x)").0,
+        "sin(x)"
+    );
+}
+
+#[test]
 fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_nonlinear_hyperbolic_reciprocal_square_subset(
 ) {
     for input in [

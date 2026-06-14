@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 143 (newest first)
+Active entries: 144 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -133,6 +133,7 @@ Active entries: 143 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / radical conjugate products at +infinity (block 3) | Retained limits: factor * (radical conjugate difference -> 0) = 0*inf
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 4, Phase 6 educational) | Retained educational: by-parts narration for polynomial*{exp,sin,cos,sinh}
 - 2026-06-14 | `retained` | calculus / integration / hyperbolic reciprocal table route, power n=1 (block 4) | Retained integration: sech/csch antiderivatives (hyperbolic reciprocal n=1)
+- 2026-06-14 | `retained` | calculus / integration / generalized substitution (block 5) | Retained integration: cos(ln x) / sin(ln x) cyclic substitution
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6264,3 +6265,46 @@ Active entries: 143 (newest first)
   - domain conditions derived generically from the integrand denominator carry
     over automatically when a residual becomes supported: verify by checking the
     RESIDUAL already shows the condition, then no condition wiring is needed
+
+
+## 2026-06-14 - Retained integration: cos(ln x) / sin(ln x) cyclic substitution
+
+- area:
+  - calculus / integration / generalized substitution (block 5)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_matrix_cell: integrate(cos(ln(x)),x)=x/2*(cos(ln x)+sin(ln x)),
+    integrate(sin(ln(x)),x)=x/2*(sin(ln x)-cos(ln x)),
+    integrate(cos(ln(2x+1)),x)=(2x+1)/4*(cos+sin) [x>-1/2]
+  - behavior_change_expected: yes - cos/sin of ln(affine), previously echoing,
+    become closed forms
+- observed (substitute u=ln(inner), then the cyclic cos(t)e^t form):
+  - trig_of_log_antiderivative matches a BARE cos/sin whose single argument is
+    ln(affine-in-x). Substituting u = inner turns int cos(ln u) du into
+    int cos(t) e^t dt = e^t/2 (cos t + sin t) with t = ln u, i.e.
+    u/2 (cos(ln u) + sin(ln u)); the 1/u' affine cofactor (from
+    nonzero_linear_arg_and_slope) scales it. sin mirrors with (sin - cos)
+  - the ln-positivity domain (x>0, or x>-1/2 for ln(2x+1)) is attached
+    GENERICALLY from the integrand, like int ln(x) -> x>0; no condition wiring
+  - SOUNDNESS: the detector only fires on Function(Cos|Sin, [Function(Ln,
+    [affine])]); a shifted (ln x + 1), product (x ln x), or nonlinear-inner
+    (ln(x^2) -> 2 ln|x|) argument declines to an honest residual, and the
+    u=ln/x owner (int ln(x)/x = 1/2 ln^2 x) and bare int ln(x) are untouched.
+    diff(F)-integrand reduces to 0 symbolically and numerically; the matrix
+    direct_diff_integrate round-trip closes cleanly (diff(result)=integrand
+    byte-exact), so this lives in the matrix with full verification (unlike the
+    sech/csch cycle whose round-trip did not close)
+- retained learning:
+  - "trig of a log" and "exp times trig" are the SAME cyclic by-parts integral
+    read through a substitution: cos(ln u) under u=ln becomes cos(t) e^t. When
+    an integrand becomes a known-solved family after one substitution, the
+    cheapest route is a thin detector that recognizes the pre-substitution shape
+    and writes the back-substituted closed form directly, not a new by-parts loop
+  - whether a new antiderivative earns MATRIX rows vs a contract test is decided
+    by the direct_diff_integrate round-trip: if diff(result) returns the
+    integrand and re-integration recovers the antiderivative, the matrix's
+    standard verification fits (cos(ln x)); if the derivative is an
+    unsimplified-but-equivalent form the engine cannot re-integrate, the
+    contract route (diff(integrate)-integrand=0) is the home (sech/csch)
