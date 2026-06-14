@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 153 (newest first)
+Active entries: 154 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -143,6 +143,7 @@ Active entries: 153 (newest first)
 - 2026-06-14 | `retained` | calculus / indefinite integration / polynomial cofactor times an even | Retained integration: polynomial times sine/cosine squared by power reduction
 - 2026-06-14 | `retained` | calculus / didactic / integration-by-parts substeps for | Retained didactic: repeated integration-by-parts narration (deg>=2)
 - 2026-06-14 | `retained` | calculus / limits / finite 0/0 quotient at a non-zero point (block 3) | Retained limits: L'Hôpital for 0/0 at a finite non-zero point
+- 2026-06-14 | `retained` | calculus / indefinite integration / p(x) * sin(ax+b)^n or cos(ax+b)^n with | Retained integration: polynomial times even trig power (n>=4)
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6719,3 +6720,43 @@ Active entries: 153 (newest first)
   - a decision procedure (L'Hopital) is retained on conservative emission: declining a
     true-but-unprovable limit (x*sin(1/(x-1))->0) is sound, emitting a wrong one is not.
     Gate to definite-finite-rational-or-decline and the honesty list survives for free
+
+
+## 2026-06-14 - Retained integration: polynomial times even trig power (n>=4)
+
+- area:
+  - calculus / indefinite integration / p(x) * sin(ax+b)^n or cos(ax+b)^n with
+    even n in 4..=8 (block 4/7, power reduction)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: integrate(x*sin(x)^4,x), integrate(x^2*sin(x)^4,x),
+    integrate(x*cos(x)^4,x), integrate(x*sin(2*x+1)^4,x), integrate(x*sin(x)^8,x)
+  - behavior_change_expected: yes - p(x)*sin^n / p(x)*cos^n (deg p >= 1, even
+    n 4..=8, affine inner) were residual and now integrate
+- observed (the n==2 owner generalizes by the binomial power reduction, not new math):
+  - the cycle-3 square owner built sin^2(u) = 1/2 - 1/2 cos(2u) by hand; the even
+    power reduces the same way by the binomial identity
+    sin^(2m)(u) = C(2m,m)/4^m + (2/4^m) Sum_{j=1..m} (-1)^j C(2m,m-j) cos(2j u)
+    (the cosine variant drops the (-1)^j). Multiplying by p and DISTRIBUTING gives
+    p*C(2m,m)/4^m + Sum_j (coeff*p) cos(2j u), each term already owned (the bare
+    polynomial integrator and the polynomial-times-cos(affine) by-parts). As for
+    n==2, the integrator does not distribute a p*(sum) product, so the distributed
+    sum is built here. Reuses the shared combinatorics::binomial_coeff
+  - runs after the n==2 owner so it only adds even n>=4; capped at n<=8 to match the
+    bare even-power handlers (sin^4/6/8). Odd power, non-affine inner, n>=10, and a
+    constant cofactor all decline to honest residuals
+  - correctness verified numerically (sympy/mpmath round-trip, max |d/dx F - f| ~1e-16
+    across x*sin^4, x^2*sin^4, x*cos^4, x*sin^6, x*sin^8, x*cos(2x+1)^4)
+- retained learning:
+  - when a hand-built special case (sin^2 power reduction) has a known closed-form
+    generalization (the binomial cosine-sum for sin^(2m)), the extension is the
+    formula plus the SAME distribute-and-delegate plumbing, not a new integrator.
+    Reuse the shared binomial helper rather than re-deriving coefficients
+  - the matrix harness verifies a supported row by differentiating the result and
+    re-closing it against the integrand; for high-degree multiple-angle outputs that
+    round-trip overflows the simplifier depth (depth_overflow / timeout) even though
+    the antiderivative is correct. When the public verification cannot close, lock the
+    capability with a unit test and numeric round-trip instead of a fragile matrix row,
+    and record the simplifier round-trip ceiling as the honest peldaño

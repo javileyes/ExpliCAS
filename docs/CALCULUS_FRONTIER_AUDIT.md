@@ -650,6 +650,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   inner no afín substitución-amenable `x·sin(x²)²` — es ELEMENTAL
   (=x²/4−sin(2x²)/8 por u=x², el cofactor x aporta el du) pero hoy residual;
   y potencias pares ≥4 `x·sin⁴x`)*
+  *(potencias pares ≥4 graduadas 2026-06-14 PENDING_HASH: p(x)·sin(ax+b)^n /
+  p(x)·cos(ax+b)^n con n par en 4..=8 vía la reducción binómica
+  sin^(2m)(u)=C(2m,m)/4^m + (2/4^m)Σ_{j=1}^{m}(−1)^j C(2m,m−j)cos(2j u) (coseno
+  sin el (−1)^j). Multiplica por p, DISTRIBUYE en p·c₀ + Σ(cⱼ·p)cos(2j u) y delega
+  igual que n=2; reutiliza el `combinatorics::binomial_coeff` compartido. Corre
+  tras el dueño n=2 (solo añade n≥4), cap n≤8 a juego con los handlers desnudos
+  sin⁴/⁶/⁸. `x·sin⁴x`, `x²·sin⁴x`, `x·cos⁴x`, `x·sin⁶x`, `x·sin⁸x`,
+  `x·cos(2x+1)⁴`. Impar, inner no afín, n≥10 y cofactor constante declinan.
+  Correcto verificado NUMÉRICAMENTE (sympy/mpmath, máx |d/dx F − f| ~1e-16); SIN
+  filas de matriz porque el round-trip de verificación (derivar el resultado y
+  recerrarlo contra el integrando) desborda la profundidad del simplificador
+  para las salidas multi-ángulo de grado alto — el techo de round-trip del
+  simplificador queda como peldaño. Queda aún el inner substitución-amenable
+  `x·sin(x²)²`.)*
 - [x] **(F) sech/csch no parsean**: `sech(x)^2` da "función no
   definida".
   *(graduado 2026-06-13 758e54e73: el parser desugariza sech→1/cosh,

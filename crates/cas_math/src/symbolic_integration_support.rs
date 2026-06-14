@@ -9470,6 +9470,118 @@ fn polynomial_times_trig_square_antiderivative(
     integrate_symbolic_expr(ctx, rewritten, var)
 }
 
+/// `p(x) * sin(ax+b)^n` / `p(x) * cos(ax+b)^n` for an EVEN power `n` in `4..=8`
+/// and a non-constant polynomial cofactor `p`. Generalizes the `n == 2`
+/// power-reduction owner: the even power reduces to a cosine sum
+/// `sin^(2m)(u) = C(2m,m)/4^m + (2/4^m) Σ_{j=1}^{m} (-1)^j C(2m, m-j) cos(2j u)`
+/// (the cosine variant drops the `(-1)^j`). Multiplying by `p` and DISTRIBUTING
+/// gives `p·C(2m,m)/4^m + Σ_j (coeff·p) cos(2j u)`, each term already owned (the
+/// bare polynomial integrator and the polynomial-times-cos(affine) by-parts). As
+/// for `n == 2`, the integrator does not distribute a `p·(sum)` product itself,
+/// so the distributed sum is built here. Runs after the `n == 2` owner, so it
+/// only adds even `n >= 4`.
+fn polynomial_times_higher_even_trig_power_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+    // Find exactly one sin(u)^n / cos(u)^n factor with even n in 4..=8 and an
+    // affine argument with nonzero rational slope.
+    let mut trig: Option<(usize, BuiltinFn, ExprId, u32)> = None;
+    for (i, factor) in factors.iter().enumerate() {
+        let Expr::Pow(base, exp) = ctx.get(*factor).clone() else {
+            continue;
+        };
+        let Expr::Number(exp_value) = ctx.get(exp).clone() else {
+            continue;
+        };
+        if !exp_value.is_integer() {
+            continue;
+        }
+        let Some(n) = exp_value.to_integer().to_u32() else {
+            continue;
+        };
+        if !(4..=8).contains(&n) || !n.is_multiple_of(2) {
+            continue;
+        }
+        let Expr::Function(fn_id, args) = ctx.get(base).clone() else {
+            continue;
+        };
+        if args.len() != 1 {
+            continue;
+        }
+        let builtin = match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            _ => continue,
+        };
+        let Some((slope, _)) = get_linear_coeffs(ctx, args[0], var) else {
+            continue;
+        };
+        let Some(slope) = rational_constant_value(ctx, slope) else {
+            continue;
+        };
+        if slope.is_zero() {
+            continue;
+        }
+        if trig.is_some() {
+            return None; // more than one trig-power factor is out of scope
+        }
+        trig = Some((i, builtin, args[0], n));
+    }
+    let (trig_idx, builtin, u, n) = trig?;
+
+    // The remaining factors must be a non-constant polynomial cofactor.
+    let cofactor_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != trig_idx)
+        .map(|(_, f)| *f)
+        .collect();
+    let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+    if cofactor_poly.degree() == 0 {
+        return None; // a constant cofactor is the bare power-reduction case
+    }
+
+    let m = n / 2;
+    let mut four_m = num_bigint::BigInt::from(1);
+    for _ in 0..m {
+        four_m *= 4;
+    }
+
+    // Constant term: p · C(2m,m)/4^m.
+    let c0 = BigRational::new(
+        num_bigint::BigInt::from(crate::combinatorics::binomial_coeff(n, m)),
+        four_m.clone(),
+    );
+    let mut acc = scale_rational_term(ctx, c0, cofactor);
+
+    // Cosine terms: (coeff · p) cos(2j u), j = 1..=m.
+    for j in 1..=m {
+        let magnitude = BigRational::new(
+            num_bigint::BigInt::from(2 * crate::combinatorics::binomial_coeff(n, m - j)),
+            four_m.clone(),
+        );
+        let coeff = match builtin {
+            // sin^(2m) carries (-1)^j; cos^(2m) is all positive.
+            BuiltinFn::Sin if !j.is_multiple_of(2) => -magnitude,
+            BuiltinFn::Sin | BuiltinFn::Cos => magnitude,
+            _ => return None,
+        };
+        let two_j = ctx.num((2 * j) as i64);
+        let arg = mul2_raw(ctx, two_j, u);
+        let cos_term = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+        let cofactor_cos = mul2_raw(ctx, cofactor, cos_term);
+        let term = scale_rational_term(ctx, coeff, cofactor_cos);
+        acc = ctx.add(Expr::Add(acc, term));
+    }
+    integrate_symbolic_expr(ctx, acc, var)
+}
+
 fn odd_power_times_quadratic_function_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -21966,6 +22078,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = polynomial_times_higher_even_trig_power_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = linear_radical_substitution_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -22311,6 +22427,45 @@ mod tests {
         );
         let bare = parse("2*sin(x)^2", &mut ctx).expect("parse");
         assert!(super::polynomial_times_trig_square_antiderivative(&mut ctx, bare, "x").is_none());
+    }
+
+    #[test]
+    fn integrates_polynomial_times_higher_even_trig_power() {
+        let mut ctx = Context::new();
+        // p(x) * sin^n / cos^n with even n in 4..=8 now reduces to a cosine sum
+        // times p(x) and integrates; round-trips verified numerically end-to-end.
+        for source in [
+            "x*sin(x)^4",
+            "x^2*sin(x)^4",
+            "x*cos(x)^4",
+            "x*sin(x)^6",
+            "x*sin(x)^8",
+            "x*cos(2*x+1)^4",
+            "(x+1)*cos(x)^4",
+        ] {
+            let expr = parse(source, &mut ctx).expect("parse");
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+        // Declines: odd power (different family), non-affine inner, out-of-range
+        // power (n=10), constant cofactor (the bare power-reduction owner), and
+        // the n==2 case (owned by the square rule that runs first).
+        for source in [
+            "x*sin(x)^3",
+            "x*sin(x^2)^4",
+            "x*sin(x)^10",
+            "3*sin(x)^4",
+            "x*sin(x)^2",
+        ] {
+            let expr = parse(source, &mut ctx).expect("parse");
+            assert!(
+                super::polynomial_times_higher_even_trig_power_antiderivative(&mut ctx, expr, "x")
+                    .is_none(),
+                "must decline: {source}"
+            );
+        }
     }
 
     #[test]
