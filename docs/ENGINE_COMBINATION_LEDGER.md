@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 140 (newest first)
+Active entries: 141 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -130,6 +130,7 @@ Active entries: 140 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / polynomial-times-decaying-exponential at infinity | Retained limits: polynomial times a decaying exponential -> 0
 - 2026-06-14 | `retained` | calculus / limits / ratio of general-exp infinitesimals at 0 (block 3) | Retained limits: (a^x-1)/(b^x-1) -> ln a / ln b
 - 2026-06-14 | `retained` | calculus / limits / ratio of exponential combinations at 0 (block 3) | Retained limits: (sum exp)/(sum exp) -> ratio of derivatives
+- 2026-06-14 | `retained` | calculus / limits / radical conjugate products at +infinity (block 3) | Retained limits: factor * (radical conjugate difference -> 0) = 0*inf
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6098,3 +6099,57 @@ Active entries: 140 (newest first)
     conservative residual, never a wrong value - and a true zero is exactly
     representable so it is always caught. Use float to PROVE-nonzero-or-decline,
     never to decide a returned value
+
+
+## 2026-06-14 - Retained limits: factor * (radical conjugate difference -> 0) = 0*inf
+
+- area:
+  - calculus / limits / radical conjugate products at +infinity (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (4 matrix rows:
+    polynomial-factor and sqrt-factor 0*inf conjugate products)
+  - limit_matrix_cell: limit(x*(sqrt(x^2+1)-x),x,infinity)=1/2,
+    limit(x*(sqrt(x^2+2x)-x-1),x,infinity)=-1/2,
+    limit(sqrt(x)*(sqrt(x+1)-sqrt(x)),x,infinity)=1/2
+  - behavior_change_expected: yes - a factor times a DECAYING radical
+    conjugate difference (the 0*inf companion of the already-resolved bare
+    differences) now resolves to a finite rational
+- observed (asymptotic leading-term over the conjugate, restricted to +inf):
+  - the bare difference rules already resolve sqrt(x^2+1)-x -> 0 and
+    sqrt(x+1)-sqrt(x) -> 0, but factor*(that) is the 0*inf form the
+    multiplicative rule declines. radical_conjugate_product_limit_at_infinity
+    rationalizes the difference by its conjugate (s^2 Q - L^2 over the
+    conjugate sum) to read its decay as a single leading term K*x^p, reads the
+    factor (a polynomial OR scale*sqrt(poly) with rational leading sqrt) as
+    c*x^q, and returns the product limit by the exponent sum: c*K when p+q=0,
+    0 when p+q<0, decline (let dominance answer +inf) when p+q>0
+  - the additive terms are FLATTENED and partitioned into sqrt terms vs a
+    polynomial remainder, so a split linear tail (sqrt(x^2+2x)-x-1, parsed as
+    (sqrt-x)-1) and either orientation (x-sqrt(...)) are handled uniformly;
+    the leading-cancellation gate (s*sqrt(a)+r1==0, or s1*sqrt(lp)+s2*sqrt(lq)
+    ==0) is what proves the difference decays
+  - SOUNDNESS: the rule only fires toward +infinity (radicands and sqrt
+    factors need x>0; the -inf side stays an honest residual), only with a
+    rational leading sqrt (sqrt(2x)*... stays residual - the value is
+    irrational and out of the rational codomain), and DECLINES the divergent
+    p+q>0 case so x*(sqrt(x^2+x)-x) still answers +infinity via the
+    multiplicative/dominance path. The product of two single-leading-term
+    asymptotics IS the limit when the exponents sum to 0 (every other term is
+    strictly lower order -> 0)
+- retained learning:
+  - a "0*inf with a vanishing radical conjugate" reduces to ARITHMETIC ON
+    LEADING TERMS once you rationalize: difference = N(poly)/conjugate-sum has
+    a clean single leading term (the conjugate sum never re-cancels in the
+    decay regime), so coeff*x^exp for the factor and for the difference
+    multiply, and the sign of the exponent sum decides finite / zero / decline.
+    No second-order Taylor needed - the exact conjugate numerator carries the
+    subleading information
+  - reuse the existing decomposition primitives (collect_signed_add_terms,
+    scaled_square_root_base, Polynomial::from_expr, rational_sqrt) and let the
+    bare-difference rules own the difference->finite case; the product rule is
+    a thin asymptotic layer on top that only needs to recognize the decay and
+    weigh it against the factor. Division of labor with the multiplicative rule
+    is clean: it answers inf*(finite/inf), this answers the inf*0 it declines

@@ -5625,6 +5625,245 @@ fn sqrt_quadratic_minus_linear_oriented(
     Some(ctx.add(Expr::Number(constant)))
 }
 
+/// Limit of `factor * (radical difference)` at +infinity when the difference is
+/// a conjugate form that DECAYS to 0 — the genuine `0 * inf` form the
+/// multiplicative rule leaves residual (e.g. `x (sqrt(x^2+1) - x)`). Rationalizing
+/// the difference by its conjugate turns it into `N(x) / (sqrt + ...)`, whose
+/// leading asymptotic `K x^p` multiplies the factor's leading `c x^q`; the limit
+/// is the coefficient `c K` when `p + q == 0`, is `0` when `p + q < 0`, and the
+/// divergent case `p + q > 0` declines to the dominance rules. Covers the classic
+/// `x (sqrt(x^2+1) - x) = 1/2`, `x (sqrt(x^2+a) - x) = a/2`,
+/// `x (sqrt(x^2+2x) - x - 1) = -1/2`, and `sqrt(x) (sqrt(x+1) - sqrt(x)) = 1/2`.
+/// Only defined as `x -> +inf` (radicands and sqrt factors require `x > 0`);
+/// the `-inf` side declines and stays honest.
+fn radical_conjugate_product_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if approach != InfSign::Pos {
+        return None;
+    }
+    let Expr::Variable(var_sym) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_sym).to_string();
+    let (a, b) = match ctx.get(expr).clone() {
+        Expr::Mul(a, b) => (a, b),
+        _ => return None,
+    };
+    radical_conjugate_product_oriented(ctx, a, b, &var_name)
+        .or_else(|| radical_conjugate_product_oriented(ctx, b, a, &var_name))
+}
+
+/// One orientation: `factor * diff`. Combines the factor's leading term with the
+/// decaying difference's leading term; finite only when the exponents sum to 0.
+fn radical_conjugate_product_oriented(
+    ctx: &mut Context,
+    factor: ExprId,
+    diff: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (factor_coeff, factor_exp) = factor_leading_term_at_pos_inf(ctx, factor, var_name)?;
+    let (diff_coeff, diff_exp) = radical_difference_asymptotic_at_pos_inf(ctx, diff, var_name)?;
+    let exp = &factor_exp + &diff_exp;
+    let zero = BigRational::from_integer(BigInt::from(0));
+    if exp > zero {
+        return None; // product diverges; leave to the dominance rules.
+    }
+    if exp < zero {
+        return Some(ctx.add(Expr::Number(zero))); // factor cannot outrun the decay.
+    }
+    Some(ctx.add(Expr::Number(factor_coeff * diff_coeff)))
+}
+
+/// Asymptotic leading term `coeff * x^exp` (`coeff != 0`) of `factor` as
+/// `x -> +inf`, for a polynomial factor or a `scale * sqrt(polynomial)` factor
+/// with a rational leading square root. `exp` is rational (a sqrt factor halves
+/// the degree). Declines anything else.
+fn factor_leading_term_at_pos_inf(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(BigRational, BigRational)> {
+    if let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) {
+        let deg = poly.degree();
+        let lead = poly.coeffs.get(deg)?.clone();
+        if lead.is_zero() {
+            return None;
+        }
+        return Some((lead, BigRational::from_integer(BigInt::from(deg as i64))));
+    }
+    let (scale, radicand) = scaled_square_root_base(ctx, expr)?;
+    if !scale.is_positive() {
+        return None;
+    }
+    let poly = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    let deg = poly.degree();
+    let lead = poly.coeffs.get(deg)?.clone();
+    let sqrt_lead = rational_sqrt(&lead)?;
+    Some((
+        scale * sqrt_lead,
+        BigRational::new(BigInt::from(deg as i64), BigInt::from(2)),
+    ))
+}
+
+/// Asymptotic leading term `coeff * x^exp` of a conjugate radical difference as
+/// `x -> +inf`, when the leading radical terms cancel so the difference decays.
+/// Flattens the additive terms and partitions them into `scale*sqrt(polynomial)`
+/// terms and a polynomial remainder. One sqrt term + linear remainder is the
+/// `sqrt(quadratic) - linear` form (any orientation, any split linear tail); two
+/// sqrt terms with zero remainder is `sqrt(P) - sqrt(Q)`. None otherwise.
+fn radical_difference_asymptotic_at_pos_inf(
+    ctx: &Context,
+    diff: ExprId,
+    var_name: &str,
+) -> Option<(BigRational, BigRational)> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_add_terms(ctx, diff, true, &mut terms);
+    let zero = BigRational::from_integer(BigInt::from(0));
+    let mut sqrt_terms: Vec<(BigRational, ExprId)> = Vec::new(); // (signed scale, radicand)
+    let mut remainder: Vec<BigRational> = Vec::new(); // polynomial remainder coeffs
+    for (term, positive) in terms {
+        if let Some((scale, radicand)) = scaled_square_root_base(ctx, term) {
+            sqrt_terms.push((if positive { scale } else { -scale }, radicand));
+        } else {
+            let poly = Polynomial::from_expr(ctx, term, var_name).ok()?;
+            for (i, c) in poly.coeffs.iter().enumerate() {
+                if remainder.len() <= i {
+                    remainder.resize(i + 1, zero.clone());
+                }
+                remainder[i] = if positive {
+                    &remainder[i] + c
+                } else {
+                    &remainder[i] - c
+                };
+            }
+        }
+    }
+    match sqrt_terms.len() {
+        1 => sqrt_quadratic_plus_remainder_asymptotic(ctx, &sqrt_terms[0], &remainder, var_name),
+        2 => {
+            if remainder.iter().any(|c| !c.is_zero()) {
+                return None; // a sqrt(P)-sqrt(Q) difference carries no polynomial tail here
+            }
+            two_sqrt_difference_asymptotic(ctx, &sqrt_terms[0], &sqrt_terms[1], var_name)
+        }
+        _ => None,
+    }
+}
+
+/// Asymptotic of `s*sqrt(Q) + R` with `Q` quadratic and `R` the (linear)
+/// polynomial remainder, via the conjugate `s*sqrt(Q) - R`. The leading radical
+/// term must cancel `R`'s linear term (`s*sqrt(a) + r1 == 0`); then the
+/// rationalized numerator `s^2 Q - R^2` over the conjugate sum `~ 2 s sqrt(a) x`
+/// gives the decay rate — a nonzero constant, or `K/x` when the constant cancels.
+fn sqrt_quadratic_plus_remainder_asymptotic(
+    ctx: &Context,
+    sqrt_term: &(BigRational, ExprId),
+    remainder: &[BigRational],
+    var_name: &str,
+) -> Option<(BigRational, BigRational)> {
+    let (scale, radicand) = sqrt_term;
+    let q = Polynomial::from_expr(ctx, *radicand, var_name).ok()?;
+    if q.degree() != 2 {
+        return None;
+    }
+    let zero = BigRational::from_integer(BigInt::from(0));
+    let a = q.coeffs.get(2)?.clone();
+    if !a.is_positive() {
+        return None;
+    }
+    let b = q.coeffs.get(1).cloned().unwrap_or_else(|| zero.clone());
+    let c = q.coeffs.first().cloned().unwrap_or_else(|| zero.clone());
+    // Remainder must be at most linear.
+    if remainder.iter().skip(2).any(|coeff| !coeff.is_zero()) {
+        return None;
+    }
+    let r1 = remainder.get(1).cloned().unwrap_or_else(|| zero.clone());
+    let r0 = remainder.first().cloned().unwrap_or_else(|| zero.clone());
+    let sqrt_a = rational_sqrt(&a)?;
+    let lead_sqrt = scale * &sqrt_a; // leading coeff of s*sqrt(Q)
+                                     // Leading cancellation: s*sqrt(a) + r1 == 0.
+    if &lead_sqrt + &r1 != zero {
+        return None;
+    }
+    let den_lead = &lead_sqrt - &r1; // conjugate sum leading coeff = 2 s sqrt(a) != 0
+    if den_lead.is_zero() {
+        return None;
+    }
+    // N = s^2 Q - R^2 = (s^2 b - 2 r1 r0) x + (s^2 c - r0^2); x^2 cancels.
+    let two = BigRational::from_integer(BigInt::from(2));
+    let scale_sq = scale * scale;
+    let n1 = &scale_sq * &b - &two * &r1 * &r0;
+    let n0 = &scale_sq * &c - &r0 * &r0;
+    if !n1.is_zero() {
+        Some((n1 / den_lead, zero)) // difference -> nonzero constant
+    } else if !n0.is_zero() {
+        Some((n0 / den_lead, BigRational::from_integer(BigInt::from(-1)))) // difference ~ K/x
+    } else {
+        None // difference asymptotically 0; decline (degenerate input)
+    }
+}
+
+/// Asymptotic of `s1*sqrt(P) + s2*sqrt(Q)` (a sqrt-sqrt difference) via the
+/// conjugate `s1*sqrt(P) - s2*sqrt(Q)`, requiring equal degree `n` in `{1,2}`
+/// and a leading cancellation `s1*sqrt(lead_P) + s2*sqrt(lead_Q) == 0`. The decay
+/// rate is the leading term of `s1^2 P - s2^2 Q` over `~ 2 s1 sqrt(lead_P) x^(n/2)`.
+fn two_sqrt_difference_asymptotic(
+    ctx: &Context,
+    left: &(BigRational, ExprId),
+    right: &(BigRational, ExprId),
+    var_name: &str,
+) -> Option<(BigRational, BigRational)> {
+    let (scale_l, rad_l) = left;
+    let (scale_r, rad_r) = right;
+    let p = Polynomial::from_expr(ctx, *rad_l, var_name).ok()?;
+    let q = Polynomial::from_expr(ctx, *rad_r, var_name).ok()?;
+    let n = p.degree();
+    if n == 0 || n > 2 || q.degree() != n {
+        return None;
+    }
+    let lead_p = p.coeffs.get(n)?.clone();
+    let lead_q = q.coeffs.get(n)?.clone();
+    if !lead_p.is_positive() || !lead_q.is_positive() {
+        return None;
+    }
+    let sqrt_lead_p = rational_sqrt(&lead_p)?;
+    let sqrt_lead_q = rational_sqrt(&lead_q)?;
+    let zero = BigRational::from_integer(BigInt::from(0));
+    // Leading cancellation: s1*sqrt(lead_P) + s2*sqrt(lead_Q) == 0.
+    if scale_l * &sqrt_lead_p + scale_r * &sqrt_lead_q != zero {
+        return None;
+    }
+    let den_lead = scale_l * &sqrt_lead_p - scale_r * &sqrt_lead_q; // = 2 s1 sqrt(lead_P)
+    if den_lead.is_zero() {
+        return None;
+    }
+    // N = s1^2 P - s2^2 Q; the x^n term cancels, take the next nonzero term.
+    let scale_l_sq = scale_l * scale_l;
+    let scale_r_sq = scale_r * scale_r;
+    let mut n_lead = zero.clone();
+    let mut n_deg: i64 = -1;
+    for k in (0..n).rev() {
+        let pk = p.coeffs.get(k).cloned().unwrap_or_else(|| zero.clone());
+        let qk = q.coeffs.get(k).cloned().unwrap_or_else(|| zero.clone());
+        let coeff_k = &scale_l_sq * &pk - &scale_r_sq * &qk;
+        if !coeff_k.is_zero() {
+            n_lead = coeff_k;
+            n_deg = k as i64;
+            break;
+        }
+    }
+    if n_deg < 0 {
+        return None; // difference asymptotically 0; decline
+    }
+    let n_half = BigRational::new(BigInt::from(n as i64), BigInt::from(2));
+    let exp = BigRational::from_integer(BigInt::from(n_deg)) - n_half;
+    Some((n_lead / den_lead, exp))
+}
+
 fn sqrt_polynomial_ratio_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -7922,6 +8161,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = sqrt_minus_sqrt_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = radical_conjugate_product_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = sqrt_polynomial_ratio_limit_at_infinity(ctx, expr, var, approach) {
@@ -12092,6 +12334,64 @@ mod tests {
                 "must decline: {source}"
             );
         }
+    }
+
+    #[test]
+    fn radical_conjugate_product_resolves_zero_times_infinity_forms() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        // factor * (radical difference that decays) -> finite. The decay rate
+        // times the factor's growth lands a rational constant.
+        for (source, num, den) in [
+            ("x*(sqrt(x^2 + 1) - x)", 1, 2),
+            ("x*(sqrt(x^2 + 4) - x)", 2, 1),
+            ("x*(sqrt(x^2 - 1) - x)", -1, 2),
+            ("x*(sqrt(x^2 + 2*x) - x - 1)", -1, 2),
+            ("(sqrt(x^2 + 1) - x)*x", 1, 2),
+            ("2*x*(sqrt(x^2 + 1) - x)", 1, 1),
+            ("x*(sqrt(9*x^2 + 1) - 3*x)", 1, 6),
+            ("x*(2*x - sqrt(4*x^2 + 1))", -1, 4),
+            ("sqrt(x)*(sqrt(x + 1) - sqrt(x))", 1, 2),
+            ("(sqrt(x + 1) - sqrt(x))*sqrt(x)", 1, 2),
+            ("sqrt(x)*(sqrt(x + 2) - sqrt(x))", 1, 1),
+            ("x*(sqrt(x^2 + x + 1) - sqrt(x^2 + x))", 1, 2),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = radical_conjugate_product_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_number_expr(&ctx, out, num, den);
+        }
+    }
+
+    #[test]
+    fn radical_conjugate_product_declines_divergent_irrational_and_neg_infinity() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        // Divergent products (the difference tends to a nonzero constant or the
+        // factor outruns the decay), an irrational factor sqrt, a non-cancelling
+        // additive form, and a non-radical second factor all decline.
+        for source in [
+            "x*(sqrt(x^2 + x) - x)",             // difference -> 1/2, product -> +inf
+            "x^2*(sqrt(x^2 + 1) - x)",           // factor outruns the 1/x decay
+            "sqrt(2*x)*(sqrt(x + 1) - sqrt(x))", // irrational leading sqrt(2)
+            "x*(sqrt(x^2 + 1) + x)",             // additive: no leading cancellation
+            "x*sin(x)",                          // second factor is not a radical difference
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                radical_conjugate_product_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                    .is_none(),
+                "must decline: {source}"
+            );
+        }
+        // The finite +inf forms are undefined toward -inf (radicands/sqrt factors
+        // need x > 0), so the rule stays honest there.
+        let neg_form = parse_expr(&mut ctx, "x*(sqrt(x^2 + 1) - x)");
+        assert!(
+            radical_conjugate_product_limit_at_infinity(&mut ctx, neg_form, x, InfSign::Neg)
+                .is_none(),
+            "must decline toward -inf"
+        );
     }
 
     #[test]
