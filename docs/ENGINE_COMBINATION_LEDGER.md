@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 155 (newest first)
+Active entries: 156 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -145,6 +145,7 @@ Active entries: 155 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / finite 0/0 quotient at a non-zero point (block 3) | Retained limits: L'Hôpital for 0/0 at a finite non-zero point
 - 2026-06-14 | `retained` | calculus / indefinite integration / p(x) * sin(ax+b)^n or cos(ax+b)^n with | Retained integration: polynomial times even trig power (n>=4)
 - 2026-06-14 | `retained` | calculus / indefinite integration / p(x) * sin(g(x))^2 or cos(g(x))^2 with a | Retained integration: polynomial times trig square with substitution inner
+- 2026-06-14 | `retained` | calculus / limits / inf*0 form g(x)*ln(f(x)) at infinity with f -> 1 (block 3) | Retained limits: inf*0 product with ln of a unit-tending argument
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6799,3 +6800,39 @@ Active entries: 155 (newest first)
   - the affine/non-affine split is an OWNERSHIP boundary, not a math boundary: keep the
     affine owner byte-identical (its matrix/contract rows) and add a sibling for the
     complement, ordered after it, so neither footprint moves unexpectedly
+
+
+## 2026-06-14 - Retained limits: inf*0 product with ln of a unit-tending argument
+
+- area:
+  - calculus / limits / inf*0 form g(x)*ln(f(x)) at infinity with f -> 1 (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_matrix_cell: limit(x*ln(1+1/x),x,inf)=1, limit(x*ln(1+2/x),x,inf)=2,
+    limit(x^2*ln(1+1/x^2),x,inf)=1
+  - behavior_change_expected: yes - x*ln(1+a/x) and friends (inf*0 with a unit-tending
+    log argument) were residual and now resolve
+- observed (the 1^inf exponent, exposed for the standalone product):
+  - the 1^inf power rule already computes L = lim exp*(base-1) for (1+a/x)^x = e^a; the
+    standalone g*ln(f) with f->1 is exactly that L (since ln(1+h)~h for h=f-1->0), so the
+    new rule reuses the same Sub + rationalize_to_fraction + rational-limit pipeline,
+    returning L directly instead of exp(L)
+  - GATED to f->1 (genuine inf*0; f->c!=1 stays residual) AND a divergent cofactor
+    (finite*0 is the continuous case). The rational reduction self-gates the rest:
+    oscillatory or transcendental reductions (sin/cos/cosh inners) leave the quotient
+    limit unresolvable and the rule declines -- honest residual, never a wrong value
+  - SOUNDNESS of the first-order reduction is exact: g*ln(f) - g*(f-1) = g*(-h^2/2+...)
+    and if g*h -> L finite then g*h^2 = L*h -> 0, so the second-order term always vanishes
+    when the rule fires. Adversarially verified RETAIN (~70 probes vs mpmath dps 50-120,
+    including disguised constants f->2, oscillatory no-limit cases, and divergence with
+    correct sign x^2*ln(1+1/x)=+inf, x^2*ln(1-1/x)=-inf); zero wrong values
+- retained learning:
+  - an indeterminate-form rule that computes an intermediate quantity inside a larger
+    form (here L = lim exp*(base-1) inside the 1^inf exp(L)) is worth EXPOSING as a
+    standalone rule for the bare quantity: same machinery, new surface. The standalone
+    g*ln(f) is the 1^inf exponent without the exp wrapper
+  - reuse the divergent-cofactor + unit-argument gates as DECLARED INTENT and let the
+    downstream rational-limit decide the rest; the conservative decline (true-but-
+    unprovable reductions like x*ln(cos(1/x))->0 stay residual) keeps soundness free

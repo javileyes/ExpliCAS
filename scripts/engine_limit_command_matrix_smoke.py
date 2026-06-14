@@ -2699,6 +2699,33 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         required_condition_regime="finite_lhopital_nonzero_point_denominator_domain",
         trace_regime="lhopital_nonzero_point",
     ),
+    LimitCommandMatrixCase(
+        name="infinity_product_log_unit_argument_unit_slope_supported",
+        expr="limit(x*ln(1+1/x), x, infinity)",
+        expected_result="1",
+        expected_step_substrings=("Evaluar límite en infinito",),
+        family="product_log_unit_argument",
+        point_regime="infinity",
+        trace_regime="inf_times_zero_log_reduction",
+    ),
+    LimitCommandMatrixCase(
+        name="infinity_product_log_unit_argument_scaled_slope_supported",
+        expr="limit(x*ln(1+2/x), x, infinity)",
+        expected_result="2",
+        expected_step_substrings=("Evaluar límite en infinito",),
+        family="product_log_unit_argument",
+        point_regime="infinity",
+        trace_regime="inf_times_zero_log_reduction",
+    ),
+    LimitCommandMatrixCase(
+        name="infinity_product_log_unit_argument_quadratic_cofactor_supported",
+        expr="limit(x^2*ln(1+1/x^2), x, infinity)",
+        expected_result="1",
+        expected_step_substrings=("Evaluar límite en infinito",),
+        family="product_log_unit_argument",
+        point_regime="infinity",
+        trace_regime="inf_times_zero_log_reduction",
+    ),
 )
 
 

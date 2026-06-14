@@ -8713,6 +8713,9 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = log_difference_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = product_log_unit_argument_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     if let Some(r) = additive_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
@@ -9029,6 +9032,58 @@ fn one_to_infinity_power_limit_at_infinity(
             Some(ctx.add(Expr::Pow(e, l_limit)))
         }
     }
+}
+
+/// The `inf * 0` form `g(x) * ln(f(x))` at infinity when `f -> 1` (so
+/// `ln f -> 0`) and `g` diverges. Since `ln(1 + h) ~ h` for `h = f - 1 -> 0`,
+/// the limit is `lim g * (f - 1)` -- the same `L` the 1^inf power rule computes,
+/// exposed for the standalone product. Resolves `x ln(1 + a/x) -> a`,
+/// `x ln((x+1)/x) -> 1`, `x^2 ln(1 + 1/x^2) -> 1`, `x ln(1 - 1/x) -> -1`. The
+/// `f -> 1` gate keeps it off `x ln(x)` (`f -> inf`) and `ln(2) x` (`f` constant),
+/// and the divergent-cofactor gate leaves the continuous `finite * 0` case alone.
+fn product_log_unit_argument_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use num_traits::One;
+    let Expr::Mul(a, b) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let natural_log_arg = |ctx: &Context, e: ExprId| -> Option<ExprId> {
+        if let Expr::Function(fn_id, args) = ctx.get(e) {
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Ln) {
+                return Some(args[0]);
+            }
+        }
+        None
+    };
+    let (cofactor, ln_arg) = if let Some(arg) = natural_log_arg(ctx, a) {
+        (b, arg)
+    } else if let Some(arg) = natural_log_arg(ctx, b) {
+        (a, arg)
+    } else {
+        return None;
+    };
+    if !depends_on(ctx, cofactor, var) || !depends_on(ctx, ln_arg, var) {
+        return None;
+    }
+    // The log argument must tend to exactly 1 (so ln -> 0): a genuine inf*0.
+    let arg_limit = try_limit_rules_at_infinity(ctx, ln_arg, var, approach)?;
+    if !crate::numeric_eval::as_rational_const(ctx, arg_limit).is_some_and(|v| v.is_one()) {
+        return None;
+    }
+    // The cofactor must diverge (otherwise finite * 0 = 0 is the continuous case).
+    let cofactor_limit = try_limit_rules_at_infinity(ctx, cofactor, var, approach)?;
+    limit_value_infinite_sign(ctx, cofactor_limit)?;
+    // L = lim g * (f - 1), rationalized so the quotient limit can read it.
+    let one = ctx.num(1);
+    let h = ctx.add(Expr::Sub(ln_arg, one));
+    let product = ctx.add(Expr::Mul(cofactor, h));
+    let (num, den) = rationalize_to_fraction(ctx, product);
+    let combined = ctx.add(Expr::Div(num, den));
+    try_limit_rules_at_infinity(ctx, combined, var, approach)
 }
 
 /// The `0^0` form `x^g -> exp(lim g * ln x)` as `x -> 0+`. The base is the bare
@@ -15998,6 +16053,49 @@ mod tests {
             assert!(
                 one_to_infinity_power_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
                 "1^inf must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn product_log_unit_argument_resolves_inf_times_zero() {
+        // inf * 0 with ln(f), f -> 1: lim g*ln(f) = lim g*(f-1) (ln(1+h) ~ h).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("x*ln(1+1/x)", "1"),
+            ("x*ln(1+2/x)", "2"),
+            ("x*ln((x+1)/x)", "1"),
+            ("x*ln(1-1/x)", "-1"),
+            ("x^2*ln(1+1/x^2)", "1"),
+            ("ln(1+1/x)*x", "1"),
+            ("x*ln(1+1/x^2)", "0"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = product_log_unit_argument_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("inf*0 ln must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn product_log_unit_argument_declines_non_unit_arg_and_finite_cofactor() {
+        // Honest declines: ln argument -> inf (x ln x), a constant argument
+        // (ln(2) x, arg = 2 != 1), a non-divergent cofactor (the continuous
+        // finite*0 case), and an oscillating reduction with no limit.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in [
+            "x*ln(x)",
+            "ln(2)*x",
+            "(1/x)*ln(1+1/x)",
+            "x*ln(1+sin(1/x)/x)",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                product_log_unit_argument_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                    .is_none(),
+                "inf*0 ln must decline: {source}"
             );
         }
     }
