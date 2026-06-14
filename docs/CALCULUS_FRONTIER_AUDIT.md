@@ -332,6 +332,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   mpmath dps=60, incluidas las trampas −∞ e irracionales, sin desacuerdos).
   Peldaño general n-ésima raíz: el conjugado es la suma de n términos
   `~n·d^(n-1)·x^(n-1)`, parametrización de los casos √ (n=2) y cbrt (n=3).)*
+  *(GENERAL n-ésima raíz 2026-06-14 31201e550: el peldaño cierra —
+  `nth_root_conjugate_limit_at_infinity` resuelve `(P)^(1/n)−L` y su producto
+  0·∞ para cualquier `n≥2` en forma Pow. Lee `N=s^n·P−L^n` por el binomio
+  (`N_k=s^n·P_k−C(n,k)·d^k·e^(n-k)`) sobre `n·d^(n-1)·x^(n-1)`, con
+  `rational_nth_root` nuevo (generaliza rational_sqrt/cbrt vía BigInt::nth_root
+  con re-chequeo root^n==value y rechazo de raíz par de negativo). Corre tras
+  √/cbrt, así que sólo añade n≥4. `(x^4+x^3)^(1/4)−x=1/4`,
+  `(x^5+x^4)^(1/5)−x=1/5`, `(16x^4+x^3)^(1/4)−2x=1/32`,
+  `((1/16)x^4+x^3)^(1/4)−x/2=2`, `x^3·((x^4+1)^(1/4)−x)=1/4`. Adversarial RETAIN
+  (33 sondas mpmath dps 60-200; trampas líder irracional, líder negativo
+  (sin raíz par real), −∞, grado≠n, sobre-potencia, todas residuales). SOLO +∞;
+  líder racional. Peldaño restante: lado −∞ con n impar (converge a otro valor).)*
 
 ### P2 — familias y mejoras de alto valor (1 ciclo cada una)
 
