@@ -319,6 +319,19 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   supera el decaimiento (`x²·(√(x²+1)−x)` diverge). Peldaños: análogos cbrt
   (`x²·(∛(x³+1)−x)=1/3`), lado −∞ con valor finito, coeficientes irracionales.
   Verificado adversarialmente con 37 sondas mpmath dps=60.)*
+  *(análogo CBRT 2026-06-14 6e3257810: el peldaño cbrt cierra — la diferencia
+  conjugada cúbica `∛(P)−x` y su producto 0·∞ resuelven vía
+  `cbrt_conjugate_limit_at_infinity`. Donde √ racionaliza por `a+b` (`~2dx`),
+  la cúbica usa `a³−b³=(a−b)(a²+ab+b²)`, suma conjugada de TRES términos
+  `~3d²x²`; lee `N=s³P−L³` (grado ≤2 tras cancelar x³) sobre `3d²x²`: término
+  x² → constante, x → K/x, constante → K/x². `∛(x³+x²)−x=1/3`,
+  `∛(x³+2x²)−x=2/3`, `∛(x³−3x²)−x=−1`, `∛(8x³+x²)−2x=1/12`,
+  `x²·(∛(x³+1)−x)=1/3`, `x·(∛(x³+3x)−x)=1`; forma Pow `(x³+x²)^(1/3)−x=1/3`
+  también. SOLO +∞ (−∞ es trampa: el producto puede invertir signo); líder
+  cbrt racional (`∛(2x³…)` declina, irracional). Adversarial RETAIN (37 sondas
+  mpmath dps=60, incluidas las trampas −∞ e irracionales, sin desacuerdos).
+  Peldaño general n-ésima raíz: el conjugado es la suma de n términos
+  `~n·d^(n-1)·x^(n-1)`, parametrización de los casos √ (n=2) y cbrt (n=3).)*
 
 ### P2 — familias y mejoras de alto valor (1 ciclo cada una)
 
