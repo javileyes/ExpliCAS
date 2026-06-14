@@ -21,7 +21,7 @@ leyendo el modelo de madurez, roadmap y velocidad del ledger.
 | Integral indefinida | ~60-65% (58/92 sondas) | ~35-40% | racionales/por-partes/potencias trig casi completos; 6/6 no-elementales correctamente residuales |
 | Límites | ~45-50% | ~20-25% | allowlist de patrones, no algoritmo; `e` inalcanzable por límite |
 | Definidas/impropias | ~70-75% | ~35-40% | FTC/touches/impropias elementales sólidos; pre-simplificador sabotea casos |
-| Calidad educativa | ~55% bien narrado | ~35-40% | condiciones de dominio sistemáticas (punto fuerte); por partes narrada para ln y polinomio(lineal)·{eˣ,sin,cos,sinh} (quedan repetida grado≥2, inverse-trig, cíclico eˣ·sin) |
+| Calidad educativa | ~58% bien narrado | ~35-40% | condiciones de dominio sistemáticas (punto fuerte); por partes narrada en las TRES asignaciones u/dv: polinomio·ln, polinomio(lineal)·{eˣ,sin,cos,sinh}, y u=función/dv=dx (inverse-trig/hiperbólicas + ln(x) solo) (quedan repetida grado≥2 y cíclico eˣ·sin) |
 
 ### Horizontes del propio repo (CALCULUS_ENGINE_STRATEGY.md, citas)
 
@@ -440,6 +440,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   Quedan: `x²eˣ` repetida (grado≥2), el cíclico `eˣ·sin x`, y `ln(x)` SOLO —
   que hoy da CERO substeps porque ningún target by-partes lo reclama: no hay
   título, requiere cambio de gate del dispatcher, ciclo aparte.)*
+  *(parcial 2026-06-14 4c0c0a24d: `ln(x)` SOLO ya narra — el gap era el GATE,
+  no el narrador: `contains_linear_integration_by_parts_target` ahora reclama
+  `Function(Ln,[afín])` (dispara el título) y `Ln` se une al narrador
+  single-inverse (u=ln, dv=dx, v=x, du=1/x). `∫ln(x)` → u=ln(x), dv=dx, du=1/x
+  dx, v=x; `∫ln(2x+1)` (afín, du=2/(2x+1)) incluido. Cambio de gate de bajo
+  footprint (la única fixture de ln(x) es una fila FTC-definida con matcher
+  subset). Sin doble-narración: `x·ln(x)` es Mul, conserva su narración
+  cycle-2 (u=ln, dv=x dx). El motor narra ya las TRES asignaciones u/dv:
+  u=ln sobre dv polinómico, u=polinomio sobre dv elemental, u=función sobre
+  dv=dx (inversas + ln). Quedan: `x²eˣ` repetida y el cíclico `eˣ·sin x`.)*
 - [ ] **(F) Residuales con motivo**: 'Conservar integral residual' no
   distingue "no elemental (necesitaría erf/Si/Ei)" de "el motor aún
   no lo soporta" (`sqrt(1-x²)`, `|x|`, `1/(x⁴+1)` son elementales y
