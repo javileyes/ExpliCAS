@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 138 (newest first)
+Active entries: 139 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -128,6 +128,7 @@ Active entries: 138 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / general-base exponential dominance at infinity | Retained limits: quotient of exponential sums by dominant base
 - 2026-06-14 | `retained` | calculus / limits / exponential-vs-polynomial dominance at infinity | Retained limits: general-base exponential beats polynomial
 - 2026-06-14 | `retained` | calculus / limits / polynomial-times-decaying-exponential at infinity | Retained limits: polynomial times a decaying exponential -> 0
+- 2026-06-14 | `retained` | calculus / limits / ratio of general-exp infinitesimals at 0 (block 3) | Retained limits: (a^x-1)/(b^x-1) -> ln a / ln b
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6023,3 +6024,36 @@ Active entries: 138 (newest first)
     because the magnitude collapses to 0. This is the multiplicative dual of
     the exp-vs-poly quotient, closing the general-base exponential dominance
     lattice over the shared effective-base atom
+
+
+## 2026-06-14 - Retained limits: (a^x-1)/(b^x-1) -> ln a / ln b
+
+- area:
+  - calculus / limits / ratio of general-exp infinitesimals at 0 (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    log-ratio and same-base rational)
+  - limit_matrix_cell: limit((3^x-1)/(2^x-1),x,0)=ln(3)/ln(2),
+    limit((2^(2x)-1)/(2^x-1),x,0)=2
+  - behavior_change_expected: yes - a 0/0 quotient of two general-exp
+    infinitesimals resolves to the ratio of their logs
+- observed (ratio of first-order coefficients, both sides general-exp):
+  - a^x - 1 ~ x ln a as x -> 0, so apply_finite_general_exp_ratio_rule reads
+    each side via the cycle's scaled_general_power_zero_offset (scale, base,
+    exponent), takes the first-order coefficient scale*slope*ln(base), and
+    returns (num_coeff/den_coeff) * ln(num_base)/ln(den_base). Equal bases
+    collapse ln(a)/ln(a) to 1, so the result is the bare rational ratio
+    ((2^(2x)-1)/(2^x-1) = 2)
+  - both sides must be a numeric-base a^x - 1 vanishing at 0; an e-base
+    numerator, a sin/polynomial denominator, and a nonzero point decline
+    (peldanos: mix with e-base and trig via a unified first-order equivalent)
+- retained learning:
+  - the (a^x-1)/x rule (cycle 08c499f5e) emitted ln(a) * (rational ratio); the
+    DOUBLE-exponential quotient is the same first-order coefficient on both
+    sides, divided. Extract (rational coeff, symbolic ln base) per side and
+    divide the rationals while keeping the logs symbolic - the transcendental
+    parts cancel exactly when the bases match. Reuse the offset recognizer;
+    the ratio is two coefficient reads and a division

@@ -2235,6 +2235,67 @@ fn apply_finite_general_exp_zero_quotient_rule(
     Some(ctx.add(Expr::Mul(ratio_expr, ln_base)))
 }
 
+/// `(c1 (a^g - 1)) / (c2 (b^h - 1))` at 0 -> the ratio of first-order
+/// coefficients. Since `a^g - 1 ~ g ln a` for `g -> 0`, the numerator is
+/// `~ c1 g'(0) ln a * x` and the denominator `~ c2 h'(0) ln b * x`, so the
+/// limit is `(c1 g'(0) ln a) / (c2 h'(0) ln b)`. Resolves the classic
+/// `(3^x - 1)/(2^x - 1) = ln 3 / ln 2`. Both sides must be a numeric-base
+/// `a^x - 1` form vanishing at 0.
+fn apply_finite_general_exp_ratio_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    use num_traits::{One, Zero};
+    if !crate::numeric_eval::as_rational_const(ctx, point).is_some_and(|p| p.is_zero()) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    // (rational coefficient, base) of the first-order term scale*slope*ln(base).
+    let first_order = |ctx: &mut Context, side: ExprId| -> Option<(BigRational, BigRational)> {
+        let (scale, base, exponent) = scaled_general_power_zero_offset(ctx, side)?;
+        if !base.is_positive() || base.is_one() {
+            return None;
+        }
+        let exp_poly = Polynomial::from_expr(ctx, exponent, &var_name).ok()?;
+        // The exponent must vanish at 0 (so a^g -> 1) and have a linear term.
+        if !exp_poly.eval(&BigRational::zero()).is_zero() {
+            return None;
+        }
+        let slope = exp_poly.coeffs.get(1).cloned()?;
+        if slope.is_zero() {
+            return None;
+        }
+        Some((scale * slope, base))
+    };
+    let (num_coeff, num_base) = first_order(ctx, num)?;
+    let (den_coeff, den_base) = first_order(ctx, den)?;
+    // result = (num_coeff / den_coeff) * ln(num_base) / ln(den_base).
+    let rational = &num_coeff / &den_coeff;
+    // Equal bases: ln(a)/ln(a) = 1, so the limit is the bare rational ratio.
+    if num_base == den_base {
+        return Some(ctx.add(Expr::Number(rational)));
+    }
+    let num_base_expr = ctx.add(Expr::Number(num_base));
+    let num_log = ctx.call_builtin(BuiltinFn::Ln, vec![num_base_expr]);
+    let den_base_expr = ctx.add(Expr::Number(den_base));
+    let den_log = ctx.call_builtin(BuiltinFn::Ln, vec![den_base_expr]);
+    let log_ratio = ctx.add(Expr::Div(num_log, den_log));
+    if rational.is_one() {
+        Some(log_ratio)
+    } else {
+        let rational_expr = ctx.add(Expr::Number(rational));
+        Some(ctx.add(Expr::Mul(rational_expr, log_ratio)))
+    }
+}
+
 /// Recognize `scale * (a^(g) - 1)` with `a` a numeric base; returns
 /// `(scale, a, g)`. Handles the Sub and Add(-1) offset forms, a numeric
 /// scale factor, and a negation.
@@ -3655,6 +3716,9 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_general_exp_zero_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_general_exp_ratio_rule(ctx, expr, var, point) {
         return Some(result);
     }
     if let Some(result) = apply_finite_log_unit_quotient_rule(ctx, expr, var, point) {
@@ -10256,6 +10320,46 @@ mod tests {
         assert!(
             try_limit_rules_at_finite(&mut ctx, finite_pole, x, point_zero).is_none(),
             "exp quotient rule must not promote finite poles"
+        );
+    }
+
+    #[test]
+    fn finite_general_exp_ratio_yields_ratio_of_logs() {
+        // (a^x - 1)/(b^x - 1) -> ln(a)/ln(b): ratio of first-order coefficients.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("(3^x-1)/(2^x-1)", "ln(3) / ln(2)"),
+            ("(2^x-1)/(3^x-1)", "ln(2) / ln(3)"),
+            ("(2^(2*x)-1)/(2^x-1)", "2"),
+            ("(3^x-1)/(3^x-1)", "1"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = apply_finite_general_exp_ratio_rule(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("exp ratio must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn finite_general_exp_ratio_declines_non_exp_denominator() {
+        // A non-(b^x-1) denominator (sin, x) and a non-zero point decline.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        let one = parse_expr(&mut ctx, "1");
+        for source in ["(2^x-1)/sin(x)", "(2^x-1)/x", "(exp(x)-1)/(2^x-1)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_general_exp_ratio_rule(&mut ctx, expr, x, zero).is_none(),
+                "exp ratio must decline: {source}"
+            );
+        }
+        let expr = parse_expr(&mut ctx, "(3^x-1)/(2^x-1)");
+        assert!(
+            apply_finite_general_exp_ratio_rule(&mut ctx, expr, x, one).is_none(),
+            "exp ratio is the form at 0"
         );
     }
 
