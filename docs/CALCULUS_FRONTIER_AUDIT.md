@@ -228,6 +228,27 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   equivalente local en el cero del argumento; (3) log en el numerador/
   composición (`ln(1+x)/sin x`) — excluido por la ruta de base no-natural
   `valor/ln(base)`; (4) encadenamiento L'Hôpital general)*
+  *(parcial 2026-06-14 PENDING_HASH: peldaño (2) átomo con argumento NO-cero
+  GRADUADO + L'Hôpital general (4) para punto no-cero — el 0/0 transcendente
+  cuya anulación ocurre en un punto desplazado ya resuelve vía
+  `apply_finite_lhopital_nonzero_point_quotient_rule`: deriva numerador y
+  denominador y reevalúa el límite del cociente, iterando mientras siga 0/0,
+  reutilizando la cascada finita (que ya pliega sin(π)=0, cos(π)=−1 en el caso
+  continuo). `sin(x)/(x−π)=−1`, `tan(x)/sin(x)=−1` en π, `cos(x)/(x−π/2)=−1`,
+  `(1−cos(x−1))/(x−1)²=1/2` (2 aplicaciones), `(sin(x−1)−(x−1))/(x−1)³=−1/6`
+  (3 aplicaciones), `ln(x)/(x−1)=1`. GATEADO a punto NO-cero (el 0 conserva sus
+  dueños equivalent/Taylor y su narración de ángulo pequeño), último en la
+  cascada (solo dispara sobre residual). SOUND por la hipótesis de L'Hôpital:
+  emite SOLO valor finito racional definido; declina en polos (den'→0,
+  num'≠0), formas unilaterales/cambio-de-signo, f'/g' oscilante (la trampa de
+  falso-positivo) y valores irracionales (−sin(2), e²). Verificado
+  adversarialmente: fuzz de 272 combinaciones 0 desacuerdos vs mpmath, trampas
+  de polo-disfrazado/sign-flip/hipótesis-falla todas declinadas; punto 0 e
+  infinito sin cambio. Aprendizaje: el diferenciador emite exponentes sin
+  plegar `(x−1)^(2−1)`; hay que plegar todo subexpr constante con
+  `as_rational_const` antes de retomar el límite. Quedan: encadenamiento
+  L'Hôpital EN punto 0, peldaño (3) log/composición, y valores irracionales
+  como salida simbólica.)*
 - [x] **(A) Formas exponenciales 1^∞/0^0/∞^0** vía `exp(lim g·ln f)`:
   `(1+1/x)^x → e`, `(1+2/x)^x → e²`, `(1+x)^(1/x) → e`, `x^x → 1 en
   0+`, `(2^x+3^x)^(1/x) → 3`. Hoy la constante `e` es inalcanzable

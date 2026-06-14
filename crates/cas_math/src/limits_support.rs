@@ -3903,6 +3903,9 @@ fn try_limit_rules_at_finite(
     if let Some(result) = apply_finite_bilateral_even_saturating_pole_rule(ctx, expr, var, point) {
         return Some(result);
     }
+    if let Some(result) = apply_finite_lhopital_nonzero_point_quotient_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
 
     match ctx.get(expr).clone() {
         Expr::Add(lhs, rhs) => {
@@ -4179,6 +4182,184 @@ fn apply_finite_taylor_quotient_rule(
 /// The lowest index with a nonzero coefficient, or None when all are zero.
 fn lowest_nonzero_order(coeffs: &[BigRational]) -> Option<usize> {
     coeffs.iter().position(|c| !c.is_zero())
+}
+
+thread_local! {
+    /// Re-entry depth of the L'Hôpital rule. The rule evaluates the limit of the
+    /// numerator and denominator by recursing into the finite cascade, which can
+    /// land back here; this caps that re-entry.
+    static LHOPITAL_REENTRY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Maximum L'Hôpital re-entries AND successive differentiations. Four covers the
+/// university repertoire (a quartic-order 0/0 needs four passes) while bounding
+/// the cost and any pathological recursion.
+const MAX_LHOPITAL_DEPTH: usize = 4;
+
+/// Recursively replace any constant subexpression with its literal value. The
+/// symbolic differentiator emits unfolded arithmetic — notably exponents like
+/// `(x-1)^(2-1)` — that `Polynomial::from_expr` and the continuous-limit rules
+/// reject; folding `2-1` to `1` (via `as_rational_const`, which evaluates
+/// arithmetic, unlike literal-only matchers) makes the differentiated form
+/// consumable. Structure with the variable is preserved.
+fn fold_constant_subexprs(ctx: &mut Context, expr: ExprId) -> ExprId {
+    if let Some(value) = crate::numeric_eval::as_rational_const(ctx, expr) {
+        return ctx.add(Expr::Number(value));
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) => {
+            let l2 = fold_constant_subexprs(ctx, l);
+            let r2 = fold_constant_subexprs(ctx, r);
+            ctx.add(Expr::Add(l2, r2))
+        }
+        Expr::Sub(l, r) => {
+            let l2 = fold_constant_subexprs(ctx, l);
+            let r2 = fold_constant_subexprs(ctx, r);
+            ctx.add(Expr::Sub(l2, r2))
+        }
+        Expr::Mul(l, r) => {
+            let l2 = fold_constant_subexprs(ctx, l);
+            let r2 = fold_constant_subexprs(ctx, r);
+            ctx.add(Expr::Mul(l2, r2))
+        }
+        Expr::Div(l, r) => {
+            let l2 = fold_constant_subexprs(ctx, l);
+            let r2 = fold_constant_subexprs(ctx, r);
+            ctx.add(Expr::Div(l2, r2))
+        }
+        Expr::Neg(inner) => {
+            let i2 = fold_constant_subexprs(ctx, inner);
+            ctx.add(Expr::Neg(i2))
+        }
+        Expr::Pow(base, exp) => {
+            let base2 = fold_constant_subexprs(ctx, base);
+            let exp2 = fold_constant_subexprs(ctx, exp);
+            // x^1 -> x so the polynomial recognizer sees a clean degree.
+            if crate::numeric_eval::as_rational_const(ctx, exp2).is_some_and(|e| e.is_one()) {
+                return base2;
+            }
+            ctx.add(Expr::Pow(base2, exp2))
+        }
+        Expr::Function(fn_id, args) => {
+            let args2: Vec<ExprId> = args
+                .iter()
+                .map(|a| fold_constant_subexprs(ctx, *a))
+                .collect();
+            ctx.add(Expr::Function(fn_id, args2))
+        }
+        _ => expr,
+    }
+}
+
+/// The rational value of a fully evaluated limit result, if it is a plain number.
+fn limit_result_rational(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(value) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+/// L'Hôpital's rule for a genuine 0/0 quotient at a finite NON-ZERO point.
+///
+/// The point 0 is owned by the equivalent-infinitesimal and Maclaurin-Taylor
+/// rules above (which also carry the educational small-angle narration), so this
+/// rule deliberately declines there: its job is the gap they cannot reach, a 0/0
+/// whose vanishing happens at a shifted point (`sin(x)/(x-pi)` at `pi`,
+/// `tan(x)/sin(x)` at `pi`, `(1-cos(x-1))/(x-1)^2` at `1`). It differentiates the
+/// numerator and denominator and re-evaluates the quotient's limit, repeating
+/// while the form stays 0/0.
+///
+/// Soundness: L'Hôpital concludes `lim f/g = lim f'/g'` ONLY when the latter
+/// exists. We therefore evaluate `lim f'` and `lim g'` through the full limit
+/// machinery and act only on definite finite values: if either fails to resolve,
+/// or the denominator's limit stays 0 while the numerator's does not (a pole), we
+/// decline and the form remains an honest residual. The point-vanishing of both
+/// parts is verified before differentiating, so non-0/0 quotients are left to the
+/// ordinary substitution rules.
+fn apply_finite_lhopital_nonzero_point_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    // Point 0 is owned by the at-zero rules; only act on a shifted point.
+    if crate::numeric_eval::as_rational_const(ctx, point).is_some_and(|p| p.is_zero()) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Div(num0, den0) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let depth = LHOPITAL_REENTRY_DEPTH.with(|d| d.get());
+    if depth >= MAX_LHOPITAL_DEPTH {
+        return None;
+    }
+    LHOPITAL_REENTRY_DEPTH.with(|d| d.set(depth + 1));
+    let result = lhopital_evaluate(ctx, num0, den0, var, &var_name, point);
+    LHOPITAL_REENTRY_DEPTH.with(|d| d.set(depth));
+    result
+}
+
+fn lhopital_evaluate(
+    ctx: &mut Context,
+    mut num: ExprId,
+    mut den: ExprId,
+    var: ExprId,
+    var_name: &str,
+    point: ExprId,
+) -> Option<ExprId> {
+    for applied in 0..=MAX_LHOPITAL_DEPTH {
+        // The differentiator emits unexpanded products (`2·(x-1)`); expand so the
+        // polynomial/continuous rules recognize them when their limit is taken.
+        // The differentiator emits unfolded exponents (`(x-1)^(2-1)`), which the
+        // polynomial recognizer rejects; fold them so the limit of each part can
+        // be taken by the ordinary rules.
+        // The differentiator leaves arithmetic in exponents (`(x-1)^(2-1)`) that
+        // the polynomial recognizer rejects; fold every constant subexpression to
+        // a literal so the ordinary rules can take each part's limit.
+        num = fold_constant_subexprs(ctx, num);
+        den = fold_constant_subexprs(ctx, den);
+        let limit_num = try_limit_rules_at_finite(ctx, num, var, point)?;
+        let limit_den = try_limit_rules_at_finite(ctx, den, var, point)?;
+        let num_value = limit_result_rational(ctx, limit_num)?;
+        let den_value = limit_result_rational(ctx, limit_den)?;
+
+        let num_zero = num_value.is_zero();
+        let den_zero = den_value.is_zero();
+
+        if den_zero && num_zero {
+            // Genuine 0/0: differentiate both and apply L'Hôpital once more.
+            if applied >= MAX_LHOPITAL_DEPTH {
+                return None;
+            }
+            num = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                ctx, num, var_name,
+            )?;
+            den = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                ctx, den, var_name,
+            )?;
+            continue;
+        }
+        if den_zero {
+            // Numerator does not vanish while the denominator does: a pole. Stay
+            // an honest residual (the bilateral limit diverges or is signed-DNE).
+            return None;
+        }
+        if applied == 0 {
+            // Not a 0/0 to begin with: ordinary substitution owns this, not us.
+            return None;
+        }
+        // Denominator's limit is nonzero after >=1 application: lim f/g = num/den.
+        return Some(ctx.add(Expr::Number(num_value / den_value)));
+    }
+    None
 }
 
 /// Taylor coefficients of `expr` at 0 as a polynomial truncated to `order`,
@@ -11301,6 +11482,66 @@ mod tests {
         assert!(
             apply_finite_taylor_quotient_rule(&mut ctx, expr, x, one).is_none(),
             "taylor quotient is only defined at the origin"
+        );
+    }
+
+    #[test]
+    fn finite_lhopital_nonzero_point_resolves_shifted_zero_over_zero() {
+        // 0/0 forms whose vanishing happens at a non-zero point: the at-zero
+        // equivalent/Taylor rules cannot reach them, so L'Hôpital differentiates
+        // and re-evaluates until the form is no longer 0/0. Values cross-checked
+        // numerically (mpmath dps 40).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, point_src, expected) in [
+            ("sin(x)/(x-pi)", "pi", "-1"),
+            ("(x-pi)/sin(x)", "pi", "-1"),
+            ("tan(x)/sin(x)", "pi", "-1"),
+            ("cos(x)/(x-pi/2)", "pi/2", "-1"),
+            ("(1 - cos(x-1))/(x-1)^2", "1", "1/2"), // two applications
+            ("(sin(x-1) - (x-1))/(x-1)^3", "1", "-1/6"), // three applications
+            ("sin(x-3)/(x^2-9)", "3", "1/6"),
+            ("ln(x)/(x-1)", "1", "1"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let point = parse_expr(&mut ctx, point_src);
+            let out = apply_finite_lhopital_nonzero_point_quotient_rule(&mut ctx, expr, x, point)
+                .unwrap_or_else(|| panic!("L'Hôpital must resolve {source} at {point_src}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source} at {point_src}");
+        }
+    }
+
+    #[test]
+    fn finite_lhopital_declines_poles_non_quotients_and_origin() {
+        // Honest declines: a pole (numerator does not vanish while the
+        // denominator does), an even-order pole that diverges bilaterally, a
+        // non-0/0 quotient owned by ordinary substitution, an oscillation, and a
+        // symbolic (non-rational) value which we leave residual rather than guess.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, point_src) in [
+            ("1/(x-1)", "1"),               // simple pole, not 0/0
+            ("1/sin(x)", "pi"),             // pole at a sine zero
+            ("sin(x)/(x-pi)^2", "pi"),      // odd/even -> 1/(x-pi) blows up
+            ("sin(1/(x-1))", "1"),          // inner oscillates, no limit
+            ("cos(x)/cos(x)", "pi"),        // not 0/0 (continuous, owned elsewhere)
+            ("(cos(x)-cos(2))/(x-2)", "2"), // value -sin(2) is not rational
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let point = parse_expr(&mut ctx, point_src);
+            assert!(
+                apply_finite_lhopital_nonzero_point_quotient_rule(&mut ctx, expr, x, point)
+                    .is_none(),
+                "L'Hôpital must decline {source} at {point_src}"
+            );
+        }
+        // The origin is owned by the equivalent-infinitesimal / Taylor rules
+        // (with their small-angle narration); L'Hôpital declines there.
+        let zero = parse_expr(&mut ctx, "0");
+        let expr = parse_expr(&mut ctx, "sin(x)/x");
+        assert!(
+            apply_finite_lhopital_nonzero_point_quotient_rule(&mut ctx, expr, x, zero).is_none(),
+            "L'Hôpital declines at the origin"
         );
     }
 

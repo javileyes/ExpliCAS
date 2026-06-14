@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 152 (newest first)
+Active entries: 153 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -142,6 +142,7 @@ Active entries: 152 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / general n-th-root conjugate at +infinity (block 3) | Retained limits: general n-th-root conjugate at infinity
 - 2026-06-14 | `retained` | calculus / indefinite integration / polynomial cofactor times an even | Retained integration: polynomial times sine/cosine squared by power reduction
 - 2026-06-14 | `retained` | calculus / didactic / integration-by-parts substeps for | Retained didactic: repeated integration-by-parts narration (deg>=2)
+- 2026-06-14 | `retained` | calculus / limits / finite 0/0 quotient at a non-zero point (block 3) | Retained limits: L'Hôpital for 0/0 at a finite non-zero point
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6669,3 +6670,52 @@ Active entries: 152 (newest first)
     by-parts), so it narrates; the cyclic e^x sin x integrates by a DIFFERENT
     internal route (distribute/expand), so narrating it as by-parts is deferred
     until the internal route is itself cyclic-by-parts
+
+
+## 2026-06-14 - Retained limits: L'Hôpital for 0/0 at a finite non-zero point
+
+- area:
+  - calculus / limits / finite 0/0 quotient at a non-zero point (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_matrix_cell: limit(sin(x)/(x-pi),x,pi)=-1, limit(tan(x)/sin(x),x,pi)=-1,
+    limit((1-cos(x-1))/(x-1)^2,x,1)=1/2, limit((sin(x-1)-(x-1))/(x-1)^3,x,1)=-1/6
+  - behavior_change_expected: yes - transcendental 0/0 whose vanishing happens at a
+    shifted point (sin(x)/(x-pi), tan(x)/sin(x), 1-cos(x-1) over (x-1)^2) now resolve
+- observed (the existing engine is gated to point 0; L'Hopital fills the shifted gap):
+  - the equivalent-infinitesimal rule needs the function's ARGUMENT to vanish at the
+    point (sin(u)~u only as u->0), and the Taylor-quotient rule is hardcoded to expand
+    at 0. So sin(x)/(x-pi) at pi (sin's argument x does not vanish at pi) and any
+    second-order 0/0 at c!=0 stayed residual. L'Hopital is point-agnostic: it
+    differentiates numerator and denominator and re-evaluates the quotient's limit,
+    looping while the form stays 0/0, reusing the existing finite cascade (which already
+    folds sin(pi)=0, cos(pi)=-1 in the continuous case) to evaluate each part
+  - it is gated to a NON-ZERO point so point 0 keeps its equivalent/Taylor owners (and
+    their small-angle narration), bounding the footprint to the named gap; placed LAST
+    in the finite cascade so it only fires on what the specific rules leave residual
+  - SOUNDNESS: L'Hopital concludes lim f/g = lim f'/g' ONLY when the latter exists, so
+    the rule emits a value ONLY when the iterated quotient resolves to a definite finite
+    RATIONAL; it declines (honest residual) on poles (den'->0, num'/=0), one-sided/sign-
+    flip forms, oscillatory f'/g' (the false-positive trap), and irrational values
+    (-sin(2), e^2). Verified adversarially: 272-combination randomized fuzz with 0
+    mismatches vs mpmath, plus disguised-pole / sign-flip / hypothesis-fail traps all
+    declined; point-0 and infinity behavior unchanged
+- retained learning:
+  - the symbolic differentiator emits UNFOLDED arithmetic - notably exponents like
+    `(x-1)^(2-1)` - that Polynomial::from_expr and the continuous-limit rules reject.
+    A literal-only exponent simplifier does NOT fold `2-1`; fold every constant
+    subexpression with `as_rational_const` (which evaluates arithmetic) before re-taking
+    the limit of a differentiated form. This is the same lesson as the matcher rule
+    (numeric_value matches only literals) applied to a re-entrant evaluation
+  - a re-entrant rule that recurses into the shared cascade must mirror the top-level
+    entry's normalization: the public limit presimplifies before dispatching, so raw
+    differentiated forms (`2*(x-1)`, `(x-1)^(2-1)`) must be folded the same way or the
+    polynomial recognizer silently returns None and the chain dies one step early
+  - bound the re-entry of a self-recursive limit rule with a thread-local depth cell
+    AND cap the differentiation count; both terminate the loop, and the depth cell stops
+    a differentiated sub-quotient from re-triggering the rule without limit
+  - a decision procedure (L'Hopital) is retained on conservative emission: declining a
+    true-but-unprovable limit (x*sin(1/(x-1))->0) is sound, emitting a wrong one is not.
+    Gate to definite-finite-rational-or-decline and the honesty list survives for free
