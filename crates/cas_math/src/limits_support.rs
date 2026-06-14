@@ -3717,6 +3717,9 @@ fn try_limit_rules_at_finite(
     if let Some(result) = apply_finite_squeeze_bounded_product_rule(ctx, expr, var, point) {
         return Some(result);
     }
+    if let Some(result) = apply_finite_one_to_infinity_power_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
     if let Some(result) = apply_finite_bilateral_even_saturating_pole_rule(ctx, expr, var, point) {
         return Some(result);
     }
@@ -7687,6 +7690,54 @@ fn one_to_infinity_power_limit_at_infinity(
                 if value.is_one() {
                     return Some(ctx.add(Expr::Constant(Constant::E)));
                 }
+            }
+            let e = ctx.add(Expr::Constant(Constant::E));
+            Some(ctx.add(Expr::Pow(e, l_limit)))
+        }
+    }
+}
+
+/// The `1^inf` form at a FINITE point: `(1 + x)^(1/x) -> e` and friends. Same
+/// identity as the infinity case - `exp(lim exp*(base-1))` via `ln(1+h) ~ h` -
+/// but the exponent (e.g. `1/x` at 0) has no signed bilateral limit, so the
+/// gate is on the PRODUCT instead: a unit base limit and a NONZERO product
+/// limit `L = lim exp*(base-1)` (a nonzero L forces the exponent to diverge,
+/// so the form is genuinely indeterminate; a continuous `1^finite` gives
+/// `L = 0` and is left to ordinary substitution).
+fn apply_finite_one_to_infinity_power_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    use num_traits::{One, Zero};
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if !depends_on(ctx, base, var) || !depends_on(ctx, exp, var) {
+        return None;
+    }
+    let base_limit = try_limit_rules_at_finite(ctx, base, var, point)?;
+    if !crate::numeric_eval::as_rational_const(ctx, base_limit).is_some_and(|v| v.is_one()) {
+        return None;
+    }
+    let one = ctx.num(1);
+    let h = ctx.add(Expr::Sub(base, one));
+    let product = ctx.add(Expr::Mul(exp, h));
+    let (num, den) = rationalize_to_fraction(ctx, product);
+    let combined = ctx.add(Expr::Div(num, den));
+    let l_limit = try_limit_rules_at_finite(ctx, combined, var, point)?;
+    // A zero product limit is the continuous 1^finite case (1^c = 1), owned by
+    // ordinary substitution; only fire on the genuinely indeterminate form.
+    if crate::numeric_eval::as_rational_const(ctx, l_limit).is_some_and(|v| v.is_zero()) {
+        return None;
+    }
+    match limit_value_infinite_sign(ctx, l_limit) {
+        Some(1) => Some(mk_infinity(ctx, InfSign::Pos)),
+        Some(_) => Some(ctx.num(0)),
+        None => {
+            if crate::numeric_eval::as_rational_const(ctx, l_limit).is_some_and(|v| v.is_one()) {
+                return Some(ctx.add(Expr::Constant(Constant::E)));
             }
             let e = ctx.add(Expr::Constant(Constant::E));
             Some(ctx.add(Expr::Pow(e, l_limit)))
@@ -13985,6 +14036,53 @@ mod tests {
                 "1^inf must decline: {source}"
             );
         }
+    }
+
+    #[test]
+    fn finite_one_to_infinity_power_resolves_the_e_definition() {
+        // 1^inf at a finite point: (1+x)^(1/x) = e, the textbook definition.
+        // The product limit is computed by the full finite machinery, so
+        // SECOND-ORDER cases (cos(x)^(1/x^2) = e^(-1/2)) resolve correctly.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("(1+x)^(1/x)", "e"),
+            ("(1+2*x)^(1/x)", "e^2"),
+            ("(1+x)^(3/x)", "e^3"),
+            ("(1-x)^(1/x)", "e^(-1)"),
+            ("(1+sin(x))^(1/x)", "e"),
+            ("cos(x)^(1/x^2)", "e^(-1/2)"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = apply_finite_one_to_infinity_power_rule(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("finite 1^inf must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn finite_one_to_infinity_power_declines_continuous_and_non_unit_base() {
+        // Honest declines: a base not -> 1 (x^x, (2+x)^(1/x)), a zero product
+        // limit (the continuous 1^finite case (1+x)^x and (1+x^2)^(1/x)), and
+        // a constant exponent.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        let one = parse_expr(&mut ctx, "1");
+        for source in ["x^x", "(2+x)^(1/x)", "(1+x)^x", "(1+x^2)^(1/x)", "(1+x)^2"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_one_to_infinity_power_rule(&mut ctx, expr, x, zero).is_none(),
+                "finite 1^inf must decline: {source}"
+            );
+        }
+        // At x = 1 the base (1+x) -> 2, not 1: not the indeterminate form.
+        let expr = parse_expr(&mut ctx, "(1+x)^(1/x)");
+        assert!(
+            apply_finite_one_to_infinity_power_rule(&mut ctx, expr, x, one).is_none(),
+            "finite 1^inf needs a unit base limit"
+        );
     }
 
     #[test]

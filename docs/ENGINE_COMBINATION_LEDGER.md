@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 131 (newest first)
+Active entries: 132 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
 - 2026-06-14 | `retained` | calculus / limits / additive inf - inf of rational functions (block 3) | Retained limits: rational inf - inf at infinity
 - 2026-06-14 | `retained` | calculus / limits / exponential indeterminate forms (block 3) - P1 | Retained limits: 1^inf -> e^a at infinity (the constant e)
+- 2026-06-14 | `retained` | calculus / limits / exponential indeterminate forms at a finite point | Retained limits: 1^inf at a finite point ((1+x)^(1/x) = e)
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5735,3 +5736,49 @@ Active entries: 131 (newest first)
     second-order error. Remaining rungs: 0^0 (x^x at 0+), inf^0
     ((2^x+3^x)^(1/x)), the FINITE-point 1^inf ((1+x)^(1/x) at 0), and the
     transcendental-base second-order cases
+
+
+## 2026-06-14 - Retained limits: 1^inf at a finite point ((1+x)^(1/x) = e)
+
+- area:
+  - calculus / limits / exponential indeterminate forms at a finite point
+    (block 3) - P1
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    (1+x)^(1/x)=e, cos(x)^(1/x^2)=e^(-1/2))
+  - limit_matrix_cell: limit((1+x)^(1/x),x,0)=e,
+    limit(cos(x)^(1/x^2),x,0)=e^(-1/2)
+  - behavior_change_expected: yes - the OTHER textbook definition of e
+    resolves, and second-order forms cos(x)^(1/x^2) = e^(-1/2) too
+- observed (the same identity, gated on the product not the exponent):
+  - the finite case mirrors the infinity 1^inf rule (a723ff67d) but the
+    exponent (1/x at 0) has NO signed bilateral limit, so gating on
+    "exp -> +-inf" fails. Instead gate on the PRODUCT: a unit base limit and
+    a NONZERO L = lim exp*(base-1). A nonzero L forces the exponent to
+    diverge (base-1 -> 0), so the form is genuinely indeterminate; L = 0 is
+    the continuous 1^c = 1 case, left to ordinary substitution
+  - because L is evaluated by the FULL finite machinery (rationalize_to_
+    fraction then recursive try_limit_rules_at_finite, which owns the Taylor
+    engine and equivalent infinitesimals), SECOND-ORDER cases resolve that
+    the infinity rationalizer could not: cos(x)^(1/x^2)=e^(-1/2),
+    (sin(x)/x)^(1/x^2)=e^(-1/6), (1+sin(x))^(1/x)=e. Verified adversarially
+    (2-lens, 47 probes, 0 unsound) with mpmath cross-checks to ~14 sig figs;
+    works at nonzero points too (x^(1/(x-1)) -> e at x=1)
+- retained learning:
+  - e^L is SOUND even for second-order bases: lim g*ln(1+h) =
+    lim(g*h) * lim(ln(1+h)/h) = L * 1 is a product of two convergent
+    factors, so the dropped -h^2/2 term is absorbed into the ln(1+h)/h -> 1
+    factor - never a "second-order trap" as long as base -> 1 (forcing
+    h -> 0) and L exists. The first-order reduction is exact in the limit
+  - gate an indeterminate product form on the PRODUCT limit, not the
+    factors: at a finite point a factor (1/x) may diverge with no signed
+    bilateral limit while the product (exp*(base-1)) converges. Testing
+    "L exists and is nonzero" both proves the form is genuinely
+    indeterminate AND sidesteps the missing factor limit
+  - delegating L to the full finite machinery is what makes the finite rule
+    STRICTLY stronger than the infinity sibling (which rationalizes opaque
+    transcendental bases away): reuse the deepest evaluator you have for the
+    sub-limit and the hard cases come for free
