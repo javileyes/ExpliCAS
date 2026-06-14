@@ -258,6 +258,73 @@ fn apply_finite_radical_conjugate_rule(
     Some(ctx.add(Expr::Number(rational_part / conjugate_value)))
 }
 
+/// 0/0 finite-point limits of `(s1 sqrt(L1) + s2 sqrt(L2)) / den` with two linear
+/// radicands, resolved by the conjugate `s1 sqrt(L1) - s2 sqrt(L2)`: the product
+/// is the polynomial `s1^2 L1 - s2^2 L2`, so the numerator's radical cancels and
+/// the limit is `[s1^2 L1 - s2^2 L2 over den]_pt / (s1 sqrt(L1(pt)) - s2 sqrt(L2(pt)))`.
+/// The single-sqrt-plus-constant case is owned by the rule above; this one is its
+/// sqrt-MINUS-sqrt complement. Resolves `(sqrt(1+x)-sqrt(1-x))/x -> 1`,
+/// `(sqrt(4+x)-sqrt(4-x))/x -> 1/4`. Gated to a genuine 0/0 with rational radical
+/// values at the point and a nonzero conjugate; irrational sqrt values and
+/// degenerate conjugates decline.
+fn apply_finite_radical_difference_conjugate_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_symbol).to_string();
+    let Expr::Number(point_value) = ctx.get(point).clone() else {
+        return None;
+    };
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let (s1, l1, s2, l2) = split_scaled_sqrt_difference(ctx, num, &var_name)?;
+    let l1_poly = Polynomial::from_expr(ctx, l1, &var_name).ok()?;
+    let l2_poly = Polynomial::from_expr(ctx, l2, &var_name).ok()?;
+    if l1_poly.degree() != 1 || l2_poly.degree() != 1 {
+        return None;
+    }
+
+    let sqrt1 = rational_sqrt(&l1_poly.eval(&point_value))?;
+    let sqrt2 = rational_sqrt(&l2_poly.eval(&point_value))?;
+    // 0/0 numerator: s1*sqrt(L1(pt)) + s2*sqrt(L2(pt)) == 0.
+    if (&s1 * &sqrt1 + &s2 * &sqrt2) != BigRational::from_integer(BigInt::from(0)) {
+        return None;
+    }
+
+    let denominator_poly = Polynomial::from_expr(ctx, den, &var_name).ok()?;
+    if !denominator_poly.eval(&point_value).is_zero() {
+        return None;
+    }
+
+    // num2 = s1^2 L1 - s2^2 L2 (the rationalized numerator, a linear polynomial).
+    let s1_sq = &s1 * &s1;
+    let s2_sq = &s2 * &s2;
+    let num2 = Polynomial::new(
+        vec![
+            &s1_sq * l1_poly.coeffs.first()? - &s2_sq * l2_poly.coeffs.first()?,
+            &s1_sq * l1_poly.coeffs.get(1)? - &s2_sq * l2_poly.coeffs.get(1)?,
+        ],
+        var_name.clone(),
+    );
+    let rational_part = finite_rational_polynomial_value(&num2, &denominator_poly, &point_value)?;
+    // Conjugate s1*sqrt(L1) - s2*sqrt(L2), continuous and nonzero at the point.
+    let conjugate_value = &s1 * &sqrt1 - &s2 * &sqrt2;
+    if conjugate_value.is_zero() {
+        return None;
+    }
+    Some(ctx.add(Expr::Number(rational_part / conjugate_value)))
+}
+
 /// Flatten an additive tree into signed leaf terms (handles Add, Sub,
 /// and unary Neg).
 fn collect_signed_add_terms(
@@ -314,6 +381,36 @@ fn split_scaled_sqrt_plus_constant(
         return None;
     }
     Some((scale, radicand, constant))
+}
+
+/// Split `s1*sqrt(L1) + s2*sqrt(L2)` into `(s1, L1, s2, L2)`: EXACTLY two scaled
+/// square-root terms (signs folded into the scales), each radicand depending on
+/// the variable. Any non-sqrt term (a constant, a bare polynomial) declines, so
+/// this is the sqrt-MINUS-sqrt complement of `split_scaled_sqrt_plus_constant`.
+fn split_scaled_sqrt_difference(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(BigRational, ExprId, BigRational, ExprId)> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_add_terms(ctx, expr, true, &mut terms);
+    if terms.len() != 2 {
+        return None;
+    }
+    let mut sqrts: Vec<(BigRational, ExprId)> = Vec::new();
+    for (term, positive) in terms {
+        let (scale, radicand) = scaled_square_root_base(ctx, term)?;
+        let signed = if positive { scale } else { -scale };
+        sqrts.push((signed, radicand));
+    }
+    let (s1, l1) = sqrts[0].clone();
+    let (s2, l2) = sqrts[1].clone();
+    if !crate::expr_predicates::contains_named_var(ctx, l1, var_name)
+        || !crate::expr_predicates::contains_named_var(ctx, l2, var_name)
+    {
+        return None;
+    }
+    Some((s1, l1, s2, l2))
 }
 
 fn finite_rational_polynomial_value(
@@ -3800,6 +3897,9 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_rational_polynomial_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_radical_difference_conjugate_rule(ctx, expr, var, point) {
         return Some(result);
     }
     if let Some(result) = apply_finite_radical_conjugate_rule(ctx, expr, var, point) {
@@ -10112,6 +10212,49 @@ mod tests {
             let point = parse_expr(&mut ctx, point_src);
             assert!(
                 apply_finite_radical_conjugate_rule(&mut ctx, expr, x, point).is_none(),
+                "must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn finite_radical_difference_conjugate_resolves_sqrt_minus_sqrt() {
+        // (s1 sqrt(L1) + s2 sqrt(L2))/den at a 0/0 point, rationalized by the
+        // conjugate. Values cross-checked numerically (mpmath dps 40).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, point_src, num, den) in [
+            ("(sqrt(1+x) - sqrt(1-x))/x", "0", 1, 1),
+            ("(sqrt(1+2*x) - sqrt(1-2*x))/x", "0", 2, 1),
+            ("(sqrt(4+x) - sqrt(4-x))/x", "0", 1, 2),
+            ("(sqrt(x+3) - sqrt(2*x+2))/(x-1)", "1", -1, 4),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let point = parse_expr(&mut ctx, point_src);
+            let out = apply_finite_radical_difference_conjugate_rule(&mut ctx, expr, x, point)
+                .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_number_expr(&ctx, out, num, den);
+        }
+    }
+
+    #[test]
+    fn finite_radical_difference_conjugate_declines_pole_irrational_and_nonlinear() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, point_src) in [
+            // numerator nonzero at the point (sqrt(2) - 1 != 0): a pole.
+            ("(sqrt(2+x) - sqrt(1-x))/x", "0"),
+            // a SUM of square roots (both positive): not 0/0 at the point.
+            ("(sqrt(1+x) + sqrt(1-x))/x", "0"),
+            // a nonlinear radicand is out of scope (1 + x^2).
+            ("(sqrt(1+x) - sqrt(1+x^2))/x", "0"),
+            // irrational radical value at the point (sqrt(2)).
+            ("(sqrt(2+x) - sqrt(2-x))/x", "0"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let point = parse_expr(&mut ctx, point_src);
+            assert!(
+                apply_finite_radical_difference_conjugate_rule(&mut ctx, expr, x, point).is_none(),
                 "must decline: {source}"
             );
         }

@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 156 (newest first)
+Active entries: 157 (newest first)
 
+- 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -6836,3 +6837,38 @@ Active entries: 156 (newest first)
   - reuse the divergent-cofactor + unit-argument gates as DECLARED INTENT and let the
     downstream rational-limit decide the rest; the conservative decline (true-but-
     unprovable reductions like x*ln(cos(1/x))->0 stay residual) keeps soundness free
+
+
+## 2026-06-15 - Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
+
+- area:
+  - calculus / limits / finite 0/0 quotient with two square-root terms (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_matrix_cell: limit((sqrt(1+x)-sqrt(1-x))/x,x,0)=1,
+    limit((sqrt(4+x)-sqrt(4-x))/x,x,0)=1/2, limit((sqrt(x+3)-sqrt(2x+2))/(x-1),x,1)=-1/4
+  - behavior_change_expected: yes - (sqrt(L1)-sqrt(L2))/den 0/0 forms were residual
+    (the existing conjugate rule only handled sqrt-MINUS-CONSTANT)
+- observed (the sqrt-minus-constant rule's two-radical complement):
+  - apply_finite_radical_conjugate_rule rationalizes scale*sqrt(linear)+const by
+    scale*sqrt-const; the new sibling rationalizes s1*sqrt(L1)+s2*sqrt(L2) by
+    s1*sqrt(L1)-s2*sqrt(L2). The product s1^2 L1 - s2^2 L2 is a polynomial (the radical
+    cancels), so the limit is [that polynomial over den, removable] divided by the
+    conjugate value s1*sqrt(L1(pt))-s2*sqrt(L2(pt)). Reuses split into signed sqrt
+    terms, rational_sqrt, and finite_rational_polynomial_value
+  - gated to a genuine 0/0 (both radicals equal at the point so the numerator vanishes),
+    both radicands linear, rational radical values at the point, and a nonzero conjugate.
+    Poles (numerator nonzero), a SUM of roots, nonlinear radicands, and irrational radical
+    values all decline -- honest residuals, verified numerically (mpmath dps 40) and with
+    sign-flip and order-mismatch probes
+- retained learning:
+  - a rationalize-by-conjugate rule written for ONE radical plus a constant has a direct
+    two-radical sibling: the conjugate of s1*sqrt(L1)+s2*sqrt(L2) cancels BOTH radicals at
+    once into s1^2 L1 - s2^2 L2. Write the complement rather than special-casing; the
+    removable-rational + conjugate-value split is identical
+  - OPERATIONAL: run the scorecard generator (engine_improvement_scorecard.py) ONCE and
+    single. Concurrent invocations (overlapping background make/scorecard tasks) race on
+    the output json and a stale run silently overwrites the fresh one, making the
+    fingerprint show no delta. Kill stragglers, clear scripts/__pycache__, run one

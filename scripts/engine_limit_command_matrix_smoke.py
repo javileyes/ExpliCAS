@@ -2726,6 +2726,30 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         point_regime="infinity",
         trace_regime="inf_times_zero_log_reduction",
     ),
+    LimitCommandMatrixCase(
+        name="finite_radical_difference_conjugate_unit_radius_supported",
+        expr="limit((sqrt(1+x)-sqrt(1-x))/x, x, 0)",
+        expected_result="1",
+        expected_required_display=("x ≠ 0", "x ≤ 1", "x ≥ -1"),
+        expected_step_substrings=("Evaluar límite finito",),
+        family="radical_difference_conjugate",
+        point_regime="finite",
+        domain_regime="required_condition",
+        required_condition_regime="finite_radical_difference_denominator_and_radicand_domain",
+        trace_regime="radical_difference_conjugate",
+    ),
+    LimitCommandMatrixCase(
+        name="finite_radical_difference_conjugate_scaled_radius_supported",
+        expr="limit((sqrt(4+x)-sqrt(4-x))/x, x, 0)",
+        expected_result="1/2",
+        expected_required_display=("x ≠ 0", "x ≤ 4", "x ≥ -4"),
+        expected_step_substrings=("Evaluar límite finito",),
+        family="radical_difference_conjugate",
+        point_regime="finite",
+        domain_regime="required_condition",
+        required_condition_regime="finite_radical_difference_denominator_and_radicand_domain",
+        trace_regime="radical_difference_conjugate",
+    ),
 )
 
 

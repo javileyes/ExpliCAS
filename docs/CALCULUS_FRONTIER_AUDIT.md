@@ -316,6 +316,17 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   raíz racional + conjugado ≠0; los polos no-0/0 y las raíces
   irracionales declinan, con condiciones de dominio honestas. Item
   cerrado salvo los peldaños √a irracional y grado ≥3 anotados)*
+  *(sqrt−sqrt punto finito 2026-06-15 PENDING_HASH: el complemento de DOS
+  radicales `(s1√(L1)+s2√(L2))/den` en 0/0 vía conjugado — `apply_finite_radical_
+  difference_conjugate_rule`, hermano del sqrt−constante de arriba. El conjugado
+  `s1√(L1)−s2√(L2)` cancela AMBOS radicales en el polinomio `s1²L1−s2²L2`, así que
+  el límite es `[ese polinomio sobre den, removible] / (s1√(L1(pt))−s2√(L2(pt)))`.
+  `(√(1+x)−√(1−x))/x=1`, `(√(4+x)−√(4−x))/x=1/2`, `(√(x+3)−√(2x+2))/(x−1)=−1/4`
+  (punto no-cero), `(√(1−x)−√(1+x))/x=−1` (signo invertido). Gate idéntico:
+  0/0 genuino + radicandos lineales + raíces racionales en el punto + conjugado
+  ≠0; polos, SUMA de raíces, radicandos no lineales e irracionales declinan.
+  Verificado numéricamente (mpmath dps 40). Quedan: √a irracional y radicandos
+  grado ≥2.)*
   *(hermano RACIONAL 2026-06-14 1881980a6: el ∞−∞ de funciones racionales
   (sin radicales) también resuelve — `rational_difference_limit_at_infinity`
   pone los operandos sobre denominador común y reutiliza
