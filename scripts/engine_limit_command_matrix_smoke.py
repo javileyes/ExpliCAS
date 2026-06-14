@@ -1777,6 +1777,18 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="exact_rational",
     ),
     LimitCommandMatrixCase(
+        name="infinity_polynomial_times_decaying_exponential",
+        expr="limit(x*2^(-x), x, infinity)",
+        expected_result="0",
+        expected_step_substrings=("Evaluar límite en infinito",),
+        family="exponential_growth",
+        point_regime="infinity",
+        domain_regime="exponential_dominance",
+        required_condition_regime="none",
+        trace_regime="polynomial_times_decaying_exponential_policy",
+        presentation_regime="exact_rational",
+    ),
+    LimitCommandMatrixCase(
         name="finite_one_to_infinity_power_e_definition",
         expr="limit((1+x)^(1/x), x, 0)",
         expected_result="e",

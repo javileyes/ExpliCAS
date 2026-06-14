@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 137 (newest first)
+Active entries: 138 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -127,6 +127,7 @@ Active entries: 137 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / inf^0 exponential indeterminate form + general-base | Retained limits: inf^0 ((2^x+3^x)^(1/x)=3) + b^x growth
 - 2026-06-14 | `retained` | calculus / limits / general-base exponential dominance at infinity | Retained limits: quotient of exponential sums by dominant base
 - 2026-06-14 | `retained` | calculus / limits / exponential-vs-polynomial dominance at infinity | Retained limits: general-base exponential beats polynomial
+- 2026-06-14 | `retained` | calculus / limits / polynomial-times-decaying-exponential at infinity | Retained limits: polynomial times a decaying exponential -> 0
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5987,3 +5988,38 @@ Active entries: 137 (newest first)
     quotient is decided by which side has the exponential, with the sign the
     only arithmetic. Partition the operands by class with mutually-exclusive
     recognizers and the limit is a lookup
+
+
+## 2026-06-14 - Retained limits: polynomial times a decaying exponential -> 0
+
+- area:
+  - calculus / limits / polynomial-times-decaying-exponential at infinity
+    (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (1 matrix row: x*2^(-x))
+  - limit_matrix_cell: limit(x*2^(-x),x,inf)=0
+  - behavior_change_expected: yes - a polynomial times a decaying general-base
+    exponential resolves to 0; the product sibling of the exp-vs-poly quotient
+- observed (the 0*inf form where the 0 factor decays exponentially):
+  - polynomial_times_decaying_exponential_at_infinity reads one Mul factor as a
+    positive-degree polynomial and the other as a general-base exponential
+    atom; if that exponential DECAYS (its limit is 0, via the b^x growth rule
+    at the same approach), the product is 0 - exponential decay outruns any
+    polynomial growth. x*2^(-x)=0 at +inf, x*2^x=0 at -inf, x^3*2^(-x)=0,
+    x^2*(1/2)^x=0
+  - this is exactly the 0*inf form the generic Mul branch leaves residual
+    (the cycle that fixed 0*sinh(1/x^2)); here the 0 factor is a genuine
+    exponential, so the product is 0 regardless of the polynomial sign, and a
+    GROWING exponential factor (x*2^x at +inf) is not matched (its limit is
+    not 0) and keeps its +inf via other rules
+- retained learning:
+  - the 0*inf product is determined by WHICH factor wins the growth race: a
+    decaying exponential always beats a growing polynomial, so the product is
+    0 with no sign arithmetic. Recognize the exponential factor and test that
+    it decays (limit 0) at the approach; the polynomial sign is irrelevant
+    because the magnitude collapses to 0. This is the multiplicative dual of
+    the exp-vs-poly quotient, closing the general-base exponential dominance
+    lattice over the shared effective-base atom

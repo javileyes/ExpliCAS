@@ -7785,7 +7785,44 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = general_exp_vs_polynomial_dominance_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = polynomial_times_decaying_exponential_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     rational_poly_limit(ctx, expr, var, approach)
+}
+
+/// A polynomial times a DECAYING general-base exponential at infinity tends to
+/// 0: the exponential decay outruns any polynomial growth. Covers
+/// `x * 2^(-x) -> 0` (at +inf) and `x * 2^x -> 0` (at -inf). The product is the
+/// 0 * inf form the generic Mul branch leaves residual; here the 0 factor is a
+/// genuine exponential, so the product is 0 regardless of the polynomial sign.
+fn polynomial_times_decaying_exponential_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use num_traits::Zero;
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Mul(lhs, rhs) = ctx.get(expr).clone() else {
+        return None;
+    };
+    for (poly_cand, exp_cand) in [(lhs, rhs), (rhs, lhs)] {
+        let is_polynomial =
+            Polynomial::from_expr(ctx, poly_cand, &var_name).is_ok_and(|p| p.degree() >= 1);
+        if !is_polynomial || numeric_base_power(ctx, exp_cand).is_none() {
+            continue;
+        }
+        // The exponential factor must DECAY (limit 0) so it dominates the poly.
+        let exp_limit = general_base_exponential_limit_at_infinity(ctx, exp_cand, var, approach)?;
+        if crate::numeric_eval::as_rational_const(ctx, exp_limit).is_some_and(|v| v.is_zero()) {
+            return Some(ctx.num(0));
+        }
+    }
+    None
 }
 
 /// A quotient of a general-base exponential sum against a polynomial at
@@ -14543,6 +14580,32 @@ mod tests {
                     .unwrap_or_else(|| panic!("exp-vs-poly must resolve: {source}"));
             assert_eq!(display_expr(&ctx, out), expected, "{source}");
         }
+    }
+
+    #[test]
+    fn polynomial_times_decaying_exponential_collapses_to_zero() {
+        // A polynomial times a decaying exponential -> 0 (decay beats growth).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, approach) in [
+            ("x*2^(-x)", InfSign::Pos),
+            ("x^3*2^(-x)", InfSign::Pos),
+            ("x^2*(1/2)^x", InfSign::Pos),
+            ("x*2^x", InfSign::Neg),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out =
+                polynomial_times_decaying_exponential_at_infinity(&mut ctx, expr, x, approach)
+                    .unwrap_or_else(|| panic!("poly*decaying-exp must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), "0", "{source}");
+        }
+        // A GROWING exponential factor is not this rule (x*2^x at +inf -> +inf).
+        let grow = parse_expr(&mut ctx, "x*2^x");
+        assert!(
+            polynomial_times_decaying_exponential_at_infinity(&mut ctx, grow, x, InfSign::Pos)
+                .is_none(),
+            "a growing exponential is not the decaying-product rule"
+        );
     }
 
     #[test]
