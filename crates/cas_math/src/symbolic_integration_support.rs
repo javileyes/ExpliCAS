@@ -9387,6 +9387,89 @@ fn polynomial_over_sqrt_quadratic_hermite_antiderivative(
 /// delegated to the existing polynomial*{exp,trig} by-parts owner, then
 /// back-substituting `u = x^2`. The `k=0` case `x f(x^2)` is already owned by
 /// the derivative-substitution rule, so this only fires for `2k+1 >= 3`.
+/// `integral p(x) sin(u)^2 dx` and `integral p(x) cos(u)^2 dx` for a polynomial
+/// `p` (degree >= 1) and affine `u`: apply the power reduction
+/// `sin^2(u) = (1 - cos(2u))/2`, `cos^2(u) = (1 + cos(2u))/2`, so the integrand
+/// becomes `p/2 -/+ (p/2) cos(2u)`, delegated to the existing power-rule and
+/// polynomial*trig by-parts owners. The bare (constant-cofactor) case is already
+/// owned by trig_square_affine_antiderivative.
+fn polynomial_times_trig_square_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+    // Find exactly one sin(u)^2 / cos(u)^2 factor with an affine argument.
+    let mut trig: Option<(usize, BuiltinFn, ExprId)> = None;
+    for (i, factor) in factors.iter().enumerate() {
+        let Expr::Pow(base, exp) = ctx.get(*factor).clone() else {
+            continue;
+        };
+        if !is_number(ctx, exp, 2) {
+            continue;
+        }
+        let Expr::Function(fn_id, args) = ctx.get(base).clone() else {
+            continue;
+        };
+        if args.len() != 1 {
+            continue;
+        }
+        let builtin = match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            _ => continue,
+        };
+        // affine argument with a nonzero rational slope
+        let Some((slope, _)) = get_linear_coeffs(ctx, args[0], var) else {
+            continue;
+        };
+        let Some(slope) = rational_constant_value(ctx, slope) else {
+            continue;
+        };
+        if slope.is_zero() {
+            continue;
+        }
+        if trig.is_some() {
+            return None; // more than one trig-square factor is out of scope
+        }
+        trig = Some((i, builtin, args[0]));
+    }
+    let (trig_idx, builtin, u) = trig?;
+
+    // The remaining factors must be a non-constant polynomial cofactor.
+    let cofactor_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != trig_idx)
+        .map(|(_, f)| *f)
+        .collect();
+    let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+    if cofactor_poly.degree() == 0 {
+        return None; // a constant cofactor is the bare power-reduction case
+    }
+
+    // Power reduction: sin^2(u) = (1 - cos(2u))/2, cos^2(u) = (1 + cos(2u))/2.
+    // Build the DISTRIBUTED form p/2 -/+ (p/2) cos(2u) -- the integrator handles
+    // p/2 (power rule) and p*cos(2u)/2 (polynomial*trig) but does NOT distribute
+    // a p*(sum) product itself, so the two terms must be split here.
+    let two = ctx.num(2);
+    let two_u = mul2_raw(ctx, two, u);
+    let cos_2u = ctx.call_builtin(BuiltinFn::Cos, vec![two_u]);
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let half_cofactor = mul2_raw(ctx, half, cofactor);
+    let cofactor_cos = mul2_raw(ctx, cofactor, cos_2u);
+    let half_cofactor_cos = mul2_raw(ctx, half, cofactor_cos);
+    let rewritten = match builtin {
+        BuiltinFn::Sin => ctx.add(Expr::Sub(half_cofactor, half_cofactor_cos)),
+        BuiltinFn::Cos => ctx.add(Expr::Add(half_cofactor, half_cofactor_cos)),
+        _ => return None,
+    };
+    integrate_symbolic_expr(ctx, rewritten, var)
+}
+
 fn odd_power_times_quadratic_function_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -21879,6 +21962,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = polynomial_times_trig_square_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = linear_radical_substitution_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -22200,6 +22287,30 @@ mod tests {
         // not a power-rule target (needs a substitution the engine declines).
         let residual = parse("cbrt(x^2 + 1)", &mut ctx).expect("parse");
         assert!(integrate_symbolic_expr(&mut ctx, residual, "x").is_none());
+    }
+
+    #[test]
+    fn integrates_polynomial_times_trig_square_via_power_reduction() {
+        let mut ctx = Context::new();
+        // x sin^2(x) -> x(1 - cos 2x)/2 -> x/4*... ; check it resolves (the exact
+        // form is verified end-to-end by the contract/matrix; here assert that
+        // the previously-residual product now integrates and the bare/non-affine
+        // cases keep their behavior).
+        for source in ["x*sin(x)^2", "x^2*sin(x)^2", "x^2*cos(x)^2", "x*sin(2*x)^2"] {
+            let expr = parse(source, &mut ctx).expect("parse");
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+        // Non-affine inner stays residual; the bare power-reduction case is owned
+        // elsewhere, so this rule declines it (constant cofactor / degree 0).
+        let nonaffine = parse("x*sin(x^2)^2", &mut ctx).expect("parse");
+        assert!(
+            super::polynomial_times_trig_square_antiderivative(&mut ctx, nonaffine, "x").is_none()
+        );
+        let bare = parse("2*sin(x)^2", &mut ctx).expect("parse");
+        assert!(super::polynomial_times_trig_square_antiderivative(&mut ctx, bare, "x").is_none());
     }
 
     #[test]

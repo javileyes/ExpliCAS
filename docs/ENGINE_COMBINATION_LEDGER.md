@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 150 (newest first)
+Active entries: 151 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -140,6 +140,7 @@ Active entries: 150 (newest first)
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 4/8, Phase 6 educatio... | Retained educational: bare ln by-parts narration (completes the family)
 - 2026-06-14 | `retained` | calculus / differentiation + integration / cube root elementary rules | Retained calculus: cbrt as first-class elementary (derivative + antiderivative)
 - 2026-06-14 | `retained` | calculus / limits / general n-th-root conjugate at +infinity (block 3) | Retained limits: general n-th-root conjugate at infinity
+- 2026-06-14 | `retained` | calculus / indefinite integration / polynomial cofactor times an even | Retained integration: polynomial times sine/cosine squared by power reduction
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6580,3 +6581,42 @@ Active entries: 150 (newest first)
   - a rational_nth_root built on BigInt::nth_root must re-check root^n == value
     (nth_root truncates) and reject even roots of negatives (not real) -- the same
     contract as rational_sqrt/rational_cbrt_exact, now parameterized
+
+
+## 2026-06-14 - Retained integration: polynomial times sine/cosine squared by power reduction
+
+- area:
+  - calculus / indefinite integration / polynomial cofactor times an even
+    trig power sin(ax+b)^2 or cos(ax+b)^2 (block 4/7, power reduction)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_matrix_cell: integrate(x*sin(x)^2,x)=x^2/4 - x*sin(2x)/4 - cos(2x)/8,
+    integrate(x^2*cos(x)^2,x), integrate(x*sin(2*x)^2,x)
+  - behavior_change_expected: yes - p(x)*sin(ax+b)^2 / p(x)*cos(ax+b)^2 (deg p >= 1,
+    affine inner) were residual and now integrate via the half-angle identity
+- observed (rewrite-and-delegate, no new integrator):
+  - sin(u)^2 = 1/2 - 1/2 cos(2u) and cos(u)^2 = 1/2 + 1/2 cos(2u). Multiplying by
+    the polynomial cofactor p(x) and DISTRIBUTING gives 1/2 p(x) -/+ 1/2 p(x) cos(2u),
+    two terms each already owned: the bare polynomial integrator and the existing
+    polynomial-times-cos(affine) by-parts. The rule only rewrites and re-enters
+    integrate_symbolic_expr; it does not verify or integrate anything itself
+  - KEY: the integrator does NOT distribute p(x)*(sum), so rewriting to
+    p(x)*(1/2 - 1/2 cos 2u) stays residual. The rewrite must emit the DISTRIBUTED
+    Sub/Add of two Mul terms (1/2 p(x)) and (1/2 p(x) cos 2u) for the owners to fire
+  - intent gate: exactly one Pow(Function(Sin|Cos,[u]),2) factor with affine u
+    (nonzero rational slope via get_linear_coeffs), remaining factors form a
+    cofactor of polynomial degree >= 1. Degree-0 cofactor (bare sin^2) keeps its
+    existing owner; non-affine inner (sin(x^2)^2) and bare sin^2 decline -> honest
+    residual. Soundness: every produced antiderivative round-trips through the
+    backend's own differentiation verifier (else it would not return supported)
+- retained learning:
+  - a power-reduction rewrite is only useful if it lands on forms the integrator
+    already distributes over: emit the EXPANDED sum-of-products, never
+    factor*(sum), because the linearity that makes the rewrite worth doing is
+    exactly the step the integrator will not take for a syntactic product
+  - the matrix antiderivative check uses a less aggressive simplifier than the CLI,
+    so diff(integrate(x*sin^2 x)) normalizes to the power-reduced 1/2(x - x cos 2x),
+    not the syntactic x*sin^2 x: assert round-trip with expected_derivative_equivalent_to
+    (full-simplifier equivalence), not byte-equal expected_derivative_result

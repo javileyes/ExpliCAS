@@ -602,6 +602,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   ambas-pares (sin²cos²) conservan su dueño. sin⁵cos² va como
   verification_gap — ambos canales simbólicos no recolapsan la derivada
   de grado 7, verificado numéricamente)*
+- [x] **(F) Polinomio·potencia trig par**: `x·sin(x)^2`, `x^2·cos(x)^2`
+  residuales mientras `sin(x)^2` solo ya reducía.
+  *(graduado 2026-06-14: p(x)·sin(ax+b)^2 / p(x)·cos(ax+b)^2 con deg p≥1 e
+  inner afín vía la identidad de ángulo mitad sin²u=½−½cos2u; el reescrito
+  DISTRIBUYE en ½p(x)∓½p(x)cos2u y delega en el integrador de polinomios y
+  en el de polinomio·cos(afín) por partes. Gate: un único factor
+  Pow(Sin|Cos,2) afín, cofactor polinómico deg≥1. Peldaño honesto que queda:
+  inner no afín substitución-amenable `x·sin(x²)²` — es ELEMENTAL
+  (=x²/4−sin(2x²)/8 por u=x², el cofactor x aporta el du) pero hoy residual;
+  y potencias pares ≥4 `x·sin⁴x`)*
 - [x] **(F) sech/csch no parsean**: `sech(x)^2` da "función no
   definida".
   *(graduado 2026-06-13 758e54e73: el parser desugariza sech→1/cosh,
