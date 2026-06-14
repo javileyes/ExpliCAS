@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 136 (newest first)
+Active entries: 137 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -126,6 +126,7 @@ Active entries: 136 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / logarithmic-exponential dominance at infinity | Retained limits: ln(sum of exponentials)/x -> ln(dominant base)
 - 2026-06-14 | `retained` | calculus / limits / inf^0 exponential indeterminate form + general-base | Retained limits: inf^0 ((2^x+3^x)^(1/x)=3) + b^x growth
 - 2026-06-14 | `retained` | calculus / limits / general-base exponential dominance at infinity | Retained limits: quotient of exponential sums by dominant base
+- 2026-06-14 | `retained` | calculus / limits / exponential-vs-polynomial dominance at infinity | Retained limits: general-base exponential beats polynomial
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5947,3 +5948,42 @@ Active entries: 136 (newest first)
     nonzero dominant coefficient before trusting the leading base, the same
     lesson as the log-of-exponential-sum rule. Remaining rung: exponential
     vs polynomial (2^x/x^2), where the term classes differ
+
+
+## 2026-06-14 - Retained limits: general-base exponential beats polynomial
+
+- area:
+  - calculus / limits / exponential-vs-polynomial dominance at infinity
+    (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    exp over poly, poly over exp)
+  - limit_matrix_cell: limit(2^x/x^2,x,inf)=inf, limit(x^10/2^x,x,inf)=0
+  - behavior_change_expected: yes - a general-base exponential beats any
+    polynomial in a quotient; the engine settled the natural base only
+- observed (completes the general-base exponential dominance family):
+  - general_exp_vs_polynomial_dominance_at_infinity reads one side as an
+    exponential sum (a growing base > 1 via the effective-base parser) and
+    the other as a positive-degree polynomial, then: exp / poly -> +-inf
+    (sign from the dominant exponential coefficient times the polynomial's
+    leading sign), poly / exp -> 0. 2^x/x^2 = inf, x^10/2^x = 0,
+    (2^x+3^x)/x^5 = inf, (-2^x)/x^2 = -inf
+  - the two classifiers (exp_sum_dominant_sign, positive_degree_polynomial_
+    tail_sign) cleanly partition: the parser rejects polynomials (x^2 is not
+    an exponential atom) and the polynomial reader rejects exponentials
+    (2^x is not a polynomial), so a side is at most one class
+- retained learning:
+  - the general-base exponential family is now four thin rules over one
+    effective-base parser - growth (b^x), log-of-sum (ln(2^x+3^x)/x),
+    quotient (3^x/2^x), and vs-polynomial (2^x/x^2). Each reads off the
+    dominant term and a sign. The investment was the parser; the rules are
+    cheap and compose. When a foundation is missing (the engine grew e^x but
+    not 2^x), build the atom first and the dominance lattice fills in
+  - growth-rate comparison across CLASSES (exponential vs polynomial) is a
+    fixed order - any growing exponential beats any polynomial - so the
+    quotient is decided by which side has the exponential, with the sign the
+    only arithmetic. Partition the operands by class with mutually-exclusive
+    recognizers and the limit is a lookup

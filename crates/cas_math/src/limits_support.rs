@@ -7782,7 +7782,91 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = exp_sum_quotient_dominance_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = general_exp_vs_polynomial_dominance_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     rational_poly_limit(ctx, expr, var, approach)
+}
+
+/// A quotient of a general-base exponential sum against a polynomial at
+/// infinity: an exponential `b^x` with `b > 1` beats any polynomial, so
+/// `(sum b_i^x) / poly -> +-inf` and `poly / (sum b_i^x) -> 0`. The engine
+/// already settles the natural base; this covers `2^x / x^2 -> +inf`,
+/// `x^10 / 2^x -> 0`. Reuses the effective-base parser for the exponential
+/// side and the polynomial reader for the other.
+fn general_exp_vs_polynomial_dominance_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if !matches!(approach, InfSign::Pos) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    // Numerator is an exponential sum, denominator a polynomial: exp wins.
+    if let Some(num_sign) = exp_sum_dominant_sign(ctx, num, &var_name) {
+        if let Some(den_sign) = positive_degree_polynomial_tail_sign(ctx, den, &var_name) {
+            let positive = num_sign == den_sign;
+            return Some(mk_infinity(
+                ctx,
+                if positive { InfSign::Pos } else { InfSign::Neg },
+            ));
+        }
+    }
+    // Numerator is a polynomial, denominator an exponential sum: poly loses.
+    if positive_degree_polynomial_tail_sign(ctx, num, &var_name).is_some()
+        && exp_sum_dominant_sign(ctx, den, &var_name).is_some()
+    {
+        return Some(ctx.num(0));
+    }
+    None
+}
+
+/// The sign of the dominant term of a sum of rational-base exponentials at
+/// `+inf`, but only when a genuinely growing base (`> 1`) dominates with a
+/// nonzero coefficient. None when the expression is not such a sum.
+fn exp_sum_dominant_sign(ctx: &Context, expr: ExprId, var_name: &str) -> Option<i32> {
+    use num_traits::{One, Signed, Zero};
+    let mut terms: Vec<(BigRational, BigRational)> = Vec::new();
+    collect_rational_exp_terms(ctx, expr, var_name, &rational_one(), &mut terms)?;
+    let one = BigRational::one();
+    let max_base = terms.iter().map(|(_, b)| b.clone()).max()?;
+    if max_base <= one {
+        return None;
+    }
+    let dominant: BigRational = terms
+        .iter()
+        .filter(|(_, b)| *b == max_base)
+        .map(|(c, _)| c.clone())
+        .sum();
+    if dominant.is_zero() {
+        return None;
+    }
+    Some(if dominant.is_positive() { 1 } else { -1 })
+}
+
+/// The sign of a positive-degree polynomial as `x -> +inf` (the sign of its
+/// leading coefficient, since `x^deg -> +inf`). None for a non-polynomial or a
+/// constant.
+fn positive_degree_polynomial_tail_sign(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<i32> {
+    use num_traits::Signed;
+    let poly = Polynomial::from_expr(ctx, expr, var_name).ok()?;
+    if poly.degree() < 1 {
+        return None;
+    }
+    let leading = poly.coeffs.get(poly.degree())?;
+    Some(if leading.is_positive() { 1 } else { -1 })
 }
 
 /// A quotient of sums of rational-base exponentials at infinity, decided by
@@ -14437,6 +14521,43 @@ mod tests {
             let out = exp_sum_quotient_dominance_at_infinity(&mut ctx, expr, x, InfSign::Pos)
                 .unwrap_or_else(|| panic!("exp quotient must resolve: {source}"));
             assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn general_exp_vs_polynomial_dominance_resolves() {
+        // An exponential (base > 1) beats any polynomial in a quotient.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("2^x/x^2", "infinity"),
+            ("x^10/2^x", "0"),
+            ("2^x/x", "infinity"),
+            ("(2^x+3^x)/x^5", "infinity"),
+            ("x^3/(2^x+3^x)", "0"),
+            ("(-2^x)/x^2", "-infinity"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out =
+                general_exp_vs_polynomial_dominance_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                    .unwrap_or_else(|| panic!("exp-vs-poly must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn general_exp_vs_polynomial_dominance_declines_pure_rational_and_decaying() {
+        // Both polynomial (no exponential), and a decaying base (<= 1) which is
+        // not a growing exponential, stay out of this rule.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in ["x^2/x^3", "(1/2)^x/x^2"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                general_exp_vs_polynomial_dominance_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                    .is_none(),
+                "exp-vs-poly must decline: {source}"
+            );
         }
     }
 
