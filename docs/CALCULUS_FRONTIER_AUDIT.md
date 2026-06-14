@@ -462,7 +462,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   cycle-2 (u=ln, dv=x dx). El motor narra ya las TRES asignaciones u/dv:
   u=ln sobre dv polinómico, u=polinomio sobre dv elemental, u=función sobre
   dv=dx (inversas + ln). Quedan: `x²eˣ` repetida y el cíclico `eˣ·sin x`.)*
-  *(parcial 2026-06-14: la repetida grado≥2 `p(x)·{eˣ,sin,cos,
+  *(parcial 2026-06-14 87deecf8f: la repetida grado≥2 `p(x)·{eˣ,sin,cos,
   sinh,cosh}(afín)` ya DESENROLLA cada aplicación — `generate_repeated_
   polynomial_elementary_by_parts_substeps` es el cuarto hermano del dispatcher.
   El motor integra estos por el método tabular cerrado (derivadas iteradas con
