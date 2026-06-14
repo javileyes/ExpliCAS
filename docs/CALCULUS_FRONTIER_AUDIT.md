@@ -21,7 +21,7 @@ leyendo el modelo de madurez, roadmap y velocidad del ledger.
 | Integral indefinida | ~60-65% (58/92 sondas) | ~35-40% | racionales/por-partes/potencias trig casi completos; 6/6 no-elementales correctamente residuales |
 | Límites | ~45-50% | ~20-25% | allowlist de patrones, no algoritmo; `e` inalcanzable por límite |
 | Definidas/impropias | ~70-75% | ~35-40% | FTC/touches/impropias elementales sólidos; pre-simplificador sabotea casos |
-| Calidad educativa | ~55% bien narrado | ~35-40% | condiciones de dominio sistemáticas (punto fuerte); por partes muda |
+| Calidad educativa | ~55% bien narrado | ~35-40% | condiciones de dominio sistemáticas (punto fuerte); por partes narrada para ln y polinomio(lineal)·{eˣ,sin,cos,sinh} (quedan repetida grado≥2, inverse-trig, cíclico eˣ·sin) |
 
 ### Horizontes del propio repo (CALCULUS_ENGINE_STRATEGY.md, citas)
 
@@ -387,11 +387,25 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   completo, divergencia oscilatoria declarada, y la narración educativa
   específica de simetría — hoy el paso es el envoltorio genérico "Calcular
   la integral".)*
-- [ ] **(F) Por partes narrada**: la plantilla completa ('Elegir u y
+- [~] **(F) Por partes narrada**: la plantilla completa ('Elegir u y
   dv' → 'Calcular du y v' → 'Aplicar la fórmula') existe y la usa
   `x·ln(x)`, pero `x·eˣ`, `x·cos x`, `arctan(x)`, `x²eˣ`, `eˣ·sin x`
   solo dicen "Usar integración por partes" (o nada: `ln(x)` da cero
   substeps). Es LA técnica central del curso y es cableado.
+  *(parcial 2026-06-14 b08e182b0: la familia `polinomio(lineal)·{eˣ,
+  sin,cos,sinh}` ya narra u/dv/du/v — `generate_polynomial_elementary_
+  by_parts_substeps` clona el narrador de ln con la asignación inversa
+  (u=polinomio, dv=factor elemental), computa `v` con
+  `integrate_symbolic_expr` y `du` con `differentiate_symbolic_expr`:
+  `x·cos x` → u=x, dv=cos(x)dx, du=1dx, v=sin(x), `x·sin(x)−∫sin(x)dx`;
+  argumento afín (`x·cos(2x+1)`, v=½sin(2x+1)) y coeficiente no-unidad
+  (`(2x+3)·eˣ`, du=2) incluidos; resultado byte-idéntico (sólo
+  presentación). Desambiguación de factores por eliminación (u=el
+  polinomio de grado 1; dv=el otro si no es polinomio ni ln) — la familia
+  ln conserva su narración (u=ln) sin duplicar. Quedan: el caso repetido
+  grado≥2 (`x²eˣ`, queda sólo-título "repetida"), inverse-trig
+  (`arctan(x)`, `arcsin(x)` con u=función-inversa) y el cíclico `eˣ·sin x`
+  (sin factor polinómico).)*
 - [ ] **(F) Residuales con motivo**: 'Conservar integral residual' no
   distingue "no elemental (necesitaría erf/Si/Ei)" de "el motor aún
   no lo soporta" (`sqrt(1-x²)`, `|x|`, `1/(x⁴+1)` son elementales y
