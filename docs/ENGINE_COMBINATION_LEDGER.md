@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 134 (newest first)
+Active entries: 135 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -124,6 +124,7 @@ Active entries: 134 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / exponential indeterminate forms at a finite point | Retained limits: 1^inf at a finite point ((1+x)^(1/x) = e)
 - 2026-06-14 | `retained` | calculus / limits / 0^0 exponential indeterminate form (block 3) - P1 | Retained limits: 0^0 (x^x -> 1) at 0+
 - 2026-06-14 | `retained` | calculus / limits / logarithmic-exponential dominance at infinity | Retained limits: ln(sum of exponentials)/x -> ln(dominant base)
+- 2026-06-14 | `retained` | calculus / limits / inf^0 exponential indeterminate form + general-base | Retained limits: inf^0 ((2^x+3^x)^(1/x)=3) + b^x growth
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5861,3 +5862,47 @@ Active entries: 134 (newest first)
     the largest term's coefficient sum is POSITIVE (for a log, so the
     argument stays positive) - the dominance is necessary but not sufficient;
     a negative or cancelling dominant coefficient is a different regime
+
+
+## 2026-06-14 - Retained limits: inf^0 ((2^x+3^x)^(1/x)=3) + b^x growth
+
+- area:
+  - calculus / limits / inf^0 exponential indeterminate form + general-base
+    exponential growth (block 3) - P1
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows: 2^x=inf,
+    (2^x+3^x)^(1/x)=3)
+  - limit_matrix_cell: limit(2^x,x,inf)=inf, limit((2^x+3^x)^(1/x),x,inf)=3
+  - behavior_change_expected: yes - the inf^0 form resolves, completing the
+    exponential indeterminate-forms chapter (1^inf, 0^0, inf^0 all covered)
+- observed (two coupled rules close the chapter):
+  - general_base_exponential_limit_at_infinity: b^(s x) at infinity by sign
+    analysis - +inf when (b>1) agrees with (exponent -> +inf), else 0, and 1
+    for b=1. The engine grew e^x but left 2^x residual; this also lets a sum
+    2^x+3^x diverge (additive of two +inf)
+  - inf_to_zero_power_limit_at_infinity: base -> +inf (so ln is real) and
+    exp -> 0 give exp(lim exp*ln base). The product is rationalized AND
+    presimplified (the rationalizer leaves a unit factor that hides the bare
+    ln from the dominance rule) and routed through the cycle's log-of-
+    exponential-sum dominance: (2^x+3^x)^(1/x) -> exp(ln 3) = 3. exp_of_limit_
+    value folds e^(ln c) = c
+  - verified adversarially (2-lens, 48 probes, 0 unsound): the gates hold -
+    a dominant-coefficient cancellation to negative (3^x-5^x) declines, a
+    subdominant cancellation with a positive dominant (2^x-2*2^x+5^x) resolves
+    to ln 5, the s<=64 boundary is exact, and the traps (x^x, (1+1/x)^x=e,
+    (2^x-3^x)^(1/x) with base -> -inf) all decline or keep their value
+- retained learning:
+  - the rationalize-into-one-fraction step leaves unit/constant factors that
+    a downstream BARE-pattern matcher (bare ln) will miss; presimplify the
+    combined fraction before the recursive limit so c*ln drops to ln. The
+    1^inf siblings did not hit this because their inner is a pure rational
+    with no bare-pattern requirement
+  - all three power indeterminate forms reduce to exp(lim exp*ln base); the
+    per-form work is proving the base admissible (->1, ->0+, or ->+inf for
+    real ln) and supplying the inner sub-limit machinery. inf^0 needed TWO
+    new foundations first: b^x growth (so the base diverges) and log-of-
+    exp-sum dominance (so the inner ln(sum)/x resolves). Build the
+    foundations, and the capstone is a thin reduction

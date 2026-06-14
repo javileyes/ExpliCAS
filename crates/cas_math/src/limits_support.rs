@@ -7709,6 +7709,12 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = one_to_infinity_power_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = general_base_exponential_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = inf_to_zero_power_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     if let Some(r) = elementary_function_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
@@ -7923,6 +7929,114 @@ fn apply_finite_one_to_infinity_power_rule(
         None => {
             if crate::numeric_eval::as_rational_const(ctx, l_limit).is_some_and(|v| v.is_one()) {
                 return Some(ctx.add(Expr::Constant(Constant::E)));
+            }
+            let e = ctx.add(Expr::Constant(Constant::E));
+            Some(ctx.add(Expr::Pow(e, l_limit)))
+        }
+    }
+}
+
+/// A general-base exponential `b^(s x)` at infinity (`b` a positive rational):
+/// `b^x -> +inf` for `b > 1`, `-> 0` for `0 < b < 1`, `-> 1` for `b = 1`, with
+/// the sign of the exponent slope and the approach direction combined. The
+/// engine already grows `e^x`; this covers the rational bases (`2^x -> inf`),
+/// which also lets a sum like `2^x + 3^x` diverge and feed the inf^0 rule.
+fn general_base_exponential_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use num_traits::{One, Signed, Zero};
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let (base, exponent) = numeric_base_power(ctx, expr)?;
+    if !base.is_positive() {
+        return None;
+    }
+    if base.is_one() {
+        return Some(ctx.num(1));
+    }
+    // The exponent must be linear in x; its sign at the approach decides growth.
+    let exp_poly = Polynomial::from_expr(ctx, exponent, &var_name).ok()?;
+    if exp_poly.degree() != 1 {
+        return None;
+    }
+    let slope = exp_poly.coeffs.get(1).cloned()?;
+    if slope.is_zero() {
+        return None;
+    }
+    // The exponent tends to +inf when its slope and the approach agree in sign.
+    let exponent_to_pos_inf = slope.is_positive() == matches!(approach, InfSign::Pos);
+    let base_gt_one = base > BigRational::one();
+    if base_gt_one == exponent_to_pos_inf {
+        Some(mk_infinity(ctx, InfSign::Pos))
+    } else {
+        Some(ctx.num(0))
+    }
+}
+
+/// The `inf^0` form at infinity: when the base diverges to `+inf` and the
+/// exponent tends to 0, `base^exp = exp(exp * ln base)` and the limit is
+/// `exp(lim exp * ln base)`. With the log-of-exponential-sum dominance rule
+/// feeding the inner limit, this resolves `(2^x + 3^x)^(1/x) = e^(ln 3) = 3`.
+/// A positive-infinite base keeps ln real; `x^(1/x) = 1` falls out too.
+fn inf_to_zero_power_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use num_traits::Zero;
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if !depends_on(ctx, base, var) || !depends_on(ctx, exp, var) {
+        return None;
+    }
+    // base -> +inf keeps it positive (ln real); exp -> 0 makes it inf^0.
+    let base_limit = try_limit_rules_at_infinity(ctx, base, var, approach)?;
+    if limit_value_infinite_sign(ctx, base_limit) != Some(1) {
+        return None;
+    }
+    let exp_limit = try_limit_rules_at_infinity(ctx, exp, var, approach)?;
+    if !crate::numeric_eval::as_rational_const(ctx, exp_limit).is_some_and(|v| v.is_zero()) {
+        return None;
+    }
+    // L = lim exp * ln(base), rationalized into a single fraction and
+    // presimplified (drops the unit factor the rationalizer leaves) so the
+    // log-of-exponential-sum dominance rule sees a BARE ln in the numerator.
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+    let product = ctx.add(Expr::Mul(exp, ln_base));
+    let (num, den) = rationalize_to_fraction(ctx, product);
+    let combined = ctx.add(Expr::Div(num, den));
+    let combined = presimplify_safe_for_limit(ctx, combined);
+    let l_limit = try_limit_rules_at_infinity(ctx, combined, var, approach)?;
+    exp_of_limit_value(ctx, l_limit)
+}
+
+/// `exp(L)` for a resolved inner limit L, folding the cases an exponential
+/// indeterminate form produces: e^(+inf)=inf, e^(-inf)=0, e^0=1, e^1=e,
+/// e^(ln c)=c, otherwise e^L.
+fn exp_of_limit_value(ctx: &mut Context, l_limit: ExprId) -> Option<ExprId> {
+    use num_traits::{One, Zero};
+    match limit_value_infinite_sign(ctx, l_limit) {
+        Some(1) => Some(mk_infinity(ctx, InfSign::Pos)),
+        Some(_) => Some(ctx.num(0)),
+        None => {
+            if let Some(value) = crate::numeric_eval::as_rational_const(ctx, l_limit) {
+                if value.is_zero() {
+                    return Some(ctx.num(1));
+                }
+                if value.is_one() {
+                    return Some(ctx.add(Expr::Constant(Constant::E)));
+                }
+            }
+            // e^(ln c) = c.
+            if let Some(arg) = bare_natural_log_argument(ctx, l_limit) {
+                return Some(arg);
             }
             let e = ctx.add(Expr::Constant(Constant::E));
             Some(ctx.add(Expr::Pow(e, l_limit)))
@@ -13681,6 +13795,48 @@ mod tests {
             let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
                 .unwrap_or_else(|| panic!("bounded-noise quotient must resolve: {source}"));
             assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn general_base_exponential_and_inf_to_zero_power_at_infinity() {
+        // b^x growth and the inf^0 form, which together close (2^x+3^x)^(1/x)=3.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("2^x", "infinity"),
+            ("(1/2)^x", "0"),
+            ("2^(-x)", "0"),
+            ("1^x", "1"),
+            ("(2^x+3^x)^(1/x)", "3"),
+            ("(2^x+3^x+5^x)^(1/x)", "5"),
+            ("x^(1/x)", "1"),
+            ("(x^2+1)^(1/x)", "1"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("must resolve at +inf: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+        // At -infinity, 2^x -> 0.
+        let two_x = parse_expr(&mut ctx, "2^x");
+        let out =
+            try_limit_rules_at_infinity(&mut ctx, two_x, x, InfSign::Neg).expect("2^x at -inf");
+        assert_eq!(display_expr(&ctx, out), "0");
+    }
+
+    #[test]
+    fn inf_to_zero_power_declines_non_divergent_base() {
+        // The base must diverge to +inf (positive, ln real). x^x (base -> inf
+        // but exp does not -> 0) and a 1^inf base are NOT inf^0.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in ["x^x", "(1+1/x)^x"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                inf_to_zero_power_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "inf^0 must decline: {source}"
+            );
         }
     }
 
