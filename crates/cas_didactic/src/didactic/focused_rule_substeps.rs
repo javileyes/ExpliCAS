@@ -12413,7 +12413,98 @@ fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     substeps.extend(generate_polynomial_elementary_by_parts_substeps(
         ctx, args[0], after, var_name,
     ));
+    substeps.extend(generate_single_inverse_by_parts_substeps(
+        ctx, args[0], after, var_name,
+    ));
     substeps
+}
+
+/// Narrate one integration-by-parts application for a bare inverse function
+/// `f(x)` (arcsin/arccos/arctan/asinh/acosh/atanh of an affine argument): the
+/// standard choice is `u = f(x)`, `dv = dx`, so `v = x` and `du = f'(x) dx`,
+/// giving `f(x) x - integral x f'(x) dx`. Mirrors the product narrators; the
+/// integration RESULT is untouched (presentation only). Empty trace outside the
+/// bare inverse-function family or when the derivative is unavailable.
+fn generate_single_inverse_by_parts_substeps(
+    ctx: &Context,
+    integrand: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Vec<SubStep> {
+    let Expr::Function(fn_id, args) = ctx.get(integrand).clone() else {
+        return Vec::new();
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(fn_id),
+            Some(
+                BuiltinFn::Arcsin
+                    | BuiltinFn::Arccos
+                    | BuiltinFn::Arctan
+                    | BuiltinFn::Asinh
+                    | BuiltinFn::Acosh
+                    | BuiltinFn::Atanh
+            )
+        )
+    {
+        return Vec::new();
+    }
+
+    let mut scratch = ctx.clone();
+    let Some(du_expr) = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        integrand,
+        var_name,
+    ) else {
+        return Vec::new();
+    };
+    let du_expr = simplify_expr_in_context(&mut scratch, du_expr);
+    let var_sym = scratch.intern_symbol(var_name);
+    let v_expr = scratch.add(Expr::Variable(var_sym));
+
+    let u_display = display_expr(&scratch, integrand);
+    let u_latex = latex_expr(&scratch, integrand);
+    let v_display = display_expr(&scratch, v_expr);
+    let v_latex = latex_expr(&scratch, v_expr);
+    let du_display = display_expr(&scratch, du_expr);
+    let du_latex = latex_expr(&scratch, du_expr);
+
+    let u_display_factor = group_display_for_product(&u_display);
+    let u_latex_factor = group_latex_for_product(&u_latex);
+    let du_display_factor = group_display_for_product(&du_display);
+    let du_latex_factor = group_latex_for_product(&du_latex);
+    let choice_display = format!("u = {}, dv = dx", u_display);
+    let choice_latex = format!("u = {},\\; dv = dx", u_latex);
+
+    vec![
+        SubStep::new(
+            "Elegir u y dv",
+            display_expr(&scratch, integrand),
+            choice_display.clone(),
+        )
+        .with_before_latex(latex_expr(&scratch, integrand))
+        .with_after_latex(choice_latex.clone()),
+        SubStep::new(
+            "Calcular du y v",
+            choice_display,
+            format!("du = {} dx, v = {}", du_display, v_display),
+        )
+        .with_before_latex(choice_latex)
+        .with_after_latex(format!("du = {}\\,dx,\\; v = {}", du_latex, v_latex)),
+        SubStep::new(
+            "Aplicar la fórmula de integración por partes",
+            format!(
+                "{}·{} - integrate({}·{}, {})",
+                u_display_factor, v_display, v_display, du_display_factor, var_name
+            ),
+            display_expr(&scratch, after),
+        )
+        .with_before_latex(format!(
+            "{}\\cdot {} - \\int {}\\cdot {}\\,d{}",
+            u_latex_factor, v_latex, v_latex, du_latex_factor, var_name
+        ))
+        .with_after_latex(latex_expr(&scratch, after)),
+    ]
 }
 
 fn generate_polynomial_affine_log_by_parts_substeps(

@@ -2277,6 +2277,80 @@ fn integrate_contract_linear_elementary_by_parts_narrates_u_dv_du_v() {
 }
 
 #[test]
+fn integrate_contract_single_inverse_by_parts_narrates_u_dv_du_v() {
+    // A bare inverse function integrates by parts with u = f(x), dv = dx, so
+    // v = x and du = f'(x) dx. The narration now exposes that choice for the
+    // arc-trig and inverse-hyperbolic family.
+    for (input, u_latex, du_latex) in [
+        (
+            "integrate(arctan(x), x)",
+            "\\arctan(x)",
+            "\\frac{1}{{x}^{2} + 1}",
+        ),
+        (
+            "integrate(arcsin(x), x)",
+            "\\arcsin(x)",
+            "{(1 - {x}^{2})}^{-\\frac{1}{2}}",
+        ),
+        (
+            "integrate(arccos(x), x)",
+            "\\arccos(x)",
+            "-{(1 - {x}^{2})}^{-\\frac{1}{2}}",
+        ),
+        (
+            "integrate(asinh(x), x)",
+            "\\text{asinh}(x)",
+            "{({x}^{2} + 1)}^{-\\frac{1}{2}}",
+        ),
+    ] {
+        let substeps = integration_substeps(input);
+        assert_eq!(
+            substep_after_latex(&substeps, "Elegir u y dv"),
+            Some(format!("u = {u_latex},\\; dv = dx").as_str()),
+            "u/dv narration mismatch for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            substep_after_latex(&substeps, "Calcular du y v"),
+            Some(format!("du = {du_latex}\\,dx,\\; v = x").as_str()),
+            "du/v narration mismatch for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|s| s["title"] == "Aplicar la fórmula de integración por partes"),
+            "missing apply-formula substep for {input}, got {substeps:?}"
+        );
+    }
+
+    // Affine argument: u carries the inner, v stays x, du folds the chain factor.
+    let affine = integration_substeps("integrate(atan(2*x+1), x)");
+    assert_eq!(
+        substep_after_latex(&affine, "Elegir u y dv"),
+        Some("u = \\arctan(2\\cdot x + 1),\\; dv = dx"),
+        "u/dv for atan(2x+1), got {affine:?}"
+    );
+
+    // The new narrator must not fire on a product (owned by the other narrators)
+    // and must leave plain trig/exp (which integrate directly) un-narrated.
+    let product = integration_substeps("integrate(x*cos(x), x)");
+    assert_eq!(
+        substep_after_latex(&product, "Elegir u y dv"),
+        Some("u = x,\\; dv = \\cos(x)\\,dx"),
+        "x*cos(x) must keep its poly-elementary narration, got {product:?}"
+    );
+    assert!(
+        integration_substeps("integrate(cos(x), x)")
+            .iter()
+            .all(|s| s["title"] != "Elegir u y dv"),
+        "plain cos(x) integrates directly and must not be narrated by parts"
+    );
+
+    // Results are untouched (presentation-only change).
+    assert_antiderivative_verifies("integrate(arctan(x), x)");
+    assert_antiderivative_verifies("integrate(arcsin(x), x)");
+}
+
+#[test]
 fn integrate_contract_affine_octic_cos_by_parts_verifies_publicly() {
     let input = "integrate(x^8*cos(2*x+1), x)";
     let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);

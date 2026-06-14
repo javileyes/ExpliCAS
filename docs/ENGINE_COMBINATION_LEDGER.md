@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 144 (newest first)
+Active entries: 145 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -134,6 +134,7 @@ Active entries: 144 (newest first)
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 4, Phase 6 educational) | Retained educational: by-parts narration for polynomial*{exp,sin,cos,sinh}
 - 2026-06-14 | `retained` | calculus / integration / hyperbolic reciprocal table route, power n=1 (block 4) | Retained integration: sech/csch antiderivatives (hyperbolic reciprocal n=1)
 - 2026-06-14 | `retained` | calculus / integration / generalized substitution (block 5) | Retained integration: cos(ln x) / sin(ln x) cyclic substitution
+- 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 8, Phase 6 educational) | Retained educational: by-parts narration for bare inverse functions
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6308,3 +6309,48 @@ Active entries: 144 (newest first)
     standard verification fits (cos(ln x)); if the derivative is an
     unsimplified-but-equivalent form the engine cannot re-integrate, the
     contract route (diff(integrate)-integrand=0) is the home (sech/csch)
+
+
+## 2026-06-14 - Retained educational: by-parts narration for bare inverse functions
+
+- area:
+  - calculus / integration / didactic by-parts trace (block 8, Phase 6 educational)
+- status:
+  - `retained`
+- capture:
+  - investment_class: educational (didactic step trace; results unchanged)
+  - behavior_change_expected: presentation-only - integrate RESULT and
+    required_conditions byte-identical; the by-parts step for a bare inverse
+    function gains the u/dv/du/v narration (it previously showed only the title)
+  - success_condition: arcsin/arccos/arctan/asinh/acosh/atanh of an affine
+    argument narrate u = f(x), dv = dx, du = f'(x) dx, v = x; products keep
+    their own (cycle-2) narration; plain trig/exp stay un-narrated
+- observed (the third u/dv assignment of the same narrator family):
+  - by-parts has three u/dv shapes the engine now narrates, all via sibling
+    .extend()s on the same generate_integration_by_parts_substeps dispatcher:
+    poly*ln (u=ln), poly*{exp,sin,cos,sinh} (u=poly, cycle 2), and a bare
+    inverse function (u=f, dv=dx, v=x, du=f'). generate_single_inverse_by_parts_
+    substeps differentiates the integrand for du (differentiate_symbolic_expr)
+    and builds v=x from the variable symbol; the dispatcher already fires the
+    title for these via is_bounded_inverse_trig_variable_target /
+    is_arctan_scaled_variable_target, so this is pure narration, no gate change
+  - the family is recognized by a single bare-Function match (arcsin..atanh);
+    a product (x*arcsin(x)) is not a bare Function so it declines to the
+    product narrators, and plain cos(x) (integrates directly, no by-parts title)
+    is never reached - so no double-narration and no mis-narration
+- decision (bounded, completes the cycle-2 item):
+  - scope to the inverse-trig / inverse-hyperbolic bare functions where the
+    by-parts title already fires; DEFER bare ln(x), which today emits ZERO
+    substeps because no by-parts target matches it (the title itself is
+    missing) - narrating it needs a dispatcher GATE change, a separate cycle
+- retained learning:
+  - once a didactic dispatcher is an append-only list of sibling narrators, a
+    new u/dv shape is one more .extend() + one detector, never a restructure.
+    The three by-parts narrations (u=ln / u=poly / u=inverse-fn) are the same
+    template with the role assignment swapped and v/du sourced from the public
+    integrate/differentiate entry points
+  - "the title fires but there is no narration" and "there is no title at all"
+    are different gaps with different fixes: the first is a missing .extend()
+    narrator (cheap, presentation-only); the second is a missing dispatcher
+    target (changes which inputs are claimed as by-parts, a footprint change).
+    Check which one you have before scoping
