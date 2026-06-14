@@ -5023,7 +5023,13 @@ fn hyperbolic_reciprocal_square_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Cosh, 2)
+    hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Cosh, 1)
+        .or_else(|| {
+            hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Sinh, 1)
+        })
+        .or_else(|| {
+            hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Cosh, 2)
+        })
         .or_else(|| {
             hyperbolic_reciprocal_power_antiderivative(ctx, num, den, var, BuiltinFn::Cosh, 4)
         })

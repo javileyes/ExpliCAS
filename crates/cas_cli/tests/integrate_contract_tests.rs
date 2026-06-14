@@ -1046,6 +1046,63 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
 }
 
 #[test]
+fn integrate_contract_reciprocal_hyperbolic_first_power_resolves_sech_csch() {
+    // n == 1: sech -> arctan(sinh) (no domain condition, cosh > 0), csch ->
+    // ln|tanh(x/2)| (the generic sinh != 0 domain carries over). Affine arguments
+    // get the 1/u' scale; a constant numerator scales the primitive.
+    for (input, expected_result, expected_required) in [
+        (
+            "integrate(1/cosh(x), x)",
+            "arctan(sinh(x))",
+            Vec::<String>::new(),
+        ),
+        ("integrate(sech(x), x)", "arctan(sinh(x))", Vec::new()),
+        (
+            "integrate(1/cosh(2*x+1), x)",
+            "1/2 * arctan(sinh(2 * x + 1))",
+            Vec::new(),
+        ),
+        ("integrate(3/cosh(x), x)", "3 * arctan(sinh(x))", Vec::new()),
+        (
+            "integrate(1/sinh(x), x)",
+            "ln(|tanh(x / 2)|)",
+            vec!["sinh(x) ≠ 0".to_string()],
+        ),
+    ] {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+        assert_eq!(result, expected_result, "result for {input}");
+        assert_eq!(required, expected_required, "required for {input}");
+    }
+
+    // Soundness: each emitted antiderivative differentiates back to the integrand.
+    for integrand in ["1/cosh(x)", "1/sinh(x)", "1/cosh(2*x+1)"] {
+        let (result, _) = evaluated_expr_with_required_conditions(&format!(
+            "diff(integrate({integrand}, x), x) - ({integrand})"
+        ));
+        assert_eq!(result, "0", "round-trip for {integrand}");
+    }
+
+    // The n=1 branch must NOT disturb the n>=2 table route nor hijack tanh/coth,
+    // and must leave a constant-argument denominator as a constant multiple.
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(1/cosh(x)^2, x)").0,
+        "tanh(x)"
+    );
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(1/sinh(x)^2, x)").0,
+        "-1 / tanh(x)"
+    );
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(1/tanh(x), x)").0,
+        "ln(|sinh(x)|)"
+    );
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(1/cosh(5), x)").0,
+        "x / cosh(5)"
+    );
+}
+
+#[test]
 fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_nonlinear_hyperbolic_reciprocal_square_subset(
 ) {
     for input in [

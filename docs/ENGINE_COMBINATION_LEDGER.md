@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 142 (newest first)
+Active entries: 143 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -132,6 +132,7 @@ Active entries: 142 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / ratio of exponential combinations at 0 (block 3) | Retained limits: (sum exp)/(sum exp) -> ratio of derivatives
 - 2026-06-14 | `retained` | calculus / limits / radical conjugate products at +infinity (block 3) | Retained limits: factor * (radical conjugate difference -> 0) = 0*inf
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 4, Phase 6 educational) | Retained educational: by-parts narration for polynomial*{exp,sin,cos,sinh}
+- 2026-06-14 | `retained` | calculus / integration / hyperbolic reciprocal table route, power n=1 (block 4) | Retained integration: sech/csch antiderivatives (hyperbolic reciprocal n=1)
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6203,3 +6204,63 @@ Active entries: 142 (newest first)
     SUBSET/containment (.any / `expected in step_text`), so ENRICHING an existing
     row's expected_step_substrings is a zero-counter, self-documenting footprint -
     no new rows, no histogram churn, when the change is presentation-only
+
+
+## 2026-06-14 - Retained integration: sech/csch antiderivatives (hyperbolic reciprocal n=1)
+
+- area:
+  - calculus / integration / hyperbolic reciprocal table route, power n=1 (block 4)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_matrix_cell: integrate(1/cosh(x),x)=arctan(sinh(x)),
+    integrate(1/sinh(x),x)=ln(|tanh(x/2)|) [sinh(x)!=0],
+    integrate(1/cosh(2x+1),x)=1/2*arctan(sinh(2x+1))
+  - behavior_change_expected: yes - two residual integrals (sech, csch) and
+    their affine-argument / constant-scaled variants become closed forms
+- observed (extend the existing table route from n>=2 to n=1):
+  - the hyperbolic-reciprocal table route already owned 1/cosh^n and 1/sinh^n
+    for n in {2,4}; only n=1 was missing. reciprocal_hyperbolic_power_arg
+    matched ONLY Expr::Pow, but 1/cosh(x) is Div(1, BARE Function), so the n=1
+    case needs a bare-Function arg extractor (unary_builtin_arg, already in the
+    module). Added HyperbolicReciprocalTablePower::First, mapped power 1 in the
+    policy, and a build_hyperbolic_reciprocal_first_integral that emits
+    arctan(sinh(u)) for cosh and ln(|tanh(u/2)|) for sinh, scaled by the same
+    1/u' affine cofactor as n=2/n=4
+  - DOMAIN comes for free: the sinh(u)!=0 condition is derived GENERICALLY from
+    the integrand denominator (the residual 1/sinh(x) already carried it), so
+    making it supported keeps the condition with no extra wiring; 1/cosh needs
+    none (cosh structurally positive). The csch primitive uses ln(|...|), the
+    same abs convention as 1/tanh -> ln(|sinh|)
+  - SOUNDNESS keeps this in the TABLE route, NOT the backend verifier: the
+    strict differentiate-and-compare verifier treats cosh/sinh as opaque atoms
+    (no sinh^2+1=cosh^2 identity, hyperbolic_identity_support.rs is unwired), so
+    it would reject arctan(sinh) even though it is correct. The table route
+    returns its primitive directly, like n=2. Round-trip diff(F)-integrand
+    reduces to 0 under the full simplifier and matches numerically (err ~1e-11)
+    at both signs, including x<0 where the ln|tanh(x/2)| abs branch matters
+- decision (where the regression coverage lives):
+  - covered by a focused integrate_contract test (exact results + conditions +
+    round-trip soundness + rejects), NOT new matrix rows: the matrix's
+    direct_diff_integrate round-trip does NOT close for csch/affine-sech (the
+    engine cannot re-integrate the unsimplified hyperbolic derivative
+    cosh/(sinh^2+1) back to 1/cosh), so the matrix verification model does not
+    fit; the contract route (diff(integrate)-integrand=0) is the correct home
+  - pure-integer-multiple arguments (1/sinh(3x)) stay residual: the engine
+    expands sinh(3x)->3sinh+4sinh^3 BEFORE integration, which breaks the bare-
+    Function match - a PRE-EXISTING limitation that hits n=2 equally
+    (1/sinh(3x)^2 is also residual), honest, out of scope
+- retained learning:
+  - a table route keyed on Expr::Pow(base, n) silently excludes n=1, because the
+    bare reciprocal 1/f(x) is Div(1, Function), not Div(1, Pow(Function, 1)).
+    Extending such a route to first power means adding a bare-Function arm to the
+    argument extractor, not just a new table entry
+  - "is this antiderivative correct?" and "will the strict verifier accept it?"
+    are different questions when the verifier lacks the relevant identity
+    (hyperbolic Pythagorean). A genuinely-correct closed form belongs in the
+    table route that emits directly; do not route it behind a verifier that
+    treats the special functions as opaque - it would reject a correct result
+  - domain conditions derived generically from the integrand denominator carry
+    over automatically when a residual becomes supported: verify by checking the
+    RESIDUAL already shows the condition, then no condition wiring is needed

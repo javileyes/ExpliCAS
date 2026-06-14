@@ -20,6 +20,11 @@ pub(crate) fn reciprocal_hyperbolic_power_arg(
     builtin: BuiltinFn,
     power: i64,
 ) -> Option<ExprId> {
+    // n == 1: a bare `Function` denominator (e.g. `1/cosh(x)` is `Div(1, cosh(x))`,
+    // not a `Pow`). Higher powers carry an explicit `Pow(base, n)`.
+    if power == 1 {
+        return unary_builtin_arg(ctx, den, builtin);
+    }
     let (base, exp) = match ctx.get(den) {
         Expr::Pow(base, exp) => (*base, *exp),
         _ => return None,
@@ -168,6 +173,7 @@ impl HyperbolicReciprocalPrimitiveScaleOps {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HyperbolicReciprocalTablePower {
+    First,
     Square,
     Fourth,
 }
@@ -175,6 +181,7 @@ pub(crate) enum HyperbolicReciprocalTablePower {
 impl HyperbolicReciprocalTablePower {
     pub(crate) fn exponent(self) -> i64 {
         match self {
+            HyperbolicReciprocalTablePower::First => 1,
             HyperbolicReciprocalTablePower::Square => 2,
             HyperbolicReciprocalTablePower::Fourth => 4,
         }
@@ -189,6 +196,7 @@ pub(crate) fn hyperbolic_reciprocal_table_policy(
         return None;
     }
     let power = match power {
+        1 => HyperbolicReciprocalTablePower::First,
         2 => HyperbolicReciprocalTablePower::Square,
         4 => HyperbolicReciprocalTablePower::Fourth,
         _ => return None,
@@ -245,6 +253,9 @@ pub(crate) fn build_hyperbolic_reciprocal_table_integral(
     scale_ops: HyperbolicReciprocalPrimitiveScaleOps,
 ) -> ExprId {
     match policy.power {
+        HyperbolicReciprocalTablePower::First => {
+            build_hyperbolic_reciprocal_first_integral(ctx, policy, arg, scale, scale_ops)
+        }
         HyperbolicReciprocalTablePower::Square => {
             build_hyperbolic_reciprocal_square_integral(ctx, policy, arg, scale, scale_ops)
         }
@@ -252,6 +263,34 @@ pub(crate) fn build_hyperbolic_reciprocal_table_integral(
             build_hyperbolic_reciprocal_fourth_integral(ctx, policy, arg, scale, scale_ops)
         }
     }
+}
+
+/// n == 1 primitives: `integral 1/cosh(u) du = arctan(sinh(u))` (defined for all
+/// real u, so no domain condition) and `integral 1/sinh(u) du = ln|tanh(u/2)|`
+/// (the `sinh(u) != 0` condition is supplied generically by the integrand
+/// denominator). `scale` carries the `1/u'` affine-argument factor.
+fn build_hyperbolic_reciprocal_first_integral(
+    ctx: &mut Context,
+    policy: HyperbolicReciprocalTablePolicy,
+    arg: ExprId,
+    scale: ExprId,
+    scale_ops: HyperbolicReciprocalPrimitiveScaleOps,
+) -> ExprId {
+    let primitive = match policy.denominator_builtin {
+        BuiltinFn::Cosh => {
+            let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
+            ctx.call_builtin(BuiltinFn::Arctan, vec![sinh_arg])
+        }
+        BuiltinFn::Sinh => {
+            let two = ctx.num(2);
+            let half_arg = ctx.add(Expr::Div(arg, two));
+            let tanh_half = ctx.call_builtin(BuiltinFn::Tanh, vec![half_arg]);
+            let abs_tanh = ctx.call_builtin(BuiltinFn::Abs, vec![tanh_half]);
+            ctx.call_builtin(BuiltinFn::Ln, vec![abs_tanh])
+        }
+        _ => unreachable!("hyperbolic reciprocal table policy only supports sinh/cosh"),
+    };
+    scale_ops.scale_expr_reciprocal_integration_result(ctx, scale, primitive)
 }
 
 fn build_hyperbolic_reciprocal_square_integral(
@@ -597,6 +636,63 @@ mod tests {
         assert_eq!(rendered(&ctx, sinh_square), "-cosh(x) / sinh(x)");
         assert_eq!(rendered(&ctx, cosh_fourth), "tanh(x) - 1/3 * tanh(x)^3");
         assert_eq!(rendered(&ctx, sinh_fourth), "1 / tanh(x) - 1/3 / tanh(x)^3");
+    }
+
+    #[test]
+    fn builds_first_power_primitives_inside_hyperbolic_policy() {
+        let mut ctx = Context::new();
+        let arg = parse("x", &mut ctx).unwrap();
+        let scale = ctx.num(1);
+
+        // n == 1: int 1/cosh = arctan(sinh), int 1/sinh = ln|tanh(x/2)|.
+        let cosh_first = build_hyperbolic_reciprocal_table_integral(
+            &mut ctx,
+            hyperbolic_reciprocal_table_policy(BuiltinFn::Cosh, 1).unwrap(),
+            arg,
+            scale,
+            test_scale_ops(),
+        );
+        let sinh_first = build_hyperbolic_reciprocal_table_integral(
+            &mut ctx,
+            hyperbolic_reciprocal_table_policy(BuiltinFn::Sinh, 1).unwrap(),
+            arg,
+            scale,
+            test_scale_ops(),
+        );
+
+        assert_eq!(rendered(&ctx, cosh_first), "arctan(sinh(x))");
+        assert_eq!(rendered(&ctx, sinh_first), "ln(|tanh(x / 2)|)");
+    }
+
+    #[test]
+    fn detects_bare_function_first_power_arguments_only() {
+        let mut ctx = Context::new();
+        let cosh_bare = parse("cosh(2*x+1)", &mut ctx).unwrap();
+        let sinh_bare = parse("sinh(2*x+1)", &mut ctx).unwrap();
+        let cosh_square = parse("cosh(2*x+1)^2", &mut ctx).unwrap();
+        let tanh_bare = parse("tanh(2*x+1)", &mut ctx).unwrap();
+
+        // power == 1 matches the bare Function denominator...
+        assert_eq!(
+            rendered(
+                &ctx,
+                reciprocal_hyperbolic_power_arg(&ctx, cosh_bare, BuiltinFn::Cosh, 1).unwrap()
+            ),
+            "2 * x + 1"
+        );
+        assert_eq!(
+            rendered(
+                &ctx,
+                reciprocal_hyperbolic_power_arg(&ctx, sinh_bare, BuiltinFn::Sinh, 1).unwrap()
+            ),
+            "2 * x + 1"
+        );
+        // ...but not a squared denominator (that is the n>=2 Pow path)...
+        assert!(reciprocal_hyperbolic_power_arg(&ctx, cosh_square, BuiltinFn::Cosh, 1).is_none());
+        // ...the n>=2 path does not match a bare Function...
+        assert!(reciprocal_hyperbolic_power_arg(&ctx, cosh_bare, BuiltinFn::Cosh, 2).is_none());
+        // ...and the wrong builtin (tanh) is rejected.
+        assert!(reciprocal_hyperbolic_power_arg(&ctx, tanh_bare, BuiltinFn::Cosh, 1).is_none());
     }
 
     #[test]
