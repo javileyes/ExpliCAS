@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 139 (newest first)
+Active entries: 140 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -129,6 +129,7 @@ Active entries: 139 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / exponential-vs-polynomial dominance at infinity | Retained limits: general-base exponential beats polynomial
 - 2026-06-14 | `retained` | calculus / limits / polynomial-times-decaying-exponential at infinity | Retained limits: polynomial times a decaying exponential -> 0
 - 2026-06-14 | `retained` | calculus / limits / ratio of general-exp infinitesimals at 0 (block 3) | Retained limits: (a^x-1)/(b^x-1) -> ln a / ln b
+- 2026-06-14 | `retained` | calculus / limits / ratio of exponential combinations at 0 (block 3) | Retained limits: (sum exp)/(sum exp) -> ratio of derivatives
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6057,3 +6058,43 @@ Active entries: 139 (newest first)
     divide the rationals while keeping the logs symbolic - the transcendental
     parts cancel exactly when the bases match. Reuse the offset recognizer;
     the ratio is two coefficient reads and a division
+
+
+## 2026-06-14 - Retained limits: (sum exp)/(sum exp) -> ratio of derivatives
+
+- area:
+  - calculus / limits / ratio of exponential combinations at 0 (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (1 matrix row:
+    two-term over two-term)
+  - limit_matrix_cell: limit((2^x-3^x)/(5^x-7^x),x,0)=(ln2-ln3)/(ln5-ln7)
+  - behavior_change_expected: yes - a 0/0 quotient of two general-exponential
+    COMBINATIONS resolves to the ratio of their first derivatives
+- observed (two-sided first-order L'Hopital on exp combinations):
+  - apply_finite_exp_combination_ratio_rule reuses the accumulate_exp_
+    combination derivative-at-0 (the engine that powers (a^x-b^x)/x) for BOTH
+    numerator and denominator: each gives N'(0) = const + sum c_i ln(b_i).
+    With both values 0 at the point and D'(0) nonzero, the limit is
+    N'(0)/D'(0). (2^x-3^x)/(5^x-7^x) = (ln2-ln3)/(ln5-ln7). N'(0)=0 over a
+    nonzero D'(0) folds to 0
+  - SOUNDNESS of the nonzero gate: D'(0) is a combination of logs that is
+    exactly 0 only on cancellation - trivial (5^x-5^x) OR via a log identity
+    (6^x-2^x-3^x has D'(0)=ln6-ln2-ln3=0 because ln6=ln2+ln3). A float
+    evaluation catches BOTH: a true zero evaluates to exactly 0.0, a true
+    nonzero is bounded away, so |float| < 1e-9 -> decline is sound (the
+    cancelled denominator is a higher-order form, honestly residual)
+- retained learning:
+  - the (a^x-b^x)/x, (a^x-1)/(b^x-1), and now (sum)/(sum) limits are one idea
+    at three scales: first-order L'Hopital where the first derivative is a
+    symbolic LOG combination. Build the derivative once (accumulate_exp_
+    combination), and num-over-poly, single-over-single, and combo-over-combo
+    are the same read divided differently
+  - proving a transcendental combination (sum c_i ln b_i) is NONZERO is
+    undecidable to do exactly cheaply, but a float magnitude check is SOUND
+    for the gate: it only ever rejects (declines) - a false "near zero" is a
+    conservative residual, never a wrong value - and a true zero is exactly
+    representable so it is always caught. Use float to PROVE-nonzero-or-decline,
+    never to decide a returned value

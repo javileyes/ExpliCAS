@@ -2529,6 +2529,119 @@ fn accumulate_exp_combination(
 /// of general-base exponentials `(a^x - b^x)/x -> ln(a) - ln(b)`, which the
 /// single-power rule and the rational Taylor engine cannot reach (ln a is
 /// transcendental).
+/// `(c0 a^g0 + ...) / (d0 b^h0 + ...)` at 0 where BOTH sides are exponential
+/// combinations vanishing at 0: the limit is the ratio of first derivatives
+/// `N'(0)/D'(0)`. Resolves `(2^x - 3^x)/(5^x - 7^x) -> (ln 2 - ln 3)/(ln 5 -
+/// ln 7)`, the two-sided sibling of (a^x-b^x)/x and (a^x-1)/(b^x-1).
+fn apply_finite_exp_combination_ratio_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if !crate::numeric_eval::as_rational_const(ctx, point).is_some_and(|p| p.is_zero()) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let (num_log, num_const) = exp_combination_first_derivative(ctx, num, &var_name)?;
+    let (den_log, den_const) = exp_combination_first_derivative(ctx, den, &var_name)?;
+    // D'(0) must be nonzero for the ratio to be the limit. A combination of
+    // logs is exactly 0 only on cancellation; a clearly-nonzero float magnitude
+    // proves it is safe (a true zero evaluates to exactly 0).
+    if log_combination_float(&den_log, &den_const).abs() < 1e-9 {
+        return None;
+    }
+    // N'(0) = 0 over a nonzero D'(0): the numerator vanishes faster, limit 0.
+    if log_combination_float(&num_log, &num_const).abs() < 1e-12 {
+        return Some(ctx.num(0));
+    }
+    let num_deriv = build_log_combination_expr(ctx, num_log, num_const);
+    let den_deriv = build_log_combination_expr(ctx, den_log, den_const);
+    Some(ctx.add(Expr::Div(num_deriv, den_deriv)))
+}
+
+/// Run the exponential-combination accumulator and return its first-derivative
+/// `(log terms, constant)` only when the expression genuinely vanishes at 0
+/// over a real exponential combination.
+fn exp_combination_first_derivative(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(Vec<(BigRational, BigRational)>, BigRational)> {
+    use num_traits::Zero;
+    let mut value = BigRational::zero();
+    let mut log_terms: Vec<(BigRational, BigRational)> = Vec::new();
+    let mut const_deriv = BigRational::zero();
+    let mut saw_exp = false;
+    accumulate_exp_combination(
+        ctx,
+        expr,
+        var_name,
+        &rational_one(),
+        &mut value,
+        &mut log_terms,
+        &mut const_deriv,
+        &mut saw_exp,
+    )?;
+    if !saw_exp || !value.is_zero() {
+        return None;
+    }
+    Some((log_terms, const_deriv))
+}
+
+/// Numeric value of `const + sum coeff_i ln(base_i)`, for a nonzero check.
+fn log_combination_float(log_terms: &[(BigRational, BigRational)], constant: &BigRational) -> f64 {
+    use num_traits::ToPrimitive;
+    let mut total = constant.to_f64().unwrap_or(0.0);
+    for (coeff, base) in log_terms {
+        let c = coeff.to_f64().unwrap_or(0.0);
+        let b = base.to_f64().unwrap_or(1.0);
+        if b > 0.0 {
+            total += c * b.ln();
+        }
+    }
+    total
+}
+
+/// Build the expression `const + sum coeff_i ln(base_i)`.
+fn build_log_combination_expr(
+    ctx: &mut Context,
+    log_terms: Vec<(BigRational, BigRational)>,
+    constant: BigRational,
+) -> ExprId {
+    use num_traits::{One, Zero};
+    let mut result: Option<ExprId> = None;
+    if !constant.is_zero() {
+        result = Some(ctx.add(Expr::Number(constant)));
+    }
+    for (coeff, base) in log_terms {
+        if coeff.is_zero() {
+            continue;
+        }
+        let base_expr = ctx.add(Expr::Number(base));
+        let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base_expr]);
+        let term = if coeff.is_one() {
+            ln_base
+        } else if coeff == -rational_one() {
+            ctx.add(Expr::Neg(ln_base))
+        } else {
+            let coeff_expr = ctx.add(Expr::Number(coeff));
+            ctx.add(Expr::Mul(coeff_expr, ln_base))
+        };
+        result = Some(match result {
+            Some(acc) => ctx.add(Expr::Add(acc, term)),
+            None => term,
+        });
+    }
+    result.unwrap_or_else(|| ctx.num(0))
+}
+
 fn apply_finite_exp_linear_combination_quotient_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -3719,6 +3832,9 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_general_exp_ratio_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_exp_combination_ratio_rule(ctx, expr, var, point) {
         return Some(result);
     }
     if let Some(result) = apply_finite_log_unit_quotient_rule(ctx, expr, var, point) {
@@ -10321,6 +10437,41 @@ mod tests {
             try_limit_rules_at_finite(&mut ctx, finite_pole, x, point_zero).is_none(),
             "exp quotient rule must not promote finite poles"
         );
+    }
+
+    #[test]
+    fn finite_exp_combination_ratio_yields_ratio_of_derivatives() {
+        // (sum exp)/(sum exp) at 0 -> N'(0)/D'(0), a ratio of log combinations.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("(2^x-3^x)/(5^x-7^x)", "(ln(2) - ln(3)) / (ln(5) - ln(7))"),
+            ("(2^x-3^x)/(2^x-5^x)", "(ln(2) - ln(3)) / (ln(2) - ln(5))"),
+            ("(2^x-2^x)/(5^x-7^x)", "0"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = apply_finite_exp_combination_ratio_rule(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("exp combination ratio must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn finite_exp_combination_ratio_declines_cancelled_denominator() {
+        // A denominator whose first derivative cancels to 0 - trivially
+        // (5^x-5^x) or via a log identity (ln6 = ln2 + ln3) - is a higher-order
+        // form and must stay residual, not divide by zero.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for source in ["(2^x-3^x)/(5^x-5^x)", "(2^x-3^x)/(6^x-2^x-3^x+1)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_exp_combination_ratio_rule(&mut ctx, expr, x, zero).is_none(),
+                "exp combination ratio must decline a cancelled denominator: {source}"
+            );
+        }
     }
 
     #[test]
