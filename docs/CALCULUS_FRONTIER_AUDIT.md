@@ -462,6 +462,23 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   cycle-2 (u=ln, dv=x dx). El motor narra ya las TRES asignaciones u/dv:
   u=ln sobre dv polinómico, u=polinomio sobre dv elemental, u=función sobre
   dv=dx (inversas + ln). Quedan: `x²eˣ` repetida y el cíclico `eˣ·sin x`.)*
+  *(parcial 2026-06-14: la repetida grado≥2 `p(x)·{eˣ,sin,cos,
+  sinh,cosh}(afín)` ya DESENROLLA cada aplicación — `generate_repeated_
+  polynomial_elementary_by_parts_substeps` es el cuarto hermano del dispatcher.
+  El motor integra estos por el método tabular cerrado (derivadas iteradas con
+  signo alterno = exactamente N aplicaciones de partes), así que el título
+  "repetida" ya era honesto; el narrador recomputa u/dv/du/v por nivel
+  (`integrate_symbolic_expr` para v, `differentiate_symbolic_expr` para du)
+  bajando el grado del polinomio en 1 cada nivel hasta constante, donde el
+  término restante elemental cierra en la antiderivada final. `x²eˣ` → nivel 1
+  u=x², dv=eˣdx, du=2x, v=eˣ ⇒ x²eˣ−∫eˣ·2x; nivel 2 u=2x, du=2 ⇒ 2x·eˣ−∫eˣ·2;
+  "Integrar el término restante" ⇒ eˣ(x²−2x+2). Cubre x²cos, x³sin(2x+1),
+  x²sinh, x³eˣ (hasta grado 8). El grado=1 conserva su narrador lineal (una sola
+  aplicación), ln su narrador propio, y no-targets (cos·eˣ) no disparan.
+  Presentación pura: resultado byte-idéntico, huella guardrail+pressure sin
+  deltas. Queda SÓLO el cíclico `eˣ·sin x` — su ruta interna NO es partes
+  (distribuye/expande), narrarla como partes mentiría: ciclo aparte que
+  primero necesitaría una ruta interna cíclica honesta.)*
 - [ ] **(F) Residuales con motivo**: 'Conservar integral residual' no
   distingue "no elemental (necesitaría erf/Si/Ei)" de "el motor aún
   no lo soporta" (`sqrt(1-x²)`, `|x|`, `1/(x⁴+1)` son elementales y

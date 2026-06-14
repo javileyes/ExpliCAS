@@ -28,6 +28,12 @@ use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
+/// Upper bound on repeated integration-by-parts reductions to narrate. The
+/// engine integrates `p(x) * elementary` up to degree 8, so a degree-8 cofactor
+/// needs 8 applications; the loop is a defensive backstop (degree strictly
+/// decreases each level, so it always terminates first).
+const MAX_REPEATED_BY_PARTS_NARRATION_LEVELS: usize = 8;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BinomialSquareKind {
     Sum,
@@ -12413,6 +12419,9 @@ fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     substeps.extend(generate_polynomial_elementary_by_parts_substeps(
         ctx, args[0], after, var_name,
     ));
+    substeps.extend(generate_repeated_polynomial_elementary_by_parts_substeps(
+        ctx, args[0], after, var_name,
+    ));
     substeps.extend(generate_single_inverse_by_parts_substeps(
         ctx, args[0], after, var_name,
     ));
@@ -12676,6 +12685,149 @@ fn generate_polynomial_elementary_by_parts_substeps(
     ]
 }
 
+/// Narrate the REPEATED integration-by-parts reductions for
+/// `p(x) * {exp, sin, cos, sinh, cosh}` with `deg p >= 2` (e.g. `x^2 e^x`),
+/// which the engine integrates by the closed-form tabular method (iterated
+/// derivatives with alternating signs -- exactly the result of applying by-parts
+/// `deg p` times). The deg>=2 case previously stayed title-only ("Usar
+/// integración por partes repetida"); this unrolls each application, mirroring
+/// `generate_polynomial_elementary_by_parts_substeps`: at level k it chooses
+/// `u = p_k`, `dv = e_k dx`, computes `du = p_k'`, `v = integral e_k`, and shows
+/// `integral p_k e_k = p_k v - integral v p_k'`, where the remaining integral is
+/// the next level's integrand. The polynomial degree drops by one each level
+/// until it is a constant, whose remaining elementary integral closes into the
+/// final antiderivative. Presentation only -- the integration RESULT is
+/// untouched. Empty trace (graceful no-op) for degree <= 1 (owned by the linear
+/// narrator), the ln family, or when an intermediate antiderivative/derivative
+/// is unavailable, so a trace is never corrupted.
+fn generate_repeated_polynomial_elementary_by_parts_substeps(
+    ctx: &Context,
+    integrand: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Vec<SubStep> {
+    let Some((poly_factor, elem_factor)) =
+        repeated_polynomial_times_elementary_factors(ctx, integrand, var_name)
+    else {
+        return Vec::new();
+    };
+
+    let mut scratch = ctx.clone();
+    let mut substeps: Vec<SubStep> = Vec::new();
+
+    let mut current_poly = poly_factor;
+    let mut current_elem = elem_factor;
+    let mut core_display = display_expr(&scratch, integrand);
+    let mut core_latex = latex_expr(&scratch, integrand);
+
+    // The degree strictly decreases each iteration, so this terminates; the cap
+    // is a defensive backstop matching the engine's maximum supported degree.
+    for _ in 0..=(MAX_REPEATED_BY_PARTS_NARRATION_LEVELS) {
+        let Ok(poly) = Polynomial::from_expr(&scratch, current_poly, var_name) else {
+            return Vec::new();
+        };
+        if poly.degree() == 0 {
+            // current_poly is a constant: integrate the remaining elementary term
+            // directly, closing into the engine's final antiderivative.
+            substeps.push(
+                SubStep::new(
+                    "Integrar el término restante",
+                    format!("integrate({}, {})", core_display, var_name),
+                    display_expr(&scratch, after),
+                )
+                .with_before_latex(format!("\\int {}\\,d{}", core_latex, var_name))
+                .with_after_latex(latex_expr(&scratch, after)),
+            );
+            return substeps;
+        }
+
+        let Some(v_expr) = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            &mut scratch,
+            current_elem,
+            var_name,
+        ) else {
+            return Vec::new();
+        };
+        let v_expr = simplify_expr_in_context(&mut scratch, v_expr);
+        let Some(du_expr) = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+            &mut scratch,
+            current_poly,
+            var_name,
+        ) else {
+            return Vec::new();
+        };
+        let du_expr = simplify_expr_in_context(&mut scratch, du_expr);
+
+        let u_display = display_expr(&scratch, current_poly);
+        let u_latex = latex_expr(&scratch, current_poly);
+        let elem_display = display_expr(&scratch, current_elem);
+        let elem_latex = latex_expr(&scratch, current_elem);
+        let v_display = display_expr(&scratch, v_expr);
+        let v_latex = latex_expr(&scratch, v_expr);
+        let du_display = display_expr(&scratch, du_expr);
+        let du_latex = latex_expr(&scratch, du_expr);
+
+        let u_factor = group_display_for_product(&u_display);
+        let u_latex_factor = group_latex_for_product(&u_latex);
+        let v_factor = group_display_for_product(&v_display);
+        let v_latex_factor = group_latex_for_product(&v_latex);
+        let du_factor = group_display_for_product(&du_display);
+        let du_latex_factor = group_latex_for_product(&du_latex);
+
+        let choice_display = format!("u = {}, dv = {} dx", u_display, elem_display);
+        let choice_latex = format!("u = {},\\; dv = {}\\,dx", u_latex, elem_latex);
+
+        // Remaining integral after this application: integral v * p_k'.
+        let remaining_display = format!("{}·{}", v_factor, du_factor);
+        let remaining_latex = format!("{}\\cdot {}", v_latex_factor, du_latex_factor);
+
+        substeps.push(
+            SubStep::new(
+                "Elegir u y dv",
+                core_display.clone(),
+                choice_display.clone(),
+            )
+            .with_before_latex(core_latex.clone())
+            .with_after_latex(choice_latex.clone()),
+        );
+        substeps.push(
+            SubStep::new(
+                "Calcular du y v",
+                choice_display,
+                format!("du = {} dx, v = {}", du_display, v_display),
+            )
+            .with_before_latex(choice_latex)
+            .with_after_latex(format!("du = {}\\,dx,\\; v = {}", du_latex, v_latex)),
+        );
+        substeps.push(
+            SubStep::new(
+                "Aplicar la fórmula de integración por partes",
+                format!("integrate({}, {})", core_display, var_name),
+                format!(
+                    "{}·{} - integrate({}, {})",
+                    u_factor, v_factor, remaining_display, var_name
+                ),
+            )
+            .with_before_latex(format!("\\int {}\\,d{}", core_latex, var_name))
+            .with_after_latex(format!(
+                "{}\\cdot {} - \\int {}\\,d{}",
+                u_latex_factor, v_latex_factor, remaining_latex, var_name
+            )),
+        );
+
+        // Descend: the remaining integral integral v * p_k' is the next level's
+        // integrand, with u <- p_k' (one degree lower) and dv <- v.
+        core_display = remaining_display;
+        core_latex = remaining_latex;
+        current_poly = du_expr;
+        current_elem = v_expr;
+    }
+
+    // Degree never collapsed within the cap (should be unreachable for the gated
+    // family): abandon the partial trace rather than emit a truncated one.
+    Vec::new()
+}
+
 /// Returns `(u = linear polynomial, dv = elementary factor)` when exactly one of
 /// the two product factors is a degree-1 polynomial in `var_name` and the other
 /// is a non-polynomial, non-logarithm factor. The ln family is excluded so the
@@ -12699,6 +12851,48 @@ fn oriented_linear_times_elementary(
     // u must be a genuine degree-1 polynomial (defer the repeated degree>=2 case).
     let poly = Polynomial::from_expr(ctx, poly_candidate, var_name).ok()?;
     if poly.degree() != 1 {
+        return None;
+    }
+    // dv must be the transcendental factor: not a polynomial, and not a logarithm.
+    if Polynomial::from_expr(ctx, elem_candidate, var_name).is_ok() {
+        return None;
+    }
+    if let Expr::Function(fn_id, _) = ctx.get(elem_candidate) {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Ln) {
+            return None;
+        }
+    }
+    Some((poly_candidate, elem_candidate))
+}
+
+/// Returns `(u = polynomial of degree >= 2, dv factor = elementary)` for the
+/// REPEATED integration-by-parts family `p(x) * {exp, sin, cos, sinh, cosh}`.
+/// Mirrors `linear_times_elementary_factors` but accepts degree >= 2 (the linear
+/// narrator keeps degree 1). The elementary factor is any non-polynomial,
+/// non-logarithm factor whose antiderivative is again elementary -- the
+/// dispatcher has already gated the integrand to the exp/trig/hyperbolic linear
+/// targets, so the per-level `integrate`/`differentiate` calls terminate after
+/// exactly `degree` reductions.
+fn repeated_polynomial_times_elementary_factors(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, ExprId)> {
+    let (left, right) = as_mul(ctx, integrand)?;
+    oriented_repeated_polynomial_times_elementary(ctx, left, right, var_name)
+        .or_else(|| oriented_repeated_polynomial_times_elementary(ctx, right, left, var_name))
+}
+
+fn oriented_repeated_polynomial_times_elementary(
+    ctx: &Context,
+    poly_candidate: ExprId,
+    elem_candidate: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, ExprId)> {
+    // u must be a genuine degree >= 2 polynomial (the degree-1 case is owned by
+    // generate_polynomial_elementary_by_parts_substeps).
+    let poly = Polynomial::from_expr(ctx, poly_candidate, var_name).ok()?;
+    if poly.degree() < 2 {
         return None;
     }
     // dv must be the transcendental factor: not a polynomial, and not a logarithm.

@@ -2306,7 +2306,9 @@ fn integrate_contract_linear_elementary_by_parts_narrates_u_dv_du_v() {
         "ln by-parts narration regressed, got {log:?}"
     );
 
-    // Deferred: the repeated degree>=2 case stays title-only (no u/dv narration).
+    // The repeated degree>=2 case now unrolls each by-parts application: the
+    // master title stays "repetida" and the FIRST "Elegir u y dv" chooses the
+    // full polynomial (u = x^2), with v = e^x and du = 2x.
     let repeated = integration_substeps("integrate(x^2*exp(x), x)");
     assert!(
         repeated
@@ -2314,9 +2316,15 @@ fn integrate_contract_linear_elementary_by_parts_narrates_u_dv_du_v() {
             .any(|s| s["title"] == "Usar integración por partes repetida"),
         "expected repeated title for x^2*exp(x), got {repeated:?}"
     );
-    assert!(
-        substep_after_latex(&repeated, "Elegir u y dv").is_none(),
-        "repeated case must not narrate u/dv yet, got {repeated:?}"
+    assert_eq!(
+        substep_after_latex(&repeated, "Elegir u y dv"),
+        Some("u = {x}^{2},\\; dv = {e}^{x}\\,dx"),
+        "repeated case must now narrate the first u/dv, got {repeated:?}"
+    );
+    assert_eq!(
+        substep_after_latex(&repeated, "Calcular du y v"),
+        Some("du = 2\\cdot x\\,dx,\\; v = {e}^{x}"),
+        "repeated case must narrate the first du/v, got {repeated:?}"
     );
 
     // No polynomial factor: the new narrator must not fire (different route).
@@ -2617,6 +2625,37 @@ fn integrate_contract_quadratic_exp_by_parts_exposes_didactic_substep() {
             .iter()
             .any(|substep| substep["title"] == "Usar integración por partes repetida"),
         "expected repeated integration-by-parts substep, got {substeps:?}"
+    );
+    // x^2 e^x reduces in two by-parts applications, so the repeated narration
+    // unrolls two "Elegir u y dv"/"Aplicar la fórmula" blocks and closes with a
+    // single "Integrar el término restante" landing on the final antiderivative.
+    let count_title = |title: &str| {
+        substeps
+            .iter()
+            .filter(|substep| substep["title"] == title)
+            .count()
+    };
+    assert_eq!(count_title("Elegir u y dv"), 2, "got {substeps:?}");
+    assert_eq!(
+        count_title("Aplicar la fórmula de integración por partes"),
+        2,
+        "got {substeps:?}"
+    );
+    let first_choice = substeps
+        .iter()
+        .find(|substep| substep["title"] == "Elegir u y dv")
+        .expect("first u/dv choice");
+    assert_eq!(
+        first_choice["after_latex"], "u = {x}^{2},\\; dv = {e}^{x}\\,dx",
+        "got {substeps:?}"
+    );
+    let closer = substeps
+        .last()
+        .expect("repeated narration should not be empty");
+    assert_eq!(closer["title"], "Integrar el término restante");
+    assert_eq!(
+        closer["after_latex"], "e^{x}\\cdot ({x}^{2} + 2 - 2\\cdot x)",
+        "closer should land on the final antiderivative, got {substeps:?}"
     );
     assert_antiderivative_verifies(input);
 }

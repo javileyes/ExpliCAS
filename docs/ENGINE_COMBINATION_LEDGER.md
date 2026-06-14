@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 151 (newest first)
+Active entries: 152 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -141,6 +141,7 @@ Active entries: 151 (newest first)
 - 2026-06-14 | `retained` | calculus / differentiation + integration / cube root elementary rules | Retained calculus: cbrt as first-class elementary (derivative + antiderivative)
 - 2026-06-14 | `retained` | calculus / limits / general n-th-root conjugate at +infinity (block 3) | Retained limits: general n-th-root conjugate at infinity
 - 2026-06-14 | `retained` | calculus / indefinite integration / polynomial cofactor times an even | Retained integration: polynomial times sine/cosine squared by power reduction
+- 2026-06-14 | `retained` | calculus / didactic / integration-by-parts substeps for | Retained didactic: repeated integration-by-parts narration (deg>=2)
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6620,3 +6621,51 @@ Active entries: 151 (newest first)
     so diff(integrate(x*sin^2 x)) normalizes to the power-reduced 1/2(x - x cos 2x),
     not the syntactic x*sin^2 x: assert round-trip with expected_derivative_equivalent_to
     (full-simplifier equivalence), not byte-equal expected_derivative_result
+
+
+## 2026-06-14 - Retained didactic: repeated integration-by-parts narration (deg>=2)
+
+- area:
+  - calculus / didactic / integration-by-parts substeps for
+    `p(x) * {exp, sin, cos, sinh, cosh}(affine)` with deg p >= 2 (block 6 / Phase 6)
+- status:
+  - `retained`
+- capture:
+  - investment_class: didactic
+  - didactic_cell: integrate(x^2 e^x) now unrolls u=x^2,dv=e^x dx,du=2x,v=e^x ->
+    x^2 e^x - integral e^x 2x ; u=2x,du=2 -> 2x e^x - integral e^x 2 ;
+    "Integrar el término restante" -> e^x (x^2 - 2x + 2)
+  - behavior_change_expected: presentation only -- the antiderivative RESULT is
+    byte-identical; only the substep trace gains the per-level u/dv/du/v breakdown
+- observed (the title was already honest; the gap was the narrator):
+  - the engine integrates polynomial*elementary by the CLOSED-FORM TABULAR method
+    (polynomial_exp_by_parts_inner / polynomial_trig_by_parts_polys: iterated
+    derivatives with alternating signs), which IS the result of applying by-parts
+    deg-p times -- so the existing title "Usar integración por partes repetida"
+    was not a lie, only under-explained. The deg>=2 case was deliberately left
+    title-only (linear_times_elementary_factors gates degree==1)
+  - the run-3 linear narrator (one application) generalizes to the repeated case
+    by a LOOP, not new math: at each level recompute v=integral(elem) and
+    du=d/dx(poly) (the same integrate_symbolic_expr / differentiate_symbolic_expr
+    the linear narrator uses), emit Elegir/Calcular/Aplicar, then descend with
+    u <- poly' (one degree lower) and dv <- v. The polynomial degree strictly
+    decreases, so it terminates in exactly deg-p applications; the constant tail
+    closes via "Integrar el término restante" onto the engine's final form
+  - footprint: presentation-only changes leave guardrail+pressure scorecards with
+    ZERO structural deltas (no scorecard lane counts these substeps); the lock is
+    contract tests. Two pre-existing tests asserted the deferred title-only state
+    as a future-work marker -- flipping them is a conscious graduation, not a fix
+- retained learning:
+  - when a closed-form method (tabular integration) encodes a named technique
+    (repeated by-parts), the honest narration recomputes the technique's
+    intermediates level by level rather than reading them off the closed form:
+    the loop body is the single-application narrator, reused verbatim with
+    u <- du and dv <- v as the descent. One application narrated => N narrated
+  - a deferred-state contract test (asserting "does NOT yet narrate X") is a
+    standing invitation: when the cycle delivers X, the contract flips from
+    absence to presence -- treat the red test as the to-do list, not a regression
+  - honesty gate for didactic narration: only narrate the technique the engine
+    ACTUALLY used. The repeated case is genuine by-parts (tabular == repeated
+    by-parts), so it narrates; the cyclic e^x sin x integrates by a DIFFERENT
+    internal route (distribute/expand), so narrating it as by-parts is deferred
+    until the internal route is itself cyclic-by-parts
