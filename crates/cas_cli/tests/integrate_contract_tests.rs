@@ -2407,6 +2407,48 @@ fn integrate_contract_single_inverse_by_parts_narrates_u_dv_du_v() {
 }
 
 #[test]
+fn integrate_contract_bare_logarithm_by_parts_narrates_u_dv_du_v() {
+    // A bare ln(affine) -- previously emitting NO by-parts substeps -- now
+    // narrates u = ln, dv = dx, v = x, du = (ln arg)' dx via the single-inverse
+    // narrator (the bare-ln by-parts gate makes the title fire).
+    for (input, u_latex, du_latex) in [
+        ("integrate(ln(x), x)", "\\ln(x)", "\\frac{1}{x}"),
+        (
+            "integrate(ln(2*x+1), x)",
+            "\\ln(2\\cdot x + 1)",
+            "\\frac{2}{2\\cdot x + 1}",
+        ),
+    ] {
+        let substeps = integration_substeps(input);
+        assert_eq!(
+            substep_after_latex(&substeps, "Elegir u y dv"),
+            Some(format!("u = {u_latex},\\; dv = dx").as_str()),
+            "u/dv narration mismatch for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            substep_after_latex(&substeps, "Calcular du y v"),
+            Some(format!("du = {du_latex}\\,dx,\\; v = x").as_str()),
+            "du/v narration mismatch for {input}, got {substeps:?}"
+        );
+    }
+
+    // Regression: x*ln(x) keeps its polynomial*ln narration (u = ln, dv = x dx,
+    // v = x^2/2), NOT the bare-ln dv = dx, proving the new branch did not steal it.
+    let product = integration_substeps("integrate(x*ln(x), x)");
+    assert_eq!(
+        substep_after_latex(&product, "Elegir u y dv"),
+        Some("u = \\ln(x),\\; dv = x\\,dx"),
+        "x*ln(x) must keep its poly*ln narration, got {product:?}"
+    );
+
+    // Results untouched.
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(ln(x), x)").0,
+        "x * ln(x) - x"
+    );
+}
+
+#[test]
 fn integrate_contract_affine_octic_cos_by_parts_verifies_publicly() {
     let input = "integrate(x^8*cos(2*x+1), x)";
     let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);

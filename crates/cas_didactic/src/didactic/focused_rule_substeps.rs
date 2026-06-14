@@ -12444,6 +12444,7 @@ fn generate_single_inverse_by_parts_substeps(
                     | BuiltinFn::Asinh
                     | BuiltinFn::Acosh
                     | BuiltinFn::Atanh
+                    | BuiltinFn::Ln
             )
         )
     {
@@ -12969,6 +12970,16 @@ fn contains_linear_integration_by_parts_target(
     }
 
     match ctx.get(expr) {
+        // A bare `ln(affine)` integrates by parts with u = ln, dv = dx; the
+        // single-inverse narrator owns the u/dv trace. (A polynomial * ln is
+        // already claimed by the log-by-parts target predicates above.)
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+                && is_affine_in_var(ctx, args[0], var_name) =>
+        {
+            true
+        }
         Expr::Add(left, right) | Expr::Sub(left, right) => {
             contains_linear_integration_by_parts_target(ctx, *left, var_name)
                 || contains_linear_integration_by_parts_target(ctx, *right, var_name)

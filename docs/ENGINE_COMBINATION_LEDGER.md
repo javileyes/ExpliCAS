@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 147 (newest first)
+Active entries: 148 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -137,6 +137,7 @@ Active entries: 147 (newest first)
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 8, Phase 6 educational) | Retained educational: by-parts narration for bare inverse functions
 - 2026-06-14 | `retained` | calculus / limits / cube-root conjugate at +infinity (block 3) | Retained limits: cube-root conjugate differences and 0*inf products
 - 2026-06-14 | `retained` | calculus / integration / generalized substitution (block 5) | Retained integration: x^(2k+1) f(x^2) via u=x^2 substitution
+- 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 4/8, Phase 6 educatio... | Retained educational: bare ln by-parts narration (completes the family)
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6444,3 +6445,45 @@ Active entries: 147 (newest first)
   - require a PURE quadratic inner (c x^2) so that x^(2k) = (x^2)^k = u^k is exact;
     a mixed inner (x^2 + linear) would need x^(2k) expanded in (u - shift)/scale, a
     clean rung but a different (non-monomial) cofactor polynomial
+
+
+## 2026-06-14 - Retained educational: bare ln by-parts narration (completes the family)
+
+- area:
+  - calculus / integration / didactic by-parts trace (block 4/8, Phase 6 educational)
+- status:
+  - `retained`
+- capture:
+  - investment_class: educational (didactic step trace; results unchanged)
+  - behavior_change_expected: presentation-only - a bare ln(affine) integral,
+    which previously emitted ZERO substeps, now narrates u/dv/du/v; the integrate
+    RESULT is byte-identical
+  - success_condition: integrate(ln(x)) and integrate(ln(2x+1)) narrate
+    u = ln, dv = dx, v = x, du = (ln arg)' dx; products keep their owners
+- observed (the missing gap was the GATE, not the narrator):
+  - cycle 5 left bare ln(x) with zero substeps because the by-parts dispatcher
+    gate (contains_linear_integration_by_parts_target) did not claim it: the
+    title never fired, so no .extend() narrator ran. Two one-line changes close
+    it: (1) the gate now matches a bare Function(Ln, [affine]); (2) Ln joins the
+    single-inverse narrator's builtin set (u = ln, dv = dx) -- the same
+    u=function/dv=dx shape as arcsin..atanh. No new narrator
+  - this is the "no title at all" gap (vs cycle 5's "title but no narration"):
+    the fix is a dispatcher GATE addition, a footprint-bearing change (bare
+    ln(affine) integrals newly show the by-parts title). It stayed low-footprint
+    because the integrate smoke step matcher and the definite-ln FTC row are
+    SUBSET/containment, so added substeps never break a present-substring check
+  - no double-narration: x*ln(x) is a Mul, not a bare Function, so it declines
+    to the single-inverse narrator and keeps its cycle-2 poly*ln narration
+    (u=ln, dv=x dx, v=x^2/2)
+- decision (completes the three-shape by-parts narration family):
+  - the engine now narrates all three by-parts u/dv assignments: u=ln over a
+    polynomial dv (cycle 2), u=polynomial over an elementary dv (cycle 2), and
+    u=function over dv=dx for bare inverse functions AND bare ln (cycles 5, 8)
+- retained learning:
+  - "the title fires but there is no narration" and "there is no title at all"
+    are different gaps with different fixes (cycle 5 learning, now proven): the
+    first is a missing .extend() narrator (presentation-only, zero footprint);
+    the second is a missing dispatcher target (changes which inputs are CLAIMED
+    as by-parts, a real footprint). When the latter, verify the affected step
+    fixtures are subset matchers before committing - here the only ln(x) fixture
+    is a definite-FTC row whose substring assertions still hold with extra substeps
