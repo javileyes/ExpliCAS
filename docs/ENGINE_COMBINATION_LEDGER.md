@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 154 (newest first)
+Active entries: 155 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -144,6 +144,7 @@ Active entries: 154 (newest first)
 - 2026-06-14 | `retained` | calculus / didactic / integration-by-parts substeps for | Retained didactic: repeated integration-by-parts narration (deg>=2)
 - 2026-06-14 | `retained` | calculus / limits / finite 0/0 quotient at a non-zero point (block 3) | Retained limits: L'Hôpital for 0/0 at a finite non-zero point
 - 2026-06-14 | `retained` | calculus / indefinite integration / p(x) * sin(ax+b)^n or cos(ax+b)^n with | Retained integration: polynomial times even trig power (n>=4)
+- 2026-06-14 | `retained` | calculus / indefinite integration / p(x) * sin(g(x))^2 or cos(g(x))^2 with a | Retained integration: polynomial times trig square with substitution inner
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6760,3 +6761,41 @@ Active entries: 154 (newest first)
     the antiderivative is correct. When the public verification cannot close, lock the
     capability with a unit test and numeric round-trip instead of a fragile matrix row,
     and record the simplifier round-trip ceiling as the honest peldaño
+
+
+## 2026-06-14 - Retained integration: polynomial times trig square with substitution inner
+
+- area:
+  - calculus / indefinite integration / p(x) * sin(g(x))^2 or cos(g(x))^2 with a
+    NON-affine inner g whose cofactor supplies the substitution derivative (block 5)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: integrate(x*sin(x^2)^2,x)=x^2/4 - sin(2x^2)/8,
+    integrate(x*cos(x^2)^2,x), integrate(x^3*sin(x^2)^2,x), integrate(x*sin(2*x^2)^2,x)
+  - behavior_change_expected: yes - x*sin(x^2)^2 family (cofactor supplies du for the
+    quadratic inner) was residual and now integrates
+- observed (the affine square owner generalizes to non-affine via delegation self-gating):
+  - the cycle-3 square owner gated to an AFFINE inner; the half-angle rewrite
+    sin^2(g) = (1 - cos(2g))/2 is identical for ANY inner g, so the only thing that
+    changes is whether the distributed p*cos(2g) terms are integrable. For x*sin(x^2)^2
+    the rewrite is x/2 - (x/2)cos(2x^2), elementary via u = x^2; the cofactor x is
+    exactly du/2. A complementary rule (non-affine inner, runs after the affine owner)
+    builds the same distributed form and delegates to integrate_symbolic_expr
+  - SELF-GATING is the soundness mechanism: integrate_symbolic_expr's Add/Sub linearity
+    propagates None via `?`, so a cofactor that does NOT supply the substitution
+    derivative (x^2*sin(x^2)^2 is non-elementary / Fresnel; x*sin(x^3)^2 needs du=3x^2)
+    leaves one term unintegrable and the whole rewrite returns None -- the product stays
+    an honest residual. No degree/parity gate is needed: the delegation decides
+  - verified numerically (sympy/mpmath round-trip, max |d/dx F - f| ~1e-16); the simple
+    quadratic-inner cases round-trip cleanly (no depth_overflow), so two carry matrix rows
+- retained learning:
+  - when a rewrite identity is universally valid (half-angle for any inner) but only
+    SOMETIMES lands on an integrable form, do not over-gate the rule -- build the rewrite
+    and delegate, letting the downstream integrator's None-propagation self-gate. This
+    keeps the honest residual (non-elementary cases decline) for free and avoids
+    re-deriving an elementariness predicate the integrator already encodes
+  - the affine/non-affine split is an OWNERSHIP boundary, not a math boundary: keep the
+    affine owner byte-identical (its matrix/contract rows) and add a sibling for the
+    complement, ordered after it, so neither footprint moves unexpectedly

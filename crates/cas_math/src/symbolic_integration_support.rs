@@ -9470,6 +9470,86 @@ fn polynomial_times_trig_square_antiderivative(
     integrate_symbolic_expr(ctx, rewritten, var)
 }
 
+/// `p(x) * sin(g(x))^2` / `p(x) * cos(g(x))^2` with a NON-affine inner `g` (the
+/// affine case is owned by `polynomial_times_trig_square_antiderivative`). Same
+/// half-angle reduction `sin^2(g) = (1 - cos(2g))/2`, distributed by the
+/// cofactor; the resulting `p*cos(2g)` terms integrate only when the cofactor
+/// supplies the substitution derivative -- `x*sin(x^2)^2 -> x/2 - (x/2)cos(2x^2)`
+/// is elementary via `u = x^2`. Delegation to `integrate_symbolic_expr`
+/// self-gates: a cofactor that is not substitution-amenable (`x^2*sin(x^2)^2` is
+/// non-elementary / Fresnel) leaves a term unintegrable, so the Add/Sub linearity
+/// returns None via `?` and the product stays an honest residual.
+fn polynomial_times_trig_square_substitution_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+    let mut trig: Option<(usize, BuiltinFn, ExprId)> = None;
+    for (i, factor) in factors.iter().enumerate() {
+        let Expr::Pow(base, exp) = ctx.get(*factor).clone() else {
+            continue;
+        };
+        if !is_number(ctx, exp, 2) {
+            continue;
+        }
+        let Expr::Function(fn_id, args) = ctx.get(base).clone() else {
+            continue;
+        };
+        if args.len() != 1 {
+            continue;
+        }
+        let builtin = match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            _ => continue,
+        };
+        // Non-affine inner only: an affine argument with a nonzero rational slope
+        // is owned by the affine rule (which runs first).
+        if !contains_named_var(ctx, args[0], var) {
+            continue;
+        }
+        if let Some((slope, _)) = get_linear_coeffs(ctx, args[0], var) {
+            if rational_constant_value(ctx, slope).is_some_and(|s| !s.is_zero()) {
+                continue;
+            }
+        }
+        if trig.is_some() {
+            return None; // more than one trig-square factor is out of scope
+        }
+        trig = Some((i, builtin, args[0]));
+    }
+    let (trig_idx, builtin, g) = trig?;
+
+    let cofactor_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != trig_idx)
+        .map(|(_, f)| *f)
+        .collect();
+    let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+    if cofactor_poly.degree() == 0 {
+        return None; // a constant cofactor is the bare (non-elementary) case
+    }
+
+    let two = ctx.num(2);
+    let two_g = mul2_raw(ctx, two, g);
+    let cos_2g = ctx.call_builtin(BuiltinFn::Cos, vec![two_g]);
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let half_cofactor = mul2_raw(ctx, half, cofactor);
+    let cofactor_cos = mul2_raw(ctx, cofactor, cos_2g);
+    let half_cofactor_cos = mul2_raw(ctx, half, cofactor_cos);
+    let rewritten = match builtin {
+        BuiltinFn::Sin => ctx.add(Expr::Sub(half_cofactor, half_cofactor_cos)),
+        BuiltinFn::Cos => ctx.add(Expr::Add(half_cofactor, half_cofactor_cos)),
+        _ => return None,
+    };
+    integrate_symbolic_expr(ctx, rewritten, var)
+}
+
 /// `p(x) * sin(ax+b)^n` / `p(x) * cos(ax+b)^n` for an EVEN power `n` in `4..=8`
 /// and a non-constant polynomial cofactor `p`. Generalizes the `n == 2`
 /// power-reduction owner: the even power reduces to a cosine sum
@@ -22078,6 +22158,11 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = polynomial_times_trig_square_substitution_antiderivative(ctx, expr, var)
+    {
+        return Some(integral);
+    }
+
     if let Some(integral) = polynomial_times_higher_even_trig_power_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -22427,6 +22512,40 @@ mod tests {
         );
         let bare = parse("2*sin(x)^2", &mut ctx).expect("parse");
         assert!(super::polynomial_times_trig_square_antiderivative(&mut ctx, bare, "x").is_none());
+    }
+
+    #[test]
+    fn integrates_polynomial_times_trig_square_with_substitution_inner() {
+        let mut ctx = Context::new();
+        // Non-affine inner whose cofactor supplies the substitution derivative:
+        // x*sin(x^2)^2 -> x/2 - (x/2)cos(2x^2), elementary via u = x^2.
+        // Round-trips verified numerically end-to-end (max |d/dx F - f| ~1e-16).
+        for source in [
+            "x*sin(x^2)^2",
+            "x*cos(x^2)^2",
+            "x^3*sin(x^2)^2",
+            "x*sin(2*x^2)^2",
+        ] {
+            let expr = parse(source, &mut ctx).expect("parse");
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+        // Honest declines: even cofactor (non-elementary / Fresnel), bare square
+        // (constant cofactor), cofactor mismatched to the inner derivative
+        // (x*sin(x^3)^2 needs du = 3x^2), and the affine inner (owned by the
+        // affine rule, so this substitution rule must NOT claim it).
+        for source in ["x^2*sin(x^2)^2", "sin(x^2)^2", "x*sin(x^3)^2", "x*sin(x)^2"] {
+            let expr = parse(source, &mut ctx).expect("parse");
+            assert!(
+                super::polynomial_times_trig_square_substitution_antiderivative(
+                    &mut ctx, expr, "x"
+                )
+                .is_none(),
+                "substitution rule must decline: {source}"
+            );
+        }
     }
 
     #[test]

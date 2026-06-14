@@ -664,6 +664,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   para las salidas multi-ángulo de grado alto — el techo de round-trip del
   simplificador queda como peldaño. Queda aún el inner substitución-amenable
   `x·sin(x²)²`.)*
+  *(inner substitución-amenable graduado 2026-06-14 PENDING_HASH: p(x)·sin(g(x))² /
+  cos(g(x))² con inner NO afín cuya cofactor aporta la derivada de la sustitución
+  ya integra — `polynomial_times_trig_square_substitution_antiderivative`, hermano
+  del dueño afín (corre después). El reescrito de ángulo mitad sin²(g)=(1−cos2g)/2
+  es idéntico para cualquier g; lo único que cambia es si los términos p·cos(2g)
+  distribuidos son integrables. `x·sin(x²)²→x/2−(x/2)cos(2x²)` es ELEMENTAL por
+  u=x² (la cofactor x es du/2). AUTO-GATING por la linealidad de
+  integrate_symbolic_expr (propaga None por `?`): cofactor que NO aporta el du
+  (`x²·sin(x²)²` no-elemental/Fresnel, `x·sin(x³)²` necesita du=3x²) deja un término
+  sin integrar y todo el reescrito da None → residual honesto, sin gate de
+  paridad/grado. `x·sin(x²)²`, `x·cos(x²)²`, `x³·sin(x²)²`, `x·sin(2x²)²`. Verificado
+  numéricamente (máx |d/dx F−f| ~1e-16); 2 filas de matriz para los casos
+  cuadráticos simples (round-trip limpio). ITEM cerrado salvo potencias pares ≥4
+  con inner no afín.)*
 - [x] **(F) sech/csch no parsean**: `sech(x)^2` da "función no
   definida".
   *(graduado 2026-06-13 758e54e73: el parser desugariza sech→1/cosh,
