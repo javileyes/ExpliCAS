@@ -664,7 +664,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   para las salidas multi-ángulo de grado alto — el techo de round-trip del
   simplificador queda como peldaño. Queda aún el inner substitución-amenable
   `x·sin(x²)²`.)*
-  *(inner substitución-amenable graduado 2026-06-14 PENDING_HASH: p(x)·sin(g(x))² /
+  *(inner substitución-amenable graduado 2026-06-14 98dc0e42b: p(x)·sin(g(x))² /
   cos(g(x))² con inner NO afín cuya cofactor aporta la derivada de la sustitución
   ya integra — `polynomial_times_trig_square_substitution_antiderivative`, hermano
   del dueño afín (corre después). El reescrito de ángulo mitad sin²(g)=(1−cos2g)/2
