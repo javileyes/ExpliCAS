@@ -20961,8 +20961,102 @@ fn table_reused_arctan_kernel_integration_candidate(
     candidate
 }
 
+/// Rewrite `cbrt(u)` as `u^(1/3)` and `cbrt(u)^n` as `u^(n/3)` in the integrable
+/// positions (the algebraic skeleton), returning the rewritten expr when any
+/// cube root was lowered. `cbrt` is kept as `Function(Cbrt)` everywhere else
+/// (display + the cube-root limit rules); this lowering is local to integration,
+/// where `cbrt(u) = u^(1/3)` lets the ordinary power rule do the work. It does
+/// NOT descend into transcendental function arguments (e.g. `sin(cbrt(x))`),
+/// which stay residual either way.
+fn lower_cbrt_for_integration(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (rewritten, changed) = rewrite_cbrt_to_pow_for_integration(ctx, expr);
+    changed.then_some(rewritten)
+}
+
+fn rewrite_cbrt_to_pow_for_integration(ctx: &mut Context, expr: ExprId) -> (ExprId, bool) {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Cbrt) =>
+        {
+            let (inner, _) = rewrite_cbrt_to_pow_for_integration(ctx, args[0]);
+            let third = ctx.add(Expr::Number(BigRational::new(1.into(), 3.into())));
+            (ctx.add(Expr::Pow(inner, third)), true)
+        }
+        Expr::Pow(base, exp) => {
+            // cbrt(a)^n -> a^(n/3): the nested power does not auto-flatten.
+            if let Expr::Function(fn_id, args) = ctx.get(base).clone() {
+                if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Cbrt) {
+                    if let Expr::Number(n) = ctx.get(exp).clone() {
+                        let (inner, _) = rewrite_cbrt_to_pow_for_integration(ctx, args[0]);
+                        let new_exp =
+                            ctx.add(Expr::Number(n / BigRational::new(3.into(), 1.into())));
+                        return (ctx.add(Expr::Pow(inner, new_exp)), true);
+                    }
+                }
+            }
+            let (b, cb) = rewrite_cbrt_to_pow_for_integration(ctx, base);
+            let (e, ce) = rewrite_cbrt_to_pow_for_integration(ctx, exp);
+            if cb || ce {
+                (ctx.add(Expr::Pow(b, e)), true)
+            } else {
+                (expr, false)
+            }
+        }
+        Expr::Add(l, r) => {
+            let (l2, cl) = rewrite_cbrt_to_pow_for_integration(ctx, l);
+            let (r2, cr) = rewrite_cbrt_to_pow_for_integration(ctx, r);
+            if cl || cr {
+                (ctx.add(Expr::Add(l2, r2)), true)
+            } else {
+                (expr, false)
+            }
+        }
+        Expr::Sub(l, r) => {
+            let (l2, cl) = rewrite_cbrt_to_pow_for_integration(ctx, l);
+            let (r2, cr) = rewrite_cbrt_to_pow_for_integration(ctx, r);
+            if cl || cr {
+                (ctx.add(Expr::Sub(l2, r2)), true)
+            } else {
+                (expr, false)
+            }
+        }
+        Expr::Mul(l, r) => {
+            let (l2, cl) = rewrite_cbrt_to_pow_for_integration(ctx, l);
+            let (r2, cr) = rewrite_cbrt_to_pow_for_integration(ctx, r);
+            if cl || cr {
+                (ctx.add(Expr::Mul(l2, r2)), true)
+            } else {
+                (expr, false)
+            }
+        }
+        Expr::Div(n, d) => {
+            let (n2, cn) = rewrite_cbrt_to_pow_for_integration(ctx, n);
+            let (d2, cd) = rewrite_cbrt_to_pow_for_integration(ctx, d);
+            if cn || cd {
+                (ctx.add(Expr::Div(n2, d2)), true)
+            } else {
+                (expr, false)
+            }
+        }
+        Expr::Neg(inner) => {
+            let (inner2, c) = rewrite_cbrt_to_pow_for_integration(ctx, inner);
+            if c {
+                (ctx.add(Expr::Neg(inner2)), true)
+            } else {
+                (expr, false)
+            }
+        }
+        _ => (expr, false),
+    }
+}
+
 /// Integrate `expr` with respect to `var` using a small set of symbolic rules.
 pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    // cbrt is kept as Function(Cbrt) globally, but for integration it is x^(1/3):
+    // lower the cube roots and recurse through the ordinary power rule.
+    if let Some(lowered) = lower_cbrt_for_integration(ctx, expr) {
+        return integrate_symbolic_expr(ctx, lowered, var);
+    }
     // Extract variant info in one borrow, then process with owned ExprId values.
     enum IntKind {
         Add(ExprId, ExprId),
@@ -22087,6 +22181,25 @@ mod tests {
         let expr = parse("x^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "x^3 / 3");
+    }
+
+    #[test]
+    fn integrates_cbrt_via_power_rule_lowering() {
+        let mut ctx = Context::new();
+        // cbrt(x) is lowered to x^(1/3); the ordinary power rule gives 3/4 x^(4/3).
+        let expr = parse("cbrt(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        // Raw power-rule form `x^(4/3) / (4/3)` (the CLI simplifier folds it to
+        // 3/4 x^(4/3)); equivalently the antiderivative of x^(1/3).
+        assert_eq!(rendered(&ctx, out), "x^(4/3) / 4/3");
+        // cbrt(x)^2 -> x^(2/3) -> x^(5/3) / (5/3); the nested power must flatten.
+        let squared = parse("cbrt(x)^2", &mut ctx).expect("parse");
+        let out_sq = integrate_symbolic_expr(&mut ctx, squared, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out_sq), "x^(5/3) / 5/3");
+        // A non-linear radicand stays residual: x^(1/3) of a non-linear base is
+        // not a power-rule target (needs a substitution the engine declines).
+        let residual = parse("cbrt(x^2 + 1)", &mut ctx).expect("parse");
+        assert!(integrate_symbolic_expr(&mut ctx, residual, "x").is_none());
     }
 
     #[test]

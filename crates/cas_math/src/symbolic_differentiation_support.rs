@@ -6818,6 +6818,18 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                     let term = mul_pruned(ctx, half, pow_term);
                     Some(mul_pruned(ctx, term, da))
                 }
+                // d/dx cbrt(u) = (1/3) u^(-2/3) u'; cbrt is defined on all reals
+                // (no positivity condition, unlike sqrt).
+                Some(BuiltinFn::Cbrt) => {
+                    let one = ctx.num(1);
+                    let three = ctx.num(3);
+                    let third = ctx.add(Expr::Div(one, three));
+                    let minus_two = ctx.num(-2);
+                    let neg_two_thirds = ctx.add(Expr::Div(minus_two, three));
+                    let pow_term = ctx.add(Expr::Pow(arg, neg_two_thirds));
+                    let term = mul_pruned(ctx, third, pow_term);
+                    Some(mul_pruned(ctx, term, da))
+                }
                 Some(BuiltinFn::Arctan | BuiltinFn::Atan) => {
                     let one = ctx.num(1);
                     let two = ctx.num(2);
@@ -6924,6 +6936,22 @@ mod tests {
         let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
         let text = rendered(&ctx, out);
         assert!(text.contains("exp(x^2)") || text.contains("e^(x^2)"));
+    }
+
+    #[test]
+    fn differentiates_cbrt_as_third_power() {
+        let mut ctx = Context::new();
+        // d/dx cbrt(x) = (1/3) x^(-2/3); at x=8 this is 1/3 * 1/4 = 1/12. cbrt is
+        // defined on all reals so no positivity condition is introduced.
+        let expr = parse("cbrt(x)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert!((eval_at(&ctx, out, 8.0) - 1.0 / 12.0).abs() < 1e-9);
+        // Chain rule: d/dx cbrt(x^2+1) = (2x)/(3 (x^2+1)^(2/3)). Numeric at x=2.
+        let chain = parse("cbrt(x^2 + 1)", &mut ctx).expect("parse");
+        let dchain = differentiate_symbolic_expr(&mut ctx, chain, "x").expect("diff");
+        let approx = eval_at(&ctx, dchain, 2.0);
+        let want = 4.0 / (3.0 * 5.0_f64.powf(2.0 / 3.0));
+        assert!((approx - want).abs() < 1e-9, "got {approx}, want {want}");
     }
 
     #[test]

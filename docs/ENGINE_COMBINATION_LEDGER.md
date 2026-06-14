@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 148 (newest first)
+Active entries: 149 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -138,6 +138,7 @@ Active entries: 148 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / cube-root conjugate at +infinity (block 3) | Retained limits: cube-root conjugate differences and 0*inf products
 - 2026-06-14 | `retained` | calculus / integration / generalized substitution (block 5) | Retained integration: x^(2k+1) f(x^2) via u=x^2 substitution
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 4/8, Phase 6 educatio... | Retained educational: bare ln by-parts narration (completes the family)
+- 2026-06-14 | `retained` | calculus / differentiation + integration / cube root elementary rules | Retained calculus: cbrt as first-class elementary (derivative + antiderivative)
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6487,3 +6488,55 @@ Active entries: 148 (newest first)
     as by-parts, a real footprint). When the latter, verify the affected step
     fixtures are subset matchers before committing - here the only ln(x) fixture
     is a definite-FTC row whose substring assertions still hold with extra substeps
+
+
+## 2026-06-14 - Retained calculus: cbrt as first-class elementary (derivative + antiderivative)
+
+- area:
+  - calculus / differentiation + integration / cube root elementary rules
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - behavior_change_expected: yes - diff(cbrt(x)) and integrate(cbrt(x)) (and
+    powers/products) were residual although sqrt and x^(1/3) both work
+  - matrix_cell: diff(cbrt(x))=1/3 x^(-2/3) [x!=0], integrate(cbrt(x))=3/4 x^(4/3),
+    integrate(cbrt(x)^2)=3/5 x^(5/3)
+- observed (cbrt was missing the elementary rules sqrt has, but x^(1/3) has):
+  - cbrt is BuiltinFn::Cbrt (a Function), intentionally NOT lowered to Pow(.,1/3)
+    so the cube-root LIMIT rules (cbrt_conjugate_limit_at_infinity) and the cbrt
+    display form keep matching Function(Cbrt). But that left diff and integrate
+    with no Cbrt handling (they fell to `_ => None`), while Pow(.,1/3) already
+    works via the general power rule. Two LOCAL fixes, each empirically verified:
+    (1) diff: one `Some(BuiltinFn::Cbrt)` arm next to the Sqrt arm in
+    differentiate_symbolic_expr, building (1/3) u^(-2/3) u' (reusing the
+    already-computed chain-rule da). (2) integrate: a lower_cbrt_for_integration
+    pass at the entry of integrate_symbolic_expr that rewrites Function(Cbrt,[u])
+    -> u^(1/3) and Pow(Function(Cbrt,[u]),n) -> u^(n/3) in the algebraic skeleton
+    (the nested power does NOT auto-flatten), then recurses through the existing
+    power rule
+  - the integrate rewrite is local to integration: it does not descend into
+    transcendental function arguments (sin(cbrt(x)) stays residual) and the global
+    Function(Cbrt) node is untouched, so cbrt display + the cycle-6 limit rules are
+    unchanged. Non-linear radicands (cbrt(x^2+1), cbrt(x^2)) stay honest residuals
+  - DOMAIN: diff carries x != 0 (the derivative 1/(3 x^(2/3)) is undefined at the
+    cbrt vertical tangent); integrate carries no condition (x^(4/3) defined on all
+    reals). Both match x^(1/3) exactly. SOUNDNESS verified numerically and via the
+    Pow-form round-trip diff(integrate(cbrt(x)))-x^(1/3)=0
+- decision (where the regression coverage lives):
+  - cas_math unit tests (the diff arm numeric + chain rule; the integrate rewrite
+    exact raw forms + the cbrt(x^2+1) reject) plus a CLI contract test (exact
+    CLI-simplified results + domain + Pow round-trip + display/limit/sqrt
+    regressions). NOT matrix rows: the matrix direct_diff_integrate round-trip
+    gives x^(1/3), and the engine does not simplify x^(1/3) == cbrt(x), so a
+    cbrt-form round-trip would not close (a separate simplification gap)
+- retained learning:
+  - when a builtin is deliberately kept un-lowered for one subsystem (here cbrt
+    for limits + display), the SOUNDEST way to give it elementary calculus is a
+    rule LOCAL to each operation: an explicit derivative arm and an
+    integration-entry lowering, both reusing the existing power-rule path. Never
+    lower globally - it would break the subsystem that depends on the Function form
+  - the same closed form can be CORRECT yet not ROUND-TRIP in the engine when two
+    representations of it (x^(1/3) vs cbrt(x)) are not known-equal: verify
+    soundness in the representation the engine CAN simplify (Pow), and note the
+    cross-representation simplification as a separate gap rather than forcing it

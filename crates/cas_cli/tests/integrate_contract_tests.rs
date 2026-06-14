@@ -2449,6 +2449,72 @@ fn integrate_contract_bare_logarithm_by_parts_narrates_u_dv_du_v() {
 }
 
 #[test]
+fn integrate_contract_cbrt_elementary_calculus_differentiates_and_integrates() {
+    // cbrt is now first-class elementary calculus, like sqrt: it differentiates
+    // and integrates as x^(1/3) (Pow form, no domain condition -- cbrt is defined
+    // on all reals). cbrt stays Function(Cbrt) for display and the limit rules.
+    // The derivative 1/(3 x^(2/3)) is undefined at x=0 (cbrt has a vertical
+    // tangent there), so diff carries x != 0; the antiderivative x^(4/3) is
+    // defined everywhere, so integrate carries no condition.
+    for (input, expected, expected_required) in [
+        (
+            "diff(cbrt(x), x)",
+            "1/3 * x^(-2/3)",
+            vec!["x ≠ 0".to_string()],
+        ),
+        (
+            "diff(5*cbrt(x), x)",
+            "5/3 * x^(-2/3)",
+            vec!["x ≠ 0".to_string()],
+        ),
+        ("integrate(cbrt(x), x)", "3/4 * x^(4/3)", Vec::new()),
+        ("integrate(cbrt(x)^2, x)", "3/5 * x^(5/3)", Vec::new()),
+        ("integrate(2*cbrt(x), x)", "3/2 * x^(4/3)", Vec::new()),
+    ] {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+        assert_eq!(result, expected, "result for {input}");
+        assert_eq!(required, expected_required, "required for {input}");
+    }
+
+    // Soundness in Pow form: diff(antiderivative) - x^(1/3) and the derivative
+    // minus its closed form both reduce to 0 (the engine does not yet simplify
+    // x^(1/3) == cbrt(x), so the cbrt-form round-trip stays open -- a separate
+    // simplification gap, not an integration error).
+    for (expr, want) in [
+        ("diff(integrate(cbrt(x), x), x) - x^(1/3)", "0"),
+        ("diff(integrate(cbrt(x)^2, x), x) - x^(2/3)", "0"),
+        ("diff(cbrt(x), x) - 1/3*x^(-2/3)", "0"),
+    ] {
+        assert_eq!(
+            evaluated_expr_with_required_conditions(expr).0,
+            want,
+            "soundness {expr}"
+        );
+    }
+
+    // Boundary: a non-linear radicand stays an honest residual (no power-rule
+    // target), bare cbrt(x) still displays as cbrt(x) (not lowered), and the
+    // cube-root LIMIT rule (Function(Cbrt)) is untouched.
+    for residual in ["integrate(cbrt(x^2+1), x)", "integrate(cbrt(x^2), x)"] {
+        assert!(
+            evaluated_expr_with_required_conditions(residual)
+                .0
+                .starts_with("integrate("),
+            "{residual} should stay an honest residual"
+        );
+    }
+    assert_eq!(
+        evaluated_expr_with_required_conditions("cbrt(x)").0,
+        "cbrt(x)"
+    );
+    // sqrt and x^(1/3) are untouched.
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(sqrt(x), x)").0,
+        "2/3 * sqrt(x) * x"
+    );
+}
+
+#[test]
 fn integrate_contract_affine_octic_cos_by_parts_verifies_publicly() {
     let input = "integrate(x^8*cos(2*x+1), x)";
     let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
