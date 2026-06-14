@@ -604,7 +604,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   de grado 7, verificado numéricamente)*
 - [x] **(F) Polinomio·potencia trig par**: `x·sin(x)^2`, `x^2·cos(x)^2`
   residuales mientras `sin(x)^2` solo ya reducía.
-  *(graduado 2026-06-14: p(x)·sin(ax+b)^2 / p(x)·cos(ax+b)^2 con deg p≥1 e
+  *(graduado 2026-06-14 161e410b9: p(x)·sin(ax+b)^2 / p(x)·cos(ax+b)^2 con deg p≥1 e
   inner afín vía la identidad de ángulo mitad sin²u=½−½cos2u; el reescrito
   DISTRIBUYE en ½p(x)∓½p(x)cos2u y delega en el integrador de polinomios y
   en el de polinomio·cos(afín) por partes. Gate: un único factor
