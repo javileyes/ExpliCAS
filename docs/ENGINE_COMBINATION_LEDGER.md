@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 135 (newest first)
+Active entries: 136 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -125,6 +125,7 @@ Active entries: 135 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / 0^0 exponential indeterminate form (block 3) - P1 | Retained limits: 0^0 (x^x -> 1) at 0+
 - 2026-06-14 | `retained` | calculus / limits / logarithmic-exponential dominance at infinity | Retained limits: ln(sum of exponentials)/x -> ln(dominant base)
 - 2026-06-14 | `retained` | calculus / limits / inf^0 exponential indeterminate form + general-base | Retained limits: inf^0 ((2^x+3^x)^(1/x)=3) + b^x growth
+- 2026-06-14 | `retained` | calculus / limits / general-base exponential dominance at infinity | Retained limits: quotient of exponential sums by dominant base
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5906,3 +5907,43 @@ Active entries: 135 (newest first)
     new foundations first: b^x growth (so the base diverges) and log-of-
     exp-sum dominance (so the inner ln(sum)/x resolves). Build the
     foundations, and the capstone is a thin reduction
+
+
+## 2026-06-14 - Retained limits: quotient of exponential sums by dominant base
+
+- area:
+  - calculus / limits / general-base exponential dominance at infinity
+    (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    divergent and finite-ratio)
+  - limit_matrix_cell: limit(3^x/2^x,x,inf)=inf, limit((2^x+3^x)/3^x,x,inf)=1
+  - behavior_change_expected: yes - a quotient of sums of general-base
+    exponentials resolves by the dominant base, the natural sibling of the
+    b^x growth and log-of-exponential-sum rules
+- observed (reuse the effective-base parser, compare dominants):
+  - exp_sum_quotient_dominance_at_infinity parses numerator and denominator
+    into rational-base exponential terms (the same collect_rational_exp_terms
+    as the log-sum rule), takes each side's dominant effective base, and
+    decides: numerator base larger -> +-inf (sign from the dominant
+    coefficients), smaller -> 0, equal -> ratio of dominant coefficient sums.
+    3^x/2^x = inf, (2^x+3^x)/3^x = 1, (3^x-2^x)/(3^x+2^x) = 1,
+    (2*3^x+2^x)/3^x = 2, (-3^x)/2^x = -inf
+  - gates: each side must carry a genuinely GROWING exponential (base > 1),
+    else it is a rational quotient owned upstream; the dominant denominator
+    coefficient must be nonzero (a cancellation leaves a lower true dominant,
+    too subtle here -> decline)
+- retained learning:
+  - once the effective-base parser exists, the whole general-base
+    exponential family (growth, log-of-sum, quotient dominance) is a set of
+    thin rules over it - each is "find the max effective base and read off
+    the regime". Build the parser once (cycle: difference of exponentials),
+    reuse it for every sibling
+  - a dominance quotient is decided by the LEADING term only, but the leading
+    term is meaningful only if its coefficient does not cancel; gate on a
+    nonzero dominant coefficient before trusting the leading base, the same
+    lesson as the log-of-exponential-sum rule. Remaining rung: exponential
+    vs polynomial (2^x/x^2), where the term classes differ

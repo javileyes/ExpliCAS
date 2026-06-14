@@ -7779,7 +7779,79 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = rational_difference_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = exp_sum_quotient_dominance_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     rational_poly_limit(ctx, expr, var, approach)
+}
+
+/// A quotient of sums of rational-base exponentials at infinity, decided by
+/// the dominant base: `(sum c_i b_i^x) / (sum d_j e_j^x)` tends to the ratio
+/// of the dominant coefficients when the top bases match, to `+-inf` when the
+/// numerator's dominant base is larger, and to 0 when it is smaller. Reuses the
+/// effective-base term parser. Resolves `3^x/2^x -> +inf`,
+/// `(2^x+3^x)/3^x -> 1`, `(3^x-2^x)/(3^x+2^x) -> 1`.
+fn exp_sum_quotient_dominance_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use num_traits::{Signed, Zero};
+    if !matches!(approach, InfSign::Pos) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let mut num_terms: Vec<(BigRational, BigRational)> = Vec::new();
+    let mut den_terms: Vec<(BigRational, BigRational)> = Vec::new();
+    collect_rational_exp_terms(ctx, num, &var_name, &rational_one(), &mut num_terms)?;
+    collect_rational_exp_terms(ctx, den, &var_name, &rational_one(), &mut den_terms)?;
+    // Require at least one genuinely growing exponential on each side so this
+    // is an exponential quotient, not a rational one (owned upstream).
+    let one = BigRational::one();
+    if !num_terms.iter().any(|(_, b)| *b > one) || !den_terms.iter().any(|(_, b)| *b > one) {
+        return None;
+    }
+    let num_max = num_terms.iter().map(|(_, b)| b.clone()).max()?;
+    let den_max = den_terms.iter().map(|(_, b)| b.clone()).max()?;
+    let dominant_sum = |terms: &[(BigRational, BigRational)], base: &BigRational| -> BigRational {
+        terms
+            .iter()
+            .filter(|(_, b)| b == base)
+            .map(|(c, _)| c.clone())
+            .sum()
+    };
+    let num_dom = dominant_sum(&num_terms, &num_max);
+    let den_dom = dominant_sum(&den_terms, &den_max);
+    // A cancelled dominant coefficient leaves a lower true dominant - too subtle
+    // here, so decline.
+    if den_dom.is_zero() {
+        return None;
+    }
+    use std::cmp::Ordering;
+    match num_max.cmp(&den_max) {
+        Ordering::Less => Some(ctx.num(0)),
+        Ordering::Equal => {
+            let ratio = &num_dom / &den_dom;
+            Some(ctx.add(Expr::Number(ratio)))
+        }
+        Ordering::Greater => {
+            if num_dom.is_zero() {
+                return None;
+            }
+            let positive = num_dom.is_positive() == den_dom.is_positive();
+            Some(mk_infinity(
+                ctx,
+                if positive { InfSign::Pos } else { InfSign::Neg },
+            ))
+        }
+    }
 }
 
 /// The exponential indeterminate form `1^inf` at infinity: when the base
@@ -14345,6 +14417,42 @@ mod tests {
         assert!(
             matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
         );
+    }
+
+    #[test]
+    fn exp_sum_quotient_dominance_resolves_by_dominant_base() {
+        // A quotient of exponential sums is decided by the dominant base.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("3^x/2^x", "infinity"),
+            ("2^x/3^x", "0"),
+            ("(2^x+3^x)/3^x", "1"),
+            ("(3^x-2^x)/(3^x+2^x)", "1"),
+            ("(2*3^x+2^x)/3^x", "2"),
+            ("(5^x+2^x)/(3^x+4^x)", "infinity"),
+            ("(-3^x)/2^x", "-infinity"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = exp_sum_quotient_dominance_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("exp quotient must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn exp_sum_quotient_dominance_declines_non_exponential_and_cancelled() {
+        // No growing exponential on a side (pure rational, exp-vs-poly) and a
+        // cancelled dominant denominator coefficient stay out of this rule.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in ["(x^2+1)/(x+1)", "2^x/x^2", "3^x/(2^x+3^x-3^x)"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                exp_sum_quotient_dominance_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "exp quotient must decline: {source}"
+            );
+        }
     }
 
     #[test]
