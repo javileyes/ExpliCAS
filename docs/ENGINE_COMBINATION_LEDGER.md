@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 130 (newest first)
+Active entries: 131 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
 - 2026-06-14 | `retained` | calculus / limits / additive inf - inf of rational functions (block 3) | Retained limits: rational inf - inf at infinity
+- 2026-06-14 | `retained` | calculus / limits / exponential indeterminate forms (block 3) - P1 | Retained limits: 1^inf -> e^a at infinity (the constant e)
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5686,3 +5687,51 @@ Active entries: 130 (newest first)
     non-polynomial parts) is its own gate: build the combined candidate
     unconditionally and let the reused rule's own preconditions reject the
     out-of-class inputs, instead of duplicating a rationality check
+
+
+## 2026-06-14 - Retained limits: 1^inf -> e^a at infinity (the constant e)
+
+- area:
+  - calculus / limits / exponential indeterminate forms (block 3) - P1
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    (1+1/x)^x=e, (1+2/x)^x=e^2)
+  - limit_matrix_cell: limit((1+1/x)^x,x,inf)=e, limit((1+2/x)^x,x,inf)=e^2
+  - behavior_change_expected: yes - the constant e becomes reachable BY
+    LIMIT; a whole exam chapter was at 0%
+- observed (exp(lim exp*(base-1)) via ln(1+h)~h):
+  - 1^inf is exp(exp*ln(base)); since base -> 1 means h = base - 1 -> 0 and
+    ln(1+h) ~ h, the limit is exp(lim exp*(base-1)).
+    one_to_infinity_power_limit_at_infinity gates on lim(base)==1 and a
+    divergent exponent, builds the product exp*(base-1), rationalizes it over
+    a common denominator (rationalize_to_fraction puts Add/Sub over a common
+    denominator and flattens Mul/Div so a polynomial reader can expand and
+    cancel x*((1+1/x)-1) -> (x*(x+1-x))/x), and hands the single fraction to
+    the existing rational quotient limit. The result e^L is folded: e^0=1,
+    e^1=e, e^(+inf)=inf, e^(-inf)=0
+  - covers (1+a/x)^x=e^a, (1+1/x)^(kx)=e^k, ((2x+1)/(2x-1))^x=e,
+    (1+1/x^2)^x=1, (1+1/x)^(x^2)=inf, (1-1/x)^x=1/e. Verified adversarially
+    (2-lens, 85 probes, 0 unsound): the classic SECOND-ORDER trap
+    cos(1/x)^(x^2)=e^(-1/2) DECLINES (cos is opaque to the rationalizer) -
+    incomplete but never a wrong value
+- retained learning:
+  - the same transcendental-equivalent seam as (a^x-1)/x and the difference
+    of exponentials: do not chase ln symbolically - reduce 1^inf to a
+    RATIONAL limit (lim exp*(base-1)) using ln(1+h)~h, and reuse the rational
+    quotient machinery. ln(1+h)~h is valid exactly because the base-limit
+    gate forces h -> 0; lim g*ln(1+h) = lim g*h whenever the latter exists
+    (the ratio ln(1+h)/h -> 1)
+  - a "rationalize to a single P/Q" helper that puts Add/Sub over a common
+    denominator (not just flattening Mul/Div) is the missing primitive: the
+    limit engine only presimplifies, so x*((1+1/x)-1) never cancels to 1
+    until the additive constants are combined into one fraction the
+    polynomial reader can expand. Build P/Q and let multipoly cancel
+  - delegating to the rational reader is its own gate: a transcendental base
+    (cos(1/x), exp(1/x)) or exponent (sqrt(x), ln(x)) stays an opaque atom
+    over 1, the reader fails, and the rule declines - conservative, never a
+    second-order error. Remaining rungs: 0^0 (x^x at 0+), inf^0
+    ((2^x+3^x)^(1/x)), the FINITE-point 1^inf ((1+x)^(1/x) at 0), and the
+    transcendental-base second-order cases

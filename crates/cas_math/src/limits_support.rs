@@ -7569,6 +7569,9 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = apply_reciprocal_power_rule(ctx, expr, var) {
         return Some(r);
     }
+    if let Some(r) = one_to_infinity_power_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     if let Some(r) = elementary_function_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
@@ -7631,6 +7634,109 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     rational_poly_limit(ctx, expr, var, approach)
+}
+
+/// The exponential indeterminate form `1^inf` at infinity: when the base
+/// tends to 1 and the exponent diverges, `base^exp = exp(exp * ln(base))` and,
+/// since `ln(1 + h) ~ h` for `h = base - 1 -> 0`, the limit is
+/// `exp(lim exp * (base - 1))`. Resolves `(1 + a/x)^x -> e^a`,
+/// `(1 + 1/x)^(2x) -> e^2`, `(1 + 1/x^2)^x -> 1`, `((2x+1)/(2x-1))^x -> e`.
+/// Gated on a unit base limit and a divergent exponent, so `2^x`, `x^x`, and
+/// any base that does not tend to 1 are left untouched.
+fn one_to_infinity_power_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use num_traits::One;
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    // Both the base and the exponent must carry the variable for an
+    // indeterminate 1^inf; a constant base or exponent is a different form.
+    if !depends_on(ctx, base, var) || !depends_on(ctx, exp, var) {
+        return None;
+    }
+    // The base must tend to exactly 1.
+    let base_limit = try_limit_rules_at_infinity(ctx, base, var, approach)?;
+    if !crate::numeric_eval::as_rational_const(ctx, base_limit).is_some_and(|v| v.is_one()) {
+        return None;
+    }
+    // The exponent must diverge (otherwise 1^finite = 1 is the continuous case).
+    let exp_limit = try_limit_rules_at_infinity(ctx, exp, var, approach)?;
+    limit_value_infinite_sign(ctx, exp_limit)?;
+    // L = lim exp * (base - 1), rationalized so the quotient limit can read it.
+    let one = ctx.num(1);
+    let h = ctx.add(Expr::Sub(base, one));
+    let product = ctx.add(Expr::Mul(exp, h));
+    let (num, den) = rationalize_to_fraction(ctx, product);
+    let combined = ctx.add(Expr::Div(num, den));
+    let l_limit = try_limit_rules_at_infinity(ctx, combined, var, approach)?;
+    // exp(L): e^finite, e^(+inf) = inf, e^(-inf) = 0.
+    match limit_value_infinite_sign(ctx, l_limit) {
+        Some(1) => Some(mk_infinity(ctx, InfSign::Pos)),
+        Some(_) => Some(ctx.num(0)),
+        None => {
+            // Fold the degenerate finite exponents: e^0 = 1, e^1 = e.
+            if let Some(value) = crate::numeric_eval::as_rational_const(ctx, l_limit) {
+                use num_traits::{One, Zero};
+                if value.is_zero() {
+                    return Some(ctx.num(1));
+                }
+                if value.is_one() {
+                    return Some(ctx.add(Expr::Constant(Constant::E)));
+                }
+            }
+            let e = ctx.add(Expr::Constant(Constant::E));
+            Some(ctx.add(Expr::Pow(e, l_limit)))
+        }
+    }
+}
+
+/// Combine an expression into a single fraction `(numerator, denominator)` of
+/// polynomial-buildable parts, putting Add/Sub over a common denominator and
+/// flattening Mul/Div. Lets a downstream polynomial reader expand and cancel
+/// (e.g. `x * ((1 + 1/x) - 1)` rationalizes to `(x * (x + 1 - x)) / x`).
+/// Non-rational atoms (functions, irrational powers) stay opaque over 1, so the
+/// reader's own preconditions reject them.
+fn rationalize_to_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId) {
+    let one = |ctx: &mut Context| ctx.num(1);
+    match ctx.get(expr).clone() {
+        Expr::Add(a, b) | Expr::Sub(a, b) => {
+            let subtract = matches!(ctx.get(expr), Expr::Sub(_, _));
+            let (na, da) = rationalize_to_fraction(ctx, a);
+            let (nb, db) = rationalize_to_fraction(ctx, b);
+            let left = ctx.add(Expr::Mul(na, db));
+            let right = ctx.add(Expr::Mul(nb, da));
+            let num = if subtract {
+                ctx.add(Expr::Sub(left, right))
+            } else {
+                ctx.add(Expr::Add(left, right))
+            };
+            let den = ctx.add(Expr::Mul(da, db));
+            (num, den)
+        }
+        Expr::Mul(a, b) => {
+            let (na, da) = rationalize_to_fraction(ctx, a);
+            let (nb, db) = rationalize_to_fraction(ctx, b);
+            (ctx.add(Expr::Mul(na, nb)), ctx.add(Expr::Mul(da, db)))
+        }
+        Expr::Div(a, b) => {
+            let (na, da) = rationalize_to_fraction(ctx, a);
+            let (nb, db) = rationalize_to_fraction(ctx, b);
+            // (na/da) / (nb/db) = (na db) / (da nb).
+            (ctx.add(Expr::Mul(na, db)), ctx.add(Expr::Mul(da, nb)))
+        }
+        Expr::Neg(inner) => {
+            let (n, d) = rationalize_to_fraction(ctx, inner);
+            (ctx.add(Expr::Neg(n)), d)
+        }
+        _ => {
+            let d = one(ctx);
+            (expr, d)
+        }
+    }
 }
 
 /// An additive combination of rational functions at infinity that the
@@ -13839,6 +13945,44 @@ mod tests {
             assert!(
                 rational_difference_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
                 "rational difference must decline non-rational operands: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn one_to_infinity_power_resolves_the_e_family() {
+        // 1^inf: base -> 1, exponent -> inf, limit = exp(lim exp*(base-1)).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("(1+1/x)^x", "e"),
+            ("(1+2/x)^x", "e^2"),
+            ("(1+1/x)^(2*x)", "e^2"),
+            ("(1+3/x)^(2*x)", "e^6"),
+            ("(1-1/x)^x", "e^(-1)"),
+            ("(1+1/x^2)^x", "1"),
+            ("(1+1/x)^(x^2)", "infinity"),
+            ("((2*x+1)/(2*x-1))^x", "e"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = one_to_infinity_power_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("1^inf must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn one_to_infinity_power_declines_non_indeterminate_and_oscillating() {
+        // Honest declines: a constant base (not -> 1), a base -> inf (x^x), a
+        // FINITE exponent (1^5 = 1 is continuous, not indeterminate), and an
+        // oscillating base-1 whose product has no limit.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in ["2^x", "x^x", "(1+1/x)^5", "(1+sin(x)/x)^x"] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                one_to_infinity_power_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "1^inf must decline: {source}"
             );
         }
     }
