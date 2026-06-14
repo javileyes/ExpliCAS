@@ -6737,6 +6737,137 @@ fn bare_natural_log_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+/// `lim_{x->+inf} ln(sum c_i b_i^(s_i x)) / (slope x) = ln(max b_i^s_i) / slope`.
+/// The dominant exponential sets the growth: with `B = max effective base`,
+/// `ln(sum) = ln(B^x (c_dom + o(1))) = x ln B + O(1)`, so the quotient tends to
+/// `ln(B) / slope`. Resolves `ln(2^x + 3^x)/x = ln 3`,
+/// `ln(2^x + 3^x + 5^x)/x = ln 5`, `ln(5^x - 3^x)/x = ln 5`. Rational bases
+/// with integer exponent slopes (so the effective base is rational and
+/// comparable exactly); e-bases and mixed sums decline.
+fn log_exp_sum_dominance_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use num_traits::{One, Signed, Zero};
+    if !matches!(approach, InfSign::Pos) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let arg = bare_natural_log_argument(ctx, num)?;
+    // den = slope * x: a degree-1 polynomial with no constant term.
+    let den_poly = Polynomial::from_expr(ctx, den, &var_name).ok()?;
+    if den_poly.degree() != 1 || !den_poly.coeffs.first().is_some_and(|c| c.is_zero()) {
+        return None;
+    }
+    let den_slope = den_poly.coeffs.get(1).cloned()?;
+    if !den_slope.is_positive() {
+        return None;
+    }
+    let mut terms: Vec<(BigRational, BigRational)> = Vec::new();
+    collect_rational_exp_terms(ctx, arg, &var_name, &rational_one(), &mut terms)?;
+    if terms.is_empty() {
+        return None;
+    }
+    let max_base = terms.iter().map(|(_, b)| b.clone()).max()?;
+    // The dominant exponential must actually grow.
+    if max_base <= BigRational::one() {
+        return None;
+    }
+    // The dominant terms' coefficients must sum positive, so the sum -> +inf
+    // and its logarithm is defined.
+    let dominant_sum: BigRational = terms
+        .iter()
+        .filter(|(_, b)| *b == max_base)
+        .map(|(c, _)| c.clone())
+        .sum();
+    if !dominant_sum.is_positive() {
+        return None;
+    }
+    let base_expr = ctx.add(Expr::Number(max_base));
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base_expr]);
+    if den_slope.is_one() {
+        Some(ln_base)
+    } else {
+        let inv = BigRational::one() / den_slope;
+        let coeff = ctx.add(Expr::Number(inv));
+        Some(ctx.add(Expr::Mul(coeff, ln_base)))
+    }
+}
+
+/// Accumulate `expr` (under `sign`) as a sum of rational-base exponentials
+/// `c * b^(s x)` recorded as `(c, effective base b^s)`, plus constants
+/// (effective base 1). Returns None for any term outside the class.
+fn collect_rational_exp_terms(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    sign: &BigRational,
+    terms: &mut Vec<(BigRational, BigRational)>,
+) -> Option<()> {
+    use num_traits::{One, Signed, Zero};
+    if let Some(c) = constant_rational_value(ctx, expr) {
+        terms.push((sign * &c, BigRational::one()));
+        return Some(());
+    }
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let neg = -sign.clone();
+            collect_rational_exp_terms(ctx, inner, var_name, &neg, terms)
+        }
+        Expr::Add(a, b) => {
+            collect_rational_exp_terms(ctx, a, var_name, sign, terms)?;
+            collect_rational_exp_terms(ctx, b, var_name, sign, terms)
+        }
+        Expr::Sub(a, b) => {
+            collect_rational_exp_terms(ctx, a, var_name, sign, terms)?;
+            let neg = -sign.clone();
+            collect_rational_exp_terms(ctx, b, var_name, &neg, terms)
+        }
+        Expr::Mul(a, b) => {
+            if let Some(scale) = constant_rational_value(ctx, a) {
+                let s = sign * &scale;
+                return collect_rational_exp_terms(ctx, b, var_name, &s, terms);
+            }
+            if let Some(scale) = constant_rational_value(ctx, b) {
+                let s = sign * &scale;
+                return collect_rational_exp_terms(ctx, a, var_name, &s, terms);
+            }
+            None
+        }
+        _ => {
+            // b^(s x): rational base b > 0, exponent a positive-integer multiple
+            // of x, so the effective base b^s is a comparable rational.
+            let (base, exponent) = numeric_base_power(ctx, expr)?;
+            if !base.is_positive() {
+                return None;
+            }
+            let exp_poly = Polynomial::from_expr(ctx, exponent, var_name).ok()?;
+            if exp_poly.degree() != 1 || !exp_poly.coeffs.first().is_some_and(|c| c.is_zero()) {
+                return None;
+            }
+            let slope = exp_poly.coeffs.get(1).cloned()?;
+            if !slope.is_integer() || !slope.is_positive() {
+                return None;
+            }
+            let s = u32::try_from(slope.to_integer()).ok()?;
+            if s > 64 {
+                return None;
+            }
+            let effective_base = num_traits::pow::pow(base, s as usize);
+            terms.push((sign.clone(), effective_base));
+            Some(())
+        }
+    }
+}
+
 pub fn additive_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -7579,6 +7710,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = elementary_function_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = log_exp_sum_dominance_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = log_difference_limit_at_infinity(ctx, expr, var, approach) {
@@ -13547,6 +13681,49 @@ mod tests {
             let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
                 .unwrap_or_else(|| panic!("bounded-noise quotient must resolve: {source}"));
             assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn log_exp_sum_dominance_resolves_to_log_of_dominant_base() {
+        // ln(sum of exponentials)/x -> ln(dominant effective base).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("ln(2^x+3^x)/x", "ln(3)"),
+            ("ln(2^x+3^x+5^x)/x", "ln(5)"),
+            ("ln(2^x+1)/x", "ln(2)"),
+            ("ln(5^x-3^x)/x", "ln(5)"),
+            ("ln(2^(2*x)+3^x)/x", "ln(4)"),
+            ("ln(2*5^x-5^x)/x", "ln(5)"),
+            ("ln(3*2^x+3^x)/(2*x)", "1/2 * ln(3)"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = log_exp_sum_dominance_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("log-exp-sum must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn log_exp_sum_dominance_declines_unsound_and_out_of_class() {
+        // Negative dominant coefficient (sum -> -inf, ln undefined), an exact
+        // dominant cancellation, a higher-order denominator, an e-base sum, and
+        // a non-exponential argument all stay residual.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in [
+            "ln(3^x-5^x)/x",
+            "ln(5^x-5^x+3^x)/x",
+            "ln(2^x+3^x)/x^2",
+            "ln(exp(x)+exp(2*x))/x",
+            "ln(x^2+1)/x",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                log_exp_sum_dominance_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "log-exp-sum must decline: {source}"
+            );
         }
     }
 

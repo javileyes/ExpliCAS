@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 133 (newest first)
+Active entries: 134 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -123,6 +123,7 @@ Active entries: 133 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / exponential indeterminate forms (block 3) - P1 | Retained limits: 1^inf -> e^a at infinity (the constant e)
 - 2026-06-14 | `retained` | calculus / limits / exponential indeterminate forms at a finite point | Retained limits: 1^inf at a finite point ((1+x)^(1/x) = e)
 - 2026-06-14 | `retained` | calculus / limits / 0^0 exponential indeterminate form (block 3) - P1 | Retained limits: 0^0 (x^x -> 1) at 0+
+- 2026-06-14 | `retained` | calculus / limits / logarithmic-exponential dominance at infinity | Retained limits: ln(sum of exponentials)/x -> ln(dominant base)
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5819,3 +5820,44 @@ Active entries: 133 (newest first)
     the deepest sub-limit evaluator and the forms fall out. Remaining rung:
     inf^0 with a dominant-exponential base ((2^x+3^x)^(1/x)=3 needs
     ln(2^x+3^x)/x -> ln 3)
+
+
+## 2026-06-14 - Retained limits: ln(sum of exponentials)/x -> ln(dominant base)
+
+- area:
+  - calculus / limits / logarithmic-exponential dominance at infinity
+    (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (2 matrix rows:
+    two-base and three-base sums)
+  - limit_matrix_cell: limit(ln(2^x+3^x)/x,x,inf)=ln(3),
+    limit(ln(2^x+3^x+5^x)/x,x,inf)=ln(5)
+  - behavior_change_expected: yes - a log of a sum of exponentials over x
+    resolves to the log of the dominant base; the standalone form of the
+    inf^0 inner limit
+- observed (the dominant exponential sets the log growth):
+  - ln(sum c_i b_i^(s_i x)) = ln(B_max^x (c_dom + o(1))) = x ln(B_max) + O(1),
+    so divided by slope*x it tends to ln(B_max)/slope, where the EFFECTIVE
+    base of c b^(s x) is b^s. log_exp_sum_dominance_at_infinity parses the ln
+    argument into rational-base exponential terms (collect_rational_exp_terms:
+    +/-, x-free scales, b^(s x) with b>0 rational and s a positive integer so
+    b^s is a comparable rational, constants as effective base 1), takes the
+    max effective base, and returns ln(max)/slope
+  - soundness gates: the dominant base must exceed 1 (it must grow), and the
+    coefficients of the dominant terms must sum POSITIVE so the sum -> +inf
+    and ln is defined. ln(3^x - 5^x)/x declines (dominant -5^x, sum < 0); an
+    exact dominant cancellation (5^x - 5^x + 3^x) declines (sum 0); e-bases
+    and mixed sums decline (effective base not a comparable rational)
+- retained learning:
+  - comparing exponential growth RATES by their effective base b^s keeps the
+    comparison EXACT in rationals (ln is monotone, so max rate = max b^s),
+    avoiding a float comparison of k*ln(b) that would be unsound on ties.
+    Scope to integer slopes so b^s stays rational; non-integer slopes and
+    e-bases are honest declines
+  - a "sum of a thing dominated by its largest term" limit is sound only when
+    the largest term's coefficient sum is POSITIVE (for a log, so the
+    argument stays positive) - the dominance is necessary but not sufficient;
+    a negative or cancelling dominant coefficient is a different regime
