@@ -157,6 +157,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   Quedan: u=√x radicales lineales, y la superficie 1/(eˣ+e⁻ˣ) que el
   pre-simplificador reescribe a 1/(2cosh(x)) antes de llegar al
   integrador — peldaño hiperbólico aparte)*
+  *(peldaño hiperbólico 2026-06-14 02bd6d0d2: las recíprocas hiperbólicas
+  de primer orden ya integran — `∫1/cosh(u)=arctan(sinh(u))`,
+  `∫1/sinh(u)=ln(|tanh(u/2)|)` [sinh≠0] vía la ruta de tabla extendida a
+  n=1 (`HyperbolicReciprocalTablePower::First`); arg desde `Function`
+  desnuda (1/cosh es `Div(1,Function)`, no `Pow`), escala 1/u' afín, forma
+  cerrada (no el verificador estricto, que trata cosh/sinh como átomos
+  opacos). `2/(eˣ+e⁻ˣ)=1/cosh` cierra. Round-trip diff−integrando=0
+  simbólico y numérico (~1e-11) en ambos signos. Quedan: la versión
+  CONSTANTE-en-denominador `1/(2cosh(x))=1/(eˣ+e⁻ˣ)` —gap hiperbólico
+  preexistente que afecta a TODAS las potencias (`1/(2cosh²)` también
+  residual; el trig sí lo hace), y los múltiplos enteros puros `1/sinh(3x)`
+  (el motor expande sinh(3x) antes de integrar))*
 - [x] **(F) Weierstrass t=tan(x/2)**: `1/(2+cos(x))`, `1/(1+sin(x))` —
   estándar de examen universitario.
   *(graduado 2026-06-13 c6107abd5: racionales de sin(kx)/cos(kx) con
