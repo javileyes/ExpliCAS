@@ -418,6 +418,15 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   grado≥2 (`x²eˣ`, queda sólo-título "repetida"), inverse-trig
   (`arctan(x)`, `arcsin(x)` con u=función-inversa) y el cíclico `eˣ·sin x`
   (sin factor polinómico).)*
+  *(parcial 2026-06-14 acb6ba04a: la familia inverse-trig / inverse-hiperbólica
+  desnuda ya narra — `generate_single_inverse_by_parts_substeps` es el tercer
+  hermano del dispatcher (u=f, dv=dx, v=x, du=f'): `∫arctan(x)` → u=arctan(x),
+  dv=dx, du=1/(x²+1)dx, v=x; `arcsin/arccos/asinh/acosh/atanh` y argumento afín
+  `arctan(2x+1)` incluidos. El título ya disparaba (vía
+  is_bounded_inverse_trig_variable_target), narración pura sin tocar el gate.
+  Quedan: `x²eˣ` repetida (grado≥2), el cíclico `eˣ·sin x`, y `ln(x)` SOLO —
+  que hoy da CERO substeps porque ningún target by-partes lo reclama: no hay
+  título, requiere cambio de gate del dispatcher, ciclo aparte.)*
 - [ ] **(F) Residuales con motivo**: 'Conservar integral residual' no
   distingue "no elemental (necesitaría erf/Si/Ei)" de "el motor aún
   no lo soporta" (`sqrt(1-x²)`, `|x|`, `1/(x⁴+1)` son elementales y
