@@ -2315,6 +2315,39 @@ pub fn rational_cbrt_exact(r: &BigRational) -> Option<BigRational> {
     }
 }
 
+/// Exact rational `n`-th root of `r`, or `None` when it is not rational. An even
+/// root of a negative is undefined over the reals (returns `None`); an odd root
+/// keeps the sign. Generalizes `rational_sqrt` (n=2) and `rational_cbrt_exact`
+/// (n=3).
+pub fn rational_nth_root(r: &BigRational, n: u32) -> Option<BigRational> {
+    if n == 0 {
+        return None;
+    }
+    if n == 1 {
+        return Some(r.clone());
+    }
+    let neg = r.is_negative();
+    if neg && n.is_multiple_of(2) {
+        return None; // even root of a negative is not real
+    }
+    let abs_r = if neg { -r.clone() } else { r.clone() };
+    if abs_r.is_zero() {
+        return Some(BigRational::from_integer(0.into()));
+    }
+    let numer = abs_r.numer().clone();
+    let denom = abs_r.denom().clone();
+    let numer_root = numer.nth_root(n);
+    if num_traits::pow(numer_root.clone(), n as usize) != numer {
+        return None;
+    }
+    let denom_root = denom.nth_root(n);
+    if num_traits::pow(denom_root.clone(), n as usize) != denom {
+        return None;
+    }
+    let result = BigRational::new(numer_root, denom_root);
+    Some(if neg { -result } else { result })
+}
+
 /// Compute `t²` when `t` is numeric, `sqrt(d)`, `d^(1/2)`, or `k*sqrt(d)`.
 pub fn surd_square_rational(ctx: &Context, t: ExprId) -> Option<BigRational> {
     match ctx.get(t) {

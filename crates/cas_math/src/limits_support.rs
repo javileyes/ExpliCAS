@@ -8,13 +8,13 @@ use crate::limit_types::{
 use crate::perfect_square_support::rational_sqrt;
 use crate::pi_helpers::extract_rational_pi_multiple;
 use crate::polynomial::Polynomial;
-use crate::root_forms::{extract_square_root_base, rational_cbrt_exact};
+use crate::root_forms::{extract_square_root_base, rational_cbrt_exact, rational_nth_root};
 use crate::trig_eval_table_support::lookup_trig_or_inverse;
 use crate::trig_values::TrigValue;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use num_traits::{One, Signed, Zero};
+use num_traits::{One, Signed, ToPrimitive, Zero};
 
 /// Check if an expression depends on a specific variable id.
 ///
@@ -6058,6 +6058,201 @@ fn cbrt_conjugate_product_oriented(
     Some(ctx.add(Expr::Number(factor_coeff * diff_coeff)))
 }
 
+/// `r^m` for a rational `r` and small `m`.
+fn pow_rational(r: &BigRational, m: u32) -> BigRational {
+    let mut acc = BigRational::from_integer(BigInt::from(1));
+    for _ in 0..m {
+        acc *= r;
+    }
+    acc
+}
+
+/// Binomial coefficient `C(n, k)` as a rational.
+fn binomial_rational(n: u32, k: u32) -> BigRational {
+    let mut acc = BigRational::from_integer(BigInt::from(1));
+    for i in 0..k {
+        acc *= BigRational::new(BigInt::from((n - i) as i64), BigInt::from((i + 1) as i64));
+    }
+    acc
+}
+
+/// `scale * (P)^(1/n)` -> (scale, radicand P, n) for an integer `n >= 2`.
+fn scaled_nth_root_pow_base(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId, u32)> {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            let value = numeric_limit_value(ctx, exp)?;
+            if *value.numer() != BigInt::from(1) {
+                return None;
+            }
+            let n = value.denom().to_u32()?;
+            if n < 2 {
+                return None;
+            }
+            Some((rational_one(), base, n))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = numeric_limit_value(ctx, lhs) {
+                if scale.is_zero() {
+                    return None;
+                }
+                return scaled_nth_root_pow_base(ctx, rhs).map(|(s, p, n)| (scale * s, p, n));
+            }
+            if let Some(scale) = numeric_limit_value(ctx, rhs) {
+                if scale.is_zero() {
+                    return None;
+                }
+                return scaled_nth_root_pow_base(ctx, lhs).map(|(s, p, n)| (scale * s, p, n));
+            }
+            None
+        }
+        Expr::Neg(inner) => scaled_nth_root_pow_base(ctx, inner).map(|(s, p, n)| (-s, p, n)),
+        _ => None,
+    }
+}
+
+/// Asymptotic leading term `coeff * x^exp` of a general `n`-th-root conjugate
+/// difference `s*(P)^(1/n) + R` (R the polynomial remainder, P degree n) as
+/// `x -> +inf`, when the leading terms cancel. Rationalizing by the n-term
+/// conjugate `a^(n-1)+...+b^(n-1)` (leading `n d^(n-1) x^(n-1)`) gives the decay
+/// from `N = s^n P - L^n` (L = -R, degree <= n-1 once `x^n` cancels). Generalizes
+/// the sqrt (n=2) and cbrt (n=3) rules to the Pow form `(P)^(1/n)`.
+fn nth_root_difference_asymptotic_at_pos_inf(
+    ctx: &Context,
+    diff: ExprId,
+    var_name: &str,
+) -> Option<(BigRational, BigRational)> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_add_terms(ctx, diff, true, &mut terms);
+    let zero = BigRational::from_integer(BigInt::from(0));
+    let mut root_part: Option<(BigRational, ExprId, u32)> = None; // (signed scale, P, n)
+    let mut remainder: Vec<BigRational> = Vec::new();
+    for (term, positive) in terms {
+        if let Some((scale, radicand, n)) = scaled_nth_root_pow_base(ctx, term) {
+            if root_part.is_some() {
+                return None;
+            }
+            root_part = Some((if positive { scale } else { -scale }, radicand, n));
+        } else {
+            let poly = Polynomial::from_expr(ctx, term, var_name).ok()?;
+            for (i, c) in poly.coeffs.iter().enumerate() {
+                if remainder.len() <= i {
+                    remainder.resize(i + 1, zero.clone());
+                }
+                remainder[i] = if positive {
+                    &remainder[i] + c
+                } else {
+                    &remainder[i] - c
+                };
+            }
+        }
+    }
+    let (scale, radicand, n) = root_part?;
+    let p = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    let n_usize = n as usize;
+    if p.degree() != n_usize {
+        return None;
+    }
+    let a = p.coeffs.get(n_usize)?.clone();
+    if !a.is_positive() {
+        return None;
+    }
+    // L = -R must be at most linear (R linear).
+    if remainder.iter().skip(2).any(|coeff| !coeff.is_zero()) {
+        return None;
+    }
+    let r1 = remainder.get(1).cloned().unwrap_or_else(|| zero.clone());
+    let r0 = remainder.first().cloned().unwrap_or_else(|| zero.clone());
+    let root_a = rational_nth_root(&a, n)?;
+    let lead = &scale * &root_a; // leading coeff of s*(P)^(1/n)
+                                 // Leading cancellation: s*a^(1/n) + r1 == 0.
+    if &lead + &r1 != zero {
+        return None;
+    }
+    let d = lead; // = -r1 (slope of L), nonzero since a > 0
+    if d.is_zero() {
+        return None;
+    }
+    let e = -r0;
+    // N = s^n P - L^n with L = d x + e; the x^n term cancels. Read N's coefficients
+    // directly: N_k = s^n P_k - C(n,k) d^k e^(n-k), for k from n-1 down to 0.
+    let scale_n = pow_rational(&scale, n);
+    let mut n_lead = zero.clone();
+    let mut n_deg: i64 = -1;
+    for k in (0..n_usize).rev() {
+        let pk = p.coeffs.get(k).cloned().unwrap_or_else(|| zero.clone());
+        let l_k = binomial_rational(n, k as u32)
+            * pow_rational(&d, k as u32)
+            * pow_rational(&e, n - k as u32);
+        let coeff_k = &scale_n * &pk - &l_k;
+        if !coeff_k.is_zero() {
+            n_lead = coeff_k;
+            n_deg = k as i64;
+            break;
+        }
+    }
+    if n_deg < 0 {
+        return None;
+    }
+    let den_lead = BigRational::from_integer(BigInt::from(n as i64)) * pow_rational(&d, n - 1);
+    let exp = BigRational::from_integer(BigInt::from(n_deg))
+        - BigRational::from_integer(BigInt::from((n - 1) as i64));
+    Some((n_lead / den_lead, exp))
+}
+
+/// Limit at +infinity of `[factor *] ((P)^(1/n) - L)` for a general integer
+/// `n >= 2`, the Pow-form companion of the sqrt and cbrt conjugate rules. Runs
+/// after them, so it only newly resolves the higher roots they do not own.
+fn nth_root_conjugate_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if approach != InfSign::Pos {
+        return None;
+    }
+    let Expr::Variable(var_sym) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_sym).to_string();
+    let zero = BigRational::from_integer(BigInt::from(0));
+
+    if let Some((coeff, exp)) = nth_root_difference_asymptotic_at_pos_inf(ctx, expr, &var_name) {
+        if exp > zero {
+            return None;
+        }
+        if exp < zero {
+            return Some(ctx.add(Expr::Number(zero)));
+        }
+        return Some(ctx.add(Expr::Number(coeff)));
+    }
+
+    if let Expr::Mul(a, b) = ctx.get(expr).clone() {
+        return nth_root_conjugate_product_oriented(ctx, a, b, &var_name)
+            .or_else(|| nth_root_conjugate_product_oriented(ctx, b, a, &var_name));
+    }
+    None
+}
+
+fn nth_root_conjugate_product_oriented(
+    ctx: &mut Context,
+    factor: ExprId,
+    diff: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (factor_coeff, factor_exp) = factor_leading_term_at_pos_inf(ctx, factor, var_name)?;
+    let (diff_coeff, diff_exp) = nth_root_difference_asymptotic_at_pos_inf(ctx, diff, var_name)?;
+    let exp = &factor_exp + &diff_exp;
+    let zero = BigRational::from_integer(BigInt::from(0));
+    if exp > zero {
+        return None;
+    }
+    if exp < zero {
+        return Some(ctx.add(Expr::Number(zero)));
+    }
+    Some(ctx.add(Expr::Number(factor_coeff * diff_coeff)))
+}
+
 fn sqrt_polynomial_ratio_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -8361,6 +8556,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = cbrt_conjugate_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = nth_root_conjugate_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = sqrt_polynomial_ratio_limit_at_infinity(ctx, expr, var, approach) {
@@ -12638,6 +12836,52 @@ mod tests {
         let neg_form = parse_expr(&mut ctx, "cbrt(x^3 + x^2) - x");
         assert!(
             cbrt_conjugate_limit_at_infinity(&mut ctx, neg_form, x, InfSign::Neg).is_none(),
+            "must decline toward -inf"
+        );
+    }
+
+    #[test]
+    fn nth_root_conjugate_resolves_general_root_forms() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        // (P)^(1/n) - L conjugate differences and 0*inf products for n >= 4, via
+        // the n-term conjugate ~ n d^(n-1) x^(n-1). a/n for the surviving tail.
+        for (source, num, den) in [
+            ("(x^4 + x^3)^(1/4) - x", 1, 4),
+            ("(x^4 + 2*x^3)^(1/4) - x", 1, 2),
+            ("(x^5 + x^4)^(1/5) - x", 1, 5),
+            ("(16*x^4 + x^3)^(1/4) - 2*x", 1, 32),
+            ("(x^4 + x^3)^(1/4) - x - 1", -3, 4),
+            ("x^3*((x^4 + 1)^(1/4) - x)", 1, 4),
+            ("((x^4 + 1)^(1/4) - x)*x^3", 1, 4),
+            ("(x^4 + x^2)^(1/4) - x", 0, 1),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = nth_root_conjugate_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_number_expr(&ctx, out, num, den);
+        }
+    }
+
+    #[test]
+    fn nth_root_conjugate_declines_irrational_divergent_and_neg_infinity() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for source in [
+            "(2*x^4 + x^3)^(1/4) - x",   // irrational 2^(1/4) leading
+            "x^4*((x^4 + 1)^(1/4) - x)", // factor outruns the 1/x^3 decay
+            "(x^3 + x^2)^(1/4) - x",     // radicand degree != n
+            "x*sin(x)",                  // not an nth-root difference
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                nth_root_conjugate_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "must decline: {source}"
+            );
+        }
+        let neg_form = parse_expr(&mut ctx, "(x^4 + x^3)^(1/4) - x");
+        assert!(
+            nth_root_conjugate_limit_at_infinity(&mut ctx, neg_form, x, InfSign::Neg).is_none(),
             "must decline toward -inf"
         );
     }

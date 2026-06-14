@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 149 (newest first)
+Active entries: 150 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -139,6 +139,7 @@ Active entries: 149 (newest first)
 - 2026-06-14 | `retained` | calculus / integration / generalized substitution (block 5) | Retained integration: x^(2k+1) f(x^2) via u=x^2 substitution
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 4/8, Phase 6 educatio... | Retained educational: bare ln by-parts narration (completes the family)
 - 2026-06-14 | `retained` | calculus / differentiation + integration / cube root elementary rules | Retained calculus: cbrt as first-class elementary (derivative + antiderivative)
+- 2026-06-14 | `retained` | calculus / limits / general n-th-root conjugate at +infinity (block 3) | Retained limits: general n-th-root conjugate at infinity
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6540,3 +6541,42 @@ Active entries: 149 (newest first)
     representations of it (x^(1/3) vs cbrt(x)) are not known-equal: verify
     soundness in the representation the engine CAN simplify (Pow), and note the
     cross-representation simplification as a separate gap rather than forcing it
+
+
+## 2026-06-14 - Retained limits: general n-th-root conjugate at infinity
+
+- area:
+  - calculus / limits / general n-th-root conjugate at +infinity (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_matrix_cell: limit((x^4+x^3)^(1/4)-x,x,infinity)=1/4,
+    limit((x^5+x^4)^(1/5)-x,x,infinity)=1/5,
+    limit(x^3*((x^4+1)^(1/4)-x),x,infinity)=1/4
+  - behavior_change_expected: yes - 4th/5th/... root conjugate differences and
+    their 0*inf products (which had no machinery) resolve
+- observed (parameterize the sqrt/cbrt rules over n):
+  - the sqrt rule (n=2, conjugate sum ~2 d x) and the cbrt rule (n=3, ~3 d^2 x^2)
+    are the same shape: the n-term conjugate a^(n-1)+...+b^(n-1) has leading
+    n d^(n-1) x^(n-1), and the decay numerator is N = s^n P - L^n (degree <= n-1
+    once x^n cancels). nth_root_difference_asymptotic_at_pos_inf reads N's
+    coefficients DIRECTLY by the binomial theorem (N_k = s^n P_k - C(n,k) d^k
+    e^(n-k)) rather than expanding L^n as a Polynomial, needing only a rational
+    n-th-root (new rational_nth_root in root_forms, generalizing rational_sqrt /
+    rational_cbrt_exact) and reusing factor_leading_term_at_pos_inf for the product
+  - it matches the Pow form (P)^(1/n) (exponent a unit fraction 1/n, n>=2) and runs
+    AFTER the sqrt (Function) and cbrt (Function+Pow 1/3) rules, so it only newly
+    resolves n>=4 (and any Pow form the earlier rules miss) without changing them
+  - SOUNDNESS: +inf only; rational n-th-root leading only ((2x^4+..)^(1/4) declines
+    -- 2^(1/4) irrational); even root of a negative declines (not real); divergent
+    products decline. Verified numerically (mpmath dps=50/60) and adversarially
+- retained learning:
+  - when two special cases (sqrt n=2, cbrt n=3) share a derivation, the
+    generalization is a parameter, not new math: the conjugate denominator
+    n d^(n-1) x^(n-1) and the numerator s^n P - L^n hold for all n. Read the
+    numerator's low-order coefficients straight from the binomial theorem
+    (C(n,k) d^k e^(n-k)) to avoid a Polynomial power, keeping the asymptotic exact
+  - a rational_nth_root built on BigInt::nth_root must re-check root^n == value
+    (nth_root truncates) and reject even roots of negatives (not real) -- the same
+    contract as rational_sqrt/rational_cbrt_exact, now parameterized
