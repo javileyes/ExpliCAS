@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 132 (newest first)
+Active entries: 133 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -122,6 +122,7 @@ Active entries: 132 (newest first)
 - 2026-06-14 | `retained` | calculus / limits / additive inf - inf of rational functions (block 3) | Retained limits: rational inf - inf at infinity
 - 2026-06-14 | `retained` | calculus / limits / exponential indeterminate forms (block 3) - P1 | Retained limits: 1^inf -> e^a at infinity (the constant e)
 - 2026-06-14 | `retained` | calculus / limits / exponential indeterminate forms at a finite point | Retained limits: 1^inf at a finite point ((1+x)^(1/x) = e)
+- 2026-06-14 | `retained` | calculus / limits / 0^0 exponential indeterminate form (block 3) - P1 | Retained limits: 0^0 (x^x -> 1) at 0+
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -5782,3 +5783,39 @@ Active entries: 132 (newest first)
     STRICTLY stronger than the infinity sibling (which rationalizes opaque
     transcendental bases away): reuse the deepest evaluator you have for the
     sub-limit and the hard cases come for free
+
+
+## 2026-06-14 - Retained limits: 0^0 (x^x -> 1) at 0+
+
+- area:
+  - calculus / limits / 0^0 exponential indeterminate form (block 3) - P1
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (1 matrix row: x^x = 1)
+  - limit_matrix_cell: limit(x^x, x, 0+) = 1
+  - behavior_change_expected: yes - the canonical 0^0 limit resolves
+- observed (same exp(lim g ln f) reduction, base = the variable):
+  - the 0^0 form x^g = exp(g ln x) is real on the RIGHT of 0 because x > 0
+    there, so the limit is exp(lim g ln x). apply_finite_zero_base_power_rule
+    fires only on the right side at 0 with a BARE-VARIABLE base (whose sign
+    is known positive on the approach), builds the product exp*ln(x),
+    evaluates its one-sided limit with the full machinery (x ln x -> 0 via
+    the existing power-log rule), and folds e^L. x^x = exp(lim x ln x) =
+    exp(0) = 1
+  - the two-sided x^x stays residual (complex for x < 0); a non-variable
+    base (sin(x)^x) declines because its sign on the approach is not proven
+- retained learning:
+  - the reality of f^g hinges on f > 0, and at a finite point that is a
+    ONE-SIDED fact: x^x is real only from the right of 0. Gate the 0^0 rule
+    on the side and a base whose positivity on that side is known (the bare
+    variable approaching 0+); a two-sided or unknown-sign base must stay
+    residual, not be coerced into a real value
+  - all three indeterminate power forms (1^inf, 0^0, inf^0) are the one
+    reduction exp(lim exp*ln(base)); the only per-form work is proving the
+    base is admissible (-> 1 for 1^inf needs ln(1+h)~h; -> 0+/-> inf for
+    0^0/inf^0 needs base > 0) and that the inner product limit exists. Reuse
+    the deepest sub-limit evaluator and the forms fall out. Remaining rung:
+    inf^0 with a dominant-exponential base ((2^x+3^x)^(1/x)=3 needs
+    ln(2^x+3^x)/x -> ln 3)

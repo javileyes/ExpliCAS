@@ -1707,6 +1707,18 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="euler_power",
     ),
     LimitCommandMatrixCase(
+        name="finite_one_sided_zero_base_power_x_to_x",
+        expr="limit(x^x, x, 0+)",
+        expected_result="1",
+        expected_step_substrings=("Evaluar límite unilateral finito",),
+        family="exponential_indeterminate",
+        point_regime="finite_one_sided",
+        domain_regime="zero_to_zero_positive_base",
+        required_condition_regime="none",
+        trace_regime="zero_base_power_policy",
+        presentation_regime="exact_rational",
+    ),
+    LimitCommandMatrixCase(
         name="infinity_root_polynomial_tail_domain_suppression",
         expr="limit(sqrt(x^2-3)/x, x, infinity)",
         expected_result="1",

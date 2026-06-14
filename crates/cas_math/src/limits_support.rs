@@ -4790,6 +4790,9 @@ fn try_limit_rules_at_finite_one_sided(
     {
         return Some(result);
     }
+    if let Some(result) = apply_finite_zero_base_power_rule(ctx, expr, var, point, side) {
+        return Some(result);
+    }
     if let Some(result) =
         apply_finite_one_sided_rational_polynomial_pole_rule(ctx, expr, var, point, side)
     {
@@ -7684,6 +7687,54 @@ fn one_to_infinity_power_limit_at_infinity(
             // Fold the degenerate finite exponents: e^0 = 1, e^1 = e.
             if let Some(value) = crate::numeric_eval::as_rational_const(ctx, l_limit) {
                 use num_traits::{One, Zero};
+                if value.is_zero() {
+                    return Some(ctx.num(1));
+                }
+                if value.is_one() {
+                    return Some(ctx.add(Expr::Constant(Constant::E)));
+                }
+            }
+            let e = ctx.add(Expr::Constant(Constant::E));
+            Some(ctx.add(Expr::Pow(e, l_limit)))
+        }
+    }
+}
+
+/// The `0^0` form `x^g -> exp(lim g * ln x)` as `x -> 0+`. The base is the bare
+/// variable, which is positive on the RIGHT of 0, so `x^g = exp(g ln x)` is
+/// real and the limit is `exp(lim g ln x)`. Resolves the canonical `x^x -> 1`
+/// (lim x ln x = 0). Fires only on the right side at 0 with a bare-variable
+/// base; a two-sided `x^x` is complex on the left and stays residual.
+fn apply_finite_zero_base_power_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+    side: FiniteLimitSide,
+) -> Option<ExprId> {
+    use num_traits::{One, Zero};
+    if !matches!(side, FiniteLimitSide::Right) {
+        return None;
+    }
+    if !crate::numeric_eval::as_rational_const(ctx, point).is_some_and(|p| p.is_zero()) {
+        return None;
+    }
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    // The base is the bare variable: x -> 0+ through positive values, so ln(x)
+    // is real. A non-variable base could approach 0 with an unknown sign.
+    if base != var || !depends_on(ctx, exp, var) {
+        return None;
+    }
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![var]);
+    let product = ctx.add(Expr::Mul(exp, ln_base));
+    let l_limit = try_limit_rules_at_finite_one_sided(ctx, product, var, point, side)?;
+    match limit_value_infinite_sign(ctx, l_limit) {
+        Some(1) => Some(mk_infinity(ctx, InfSign::Pos)),
+        Some(_) => Some(ctx.num(0)),
+        None => {
+            if let Some(value) = crate::numeric_eval::as_rational_const(ctx, l_limit) {
                 if value.is_zero() {
                     return Some(ctx.num(1));
                 }
@@ -14059,6 +14110,48 @@ mod tests {
                 .unwrap_or_else(|| panic!("finite 1^inf must resolve: {source}"));
             assert_eq!(display_expr(&ctx, out), expected, "{source}");
         }
+    }
+
+    #[test]
+    fn finite_zero_base_power_resolves_x_to_the_x() {
+        // The 0^0 form x^g -> exp(lim g ln x) at 0+: x^x = exp(lim x ln x) = 1.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [("x^x", "1"), ("x^(2*x)", "1"), ("x^(x^2)", "1")] {
+            let expr = parse_expr(&mut ctx, source);
+            let out =
+                apply_finite_zero_base_power_rule(&mut ctx, expr, x, zero, FiniteLimitSide::Right)
+                    .unwrap_or_else(|| panic!("0^0 must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn finite_zero_base_power_declines_left_side_and_non_variable_base() {
+        // Honest declines: the LEFT side (x^x is complex for x < 0), a
+        // non-variable base (sign unknown), and a nonzero point.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        let one = parse_expr(&mut ctx, "1");
+        let xx = parse_expr(&mut ctx, "x^x");
+        assert!(
+            apply_finite_zero_base_power_rule(&mut ctx, xx, x, zero, FiniteLimitSide::Left)
+                .is_none(),
+            "0^0 is real only from the right of 0"
+        );
+        let sinx = parse_expr(&mut ctx, "sin(x)^x");
+        assert!(
+            apply_finite_zero_base_power_rule(&mut ctx, sinx, x, zero, FiniteLimitSide::Right)
+                .is_none(),
+            "a non-variable base has unknown sign"
+        );
+        assert!(
+            apply_finite_zero_base_power_rule(&mut ctx, xx, x, one, FiniteLimitSide::Right)
+                .is_none(),
+            "0^0 is the form at 0, not at 1"
+        );
     }
 
     #[test]
