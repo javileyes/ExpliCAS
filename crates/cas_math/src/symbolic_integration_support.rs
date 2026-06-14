@@ -9381,6 +9381,120 @@ fn polynomial_over_sqrt_quadratic_hermite_antiderivative(
 /// e^x/(1+e^(2x)) -> arctan(e^x), e^(2x)/(1+e^x), (e^x-1)/(e^x+1)...
 /// Symbolic coefficients decline (rational constants only). Ordered
 /// AFTER the linear-exponential owners so their displays survive.
+/// `integral x^(2k+1) f(c x^2) dx` for f in {exp, sin, cos} and odd power
+/// `2k+1 >= 3`: substituting `u = x^2` (so `x dx = du/2` and
+/// `x^(2k+1) = x (x^2)^k = x u^k`) turns it into `(1/2) integral u^k f(c u) du`,
+/// delegated to the existing polynomial*{exp,trig} by-parts owner, then
+/// back-substituting `u = x^2`. The `k=0` case `x f(x^2)` is already owned by
+/// the derivative-substitution rule, so this only fires for `2k+1 >= 3`.
+fn odd_power_times_quadratic_function_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+    // One factor is x^(2k+1); the other is f(c x^2). Try both orders.
+    let (power, func_factor) =
+        if let Some(p) = bare_var_odd_power_at_least_three(ctx, factors[0], var) {
+            (p, factors[1])
+        } else if let Some(p) = bare_var_odd_power_at_least_three(ctx, factors[1], var) {
+            (p, factors[0])
+        } else {
+            return None;
+        };
+    if !is_elementary_function_of_pure_quadratic(ctx, func_factor, var) {
+        return None;
+    }
+    let k = (power - 1) / 2; // power = 2k+1
+
+    // Fresh substitution variable u, not colliding with the integrand's vars.
+    let used = cas_ast::collect_variables(ctx, expr);
+    let u_name = ["u", "u_", "u_sub"]
+        .iter()
+        .find(|candidate| !used.contains(**candidate) && *candidate != &var)?
+        .to_string();
+    let u_var = ctx.var(&u_name);
+    let two = ctx.num(2);
+    let x_squared = {
+        let var_expr = ctx.var(var);
+        ctx.add(Expr::Pow(var_expr, two))
+    };
+
+    // Build u^k * f(c u) by replacing x^2 with u inside f(c x^2).
+    let func_in_u = crate::substitute::substitute_power_aware(
+        ctx,
+        func_factor,
+        x_squared,
+        u_var,
+        crate::substitute::SubstituteOptions::exact(),
+    );
+    let u_power = {
+        let k_expr = ctx.num(k);
+        ctx.add(Expr::Pow(u_var, k_expr))
+    };
+    let integrand_u = ctx.add(Expr::Mul(u_power, func_in_u));
+    let integral_u = integrate_symbolic_expr(ctx, integrand_u, &u_name)?;
+    let integral_u = cas_ast::hold::unwrap_internal_hold(ctx, integral_u);
+
+    // Back-substitute u = x^2 and apply the 1/2 from x dx = du/2.
+    let back = crate::substitute::substitute_power_aware(
+        ctx,
+        integral_u,
+        u_var,
+        x_squared,
+        crate::substitute::SubstituteOptions::exact(),
+    );
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    Some(ctx.add(Expr::Mul(half, back)))
+}
+
+/// `Pow(var, p)` with `p` an odd integer `>= 3` -> `p`.
+fn bare_var_odd_power_at_least_three(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> {
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if !is_var(ctx, base, var) {
+        return None;
+    }
+    let value = crate::numeric_eval::as_rational_const(ctx, exp)?;
+    if !value.is_integer() {
+        return None;
+    }
+    let p = value.to_integer().to_i64()?;
+    if p >= 3 && p % 2 == 1 {
+        Some(p)
+    } else {
+        None
+    }
+}
+
+/// `exp/sin/cos` (or `e^(.)`) of a pure quadratic `c x^2` (no linear/constant
+/// term), so substituting `u = x^2` keeps the argument an affine function of u.
+fn is_elementary_function_of_pure_quadratic(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    let inner = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(BuiltinFn::Exp | BuiltinFn::Sin | BuiltinFn::Cos)
+                ) =>
+        {
+            args[0]
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(Constant::E)) => *exp,
+        _ => return false,
+    };
+    let Ok(poly) = Polynomial::from_expr(ctx, inner, var) else {
+        return false;
+    };
+    poly.degree() == 2
+        && poly.coeffs.first().is_none_or(|c| c.is_zero())
+        && poly.coeffs.get(1).is_none_or(|c| c.is_zero())
+}
+
 fn exponential_rational_substitution_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -21664,6 +21778,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let Some(integral) = exponential_rational_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = odd_power_times_quadratic_function_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 

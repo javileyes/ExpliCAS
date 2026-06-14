@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 146 (newest first)
+Active entries: 147 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -136,6 +136,7 @@ Active entries: 146 (newest first)
 - 2026-06-14 | `retained` | calculus / integration / generalized substitution (block 5) | Retained integration: cos(ln x) / sin(ln x) cyclic substitution
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 8, Phase 6 educational) | Retained educational: by-parts narration for bare inverse functions
 - 2026-06-14 | `retained` | calculus / limits / cube-root conjugate at +infinity (block 3) | Retained limits: cube-root conjugate differences and 0*inf products
+- 2026-06-14 | `retained` | calculus / integration / generalized substitution (block 5) | Retained integration: x^(2k+1) f(x^2) via u=x^2 substitution
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6401,3 +6402,45 @@ Active entries: 146 (newest first)
     asymptotic check, then by mpmath dps=60. Always pin the constant case
     (cbrt(x^3+x^2)-x = 1/3) AND a product case numerically before trusting the
     exponent bookkeeping
+
+
+## 2026-06-14 - Retained integration: x^(2k+1) f(x^2) via u=x^2 substitution
+
+- area:
+  - calculus / integration / generalized substitution (block 5)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_matrix_cell: integrate(x^3*exp(x^2),x)=1/2*e^(x^2)*(x^2-1),
+    integrate(x^5*exp(x^2),x)=1/2*e^(x^2)*(x^4-2x^2+2),
+    integrate(x^3*sin(x^2),x)=1/2*(sin(x^2)-x^2*cos(x^2))
+  - behavior_change_expected: yes - odd-higher-power x^(2k+1) f(x^2) for f in
+    {exp,sin,cos}, previously echoing, become closed forms
+- observed (reduce to an already-owned family by one substitution):
+  - the engine already solved x*f(x^2) (cofactor const*p') and u^k*f(u)
+    (polynomial * exp/trig by-parts), but NOT x^3 f(x^2): the cofactor x^3 is
+    not const*p'. odd_power_times_quadratic_function_antiderivative bridges
+    them: with u = x^2 (x dx = du/2, x^(2k+1) = x (x^2)^k = x u^k), the integral
+    becomes (1/2) int u^k f(c u) du, built by substituting x^2 -> u inside the
+    f(c x^2) factor (substitute_power_aware), DELEGATED to integrate_symbolic_
+    expr in u (the poly*{exp,trig} by-parts owner), then back-substituted u = x^2
+    and scaled by 1/2 -- exactly the build/delegate/back-substitute shape of the
+    e^x rational substitution rule
+  - the scaled inner c x^2 falls out for free (x^3 e^(2x^2) = e^(2x^2)(2x^2-1)/8):
+    substituting x^2 -> u leaves f(c u), and the by-parts owner handles the
+    affine argument; the constant rides through
+  - SOUNDNESS: fires only on a 2-factor product x^(2k+1) * f(c x^2) with f in
+    {exp,sin,cos} (or e^(.)) and a PURE quadratic inner (no linear/constant term)
+    and odd power >= 3, so the k=0 case stays with its owner, an even power
+    (x^2 f(x^2), no elementary form) and a non-elementary f (ln) decline, and a
+    linear inner (x^3 e^x) keeps ordinary by-parts. diff(F)-integrand = 0
+- retained learning:
+  - the cheapest way to add an integral family is to find the ONE substitution
+    that maps it onto an already-solved family and delegate, rather than deriving
+    a closed form: build the integrand in a fresh u, call integrate_symbolic_expr
+    recursively, back-substitute with substitute_power_aware. The reduction
+    x^(2k+1) f(x^2) -> (1/2) u^k f(u) reuses the entire polynomial-by-parts engine
+  - require a PURE quadratic inner (c x^2) so that x^(2k) = (x^2)^k = u^k is exact;
+    a mixed inner (x^2 + linear) would need x^(2k) expanded in (u - shift)/scale, a
+    clean rung but a different (non-monomial) cofactor polynomial

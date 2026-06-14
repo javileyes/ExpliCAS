@@ -1163,6 +1163,62 @@ fn integrate_contract_trig_of_logarithm_resolves_and_respects_boundary() {
 }
 
 #[test]
+fn integrate_contract_odd_power_quadratic_inner_substitution_resolves_and_respects_boundary() {
+    // x^(2k+1) f(x^2) for f in {exp,sin,cos}, odd power >= 3: substitute u = x^2
+    // and delegate u^k f(c u) to the poly*{exp,trig} by-parts owner.
+    for (input, expected) in [
+        ("integrate(x^3*exp(x^2), x)", "1/2 * e^(x^2) * (x^2 - 1)"),
+        (
+            "integrate(x^5*exp(x^2), x)",
+            "1/2 * e^(x^2) * (x^4 + 2 - 2 * x^2)",
+        ),
+        (
+            "integrate(x^3*sin(x^2), x)",
+            "1/2 * (sin(x^2) - cos(x^2) * x^2)",
+        ),
+        (
+            "integrate(x^3*cos(x^2), x)",
+            "1/2 * (cos(x^2) + sin(x^2) * x^2)",
+        ),
+        (
+            "integrate(x^3*exp(2*x^2), x)",
+            "1/8 * e^(2 * x^2) * (2 * x^2 - 1)",
+        ),
+    ] {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+        assert_eq!(result, expected, "result for {input}");
+        assert!(required.is_empty(), "no domain condition for {input}");
+        let integrand = &input["integrate(".len()..input.len() - ", x)".len()];
+        let (rt, _) = evaluated_expr_with_required_conditions(&format!(
+            "diff(integrate({integrand}, x), x) - ({integrand})"
+        ));
+        assert_eq!(rt, "0", "round-trip for {input}");
+    }
+
+    // Boundary: the k=0 case x*f(x^2) is owned by the derivative-substitution
+    // rule; an even power, a non-x^2 inner, and a non-elementary f all decline.
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(x*exp(x^2), x)").0,
+        "1/2 * e^(x^2)"
+    );
+    for residual in [
+        "integrate(x^2*exp(x^2), x)", // even power, no elementary closed form
+        "integrate(x^3*ln(x^2), x)",  // f = ln, not exp/sin/cos
+    ] {
+        let (result, _) = evaluated_expr_with_required_conditions(residual);
+        assert!(
+            result.starts_with("integrate("),
+            "{residual} should stay an honest residual, got {result}"
+        );
+    }
+    // x^3*exp(x) (linear inner) keeps the ordinary polynomial-by-parts result.
+    assert_eq!(
+        evaluated_expr_with_required_conditions("integrate(x^3*exp(x), x)").0,
+        "e^x * (x^3 + 6 * x - 3 * x^2 - 6)"
+    );
+}
+
+#[test]
 fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_nonlinear_hyperbolic_reciprocal_square_subset(
 ) {
     for input in [
