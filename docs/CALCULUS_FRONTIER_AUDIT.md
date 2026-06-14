@@ -228,7 +228,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   equivalente local en el cero del argumento; (3) log en el numerador/
   composición (`ln(1+x)/sin x`) — excluido por la ruta de base no-natural
   `valor/ln(base)`; (4) encadenamiento L'Hôpital general)*
-  *(parcial 2026-06-14 PENDING_HASH: peldaño (2) átomo con argumento NO-cero
+  *(parcial 2026-06-14 08141ef4d: peldaño (2) átomo con argumento NO-cero
   GRADUADO + L'Hôpital general (4) para punto no-cero — el 0/0 transcendente
   cuya anulación ocurre en un punto desplazado ya resuelve vía
   `apply_finite_lhopital_nonzero_point_quotient_rule`: deriva numerador y
