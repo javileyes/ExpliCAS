@@ -229,10 +229,19 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `(1+1/x)^(kx)=e^k`, `((2x+1)/(2x-1))^x=e`, `(1+1/x²)^x=1`,
   `(1+1/x)^(x²)=∞`. Verificado adversarialmente (2-lente, 85 sondas, 0
   unsound): la trampa de SEGUNDO ORDEN `cos(1/x)^(x²)=e^(−1/2)` declina
-  (base transcendente opaca al racionalizador) — nunca emite valor erróneo.
-  Peldaños restantes: 0^0 (`x^x` en 0+), ∞^0 (`(2^x+3^x)^(1/x)=3`), el
-  1^∞ en PUNTO FINITO (`(1+x)^(1/x)` en 0), y las bases transcendentes de
-  segundo orden.)*
+  (base transcendente opaca al racionalizador) — nunca emite valor erróneo.)*
+  *(parcial 2026-06-14 976efd869: la forma 1^∞ EN PUNTO FINITO graduada —
+  la OTRA definición de e, `(1+x)^(1/x)=e`, resuelve, y las bases de SEGUNDO
+  ORDEN también. `apply_finite_one_to_infinity_power_rule` gatea por el
+  PRODUCTO (base→1 y `L=lim exp·(base−1)` no-nulo, que fuerza exponente
+  divergente) en vez de por el exponente (1/x en 0 no tiene límite bilateral
+  con signo). Como L lo evalúa la maquinaria finita COMPLETA (Taylor +
+  infinitésimos equivalentes), es ESTRICTAMENTE más fuerte que la hermana en
+  ∞: `cos(x)^(1/x²)=e^(−1/2)`, `(sin x/x)^(1/x²)=e^(−1/6)`,
+  `(1+sin x)^(1/x)=e`. Sound: `lim g·ln(1+h)=lim(g·h)·lim(ln(1+h)/h)=L·1`,
+  el término `−h²/2` se absorbe en el factor `ln(1+h)/h→1`. Verificado
+  adversarialmente (2-lente, 47 sondas, 0 unsound, cross-check mpmath ~14
+  cifras). Peldaños restantes: 0^0 (`x^x` en 0+), ∞^0 (`(2^x+3^x)^(1/x)=3`).)*
 - [x] **(F) ∞−∞ con radicales** (racionalización por conjugado):
   `sqrt(x^2+x)-x → 1/2`, `sqrt(x+1)-sqrt(x) → 0`, y en punto finito
   `(sqrt(x)-2)/(x-4) → 1/4`.
