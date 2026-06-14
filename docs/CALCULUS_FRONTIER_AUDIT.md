@@ -241,7 +241,15 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `(1+sin x)^(1/x)=e`. Sound: `lim g·ln(1+h)=lim(g·h)·lim(ln(1+h)/h)=L·1`,
   el término `−h²/2` se absorbe en el factor `ln(1+h)/h→1`. Verificado
   adversarialmente (2-lente, 47 sondas, 0 unsound, cross-check mpmath ~14
-  cifras). Peldaños restantes: 0^0 (`x^x` en 0+), ∞^0 (`(2^x+3^x)^(1/x)=3`).)*
+  cifras).)*
+  *(parcial 2026-06-14 bbe89428f: la forma 0^0 graduada — `x^x → 1` en 0+.
+  `apply_finite_zero_base_power_rule`: como x>0 a la DERECHA de 0, `x^g=
+  exp(g ln x)` es real, y el límite es `exp(lim g ln x)`; `x^x=exp(lim x ln
+  x)=exp(0)=1`. Gateado al lado derecho con base = la variable desnuda (signo
+  positivo conocido en la aproximación); el bilateral `x^x` queda residual
+  (complejo para x<0) y una base no-variable (`sin(x)^x`) declina (signo no
+  probado). Peldaño restante: ∞^0 con base exponencial dominante
+  (`(2^x+3^x)^(1/x)=3` necesita `ln(2^x+3^x)/x → ln 3`).)*
 - [x] **(F) ∞−∞ con radicales** (racionalización por conjugado):
   `sqrt(x^2+x)-x → 1/2`, `sqrt(x+1)-sqrt(x) → 0`, y en punto finito
   `(sqrt(x)-2)/(x-4) → 1/4`.
