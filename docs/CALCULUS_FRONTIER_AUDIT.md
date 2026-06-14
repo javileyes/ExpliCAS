@@ -290,6 +290,23 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `x²/(x+1)−x²/(x+2)=1`, `x³/(x+1)−x=+∞`. Corre al final de la cadena (las
   diferencias con límites finitos conservan su traza aditiva; operandos no
   racionales declinan al conjugado/dominancia).)*
+  *(compañera 0·∞ 2026-06-14 b91912327: el PRODUCTO `factor·(diferencia
+  conjugada→0)` —la forma 0·∞ que el bare-difference dejaba al multiplicativo,
+  que declinaba— ya resuelve a +∞ vía `radical_conjugate_product_limit_at_
+  infinity`: racionaliza la diferencia (numerador conjugado `s²Q−L²` sobre la
+  suma conjugada `~2s√a·x`) para leer su decaimiento como término líder
+  `K·xᵖ`, lee el factor (polinomio o `escala·√(poli)` con líder racional) como
+  `c·xᵠ`, y devuelve el límite por la suma de exponentes: `c·K` si `p+q=0`, `0`
+  si `<0`, declina (deja `+∞` a dominancia) si `>0`. Términos aditivos
+  aplanados y partidos en √ vs resto polinómico, así que cola lineal partida
+  (`x·(√(x²+2x)−x−1)=−1/2`), ambas orientaciones, y `√−√` cuadrático
+  (`x·(√(x²+x+1)−√(x²+x))=1/2`) caen igual. `x·(√(x²+1)−x)=1/2`,
+  `x·(√(x²+4)−x)=2`, `√x·(√(x+1)−√x)=1/2`. Gate de cancelación líder
+  (`s√a+r1=0`); SOLO a +∞ (el lado −∞ es trampa: misma forma diverge ahí, se
+  deja residual honesto); declina líder irracional (`√(2x)·…`) y factor que
+  supera el decaimiento (`x²·(√(x²+1)−x)` diverge). Peldaños: análogos cbrt
+  (`x²·(∛(x³+1)−x)=1/3`), lado −∞ con valor finito, coeficientes irracionales.
+  Verificado adversarialmente con 37 sondas mpmath dps=60.)*
 
 ### P2 — familias y mejoras de alto valor (1 ciclo cada una)
 
