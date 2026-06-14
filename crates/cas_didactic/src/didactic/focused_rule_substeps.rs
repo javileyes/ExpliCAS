@@ -12794,10 +12794,13 @@ fn generate_repeated_polynomial_elementary_by_parts_substeps(
             SubStep::new(
                 "Calcular du y v",
                 choice_display,
-                format!("du = {} dx, v = {}", du_display, v_display),
+                // Group du so a multi-term derivative (e.g. 4x - 3) reads as
+                // `(4·x - 3) dx`, not the ambiguous `4·x - 3 dx`. A single-term
+                // du (constant or monomial) stays bare.
+                format!("du = {} dx, v = {}", du_factor, v_display),
             )
             .with_before_latex(choice_latex)
-            .with_after_latex(format!("du = {}\\,dx,\\; v = {}", du_latex, v_latex)),
+            .with_after_latex(format!("du = {}\\,dx,\\; v = {}", du_latex_factor, v_latex)),
         );
         substeps.push(
             SubStep::new(
