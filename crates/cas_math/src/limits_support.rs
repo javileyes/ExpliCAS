@@ -5864,6 +5864,200 @@ fn two_sqrt_difference_asymptotic(
     Some((n_lead / den_lead, exp))
 }
 
+/// Cube-root radicand of `cbrt(P)` or `P^(1/3)`.
+fn cube_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cbrt)) =>
+        {
+            Some(args[0])
+        }
+        // `P^(1/3)` -- the exponent may be a folded `Number` or an unevaluated
+        // `1 / 3` quotient, so compare its numeric value.
+        Expr::Pow(base, exp) => {
+            let third = BigRational::new(BigInt::from(1), BigInt::from(3));
+            if numeric_limit_value(ctx, *exp) == Some(third) {
+                Some(*base)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// `scale * cbrt(P)` in any numeric-scaled / negated form -> (scale, radicand).
+fn scaled_cube_root_base(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    if let Some(radicand) = cube_root_base(ctx, expr) {
+        return Some((rational_one(), radicand));
+    }
+    match ctx.get(expr).clone() {
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = numeric_limit_value(ctx, lhs) {
+                if scale.is_zero() {
+                    return None;
+                }
+                return cube_root_base(ctx, rhs).map(|radicand| (scale, radicand));
+            }
+            if let Some(scale) = numeric_limit_value(ctx, rhs) {
+                if scale.is_zero() {
+                    return None;
+                }
+                return cube_root_base(ctx, lhs).map(|radicand| (scale, radicand));
+            }
+            None
+        }
+        Expr::Neg(inner) => {
+            scaled_cube_root_base(ctx, inner).map(|(scale, radicand)| (-scale, radicand))
+        }
+        _ => None,
+    }
+}
+
+/// Asymptotic leading term `coeff * x^exp` of a cube-root conjugate difference
+/// `s*cbrt(P) + R` (with `R` the polynomial remainder) as `x -> +inf`, when the
+/// leading terms cancel so it decays. Rationalizing by `A^2 + A L + L^2` (with
+/// `A = s*cbrt(P)`, `L = -R`): `A - L = (A^3 - L^3)/(A^2 + A L + L^2) =
+/// (s^3 P - L^3)/(~ 3 d^2 x^2)`, where the leading cancellation forces
+/// `s*cbrt(a) = d` (`a` the leading coeff of the cubic `P`, `d` the slope of L).
+fn cbrt_difference_asymptotic_at_pos_inf(
+    ctx: &Context,
+    diff: ExprId,
+    var_name: &str,
+) -> Option<(BigRational, BigRational)> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_add_terms(ctx, diff, true, &mut terms);
+    let zero = BigRational::from_integer(BigInt::from(0));
+    let mut cbrt_part: Option<(BigRational, ExprId)> = None;
+    let mut remainder: Vec<BigRational> = Vec::new();
+    for (term, positive) in terms {
+        if let Some((scale, radicand)) = scaled_cube_root_base(ctx, term) {
+            if cbrt_part.is_some() {
+                return None; // only a single cube-root term is supported
+            }
+            cbrt_part = Some((if positive { scale } else { -scale }, radicand));
+        } else {
+            let poly = Polynomial::from_expr(ctx, term, var_name).ok()?;
+            for (i, c) in poly.coeffs.iter().enumerate() {
+                if remainder.len() <= i {
+                    remainder.resize(i + 1, zero.clone());
+                }
+                remainder[i] = if positive {
+                    &remainder[i] + c
+                } else {
+                    &remainder[i] - c
+                };
+            }
+        }
+    }
+    let (scale, radicand) = cbrt_part?;
+    let p = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    if p.degree() != 3 {
+        return None;
+    }
+    let a = p.coeffs.get(3)?.clone();
+    if !a.is_positive() {
+        return None;
+    }
+    // Remainder must be at most linear.
+    if remainder.iter().skip(2).any(|coeff| !coeff.is_zero()) {
+        return None;
+    }
+    let r1 = remainder.get(1).cloned().unwrap_or_else(|| zero.clone());
+    let r0 = remainder.first().cloned().unwrap_or_else(|| zero.clone());
+    let cbrt_a = rational_cbrt_exact(&a)?;
+    let lead = &scale * &cbrt_a; // leading coeff of s*cbrt(P)
+                                 // Leading cancellation: s*cbrt(a) + r1 == 0.
+    if &lead + &r1 != zero {
+        return None;
+    }
+    // L = -R = d x + e with d = -r1 = lead (nonzero), e = -r0.
+    let d = lead;
+    if d.is_zero() {
+        return None;
+    }
+    let e = -r0;
+    // N = s^3 P - L^3 = s^3 P - (d x + e)^3; the x^3 term cancels, so N has
+    // degree <= 2 and N / (3 d^2 x^2) gives the decay: N's x^2 term -> a nonzero
+    // constant (exp 0), its x term -> K/x (exp -1), its constant -> K/x^2 (exp -2).
+    let three = BigRational::from_integer(BigInt::from(3));
+    let scale_cubed = &scale * &scale * &scale;
+    let c2 = p.coeffs.get(2).cloned().unwrap_or_else(|| zero.clone());
+    let c1 = p.coeffs.get(1).cloned().unwrap_or_else(|| zero.clone());
+    let c0 = p.coeffs.first().cloned().unwrap_or_else(|| zero.clone());
+    let n2 = &scale_cubed * &c2 - &three * &d * &d * &e;
+    let n1 = &scale_cubed * &c1 - &three * &d * &e * &e;
+    let n0 = &scale_cubed * &c0 - &e * &e * &e;
+    let den_lead = &three * &d * &d; // conjugate sum ~ 3 d^2 x^2
+    if !n2.is_zero() {
+        Some((n2 / den_lead, zero)) // difference -> nonzero constant
+    } else if !n1.is_zero() {
+        Some((n1 / den_lead, BigRational::from_integer(BigInt::from(-1)))) // ~ K/x
+    } else if !n0.is_zero() {
+        Some((n0 / den_lead, BigRational::from_integer(BigInt::from(-2)))) // ~ K/x^2
+    } else {
+        None // difference asymptotically 0; decline
+    }
+}
+
+/// Limit at +infinity of `[factor *] (cube-root conjugate difference)` -- the
+/// cube-root companion of `radical_conjugate_product_limit_at_infinity`. Handles
+/// the bare difference (`cbrt(x^3+x^2) - x = 1/3`) and the `0 * inf` product
+/// (`x^2 (cbrt(x^3+1) - x) = 1/3`). Only fires toward +inf and declines the
+/// divergent (exponent-sum > 0) case to the dominance rules.
+fn cbrt_conjugate_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if approach != InfSign::Pos {
+        return None;
+    }
+    let Expr::Variable(var_sym) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_sym).to_string();
+    let zero = BigRational::from_integer(BigInt::from(0));
+
+    // Bare difference (no growing factor).
+    if let Some((coeff, exp)) = cbrt_difference_asymptotic_at_pos_inf(ctx, expr, &var_name) {
+        if exp > zero {
+            return None;
+        }
+        if exp < zero {
+            return Some(ctx.add(Expr::Number(zero)));
+        }
+        return Some(ctx.add(Expr::Number(coeff)));
+    }
+
+    // factor * difference, in either order.
+    if let Expr::Mul(a, b) = ctx.get(expr).clone() {
+        return cbrt_conjugate_product_oriented(ctx, a, b, &var_name)
+            .or_else(|| cbrt_conjugate_product_oriented(ctx, b, a, &var_name));
+    }
+    None
+}
+
+fn cbrt_conjugate_product_oriented(
+    ctx: &mut Context,
+    factor: ExprId,
+    diff: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (factor_coeff, factor_exp) = factor_leading_term_at_pos_inf(ctx, factor, var_name)?;
+    let (diff_coeff, diff_exp) = cbrt_difference_asymptotic_at_pos_inf(ctx, diff, var_name)?;
+    let exp = &factor_exp + &diff_exp;
+    let zero = BigRational::from_integer(BigInt::from(0));
+    if exp > zero {
+        return None; // product diverges; leave to the dominance rules.
+    }
+    if exp < zero {
+        return Some(ctx.add(Expr::Number(zero)));
+    }
+    Some(ctx.add(Expr::Number(factor_coeff * diff_coeff)))
+}
+
 fn sqrt_polynomial_ratio_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -8164,6 +8358,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = radical_conjugate_product_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = cbrt_conjugate_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = sqrt_polynomial_ratio_limit_at_infinity(ctx, expr, var, approach) {
@@ -12390,6 +12587,57 @@ mod tests {
         assert!(
             radical_conjugate_product_limit_at_infinity(&mut ctx, neg_form, x, InfSign::Neg)
                 .is_none(),
+            "must decline toward -inf"
+        );
+    }
+
+    #[test]
+    fn cbrt_conjugate_resolves_bare_and_zero_times_infinity_forms() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        // Bare cube-root conjugate differences and their 0*inf products resolve
+        // to rationals via the a^2+ab+b^2 rationalization (~ 3 x^2 denominator).
+        for (source, num, den) in [
+            ("cbrt(x^3 + x^2) - x", 1, 3),
+            ("cbrt(x^3 + 2*x^2) - x", 2, 3),
+            ("cbrt(x^3 + 1) - x", 0, 1),
+            ("cbrt(x^3 + x) - x", 0, 1),
+            ("x^2*(cbrt(x^3 + 1) - x)", 1, 3),
+            ("(cbrt(x^3 + 1) - x)*x^2", 1, 3),
+            ("x*(cbrt(x^3 + 1) - x)", 0, 1),
+            ("(x^3 + x^2)^(1/3) - x", 1, 3),
+            ("x^2*((x^3 + 1)^(1/3) - x)", 1, 3),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = cbrt_conjugate_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("must resolve: {source}"));
+            assert_number_expr(&ctx, out, num, den);
+        }
+    }
+
+    #[test]
+    fn cbrt_conjugate_declines_divergent_irrational_and_neg_infinity() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        // Divergent products, an irrational cube root, a non-cubic radicand, and
+        // a non-cube-root factor all decline.
+        for source in [
+            "x*(cbrt(x^3 + 3*x^2) - x)", // difference -> 1, product -> +inf
+            "x^2*(cbrt(x^3 + x) - x)",   // factor outruns the 1/x decay
+            "cbrt(2*x^3 + x^2) - x",     // irrational cbrt(2) leading
+            "cbrt(x^2 + x) - x",         // radicand not a cubic
+            "x*sin(x)",                  // second factor is not a cube-root difference
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                cbrt_conjugate_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "must decline: {source}"
+            );
+        }
+        // Defined only toward +inf in this rule; the -inf side stays honest.
+        let neg_form = parse_expr(&mut ctx, "cbrt(x^3 + x^2) - x");
+        assert!(
+            cbrt_conjugate_limit_at_infinity(&mut ctx, neg_form, x, InfSign::Neg).is_none(),
             "must decline toward -inf"
         );
     }

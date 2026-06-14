@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 145 (newest first)
+Active entries: 146 (newest first)
 
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
@@ -135,6 +135,7 @@ Active entries: 145 (newest first)
 - 2026-06-14 | `retained` | calculus / integration / hyperbolic reciprocal table route, power n=1 (block 4) | Retained integration: sech/csch antiderivatives (hyperbolic reciprocal n=1)
 - 2026-06-14 | `retained` | calculus / integration / generalized substitution (block 5) | Retained integration: cos(ln x) / sin(ln x) cyclic substitution
 - 2026-06-14 | `retained` | calculus / integration / didactic by-parts trace (block 8, Phase 6 educational) | Retained educational: by-parts narration for bare inverse functions
+- 2026-06-14 | `retained` | calculus / limits / cube-root conjugate at +infinity (block 3) | Retained limits: cube-root conjugate differences and 0*inf products
 - 2026-06-13 | `retained` | calculus / integration / educational route / Weierstrass rational | Retained calculus: Weierstrass t = tan(x/2) via the substitution-delegation template
 - 2026-06-13 | `retained` | calculus / integration / educational route / x-in-denominator | Retained calculus: the arcsec chapter via u = sqrt(q) over monomial denominators
 - 2026-06-13 | `retained` | calculus / educational route / step trace sanitation (block 9 | Retained didactic: repair the broken sec^2/csc^2 integration trace
@@ -6354,3 +6355,49 @@ Active entries: 145 (newest first)
     narrator (cheap, presentation-only); the second is a missing dispatcher
     target (changes which inputs are claimed as by-parts, a footprint change).
     Check which one you have before scoping
+
+
+## 2026-06-14 - Retained limits: cube-root conjugate differences and 0*inf products
+
+- area:
+  - calculus / limits / cube-root conjugate at +infinity (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_maturity_block: block 3 real-domain limits (3 matrix rows: bare cbrt
+    difference + the 0*inf product)
+  - limit_matrix_cell: limit(cbrt(x^3+x^2)-x,x,infinity)=1/3,
+    limit(cbrt(x^3+2x^2)-x,x,infinity)=2/3,
+    limit(x^2*(cbrt(x^3+1)-x),x,infinity)=1/3
+  - behavior_change_expected: yes - cube-root conjugate differences (which had
+    NO machinery, even the bare cbrt(x^3+1)-x -> 0 echoed) and their 0*inf
+    products resolve
+- observed (the cube-root companion of the cycle-1 sqrt conjugate rule):
+  - the sqrt rule rationalizes a-b by a+b (conjugate sum ~ 2 d x); cube roots
+    need a^3-b^3 = (a-b)(a^2+ab+b^2), so the conjugate sum is THREE terms
+    ~ 3 d^2 x^2. cbrt_difference_asymptotic_at_pos_inf flattens the additive
+    terms, isolates the single scale*cbrt(P) term (P cubic, rational
+    cube-root leading via rational_cbrt_exact) vs the linear remainder, requires
+    the leading cancellation s*cbrt(a)+r1=0, and reads N = s^3 P - L^3 (degree
+    <= 2 after the x^3 term cancels) over 3 d^2 x^2: N's x^2 term -> a nonzero
+    constant, its x term -> K/x, its constant -> K/x^2. The product rule reuses
+    cycle-1's factor_leading_term_at_pos_inf and the same exponent-sum decision
+  - both cbrt(P) (Function) and P^(1/3) (Pow, whose exponent is an unevaluated
+    1/3 quotient, compared by numeric value) are accepted
+  - SOUNDNESS: +inf only (the -inf side, where cbrt of a sign-changing cubic
+    behaves differently, stays an honest residual); rational cube-root leading
+    only (cbrt(2x^3+..) declines, value is irrational); divergent products
+    (exponent sum > 0) decline to dominance (-> infinity) or honest residual
+- retained learning:
+  - the n-th-root conjugate is the n-term factor a^(n-1)+a^(n-2)b+...+b^(n-1),
+    whose leading is n*d^(n-1)*x^(n-1) - so the sqrt rule (n=2, denom 2 d x) and
+    the cbrt rule (n=3, denom 3 d^2 x^2) are the SAME shape with n swapped; the
+    decay numerator is always s^n P - L^n with the x^n term cancelling. A general
+    n-th-root extension is now a parameterized version of these two (rung)
+  - OFF-BY-ONE TRAP in the decay exponent: N (degree <= n-1) over x^(n-1) means
+    N's TOP term gives exp 0, not exp -1. The first cut shifted every branch by
+    one and silently returned 0 for limits that were 1/3 - caught by a hand
+    asymptotic check, then by mpmath dps=60. Always pin the constant case
+    (cbrt(x^3+x^2)-x = 1/3) AND a product case numerically before trusting the
+    exponent bookkeeping
