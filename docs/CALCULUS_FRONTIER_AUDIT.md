@@ -650,7 +650,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   inner no afín substitución-amenable `x·sin(x²)²` — es ELEMENTAL
   (=x²/4−sin(2x²)/8 por u=x², el cofactor x aporta el du) pero hoy residual;
   y potencias pares ≥4 `x·sin⁴x`)*
-  *(potencias pares ≥4 graduadas 2026-06-14 PENDING_HASH: p(x)·sin(ax+b)^n /
+  *(potencias pares ≥4 graduadas 2026-06-14 1f613fc39: p(x)·sin(ax+b)^n /
   p(x)·cos(ax+b)^n con n par en 4..=8 vía la reducción binómica
   sin^(2m)(u)=C(2m,m)/4^m + (2/4^m)Σ_{j=1}^{m}(−1)^j C(2m,m−j)cos(2j u) (coseno
   sin el (−1)^j). Multiplica por p, DISTRIBUYE en p·c₀ + Σ(cⱼ·p)cos(2j u) y delega
