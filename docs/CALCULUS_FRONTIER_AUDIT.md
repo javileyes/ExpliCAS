@@ -316,7 +316,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   raíz racional + conjugado ≠0; los polos no-0/0 y las raíces
   irracionales declinan, con condiciones de dominio honestas. Item
   cerrado salvo los peldaños √a irracional y grado ≥3 anotados)*
-  *(sqrt−sqrt punto finito 2026-06-15 PENDING_HASH: el complemento de DOS
+  *(sqrt−sqrt punto finito 2026-06-15 39e11685f: el complemento de DOS
   radicales `(s1√(L1)+s2√(L2))/den` en 0/0 vía conjugado — `apply_finite_radical_
   difference_conjugate_rule`, hermano del sqrt−constante de arriba. El conjugado
   `s1√(L1)−s2√(L2)` cancela AMBOS radicales en el polinomio `s1²L1−s2²L2`, así que
