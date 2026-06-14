@@ -577,6 +577,17 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="polynomial_times_double_angle_trig",
     ),
     IntegrateCommandMatrixCase(
+        name="exp_times_sinh_via_exp_lowering",
+        expr="integrate(e^x*sinh(x), x)",
+        expected_result="1/4·(e^(2·x) - 2·x)",
+        expected_derivative_equivalent_to="e^x*sinh(x)",
+        expected_step_substrings=("Calcular la integral",),
+        family="hyperbolic_transcendental_product",
+        argument_regime="exp_times_hyperbolic",
+        trace_regime="hyperbolic_exp_lowering",
+        presentation_regime="exponential_form",
+    ),
+    IntegrateCommandMatrixCase(
         name="log_power_product_substitution",
         expr="integrate(2*x*ln(x^2+1)^2, x)",
         expected_result="(x^2 + 1)·(ln(x^2 + 1)^2 - 2·ln(x^2 + 1) + 2)",

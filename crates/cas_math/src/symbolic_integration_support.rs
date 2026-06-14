@@ -14393,6 +14393,96 @@ fn linear_trig_factor_parts(
     Ok(Some((builtin, trig_arg, arg_slope)))
 }
 
+/// `(builtin, arg)` when `expr` is `sinh(arg)` or `cosh(arg)`.
+fn hyperbolic_like_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1 {
+            if let Some(b @ (BuiltinFn::Sinh | BuiltinFn::Cosh)) = ctx.builtin_of(*fn_id) {
+                return Some((b, args[0]));
+            }
+        }
+    }
+    None
+}
+
+/// `p(x) * trig(ax+b) * sinh(cx+d)` (and the cosh / exp variants): products that
+/// pair a sinh/cosh with another transcendental (a trig or an exponential) have
+/// no dedicated owner, but lowering the hyperbolic to its exponential form turns
+/// them into the exp-times-trig / exp-times-exp families that DO. Lower exactly
+/// one sinh/cosh factor -- `sinh(u) = (e^u - e^(-u))/2`, `cosh(u) = (e^u + e^(-u))/2`
+/// -- DISTRIBUTE by the rest of the product (the integrator does not distribute a
+/// `rest*(sum)` itself), and delegate. Resolves `sin(x)sinh(x)`, `cos(x)cosh(x)`,
+/// `e^x sinh(x)`, `x sin(x) cosh(x)`. Requires a trig/exp partner so the
+/// poly-times-hyperbolic and sinh^2 owners (which run first) keep their cases;
+/// delegation self-gates anything whose lowered form is not elementary.
+fn hyperbolic_transcendental_product_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+    let mut hyp: Option<(usize, BuiltinFn, ExprId)> = None;
+    let mut has_trig_or_exp = false;
+    for (i, factor) in factors.iter().enumerate() {
+        if let Some((builtin, arg)) = hyperbolic_like_factor(ctx, *factor) {
+            // Affine argument with a nonzero rational slope.
+            if nonzero_linear_polynomial_from_expr(ctx, arg, var)
+                .ok()
+                .flatten()
+                .is_none()
+            {
+                continue;
+            }
+            if hyp.is_some() {
+                return None; // more than one hyperbolic factor is out of scope
+            }
+            hyp = Some((i, builtin, arg));
+        } else if linear_trig_factor_parts(ctx, *factor, var)
+            .ok()
+            .flatten()
+            .is_some()
+            || linear_exp_factor_parts(ctx, *factor, var)
+                .ok()
+                .flatten()
+                .is_some()
+        {
+            has_trig_or_exp = true;
+        }
+    }
+    let (hyp_idx, hyp_builtin, hyp_arg) = hyp?;
+    if !has_trig_or_exp {
+        return None; // poly-times-hyperbolic is owned elsewhere
+    }
+
+    let rest_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != hyp_idx)
+        .map(|(_, f)| *f)
+        .collect();
+    let rest = build_balanced_mul(ctx, &rest_factors);
+
+    // Lower the hyperbolic to exp and distribute: rest*(e^u -/+ e^(-u))/2.
+    let e = ctx.add(Expr::Constant(Constant::E));
+    let exp_u = ctx.add(Expr::Pow(e, hyp_arg));
+    let neg_arg = ctx.add(Expr::Neg(hyp_arg));
+    let exp_neg_u = ctx.add(Expr::Pow(e, neg_arg));
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let rest_exp_u = mul2_raw(ctx, rest, exp_u);
+    let rest_exp_neg_u = mul2_raw(ctx, rest, exp_neg_u);
+    let term_plus = mul2_raw(ctx, half, rest_exp_u);
+    let term_minus = mul2_raw(ctx, half, rest_exp_neg_u);
+    let rewritten = match hyp_builtin {
+        BuiltinFn::Sinh => ctx.add(Expr::Sub(term_plus, term_minus)),
+        BuiltinFn::Cosh => ctx.add(Expr::Add(term_plus, term_minus)),
+        _ => return None,
+    };
+    integrate_symbolic_expr(ctx, rewritten, var)
+}
+
 fn scaled_exp_trig_antiderivative(
     ctx: &mut Context,
     exp_factor: ExprId,
@@ -21585,6 +21675,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = hyperbolic_transcendental_product_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = trig_of_log_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -22512,6 +22606,46 @@ mod tests {
         );
         let bare = parse("2*sin(x)^2", &mut ctx).expect("parse");
         assert!(super::polynomial_times_trig_square_antiderivative(&mut ctx, bare, "x").is_none());
+    }
+
+    #[test]
+    fn integrates_hyperbolic_transcendental_products_via_exp_lowering() {
+        let mut ctx = Context::new();
+        // trig*hyperbolic and exp*hyperbolic products integrate by lowering the
+        // sinh/cosh to exp form and delegating to the exp*trig / exp*exp owners.
+        // Round-trips verified end-to-end (diff(integral) - integrand simplifies
+        // to 0 via the CLI).
+        for source in [
+            "sin(x)*sinh(x)",
+            "cos(x)*cosh(x)",
+            "sin(x)*cosh(x)",
+            "cos(x)*sinh(x)",
+            "e^x*sinh(x)",
+            "e^x*cosh(x)",
+            "e^(2*x)*sinh(x)",
+        ] {
+            let expr = parse(source, &mut ctx).expect("parse");
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_some(),
+                "must integrate: {source}"
+            );
+        }
+        // Declines: a poly-times-hyperbolic (no trig/exp partner, owned by the
+        // dedicated owner), a bare hyperbolic, two hyperbolics (no single factor
+        // to lower into the exp*trig family), and a non-affine hyperbolic inner.
+        for source in [
+            "x*sinh(x)",
+            "sinh(x)",
+            "sinh(x)*cosh(x)",
+            "sin(x)*sinh(x^2)",
+        ] {
+            let expr = parse(source, &mut ctx).expect("parse");
+            assert!(
+                super::hyperbolic_transcendental_product_antiderivative(&mut ctx, expr, "x")
+                    .is_none(),
+                "lowering rule must decline: {source}"
+            );
+        }
     }
 
     #[test]

@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 157 (newest first)
+Active entries: 158 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
+- 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -6872,3 +6873,39 @@ Active entries: 157 (newest first)
     single. Concurrent invocations (overlapping background make/scorecard tasks) race on
     the output json and a stale run silently overwrites the fresh one, making the
     fingerprint show no delta. Kill stragglers, clear scripts/__pycache__, run one
+
+
+## 2026-06-15 - Retained integration: trig/exp times hyperbolic by exp lowering
+
+- area:
+  - calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a
+    trig or exponential factor (block 4/7)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: integrate(sin(x)*sinh(x),x), integrate(cos(x)*cosh(x),x),
+    integrate(e^x*sinh(x),x)=1/4(e^(2x)-2x), integrate(e^(2x)*sinh(x),x)
+  - behavior_change_expected: yes - trig*hyperbolic and exp*hyperbolic products were
+    residual (the sinh/cosh was not lowered before integration)
+- observed (lower the hyperbolic to exp, reuse the exp*trig / exp*exp owners):
+  - sinh(u)=(e^u-e^(-u))/2, cosh(u)=(e^u+e^(-u))/2; a product sin(x)*sinh(x) lowers to
+    (sin*e^x - sin*e^(-x))/2, each term being exp*trig which has an owner. The new rule
+    lowers exactly one sinh/cosh factor and DISTRIBUTES by the rest of the product (the
+    integrator does not distribute rest*(sum) itself), then delegates
+  - GATED: a trig OR exp partner factor must be present, so the poly-times-hyperbolic and
+    sinh^2 owners (which run earlier) keep their cases and only the unowned combinations
+    reach this rule. Exactly one hyperbolic (sinh*cosh has its own peldaho), affine
+    argument. Delegation SELF-GATES: x*sin(x)*cosh(x) lowers to poly*exp*trig which the
+    engine does not integrate, so it returns None and stays an honest residual
+  - verified numerically (sympy/mpmath round-trip, max |d/dx F - f| ~1e-16). The results
+    come out in EXPONENTIAL form (e.g. (sin+cos+e^(2x)(sin-cos))/(4 e^x)), not sinh/cosh
+    form -- correct but a presentation peldaño; their heavy round-trip times out the
+    matrix antiderivative verifier, so only the clean e^x*sinh row carries a matrix entry
+- retained learning:
+  - lowering a function family to a more-integrable basis (cbrt->pow, sinh/cosh->exp) is
+    the rewrite-and-delegate pattern, but it must be GATED, not global: a blanket lowering
+    at the top of integrate would strip the dedicated sinh/cosh owners (which give nice
+    hyperbolic-form results). Fire the lowering as a LATE cascade rule on the specific
+    unowned product shape, and require the partner factor that signals the combination has
+    no owner. Delegation then self-gates the rest
