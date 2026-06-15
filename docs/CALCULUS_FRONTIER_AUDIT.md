@@ -67,7 +67,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   FINITA para una integral DIVERGENTE — valor falso, no residual honesto. El
   hueco vive en VARIAS rutas (la regla Leibniz y las rutas de presentación
   verificadas/log-potencia), así que un gate solo-Leibniz no basta.
-  *(parcial 2026-06-15 PENDING_HASH: el PANIC subyacente `0^(-1/2)` →
+  *(parcial 2026-06-15 782736593: el PANIC subyacente `0^(-1/2)` →
   `division by zero` (recip de un factor externo 0 en `try_rewrite_evaluate_power_expr`)
   ya está arreglado: `0^(-p)` → `undefined` (valor correcto, como `0^(-1)`). Esto
   cierra la familia de POTENCIA fraccionaria divergente — `t^(-3/2)`, `t^(-4/3)`,
