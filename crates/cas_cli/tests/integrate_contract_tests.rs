@@ -15515,3 +15515,46 @@ fn integrate_contract_unsupported_non_elementary_residual() {
         "integrate(sin(x^2), x)"
     );
 }
+
+#[test]
+fn integrate_contract_abs_linear_definite_narrates_root_split() {
+    // |linear| has no single elementary antiderivative, so the FTC narration
+    // produces nothing; the root-split route must be narrated instead.
+    // Root strictly inside the interval -> "Partir el intervalo en la raíz".
+    let (wire, stderr) =
+        cli_eval_json_with_stderr_args("integrate(abs(2*x-1), x, 0, 1)", &["--steps", "on"]);
+    assert!(stderr.is_empty(), "no stderr expected: {stderr}");
+    assert_eq!(wire["result"].as_str(), Some("1/2"));
+    let step_text = wire["steps"].to_string();
+    assert!(
+        step_text.contains("Localizar la raíz del valor absoluto"),
+        "abs-linear trace should locate the root: {step_text}"
+    );
+    assert!(
+        step_text.contains("Partir el intervalo en la raíz"),
+        "root inside the interval should narrate the split: {step_text}"
+    );
+
+    // Root outside the interval -> constant-sign narration, no split.
+    let (wire_outside, _) =
+        cli_eval_json_with_stderr_args("integrate(abs(x-1), x, 2, 5)", &["--steps", "on"]);
+    assert_eq!(wire_outside["result"].as_str(), Some("15/2"));
+    let outside_text = wire_outside["steps"].to_string();
+    assert!(
+        outside_text.contains("El interior mantiene signo constante"),
+        "root outside the interval should narrate constant sign: {outside_text}"
+    );
+    assert!(
+        !outside_text.contains("Partir el intervalo en la raíz"),
+        "root outside the interval should not narrate a split: {outside_text}"
+    );
+
+    // A plain FTC definite integral keeps its antiderivative narration.
+    let (wire_ftc, _) =
+        cli_eval_json_with_stderr_args("integrate(x^2, x, 0, 1)", &["--steps", "on"]);
+    let ftc_text = wire_ftc["steps"].to_string();
+    assert!(
+        ftc_text.contains("Hallar la antiderivada"),
+        "ordinary definite integrals keep the FTC narration: {ftc_text}"
+    );
+}

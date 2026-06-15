@@ -13287,6 +13287,102 @@ fn didactic_exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 /// the educational route, falling back to the verified algorithmic
 /// backend), evaluate it at the bounds, or - for undefined results -
 /// explain the pole inside the integration interval.
+/// Narrate `int_a^b |c x + d| dx` (split at the root). This route has no single
+/// elementary antiderivative, so the FTC narration below would produce nothing;
+/// instead we explain the structural shortcut, mirroring
+/// `abs_linear_definite_integral_rewrite` in cas_engine: G(x) = c x^2/2 + d x is
+/// the per-piece antiderivative, the inner has constant sign on each side of the
+/// root r = -d/c, and the value sums the absolute area of each piece.
+fn generate_abs_linear_definite_integral_substeps(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+    lower: ExprId,
+    upper: ExprId,
+    result: ExprId,
+) -> Option<Vec<SubStep>> {
+    // Integrand must be |g(x)| with g a nonzero-slope linear polynomial.
+    let Expr::Function(fn_id, args) = ctx.get(integrand) else {
+        return None;
+    };
+    if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(BuiltinFn::Abs) {
+        return None;
+    }
+    let inner = args[0];
+    let poly = Polynomial::from_expr(ctx, inner, var_name).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+    let slope = poly.coeffs.get(1)?.clone();
+    let intercept = poly.coeffs.first()?.clone();
+    if slope.is_zero() {
+        return None;
+    }
+
+    // Pure rational bounds only (matches the rewrite's scope; a pi/e component
+    // is out of range and as_rational_const declines it).
+    let lo = as_rational_const(ctx, lower, 8)?;
+    let hi = as_rational_const(ctx, upper, 8)?;
+
+    let root = -&intercept / &slope;
+    let (left, right) = if lo <= hi {
+        (lo.clone(), hi.clone())
+    } else {
+        (hi.clone(), lo.clone())
+    };
+    let root_inside = left < root && right > root;
+
+    let rat = |r: &BigRational| -> String {
+        if r.denom().is_one() {
+            r.numer().to_string()
+        } else {
+            format!("{}/{}", r.numer(), r.denom())
+        }
+    };
+    let inner_str = display_expr(ctx, inner);
+    let result_str = display_expr(ctx, result);
+
+    let mut substeps = vec![SubStep::new(
+        "Localizar la raíz del valor absoluto",
+        format!("|{inner_str}|"),
+        format!("{var_name} = {}", rat(&root)),
+    )];
+    if root_inside {
+        substeps.push(SubStep::new(
+            "Partir el intervalo en la raíz: el interior tiene signo constante en cada tramo",
+            format!("[{}, {}]", rat(&left), rat(&right)),
+            format!(
+                "[{}, {}] ∪ [{}, {}]",
+                rat(&left),
+                rat(&root),
+                rat(&root),
+                rat(&right)
+            ),
+        ));
+    } else {
+        // Constant sign on the whole interval: read it off the midpoint.
+        let two = BigRational::from_integer(2.into());
+        let mid = (&left + &right) / &two;
+        let inner_at_mid = &slope * &mid + &intercept;
+        let signed = if inner_at_mid.is_negative() {
+            format!("-({inner_str})")
+        } else {
+            format!("({inner_str})")
+        };
+        substeps.push(SubStep::new(
+            "El interior mantiene signo constante en el intervalo",
+            format!("|{inner_str}|"),
+            signed,
+        ));
+    }
+    substeps.push(SubStep::new(
+        "Integrar por tramos con G(x) = c·x²/2 + d·x y sumar las áreas",
+        format!("∫ |{inner_str}| dx"),
+        result_str,
+    ));
+    Some(substeps)
+}
+
 fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     if step.rule_name != "Symbolic Integration" {
         return Vec::new();
@@ -13332,6 +13428,14 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         )
         .with_before_latex(latex_expr(ctx, integrand))
         .with_after_latex(latex_expr(ctx, result))];
+    }
+
+    // |linear| has no single elementary antiderivative, so the FTC narration
+    // below would produce nothing; narrate the root-split route instead.
+    if let Some(substeps) = generate_abs_linear_definite_integral_substeps(
+        ctx, integrand, &var_name, lower, upper, result,
+    ) {
+        return substeps;
     }
 
     let mut scratch = ctx.clone();

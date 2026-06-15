@@ -468,6 +468,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   simetría impar (→0); inner cuadrático `|x²-1|`, borne π/e e indefinida declinan.
   Quedan: inner cuadrático/polinómico (raíces múltiples), `e^(-|x|)` impropia, y la
   narración de simetría.)*
+  *(narración abs-lineal 2026-06-15 PENDING_HASH: la NARRACIÓN educativa de `∫|c x+d|`
+  ya aterriza — `generate_abs_linear_definite_integral_substeps` en el didactic narra
+  "Localizar la raíz" → partir en la raíz (raíz dentro) / signo constante (raíz fuera) →
+  "Integrar por tramos con G(x)=c x²/2+d x". Antes el paso era el envoltorio genérico
+  "Calcular la integral" con substeps vacíos (el narrador FTC reintegra y `∫|lineal|` no
+  tiene antiderivada única). Honesto: narra desde los MISMOS hechos estructurales (raíz,
+  signo por tramo) que usó el rewrite del ciclo 5, no de una re-derivación. Locked por test
+  de contrato cas_cli; las filas abs de la matriz pasan sin cambio (matcher por substring).
+  Queda la narración de SIMETRÍA IMPAR: `parity_in_var` es privada de cas_engine y el
+  didactic no la alcanza — necesita subir un clasificador de paridad a cas_math primero.)*
   *(límite prerequisito del test-p 2026-06-15 e8b1e5d27: `lim_{x→+∞} x^q` con q
   racional NO entero ya resuelve — `apply_rational_power_rule` extrae el exponente con
   `as_rational_const`, declina enteros (los conserva `apply_power_rule`) y, como la base

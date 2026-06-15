@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 161 (newest first)
+Active entries: 162 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
 - 2026-06-15 | `retained` | calculus / limits at infinity / lim_{x->+inf} x^q for non-integer rational q | Retained limit: bare fractional-power monomial at infinity
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int arcsin(a x + b)^2 and | Retained integration: arcsin^2 / arccos^2 by parts
+- 2026-06-15 | `retained` | calculus / educational / didactic substeps for int_a^b |c x + d| dx (the | Retained educational: abs-linear definite-integral narration
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7047,3 +7048,48 @@ Active entries: 161 (newest first)
     arg; `arccos(-2x)^2` and `arccos(1-x)^2` work), noted as the next peldaño. A rule that
     matches a function head should consider whether the simplifier rewrites that head for
     sign-reflected arguments
+
+
+## 2026-06-15 - Retained educational: abs-linear definite-integral narration
+
+- area:
+  - calculus / educational / didactic substeps for int_a^b |c x + d| dx (the
+    structural root-split route, block 13 / Phase 6 narration)
+- status:
+  - `retained`
+- capture:
+  - investment_class: educational
+  - didactic_cell: int|x|[-1,1], int|2x-1|[0,1], int|x-1|[2,5] now narrate
+    "Localizar la raíz" -> split (root inside) / constant sign (root outside) ->
+    "Integrar por tramos con G(x)=c x^2/2 + d x"
+  - behavior_change_expected: yes - presentation only; the computed VALUES are
+    unchanged (the cycle-5 rewrite already resolved them)
+- observed (one ~50-line helper in the didactic layer, no math-result change):
+  - the FTC narrator `generate_definite_integral_substeps` builds its substeps by
+    re-integrating the integrand; |linear| has no single elementary antiderivative,
+    so `integrate_symbolic_expr` returns None and the narrator fell through to EMPTY
+    substeps (the step was the bare "Calcular la integral" wrapper). Added
+    `generate_abs_linear_definite_integral_substeps` BEFORE that fall-through, mirroring
+    the cycle-5 rewrite (slope/intercept via Polynomial::from_expr, root = -d/c, pure
+    rational bounds via as_rational_const) and narrating the structural shortcut honestly
+  - the narration is GATED to exactly the shape the rewrite owns (bare |linear|, rational
+    bounds); the root-inside vs root-outside branch is read off the same root the value
+    uses, so the trace never contradicts the result
+  - locked by a cas_cli contract test (root-inside split, root-outside constant sign,
+    and an ordinary FTC integral still narrates "Hallar la antiderivada"). The integrate
+    command-matrix abs rows pass UNCHANGED -- the matcher is substring-over-aggregated
+    step+substep text, so added substeps never break an existing "Calcular la integral"
+    assertion
+- retained learning:
+  - when a route resolves a VALUE but its didactic substeps are empty, the cause is
+    usually that the narrator reconstructs the work by a generic path (here:
+    re-integration) that the structural route bypassed. Narrate from the SAME structural
+    facts the rewrite used (root, sign per piece), not from a re-derivation -- and place
+    the structural-narration branch before the generic fall-through
+  - cross-crate reuse limit: the odd-symmetry definite narration is the natural sibling
+    but `parity_in_var` is PRIVATE to cas_engine and cas_didactic cannot reach it; that
+    narration needs a parity classifier lifted into cas_math first -- the next peldaño for
+    structural definite narration
+  - adding a cas_cli contract test bumps `passed` in the name-filtered
+    calculus_integrate_contract lane (and `filtered_out` in the pressure twin) by one --
+    the expected test-count bookkeeping delta, not a behavior change
