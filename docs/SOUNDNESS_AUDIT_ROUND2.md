@@ -98,12 +98,26 @@ containing a `Mul`/`Pow` (`(1*0)/(1-1) → 0` but the structurally-identical
 (changes reverted to keep the tree clean).
 
 ### R5 — `solve` returns spurious / non-existent roots (WRONG, 12)
-- **R5a — abs equations don't filter extraneous roots (6):** both branch roots are
-  returned with only a *set-level* `≥0` condition, not a per-root back-substitution.
-  `solve(|x| = x−1) → {1/2}` (extraneous: `|1/2| = 1/2 ≠ −1/2`; **no solution**),
-  `solve(|2x+3| = x−5) → {−8, 2/3}` (**no solution**),
-  `solve(|x−2| = 2x+1) → {−3, 1/3}` (true `{1/3}`),
-  `solve(|x| = 2x−6) → {6, 2}` (true `{6}`), and similar.
+- **R5a — abs equations don't filter extraneous roots — FIXED (commit `PENDING_HASH`)
+  for RATIONAL roots:** both branch roots were returned with only a *set-level* `≥0`
+  guard, not a per-root back-substitution. `solve(|x| = x−1) → {1/2}` (extraneous),
+  `solve(|2x+3| = x−5) → {−8, 2/3}`, `solve(|x−2| = 2x+1) → {−3, 1/3}`,
+  `solve(|x| = 2x−6) → {6, 2}`. **Fix:** the solve backend now back-substitutes each
+  candidate root into the original equation (numeric, real domain) and drops the ones
+  that fail; a conditional whose roots are all classified collapses to an
+  unconditional set. Now: `solve(|x|=x-1) → No solution`, `solve(|x-2|=2x+1) → {1/3}`,
+  `solve(|2x+3|=x-5) → No solution`; valid roots (`{3,-3}`) and irrational roots
+  preserved. **CONSERVATIVE:** only RATIONAL, bounded-magnitude roots are checked —
+  an adversarial sweep proved that f64 back-substitution of an IRRATIONAL root
+  (`500000 − 127·sqrt(15500031)`, the small root of `x²−10⁶x+1`) suffers catastrophic
+  cancellation and would wrongly DROP a valid root, so irrational roots are kept.
+- **R5a-2 — irrational/transcendental extraneous roots still survive (NEW, ~11,
+  surfaced by the R5a sweep):** because R5a only checks rational roots, extraneous
+  roots that are irrational slip through: `solve(|x| = 2−e) → {2−e, e−2}` (|x| can't
+  be negative → no solution), `solve(|x| = ln(1/2))`, `solve(|x+5| = 3−π)`, and
+  log-domain cases `solve(ln(x)+ln(x−3)=1)` (one root violates `x>3`). These need an
+  EXACT/symbolic back-substitution (the engine's own equality checker), which f64
+  cannot do robustly given the catastrophic-cancellation tradeoff. Own cycle.
 - **R5b — `c/poly = 0` returns `{∞}` — FIXED (commit `14a471e1d`):** a nonzero
   constant over a polynomial is never zero → no solution, but the solver isolated
   the denominator (`poly = c/0 = ∞`) and returned `{∞}` (`solve(3/x=0)`) or, for an
@@ -156,7 +170,8 @@ deeper isolation-strategy fix; own cycle. NOT YET FIXED.
 3. **R4** — numeric `0/0` fold. INVESTIGATED, deferred: the `--steps on` path is
    fixable via `DivZeroRule`, but the default-mode fold is a third, unidentified
    rule (neither `DivZeroRule` nor `const_fold`) — needs simplifier instrumentation.
-4. **R5a** — `solve` abs extraneous-root filtering (back-substitution).
+4. **R5a** — `solve` abs extraneous-root filtering. FIXED (commit `PENDING_HASH`)
+   for rational roots; irrational extraneous (R5a-2) needs exact verification.
 5. **R1** — gate `f(f⁻¹(x)) = x` by the inverse's domain (broad but mechanical;
    ~14 defects, one rule family).
 6. **R3** — block cancellation/like-term folding on non-finite/undefined operands
@@ -182,7 +197,8 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R5b — `solve(c/poly=0)` no-solution *(FIXED 2026-06-15, commit `14a471e1d`)*
 - [ ] R5d — rational-equation isolation fabricates malformed nested solves (drops valid roots) + `csc/sec/cot` solver crash (NEW)
 - [ ] R4 — numeric `0/0` fold guard *(investigated; default-mode path is a third unidentified rule — own cycle w/ instrumentation)*
-- [ ] R5a — `solve` abs extraneous-root filter
+- [x] R5a — `solve` abs extraneous-root filter *(FIXED 2026-06-15, commit `PENDING_HASH`, rational roots; irrational extraneous split to R5a-2)*
+- [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
 - [ ] R1 — inverse-composition domain gate (`f(f⁻¹(x))`)
 - [ ] R3 — non-finite/undefined operand cancellation guard
 - [ ] R6 — dropped conditions (`(a*b)^x`, arccot, zero-summand sum)

@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 179 (newest first)
+Active entries: 180 (newest first)
 
+- 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -7891,3 +7892,39 @@ Active entries: 179 (newest first)
   - infinity reaching a solve result is always a division-by-zero artifact of variable
     isolation - over the reals no equality has an infinite solution. Treat its presence
     (in a Discrete set OR fabricated inside a Residual) as the signature of that bug
+
+## 2026-06-16 - Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
+- area:
+  - block solver; `cas_solver/src/solve_backend_local.rs` (the active backend boundary)
+- status:
+  - `retained` (WRONG-"solution" soundness fix; R5a of docs/SOUNDNESS_AUDIT_ROUND2.md)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(|x|=x-1) -> No solution` (was `{1/2}`); `solve(|x-2|=2x+1) -> {1/3}`
+    (was `{-3, 1/3}`); valid two-root cases (`solve(|x|=3) -> {3,-3}`) preserved
+  - behavior_change_expected: yes - extraneous (rational) roots dropped; guardrail+pressure
+    fingerprints BYTE-IDENTICAL (solve not in those suites); all existing solve tests pass
+- observed (USER-DIRECTED, Round-2 audit priority #4):
+  - the case-split abs solver returned BOTH branch roots with only a set-level `RHS>=0`
+    guard, never verifying each root against the original equation. Fix: back-substitute
+    each candidate root (var->root in lhs/rhs, evaluate over the reals) and drop those
+    that fail; a fully-classified conditional collapses to an unconditional Discrete/Empty
+  - ADVERSARIAL DROVE THE DESIGN OVER TWO ROUNDS. v1 used f64 back-substitution on ALL
+    roots; the sweep found it DROPPED VALID irrational roots: for `x^2 - 10^6*x + 1` the
+    small root `500000 - 127*sqrt(15500031)` (~5e-7) evaluates with CATASTROPHIC
+    CANCELLATION (two ~5e5 quantities subtracted), so the back-substitution residual is
+    spurious and the valid root was rejected (15 confirmed dropped-valid-root defects).
+    v2 gates to RATIONAL, bounded-magnitude roots only (exact f64, no cancellation); a
+    second sweep confirmed 0 dropped-valid-root. The cost: irrational EXTRANEOUS roots now
+    survive (`solve(|x|=2-e) -> {2-e, e-2}`, |x| can't be negative) - logged R5a-2, needs
+    exact/symbolic verification
+- retained learning:
+  - f64 back-substitution is a TRAP for root verification: a valid root of `poly=0` whose
+    closed form is `big - big` cancels catastrophically, so its residual looks nonzero and
+    you DROP a real solution. Dropping a valid root is far worse than keeping an extraneous
+    one. Gate numeric verification to inputs where float is exact (small rational roots);
+    anything irrational/large must be verified symbolically or kept
+  - when a verification filter can err in BOTH directions (false-drop vs false-keep), make
+    it ASYMMETRIC toward the safe error. Here: only ever DROP when certain (rational, exact);
+    when unsure, KEEP. The adversarial measures both directions - run it after the fix AND
+    after the hardening, because over-correcting introduces the opposite defect

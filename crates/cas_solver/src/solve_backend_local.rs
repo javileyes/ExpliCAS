@@ -6,6 +6,7 @@
 
 use crate::{CasError, Simplifier, SolveCtx, SolveStep};
 use cas_ast::{Constant, Context, Equation, Expr, ExprId, SolutionSet};
+use std::collections::HashMap;
 
 use crate::solve_backend_contract::{CoreSolverOptions, SolveBackend};
 
@@ -24,16 +25,75 @@ fn solution_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Drop non-finite (∞ / undefined) entries from the final real solution set:
-/// `solve(3/x = 0)` has NO real solution, not `{∞}` (the solver reaches `∞` by
-/// dividing by zero while isolating the variable). An emptied discrete set
-/// collapses to `Empty` (no solution). Recurses into conditional cases.
-fn drop_nonfinite_solutions(ctx: &Context, set: SolutionSet) -> SolutionSet {
+/// Classification of a candidate root by back-substitution into the original
+/// equation, evaluated numerically over the reals.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RootCheck {
+    /// Both sides evaluate to the same finite real — a genuine solution.
+    Verified,
+    /// Both sides evaluate to different finite reals — extraneous (drop it).
+    Extraneous,
+    /// Cannot decide numerically (symbolic/parametric/irrational/undefined) — keep.
+    Unknown,
+}
+
+/// Back-substitute `root` for `var` in the original equation and check, over the
+/// reals, whether the two sides agree. Used to reject extraneous roots that the
+/// case-split solver returns without verification (e.g. `solve(|x| = x-1)`
+/// returns `1/2`, but `|1/2| = 1/2 ≠ 1/2 - 1 = -1/2`).
+///
+/// CONSERVATIVE: only ever reports `Extraneous` for a small RATIONAL root with a
+/// well-scaled numeric residual. Irrational roots (e.g. `500000 - 127·sqrt(...)`,
+/// the small root of `x^2 - 1000000·x + 1`) evaluate via `f64` with catastrophic
+/// cancellation, so back-substitution there is unreliable — those stay `Unknown`
+/// (kept). Likewise large-magnitude values, where `f64` loses precision.
+fn check_root(ctx: &Context, eq: &Equation, var: &str, root: ExprId) -> RootCheck {
+    use cas_math::evaluator_f64::eval_f64;
+    use num_traits::ToPrimitive;
+
+    // Only a rational root is reliably checkable by float back-substitution.
+    let Some(root_q) = cas_math::numeric_eval::as_rational_const(ctx, root) else {
+        return RootCheck::Unknown;
+    };
+    let Some(rv) = root_q.to_f64() else {
+        return RootCheck::Unknown;
+    };
+    // Keep large-magnitude roots conservatively: `f64` back-substitution there
+    // (e.g. `(10^15)^2`) cancels catastrophically and could drop a valid root.
+    if !rv.is_finite() || rv.abs() > 1e6 {
+        return RootCheck::Unknown;
+    }
+    let mut map = HashMap::new();
+    map.insert(var.to_string(), rv);
+    match (eval_f64(ctx, eq.lhs, &map), eval_f64(ctx, eq.rhs, &map)) {
+        (Some(l), Some(r)) if l.is_finite() && r.is_finite() && l.abs() < 1e9 && r.abs() < 1e9 => {
+            let tol = 1e-9 * (1.0 + l.abs() + r.abs());
+            if (l - r).abs() <= tol {
+                RootCheck::Verified
+            } else {
+                RootCheck::Extraneous
+            }
+        }
+        _ => RootCheck::Unknown,
+    }
+}
+
+/// Filter the final real solution set: drop non-finite (∞ / undefined) entries
+/// (`solve(3/x=0)` is not `{∞}`) and provably-EXTRANEOUS roots returned by an
+/// unverified case-split (`solve(|x|=x-1)` is not `{1/2}`). A discrete set that
+/// empties collapses to `Empty`. For a conditional whose every case is discrete
+/// and fully classifiable, the verified roots are returned unconditionally
+/// (back-substitution subsumes the branch guards); otherwise extraneous roots are
+/// dropped in place and the structure is preserved.
+fn filter_real_solutions(ctx: &Context, eq: &Equation, var: &str, set: SolutionSet) -> SolutionSet {
     match set {
         SolutionSet::Discrete(sols) => {
             let kept: Vec<ExprId> = sols
                 .into_iter()
-                .filter(|&s| !solution_contains_nonfinite(ctx, s))
+                .filter(|&s| {
+                    !solution_contains_nonfinite(ctx, s)
+                        && check_root(ctx, eq, var, s) != RootCheck::Extraneous
+                })
                 .collect();
             if kept.is_empty() {
                 SolutionSet::Empty
@@ -41,16 +101,52 @@ fn drop_nonfinite_solutions(ctx: &Context, set: SolutionSet) -> SolutionSet {
                 SolutionSet::Discrete(kept)
             }
         }
-        SolutionSet::Conditional(cases) => SolutionSet::Conditional(
-            cases
-                .into_iter()
-                .map(|mut case| {
-                    let filtered = drop_nonfinite_solutions(ctx, case.then.solutions.clone());
-                    case.then.solutions = filtered;
-                    case
-                })
-                .collect(),
-        ),
+        SolutionSet::Conditional(cases) => {
+            let fully_classifiable = cases.iter().all(|c| {
+                if let SolutionSet::Discrete(roots) = &c.then.solutions {
+                    roots.iter().all(|&r| {
+                        !solution_contains_nonfinite(ctx, r)
+                            && check_root(ctx, eq, var, r) != RootCheck::Unknown
+                    })
+                } else {
+                    false
+                }
+            });
+            if fully_classifiable {
+                let mut verified: Vec<ExprId> = Vec::new();
+                for c in &cases {
+                    if let SolutionSet::Discrete(roots) = &c.then.solutions {
+                        for &r in roots {
+                            if check_root(ctx, eq, var, r) == RootCheck::Verified
+                                && !verified.contains(&r)
+                            {
+                                verified.push(r);
+                            }
+                        }
+                    }
+                }
+                if verified.is_empty() {
+                    SolutionSet::Empty
+                } else {
+                    SolutionSet::Discrete(verified)
+                }
+            } else {
+                let kept: Vec<_> = cases
+                    .into_iter()
+                    .map(|mut case| {
+                        case.then.solutions =
+                            filter_real_solutions(ctx, eq, var, case.then.solutions.clone());
+                        case
+                    })
+                    .filter(|case| !matches!(case.then.solutions, SolutionSet::Empty))
+                    .collect();
+                if kept.is_empty() {
+                    SolutionSet::Empty
+                } else {
+                    SolutionSet::Conditional(kept)
+                }
+            }
+        }
         other => other,
     }
 }
@@ -94,7 +190,7 @@ impl SolveBackend for LocalSolveBackend {
             return Ok((SolutionSet::Empty, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
-        let set = drop_nonfinite_solutions(&simplifier.context, set);
+        let set = filter_real_solutions(&simplifier.context, eq, var, set);
         Ok((set, steps))
     }
 }

@@ -87,6 +87,52 @@ fn test_solve_nonzero_over_poly_has_no_solution() {
 }
 
 #[test]
+fn test_solve_abs_rejects_extraneous_roots() {
+    // Case-split abs solves must back-substitute: a candidate that fails the
+    // original equation is extraneous. `solve(|x| = x-1)` has NO solution
+    // (`|1/2| = 1/2 != -1/2`); `solve(|x-2| = 2x+1)` keeps only `{1/3}` (the
+    // branch root `-3` fails: `|-3-2| = 5 != 2(-3)+1 = -5`).
+    let none_cases = ["abs(x) = x - 1", "abs(2*x+3) = x - 5"];
+    for case in none_cases {
+        let (lhs, rhs) = case.split_once('=').unwrap();
+        let mut simplifier = Simplifier::new();
+        let eq = make_eq(&mut simplifier.context, lhs.trim(), rhs.trim());
+        let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
+        assert_eq!(
+            result,
+            SolutionSet::Empty,
+            "`{case}` must have no real solution, got {result:?}"
+        );
+    }
+
+    // `solve(|x-2| = 2x+1)` -> exactly {1/3} (the extraneous -3 dropped).
+    let mut simplifier = Simplifier::new();
+    let eq = make_eq(&mut simplifier.context, "abs(x-2)", "2*x + 1");
+    let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
+    let SolutionSet::Discrete(solutions) = result else {
+        panic!("expected Discrete for abs(x-2)=2x+1, got {result:?}");
+    };
+    assert_eq!(solutions.len(), 1);
+    let s = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: solutions[0]
+        }
+    );
+    assert_eq!(s, "1 / 3");
+
+    // Genuine two-root abs equations keep BOTH roots.
+    let mut simplifier = Simplifier::new();
+    let eq = make_eq(&mut simplifier.context, "abs(x)", "3");
+    let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
+    let SolutionSet::Discrete(solutions) = result else {
+        panic!("expected Discrete for abs(x)=3, got {result:?}");
+    };
+    assert_eq!(solutions.len(), 2, "abs(x)=3 must keep both 3 and -3");
+}
+
+#[test]
 fn test_solve_mul() {
     // 2 * x = 6 -> x = 6 / 2
     let mut simplifier = Simplifier::with_default_rules();
