@@ -29,13 +29,32 @@ stay honest; DNE / two-sided-divergent limits are not folded to wrong values; th
 
 ### Cluster C — arcsin/arccos derivative cancellation (`differentiation`)
 - `diff(arcsin(x) - arccos(x), x)` → `0` ; correct `2/sqrt(1-x^2)` on `-1<x<1`.
-  **WRONG VALUE.** A "Cancel Opposite Fractions" rule (visible in `--steps`)
-  cancels two **identical** `+1/sqrt(1-x^2)` terms (the `-arccos` derivative is
-  `+1/sqrt(1-x^2)`, so it is a sum of equal terms, not opposite). The standalone
-  simplifier gives `2/sqrt(1-x^2)`, so the fault is specific to the diff path.
-  Symmetric: `diff(arccos(x) - arcsin(x), x)` → `0` (true `-2/sqrt(1-x^2)`).
+  **WRONG VALUE.** Symmetric: `diff(arccos(x) - arcsin(x), x)` → `0` (true `-2/sqrt(1-x^2)`).
 - `diff(arcsin(x) + arccos(x), x)` → `0` but **drops** the required `-1<x<1`
-  condition (the analogous `ln`/`√`/`1/x` cancellations correctly keep theirs).
+  condition.
+
+**REFINED ROOT CAUSE (corrects the surface attribution above).** The "Cancel
+Opposite Fractions" rule is NOT the bug — it correctly cancels the AST it is
+given. The AST handed to it is genuinely `Add(Div(1,√), Neg(Div(1,√)))`
+(= `1/√ + (−1/√)` = 0); the step display mis-renders it as `1/√ + 1/√`. So the
+defect is **upstream, in Sub/Neg/Div sign-canonicalization**: it loses a sign on
+the equal-unit-magnitude case.
+
+- The differentiation OUTPUT is correct: `d/dx(arcsin−arccos)` builds
+  `Sub(Div(1,√), Div(Neg(1),√))` = `1/√ − (−1/√)`. Canonicalization then corrupts
+  the subtrahend's sign, yielding `Add(Div(1,√), Neg(Div(1,√)))` = 0.
+- **Minimal reproducer (no diff):** `1/y - (-1)/y → 0` (correct `2/y`). Also
+  `1/y - (-1/y) → 0`. But `a/y - (-1)/y → (a+1)/y` ✓ and `2/y - (-1)/y → 3/y` ✓ —
+  the bug fires ONLY when minuend and subtrahend have equal unit magnitude (both
+  `1/y`), i.e. when the subtrahend canonicalizes to exactly `Neg(minuend)`.
+- Suspect helpers (cas_math, used by the canonicalization rules in
+  `crates/cas_engine/src/rules/canonicalization.rs`):
+  `try_rewrite_canonicalize_negation_expr` / `try_rewrite_cancel_fraction_signs_expr`
+  / the `Sub→Add(a, Neg(b))` path. A prior speculative fix to
+  `remove_redundant_fraction_sign` was a genuine value-preservation bug but is NOT
+  this defect (FractionParts reads the corrupted AST correctly) — reverted.
+- This is FOUNDATIONAL canonicalization (high regression blast radius), so it needs
+  the exact rule pinned + broad verification, not a rushed guess. NOT YET FIXED.
 
 ### Cluster B — `(a^even)^y` with a **symbolic** outer exponent drops `|a|` (`logs_exps`)
 - `(a^2)^y` → `a^(2·y)` ; correct `|a|^(2·y)`. At `a=-2, y=1/2`: returns `-2`,
@@ -65,9 +84,11 @@ negatives, where the even root has no real value:
 
 ## Priority sequence
 
-1. **Cluster C** — wrong value across the whole domain; the "Cancel Opposite
-   Fractions" rule cancelling *equal* terms may affect other expressions too.
-   *(in progress)*
+1. **Cluster C** — wrong value across the whole domain. *(root-caused with a
+   minimal reproducer `1/y - (-1)/y → 0`; the defect is upstream in foundational
+   Sub/Neg/Div sign-canonicalization, NOT the cancellation rule. Fix deferred:
+   foundational area, needs the exact rule pinned + broad verification before a
+   safe change. See the refined root-cause above.)*
 2. **Cluster B** — wrong value; closes the symbolic-exponent half of the
    `(x^m)^n` soundness work already started this session.
 3. **Cluster D** — wrong branch value; bounded fix (gate by `sign(x)`).
