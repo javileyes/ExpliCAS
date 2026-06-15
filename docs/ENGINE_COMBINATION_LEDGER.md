@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 171 (newest first)
+Active entries: 172 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -131,6 +131,7 @@ Active entries: 171 (newest first)
 - 2026-06-15 | `retained` | simplification / power-of-power canonicalization / `(x^m)^n` with even inner | Retained soundness: (x^m)^n keeps the absolute value over the reals
 - 2026-06-15 | `retained` | calculus / function-of-radical integration / `int e^sqrt(x) dx`, | Retained integration: e^sqrt(x) and H(sqrt(x))/sqrt(x) (u = sqrt(x))
 - 2026-06-15 | `retained` | calculus presentation / derivative of the absolute-value family + the sign | Retained presentation+eval: d/dx|x| = sign(x), and sign(c) evaluates
+- 2026-06-15 | `retained` | calculus / integration of the absolute-value and sign builtins with affine | Retained integration: int |a*x+b| dx and int sign(a*x+b) dx (affine)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7537,3 +7538,51 @@ Active entries: 171 (newest first)
     shows `2x/|x|` (an earlier quotient rule wins before the affine sign route fires for
     |a*x| with |a|!=1), and `diff(2*sign(x))` stays unevaluated (linearity does not
     recurse into sign); both are correct, just non-uniform
+
+
+## 2026-06-15 - Retained integration: int |a*x+b| dx and int sign(a*x+b) dx (affine)
+
+- area:
+  - calculus / integration of the absolute-value and sign builtins with affine
+    arguments (block 8; cas_math symbolic_integration_support Function arm)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: int sqrt(x^2) dx = int |x| dx = x|x|/2; int |2x+1| dx =
+    (2x+1)|2x+1|/4; int sign(x) dx = |x|; int sign(2x+1) dx = |2x+1|/2
+  - behavior_change_expected: yes - these were residual and now resolve
+- observed (USER-REPORTED: int sqrt(x^2) stayed residual):
+  - sqrt(x^2) canonicalizes to |x| before integration, so the integrand reaching the
+    integrator is |x| = Function(Abs, [x]). Two affine antiderivatives added to the
+    Function arm: int |a*x+b| dx = (a*x+b)|a*x+b|/(2a) and int sign(a*x+b) dx =
+    |a*x+b|/a. Sound over the reals: d/dx[(h)|h|/(2a)] = |h| because h*sign(h) = |h|;
+    verified by sympy and a finite-difference numeric round-trip
+  - the AFFINE gate (Polynomial::degree == 1) mirrors the diff-side sign route: a
+    non-affine argument has a piecewise antiderivative across its roots (int |x^2-1|
+    splits at +-1), so it stays an honest residual. int |x^2-1|, int |sin(x)|,
+    int |x^3| decline
+  - natural companion to the prior cycle (d/dx |x| = sign(x), d/dx sqrt(x^2) = sign(x)):
+    now the inverses close -- int sign(x) = |x|, int |x| = x|x|/2 -- a consistent
+    abs/sign differential+integral family
+  - DEFINITE integrals benefit for free via the FTC: int |x| dx on [0, pi] now resolves
+    to pi^2/2 (was declined as out-of-scope for the symbolic bound); the numeric-bound
+    definite abs integrals were already handled by the root-splitting path and keep their
+    values (int |x| [-1,1] = 1, etc.)
+  - generic-mode int sqrt(x^2) now resolves to x|x|/2 (domain-universal, NO assumption),
+    where it previously stayed residual ("conservative until assumed"); assume mode (x>0)
+    still gives the tidier x^2/2 via |x| -> x. No matrix rows (the antiderivative does not
+    symbolically diff-verify -- diff(x|x|/2) = (|x| + x^2/|x|)/2, mathematically |x| but
+    the engine does not fold x^2/|x| -> |x|) -> unit-test-locked; guardrail + pressure
+    fingerprints byte-identical
+- retained learning:
+  - int |h| dx = (h)|h|/(2a) and int sign(h) dx = |h|/a are the affine-argument
+    closed forms; gate to affine (degree-1 polynomial) because |h| only corners where
+    h crosses zero -- a non-affine h needs a piecewise split, out of this family's scope
+  - a capability that produces an abs-bearing antiderivative often will NOT symbolically
+    diff-verify (the round-trip leaves x^2/|x|, not folded to |x|), so it is
+    unit-test-locked with a numeric round-trip, no matrix rows, no scorecard delta --
+    the same pattern as the sqrt-substitution families
+  - REMAINING peldano: fold x^2/|x| -> |x| (and x^(2k)/|x| -> |x|^(2k-1)) so the
+    abs-antiderivative round-trips cleanly to 0; and non-affine |quadratic| integration
+    via root-splitting (the indefinite analog of the definite root-split path)

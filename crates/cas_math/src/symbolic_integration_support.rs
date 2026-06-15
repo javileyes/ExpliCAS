@@ -1962,6 +1962,44 @@ fn trig_square_affine_antiderivative(
     Some(ctx.add(Expr::Add(half_linear, oscillatory)))
 }
 
+/// `int |a*x + b| dx = (a*x + b) * |a*x + b| / (2a)` for an affine argument.
+///
+/// Over the reals `|h| = sqrt(h^2)`, and `d/dx[(h)|h|/(2a)] = |h|` because
+/// `h * sign(h) = |h|`. Covers `int sqrt(x^2) dx = int |x| dx = x|x|/2` (the
+/// integrand `sqrt(x^2)` is canonicalized to `|x|` before integration). Declines
+/// non-affine arguments, whose antiderivative is piecewise across the roots.
+fn abs_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Option<ExprId> {
+    let polynomial = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if polynomial.degree() != 1 {
+        return None;
+    }
+    let slope = polynomial.leading_coeff();
+    if slope.is_zero() {
+        return None;
+    }
+    let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
+    let product = mul2_raw(ctx, arg, abs_arg);
+    let scale = BigRational::new(1.into(), 2.into()) / slope;
+    Some(scale_rational_term(ctx, scale, product))
+}
+
+/// `int sign(a*x + b) dx = |a*x + b| / a` for an affine argument. The companion
+/// of `d/dx |a*x+b| = a*sign(a*x+b)`; `int sign(x) dx = |x|`. Declines non-affine
+/// arguments.
+fn sign_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Option<ExprId> {
+    let polynomial = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if polynomial.degree() != 1 {
+        return None;
+    }
+    let slope = polynomial.leading_coeff();
+    if slope.is_zero() {
+        return None;
+    }
+    let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
+    let scale = BigRational::one() / slope;
+    Some(scale_rational_term(ctx, scale, abs_arg))
+}
+
 /// `int f(sqrt(x)) dx` for a unary builtin `f`, via the substitution
 /// `u = sqrt(x)` (`x = u^2`, `dx = 2u du`):
 ///
@@ -22708,6 +22746,19 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
 
         if args.len() == 1 {
             let arg = args[0];
+            // int |a*x+b| dx = (a*x+b)|a*x+b|/(2a); int sqrt(x^2) = int |x| = x|x|/2.
+            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Abs) {
+                if let Some(integral) = abs_affine_antiderivative(ctx, arg, var) {
+                    return Some(integral);
+                }
+            }
+            // int sign(a*x+b) dx = |a*x+b|/a; int sign(x) = |x|.
+            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Sign) {
+                if let Some(integral) = sign_affine_antiderivative(ctx, arg, var) {
+                    return Some(integral);
+                }
+            }
+
             if let Some(
                 builtin @ (BuiltinFn::Tan | BuiltinFn::Cot | BuiltinFn::Sec | BuiltinFn::Csc),
             ) = ctx.builtin_of(fn_id)
@@ -29043,6 +29094,60 @@ mod tests {
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
                 "non-elementary integrand must stay residual: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn abs_and_sign_affine_integrate_and_round_trip() {
+        let mut ctx = Context::new();
+        // int |a*x+b| dx = (a*x+b)|a*x+b|/(2a); int sign(a*x+b) dx = |a*x+b|/a.
+        // sqrt(x^2) is canonicalized to |x| before integration. The closed forms
+        // mix abs factors the internal differentiator declines, so pin the
+        // round-trip with a central finite difference of the antiderivative.
+        let eval_at = |ctx: &Context, e: cas_ast::ExprId, x: f64| -> f64 {
+            let mut vars = std::collections::HashMap::new();
+            vars.insert("x".to_string(), x);
+            crate::evaluator_f64::eval_f64(ctx, e, &vars).expect("eval_f64")
+        };
+        for (source, integrand) in [
+            ("abs(x)", "abs(x)"),
+            ("sqrt(x^2)", "abs(x)"),
+            ("abs(2*x+1)", "abs(2*x+1)"),
+            ("abs(x-3)", "abs(x-3)"),
+            ("sign(x)", "sign(x)"),
+            ("sign(2*x+1)", "sign(2*x+1)"),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x")
+                .unwrap_or_else(|| panic!("must integrate: {source}"));
+            let integrand_expr = parse(integrand, &mut ctx).expect(integrand);
+            // Samples avoid the single corner of each affine argument.
+            for sample in [-2.3_f64, -0.7, 0.4, 1.9, 3.5] {
+                let h = 1e-6;
+                let numeric_deriv = (eval_at(&ctx, antiderivative, sample + h)
+                    - eval_at(&ctx, antiderivative, sample - h))
+                    / (2.0 * h);
+                let f_val = eval_at(&ctx, integrand_expr, sample);
+                assert!(
+                    (numeric_deriv - f_val).abs() < 1e-4,
+                    "round-trip mismatch for {source} at {sample}: {numeric_deriv} vs {f_val}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn abs_integration_declines_non_affine_argument() {
+        let mut ctx = Context::new();
+        // The closed form (h)|h|/(2a) is only valid for affine h; a non-affine
+        // argument has a piecewise antiderivative across its roots, so it stays
+        // an honest residual.
+        for source in ["abs(x^2-1)", "abs(sin(x))", "abs(x^3)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "non-affine abs integrand must stay residual: {source}"
             );
         }
     }

@@ -3521,11 +3521,14 @@ fn test_eval_integral_assume_mode_separates_assumptions_from_requires() {
 }
 
 #[test]
-fn test_eval_integral_radical_abs_boundary_is_conservative_until_assumed() {
+fn test_eval_integral_radical_abs_resolves_in_generic_and_simplifies_under_assume() {
+    // Generic mode resolves int sqrt(x^2) dx = int |x| dx = x|x|/2 -- the
+    // domain-universal antiderivative, valid for all real x with NO assumption.
+    // Assume mode (x > 0) simplifies |x| -> x first, giving the tidier x^2/2.
     let generic = eval_json_with_args("integrate(sqrt(x^2), x)", &["--domain", "generic"]);
 
     assert_eq!(generic["ok"], true);
-    assert_eq!(generic["result"], "integrate(|x|, x)");
+    assert_eq!(generic["result"], "1/2·x·|x|");
     assert_eq!(generic["domain"]["mode"], "generic");
     assert!(generic["assumptions_used"].is_null());
     assert!(
@@ -3541,9 +3544,11 @@ fn test_eval_integral_radical_abs_boundary_is_conservative_until_assumed() {
         &["--domain", "generic"],
     );
     assert_eq!(generic_residual["ok"], true);
+    // d/dx(x|x|/2) - |x| = (x^2/|x| - |x|)/2, which is mathematically 0 (x^2/|x| =
+    // |x|); the engine does not yet fold x^2/|x| -> |x|, so it stays unsimplified.
     assert_eq!(
-        generic_residual["result"], "diff(integrate(|x|, x), x) - |x|",
-        "generic mode should leave the unsupported abs antiderivative as a residual"
+        generic_residual["result"], "1/2·(x^2 / |x| - |x|)",
+        "generic abs antiderivative verifies (residual is mathematically 0)"
     );
 
     let assume = eval_json_with_args("integrate(sqrt(x^2), x)", &["--domain", "assume"]);

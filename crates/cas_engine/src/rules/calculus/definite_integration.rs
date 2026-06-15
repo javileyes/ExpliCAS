@@ -2203,17 +2203,23 @@ mod tests {
     }
 
     #[test]
-    fn abs_linear_definite_integral_declines_out_of_scope() {
-        // Not a bare |linear|: a product (owned by odd symmetry), a quadratic
-        // inner, a symbolic (pi) bound, and the indefinite form all decline here.
-        // The product still resolves elsewhere (odd symmetry -> 0); the others
-        // stay residual.
+    fn abs_linear_definite_integral_scope() {
+        // A product resolves by odd symmetry (-> 0). A quadratic-inner abs stays
+        // residual: its antiderivative is piecewise across the roots, out of scope
+        // for the affine abs antiderivative.
         assert_eq!(
             eval_definite("integrate(abs(x)*x, x, -1, 1)").as_deref(),
             Some("0")
         );
         assert!(eval_definite("integrate(abs(x^2-1), x, 0, 2)").is_none());
-        assert!(eval_definite("integrate(abs(x), x, 0, pi)").is_none());
+        // A bare |linear| with a symbolic bound now resolves via the affine abs
+        // antiderivative x|x|/2 and the FTC. This low-level helper returns the raw
+        // F(pi) - F(0) substitution; the full eval pipeline folds it to pi^2/2
+        // (|pi| = pi, pi > 0), which the CLI surfaces.
+        assert_eq!(
+            eval_definite("integrate(abs(x), x, 0, pi)").as_deref(),
+            Some("1/2 * pi * |pi| - 0 * 1/2 * |0|")
+        );
     }
 
     #[test]
