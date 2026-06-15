@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 173 (newest first)
+Active entries: 174 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -133,6 +133,7 @@ Active entries: 173 (newest first)
 - 2026-06-15 | `retained` | calculus presentation / derivative of the absolute-value family + the sign | Retained presentation+eval: d/dx|x| = sign(x), and sign(c) evaluates
 - 2026-06-15 | `retained` | calculus / integration of the absolute-value and sign builtins with affine | Retained integration: int |a*x+b| dx and int sign(a*x+b) dx (affine)
 - 2026-06-15 | `retained` | simplification / absolute-value quotient cancellation (cas_math abs_support; | Retained simplification: x^(2k)/|x| -> |x|^(2k-1) (removable cancellation)
+- 2026-06-15 | `retained` | block 5 algebra / fractions; the two opposite/equal cancellation DETECTORS in | Retained soundness fix: fraction sign double-count in cancellation detectors (Cluster C of the soundness audit)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7638,3 +7639,59 @@ Active entries: 173 (newest first)
   - a removable cancellation that weakens an assume-mode result's NEEDED assumption (here
     x > 0 -> the generic x != 0) is a genuine improvement: fewer/weaker assumptions to
     verify the same identity
+
+## 2026-06-15 - Retained soundness fix: fraction sign double-count in cancellation detectors (Cluster C of the soundness audit)
+- area:
+  - block 5 algebra / fractions; the two opposite/equal cancellation DETECTORS in
+    `cas_engine/src/rules/algebra/fractions/addition_rules.rs`
+    (`should_defer_exact_opposite_fraction_pair_to_additive_cancellation`,
+    `fractions_match_same_value`), reading from
+    `cas_math::fraction_pair_support::extract_fraction_pair`
+- status:
+  - `retained` (WRONG-VALUE soundness fix; Cluster C of docs/SOUNDNESS_AUDIT.md)
+- capture:
+  - investment_class: soundness
+  - cell: `1/y - (-1)/y -> 2/y` (was `0`); `diff(arcsin(x) - arccos(x)) -> 2/sqrt(1-x^2)`
+    and `diff(arccos(x) - arcsin(x)) -> -2/sqrt(1-x^2)` (both were `0`)
+  - behavior_change_expected: yes - stops a false cancellation; guardrail+pressure
+    fingerprints byte-identical (no fixture exercised the buggy double-negative cell)
+- observed (USER-DIRECTED, audit priority #1):
+  - ROOT CAUSE pinned with eprintln instrumentation on the minimal repro `1/y - (-1)/y`.
+    NOT a canonicalization rule and NOT the cancellation rule. `extract_fraction_pair`
+    DOUBLE-COUNTS the sign: it calls `FractionParts::to_num_den`, which BAKES the sign
+    into the numerator (subtrahend `Neg(Div(-1,y))` = +1/y -> numerator folds to `+1`),
+    AND it also returns `fp.sign = -1` separately. A consumer reading both as
+    `sign*(n/d)` sees `-1*(+1/y) = -1/y` for a term that is actually `+1/y`. So
+    `1/y + (+1/y)` looked like the opposite pair `1/y + (-1/y)` and cancelled to 0
+  - WHY only the two detectors misfired: the fraction add/sub rules use the baked
+    numerator ALONE (correct value), so they were unaffected. Only the opposite/equal
+    DETECTORS used both `n` and `sign`. Both run exclusively on the baked path
+    (gated `is_frac1 && is_frac2`), so the surgical fix is: re-derive the sign purely
+    from the baked numerator (pass sign-base `1`, let `normalize_fraction_numerator_sign`
+    extract it). Behaviour-identical for the common `fp.sign=+1` case (minus inside the
+    numerator); only the outer-`Neg` double-negative cell changes
+  - verified adversarially (decision-procedure change): 2 lenses, 434 probes across 6
+    categories (the bug class, genuine cancellations that must still fire, non-opposites
+    that must not, negative/factored denominators, multi-factor radical denominators,
+    inverse-trig diff sources), every candidate skeptically re-verified numerically ->
+    0 confirmed defects. Genuine opposites still cancel (`1/y - 1/y -> 0`,
+    `1/y + (-1/y) -> 0`); non-opposites keep value (`1/y + 1/y -> 2/y`,
+    `a/y - (-1)/y -> (a+1)/y`). Added a focused regression test
+    (`does_not_treat_equal_magnitude_double_negative_as_opposite_pair`)
+  - the arcsin+arccos -> 0 condition-drop noted in the audit is RECLASSIFIED
+    P3-educational: it is value-correct (pi/2 derivative) and the missing `-1<x<1` is
+    systemic, not cancellation-specific (even a single `diff(arcsin(x)) = 1/sqrt(1-x^2)`
+    reports no explicit condition; the domain is carried implicitly by the sqrt that
+    vanishes on cancellation). Separate cycle
+- retained learning:
+  - a struct that pairs an explicit `sign` field with a numeric `n` MUST fix one
+    convention: either `n` is unsigned and `sign` carries it, OR `n` is signed and
+    `sign` is +1. `to_num_den` bakes the sign into `n`; any path that ALSO reads
+    `fp.sign` then double-counts. The bug only surfaced at equal unit magnitude with an
+    outer `Neg` because that is the one cell where the redundant sign flips a comparison
+    outcome (opposite vs. same) rather than just scaling a value the add/sub rules
+    recompute anyway -- a latent contract violation can hide until a detector (not a
+    transformer) consumes the inconsistent field
+  - when a cancellation produces a clearly-wrong global value, instrument the SUPPLIER of
+    the parts before suspecting the canonicalization rules: the AST handed to the rule
+    was correct; the parts extracted from it were not

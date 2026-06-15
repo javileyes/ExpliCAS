@@ -895,13 +895,19 @@ fn should_defer_exact_opposite_fraction_pair_to_additive_cancellation(
     ctx: &mut cas_ast::Context,
     n1: cas_ast::ExprId,
     d1: cas_ast::ExprId,
-    sign1: i8,
+    _sign1: i8,
     n2: cas_ast::ExprId,
     d2: cas_ast::ExprId,
-    sign2: i8,
+    _sign2: i8,
 ) -> bool {
-    let (n1, sign1) = remove_redundant_fraction_sign(ctx, n1, sign1);
-    let (n2, sign2) = remove_redundant_fraction_sign(ctx, n2, sign2);
+    // The numerators handed in by `extract_fraction_pair` already carry the
+    // fraction's sign (it is baked in via `to_num_den`); the passed `sign` is
+    // redundant and using BOTH double-counts it (e.g. for `Neg(Div(-1,y))` = +1/y
+    // the pair is (num=+1, sign=-1), which spuriously reads as -1/y and makes
+    // `1/y + 1/y` look like opposites that cancel to 0). Re-derive the sign
+    // purely from the baked numerator.
+    let (n1, sign1) = remove_redundant_fraction_sign(ctx, n1, 1);
+    let (n2, sign2) = remove_redundant_fraction_sign(ctx, n2, 1);
     let (n1, sign1) = normalize_fraction_numerator_sign(ctx, n1, sign1);
     let (n2, sign2) = normalize_fraction_numerator_sign(ctx, n2, sign2);
 
@@ -915,13 +921,16 @@ fn fractions_match_same_value(
     ctx: &mut cas_ast::Context,
     n1: cas_ast::ExprId,
     d1: cas_ast::ExprId,
-    sign1: i8,
+    _sign1: i8,
     n2: cas_ast::ExprId,
     d2: cas_ast::ExprId,
-    sign2: i8,
+    _sign2: i8,
 ) -> bool {
-    let (n1, sign1) = remove_redundant_fraction_sign(ctx, n1, sign1);
-    let (n2, sign2) = remove_redundant_fraction_sign(ctx, n2, sign2);
+    // The numerators already carry the fraction's sign (baked in by
+    // `extract_fraction_pair` via `to_num_den`); the passed `sign` is redundant
+    // and using BOTH double-counts it. Re-derive the sign from the baked numerator.
+    let (n1, sign1) = remove_redundant_fraction_sign(ctx, n1, 1);
+    let (n2, sign2) = remove_redundant_fraction_sign(ctx, n2, 1);
     let (n1, sign1) = normalize_fraction_numerator_sign(ctx, n1, sign1);
     let (n2, sign2) = normalize_fraction_numerator_sign(ctx, n2, sign2);
 
@@ -1371,6 +1380,35 @@ mod tests {
 
         let rewrite = CancelOppositeFractionsRule.apply(&mut ctx, expr, &ParentContext::root());
         assert!(rewrite.is_some());
+    }
+
+    #[test]
+    fn does_not_treat_equal_magnitude_double_negative_as_opposite_pair() {
+        // `1/y + (-((-1)/y))` = 1/y + 1/y = 2/y is NOT an opposite pair.
+        // Regression: `extract_fraction_pair` bakes the fraction sign into the
+        // numerator via `to_num_den` AND also returns `fp.sign`. Reading both
+        // double-counted the sign, so the second term `+1/y` looked like `-1/y`
+        // and `1/y - (-1)/y` wrongly cancelled to 0 (this also zeroed
+        // `diff(arcsin(x) - arccos(x))`). The detector must decline here.
+        let mut ctx = Context::new();
+        let expr =
+            parse("1/y + (-((-1)/y))", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let cas_ast::Expr::Add(lhs, rhs) = ctx.get(expr).clone() else {
+            panic!("expected add");
+        };
+        let pair = extract_fraction_pair(&mut ctx, lhs, rhs);
+        assert!(pair.is_frac1 && pair.is_frac2);
+        assert!(
+            !should_defer_exact_opposite_fraction_pair_to_additive_cancellation(
+                &mut ctx, pair.n1, pair.d1, pair.sign1, pair.n2, pair.d2, pair.sign2,
+            ),
+            "1/y + 1/y must NOT be detected as an opposite pair"
+        );
+        let rewrite = CancelOppositeFractionsRule.apply(&mut ctx, expr, &ParentContext::root());
+        assert!(
+            rewrite.is_none(),
+            "CancelOppositeFractionsRule must not collapse 1/y + 1/y to 0"
+        );
     }
 
     #[test]

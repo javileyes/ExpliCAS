@@ -33,28 +33,36 @@ stay honest; DNE / two-sided-divergent limits are not folded to wrong values; th
 - `diff(arcsin(x) + arccos(x), x)` → `0` but **drops** the required `-1<x<1`
   condition.
 
-**REFINED ROOT CAUSE (corrects the surface attribution above).** The "Cancel
-Opposite Fractions" rule is NOT the bug — it correctly cancels the AST it is
-given. The AST handed to it is genuinely `Add(Div(1,√), Neg(Div(1,√)))`
-(= `1/√ + (−1/√)` = 0); the step display mis-renders it as `1/√ + 1/√`. So the
-defect is **upstream, in Sub/Neg/Div sign-canonicalization**: it loses a sign on
-the equal-unit-magnitude case.
+**ROOT CAUSE — FOUND AND FIXED (2026-06-15).** Pinned with `eprintln!` instrumentation
+on the minimal reproducer. It is NOT a canonicalization rule and NOT the cancellation
+rule. The defect is in `extract_fraction_pair` (`cas_math::fraction_pair_support`):
+it **double-counts the sign**. It calls `FractionParts::to_num_den`, which *bakes*
+the fraction's sign into the numerator (so for the subtrahend `Neg(Div(-1,y))` = +1/y
+the numerator becomes `+1`), AND it *also* returns `fp.sign = -1` separately. Any
+consumer reading both `n` and `sign` as `sign·(n/d)` then sees `-1·(+1/y) = -1/y` for
+a term that is actually `+1/y` — violating the `FractionPair` contract (value = sign·n/d).
 
-- The differentiation OUTPUT is correct: `d/dx(arcsin−arccos)` builds
-  `Sub(Div(1,√), Div(Neg(1),√))` = `1/√ − (−1/√)`. Canonicalization then corrupts
-  the subtrahend's sign, yielding `Add(Div(1,√), Neg(Div(1,√)))` = 0.
-- **Minimal reproducer (no diff):** `1/y - (-1)/y → 0` (correct `2/y`). Also
-  `1/y - (-1/y) → 0`. But `a/y - (-1)/y → (a+1)/y` ✓ and `2/y - (-1)/y → 3/y` ✓ —
-  the bug fires ONLY when minuend and subtrahend have equal unit magnitude (both
-  `1/y`), i.e. when the subtrahend canonicalizes to exactly `Neg(minuend)`.
-- Suspect helpers (cas_math, used by the canonicalization rules in
-  `crates/cas_engine/src/rules/canonicalization.rs`):
-  `try_rewrite_canonicalize_negation_expr` / `try_rewrite_cancel_fraction_signs_expr`
-  / the `Sub→Add(a, Neg(b))` path. A prior speculative fix to
-  `remove_redundant_fraction_sign` was a genuine value-preservation bug but is NOT
-  this defect (FractionParts reads the corrupted AST correctly) — reverted.
-- This is FOUNDATIONAL canonicalization (high regression blast radius), so it needs
-  the exact rule pinned + broad verification, not a rushed guess. NOT YET FIXED.
+- This makes `1/y + (+1/y)` look like an opposite pair `1/y + (-1/y)` → cancels to 0.
+- The fraction add/sub rules were unaffected (they use the baked numerator alone, which
+  has the correct value). Only the two cancellation **detectors** —
+  `should_defer_exact_opposite_fraction_pair_to_additive_cancellation` and
+  `fractions_match_same_value` — used both `n` and `sign`, so only they misfired. Both
+  run exclusively on the baked path (gated by `parts.is_frac1 && parts.is_frac2`).
+- **Fix:** in both detectors, re-derive the sign purely from the baked numerator
+  (pass sign-base `1`, let `normalize_fraction_numerator_sign` extract it). Surgical,
+  scoped to the two detectors, behaviour-identical for the common `fp.sign=+1` case
+  (the minus inside the numerator); only the outer-`Neg` double-negative case changes.
+  `crates/cas_engine/src/rules/algebra/fractions/addition_rules.rs`.
+- **Verified:** `1/y - (-1)/y → 2/y` ✓, `1/y - (-1/y) → 2/y` ✓, while genuine
+  cancellations still hold: `1/y - 1/y → 0` ✓, `1/y + (-1/y) → 0` ✓; non-opposites
+  unaffected: `1/y + 1/y → 2/y` ✓, `a/y - (-1)/y → (a+1)/y` ✓. And the diff defects:
+  `diff(arcsin−arccos) → 2/sqrt(1-x²)` ✓, `diff(arccos−arcsin) → -2/sqrt(1-x²)` ✓.
+- **Remaining (reclassified as P3-educational, separate cycle):** `diff(arcsin+arccos) → 0`
+  is value-correct (π/2) but does not surface the `-1<x<1` domain condition. This is
+  **systemic, not cancellation-specific**: even a single `diff(arcsin(x)) = 1/sqrt(1-x²)`
+  reports `required_conditions: []` — the engine carries the domain *implicitly* via the
+  `sqrt(1-x²)` denominator, which vanishes on cancellation. Surfacing explicit domain
+  conditions for inverse-trig derivatives is a separate educational gap, not a wrong value.
 
 ### Cluster B — `(a^even)^y` with a **symbolic** outer exponent drops `|a|` (`logs_exps`)
 - `(a^2)^y` → `a^(2·y)` ; correct `|a|^(2·y)`. At `a=-2, y=1/2`: returns `-2`,
@@ -84,11 +92,11 @@ negatives, where the even root has no real value:
 
 ## Priority sequence
 
-1. **Cluster C** — wrong value across the whole domain. *(root-caused with a
-   minimal reproducer `1/y - (-1)/y → 0`; the defect is upstream in foundational
-   Sub/Neg/Div sign-canonicalization, NOT the cancellation rule. Fix deferred:
-   foundational area, needs the exact rule pinned + broad verification before a
-   safe change. See the refined root-cause above.)*
+1. **Cluster C** — wrong value across the whole domain. *(FIXED 2026-06-15: root
+   cause was `extract_fraction_pair` double-counting the fraction sign; the two
+   cancellation detectors now re-derive the sign from the baked numerator. The
+   wrong-value defect is resolved; the arcsin+arccos domain-condition drop is
+   reclassified P3-educational. See the root-cause section above.)*
 2. **Cluster B** — wrong value; closes the symbolic-exponent half of the
    `(x^m)^n` soundness work already started this session.
 3. **Cluster D** — wrong branch value; bounded fix (gate by `sign(x)`).
@@ -97,7 +105,7 @@ negatives, where the even root has no real value:
 
 ## Status
 
-- [ ] Cluster C — arcsin/arccos derivative cancellation
+- [x] Cluster C — arcsin/arccos derivative cancellation *(wrong value FIXED 2026-06-15, commit `PENDING_HASH`; arcsin+arccos condition-drop reclassified P3-educational)*
 - [ ] Cluster B — `(a^even)^symbolic` drops `|a|`
 - [ ] Cluster D — `arctan(x)+arctan(1/x)` branch
 - [ ] Cluster A — even-root of negative base
