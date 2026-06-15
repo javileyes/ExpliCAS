@@ -468,7 +468,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   simetría impar (→0); inner cuadrático `|x²-1|`, borne π/e e indefinida declinan.
   Quedan: inner cuadrático/polinómico (raíces múltiples), `e^(-|x|)` impropia, y la
   narración de simetría.)*
-  *(narración abs-lineal 2026-06-15 PENDING_HASH: la NARRACIÓN educativa de `∫|c x+d|`
+  *(narración abs-lineal 2026-06-15 4509c4651: la NARRACIÓN educativa de `∫|c x+d|`
   ya aterriza — `generate_abs_linear_definite_integral_substeps` en el didactic narra
   "Localizar la raíz" → partir en la raíz (raíz dentro) / signo constante (raíz fuera) →
   "Integrar por tramos con G(x)=c x²/2+d x". Antes el paso era el envoltorio genérico
