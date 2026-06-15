@@ -55,10 +55,10 @@ pub fn try_eval_hyperbolic_special_value(
 /// - `cosh(acosh(x))`
 /// - `tanh(atanh(x))`
 /// - `asinh(sinh(x))`
-/// - `acosh(cosh(x))`
+/// - `acosh(cosh(x))`  -> `|x|` (acosh has range `[0, inf)` and cosh is even)
 /// - `atanh(tanh(x))`
 pub fn try_rewrite_hyperbolic_composition(
-    ctx: &Context,
+    ctx: &mut Context,
     expr: ExprId,
 ) -> Option<HyperbolicCoreRewrite> {
     let Expr::Function(outer_fn, outer_args) = ctx.get(expr) else {
@@ -81,17 +81,24 @@ pub fn try_rewrite_hyperbolic_composition(
     }
     let x = inner_args[0];
 
-    match (ctx.builtin_of(outer_fn), ctx.builtin_of(inner_fn)) {
+    let rewritten = match (ctx.builtin_of(outer_fn), ctx.builtin_of(inner_fn)) {
+        // `acosh(cosh(x)) = |x|`, NOT `x`: acosh has range `[0, inf)` and cosh is
+        // even, so the composition folds the sign (it is `-x` for `x < 0`).
+        (Some(BuiltinFn::Acosh), Some(BuiltinFn::Cosh)) => {
+            ctx.call_builtin(BuiltinFn::Abs, vec![x])
+        }
+        // The remaining forward/inverse compositions are genuine identities over
+        // the reals: sinh/asinh and tanh/atanh are bijections, and `cosh(acosh)`
+        // recovers `x` on the acosh domain `x >= 1`.
         (Some(BuiltinFn::Sinh), Some(BuiltinFn::Asinh))
         | (Some(BuiltinFn::Cosh), Some(BuiltinFn::Acosh))
         | (Some(BuiltinFn::Tanh), Some(BuiltinFn::Atanh))
         | (Some(BuiltinFn::Asinh), Some(BuiltinFn::Sinh))
-        | (Some(BuiltinFn::Acosh), Some(BuiltinFn::Cosh))
-        | (Some(BuiltinFn::Atanh), Some(BuiltinFn::Tanh)) => {}
+        | (Some(BuiltinFn::Atanh), Some(BuiltinFn::Tanh)) => x,
         _ => return None,
-    }
+    };
 
-    Some(HyperbolicCoreRewrite { rewritten: x })
+    Some(HyperbolicCoreRewrite { rewritten })
 }
 
 fn extract_square_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -228,8 +235,24 @@ mod tests {
         let asinh_x = ctx.call_builtin(BuiltinFn::Asinh, vec![x]);
         let expr = ctx.call_builtin(BuiltinFn::Sinh, vec![asinh_x]);
 
-        let rewrite = try_rewrite_hyperbolic_composition(&ctx, expr).expect("rewrite");
+        let rewrite = try_rewrite_hyperbolic_composition(&mut ctx, expr).expect("rewrite");
         assert_eq!(rewrite.rewritten, x);
+    }
+
+    #[test]
+    fn acosh_cosh_folds_to_abs() {
+        // acosh(cosh(x)) = |x| (NOT x): acosh range is [0, inf) and cosh is even.
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let cosh_x = ctx.call_builtin(BuiltinFn::Cosh, vec![x]);
+        let expr = ctx.call_builtin(BuiltinFn::Acosh, vec![cosh_x]);
+
+        let rewrite = try_rewrite_hyperbolic_composition(&mut ctx, expr).expect("rewrite");
+        let abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, abs_x),
+            std::cmp::Ordering::Equal
+        );
     }
 
     #[test]

@@ -5936,7 +5936,8 @@ mod tests {
             ("cosh(acosh(x))", "x"),
             ("tanh(atanh(x))", "x"),
             ("asinh(sinh(x))", "x"),
-            ("acosh(cosh(x))", "x"),
+            // acosh(cosh(x)) = |x| (acosh range [0, inf), cosh even), not x.
+            ("acosh(cosh(x))", "abs(x)"),
             ("atanh(tanh(x))", "x"),
         ];
 

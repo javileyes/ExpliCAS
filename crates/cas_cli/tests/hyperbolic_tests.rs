@@ -87,10 +87,12 @@ fn test_asinh_sinh() {
 
 #[test]
 fn test_acosh_cosh() {
+    // acosh(cosh(b)) = |b|, NOT b: acosh has range [0, inf) and cosh is even, so
+    // the composition folds the sign (it is -b for b < 0).
     assert_eq!(
         simplify_str("acosh(cosh(b))"),
-        "b",
-        "acosh(cosh(b)) should simplify to b"
+        "|b|",
+        "acosh(cosh(b)) should simplify to |b|"
     );
 }
 

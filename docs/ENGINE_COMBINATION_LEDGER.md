@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 177 (newest first)
+Active entries: 178 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -137,6 +137,7 @@ Active entries: 177 (newest first)
 - 2026-06-15 | `retained` | block 8 logs/exps; `cas_math/src/root_power_canonical_support.rs` | Retained soundness fix: (x^even)^symbolic keeps |x| (Cluster B of the soundness audit, literal-even-inner half)
 - 2026-06-15 | `retained` | block trig/inverse-trig; `cas_math/src/inverse_trig_composition_support.rs` | Retained soundness fix: arctan(x)+arctan(1/x) = (pi/2)*sign(x), not pi/2 (Cluster D of the soundness audit)
 - 2026-06-15 | `retained` | block powers/roots; `cas_math` radical-merge rules | Retained soundness fix: even-root products of negative bases stay symbolic (Cluster A of the soundness audit, sign-wrong half)
+- 2026-06-15 | `retained` | block hyperbolic; `cas_math/src/hyperbolic_core_support.rs` | Retained soundness fix: acosh(cosh(x)) = |x|, not x (Round-2 audit R2)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7823,3 +7824,30 @@ Active entries: 177 (newest first)
     a clean scorecard + one happy-path probe ALL passed while two sign-wrong holes (the
     n-ary cascade) remained. The refutation-lens agents found them by enumerating
     perfect-square radicand products the author did not think to try
+
+## 2026-06-15 - Retained soundness fix: acosh(cosh(x)) = |x|, not x (Round-2 audit R2)
+- area:
+  - block hyperbolic; `cas_math/src/hyperbolic_core_support.rs`
+    `try_rewrite_hyperbolic_composition` (the direct hyperbolic-inverse composition rule)
+- status:
+  - `retained` (SIGN-WRONG soundness fix; R2 of docs/SOUNDNESS_AUDIT_ROUND2.md)
+- capture:
+  - investment_class: soundness
+  - cell: `acosh(cosh(x)) -> |x|` (was `x`); `diff(acosh(cosh(x))) -> sign(x)` (was `1`)
+  - behavior_change_expected: yes - one composition arm gains an abs; guardrail+pressure
+    fingerprints BYTE-IDENTICAL
+- observed (USER-DIRECTED, Round-2 audit priority #1):
+  - the composition rule folded ALL six forward/inverse hyperbolic pairs to `x`. Five are
+    genuine identities over R (sinh/asinh, tanh/atanh bijections; cosh(acosh)=x on x>=1),
+    but `acosh(cosh(x)) = |x|` because acosh has range [0,inf) and cosh is even - the
+    composition folds the sign. Fix: emit `Abs(x)` for that arm only. The derivative
+    `sign(x)` falls out for free via the Round-1 `diff(|x|)=sign(x)` machinery - the same
+    pattern as the Round-1 `sqrt(x^2)=|x|` / arccos work
+  - found by the Round-2 multi-agent audit; verified adversarially (2 lenses, 29 probes,
+    0 defects) - no over-firing onto the five genuine identities
+- retained learning:
+  - `f(f_inverse(x)) = x` is only the identity when the OUTER function's range covers the
+    inner's output; when the outer is range-restricted (acosh: [0,inf); arccos: [0,pi];
+    arcsin: [-pi/2,pi/2]) and the inner is non-injective there, the composition folds to a
+    range-projection (|x|, a sawtooth, ...), NOT x. Audit EVERY such pair, not just the
+    obviously-suspicious ones - the even/range-restricted outer is the tell
