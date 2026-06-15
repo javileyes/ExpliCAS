@@ -72,7 +72,7 @@ a term that is actually `+1/y` — violating the `FractionPair` contract (value 
   family fixed earlier for the literal case** (`(a^2)^(1/2)=|a|` is correct; only
   the symbolic outer exponent still drops the abs). Natural follow-up to that cycle.
 
-**FIXED (2026-06-15, commit `PENDING_HASH`) — the literal-even-inner half.**
+**FIXED (2026-06-15, commit `5b13a9baa`) — the literal-even-inner half.**
 `try_rewrite_power_power_even_root_abs_expr` bailed to the sign-unsafe
 `MultiplyExponents` branch whenever the outer exponent was not a rational
 constant. For an even **literal** inner exponent `m`, `(x^m)^y = |x|^(m·y)` holds
@@ -125,7 +125,7 @@ negatives, where the even root has no real value:
    wrong-value defect is resolved; the arcsin+arccos domain-condition drop is
    reclassified P3-educational. See the root-cause section above.)*
 2. **Cluster B** — wrong value; FIXED the literal-even-inner half (commit
-   `PENDING_HASH`). The symbolic-even-inner half is split out as Cluster B-2.
+   `5b13a9baa`). The symbolic-even-inner half is split out as Cluster B-2.
 3. **Cluster B-2** — wrong value (NEW, surfaced by the Cluster B adversarial
    sweep); same `(x^even)^outer` family but a distinct sign-unaware cancellation
    path. Bounded fix under the existing `a^(2k) ≥ 0` condition.
@@ -136,7 +136,7 @@ negatives, where the even root has no real value:
 ## Status
 
 - [x] Cluster C — arcsin/arccos derivative cancellation *(wrong value FIXED 2026-06-15, commit `810c0a6db`; arcsin+arccos condition-drop reclassified P3-educational)*
-- [x] Cluster B — `(a^even)^symbolic` drops `|a|` *(literal-even-inner half FIXED 2026-06-15, commit `PENDING_HASH`; symbolic-even-inner half split to Cluster B-2)*
+- [x] Cluster B — `(a^even)^symbolic` drops `|a|` *(literal-even-inner half FIXED 2026-06-15, commit `5b13a9baa`; symbolic-even-inner half split to Cluster B-2)*
 - [ ] Cluster B-2 — `(a^(2k))^(1/2)` drops `|a|` for symbolic even inner exponent
 - [ ] Cluster D — `arctan(x)+arctan(1/x)` branch
 - [ ] Cluster A — even-root of negative base
