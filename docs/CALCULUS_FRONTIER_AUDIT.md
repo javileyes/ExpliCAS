@@ -77,7 +77,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `sin(t)/t→sin(x)/x`. Peldaño: certificado de convergencia compartido (reusar el
   motor de definidas, que ya devuelve finito sii `∫_0^c f` converge) gateando TODAS
   las rutas de presentación FTC. Cazado por verificación adversarial 2-lente.)*
-  *(fuga `infinity^k` cerrada 2026-06-15 PENDING_HASH: el ÚLTIMO eslabón divergente —
+  *(fuga `infinity^k` cerrada 2026-06-15 4ae92d1ea: el ÚLTIMO eslabón divergente —
   la rama de bornes simbólicos del FTC (`integrate(f,t,a,x)` con borne constante en una
   singularidad de la antiderivada) devolvía `F(x) − F(a)` arrastrando un término
   `infinity^k`/`+infinity` que un `diff` posterior tira, filtrando una derivada finita
