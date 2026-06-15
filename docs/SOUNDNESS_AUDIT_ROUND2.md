@@ -92,7 +92,7 @@ value" invariant covered *symbolic* poles; this all-numeric `0/0` slips through.
   `solve(|2x+3| = x−5) → {−8, 2/3}` (**no solution**),
   `solve(|x−2| = 2x+1) → {−3, 1/3}` (true `{1/3}`),
   `solve(|x| = 2x−6) → {6, 2}` (true `{6}`), and similar.
-- **R5b — `c/poly = 0` returns `{∞}` — FIXED (commit `PENDING_HASH`):** a nonzero
+- **R5b — `c/poly = 0` returns `{∞}` — FIXED (commit `14a471e1d`):** a nonzero
   constant over a polynomial is never zero → no solution, but the solver isolated
   the denominator (`poly = c/0 = ∞`) and returned `{∞}` (`solve(3/x=0)`) or, for an
   irreducible quadratic with a linear term, a malformed nested
@@ -138,7 +138,7 @@ deeper isolation-strategy fix; own cycle. NOT YET FIXED.
 
 1. **R2** — `acosh(cosh(x)) = |x|`. Sign-wrong, bounded, reuses the round-1
    abs/sign machinery. Highest value-per-risk.
-2. **R5b** — `solve(c/poly = 0)` → no solution. FIXED (commit `PENDING_HASH`).
+2. **R5b** — `solve(c/poly = 0)` → no solution. FIXED (commit `14a471e1d`).
    The sweep surfaced **R5d** (malformed nested solves dropping valid roots +
    `csc` crash) — broader, higher-severity, own cycle.
 3. **R4** — numeric `0/0` fold. Guard `0/x → 0` on `x≠0`; the engine already knows
@@ -166,7 +166,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 ## Status
 
 - [x] R2 — `acosh(cosh(x)) = |x|` (sign-wrong, bounded) *(FIXED 2026-06-15, commit `d22eec10e`)*
-- [x] R5b — `solve(c/poly=0)` no-solution *(FIXED 2026-06-15, commit `PENDING_HASH`)*
+- [x] R5b — `solve(c/poly=0)` no-solution *(FIXED 2026-06-15, commit `14a471e1d`)*
 - [ ] R5d — rational-equation isolation fabricates malformed nested solves (drops valid roots) + `csc/sec/cot` solver crash (NEW)
 - [ ] R4 — numeric `0/0` fold guard
 - [ ] R5a — `solve` abs extraneous-root filter
