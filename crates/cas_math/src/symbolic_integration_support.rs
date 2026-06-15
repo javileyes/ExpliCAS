@@ -1962,17 +1962,19 @@ fn trig_square_affine_antiderivative(
     Some(ctx.add(Expr::Add(half_linear, oscillatory)))
 }
 
-/// `int inv(sqrt(x)) dx` for an inverse-trig `inv`, via the substitution
+/// `int f(sqrt(x)) dx` for a unary builtin `f`, via the substitution
 /// `u = sqrt(x)` (`x = u^2`, `dx = 2u du`):
 ///
 /// ```text
-/// int inv(sqrt(x)) dx = 2 int u inv(u) du = 2 H(sqrt(x)),  H(u) = int u inv(u) du
+/// int f(sqrt(x)) dx = 2 int u f(u) du = 2 H(sqrt(x)),  H(u) = int u f(u) du
 /// ```
 ///
-/// `H` is delegated to the monomial-times-inverse-trig owner and the result is
-/// back-substituted `u -> sqrt(x)`. Self-gates to an honest residual if `H` does
-/// not resolve.
-fn inverse_trig_of_sqrt_antiderivative(
+/// `H` is delegated to the integrator (the monomial-times-{trig, hyperbolic,
+/// inverse-trig} owners) and the result is back-substituted `u -> sqrt(x)`.
+/// Self-gates to an honest residual if `H` does not resolve (e.g. `f = tan`,
+/// where `int u tan(u) du` is non-elementary). Covers sin/cos/sinh/cosh and the
+/// inverse-trig family.
+fn function_of_sqrt_antiderivative(
     ctx: &mut Context,
     builtin: BuiltinFn,
     arg: ExprId,
@@ -22613,11 +22615,14 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
                 | BuiltinFn::Arccos
                 | BuiltinFn::Acos
                 | BuiltinFn::Arctan
-                | BuiltinFn::Atan),
+                | BuiltinFn::Atan
+                | BuiltinFn::Sin
+                | BuiltinFn::Cos
+                | BuiltinFn::Sinh
+                | BuiltinFn::Cosh),
             ) = ctx.builtin_of(fn_id)
             {
-                if let Some(integral) = inverse_trig_of_sqrt_antiderivative(ctx, builtin, arg, var)
-                {
+                if let Some(integral) = function_of_sqrt_antiderivative(ctx, builtin, arg, var) {
                     return Some(integral);
                 }
             }
@@ -28783,13 +28788,19 @@ mod tests {
     }
 
     #[test]
-    fn inverse_trig_of_sqrt_integrates_and_round_trips_numerically() {
+    fn function_of_sqrt_integrates_and_round_trips_numerically() {
         let mut ctx = Context::new();
-        // int inv(sqrt(x)) dx via u = sqrt(x) -> 2 int u inv(u) du, back-substituted.
+        // int f(sqrt(x)) dx via u = sqrt(x) -> 2 int u f(u) du, back-substituted.
+        // Covers the inverse-trig family plus sin/cos/sinh/cosh; the target is the
+        // integrand itself, so the central finite difference must recover it.
         for (source, target) in [
             ("arctan(sqrt(x))", "arctan(sqrt(x))"),
             ("arcsin(sqrt(x))", "arcsin(sqrt(x))"),
             ("arccos(sqrt(x))", "arccos(sqrt(x))"),
+            ("sin(sqrt(x))", "sin(sqrt(x))"),
+            ("cos(sqrt(x))", "cos(sqrt(x))"),
+            ("sinh(sqrt(x))", "sinh(sqrt(x))"),
+            ("cosh(sqrt(x))", "cosh(sqrt(x))"),
         ] {
             let expr = parse(source, &mut ctx).expect(source);
             let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x")
@@ -28818,15 +28829,20 @@ mod tests {
     }
 
     #[test]
-    fn inverse_trig_of_sqrt_declines_out_of_scope_arguments() {
+    fn function_of_sqrt_declines_out_of_scope_arguments() {
         let mut ctx = Context::new();
         // The argument must be sqrt of the bare variable; scaled/shifted
-        // radicands and a plain (non-sqrt) argument decline.
+        // radicands and a plain (non-sqrt) argument decline. `tan(sqrt(x))`
+        // declines too, but by self-gating: int u tan(u) du is non-elementary,
+        // so the delegated tail returns None and the rule stays an honest
+        // residual.
         for (source, builtin) in [
             ("arctan(sqrt(2*x))", cas_ast::BuiltinFn::Arctan),
             ("arctan(sqrt(x)+1)", cas_ast::BuiltinFn::Arctan),
             ("arctan(sqrt(x^2))", cas_ast::BuiltinFn::Arctan),
             ("arcsin(x)", cas_ast::BuiltinFn::Arcsin),
+            ("sin(2*x)", cas_ast::BuiltinFn::Sin),
+            ("tan(sqrt(x))", cas_ast::BuiltinFn::Tan),
         ] {
             let expr = parse(source, &mut ctx).expect(source);
             let arg = match ctx.get(expr).clone() {
@@ -28834,7 +28850,7 @@ mod tests {
                 _ => panic!("expected unary function: {source}"),
             };
             assert!(
-                super::inverse_trig_of_sqrt_antiderivative(&mut ctx, builtin, arg, "x").is_none(),
+                super::function_of_sqrt_antiderivative(&mut ctx, builtin, arg, "x").is_none(),
                 "rule must decline: {source}"
             );
         }

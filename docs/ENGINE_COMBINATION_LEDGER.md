@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 167 (newest first)
+Active entries: 168 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -127,6 +127,7 @@ Active entries: 167 (newest first)
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(x)/x^n dx, integer n in [2,8] | Retained integration: inverse-trig over x^n (generalized by parts)
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(sqrt(x)) dx for inv in | Retained integration: inverse-trig of sqrt(x) (u = sqrt(x) substitution)
 - 2026-06-15 | `retained` | calculus / definite integration / the area-function FTC int_a^x f(t) dt with a | Retained soundness: divergent improper area-functions yield undefined
+- 2026-06-15 | `retained` | calculus / function-of-radical integration / int f(sqrt(x)) dx for | Retained integration: trig/hyperbolic of sqrt(x) (generalized u = sqrt(x))
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7311,3 +7312,44 @@ Active entries: 167 (newest first)
     integrals (tan(t)/t, 1/(t ln(t)^2)) now answer `undefined` (conservative false
     negative), and the removable FTC capability d/dx int_0^x sin(t)/t dt = sin(x)/x is
     still unbuilt -- both await a real convergence certificate
+
+
+## 2026-06-15 - Retained integration: trig/hyperbolic of sqrt(x) (generalized u = sqrt(x))
+
+- area:
+  - calculus / function-of-radical integration / int f(sqrt(x)) dx for
+    f in {sin, cos, sinh, cosh} (block 8) -- generalizes the inverse-trig-of-sqrt owner
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: int sin(sqrt(x)) = 2 sin(sqrt(x)) - 2 sqrt(x) cos(sqrt(x));
+    int cos(sqrt(x)) = 2 cos(sqrt(x)) + 2 sqrt(x) sin(sqrt(x));
+    int sinh/cosh(sqrt(x)) resolve via the same substitution
+  - behavior_change_expected: yes - these were residual and now resolve
+- observed (one rename + a four-variant widening of an existing owner):
+  - the cycle's predecessor (inverse-trig of sqrt(x)) already implemented the GENERIC
+    reduction int f(sqrt(x)) dx = 2 int u f(u) du = 2 H(sqrt(x)): it builds f(var) in the
+    original variable, delegates H = int var*f(var) to the integrator, back-substitutes
+    var -> sqrt(x) and folds nested numeric powers. It was needlessly GATED to inverse-trig
+    builtins in the Function dispatch. Renamed it function_of_sqrt_antiderivative and widened
+    the dispatch match to also admit Sin/Cos/Sinh/Cosh -- the delegated tails int u*sin(u),
+    int u*cos(u), int u*sinh(u), int u*cosh(u) all resolve by-parts, so the closed forms drop
+    out for free
+  - SELF-GATING is the safety net: any builtin whose int u*f(u) du is non-elementary
+    (tan -> int u*tan(u) du is non-elementary) makes the delegated tail return None and the
+    rule stays an honest residual. So a liberal dispatch match is sound -- the delegate
+    decides elementarity, not the match arm. Verified: tan(sqrt(x)) stays residual
+  - verified by sympy and the existing finite-difference numeric round-trip unit test
+    (extended with the four new integrands; the closed forms mix sqrt factors the internal
+    differentiator declines, so the round-trip is numeric); the reject test gained a tan(sqrt(x))
+    self-gating case. No matrix rows (does not symbolically diff-verify) -> unit-test-locked,
+    no scorecard delta (guardrail + pressure fingerprints byte-identical)
+- retained learning:
+  - when an owner's body is already generic over a builtin parameter, a "new family" is a
+    DISPATCH widening plus a rename, not new math. Look for capability gated by an arm list
+    that the implementation does not actually require before writing a fresh rule
+  - a delegate-and-self-gate owner can be matched LIBERALLY: the recursive int u*f(u) tail is
+    the real elementarity oracle, so admitting f = tan costs nothing (it self-gates to a
+    residual) while admitting f = sin/cos/sinh/cosh wins four families. The match arm should
+    encode "shapes whose tail PLAUSIBLY resolves," not a hand-proved whitelist

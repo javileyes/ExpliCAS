@@ -202,6 +202,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   preexistente que afecta a TODAS las potencias (`1/(2cosh²)` también
   residual; el trig sí lo hace), y los múltiplos enteros puros `1/sinh(3x)`
   (el motor expande sinh(3x) antes de integrar))*
+  *(peldaño f(√x) 2026-06-15 PENDING_HASH: el cofactor no-racional `sin(√x)`
+  —y de paso `cos(√x)`, `sinh(√x)`, `cosh(√x)`— ya integra vía u=√x →
+  2∫u·f(u)du: `∫sin(√x)=2sin(√x)−2√x·cos(√x)`,
+  `∫cos(√x)=2cos(√x)+2√x·sin(√x)`, los hiperbólicos análogos. Fue un
+  ensanche de despacho del dueño inverse-trig-of-sqrt del ciclo previo
+  (renombrado `function_of_sqrt_antiderivative`): el cuerpo ya era genérico
+  sobre el builtin y el delegado ∫u·f(u) auto-cierra elementalidad —`tan(√x)`
+  se queda residual honesto porque ∫u·tan(u) no es elemental. Unit-test-locked
+  (no diff-verifica simbólico), sin delta de scorecard. Quedan: `e^√x` y
+  `e^√x/√x` (forma Pow(e,√x), no Function → otro punto de despacho))*
 - [x] **(F) Weierstrass t=tan(x/2)**: `1/(2+cos(x))`, `1/(1+sin(x))` —
   estándar de examen universitario.
   *(graduado 2026-06-13 c6107abd5: racionales de sin(kx)/cos(kx) con
