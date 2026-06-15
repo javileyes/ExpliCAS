@@ -5,7 +5,7 @@ use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_integer::Integer;
 use num_rational::BigRational;
-use num_traits::{One, Signed, Zero};
+use num_traits::{One, Signed, ToPrimitive, Zero};
 
 /// Extract the inner argument of `abs(x)`, returning `Some(x)` when expression
 /// is an absolute value call.
@@ -321,6 +321,52 @@ pub fn try_rewrite_evaluate_sign_expr(ctx: &mut Context, expr: ExprId) -> Option
     };
     let rewritten = ctx.num(s);
     Some((rewritten, format!("sign(constant) = {s}")))
+}
+
+/// Rewrite `b^(2k) / |b| -> |b|^(2k-1)` for a positive even integer exponent
+/// (e.g. `x^2/|x| -> |x|`, `x^4/|x| -> |x|^3`). Returns `(rewritten, base)`; the
+/// caller attaches the `base != 0` condition.
+///
+/// Sound and CONSERVATIVE: `b^(2k) = |b|^(2k)`, so `b^(2k)/|b| = |b|^(2k-1)` for
+/// `b != 0`. The removable point `b = 0` (where the quotient is `0/0`) is excluded
+/// by the `base != 0` condition -- the same treatment the engine gives `x^2/x -> x`.
+/// It never drops a needed condition or asserts a value where the input was
+/// undefined.
+pub fn try_rewrite_even_power_over_abs_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let abs_base = try_unwrap_abs_arg(ctx, den)?;
+    let Expr::Pow(pow_base, exp) = ctx.get(num).clone() else {
+        return None;
+    };
+    // The numerator's base must be exactly the absolute value's argument.
+    if compare_expr(ctx, pow_base, abs_base) != std::cmp::Ordering::Equal {
+        return None;
+    }
+    let Expr::Number(n) = ctx.get(exp) else {
+        return None;
+    };
+    if !n.is_integer() {
+        return None;
+    }
+    let two_k = n.to_integer().to_i64()?;
+    if two_k < 2 || two_k % 2 != 0 {
+        return None; // need a positive even exponent (>= 2)
+    }
+
+    let reduced = two_k - 1; // 2k - 1
+    let abs = ctx.call_builtin(BuiltinFn::Abs, vec![abs_base]);
+    let rewritten = if reduced == 1 {
+        abs
+    } else {
+        let exp_expr = ctx.num(reduced);
+        ctx.add(Expr::Pow(abs, exp_expr))
+    };
+    Some((rewritten, abs_base))
 }
 
 /// Rewrite `||x|| -> |x|`.
@@ -998,8 +1044,9 @@ mod tests {
         try_rewrite_abs_quotient_identity_expr, try_rewrite_abs_quotient_sub_normalize_expr,
         try_rewrite_abs_sqrt_identity_expr, try_rewrite_abs_sub_normalize_expr,
         try_rewrite_abs_sum_nonnegative_expr, try_rewrite_evaluate_abs_expr,
-        try_rewrite_sqrt_square_expr, try_unwrap_abs_arg, value_domain_mode_from_flag,
-        AbsDomainMode, AbsFixedRewriteKind, AbsNumericFactorRewriteKind, ValueDomainMode,
+        try_rewrite_even_power_over_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
+        value_domain_mode_from_flag, AbsDomainMode, AbsFixedRewriteKind,
+        AbsNumericFactorRewriteKind, ValueDomainMode,
     };
     use cas_ast::ordering::compare_expr;
     use cas_ast::{BuiltinFn, Context, Expr};
@@ -1122,6 +1169,50 @@ mod tests {
         let expr = ctx.add(Expr::Div(abs_x, abs_y));
         let rewrite = try_rewrite_abs_quotient_identity_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(rewrite.kind, AbsFixedRewriteKind::QuotientIdentity);
+    }
+
+    #[test]
+    fn rewrites_even_power_over_abs_and_declines_out_of_scope() {
+        let mut ctx = Context::new();
+        let render = |ctx: &Context, id| format!("{}", DisplayExpr { context: ctx, id });
+
+        // x^2/|x| -> |x|; x^4/|x| -> |x|^3 (the later odd-magnitude rule folds
+        // |x|^3 -> |x|*x^2 in the full pipeline; here we see the raw rewrite).
+        for (num_exp, expected) in [(2_i64, "|x|"), (4, "|x|^3")] {
+            let x = ctx.var("x");
+            let abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+            let e = ctx.num(num_exp);
+            let pow = ctx.add(Expr::Pow(x, e));
+            let expr = ctx.add(Expr::Div(pow, abs_x));
+            let (rewritten, base) =
+                try_rewrite_even_power_over_abs_expr(&mut ctx, expr).expect("rewrite");
+            assert_eq!(render(&ctx, rewritten), expected, "x^{num_exp}/|x|");
+            assert_eq!(
+                render(&ctx, base),
+                "x",
+                "condition base for x^{num_exp}/|x|"
+            );
+        }
+
+        // Declines: odd power (x^3/|x|), and a mismatched base (y^2/|x|).
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+        let three = ctx.num(3);
+        let x_cubed = ctx.add(Expr::Pow(x, three));
+        let odd = ctx.add(Expr::Div(x_cubed, abs_x));
+        assert!(
+            try_rewrite_even_power_over_abs_expr(&mut ctx, odd).is_none(),
+            "odd power must decline (x^3/|x|)"
+        );
+        let two = ctx.num(2);
+        let y_sq = ctx.add(Expr::Pow(y, two));
+        let abs_x2 = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+        let mismatch = ctx.add(Expr::Div(y_sq, abs_x2));
+        assert!(
+            try_rewrite_even_power_over_abs_expr(&mut ctx, mismatch).is_none(),
+            "mismatched base must decline (y^2/|x|)"
+        );
     }
 
     #[test]

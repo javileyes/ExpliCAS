@@ -12,9 +12,10 @@ use cas_math::abs_support::{
     try_rewrite_abs_product_identity_expr, try_rewrite_abs_quotient_identity_expr,
     try_rewrite_abs_quotient_sub_normalize_expr, try_rewrite_abs_sqrt_identity_expr,
     try_rewrite_abs_sub_normalize_expr, try_rewrite_abs_sum_nonnegative_expr,
-    try_rewrite_evaluate_abs_expr, try_rewrite_evaluate_sign_expr, try_rewrite_sqrt_square_expr,
-    try_unwrap_abs_arg, value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind,
-    AbsFixedRewriteKind, SymbolicRootCancelRewriteKind,
+    try_rewrite_evaluate_abs_expr, try_rewrite_evaluate_sign_expr,
+    try_rewrite_even_power_over_abs_expr, try_rewrite_sqrt_square_expr, try_unwrap_abs_arg,
+    value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind, AbsFixedRewriteKind,
+    SymbolicRootCancelRewriteKind,
 };
 use cas_math::expr_nary::{AddView, Sign};
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
@@ -211,6 +212,22 @@ define_rule!(
     |ctx, expr| {
         let (rewritten, desc) = try_rewrite_evaluate_sign_expr(ctx, expr)?;
         Some(Rewrite::new(rewritten).desc(desc))
+    }
+);
+
+define_rule!(
+    EvenPowerOverAbsRule,
+    "Even Power Over Absolute Value",
+    Some(crate::target_kind::TargetKindSet::DIV),
+    |ctx, expr| {
+        // x^(2k)/|x| -> |x|^(2k-1), a removable-singularity cancellation that
+        // keeps the x != 0 condition (the same treatment as x^2/x -> x).
+        let (rewritten, base) = try_rewrite_even_power_over_abs_expr(ctx, expr)?;
+        Some(
+            Rewrite::new(rewritten)
+                .requires(crate::ImplicitCondition::NonZero(base))
+                .desc("x^(2k)/|x| = |x|^(2k-1)"),
+        )
     }
 );
 
@@ -909,6 +926,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SymbolicRootCancelRule)); // V2.14.45: sqrt(x^n, n) -> x in Assume mode
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(EvaluateSignRule));
+    simplifier.add_rule(Box::new(EvenPowerOverAbsRule));
     simplifier.add_rule(Box::new(AbsNegativeSimplifyRule)); // |x| -> -x when inherited domain proves x < 0
     simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
     simplifier.add_rule(Box::new(AbsNonNegativeSimplifyRule)); // |x| -> x when x >= 0 (from sqrt requirements)

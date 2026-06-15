@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 172 (newest first)
+Active entries: 173 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -132,6 +132,7 @@ Active entries: 172 (newest first)
 - 2026-06-15 | `retained` | calculus / function-of-radical integration / `int e^sqrt(x) dx`, | Retained integration: e^sqrt(x) and H(sqrt(x))/sqrt(x) (u = sqrt(x))
 - 2026-06-15 | `retained` | calculus presentation / derivative of the absolute-value family + the sign | Retained presentation+eval: d/dx|x| = sign(x), and sign(c) evaluates
 - 2026-06-15 | `retained` | calculus / integration of the absolute-value and sign builtins with affine | Retained integration: int |a*x+b| dx and int sign(a*x+b) dx (affine)
+- 2026-06-15 | `retained` | simplification / absolute-value quotient cancellation (cas_math abs_support; | Retained simplification: x^(2k)/|x| -> |x|^(2k-1) (removable cancellation)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7586,3 +7587,54 @@ Active entries: 172 (newest first)
   - REMAINING peldano: fold x^2/|x| -> |x| (and x^(2k)/|x| -> |x|^(2k-1)) so the
     abs-antiderivative round-trips cleanly to 0; and non-affine |quadratic| integration
     via root-splitting (the indefinite analog of the definite root-split path)
+
+
+## 2026-06-15 - Retained simplification: x^(2k)/|x| -> |x|^(2k-1) (removable cancellation)
+
+- area:
+  - simplification / absolute-value quotient cancellation (cas_math abs_support;
+    EvenPowerOverAbsRule in cas_engine functions)
+- status:
+  - `retained`
+- capture:
+  - investment_class: educational
+  - cell: `x^2/|x| -> |x|` [x != 0], `x^4/|x| -> |x|*x^2`, so the abs-antiderivative
+    round-trip `diff(integrate(sqrt(x^2),x),x) - sqrt(x^2)` now folds to `0`
+  - behavior_change_expected: yes - a new conservative cancellation
+- observed (USER-REQUESTED polish of the int|x| round-trip; greenlit "only if safe"):
+  - `int sqrt(x^2) = x|x|/2` was correct but its verification `diff(x|x|/2) - |x|`
+    displayed as `(|x| + x^2/|x|)/2 - |x|` (mathematically 0, unfolded). Added the rule
+    `b^(2k)/|b| -> |b|^(2k-1)` for positive even integer 2k: `b^(2k) = |b|^(2k)`, so the
+    quotient is `|b|^(2k-1)` for b != 0. Matches `Div(Pow(base, 2k), Abs(base))` with the
+    power base EQUAL to the abs argument (compare_expr), gated to even 2k >= 2
+  - SAFETY ANALYSIS drove the design. Two paths were on the table; only one is safe:
+    (1) BLANKET `d/dx|x| -> sign(x)` engine-wide -- REJECTED: it would correctly handle
+    `x*|x|` but DROP a needed `x != 0` on `|x|*g(x)` with g(0) != 0 (genuinely non-smooth
+    at the corner) -> a soundness regression. (2) The conservative cancellation, taken:
+    it only ever ATTACHES `b != 0` (via .requires(NonZero(base)), the same treatment as
+    `x^2/x -> x`), never drops a condition, never asserts a value where the input was
+    undefined. The removable point b=0 (0/0) is excluded by the condition
+  - verified adversarially (simplifier change): two lenses, ~104 probes, 0 defects --
+    every rewrite keeps b != 0, numerically exact at both signs, no over-firing (odd
+    powers, mismatched bases, reciprocals, non-abs denominators all decline), ordinary
+    algebra + calculus intact, condition survives even when the result collapses to
+    0/1/constant. Pre-existing engine convention noted: in the COMPLEX value-domain the
+    rule fires (consistent with the engine already doing abs(x)^2 -> x^2 / sqrt(x^2) ->
+    |x| treating symbolic atoms as real); not introduced here, flag only if the complex
+    abs policy is later tightened
+  - guardrail + pressure fingerprints byte-identical. Updated the wire contract: the
+    generic round-trip now folds to `0` (was the unsimplified residual), and the assume
+    round-trip now verifies via the weaker generic `x != 0` cancellation WITHOUT needing
+    the `x > 0` positivity assumption (the integral itself still surfaces x > 0)
+- retained learning:
+  - when fixing an abs round-trip, prefer a CONSERVATIVE removable-singularity
+    cancellation (`x^2/|x| -> |x|` keeping x != 0) over rewriting the derivative form
+    engine-wide. The blanket form (`d/dx|x| -> sign(x)`) is the seductive-but-unsound
+    option: the corner condition for `|h|*cofactor` depends on whether the cofactor
+    vanishes, so a global sign substitution drops needed conditions where it does not
+  - over-conditioning is SOUND (conservative); under-conditioning is the soundness bug.
+    `diff(x|x|/2) = |x|` now carries a slightly over-restrictive `x != 0` (the derivative
+    actually exists at 0) -- acceptable, and identical to how `x^2/x -> x` keeps x != 0
+  - a removable cancellation that weakens an assume-mode result's NEEDED assumption (here
+    x > 0 -> the generic x != 0) is a genuine improvement: fewer/weaker assumptions to
+    verify the same identity

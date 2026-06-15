@@ -3544,11 +3544,11 @@ fn test_eval_integral_radical_abs_resolves_in_generic_and_simplifies_under_assum
         &["--domain", "generic"],
     );
     assert_eq!(generic_residual["ok"], true);
-    // d/dx(x|x|/2) - |x| = (x^2/|x| - |x|)/2, which is mathematically 0 (x^2/|x| =
-    // |x|); the engine does not yet fold x^2/|x| -> |x|, so it stays unsimplified.
+    // d/dx(x|x|/2) - |x| = (x^2/|x| - |x|)/2 -> 0: the x^2/|x| -> |x| cancellation
+    // (a removable-singularity fold, x != 0) makes the antiderivative verify cleanly.
     assert_eq!(
-        generic_residual["result"], "1/2·(x^2 / |x| - |x|)",
-        "generic abs antiderivative verifies (residual is mathematically 0)"
+        generic_residual["result"], "0",
+        "generic abs antiderivative verifies by differentiation (residual folds to 0)"
     );
 
     let assume = eval_json_with_args("integrate(sqrt(x^2), x)", &["--domain", "assume"]);
@@ -3597,14 +3597,16 @@ fn test_eval_integral_radical_abs_resolves_in_generic_and_simplifies_under_assum
         assume_residual["result"], "0",
         "assumed radical antiderivative should verify by differentiation"
     );
-    let residual_assumptions = assume_residual["assumptions_used"]
-        .as_array()
-        .expect("assumptions_used should be an array for assumed residual");
+    // The round-trip now verifies via the generic x^2/|x| -> |x| cancellation
+    // (weaker condition x != 0), so it no longer NEEDS the x > 0 positivity
+    // assumption -- assumptions_used is absent here.
     assert!(
-        residual_assumptions.iter().any(|assumption| {
-            assumption["display"] == "x > 0" && assumption["rule"] == "Abs Under Positivity"
-        }),
-        "assumed residual should surface the positivity assumption: {residual_assumptions:?}"
+        assume_residual["assumptions_used"].is_null()
+            || assume_residual["assumptions_used"]
+                .as_array()
+                .is_some_and(|a| a.is_empty()),
+        "residual verifies without the positivity assumption: {:?}",
+        assume_residual["assumptions_used"]
     );
 }
 
