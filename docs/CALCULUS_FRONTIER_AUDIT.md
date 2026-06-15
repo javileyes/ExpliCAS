@@ -456,7 +456,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   completo, divergencia oscilatoria declarada, y la narración educativa
   específica de simetría — hoy el paso es el envoltorio genérico "Calcular
   la integral".)*
-  *(abs lineal por tramos 2026-06-15 PENDING_HASH: `∫_a^b |c x + d|` sobre bornes
+  *(abs lineal por tramos 2026-06-15 1afca174c: `∫_a^b |c x + d|` sobre bornes
   RACIONALES ya resuelve — `abs_linear_definite_integral_rewrite` parte en la raíz
   `r=−d/c`: la antiderivada de `c x+d` es `G(x)=c x²/2+d x` y, como el interior
   tiene signo constante a cada lado de r, la integral es `|G(r)−G(lo)|+|G(hi)−G(r)|`
