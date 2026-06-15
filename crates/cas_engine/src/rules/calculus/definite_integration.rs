@@ -793,6 +793,76 @@ fn odd_symmetric_definite_integral_rewrite(
     Some(Rewrite::new(zero).desc("odd integrand over symmetric interval [-a, a] = 0"))
 }
 
+/// `integral_a^b |c x + d| dx` over finite RATIONAL bounds, split at the root
+/// `r = -d/c` of the linear inner. The antiderivative of `c x + d` is
+/// `G(x) = c x^2/2 + d x`; on each side of `r` the inner has constant sign, so
+/// the integral is `|G(r) - G(lo)| + |G(hi) - G(r)|` when `r` lies strictly
+/// inside the interval and `|G(hi) - G(lo)|` otherwise. Pure rational arithmetic,
+/// no antiderivative search. The integrand must be exactly `|linear|` (`x*|x|`
+/// and other products are left to the odd-symmetry / FTC owners). Resolves
+/// `integral|x| [-1,1] = 1`, `integral|x-1| [0,2] = 1`, `integral|2x-1| [0,1] = 1/2`.
+fn abs_linear_definite_integral_rewrite(
+    ctx: &mut Context,
+    call: &DefiniteIntegralCall,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> Option<Rewrite> {
+    let (DefiniteBound::Finite(low), DefiniteBound::Finite(high)) = (lower_bound, upper_bound)
+    else {
+        return None;
+    };
+    // Pure rational bounds only (a pi/e component is out of scope).
+    let pure_rational = |endpoint: &Endpoint| -> Option<BigRational> {
+        (endpoint.pi_multiple.is_zero() && endpoint.e_multiple.is_zero())
+            .then(|| endpoint.rational.clone())
+    };
+    let lo = pure_rational(low)?;
+    let hi = pure_rational(high)?;
+
+    // The integrand must be exactly |g(x)| with g a nonzero-slope linear poly.
+    let Expr::Function(fn_id, args) = ctx.get(call.target).clone() else {
+        return None;
+    };
+    if args.len() != 1 || ctx.builtin_of(fn_id) != Some(cas_ast::BuiltinFn::Abs) {
+        return None;
+    }
+    let poly = Polynomial::from_expr(ctx, args[0], &call.var_name).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+    let slope = poly.coeffs.get(1)?.clone();
+    let intercept = poly.coeffs.first()?.clone();
+    if slope.is_zero() {
+        return None;
+    }
+
+    let two = BigRational::from_integer(2.into());
+    let antiderivative = |x: &BigRational| -> BigRational {
+        let x_sq = x * x;
+        &slope * &x_sq / &two + &intercept * x
+    };
+    let root = -&intercept / &slope;
+
+    // Sort to a positive-orientation interval; restore the sign at the end.
+    let (left, right, sign) = if lo <= hi {
+        (lo.clone(), hi.clone(), BigRational::from_integer(1.into()))
+    } else {
+        (
+            hi.clone(),
+            lo.clone(),
+            BigRational::from_integer((-1).into()),
+        )
+    };
+    let positive = if left < root && root < right {
+        (antiderivative(&root) - antiderivative(&left)).abs()
+            + (antiderivative(&right) - antiderivative(&root)).abs()
+    } else {
+        (antiderivative(&right) - antiderivative(&left)).abs()
+    };
+    let value = ctx.add(Expr::Number(sign * positive));
+    Some(Rewrite::new(value).desc("integral of |linear| split at its root"))
+}
+
 pub(super) fn definite_integration_rewrite(
     ctx: &mut Context,
     call: &DefiniteIntegralCall,
@@ -823,6 +893,16 @@ pub(super) fn definite_integration_rewrite(
     // form and integer/divergent powers stay residual.
     if let Some(rewrite) =
         gamma_half_integer_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
+    {
+        return Some(rewrite);
+    }
+
+    // |linear| has no single elementary antiderivative, so split it at the root
+    // before the FTC attempt (the absolute value is continuous, no certificate
+    // needed); a product like x*|x| is not a bare |linear| and is left to the
+    // odd-symmetry / FTC owners.
+    if let Some(rewrite) =
+        abs_linear_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
     {
         return Some(rewrite);
     }
@@ -2027,6 +2107,35 @@ mod tests {
         assert!(eval_definite("integrate(x^2, x, 0, 1)").is_some());
         // Orientation is automatic: F(upper) - F(lower) with original bounds.
         assert!(eval_definite("integrate(x, x, 1, 0)").is_some());
+    }
+
+    #[test]
+    fn abs_linear_definite_integral_splits_at_the_root() {
+        // |c x + d| over rational bounds, split at r = -d/c.
+        for (source, expected) in [
+            ("integrate(abs(x), x, -1, 1)", "1"),
+            ("integrate(abs(x-1), x, 0, 2)", "1"),
+            ("integrate(abs(2*x-1), x, 0, 1)", "1/2"),
+            ("integrate(abs(x), x, -2, 3)", "13/2"),
+            ("integrate(abs(x-1), x, 2, 5)", "15/2"), // root outside the interval
+            ("integrate(abs(3-x), x, 0, 4)", "5"),
+        ] {
+            assert_eq!(eval_definite(source).as_deref(), Some(expected), "{source}");
+        }
+    }
+
+    #[test]
+    fn abs_linear_definite_integral_declines_out_of_scope() {
+        // Not a bare |linear|: a product (owned by odd symmetry), a quadratic
+        // inner, a symbolic (pi) bound, and the indefinite form all decline here.
+        // The product still resolves elsewhere (odd symmetry -> 0); the others
+        // stay residual.
+        assert_eq!(
+            eval_definite("integrate(abs(x)*x, x, -1, 1)").as_deref(),
+            Some("0")
+        );
+        assert!(eval_definite("integrate(abs(x^2-1), x, 0, 2)").is_none());
+        assert!(eval_definite("integrate(abs(x), x, 0, pi)").is_none());
     }
 
     #[test]

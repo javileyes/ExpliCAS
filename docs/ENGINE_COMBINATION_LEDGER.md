@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 158 (newest first)
+Active entries: 159 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
+- 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -6909,3 +6910,44 @@ Active entries: 158 (newest first)
     hyperbolic-form results). Fire the lowering as a LATE cascade rule on the specific
     unowned product shape, and require the partner factor that signals the combination has
     no owner. Delegation then self-gates the rest
+
+
+## 2026-06-15 - Retained definite integration: |linear| split at its root
+
+- area:
+  - calculus / definite integration / integral_a^b |c x + d| dx over rational bounds (block 13)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: integrate(|x|,x,-1,1)=1, integrate(|x-1|,x,0,2)=1,
+    integrate(|2x-1|,x,0,1)=1/2, integrate(|x|,x,-2,3)=13/2
+  - behavior_change_expected: yes - definite integrals of |linear| (no single
+    elementary antiderivative) were residual and now resolve
+- observed (pure rational arithmetic, no antiderivative search):
+  - the antiderivative of c x + d is G(x) = c x^2/2 + d x; on each side of the root
+    r = -d/c the inner has constant sign, so integral_a^b |c x + d| =
+    |G(r)-G(lo)| + |G(hi)-G(r)| when r is strictly inside the interval, else
+    |G(hi)-G(lo)|. Bounds and root are rational, so the whole thing is exact
+    BigRational arithmetic. Placed before resolve_indefinite_for_definite in the
+    definite dispatcher (|linear| has no antiderivative the FTC path finds);
+    absolute value is continuous, so no pole/touch certificate is needed
+  - GATED to a bare |linear| with rational bounds: a product like x*|x| is NOT
+    Function(Abs,..) so it is left to the odd-symmetry owner (x*|x| -> 0); a
+    quadratic inner (|x^2-1|), a pi/e bound, and the indefinite form all decline
+    to honest residuals
+  - verified with sympy; two cas_engine unit tests (six values, three declines)
+- retained learning:
+  - a definite integral whose integrand has no single elementary antiderivative is
+    still exactly computable when the antiderivative is PIECEWISE and the breakpoints
+    are rational: evaluate the piece antiderivatives at rational points and sum. Do
+    it in BigRational, place the rule BEFORE the FTC attempt, and gate on the bare
+    shape so products keep their structural (symmetry) owners
+  - OPERATIONAL (cost me a stuck run): never wait on a scorecard generator with
+    `while pgrep -f "engine_improvement_scorecard.py"` -- the wait-wrapper's OWN
+    command line contains that string, so pgrep self-matches and the loop never
+    exits. Run the generator as a direct background command and wait for its task
+    notification instead. Also: concurrent generators race the output json
+  - adding cas_engine unit tests bumps `filtered_out` in name-filtered cargo-test
+    scorecard lanes (e.g. calculus_integrate_backend_mode_boundary) by the test
+    count -- a benign bookkeeping delta, not a behavior change

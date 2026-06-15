@@ -456,6 +456,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   completo, divergencia oscilatoria declarada, y la narración educativa
   específica de simetría — hoy el paso es el envoltorio genérico "Calcular
   la integral".)*
+  *(abs lineal por tramos 2026-06-15 PENDING_HASH: `∫_a^b |c x + d|` sobre bornes
+  RACIONALES ya resuelve — `abs_linear_definite_integral_rewrite` parte en la raíz
+  `r=−d/c`: la antiderivada de `c x+d` es `G(x)=c x²/2+d x` y, como el interior
+  tiene signo constante a cada lado de r, la integral es `|G(r)−G(lo)|+|G(hi)−G(r)|`
+  si r∈(lo,hi), si no `|G(hi)−G(lo)|`. Aritmética BigRational exacta, antes del
+  intento FTC (|lineal| no tiene antiderivada que el FTC halle); abs es continuo,
+  sin certificado de polo. `∫|x|[-1,1]=1`, `∫|x-1|[0,2]=1`, `∫|2x-1|[0,1]=1/2`,
+  `∫|x|[-2,3]=13/2`, raíz fuera `∫|x-1|[2,5]=15/2`. Gateado a |lineal| desnudo con
+  bornes racionales: el producto `x·|x|` (no es Function(Abs)) lo conserva la
+  simetría impar (→0); inner cuadrático `|x²-1|`, borne π/e e indefinida declinan.
+  Quedan: inner cuadrático/polinómico (raíces múltiples), `e^(-|x|)` impropia, y la
+  narración de simetría.)*
 - [~] **(F) Por partes narrada**: la plantilla completa ('Elegir u y
   dv' → 'Calcular du y v' → 'Aplicar la fórmula') existe y la usa
   `x·ln(x)`, pero `x·eˣ`, `x·cos x`, `arctan(x)`, `x²eˣ`, `eˣ·sin x`
