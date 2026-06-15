@@ -101,6 +101,19 @@ pub fn is_number_in_unit_interval(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// True when `expr` is a numeric literal strictly outside `[-1, 1]` — i.e.
+/// provably OUTSIDE the domain of `arcsin`/`arccos`. Then any forward composition
+/// `sin(arcsin(c))` / `cos(arccos(c))` is undefined over the reals (the inner
+/// inverse has no real value), so it must NOT simplify to `c`.
+fn is_number_outside_unit_interval(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        let one = num_rational::BigRational::one();
+        *n > one || *n < -one
+    } else {
+        false
+    }
+}
+
 fn is_exact_one(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Number(n) if *n == num_rational::BigRational::one())
 }
@@ -322,6 +335,18 @@ pub fn try_plan_inverse_trig_composition_expr(
     };
 
     if let Some((inner_name, x)) = inner_fn_info {
+        // An inner arcsin/arccos of a literal outside [-1, 1] is undefined over the
+        // reals, so NO forward composition simplifies: `sin(arcsin(2))` is not `2`,
+        // `cos(arccos(5))` is not `5`. Keep it symbolic.
+        if (ctx.is_builtin(inner_name, BuiltinFn::Arcsin)
+            || ctx.is_builtin(inner_name, BuiltinFn::Asin)
+            || ctx.is_builtin(inner_name, BuiltinFn::Arccos)
+            || ctx.is_builtin(inner_name, BuiltinFn::Acos))
+            && is_number_outside_unit_interval(ctx, x)
+        {
+            return None;
+        }
+
         if ctx.is_builtin(*outer_name, BuiltinFn::Sin)
             && (ctx.is_builtin(inner_name, BuiltinFn::Arcsin)
                 || ctx.is_builtin(inner_name, BuiltinFn::Asin))

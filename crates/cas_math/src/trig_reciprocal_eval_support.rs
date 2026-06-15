@@ -207,10 +207,33 @@ pub fn try_rewrite_reciprocal_trig_composition_expr(
         _ => return None,
     };
 
+    let inner_arg = inner_args[0];
+    // `arcsec`/`arccsc` are defined over the reals only for `|x| >= 1`. A literal
+    // inside `(-1, 1)` makes the inner inverse undefined, so `csc(arccsc(0.5))`
+    // must NOT become `0.5` (the engine itself keeps bare `arccsc(0.5)` symbolic).
+    if matches!(
+        kind,
+        ReciprocalTrigCompositionKind::SecArcsec | ReciprocalTrigCompositionKind::CscArccsc
+    ) && reciprocal_inner_literal_below_one(ctx, inner_arg)
+    {
+        return None;
+    }
+
     Some(ReciprocalTrigCompositionRewrite {
-        rewritten: inner_args[0],
+        rewritten: inner_arg,
         kind,
     })
+}
+
+/// True when `expr` is a numeric literal of magnitude below 1 (`-1 < n < 1`) —
+/// outside the `arcsec`/`arccsc` domain (magnitude at least 1).
+fn reciprocal_inner_literal_below_one(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        let one = num_rational::BigRational::from_integer(num_bigint::BigInt::from(1));
+        *n < one && *n > -one
+    } else {
+        false
+    }
 }
 
 #[derive(Clone, Copy)]

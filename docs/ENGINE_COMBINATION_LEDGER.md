@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 180 (newest first)
+Active entries: 181 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
+- 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -7928,3 +7929,39 @@ Active entries: 180 (newest first)
     it ASYMMETRIC toward the safe error. Here: only ever DROP when certain (rational, exact);
     when unsure, KEEP. The adversarial measures both directions - run it after the fix AND
     after the hardening, because over-correcting introduces the opposite defect
+## 2026-06-16 - Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
+- area:
+  - block trig/inverse-trig + hyperbolic; four `cas_math` composition rules
+    (`inverse_trig_composition_support`, `inv_trig_n_angle_support`,
+    `hyperbolic_core_support`, `trig_inverse_expansion_support`, `trig_reciprocal_eval_support`)
+- status:
+  - `retained` (HONESTY soundness fix; R1 of docs/SOUNDNESS_AUDIT_ROUND2.md)
+- capture:
+  - investment_class: soundness
+  - cell: `sin(arcsin(2))`, `cos(arccos(5))`, `tan(arcsin(2))`, `tanh(atanh(2))`,
+    `cosh(acosh(0))`, `csc(acsc(0.5))`, `sec(asec(0.5))` all STAY SYMBOLIC (were a
+    fabricated real value / a smuggled `sqrt(-3)`)
+  - behavior_change_expected: yes - out-of-domain literal compositions stop folding;
+    guardrail+pressure fingerprints BYTE-IDENTICAL
+- observed (USER-DIRECTED, Round-2 audit priority #5):
+  - `f(f_inverse(c)) = c` fired for a LITERAL `c` outside the inner inverse's domain,
+    fabricating a real value (or a complex `sqrt(-3)` smuggled into a real result).
+    Fix: each composition declines when `c` is a literal provably out of domain
+    (arcsin/arccos: |c|<=1; atanh: |c|<1; acosh: c>=1; arcsec/arccsc: |c|>=1;
+    arctan/arccot/asinh: all reals, never gated)
+  - ADVERSARIAL FOUND THE SCOPE INCREMENTALLY: the same identity is implemented in
+    FOUR independent rule families (the composition planner, the n-angle recurrence,
+    the trig-expansion forms `tan/cos(arcsin)`, and the reciprocal-trig forms
+    `csc/sec(arccsc/arcsec)`). Fixing the obvious two left the other two fabricating
+    values; the sweep's refutation agents located the exact ungated functions. A third
+    sweep (133 probes) confirmed 0 remaining fabrication AND 0 over-firing (in-domain,
+    boundary +-1, n-multiples, and all arctan forms still simplify)
+- retained learning:
+  - the SAME mathematical identity is often implemented in several independent rule
+    families (general planner + special-case fast paths + expansion forms + reciprocal
+    forms). A soundness gate must be added to ALL of them; grep the IDENTITY (not one
+    function name) and let the adversarial enumerate the paths the author missed
+  - a forward-of-inverse `f(f_inverse(c))` is only `c` when `c` is in the inverse's
+    DOMAIN. For a literal, that is a cheap interval check; gating on it costs nothing
+    and is the difference between honest "stays symbolic" and a fabricated real (or a
+    complex value smuggled into a real-domain result via `sqrt(1-c^2)` with `|c|>1`)

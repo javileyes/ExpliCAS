@@ -33,17 +33,27 @@ operands are defined and finite over ℝ**. `sin(arcsin(2))→2`, `inf−inf→0
 
 ## Confirmed new defects — 6 root-cause clusters
 
-### R1 — Inverse-function composition collapses past the inverse's domain (HONESTY, ~14)
-`f(f⁻¹(x)) → x` rewrites fire without gating on the inverse's domain, fabricating
+### R1 — Inverse-function composition collapses past the inverse's domain (HONESTY, ~14) — FIXED (commit `PENDING_HASH`)
+`f(f⁻¹(x)) → x` rewrites fired without gating on the inverse's domain, fabricating
 a real value for an undefined input:
-- `sin(arcsin(2)) → 2`, `sin(arcsin(3/2)) → 3/2`, `cos(arccos(5)) → 5`,
-  `cos(arccos(2)) → 2` (need `|x|≤1`).
+- `sin(arcsin(2)) → 2`, `cos(arccos(5)) → 5`, `tan(arcsin(2)) → 2/√(-3)`,
+  `cos(arcsin(2)) → √(-3)`, `sin(arccos(2)) → √(-3)` (need `|x|≤1`).
 - `tanh(atanh(2)) → 2` (need `|x|<1`).
 - `sec(asec(0.5)) → 1/2`, `csc(acsc(0.5)) → 1/2` (need `|x|≥1`).
 - `cosh(acosh(0)) → 0`, `cosh(acosh(-3)) → -3` (need `x≥1`).
-- (Rediscovered same family: `asin(2)+acos(2) → π/2`.)
-**Fix:** gate each `f(f⁻¹(x)) = x` rewrite by the inverse's domain condition; for a
-provably out-of-domain literal, keep symbolic / mark undefined.
+**Fix (commit `PENDING_HASH`):** the defect spanned **four** rule families — the
+composition planner + n-angle recurrence (`inverse_trig_composition_support.rs`,
+`inv_trig_n_angle_support.rs`), the hyperbolic compositions
+(`hyperbolic_core_support.rs`), the trig expansion forms
+(`trig_inverse_expansion_support.rs`: `tan/cos(arcsin)`, `sin(arccos)`, …), and the
+reciprocal-trig forms (`trig_reciprocal_eval_support.rs`: `csc/sec(arccsc/arcsec)`).
+Each now declines when the inner inverse's argument is a literal provably outside
+its domain (`arcsin/arccos`: |x|≤1; `atanh`: |x|<1; `acosh`: x≥1; `arcsec/arccsc`:
+|x|≥1; `arctan/arccot`/`asinh`: all of ℝ, never gated). The adversarial sweep found
+the 3rd and 4th families after the first two were fixed; a re-run (133 probes) is
+clean — every out-of-domain literal stays symbolic, every in-domain case (incl.
+boundary `±1`, `n=2` multiples, and all `arctan` forms) still simplifies, no
+over-firing. Guardrail+pressure fingerprints byte-identical.
 
 ### R2 — `acosh(cosh(x)) → x` should be `|x|` (SIGN-WRONG, ~5) — FIXED (commit `d22eec10e`)
 `acosh` has range `[0,∞)`, so `acosh(cosh(x)) = |x|`, not `x`:
@@ -172,8 +182,8 @@ deeper isolation-strategy fix; own cycle. NOT YET FIXED.
    rule (neither `DivZeroRule` nor `const_fold`) — needs simplifier instrumentation.
 4. **R5a** — `solve` abs extraneous-root filtering. FIXED (commit `4d07aaee6`)
    for rational roots; irrational extraneous (R5a-2) needs exact verification.
-5. **R1** — gate `f(f⁻¹(x)) = x` by the inverse's domain (broad but mechanical;
-   ~14 defects, one rule family).
+5. **R1** — gate `f(f⁻¹(x)) = x` by the inverse's domain. FIXED (commit `PENDING_HASH`)
+   across four rule families.
 6. **R3** — block cancellation/like-term folding on non-finite/undefined operands
    (foundational cancellation path; scope carefully — high huella).
 7. **R6** — dropped conditions (`(a*b)^x`, arccot, zero-summand sum). Lower severity.
@@ -199,6 +209,6 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [ ] R4 — numeric `0/0` fold guard *(investigated; default-mode path is a third unidentified rule — own cycle w/ instrumentation)*
 - [x] R5a — `solve` abs extraneous-root filter *(FIXED 2026-06-15, commit `4d07aaee6`, rational roots; irrational extraneous split to R5a-2)*
 - [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
-- [ ] R1 — inverse-composition domain gate (`f(f⁻¹(x))`)
+- [x] R1 — inverse-composition domain gate (`f(f⁻¹(x))`) *(FIXED 2026-06-16, commit `PENDING_HASH`, four rule families)*
 - [ ] R3 — non-finite/undefined operand cancellation guard
 - [ ] R6 — dropped conditions (`(a*b)^x`, arccot, zero-summand sum)

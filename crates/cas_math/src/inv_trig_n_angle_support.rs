@@ -3,6 +3,17 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
+/// True when `expr` is a numeric literal strictly outside `[-1, 1]` — provably
+/// outside the domain of `arcsin`/`arccos`.
+fn literal_outside_unit_interval(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        let one = BigRational::from_integer(BigInt::from(1));
+        *n > one || *n < -one
+    } else {
+        false
+    }
+}
+
 /// Build `expr^(1/2)` i.e. `sqrt(expr)`.
 pub fn build_sqrt(ctx: &mut Context, expr: ExprId) -> ExprId {
     let half = ctx.add(Expr::Number(BigRational::new(
@@ -251,6 +262,12 @@ pub fn try_plan_n_angle_acos_expr(
         _ => return None,
     };
 
+    // `arccos(t)` is undefined over the reals for a literal `|t| > 1`, so
+    // `cos(arccos(5))` must NOT become `5`. Keep it symbolic.
+    if literal_outside_unit_interval(ctx, t) {
+        return None;
+    }
+
     if count_nodes_dedup(ctx, t) > max_inner_nodes {
         return None;
     }
@@ -330,6 +347,12 @@ pub fn try_plan_n_angle_asin_expr(
         },
         _ => return None,
     };
+
+    // `arcsin(t)` is undefined over the reals for a literal `|t| > 1`, so
+    // `sin(arcsin(2))` must NOT become `2`. Keep it symbolic.
+    if literal_outside_unit_interval(ctx, t) {
+        return None;
+    }
 
     if count_nodes_dedup(ctx, t) > max_inner_nodes {
         return None;

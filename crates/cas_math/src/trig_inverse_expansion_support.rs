@@ -26,6 +26,38 @@ pub enum TrigInverseExpansionKind {
     CscArcsin,
 }
 
+/// True when `expr` is a numeric literal of magnitude above 1 (`n > 1` or
+/// `n < -1`) — outside the `arcsin`/`arccos` domain.
+fn literal_magnitude_above_one(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        let one = Ratio::from_integer(BigInt::from(1));
+        *n > one || *n < -one
+    } else {
+        false
+    }
+}
+
+/// True when `expr` is a numeric literal of magnitude below 1 (`-1 < n < 1`) —
+/// outside the `arcsec`/`arccsc` domain.
+fn literal_magnitude_below_one(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        let one = Ratio::from_integer(BigInt::from(1));
+        *n < one && *n > -one
+    } else {
+        false
+    }
+}
+
+/// True when the inner inverse of a literal `x` is undefined over the reals, so
+/// no forward composition may expand (e.g. `tan(arcsin(2))` is not `2/sqrt(1-4)`).
+fn inner_inverse_literal_out_of_domain(ctx: &Context, inner_name: &str, x: ExprId) -> bool {
+    match inner_name {
+        "arcsin" | "asin" | "arccos" | "acos" => literal_magnitude_above_one(ctx, x),
+        "arcsec" | "asec" | "arccsc" | "acsc" => literal_magnitude_below_one(ctx, x),
+        _ => false, // arctan/arccot are defined on all of R
+    }
+}
+
 /// Try to expand compositions like `sin(arctan(x))`.
 ///
 /// Returns `(expanded_expr, kind)` when a known identity matches.
@@ -35,6 +67,9 @@ pub fn expand_trig_inverse_composition(
     inner_name: &str,
     x: ExprId,
 ) -> Option<(ExprId, TrigInverseExpansionKind)> {
+    if inner_inverse_literal_out_of_domain(ctx, inner_name, x) {
+        return None;
+    }
     for (outer_expected, inner_variants, transform, kind) in EXPANSIONS {
         if outer_name == *outer_expected && inner_variants.contains(&inner_name) {
             let result = apply_transform(ctx, x, *transform);

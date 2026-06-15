@@ -48,6 +48,29 @@ pub fn try_eval_hyperbolic_special_value(
     }
 }
 
+/// True when `expr` is a numeric literal of magnitude at least 1 (`n >= 1` or
+/// `n <= -1`) — outside the open interval `(-1, 1)` that is the `atanh` domain.
+fn number_magnitude_at_least_one(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::One;
+    if let Expr::Number(n) = ctx.get(expr) {
+        let one = num_rational::BigRational::one();
+        *n >= one || *n <= -one
+    } else {
+        false
+    }
+}
+
+/// True when `expr` is a numeric literal below 1 — outside the `acosh` domain
+/// (which is `x` at least 1).
+fn number_below_one(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::One;
+    if let Expr::Number(n) = ctx.get(expr) {
+        *n < num_rational::BigRational::one()
+    } else {
+        false
+    }
+}
+
 /// Rewrite direct hyperbolic-inverse compositions.
 ///
 /// Matches:
@@ -55,7 +78,7 @@ pub fn try_eval_hyperbolic_special_value(
 /// - `cosh(acosh(x))`
 /// - `tanh(atanh(x))`
 /// - `asinh(sinh(x))`
-/// - `acosh(cosh(x))`  -> `|x|` (acosh has range `[0, inf)` and cosh is even)
+/// - `acosh(cosh(x))`  -> abs (acosh has range `[0, inf)` and cosh is even)
 /// - `atanh(tanh(x))`
 pub fn try_rewrite_hyperbolic_composition(
     ctx: &mut Context,
@@ -80,6 +103,21 @@ pub fn try_rewrite_hyperbolic_composition(
         return None;
     }
     let x = inner_args[0];
+
+    // An inner inverse of a literal outside its domain is undefined over the reals,
+    // so the composition must NOT simplify: `tanh(atanh(2))` is not `2` (atanh needs
+    // `|x| < 1`), `cosh(acosh(0))` is not `0` (acosh needs `x >= 1`).
+    match (ctx.builtin_of(outer_fn), ctx.builtin_of(inner_fn)) {
+        (Some(BuiltinFn::Tanh), Some(BuiltinFn::Atanh))
+            if number_magnitude_at_least_one(ctx, x) =>
+        {
+            return None;
+        }
+        (Some(BuiltinFn::Cosh), Some(BuiltinFn::Acosh)) if number_below_one(ctx, x) => {
+            return None;
+        }
+        _ => {}
+    }
 
     let rewritten = match (ctx.builtin_of(outer_fn), ctx.builtin_of(inner_fn)) {
         // `acosh(cosh(x)) = |x|`, NOT `x`: acosh has range `[0, inf)` and cosh is
