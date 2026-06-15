@@ -1962,6 +1962,75 @@ fn trig_square_affine_antiderivative(
     Some(ctx.add(Expr::Add(half_linear, oscillatory)))
 }
 
+/// `int inv(x)/x^2 dx` for an inverse-trig `inv` of the bare variable, by parts
+/// (`u = inv(x)`, `dv = x^-2 dx`, `v = -1/x`):
+///
+/// ```text
+/// int inv(x)/x^2 dx = -inv(x)/x + int inv'(x)/x dx
+/// ```
+///
+/// The tail `int inv'(x)/x dx` is delegated to the integrator: for `arctan` it
+/// is `int 1/(x(1+x^2))` and for `arcsin`/`arccos` it is `int 1/(x sqrt(1-x^2))`,
+/// both of which resolve. If the tail does not resolve the whole rule
+/// self-gates to an honest residual.
+fn inverse_trig_over_square_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    // Denominator must be exactly x^2.
+    let Expr::Pow(base, exp) = ctx.get(den).clone() else {
+        return None;
+    };
+    if !is_var(ctx, base, var) || !is_number(ctx, exp, 2) {
+        return None;
+    }
+
+    // Numerator must be a single inverse-trig of the bare variable.
+    let Expr::Function(fn_id, args) = ctx.get(num).clone() else {
+        return None;
+    };
+    if args.len() != 1 || !is_var(ctx, args[0], var) {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(
+        builtin,
+        BuiltinFn::Arcsin
+            | BuiltinFn::Asin
+            | BuiltinFn::Arccos
+            | BuiltinFn::Acos
+            | BuiltinFn::Arctan
+            | BuiltinFn::Atan
+    ) {
+        return None;
+    }
+
+    // head = -inv(x)/x
+    let var_expr = ctx.var(var);
+    let head_div = ctx.add(Expr::Div(num, var_expr));
+    let head = ctx.add(Expr::Neg(head_div));
+
+    // tail = int inv'(x)/x dx, delegated (none -> honest residual).
+    let derivative =
+        crate::symbolic_differentiation_support::differentiate_symbolic_expr(ctx, num, var)?;
+    let var_expr = ctx.var(var);
+    // Flatten `(N/D)/x` into the single fraction `N/(D*x)`: the internal
+    // integrator does not pre-simplify a nested quotient, and the flat form is
+    // what its rational/radical reciprocal rules recognize.
+    let tail_integrand = match ctx.get(derivative).clone() {
+        Expr::Div(n, d) => {
+            let denom = ctx.add(Expr::Mul(d, var_expr));
+            ctx.add(Expr::Div(n, denom))
+        }
+        _ => ctx.add(Expr::Div(derivative, var_expr)),
+    };
+    let tail = integrate_symbolic_expr(ctx, tail_integrand, var)?;
+
+    Some(ctx.add(Expr::Add(head, tail)))
+}
+
 /// Antiderivative of `arcsin(a x + b)^2` and `arccos(a x + b)^2`.
 ///
 /// Both are elementary (integration by parts, twice). With `u = a x + b`,
@@ -22028,6 +22097,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Div(num, den) = kind {
+        if let Some(integral) = inverse_trig_over_square_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = reciprocal_exp_linear_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
@@ -28503,6 +28576,65 @@ mod tests {
                     &mut ctx, base_exp.0, base_exp.1, "x"
                 )
                 .is_none(),
+                "rule must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn inverse_trig_over_square_integrates_and_round_trips_numerically() {
+        let mut ctx = Context::new();
+        // int inv(x)/x^2 dx by parts, with the tail int inv'(x)/x dx delegated.
+        for (source, target) in [
+            ("arctan(x)/x^2", "arctan(x)/x^2"),
+            ("arcsin(x)/x^2", "arcsin(x)/x^2"),
+            ("arccos(x)/x^2", "arccos(x)/x^2"),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x")
+                .unwrap_or_else(|| panic!("must integrate: {source}"));
+            let target_expr = parse(target, &mut ctx).expect(target);
+            // The closed form carries ln(|x|), which the internal differentiator
+            // does not handle, so pin the round-trip with a central finite
+            // difference of F instead: F'(x) ~ (F(x+h) - F(x-h)) / (2h) == f(x).
+            let eval_at = |ctx: &Context, e: cas_ast::ExprId, x: f64| -> f64 {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), x);
+                crate::evaluator_f64::eval_f64(ctx, e, &vars).expect("eval_f64")
+            };
+            // Samples inside (-1, 1) \ {0} so arcsin/arccos stay real and x != 0.
+            for sample in [-0.4_f64, -0.2, 0.25, 0.45] {
+                let h = 1e-6;
+                let numeric_deriv = (eval_at(&ctx, antiderivative, sample + h)
+                    - eval_at(&ctx, antiderivative, sample - h))
+                    / (2.0 * h);
+                let f_val = eval_at(&ctx, target_expr, sample);
+                assert!(
+                    (numeric_deriv - f_val).abs() < 1e-5,
+                    "round-trip mismatch for {source} at {sample}: {numeric_deriv} vs {f_val}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_trig_over_square_declines_out_of_scope_shapes() {
+        let mut ctx = Context::new();
+        // Gated to exponent 2 (bare x^2 denominator) and a bare-variable inner;
+        // higher powers, affine/non-affine inners, and plain trig decline.
+        for source in [
+            "arctan(x)/x^3",
+            "arctan(2*x)/x^2",
+            "arctan(x^2)/x^2",
+            "sin(x)/x^2",
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let (num, den) = match ctx.get(expr).clone() {
+                cas_ast::Expr::Div(n, d) => (n, d),
+                _ => panic!("expected Div: {source}"),
+            };
+            assert!(
+                super::inverse_trig_over_square_antiderivative(&mut ctx, num, den, "x").is_none(),
                 "rule must decline: {source}"
             );
         }

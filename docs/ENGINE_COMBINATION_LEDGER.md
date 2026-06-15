@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 163 (newest first)
+Active entries: 164 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -123,6 +123,7 @@ Active entries: 163 (newest first)
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int arcsin(a x + b)^2 and | Retained integration: arcsin^2 / arccos^2 by parts
 - 2026-06-15 | `retained` | calculus / educational / didactic substeps for int_a^b |c x + d| dx (the | Retained educational: abs-linear definite-integral narration
 - 2026-06-15 | `retained` | core / power evaluation / `try_rewrite_evaluate_power_expr` (P0 robustness + | Retained soundness: 0^(negative fractional power) no longer panics
+- 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(x)/x^2 dx for inv in | Retained integration: inverse-trig over x^2 by parts (delegated tail)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7141,3 +7142,47 @@ Active entries: 163 (newest first)
     NEXT PELDAÑO: a shared convergence certificate (reuse the definite-integration engine,
     which already returns finite for int_0^c f iff it converges) gating ALL FTC-presentation
     routes; only then add the removable sin(t)/t capability
+
+## 2026-06-15 - Retained integration: inverse-trig over x^2 by parts (delegated tail)
+
+- area:
+  - calculus / inverse-trig integration / int inv(x)/x^2 dx for inv in
+    {arctan, arcsin, arccos} (block 8)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: int arctan(x)/x^2 = ln|x| - 1/2 ln(x^2+1) - arctan(x)/x;
+    int arcsin(x)/x^2 and int arccos(x)/x^2 resolve via the same by-parts
+  - behavior_change_expected: yes - these were residual and now resolve (with the
+    natural domain conditions x != 0 and, for arcsin/arccos, -1 <= x <= 1)
+- observed (one ~40-line handler, build-and-delegate):
+  - by parts with u = inv(x), dv = x^-2 dx, v = -1/x gives
+    int inv(x)/x^2 = -inv(x)/x + int inv'(x)/x dx. The head is exact; the tail
+    int inv'(x)/x dx is delegated to integrate_symbolic_expr (arctan -> 1/(x(1+x^2)),
+    arcsin/arccos -> 1/(x sqrt(1-x^2)), both resolve). If the tail does not resolve the
+    rule self-gates to an honest residual
+  - GATE: denominator exactly x^2, numerator a single inverse-trig of the BARE variable.
+    Higher powers (/x^3), affine inner (arctan(2x)), non-affine inner (arctan(x^2)) and
+    plain trig (sin(x)/x^2) decline; arctan(x)/x (the dilogarithm, non-elementary) and
+    arctan^2 stay residual
+  - SHARP FIX along the way: the internal integrator does NOT pre-simplify, so the
+    differentiated tail `(N/D)/x` (a nested quotient) was not recognized by the rational
+    reciprocal rules (arctan stayed residual while arcsin worked). Flattening it to the
+    single fraction `N/(D*x)` before delegating fixed it
+  - verified by sympy (d/dx F - f = 0) and a finite-difference numeric round-trip unit
+    test (the closed form carries ln|x|, which the internal differentiator does not
+    handle, so the test pins F'(x) by central difference instead of symbolic diff); 4
+    reject shapes in a second unit test. No matrix rows (the radical/log antiderivative
+    does not symbolically diff-verify, same as x*arcsin) -> unit-test-locked, no scorecard
+    delta
+- retained learning:
+  - when an antiderivative is `boundary_term + int(tail)`, build the boundary term exactly
+    and DELEGATE the tail to the integrator: the None-propagation self-gates non-resolving
+    tails to honest residuals, and you inherit every rule the integrator already has
+  - delegating to the INTERNAL `integrate_symbolic_expr` (not the eval pipeline) means no
+    pre-simplification: hand it a FLAT fraction, not a nested `(N/D)/x`, or the rational
+    reciprocal rules will not fire
+  - a closed form containing `ln|x|` cannot be round-tripped through the internal
+    differentiator (it declines on the abs argument); pin such antiderivatives with a
+    finite-difference numeric check instead
