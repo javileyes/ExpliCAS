@@ -140,7 +140,7 @@ negatives, where the even root has no real value:
 - `((-2)^(1/4))^4` → `-2` ; undefined.
 - Inconsistent with the honest siblings (`sqrt(-1)` warns); no warning here.
 
-**SIGN-WRONG defects FIXED (2026-06-15, commit `PENDING_HASH`).** Every
+**SIGN-WRONG defects FIXED (2026-06-15, commit `179c12115`).** Every
 DISTINCT-base even-root product that fabricated a real (sign-wrong) value is
 resolved. The radical-merge rules combined `a^(1/2)·b^(1/2) → (ab)^(1/2)` even
 when a base was negative: `try_rewrite_root_merge_mul_expr_with` and
@@ -183,7 +183,7 @@ next peldaño.
 4. **Cluster D** — wrong branch value; FIXED (commit `f00dd43fb`) by gating
    the arctan reciprocal identity with `sign(x)`.
 5. **Cluster A** — the sign-wrong `sqrt(-2)*sqrt(-3)=+√6` (worst — wrong in ℝ AND
-   ℂ) FIXED (commit `PENDING_HASH`). Remaining complex-principal-value honesty
+   ℂ) FIXED (commit `179c12115`). Remaining complex-principal-value honesty
    cases split out as Cluster A-2 (foundational `x^a·x^b` rule; own cycle).
 
 ## Status
@@ -192,5 +192,5 @@ next peldaño.
 - [x] Cluster B — `(a^even)^symbolic` drops `|a|` *(literal-even-inner half FIXED 2026-06-15, commit `5b13a9baa`; symbolic-even-inner half split to Cluster B-2)*
 - [ ] Cluster B-2 — `(a^(2k))^(1/2)` drops `|a|` for symbolic even inner exponent
 - [x] Cluster D — `arctan(x)+arctan(1/x)` branch *(FIXED 2026-06-15, commit `f00dd43fb`: gated by `sign(x)`)*
-- [x] Cluster A — even-root of negative base *(sign-wrong `sqrt(-2)*sqrt(-3)=+√6` FIXED 2026-06-15, commit `PENDING_HASH`; complex-principal-value honesty cases split to Cluster A-2)*
+- [x] Cluster A — even-root of negative base *(sign-wrong `sqrt(-2)*sqrt(-3)=+√6` FIXED 2026-06-15, commit `179c12115`; complex-principal-value honesty cases split to Cluster A-2)*
 - [ ] Cluster A-2 — `(sqrt(-2))^2=-2` / `((-2)^(1/4))^4=-2` real-domain honesty (foundational `x^a·x^b` rule)
