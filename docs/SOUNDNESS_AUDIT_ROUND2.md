@@ -81,9 +81,21 @@ provably non-finite or undefined (∞, `0/0`, `1/0`, `tan(π/2)`, divergent sum,
 - `(1³−1)/(1−1) → 1+1+1` (=3): a literal-zero factor is cancelled.
 The engine **knows** this is undefined — with `--steps on` it emits "Zero Property
 of Division: 0/0 → undefined", and bare `0/0` is kept symbolic — but the default
-fast path short-circuits. The audit doc's "no interior pole produced a false finite
-value" invariant covered *symbolic* poles; this all-numeric `0/0` slips through.
-**Fix:** guard the `0/x → 0` fold and the zero-factor cancellation on `x ≠ 0`.
+(steps-off) path short-circuits. The audit doc's "no interior pole produced a false
+finite value" invariant covered *symbolic* poles; this all-numeric `0/0` slips through.
+
+**INVESTIGATED — deferred to its own cycle (needs simplifier instrumentation).**
+Two obvious fix sites were tried and are NOT the default-mode path:
+`DivZeroRule` (`arithmetic.rs`) was extended to treat a *provably-zero* (not just
+literal-`0`) denominator as `0/0 → undefined`, and `const_fold`'s `Div` arm was
+given the same `0/0` guard. Both correctly fix the `--steps on` path, but with
+`eprintln` instrumentation **neither fires** in the default path — yet
+`(1*0)/(1-1)` and `(1²-1)/(1-1)` still fold to `0`. The trigger is a numerator
+containing a `Mul`/`Pow` (`(1*0)/(1-1) → 0` but the structurally-identical
+`(0)/(1-1) → 0/(1-1)` stays symbolic): const_fold rebuilds the numerator and the
+*rebuilt* `Div` is re-simplified to `0` by a THIRD, unidentified rule that bypasses
+`DivZeroRule`. Pinning that rule needs deeper instrumentation. NOT YET FIXED
+(changes reverted to keep the tree clean).
 
 ### R5 — `solve` returns spurious / non-existent roots (WRONG, 12)
 - **R5a — abs equations don't filter extraneous roots (6):** both branch roots are
@@ -141,8 +153,9 @@ deeper isolation-strategy fix; own cycle. NOT YET FIXED.
 2. **R5b** — `solve(c/poly = 0)` → no solution. FIXED (commit `14a471e1d`).
    The sweep surfaced **R5d** (malformed nested solves dropping valid roots +
    `csc` crash) — broader, higher-severity, own cycle.
-3. **R4** — numeric `0/0` fold. Guard `0/x → 0` on `x≠0`; the engine already knows
-   the answer on the slow path.
+3. **R4** — numeric `0/0` fold. INVESTIGATED, deferred: the `--steps on` path is
+   fixable via `DivZeroRule`, but the default-mode fold is a third, unidentified
+   rule (neither `DivZeroRule` nor `const_fold`) — needs simplifier instrumentation.
 4. **R5a** — `solve` abs extraneous-root filtering (back-substitution).
 5. **R1** — gate `f(f⁻¹(x)) = x` by the inverse's domain (broad but mechanical;
    ~14 defects, one rule family).
@@ -168,7 +181,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R2 — `acosh(cosh(x)) = |x|` (sign-wrong, bounded) *(FIXED 2026-06-15, commit `d22eec10e`)*
 - [x] R5b — `solve(c/poly=0)` no-solution *(FIXED 2026-06-15, commit `14a471e1d`)*
 - [ ] R5d — rational-equation isolation fabricates malformed nested solves (drops valid roots) + `csc/sec/cot` solver crash (NEW)
-- [ ] R4 — numeric `0/0` fold guard
+- [ ] R4 — numeric `0/0` fold guard *(investigated; default-mode path is a third unidentified rule — own cycle w/ instrumentation)*
 - [ ] R5a — `solve` abs extraneous-root filter
 - [ ] R1 — inverse-composition domain gate (`f(f⁻¹(x))`)
 - [ ] R3 — non-finite/undefined operand cancellation guard
