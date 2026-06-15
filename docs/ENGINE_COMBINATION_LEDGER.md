@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 165 (newest first)
+Active entries: 166 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -125,6 +125,7 @@ Active entries: 165 (newest first)
 - 2026-06-15 | `retained` | core / power evaluation / `try_rewrite_evaluate_power_expr` (P0 robustness + | Retained soundness: 0^(negative fractional power) no longer panics
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(x)/x^2 dx for inv in | Retained integration: inverse-trig over x^2 by parts (delegated tail)
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(x)/x^n dx, integer n in [2,8] | Retained integration: inverse-trig over x^n (generalized by parts)
+- 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(sqrt(x)) dx for inv in | Retained integration: inverse-trig of sqrt(x) (u = sqrt(x) substitution)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7221,3 +7222,42 @@ Active entries: 165 (newest first)
     parameter when each application strictly REDUCES toward a form the integrator already
     owns: gate the parameter range, build v = -1/((n-1) x^(n-1)), and let the recursion and
     self-gating do the rest -- no per-n special casing
+
+
+## 2026-06-15 - Retained integration: inverse-trig of sqrt(x) (u = sqrt(x) substitution)
+
+- area:
+  - calculus / inverse-trig integration / int inv(sqrt(x)) dx for inv in
+    {arctan, arcsin, arccos} (block 8)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: int arctan(sqrt(x)) = (x+1) arctan(sqrt(x)) - sqrt(x);
+    int arcsin(sqrt(x)), int arccos(sqrt(x)) resolve via the same substitution
+  - behavior_change_expected: yes - these were residual and now resolve
+- observed (rewrite-substitute-delegate + a presentation fix):
+  - with u = sqrt(x), x = u^2, dx = 2u du, int inv(sqrt(x)) dx = 2 int u inv(u) du =
+    2 H(sqrt(x)) where H(u) = int u inv(u) du is delegated to the existing
+    monomial-times-inverse-trig owner. Build the u-integral in the original variable,
+    delegate, then back-substitute x -> sqrt(x) and scale by 2. Gated to sqrt of the
+    BARE variable; sqrt(2x), sqrt(x)+1, sqrt(x^2) and a non-sqrt argument decline
+  - PRESENTATION SOUNDNESS FIX: the back-substitution turns x^k into (sqrt(x))^k =
+    Pow(Pow(x,1/2),k). The generic normalizer folds nested powers only for INTEGER
+    inner exponents, so arctan's bare `(sqrt(x))^2 + 1` printed as `x^(1/2)^2 + 1`,
+    which RE-PARSES as x^(1/4) (not x) -- a silently wrong copy-paste result. Added
+    fold_nested_numeric_powers (Pow(Pow(b,p),q) -> Pow(b,p*q) for rational p,q, using
+    as_rational_const so it accepts both Number(1/2) and Div(1,2)) and apply it to the
+    result; arctan(sqrt(x)) now prints `(x + 1) arctan(sqrt(x)) - sqrt(x)`
+  - verified by sympy and a finite-difference numeric round-trip unit test (the closed
+    forms mix sqrt factors the internal differentiator declines); reject test for
+    out-of-scope arguments; a dedicated fold test. No matrix rows (does not symbolically
+    diff-verify) -> unit-test-locked, no scorecard delta
+- retained learning:
+  - a u = sqrt(x) integral reduces to 2 int u f(u) du; compute the u-integral in the
+    ORIGINAL variable and back-substitute x -> sqrt(x) -- no fresh variable needed
+  - a back-substitution that introduces (sqrt(x))^k is a PRESENTATION HAZARD: the
+    display `x^(1/2)^k` re-parses to x^(k/2) only if k is even-ish but generally to a
+    DIFFERENT, wrong exponent. Always fold Pow(Pow(b,p),q) -> Pow(b,p*q) before
+    returning, and use as_rational_const (not a raw Number match) since the exponents
+    may be Div(1,2), not Number(1/2)

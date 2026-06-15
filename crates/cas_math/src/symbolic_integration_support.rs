@@ -1962,6 +1962,115 @@ fn trig_square_affine_antiderivative(
     Some(ctx.add(Expr::Add(half_linear, oscillatory)))
 }
 
+/// `int inv(sqrt(x)) dx` for an inverse-trig `inv`, via the substitution
+/// `u = sqrt(x)` (`x = u^2`, `dx = 2u du`):
+///
+/// ```text
+/// int inv(sqrt(x)) dx = 2 int u inv(u) du = 2 H(sqrt(x)),  H(u) = int u inv(u) du
+/// ```
+///
+/// `H` is delegated to the monomial-times-inverse-trig owner and the result is
+/// back-substituted `u -> sqrt(x)`. Self-gates to an honest residual if `H` does
+/// not resolve.
+fn inverse_trig_of_sqrt_antiderivative(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    arg: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    // The argument must be sqrt of the bare variable.
+    let radicand = sqrt_like_radicand(ctx, arg)?;
+    if !is_var(ctx, radicand, var) {
+        return None;
+    }
+
+    // H(x) = int x * inv(x) dx in the original variable, delegated.
+    let var_expr = ctx.var(var);
+    let inv_of_var = ctx.call_builtin(builtin, vec![var_expr]);
+    let u_integrand = mul2_raw(ctx, var_expr, inv_of_var);
+    let h = integrate_symbolic_expr(ctx, u_integrand, var)?;
+
+    // Back-substitute x -> sqrt(x) and scale by 2.
+    let var_expr = ctx.var(var);
+    let h_sub = crate::substitute::substitute_power_aware(
+        ctx,
+        h,
+        var_expr,
+        arg,
+        crate::substitute::SubstituteOptions::exact(),
+    );
+    // The substitution turns x^k into (sqrt(x))^k = Pow(Pow(x,1/2),k); fold those
+    // nested numeric powers so the result never displays the ambiguous
+    // `x^(1/2)^2` (which re-parses as x^(1/4), not x).
+    let h_folded = fold_nested_numeric_powers(ctx, h_sub);
+    Some(scale_rational_term(
+        ctx,
+        BigRational::from_integer(2.into()),
+        h_folded,
+    ))
+}
+
+/// Fold `Pow(Pow(b, p), q) -> Pow(b, p*q)` for numeric `p, q` (and `Pow(b, 1) ->
+/// b`) throughout an expression. Used to collapse `(sqrt(x))^k = x^(k/2)` left by
+/// a `u = sqrt(x)` back-substitution, which the generic normalizer keeps nested
+/// for fractional inner exponents.
+fn fold_nested_numeric_powers(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            let base = fold_nested_numeric_powers(ctx, base);
+            let exp = fold_nested_numeric_powers(ctx, exp);
+            if let Expr::Pow(inner_base, inner_exp) = ctx.get(base).clone() {
+                // Accept either a literal Number or a folded rational such as
+                // Div(1, 2) for the exponents.
+                if let (Some(p), Some(q)) = (
+                    crate::numeric_eval::as_rational_const(ctx, inner_exp),
+                    crate::numeric_eval::as_rational_const(ctx, exp),
+                ) {
+                    let product = &p * &q;
+                    if product.is_one() {
+                        return inner_base;
+                    }
+                    let new_exp = ctx.add(Expr::Number(product));
+                    return ctx.add(Expr::Pow(inner_base, new_exp));
+                }
+            }
+            ctx.add(Expr::Pow(base, exp))
+        }
+        Expr::Add(l, r) => {
+            let l = fold_nested_numeric_powers(ctx, l);
+            let r = fold_nested_numeric_powers(ctx, r);
+            ctx.add(Expr::Add(l, r))
+        }
+        Expr::Sub(l, r) => {
+            let l = fold_nested_numeric_powers(ctx, l);
+            let r = fold_nested_numeric_powers(ctx, r);
+            ctx.add(Expr::Sub(l, r))
+        }
+        Expr::Mul(l, r) => {
+            let l = fold_nested_numeric_powers(ctx, l);
+            let r = fold_nested_numeric_powers(ctx, r);
+            mul2_raw(ctx, l, r)
+        }
+        Expr::Div(l, r) => {
+            let l = fold_nested_numeric_powers(ctx, l);
+            let r = fold_nested_numeric_powers(ctx, r);
+            ctx.add(Expr::Div(l, r))
+        }
+        Expr::Neg(inner) => {
+            let inner = fold_nested_numeric_powers(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Function(fn_id, args) => {
+            let new_args: Vec<ExprId> = args
+                .iter()
+                .map(|&a| fold_nested_numeric_powers(ctx, a))
+                .collect();
+            ctx.add(Expr::Function(fn_id, new_args))
+        }
+        _ => expr,
+    }
+}
+
 /// `int inv(x)/x^n dx` (integer `n >= 2`) for an inverse-trig `inv` of the bare
 /// variable, by parts (`u = inv(x)`, `dv = x^-n dx`, `v = -1/((n-1) x^(n-1))`):
 ///
@@ -22502,6 +22611,21 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
                 builtin @ (BuiltinFn::Arcsin
                 | BuiltinFn::Asin
                 | BuiltinFn::Arccos
+                | BuiltinFn::Acos
+                | BuiltinFn::Arctan
+                | BuiltinFn::Atan),
+            ) = ctx.builtin_of(fn_id)
+            {
+                if let Some(integral) = inverse_trig_of_sqrt_antiderivative(ctx, builtin, arg, var)
+                {
+                    return Some(integral);
+                }
+            }
+
+            if let Some(
+                builtin @ (BuiltinFn::Arcsin
+                | BuiltinFn::Asin
+                | BuiltinFn::Arccos
                 | BuiltinFn::Acos),
             ) = ctx.builtin_of(fn_id)
             {
@@ -28656,5 +28780,86 @@ mod tests {
                 "rule must decline: {source}"
             );
         }
+    }
+
+    #[test]
+    fn inverse_trig_of_sqrt_integrates_and_round_trips_numerically() {
+        let mut ctx = Context::new();
+        // int inv(sqrt(x)) dx via u = sqrt(x) -> 2 int u inv(u) du, back-substituted.
+        for (source, target) in [
+            ("arctan(sqrt(x))", "arctan(sqrt(x))"),
+            ("arcsin(sqrt(x))", "arcsin(sqrt(x))"),
+            ("arccos(sqrt(x))", "arccos(sqrt(x))"),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x")
+                .unwrap_or_else(|| panic!("must integrate: {source}"));
+            // The closed forms mix sqrt factors the internal differentiator
+            // declines, so pin the round-trip with a central finite difference.
+            let eval_at = |ctx: &Context, e: cas_ast::ExprId, x: f64| -> f64 {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), x);
+                crate::evaluator_f64::eval_f64(ctx, e, &vars).expect("eval_f64")
+            };
+            let target_expr = parse(target, &mut ctx).expect(target);
+            // Samples in (0, 1) so sqrt(x) and sqrt(1-x) stay real.
+            for sample in [0.15_f64, 0.4, 0.65, 0.9] {
+                let h = 1e-6;
+                let numeric_deriv = (eval_at(&ctx, antiderivative, sample + h)
+                    - eval_at(&ctx, antiderivative, sample - h))
+                    / (2.0 * h);
+                let f_val = eval_at(&ctx, target_expr, sample);
+                assert!(
+                    (numeric_deriv - f_val).abs() < 1e-5,
+                    "round-trip mismatch for {source} at {sample}: {numeric_deriv} vs {f_val}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_trig_of_sqrt_declines_out_of_scope_arguments() {
+        let mut ctx = Context::new();
+        // The argument must be sqrt of the bare variable; scaled/shifted
+        // radicands and a plain (non-sqrt) argument decline.
+        for (source, builtin) in [
+            ("arctan(sqrt(2*x))", cas_ast::BuiltinFn::Arctan),
+            ("arctan(sqrt(x)+1)", cas_ast::BuiltinFn::Arctan),
+            ("arctan(sqrt(x^2))", cas_ast::BuiltinFn::Arctan),
+            ("arcsin(x)", cas_ast::BuiltinFn::Arcsin),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let arg = match ctx.get(expr).clone() {
+                cas_ast::Expr::Function(_, args) if args.len() == 1 => args[0],
+                _ => panic!("expected unary function: {source}"),
+            };
+            assert!(
+                super::inverse_trig_of_sqrt_antiderivative(&mut ctx, builtin, arg, "x").is_none(),
+                "rule must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn fold_nested_numeric_powers_collapses_sqrt_square() {
+        // (sqrt(x))^2 + 1 must fold to x + 1, never display as the ambiguous
+        // x^(1/2)^2 (which re-parses as x^(1/4)).
+        let mut ctx = Context::new();
+        let expr = parse("(x^(1/2))^2 + 1", &mut ctx).expect("parse");
+        let folded = super::fold_nested_numeric_powers(&mut ctx, expr);
+        let rendered = cas_formatter::DisplayExpr {
+            context: &ctx,
+            id: folded,
+        }
+        .to_string();
+        assert!(
+            !rendered.contains("1 / 2") && !rendered.contains("1/2"),
+            "the ambiguous sqrt-square must be folded away, got {rendered}"
+        );
+        // and it must evaluate to x + 1 (= 4 at x = 3).
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("x".to_string(), 3.0_f64);
+        let value = crate::evaluator_f64::eval_f64(&ctx, folded, &vars).expect("eval");
+        assert!((value - 4.0).abs() < 1e-12, "expected 4, got {value}");
     }
 }
