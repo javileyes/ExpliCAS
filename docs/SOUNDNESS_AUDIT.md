@@ -105,7 +105,7 @@ negatives, where the even root has no real value:
 
 ## Status
 
-- [x] Cluster C — arcsin/arccos derivative cancellation *(wrong value FIXED 2026-06-15, commit `PENDING_HASH`; arcsin+arccos condition-drop reclassified P3-educational)*
+- [x] Cluster C — arcsin/arccos derivative cancellation *(wrong value FIXED 2026-06-15, commit `810c0a6db`; arcsin+arccos condition-drop reclassified P3-educational)*
 - [ ] Cluster B — `(a^even)^symbolic` drops `|a|`
 - [ ] Cluster D — `arctan(x)+arctan(1/x)` branch
 - [ ] Cluster A — even-root of negative base
