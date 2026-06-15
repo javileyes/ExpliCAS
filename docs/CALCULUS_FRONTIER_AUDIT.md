@@ -64,7 +64,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   se aplanaba a `x^3` (signo FALSO para x<0) y `diff((x^2)^(3/2),x)` daba
   `3·x^2` en lugar de `3x·√(x²)`. Reportado por el operador. El motor ya
   hacía bien `(x^2)^(1/2)→|x|` pero el resto de la familia se filtraba.
-  *(graduado 2026-06-15 PENDING_HASH: `try_rewrite_power_power_even_root_abs_expr`
+  *(graduado 2026-06-15 6be8b3b79: `try_rewrite_power_power_even_root_abs_expr`
   estaba gateado por `is_half(outer)` —solo el exponente exacto 1/2—; generalizado
   al INVARIANTE real: con exponente interno m PAR, `x^m=|x|^m≥0` ⇒ `(x^m)^n=|x|^(m·n)`
   exacto; se emite `x^(m·n)` solo cuando el numerador de m·n es PAR (signo ya absorbido),
