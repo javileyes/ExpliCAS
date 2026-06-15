@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 162 (newest first)
+Active entries: 163 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -122,6 +122,7 @@ Active entries: 162 (newest first)
 - 2026-06-15 | `retained` | calculus / limits at infinity / lim_{x->+inf} x^q for non-integer rational q | Retained limit: bare fractional-power monomial at infinity
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int arcsin(a x + b)^2 and | Retained integration: arcsin^2 / arccos^2 by parts
 - 2026-06-15 | `retained` | calculus / educational / didactic substeps for int_a^b |c x + d| dx (the | Retained educational: abs-linear definite-integral narration
+- 2026-06-15 | `retained` | core / power evaluation / `try_rewrite_evaluate_power_expr` (P0 robustness + | Retained soundness: 0^(negative fractional power) no longer panics
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7093,3 +7094,50 @@ Active entries: 162 (newest first)
   - adding a cas_cli contract test bumps `passed` in the name-filtered
     calculus_integrate_contract lane (and `filtered_out` in the pressure twin) by one --
     the expected test-count bookkeeping delta, not a behavior change
+
+
+## 2026-06-15 - Retained soundness: 0^(negative fractional power) no longer panics
+
+- area:
+  - core / power evaluation / `try_rewrite_evaluate_power_expr` (P0 robustness +
+    FTC-diff soundness side effect)
+- status:
+  - `retained`
+- capture:
+  - investment_class: soundness
+  - cell: 0^(-1/2), 0^(-3/2), 0^(-2/3), ... now evaluate to `undefined` (like 0^(-1))
+    instead of panicking with "division by zero"
+  - behavior_change_expected: yes - a panic on valid input becomes a clean `undefined`
+- observed:
+  - the root-extraction branch of `try_rewrite_evaluate_power_expr` computed
+    `outside_val.recip()` for a negative exponent. For base 0, `extract_root_factor`
+    yields a zero outside factor, so `recip()` divided by zero and PANICKED (the CLI
+    aborted on a bare `eval "0^(-1/2)"`). The fix returns `undefined` for the zero case
+    (the correct value: 0^(neg) = 1/0), consistent with how 0^(-1) already evaluates
+  - SOUNDNESS SIDE EFFECT (the reason this is more than a crash fix): the Leibniz/FTC
+    diff routes present d/dx int_0^x f = f(x). For a divergent power integrand like
+    int_0^x t^(-3/2) dt (p>1, diverges), the boundary term is f(0)*0 = 0^(-3/2)*0. With
+    0^(-3/2) now = undefined, that term is undefined*0 = undefined, so the divergent
+    integral yields `undefined` rather than a finite (wrong) derivative or a panic.
+    Verified: t^(-3/2), t^(-4/3), t^(-5/2), t^(-7/3) over [0,x] all -> undefined; the
+    convergent t^(-2/3) (p<1) keeps the correct x^(-2/3); standard FTC/Leibniz cases
+    (e^(t^2), Leibniz chain, variable bounds) are unchanged. Verified adversarially
+    (2-lens, 60+ probes, 0 panics, 0 regressions, honesty residuals intact). No scorecard
+    structural delta (guardrail + pressure byte-identical, backend observability identical)
+- retained learning:
+  - a `recip()`/`into_recip()` on a value that can be zero is a latent panic; guard the
+    zero case and return the mathematically correct `undefined` (1/0), which is also what
+    keeps downstream `f(0)*0` boundary terms honest
+  - REJECTED scope (the bigger prize I did NOT take): the FTC removable-singularity
+    capability `d/dx int_0^x sin(t)/t dt = sin(x)/x` is real but ENTANGLED. A constant
+    integration bound contributes 0 only if the integral converges there, which needs a
+    real convergence test (finite-limit certifies removable, but NOT improper-convergent
+    cases like 1/sqrt(t)). Worse, the same "present f(x) without a convergence gate"
+    soundness gap lives in MULTIPLE diff-of-integral routes (the Leibniz rule AND the
+    verified-source / log-power presentation routes): a Leibniz-only gate still leaks
+    `d/dx int_0^x ln(t)/t dt = ln(x)/x` (divergent) via a sibling route. Closing this
+    soundly is a cross-route convergence-gate effort, not a bounded cycle -- the adversarial
+    2-lens pass caught both the t^(-p) and ln(t)^k/t leaks that unit-green tests missed.
+    NEXT PELDAÑO: a shared convergence certificate (reuse the definite-integration engine,
+    which already returns finite for int_0^c f iff it converges) gating ALL FTC-presentation
+    routes; only then add the removable sin(t)/t capability

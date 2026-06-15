@@ -5,7 +5,7 @@ use crate::root_forms::extract_root_factor;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_integer::Integer;
-use num_traits::{One, Signed, ToPrimitive};
+use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +175,19 @@ pub fn try_rewrite_evaluate_power_expr(
                         num_traits::Pow::pow(&outside_rat, pow_num.unsigned_abs())
                     };
                     let outside_val = if pow_num < 0 {
+                        // 0^(negative) = 1/0 is undefined. Return that explicitly
+                        // (consistent with 0^(-1)) instead of a reciprocal-by-zero
+                        // panic. It also keeps d/dx int_0^x t^(-p) dt sound: the
+                        // boundary term f(0)*0 becomes undefined*0 = undefined, so
+                        // a divergent power integral never yields a finite
+                        // derivative.
+                        if outside_val.is_zero() {
+                            let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                            return Some(PowerEvalRewrite {
+                                rewritten: undefined,
+                                desc: format!("Evaluate undefined power: {}^{}", b, e),
+                            });
+                        }
                         outside_val.recip()
                     } else {
                         outside_val
@@ -267,5 +280,28 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(b-a)^2", &mut ctx).expect("parse");
         assert!(try_rewrite_even_pow_sub_swap_expr(&mut ctx, expr).is_some());
+    }
+
+    #[test]
+    fn zero_to_negative_fractional_power_evaluates_to_undefined_without_panicking() {
+        // 0^(-1/2) = 1/sqrt(0) is undefined: the root-extraction path used to
+        // call recip() on a zero outside factor and panic with "division by
+        // zero". It must evaluate to `undefined` (like 0^(-1)) instead.
+        for (num, den) in [(-1, 2), (-3, 2), (-5, 2), (-2, 3)] {
+            let mut ctx = Context::new();
+            let zero = ctx.num(0);
+            let exp = ctx.rational(num, den);
+            let expr = ctx.add(Expr::Pow(zero, exp));
+            let rewrite = try_rewrite_evaluate_power_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("0^({num}/{den}) should evaluate"));
+            assert!(
+                matches!(
+                    ctx.get(rewrite.rewritten),
+                    Expr::Constant(cas_ast::Constant::Undefined)
+                ),
+                "0^({num}/{den}) must be undefined, got {:?}",
+                ctx.get(rewrite.rewritten)
+            );
+        }
     }
 }

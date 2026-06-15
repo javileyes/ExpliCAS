@@ -60,6 +60,23 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   siguen correctos. Descubierto al prototipar la sustitución recíproca
   u=1/x para límites en ∞ — revertida por disparar justo este hueco —;
   huella de scorecard sin cambios, ningún fixture público lo capturaba.)*
+- [~] **(F) FTC en borde inferior singular**: `d/dx ∫_0^x f(t) dt = f(x)`
+  presentado por las rutas de diff-de-integral SIN comprobar convergencia en el
+  borde constante. Para integrandos divergentes en 0 (`t^(-3/2)`, `ln(t)/t`,
+  `1/t`) el término de borde `f(0)·0` colapsa a 0 y se devuelve una derivada
+  FINITA para una integral DIVERGENTE — valor falso, no residual honesto. El
+  hueco vive en VARIAS rutas (la regla Leibniz y las rutas de presentación
+  verificadas/log-potencia), así que un gate solo-Leibniz no basta.
+  *(parcial 2026-06-15 PENDING_HASH: el PANIC subyacente `0^(-1/2)` →
+  `division by zero` (recip de un factor externo 0 en `try_rewrite_evaluate_power_expr`)
+  ya está arreglado: `0^(-p)` → `undefined` (valor correcto, como `0^(-1)`). Esto
+  cierra la familia de POTENCIA fraccionaria divergente — `t^(-3/2)`, `t^(-4/3)`,
+  `t^(-5/2)`, `t^(-7/3)` `[0,x]` → undefined (antes panic o `x^(-p)` falso); el
+  convergente `t^(-2/3)` (p<1) mantiene `x^(-2/3)` correcto. Queda la familia
+  `ln(t)^k/t` `[0,x]` → `ln(x)^k/x` (falso, ruta sibling) y la capacidad removible
+  `sin(t)/t→sin(x)/x`. Peldaño: certificado de convergencia compartido (reusar el
+  motor de definidas, que ya devuelve finito sii `∫_0^c f` converge) gateando TODAS
+  las rutas de presentación FTC. Cazado por verificación adversarial 2-lente.)*
 - [x] **(A) Cuelgue del simplificador**: `diff(sin(x)^3*cos(x)^2, x)`
   timeout >30s con `depth_overflow depth=51 phase=Core`; mismo patrón
   da 12s en `diff((x^2*sin(x))/(x+1), x)` y
