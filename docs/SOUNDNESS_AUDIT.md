@@ -72,6 +72,33 @@ a term that is actually `+1/y` — violating the `FractionPair` contract (value 
   family fixed earlier for the literal case** (`(a^2)^(1/2)=|a|` is correct; only
   the symbolic outer exponent still drops the abs). Natural follow-up to that cycle.
 
+**FIXED (2026-06-15, commit `PENDING_HASH`) — the literal-even-inner half.**
+`try_rewrite_power_power_even_root_abs_expr` bailed to the sign-unsafe
+`MultiplyExponents` branch whenever the outer exponent was not a rational
+constant. For an even **literal** inner exponent `m`, `(x^m)^y = |x|^(m·y)` holds
+unconditionally over the reals, so for a symbolic `y` (where `m·y` parity is
+undecidable) the abs is now kept. Verified: `(a^2)^y → |a|^(2·y)`,
+`(a^4)^y → |a|^(4·y)`, `(a^6)^y → |a|^(6·y)`, `(a^2)^(y/2) → |a|^y`,
+`(a^2)^(2*y) → |a|^(4·y)`; literal cases unchanged (`(a^2)^(1/2)=|a|`,
+`(a^2)^3=a^6`, `(a^2)^(2/3)=a^(4/3)`). Adversarial 2-lens / 325 probes: clean
+for this scope; full validation green; guardrail/pressure fingerprints
+unchanged (only `filtered_out +1` from the new unit test).
+
+### Cluster B-2 — `(a^(2k))^(1/2)` drops `|a|` for a **symbolic even** inner exponent (NEW, found by the Cluster B adversarial sweep)
+- `(a^(2*k))^(1/2)` → `a^k` ; correct `|a|^k` (real principal root is
+  non-negative). At `a=-2,k=1`: returns `-2`, correct `2`. **WRONG VALUE.**
+  Also `(a^(6*k))^(1/2) → a^(3·k)` (true `|a|^(3·k)`),
+  `(a^(2*k))^(3/2) → a^(3·k)`, `(a^(2*k))^(1/(2*k))`. Fires exactly when halving
+  the symbolic even inner coefficient yields an **odd** coefficient (`2k→k`,
+  `6k→3k`); `(a^(4k))^(1/2)→a^(2k)` and `(a^(8k))^(1/2)→a^(4k)` stay even and are
+  correct. The same family as `((-2)^x)^y → (-2)^(x·y)` from Cluster B.
+- DISTINCT code path from Cluster B's fix: the inner exponent `2*k` is **not** a
+  literal even integer, so it declines the `inner_int` gate and falls through the
+  `MultiplyExponents` cancellation. PRE-EXISTING (untouched by the Cluster B fix).
+- Bounded fix: under the engine's already-tracked `a^(2k) ≥ 0` condition,
+  `sqrt(a^(2k)) = |a^k| = |a|^k`. Needs its own careful cycle (the cancellation
+  path is sign-unaware). NOT YET FIXED.
+
 ### Cluster D — `arctan(x)+arctan(1/x)` / `arctan+arccot` → `π/2` unconditionally (`trig_invtrig`)
 - `arctan(x)+arctan(1/x)` → `π/2` (only `x≠0`) ; correct `(π/2)·sign(x)` →
   **`-π/2` for x<0**. **WRONG VALUE.**
@@ -97,15 +124,19 @@ negatives, where the even root has no real value:
    cancellation detectors now re-derive the sign from the baked numerator. The
    wrong-value defect is resolved; the arcsin+arccos domain-condition drop is
    reclassified P3-educational. See the root-cause section above.)*
-2. **Cluster B** — wrong value; closes the symbolic-exponent half of the
-   `(x^m)^n` soundness work already started this session.
-3. **Cluster D** — wrong branch value; bounded fix (gate by `sign(x)`).
-4. **Cluster A** — real-domain honesty; the sign-wrong `sqrt(-2)*sqrt(-3)=+√6` is
+2. **Cluster B** — wrong value; FIXED the literal-even-inner half (commit
+   `PENDING_HASH`). The symbolic-even-inner half is split out as Cluster B-2.
+3. **Cluster B-2** — wrong value (NEW, surfaced by the Cluster B adversarial
+   sweep); same `(x^even)^outer` family but a distinct sign-unaware cancellation
+   path. Bounded fix under the existing `a^(2k) ≥ 0` condition.
+4. **Cluster D** — wrong branch value; bounded fix (gate by `sign(x)`).
+5. **Cluster A** — real-domain honesty; the sign-wrong `sqrt(-2)*sqrt(-3)=+√6` is
    the most urgent within the cluster.
 
 ## Status
 
 - [x] Cluster C — arcsin/arccos derivative cancellation *(wrong value FIXED 2026-06-15, commit `810c0a6db`; arcsin+arccos condition-drop reclassified P3-educational)*
-- [ ] Cluster B — `(a^even)^symbolic` drops `|a|`
+- [x] Cluster B — `(a^even)^symbolic` drops `|a|` *(literal-even-inner half FIXED 2026-06-15, commit `PENDING_HASH`; symbolic-even-inner half split to Cluster B-2)*
+- [ ] Cluster B-2 — `(a^(2k))^(1/2)` drops `|a|` for symbolic even inner exponent
 - [ ] Cluster D — `arctan(x)+arctan(1/x)` branch
 - [ ] Cluster A — even-root of negative base

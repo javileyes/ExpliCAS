@@ -378,6 +378,12 @@ pub fn classify_root_pow_cancel_pattern(
 ///
 /// Only the odd-numerator case is rewritten here; the even-numerator case returns
 /// `None` so the caller falls through to the sign-safe `MultiplyExponents` branch.
+///
+/// When the outer exponent `n` is SYMBOLIC (not a rational constant, e.g.
+/// `(x^2)^y`, `(x^2)^(y/2)`, `(x^2)^(2*y)`) we cannot decide the parity of
+/// `m*n`, so the absolute value must be kept: `(x^m)^y = |x|^(m*y)` for all real
+/// `x` and `y`. Dropping it (the old `a^(m*y)` result) is wrong — e.g. at
+/// `a=-2, y=1/4`, `(a^2)^(2y) = (4)^(1/2) = 2`, but `a^(4y) = (-2)^1 = -2`.
 pub fn try_rewrite_power_power_even_root_abs_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -398,16 +404,21 @@ pub fn try_rewrite_power_power_even_root_abs_expr(
         _ => return None,
     };
 
-    // P = m * n must be a rational constant; otherwise we cannot decide parity.
-    let outer_rat = crate::numeric_eval::as_rational_const(ctx, outer_exp)?;
-    let prod = num_rational::BigRational::from_integer(inner_int) * outer_rat;
+    // P = m * n: if it is a rational constant we can decide parity (and drop the
+    // abs when the numerator is even, since the plain power is then sign-safe).
+    // If it is symbolic, parity is undecidable, so the abs must be kept.
+    let prod_exp = match crate::numeric_eval::as_rational_const(ctx, outer_exp) {
+        Some(outer_rat) => {
+            let prod = num_rational::BigRational::from_integer(inner_int) * outer_rat;
+            // Even numerator => the plain power is sign-safe; defer to MultiplyExponents.
+            if prod.numer().is_even() {
+                return None;
+            }
+            ctx.add(Expr::Number(prod))
+        }
+        None => mul_exp(ctx, inner_exp, outer_exp),
+    };
 
-    // Even numerator => the plain power is sign-safe; defer to MultiplyExponents.
-    if prod.numer().is_even() {
-        return None;
-    }
-
-    let prod_exp = ctx.add(Expr::Number(prod));
     let abs_base = ctx.call_builtin(BuiltinFn::Abs, vec![inner_base]);
     let rewritten = ctx.add(Expr::Pow(abs_base, prod_exp));
     Some(PowerPowerEvenRootAbsRewrite { rewritten })
@@ -768,6 +779,49 @@ mod tests {
             assert!(
                 try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr).is_none(),
                 "odd inner exponent must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn power_power_even_root_abs_keeps_abs_for_symbolic_outer_exponent() {
+        // (x^m)^y with m even literal and a SYMBOLIC outer exponent y: the parity
+        // of m*y is undecidable, so the abs must be KEPT. (x^m)^y = |x|^(m*y) over
+        // the reals; the old a^(m*y) dropped the sign (wrong at e.g. a=-2, y=1/4:
+        // (a^2)^(2y) = 2 but a^(4y) = -2).
+        let mut ctx = Context::new();
+        let render =
+            |ctx: &Context, id: ExprId| cas_formatter::DisplayExpr { context: ctx, id }.to_string();
+        // Clean cases: mul_exp(Number, symbol) renders exactly.
+        for (source, expected) in [
+            ("(x^2)^y", "|x|^(2 * y)"),
+            ("(x^4)^y", "|x|^(4 * y)"),
+            ("(x^6)^y", "|x|^(6 * y)"),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let rewrite = try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("abs rewrite must fire: {source}"));
+            assert_eq!(render(&ctx, rewrite.rewritten), expected, "for {source}");
+        }
+        // Compound symbolic outer exponents: abs still kept (exact exponent is
+        // folded by later simplification, so only assert the abs survives).
+        for source in ["(x^2)^(y/2)", "(x^2)^(2*y)", "(x^2)^(y+1)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let rewrite = try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("abs rewrite must fire: {source}"));
+            assert!(
+                render(&ctx, rewrite.rewritten).starts_with("|x|"),
+                "abs must be kept for {source}: got {}",
+                render(&ctx, rewrite.rewritten)
+            );
+        }
+        // Odd or symbolic inner exponent: x^m is not provably >= 0, so this branch
+        // declines (handled by other domain-aware paths).
+        for source in ["(x^3)^y", "(x^n)^y", "(x^5)^(2*y)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr).is_none(),
+                "must decline for {source}"
             );
         }
     }

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 174 (newest first)
+Active entries: 175 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -134,6 +134,7 @@ Active entries: 174 (newest first)
 - 2026-06-15 | `retained` | calculus / integration of the absolute-value and sign builtins with affine | Retained integration: int |a*x+b| dx and int sign(a*x+b) dx (affine)
 - 2026-06-15 | `retained` | simplification / absolute-value quotient cancellation (cas_math abs_support; | Retained simplification: x^(2k)/|x| -> |x|^(2k-1) (removable cancellation)
 - 2026-06-15 | `retained` | block 5 algebra / fractions; the two opposite/equal cancellation DETECTORS in | Retained soundness fix: fraction sign double-count in cancellation detectors (Cluster C of the soundness audit)
+- 2026-06-15 | `retained` | block 8 logs/exps; `cas_math/src/root_power_canonical_support.rs` | Retained soundness fix: (x^even)^symbolic keeps |x| (Cluster B of the soundness audit, literal-even-inner half)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7695,3 +7696,42 @@ Active entries: 174 (newest first)
   - when a cancellation produces a clearly-wrong global value, instrument the SUPPLIER of
     the parts before suspecting the canonicalization rules: the AST handed to the rule
     was correct; the parts extracted from it were not
+
+## 2026-06-15 - Retained soundness fix: (x^even)^symbolic keeps |x| (Cluster B of the soundness audit, literal-even-inner half)
+- area:
+  - block 8 logs/exps; `cas_math/src/root_power_canonical_support.rs`
+    `try_rewrite_power_power_even_root_abs_expr` (the `(x^a)^b` even-root abs rule)
+- status:
+  - `retained` (WRONG-VALUE soundness fix; Cluster B of docs/SOUNDNESS_AUDIT.md)
+- capture:
+  - investment_class: soundness
+  - cell: `(a^2)^y -> |a|^(2·y)` (was `a^(2·y)`); same for `(a^4)^y`, `(a^6)^y`,
+    `(a^2)^(y/2) -> |a|^y`, `(a^2)^(2*y) -> |a|^(4·y)`. At a=-2,y=1/2: `2` (was `-2`)
+  - behavior_change_expected: yes - keeps a previously-dropped abs; guardrail+pressure
+    fingerprints unchanged except `filtered_out +1` (one new unit test in the binary)
+- observed (USER-DIRECTED, audit priority #2):
+  - the even-root abs rule did `as_rational_const(outer_exp)?` and BAILED to the
+    sign-unsafe `MultiplyExponents` branch whenever the outer exponent was not a
+    rational constant. So `(x^m)^n` kept `|x|` for literal `n` but dropped it for
+    SYMBOLIC `n`. For an even LITERAL inner `m`, `x^m = |x|^m >= 0` unconditionally,
+    hence `(x^m)^y = |x|^(m*y)` for all real y; with symbolic y the parity of `m*y`
+    is undecidable so the abs MUST be kept. Fix: when `as_rational_const(outer)` is
+    None, emit `|x|^(m*outer)` instead of declining
+  - verified adversarially (real-domain power soundness): 2 lenses, 325 probes, every
+    candidate skeptically re-verified numerically. The fixed cell + literal-case
+    regressions are clean. The sweep additionally surfaced a PRE-EXISTING, DISTINCT
+    defect (logged as Cluster B-2, NOT fixed here): `(a^(2k))^(1/2) -> a^k` drops |a|
+    for a SYMBOLIC even inner exponent (e.g. `2*k`), via the unrelated cancellation
+    path (the inner `2*k` is not a literal even integer, so it never reaches this
+    rule). Left as the next peldano with its own careful cycle
+- retained learning:
+  - `as_rational_const(x)?` as a gate silently converts "cannot decide" into "do the
+    UNCONDITIONAL thing", which for a sign-bearing rewrite means "drop the abs". When
+    the SAFE default under undecidability is the CONSERVATIVE branch (keep the abs),
+    a `?`-bail to the permissive branch is a latent soundness bug. Make the
+    undecidable case explicit and route it to the conservative output
+  - the literal-vs-symbolic split of an identity needs BOTH halves audited: the literal
+    `(x^m)^(p/q)` half was already correct, but the symbolic-exponent half silently
+    regressed because it took a different code path. A "family" fix is not complete
+    until every exponent-shape (literal inner / symbolic inner / literal outer /
+    symbolic outer) is checked - the adversarial sweep is what forces that matrix
