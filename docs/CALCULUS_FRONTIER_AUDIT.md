@@ -468,7 +468,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   simetría impar (→0); inner cuadrático `|x²-1|`, borne π/e e indefinida declinan.
   Quedan: inner cuadrático/polinómico (raíces múltiples), `e^(-|x|)` impropia, y la
   narración de simetría.)*
-  *(límite prerequisito del test-p 2026-06-15 PENDING_HASH: `lim_{x→+∞} x^q` con q
+  *(límite prerequisito del test-p 2026-06-15 e8b1e5d27: `lim_{x→+∞} x^q` con q
   racional NO entero ya resuelve — `apply_rational_power_rule` extrae el exponente con
   `as_rational_const`, declina enteros (los conserva `apply_power_rule`) y, como la base
   x→+∞ es positiva, devuelve +∞ si q>0 y 0 si q<0; x→−∞ DECLINA (x^q no es real para x<0
