@@ -319,3 +319,71 @@ fn power_power_even_inner_derivative_is_sound() {
         "derivative of (x^2)^(3/2) must carry |x|, got: {d}"
     );
 }
+
+// =============================================================================
+// d/dx of |x|-equivalent forms presents as the textbook sign(x), with x != 0
+// =============================================================================
+//
+// d/dx |h| = sign(h) for an affine h, defined for h != 0. The compact-form
+// presentation previously regressed d/dx sqrt((-x)^2) to x/sqrt((-x)^2) (the
+// radicand left un-reduced); it now unifies the family to sign(h). The x != 0
+// domain condition must survive the rewrite (sign is the textbook form but the
+// derivative still does not exist at the corner).
+
+fn eval_result_and_required(expr: &str) -> (String, Vec<String>) {
+    let (output, _code) = run_cli(&["eval", expr, "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["ok"], true, "eval failed for {expr}: {output}");
+    let result = wire["result"].as_str().unwrap_or("").to_string();
+    let required = wire["required_display"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    (result, required)
+}
+
+#[test]
+fn diff_abs_family_presents_as_sign_with_nonzero_condition() {
+    for (expr, expected_result, expected_condition) in [
+        ("diff(abs(x), x)", "sign(x)", "x ≠ 0"),
+        ("diff(sqrt(x^2), x)", "sign(x)", "x ≠ 0"),
+        ("diff(sqrt((-x)^2), x)", "sign(x)", "x ≠ 0"),
+        ("diff(abs(x+1), x)", "sign(x + 1)", "x ≠ -1"),
+    ] {
+        let (result, required) = eval_result_and_required(expr);
+        assert_eq!(result, expected_result, "result for {expr}");
+        assert!(
+            required.iter().any(|c| c == expected_condition),
+            "for {expr}: expected condition {expected_condition}, got {required:?}"
+        );
+    }
+}
+
+#[test]
+fn diff_abs_family_does_not_spuriously_introduce_sign() {
+    // Non-affine / non-polynomial abs arguments must NOT become sign(...): they
+    // are smooth or the abs is incidental (e.g. sqrt(sec(x)) = |cos(x)^(-1/2)|,
+    // which is >= 0). A spurious sign breaks downstream cancellation.
+    let (smooth_abs, _) = eval_result_and_required("diff(abs(x^2+1), x)");
+    assert_eq!(smooth_abs, "2·x", "|x^2+1| is smooth: no sign");
+    // The residual must still verify to 0 (regression guard for the sec case).
+    assert_eq!(
+        eval_result("diff(sqrt(sec(x)), x) - sqrt(sec(x))*tan(x)/2"),
+        "0",
+        "sqrt(sec(x)) derivative residual must cancel (no spurious sign)"
+    );
+}
+
+#[test]
+fn sign_evaluates_on_numeric_constants() {
+    assert_eq!(eval_result("sign(-3)"), "-1");
+    assert_eq!(eval_result("sign(3)"), "1");
+    assert_eq!(eval_result("sign(0)"), "0");
+    assert_eq!(eval_result("sign(-1/2)"), "-1");
+    // Symbolic sign stays symbolic.
+    assert_eq!(eval_result("sign(x)"), "sign(x)");
+}

@@ -1214,14 +1214,14 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
     DiffCommandMatrixCase(
         name="abs_piecewise_required_condition",
         expr="diff(abs(x), x)",
-        expected_result="x / |x|",
+        expected_result="sign(x)",
         expected_required_display=("x ≠ 0",),
-        expected_step_substrings=("Usar regla de la cadena",),
+        expected_step_substrings=("Calcular la derivada",),
         family="abs",
         argument_regime="variable",
         domain_regime="required_condition",
-        trace_regime="piecewise_abs",
-        presentation_regime="quotient_abs",
+        trace_regime="sign_derivative",
+        presentation_regime="sign_compact",
     ),
     DiffCommandMatrixCase(
         name="abs_quadratic_factored_nondifferentiable_domain",

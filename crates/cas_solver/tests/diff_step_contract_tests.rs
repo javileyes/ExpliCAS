@@ -2378,10 +2378,12 @@ fn reciprocal_diff_evaluates_with_nonzero_domain_condition() {
 #[test]
 fn absolute_value_diff_evaluates_with_nonsmooth_point_condition() {
     let cases = [
-        ("diff(abs(x), x)", "x / |x|", vec!["x ≠ 0".to_string()]),
+        // d/dx |h| presents as the textbook sign(h) (affine h), with the
+        // non-differentiable point excluded via the h != 0 condition.
+        ("diff(abs(x), x)", "sign(x)", vec!["x ≠ 0".to_string()]),
         (
             "diff(abs(2*x+1), x)",
-            "((2 * x + 1) * 2)/|2 * x + 1|",
+            "2 * sign(2 * x + 1)",
             vec!["x ≠ -1/2".to_string()],
         ),
     ];

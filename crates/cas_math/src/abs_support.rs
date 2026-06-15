@@ -299,6 +299,30 @@ pub fn try_rewrite_evaluate_abs_expr(ctx: &mut Context, expr: ExprId) -> Option<
     None
 }
 
+/// Rewrite `sign(c) -> -1 | 0 | 1` for a numeric constant `c` (the signum).
+/// Returns `(rewritten, description)`. Declines on symbolic arguments.
+pub fn try_rewrite_evaluate_sign_expr(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, String)> {
+    let arg = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sign) && args.len() == 1 =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+
+    let value = as_rational_const(ctx, arg)?;
+    let s: i64 = if value.is_zero() {
+        0
+    } else if value.is_negative() {
+        -1
+    } else {
+        1
+    };
+    let rewritten = ctx.num(s);
+    Some((rewritten, format!("sign(constant) = {s}")))
+}
+
 /// Rewrite `||x|| -> |x|`.
 pub fn try_rewrite_abs_idempotent_expr(ctx: &Context, expr: ExprId) -> Option<AbsFixedRewrite> {
     let outer_arg = try_unwrap_abs_arg(ctx, expr)?;

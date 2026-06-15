@@ -93,12 +93,30 @@ pub(super) fn sqrt_derivative_post_calculus_presentation(
     signed_elementary_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
 }
 
+/// Whether `radicand` is structurally `base^2`, so `sqrt(radicand) = |base|`.
+fn radicand_is_structural_square(ctx: &Context, radicand: ExprId) -> bool {
+    match ctx.get(radicand) {
+        Expr::Pow(_, exp) => matches!(
+            ctx.get(*exp),
+            Expr::Number(n) if n.is_integer() && *n.numer() == 2.into()
+        ),
+        _ => false,
+    }
+}
+
 pub(super) fn sqrt_polynomial_derivative_presentation(
     ctx: &mut Context,
     target: ExprId,
     var_name: &str,
 ) -> Option<ExprId> {
     let radicand = extract_square_root_base(ctx, target)?;
+    // A perfect-square radicand makes sqrt(g) = |base|; presenting the derivative
+    // as g'/(2 sqrt(g)) would regress the clean sign(base) form (and leave the
+    // radicand un-reduced, e.g. d/dx sqrt((-x)^2) -> x/sqrt((-x)^2)). Decline and
+    // let the DiffRule sign route own it.
+    if radicand_is_structural_square(ctx, radicand) {
+        return None;
+    }
     let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
     let derivative_poly = radicand_poly.derivative();
     if derivative_poly.is_zero() {

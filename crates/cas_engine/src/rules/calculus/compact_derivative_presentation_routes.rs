@@ -4,7 +4,11 @@
 //! policies. This boundary only owns local route ordering and rewrite
 //! finalization.
 
-use cas_ast::{Context, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::abs_support::try_unwrap_abs_arg;
+use cas_math::build::mul2_raw;
+use cas_math::root_forms::extract_square_root_base;
+use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
 
 use crate::symbolic_calculus_call_support::NamedVarCall;
 use crate::{ImplicitCondition, Rewrite};
@@ -35,6 +39,9 @@ fn compact_derivative_presentation_with_domain(
     target: ExprId,
     var_name: &str,
 ) -> Option<(ExprId, Vec<ImplicitCondition>)> {
+    if let Some(pair) = abs_or_sqrt_square_sign_derivative(ctx, target, var_name) {
+        return Some(pair);
+    }
     if let Some((result, required_nonzero)) =
         cas_math::symbolic_differentiation_support::rational_positive_quadratic_log_abs_pole_derivative(
             ctx,
@@ -92,6 +99,65 @@ fn compact_derivative_presentation_with_domain(
             polynomial_times_sqrt_polynomial_derivative_presentation(ctx, target, var_name)
         })?;
     Some((result, Vec::new()))
+}
+
+/// `d/dx |h| = sign(h) * h' = h' * sign(h)`, valid for `h != 0`, as the compact
+/// textbook form.
+///
+/// Fires for `target = |h|` and for `target = sqrt(h^2)` (a perfect-square
+/// radicand, whose root is `|h|`), but ONLY when `h` is an AFFINE polynomial in
+/// the variable (`a*x + b`, `a != 0`). An affine `h` genuinely crosses zero, so
+/// `|h|` truly has a corner and `sign` is warranted. This deliberately excludes
+/// (a) non-polynomial abs arguments such as `|cos(x)^(-1/2)|` (= sqrt(sec(x)),
+/// which is >= 0, so the abs is incidental and `sign` would be spurious and break
+/// downstream cancellation), and (b) always-positive higher-degree polynomials.
+///
+/// Returns the `h != 0` condition so the non-differentiable point `h = 0` is
+/// excluded -- the same domain the prior `h/|h|` form carried, now soundly
+/// attached rather than inferred from a division. A leading negation is
+/// normalized away (`|-x| = |x|`) so `d/dx sqrt((-x)^2)` presents `sign(x)`.
+fn abs_or_sqrt_square_sign_derivative(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<ImplicitCondition>)> {
+    let base = abs_or_sqrt_square_base(ctx, target)?;
+    let polynomial = cas_math::polynomial::Polynomial::from_expr(ctx, base, var_name).ok()?;
+    if polynomial.degree() != 1 {
+        return None;
+    }
+    let base_derivative = differentiate_symbolic_expr(ctx, base, var_name)?;
+    let sign_base = ctx.call_builtin(BuiltinFn::Sign, vec![base]);
+    let result = mul2_raw(ctx, base_derivative, sign_base);
+    Some((result, vec![ImplicitCondition::NonZero(base)]))
+}
+
+/// The inner `h` such that `target` denotes `|h|`: either `|h|` directly or
+/// `sqrt(h^2)` (a structural perfect square). A leading `-` is stripped since
+/// `|-h| = |h|`, keeping the presented `sign` and domain on the bare base.
+fn abs_or_sqrt_square_base(ctx: &Context, target: ExprId) -> Option<ExprId> {
+    let base = if let Some(abs_arg) = try_unwrap_abs_arg(ctx, target) {
+        abs_arg
+    } else {
+        let radicand = extract_square_root_base(ctx, target)?;
+        match ctx.get(radicand) {
+            Expr::Pow(pow_base, exp) => {
+                let Expr::Number(n) = ctx.get(*exp) else {
+                    return None;
+                };
+                if !(n.is_integer() && *n.numer() == 2.into()) {
+                    return None;
+                }
+                *pow_base
+            }
+            _ => return None,
+        }
+    };
+    // |-h| = |h|: strip a leading negation so the base is canonical.
+    match ctx.get(base) {
+        Expr::Neg(inner) => Some(*inner),
+        _ => Some(base),
+    }
 }
 
 #[cfg(test)]

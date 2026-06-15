@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 170 (newest first)
+Active entries: 171 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -130,6 +130,7 @@ Active entries: 170 (newest first)
 - 2026-06-15 | `retained` | calculus / function-of-radical integration / int f(sqrt(x)) dx for | Retained integration: trig/hyperbolic of sqrt(x) (generalized u = sqrt(x))
 - 2026-06-15 | `retained` | simplification / power-of-power canonicalization / `(x^m)^n` with even inner | Retained soundness: (x^m)^n keeps the absolute value over the reals
 - 2026-06-15 | `retained` | calculus / function-of-radical integration / `int e^sqrt(x) dx`, | Retained integration: e^sqrt(x) and H(sqrt(x))/sqrt(x) (u = sqrt(x))
+- 2026-06-15 | `retained` | calculus presentation / derivative of the absolute-value family + the sign | Retained presentation+eval: d/dx|x| = sign(x), and sign(c) evaluates
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7468,3 +7469,71 @@ Active entries: 170 (newest first)
   - factor the substitution TAIL (delegate + back-substitute + fold + scale) into one
     helper; new radical siblings then cost only a shape recognizer that builds the
     delegate integrand
+
+
+## 2026-06-15 - Retained presentation+eval: d/dx|x| = sign(x), and sign(c) evaluates
+
+- area:
+  - calculus presentation / derivative of the absolute-value family + the sign
+    builtin evaluation (cas_engine compact derivative routes, sqrt post-calculus
+    presentation; cas_math abs_support)
+- status:
+  - `retained`
+- capture:
+  - investment_class: educational
+  - cell: `diff(sqrt((-x)^2), x)`, `diff(sqrt(x^2), x)`, `diff(abs(x), x)` now all
+    present `sign(x)` [x != 0]; `diff(abs(x+1), x) = sign(x+1)` [x != -1];
+    `sign(-3) = -1`, `sign(3) = 1`, `sign(0) = 0`
+  - behavior_change_expected: yes - the compact-form derivative of the |x| family,
+    and numeric sign evaluation
+- observed (USER-REPORTED: the compact-form step made the formula WORSE):
+  - the step-by-step for `diff(sqrt((-x)^2))` was correct through `d/dx|x| -> x/|x|`,
+    then step 4 ("present in compact form") REGRESSED it to `x/sqrt((-x)^2)` -- a
+    root-family chain-rule presenter (`d/dx sqrt(g) = g'/(2 sqrt(g))`) re-expressing
+    the result using the ORIGINAL, un-reduced radicand. For a perfect-square radicand
+    that throws away the clean `x/|x|`
+  - fix in THREE coordinated places: (1) a new DiffRule route
+    `abs_or_sqrt_square_sign_derivative` (compact_derivative_presentation_routes) that,
+    for `target = |h|` or `sqrt(h^2)` with h AFFINE, returns `(h' * sign(h),
+    [NonZero(h)])` -- the textbook compact form WITH the domain condition; (2) the
+    root post-calculus presenter declines perfect-square radicands so it no longer
+    overrides; (3) `EvaluateSignRule` + `try_rewrite_evaluate_sign_expr` make sign(c)
+    fold to the signum of a numeric constant
+  - CRITICAL SOUNDNESS POINT: presenting `sign(x)` must NOT drop the `x != 0`
+    condition (the derivative does not exist at the corner; `sign(0)=0` would
+    otherwise wrongly imply it does). A first attempt as a post-calculus rewrite
+    `x/|x| -> sign(x)` DID drop it (conditions are re-derived from the result's
+    division structure, which `sign` lacks). The fix lives at the DiffRule layer that
+    returns `(result, conditions)` so `NonZero(h)` is attached through the proper
+    channel and survives. Verified the condition is present on every sign result
+  - the AFFINE gate (h is a degree-1 polynomial) is essential: it excludes incidental
+    abs forms like `sqrt(sec(x)) = |cos(x)^(-1/2)|` (which is >= 0, so `sign` would be
+    spurious and break downstream residual cancellation -- caught by adversarial lens)
+    and always-positive higher-degree polynomials. Affine h genuinely crosses zero, so
+    |h| truly has a corner
+  - verified adversarially (presentation + soundness change): two lenses, ~114 probes,
+    0 defects -- conditions always present, forms numerically correct, sign(c) correct,
+    no over-firing (sqrt(sec(x)) stays and its residual cancels to 0, |x^2+1| stays
+    smooth 2x, |x^2-1| keeps its quotient form), sign-in-limits/symbolic unaffected.
+    Updated the `diff(abs(x))` matrix row + the diff_step contract; guardrail + pressure
+    fingerprints byte-identical (the row still passes/counts identically)
+- retained learning:
+  - a "compact form" / source-preservation presenter that re-expresses a result in the
+    INPUT's notation can REGRESS simplicity when the input form is worse than what the
+    calculus already produced. Gate such presenters to decline when the canonical result
+    (here `x/|x|`) is already simpler than the reconstruction (`x/sqrt(perfect_square)`)
+  - changing a derivative's RESULT FORM can silently drop a domain condition that was
+    being inferred from the old form's structure (a division's denominator). Attach the
+    condition explicitly at the layer that owns `(result, conditions)` (the DiffRule
+    route), never via a late cosmetic rewrite that the condition deriver can't see
+  - `sign(h)` is a sound, compact derivative of `|h|` ONLY with the `h != 0` condition
+    carried; with the signum convention `sign(0)=0` the bare `sign(h)` would falsely
+    claim differentiability at the corner
+  - gate an abs-derivative -> sign rewrite to AFFINE arguments: those are exactly the
+    |.| that genuinely corner. Non-polynomial abs args (sqrt(sec(x))=|cos(x)^(-1/2)|)
+    and always-positive polynomials are smooth there, and forcing sign is both spurious
+    and breaks residual cancellation
+  - REMAINING peldano (cosmetic, not a defect): pure-monomial `diff(abs(2*x))` still
+    shows `2x/|x|` (an earlier quotient rule wins before the affine sign route fires for
+    |a*x| with |a|!=1), and `diff(2*sign(x))` stays unevaluated (linearity does not
+    recurse into sign); both are correct, just non-uniform
