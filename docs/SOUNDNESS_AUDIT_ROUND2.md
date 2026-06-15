@@ -92,14 +92,40 @@ value" invariant covered *symbolic* poles; this all-numeric `0/0` slips through.
   `solve(|2x+3| = x−5) → {−8, 2/3}` (**no solution**),
   `solve(|x−2| = 2x+1) → {−3, 1/3}` (true `{1/3}`),
   `solve(|x| = 2x−6) → {6, 2}` (true `{6}`), and similar.
-- **R5b — `c/poly = 0` returns `{∞}` (5):** a nonzero constant over a polynomial is
-  never zero → **no solution**, but the engine returns infinity:
-  `solve(3/x=0) → {∞}`, `solve(1/(x−3)=0) → {∞}`, `solve(2/(x+1)=0) → {∞}`,
-  `solve((x+1)/(x²−1)=0) → {∞}`, `solve(1/(x²+1)=0) → {∞^(1/2), −∞^(1/2)}`.
+- **R5b — `c/poly = 0` returns `{∞}` — FIXED (commit `PENDING_HASH`):** a nonzero
+  constant over a polynomial is never zero → no solution, but the solver isolated
+  the denominator (`poly = c/0 = ∞`) and returned `{∞}` (`solve(3/x=0)`) or, for an
+  irreducible quadratic with a linear term, a malformed nested
+  `solve(x = ∞ − x², x)` (`solve(7/(x²+x+1)=0)`). **Fix:** (1) short-circuit
+  `c/poly = 0` (simplified `lhs−rhs` is a fraction with a nonzero-constant
+  numerator) to `Empty` *before* the isolation divides by zero; (2) a defensive
+  final filter drops any `∞`/undefined entry from the solution set. Both
+  manifestations now return "No solution"; genuine roots
+  (`solve((x−2)/(x+3)=0) → {2}`) preserved. Adversarial 2-round / 9+ probes:
+  the `c/poly=0` class is clean.
 - **R5c — out-of-range transcendental (1):** `solve(sin(x)=3) → {arcsin(3)}`
   (**no real solution**). (Rediscovered: `solve(cos(x)=2) → {arccos(2)}`.)
 **Fix:** back-substitute candidate roots into the original equation (real-domain
 definedness check) before returning; treat `nonzero/poly = 0` as no-solution.
+
+### R5d — Rational-equation isolation fabricates malformed nested solves, DROPPING valid roots (WRONG, ~10 — NEW, surfaced by the R5b adversarial sweep)
+A pre-existing, broader sibling of R5b (NOT caused by, nor fixed by, the R5b fix):
+for several rational equations the isolation strategy emits an unevaluated,
+malformed nested `solve(x = poly ± …, x) = 0` instead of the root set — silently
+**dropping genuine finite real roots**:
+- `solve(7/(x²+x+1) = 7) → solve(x = −x², x) = 0` (true `{0, −1}`),
+  `solve(1/(x²+x+1) = 1)` (true `{0, −1}`) — `c/poly = nonzero`.
+- `solve(x + 1/x = 2) → solve(x = (2x−1)^(1/2), x) = 0` (true `{1}`).
+- `solve((x²−2x+1)/(x−5) = 0)` (true `{1}`), `solve((x²−4x+4)/(x−9)=0)` (true `{2}`)
+  — perfect-square numerator over a non-constant denominator.
+- The trigger is the solver reaching a form like `x = ±√(poly)` / `x = c − x²` and
+  failing to recurse into the inner solve (the inner solve *alone* works:
+  `solve(x = −x², x) → {−1, 0}`). Root cause is in the isolation/reciprocal path.
+- **Plus a hard crash:** `solve(1/sin(x)=0)` (and `1/cos`, `1/tan`) →
+  `InternalError: función [csc] no definida` — the solver rewrites `1/sin → csc`
+  and hits an unimplemented function. Should be "No solution".
+This is higher-severity than R5b (it drops *correct* roots / crashes) but needs a
+deeper isolation-strategy fix; own cycle. NOT YET FIXED.
 
 ### R6 — Dropped domain conditions & misc (COND-DROP/WRONG, ~4)
 - `(a*b)^x → a^x·b^x` with **no** `a>0 ∧ b>0` condition (the split is invalid for
@@ -112,7 +138,9 @@ definedness check) before returning; treat `nonzero/poly = 0` as no-solution.
 
 1. **R2** — `acosh(cosh(x)) = |x|`. Sign-wrong, bounded, reuses the round-1
    abs/sign machinery. Highest value-per-risk.
-2. **R5b** — `solve(c/poly = 0)` → no solution. Wrong "solution"; clear fix.
+2. **R5b** — `solve(c/poly = 0)` → no solution. FIXED (commit `PENDING_HASH`).
+   The sweep surfaced **R5d** (malformed nested solves dropping valid roots +
+   `csc` crash) — broader, higher-severity, own cycle.
 3. **R4** — numeric `0/0` fold. Guard `0/x → 0` on `x≠0`; the engine already knows
    the answer on the slow path.
 4. **R5a** — `solve` abs extraneous-root filtering (back-substitution).
@@ -138,7 +166,8 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 ## Status
 
 - [x] R2 — `acosh(cosh(x)) = |x|` (sign-wrong, bounded) *(FIXED 2026-06-15, commit `d22eec10e`)*
-- [ ] R5b — `solve(c/poly=0)` no-solution
+- [x] R5b — `solve(c/poly=0)` no-solution *(FIXED 2026-06-15, commit `PENDING_HASH`)*
+- [ ] R5d — rational-equation isolation fabricates malformed nested solves (drops valid roots) + `csc/sec/cot` solver crash (NEW)
 - [ ] R4 — numeric `0/0` fold guard
 - [ ] R5a — `solve` abs extraneous-root filter
 - [ ] R1 — inverse-composition domain gate (`f(f⁻¹(x))`)

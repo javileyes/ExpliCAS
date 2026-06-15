@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 178 (newest first)
+Active entries: 179 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -138,6 +138,7 @@ Active entries: 178 (newest first)
 - 2026-06-15 | `retained` | block trig/inverse-trig; `cas_math/src/inverse_trig_composition_support.rs` | Retained soundness fix: arctan(x)+arctan(1/x) = (pi/2)*sign(x), not pi/2 (Cluster D of the soundness audit)
 - 2026-06-15 | `retained` | block powers/roots; `cas_math` radical-merge rules | Retained soundness fix: even-root products of negative bases stay symbolic (Cluster A of the soundness audit, sign-wrong half)
 - 2026-06-15 | `retained` | block hyperbolic; `cas_math/src/hyperbolic_core_support.rs` | Retained soundness fix: acosh(cosh(x)) = |x|, not x (Round-2 audit R2)
+- 2026-06-15 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve(c/poly = 0) has no real solution, not {infinity} (Round-2 audit R5b)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7851,3 +7852,42 @@ Active entries: 178 (newest first)
     arcsin: [-pi/2,pi/2]) and the inner is non-injective there, the composition folds to a
     range-projection (|x|, a sawtooth, ...), NOT x. Audit EVERY such pair, not just the
     obviously-suspicious ones - the even/range-restricted outer is the tell
+
+## 2026-06-15 - Retained soundness fix: solve(c/poly = 0) has no real solution, not {infinity} (Round-2 audit R5b)
+- area:
+  - block solver; `cas_solver/src/solve_backend_local.rs` (the active backend boundary)
+- status:
+  - `retained` (WRONG-"solution" soundness fix; R5b of docs/SOUNDNESS_AUDIT_ROUND2.md)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(3/x=0) -> No solution` (was `{infinity}`); `solve(7/(x^2+x+1)=0) ->
+    No solution` (was a malformed `solve(x = infinity - x^2, x) = 0`)
+  - behavior_change_expected: yes - a class of bogus solutions becomes No solution;
+    guardrail+pressure fingerprints BYTE-IDENTICAL (solve is not in those suites)
+- observed (USER-DIRECTED, Round-2 audit priority #2):
+  - a nonzero constant over a polynomial is NEVER zero, but the solver isolated the
+    denominator (`poly = c/0 = infinity`) and returned `{infinity}`, or for an
+    irreducible quadratic with a linear term emitted a malformed nested
+    `solve(x = infinity - x^2, x)`. Fix has two layers: (1) short-circuit
+    `c/poly = 0` (simplified `lhs-rhs` is a Div with a nonzero-constant numerator) to
+    Empty BEFORE the isolation divides by zero; (2) a defensive final filter that drops
+    any infinity/undefined entry from the returned solution set (Discrete + Conditional)
+  - ADVERSARIAL FOUND THE INCOMPLETE FIRST FIX: layer (2) alone (the infinity filter)
+    passed the simple `Discrete([infinity])` cases (`3/x=0`) but the sweep found the
+    quadratic-with-linear-term denominators produce a malformed Residual, NOT a
+    Discrete set, so the filter missed them. Layer (1) (short-circuit at the source)
+    was added to catch both. A second sweep confirmed the whole `c/poly=0` class clean
+  - the second sweep ALSO surfaced a PRE-EXISTING, BROADER sibling (logged R5d, NOT
+    fixed here): the isolation path emits malformed nested solves that DROP valid roots
+    for `c/poly = nonzero`, `x + 1/x = c`, and perfect-square-numerator equations, plus
+    a hard `csc/sec/cot no definida` crash on `solve(1/sin(x)=0)`. Higher severity, own
+    cycle - the isolation strategy itself needs the fix
+- retained learning:
+  - a solver "no solution" is structurally different from a wrong root: filtering bad
+    VALUES out of the returned set (a backstop) is not the same as not GENERATING them.
+    The clean fix is at the SOURCE (recognise `c/poly=0` algebraically) so the broken
+    isolation never runs; the value-filter is only a cheap defensive backstop for
+    whatever still slips through
+  - infinity reaching a solve result is always a division-by-zero artifact of variable
+    isolation - over the reals no equality has an infinite solution. Treat its presence
+    (in a Discrete set OR fabricated inside a Residual) as the signature of that bug

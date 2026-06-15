@@ -45,6 +45,48 @@ fn test_solve_linear() {
 }
 
 #[test]
+fn test_solve_nonzero_over_poly_has_no_solution() {
+    // A nonzero constant over a polynomial is never zero: `3/x = 0` has NO real
+    // solution (the solver used to return {infinity} by dividing by zero).
+    for lhs in [
+        "3/x",
+        "1/(x-3)",
+        "2/(x+1)",
+        "1/(x^2+1)",
+        // irreducible quadratic with a linear term: the solver used to fabricate a
+        // malformed nested `solve(x = infinity - x^2, x)` here.
+        "7/(x^2+x+1)",
+        "-3/(x^2-x+1)",
+    ] {
+        let mut simplifier = Simplifier::new();
+        let eq = make_eq(&mut simplifier.context, lhs, "0");
+        let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
+        assert_eq!(
+            result,
+            SolutionSet::Empty,
+            "`{lhs} = 0` must have no solution, got {result:?}"
+        );
+    }
+
+    // But a polynomial numerator over a polynomial keeps its real roots.
+    let mut simplifier = Simplifier::new();
+    let eq = make_eq(&mut simplifier.context, "(x-2)/(x+3)", "0");
+    let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
+    let SolutionSet::Discrete(solutions) = result else {
+        panic!("expected Discrete solution for (x-2)/(x+3)=0");
+    };
+    assert_eq!(solutions.len(), 1);
+    let s = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: solutions[0]
+        }
+    );
+    assert_eq!(s, "2");
+}
+
+#[test]
 fn test_solve_mul() {
     // 2 * x = 6 -> x = 6 / 2
     let mut simplifier = Simplifier::with_default_rules();
