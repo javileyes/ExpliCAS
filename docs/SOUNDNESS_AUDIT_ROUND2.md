@@ -45,7 +45,7 @@ a real value for an undefined input:
 **Fix:** gate each `f(f⁻¹(x)) = x` rewrite by the inverse's domain condition; for a
 provably out-of-domain literal, keep symbolic / mark undefined.
 
-### R2 — `acosh(cosh(x)) → x` should be `|x|` (SIGN-WRONG, ~5) — FIXED (commit `PENDING_HASH`)
+### R2 — `acosh(cosh(x)) → x` should be `|x|` (SIGN-WRONG, ~5) — FIXED (commit `d22eec10e`)
 `acosh` has range `[0,∞)`, so `acosh(cosh(x)) = |x|`, not `x`:
 - `acosh(cosh(x)) → x`, `acosh(cosh(2*x)) → 2*x` (true `2|x|`),
   `acosh(cosh(-x)) → x`.
@@ -53,7 +53,7 @@ provably out-of-domain literal, keep symbolic / mark undefined.
 - `diff(acosh(cosh(x))) → 1` (true `sign(x)`).
 - The attached condition `cosh(x) ≥ 1` is **vacuous** (always true) — it does not
   encode the real restriction.
-**Fix (commit `PENDING_HASH`):** `try_rewrite_hyperbolic_composition` now emits
+**Fix (commit `d22eec10e`):** `try_rewrite_hyperbolic_composition` now emits
 `Abs(x)` for the `acosh∘cosh` arm only (the other five compositions are genuine
 identities and stay `x`). `diff(acosh(cosh(x))) → sign(x)` follows automatically
 through the Round-1 `diff(|x|)=sign(x)` work. Verified: `acosh(cosh(x))→|x|`,
@@ -137,7 +137,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 
 ## Status
 
-- [x] R2 — `acosh(cosh(x)) = |x|` (sign-wrong, bounded) *(FIXED 2026-06-15, commit `PENDING_HASH`)*
+- [x] R2 — `acosh(cosh(x)) = |x|` (sign-wrong, bounded) *(FIXED 2026-06-15, commit `d22eec10e`)*
 - [ ] R5b — `solve(c/poly=0)` no-solution
 - [ ] R4 — numeric `0/0` fold guard
 - [ ] R5a — `solve` abs extraneous-root filter
