@@ -1962,28 +1962,35 @@ fn trig_square_affine_antiderivative(
     Some(ctx.add(Expr::Add(half_linear, oscillatory)))
 }
 
-/// `int inv(x)/x^2 dx` for an inverse-trig `inv` of the bare variable, by parts
-/// (`u = inv(x)`, `dv = x^-2 dx`, `v = -1/x`):
+/// `int inv(x)/x^n dx` (integer `n >= 2`) for an inverse-trig `inv` of the bare
+/// variable, by parts (`u = inv(x)`, `dv = x^-n dx`, `v = -1/((n-1) x^(n-1))`):
 ///
 /// ```text
-/// int inv(x)/x^2 dx = -inv(x)/x + int inv'(x)/x dx
+/// int inv(x)/x^n dx = -inv(x)/((n-1) x^(n-1)) + 1/(n-1) int inv'(x)/x^(n-1) dx
 /// ```
 ///
-/// The tail `int inv'(x)/x dx` is delegated to the integrator: for `arctan` it
-/// is `int 1/(x(1+x^2))` and for `arcsin`/`arccos` it is `int 1/(x sqrt(1-x^2))`,
-/// both of which resolve. If the tail does not resolve the whole rule
+/// The lower-degree tail is delegated to the integrator: for `arctan` it is
+/// `int 1/(x^(n-1)(1+x^2))` and for `arcsin`/`arccos` it is
+/// `int 1/(x^(n-1) sqrt(1-x^2))`. If the tail does not resolve the whole rule
 /// self-gates to an honest residual.
-fn inverse_trig_over_square_antiderivative(
+fn inverse_trig_over_power_antiderivative(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    // Denominator must be exactly x^2.
+    // Denominator must be x^n with n >= 2 a small integer.
     let Expr::Pow(base, exp) = ctx.get(den).clone() else {
         return None;
     };
-    if !is_var(ctx, base, var) || !is_number(ctx, exp, 2) {
+    if !is_var(ctx, base, var) {
+        return None;
+    }
+    let n = match ctx.get(exp) {
+        Expr::Number(value) if value.is_integer() => value.to_integer().to_i64()?,
+        _ => return None,
+    };
+    if !(2..=8).contains(&n) {
         return None;
     }
 
@@ -2007,28 +2014,35 @@ fn inverse_trig_over_square_antiderivative(
         return None;
     }
 
-    // head = -inv(x)/x
-    let var_expr = ctx.var(var);
-    let head_div = ctx.add(Expr::Div(num, var_expr));
-    let head = ctx.add(Expr::Neg(head_div));
+    // x^(n-1) (just x when n == 2).
+    let lower_power = if n == 2 {
+        ctx.var(var)
+    } else {
+        let var_expr = ctx.var(var);
+        let exp_expr = ctx.num(n - 1);
+        ctx.add(Expr::Pow(var_expr, exp_expr))
+    };
+    let inv_scale = BigRational::new(1.into(), (n - 1).into()); // 1/(n-1)
 
-    // tail = int inv'(x)/x dx, delegated (none -> honest residual).
+    // head = -1/(n-1) * inv(x)/x^(n-1)
+    let head_div = ctx.add(Expr::Div(num, lower_power));
+    let head = scale_rational_term(ctx, -inv_scale.clone(), head_div);
+
+    // tail integrand = inv'(x)/x^(n-1), flattened to a single fraction (the
+    // internal integrator does not pre-simplify a nested `(N/D)/x^(n-1)`).
     let derivative =
         crate::symbolic_differentiation_support::differentiate_symbolic_expr(ctx, num, var)?;
-    let var_expr = ctx.var(var);
-    // Flatten `(N/D)/x` into the single fraction `N/(D*x)`: the internal
-    // integrator does not pre-simplify a nested quotient, and the flat form is
-    // what its rational/radical reciprocal rules recognize.
     let tail_integrand = match ctx.get(derivative).clone() {
-        Expr::Div(n, d) => {
-            let denom = ctx.add(Expr::Mul(d, var_expr));
-            ctx.add(Expr::Div(n, denom))
+        Expr::Div(num_d, den_d) => {
+            let denom = ctx.add(Expr::Mul(den_d, lower_power));
+            ctx.add(Expr::Div(num_d, denom))
         }
-        _ => ctx.add(Expr::Div(derivative, var_expr)),
+        _ => ctx.add(Expr::Div(derivative, lower_power)),
     };
     let tail = integrate_symbolic_expr(ctx, tail_integrand, var)?;
+    let scaled_tail = scale_rational_term(ctx, inv_scale, tail);
 
-    Some(ctx.add(Expr::Add(head, tail)))
+    Some(ctx.add(Expr::Add(head, scaled_tail)))
 }
 
 /// Antiderivative of `arcsin(a x + b)^2` and `arccos(a x + b)^2`.
@@ -22097,7 +22111,7 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Div(num, den) = kind {
-        if let Some(integral) = inverse_trig_over_square_antiderivative(ctx, num, den, var) {
+        if let Some(integral) = inverse_trig_over_power_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
 
@@ -28582,13 +28596,16 @@ mod tests {
     }
 
     #[test]
-    fn inverse_trig_over_square_integrates_and_round_trips_numerically() {
+    fn inverse_trig_over_power_integrates_and_round_trips_numerically() {
         let mut ctx = Context::new();
-        // int inv(x)/x^2 dx by parts, with the tail int inv'(x)/x dx delegated.
+        // int inv(x)/x^n dx by parts, with the lower-degree tail delegated.
         for (source, target) in [
             ("arctan(x)/x^2", "arctan(x)/x^2"),
             ("arcsin(x)/x^2", "arcsin(x)/x^2"),
             ("arccos(x)/x^2", "arccos(x)/x^2"),
+            ("arctan(x)/x^3", "arctan(x)/x^3"),
+            ("arcsin(x)/x^3", "arcsin(x)/x^3"),
+            ("arctan(x)/x^4", "arctan(x)/x^4"),
         ] {
             let expr = parse(source, &mut ctx).expect(source);
             let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x")
@@ -28618,15 +28635,16 @@ mod tests {
     }
 
     #[test]
-    fn inverse_trig_over_square_declines_out_of_scope_shapes() {
+    fn inverse_trig_over_power_declines_out_of_scope_shapes() {
         let mut ctx = Context::new();
-        // Gated to exponent 2 (bare x^2 denominator) and a bare-variable inner;
-        // higher powers, affine/non-affine inners, and plain trig decline.
+        // Gated to a bare x^n (2 <= n <= 8) denominator and a bare-variable
+        // inner; an affine inner, a non-affine inner, plain trig, and x^1
+        // decline.
         for source in [
-            "arctan(x)/x^3",
             "arctan(2*x)/x^2",
             "arctan(x^2)/x^2",
             "sin(x)/x^2",
+            "arctan(x)/x",
         ] {
             let expr = parse(source, &mut ctx).expect(source);
             let (num, den) = match ctx.get(expr).clone() {
@@ -28634,7 +28652,7 @@ mod tests {
                 _ => panic!("expected Div: {source}"),
             };
             assert!(
-                super::inverse_trig_over_square_antiderivative(&mut ctx, num, den, "x").is_none(),
+                super::inverse_trig_over_power_antiderivative(&mut ctx, num, den, "x").is_none(),
                 "rule must decline: {source}"
             );
         }

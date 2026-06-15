@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 164 (newest first)
+Active entries: 165 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -124,6 +124,7 @@ Active entries: 164 (newest first)
 - 2026-06-15 | `retained` | calculus / educational / didactic substeps for int_a^b |c x + d| dx (the | Retained educational: abs-linear definite-integral narration
 - 2026-06-15 | `retained` | core / power evaluation / `try_rewrite_evaluate_power_expr` (P0 robustness + | Retained soundness: 0^(negative fractional power) no longer panics
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(x)/x^2 dx for inv in | Retained integration: inverse-trig over x^2 by parts (delegated tail)
+- 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(x)/x^n dx, integer n in [2,8] | Retained integration: inverse-trig over x^n (generalized by parts)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7186,3 +7187,37 @@ Active entries: 164 (newest first)
   - a closed form containing `ln|x|` cannot be round-tripped through the internal
     differentiator (it declines on the abs argument); pin such antiderivatives with a
     finite-difference numeric check instead
+
+
+## 2026-06-15 - Retained integration: inverse-trig over x^n (generalized by parts)
+
+- area:
+  - calculus / inverse-trig integration / int inv(x)/x^n dx, integer n in [2,8]
+    (block 8) -- generalizes the prior int inv(x)/x^2 cell
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: int arctan(x)/x^3, int arcsin(x)/x^3, int arctan(x)/x^4 ... now
+    resolve (the x^2 case already did)
+  - behavior_change_expected: yes - int inv(x)/x^n for n=3..8 were residual and now
+    resolve when the by-parts tail resolves
+- observed (generalization of the same handler, one degree at a time):
+  - by parts with u = inv(x), dv = x^-n dx, v = -1/((n-1) x^(n-1)) gives
+    int inv(x)/x^n = -inv(x)/((n-1) x^(n-1)) + 1/(n-1) int inv'(x)/x^(n-1) dx. The head
+    is exact; the LOWER-DEGREE tail int inv'(x)/x^(n-1) dx is delegated and is itself an
+    inv'/x^(n-1) form the integrator resolves (arctan -> 1/(x^(n-1)(1+x^2)),
+    arcsin/arccos -> 1/(x^(n-1) sqrt(1-x^2))). A non-resolving tail self-gates to residual
+  - the recursion bottoms out cleanly: each application drops the power by one until the
+    tail is a pure rational/radical reciprocal the existing rules own. Gated to a bare x^n
+    (2<=n<=8) denominator and a single inverse-trig of the bare variable; x^1 (the
+    non-elementary arctan(x)/x dilogarithm), affine/non-affine inners and plain trig decline
+  - same flatten-the-nested-quotient fix as the x^2 cell (build inv'(x)/x^(n-1) as a single
+    fraction, not (N/D)/x^(n-1)); finite-difference numeric round-trip unit test extended to
+    n=2,3,4; reject test updated (x^1 declines). No matrix rows (radical/log antiderivative
+    does not symbolically diff-verify) -> unit-test-locked, no scorecard delta
+- retained learning:
+  - a "boundary term + delegated tail" by-parts rule generalizes for FREE over a power
+    parameter when each application strictly REDUCES toward a form the integrator already
+    owns: gate the parameter range, build v = -1/((n-1) x^(n-1)), and let the recursion and
+    self-gating do the rest -- no per-n special casing
