@@ -228,7 +228,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   se queda residual honesto porque ∫u·tan(u) no es elemental. Unit-test-locked
   (no diff-verifica simbólico), sin delta de scorecard. Quedan: `e^√x` y
   `e^√x/√x` (forma Pow(e,√x), no Function → otro punto de despacho))*
-  *(peldaño e^√x 2026-06-15 PENDING_HASH: cerrado. `∫e^√x=2(√x−1)e^√x` vía punto
+  *(peldaño e^√x 2026-06-15 552d4ee30: cerrado. `∫e^√x=2(√x−1)e^√x` vía punto
   de despacho propio en el brazo Pow (`Pow(E,√x)`, no Function), delegando ∫u·e^u;
   y la familia cofactor `∫H(√x)/√x=2∫H(u)du` —`∫e^√x/√x=2e^√x`,
   `∫sin(√x)/√x=−2cos(√x)`, cos/sinh/cosh análogos— donde 1/√x cancela el u de
