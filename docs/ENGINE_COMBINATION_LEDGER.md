@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 159 (newest first)
+Active entries: 160 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
+- 2026-06-15 | `retained` | calculus / limits at infinity / lim_{x->+inf} x^q for non-integer rational q | Retained limit: bare fractional-power monomial at infinity
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -6951,3 +6952,49 @@ Active entries: 159 (newest first)
   - adding cas_engine unit tests bumps `filtered_out` in name-filtered cargo-test
     scorecard lanes (e.g. calculus_integrate_backend_mode_boundary) by the test
     count -- a benign bookkeeping delta, not a behavior change
+
+
+## 2026-06-15 - Retained limit: bare fractional-power monomial at infinity
+
+- area:
+  - calculus / limits at infinity / lim_{x->+inf} x^q for non-integer rational q
+    (block 3)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - limit_cell: limit(x^(1/2),x,inf)=inf, limit(x^(-1/2),x,inf)=0,
+    limit(x^(3/2),x,inf)=inf, limit(x^(-3/2),x,inf)=0, limit(x^(2/3),x,inf)=inf
+  - behavior_change_expected: yes - bare Pow(var, non-integer-rational) at +inf was
+    residual and now resolves; -inf and symbolic/irrational exponents stay residual
+- observed (one self-contained limit rule, ~30 lines):
+  - the integer power rule `apply_power_rule` parses the exponent through
+    `parse_pow_int` (integers only), so `x^(1/2)`, `x^(-3/2)`, `x^(2/3)` declined --
+    even though the engine already had the antiderivatives (`int x^(-3/2) = -2/sqrt x`)
+    and could evaluate the limit when written as a quotient (`limit(-2/sqrt x,inf)=0`).
+    `apply_rational_power_rule` extracts the exponent with `numeric_eval::
+    as_rational_const`, declines integers (delegated to the owner) and, for x->+inf
+    where the base is positive, returns +inf if q>0 and 0 if q<0
+  - SOUND GATES: base must be the bare limit variable; the exponent must be a rational
+    CONSTANT (so `x^pi`, `x^a`, `x^sqrt(2)` stay residual -- `as_rational_const`
+    returns None); and x->-inf DECLINES because x^q with non-integer q is not real for
+    x<0 (the engine then attaches the right domain-conflict warning). Integer-folding
+    exponents like `x^(4/2)` are NOT mishandled -- they fall to an honest residual
+    (a pre-existing under-resolution of the integer owner, not introduced here)
+  - wired right after `apply_power_rule` in `try_limit_rules_at_infinity`; two
+    cas_math unit tests (resolves +inf forms, declines integers/-inf/non-var base)
+  - verified adversarially (2-lens, ~40 refutation probes + numeric cross-check at
+    x up to 1e18, 0 unsound); 3 new rows in the limit command matrix
+- retained learning:
+  - a capability can be blocked by an over-narrow PARSER in an otherwise-correct rule:
+    here the math (`x^q -> 0/inf by sign of q`) was trivial; the only gap was that the
+    owner extracted the exponent as an i64. When the antiderivative of a family exists
+    but the family's limit/definite path is residual, check whether a shared extractor
+    (`parse_pow_int` vs `as_rational_const`) is silently narrowing the domain
+  - signedness of the APPROACH is a soundness gate for non-integer powers: x^q is only
+    real for x<0 when q has an odd denominator, so the safe rule resolves the +inf side
+    and leaves -inf an honest residual rather than guessing a branch
+  - this unblocks the LIMIT prerequisite of the improper test-p item (`1/x^p [1,inf)`),
+    but the improper-integral dispatcher still gates fractional-power integrands BEFORE
+    the antiderivative-limit step, so `integrate(1/x^(3/2),x,1,inf)` is still residual --
+    that gate is the next peldaño, separate from this limit fix

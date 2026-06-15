@@ -468,6 +468,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   simetría impar (→0); inner cuadrático `|x²-1|`, borne π/e e indefinida declinan.
   Quedan: inner cuadrático/polinómico (raíces múltiples), `e^(-|x|)` impropia, y la
   narración de simetría.)*
+  *(límite prerequisito del test-p 2026-06-15 PENDING_HASH: `lim_{x→+∞} x^q` con q
+  racional NO entero ya resuelve — `apply_rational_power_rule` extrae el exponente con
+  `as_rational_const`, declina enteros (los conserva `apply_power_rule`) y, como la base
+  x→+∞ es positiva, devuelve +∞ si q>0 y 0 si q<0; x→−∞ DECLINA (x^q no es real para x<0
+  con q no entero) igual que los exponentes simbólicos/irracionales. `x^(1/2)→∞`,
+  `x^(-1/2)→0`, `x^(2/3)→∞`. Esto desbloquea el LÍMITE que el test-p necesita, pero el
+  despachador de impropias aún gatea los integrandos de potencia fraccionaria ANTES del
+  paso límite-de-la-antiderivada, así que `∫1/x^(3/2)[1,∞)` sigue residual — ese gate es
+  el siguiente peldaño del test-p. Verificado adversarialmente (2-lente, ~40 sondas +
+  cross-check numérico a x=1e18, 0 unsound).)*
 - [~] **(F) Por partes narrada**: la plantilla completa ('Elegir u y
   dv' → 'Calcular du y v' → 'Aplicar la fórmula') existe y la usa
   `x·ln(x)`, pero `x·eˣ`, `x·cos x`, `arctan(x)`, `x²eˣ`, `eˣ·sin x`

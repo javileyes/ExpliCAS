@@ -5340,6 +5340,51 @@ pub fn apply_power_rule(
     Some(mk_infinity(ctx, sign))
 }
 
+/// Rational-exponent power at infinity: `lim_{x->+∞} x^q` for a non-integer
+/// rational `q`.  The bare integer case is owned by [`apply_power_rule`] (which
+/// also resolves the `x->-∞` parity); this rule covers fractional exponents,
+/// where the antiderivatives of fractional-power integrands surface
+/// (`∫x^(-3/2) = -2/√x`, etc.):
+///
+/// * `q > 0` → `+∞`
+/// * `q < 0` → `0`
+///
+/// For `x->-∞` the base is negative and `x^q` with non-integer `q` is not real,
+/// so we decline and leave the limit as an honest residual.
+pub fn apply_rational_power_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    // Base must be exactly the limit variable.
+    if base != var {
+        return None;
+    }
+
+    // Integer exponents belong to `apply_power_rule`, which also handles the
+    // sign parity for `x->-∞`.
+    let q = crate::numeric_eval::as_rational_const(ctx, exp)?;
+    if q.is_integer() {
+        return None;
+    }
+
+    // A non-integer power of a negative magnitude is not real-valued.
+    if approach == InfSign::Neg {
+        return None;
+    }
+
+    if q.is_negative() {
+        Some(ctx.num(0))
+    } else {
+        Some(mk_infinity(ctx, InfSign::Pos))
+    }
+}
+
 /// Rule 4: Reciprocal power - lim c/x^n = 0 for n > 0 and c independent of x.
 pub fn apply_reciprocal_power_rule(ctx: &mut Context, expr: ExprId, var: ExprId) -> Option<ExprId> {
     let Expr::Div(num, den) = ctx.get(expr).clone() else {
@@ -8790,6 +8835,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = apply_power_rule(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = apply_rational_power_rule(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = apply_reciprocal_power_rule(ctx, expr, var) {
@@ -15981,6 +16029,52 @@ mod tests {
         assert!(
             matches!(ctx.get(out_neg), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
         );
+    }
+
+    #[test]
+    fn apply_rational_power_rule_resolves_fractional_exponents_at_positive_infinity() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let neg_half = parse_expr(&mut ctx, "x^(-1/2)");
+        let pos_half = parse_expr(&mut ctx, "x^(1/2)");
+        let three_halves = parse_expr(&mut ctx, "x^(3/2)");
+
+        let out_neg =
+            apply_rational_power_rule(&mut ctx, neg_half, x, InfSign::Pos).expect("x^(-1/2) -> 0");
+        let out_pos =
+            apply_rational_power_rule(&mut ctx, pos_half, x, InfSign::Pos).expect("x^(1/2) -> ∞");
+        let out_three = apply_rational_power_rule(&mut ctx, three_halves, x, InfSign::Pos)
+            .expect("x^(3/2) -> ∞");
+
+        assert!(
+            matches!(ctx.get(out_neg), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(out_pos),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(out_three),
+            Expr::Constant(Constant::Infinity)
+        ));
+    }
+
+    #[test]
+    fn apply_rational_power_rule_declines_integers_and_negative_infinity() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        // Integer exponents stay with `apply_power_rule`.
+        let int_exp = parse_expr(&mut ctx, "x^2");
+        assert!(apply_rational_power_rule(&mut ctx, int_exp, x, InfSign::Pos).is_none());
+
+        // A non-integer power of a negative magnitude is not real-valued.
+        let frac = parse_expr(&mut ctx, "x^(1/2)");
+        assert!(apply_rational_power_rule(&mut ctx, frac, x, InfSign::Neg).is_none());
+
+        // Base must be exactly the limit variable.
+        let other = parse_expr(&mut ctx, "y^(1/2)");
+        assert!(apply_rational_power_rule(&mut ctx, other, x, InfSign::Pos).is_none());
     }
 
     #[test]
