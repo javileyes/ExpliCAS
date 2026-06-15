@@ -95,9 +95,19 @@ unchanged (only `filtered_out +1` from the new unit test).
 - DISTINCT code path from Cluster B's fix: the inner exponent `2*k` is **not** a
   literal even integer, so it declines the `inner_int` gate and falls through the
   `MultiplyExponents` cancellation. PRE-EXISTING (untouched by the Cluster B fix).
-- Bounded fix: under the engine's already-tracked `a^(2k) ≥ 0` condition,
-  `sqrt(a^(2k)) = |a^k| = |a|^k`. Needs its own careful cycle (the cancellation
-  path is sign-unaware). NOT YET FIXED.
+- Fix under the engine's already-tracked `a^(2k) ≥ 0` condition:
+  `sqrt(a^(2k)) = |a^k| = |a|^k`. Enabler verified: the engine folds `|a^even| →
+  a^even` but keeps `|a^k|`/`|a^(2k)|`, so wrapping the cancelled result in abs is
+  self-cleaning.
+- **GATE IS SUBTLE (why this needs its own scoped cycle, not a blanket wrap):** the
+  abs is needed for even-root outer ONLY when the inner exponent is *not provably
+  odd*. `(a^3)^(1/2) → a^(3/2)` is already correct — odd inner ⟹ the realness
+  condition reduces to `a ≥ 0` (on the BASE), forcing the result non-negative. Even
+  / unknown-parity inner (`2k`, `k`, `3k`) attach `a^E ≥ 0` (not on the base), so the
+  result can be negative ⟹ abs required. A blanket "wrap on even outer denominator"
+  would regress `(a^3)^(1/2)` to a redundant `|a^(3/2)|`. So the fix must detect
+  provably-odd inner exponents (literal odd / `2j+1` form) and decline there.
+  NOT YET FIXED.
 
 ### Cluster D — `arctan(x)+arctan(1/x)` / `arctan+arccot` → `π/2` unconditionally (`trig_invtrig`)
 - `arctan(x)+arctan(1/x)` → `π/2` (only `x≠0`) ; correct `(π/2)·sign(x)` →
