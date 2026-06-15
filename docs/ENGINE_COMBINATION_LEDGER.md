@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 169 (newest first)
+Active entries: 170 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -129,6 +129,7 @@ Active entries: 169 (newest first)
 - 2026-06-15 | `retained` | calculus / definite integration / the area-function FTC int_a^x f(t) dt with a | Retained soundness: divergent improper area-functions yield undefined
 - 2026-06-15 | `retained` | calculus / function-of-radical integration / int f(sqrt(x)) dx for | Retained integration: trig/hyperbolic of sqrt(x) (generalized u = sqrt(x))
 - 2026-06-15 | `retained` | simplification / power-of-power canonicalization / `(x^m)^n` with even inner | Retained soundness: (x^m)^n keeps the absolute value over the reals
+- 2026-06-15 | `retained` | calculus / function-of-radical integration / `int e^sqrt(x) dx`, | Retained integration: e^sqrt(x) and H(sqrt(x))/sqrt(x) (u = sqrt(x))
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7414,3 +7415,56 @@ Active entries: 169 (newest first)
     path) shows this hazard and is the next peldano
   - when an adversarial sweep flags a defect, REVERT-TEST (stash + rebuild) before owning it:
     pre-existing defects in the touched area are not regressions of the current change
+
+
+## 2026-06-15 - Retained integration: e^sqrt(x) and H(sqrt(x))/sqrt(x) (u = sqrt(x))
+
+- area:
+  - calculus / function-of-radical integration / `int e^sqrt(x) dx`,
+    `int H(sqrt(x))/sqrt(x) dx` for H in {exp, sin, cos, sinh, cosh} (block 8) --
+    the Pow-form sibling of the trig/inverse-trig-of-sqrt owners
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: int e^sqrt(x) = 2 (sqrt(x) - 1) e^sqrt(x);
+    int e^sqrt(x)/sqrt(x) = 2 e^sqrt(x); int sin(sqrt(x))/sqrt(x) = -2 cos(sqrt(x))
+    (and cos/sinh/cosh analogues)
+  - behavior_change_expected: yes - these were residual and now resolve
+- observed (one shared substitution core + two thin dispatchers):
+  - same `u = sqrt(x)` (x = u^2, dx = 2u du) reduction as the trig/inverse-trig-of-sqrt
+    owner: `int g(x) dx = 2 int u g(u^2) du`. Factored the tail of
+    `function_of_sqrt_antiderivative` into `complete_sqrt_substitution(u_integrand,
+    sqrt_arg, var)` (delegate -> back-substitute u -> sqrt(x) -> fold nested powers ->
+    scale by 2), then added two thin dispatchers:
+    (1) `exp_of_sqrt_antiderivative` (Pow arm): `e^sqrt(x)` is `Pow(E, sqrt(x))`, NOT a
+    Function, so it needs its own match point; u_integrand = u*e^u, delegates to the
+    monomial-times-exp owner -> (u-1)e^u -> 2(sqrt(x)-1)e^sqrt(x)
+    (2) `function_over_sqrt_antiderivative`: `H(sqrt(x))/sqrt(x)`. The 1/sqrt(x)
+    cofactor cancels the u from dx, so u_integrand = H(u) directly (delegate is just
+    int H(u) du). The engine NORMALIZES `A/sqrt(x)` to `A*x^(-1/2)`, so the live path
+    is a Mul (factor x^(-1/2) + factor H(sqrt(x))); a literal-Div twin
+    (`function_over_sqrt_div_antiderivative`) covers the un-normalized form seen on
+    recursive integrator entry. Both share `function_of_sqrt_parts` (extract H(u) +
+    the sqrt(x) arg from `Pow(E, sqrt(x))` or `Function(builtin, [sqrt(x)])`)
+  - SELF-GATING preserves honesty: the substitution declines to an honest residual on
+    non-elementary integrands -- e^x/sqrt(x) -> 2 int e^(u^2) du (erf), e^sqrt(x)/x ->
+    2 int e^u/u du (Ei, the 1/x cofactor is not 1/sqrt(x)), sin(x)/sqrt(x) ->
+    2 int sin(u^2) du (Fresnel). The delegate (int H(u) or int u*e^u) is the
+    elementarity oracle; the dispatch only needs the shape to PLAUSIBLY resolve
+  - verified by sympy and finite-difference numeric round-trips (the closed forms mix
+    sqrt factors the internal differentiator declines); reject test for the three
+    non-elementary shapes. No matrix rows (does not symbolically diff-verify) ->
+    unit-test-locked, guardrail + pressure fingerprints byte-identical
+- retained learning:
+  - when a substitution family already exists for the Function form, the e^(.) sibling
+    needs a SEPARATE dispatch point because `e^arg` is `Pow(E, arg)`, not
+    `Function(Exp, [arg])` -- the Pow arm and the Function arm are distinct entries
+  - a `1/sqrt(x)` cofactor is not a special case to fear but a SIMPLIFICATION of the
+    substitution: it cancels the `u` that `dx = 2u du` contributes, so the delegate
+    drops from `u*g(u^2)` to plain `H(u)`. Recognize it on the NORMALIZED form
+    (`H(sqrt(x))*x^(-1/2)`, a Mul) -- the engine rewrites `/sqrt(x)` to `*x^(-1/2)`
+    before integration, so a Div-only handler silently never fires on the live path
+  - factor the substitution TAIL (delegate + back-substitute + fold + scale) into one
+    helper; new radical siblings then cost only a shape recognizer that builds the
+    delegate integrand

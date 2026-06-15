@@ -1986,19 +1986,34 @@ fn function_of_sqrt_antiderivative(
         return None;
     }
 
-    // H(x) = int x * inv(x) dx in the original variable, delegated.
+    // int f(sqrt(x)) dx = 2 int u f(u) du: delegate the monomial-times-f tail.
     let var_expr = ctx.var(var);
-    let inv_of_var = ctx.call_builtin(builtin, vec![var_expr]);
-    let u_integrand = mul2_raw(ctx, var_expr, inv_of_var);
+    let f_of_var = ctx.call_builtin(builtin, vec![var_expr]);
+    let u_integrand = mul2_raw(ctx, var_expr, f_of_var);
+    complete_sqrt_substitution(ctx, u_integrand, arg, var)
+}
+
+/// Shared tail of the `u = sqrt(x)` substitution. Given the delegate integrand
+/// `u_integrand = u * g(u^2)` (already expressed in the original variable, where
+/// `g` is the original integrand), integrate it, back-substitute `u -> sqrt(x)`,
+/// fold the nested numeric powers the back-substitution introduces, and scale by
+/// 2 (the `dx = 2u du` factor). `sqrt_arg` is the `sqrt(x)` expression to
+/// substitute back. Self-gates to an honest residual if the delegated integral
+/// does not resolve.
+fn complete_sqrt_substitution(
+    ctx: &mut Context,
+    u_integrand: ExprId,
+    sqrt_arg: ExprId,
+    var: &str,
+) -> Option<ExprId> {
     let h = integrate_symbolic_expr(ctx, u_integrand, var)?;
 
-    // Back-substitute x -> sqrt(x) and scale by 2.
     let var_expr = ctx.var(var);
     let h_sub = crate::substitute::substitute_power_aware(
         ctx,
         h,
         var_expr,
-        arg,
+        sqrt_arg,
         crate::substitute::SubstituteOptions::exact(),
     );
     // The substitution turns x^k into (sqrt(x))^k = Pow(Pow(x,1/2),k); fold those
@@ -2010,6 +2025,112 @@ fn function_of_sqrt_antiderivative(
         BigRational::from_integer(2.into()),
         h_folded,
     ))
+}
+
+/// `int e^sqrt(x) dx = 2 (sqrt(x) - 1) e^sqrt(x)`, via `u = sqrt(x)`
+/// (`int e^sqrt(x) dx = 2 int u e^u du`). `e^sqrt(x)` is `Pow(E, sqrt(x))`, not a
+/// `Function`, so it is dispatched from the Pow arm. Self-gates if the delegated
+/// tail `int u e^u du` does not resolve.
+fn exp_of_sqrt_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !matches!(ctx.get(base), Expr::Constant(Constant::E)) {
+        return None;
+    }
+    let radicand = sqrt_like_radicand(ctx, exp)?;
+    if !is_var(ctx, radicand, var) {
+        return None;
+    }
+
+    // u_integrand = u * e^u.
+    let var_expr = ctx.var(var);
+    let e = ctx.add(Expr::Constant(Constant::E));
+    let e_pow_var = ctx.add(Expr::Pow(e, var_expr));
+    let var_expr = ctx.var(var);
+    let u_integrand = mul2_raw(ctx, var_expr, e_pow_var);
+    complete_sqrt_substitution(ctx, u_integrand, exp, var)
+}
+
+/// `int H(sqrt(x)) / sqrt(x) dx = 2 int H(u) du`, via `u = sqrt(x)`: the
+/// `1/sqrt(x)` cofactor cancels the `u` from `dx = 2u du`, so the delegate
+/// integrand is just `H(u)`. The engine normalizes `H(sqrt(x))/sqrt(x)` to the
+/// product `H(sqrt(x)) * x^(-1/2)`, so this is dispatched from the Mul arm with
+/// the two factors. Covers `H = exp` (`Pow(E, .)`) and the unary builtins whose
+/// primitive resolves (e.g. `int e^sqrt(x)/sqrt(x) = 2 e^sqrt(x)`,
+/// `int sin(sqrt(x))/sqrt(x) = -2 cos(sqrt(x))`). Self-gates otherwise.
+fn function_over_sqrt_antiderivative(
+    ctx: &mut Context,
+    factor_a: ExprId,
+    factor_b: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    // One factor must be the reciprocal root x^(-1/2); the other is H(sqrt(x)).
+    let h_expr = if is_negative_half_power_of_var(ctx, factor_a, var) {
+        factor_b
+    } else if is_negative_half_power_of_var(ctx, factor_b, var) {
+        factor_a
+    } else {
+        return None;
+    };
+    let (h_of_var, sqrt_arg) = function_of_sqrt_parts(ctx, h_expr, var)?;
+    // u_integrand = u * (H(u)/u) = H(u); back-substitute against the sqrt(x) arg.
+    complete_sqrt_substitution(ctx, h_of_var, sqrt_arg, var)
+}
+
+/// `int H(sqrt(x)) / sqrt(x) dx` when the integrand survives as a literal
+/// `Div(H(sqrt(x)), sqrt(x))` (e.g. on recursive integrator entry, before the
+/// `A/sqrt(x) -> A*x^(-1/2)` normalization). Same `u = sqrt(x)` reduction as the
+/// Mul form: `2 int H(u) du`.
+fn function_over_sqrt_div_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let den_radicand = sqrt_like_radicand(ctx, den)?;
+    if !is_var(ctx, den_radicand, var) {
+        return None;
+    }
+    let (h_of_var, sqrt_arg) = function_of_sqrt_parts(ctx, num, var)?;
+    complete_sqrt_substitution(ctx, h_of_var, sqrt_arg, var)
+}
+
+/// If `h_expr` is `H(sqrt(x))` for `H = exp` (`Pow(E, .)`) or a unary builtin,
+/// return `(H(u) rebuilt in the original variable, the sqrt(x) argument)`.
+fn function_of_sqrt_parts(
+    ctx: &mut Context,
+    h_expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let arg_is_sqrt_var = |ctx: &mut Context, a: ExprId| {
+        sqrt_like_radicand(ctx, a).is_some_and(|r| is_var(ctx, r, var))
+    };
+    let var_expr = ctx.var(var);
+    match ctx.get(h_expr).clone() {
+        Expr::Pow(base, exp)
+            if matches!(ctx.get(base), Expr::Constant(Constant::E))
+                && arg_is_sqrt_var(ctx, exp) =>
+        {
+            let e = ctx.add(Expr::Constant(Constant::E));
+            Some((ctx.add(Expr::Pow(e, var_expr)), exp))
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 && arg_is_sqrt_var(ctx, args[0]) => {
+            let builtin = ctx.builtin_of(fn_id)?;
+            Some((ctx.call_builtin(builtin, vec![var_expr]), args[0]))
+        }
+        _ => None,
+    }
+}
+
+/// Whether `expr` is `x^(-1/2)` (the reciprocal square root of the bare variable).
+fn is_negative_half_power_of_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => is_var(ctx, *base, var) && is_negative_half(ctx, *exp),
+        _ => false,
+    }
 }
 
 /// Fold `Pow(Pow(b, p), q) -> Pow(b, p*q)` for numeric `p, q` (and `Pow(b, 1) ->
@@ -21986,6 +22107,12 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Mul(l, r) = kind {
+        // H(sqrt(x)) * x^(-1/2) (the normalized form of H(sqrt(x))/sqrt(x)) via
+        // u = sqrt(x): 2 int H(u) du.
+        if let Some(integral) = function_over_sqrt_antiderivative(ctx, l, r, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = trig_product_to_sum_antiderivative(ctx, l, r, var) {
             return Some(integral);
         }
@@ -22036,6 +22163,11 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Pow(base, exp) = kind {
+        // e^sqrt(x) = Pow(E, sqrt(x)) via u = sqrt(x): 2 int u e^u du.
+        if let Some(integral) = exp_of_sqrt_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
         if is_negative_half(ctx, exp) && is_var_square_plus_one(ctx, base, var) {
             let var_expr = ctx.var(var);
             return Some(ctx.call_builtin(BuiltinFn::Asinh, vec![var_expr]));
@@ -22222,6 +22354,12 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Div(num, den) = kind {
+        // H(sqrt(x))/sqrt(x) via u = sqrt(x): 2 int H(u) du (literal-Div form, e.g.
+        // on recursive entry before the A/sqrt(x) -> A*x^(-1/2) normalization).
+        if let Some(integral) = function_over_sqrt_div_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = inverse_trig_over_power_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
@@ -28852,6 +28990,59 @@ mod tests {
             assert!(
                 super::function_of_sqrt_antiderivative(&mut ctx, builtin, arg, "x").is_none(),
                 "rule must decline: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn exp_and_function_over_sqrt_integrate_and_round_trip() {
+        let mut ctx = Context::new();
+        // e^sqrt(x) (Pow(E, sqrt(x)), the Pow arm) and the H(sqrt(x))/sqrt(x)
+        // cofactor family (the Mul arm, since the engine normalizes /sqrt(x) to
+        // *x^(-1/2)); target is the integrand, recovered by central difference.
+        for (source, target) in [
+            ("e^sqrt(x)", "e^sqrt(x)"),
+            ("e^sqrt(x)/sqrt(x)", "e^sqrt(x)/sqrt(x)"),
+            ("sin(sqrt(x))/sqrt(x)", "sin(sqrt(x))/sqrt(x)"),
+            ("cos(sqrt(x))/sqrt(x)", "cos(sqrt(x))/sqrt(x)"),
+            ("sinh(sqrt(x))/sqrt(x)", "sinh(sqrt(x))/sqrt(x)"),
+            ("cosh(sqrt(x))/sqrt(x)", "cosh(sqrt(x))/sqrt(x)"),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x")
+                .unwrap_or_else(|| panic!("must integrate: {source}"));
+            let eval_at = |ctx: &Context, e: cas_ast::ExprId, x: f64| -> f64 {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), x);
+                crate::evaluator_f64::eval_f64(ctx, e, &vars).expect("eval_f64")
+            };
+            let target_expr = parse(target, &mut ctx).expect(target);
+            for sample in [0.2_f64, 0.5, 1.3, 2.7] {
+                let h = 1e-6;
+                let numeric_deriv = (eval_at(&ctx, antiderivative, sample + h)
+                    - eval_at(&ctx, antiderivative, sample - h))
+                    / (2.0 * h);
+                let f_val = eval_at(&ctx, target_expr, sample);
+                assert!(
+                    (numeric_deriv - f_val).abs() < 1e-4,
+                    "round-trip mismatch for {source} at {sample}: {numeric_deriv} vs {f_val}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn exp_over_sqrt_declines_non_elementary() {
+        let mut ctx = Context::new();
+        // The sqrt substitution must self-gate to an HONEST residual on
+        // non-elementary integrands: e^x/sqrt(x) -> 2 int e^(u^2) du (erf);
+        // e^sqrt(x)/x -> 2 int e^u/u du (Ei, the 1/x cofactor is not 1/sqrt(x));
+        // sin(x)/sqrt(x) -> 2 int sin(u^2) du (Fresnel).
+        for source in ["e^x/sqrt(x)", "e^sqrt(x)/x", "sin(x)/sqrt(x)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "non-elementary integrand must stay residual: {source}"
             );
         }
     }
