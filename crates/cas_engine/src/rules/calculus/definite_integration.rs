@@ -952,6 +952,22 @@ pub(super) fn definite_integration_rewrite(
             cas_ast::substitute_expr_by_id(ctx, antiderivative, call.var_expr, call.upper);
         let at_lower =
             cas_ast::substitute_expr_by_id(ctx, antiderivative, call.var_expr, call.lower);
+        // A genuinely non-finite boundary value means the improper integral
+        // DIVERGES at that endpoint (e.g. int_0^x ln(t)/t dt: the antiderivative
+        // (ln t)^2/2 -> +inf at t = 0). Returning F(upper) - F(lower) would carry
+        // a silent infinity^k term that a later `diff` drops into a false finite
+        // derivative. The check is structural and domain-aware: ln(0), c/0 and
+        // 0^neg are non-finite, but a literal-zero factor kills a removable
+        // singularity (0*ln(0) -> 0, so int_0^x ln(t) dt -> x ln(x) - x is kept)
+        // and ln(0^2+1) = ln(1) is finite (so int_0^x arctan(t) dt is kept).
+        if boundary_is_genuinely_nonfinite(ctx, at_upper)
+            || boundary_is_genuinely_nonfinite(ctx, at_lower)
+        {
+            let undefined = ctx.add(Expr::Constant(Constant::Undefined));
+            return Some(
+                Rewrite::new(undefined).desc("integrate(f, x, a, t) diverges at an endpoint"),
+            );
+        }
         let result = ctx.add(Expr::Sub(at_upper, at_lower));
         return Some(Rewrite::new(result).desc("integrate(f, x, a, b)"));
     };
@@ -1393,6 +1409,68 @@ fn resolve_indefinite_for_definite(
         antiderivative,
         required_conditions.into_implicit_conditions().collect(),
     ))
+}
+
+/// True if `expr` (a substituted boundary value F(endpoint)) is genuinely
+/// non-finite: an explicit `infinity`/`undefined`, `ln` of a non-positive
+/// constant, a division by zero with a non-zero numerator, or `0^(negative)`.
+///
+/// Domain-aware so it does NOT over-flag removable singularities: a literal-zero
+/// factor kills a singular cofactor (`0*ln(0)` is finite, keeping the convergent
+/// improper `int_0^x ln(t) dt`), and `ln(0^2+1) = ln(1)` is finite (keeping the
+/// proper `int_0^x arctan(t) dt`). A symbolic argument (`as_rational_const`
+/// None) is never statically flagged.
+fn boundary_is_genuinely_nonfinite(ctx: &Context, expr: ExprId) -> bool {
+    // Numeric value of a CONSTANT subexpression (no free variables), used to fold
+    // function-of-zero forms a rational extractor cannot (sinh(0), e^0-1,
+    // |sinh(0)|, ...). Only ever applied to ln arguments / single factors, never
+    // to a `0 * singular` product, so there is no 0*inf indeterminacy.
+    let numeric = |ctx: &Context, e: ExprId| -> Option<f64> {
+        let vars = std::collections::HashMap::new();
+        cas_math::evaluator_f64::eval_f64(ctx, e, &vars).filter(|v| v.is_finite())
+    };
+    let is_zero = |ctx: &Context, e: ExprId| -> bool {
+        as_rational_const(ctx, e).is_some_and(|r| r.is_zero())
+            || numeric(ctx, e).is_some_and(|v| v.abs() < 1e-12)
+    };
+    let nonpositive = |ctx: &Context, e: ExprId| -> bool {
+        as_rational_const(ctx, e).is_some_and(|r| r <= BigRational::from_integer(0.into()))
+            || numeric(ctx, e).is_some_and(|v| v <= 1e-9)
+    };
+    match ctx.get(expr) {
+        Expr::Constant(Constant::Infinity | Constant::Undefined) => true,
+        Expr::Neg(a) | Expr::Hold(a) => boundary_is_genuinely_nonfinite(ctx, *a),
+        Expr::Mul(a, b) => {
+            // 0 * anything = 0: a literal-zero factor kills a singular cofactor.
+            if is_zero(ctx, *a) || is_zero(ctx, *b) {
+                return false;
+            }
+            boundary_is_genuinely_nonfinite(ctx, *a) || boundary_is_genuinely_nonfinite(ctx, *b)
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) => {
+            boundary_is_genuinely_nonfinite(ctx, *a) || boundary_is_genuinely_nonfinite(ctx, *b)
+        }
+        Expr::Div(a, b) => {
+            (is_zero(ctx, *b) && !is_zero(ctx, *a))
+                || boundary_is_genuinely_nonfinite(ctx, *a)
+                || boundary_is_genuinely_nonfinite(ctx, *b)
+        }
+        Expr::Pow(base, exp) => {
+            (is_zero(ctx, *base) && as_rational_const(ctx, *exp).is_some_and(|r| r.is_negative()))
+                || boundary_is_genuinely_nonfinite(ctx, *base)
+        }
+        Expr::Function(fn_id, args) => {
+            if matches!(ctx.builtin_of(*fn_id), Some(cas_ast::BuiltinFn::Ln))
+                && args.len() == 1
+                && nonpositive(ctx, args[0])
+            {
+                return true;
+            }
+            args.iter()
+                .any(|&a| boundary_is_genuinely_nonfinite(ctx, a))
+        }
+        _ => false,
+    }
 }
 
 fn certify_interval(

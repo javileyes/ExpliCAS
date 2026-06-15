@@ -77,6 +77,22 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `sin(t)/t→sin(x)/x`. Peldaño: certificado de convergencia compartido (reusar el
   motor de definidas, que ya devuelve finito sii `∫_0^c f` converge) gateando TODAS
   las rutas de presentación FTC. Cazado por verificación adversarial 2-lente.)*
+  *(fuga `infinity^k` cerrada 2026-06-15 PENDING_HASH: el ÚLTIMO eslabón divergente —
+  la rama de bornes simbólicos del FTC (`integrate(f,t,a,x)` con borne constante en una
+  singularidad de la antiderivada) devolvía `F(x) − F(a)` arrastrando un término
+  `infinity^k`/`+infinity` que un `diff` posterior tira, filtrando una derivada finita
+  FALSA (`d/dx ∫_0^x ln(t)/t = ln(x)/x`). `boundary_is_genuinely_nonfinite` lo bloquea
+  ANTES de formar `F(x)−F(a)`: chequeo ESTRUCTURAL y consciente de dominio (`ln` de
+  constante ≤0, `c/0`, `0^neg`, infinity; un FACTOR cero literal mata singularidades
+  removibles `0·ln(0)`, y `ln(0²+1)=ln(1)` es finito) con `as_rational_const` + `eval_f64`
+  para argumentos función-de-cero (`sinh(0)`, `e^0−1`). Cierra `ln(t)^k/t`, la familia
+  hiperbólica/exp `coth`/`1/tanh`/`1/sinh`/`1/(e^t−1)`→undefined, y los mezclados con
+  infinito enmascarado; mantiene los convergentes (`∫ln(t)`, `∫arctan(t)`, `∫sinh(t)`) y
+  ordinarios. Se DESCARTÓ un gate basado en LÍMITES (incompleto: no resuelve `t·arctan(t)`
+  en 0 → falso positivo; ni distingue residual-divergente de residual-no-resoluble).
+  Verificado adversarialmente 3 rondas, 0 unsound, 0 regresiones. Quedan: capacidad
+  removible `sin(t)/t→sin(x)/x` y unos pocos convergentes-pero-no-probables (`tan(t)/t`)
+  conservadoramente undefined — ambos esperan un certificado de convergencia real.)*
 - [x] **(A) Cuelgue del simplificador**: `diff(sin(x)^3*cos(x)^2, x)`
   timeout >30s con `depth_overflow depth=51 phase=Core`; mismo patrón
   da 12s en `diff((x^2*sin(x))/(x+1), x)` y

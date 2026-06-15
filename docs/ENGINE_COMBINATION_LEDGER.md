@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 166 (newest first)
+Active entries: 167 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -126,6 +126,7 @@ Active entries: 166 (newest first)
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(x)/x^2 dx for inv in | Retained integration: inverse-trig over x^2 by parts (delegated tail)
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(x)/x^n dx, integer n in [2,8] | Retained integration: inverse-trig over x^n (generalized by parts)
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(sqrt(x)) dx for inv in | Retained integration: inverse-trig of sqrt(x) (u = sqrt(x) substitution)
+- 2026-06-15 | `retained` | calculus / definite integration / the area-function FTC int_a^x f(t) dt with a | Retained soundness: divergent improper area-functions yield undefined
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7261,3 +7262,52 @@ Active entries: 166 (newest first)
     DIFFERENT, wrong exponent. Always fold Pow(Pow(b,p),q) -> Pow(b,p*q) before
     returning, and use as_rational_const (not a raw Number match) since the exponents
     may be Div(1,2), not Number(1/2)
+
+
+## 2026-06-15 - Retained soundness: divergent improper area-functions yield undefined
+
+- area:
+  - calculus / definite integration / the area-function FTC int_a^x f(t) dt with a
+    constant endpoint at a singularity (P0 soundness)
+- status:
+  - `retained`
+- capture:
+  - investment_class: soundness
+  - cell: int_0^x ln(t)/t dt, int_0^x coth(t) dt, int_0^x 1/(e^t-1) dt ... now
+    `undefined`; their `diff` is `undefined`, not a false finite derivative
+  - behavior_change_expected: yes - divergent improper area-functions were returning
+    F(x) + infinity^k (or F(x)+infinity), a silent non-finite term a later diff dropped
+- observed (one structural gate at the area-function FTC chokepoint):
+  - the symbolic-bounds branch of definite_integration_rewrite returns F(upper)-F(lower).
+    When the constant endpoint is a singularity of the antiderivative (int ln(t)/t =
+    (ln t)^2/2 -> +inf at 0; int coth(t) = ln|sinh t| -> -inf at 0), F(lower) carries an
+    infinity^k term. diff() then drops that "constant", leaking a false finite derivative
+    (diff(int_0^x ln(t)/t dt) = ln(x)/x). The fix: before forming F(upper)-F(lower), if a
+    boundary value is GENUINELY non-finite, return undefined
+  - the check is STRUCTURAL and domain-aware (boundary_is_genuinely_nonfinite), NOT a
+    limit: ln of a non-positive constant / c/0 / 0^neg / infinity are non-finite, but a
+    literal-zero FACTOR kills a removable singularity (0*ln(0) is finite, so the convergent
+    improper int_0^x ln(t) dt = x ln x - x is KEPT) and ln(0^2+1) = ln(1) is finite (so the
+    proper int_0^x arctan(t) dt is KEPT). Rational args use as_rational_const; function-of-
+    zero args (sinh(0), |sinh(0)|, e^0-1) fall back to eval_f64 on the bare argument (never
+    a 0*singular product, so no 0*inf indeterminacy)
+  - verified adversarially across THREE rounds: round 1 caught a false positive
+    (arctan(t), whose antiderivative limit the limit-engine could not settle -- which is
+    why a limit-based gate was abandoned for the structural one); round 2 caught the whole
+    hyperbolic/exp ln|...| family (limit-based partial fix missed it); the final structural
+    + numeric gate passed clean (50+ probes, 0 soundness defects, 0 regressions). cas_cli
+    contract test; no scorecard delta beyond the +1 test
+- retained learning:
+  - the LIMIT engine is the wrong tool for a divergence gate: it is incomplete (cannot
+    settle t arctan(t) at 0) so it false-positives proper integrals, AND it cannot
+    distinguish a divergent residual from a proper-but-unresolvable residual. A STRUCTURAL
+    domain check on the substituted boundary value -- with a literal-zero factor killing
+    removable singularities and eval_f64 folding function-of-zero arguments -- is both
+    complete and regression-free
+  - a non-finite term added to a finite expression is NOT a sound divergence sentinel:
+    `F(x) + infinity` is one arithmetic step from a false finite `F(x)`. Divergence must
+    collapse to `undefined`, which is an absorbing element
+  - REMAINING peldano (NOT a soundness leak): a few genuinely convergent improper
+    integrals (tan(t)/t, 1/(t ln(t)^2)) now answer `undefined` (conservative false
+    negative), and the removable FTC capability d/dx int_0^x sin(t)/t dt = sin(x)/x is
+    still unbuilt -- both await a real convergence certificate

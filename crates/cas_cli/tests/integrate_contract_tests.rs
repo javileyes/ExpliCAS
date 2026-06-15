@@ -15558,3 +15558,44 @@ fn integrate_contract_abs_linear_definite_narrates_root_split() {
         "ordinary definite integrals keep the FTC narration: {ftc_text}"
     );
 }
+
+#[test]
+fn integrate_contract_divergent_improper_area_function_is_undefined() {
+    // int_0^x ln(t)/t dt DIVERGES at t = 0 (antiderivative (ln t)^2/2 -> +inf):
+    // it must be `undefined`, not a form carrying a silent infinity^k term that
+    // a later diff drops into a false finite derivative.
+    assert_eq!(
+        simplified_integral("integrate(ln(t)/t, t, 0, x)"),
+        "undefined"
+    );
+    assert_eq!(
+        simplified_integral("integrate(ln(t)^2/t, t, 0, x)"),
+        "undefined"
+    );
+    // The hyperbolic/exp ~1/t family (antiderivative ln|...| -> -inf at 0) too:
+    // the boundary ln(|sinh(0)|) / ln(|(e^0-1)/...|) folds numerically to ln(0).
+    assert_eq!(
+        simplified_integral("integrate(coth(t), t, 0, x)"),
+        "undefined"
+    );
+    assert_eq!(
+        simplified_integral("integrate(1/(e^t-1), t, 0, x)"),
+        "undefined"
+    );
+    // and the derivative of the divergent area function is undefined, not ln(x)/x.
+    assert_eq!(
+        simplified_integral("diff(integrate(ln(t)/t, t, 0, x), x)"),
+        "undefined"
+    );
+
+    // CONVERGENT improper and ordinary area functions are unaffected.
+    assert_eq!(
+        simplified_integral("integrate(ln(t), t, 0, x)"),
+        "x * ln(x) - x"
+    );
+    assert_eq!(simplified_integral("integrate(t^2, t, 0, x)"), "1/3 * x^3");
+    assert_eq!(
+        simplified_integral("integrate(1/(1+t^2), t, 0, x)"),
+        "arctan(x)"
+    );
+}
