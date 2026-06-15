@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 160 (newest first)
+Active entries: 161 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
 - 2026-06-15 | `retained` | calculus / limits at infinity / lim_{x->+inf} x^q for non-integer rational q | Retained limit: bare fractional-power monomial at infinity
+- 2026-06-15 | `retained` | calculus / inverse-trig integration / int arcsin(a x + b)^2 and | Retained integration: arcsin^2 / arccos^2 by parts
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -6998,3 +6999,51 @@ Active entries: 160 (newest first)
     but the improper-integral dispatcher still gates fractional-power integrands BEFORE
     the antiderivative-limit step, so `integrate(1/x^(3/2),x,1,inf)` is still residual --
     that gate is the next peldaño, separate from this limit fix
+
+
+## 2026-06-15 - Retained integration: arcsin^2 / arccos^2 by parts
+
+- area:
+  - calculus / inverse-trig integration / int arcsin(a x + b)^2 and
+    int arccos(a x + b)^2 (block 8 radical/inverse families)
+- status:
+  - `retained`
+- capture:
+  - investment_class: calculus
+  - integrate_cell: int arcsin(x)^2 = x arcsin(x)^2 - 2x + 2 sqrt(1-x^2) arcsin(x);
+    int arccos(x)^2 = x arccos(x)^2 - 2x - 2 sqrt(1-x^2) arccos(x); affine args scale
+    by 1/a (arccos(3x)^2, arcsin(2x+1)^2)
+  - behavior_change_expected: yes - both squared inverse-trig integrals were residual
+    and now resolve with a domain condition (-1 <= arg <= 1)
+- observed (one closed-form builder, ~50 lines, reusing the inverse-trig owner's helpers):
+  - both are elementary (by parts, twice). With u = a x + b the antiderivative in x is
+    simply `(1/a)*G(u)` where `G(u) = u*inv(u)^2 - 2u +/- 2*sqrt(1-u^2)*inv(u)` (+ for
+    arcsin, - for arccos), because `d/dx[(1/a) G(a x + b)] = G'(a x + b) = inv(a x+b)^2`.
+    No per-coefficient algebra is needed -- one scale by 1/a covers every affine arg.
+    Wired in the `Pow(base, exp)` arm of `integrate_symbolic_expr`, right after the
+    sin^2/cos^2 owner, gated to exponent 2 + arcsin/arccos of a linear arg with rational
+    nonzero slope
+  - HONESTY BOUNDARY built in: `arctan(x)^2` / `arccot(x)^2` are NON-elementary (they
+    reduce to int ln(cos theta) d theta), so the match is restricted to arcsin/arccos and
+    they stay honest residuals. The cube `arcsin(x)^3` and a non-affine inner
+    `arcsin(x^2)^2` also decline
+  - verified by sympy (d/dx F - f = 0 symbolically for x, 3x, 2x+1 args) and a numeric
+    round-trip unit test; verified adversarially (2-lens, ~20 probes, 0 soundness
+    defects -- every honesty residual and scope-rejection held). 3 integrate
+    command-matrix rows (the pure-var and affine-offset forms symbolically round-trip
+    via diff; the pure-slope `arccos(3x)^2` round-trip leaves an uncollapsed
+    sqrt(1/9-x^2)*sqrt(1-9x^2) residual, so it is locked by the unit test only)
+- retained learning:
+  - when an antiderivative is `(1/a)*G(a x + b)` (a single affine substitution), build
+    `G(arg)` directly and scale by 1/a instead of re-deriving per coefficient: the chain
+    rule makes the scaled form exact for ALL affine args, and the `-2u/a` term collapses
+    to `-2x` (the constant offset folds into C). Much smaller and less error-prone than a
+    per-arm slope/offset expansion
+  - the engine's own pre-normalization can hide an elementary integral from a
+    pattern-matched rule: `arccos(-x)` is normalized to `pi - arccos(x)`, so
+    `arccos(-x)^2` becomes `(pi - arccos(x))^2` and this rule (matching arccos(<linear>)^2)
+    no longer fires -- it stays an honest residual even though it is elementary
+    (manually expanding the binomial integrates fine). Narrow gap (only the bare `-x`
+    arg; `arccos(-2x)^2` and `arccos(1-x)^2` work), noted as the next peldaño. A rule that
+    matches a function head should consider whether the simplifier rewrites that head for
+    sign-reflected arguments

@@ -486,6 +486,51 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="cyclic_trig_logarithm_product",
     ),
     IntegrateCommandMatrixCase(
+        name="arcsine_square_by_parts",
+        expr="integrate(arcsin(x)^2, x)",
+        expected_result="2·arcsin(x)·(1 - x^2)^(1/2) + x·arcsin(x)^2 - 2·x",
+        expected_derivative_result="arcsin(x)^2",
+        expected_derivative_required_display=("-1 ≤ x ≤ 1",),
+        expected_required_display=("-1 ≤ x ≤ 1",),
+        expected_step_substrings=("Calcular la integral",),
+        family="inverse_trig_square_by_parts",
+        argument_regime="bounded_inverse_trig_unit_interval",
+        domain_regime="bounded_interval_required",
+        trace_regime="inverse_trig_square_by_parts",
+        presentation_regime="inverse_trig_square_radical_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="arccosine_square_by_parts",
+        expr="integrate(arccos(x)^2, x)",
+        expected_result="x·arccos(x)^2 - 2·arccos(x)·(1 - x^2)^(1/2) - 2·x",
+        expected_derivative_result="arccos(x)^2",
+        expected_derivative_required_display=("-1 ≤ x ≤ 1",),
+        expected_required_display=("-1 ≤ x ≤ 1",),
+        expected_step_substrings=("Calcular la integral",),
+        family="inverse_trig_square_by_parts",
+        argument_regime="bounded_inverse_trig_unit_interval",
+        domain_regime="bounded_interval_required",
+        trace_regime="inverse_trig_square_by_parts",
+        presentation_regime="inverse_trig_square_radical_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="arcsine_square_affine_argument_by_parts",
+        expr="integrate(arcsin(2*x+1)^2, x)",
+        expected_result=(
+            "1/2·(arcsin(2·x + 1)^2 + 2·x·arcsin(2·x + 1)^2 + "
+            "4·arcsin(2·x + 1)·(-x^2 - x)^(1/2) - 4·x - 2)"
+        ),
+        expected_derivative_result="arcsin(2·x + 1)^2",
+        expected_derivative_required_display=("-1 ≤ x ≤ 0",),
+        expected_required_display=("-1 ≤ x ≤ 0",),
+        expected_step_substrings=("Calcular la integral",),
+        family="inverse_trig_square_by_parts",
+        argument_regime="bounded_inverse_trig_affine_interval",
+        domain_regime="bounded_interval_required",
+        trace_regime="inverse_trig_square_by_parts",
+        presentation_regime="inverse_trig_square_radical_product",
+    ),
+    IntegrateCommandMatrixCase(
         name="odd_power_times_exp_quadratic_substitution",
         expr="integrate(x^3*exp(x^2), x)",
         expected_result="1/2·e^(x^2)·(x^2 - 1)",
@@ -6258,6 +6303,8 @@ def radical_inverse_policy_cluster(
         return "block8_inverse_trig_root_reciprocal"
     if case.family == "by_parts_bounded_inverse_trig":
         return "block8_bounded_inverse_trig_by_parts"
+    if case.family == "inverse_trig_square_by_parts":
+        return "block8_inverse_trig_square_by_parts"
     if case.family == "monomial_over_sqrt_reduction":
         return "block8_monomial_over_sqrt_reduction"
     if case.family == "linear_over_sqrt_shifted_quadratic":

@@ -1962,6 +1962,78 @@ fn trig_square_affine_antiderivative(
     Some(ctx.add(Expr::Add(half_linear, oscillatory)))
 }
 
+/// Antiderivative of `arcsin(a x + b)^2` and `arccos(a x + b)^2`.
+///
+/// Both are elementary (integration by parts, twice). With `u = a x + b`,
+///
+/// ```text
+/// G(u) = u·arcsin(u)^2 − 2u + 2·sqrt(1 − u²)·arcsin(u)        (arcsin)
+/// G(u) = u·arccos(u)^2 − 2u − 2·sqrt(1 − u²)·arccos(u)        (arccos)
+/// ```
+///
+/// and the antiderivative in `x` is `(1/a)·G(a x + b)`, since
+/// `d/dx[(1/a)·G(a x + b)] = G'(a x + b) = inv(a x + b)^2`.  The only branch
+/// difference between the two is the sign of the `sqrt` term.
+///
+/// `arctan(x)^2` is deliberately NOT handled: it is non-elementary (it reduces
+/// to `∫ln(cos θ) dθ`), so it must stay an honest residual.
+fn inverse_trig_square_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !is_number(ctx, exp, 2) {
+        return None;
+    }
+
+    let (fn_id, args) = match ctx.get(base).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
+        _ => return None,
+    };
+
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(
+        builtin,
+        BuiltinFn::Arcsin | BuiltinFn::Asin | BuiltinFn::Arccos | BuiltinFn::Acos
+    ) {
+        return None;
+    }
+
+    let arg = args[0];
+    let (a_expr, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a_expr)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    // head = arg·inv(arg)^2
+    let inv = ctx.call_builtin(builtin, vec![arg]);
+    let two = ctx.num(2);
+    let inv_sq = ctx.add(Expr::Pow(inv, two));
+    let head = mul2_raw(ctx, arg, inv_sq);
+
+    // linear = −2·arg  (the −2/a·u part of G scaled back by 1/a gives −2x; the
+    // constant offset folds into the integration constant)
+    let linear = scale_rational_term(ctx, -BigRational::from_integer(2.into()), arg);
+
+    // sqrt_signed = ±2·sqrt(1 − arg²)·inv(arg)
+    let radicand = unit_minus_square(ctx, arg);
+    let sqrt_term = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let sqrt_product = mul2_raw(ctx, sqrt_term, inv);
+    let sqrt_scale = match builtin {
+        BuiltinFn::Arcsin | BuiltinFn::Asin => BigRational::from_integer(2.into()),
+        _ => -BigRational::from_integer(2.into()),
+    };
+    let sqrt_signed = scale_rational_term(ctx, sqrt_scale, sqrt_product);
+
+    let head_plus_linear = ctx.add(Expr::Add(head, linear));
+    let g = ctx.add(Expr::Add(head_plus_linear, sqrt_signed));
+
+    let scale = BigRational::one() / a;
+    Some(scale_rational_term(ctx, scale, g))
+}
+
 fn trig_ratio_square_affine_antiderivative(
     ctx: &mut Context,
     base: ExprId,
@@ -21788,6 +21860,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        if let Some(integral) = inverse_trig_square_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = trig_ratio_square_affine_antiderivative(ctx, base, exp, var) {
             return Some(integral);
         }
@@ -28361,5 +28437,74 @@ mod tests {
         assert!(super::trig_product_to_sum_antiderivative(&mut ctx, l, r, "x").is_none());
         // But the full route still integrates it (existing owner).
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_some());
+    }
+
+    #[test]
+    fn inverse_trig_squares_integrate_and_round_trip_numerically() {
+        let mut ctx = Context::new();
+        // (source integrand, derivative round-trip target). The closed forms
+        // carry a sqrt(1 - u^2) factor the simplifier cannot collapse, so the
+        // round-trip is pinned NUMERICALLY: d/dx F == integrand at samples.
+        for (source, target) in [
+            ("arcsin(x)^2", "arcsin(x)^2"),
+            ("arccos(x)^2", "arccos(x)^2"),
+            ("arccos(3*x)^2", "arccos(3*x)^2"),
+            ("arcsin(2*x+1)^2", "arcsin(2*x+1)^2"),
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let antiderivative = integrate_symbolic_expr(&mut ctx, expr, "x")
+                .unwrap_or_else(|| panic!("must integrate: {source}"));
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                antiderivative,
+                "x",
+            )
+            .unwrap_or_else(|| panic!("must differentiate: {source}"));
+            let target_expr = parse(target, &mut ctx).expect(target);
+            // Samples kept inside (-1/3, 0) so every affine argument (x, 3x,
+            // 2x+1) stays within the real domain of arcsin/arccos.
+            for sample in [-0.05_f64, -0.12, -0.22, -0.3] {
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("x".to_string(), sample);
+                let lhs = crate::evaluator_f64::eval_f64(&ctx, derivative, &vars)
+                    .unwrap_or_else(|| panic!("eval diff at {sample}: {source}"));
+                let rhs = crate::evaluator_f64::eval_f64(&ctx, target_expr, &vars)
+                    .unwrap_or_else(|| panic!("eval target at {sample}: {source}"));
+                assert!(
+                    (lhs - rhs).abs() < 1e-9,
+                    "round-trip mismatch for {source} at {sample}: {lhs} vs {rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_trig_squares_leave_nonelementary_and_out_of_scope_residual() {
+        let mut ctx = Context::new();
+        // arctan^2 / arccot^2 are NON-elementary (reduce to ∫ln(cos θ) dθ):
+        // they MUST stay honest residuals.
+        for source in ["arctan(x)^2", "arccot(x)^2"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "must stay residual (non-elementary): {source}"
+            );
+        }
+        // The rule is gated to exponent 2 and a linear argument; a cube and a
+        // non-affine inner decline here (left to other owners / residual).
+        for source in ["arcsin(x)^3", "arcsin(x^2)^2"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let base_exp = match ctx.get(expr).clone() {
+                cas_ast::Expr::Pow(b, e) => (b, e),
+                _ => panic!("expected Pow: {source}"),
+            };
+            assert!(
+                super::inverse_trig_square_affine_antiderivative(
+                    &mut ctx, base_exp.0, base_exp.1, "x"
+                )
+                .is_none(),
+                "rule must decline: {source}"
+            );
+        }
     }
 }
