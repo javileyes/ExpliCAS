@@ -191,6 +191,13 @@ pub enum SymbolicRootCancelAction {
     },
 }
 
+/// True when `expr` folds to a negative rational constant (e.g. `-2`, `-(3/4)`,
+/// `2 - 5`). Used to keep even roots of provably-negative bases symbolic.
+fn is_negative_const(ctx: &Context, expr: ExprId) -> bool {
+    crate::numeric_eval::as_rational_const(ctx, expr)
+        .is_some_and(|r| r < num_rational::BigRational::zero())
+}
+
 /// Try `sqrt(a) * sqrt(b) -> sqrt(a*b)`.
 pub fn try_rewrite_root_merge_mul_expr_with<FProveNonnegative>(
     ctx: &mut Context,
@@ -212,6 +219,20 @@ where
     let proof_a = prove_nonnegative(ctx, a);
     let proof_b = prove_nonnegative(ctx, b);
     if strict_mode && (!proof_a.is_proven() || !proof_b.is_proven()) {
+        return None;
+    }
+
+    // A square root of a provably-negative base is undefined over the reals, so
+    // the product must NOT merge into a single real root: `sqrt(-2)*sqrt(-3)` is
+    // NOT `sqrt(6)` (each factor is undefined; even the complex principal value
+    // is `-sqrt(6)`, not `+sqrt(6)`). Decline if EITHER base is negative — gating
+    // on a single side too blocks the pairwise cascade that would otherwise
+    // fabricate a value once an intermediate merge hides the negative constant.
+    // (`prove_nonnegative` is one-sided and never reports `Disproven` for a bare
+    // negative literal, so check the constants directly too.)
+    let a_neg = proof_a.is_disproven() || is_negative_const(ctx, a);
+    let b_neg = proof_b.is_disproven() || is_negative_const(ctx, b);
+    if a_neg || b_neg {
         return None;
     }
 
@@ -669,6 +690,25 @@ mod tests {
         .expect("rewrite");
         assert!(rewrite.assume_left_nonnegative);
         assert!(rewrite.assume_right_nonnegative);
+    }
+
+    #[test]
+    fn root_merge_mul_declines_negative_base() {
+        // A square root of a negative base is undefined over the reals, so the
+        // merge must decline if EITHER base is negative — even in generic mode.
+        // `sqrt(-2)*sqrt(-3)` must not become a real sqrt(6), and the mixed
+        // `sqrt(-2)*sqrt(3)` must not merge either.
+        let mut ctx = Context::new();
+        for src in ["sqrt(-2)*sqrt(-3)", "sqrt(-2)*sqrt(3)", "sqrt(2)*sqrt(-3)"] {
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_root_merge_mul_expr_with(&mut ctx, expr, false, |_ctx, _e| {
+                    TriProof::Unknown
+                })
+                .is_none(),
+                "square root with a negative base must not merge: {src}"
+            );
+        }
     }
 
     #[test]

@@ -10,6 +10,7 @@ use crate::root_forms::can_distribute_root_safely;
 use cas_ast::ordering::compare_expr;
 use cas_ast::views::FractionParts;
 use cas_ast::{Constant, Context, Expr, ExprId};
+use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::Signed;
 use num_traits::{One, Zero};
@@ -282,6 +283,27 @@ pub fn try_rewrite_power_product_distribution_expr(
     None
 }
 
+/// True when `expr` folds to a negative rational constant.
+fn is_negative_const_value(ctx: &Context, expr: ExprId) -> bool {
+    crate::numeric_eval::as_rational_const(ctx, expr).is_some_and(|r| r.is_negative())
+}
+
+/// True when merging `a^exp * b^exp -> (a*b)^exp` is unsound: `exp` is an
+/// even-denominator (even-root) rational and EITHER base is a provably-negative
+/// constant. An even root of a negative is undefined over the reals, so the
+/// product is undefined and must NOT collapse — e.g. `sqrt(-2)*sqrt(-3)` must not
+/// become `sqrt(6)` (its complex principal value is `-sqrt(6)`, not `+sqrt(6)`).
+/// Gating on EITHER (not both) also blocks the pairwise cascade:
+/// `sqrt(-3)*sqrt(-5)*sqrt(x)` must not become `(15·x)^(1/2)` via an intermediate
+/// `sqrt(-5)*sqrt(x)` merge whose result base is no longer a bare constant.
+fn even_root_merge_of_negatives(ctx: &Context, exp: ExprId, base1: ExprId, base2: ExprId) -> bool {
+    let Some(e) = crate::numeric_eval::as_rational_const(ctx, exp) else {
+        return false;
+    };
+    e.denom().is_even()
+        && (is_negative_const_value(ctx, base1) || is_negative_const_value(ctx, base2))
+}
+
 /// Try same-exponent product rewrites:
 /// - `a^n * b^n -> (a*b)^n`
 /// - nested variant: `a^n * (b^n * c) -> (a*b)^n * c`
@@ -300,6 +322,9 @@ pub fn try_rewrite_product_same_exponent_expr(
                 let base1_has_num = base1_is_num || has_numeric_factor(ctx, base1);
                 let base2_has_num = base2_is_num || has_numeric_factor(ctx, base2);
                 if !base1_has_num && !base2_has_num {
+                    return None;
+                }
+                if even_root_merge_of_negatives(ctx, exp1, base1, base2) {
                     return None;
                 }
 
@@ -321,6 +346,9 @@ pub fn try_rewrite_product_same_exponent_expr(
                         let base1_has_num = base1_is_num || has_numeric_factor(ctx, base1);
                         let base2_has_num = base2_is_num || has_numeric_factor(ctx, base2);
                         if !base1_has_num && !base2_has_num {
+                            return None;
+                        }
+                        if even_root_merge_of_negatives(ctx, exp1, base1, base2) {
                             return None;
                         }
 
@@ -614,6 +642,45 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("2^x * 3^x", &mut ctx).expect("parse");
         assert!(try_rewrite_product_same_exponent_expr(&mut ctx, expr).is_some());
+    }
+
+    #[test]
+    fn product_same_exponent_declines_even_root_with_negative_base() {
+        // An even root of a negative is undefined over the reals, so the merge
+        // must decline if EITHER base is a negative constant: sqrt(-2)*sqrt(-3)
+        // must not become sqrt(6), and the mixed (-2)^(1/2)*3^(1/2) must not merge
+        // either (gating on either side blocks the pairwise cascade that produced
+        // the sign-wrong sqrt(-3)*sqrt(-5)*sqrt(x) -> (15x)^(1/2)).
+        let mut ctx = Context::new();
+        for src in [
+            "(-2)^(1/2) * (-3)^(1/2)",
+            "(-2)^(1/4) * (-8)^(1/4)",
+            "(-2)^(1/2) * 3^(1/2)",
+            "2^(1/2) * (-3)^(1/2)",
+        ] {
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_product_same_exponent_expr(&mut ctx, expr).is_none(),
+                "even root with a negative base must not merge: {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn product_same_exponent_still_merges_safe_cases() {
+        // Positive bases, ODD-root of negatives, and symbolic bases stay mergeable.
+        let mut ctx = Context::new();
+        for src in [
+            "2^(1/2) * 3^(1/2)",       // positive bases
+            "(-2)^(1/3) * (-4)^(1/3)", // odd root: real, (8)^(1/3) = 2
+            "(-2)^2 * (-3)^2",         // integer exponent: real
+        ] {
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_product_same_exponent_expr(&mut ctx, expr).is_some(),
+                "safe same-exponent product must still merge: {src}"
+            );
+        }
     }
 
     #[test]

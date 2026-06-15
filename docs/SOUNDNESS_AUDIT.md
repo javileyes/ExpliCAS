@@ -140,6 +140,34 @@ negatives, where the even root has no real value:
 - `((-2)^(1/4))^4` → `-2` ; undefined.
 - Inconsistent with the honest siblings (`sqrt(-1)` warns); no warning here.
 
+**SIGN-WRONG defects FIXED (2026-06-15, commit `PENDING_HASH`).** Every
+DISTINCT-base even-root product that fabricated a real (sign-wrong) value is
+resolved. The radical-merge rules combined `a^(1/2)·b^(1/2) → (ab)^(1/2)` even
+when a base was negative: `try_rewrite_root_merge_mul_expr_with` and
+`try_rewrite_product_same_exponent_expr` (`cas_math`). Both now decline when the
+exponent is an even-denominator root and EITHER base is a provably-negative
+constant. **Gating on EITHER (not both) was required** — an adversarial sweep
+showed `sqrt(-3)*sqrt(-5)*sqrt(x) → (15·x)^(1/2)` (also sign-wrong: ℂ gives
+−√15) survived a both-negative gate via a pairwise cascade (`sqrt(-5)*sqrt(x)`
+merges first, then its non-constant result base hides the negative). Verified:
+`sqrt(-2)*sqrt(-3) → (-3)^(1/2)·(-2)^(1/2)`, `sqrt(-3)*sqrt(-5)*sqrt(x)` stays
+symbolic, mixed `sqrt(-2)*sqrt(3) → (-2)^(1/2)·sqrt(3)`; while positive merges
+(`sqrt(2)*sqrt(3)=sqrt(6)`, `sqrt(8)*sqrt(2)=4`), the ODD-root real case
+(`(-2)^(1/3)·(-4)^(1/3)=2`), and symbolic merges (`sqrt(x)*sqrt(y)`) are
+unchanged. Adversarial re-run confirms no sign-wrong case remains.
+
+**Cluster A-2 — remaining REAL-domain honesty cases (split out, not yet fixed).**
+`(sqrt(-2))^2 → -2`, `sqrt(-2)*sqrt(-2) → -2`, `((-2)^(1/4))^4 → -2`, and the
+perfect-square products that factor to a single repeated radical
+(`sqrt(-2)*sqrt(-8) → -4` via `sqrt(-8)→2·sqrt(-2)` then `sqrt(-2)²`,
+`(-3)^(1/2)*(-12)^(1/2) → -6`). Unlike the sign-wrong cases these surface the
+**complex-principal** value (`(i√2)²=-2` is correct in ℂ) — a P-honesty issue,
+less severe than a sign-wrong value. They all reduce to the same-base power
+product `x^(1/2)·x^(1/2) → x^(1/2+1/2)=x` (and a sqrt-square / power-power
+even-root path), which is foundational and load-bearing across the engine (very
+high huella). Gating it safely needs its own scoped cycle. Documented as the
+next peldaño.
+
 ## Priority sequence
 
 1. **Cluster C** — wrong value across the whole domain. *(FIXED 2026-06-15: root
@@ -154,8 +182,9 @@ negatives, where the even root has no real value:
    path. Bounded fix under the existing `a^(2k) ≥ 0` condition.
 4. **Cluster D** — wrong branch value; FIXED (commit `f00dd43fb`) by gating
    the arctan reciprocal identity with `sign(x)`.
-5. **Cluster A** — real-domain honesty; the sign-wrong `sqrt(-2)*sqrt(-3)=+√6` is
-   the most urgent within the cluster.
+5. **Cluster A** — the sign-wrong `sqrt(-2)*sqrt(-3)=+√6` (worst — wrong in ℝ AND
+   ℂ) FIXED (commit `PENDING_HASH`). Remaining complex-principal-value honesty
+   cases split out as Cluster A-2 (foundational `x^a·x^b` rule; own cycle).
 
 ## Status
 
@@ -163,4 +192,5 @@ negatives, where the even root has no real value:
 - [x] Cluster B — `(a^even)^symbolic` drops `|a|` *(literal-even-inner half FIXED 2026-06-15, commit `5b13a9baa`; symbolic-even-inner half split to Cluster B-2)*
 - [ ] Cluster B-2 — `(a^(2k))^(1/2)` drops `|a|` for symbolic even inner exponent
 - [x] Cluster D — `arctan(x)+arctan(1/x)` branch *(FIXED 2026-06-15, commit `f00dd43fb`: gated by `sign(x)`)*
-- [ ] Cluster A — even-root of negative base
+- [x] Cluster A — even-root of negative base *(sign-wrong `sqrt(-2)*sqrt(-3)=+√6` FIXED 2026-06-15, commit `PENDING_HASH`; complex-principal-value honesty cases split to Cluster A-2)*
+- [ ] Cluster A-2 — `(sqrt(-2))^2=-2` / `((-2)^(1/4))^4=-2` real-domain honesty (foundational `x^a·x^b` rule)

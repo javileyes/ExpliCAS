@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 176 (newest first)
+Active entries: 177 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -136,6 +136,7 @@ Active entries: 176 (newest first)
 - 2026-06-15 | `retained` | block 5 algebra / fractions; the two opposite/equal cancellation DETECTORS in | Retained soundness fix: fraction sign double-count in cancellation detectors (Cluster C of the soundness audit)
 - 2026-06-15 | `retained` | block 8 logs/exps; `cas_math/src/root_power_canonical_support.rs` | Retained soundness fix: (x^even)^symbolic keeps |x| (Cluster B of the soundness audit, literal-even-inner half)
 - 2026-06-15 | `retained` | block trig/inverse-trig; `cas_math/src/inverse_trig_composition_support.rs` | Retained soundness fix: arctan(x)+arctan(1/x) = (pi/2)*sign(x), not pi/2 (Cluster D of the soundness audit)
+- 2026-06-15 | `retained` | block powers/roots; `cas_math` radical-merge rules | Retained soundness fix: even-root products of negative bases stay symbolic (Cluster A of the soundness audit, sign-wrong half)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7780,3 +7781,45 @@ Active entries: 176 (newest first)
     emitted with the branch factor (`sign(x)`), never the principal-branch constant.
     Reuse `sign(c)` evaluation so literals still fold to the clean constant - soundness
     for symbols AND clean output for literals, no trade-off
+
+## 2026-06-15 - Retained soundness fix: even-root products of negative bases stay symbolic (Cluster A of the soundness audit, sign-wrong half)
+- area:
+  - block powers/roots; `cas_math` radical-merge rules
+    `try_rewrite_root_merge_mul_expr_with` + `try_rewrite_product_same_exponent_expr`
+- status:
+  - `retained` (WRONG-VALUE/honesty soundness fix; Cluster A of docs/SOUNDNESS_AUDIT.md)
+- capture:
+  - investment_class: soundness
+  - cell: `sqrt(-2)*sqrt(-3) -> (-3)^(1/2)*(-2)^(1/2)` (was the sign-wrong real `+sqrt(6)`),
+    `sqrt(-3)*sqrt(-5)*sqrt(x)` stays symbolic (was the sign-wrong `(15*x)^(1/2)`)
+  - behavior_change_expected: yes - declines unsound radical merges; guardrail+pressure
+    fingerprints BYTE-IDENTICAL (no fixture exercised these undefined-over-R cases)
+- observed (USER-DIRECTED, audit priority #5):
+  - `a^(1/2)*b^(1/2) -> (ab)^(1/2)` fired for negative bases. `sqrt(-2)*sqrt(-3) = +sqrt(6)`
+    is wrong over BOTH R (undefined) AND C (principal value -sqrt(6)). Fix: decline when the
+    exponent is an even-denominator root and EITHER base is a provably-negative constant
+    (`prove_nonnegative` is ONE-SIDED - never `Disproven` for a bare negative literal - so an
+    explicit `as_rational_const < 0` check was needed)
+  - ADVERSARIAL VERIFICATION WAS DECISIVE (not a rubber-stamp): the FIRST gate used
+    `both negative`; the sweep (75 probes) found it left a SIGN-WRONG hole -
+    `sqrt(-3)*sqrt(-5)*sqrt(x) -> +(15x)^(1/2)` (C gives -sqrt(15)) survived via a PAIRWISE
+    CASCADE: `sqrt(-5)*sqrt(x)` merged first (only one negative), and its non-constant result
+    base `(-5x)` then hid the negative from the next merge. Widening to `either negative`
+    closed it; a second sweep (90 probes) confirmed 0 sign-wrong cases remain
+  - the 6 cases still flagged by the second sweep are all PERFECT-SQUARE products
+    (`sqrt(-2)*sqrt(-8) -> -4`, `(-3)^(1/2)*(-12)^(1/2) -> -6`) that FACTOR to the same-base
+    radical (`sqrt(-8)=2*sqrt(-2)` then `sqrt(-2)^2`) - they are complex-CORRECT (the engine
+    output equals the C principal value), a milder honesty issue, and route through the
+    foundational `x^a*x^b -> x^(a+b)` rule (very high huella). Split out as Cluster A-2
+- retained learning:
+  - a pairwise/associative simplification cannot be gated by a property of the OPERANDS alone
+    when intermediate results lose that property: `both negative` was defeated because the
+    cascade produced a symbolic-negative intermediate base. Gate on EITHER side so any single
+    poisoned factor blocks every merge it participates in, regardless of evaluation order
+  - one-sided provers (`prove_nonnegative` returns Proven|Unknown, never Disproven) silently
+    let provably-FALSE preconditions through as "Unknown -> assume true". For a soundness gate
+    you need an explicit DISPROOF (here `as_rational_const < 0`), not the absence of a proof
+  - adversarial sweeps earn their cost on real-domain radical/branch rules: green unit tests +
+    a clean scorecard + one happy-path probe ALL passed while two sign-wrong holes (the
+    n-ary cascade) remained. The refutation-lens agents found them by enumerating
+    perfect-square radicand products the author did not think to try
