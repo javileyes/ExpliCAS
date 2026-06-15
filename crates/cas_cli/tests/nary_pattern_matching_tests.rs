@@ -304,9 +304,30 @@ fn test_nary_with_negation() {
 
 #[test]
 fn test_nary_variables_in_args() {
-    // Symbolic reciprocals (x and 1/x)
+    // Symbolic reciprocals (x and 1/x): arctan(x) + arctan(1/x) = (π/2)·sign(x),
+    // NOT π/2 — the sum is -π/2 for x < 0. The sign factor is required for
+    // soundness; for a positive x it folds back to π/2.
     let result = simplify_str("arctan(x) + arctan(1/x)");
-    assert_eq!(result, "1/2 * pi", "Should work with symbolic reciprocals");
+    assert_eq!(
+        result, "1/2 * pi * sign(x)",
+        "Symbolic reciprocals carry sign(x): (π/2)·sign(x)"
+    );
+}
+
+#[test]
+fn test_nary_reciprocal_pair_carries_sign() {
+    // Regression for the Cluster B/D soundness fix: arctan(x) + arctan(1/x) is
+    // (π/2)·sign(x), so it is -π/2 for x < 0 (was wrongly π/2 unconditionally).
+    assert_simplify_equiv(
+        "arctan(-2) + arctan(-1/2)",
+        "-pi/2",
+        "negative reciprocal arctan pair = -π/2",
+    );
+    assert_simplify_equiv(
+        "arctan(2) + arctan(1/2)",
+        "pi/2",
+        "positive reciprocal arctan pair = π/2",
+    );
 }
 
 #[test]

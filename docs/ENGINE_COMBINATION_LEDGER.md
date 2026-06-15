@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 175 (newest first)
+Active entries: 176 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -135,6 +135,7 @@ Active entries: 175 (newest first)
 - 2026-06-15 | `retained` | simplification / absolute-value quotient cancellation (cas_math abs_support; | Retained simplification: x^(2k)/|x| -> |x|^(2k-1) (removable cancellation)
 - 2026-06-15 | `retained` | block 5 algebra / fractions; the two opposite/equal cancellation DETECTORS in | Retained soundness fix: fraction sign double-count in cancellation detectors (Cluster C of the soundness audit)
 - 2026-06-15 | `retained` | block 8 logs/exps; `cas_math/src/root_power_canonical_support.rs` | Retained soundness fix: (x^even)^symbolic keeps |x| (Cluster B of the soundness audit, literal-even-inner half)
+- 2026-06-15 | `retained` | block trig/inverse-trig; `cas_math/src/inverse_trig_composition_support.rs` | Retained soundness fix: arctan(x)+arctan(1/x) = (pi/2)*sign(x), not pi/2 (Cluster D of the soundness audit)
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7735,3 +7736,47 @@ Active entries: 175 (newest first)
     regressed because it took a different code path. A "family" fix is not complete
     until every exponent-shape (literal inner / symbolic inner / literal outer /
     symbolic outer) is checked - the adversarial sweep is what forces that matrix
+
+## 2026-06-15 - Retained soundness fix: arctan(x)+arctan(1/x) = (pi/2)*sign(x), not pi/2 (Cluster D of the soundness audit)
+- area:
+  - block trig/inverse-trig; `cas_math/src/inverse_trig_composition_support.rs`
+    `try_plan_inverse_atan_reciprocal_pair_expr` (the reciprocal-pair planner used by
+    `InverseTrigAtanRule`, and by arccot via `arccot(x)=arctan(1/x)`)
+- status:
+  - `retained` (WRONG-VALUE soundness fix; Cluster D of docs/SOUNDNESS_AUDIT.md)
+- capture:
+  - investment_class: soundness
+  - cell: `arctan(x)+arctan(1/x) -> (pi/2)*sign(x)`; literal folds:
+    `arctan(2)+arctan(1/2) -> pi/2`, `arctan(-2)+arctan(-1/2) -> -pi/2` (was `pi/2`)
+  - behavior_change_expected: yes - the identity gains a sign(x) factor. Guardrail
+    deltas are exactly the intended consequences: `simplify_didactic_audit
+    mean_step_count 2.07->2.14` (the extra sign step) and `embedded_equivalence_context
+    average_wrapper_overhead_nodes 13.49->13.50` (sign(a) nodes in the corpus); status
+    pass everywhere; pressure byte-identical
+- observed (USER-DIRECTED, audit priority #4):
+  - the planner returned `pi/2` UNCONDITIONALLY; the true sum is `-pi/2` for x<0 (both
+    arctans negative). Fix: return `(pi/2)*sign(x)`. `x` and `1/x` share a sign, so the
+    non-fraction argument is used for a clean `sign(x)`; the existing `EvaluateSignRule`
+    folds `sign(c)->+-1` so literal cases recover the unconditional +-pi/2 - reusing the
+    sign-evaluation machinery added earlier this session
+  - verified adversarially (decision procedure): 2 lenses, 266 probes, 0 confirmed
+    defects (positive/negative literals, arccot, reversed order, larger sums, Machin
+    regressions all numerically checked)
+  - FIXTURE CHURN was the real cost: the unsound `arctan(x)+arctan(1/x)=pi/2` was
+    encoded as a CONTRACT in SIX places - the embedded equivalence corpus (5 wrapped
+    cases), `identity_pairs.csv`, `derive_pairs.csv`, two hardcoded `IdentityShadowCase`
+    /classifier tables in `derive_contract_tests.rs`+`target_classifier.rs`, a
+    `semantics_cli_contract` derive test, and a `nary_pattern_matching` simplify test.
+    All updated to `(pi/2)*sign(a)` (the derive proves it, the metamorphic sampler under
+    x>0 still matches since sign=+1 there). Added a negative-argument regression test
+- retained learning:
+  - a wrong-value identity that an engine "simplifies to" tends to be DOUBLY entrenched:
+    once in the rule, and again as the EXPECTED value across derive/equivalence/contract
+    corpora that were authored to match the engine. Budget for the corpus sweep, not
+    just the rule edit; grep the exact identity string across crates+scripts+docs before
+    declaring done. The scorecard `parse_error: missing summary block` was the tell that
+    a whole derive suite choked on one now-unprovable seed
+  - branch-valued identities (value depends on sign/quadrant of a free symbol) must be
+    emitted with the branch factor (`sign(x)`), never the principal-branch constant.
+    Reuse `sign(c)` evaluation so literals still fold to the clean constant - soundness
+    for symbols AND clean output for literals, no trade-off

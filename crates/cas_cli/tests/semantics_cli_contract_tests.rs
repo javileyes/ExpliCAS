@@ -3788,9 +3788,12 @@ fn derive_gap_two_factorial_ratio_uses_named_factorial_rewrite_with_didactic_sub
 
 #[test]
 fn derive_inverse_tan_reciprocal_identity_uses_named_inverse_trig_rewrite_and_keeps_guard() {
+    // The sound identity is arctan(a)+arctan(1/a) = (π/2)·sign(a) (it is -π/2 for
+    // a<0), so the derivation target carries the sign factor; deriving the bare
+    // π/2 no longer holds unconditionally (only for a>0).
     let (output, _code) = run_cli(&[
         "eval",
-        "derive arctan(a)+arctan(1/a), pi/2",
+        "derive arctan(a)+arctan(1/a), (pi/2)*sign(a)",
         "--format",
         "json",
         "--steps",

@@ -155,10 +155,10 @@ k*(sinh(x)) - k*((e^x - e^(-x))/2),0,scaled_difference_zero,hyperbolic_expand_si
 k*(tanh(x)) - k*((e^x - e^(-x))/(e^x + e^(-x))),0,scaled_difference_zero,hyperbolic_expand_tanh_to_exp_definition,simplify,tanh(x),(e^x - e^(-x))/(e^x + e^(-x)),rewrite hyperbolics
 ((tanh(x))/q) - (((e^x - e^(-x))/(e^x + e^(-x)))/q),0,common_denominator_zero,hyperbolic_expand_tanh_to_exp_definition,simplify,tanh(x),(e^x - e^(-x))/(e^x + e^(-x)),rewrite hyperbolics
 ((tanh(x)) + 1)/(((e^x - e^(-x))/(e^x + e^(-x))) + 1),1,shifted_quotient_one,hyperbolic_expand_tanh_to_exp_definition,simplify,tanh(x),(e^x - e^(-x))/(e^x + e^(-x)),rewrite hyperbolics
-((arctan(a)+arctan(1/a)) + m) - ((pi/2) + m),0,additive_passthrough_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
-k*(arctan(a)+arctan(1/a)) - k*(pi/2),0,scaled_difference_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
-((arctan(a)+arctan(1/a))/q) - ((pi/2)/q),0,common_denominator_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
-((arctan(a)+arctan(1/a)) + 1)/((pi/2) + 1),1,shifted_quotient_one,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
+((arctan(a)+arctan(1/a)) + m) - (((pi/2)*sign(a)) + m),0,additive_passthrough_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),(pi/2)*sign(a),rewrite inverse trigs
+k*(arctan(a)+arctan(1/a)) - k*((pi/2)*sign(a)),0,scaled_difference_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),(pi/2)*sign(a),rewrite inverse trigs
+((arctan(a)+arctan(1/a))/q) - (((pi/2)*sign(a))/q),0,common_denominator_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),(pi/2)*sign(a),rewrite inverse trigs
+((arctan(a)+arctan(1/a)) + 1)/(((pi/2)*sign(a)) + 1),1,shifted_quotient_one,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),(pi/2)*sign(a),rewrite inverse trigs
 (asin(x/sqrt(x^2 + 1)) - atan(x)),0,additive_passthrough_zero,arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),rewrite inverse trigs
 k*(asin(x/sqrt(x^2 + 1))) - k*(atan(x)),0,scaled_difference_zero,arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),rewrite inverse trigs
 ((asin(x/sqrt(x^2 + 1)))/q) - ((atan(x))/q),0,common_denominator_zero,arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),rewrite inverse trigs
@@ -1351,7 +1351,7 @@ k*(5*sin(x+arctan(4/3))+a) - k*(5*cos(x-arctan(3/4))+a),0,scaled_difference_zero
 (((x*y + x*z + w)^2) + m) - (((x*(y + z) + w)^2) + m),0,squared_passthrough_zero,collect_common_symbolic_coefficients_squared,collect,x*y + x*z + w,x*(y + z) + w,collect
 (((sin(x)^2 + cos(x)^2)^2) + m) - (((1)^2) + m),0,squared_passthrough_zero,pythagorean_identity,simplify,sin(x)^2 + cos(x)^2,1,rewrite trigs
 (((cosh(x)^2 - sinh(x)^2)^2) + m) - (((1)^2) + m),0,squared_passthrough_zero,hyperbolic_pythagorean_identity,simplify,cosh(x)^2 - sinh(x)^2,1,rewrite hyperbolics
-(((arctan(a)+arctan(1/a))^2) + m) - (((pi/2)^2) + m),0,squared_passthrough_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
+(((arctan(a)+arctan(1/a))^2) + m) - ((((pi/2)*sign(a))^2) + m),0,squared_passthrough_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),(pi/2)*sign(a),rewrite inverse trigs
 (((1/cos(x))^2) + m) - (((sec(x))^2) + m),0,squared_passthrough_zero,contract_trig_sec_reciprocal,trig_contract,1/cos(x),sec(x),contract trig
 ((((1/cos(x))^2 + m)^2) - (((sec(x))^2 + m)^2)),0,squared_passthrough_zero,contract_trig_sec_reciprocal_double_squared,trig_contract,1/cos(x),sec(x),contract trig
 (((1/sin(x))^2) + m) - (((csc(x))^2) + m),0,squared_passthrough_zero,contract_trig_csc_reciprocal,trig_contract,1/sin(x),csc(x),contract trig

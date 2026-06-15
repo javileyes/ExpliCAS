@@ -13074,8 +13074,8 @@ Result: ln(x)
 ## inverse_tan_identity (simplify)
 
 - Source: `arctan(a)+arctan(1/a)`
-- Target: `pi/2`
-- Result: `pi / 2`
+- Target: `(pi/2)*sign(a)`
+- Result: `(pi * sign(a))/2`
 - Web step count: `1`
 - Web substep count: `0`
 - Flags: none
@@ -13084,14 +13084,14 @@ Result: ln(x)
 
 ```text
 Parsed: arctan(a) + arctan(1 / a)
-Target: pi / 2
+Target: (pi * sign(a))/2
 Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
-1. arctan(x) + arctan(1/x) = π/2  [Inverse Tan Relations]
+1. arctan(x) + arctan(1/x) = (π/2)·sign(x)  [Inverse Tan Relations]
    Before: arctan(a) + arctan(1 / a)
-   Cambio local: arctan(a) + arctan(1 / a) -> pi / 2
-   After: pi / 2
-Result: pi / 2
+   Cambio local: arctan(a) + arctan(1 / a) -> sign(a) * pi / 2
+   After: (pi * sign(a))/2
+Result: sign(a) * pi / 2
 ℹ️ Requires:
   • a ≠ 0
 ```
@@ -13100,7 +13100,7 @@ Result: pi / 2
 
 1. `Aplicar identidad de arctangentes`
    - before: `arctan(a) + arctan(1/a)`
-   - after: `pi/2`
+   - after: `sign(a) · pi/2`
    - substeps: none
 
 ## inverse_trig_arcsin_arccos_complement_sum (simplify)

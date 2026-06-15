@@ -17,7 +17,7 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 | `cancel_factors_fraction` | `cancellation` | 1 | 0 | none |
 | `difference_of_squares_quotient` | `quotient` | 2 | 2 | none |
 | `pythagorean_identity` | `trig` | 1 | 2 | none |
-| `inverse_trig_identity` | `inverse_trig` | 5 | 1 | none |
+| `inverse_trig_identity` | `inverse_trig` | 6 | 1 | none |
 | `polynomial_expansion_cancel` | `polynomial` | 3 | 2 | none |
 | `perfect_square_root` | `radicals` | 1 | 2 | none |
 | `cube_quotient_radical` | `quotient` | 1 | 3 | none |
@@ -426,7 +426,7 @@ Steps:
 - Input: `atan(3) + (atan(1/3) - pi/2)`
 - Focus: `show_known_identity_clearly`
 - Final result: `0`
-- Step count: `5`
+- Step count: `6`
 - Wire substep count: `1`
 - Flags: none
 
@@ -434,15 +434,20 @@ Steps:
 
 ```text
 Steps:
-1. Aplicar identidad de arctangentes
+1. arctan(x) + arctan(1/x) = (π/2)·sign(x)
    Before: arctan(1/3) + arctan(3) - 1/2 · pi
       [Juntar la pareja que encaja con la identidad]
         arctan(1/3) + arctan(3) - 1/2 ·  pi
         ->
         arctan(1/3) + arctan(3)
+   After: pi/2 · sign(1/3) - 1/2 · pi
+2. sign(constant) = 1
+   Before: pi/2 · sign(1/3) - 1/2 · pi
+   Cambio local: sign(1/3) -> 1
    After: pi/2 - 1/2 · pi
-2. Cancelar una identidad exacta
+3. Cancel exact additive pairs
    Before: pi/2 - 1/2 · pi
+   Cambio local: pi/2 - 1/2 · pi -> 0
    After: 0
 ```
 
@@ -450,13 +455,25 @@ Steps:
 
 1. `Aplicar identidad de arctangentes`
    - before: `arctan(1/3) + arctan(3) - 1/2 · pi`
-   - after: `pi/2 - 1/2 · pi`
+   - after: `sign(1/3) · pi/2 - 1/2 · pi`
    - before_latex: `{\color{red}{\text{arctan}(\frac{1}{3}) + \text{arctan}(3)}} - \frac{1}{2}\cdot \pi`
-   - after_latex: `{\color{green}{\frac{\pi}{2}}} - \frac{1}{2}\cdot \pi`
+   - after_latex: `{\color{green}{\text{sign}(\frac{1}{3})\cdot \frac{\pi}{2}}} - \frac{1}{2}\cdot \pi`
    - substeps:
      1. `Juntar la pareja que encaja con la identidad`
         - before_latex: `\arctan(\frac{1}{3}) + \arctan(3) - \frac{1}{2}\cdot \pi`
         - after_latex: `\arctan(\frac{1}{3}) + \arctan(3)`
+2. `Evaluate Sign`
+   - before: `sign(1/3) · pi/2 - 1/2 · pi`
+   - after: `pi/2 - 1/2 · pi`
+   - before_latex: `{\color{red}{\text{sign}(\frac{1}{3})\cdot \frac{\pi}{2}}} - \frac{1}{2}\cdot \pi`
+   - after_latex: `\frac{\pi}{2} - \frac{1}{2}\cdot \pi`
+   - substeps: none
+3. `Cancel Opposite Fractions`
+   - before: `pi/2 - 1/2 · pi`
+   - after: `0`
+   - before_latex: `{\color{red}{\frac{\pi}{2} - \frac{1}{2}\cdot \pi}}`
+   - after_latex: `{\color{green}{0}}`
+   - substeps: none
 
 ## polynomial_expansion_cancel (polynomial)
 

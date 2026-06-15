@@ -799,7 +799,24 @@ pub fn try_plan_inverse_atan_reciprocal_pair_expr(
                     let pi = ctx.add(Expr::Constant(Constant::Pi));
                     let two = ctx.num(2);
                     let pi_half = ctx.add(Expr::Div(pi, two));
-                    return Some((pi_half, "arctan(x) + arctan(1/x) = π/2".to_string()));
+                    // arctan(x) + arctan(1/x) = (π/2)·sign(x), NOT π/2: the sum is
+                    // -π/2 for x < 0 (both arctans negative). `x` and `1/x` share the
+                    // same sign, so use whichever argument is not a fraction for a
+                    // cleaner `sign(x)`. For a literal argument `sign(c)` folds back to
+                    // ±1, recovering the unconditional ±π/2.
+                    let sign_arg = if matches!(ctx.get(args_i[0]), Expr::Div(_, _))
+                        && !matches!(ctx.get(args_j[0]), Expr::Div(_, _))
+                    {
+                        args_j[0]
+                    } else {
+                        args_i[0]
+                    };
+                    let sign_fn = ctx.call_builtin(BuiltinFn::Sign, vec![sign_arg]);
+                    let result = crate::build::mul2_raw(ctx, pi_half, sign_fn);
+                    return Some((
+                        result,
+                        "arctan(x) + arctan(1/x) = (π/2)·sign(x)".to_string(),
+                    ));
                 }
             }
             None
@@ -1490,10 +1507,16 @@ mod tests {
         let terms = vec![t1, t2];
         let plan =
             try_plan_inverse_atan_reciprocal_pair_expr(&mut ctx, &terms, 0, 1).expect("plan");
-        let expected = parse("pi/2", &mut ctx).expect("pi/2");
-        assert_eq!(
-            cas_ast::ordering::compare_expr(&ctx, plan.local_after, expected),
-            std::cmp::Ordering::Equal
+        // arctan(x) + arctan(1/x) = (π/2)·sign(x), not π/2 (it is -π/2 for x < 0).
+        // The raw plan carries sign(2); the engine later folds sign(2) -> 1 -> π/2.
+        let rendered = cas_formatter::DisplayExpr {
+            context: &ctx,
+            id: plan.local_after,
+        }
+        .to_string();
+        assert!(
+            rendered.contains("sign(2)") && rendered.contains("pi"),
+            "expected (pi/2)*sign(2), got {rendered}"
         );
     }
 

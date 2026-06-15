@@ -48,7 +48,7 @@ hyperbolic_negative_tanh_parity,simplify,tanh(-x),-tanh(x),derived,rewrite hyper
 inverse_hyperbolic_atanh_square_ratio_log,simplify,atanh((x^2 - 1)/(x^2 + 1)),ln(x),derived,rewrite hyperbolics
 hyperbolic_composition_sinh_asinh,simplify,sinh(asinh(x)),x,derived,rewrite hyperbolics
 hyperbolic_special_value_sinh_zero,simplify,sinh(0),0,derived,rewrite hyperbolics
-inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,derived,rewrite inverse trigs
+inverse_tan_identity,simplify,arctan(a)+arctan(1/a),(pi/2)*sign(a),derived,rewrite inverse trigs
 inverse_trig_arcsin_arccos_complement_sum,simplify,arcsin(x)+arccos(x),pi/2,derived,rewrite inverse trigs
 inverse_trig_composition_sin_arcsin,simplify,sin(arcsin(x)),x,derived,rewrite inverse trigs
 arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),derived,rewrite inverse trigs

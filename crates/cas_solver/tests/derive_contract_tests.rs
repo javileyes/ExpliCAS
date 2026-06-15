@@ -555,7 +555,8 @@ const IDENTITY_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         id: "identity_arctan_reciprocal_sum",
         family: "arctan compositions",
         source: "arctan(x) + arctan(1/x)",
-        target: "pi/2",
+        // (π/2)·sign(x), not π/2: the sum is -π/2 for x < 0.
+        target: "(pi/2)*sign(x)",
     },
     IdentityShadowCase {
         id: "identity_completing_square",

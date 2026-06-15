@@ -6022,7 +6022,10 @@ mod tests {
     #[test]
     fn evaluate_derive_command_lines_reaches_tabulated_inverse_tan_identity_targets() {
         let cases = [
-            ("derive arctan(a) + arctan(1/a), pi/2", &["pi", "/ 2"][..]),
+            (
+                "derive arctan(a) + arctan(1/a), (pi/2)*sign(a)",
+                &["pi", "/ 2"][..],
+            ),
             ("derive atan(3) + (atan(1/3) - pi/2), 0", &["0"][..]),
         ];
 

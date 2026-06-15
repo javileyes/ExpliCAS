@@ -1760,7 +1760,7 @@ mod tests {
     #[test]
     fn classifies_tabulated_inverse_trig_rewritten_targets() {
         for (source, target) in [
-            ("arctan(a) + arctan(1/a)", "pi/2"),
+            ("arctan(a) + arctan(1/a)", "(pi/2)*sign(a)"),
             ("sin(arcsin(x))", "x"),
             ("cos(arccos(x))", "x"),
             ("tan(arctan(x))", "x"),

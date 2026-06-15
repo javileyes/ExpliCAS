@@ -116,6 +116,19 @@ unchanged (only `filtered_out +1` from the new unit test).
   convention the true value is `-π/2` for x<0. **WRONG VALUE** (internally
   inconsistent). Bounded fix: gate the identity by `sign(x)`.
 
+**FIXED (2026-06-15, commit `PENDING_HASH`).** The reciprocal-pair planner
+(`try_plan_inverse_atan_reciprocal_pair_expr` in
+`cas_math/src/inverse_trig_composition_support.rs`) returned `π/2`
+unconditionally; it now returns `(π/2)·sign(x)`. `x` and `1/x` share a sign, so
+the non-fraction argument is used for a clean `sign(x)`; for a literal argument
+`EvaluateSignRule` folds `sign(c) → ±1`, recovering `arctan(2)+arctan(1/2)=π/2`
+and `arctan(-2)+arctan(-1/2)=-π/2`. Verified numerically at both signs; the
+metamorphic identity suite (which samples `x>0`) is unaffected since
+`(π/2)·sign(x)=π/2` there. Updated the `nary_pattern_matching` contract +
+regression test. *(Minor pre-existing follow-up, not introduced here: the
+`arctan(x)+arccot(x)` form does not surface the `x≠0` condition — a
+condition-completeness gap in the arccot→arctan conversion, P3.)*
+
 ### Cluster A — even-index root of a negative base (`powers_roots`)
 The fallacy `(z^(1/even))^even = z` / `sqrt(a)·sqrt(b)=sqrt(ab)` applied to
 negatives, where the even root has no real value:
@@ -139,7 +152,8 @@ negatives, where the even root has no real value:
 3. **Cluster B-2** — wrong value (NEW, surfaced by the Cluster B adversarial
    sweep); same `(x^even)^outer` family but a distinct sign-unaware cancellation
    path. Bounded fix under the existing `a^(2k) ≥ 0` condition.
-4. **Cluster D** — wrong branch value; bounded fix (gate by `sign(x)`).
+4. **Cluster D** — wrong branch value; FIXED (commit `PENDING_HASH`) by gating
+   the arctan reciprocal identity with `sign(x)`.
 5. **Cluster A** — real-domain honesty; the sign-wrong `sqrt(-2)*sqrt(-3)=+√6` is
    the most urgent within the cluster.
 
@@ -148,5 +162,5 @@ negatives, where the even root has no real value:
 - [x] Cluster C — arcsin/arccos derivative cancellation *(wrong value FIXED 2026-06-15, commit `810c0a6db`; arcsin+arccos condition-drop reclassified P3-educational)*
 - [x] Cluster B — `(a^even)^symbolic` drops `|a|` *(literal-even-inner half FIXED 2026-06-15, commit `5b13a9baa`; symbolic-even-inner half split to Cluster B-2)*
 - [ ] Cluster B-2 — `(a^(2k))^(1/2)` drops `|a|` for symbolic even inner exponent
-- [ ] Cluster D — `arctan(x)+arctan(1/x)` branch
+- [x] Cluster D — `arctan(x)+arctan(1/x)` branch *(FIXED 2026-06-15, commit `PENDING_HASH`: gated by `sign(x)`)*
 - [ ] Cluster A — even-root of negative base
