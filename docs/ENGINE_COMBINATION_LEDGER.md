@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 168 (newest first)
+Active entries: 169 (newest first)
 
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
@@ -128,6 +128,7 @@ Active entries: 168 (newest first)
 - 2026-06-15 | `retained` | calculus / inverse-trig integration / int inv(sqrt(x)) dx for inv in | Retained integration: inverse-trig of sqrt(x) (u = sqrt(x) substitution)
 - 2026-06-15 | `retained` | calculus / definite integration / the area-function FTC int_a^x f(t) dt with a | Retained soundness: divergent improper area-functions yield undefined
 - 2026-06-15 | `retained` | calculus / function-of-radical integration / int f(sqrt(x)) dx for | Retained integration: trig/hyperbolic of sqrt(x) (generalized u = sqrt(x))
+- 2026-06-15 | `retained` | simplification / power-of-power canonicalization / `(x^m)^n` with even inner | Retained soundness: (x^m)^n keeps the absolute value over the reals
 - 2026-06-14 | `retained` | calculus / definite integration / structural symmetry without an | Retained integration: odd integrand over a symmetric interval = 0
 - 2026-06-14 | `retained` | calculus / limits / finite-point 0/0 quotient of exponential | Retained limits: difference of general-base exponentials
 - 2026-06-14 | `retained` | calculus / limits / finite-point products (block 3) - soundness | SOUNDNESS FIX: 0 * unbounded function at a finite point
@@ -7353,3 +7354,63 @@ Active entries: 168 (newest first)
     the real elementarity oracle, so admitting f = tan costs nothing (it self-gates to a
     residual) while admitting f = sin/cos/sinh/cosh wins four families. The match arm should
     encode "shapes whose tail PLAUSIBLY resolves," not a hand-proved whitelist
+
+
+## 2026-06-15 - Retained soundness: (x^m)^n keeps the absolute value over the reals
+
+- area:
+  - simplification / power-of-power canonicalization / `(x^m)^n` with even inner
+    exponent m (block: exponents canonical rewrites, root_power_canonical_support)
+- status:
+  - `retained`
+- capture:
+  - investment_class: soundness
+  - cell: `(x^2)^(3/2)` was `x^3` (sign-wrong for x<0) and `diff((x^2)^(3/2),x)` was
+    `3*x^2`; now `(x^2)^(3/2) = |x|*x^2` (= |x|^3) and the derivative is `2x|x| + x^3/|x|`
+    (= 3x|x| = 3x*sqrt(x^2)), correct at every real x
+  - behavior_change_expected: yes - a class of incorrect flattenings is corrected;
+    previously-correct cases are byte-identical (guardrail + pressure fingerprints unchanged)
+- observed (one over-narrow guard generalized to the full real-domain rule):
+  - USER-REPORTED. `try_rewrite_power_power_even_root_abs_expr` (the only branch that
+    inserts |.| for a power-of-power) was gated by `is_half(outer_exp)` -- true ONLY for
+    the exact exponent 1/2. So `(x^2)^(1/2) -> |x|` worked but `(x^2)^(3/2)` fell through to
+    the unconditional MultiplyExponents arm -> `x^3`, dropping the |.|. diff then saw the
+    flattened `x^3` and returned `3x^2` (option a: the input was pre-simplified before diff)
+  - THE CLEAN INVARIANT: for an EVEN integer inner exponent m, `x^m = |x|^m >= 0`, hence
+    `(x^m)^n = |x|^(m*n)` EXACTLY for every real x. The plain power `x^(m*n)` is real-equal
+    to `|x|^(m*n)` precisely when P = m*n (lowest terms) has an EVEN NUMERATOR (then the sign
+    is already absorbed; in lowest terms an even numerator forces an odd denominator, the
+    sign-safe odd-root case). An ODD numerator means either a sign flip (odd integer P) or a
+    domain restriction (even-denominator P) -- the |.| must be kept. So the generalized rule:
+    inner m even integer AND numerator(m*n) odd -> emit `Pow(Abs(base), m*n)`; else decline
+    (defer to MultiplyExponents). Verified against the whole probe grid: `(x^2)^(3/2)=|x|^3`,
+    `(x^2)^(1/4)=|x|^(1/2)`, `(x^2)^(1/6)=|x|^(1/3)`, `((x+1)^2)^(3/2)=|x+1|*(x+1)^2`, while
+    `(x^4)^(1/2)=x^2`, `(x^2)^(1/3)=x^(2/3)`, `(x^2)^2=x^4`, m-odd, and all Add-base radicals
+    stay exactly as before
+  - VERIFIED ADVERSARIALLY (mandatory: core simplification soundness change). Three lenses,
+    ~730 probes: false-positives (88, even m x 22 rationals) 0 defects; false-negatives /
+    generality (640: general/parametric bases, deep nesting, odd-inner domain restrictions,
+    calculus, fuzz) 0 defects; interaction/honesty regression sweep confirmed sqrt(x^2)=|x|,
+    ordinary power algebra, integration round-trips, and the honesty residuals all intact.
+    The harness initially mis-flagged x^(2/3) at x<0 -- a sympy DEFAULT-complex-branch artifact,
+    NOT an engine bug: the engine uses the real-root convention consistently. A revert-test
+    (stash + rebuild) proved the only "defect" the sweep surfaced (the `(4*x^2)^(1/2)` display)
+    is PRE-EXISTING and orthogonal, not a regression
+  - matrix/scorecard: no matrix rows (abs antiderivatives do not symbolically diff-verify);
+    cas_math unit test count net 0 (replaced the now-obsolete is_half mechanism test with a
+    decision-table test); CLI contract tests live in a non-lane file -> guardrail + pressure
+    fingerprints byte-identical
+- retained learning:
+  - a soundness guard written for the FIRST instance of a family (here outer exponent == 1/2)
+    silently under-covers the rest of the family. Express the guard as the real-domain
+    INVARIANT (even inner exponent => result is |x|^(m*n); drop the |.| only when the product
+    numerator is even), not as the single exponent the first case happened to use
+  - the parity test for "is x^P sign-safe" reduces to numerator(P) even (in lowest terms an
+    even numerator implies an odd denominator), which uniformly covers integer P (even/odd),
+    even-denominator P (domain), and odd/odd P (sign) -- one check, whole decision table
+  - DISPLAY is part of soundness: emit `Pow(Abs(base), P)` (renders `|x|^3`, `|x|^(1/2)`),
+    never a nested `Pow(Pow(x,m), q)` whose printed form `x^m^q` re-parses to `x^(m^q)`.
+    A pre-existing sibling (`(4*x^2)^(1/2)` -> `2*x^2^(1/2)`, the perfect-square-coefficient
+    path) shows this hazard and is the next peldano
+  - when an adversarial sweep flags a defect, REVERT-TEST (stash + rebuild) before owning it:
+    pre-existing defects in the touched area are not regressions of the current change

@@ -60,6 +60,22 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   siguen correctos. Descubierto al prototipar la sustitución recíproca
   u=1/x para límites en ∞ — revertida por disparar justo este hueco —;
   huella de scorecard sin cambios, ningún fixture público lo capturaba.)*
+- [x] **(F) `(x^m)^n` con m par perdía el valor absoluto**: `(x^2)^(3/2)`
+  se aplanaba a `x^3` (signo FALSO para x<0) y `diff((x^2)^(3/2),x)` daba
+  `3·x^2` en lugar de `3x·√(x²)`. Reportado por el operador. El motor ya
+  hacía bien `(x^2)^(1/2)→|x|` pero el resto de la familia se filtraba.
+  *(graduado 2026-06-15 PENDING_HASH: `try_rewrite_power_power_even_root_abs_expr`
+  estaba gateado por `is_half(outer)` —solo el exponente exacto 1/2—; generalizado
+  al INVARIANTE real: con exponente interno m PAR, `x^m=|x|^m≥0` ⇒ `(x^m)^n=|x|^(m·n)`
+  exacto; se emite `x^(m·n)` solo cuando el numerador de m·n es PAR (signo ya absorbido),
+  si no se conserva `|x|`. Ahora `(x²)^(3/2)=|x|·x²`, `(x²)^(1/4)=|x|^(1/2)`,
+  `((x+1)²)^(3/2)=|x+1|·(x+1)²`; intactos `(x⁴)^(1/2)=x²`, `(x²)^(1/3)=x^(2/3)`, m impar,
+  y los radicales de base-Add. Verificación adversarial 3-lente ~730 probes, 0 defectos
+  de soundness; huellas guardrail+pressure byte-idénticas. Peldaño: la ruta de coeficiente
+  cuadrado-perfecto `(4·x²)^(1/2)→2·x^2^(1/2)` (valor interno correcto 2|x|, pero el display
+  de la potencia anidada re-parsea a `2·x^(√2)` — hazard de presentación PRE-EXISTENTE y
+  ortogonal, distinto root cause: distribución del radical sobre el producto + formatter
+  sin paréntesis en bases-potencia).)*
 - [~] **(F) FTC en borde inferior singular**: `d/dx ∫_0^x f(t) dt = f(x)`
   presentado por las rutas de diff-de-integral SIN comprobar convergencia en el
   borde constante. Para integrandos divergentes en 0 (`t^(-3/2)`, `ln(t)/t`,

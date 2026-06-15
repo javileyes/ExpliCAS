@@ -274,3 +274,48 @@ fn cli_domain_generic_factor_cancellation_renders_atomic_requires_without_compos
     assert!(required.contains(&"x ≠ 1"));
     assert!(required.contains(&"x ≠ -1"));
 }
+
+// =============================================================================
+// Power-of-a-power must keep the absolute value over the reals
+// =============================================================================
+//
+// `(x^m)^n` with even inner exponent `m` equals `|x|^(m*n)`, NOT `x^(m*n)`,
+// whenever the product exponent has an odd numerator. Flattening to the bare
+// power drops a sign (odd integer exponent) or a domain restriction (even
+// denominator), which then leaks into a wrong derivative. Regression guard for
+// the `(x^2)^(3/2) -> x^3` / `diff = 3x^2` soundness bug.
+
+fn eval_result(expr: &str) -> String {
+    let (output, _code) = run_cli(&["eval", expr, "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["ok"], true, "eval failed for {expr}: {output}");
+    wire["result"].as_str().unwrap_or("").to_string()
+}
+
+#[test]
+fn power_power_even_inner_keeps_abs_over_reals() {
+    // The reported case and its siblings: the absolute value must survive.
+    assert_eq!(eval_result("(x^2)^(3/2)"), "|x|·x^2"); // = |x|^3
+    assert_eq!(eval_result("(x^2)^(5/2)"), "|x|·x^4");
+    assert_eq!(eval_result("(x^6)^(1/2)"), "|x|·x^2");
+    assert_eq!(eval_result("(x^2)^(1/4)"), "|x|^(1/2)"); // domain: real for all x
+    assert_eq!(eval_result("((x+1)^2)^(3/2)"), "|x + 1|·(x + 1)^2");
+
+    // Sign-safe cases (even numerator product) must STAY the bare power.
+    assert_eq!(eval_result("(x^4)^(1/2)"), "x^2");
+    assert_eq!(eval_result("(x^4)^(3/2)"), "x^6");
+    assert_eq!(eval_result("(x^2)^(1/3)"), "x^(2/3)");
+}
+
+#[test]
+fn power_power_even_inner_derivative_is_sound() {
+    // The headline bug: diff((x^2)^(3/2), x) was 3*x^2 (wrong sign for x<0).
+    // The correct derivative is 3*x*|x| = 3*x*sqrt(x^2); the engine returns the
+    // (correct, unreduced) product-rule form. It must NOT be the bare 3*x^2.
+    let d = eval_result("diff((x^2)^(3/2), x)");
+    assert_ne!(d, "3·x^2", "derivative must not drop the absolute value");
+    assert!(
+        d.contains("|x|"),
+        "derivative of (x^2)^(3/2) must carry |x|, got: {d}"
+    );
+}

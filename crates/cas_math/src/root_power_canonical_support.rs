@@ -1,8 +1,8 @@
 //! Support for root/power canonical rewrites with injectable proof policies.
 
+use crate::exponents_support::mul_exp;
 use crate::root_forms::extract_square_root_base;
 use crate::tri_proof::TriProof;
-use crate::{exponents_support::mul_exp, pi_helpers::is_half};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_integer::Integer;
@@ -365,7 +365,19 @@ pub fn classify_root_pow_cancel_pattern(
     }
 }
 
-/// Try `(x^(2k))^(1/2) -> |x|^k`.
+/// Try `(x^m)^n -> |x|^(m*n)` when the absolute value is required over the reals.
+///
+/// When the inner exponent `m` is an even integer, `x^m = |x|^m >= 0` for all real
+/// `x`, so `(x^m)^n = |x|^(m*n)` exactly. The plain power `x^(m*n)` is real-equal
+/// to `|x|^(m*n)` only when the product exponent `P = m*n` (in lowest terms) has an
+/// EVEN numerator — then the sign is already absorbed (e.g. `(x^4)^(1/2) = x^2`,
+/// `(x^2)^(2/3) = x^(4/3)`). When `P` has an ODD numerator the plain power either
+/// drops a sign (odd integer `P`, e.g. `(x^2)^(3/2)` is `|x|^3`, NOT `x^3`) or a
+/// domain restriction (even-denominator `P`, e.g. `(x^2)^(1/4)` is `|x|^(1/2)`,
+/// real for all `x`, NOT `x^(1/2)`), so the absolute value must be kept.
+///
+/// Only the odd-numerator case is rewritten here; the even-numerator case returns
+/// `None` so the caller falls through to the sign-safe `MultiplyExponents` branch.
 pub fn try_rewrite_power_power_even_root_abs_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -379,15 +391,23 @@ pub fn try_rewrite_power_power_even_root_abs_expr(
         _ => return None,
     };
 
-    let inner_even_int = match ctx.get(inner_exp) {
-        Expr::Number(n) => n.is_integer() && n.to_integer().is_even(),
-        _ => false,
+    // Gate on an even-integer inner exponent: that is what makes `x^m >= 0` and
+    // hence `(x^m)^n = |x|^(m*n)` an identity over the reals.
+    let inner_int = match ctx.get(inner_exp) {
+        Expr::Number(n) if n.is_integer() && n.to_integer().is_even() => n.to_integer(),
+        _ => return None,
     };
-    if !inner_even_int || !is_half(ctx, outer_exp) {
+
+    // P = m * n must be a rational constant; otherwise we cannot decide parity.
+    let outer_rat = crate::numeric_eval::as_rational_const(ctx, outer_exp)?;
+    let prod = num_rational::BigRational::from_integer(inner_int) * outer_rat;
+
+    // Even numerator => the plain power is sign-safe; defer to MultiplyExponents.
+    if prod.numer().is_even() {
         return None;
     }
 
-    let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
+    let prod_exp = ctx.add(Expr::Number(prod));
     let abs_base = ctx.call_builtin(BuiltinFn::Abs, vec![inner_base]);
     let rewritten = ctx.add(Expr::Pow(abs_base, prod_exp));
     Some(PowerPowerEvenRootAbsRewrite { rewritten })
@@ -625,7 +645,7 @@ mod tests {
         SymbolicRootCancelDomainMode, SymbolicRootCancelPolicy,
     };
     use crate::tri_proof::TriProof;
-    use cas_ast::Context;
+    use cas_ast::{Context, ExprId};
     use cas_parser::parse;
 
     #[test]
@@ -700,11 +720,56 @@ mod tests {
     }
 
     #[test]
-    fn power_power_even_root_abs_rewrite_detects_pattern() {
+    fn power_power_even_root_abs_rewrite_fires_only_when_abs_required() {
+        // (x^m)^n with m even: the abs rewrite must fire exactly when the product
+        // exponent P = m*n has an ODD numerator (then x^P drops a sign or a domain
+        // restriction). When P has an even numerator x^P is already sign-safe, so
+        // the rewrite declines and the caller flattens via MultiplyExponents.
         let mut ctx = Context::new();
-        let expr = parse("(x^4)^0.5", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr);
-        assert!(rewrite.is_some());
+        let render =
+            |ctx: &Context, id: ExprId| cas_formatter::DisplayExpr { context: ctx, id }.to_string();
+        for (source, expected_abs) in [
+            ("(x^2)^(1/2)", "|x|"),       // P = 1 (odd) -> |x|^1
+            ("(x^2)^(3/2)", "|x|^3"),     // P = 3 (odd) -> the user's reported case
+            ("(x^2)^(5/2)", "|x|^5"),     // P = 5 (odd)
+            ("(x^6)^(1/2)", "|x|^3"),     // P = 3 (odd)
+            ("(x^2)^(1/4)", "|x|^(1/2)"), // P = 1/2 (odd numer, even denom -> domain)
+            ("(x^2)^(3/4)", "|x|^(3/2)"), // P = 3/2 (odd numer)
+            ("(x^2)^(1/6)", "|x|^(1/3)"), // P = 1/3 (odd numer)
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            let rewrite = try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("abs rewrite must fire: {source}"));
+            assert_eq!(
+                render(&ctx, rewrite.rewritten),
+                expected_abs,
+                "for {source}"
+            );
+        }
+        // Even-numerator P: x^P is sign-safe, so the abs rewrite declines.
+        for source in [
+            "(x^4)^(1/2)", // P = 2  -> x^2
+            "(x^4)^(3/2)", // P = 6  -> x^6
+            "(x^2)^2",     // P = 4  -> x^4
+            "(x^2)^(1/3)", // P = 2/3 (even numer, odd denom) -> x^(2/3)
+            "(x^2)^(2/3)", // P = 4/3 (even numer) -> x^(4/3)
+            "(x^6)^(1/3)", // P = 2  -> x^2
+        ] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr).is_none(),
+                "abs rewrite must decline (sign-safe): {source}"
+            );
+        }
+        // Odd inner exponent: x^m can be negative, so this branch never fires
+        // (handled by other domain-aware paths, not the even-root abs rule).
+        for source in ["(x^3)^(1/2)", "(x^3)^(3/2)", "(x^3)^(2/3)"] {
+            let expr = parse(source, &mut ctx).expect(source);
+            assert!(
+                try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr).is_none(),
+                "odd inner exponent must decline: {source}"
+            );
+        }
     }
 
     #[test]
