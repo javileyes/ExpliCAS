@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 185 (newest first)
+Active entries: 186 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
@@ -122,6 +122,7 @@ Active entries: 185 (newest first)
 - 2026-06-16 | `retained` | block 1 (algebra/exponents) + block 9 (summation); `cas_math` shared helpers | Retained soundness fix: product-power split gated + zero-summand sum = 0 (Round-2 audit R6, Fronts 1 & 3)
 - 2026-06-16 | `retained` | block 1 (arithmetic/division) cross-cutting; one shared `cas_math` oracle | Retained soundness fix: provably-zero oracle closes div-by-zero cancellation + 0/0 folds (Round-2 audit R3-3 & R4)
 - 2026-06-16 | `retained` | block 1 (division); extends `cas_math::arithmetic_cancel_support::is_provably... | Retained soundness fix: polynomial-identity zero denominators (Round-2 audit R4-2)
+- 2026-06-16 | `retained` | block 1 (division) + block 5 (trig); extends `cas_math::arithmetic_cancel_sup... | Retained soundness fix: Pythagorean-identity zero denominators (Round-2 audit R4-3)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8156,3 +8157,51 @@ Active entries: 185 (newest first)
   - the zero-denominator frontier stratifies by HOW the denominator is zero: syntactic
     (R3-3/R4), polynomial-identity (R4-2, here), transcendental-identity (R4-3, deferred).
     Each layer needs a strictly stronger - and progressively more expensive - zero oracle.
+
+## 2026-06-16 - Retained soundness fix: Pythagorean-identity zero denominators (Round-2 audit R4-3)
+- area:
+  - block 1 (division) + block 5 (trig); extends `cas_math::arithmetic_cancel_support::is_provably_zero`
+    with an exact Pythagorean-identity detector (reuses `expr_nary::AddView`/`mul_leaves`)
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; R4-3 of docs/SOUNDNESS_AUDIT_ROUND2.md; R4-4 deferred)
+- capture:
+  - investment_class: soundness
+  - cell: `1/(sin(x)^2+cos(x)^2-1) - same`, hyperbolic/sec-tan/csc-cot variants stay
+    symbolic (were 0); `1/(sin^2+cos^2) -> 1`, `1/(sin^2-cos^2)`, different-argument
+    combinations stay divisible (no over-block)
+  - behavior_change_expected: yes - Pythagorean-zero denominators stop cancelling;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, engine-fast no slow/timeout
+- observed (USER-DIRECTED, "continua con R4-3"):
+  - EVERY transcendental-identity zero denominator the engine reduces to 0 STANDALONE
+    (`eval "sin^2+cos^2-1" -> 0`) STILL leaked in cancellation - the frontier is broad
+    (Pythagorean trig/hyperbolic/reciprocal, log/exp inverse, double-angle, definitional).
+    Enumerating all is whack-a-mole; the only COMPLETE oracle is the engine's own simplifier.
+  - scoping weighed two approaches: (A) a recursion-guarded sub-simplification of the
+    candidate denominator at the cas_engine cancellation rule (complete - catches every
+    identity the simplifier knows), vs (B) an exact bounded Pythagorean detector in cas_math.
+    Chose B: (A) is layering-blocked (the predicate is cas_math, the Simplifier is cas_engine)
+    and a fresh `Simplifier` per additive-transcendental denominator is a hot-path perf hazard.
+- retained learning:
+  - the zero-denominator frontier stratifies by HOW zero: syntactic (R3-3/R4) ->
+    polynomial-identity (R4-2) -> transcendental-identity (R4-3/R4-4). Each layer needs a
+    strictly stronger zero oracle; the EXACT, bounded, hot-path-cheap ones (numeric fold,
+    MultiPoly normalize, Pythagorean coefficient check) are retainable, the COMPLETE one
+    (call the simplifier) is layering/perf-blocked and stays a documented residual.
+  - an exact Pythagorean detector is just rational bookkeeping over `AddView` terms: extract
+    `(signed_coeff, builtin, arg)` of each `c*f(arg)^2`, sum the numeric constant, and match
+    the four `k*f^2 +/- k*g^2 - k` shapes (same arg). No float, no probing - so it never
+    false-positives `sin^2+cos^2` (=1) or a different-argument combination. Requiring EXACTLY
+    two squared terms + a constant keeps it sound and cheap.
+  - prefer reusing exact identity machinery (`extract_coeff_trig_pow2` shape) over a heuristic:
+    `numeric_eval::numeric_poly_zero_check` PROBES random points and `eval_f64` rounds - both
+    UNSOUND as a soundness gate (false positives -> wrongly declared undefined). Never gate
+    soundness on a float/probe test.
+  - the 119-probe adversarial round confirmed 0 bare-`eval` leaks (all families, all spellings)
+    but surfaced a BROADER pre-existing gap: `simplify(...)`/`expand(...)` evaluate their
+    argument through a path missing the R3 universal filter, so `simplify(1/D - 1/D) -> 0` for
+    every identically-zero `D` - and this leaks R3, R4, R4-2 AND R4-3 alike (it is the
+    meta-function arg-eval chokepoint, not the identity family). Logged as R4-5; it is the
+    highest-ROI next soundness item because one chokepoint fix un-leaks four graduated layers
+    at once. Lesson: the `eval` path and the `simplify()`/`expand()` command surface are
+    SEPARATE simplification entry points - a soundness filter must cover both, and adversarial
+    probes that wrap the same expression in different commands catch the asymmetry.

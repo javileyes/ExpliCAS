@@ -26,7 +26,7 @@ families.
 
 Most of the 52 defects share **one root cause**: the engine applies an algebraic
 identity, cancellation, or function-inverse simplification **without checking its
-operands are defined and finite over ℝ**. `sin(arcsin(2))→2`, `inf−inf→0`,
+operands are defined and finite over ℝ**. `sin(a rcsin(2))→2`, `inf−inf→0`,
 `(1²−1)/(1−1)→0`, `acosh(cosh(x))→x`, `solve(3/x=0)→{∞}` are all instances of
 "simplify first, never ask whether the input has a real value." Round 1 found the
 *sign* failures of this theme; Round 2 finds the *definedness/finiteness* failures.
@@ -146,10 +146,42 @@ for `n > 0`: `(x*x − x²)^2`, `(2x−x−x)^3`). Three adversarial rounds drov
 convergence: round 1 raised `PolyBudget.max_pow_exp` (cube/quartic identities), round 2
 added the `0^n` arm, round 3 is clean (94 probes, 0 leaks). engine-fast clean (no
 slow/timeout from the hot-path conversion); guardrail+pressure BYTE-IDENTICAL.
-**R4-3 (deferred):** *transcendental*-identity
-zero denominators — `1/(sin²x + cos²x − 1) − … → 0` — are NOT polynomial identities
-(`s² + c² − 1` is not the zero polynomial in atoms `s,c`; it needs the trig identity),
-so they need identity-aware zero knowledge — its own cycle.
+**R4-3 — FIXED (commit `PENDING_HASH`) for the PYTHAGOREAN family.** Transcendental-
+identity zero denominators (`1/(sin²x + cos²x − 1) − … → 0`) are NOT polynomial
+identities (`s² + c² − 1` is not the zero polynomial in atoms `s,c`), so the MultiPoly
+check declines them. The complete oracle would be the engine's own simplifier (it
+reduces each to 0 standalone), but calling it from `is_provably_zero` (cas_math) is
+blocked by the crate layering, and a sub-simplification per additive-transcendental
+denominator is a hot-path perf hazard (a fresh `Simplifier` allocates the full rule
+registry). **Fix:** an EXACT Pythagorean detector `is_pythagorean_identity_zero` —
+collects the additive terms' rational coefficients of `f(arg)²` (via `mul_leaves`/
+`AddView`, no float/probing) and recognizes `k·sin²+k·cos²−k`, `k·cosh²−k·sinh²−k`,
+`k·sec²−k·tan²−k`, `k·csc²−k·cot²−k` for any `k`, argument, sign and order. It requires
+EXACTLY the two squared terms (same argument) + a numeric constant, so it never
+false-positives a nonzero denominator (`sin²+cos²` → 1, `sin²−cos²`, `sin²+cos²+1` →
+1/2, different-argument or `cos⁴` combinations all stay divisible). Now the four
+Pythagorean families stay symbolic/undefined in cancellation; legitimate trig
+divisions are unchanged. guardrail+pressure BYTE-IDENTICAL. **Scope = the `eval`
+path** (the primary surface, matching how R3/R4/R4-2 graduated): a 119-probe
+adversarial round confirmed 0 bare-`eval` leaks across all four families and all
+spellings (`f²`, `f·f`, fractional `k`, reordered, hyperbolic/sec/csc). The
+`simplify(…)`/`expand(…)` COMMAND wrappers still leak (see R4-5).
+
+**R4-5 (deferred — command-surface argument evaluation):** the `simplify(…)` and
+`expand(…)` meta-functions reduce their ARGUMENT through a path that does NOT run
+the R3 non-finite/zero-denominator filter, so `simplify(1/D − 1/D) → 0` and
+`expand(1/D − 1/D) → 0` for every identically-zero `D` — **including the already-
+graduated R3/R4/R4-2 cases** (`simplify(1/(x−x) − 1/(x−x)) → 0`,
+`expand(1/(x·x − x²) − 1/(x·x − x²)) → 0`), not just R4-3 Pythagorean. This is a
+single broader gap (the meta-function arg-eval chokepoint missing the universal
+filter), independent of the identity family, and the highest-ROI next soundness
+item: closing it un-leaks R3, R4, R4-2 and R4-3 on the command surface at once.
+
+**R4-4 (deferred — non-Pythagorean transcendental identities):** `e^(ln x) − x`,
+`ln(e^x) − x`, `sin(2x) − 2 sin x cos x`, `tan x − sin x / cos x` still cancel. These
+are not Pythagorean and each needs its own identity knowledge — the only complete
+oracle is the engine's simplifier, which the crate layering + hot-path perf put in a
+later cycle (e.g. a recursion-guarded sub-simplify gated behind a cheap pre-filter).
 
 **Not regressions (verified byte-identical on HEAD):** the adversarial flagged
 `5·a·b·c − a·b·c → 5·a·b·c − a·b·c` (collect fails for ≥3-factor products with an
@@ -320,6 +352,8 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
 - [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
 - [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `134c351fa`, exact `MultiPoly` normalization in `is_provably_zero`)*
-- [ ] R4-3 — *transcendental-identity* zero denominators (`sin²+cos²−1`, …) still cancel; needs identity-aware (non-polynomial) zero knowledge
+- [x] R4-3 — *Pythagorean-identity* zero denominators (`sin²+cos²−1`, `cosh²−sinh²−1`, `sec²−tan²−1`, `csc²−cot²−1`) *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `is_pythagorean_identity_zero` coefficient check)*
+- [ ] R4-4 — *non-Pythagorean* transcendental-identity zero denominators (`e^(ln x)−x`, `ln(e^x)−x`, `sin(2x)−2 sin x cos x`, `tan x − sin x/cos x`) still cancel; needs the engine's simplifier (layering + hot-path perf)
+- [ ] R4-5 — *command-surface* gap: `simplify(…)`/`expand(…)` evaluate their argument through a path missing the R3 universal filter, so `simplify(1/D − 1/D) → 0` / `expand(1/D − 1/D) → 0` for every identically-zero `D` — leaks **R3, R4, R4-2 and R4-3 alike** (not family-specific). Highest-ROI next soundness item: one chokepoint fix un-leaks all four on the command surface
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery

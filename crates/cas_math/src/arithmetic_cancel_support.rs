@@ -1,9 +1,13 @@
 //! Pattern helpers for arithmetic self-cancellation rewrites.
 
+use crate::expr_nary::{mul_leaves, AddView, Sign};
+use crate::numeric_eval::as_rational_const;
 use crate::semantic_equality::SemanticEqualityChecker;
+use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 fn extract_abs_sub_like_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
@@ -997,6 +1001,14 @@ pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Mul(l, r) = ctx.get(expr) {
         return is_provably_zero(ctx, *l) || is_provably_zero(ctx, *r);
     }
+    // `0 / c = 0` for a NONZERO constant `c`: `(sin^2+cos^2-1)/2`. (A symbolic or
+    // zero denominator is left alone — `0/0` is undefined, not zero.)
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        if as_rational_const(ctx, *den).is_some_and(|d| !d.is_zero()) && is_provably_zero(ctx, *num)
+        {
+            return true;
+        }
+    }
     // `0^n = 0` for a strictly-positive exponent: `(x*x - x^2)^2`, `(2x-x-x)^3`.
     // (`0^0` is indeterminate and `0^(neg)` is undefined, so require `exp > 0`.)
     if let Expr::Pow(base, exp) = ctx.get(expr) {
@@ -1028,6 +1040,146 @@ pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
             if poly.is_zero() {
                 return true;
             }
+        }
+        // Transcendental Pythagorean identities (the multipoly check declines trig):
+        // `k·sin²+k·cos²−k`, `k·cosh²−k·sinh²−k`, `k·sec²−k·tan²−k`, `k·csc²−k·cot²−k`.
+        if is_pythagorean_identity_zero(ctx, expr) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Extract `(signed_coeff, builtin, arg)` from a term equal to `c · f(arg)^2` where
+/// `f` is a trig/hyperbolic builtin and `c` a rational — accepting BOTH spellings
+/// `f(arg)^2` and `f(arg)*f(arg)` (and any mix whose total power on a single
+/// `f(arg)` is exactly 2). Folds a leading `Neg` and numeric factors into `c`.
+/// Returns `None` for anything else (a different total power, two distinct
+/// functions/arguments, a non-trig factor).
+fn extract_squared_builtin_term(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(BigRational, BuiltinFn, ExprId)> {
+    let mut coef = BigRational::one();
+    let mut working = term;
+    if let Expr::Neg(inner) = ctx.get(working) {
+        coef = -coef;
+        working = *inner;
+    }
+    // Peel division by a nonzero numeric constant into the coefficient: `sin^2/2`.
+    while let Expr::Div(num, den) = ctx.get(working) {
+        let Some(d) = as_rational_const(ctx, *den) else {
+            break;
+        };
+        if d.is_zero() {
+            return None;
+        }
+        coef /= d;
+        working = *num;
+    }
+
+    let mut fn_match: Option<(BuiltinFn, ExprId)> = None;
+    let mut total_power: i64 = 0;
+    for factor in mul_leaves(ctx, working) {
+        if let Some(n) = as_rational_const(ctx, factor) {
+            coef *= n;
+            continue;
+        }
+        // Resolve this factor to a (function-base, integer power).
+        let (base, power) = match ctx.get(factor) {
+            Expr::Pow(b, e) => {
+                let p = as_rational_const(ctx, *e)?;
+                if !p.is_integer() {
+                    return None;
+                }
+                (*b, p.to_integer().to_i64()?)
+            }
+            _ => (factor, 1),
+        };
+        let Expr::Function(fn_id, args) = ctx.get(base) else {
+            return None;
+        };
+        if args.len() != 1 {
+            return None;
+        }
+        let builtin = ctx.builtin_of(*fn_id)?;
+        if !matches!(
+            builtin,
+            BuiltinFn::Sin
+                | BuiltinFn::Cos
+                | BuiltinFn::Cosh
+                | BuiltinFn::Sinh
+                | BuiltinFn::Sec
+                | BuiltinFn::Tan
+                | BuiltinFn::Csc
+                | BuiltinFn::Cot
+        ) {
+            return None;
+        }
+        match &fn_match {
+            None => fn_match = Some((builtin, args[0])),
+            Some((b, a)) => {
+                if *b != builtin || compare_expr(ctx, *a, args[0]) != Ordering::Equal {
+                    return None; // two distinct trig atoms in one term
+                }
+            }
+        }
+        total_power += power;
+    }
+
+    let (b, arg) = fn_match?;
+    (total_power == 2).then_some((coef, b, arg))
+}
+
+/// True when `expr` is identically zero by a Pythagorean identity over the reals:
+/// `k·sin²(x) + k·cos²(x) − k`, `k·cosh²(x) − k·sinh²(x) − k`,
+/// `k·sec²(x) − k·tan²(x) − k`, `k·csc²(x) − k·cot²(x) − k` — for any rational `k`
+/// and any term order/sign. Exact: rational-coefficient bookkeeping, no float, no
+/// random-point probing, so it never reports a false zero. It requires EXACTLY the
+/// two squared terms (same argument) plus a numeric constant; anything else (a
+/// stray term, a different argument, a different identity such as a double-angle or
+/// `e^(ln x) − x`) declines — those remain honest residuals.
+fn is_pythagorean_identity_zero(ctx: &Context, expr: ExprId) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    let mut squared: Vec<(BigRational, BuiltinFn, ExprId)> = Vec::new();
+    let mut constant = BigRational::zero();
+    for (term, sign) in view.terms {
+        let s = if sign == Sign::Neg {
+            -BigRational::one()
+        } else {
+            BigRational::one()
+        };
+        if let Some(c) = as_rational_const(ctx, term) {
+            constant += s * c;
+        } else if let Some((coeff, builtin, arg)) = extract_squared_builtin_term(ctx, term) {
+            squared.push((s * coeff, builtin, arg));
+        } else {
+            return false;
+        }
+    }
+    if squared.len() != 2 {
+        return false;
+    }
+    let (c1, b1, a1) = &squared[0];
+    let (c2, b2, a2) = &squared[1];
+    if compare_expr(ctx, *a1, *a2) != Ordering::Equal {
+        return false;
+    }
+    let pair_is = |x: BuiltinFn, y: BuiltinFn| (*b1 == x && *b2 == y) || (*b1 == y && *b2 == x);
+    // sin²+cos²=1: same coefficient on both squares, constant = -k.
+    if pair_is(BuiltinFn::Sin, BuiltinFn::Cos) {
+        return c1 == c2 && constant == -c1.clone();
+    }
+    // cosh²-sinh²=1, sec²-tan²=1, csc²-cot²=1: the "positive" square's coefficient is
+    // the negative of the other's, and the constant is its negation.
+    for (pos, neg) in [
+        (BuiltinFn::Cosh, BuiltinFn::Sinh),
+        (BuiltinFn::Sec, BuiltinFn::Tan),
+        (BuiltinFn::Csc, BuiltinFn::Cot),
+    ] {
+        if pair_is(pos, neg) {
+            let (cp, cn) = if *b1 == pos { (c1, c2) } else { (c2, c1) };
+            return *cp == -cn.clone() && constant == -cp.clone();
         }
     }
     false
@@ -1289,6 +1441,21 @@ mod tests {
             // powers of an identically-zero polynomial: 0^n = 0
             "(x*x - x^2)^2",
             "(2*x - x - x)^3",
+            // Pythagorean identities, both `^2` and `f*f` spellings, any k/order/arg
+            "sin(x)^2 + cos(x)^2 - 1",
+            "cos(t)^2 + sin(t)^2 - 1",
+            "1 - sin(x)^2 - cos(x)^2",
+            "3*sin(x)^2 + 3*cos(x)^2 - 3",
+            "sin(x)*sin(x) + cos(x)*cos(x) - 1",
+            "sin(2*y)^2 + cos(2*y)^2 - 1",
+            "cosh(x)^2 - sinh(x)^2 - 1",
+            "cosh(x)*cosh(x) - sinh(x)*sinh(x) - 1",
+            "sec(x)^2 - tan(x)^2 - 1",
+            "csc(x)^2 - cot(x)^2 - 1",
+            // fractional coefficients, both `f^2/c` and `(…)/c` spellings
+            "sin(x)^2/2 + cos(x)^2/2 - 1/2",
+            "(sin(x)^2 + cos(x)^2 - 1)/2",
+            "cosh(x)^2/3 - sinh(x)^2/3 - 1/3",
         ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
@@ -1309,6 +1476,16 @@ mod tests {
             "(x-1)^2",
             "(x+1)^3",
             "(x+1)^4 - x^4",
+            // Pythagorean-adjacent but NONzero: must never be flagged.
+            "sin(x)^2 + cos(x)^2",
+            "sin(x)*sin(x) + cos(x)*cos(x)",
+            "sin(x)^2 + cos(x)^2 + 1",
+            "sin(x)^2 - cos(x)^2",
+            "2*sin(x)^2 + cos(x)^2 - 1",
+            "sin(x)^2 + cos(y)^2 - 1",
+            "sin(x)^2 + cos(x)^4 - 1",
+            "cosh(x)^2 - sinh(x)^2 + 1",
+            "sin(x)*cos(x) - 1",
         ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
