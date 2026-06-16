@@ -177,7 +177,7 @@ spellings (`f²`, `f·f`, fractional `k`, reordered, hyperbolic/sec/csc). The
 `simplify(…)`/`expand(…)` COMMAND wrappers (and any strict wrapper) were a
 separate broader gap, since fixed by R4-5.
 
-**R4-5 — FIXED (commit `PENDING_HASH`).** The universal filter
+**R4-5 — FIXED (commit `e2aafdc741045fd51c7c6495c25259cbc10375ac`).** The universal filter
 `rewrite_unsoundly_drops_nonfinite` only triggered when its `before` node was an
 `Add`/`Sub`/`Div`. A genuinely-undefined value wrapped in any STRICT operator —
 a function (`simplify`/`expand`/`factor`/`abs`/`sin`/`ln`), a power
@@ -378,6 +378,6 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `134c351fa`, exact `MultiPoly` normalization in `is_provably_zero`)*
 - [x] R4-3 — *Pythagorean-identity* zero denominators (`sin²+cos²−1`, `cosh²−sinh²−1`, `sec²−tan²−1`, `csc²−cot²−1`) *(FIXED 2026-06-16, commit `fb1e7b2394223de1de376b0f7d22dc54848269cf`, exact `is_pythagorean_identity_zero` coefficient check)*
 - [ ] R4-4 — *non-Pythagorean* transcendental-identity zero denominators (`e^(ln x)−x`, `ln(e^x)−x`, `sin(2x)−2 sin x cos x`, `tan x − sin x/cos x`) still cancel; needs the engine's simplifier (layering + hot-path perf)
-- [x] R4-5 — *strict-wrapper / command-surface* gap: a genuinely-undefined value (`c/0`, `undefined`) inside a function/power/product/neg (incl. `simplify`/`expand`/`factor`) collapsed to a finite value, leaking R3/R4/R4-2/R4-3 on the command surface *(FIXED 2026-06-16, commit `PENDING_HASH`, universal filter now rejects dropping a carried `undefined` under any strict node via `expr_carries_undefined`; Infinity-limit evals preserved; adversarial caught the `ln(0)→−inf` sub-case)*
+- [x] R4-5 — *strict-wrapper / command-surface* gap: a genuinely-undefined value (`c/0`, `undefined`) inside a function/power/product/neg (incl. `simplify`/`expand`/`factor`) collapsed to a finite value, leaking R3/R4/R4-2/R4-3 on the command surface *(FIXED 2026-06-16, commit `e2aafdc741045fd51c7c6495c25259cbc10375ac`, universal filter now rejects dropping a carried `undefined` under any strict node via `expr_carries_undefined`; Infinity-limit evals preserved; adversarial caught the `ln(0)→−inf` sub-case)*
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery
