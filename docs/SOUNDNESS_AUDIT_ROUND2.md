@@ -248,7 +248,7 @@ left to the eventual simplifier-oracle cycle. (`ln(e^x · e^x) − 2x` — where
 `e^x · e^x` must combine to `e^(2x)` before the peel applies — is the same
 normalization-spelling class.)
 
-**R4-6 — FIXED (commit `PENDING_HASH`).** The R4-4 round-3 adversarial surfaced a
+**R4-6 — FIXED (commit `cdfd30420fea2600d76c2e8c704fb1baeabf661e`).** The R4-4 round-3 adversarial surfaced a
 pre-existing gap orthogonal to every identity family: a reciprocal written as
 `Pow(D, −1)` (or `D^(−n)`) instead of `Div(1, D)` was NOT recognized as `c/0` when
 `D` is provably zero, so `(x−x)^(-1) − (x−x)^(-1) → 0`, `(x·x−x²)^(-1) − … → 0`,
@@ -448,6 +448,6 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R4-3 — *Pythagorean-identity* zero denominators (`sin²+cos²−1`, `cosh²−sinh²−1`, `sec²−tan²−1`, `csc²−cot²−1`) *(FIXED 2026-06-16, commit `fb1e7b2394223de1de376b0f7d22dc54848269cf`, exact `is_pythagorean_identity_zero` coefficient check)*
 - [~] R4-4 — *non-Pythagorean* transcendental-identity zero denominators: exp/log **inverse-composition** (`ln(e^f)−f`, `e^(ln f)−f`, both spellings/orders/compound args) *(FIXED 2026-06-16, commit `44f2a272de9a494061e97965590e6ca0f7ddfbf1`, exact `is_exp_log_inverse_identity_zero` multiset detector)*; **still deferred** — `sin(2x)−2 sin x cos x`, `cos(2x)` forms, `tan x − sin x/cos x`, `sqrt(x)²−x`, `ln(x²)−2 ln x`, coefficient multiples (one family per future cycle, same template)
 - [x] R4-5 — *strict-wrapper / command-surface* gap: a genuinely-undefined value (`c/0`, `undefined`) inside a function/power/product/neg (incl. `simplify`/`expand`/`factor`) collapsed to a finite value, leaking R3/R4/R4-2/R4-3 on the command surface *(FIXED 2026-06-16, commit `e2aafdc741045fd51c7c6495c25259cbc10375ac`, universal filter now rejects dropping a carried `undefined` under any strict node via `expr_carries_undefined`; Infinity-limit evals preserved; adversarial caught the `ln(0)→−inf` sub-case)*
-- [x] R4-6 — *`D^(-1)` reciprocal spelling* (CROSS-CUTTING): `(D)^(-1) − (D)^(-1) → 0` for every provably-zero `D` (`x−x`, `x·x−x²`, `sin²+cos²−1`, `ln(e^x)−x`) leaked via the `Pow(zero, negative)` spelling, across R3-3/R4-2/R4-3/R4-4 alike *(FIXED 2026-06-16, commit `PENDING_HASH`, `pow_is_reciprocal_of_provable_zero` arm added to both `expr_carries_*` predicates — `0^(neg)=1/0`; positive-exp/`0^0`/non-zero-base/symbolic-exp all decline)*
+- [x] R4-6 — *`D^(-1)` reciprocal spelling* (CROSS-CUTTING): `(D)^(-1) − (D)^(-1) → 0` for every provably-zero `D` (`x−x`, `x·x−x²`, `sin²+cos²−1`, `ln(e^x)−x`) leaked via the `Pow(zero, negative)` spelling, across R3-3/R4-2/R4-3/R4-4 alike *(FIXED 2026-06-16, commit `cdfd30420fea2600d76c2e8c704fb1baeabf661e`, `pow_is_reciprocal_of_provable_zero` arm added to both `expr_carries_*` predicates — `0^(neg)=1/0`; positive-exp/`0^0`/non-zero-base/symbolic-exp all decline)*
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery
