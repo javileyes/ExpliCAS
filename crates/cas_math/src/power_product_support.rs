@@ -263,10 +263,19 @@ pub fn try_rewrite_power_product_distribution_expr(
                 }
             }
 
-            let a_is_num = matches!(ctx.get(a), Expr::Number(_));
-            let b_is_num = matches!(ctx.get(b), Expr::Number(_));
+            // `(a*b)^x -> a^x * b^x` for a SYMBOLIC (possibly non-integer) exponent
+            // is valid over R only when both bases are >= 0: for negative a,b the
+            // product `(a*b)^x` is real but the split factors `a^x`, `b^x` are
+            // individually complex, so the identity does NOT hold over the reals.
+            // Numeric exponents are already handled above — integers are universally
+            // safe (`a^n*b^n = (a*b)^n` for all a,b), fractional ones go through
+            // `can_distribute_root_safely`. Decline the symbolic-exponent split
+            // unless both bases are provably non-negative, rather than silently
+            // dropping the `a>=0 AND b>=0` domain condition.
             let exp_is_numeric = matches!(ctx.get(exp), Expr::Number(_));
-            if (a_is_num || b_is_num) && !exp_is_numeric {
+            let split_is_sound = exp_is_numeric
+                || (base_is_provably_nonnegative(ctx, a) && base_is_provably_nonnegative(ctx, b));
+            if !split_is_sound {
                 return None;
             }
 
@@ -286,6 +295,31 @@ pub fn try_rewrite_power_product_distribution_expr(
 /// True when `expr` folds to a negative rational constant.
 fn is_negative_const_value(ctx: &Context, expr: ExprId) -> bool {
     crate::numeric_eval::as_rational_const(ctx, expr).is_some_and(|r| r.is_negative())
+}
+
+/// True when `base` is provably non-negative over the reals — so that
+/// `base^x` is real-valued for a symbolic exponent and the product-power split
+/// `(a*b)^x -> a^x * b^x` is sound. Conservative: a non-negative numeric
+/// constant, an even-integer power (`y^(2k) >= 0`), an absolute value, the
+/// constant `e` (`> 0`), or a product of provably-non-negative factors. Returns
+/// `false` when non-negativity is not provable (e.g. a bare variable), which
+/// makes the symbolic-exponent split decline.
+pub(crate) fn base_is_provably_nonnegative(ctx: &Context, base: ExprId) -> bool {
+    if let Some(r) = crate::numeric_eval::as_rational_const(ctx, base) {
+        return !r.is_negative();
+    }
+    match ctx.get(base) {
+        Expr::Constant(Constant::E) => true,
+        Expr::Function(fn_id, args) => {
+            args.len() == 1 && ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Abs)
+        }
+        Expr::Pow(_, exp) => crate::numeric_eval::as_rational_const(ctx, *exp)
+            .is_some_and(|e| e.is_integer() && e.numer().is_even()),
+        Expr::Mul(a, b) => {
+            base_is_provably_nonnegative(ctx, *a) && base_is_provably_nonnegative(ctx, *b)
+        }
+        _ => false,
+    }
 }
 
 /// True when merging `a^exp * b^exp -> (a*b)^exp` is unsound: `exp` is an
@@ -421,13 +455,25 @@ pub fn try_rewrite_power_quotient_expr(
         }
 
         if let Some((num, den)) = as_div(ctx, base) {
-            let new_num = ctx.add(Expr::Pow(num, exp));
-            let new_den = ctx.add(Expr::Pow(den, exp));
-            let rewritten = ctx.add(Expr::Div(new_num, new_den));
-            return Some(PowerProductRewrite {
-                rewritten,
-                kind: PowerProductRewriteKind::DistributePowerOverQuotient,
-            });
+            // `(a/b)^x -> a^x / b^x` for a SYMBOLIC (possibly non-integer) exponent
+            // is valid over R only when both base parts are >= 0 — same reasoning as
+            // the product-base split: for negative a,b the split factors are
+            // individually complex. Numeric exponents are handled above. Decline the
+            // symbolic-exponent quotient split unless both parts are provably
+            // non-negative, rather than dropping the `a>=0 AND b>=0` condition.
+            let exp_is_numeric = matches!(ctx.get(exp), Expr::Number(_));
+            let split_is_sound = exp_is_numeric
+                || (base_is_provably_nonnegative(ctx, num)
+                    && base_is_provably_nonnegative(ctx, den));
+            if split_is_sound {
+                let new_num = ctx.add(Expr::Pow(num, exp));
+                let new_den = ctx.add(Expr::Pow(den, exp));
+                let rewritten = ctx.add(Expr::Div(new_num, new_den));
+                return Some(PowerProductRewrite {
+                    rewritten,
+                    kind: PowerProductRewriteKind::DistributePowerOverQuotient,
+                });
+            }
         }
     }
     None
@@ -716,5 +762,56 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(a*b)^3", &mut ctx).expect("parse");
         assert!(try_rewrite_power_product_distribution_expr(&mut ctx, expr).is_some());
+    }
+
+    #[test]
+    fn declines_product_power_split_for_symbolic_exponent() {
+        // `(a*b)^x -> a^x * b^x` is unsound for symbolic x unless both bases are
+        // provably >= 0 (negative bases make a^x, b^x individually complex).
+        for src in ["(a*b)^x", "(x*y)^n", "(a*b)^pi"] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_power_product_distribution_expr(&mut ctx, expr).is_none(),
+                "`{src}` must NOT split for a symbolic exponent"
+            );
+        }
+    }
+
+    #[test]
+    fn still_splits_integer_exponent_and_provably_nonnegative_bases() {
+        // Integer exponents are universally safe; provably-non-negative bases
+        // (even powers, abs, e) keep the symbolic-exponent split sound.
+        for src in ["(a*b)^2", "(a*b)^3", "(x^2*y^2)^n", "(abs(a)*abs(b))^x"] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_power_product_distribution_expr(&mut ctx, expr).is_some(),
+                "`{src}` should still split"
+            );
+        }
+    }
+
+    #[test]
+    fn declines_power_quotient_split_for_symbolic_exponent() {
+        // `(a/b)^x -> a^x / b^x` is unsound for a symbolic exponent unless both
+        // parts are provably >= 0 — same domain constraint as the product split.
+        for src in ["(a/b)^x", "(x/y)^n", "(a/b)^pi", "(a/b)^(2*n)"] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_power_quotient_expr(&mut ctx, expr).is_none(),
+                "`{src}` must NOT split for a symbolic exponent"
+            );
+        }
+        // Integer exponents and provably-non-negative parts still split.
+        for src in ["(a/b)^2", "(a/b)^3", "(x^2/y^2)^n"] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_power_quotient_expr(&mut ctx, expr).is_some(),
+                "`{src}` should still split"
+            );
+        }
     }
 }

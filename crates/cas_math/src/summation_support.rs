@@ -1,5 +1,6 @@
 use crate::build::mul2_raw;
 use crate::expr_nary;
+use crate::expr_relations::is_structurally_zero;
 use cas_ast::ordering::compare_expr;
 use cas_ast::views::as_rational_const;
 use cas_ast::{substitute_expr_by_id, Context, Expr, ExprId};
@@ -390,6 +391,14 @@ pub fn try_build_sum_of_constant(
     start: ExprId,
     end: ExprId,
 ) -> Option<ExprId> {
+    // A structurally-zero summand sums to 0 over ANY range — finite, symbolic, or
+    // infinite. Returning 0 here BEFORE computing the term count avoids building
+    // `0 * (inf - 1 + 1)` = `0 * inf`, which the simplifier folds to `undefined`:
+    // `sum(0, k, 1, inf)` and `sum(k - k, k, 1, inf)` are 0, not undefined.
+    if is_structurally_zero(ctx, summand) {
+        return Some(ctx.num(0));
+    }
+
     if contains_named_var(ctx, summand, var)
         || contains_named_var(ctx, start, var)
         || contains_named_var(ctx, end, var)
@@ -1976,6 +1985,33 @@ mod tests {
         let end = cas_parser::parse("n", &mut ctx).expect("end");
 
         assert!(try_build_sum_of_constant(&mut ctx, term, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn sum_of_zero_summand_is_zero_for_any_bounds_including_infinite() {
+        // A zero summand sums to 0 over ANY range — the early structurally-zero
+        // check must fire BEFORE the term count, so `sum(0, k, 1, inf)` never
+        // builds `0 * inf` (which would fold to undefined). Covers literal 0 and a
+        // structurally-zero summand, with finite/symbolic/infinite bounds.
+        for (term_src, start_src, end_src) in [
+            ("0", "1", "inf"),
+            ("0", "1", "10"),
+            ("0", "1", "n"),
+            ("k - k", "1", "inf"),
+        ] {
+            let mut ctx = Context::new();
+            let term = cas_parser::parse(term_src, &mut ctx).expect("term");
+            let start = cas_parser::parse(start_src, &mut ctx).expect("start");
+            let end = cas_parser::parse(end_src, &mut ctx).expect("end");
+            let result = try_build_sum_of_constant(&mut ctx, term, "k", start, end)
+                .expect("zero summand sums to 0");
+            let zero = ctx.num(0);
+            assert_eq!(
+                compare_expr(&ctx, result, zero),
+                std::cmp::Ordering::Equal,
+                "sum({term_src}, k, {start_src}, {end_src}) must be 0"
+            );
+        }
     }
 
     #[test]

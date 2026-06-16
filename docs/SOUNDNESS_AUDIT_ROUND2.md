@@ -210,12 +210,41 @@ malformed nested `solve(x = poly ± …, x) = 0` instead of the root set — sil
 This is higher-severity than R5b (it drops *correct* roots / crashes) but needs a
 deeper isolation-strategy fix; own cycle. NOT YET FIXED.
 
-### R6 — Dropped domain conditions & misc (COND-DROP/WRONG, ~4)
-- `(a*b)^x → a^x·b^x` with **no** `a>0 ∧ b>0` condition (the split is invalid for
-  negative `a,b` and real `x`).
-- `diff(arccot(x))` — the `arccot(x)=arctan(1/x)` convention's `x≠0` discontinuity
-  is not surfaced (same arccot gap noted in Round-1 Cluster D).
-- `sum(0, k, 1, ∞) → undefined` — a zero summand sums to **0**, not undefined.
+### R6 — Dropped domain conditions & misc (COND-DROP/WRONG, ~4) — Fronts 1 & 3 FIXED (commit `PENDING_HASH`)
+- **Front 1 — FIXED:** `(a*b)^x → a^x·b^x` split unconditionally even for a symbolic
+  (possibly non-integer) exponent, where the split is invalid for negative `a,b`
+  over ℝ (`a^x`,`b^x` are individually complex). Both the default simplify path
+  (`try_rewrite_power_product_distribution_expr`) AND the explicit `expand` path
+  (`expand_ops::expand_pow` — the adversarial sweep caught this second bypass) now
+  decline the split when the exponent is non-numeric/non-integer UNLESS both bases
+  are provably non-negative (positive constant, even-integer power `y^(2k)`, `|·|`,
+  `e`, or a product of such). The SAME gate was mirrored onto THREE producers the
+  adversarial sweeps enumerated: the product split (`try_rewrite_power_product_distribution_expr`),
+  the `expand` recursion (`expand_ops::expand_pow`), and the QUOTIENT split
+  (`try_rewrite_power_quotient_expr` — `(a/b)^x → a^x/b^x` had the identical hole).
+  Integer exponents stay universally safe; the `^(1/2)` paths are unchanged. Now
+  `(a*b)^x`, `(x*y)^n`, `(a*b)^π`, `(a/b)^x`, `((-2)/b)^x`, `expand((a*b*c)^x)` stay
+  `(…)^exp` (unsplit); `(a*b)^2 → a²·b²`, `(a/b)^2 → a²/b²`, `(x²·y²)^n →
+  |x|^(2n)·|y|^(2n)` still split. Three adversarial sweeps (~770 probes) — the 1st
+  caught the `expand` bypass, the 2nd the quotient sibling, the 3rd confirmed clean.
+  (Residual, PRE-EXISTING, A-2 territory: the MERGE direction `(-2)^x·(-3)^x → 6^x`
+  fabricates a real over negative bases — negative-base power family, untouched here.)
+- **Front 3 — FIXED:** `sum(0, k, 1, ∞) → undefined` (it built `0 * (∞−1+1) = 0·∞`).
+  `try_build_sum_of_constant` now returns `0` early when the summand is structurally
+  zero, before computing the term count — so `sum(0, k, 1, ∞)` and `sum(k−k, k, 1, ∞)`
+  are `0`; finite/symbolic non-zero sums are unchanged.
+- **Front 2 — DEFERRED as R6-2 (convention decision + deep diff/domain surgery):**
+  `diff(arccot(x)) → -1/(x²+1)` drops the `x≠0` that `arccot(x)→arctan(1/x)` and
+  `diff(arctan(1/x))` surface. Diff conditions are inferred from the RESULT's
+  structure (sqrt→radicand>0, div→denom≠0); arccot's derivative `-1/(x²+1)` has no
+  such subterm, so x≠0 is lost. Surfacing it requires either declaring arccot's
+  function-domain as `x≠0` (broad) or diff-pipeline surgery. CONVENTION FORK: the
+  engine's arccot is the non-standard `arctan(1/x)` form (`arccot(0)=undefined`,
+  range ≠ (0,π), discontinuous at 0) — under which x≠0 IS required; but the standard
+  EDUCATIONAL arccot is CONTINUOUS on ℝ (`arccot(0)=π/2`, differentiable everywhere,
+  derivative `-1/(1+x²)` with NO condition), under which the current result is
+  CORRECT and `arccot(0)=undefined` is itself the bug. Needs a convention decision
+  before fixing — not a bounded edit.
 
 ## Priority sequence (by severity × tractability)
 
@@ -261,4 +290,5 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
 - [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
 - [ ] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel; needs a provably-zero oracle in the predicate (PRE-EXISTING, overlaps R4)
-- [ ] R6 — dropped conditions (`(a*b)^x`, arccot, zero-summand sum)
+- [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `PENDING_HASH`, Fronts 1 & 3)*
+- [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery

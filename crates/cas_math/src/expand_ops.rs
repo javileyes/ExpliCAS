@@ -183,9 +183,21 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     let base_data = ctx.get(base).clone();
 
     if let Expr::Mul(a, b) = base_data {
-        let ea = expand_pow(ctx, a, exp);
-        let eb = expand_pow(ctx, b, exp);
-        return mul2_raw(ctx, ea, eb);
+        // `(a*b)^exp -> a^exp * b^exp` is valid over R only when `exp` is an
+        // integer (always safe) OR both bases are provably non-negative — for a
+        // symbolic/non-integer exponent over negative bases the split factors are
+        // individually complex. Otherwise keep the product base unsplit even under
+        // `expand`, rather than introducing a complex-valued intermediate.
+        let exp_is_integer =
+            crate::numeric_eval::as_rational_const(ctx, exp).is_some_and(|r| r.is_integer());
+        let split_is_sound = exp_is_integer
+            || (crate::power_product_support::base_is_provably_nonnegative(ctx, a)
+                && crate::power_product_support::base_is_provably_nonnegative(ctx, b));
+        if split_is_sound {
+            let ea = expand_pow(ctx, a, exp);
+            let eb = expand_pow(ctx, b, exp);
+            return mul2_raw(ctx, ea, eb);
+        }
     }
 
     if let Expr::Add(a, b) = base_data {
@@ -289,6 +301,41 @@ mod tests {
             "expected expanded add, got {}",
             render(&ctx, out)
         );
+    }
+
+    #[test]
+    fn expand_pow_keeps_product_base_unsplit_for_symbolic_exponent() {
+        // `expand((a*b)^x)` must NOT split to `a^x * b^x` for a symbolic exponent
+        // over bases that are not provably non-negative (the split factors are
+        // individually complex for negative a,b). It must stay a single power.
+        for (base_src, exp_src) in [("a*b", "x"), ("a*b", "pi"), ("a*b*c", "x")] {
+            let mut ctx = Context::new();
+            let base = parse(base_src, &mut ctx).expect("base");
+            let exp = parse(exp_src, &mut ctx).expect("exp");
+            let out = expand_pow(&mut ctx, base, exp);
+            assert!(
+                matches!(ctx.get(out), Expr::Pow(_, _)),
+                "expand(({base_src})^{exp_src}) must stay a single power, got {}",
+                render(&ctx, out)
+            );
+        }
+    }
+
+    #[test]
+    fn expand_pow_splits_integer_exponent_and_nonnegative_bases() {
+        // Integer exponents are universally safe; provably-non-negative bases keep
+        // the symbolic-exponent split sound — both must still distribute to a Mul.
+        for (base_src, exp_src) in [("a*b", "2"), ("a*b", "3"), ("x^2*y^2", "n")] {
+            let mut ctx = Context::new();
+            let base = parse(base_src, &mut ctx).expect("base");
+            let exp = parse(exp_src, &mut ctx).expect("exp");
+            let out = expand_pow(&mut ctx, base, exp);
+            assert!(
+                matches!(ctx.get(out), Expr::Mul(_, _)),
+                "expand(({base_src})^{exp_src}) should split to a product, got {}",
+                render(&ctx, out)
+            );
+        }
     }
 
     #[test]

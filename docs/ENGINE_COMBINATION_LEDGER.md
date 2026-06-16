@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 182 (newest first)
+Active entries: 183 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
+- 2026-06-16 | `retained` | block 1 (algebra/exponents) + block 9 (summation); `cas_math` shared helpers | Retained soundness fix: product-power split gated + zero-summand sum = 0 (Round-2 audit R6, Fronts 1 & 3)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8020,3 +8021,47 @@ Active entries: 182 (newest first)
   - a literal-zero `Div` predicate (`as_rational_const(den).is_zero()`) does NOT cover a
     provably-but-symbolically-zero denominator (`x-x`, `0*x`, `x^2-x^2`); that needs a
     provably-zero oracle and is its own deferred step (R3-3, overlaps R4).
+
+## 2026-06-16 - Retained soundness fix: product-power split gated + zero-summand sum = 0 (Round-2 audit R6, Fronts 1 & 3)
+- area:
+  - block 1 (algebra/exponents) + block 9 (summation); `cas_math` shared helpers
+    (`power_product_support::base_is_provably_nonnegative`, `expand_ops::expand_pow`,
+    `summation_support::try_build_sum_of_constant`)
+- status:
+  - `retained` (COND-DROP/WRONG soundness fix; R6 Fronts 1 & 3 of docs/SOUNDNESS_AUDIT_ROUND2.md;
+    Front 2 arccot deferred as R6-2 — convention fork)
+- capture:
+  - investment_class: soundness
+  - cell: `(a*b)^x`, `(x*y)^n`, `(a*b)^pi`, `expand((a*b)^x)`, `expand((a*b*c)^x)`
+    STAY `(a·b...)^exp` unsplit (were `a^x·b^x`, complex over R for negative bases);
+    `sum(0, k, 1, inf)` and `sum(k-k, k, 1, inf)` = 0 (was `undefined` from `0*inf`)
+  - behavior_change_expected: yes - symbolic-exponent product splits decline; zero
+    infinite sums evaluate; guardrail+pressure fingerprints BYTE-IDENTICAL
+- observed (USER-DIRECTED, "haz R6"):
+  - `(a*b)^x -> a^x*b^x` is sound over R only for an INTEGER exponent (universal) or
+    provably-non-negative bases; for a symbolic/non-integer exponent over possibly
+    negative bases the split factors are individually complex. The engine already knew
+    this for the `^(1/2)` case (declines + attaches NonNegative) but not for symbolic
+    exponents. Gated THREE producers the adversarial enumerated: the product split, the
+    `expand_pow` recursion, AND the quotient split `(a/b)^x -> a^x/b^x`.
+  - `sum(0, k, 1, inf)` built `0 * (inf - 1 + 1) = 0 * inf -> undefined`; an early
+    `is_structurally_zero(summand) -> 0` BEFORE the term count fixes it for any bounds.
+  - THE ADVERSARIAL SWEEP WAS ESSENTIAL (3 rounds, ~770 probes): each round revealed a
+    DIFFERENT producer of the same identity. Round 1 (95 probes) flagged `expand((a*b)^x)`
+    — the explicit `expand` command splits via a SEPARATE `expand_pow` recursion. Round 2
+    flagged `(a/b)^x -> a^x/b^x` — the QUOTIENT split (`try_rewrite_power_quotient_expr`)
+    had the identical hole. Round 3 confirmed clean. A green default-`eval` product probe
+    set hid both the expand path and the quotient sibling.
+- retained learning:
+  - a single algebraic identity often has TWO+ implementations: the lazy simplify rule
+    AND the eager `expand` command. A soundness gate on one must be mirrored on the
+    other — probe BOTH `eval "f"` and `eval "expand(f)"` (and `factor`, ...) when gating
+    a distribution/cancellation, and let the adversarial enumerate the command surface.
+  - "provably non-negative base" is the right gate for product-power splits: numeric >= 0,
+    even-integer power (`y^(2k)`), `|.|`, `e`, or a product of such. Integer exponents need
+    no gate (`a^n*b^n = (a*b)^n` for all a,b). Declining (not condition-attaching) mirrors
+    the existing `^(1/2)` behavior and keeps the change byte-identical on the huella.
+  - guard a degenerate aggregate (zero summand, empty/infinite range) BEFORE any
+    arithmetic that could hit infinity: check `is_structurally_zero` first so the sum
+    never constructs `0 * inf`. The `i`/`e` reserved-constant bound-var cases the sweep
+    flagged are a separate parser concern (malformed sum var), not this fix.
