@@ -131,7 +131,7 @@ denominator and whose `after` is finite — closing the shortcut paths that bypa
 `transform_div` (`(x²−x²)/(x−x) → x+x`, `(3x−3x)/(x−x) → 3`). `1/inf → 0` is NOT
 blocked (`inf` is not *zero*), so legitimate evaluations are untouched.
 
-**R4-2 — FIXED (commit `PENDING_HASH`) for POLYNOMIAL-identity zero denominators.**
+**R4-2 — FIXED (commit `134c351fa`) for POLYNOMIAL-identity zero denominators.**
 A denominator zero only after algebra used to slip the exact-SYNTACTIC oracle:
 `1/(x*x − x²) − … → 0` (`x*x` vs `x²`), `1/(2x − x − x) − … → 0` (coefficient),
 `1/((x−1)(x+1) − (x²−1)) − … → 0` (expansion). **Fix:** `is_provably_zero` now also
@@ -319,7 +319,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
 - [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
 - [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
-- [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `MultiPoly` normalization in `is_provably_zero`)*
+- [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `134c351fa`, exact `MultiPoly` normalization in `is_provably_zero`)*
 - [ ] R4-3 — *transcendental-identity* zero denominators (`sin²+cos²−1`, …) still cancel; needs identity-aware (non-polynomial) zero knowledge
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery
