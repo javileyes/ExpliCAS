@@ -106,22 +106,36 @@ Now: `inf − inf`, `x/0 − x/0`, `(1/0) − (1/0)`, `undefined − undefined` 
 sweeps (≈725 probes, ~50 confirmed leaks in the first, 0 in the second) drove the
 universal-filter design; guardrail+pressure fingerprints BYTE-IDENTICAL.
 
-**R3-2 (deferred):** *semantic* indeterminates that look finite syntactically still
-fold: `tan(π/2) − tan(π/2) → 0` (the cancellation fires before `tan(π/2)` folds to
-`undefined`), `0^0 − 0^0 → 0`, `0^0 − 1 → 0` (the `0^0 = 1` convention applied in an
-additive context), `factorial(−2)·0 → 0`, `2·inf − inf → 0` and `sum(k,k,1,∞) −
-sum(k,k,1,∞) → 0`. The R4-5 adversarial pass added more instances of the same
-family: `sec(π/2) − sec(π/2)`, `cot(0) − cot(0)`, `csc(0) − csc(0)`,
-`ln(0) − ln(0)` (all → `0`). These are *indeterminate-arithmetic / semantic-pole*
-defects, distinct from the structural "non-finite term never cancels" fix: the
-operand is `undefined`/non-finite only AFTER evaluation, but syntactically it is a
-plain `tan(…)`/`0^0`/`ln(0)` that the structural `A − A → 0` cancellation collapses
-first — so `arithmetic_cancel_support::expr_carries_undefined` (purely structural)
-cannot see it. They leak under wrappers too (`simplify(tan(π/2) − tan(π/2)) → 0`,
-`expand(0^0 − 0^0) → 0`) for the same root reason; R4-5 fixes only the SYNTACTIC
-`c/0`/`Undefined` class. Closing R3-2 needs a pole/indeterminate oracle that
-evaluates the operand's definedness before the cancellation (or `2·inf − inf` is a
-true `+inf`, a wrong-VALUE not honesty).
+**R3-2 — PROVABLY-ZERO-ARGUMENT poles/indeterminates FIXED (commit `PENDING_HASH`);
+`π/2`-pole and `−∞`/inf-arithmetic remainder still deferred.** *Semantic*
+indeterminates that look finite syntactically fold because the `A − A → 0`
+cancellation fires before the operand evaluates to undefined. The subset whose
+undefinedness is STRUCTURALLY DECIDABLE — the operand is a power/function at a
+PROVABLY-ZERO argument that is a pole there — is now closed by an exact predicate
+`is_undefined_at_provable_zero_arg` (used by both `expr_carries_*` predicates, so it
+also covers the wrapped/Pow-reciprocal surfaces): **`0^0`** (and `(D)^0` for provably-
+zero `D`; generalizes the R4-6 `0^(≤0)` arm — `0^0 − 0^0`, `0^0 − 1`,
+`(x−x)^0 − (x−x)^0` now `undefined`), **`cot(0)`** and **`csc(0)`** (the `c/0`
+`sin`-denominator poles, any provably-zero argument). All three are genuinely
+*undefined* (`1/cot(0) = undefined`), so there is no reciprocal subtlety and no
+legitimate cancellation is over-blocked (`cot(x) − cot(x) → 0`, `(x−x)^2 − (x−x)^2 →
+0` unchanged). guardrail+pressure fingerprints BYTE-IDENTICAL.
+
+**Still deferred:** (a) `tan(π/2) − tan(π/2)`, `sec(π/2) − sec(π/2)` — poles at
+`π/2 + kπ`, whose detection needs argument-multiple (rational-π) analysis, not a
+provably-zero argument; (b) `ln(0) − ln(0)` — `ln(0) = −∞`, and since `1/ln(0) = 0`,
+flagging `ln(0)` would wrongly block `1/ln(0) − 1/ln(0) → 0`, so it needs additive-
+context-specific handling, not a blanket predicate; (c) a pole whose argument is a
+FUNCTION-at-a-numeric value that the *structural* `is_provably_zero` does not fold —
+`csc(sin(0))`, `cot(ln(1))`, `csc(cos(0)−1)`, `0^sin(0)` (`sin(0)=0`, `ln(1)=0`,
+`cos(0)−1=0`, but only *after* evaluation). This is the same structural boundary as
+the R4-4 non-canonical-spelling residual: closing it needs `is_provably_zero` to gain
+EXACT special-function-value evaluation (`sin(0)=0`, `tan(0)=0`, `ln(1)=0`,
+`cos(0)=1`, `sinh(0)=0`, …) — a general zero-oracle extension that would benefit
+*every* family (R3-3/R4-2/R4-3/R4-4/R4-6/R3-2), so it belongs in its own cycle;
+(d) `factorial(−2)·0`, `2·inf − inf` (true `+inf`, a wrong-VALUE),
+`sum(k,k,1,∞) − sum(…)` — infinity arithmetic. Closing these needs the per-function
+pole/indeterminate oracle that evaluates operand definedness before the cancellation.
 
 **R3-3 — FIXED (commit `750f0f185`), together with R4 via a shared provably-zero
 oracle.** A denominator that is *provably* but not *literally* zero used to cancel:
@@ -442,7 +456,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
 - [x] R1 — inverse-composition domain gate (`f(f⁻¹(x))`) *(FIXED 2026-06-16, commit `261f1de28`, four rule families)*
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
-- [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `sec(π/2)`/`cot(0)`/`csc(0)` poles, `ln(0)−ln(0)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) still fold (incl. under `simplify`/`expand` wrappers); need a pole/indeterminate oracle that evaluates operand-definedness before the structural `A−A` cancellation
+- [~] R3-2 — *semantic* indeterminates: the PROVABLY-ZERO-ARGUMENT poles/indeterminates `0^0`, `cot(0)`, `csc(0)` *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `is_undefined_at_provable_zero_arg`)*; **still deferred** — `tan(π/2)`/`sec(π/2)` (π/2-pole, needs rational-π argument analysis), `ln(0)−ln(0)` (`−∞`, reciprocal subtlety), `factorial(−2)·0`, `2·inf−inf` (true `+inf`), `sum(k,k,1,∞)−sum(…)` (infinity arithmetic) — need a per-function pole/indeterminate oracle
 - [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
 - [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `134c351fa`, exact `MultiPoly` normalization in `is_provably_zero`)*
 - [x] R4-3 — *Pythagorean-identity* zero denominators (`sin²+cos²−1`, `cosh²−sinh²−1`, `sec²−tan²−1`, `csc²−cot²−1`) *(FIXED 2026-06-16, commit `fb1e7b2394223de1de376b0f7d22dc54848269cf`, exact `is_pythagorean_identity_zero` coefficient check)*

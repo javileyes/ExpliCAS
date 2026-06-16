@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 189 (newest first)
+Active entries: 190 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
@@ -126,6 +126,7 @@ Active entries: 189 (newest first)
 - 2026-06-16 | `retained` | block 1 (division/non-finite) - THREE coordinated sites, all keyed on the new | Retained soundness fix: strict-wrapper undefined drop / command surface (Round-2 audit R4-5)
 - 2026-06-16 | `retained` | block 1 (division/non-finite) + block 5 (transcendental); extends | Retained soundness fix: exp/log inverse-composition zero denominators (Round-2 audit R4-4, part 1)
 - 2026-06-16 | `retained` | block 1 (division/non-finite); extends the `Pow` arm of BOTH | Retained soundness fix: D^(-n) Pow-reciprocal of a zero denominator (Round-2 audit R4-6)
+- 2026-06-16 | `retained` | block 1 (non-finite) + block 5 (trig); a new `is_undefined_at_provable_zero_a... | Retained soundness fix: provably-zero-argument poles/indeterminates (Round-2 audit R3-2, part 1)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8388,3 +8389,48 @@ Active entries: 189 (newest first)
     (`exact_rational_value(exp).is_negative()`). Positive -> 0^n=0 (defined, already provably-zero);
     `0^0` -> indeterminate (R3-2, exponent not negative); symbolic exp -> sign unknown, never flag.
     This mirrors the is_provably_zero `0^n=0` arm's positive-exponent guard, from the other side.
+
+## 2026-06-16 - Retained soundness fix: provably-zero-argument poles/indeterminates (Round-2 audit R3-2, part 1)
+- area:
+  - block 1 (non-finite) + block 5 (trig); a new `is_undefined_at_provable_zero_arg` guard at
+    the top of BOTH `cas_math::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined` and
+    `expr_carries_undefined` (subsumes and generalizes the R4-6 `pow_is_reciprocal_of_provable_zero`)
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; R3-2 of docs/SOUNDNESS_AUDIT_ROUND2.md, the
+    structurally-decidable subset; the pi/2-pole, ln(0)=-inf, and infinity-arithmetic remainder deferred)
+- capture:
+  - investment_class: soundness
+  - cell: `0^0 - 0^0`, `0^0 - 1`, `(x-x)^0 - same`, `cot(0) - cot(0)`, `csc(0) - csc(0)` (and any
+    provably-zero argument) stay undefined (were 0); `cot(x)-cot(x) -> 0`, `(x-x)^2-(x-x)^2 -> 0`,
+    `1/ln(0)-1/ln(0) -> 0` unchanged (no over-block / no reciprocal regression)
+  - behavior_change_expected: yes - these indeterminates stop cancelling; guardrail+pressure
+    fingerprints BYTE-IDENTICAL, engine-fast no slow/timeout
+- observed (USER-DIRECTED "el de mejor ROI"; R3-2 was the recurring leak family across the R4-5/R4-6
+  adversarial rounds and lists COMMON forms `0^0`, `cot(0)`):
+  - R3-2 splits by DECIDABILITY: the operand is undefined only after evaluation, but a SUBSET has a
+    structurally-decidable cause - a power/function at a PROVABLY-ZERO argument that is a pole there
+    (`0^0`, `0^(neg)`, `cot(0)`, `csc(0)`). That subset is exact and bounded (just `is_provably_zero`
+    on the base/argument); the rest (`tan(pi/2)` needs rational-pi argument analysis; `ln(0)` is -inf
+    not undefined) genuinely needs an evaluating oracle. Ship the decidable subset, defer the rest.
+  - the `0^0` arm UNIFIES with R4-6: `0^k` is undefined for ALL `k <= 0` (`0^0` indeterminate,
+    `0^(neg) = 1/0`), defined `0` only for `k > 0`. Generalizing R4-6's `is_negative()` to
+    `!is_positive()` closed `0^0` for free; same helper, one trichotomy.
+- retained learning:
+  - separate UNDEFINED-class from INFINITY-class poles before flagging: `cot(0)`/`csc(0)`/`0^0` are
+    genuinely undefined (`1/undefined = undefined`), so flagging them never over-blocks a reciprocal.
+    `ln(0) = -inf` is infinity-class with `1/ln(0) = 0`, so a blanket flag would wrongly block
+    `1/ln(0) - 1/ln(0) -> 0`. Decisive probe before scoping: check `1/<operand> - 1/<operand>`.
+  - a soundness predicate placed as a TOP GUARD (before the structural match) cleanly covers all the
+    surfaces a value-keyed predicate must reach (Add/Sub cancellation, strict wrappers R4-5,
+    Pow-reciprocal R4-6) in one spot, since `expr_carries_undefined` is consulted by all of them.
+  - adversarial rounds peeled the argument-decidability boundary in two steps: round 1 caught that a
+    provably-zero EXPRESSION exponent (`0^(x-x)`) needs `is_provably_zero(exp)`, not just
+    `exact_rational_value(exp)` (which is None for non-literals); round 2 caught the FUNCTION-at-a-
+    numeric-value boundary (`csc(sin(0))`, `cot(ln(1))`, `0^sin(0)`, `csc(cos(0)-1)`) where the
+    argument equals 0/1 only AFTER function evaluation, which the structural `is_provably_zero` does
+    not do. Deferred: this is the same boundary as R4-4's non-canonical spelling, and closing it is a
+    GENERAL win — give `is_provably_zero` exact special-function-value evaluation (`sin(0)=0`,
+    `ln(1)=0`, `cos(0)=1`, `sinh(0)=0`, …) and EVERY family (R3-3..R4-6, R3-2) improves at once.
+    Lesson: a structural zero-oracle's reach is exactly its argument-decidability; each adversarial
+    round exposes the next argument form, and the honest stopping point is the documented boundary,
+    not chasing each function-at-numeric value piecemeal.

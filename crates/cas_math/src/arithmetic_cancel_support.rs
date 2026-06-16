@@ -1342,19 +1342,43 @@ fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
-/// True for a `Pow(base, exp)` that is the RECIPROCAL spelling of a zero
-/// denominator — `D^(-n)` with `D` provably zero and a provably-NEGATIVE rational
-/// exponent — which is `1/D^n = 1/0`, undefined. This is the `Pow` analogue of the
-/// `Div(_, D)` `c/0` case: `(x-x)^(-1)`, `(sin²+cos²-1)^(-1)`, `(ln(e^x)-x)^(-2)`.
-/// A POSITIVE exponent gives `0^n = 0` (handled by `is_provably_zero`, defined, not
-/// undefined); `0^0` is the indeterminate R3-2 case (exponent not negative, so not
-/// flagged); a symbolic / non-rational exponent is left unflagged (sound — its sign
-/// is unknown).
-fn pow_is_reciprocal_of_provable_zero(ctx: &Context, base: ExprId, exp: ExprId) -> bool {
-    exact_rational_value(ctx, exp).is_some_and(|e| e.is_negative()) && is_provably_zero(ctx, base)
+/// True when `expr` is genuinely UNDEFINED over ℝ because it is a power or function
+/// at a PROVABLY-ZERO argument that is a pole / indeterminate there:
+///   - `0^k` for `k ≤ 0`: `0^(neg) = 1/0` (the R4-6 reciprocal spelling) and `0^0`
+///     (the indeterminate form). A POSITIVE exponent gives `0^n = 0`, defined
+///     (handled by `is_provably_zero`); a symbolic / non-rational exponent is left
+///     unflagged (its sign is unknown, so soundness is preserved).
+///   - `cot(0)` and `csc(0)` = `c/0` (the `sin`-denominator trig poles).
+/// `ln(0) = −∞` is intentionally EXCLUDED — it is non-finite, not undefined, and
+/// `1/ln(0) = 0`, so flagging it would wrongly block `1/ln(0) − 1/ln(0) → 0`. The
+/// `tan`/`sec` poles at `π/2 + kπ` need argument-multiple analysis (deferred). Every
+/// case here is genuinely undefined (`1/cot(0) = 1/undefined = undefined`), so there
+/// is no `1/x → 0` reciprocal subtlety and no legitimate cancellation is over-blocked.
+fn is_undefined_at_provable_zero_arg(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            // `0^k` is undefined for `k ≤ 0`: a provably-ZERO exponent (`0^0`, incl.
+            // `0^(x-x)`) or a provably-NEGATIVE rational exponent (`0^(-1) = 1/0`).
+            // `exact_rational_value` only sees a negative *literal* sign, so the
+            // zero case must go through `is_provably_zero` (which folds `x-x`, etc.).
+            is_provably_zero(ctx, *base)
+                && (is_provably_zero(ctx, *exp)
+                    || exact_rational_value(ctx, *exp).is_some_and(|e| e.is_negative()))
+        }
+        Expr::Function(fn_id, args) => {
+            args.len() == 1
+                && (ctx.is_builtin(*fn_id, BuiltinFn::Cot)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Csc))
+                && is_provably_zero(ctx, args[0])
+        }
+        _ => false,
+    }
 }
 
 pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool {
+    if is_undefined_at_provable_zero_arg(ctx, expr) {
+        return true;
+    }
     match ctx.get(expr) {
         Expr::Constant(cas_ast::Constant::Infinity | cas_ast::Constant::Undefined) => true,
         Expr::Div(num, den) => {
@@ -1362,12 +1386,7 @@ pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool 
                 || expr_carries_nonfinite_or_undefined(ctx, *num)
                 || expr_carries_nonfinite_or_undefined(ctx, *den)
         }
-        Expr::Pow(base, exp) => {
-            pow_is_reciprocal_of_provable_zero(ctx, *base, *exp)
-                || expr_carries_nonfinite_or_undefined(ctx, *base)
-                || expr_carries_nonfinite_or_undefined(ctx, *exp)
-        }
-        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
             expr_carries_nonfinite_or_undefined(ctx, *a)
                 || expr_carries_nonfinite_or_undefined(ctx, *b)
         }
@@ -1438,6 +1457,9 @@ pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: E
 /// (`1/inf -> 0`, `tanh(inf) -> 1`, `sign(inf) -> 1`, `e^(-inf) -> 0`), so dropping
 /// it is frequently sound, whereas dropping a genuine `undefined`/`c/0` never is.
 pub fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
+    if is_undefined_at_provable_zero_arg(ctx, expr) {
+        return true;
+    }
     match ctx.get(expr) {
         Expr::Constant(cas_ast::Constant::Undefined) => true,
         Expr::Div(num, den) => {
@@ -1445,12 +1467,7 @@ pub fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
                 || expr_carries_undefined(ctx, *num)
                 || expr_carries_undefined(ctx, *den)
         }
-        Expr::Pow(base, exp) => {
-            pow_is_reciprocal_of_provable_zero(ctx, *base, *exp)
-                || expr_carries_undefined(ctx, *base)
-                || expr_carries_undefined(ctx, *exp)
-        }
-        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
             expr_carries_undefined(ctx, *a) || expr_carries_undefined(ctx, *b)
         }
         Expr::Neg(a) | Expr::Hold(a) => expr_carries_undefined(ctx, *a),
@@ -1630,14 +1647,54 @@ mod tests {
                 "`{src}` -> 0 must NOT be blocked (sound cancellation)"
             );
         }
-        // `expr_carries_undefined` flags `D^(-n)` (zero base, negative exp) but not
-        // `D^n` (positive exp -> 0, defined) nor `D^0` (the indeterminate R3-2 case).
+        // `expr_carries_undefined` flags `D^(-n)` (zero base, negative exp) and `D^0`
+        // (R3-2 `0^0` indeterminate) but not `D^n` (positive exp -> 0, defined).
         let pow_recip = parse("(x-x)^(-1)", &mut ctx).expect("parse");
         assert!(expr_carries_undefined(&ctx, pow_recip));
         let pow_pos = parse("(x-x)^2", &mut ctx).expect("parse");
         assert!(!expr_carries_undefined(&ctx, pow_pos));
         let pow_zero = parse("(x-x)^0", &mut ctx).expect("parse");
-        assert!(!expr_carries_undefined(&ctx, pow_zero));
+        assert!(expr_carries_undefined(&ctx, pow_zero));
+
+        // R3-2: a power/function at a PROVABLY-ZERO argument that is a pole or
+        // indeterminate (`0^0`, `cot(0)`, `csc(0)`) is undefined — `A − A → 0` blocked.
+        for src in [
+            "0^0 - 0^0",
+            "(x-x)^0 - (x-x)^0",
+            "0^0 - 1",
+            "cot(0) - cot(0)",
+            "csc(0) - csc(0)",
+            "cot(x-x) - cot(x-x)",
+            // `0^(provably-zero EXPRESSION)` = `0^0`: the exponent is not a literal.
+            "0^(x-x) - 0^(x-x)",
+            "0^(sin(x)^2+cos(x)^2-1) - 0^(sin(x)^2+cos(x)^2-1)",
+            "2*0^(x-x) - 2*0^(x-x)",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            assert!(
+                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
+                "`{src}` -> 0 must be flagged as an unsound drop"
+            );
+        }
+        // But a NON-provably-zero argument is a genuine value whose cancellation is
+        // sound (`cot(x) − cot(x) → 0`), and `ln(0)` is excluded (it is −∞, and
+        // `1/ln(0) = 0`, so flagging it would wrongly block `1/ln(0) − 1/ln(0) → 0`).
+        for src in [
+            "cot(x) - cot(x)",
+            "cot(1) - cot(1)",
+            "csc(y) - csc(y)",
+            "(x-x+1)^0 - (x-x+1)^0",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            assert!(
+                !rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
+                "`{src}` -> 0 must NOT be blocked (sound cancellation)"
+            );
+        }
+        let cot_zero = parse("cot(x-x)", &mut ctx).expect("parse");
+        assert!(expr_carries_undefined(&ctx, cot_zero));
+        let ln_zero = parse("ln(x-x)", &mut ctx).expect("parse");
+        assert!(!expr_carries_undefined(&ctx, ln_zero)); // -inf, excluded
     }
 
     #[test]
