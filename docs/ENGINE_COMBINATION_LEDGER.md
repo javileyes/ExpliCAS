@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 188 (newest first)
+Active entries: 189 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
@@ -125,6 +125,7 @@ Active entries: 188 (newest first)
 - 2026-06-16 | `retained` | block 1 (division) + block 5 (trig); extends `cas_math::arithmetic_cancel_sup... | Retained soundness fix: Pythagorean-identity zero denominators (Round-2 audit R4-3)
 - 2026-06-16 | `retained` | block 1 (division/non-finite) - THREE coordinated sites, all keyed on the new | Retained soundness fix: strict-wrapper undefined drop / command surface (Round-2 audit R4-5)
 - 2026-06-16 | `retained` | block 1 (division/non-finite) + block 5 (transcendental); extends | Retained soundness fix: exp/log inverse-composition zero denominators (Round-2 audit R4-4, part 1)
+- 2026-06-16 | `retained` | block 1 (division/non-finite); extends the `Pow` arm of BOTH | Retained soundness fix: D^(-n) Pow-reciprocal of a zero denominator (Round-2 audit R4-6)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8356,3 +8357,34 @@ Active entries: 188 (newest first)
   - the transcendental zero-denominator frontier is open-ended (infinitely many identities). Close
     it ONE coherent family per cycle (Pythagorean R4-3; exp/log inverse here), each an exact bounded
     detector; the complete simplifier-oracle stays layering/perf-blocked and documented.
+
+## 2026-06-16 - Retained soundness fix: D^(-n) Pow-reciprocal of a zero denominator (Round-2 audit R4-6)
+- area:
+  - block 1 (division/non-finite); extends the `Pow` arm of BOTH
+    `cas_math::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined` and
+    `expr_carries_undefined` with a shared `pow_is_reciprocal_of_provable_zero` helper
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; R4-6 of docs/SOUNDNESS_AUDIT_ROUND2.md; CROSS-CUTTING,
+    closes the Pow-reciprocal spelling for R3-3/R4-2/R4-3/R4-4 at once)
+- capture:
+  - investment_class: soundness
+  - cell: `D^(-n) - D^(-n)` stays undefined (was 0) for every provably-zero D (x-x, x*x-x^2,
+    sin^2+cos^2-1, ln(e^x)-x) and any negative rational n; positive-exp (0^n=0), 0^0 (R3-2),
+    non-zero base (x^(-1), 2^(-1)), and symbolic-sign exp ((x-x)^n) all keep their value
+  - behavior_change_expected: yes - the Pow-reciprocal spelling of zero denominators stops
+    cancelling; guardrail+pressure fingerprints BYTE-IDENTICAL, engine-fast no slow/timeout
+- observed (USER-DIRECTED, "Continua con R4-6"; the gap was surfaced by the R4-4 round-3 adversarial):
+  - the standalone `D^(-n)` ALREADY folds to undefined (transform_pow evaluates 0^(neg)); the leak
+    was purely that the `A - A` cancellation preempted it, and the universal filter's `Pow` arm
+    recursed into base/exp without recognizing `Pow(provably-zero, negative)` as `c/0`. So one
+    predicate arm - NOT a transform_pow change - closed it.
+- retained learning:
+  - a value-keyed undefined predicate must cover EVERY syntactic spelling of "divide by a zero":
+    `Div(_, D)` AND `Pow(D, negative)` are both `c/0`. The original R3 predicate handled only the
+    Div arm; the Pow-reciprocal spelling (common from differentiation and `D^-1` input) leaked in
+    EVERY family until the Pow arm matched it. When adding a soundness predicate, enumerate the
+    operator spellings of the dangerous operation, not just the canonical one.
+  - the sign discipline is what keeps it exact: flag ONLY a provably-NEGATIVE rational exponent
+    (`exact_rational_value(exp).is_negative()`). Positive -> 0^n=0 (defined, already provably-zero);
+    `0^0` -> indeterminate (R3-2, exponent not negative); symbolic exp -> sign unknown, never flag.
+    This mirrors the is_provably_zero `0^n=0` arm's positive-exponent guard, from the other side.

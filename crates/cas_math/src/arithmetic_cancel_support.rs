@@ -1342,6 +1342,18 @@ fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
+/// True for a `Pow(base, exp)` that is the RECIPROCAL spelling of a zero
+/// denominator — `D^(-n)` with `D` provably zero and a provably-NEGATIVE rational
+/// exponent — which is `1/D^n = 1/0`, undefined. This is the `Pow` analogue of the
+/// `Div(_, D)` `c/0` case: `(x-x)^(-1)`, `(sin²+cos²-1)^(-1)`, `(ln(e^x)-x)^(-2)`.
+/// A POSITIVE exponent gives `0^n = 0` (handled by `is_provably_zero`, defined, not
+/// undefined); `0^0` is the indeterminate R3-2 case (exponent not negative, so not
+/// flagged); a symbolic / non-rational exponent is left unflagged (sound — its sign
+/// is unknown).
+fn pow_is_reciprocal_of_provable_zero(ctx: &Context, base: ExprId, exp: ExprId) -> bool {
+    exact_rational_value(ctx, exp).is_some_and(|e| e.is_negative()) && is_provably_zero(ctx, base)
+}
+
 pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Constant(cas_ast::Constant::Infinity | cas_ast::Constant::Undefined) => true,
@@ -1350,7 +1362,12 @@ pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool 
                 || expr_carries_nonfinite_or_undefined(ctx, *num)
                 || expr_carries_nonfinite_or_undefined(ctx, *den)
         }
-        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
+        Expr::Pow(base, exp) => {
+            pow_is_reciprocal_of_provable_zero(ctx, *base, *exp)
+                || expr_carries_nonfinite_or_undefined(ctx, *base)
+                || expr_carries_nonfinite_or_undefined(ctx, *exp)
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
             expr_carries_nonfinite_or_undefined(ctx, *a)
                 || expr_carries_nonfinite_or_undefined(ctx, *b)
         }
@@ -1428,7 +1445,12 @@ pub fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
                 || expr_carries_undefined(ctx, *num)
                 || expr_carries_undefined(ctx, *den)
         }
-        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
+        Expr::Pow(base, exp) => {
+            pow_is_reciprocal_of_provable_zero(ctx, *base, *exp)
+                || expr_carries_undefined(ctx, *base)
+                || expr_carries_undefined(ctx, *exp)
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
             expr_carries_undefined(ctx, *a) || expr_carries_undefined(ctx, *b)
         }
         Expr::Neg(a) | Expr::Hold(a) => expr_carries_undefined(ctx, *a),
@@ -1578,6 +1600,44 @@ mod tests {
         assert!(!expr_carries_undefined(&ctx, inf_fn));
         let zero_den = parse("sin(1/(x-x))", &mut ctx).expect("parse");
         assert!(expr_carries_undefined(&ctx, zero_den));
+
+        // R4-6: the `D^(-n)` reciprocal spelling of a zero denominator is `1/0`,
+        // undefined — `(x-x)^(-1) - (x-x)^(-1) -> 0` must be blocked, across every
+        // provably-zero family and any negative rational exponent.
+        for src in [
+            "(x-x)^(-1) - (x-x)^(-1)",
+            "(x*x-x^2)^(-1) - (x*x-x^2)^(-1)",
+            "(sin(x)^2+cos(x)^2-1)^(-1) - (sin(x)^2+cos(x)^2-1)^(-1)",
+            "(ln(e^x)-x)^(-1) - (ln(e^x)-x)^(-1)",
+            "(x-x)^(-2) - (x-x)^(-2)",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            assert!(
+                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
+                "`{src}` -> 0 must be flagged as an unsound drop"
+            );
+        }
+        // But a POSITIVE exponent (`0^n = 0`, defined) or a non-provably-zero base
+        // is NOT blocked: `(x-x)^2 - (x-x)^2 -> 0` and `x^(-1) - x^(-1) -> 0` are sound.
+        for src in [
+            "(x-x)^2 - (x-x)^2",
+            "x^(-1) - x^(-1)",
+            "(x+1)^(-1) - (x+1)^(-1)",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            assert!(
+                !rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
+                "`{src}` -> 0 must NOT be blocked (sound cancellation)"
+            );
+        }
+        // `expr_carries_undefined` flags `D^(-n)` (zero base, negative exp) but not
+        // `D^n` (positive exp -> 0, defined) nor `D^0` (the indeterminate R3-2 case).
+        let pow_recip = parse("(x-x)^(-1)", &mut ctx).expect("parse");
+        assert!(expr_carries_undefined(&ctx, pow_recip));
+        let pow_pos = parse("(x-x)^2", &mut ctx).expect("parse");
+        assert!(!expr_carries_undefined(&ctx, pow_pos));
+        let pow_zero = parse("(x-x)^0", &mut ctx).expect("parse");
+        assert!(!expr_carries_undefined(&ctx, pow_zero));
     }
 
     #[test]
