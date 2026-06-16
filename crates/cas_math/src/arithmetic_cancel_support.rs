@@ -995,6 +995,12 @@ pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
     if let Some(rat) = exact_rational_value(ctx, expr) {
         return rat.is_zero();
     }
+    // Exact special-function values: `sin(0) = 0`, `ln(1) = 0`, `cos(0) = 1`, …. A bare
+    // `f(arg)` at its special argument folds to an exact rational, so we can decide its
+    // zero-ness directly (`cos(0)` folds to 1 ⇒ NOT zero, correctly).
+    if let Some(rat) = special_function_value(ctx, expr) {
+        return rat.is_zero();
+    }
     if crate::expr_relations::is_structurally_zero(ctx, expr) {
         return true;
     }
@@ -1051,8 +1057,112 @@ pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
         if is_exp_log_inverse_identity_zero(ctx, expr) {
             return true;
         }
+        // Additive fold over numeric + special-function-value leaves: `cos(0) − 1`,
+        // `exp(0) − 1`, `sec(0) − 1` (each leaf is an exact rational; the sum is 0).
+        if additive_special_value_sum(ctx, expr).is_some_and(|s| s.is_zero()) {
+            return true;
+        }
     }
     false
+}
+
+/// Exact rational value of a builtin function at a SPECIAL argument, for the zero
+/// oracle. EXACT over ℝ — every entry is an exact rational at a point where the
+/// function is defined, so it can never report a false zero. Returns `None` for a
+/// symbolic / non-special argument (`sin(x)`), an irrational value (`sin(1)`,
+/// `cos(π/4)`), a pole (`cot(0)`, `ln(0)` — those are handled by
+/// `is_undefined_at_provable_zero_arg`, never confused with a zero), or a trig
+/// special angle (`sin(π/6)` — deferred).
+///
+/// Vanish at a PROVABLY-ZERO argument (so `sin(x−x)` is covered, not only `sin(0)`):
+/// `sin`, `tan`, `sinh`, `tanh`, `asin`/`arcsin`, `atan`/`arctan`, `asinh`, `atanh`
+/// → 0. Equal to one at a provably-zero argument: `cos`, `cosh`, `sec`, `exp` → 1.
+/// Vanish at a LITERAL one argument: `ln`, `log`, `log2`, `log10`, `acos`/`arccos`,
+/// `acosh` → 0 (and the two-arg `log(b, 1) = 0` for any base `b`).
+fn special_function_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    // `e^(provably-zero) = 1` — the engine normalizes `exp(0)` to `e^0 = Pow(E, 0)`,
+    // so the `Exp` Function arm below would miss it. (`2^0` etc. are already folded by
+    // `exact_rational_value`; only base `e`, a `Constant` not a `Number`, needs this.)
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E))
+            && is_provably_zero(ctx, *exp)
+        {
+            return Some(BigRational::one());
+        }
+    }
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let fn_id = *fn_id;
+    // `log(base, 1) = 0` for any base (`b^0 = 1`).
+    if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 && is_one_expr(ctx, args[1]) {
+        return Some(BigRational::zero());
+    }
+    if args.len() != 1 {
+        return None;
+    }
+    let arg = args[0];
+    if is_provably_zero(ctx, arg) {
+        const VANISH_AT_ZERO: [BuiltinFn; 10] = [
+            BuiltinFn::Sin,
+            BuiltinFn::Tan,
+            BuiltinFn::Sinh,
+            BuiltinFn::Tanh,
+            BuiltinFn::Asin,
+            BuiltinFn::Arcsin,
+            BuiltinFn::Atan,
+            BuiltinFn::Arctan,
+            BuiltinFn::Asinh,
+            BuiltinFn::Atanh,
+        ];
+        const ONE_AT_ZERO: [BuiltinFn; 4] = [
+            BuiltinFn::Cos,
+            BuiltinFn::Cosh,
+            BuiltinFn::Sec,
+            BuiltinFn::Exp,
+        ];
+        if VANISH_AT_ZERO.iter().any(|&f| ctx.is_builtin(fn_id, f)) {
+            return Some(BigRational::zero());
+        }
+        if ONE_AT_ZERO.iter().any(|&f| ctx.is_builtin(fn_id, f)) {
+            return Some(BigRational::one());
+        }
+        return None;
+    }
+    if is_one_expr(ctx, arg) {
+        const VANISH_AT_ONE: [BuiltinFn; 7] = [
+            BuiltinFn::Ln,
+            BuiltinFn::Log,
+            BuiltinFn::Log2,
+            BuiltinFn::Log10,
+            BuiltinFn::Acos,
+            BuiltinFn::Arccos,
+            BuiltinFn::Acosh,
+        ];
+        if VANISH_AT_ONE.iter().any(|&f| ctx.is_builtin(fn_id, f)) {
+            return Some(BigRational::zero());
+        }
+    }
+    None
+}
+
+/// Sum of the exact rational value of every term of an additive node, where each term
+/// is either a pure numeric value (`exact_rational_value`) or a special function
+/// value (`special_function_value`). Returns `None` if any term is neither — so it
+/// fires only when the WHOLE additive node is an exact rational (`cos(0) − 1 = 0`).
+fn additive_special_value_sum(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    let view = AddView::from_expr(ctx, expr);
+    let mut sum = BigRational::zero();
+    for (term, sign) in view.terms {
+        let value =
+            exact_rational_value(ctx, term).or_else(|| special_function_value(ctx, term))?;
+        if sign == Sign::Neg {
+            sum -= value;
+        } else {
+            sum += value;
+        }
+    }
+    Some(sum)
 }
 
 /// Identically zero (over the reachable real domain) by an exp/log inverse-
@@ -1790,6 +1900,24 @@ mod tests {
             "e^(ln(e^(ln(x)))) - x",
             "log(e, e^x) - x",
             "log(e, e^(2*x-5)) - (2*x-5)",
+            // exact special FUNCTION VALUES: f at its special argument folds to an
+            // exact rational (vanish-at-0, vanish-at-1, and the `f(0)=1` subtract).
+            "sin(0)",
+            "tan(x-x)",
+            "sinh(0)",
+            "atanh(0)",
+            "arctan(0)",
+            "ln(1)",
+            "log2(1)",
+            "arccos(1)",
+            "acosh(1)",
+            "log(5, 1)",
+            "cos(0) - 1",
+            "cosh(0) - 1",
+            "sec(0) - 1",
+            "exp(0) - 1",
+            "e^0 - 1",
+            "e^(x-x) - 1",
         ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
@@ -1829,6 +1957,21 @@ mod tests {
             "ln(e^x) + x",     // wrong sign -> = 2x
             "log(2, e^x) - x", // non-`e` base -> log_2(e^x) - x != 0
             "ln(2^x) - x",     // power base is 2, not e -> not an inverse composition
+            // special-function-value NEAR-misses: symbolic arg, irrational value, or
+            // wrong special point must never be flagged zero.
+            "sin(x)", // symbolic argument
+            "cos(x)",
+            "sin(1)", // irrational value (1 radian)
+            "cos(1)",
+            "ln(2)",      // irrational
+            "cos(0)",     // = 1, not 0
+            "exp(0)",     // = 1, not 0
+            "sin(0) + 1", // = 1
+            "cos(pi/4)",  // irrational surd, special angle deferred
+            "sin(pi/6)",  // rational 1/2 but special angle deferred -> not flagged
+            "e^2",        // base e, positive exponent -> not 1
+            "e^x",        // base e, symbolic exponent
+            "acos(0)",    // = pi/2, irrational
         ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 190 (newest first)
+Active entries: 191 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
@@ -127,6 +127,7 @@ Active entries: 190 (newest first)
 - 2026-06-16 | `retained` | block 1 (division/non-finite) + block 5 (transcendental); extends | Retained soundness fix: exp/log inverse-composition zero denominators (Round-2 audit R4-4, part 1)
 - 2026-06-16 | `retained` | block 1 (division/non-finite); extends the `Pow` arm of BOTH | Retained soundness fix: D^(-n) Pow-reciprocal of a zero denominator (Round-2 audit R4-6)
 - 2026-06-16 | `retained` | block 1 (non-finite) + block 5 (trig); a new `is_undefined_at_provable_zero_a... | Retained soundness fix: provably-zero-argument poles/indeterminates (Round-2 audit R3-2, part 1)
+- 2026-06-16 | `retained` | block 1 (non-finite) + block 5 (trig/transcendental); a new `special_function... | Retained soundness fix: exact special-function-value zero oracle (cross-cutting)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8434,3 +8435,41 @@ Active entries: 190 (newest first)
     Lesson: a structural zero-oracle's reach is exactly its argument-decidability; each adversarial
     round exposes the next argument form, and the honest stopping point is the documented boundary,
     not chasing each function-at-numeric value piecemeal.
+
+## 2026-06-16 - Retained soundness fix: exact special-function-value zero oracle (cross-cutting)
+- area:
+  - block 1 (non-finite) + block 5 (trig/transcendental); a new `special_function_value` helper +
+    `additive_special_value_sum` pass in `cas_math::arithmetic_cancel_support::is_provably_zero`
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; closes the R3-2(c)/R4-4 "argument equals a special
+    point only after function evaluation" boundary; CROSS-CUTTING — improves every zero-denominator
+    family that consumes is_provably_zero)
+- capture:
+  - investment_class: soundness
+  - cell: `1/f(0)-1/f(0)`, `csc(sin(0))-same`, `cot(ln(1))-same`, `csc(cos(0)-1)-same`,
+    `0^sin(0)-same`, `csc(exp(0)-1)/csc(e^0-1)-same` stay undefined (were 0); symbolic args
+    (`sin(x)`), irrationals (`sin(1)`, `ln(2)`, `cos(pi/4)`, `arctan(1)`), wrong points (`cos(0)=1`),
+    `e^2`/`e^x`, trig special angles (`sin(pi/6)`), and poles (`cot(0)`/`ln(0)`) all decline
+  - behavior_change_expected: yes - these function-at-special-arg indeterminates stop cancelling;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, engine-fast no slow/timeout
+- observed (USER-DIRECTED "el oraculo de valores exactos de funciones"; scoping workflow first):
+  - the boundary that the R3-2 and R4-4 adversarial rounds kept hitting was the SAME: is_provably_zero
+    is structural (folds x-x, polynomial/Pythagorean/exp-log identities) but does NOT EVALUATE a
+    function at a numeric argument, so sin(0), ln(1), cos(0)-1 - which the engine reduces standalone -
+    were invisible to the cancellation gate. One oracle extension closes it for all families.
+  - scoping chose a DEDICATED helper consulted by is_provably_zero, NOT a Function arm on
+    exact_rational_value, to keep exact_rational_value's numeric-only contract and bound the blast
+    radius (is_provably_zero + the R4-6 sign check are the only consumers; both stay sound since the
+    oracle only ever gains `true`, which only blocks cancellations / folds 1/0 to undefined).
+- retained learning:
+  - a STRUCTURAL zero oracle and a VALUE (evaluating) zero oracle are different powers; the structural
+    one's boundary is exactly "arguments it can fold". The cheap, sound way to extend reach without a
+    simplifier is a FROZEN EXACT TABLE of f-at-special-argument values (f(0), f(1)) keyed on the
+    EXISTING is_provably_zero for the argument (so sin(x-x) rides for free) - never float, never trig
+    special angles (those are surds / need rational-pi recognition), so it can never report a false
+    zero. Separate the vanish-at-0 set, the =1-at-0 set, and the vanish-at-1 set; mind spelling
+    (`exp(0)` normalizes to `e^0 = Pow(E,0)`, a Pow not a Function - handle both).
+  - the same predicate must distinguish ZERO from POLE: cos(0)=1 folds to a NON-zero value (so the
+    direct arm returns Some(1) and is_provably_zero correctly says NOT zero), while cot(0)/csc(0)/ln(0)
+    are poles left to is_undefined_at_provable_zero_arg. Returning the exact VALUE (0 or 1), not a
+    bool, lets the same helper serve both the zero check and the additive-sum (cos(0)-1) fold.
