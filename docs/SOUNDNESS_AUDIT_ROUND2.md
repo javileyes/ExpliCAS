@@ -210,7 +210,7 @@ malformed nested `solve(x = poly ± …, x) = 0` instead of the root set — sil
 This is higher-severity than R5b (it drops *correct* roots / crashes) but needs a
 deeper isolation-strategy fix; own cycle. NOT YET FIXED.
 
-### R6 — Dropped domain conditions & misc (COND-DROP/WRONG, ~4) — Fronts 1 & 3 FIXED (commit `PENDING_HASH`)
+### R6 — Dropped domain conditions & misc (COND-DROP/WRONG, ~4) — Fronts 1 & 3 FIXED (commit `fdade4506`)
 - **Front 1 — FIXED:** `(a*b)^x → a^x·b^x` split unconditionally even for a symbolic
   (possibly non-integer) exponent, where the split is invalid for negative `a,b`
   over ℝ (`a^x`,`b^x` are individually complex). Both the default simplify path
@@ -290,5 +290,5 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
 - [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
 - [ ] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel; needs a provably-zero oracle in the predicate (PRE-EXISTING, overlaps R4)
-- [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `PENDING_HASH`, Fronts 1 & 3)*
+- [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery
