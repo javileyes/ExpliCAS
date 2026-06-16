@@ -106,7 +106,7 @@ Now: `inf − inf`, `x/0 − x/0`, `(1/0) − (1/0)`, `undefined − undefined` 
 sweeps (≈725 probes, ~50 confirmed leaks in the first, 0 in the second) drove the
 universal-filter design; guardrail+pressure fingerprints BYTE-IDENTICAL.
 
-**R3-2 — PROVABLY-ZERO-ARGUMENT poles/indeterminates FIXED (commit `PENDING_HASH`);
+**R3-2 — PROVABLY-ZERO-ARGUMENT poles/indeterminates FIXED (commit `8f25ff150dc57af07044862e1668deba1b049e29`);
 `π/2`-pole and `−∞`/inf-arithmetic remainder still deferred.** *Semantic*
 indeterminates that look finite syntactically fold because the `A − A → 0`
 cancellation fires before the operand evaluates to undefined. The subset whose
@@ -456,7 +456,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
 - [x] R1 — inverse-composition domain gate (`f(f⁻¹(x))`) *(FIXED 2026-06-16, commit `261f1de28`, four rule families)*
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
-- [~] R3-2 — *semantic* indeterminates: the PROVABLY-ZERO-ARGUMENT poles/indeterminates `0^0`, `cot(0)`, `csc(0)` *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `is_undefined_at_provable_zero_arg`)*; **still deferred** — `tan(π/2)`/`sec(π/2)` (π/2-pole, needs rational-π argument analysis), `ln(0)−ln(0)` (`−∞`, reciprocal subtlety), `factorial(−2)·0`, `2·inf−inf` (true `+inf`), `sum(k,k,1,∞)−sum(…)` (infinity arithmetic) — need a per-function pole/indeterminate oracle
+- [~] R3-2 — *semantic* indeterminates: the PROVABLY-ZERO-ARGUMENT poles/indeterminates `0^0`, `cot(0)`, `csc(0)` *(FIXED 2026-06-16, commit `8f25ff150dc57af07044862e1668deba1b049e29`, exact `is_undefined_at_provable_zero_arg`)*; **still deferred** — `tan(π/2)`/`sec(π/2)` (π/2-pole, needs rational-π argument analysis), `ln(0)−ln(0)` (`−∞`, reciprocal subtlety), `factorial(−2)·0`, `2·inf−inf` (true `+inf`), `sum(k,k,1,∞)−sum(…)` (infinity arithmetic) — need a per-function pole/indeterminate oracle
 - [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
 - [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `134c351fa`, exact `MultiPoly` normalization in `is_provably_zero`)*
 - [x] R4-3 — *Pythagorean-identity* zero denominators (`sin²+cos²−1`, `cosh²−sinh²−1`, `sec²−tan²−1`, `csc²−cot²−1`) *(FIXED 2026-06-16, commit `fb1e7b2394223de1de376b0f7d22dc54848269cf`, exact `is_pythagorean_identity_zero` coefficient check)*
