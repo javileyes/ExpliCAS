@@ -978,8 +978,15 @@ fn rational_pow_i32(base: &BigRational, exponent: i32) -> BigRational {
 ///   `x^2 - x^2`, telescoping sums, literal `0`;
 /// - a product with a provably-zero factor: `0*x`, `(x - x)*y`.
 ///
+/// - a polynomial identity that normalizes to the ZERO polynomial: `x*x - x^2`,
+///   `2x - x - x`, `(x - 1)(x + 1) - (x^2 - 1)`.
+///
 /// Conservative: returns `false` when zero-ness is not provable (a bare variable,
-/// `x - 1`, …), so it never blocks a legitimate division.
+/// `x - 1`, …), so it never blocks a legitimate division. EXACT — numeric folding,
+/// structural cancellation and exact rational polynomial normalization (no float,
+/// no random-point probing), so it never reports a false zero. A polynomial that is
+/// the zero polynomial is zero for ALL values of its variables, so a denominator
+/// equal to it is `c/0` everywhere.
 pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
     if let Some(rat) = exact_rational_value(ctx, expr) {
         return rat.is_zero();
@@ -989,6 +996,39 @@ pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
     }
     if let Expr::Mul(l, r) = ctx.get(expr) {
         return is_provably_zero(ctx, *l) || is_provably_zero(ctx, *r);
+    }
+    // `0^n = 0` for a strictly-positive exponent: `(x*x - x^2)^2`, `(2x-x-x)^3`.
+    // (`0^0` is indeterminate and `0^(neg)` is undefined, so require `exp > 0`.)
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        let (base, exp) = (*base, *exp);
+        if is_provably_zero(ctx, base)
+            && exact_rational_value(ctx, exp).is_some_and(|e| e.is_positive())
+        {
+            return true;
+        }
+    }
+    // Polynomial identity zero: only attempt on additive nodes (a single
+    // variable/power/function can never be identically zero), and only after the
+    // cheaper checks above. Bounded by `PolyBudget`; a non-polynomial expression
+    // (a function like `sin`, a division, an over-budget power) converts to an
+    // error and falls through, so trig/transcendental identities are NOT claimed.
+    if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        // Bounded budget: the default caps `max_pow_exp` at 2, which misses cube /
+        // quartic identities like `(x+1)^3 - x^3 - 3x^2 - 3x - 1`. Raise it enough to
+        // expand the common cases; `max_terms` still caps multivariate blow-up, so an
+        // over-budget denominator returns an error and falls through (sound — it is
+        // just left un-flagged, never wrongly flagged).
+        let budget = crate::multipoly::PolyBudget {
+            max_terms: 256,
+            max_total_degree: 64,
+            max_pow_exp: 12,
+        };
+        if let Ok(mut poly) = crate::multipoly::multipoly_from_expr(ctx, expr, &budget) {
+            poly.normalize();
+            if poly.is_zero() {
+                return true;
+            }
+        }
     }
     false
 }
@@ -1230,14 +1270,46 @@ mod tests {
     #[test]
     fn is_provably_zero_detects_structural_numeric_and_product_zeros() {
         let mut ctx = Context::new();
-        for src in ["0", "1-1", "2-2", "x-x", "x^2-x^2", "0*x", "x*0", "(x-x)*y"] {
+        for src in [
+            // numeric / structural / product-with-zero-factor
+            "0",
+            "1-1",
+            "2-2",
+            "x-x",
+            "x^2-x^2",
+            "0*x",
+            "x*0",
+            "(x-x)*y",
+            // polynomial identities (zero only after expansion/normalization)
+            "x*x - x^2",
+            "2*x - x - x",
+            "(x-1)*(x+1) - (x^2-1)",
+            "(x+1)^3 - x^3 - 3*x^2 - 3*x - 1",
+            "(x+y)^2 - x^2 - 2*x*y - y^2",
+            // powers of an identically-zero polynomial: 0^n = 0
+            "(x*x - x^2)^2",
+            "(2*x - x - x)^3",
+        ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
                 is_provably_zero(&ctx, expr),
                 "`{src}` must be provably zero"
             );
         }
-        for src in ["x", "x-1", "1", "x*y", "x^2", "2"] {
+        for src in [
+            // never a false positive on a nonzero (even close-looking) expression
+            "x",
+            "x-1",
+            "1",
+            "x*y",
+            "x^2",
+            "2",
+            "x*x - x^2 + 1",
+            "2*x - x",
+            "(x-1)^2",
+            "(x+1)^3",
+            "(x+1)^4 - x^4",
+        ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
                 !is_provably_zero(&ctx, expr),

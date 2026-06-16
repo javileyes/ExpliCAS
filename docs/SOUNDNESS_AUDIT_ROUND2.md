@@ -131,15 +131,25 @@ denominator and whose `after` is finite — closing the shortcut paths that bypa
 `transform_div` (`(x²−x²)/(x−x) → x+x`, `(3x−3x)/(x−x) → 3`). `1/inf → 0` is NOT
 blocked (`inf` is not *zero*), so legitimate evaluations are untouched.
 
-**R4-2 (deferred — non-*syntactic* provably-zero denominators):** the oracle is
-EXACT-SYNTACTIC; it does not expand/normalize, so a denominator that is zero only
-after algebra still slips: `1/(x*x − x²) − 1/(x*x − x²) → 0` (`x*x` vs `x²`),
-`1/(2x − x − x) − …  → 0` (coefficient), `1/((x−1)(x+1) − (x²−1)) − … → 0`
-(expansion), `1/(sin²x + cos²x − 1) − … → 0` (Pythagorean identity). The engine
-*does* know each denominator is zero standalone (`1/(x*x−x²) → undefined`), but the
-`A − A` cancellation fires before the denominator simplifies. Closing this needs a
-simplify-before-cancel ordering or a normalize/expand-aware zero oracle (riskier,
-hot-path/recursion cost) — its own cycle.
+**R4-2 — FIXED (commit `PENDING_HASH`) for POLYNOMIAL-identity zero denominators.**
+A denominator zero only after algebra used to slip the exact-SYNTACTIC oracle:
+`1/(x*x − x²) − … → 0` (`x*x` vs `x²`), `1/(2x − x − x) − … → 0` (coefficient),
+`1/((x−1)(x+1) − (x²−1)) − … → 0` (expansion). **Fix:** `is_provably_zero` now also
+converts an additive node to a multivariate polynomial (`MultiPoly`, exact rational
+coefficients, `PolyBudget`-bounded) and returns true when it normalizes to the ZERO
+polynomial — which means zero for ALL values, so the denominator is `c/0` everywhere.
+A non-polynomial sub-term (a function, a division, an over-budget power) converts to
+an error and falls through, so it is EXACT (no float, no probing) and never
+false-positives a nonzero denominator (`x*x − x² + 1 → 1`, `2x − x → x`, `(x+1)^4 −
+x^4` stay divisible). The oracle also peels a power of a zero polynomial (`0^n = 0`
+for `n > 0`: `(x*x − x²)^2`, `(2x−x−x)^3`). Three adversarial rounds drove it to
+convergence: round 1 raised `PolyBudget.max_pow_exp` (cube/quartic identities), round 2
+added the `0^n` arm, round 3 is clean (94 probes, 0 leaks). engine-fast clean (no
+slow/timeout from the hot-path conversion); guardrail+pressure BYTE-IDENTICAL.
+**R4-3 (deferred):** *transcendental*-identity
+zero denominators — `1/(sin²x + cos²x − 1) − … → 0` — are NOT polynomial identities
+(`s² + c² − 1` is not the zero polynomial in atoms `s,c`; it needs the trig identity),
+so they need identity-aware zero knowledge — its own cycle.
 
 **Not regressions (verified byte-identical on HEAD):** the adversarial flagged
 `5·a·b·c − a·b·c → 5·a·b·c − a·b·c` (collect fails for ≥3-factor products with an
@@ -309,6 +319,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
 - [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
 - [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
-- [ ] R4-2 — *non-syntactic* provably-zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`, `sin²+cos²−1`) still cancel; needs a normalize/expand-aware zero oracle or simplify-before-cancel ordering
+- [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `MultiPoly` normalization in `is_provably_zero`)*
+- [ ] R4-3 — *transcendental-identity* zero denominators (`sin²+cos²−1`, …) still cancel; needs identity-aware (non-polynomial) zero knowledge
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery

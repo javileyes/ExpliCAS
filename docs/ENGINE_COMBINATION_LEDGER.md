@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 184 (newest first)
+Active entries: 185 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
 - 2026-06-16 | `retained` | block 1 (algebra/exponents) + block 9 (summation); `cas_math` shared helpers | Retained soundness fix: product-power split gated + zero-summand sum = 0 (Round-2 audit R6, Fronts 1 & 3)
 - 2026-06-16 | `retained` | block 1 (arithmetic/division) cross-cutting; one shared `cas_math` oracle | Retained soundness fix: provably-zero oracle closes div-by-zero cancellation + 0/0 folds (Round-2 audit R3-3 & R4)
+- 2026-06-16 | `retained` | block 1 (division); extends `cas_math::arithmetic_cancel_support::is_provably... | Retained soundness fix: polynomial-identity zero denominators (Round-2 audit R4-2)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8118,3 +8119,40 @@ Active entries: 184 (newest first)
     `(x-1)(x+1) - (x^2-1)`, `sin^2+cos^2-1`) — the exact-syntactic oracle does not normalize
     or expand, so those need a simplify-before-cancel ordering or a heavier (expansion-aware)
     zero oracle; that is its own cycle (hot-path/recursion cost makes it non-trivial).
+
+## 2026-06-16 - Retained soundness fix: polynomial-identity zero denominators (Round-2 audit R4-2)
+- area:
+  - block 1 (division); extends `cas_math::arithmetic_cancel_support::is_provably_zero`
+    with exact multivariate-polynomial normalization (`cas_math::multipoly`)
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; R4-2 of docs/SOUNDNESS_AUDIT_ROUND2.md)
+- capture:
+  - investment_class: soundness
+  - cell: `1/(x*x - x^2) - 1/(x*x - x^2)`, `1/(2x - x - x) - same`,
+    `1/((x-1)(x+1) - (x^2-1)) - same` stay symbolic (were 0); `(x*x-x^2)/(2x-x-x)` -> undefined
+  - behavior_change_expected: yes - denominators that normalize to the zero polynomial
+    stop folding/cancelling; guardrail+pressure fingerprints BYTE-IDENTICAL, engine-fast
+    no slow/timeout (hot-path poly conversion is budget-bounded and only on additive nodes)
+- observed (USER-DIRECTED, "continua con eso" after R3-3/R4):
+  - the R3-3/R4 oracle was exact-SYNTACTIC (numeric fold + structural additive cancel +
+    Mul-zero-factor); it missed denominators that are zero only after expansion/normalization
+    (`x*x` vs `x^2`, `2x - x - x`, `(x-1)(x+1) - (x^2-1)`). The engine knows each is zero
+    STANDALONE (`1/(x*x-x^2) -> undefined`) but the `A-A` cancellation fires first.
+  - the existing `MultiPoly` (AST->multivariate polynomial, exact rationals, `PolyBudget`)
+    gives a SOUND identity-zero test: convert the additive node, normalize, check the term
+    list is empty. A zero polynomial is zero for ALL values, so a denominator equal to it
+    is c/0 everywhere. Non-polynomial sub-terms (functions/divisions/over-budget powers)
+    return an error and fall through, so trig identities like `sin^2+cos^2-1` are NOT
+    claimed (correctly - that is R4-3, needs trig-identity knowledge, deferred).
+- retained learning:
+  - prefer an EXISTING exact canonical form (`MultiPoly` normalization) over a bespoke or
+    heuristic zero test. It is sound in BOTH directions: an identically-zero polynomial is
+    flagged, a non-zero one (even one that looks close, `x*x - x^2 + 1`) is not - no float,
+    no random-point probing, so no over-block.
+  - a hot-path zero oracle must be gated: attempt the polynomial conversion only on additive
+    nodes (a bare variable/power/function can never be identically zero) and only AFTER the
+    cheap numeric/structural/Mul checks, bounded by `PolyBudget`. engine-fast confirmed no
+    slow/timeout - the budget + additive-only gate keep it cheap.
+  - the zero-denominator frontier stratifies by HOW the denominator is zero: syntactic
+    (R3-3/R4), polynomial-identity (R4-2, here), transcendental-identity (R4-3, deferred).
+    Each layer needs a strictly stronger - and progressively more expensive - zero oracle.
