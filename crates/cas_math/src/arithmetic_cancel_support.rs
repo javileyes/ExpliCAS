@@ -1079,7 +1079,11 @@ mod tests {
         // Folding the SAME non-finite difference to `undefined` is allowed (after
         // still carries the non-finite marker).
         let inf_minus_inf = parse("inf - inf", &mut ctx).expect("parse");
-        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, inf_minus_inf, undef));
+        assert!(!rewrite_unsoundly_drops_nonfinite(
+            &ctx,
+            inf_minus_inf,
+            undef
+        ));
 
         // A non-ADDITIVE node carrying non-finite (a function/quotient evaluation
         // like `atan(inf) -> pi/2` or `1/inf -> 0`) is never blocked.
@@ -1096,7 +1100,15 @@ mod tests {
     #[test]
     fn detects_nonfinite_and_undefined_terms() {
         let mut ctx = Context::new();
-        for src in ["inf", "undefined", "1/0", "x/0", "x/0 - x/0", "inf*x", "2 + inf"] {
+        for src in [
+            "inf",
+            "undefined",
+            "1/0",
+            "x/0",
+            "x/0 - x/0",
+            "inf*x",
+            "2 + inf",
+        ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
                 expr_carries_nonfinite_or_undefined(&ctx, expr),
