@@ -114,7 +114,7 @@ sum(k,k,1,∞) → 0`. These are *indeterminate-arithmetic / semantic-pole* defe
 distinct from the structural "non-finite term never cancels" fix; they need a pole/
 indeterminate oracle (or `2·inf − inf` is a true `+inf`, a wrong-VALUE not honesty).
 
-**R3-3 — FIXED (commit `PENDING_HASH`), together with R4 via a shared provably-zero
+**R3-3 — FIXED (commit `750f0f185`), together with R4 via a shared provably-zero
 oracle.** A denominator that is *provably* but not *literally* zero used to cancel:
 `1/(x−x) − 1/(x−x) → 0`, `1/(0·x) − 1/(0·x) → 0`, `1/(x²−x²) − 1/(x²−x²) → 0`. The
 shared predicate `expr_carries_nonfinite_or_undefined` only flagged a `Div` with a
@@ -156,7 +156,7 @@ of Division: 0/0 → undefined", and bare `0/0` is kept symbolic — but the def
 (steps-off) path short-circuits. The audit doc's "no interior pole produced a false
 finite value" invariant covered *symbolic* poles; this all-numeric `0/0` slips through.
 
-**FIXED (commit `PENDING_HASH`).** The prior investigation could not pin the
+**FIXED (commit `750f0f185`).** The prior investigation could not pin the
 default-mode producer (it is neither `DivZeroRule` nor `const_fold`). Instrumenting
 the rule loop (`RULE_TAP`) showed the fold bypasses `apply_rules` entirely — the
 default-mode producers are the **fraction-simplification PREORDERS** in
@@ -302,13 +302,13 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R2 — `acosh(cosh(x)) = |x|` (sign-wrong, bounded) *(FIXED 2026-06-15, commit `d22eec10e`)*
 - [x] R5b — `solve(c/poly=0)` no-solution *(FIXED 2026-06-15, commit `14a471e1d`)*
 - [ ] R5d — rational-equation isolation fabricates malformed nested solves (drops valid roots) + `csc/sec/cot` solver crash (NEW)
-- [x] R4 — numeric `0/0` fold guard *(FIXED 2026-06-16, commit `PENDING_HASH`, shared `is_provably_zero` oracle: `transform_div` top-guard + cubes-quotient planner gate; `(1²−1)/(1−1)`, `(1³−1)/(1−1)` → undefined)*
+- [x] R4 — numeric `0/0` fold guard *(FIXED 2026-06-16, commit `750f0f185`, shared `is_provably_zero` oracle: `transform_div` top-guard + cubes-quotient planner gate; `(1²−1)/(1−1)`, `(1³−1)/(1−1)` → undefined)*
 - [x] R5a — `solve` abs extraneous-root filter *(FIXED 2026-06-15, commit `4d07aaee6`, rational roots; irrational extraneous split to R5a-2)*
 - [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
 - [x] R1 — inverse-composition domain gate (`f(f⁻¹(x))`) *(FIXED 2026-06-16, commit `261f1de28`, four rule families)*
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
 - [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
-- [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
+- [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
 - [ ] R4-2 — *non-syntactic* provably-zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`, `sin²+cos²−1`) still cancel; needs a normalize/expand-aware zero oracle or simplify-before-cancel ordering
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery
