@@ -1269,12 +1269,52 @@ pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool 
 /// (not any non-finite-bearing `Div`), so a legitimate evaluation like `1/inf -> 0`
 /// (where `inf` is non-zero) is never blocked.
 pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: ExprId) -> bool {
-    if expr_carries_nonfinite_or_undefined(ctx, after) {
-        return false;
+    // Clause 1 — genuine UNDEFINED (a `c/0` provably-zero denominator or an
+    // `Undefined` constant) anywhere in `before`, under ANY node: the result must
+    // stay undefined. Real-domain functions/products/powers are strict, so a
+    // wrapper of an undefined value is undefined: `f(undefined) = undefined`,
+    // `undefined * c = undefined`, `undefined^n = undefined`. This makes
+    // `simplify(1/(x-x) - 1/(x-x))`, `abs(1/(x-x) - 1/(x-x))`,
+    // `expand(1/(sin^2+cos^2-1) - …)`, `(1/(x-x) - 1/(x-x))^2` and `(x^2-x^2)/(x-x)`
+    // honest instead of a finite value. Crucially, `after` carrying mere `Infinity`
+    // does NOT excuse dropping the undefined: `ln(1/(x-x) - 1/(x-x)) -> -inf` is
+    // unsound because `ln(undefined) = undefined`, not `-inf`. Only `after` STILL
+    // being undefined (`1/(x-x) -> undefined`) is a sound resolution.
+    if expr_carries_undefined(ctx, before) && !expr_carries_undefined(ctx, after) {
+        return true;
     }
-    match ctx.get(before) {
-        Expr::Add(_, _) | Expr::Sub(_, _) => expr_carries_nonfinite_or_undefined(ctx, before),
-        Expr::Div(_, den) => is_provably_zero(ctx, *den),
+    // Clause 2 — additive INDETERMINATE carrying `Infinity` (`inf - inf`,
+    // `sqrt(inf) - sqrt(inf)`, `ln(inf) - ln(inf) + 7`): a sound resolution folds to
+    // `undefined` or keeps a non-finite marker; reject only a collapse to a fully
+    // finite value. `Infinity` is allowed to survive here (it is an additive
+    // indeterminate, deferred to R3-2), but a finite `0` is not. Non-additive
+    // `Infinity` evaluations (`1/inf -> 0`, `tanh(inf) -> 1`, `atan(inf) -> pi/2`)
+    // are never additive and so are never blocked.
+    matches!(ctx.get(before), Expr::Add(_, _) | Expr::Sub(_, _))
+        && expr_carries_nonfinite_or_undefined(ctx, before)
+        && !expr_carries_nonfinite_or_undefined(ctx, after)
+}
+
+/// True when `expr` is genuinely UNDEFINED over the reals — it carries an
+/// `Undefined` constant or a division by a *provably-zero* denominator (`c/0`)
+/// anywhere in its tree. This is the strict subset of
+/// [`expr_carries_nonfinite_or_undefined`] that EXCLUDES pure `Infinity`: a bare
+/// `Infinity` has well-defined limit evaluations under many strict operators
+/// (`1/inf -> 0`, `tanh(inf) -> 1`, `sign(inf) -> 1`, `e^(-inf) -> 0`), so dropping
+/// it is frequently sound, whereas dropping a genuine `undefined`/`c/0` never is.
+pub fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Constant(cas_ast::Constant::Undefined) => true,
+        Expr::Div(num, den) => {
+            is_provably_zero(ctx, *den)
+                || expr_carries_undefined(ctx, *num)
+                || expr_carries_undefined(ctx, *den)
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
+            expr_carries_undefined(ctx, *a) || expr_carries_undefined(ctx, *b)
+        }
+        Expr::Neg(a) | Expr::Hold(a) => expr_carries_undefined(ctx, *a),
+        Expr::Function(_, args) => args.iter().any(|&c| expr_carries_undefined(ctx, c)),
         _ => false,
     }
 }
@@ -1312,8 +1352,8 @@ pub fn try_rewrite_add_inverse_zero_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        expr_carries_nonfinite_or_undefined, is_provably_zero, match_add_inverse_expr,
-        match_sub_self_semantic_expr, rewrite_unsoundly_drops_nonfinite,
+        expr_carries_nonfinite_or_undefined, expr_carries_undefined, is_provably_zero,
+        match_add_inverse_expr, match_sub_self_semantic_expr, rewrite_unsoundly_drops_nonfinite,
         try_rewrite_add_inverse_zero_expr, try_rewrite_sub_self_zero_expr,
     };
     use cas_ast::Context;
@@ -1377,6 +1417,49 @@ mod tests {
         let legit = parse("(x^2-1)/(x-1)", &mut ctx).expect("parse");
         let x_plus_1 = parse("x+1", &mut ctx).expect("parse");
         assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, legit, x_plus_1));
+
+        // R4-5: a strict WRAPPER (function/power/product/neg) around a genuinely
+        // UNDEFINED value (`c/0`, `Undefined`) must not collapse to a finite value:
+        // `f(undefined) = undefined`. This covers the `simplify`/`expand`/`factor`
+        // command surface and any `f(1/(x-x) - 1/(x-x))`.
+        let zero2 = ctx.num(0);
+        for src in [
+            "abs(1/(x-x) - 1/(x-x))",
+            "sin(1/(x-x) - 1/(x-x))",
+            "simplify(1/(x-x) - 1/(x-x))",
+            "expand(1/(sin(x)^2+cos(x)^2-1) - 1/(sin(x)^2+cos(x)^2-1))",
+            "(1/(x-x) - 1/(x-x))^2",
+            "-(1/(x*x-x^2) - 1/(x*x-x^2))",
+            "sin(undefined)",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            assert!(
+                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
+                "`{src}` -> 0 must be flagged as an unsound drop"
+            );
+        }
+
+        // A wrapper that maps the undefined argument to ANOTHER non-finite (e.g.
+        // `ln(1/(x-x) - 1/(x-x)) -> -inf` via `ln(0) -> -inf`) is STILL an unsound
+        // drop: `ln(undefined) = undefined`, not `-inf`. Infinity must not excuse it.
+        let neg_inf = parse("-inf", &mut ctx).expect("parse");
+        let ln_undef = parse("ln(1/(x-x) - 1/(x-x))", &mut ctx).expect("parse");
+        assert!(rewrite_unsoundly_drops_nonfinite(&ctx, ln_undef, neg_inf));
+
+        // But a wrapper around a NONZERO-denominator quotient (legitimately
+        // cancellable) or carrying only `Infinity` (legit limit evaluation) is NOT
+        // blocked: `abs(1/(x+1) - 1/(x+1)) -> 0`, `tanh(inf) -> 1`.
+        let abs_nonzero = parse("abs(1/(x+1) - 1/(x+1))", &mut ctx).expect("parse");
+        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, abs_nonzero, zero2));
+        let tanh_inf = parse("tanh(inf)", &mut ctx).expect("parse");
+        let one = ctx.num(1);
+        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, tanh_inf, one));
+
+        // `expr_carries_undefined` excludes pure Infinity but flags `c/0`/`Undefined`.
+        let inf_fn = parse("atan(inf)", &mut ctx).expect("parse");
+        assert!(!expr_carries_undefined(&ctx, inf_fn));
+        let zero_den = parse("sin(1/(x-x))", &mut ctx).expect("parse");
+        assert!(expr_carries_undefined(&ctx, zero_den));
     }
 
     #[test]

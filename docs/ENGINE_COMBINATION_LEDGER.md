@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 186 (newest first)
+Active entries: 187 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
@@ -123,6 +123,7 @@ Active entries: 186 (newest first)
 - 2026-06-16 | `retained` | block 1 (arithmetic/division) cross-cutting; one shared `cas_math` oracle | Retained soundness fix: provably-zero oracle closes div-by-zero cancellation + 0/0 folds (Round-2 audit R3-3 & R4)
 - 2026-06-16 | `retained` | block 1 (division); extends `cas_math::arithmetic_cancel_support::is_provably... | Retained soundness fix: polynomial-identity zero denominators (Round-2 audit R4-2)
 - 2026-06-16 | `retained` | block 1 (division) + block 5 (trig); extends `cas_math::arithmetic_cancel_sup... | Retained soundness fix: Pythagorean-identity zero denominators (Round-2 audit R4-3)
+- 2026-06-16 | `retained` | block 1 (division/non-finite) - THREE coordinated sites, all keyed on the new | Retained soundness fix: strict-wrapper undefined drop / command surface (Round-2 audit R4-5)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8205,3 +8206,76 @@ Active entries: 186 (newest first)
     at once. Lesson: the `eval` path and the `simplify()`/`expand()` command surface are
     SEPARATE simplification entry points - a soundness filter must cover both, and adversarial
     probes that wrap the same expression in different commands catch the asymmetry.
+
+## 2026-06-16 - Retained soundness fix: strict-wrapper undefined drop / command surface (Round-2 audit R4-5)
+- area:
+  - block 1 (division/non-finite) - THREE coordinated sites, all keyed on the new
+    `cas_math::arithmetic_cancel_support::expr_carries_undefined` predicate:
+    (1) the universal filter `rewrite_unsoundly_drops_nonfinite` (consumed by
+    `transform_expr_recursive` per node + the `simplify_pipeline` root shortcut) -
+    rejects dropping a carried `undefined` under ANY strict node;
+    (2) `power_identity_support::try_rewrite_pow_one_or_one_pow_expr` - `1^x -> 1`
+    gated so it does not fire on an undefined exponent;
+    (3) the two Add/Sub PRE-ORDER cancellations in `transform_binary`
+    (polynomial-identity closure + exact fraction-pair) - gated so they do not cancel
+    a non-finite/undefined-carrying difference before the filter can see the original
+    form (they used to return `0` directly, bypassing the per-node filter)
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; R4-5 of docs/SOUNDNESS_AUDIT_ROUND2.md; closes the
+    command-surface leak for R3/R4/R4-2/R4-3 at once)
+- capture:
+  - investment_class: soundness
+  - cell: `simplify(1/(x-x) - 1/(x-x))`, `expand(1/(sin^2+cos^2-1) - same)`,
+    `abs(.)`, `ln(.)`, `(.)^2`, `0*(.)`, `factor(.)` over identically-zero denominators stay
+    symbolic/undefined (were 0 or -inf); `simplify(1/(x+1)-1/(x+1)) -> 0`, `1/inf -> 0`,
+    `tanh(inf)`, normal `simplify`/`expand`/`factor` on defined input unchanged (no over-block)
+  - behavior_change_expected: yes - strict wrappers of undefined values stop collapsing;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, engine-fast no slow/timeout
+- observed (USER-DIRECTED continuation of the R3/R4 zero-denominator track):
+  - the R3 universal filter only inspected `Add`/`Sub`/`Div` `before` nodes; a genuinely-
+    UNDEFINED value (a `c/0` provably-zero denominator or an `Undefined` constant) wrapped in
+    ANY strict operator - a function (`simplify`/`expand`/`factor`/`abs`/`ln`), a power, a
+    product, a negation - fell through to `_ => false`, so the inner `1/D - 1/D -> 0`
+    cancellation was never reverted at the wrapper and `f(0)` produced a finite value. This is
+    why `eval "1/D - 1/D"` was sound but EVERY `command(1/D - 1/D)` leaked (the leak was NOT
+    meta-function-specific: `abs`/`sin`/`ln`/`^2`/`0*` all leaked the same way).
+  - the core fix is one predicate (`expr_carries_undefined`: `Undefined` constant or `c/0`,
+    EXCLUDING pure `Infinity`) + one filter clause: reject a rewrite whose `before` carries
+    `undefined` unless `after` is STILL undefined - real-domain functions/products/powers are
+    strict (`f(undefined) = undefined`). This un-leaked R3/R4/R4-2/R4-3 across all wrappers.
+    But two more sites needed the SAME predicate: (a) `1^x -> 1` fires for any exponent,
+    leaking `1^(undefined) -> 1`; (b) the Add/Sub PRE-ORDER cancellations in `transform_binary`
+    (polynomial-identity + fraction-pair) return `0` BEFORE child simplification, so the
+    per-node filter compares `0` against `apply_rules(0)` (the original `A-A` is already gone)
+    - at the root the pipeline backstop still catches it, but as a consumed sub-term (the
+    exponent of `1^(A-A)`, then `1^0 -> 1`) it leaks. Gating both with the predicate closed it;
+    guardrail+pressure byte-identical (none of those evaluations were sound).
+- retained learning:
+  - a soundness backstop keyed on the OPERATOR KIND of `before` (Add/Sub/Div only) silently
+    excludes every wrapping context. Key the invariant on the VALUE instead ("`before` is
+    undefined over R") so it holds under any strict node. The eval path and the
+    command/function-wrapper surface are the same invariant; do not special-case one.
+  - `Infinity` and `Undefined` are DIFFERENT failure modes and must be separated. Dropping a
+    pure `Infinity` is frequently sound (`1/inf -> 0`, `tanh(inf) -> 1`, limit evaluations), so
+    the predicate must EXCLUDE it; dropping a genuine `undefined`/`c/0` is never sound. And -
+    caught only by the adversarial round - `after` carrying `Infinity` does NOT excuse dropping
+    an `undefined`: `ln(1/(x-x) - 1/(x-x)) -> -inf` via `ln(0) -> -inf` is unsound because
+    `ln(undefined) = undefined`. The "soundly resolved" target for an undefined input is
+    `undefined` (or a symbolic form still carrying it), never another non-finite.
+  - adversarial probes that re-wrap the SAME undefined expression in many strict operators
+    (`abs`, `ln`, `^2`, `0*`, `simplify`, `expand`) are what exposed the breadth of the leak
+    and the `ln(0)`, `1^(undefined)` sub-cases across three successive rounds; unit tests on
+    the eval path alone saw none of it.
+  - a PRE-ORDER rewrite that returns a cancellation result directly is invisible to a filter
+    placed AFTER child simplification: the filter sees `simplified_children` vs `apply_rules`,
+    and the pre-order already replaced the original form. Either gate the pre-order with the
+    same predicate, or run pre-order outputs through the filter too. Root-level cases survive
+    only because the pipeline backstop re-checks input-vs-output; sub-terms consumed by a
+    parent do not get that second chance.
+  - boundary made precise by round 3: `expr_carries_undefined` is PURELY STRUCTURAL (`c/0`,
+    `Undefined` constant). SEMANTIC indeterminates whose undefinedness appears only after
+    evaluation - `0^0`, `tan(pi/2)`, `sec(pi/2)`, `cot(0)`, `ln(0)` - are syntactically plain
+    `tan(...)`/`0^0`, so the structural `A-A -> 0` cancel fires before they fold to undefined
+    and the predicate cannot see them. These leak under wrappers too but are the SAME root as
+    the deferred R3-2 (pole/indeterminate oracle), NOT R4-5; keeping them out is the honest
+    scope line, not an omission.

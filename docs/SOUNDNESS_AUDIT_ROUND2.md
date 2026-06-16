@@ -110,9 +110,18 @@ universal-filter design; guardrail+pressure fingerprints BYTE-IDENTICAL.
 fold: `tan(π/2) − tan(π/2) → 0` (the cancellation fires before `tan(π/2)` folds to
 `undefined`), `0^0 − 0^0 → 0`, `0^0 − 1 → 0` (the `0^0 = 1` convention applied in an
 additive context), `factorial(−2)·0 → 0`, `2·inf − inf → 0` and `sum(k,k,1,∞) −
-sum(k,k,1,∞) → 0`. These are *indeterminate-arithmetic / semantic-pole* defects,
-distinct from the structural "non-finite term never cancels" fix; they need a pole/
-indeterminate oracle (or `2·inf − inf` is a true `+inf`, a wrong-VALUE not honesty).
+sum(k,k,1,∞) → 0`. The R4-5 adversarial pass added more instances of the same
+family: `sec(π/2) − sec(π/2)`, `cot(0) − cot(0)`, `csc(0) − csc(0)`,
+`ln(0) − ln(0)` (all → `0`). These are *indeterminate-arithmetic / semantic-pole*
+defects, distinct from the structural "non-finite term never cancels" fix: the
+operand is `undefined`/non-finite only AFTER evaluation, but syntactically it is a
+plain `tan(…)`/`0^0`/`ln(0)` that the structural `A − A → 0` cancellation collapses
+first — so `arithmetic_cancel_support::expr_carries_undefined` (purely structural)
+cannot see it. They leak under wrappers too (`simplify(tan(π/2) − tan(π/2)) → 0`,
+`expand(0^0 − 0^0) → 0`) for the same root reason; R4-5 fixes only the SYNTACTIC
+`c/0`/`Undefined` class. Closing R3-2 needs a pole/indeterminate oracle that
+evaluates the operand's definedness before the cancellation (or `2·inf − inf` is a
+true `+inf`, a wrong-VALUE not honesty).
 
 **R3-3 — FIXED (commit `750f0f185`), together with R4 via a shared provably-zero
 oracle.** A denominator that is *provably* but not *literally* zero used to cancel:
@@ -165,17 +174,32 @@ divisions are unchanged. guardrail+pressure BYTE-IDENTICAL. **Scope = the `eval`
 path** (the primary surface, matching how R3/R4/R4-2 graduated): a 119-probe
 adversarial round confirmed 0 bare-`eval` leaks across all four families and all
 spellings (`f²`, `f·f`, fractional `k`, reordered, hyperbolic/sec/csc). The
-`simplify(…)`/`expand(…)` COMMAND wrappers still leak (see R4-5).
+`simplify(…)`/`expand(…)` COMMAND wrappers (and any strict wrapper) were a
+separate broader gap, since fixed by R4-5.
 
-**R4-5 (deferred — command-surface argument evaluation):** the `simplify(…)` and
-`expand(…)` meta-functions reduce their ARGUMENT through a path that does NOT run
-the R3 non-finite/zero-denominator filter, so `simplify(1/D − 1/D) → 0` and
-`expand(1/D − 1/D) → 0` for every identically-zero `D` — **including the already-
-graduated R3/R4/R4-2 cases** (`simplify(1/(x−x) − 1/(x−x)) → 0`,
-`expand(1/(x·x − x²) − 1/(x·x − x²)) → 0`), not just R4-3 Pythagorean. This is a
-single broader gap (the meta-function arg-eval chokepoint missing the universal
-filter), independent of the identity family, and the highest-ROI next soundness
-item: closing it un-leaks R3, R4, R4-2 and R4-3 on the command surface at once.
+**R4-5 — FIXED (commit `PENDING_HASH`).** The universal filter
+`rewrite_unsoundly_drops_nonfinite` only triggered when its `before` node was an
+`Add`/`Sub`/`Div`. A genuinely-undefined value wrapped in any STRICT operator —
+a function (`simplify`/`expand`/`factor`/`abs`/`sin`/`ln`), a power
+(`(1/(x−x)−1/(x−x))^2`), a product (`0·(1/(x−x))`) or a negation — fell through
+to `_ => false`, so the inner additive cancellation `1/D − 1/D → 0` was not
+reverted at the wrapper and `f(0)` produced a finite value. This leaked **R3, R4,
+R4-2 AND R4-3 alike** on the command surface (`simplify(1/(x−x) − 1/(x−x)) → 0`,
+`expand(1/(sin²+cos²−1) − …) → 0`). **Fix:** the filter now rejects ANY rewrite
+whose `before` is genuinely UNDEFINED over ℝ (carries a `c/0` provably-zero
+denominator or an `Undefined` constant) unless `after` is STILL undefined —
+because real-domain functions/products/powers are strict (`f(undefined) =
+undefined`). A new `expr_carries_undefined` predicate excludes pure `Infinity`
+(so `1/inf → 0`, `tanh(inf)`, `atan(inf)` and other limit evaluations are never
+blocked), and — caught by adversarial round 1 — `after` carrying mere `Infinity`
+does NOT excuse the drop either (`ln(1/(x−x) − 1/(x−x)) → −inf` via `ln(0)` is
+unsound: `ln(undefined) = undefined ≠ −inf`). The additive-`Infinity`
+indeterminate (`inf − inf`) keeps the looser non-finite check (R3-2 still defers
+its value-correctness). Wrappers of genuinely-undefined values now stay symbolic
+(the command form retains its unevaluated wrapper, e.g.
+`simplify(1/(x−x) − 1/(x−x))`), legitimate nonzero-denominator cancellation
+(`simplify(1/(x+1) − 1/(x+1)) → 0`) and `Infinity` evaluations are unchanged.
+guardrail+pressure fingerprints BYTE-IDENTICAL.
 
 **R4-4 (deferred — non-Pythagorean transcendental identities):** `e^(ln x) − x`,
 `ln(e^x) − x`, `sin(2x) − 2 sin x cos x`, `tan x − sin x / cos x` still cancel. These
@@ -349,11 +373,11 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
 - [x] R1 — inverse-composition domain gate (`f(f⁻¹(x))`) *(FIXED 2026-06-16, commit `261f1de28`, four rule families)*
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
-- [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
+- [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `sec(π/2)`/`cot(0)`/`csc(0)` poles, `ln(0)−ln(0)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) still fold (incl. under `simplify`/`expand` wrappers); need a pole/indeterminate oracle that evaluates operand-definedness before the structural `A−A` cancellation
 - [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
 - [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `134c351fa`, exact `MultiPoly` normalization in `is_provably_zero`)*
 - [x] R4-3 — *Pythagorean-identity* zero denominators (`sin²+cos²−1`, `cosh²−sinh²−1`, `sec²−tan²−1`, `csc²−cot²−1`) *(FIXED 2026-06-16, commit `fb1e7b2394223de1de376b0f7d22dc54848269cf`, exact `is_pythagorean_identity_zero` coefficient check)*
 - [ ] R4-4 — *non-Pythagorean* transcendental-identity zero denominators (`e^(ln x)−x`, `ln(e^x)−x`, `sin(2x)−2 sin x cos x`, `tan x − sin x/cos x`) still cancel; needs the engine's simplifier (layering + hot-path perf)
-- [ ] R4-5 — *command-surface* gap: `simplify(…)`/`expand(…)` evaluate their argument through a path missing the R3 universal filter, so `simplify(1/D − 1/D) → 0` / `expand(1/D − 1/D) → 0` for every identically-zero `D` — leaks **R3, R4, R4-2 and R4-3 alike** (not family-specific). Highest-ROI next soundness item: one chokepoint fix un-leaks all four on the command surface
+- [x] R4-5 — *strict-wrapper / command-surface* gap: a genuinely-undefined value (`c/0`, `undefined`) inside a function/power/product/neg (incl. `simplify`/`expand`/`factor`) collapsed to a finite value, leaking R3/R4/R4-2/R4-3 on the command surface *(FIXED 2026-06-16, commit `PENDING_HASH`, universal filter now rejects dropping a carried `undefined` under any strict node via `expr_carries_undefined`; Infinity-limit evals preserved; adversarial caught the `ln(0)→−inf` sub-case)*
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery

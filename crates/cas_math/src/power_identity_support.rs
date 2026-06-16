@@ -99,6 +99,16 @@ pub fn try_rewrite_pow_one_or_one_pow_expr(ctx: &mut Context, expr: ExprId) -> O
 
     if let Expr::Number(n) = ctx.get(base) {
         if n.is_one() {
+            // `1^x = 1` holds for every REAL exponent, but NOT when the exponent is
+            // undefined over R: `1^(1/(x-x) - 1/(x-x))` is undefined, not 1, because
+            // a strict operator of an undefined value is undefined. (`x^1 -> x` above
+            // is safe even for undefined `x` since it returns the base unchanged.)
+            // This is the source-level guard mirroring the universal non-finite
+            // filter; the literal base-1 fold otherwise fires before the filter sees
+            // the wrapping Pow node.
+            if crate::arithmetic_cancel_support::expr_carries_undefined(ctx, exp) {
+                return None;
+            }
             return Some(ctx.num(1));
         }
     }

@@ -3455,6 +3455,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
         // children are simplified. The bottom-up pipeline can otherwise
         // normalize opaque rational/root atoms into bulky residual fractions
         // that the same proof helper would have closed immediately.
+        //
+        // Skip when the difference carries a non-finite/undefined value
+        // (`1/(x-x) - 1/(x-x)`, `inf - inf`): this preorder cancels to `0` BEFORE
+        // child simplification, so it bypasses the universal non-finite filter (the
+        // filter would compare `0` against `apply_rules(0)`, not against the
+        // original difference). At the root this is still caught by the pipeline
+        // backstop, but as a sub-term consumed by a parent (e.g. the exponent of
+        // `1^(1/(x-x) - 1/(x-x))`, which then folds `1^0 -> 1`) the undefined would
+        // leak. Leaving it un-cancelled lets the per-node/pipeline filter keep it
+        // sound.
         if matches!(op, BinaryOp::Add | BinaryOp::Sub)
             && matches!(
                 self.current_phase,
@@ -3463,6 +3473,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     | crate::phase::SimplifyPhase::PostCleanup
             )
             && !self.initial_parent_ctx.is_solve_context()
+            && !cas_math::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined(
+                self.context,
+                id,
+            )
         {
             if let Some(plan) =
                 crate::polynomial_identity_support::try_prove_polynomial_identity_zero_expr(
@@ -3482,9 +3496,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
         // PRE-ORDER: Exact fraction-pair cancellation must run before child
         // simplification can expand denominator products and destroy the compact
-        // pair shape produced by calculus rules.
+        // pair shape produced by calculus rules. Skip non-finite/undefined-carrying
+        // differences for the same soundness reason as the polynomial-identity
+        // preorder above (it would cancel `c/0 - c/0 -> 0` past the filter).
         if matches!(op, BinaryOp::Add | BinaryOp::Sub)
             && !self.initial_parent_ctx.is_solve_context()
+            && !cas_math::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined(
+                self.context,
+                id,
+            )
         {
             let parent_ctx = self.build_parent_context();
             if matches!(op, BinaryOp::Add) {
