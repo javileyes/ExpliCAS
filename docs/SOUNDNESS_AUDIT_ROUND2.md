@@ -80,7 +80,7 @@ when an operand has no real finite value:
 - `(0/0) − (0/0) → 0`, `(1/0) − (1/0) → 0`, `tan(π/2) − tan(π/2) → 0`.
 - `factorial(-2)*0 → 0` (`∞·0` indeterminate), `0^0 − 1 → 0`, `0^0 − 0^0 → 0`.
 - `sum(k, k, 1, ∞) − sum(k, k, 1, ∞) → 0` (both divergent).
-**FIXED (commit `PENDING_HASH`) for literal non-finite/undefined operands.**
+**FIXED (commit `7b6297fca`) for literal non-finite/undefined operands.**
 The "this additive combination is zero / these terms cancel" conclusion is reached
 by a LARGE family of independent rules and orchestrator shortcuts (`Annihilation`,
 `Subtraction Self-Cancel`, `Add Inverse`, `Combine Like Terms`/collect,
@@ -232,7 +232,7 @@ deeper isolation-strategy fix; own cycle. NOT YET FIXED.
 5. **R1** — gate `f(f⁻¹(x)) = x` by the inverse's domain. FIXED (commit `261f1de28`)
    across four rule families.
 6. **R3** — block cancellation/like-term folding on non-finite/undefined operands.
-   FIXED (commit `PENDING_HASH`): shared predicate + universal post-filter at the two
+   FIXED (commit `7b6297fca`): shared predicate + universal post-filter at the two
    simplifier chokepoints. R3-2 (semantic indeterminates / infinity-arithmetic) deferred.
 7. **R6** — dropped conditions (`(a*b)^x`, arccot, zero-summand sum). Lower severity.
 8. **R5c** — out-of-range transcendental solves (folds into R5/R1 domain work).
@@ -258,7 +258,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R5a — `solve` abs extraneous-root filter *(FIXED 2026-06-15, commit `4d07aaee6`, rational roots; irrational extraneous split to R5a-2)*
 - [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
 - [x] R1 — inverse-composition domain gate (`f(f⁻¹(x))`) *(FIXED 2026-06-16, commit `261f1de28`, four rule families)*
-- [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `PENDING_HASH`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
+- [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
 - [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
 - [ ] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel; needs a provably-zero oracle in the predicate (PRE-EXISTING, overlaps R4)
 - [ ] R6 — dropped conditions (`(a*b)^x`, arccot, zero-summand sum)
