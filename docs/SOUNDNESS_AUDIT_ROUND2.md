@@ -201,7 +201,7 @@ its value-correctness). Wrappers of genuinely-undefined values now stay symbolic
 (`simplify(1/(x+1) − 1/(x+1)) → 0`) and `Infinity` evaluations are unchanged.
 guardrail+pressure fingerprints BYTE-IDENTICAL.
 
-**R4-4 — exp/log inverse-composition FIXED (commit `PENDING_HASH`); other
+**R4-4 — exp/log inverse-composition FIXED (commit `44f2a272de9a494061e97965590e6ca0f7ddfbf1`); other
 transcendental families still deferred.** These identities are not polynomial and
 not Pythagorean, so the MultiPoly and Pythagorean arms of `is_provably_zero`
 decline them; the *complete* oracle is the engine's own simplifier (it reduces each
@@ -433,7 +433,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
 - [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `134c351fa`, exact `MultiPoly` normalization in `is_provably_zero`)*
 - [x] R4-3 — *Pythagorean-identity* zero denominators (`sin²+cos²−1`, `cosh²−sinh²−1`, `sec²−tan²−1`, `csc²−cot²−1`) *(FIXED 2026-06-16, commit `fb1e7b2394223de1de376b0f7d22dc54848269cf`, exact `is_pythagorean_identity_zero` coefficient check)*
-- [~] R4-4 — *non-Pythagorean* transcendental-identity zero denominators: exp/log **inverse-composition** (`ln(e^f)−f`, `e^(ln f)−f`, both spellings/orders/compound args) *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `is_exp_log_inverse_identity_zero` multiset detector)*; **still deferred** — `sin(2x)−2 sin x cos x`, `cos(2x)` forms, `tan x − sin x/cos x`, `sqrt(x)²−x`, `ln(x²)−2 ln x`, coefficient multiples (one family per future cycle, same template)
+- [~] R4-4 — *non-Pythagorean* transcendental-identity zero denominators: exp/log **inverse-composition** (`ln(e^f)−f`, `e^(ln f)−f`, both spellings/orders/compound args) *(FIXED 2026-06-16, commit `44f2a272de9a494061e97965590e6ca0f7ddfbf1`, exact `is_exp_log_inverse_identity_zero` multiset detector)*; **still deferred** — `sin(2x)−2 sin x cos x`, `cos(2x)` forms, `tan x − sin x/cos x`, `sqrt(x)²−x`, `ln(x²)−2 ln x`, coefficient multiples (one family per future cycle, same template)
 - [x] R4-5 — *strict-wrapper / command-surface* gap: a genuinely-undefined value (`c/0`, `undefined`) inside a function/power/product/neg (incl. `simplify`/`expand`/`factor`) collapsed to a finite value, leaking R3/R4/R4-2/R4-3 on the command surface *(FIXED 2026-06-16, commit `e2aafdc741045fd51c7c6495c25259cbc10375ac`, universal filter now rejects dropping a carried `undefined` under any strict node via `expr_carries_undefined`; Infinity-limit evals preserved; adversarial caught the `ln(0)→−inf` sub-case)*
 - [ ] R4-6 — *`D^(-1)` reciprocal spelling* (CROSS-CUTTING, highest-ROI next): `(D)^(-1) − (D)^(-1) → 0` for every provably-zero `D` (`x−x`, `x·x−x²`, `sin²+cos²−1`, `ln(e^x)−x`) — leaks R3-3/R4-2/R4-3/R4-4 alike via the `Pow(zero, negative)` spelling; `expr_carries_undefined`/`expr_carries_nonfinite_or_undefined` recurse blindly through `Pow` instead of treating `0^(neg)` as `c/0`. One predicate arm un-leaks all families (mirrors R4-5)
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
