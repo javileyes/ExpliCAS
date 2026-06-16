@@ -201,11 +201,67 @@ its value-correctness). Wrappers of genuinely-undefined values now stay symbolic
 (`simplify(1/(x+1) − 1/(x+1)) → 0`) and `Infinity` evaluations are unchanged.
 guardrail+pressure fingerprints BYTE-IDENTICAL.
 
-**R4-4 (deferred — non-Pythagorean transcendental identities):** `e^(ln x) − x`,
-`ln(e^x) − x`, `sin(2x) − 2 sin x cos x`, `tan x − sin x / cos x` still cancel. These
-are not Pythagorean and each needs its own identity knowledge — the only complete
-oracle is the engine's simplifier, which the crate layering + hot-path perf put in a
-later cycle (e.g. a recursion-guarded sub-simplify gated behind a cheap pre-filter).
+**R4-4 — exp/log inverse-composition FIXED (commit `PENDING_HASH`); other
+transcendental families still deferred.** These identities are not polynomial and
+not Pythagorean, so the MultiPoly and Pythagorean arms of `is_provably_zero`
+decline them; the *complete* oracle is the engine's own simplifier (it reduces each
+to `0` standalone), but that is layering-blocked from `cas_math` and a hot-path
+perf hazard. Following the R4-3 template, this cycle adds ONE more EXACT bounded
+detector — `is_exp_log_inverse_identity_zero` — for the inverse-composition pair
+`ln(e^f) − f` (≡ 0 for all real `f`) and `e^(ln f) − f` (≡ 0 for `f > 0`, undefined
+elsewhere — either way `1/D` is never finite-nonzero, the same domain-hole
+treatment already accepted for the pole-bearing Pythagorean `sec²−tan²−1`). It
+accepts both exp spellings (`e^f`, `exp(f)`), both sign orders, and a COMPOUND
+argument `f` (`ln(e^(2x+1)) − (2x+1)`): it locates the composed term, extracts `f`,
+and multiset-matches the remaining `AddView` terms against `∓f`'s own
+decomposition (no construction, stays `&Context`). The composed term must have
+coefficient ±1, so it never flags a non-zero denominator (`ln(e^x) − x + 1 = 1`,
+`ln(e^x) − 2x = −x`, different argument/function all decline). No cancel-rule edit
+was needed: once `is_provably_zero(D)` is true, the R4-5 strict-wrapper filter +
+the R3 universal backstop already keep `1/D − 1/D` undefined. Three adversarial
+rounds drove convergence: round 1 (13 leaks) added the recursive `peel` (nesting
+`ln(e^(ln(e^x)))`) and base-`e` log spellings (`log(e, ·)`); round 2 surfaced the
+non-canonical atom-spelling residual (below); round 3 confirmed the in-scope
+Div-spelled family clean. **Scope = the `1/D − 1/D` (Div-spelled) cancellation**;
+the `D^(-1) − D^(-1)` Pow-reciprocal spelling is the separate cross-cutting R4-6
+gap (below).
+
+**Still deferred (the continuing R4-4 frontier, one family per future cycle, each
+reusing this template):** `sin(2x) − 2 sin x cos x` and `cos(2x)` double-angle
+forms (need argument-doubling + product matching), `tan x − sin x/cos x` (tan
+definition), `sqrt(x)² − x` and `ln(x²) − 2 ln(x)` (algebraic, domain `f ≥ 0` /
+`f > 0`), and coefficient multiples like `2 ln(e^x) − 2x` (the detector requires a
+±1 coefficient on the composed term). Each is a `1/D − 1/D → 0` leak today.
+
+**Structural-spelling residual (inherent to the exact-detector approach, NOT a
+regression — these leaked identically before R4-4):** the detector matches the
+*canonical* AST, so it misses NON-canonical spellings of the atoms it reads —
+`e` written as `exp(1)` or `e^1` (`ln(exp(1)^x) − x`, `ln((e^1)^x) − x`), or an
+un-normalized argument (`ln(e^(1·x)) − x`, where `1·x` ≠ `x` structurally). The
+engine reduces all of these to `0` standalone (its simplifier normalizes the
+atoms first), but the cancellation preorder sees the raw form. Closing the
+spelling gap is exactly what the *complete* simplifier-oracle (the rejected
+Approach B) would do; the same boundary applies to the R4-3 Pythagorean detector
+(`sin(1·x)² + cos(1·x)² − 1`). Documented, low-impact (such spellings do not arise
+from normal computation, which canonicalizes `exp(1) → e`, `1·x → x` early), and
+left to the eventual simplifier-oracle cycle. (`ln(e^x · e^x) − 2x` — where
+`e^x · e^x` must combine to `e^(2x)` before the peel applies — is the same
+normalization-spelling class.)
+
+**R4-6 (deferred — the `D^(-1)` reciprocal spelling, CROSS-CUTTING, the highest-ROI
+next item):** the R4-4 round-3 adversarial surfaced a pre-existing gap orthogonal
+to every identity family: a reciprocal written as `Pow(D, −1)` (or `D^(−n)`) instead
+of `Div(1, D)` is NOT recognized as `c/0` when `D` is provably zero, so
+`(x−x)^(-1) − (x−x)^(-1) → 0`, `(x·x−x²)^(-1) − … → 0`, `(sin²+cos²−1)^(-1) − … → 0`,
+`(ln(e^x)−x)^(-1) − … → 0` all leak — across R3-3, R4-2, R4-3 AND R4-4 alike (the
+Div spelling of each is correctly `undefined`). Root cause: `expr_carries_undefined`
+/ `expr_carries_nonfinite_or_undefined` treat `D/0` (the `Div` arm) as undefined but
+recurse blindly through `Pow(base, exp)`, never recognizing `0^(negative) = 1/0`.
+**Fix (own cycle):** add a `Pow(base, exp)` arm — `is_provably_zero(base)` with a
+negative `exp` ⇒ carries undefined — to both predicates (and verify `transform_pow`
+folds `D^(-n) → undefined` standalone). One predicate arm un-leaks the Pow-reciprocal
+spelling across all zero-denominator families, exactly as R4-5 did for strict
+wrappers.
 
 **Not regressions (verified byte-identical on HEAD):** the adversarial flagged
 `5·a·b·c − a·b·c → 5·a·b·c − a·b·c` (collect fails for ≥3-factor products with an
@@ -377,7 +433,8 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `750f0f185`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
 - [x] R4-2 — *polynomial-identity* zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`) *(FIXED 2026-06-16, commit `134c351fa`, exact `MultiPoly` normalization in `is_provably_zero`)*
 - [x] R4-3 — *Pythagorean-identity* zero denominators (`sin²+cos²−1`, `cosh²−sinh²−1`, `sec²−tan²−1`, `csc²−cot²−1`) *(FIXED 2026-06-16, commit `fb1e7b2394223de1de376b0f7d22dc54848269cf`, exact `is_pythagorean_identity_zero` coefficient check)*
-- [ ] R4-4 — *non-Pythagorean* transcendental-identity zero denominators (`e^(ln x)−x`, `ln(e^x)−x`, `sin(2x)−2 sin x cos x`, `tan x − sin x/cos x`) still cancel; needs the engine's simplifier (layering + hot-path perf)
+- [~] R4-4 — *non-Pythagorean* transcendental-identity zero denominators: exp/log **inverse-composition** (`ln(e^f)−f`, `e^(ln f)−f`, both spellings/orders/compound args) *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `is_exp_log_inverse_identity_zero` multiset detector)*; **still deferred** — `sin(2x)−2 sin x cos x`, `cos(2x)` forms, `tan x − sin x/cos x`, `sqrt(x)²−x`, `ln(x²)−2 ln x`, coefficient multiples (one family per future cycle, same template)
 - [x] R4-5 — *strict-wrapper / command-surface* gap: a genuinely-undefined value (`c/0`, `undefined`) inside a function/power/product/neg (incl. `simplify`/`expand`/`factor`) collapsed to a finite value, leaking R3/R4/R4-2/R4-3 on the command surface *(FIXED 2026-06-16, commit `e2aafdc741045fd51c7c6495c25259cbc10375ac`, universal filter now rejects dropping a carried `undefined` under any strict node via `expr_carries_undefined`; Infinity-limit evals preserved; adversarial caught the `ln(0)→−inf` sub-case)*
+- [ ] R4-6 — *`D^(-1)` reciprocal spelling* (CROSS-CUTTING, highest-ROI next): `(D)^(-1) − (D)^(-1) → 0` for every provably-zero `D` (`x−x`, `x·x−x²`, `sin²+cos²−1`, `ln(e^x)−x`) — leaks R3-3/R4-2/R4-3/R4-4 alike via the `Pow(zero, negative)` spelling; `expr_carries_undefined`/`expr_carries_nonfinite_or_undefined` recurse blindly through `Pow` instead of treating `0^(neg)` as `c/0`. One predicate arm un-leaks all families (mirrors R4-5)
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery

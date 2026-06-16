@@ -1046,8 +1046,126 @@ pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
         if is_pythagorean_identity_zero(ctx, expr) {
             return true;
         }
+        // Transcendental inverse-composition identities (also declined by multipoly):
+        // `ln(e^f) − f` and `e^(ln f) − f`.
+        if is_exp_log_inverse_identity_zero(ctx, expr) {
+            return true;
+        }
     }
     false
+}
+
+/// Identically zero (over the reachable real domain) by an exp/log inverse-
+/// composition identity:
+///   `ln(e^f) − f`   (≡ 0 for ALL real `f`, since `e^f > 0` so `ln(e^f) = f`), and
+///   `e^(ln f) − f`  (≡ 0 wherever defined, i.e. `f > 0`; off that domain `ln f`
+///                    is undefined so `e^(ln f) − f` is undefined — either way
+///                    `1/D` is never a finite non-zero value, so treating it as a
+///                    zero denominator is sound, consistent with the pole-bearing
+///                    Pythagorean identities already accepted here and with the
+///                    engine reducing both to `0` standalone).
+/// Both exponential spellings (`e^f` and `exp(f)`), every natural-log spelling
+/// (`ln`, `log(·)`, `log(e, ·)`), arbitrary NESTING (`ln(e^(ln(e^f))) − f`) and a
+/// COMPOUND argument `f` (`ln(e^(2x+1)) − (2x+1)`) are handled. The composed term
+/// is `peel`ed all the way to its core `f`; the remaining `AddView` terms are then
+/// multiset-matched against `∓f`'s own decomposition. Exact and structural — no
+/// float, no probing. The composed term must have coefficient ±1 (a numeric factor
+/// makes it a `Mul` that `peel` leaves unchanged → declines) and the remaining
+/// terms must pair off exactly, so the detector never flags a non-zero denominator.
+fn is_exp_log_inverse_identity_zero(ctx: &Context, expr: ExprId) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return false;
+    }
+    let flip = |s: Sign| if s == Sign::Pos { Sign::Neg } else { Sign::Pos };
+    // Try each term as the composed `ln(e^f)` / `e^(ln f)` (possibly nested).
+    for i in 0..view.terms.len() {
+        let (composed, s_composed) = view.terms[i];
+        let core = peel_inverse_composition(ctx, composed);
+        if compare_expr(ctx, core, composed) == Ordering::Equal {
+            continue; // nothing peeled — this term is not an inverse composition
+        }
+        // The whole expression is `±(composed − core)`: the remaining terms must
+        // sum to `−s_composed · core`. `composed` with sign `+` needs the rest to
+        // equal `−core` (every core-term's sign flipped); with sign `−`, `+core`.
+        let core_view = AddView::from_expr(ctx, core);
+        let remaining: Vec<(ExprId, Sign)> = view
+            .terms
+            .iter()
+            .enumerate()
+            .filter(|(j, _)| *j != i)
+            .map(|(_, t)| *t)
+            .collect();
+        if remaining.len() != core_view.terms.len() {
+            continue;
+        }
+        let want_flip = s_composed == Sign::Pos;
+        let mut used = vec![false; remaining.len()];
+        let mut all_matched = true;
+        for (g, sg) in &core_view.terms {
+            let target_sign = if want_flip { flip(*sg) } else { *sg };
+            let mut found = false;
+            for (k, (rg, rs)) in remaining.iter().enumerate() {
+                if !used[k] && *rs == target_sign && compare_expr(ctx, *rg, *g) == Ordering::Equal {
+                    used[k] = true;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                all_matched = false;
+                break;
+            }
+        }
+        if all_matched && used.iter().all(|&u| u) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Fully reduce an exp/log inverse composition to its core: `ln(e^g) → g` and
+/// `e^(ln g) → g`, recursively (so `ln(e^(ln(e^x)))` peels to `x`). Natural log is
+/// recognized in every spelling — `ln(·)`, `log(·)`, `log(e, ·)` — and both `e^g`
+/// and `exp(g)`. Returns `expr` unchanged when no inverse composition is at the head.
+fn peel_inverse_composition(ctx: &Context, expr: ExprId) -> ExprId {
+    // `ln(e^g) → peel(g)`
+    if let Some(arg) = natural_log_argument(ctx, expr) {
+        if let Some(g) = crate::expr_extract::extract_exp_argument(ctx, arg) {
+            return peel_inverse_composition(ctx, g);
+        }
+    }
+    // `e^(ln g) → peel(g)`
+    if let Some(exponent) = crate::expr_extract::extract_exp_argument(ctx, expr) {
+        if let Some(g) = natural_log_argument(ctx, exponent) {
+            return peel_inverse_composition(ctx, g);
+        }
+    }
+    expr
+}
+
+/// The argument of a NATURAL logarithm — `ln(x)`, `log(x)` (base defaults to `e`),
+/// or `log(e, x)` (explicit base `e`). Returns `None` for a non-`e` base
+/// (`log(2, x)`, `log10`, `log2`) or a non-log expression. Matches `Ln`/`Log`
+/// directly rather than via `extract_log_base_argument_view`, which returns an
+/// out-of-`Context` sentinel `ExprId` for `log10` that would panic on `ctx.get`.
+fn natural_log_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 {
+        return Some(args[0]);
+    }
+    if ctx.is_builtin(*fn_id, BuiltinFn::Log) {
+        return match args.as_slice() {
+            [arg] => Some(*arg), // `log(x)` — natural by convention
+            [base, arg] if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) => {
+                Some(*arg) // `log(e, x)`
+            }
+            _ => None, // explicit non-`e` base
+        };
+    }
+    None // `log10`, `log2`, or not a logarithm
 }
 
 /// Extract `(signed_coeff, builtin, arg)` from a term equal to `c · f(arg)^2` where
@@ -1539,6 +1657,20 @@ mod tests {
             "sin(x)^2/2 + cos(x)^2/2 - 1/2",
             "(sin(x)^2 + cos(x)^2 - 1)/2",
             "cosh(x)^2/3 - sinh(x)^2/3 - 1/3",
+            // exp/log inverse-composition identities (R4-4), both directions, both
+            // exp spellings, both sign orders, and a compound (multi-term) argument.
+            "ln(e^x) - x",
+            "x - ln(e^x)",
+            "ln(exp(x)) - x",
+            "e^(ln(x)) - x",
+            "exp(ln(x)) - x",
+            "ln(e^(2*x+1)) - (2*x+1)",
+            "e^(ln(x^2+1)) - (x^2+1)",
+            // nested inverse compositions (peel recurses) and base-`e` log spellings
+            "ln(e^(ln(e^x))) - x",
+            "e^(ln(e^(ln(x)))) - x",
+            "log(e, e^x) - x",
+            "log(e, e^(2*x-5)) - (2*x-5)",
         ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
@@ -1569,6 +1701,15 @@ mod tests {
             "sin(x)^2 + cos(x)^4 - 1",
             "cosh(x)^2 - sinh(x)^2 + 1",
             "sin(x)*cos(x) - 1",
+            // exp/log inverse-composition NEAR-misses: never a false positive.
+            "ln(e^x) - x + 1", // stray constant term -> = 1, not 0
+            "ln(e^x) - 2*x",   // coefficient mismatch -> = -x
+            "ln(e^x) - y",     // different bare term -> = x - y
+            "ln(e^y) - x",     // argument mismatch -> = y - x
+            "2*ln(e^x) - 2*x", // coefficient != 1 on the composed term (residual)
+            "ln(e^x) + x",     // wrong sign -> = 2x
+            "log(2, e^x) - x", // non-`e` base -> log_2(e^x) - x != 0
+            "ln(2^x) - x",     // power base is 2, not e -> not an inverse composition
         ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(

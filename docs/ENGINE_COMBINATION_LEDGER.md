@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 187 (newest first)
+Active entries: 188 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
@@ -124,6 +124,7 @@ Active entries: 187 (newest first)
 - 2026-06-16 | `retained` | block 1 (division); extends `cas_math::arithmetic_cancel_support::is_provably... | Retained soundness fix: polynomial-identity zero denominators (Round-2 audit R4-2)
 - 2026-06-16 | `retained` | block 1 (division) + block 5 (trig); extends `cas_math::arithmetic_cancel_sup... | Retained soundness fix: Pythagorean-identity zero denominators (Round-2 audit R4-3)
 - 2026-06-16 | `retained` | block 1 (division/non-finite) - THREE coordinated sites, all keyed on the new | Retained soundness fix: strict-wrapper undefined drop / command surface (Round-2 audit R4-5)
+- 2026-06-16 | `retained` | block 1 (division/non-finite) + block 5 (transcendental); extends | Retained soundness fix: exp/log inverse-composition zero denominators (Round-2 audit R4-4, part 1)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8279,3 +8280,79 @@ Active entries: 187 (newest first)
     and the predicate cannot see them. These leak under wrappers too but are the SAME root as
     the deferred R3-2 (pole/indeterminate oracle), NOT R4-5; keeping them out is the honest
     scope line, not an omission.
+
+## 2026-06-16 - Retained soundness fix: exp/log inverse-composition zero denominators (Round-2 audit R4-4, part 1)
+- area:
+  - block 1 (division/non-finite) + block 5 (transcendental); extends
+    `cas_math::arithmetic_cancel_support::is_provably_zero` with an exact
+    inverse-composition detector `is_exp_log_inverse_identity_zero` (reuses
+    `expr_extract::extract_exp_argument`, `expr_nary::AddView`, `cas_ast::ordering::compare_expr`)
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; R4-4 of docs/SOUNDNESS_AUDIT_ROUND2.md, exp/log
+    inverse-composition family; trig + algebraic transcendental families still deferred)
+- capture:
+  - investment_class: soundness
+  - cell: `1/(ln(e^f) - f) - same` and `1/(e^(ln f) - f) - same` stay undefined (were 0), both
+    exp spellings, both sign orders, compound args (2x+1, x^2+1); near-misses (`ln(e^x)-x+1` = 1,
+    `ln(e^x)-2x` = -x, different arg/function) keep their finite/symbolic value (no over-fire)
+  - behavior_change_expected: yes - exp/log inverse-composition zero denominators stop cancelling;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, engine-fast no slow/timeout
+- observed (USER-DIRECTED, "Haz R4-4"):
+  - scoping workflow (3 parallel investigators + synthesis) confirmed: approach A (exact bounded
+    detector in cas_math) over approach B (call the Simplifier as a complete oracle). B is
+    layering-blocked (is_provably_zero is &Context cas_math; the Simplifier is cas_engine) AND a
+    hot-path re-entrancy/perf hazard (MAX_SIMPLIFY_DEPTH). A is a pure &Context tree-walk, byte-
+    identical huella, and mirrors the retained R4-3 Pythagorean detector exactly.
+  - the engine ALREADY reduces every one of these to 0 STANDALONE (`ln(e^x)-x -> 0`) and
+    `1/(ln(e^x)-x)` ALONE already -> undefined (the denom simplifies to 0, transform_div folds
+    1/0). The leak was purely that the A-A cancellation PREEMPTS the denominator simplification.
+  - NO cancel-rule edit was needed (the scoping synthesis predicted Edit 2 mandatory, but it was
+    not): once is_provably_zero(D) is true, the R4-5 strict-wrapper filter clause + the R3
+    universal backstop already keep 1/D - 1/D undefined. Verified empirically across all spellings.
+- retained learning:
+  - the inverse-composition detector must survive AddView FLATTENING of a compound argument:
+    `ln(e^(2x+1)) - (2x+1)` flattens to [ln(e^(2x+1)), -2x, -1] (3 terms, not 2). Solution: locate
+    the composed term, extract f, AddView(f), and multiset-match the REMAINING terms against
+    `-/+f`'s own decomposition by (compare_expr, sign). Pure &Context, no construction (which would
+    need &mut). The two-term shortcut only handles atomic f; the multiset match handles sums.
+  - adversarial round 1 (13 leaks) drove two robustness fixes the first cut missed: (a) NESTING -
+    `ln(e^(ln(e^x))) - x` extracts f = ln(e^x) which is itself reducible; the fix is a RECURSIVE
+    `peel_inverse_composition` that reduces ln(e^g)->g and e^(ln g)->g to a fixed point, so the
+    composed term peels straight to x before the multiset match. (b) SPELLING - `log(e, e^x)` is a
+    base-`e` natural log the engine reduces standalone but `BuiltinFn::Ln` does not match; recognize
+    natural log via `extract_log_base_argument_view` (base None = ln/log default, or base == E).
+    Lesson: an identity detector must peel its OWN identity recursively (the reduced argument can be
+    a fresh instance of the same identity) and accept every surface spelling the engine itself folds.
+  - the round-1 `log(e,·)` fix first reached for `extract_log_base_argument_view`, which returns an
+    out-of-Context SENTINEL ExprId for `log10`/`log2` (base 10/2) -> `ctx.get(sentinel)` panicked
+    (index out of bounds), crashing `diff(sqrt(log10(x)+1),x)-...` to empty output (a workspace test
+    caught it). Fix: match `Ln`/`Log` builtins DIRECTLY (1-arg log = natural, 2-arg only if base ==
+    Constant::E), never touching the sentinel. Lesson: helpers that encode bases as sentinel IDs are
+    landmines for any &Context consumer that does ctx.get on the base; match the builtin form instead.
+  - structural-spelling boundary (adversarial round 2, 9 leaks, accepted as residual): the detector
+    reads the CANONICAL AST, so non-canonical spellings of the atoms leak - `e` as `exp(1)`/`e^1`,
+    `x` as `1*x`. These reduce to 0 only AFTER the simplifier normalizes the atoms, which the
+    cancellation preorder runs before. This is the inherent limit of exact structural detection (same
+    for R4-3's `sin(1*x)^2+...`); the COMPLETE fix is the layering-blocked simplifier-oracle. They
+    leaked identically before R4-4 (no regression) and do not arise from normal canonicalized
+    computation. Honest residual, not chased - chasing every spelling IS the whack-a-mole.
+  - adversarial round 3 surfaced a PRE-EXISTING CROSS-CUTTING gap (logged as R4-6, the next cycle):
+    a reciprocal spelled `Pow(D, -1)` / `D^(-n)` instead of `Div(1, D)` is not recognized as `c/0`
+    when D is provably zero, so `(x-x)^(-1) - (x-x)^(-1) -> 0`, `(sin^2+cos^2-1)^(-1) - ... -> 0`,
+    `(ln(e^x)-x)^(-1) - ... -> 0` ALL leak (R3-3/R4-2/R4-3/R4-4 alike; the Div spelling of each is
+    correctly undefined). Root cause: `expr_carries_undefined`/`expr_carries_nonfinite_or_undefined`
+    treat the `Div` arm's denominator with `is_provably_zero` but recurse BLINDLY through `Pow`.
+    Verified untouched by R4-4 (the structural-zero cases have no exp/log content). One predicate arm
+    (`Pow(base, exp)` with provably-zero base and negative exp -> undefined) un-leaks all families,
+    exactly the R4-5 pattern. Lesson: a value-keyed undefined predicate must cover EVERY spelling of
+    "divide by it" - `Div(_, D)` AND `Pow(D, negative)` are both `c/0`.
+  - domain-hole identities are sound to flag as provably-zero FOR THE DENOMINATOR PURPOSE: `e^(ln f)
+    - f` is 0 for f>0 and undefined for f<=0, so 1/D is undefined everywhere either way. This is the
+    same treatment already accepted for the pole-bearing Pythagorean `sec^2-tan^2-1`, and it matches
+    the engine's own standalone reduction to 0. Do not over-think the domain hole for reciprocals.
+  - exact-coefficient discipline: requiring coefficient +-1 on the composed term (a numeric factor
+    makes it a Mul that fails the Function match) keeps the detector free of false positives at the
+    cost of leaving `2 ln(e^x) - 2x` a residual. Honest residual > unsound generalization.
+  - the transcendental zero-denominator frontier is open-ended (infinitely many identities). Close
+    it ONE coherent family per cycle (Pythagorean R4-3; exp/log inverse here), each an exact bounded
+    detector; the complete simplifier-oracle stays layering/perf-blocked and documented.
