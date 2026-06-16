@@ -114,17 +114,32 @@ sum(k,k,1,∞) → 0`. These are *indeterminate-arithmetic / semantic-pole* defe
 distinct from the structural "non-finite term never cancels" fix; they need a pole/
 indeterminate oracle (or `2·inf − inf` is a true `+inf`, a wrong-VALUE not honesty).
 
-**R3-3 (deferred — PRE-EXISTING, overlaps R4):** a denominator that is *provably*
-but not *literally* zero still cancels: `1/(x−x) − 1/(x−x) → 0`, `1/(0·x) − 1/(0·x)
-→ 0`, `1/(x²−x²) − 1/(x²−x²) → 0`, `sin(x)/(x−x) − sin(x)/(x−x) → 0`. The shared
-predicate only flags a `Div` whose denominator is a *literal* zero constant
-(`as_rational_const(den).is_zero()`); `x−x`, `0·x`, `x²−x²` are zero-VALUED but
-symbolic, so they slip the gate, and the `A − A` cancellation fires before the
-denominator simplifies to `0`. The engine even emits a self-contradictory
-`required_condition "0 ≠ 0"` on these, so it *knows* the denominator is zero. Closing
-this needs a provably-zero oracle in the predicate (or eager denominator
-simplification before cancellation); it overlaps R4 (provable `0/0`). Verified
-identical on HEAD — NOT a regression of this fix.
+**R3-3 — FIXED (commit `PENDING_HASH`), together with R4 via a shared provably-zero
+oracle.** A denominator that is *provably* but not *literally* zero used to cancel:
+`1/(x−x) − 1/(x−x) → 0`, `1/(0·x) − 1/(0·x) → 0`, `1/(x²−x²) − 1/(x²−x²) → 0`. The
+shared predicate `expr_carries_nonfinite_or_undefined` only flagged a `Div` with a
+*literal* zero denominator (`as_rational_const(den).is_zero()`); `x−x`, `0·x`,
+`x²−x²`, `1²−1` slipped it, so the `A − A` cancellation fired first. **Fix:** a new
+exact `is_provably_zero(ctx, e)` oracle — numeric folding INCLUDING integer-exponent
+powers (`1²−1`, `2²−4`), structural additive cancellation (`x−x`, `x²−x²`,
+telescoping), and a product with a provably-zero factor (`0·x`) — now drives the
+`Div` arm. It is EXACT (no float/probing), so it never false-positives a nonzero
+denominator. Now all those differences stay symbolic instead of folding to `0`.
+A universal backstop (`rewrite_unsoundly_drops_nonfinite`, the R3 filter) was also
+extended to reject any rewrite whose `before` is a `Div` with a provably-zero
+denominator and whose `after` is finite — closing the shortcut paths that bypass
+`transform_div` (`(x²−x²)/(x−x) → x+x`, `(3x−3x)/(x−x) → 3`). `1/inf → 0` is NOT
+blocked (`inf` is not *zero*), so legitimate evaluations are untouched.
+
+**R4-2 (deferred — non-*syntactic* provably-zero denominators):** the oracle is
+EXACT-SYNTACTIC; it does not expand/normalize, so a denominator that is zero only
+after algebra still slips: `1/(x*x − x²) − 1/(x*x − x²) → 0` (`x*x` vs `x²`),
+`1/(2x − x − x) − …  → 0` (coefficient), `1/((x−1)(x+1) − (x²−1)) − … → 0`
+(expansion), `1/(sin²x + cos²x − 1) − … → 0` (Pythagorean identity). The engine
+*does* know each denominator is zero standalone (`1/(x*x−x²) → undefined`), but the
+`A − A` cancellation fires before the denominator simplifies. Closing this needs a
+simplify-before-cancel ordering or a normalize/expand-aware zero oracle (riskier,
+hot-path/recursion cost) — its own cycle.
 
 **Not regressions (verified byte-identical on HEAD):** the adversarial flagged
 `5·a·b·c − a·b·c → 5·a·b·c − a·b·c` (collect fails for ≥3-factor products with an
@@ -141,18 +156,22 @@ of Division: 0/0 → undefined", and bare `0/0` is kept symbolic — but the def
 (steps-off) path short-circuits. The audit doc's "no interior pole produced a false
 finite value" invariant covered *symbolic* poles; this all-numeric `0/0` slips through.
 
-**INVESTIGATED — deferred to its own cycle (needs simplifier instrumentation).**
-Two obvious fix sites were tried and are NOT the default-mode path:
-`DivZeroRule` (`arithmetic.rs`) was extended to treat a *provably-zero* (not just
-literal-`0`) denominator as `0/0 → undefined`, and `const_fold`'s `Div` arm was
-given the same `0/0` guard. Both correctly fix the `--steps on` path, but with
-`eprintln` instrumentation **neither fires** in the default path — yet
-`(1*0)/(1-1)` and `(1²-1)/(1-1)` still fold to `0`. The trigger is a numerator
-containing a `Mul`/`Pow` (`(1*0)/(1-1) → 0` but the structurally-identical
-`(0)/(1-1) → 0/(1-1)` stays symbolic): const_fold rebuilds the numerator and the
-*rebuilt* `Div` is re-simplified to `0` by a THIRD, unidentified rule that bypasses
-`DivZeroRule`. Pinning that rule needs deeper instrumentation. NOT YET FIXED
-(changes reverted to keep the tree clean).
+**FIXED (commit `PENDING_HASH`).** The prior investigation could not pin the
+default-mode producer (it is neither `DivZeroRule` nor `const_fold`). Instrumenting
+the rule loop (`RULE_TAP`) showed the fold bypasses `apply_rules` entirely — the
+default-mode producers are the **fraction-simplification PREORDERS** in
+`engine/transform/transform_helpers.rs::transform_div` (eval-mode fast paths that
+cancel a common factor / fold a `0` numerator before `DivZeroRule` can intervene),
+plus the **sum/difference-of-cubes quotient cancellation**
+(`try_plan_sum_diff_of_cubes_in_num`, which gives `(1³−1)/(1−1) → 1+1+1`). **Fix
+(two sites, both using the shared `is_provably_zero` oracle):** a guard at the TOP of
+`transform_div` resolves a provably-zero denominator to `undefined` up front (so no
+preorder cancels a zero factor); and the cubes-quotient planner declines when the
+denominator is provably zero. Now `(1²−1)/(1−1)`, `(2²−4)/(2−2)`, `(1³−1)/(1−1)`,
+`(1*0)/(1−1)`, `(x−x)/(x−x)`, `5/(x−x)` all → `undefined`; every legitimate quotient
+cancellation with a nonzero denominator (`(x³−1)/(x−1) → x²+x+1`, `(a³−b³)/(a−b)`,
+`1/(2²−1) → 1/3`) is unchanged. Bare `0/0`, `0/(1−1)`, `(3−3)/(5−5)` remain symbolic
+(sound — they never folded to a finite value). guardrail+pressure BYTE-IDENTICAL.
 
 ### R5 — `solve` returns spurious / non-existent roots (WRONG, 12)
 - **R5a — abs equations don't filter extraneous roots — FIXED (commit `4d07aaee6`)
@@ -283,12 +302,13 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R2 — `acosh(cosh(x)) = |x|` (sign-wrong, bounded) *(FIXED 2026-06-15, commit `d22eec10e`)*
 - [x] R5b — `solve(c/poly=0)` no-solution *(FIXED 2026-06-15, commit `14a471e1d`)*
 - [ ] R5d — rational-equation isolation fabricates malformed nested solves (drops valid roots) + `csc/sec/cot` solver crash (NEW)
-- [ ] R4 — numeric `0/0` fold guard *(investigated; default-mode path is a third unidentified rule — own cycle w/ instrumentation)*
+- [x] R4 — numeric `0/0` fold guard *(FIXED 2026-06-16, commit `PENDING_HASH`, shared `is_provably_zero` oracle: `transform_div` top-guard + cubes-quotient planner gate; `(1²−1)/(1−1)`, `(1³−1)/(1−1)` → undefined)*
 - [x] R5a — `solve` abs extraneous-root filter *(FIXED 2026-06-15, commit `4d07aaee6`, rational roots; irrational extraneous split to R5a-2)*
 - [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
 - [x] R1 — inverse-composition domain gate (`f(f⁻¹(x))`) *(FIXED 2026-06-16, commit `261f1de28`, four rule families)*
 - [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `7b6297fca`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
 - [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
-- [ ] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel; needs a provably-zero oracle in the predicate (PRE-EXISTING, overlaps R4)
+- [x] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel *(FIXED 2026-06-16, commit `PENDING_HASH`, exact `is_provably_zero` oracle in the `Div` arm of the non-finite predicate)*
+- [ ] R4-2 — *non-syntactic* provably-zero denominators (`x*x−x²`, `2x−x−x`, `(x−1)(x+1)−(x²−1)`, `sin²+cos²−1`) still cancel; needs a normalize/expand-aware zero oracle or simplify-before-cancel ordering
 - [x] R6 — dropped conditions: `(a*b)^x` split gated + `sum(0,…,∞)=0` *(FIXED 2026-06-16, commit `fdade4506`, Fronts 1 & 3)*
 - [ ] R6-2 — `diff(arccot(x))` `x≠0`: needs an arccot convention decision (non-standard `arctan(1/x)` vs standard continuous arccot) + diff/domain surgery

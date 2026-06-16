@@ -135,6 +135,13 @@ pub fn try_plan_difference_of_squares_in_num(
     den: ExprId,
     didactic_payloads_enabled: bool,
 ) -> Option<DifferenceOfSquaresCancelPlan> {
+    // Cancelling `(a^2 - b^2)/(a - b) -> a + b` requires `a - b != 0`. When the
+    // denominator is PROVABLY zero (`x - x`), the quotient is `0/0` (undefined),
+    // not `a + b`: `(x^2 - x^2)/(x - x)` is undefined, not `x + x`. Decline.
+    if cas_math::arithmetic_cancel_support::is_provably_zero(ctx, den) {
+        return None;
+    }
+
     let (a, b) = if let Some((left, right)) = as_sub(ctx, num) {
         let (a, exp_a) = as_pow(ctx, left)?;
         if as_i64(ctx, exp_a)? != 2 {
@@ -273,6 +280,15 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
     den: ExprId,
     didactic_payloads_enabled: bool,
 ) -> Option<SumDiffCubesCancelPlan> {
+    // Cancelling the common factor of `(a^3 - b^3)/(a - b) -> a^2 + ab + b^2`
+    // requires `a - b != 0`. When the denominator is PROVABLY zero (`1 - 1`,
+    // `x - x`), the quotient is `c/0` (undefined), not the cancelled polynomial:
+    // `(1^3 - 1)/(1 - 1)` is undefined, not `1 + 1 + 1`. Decline so the division
+    // by zero is surfaced instead of fabricating a finite value.
+    if cas_math::arithmetic_cancel_support::is_provably_zero(ctx, den) {
+        return None;
+    }
+
     let (a, b, is_difference) = if let Some((left, right)) = as_sub(ctx, num) {
         let a = try_extract_cube_factor_base(ctx, left)?;
         let b = try_extract_cube_factor_base(ctx, right)?;

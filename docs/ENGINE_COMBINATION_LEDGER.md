@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 183 (newest first)
+Active entries: 184 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
 - 2026-06-16 | `retained` | block 1 (algebra/exponents) + block 9 (summation); `cas_math` shared helpers | Retained soundness fix: product-power split gated + zero-summand sum = 0 (Round-2 audit R6, Fronts 1 & 3)
+- 2026-06-16 | `retained` | block 1 (arithmetic/division) cross-cutting; one shared `cas_math` oracle | Retained soundness fix: provably-zero oracle closes div-by-zero cancellation + 0/0 folds (Round-2 audit R3-3 & R4)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8065,3 +8066,55 @@ Active entries: 183 (newest first)
     arithmetic that could hit infinity: check `is_structurally_zero` first so the sum
     never constructs `0 * inf`. The `i`/`e` reserved-constant bound-var cases the sweep
     flagged are a separate parser concern (malformed sum var), not this fix.
+
+## 2026-06-16 - Retained soundness fix: provably-zero oracle closes div-by-zero cancellation + 0/0 folds (Round-2 audit R3-3 & R4)
+- area:
+  - block 1 (arithmetic/division) cross-cutting; one shared `cas_math` oracle
+    (`arithmetic_cancel_support::is_provably_zero`) driving three sites:
+    the non-finite predicate's `Div` arm (cas_math), `transform_div`'s top guard
+    (`cas_engine/engine/transform/transform_helpers.rs`), and the sum/diff-of-cubes
+    quotient planner (`cas_engine/rules/algebra/fractions/didactic_factor_support.rs`)
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; R3-3 + R4 of docs/SOUNDNESS_AUDIT_ROUND2.md)
+- capture:
+  - investment_class: soundness
+  - cell: `1/(x-x) - 1/(x-x)` stays symbolic (was 0); `(1^2-1)/(1-1)`,
+    `(1^3-1)/(1-1)`, `(x-x)/(x-x)`, `5/(x-x)` -> undefined (were 0 / `1+1+1`)
+  - behavior_change_expected: yes - division by a provably-zero denominator stops
+    folding/cancelling to a finite value; guardrail+pressure fingerprints BYTE-IDENTICAL
+- observed (USER-DIRECTED, "el oráculo de cero-demostrable que cerraría R3-3 + R4 juntos"):
+  - R3-3 and R4 share ONE root cause: a denominator that is PROVABLY but not LITERALLY
+    zero (`x-x`, `1-1`, `0*x`, `x^2-x^2`, `1^2-1`) is treated as a valid nonzero
+    denominator. The R3 non-finite predicate only flagged literal-zero denominators;
+    the R4 fold happens in default-mode `transform_div` PREORDERS (and a cubes-quotient
+    cancellation) that bypass `DivZeroRule` entirely.
+  - INSTRUMENTATION pinned what a prior investigation could not: a `RULE_TAP` in the
+    rule loop showed the R4 fold never reaches `apply_rules` - it is the eval-mode
+    fraction-simplification preorders in `transform_div`. A single top-of-`transform_div`
+    guard (`is_provably_zero(denominator) -> undefined`) closes the whole preorder family
+    at once; the cubes planner needed its own gate because it runs as a pipeline shortcut.
+  - the adversarial sweep surfaced the Pow-numeric denominator gap (`1/(1^2-1) - 1/(1^2-1)`):
+    `as_rational_const` deliberately does NOT fold `Pow`, so the oracle needed an exact
+    integer-power evaluator (no float, no probing) to keep it sound in both directions.
+- retained learning:
+  - when two audit items share a predicate ("is this provably zero?"), build ONE exact
+    oracle and wire it at every decision site rather than special-casing each. EXACT is
+    load-bearing: a heuristic zero-test (`numeric_poly_zero_check` probes random points,
+    `eval_f64` rounds) would false-positive and wrongly declare a NONZERO denominator
+    undefined - trading a leak for an over-block. Use `as_rational_const` + structural
+    cancellation + integer-power folding; never floats.
+  - the cleanest chokepoint for a whole FAMILY of fast paths is their common entry, not
+    each rule: `transform_div` is THE entry for division simplification, so one guard
+    there resolves `c/0` up front and no preorder gets the chance to cancel a zero factor.
+    `RULE_TAP` (tap the rule-apply site, print when a Div folds) is the way to discover
+    that a fold bypasses the rule loop and lives in a preorder/shortcut.
+  - `as_rational_const` returns None on `Pow` (to avoid irrational `2^(1/2)`); an exact
+    zero oracle must fold integer-exponent powers itself.
+  - the cubes/squares/common-factor quotient cancellations are SEPARATE shortcut planners
+    that bypass `transform_div`, so the universal R3 filter `rewrite_unsoundly_drops_nonfinite`
+    was extended with a `Div`-with-provably-zero-denominator clause (scoped to PROVABLY zero,
+    so `1/inf -> 0` is never blocked) to catch them all at the simplifier chokepoints.
+  - DEFERRED as R4-2: NON-syntactic provably-zero denominators (`x*x - x^2`, `2x - x - x`,
+    `(x-1)(x+1) - (x^2-1)`, `sin^2+cos^2-1`) — the exact-syntactic oracle does not normalize
+    or expand, so those need a simplify-before-cancel ordering or a heavier (expansion-aware)
+    zero oracle; that is its own cycle (hot-path/recursion cost makes it non-trivial).

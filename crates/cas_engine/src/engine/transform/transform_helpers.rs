@@ -3855,6 +3855,18 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// Extracted with #[inline(never)] to reduce stack frame size.
     #[inline(never)]
     pub(super) fn transform_div(&mut self, id: ExprId, l: ExprId, r: ExprId) -> ExprId {
+        // Division by a PROVABLY-zero denominator is undefined (`c/0`, `0/0`), not a
+        // finite value. Resolve it up front so no fraction-simplification preorder
+        // cancels a provably-zero factor — `(1^3-1)/(1-1) -> 1+1+1`,
+        // `(1^2-1)/(1-1) -> 0`, `(x-x)/(x-x) -> 1` — and so a `0` numerator over a
+        // provably-zero denominator does not fold to `0`. (`1-1`, `x-x`, `0*x`,
+        // `x^2-x^2` are all provably zero.) Matches the `--steps on` DivZeroRule path.
+        if cas_math::arithmetic_cancel_support::is_provably_zero(self.context, r) {
+            return self
+                .context
+                .add(cas_ast::Expr::Constant(cas_ast::Constant::Undefined));
+        }
+
         let allow_identical_atom_fraction_preorder = !self.collect_steps_enabled()
             && self.event_listener.is_none()
             && self.current_phase == crate::SimplifyPhase::Core

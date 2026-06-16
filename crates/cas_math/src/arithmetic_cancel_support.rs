@@ -3,7 +3,7 @@
 use crate::semantic_equality::SemanticEqualityChecker;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::{One, Signed, Zero};
+use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::collections::BTreeMap;
 
 fn extract_abs_sub_like_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
@@ -971,11 +971,72 @@ fn rational_pow_i32(base: &BigRational, exponent: i32) -> BigRational {
 /// structural additive-cancellation path must decline when this holds, so this
 /// is the shared gate for the cancel rewrites here and for the orchestrator's
 /// exact-zero / common-scale collapse shortcuts in `cas_engine`.
+/// True when `expr` is provably equal to zero over the reals — so a division by
+/// it is `c/0` (undefined) and a cancellation/fold against it is unsound. Combines:
+/// - numeric folding (`as_rational_const`): `1 - 1`, `1^2 - 1`, `2^2 - 4`, `1*0`;
+/// - structural additive cancellation (`is_structurally_zero`): `x - x`,
+///   `x^2 - x^2`, telescoping sums, literal `0`;
+/// - a product with a provably-zero factor: `0*x`, `(x - x)*y`.
+///
+/// Conservative: returns `false` when zero-ness is not provable (a bare variable,
+/// `x - 1`, …), so it never blocks a legitimate division.
+pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
+    if let Some(rat) = exact_rational_value(ctx, expr) {
+        return rat.is_zero();
+    }
+    if crate::expr_relations::is_structurally_zero(ctx, expr) {
+        return true;
+    }
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        return is_provably_zero(ctx, *l) || is_provably_zero(ctx, *r);
+    }
+    false
+}
+
+/// Exact rational value of a fully-numeric (variable-free) expression, including
+/// integer-exponent powers (`1^2 - 1`, `2^2 - 4`) which `as_rational_const`
+/// declines. Returns `None` for anything not exactly rational (a variable, an
+/// irrational power like `2^(1/2)`, an indeterminate `0^0`, a zero denominator).
+/// Exact only — no float evaluation — so it never reports a false zero.
+fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Neg(a) => Some(-exact_rational_value(ctx, *a)?),
+        Expr::Add(a, b) => Some(exact_rational_value(ctx, *a)? + exact_rational_value(ctx, *b)?),
+        Expr::Sub(a, b) => Some(exact_rational_value(ctx, *a)? - exact_rational_value(ctx, *b)?),
+        Expr::Mul(a, b) => Some(exact_rational_value(ctx, *a)? * exact_rational_value(ctx, *b)?),
+        Expr::Div(a, b) => {
+            let d = exact_rational_value(ctx, *b)?;
+            if d.is_zero() {
+                return None;
+            }
+            Some(exact_rational_value(ctx, *a)? / d)
+        }
+        Expr::Pow(base, exp) => {
+            let base = exact_rational_value(ctx, *base)?;
+            let exp = exact_rational_value(ctx, *exp)?;
+            if !exp.is_integer() {
+                return None; // irrational / radical power — not exactly rational
+            }
+            let e = exp.to_integer().to_i32()?;
+            if base.is_zero() && e <= 0 {
+                return None; // 0^0 indeterminate, 0^(neg) undefined
+            }
+            let mut acc = BigRational::one();
+            for _ in 0..e.unsigned_abs() {
+                acc *= &base;
+            }
+            Some(if e < 0 { BigRational::one() / acc } else { acc })
+        }
+        _ => None,
+    }
+}
+
 pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Constant(cas_ast::Constant::Infinity | cas_ast::Constant::Undefined) => true,
         Expr::Div(num, den) => {
-            crate::numeric_eval::as_rational_const(ctx, *den).is_some_and(|d| d.is_zero())
+            is_provably_zero(ctx, *den)
                 || expr_carries_nonfinite_or_undefined(ctx, *num)
                 || expr_carries_nonfinite_or_undefined(ctx, *den)
         }
@@ -1008,10 +1069,22 @@ pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool 
 /// "carry", so they are never blocked. Function/quotient *evaluations* such as
 /// `atan(inf) -> pi/2` or `1/inf -> 0` operate on non-additive nodes, so they are
 /// never blocked either.
+///
+/// The second clause covers division by a PROVABLY-zero denominator: a quotient
+/// `c/(x-x)` is `c/0` (undefined), so a fraction-simplification shortcut that
+/// cancels its zero factor — `(x^2-x^2)/(x-x) -> x+x`, `(3x-3x)/(x-x) -> 3` — is
+/// unsound and must be rejected. This is scoped to a *provably-zero* denominator
+/// (not any non-finite-bearing `Div`), so a legitimate evaluation like `1/inf -> 0`
+/// (where `inf` is non-zero) is never blocked.
 pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: ExprId) -> bool {
-    matches!(ctx.get(before), Expr::Add(_, _) | Expr::Sub(_, _))
-        && expr_carries_nonfinite_or_undefined(ctx, before)
-        && !expr_carries_nonfinite_or_undefined(ctx, after)
+    if expr_carries_nonfinite_or_undefined(ctx, after) {
+        return false;
+    }
+    match ctx.get(before) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => expr_carries_nonfinite_or_undefined(ctx, before),
+        Expr::Div(_, den) => is_provably_zero(ctx, *den),
+        _ => false,
+    }
 }
 
 /// Rewrite `a - a` to `0`, returning the cancelled inner expression.
@@ -1047,9 +1120,9 @@ pub fn try_rewrite_add_inverse_zero_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        expr_carries_nonfinite_or_undefined, match_add_inverse_expr, match_sub_self_semantic_expr,
-        rewrite_unsoundly_drops_nonfinite, try_rewrite_add_inverse_zero_expr,
-        try_rewrite_sub_self_zero_expr,
+        expr_carries_nonfinite_or_undefined, is_provably_zero, match_add_inverse_expr,
+        match_sub_self_semantic_expr, rewrite_unsoundly_drops_nonfinite,
+        try_rewrite_add_inverse_zero_expr, try_rewrite_sub_self_zero_expr,
     };
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
@@ -1095,6 +1168,23 @@ mod tests {
         let finite = parse("2*x + 3*x", &mut ctx).expect("parse");
         let five_x = parse("5*x", &mut ctx).expect("parse");
         assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, finite, five_x));
+
+        // A `Div` with a PROVABLY-zero denominator folding to a finite value is
+        // blocked (`(x^2-x^2)/(x-x) -> x+x`), but `1/inf -> 0` (denominator non-zero)
+        // and a legit quotient (`(x^2-1)/(x-1) -> x+1`) are NOT.
+        let sq_over_zero = parse("(x^2-x^2)/(x-x)", &mut ctx).expect("parse");
+        let x_plus_x = parse("x+x", &mut ctx).expect("parse");
+        assert!(rewrite_unsoundly_drops_nonfinite(
+            &ctx,
+            sq_over_zero,
+            x_plus_x
+        ));
+        let one_over_inf = parse("1/inf", &mut ctx).expect("parse");
+        let zero = ctx.num(0);
+        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, one_over_inf, zero));
+        let legit = parse("(x^2-1)/(x-1)", &mut ctx).expect("parse");
+        let x_plus_1 = parse("x+1", &mut ctx).expect("parse");
+        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, legit, x_plus_1));
     }
 
     #[test]
@@ -1108,6 +1198,11 @@ mod tests {
             "x/0 - x/0",
             "inf*x",
             "2 + inf",
+            // R3-3: division by a PROVABLY (not literally) zero denominator.
+            "1/(x-x)",
+            "1/(x^2-x^2)",
+            "1/(0*x)",
+            "1/(x-x) - 1/(x-x)",
         ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
@@ -1115,11 +1210,38 @@ mod tests {
                 "expected `{src}` to carry a non-finite/undefined value"
             );
         }
-        for src in ["x", "x - x", "sin(x)", "1/x", "x/2 - x/2", "a/c - b/c"] {
+        for src in [
+            "x",
+            "x - x",
+            "sin(x)",
+            "1/x",
+            "x/2 - x/2",
+            "a/c - b/c",
+            "1/(x-1)",
+        ] {
             let expr = parse(src, &mut ctx).expect("parse");
             assert!(
                 !expr_carries_nonfinite_or_undefined(&ctx, expr),
                 "expected `{src}` to be finite/defined"
+            );
+        }
+    }
+
+    #[test]
+    fn is_provably_zero_detects_structural_numeric_and_product_zeros() {
+        let mut ctx = Context::new();
+        for src in ["0", "1-1", "2-2", "x-x", "x^2-x^2", "0*x", "x*0", "(x-x)*y"] {
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                is_provably_zero(&ctx, expr),
+                "`{src}` must be provably zero"
+            );
+        }
+        for src in ["x", "x-1", "1", "x*y", "x^2", "2"] {
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                !is_provably_zero(&ctx, expr),
+                "`{src}` must NOT be provably zero"
             );
         }
     }
