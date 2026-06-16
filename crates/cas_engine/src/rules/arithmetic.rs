@@ -3335,6 +3335,25 @@ fn combine_additive_numeric_constants_for_cancellation(
     (compare_expr(ctx, rebuilt, expr) != Ordering::Equal).then_some(rebuilt)
 }
 
+/// True when `expr` is provably non-finite or undefined over the reals — it
+/// contains an `infinity`/`undefined` constant, or a division by a provably-zero
+/// denominator (`x/0`, `0/0`). Such a term must NOT cancel against a copy of
+/// itself: `inf - inf`, `undefined - undefined`, and `(1/0) - (1/0)` are all
+/// indeterminate/undefined, NOT `0`.
+/// True when `expr` carries a literal non-finite or undefined value — an
+/// `Infinity`/`Undefined` constant, or a division with a provably-zero
+/// denominator — anywhere in its tree. Subtracting such a term from itself does
+/// NOT cancel to `0` (`inf - inf`, `(1/0) - (1/0)` and `undefined - undefined`
+/// are indeterminate, not zero), so every structural additive-cancellation path
+/// must decline when this holds. Shared by the additive-pair cancellation rule
+/// and the orchestrator's exact-zero equivalence shortcut.
+pub(crate) fn additive_term_is_nonfinite_or_undefined(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    cas_math::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined(ctx, expr)
+}
+
 pub(crate) fn try_rewrite_exact_additive_term_cancellation_expr(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -3343,7 +3362,10 @@ pub(crate) fn try_rewrite_exact_additive_term_cancellation_expr(
     if view.terms.len() == 2 {
         let (lhs_expr, lhs_sign) = normalize_signed_add_term(ctx, view.terms[0].0, view.terms[0].1);
         let (rhs_expr, rhs_sign) = normalize_signed_add_term(ctx, view.terms[1].0, view.terms[1].1);
-        if lhs_sign != rhs_sign && exprs_match_for_cancellation(ctx, lhs_expr, rhs_expr) {
+        if lhs_sign != rhs_sign
+            && exprs_match_for_cancellation(ctx, lhs_expr, rhs_expr)
+            && !additive_term_is_nonfinite_or_undefined(ctx, lhs_expr)
+        {
             return Some(ctx.num(0));
         }
         return None;
@@ -3368,15 +3390,19 @@ pub(crate) fn try_rewrite_exact_additive_term_cancellation_expr(
             continue;
         }
 
-        let opposite_index = normalized_terms.iter().copied().enumerate().find_map(
-            |(other_index, (other_expr, other_sign))| {
-                (other_index != index
-                    && !used[other_index]
-                    && other_sign != term_sign
-                    && compare_expr(ctx, term_expr, other_expr) == Ordering::Equal)
-                    .then_some(other_index)
-            },
-        );
+        let opposite_index = if additive_term_is_nonfinite_or_undefined(ctx, term_expr) {
+            None
+        } else {
+            normalized_terms.iter().copied().enumerate().find_map(
+                |(other_index, (other_expr, other_sign))| {
+                    (other_index != index
+                        && !used[other_index]
+                        && other_sign != term_sign
+                        && compare_expr(ctx, term_expr, other_expr) == Ordering::Equal)
+                        .then_some(other_index)
+                },
+            )
+        };
 
         if let Some(other_index) = opposite_index {
             used[index] = true;
@@ -16572,6 +16598,13 @@ pub(crate) fn try_build_exact_zero_common_scaled_difference_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
+    // A term carrying a literal non-finite or undefined value never cancels with
+    // itself: `inf - inf`, `(1/0) - (1/0)` and `undefined - undefined` are
+    // indeterminate, not zero. Decline so the difference stays symbolic.
+    if additive_term_is_nonfinite_or_undefined(ctx, expr) {
+        return None;
+    }
+
     let profiling =
         crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
     let expr_sample = profiling.then(|| render_expr_for_orchestrator_profile(ctx, expr));

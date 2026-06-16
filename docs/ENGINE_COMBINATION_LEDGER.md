@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 181 (newest first)
+Active entries: 182 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
+- 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -7965,3 +7966,57 @@ Active entries: 181 (newest first)
     DOMAIN. For a literal, that is a cheap interval check; gating on it costs nothing
     and is the difference between honest "stays symbolic" and a fabricated real (or a
     complex value smuggled into a real-domain result via `sqrt(1-c^2)` with `|c|>1`)
+
+## 2026-06-16 - Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
+- area:
+  - cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_support`
+    predicate + universal post-filter at the two `cas_engine` simplifier chokepoints
+    (`engine/transform/mod.rs::transform_expr_recursive`, `orchestrator::simplify_pipeline`),
+    plus targeted declines at the cas_math cancellation primitives (annihilation,
+    sub-self, add-inverse, collect-like-terms)
+- status:
+  - `retained` (HONESTY/WRONG soundness fix; R3 of docs/SOUNDNESS_AUDIT_ROUND2.md)
+- capture:
+  - investment_class: soundness
+  - cell: `inf - inf`, `x/0 - x/0`, `(1/0) - (1/0)`, `undefined - undefined` -> `undefined`;
+    `sqrt(inf) - sqrt(inf)`, `ln(inf) - ln(inf) + 7`, `1/0 - 1/0 + 2/0 - 2/0`,
+    `sin(undefined) - sin(undefined)` STAY SYMBOLIC (were `0` / a finite value)
+  - behavior_change_expected: yes - non-finite additive cancellations stop folding to
+    0/finite; guardrail+pressure fingerprints BYTE-IDENTICAL (no fixture carries a
+    literal non-finite term)
+- observed (USER-DIRECTED, Round-2 audit priority #6, "continue with R3"):
+  - the "these additive terms cancel / this difference is zero" conclusion is reached
+    by a LARGE family of independent rules AND orchestrator shortcuts (`Annihilation`,
+    `Subtraction Self-Cancel`, `Add Inverse`, `Combine Like Terms`/collect,
+    `Polynomial Identity`, `Collapse Common-Scale Equivalent Difference`, `Collapse
+    Exact Zero Additive Subexpression`, ...). Gating them one-by-one was whack-a-mole:
+    each guard just revealed the next producer, and two of them implement `Rule`
+    DIRECTLY (bypassing the `SimpleRule` bridge), so even a rule-level filter missed them.
+  - the ADVERSARIAL sweep was essential: the first sweep (276 probes) surfaced ~50
+    leaks the per-rule guards missed (function-wrapped `sqrt(inf)`/`ln(inf)`/`sin(undefined)`,
+    multi-pair `1/0-1/0+2/0-2/0`). That forced the redesign from per-rule guards to a
+    UNIVERSAL post-filter at the two simplifier chokepoints (`transform_expr_recursive`
+    catches every rule at any node depth; `simplify_pipeline` catches the shortcut
+    dispatcher). The second sweep (471 probes) confirmed 0 literal leaks and found only
+    the PRE-EXISTING `1/(x-x)` provably-zero-denominator class (R3-3) and two
+    PRE-EXISTING collect defects (`5*a*b*c - a*b*c`, `cos(x)+cos(x)`) - both byte-identical on HEAD.
+- retained learning:
+  - when a single soundness property is enforced by a "decision" that many independent
+    rules/shortcuts re-derive, do NOT gate each producer - find the SHARED acceptance
+    point and post-filter there. The universal invariant here: "no rewrite may turn a
+    non-finite/undefined Add/Sub into a result that no longer carries the non-finite."
+    A sound resolution keeps it non-finite or folds to `undefined` (both still "carry");
+    function/quotient EVALUATIONS (`atan(inf)->pi/2`, `1/inf->0`) operate on non-additive
+    nodes and are never blocked - that Add/Sub restriction is what makes the filter both
+    sound AND complete enough to leave evaluations alone.
+  - the right chokepoint is the recursive per-node transform (`transform_expr_recursive`),
+    NOT the rule-trait bridge: rules that `impl Rule` directly bypass the `SimpleRule`
+    adapter, but EVERY rule result flows through `apply_rules` inside the per-node
+    transform. Filter the simplifier's acceptance of a node's new form, not the rule.
+  - keep the targeted primitive declines too: the universal filter alone leaves
+    `x/0 - x/0` symbolic, but declining the cancellation in the cas_math primitives lets
+    the undefined-propagation rules fold 2-term forms all the way to `undefined`. Filter
+    (backstop, keeps symbolic) + decline (lets a sound path produce `undefined`) compose.
+  - a literal-zero `Div` predicate (`as_rational_const(den).is_zero()`) does NOT cover a
+    provably-but-symbolically-zero denominator (`x-x`, `0*x`, `x^2-x^2`); that needs a
+    provably-zero oracle and is its own deferred step (R3-3, overlaps R4).

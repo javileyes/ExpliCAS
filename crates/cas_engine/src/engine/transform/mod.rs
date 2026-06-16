@@ -323,7 +323,24 @@ impl<'a> LocalSimplificationTransformer<'a> {
         };
 
         // 2. Apply rules
-        let result = self.apply_rules(expr_with_simplified_children);
+        let mut result = self.apply_rules(expr_with_simplified_children);
+
+        // Universal soundness backstop: rule application must not collapse a
+        // non-finite/undefined additive combination into a purely finite value.
+        // `inf - inf`, `sqrt(inf) - sqrt(inf)`, `ln(inf) - ln(inf) + 7` and
+        // `x/0 - x/0 + y/0 - y/0` are indeterminate, not `0`/finite. The same
+        // "these terms cancel" conclusion is reached by a large family of
+        // independent rules; rather than gate each, reject any rule result that
+        // drops the non-finite here, keeping the pre-rule form so a sound path
+        // (folding to `undefined`, or staying symbolic) wins instead.
+        if cas_math::arithmetic_cancel_support::rewrite_unsoundly_drops_nonfinite(
+            self.context,
+            expr_with_simplified_children,
+            result,
+        ) {
+            result = expr_with_simplified_children;
+        }
+
         self.cache.insert(id, result);
         result
     }

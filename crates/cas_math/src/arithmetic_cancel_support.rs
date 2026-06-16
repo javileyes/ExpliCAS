@@ -962,11 +962,66 @@ fn rational_pow_i32(base: &BigRational, exponent: i32) -> BigRational {
     }
 }
 
+/// True when `expr` carries a literal non-finite or undefined value — an
+/// `Infinity`/`Undefined` constant, or a division with a provably-zero
+/// denominator — anywhere in its tree.
+///
+/// Subtracting such a term from itself does NOT cancel to `0`: `inf - inf`,
+/// `(1/0) - (1/0)` and `undefined - undefined` are indeterminate, not zero. Every
+/// structural additive-cancellation path must decline when this holds, so this
+/// is the shared gate for the cancel rewrites here and for the orchestrator's
+/// exact-zero / common-scale collapse shortcuts in `cas_engine`.
+pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Constant(cas_ast::Constant::Infinity | cas_ast::Constant::Undefined) => true,
+        Expr::Div(num, den) => {
+            crate::numeric_eval::as_rational_const(ctx, *den).is_some_and(|d| d.is_zero())
+                || expr_carries_nonfinite_or_undefined(ctx, *num)
+                || expr_carries_nonfinite_or_undefined(ctx, *den)
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
+            expr_carries_nonfinite_or_undefined(ctx, *a)
+                || expr_carries_nonfinite_or_undefined(ctx, *b)
+        }
+        Expr::Neg(a) | Expr::Hold(a) => expr_carries_nonfinite_or_undefined(ctx, *a),
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|&c| expr_carries_nonfinite_or_undefined(ctx, c)),
+        _ => false,
+    }
+}
+
+/// True when rewriting `before` into `after` would unsoundly drop a non-finite or
+/// undefined value.
+///
+/// `before` is an additive node (`Add`/`Sub`) that carries a literal non-finite
+/// or undefined value, but `after` no longer does. Every such rewrite is a
+/// cancellation/collapse that silently turned an *indeterminate* difference
+/// (`inf - inf`, `x/0 - x/0`, `sqrt(inf) - sqrt(inf)`, `undefined - undefined`,
+/// `ln(inf) - ln(inf) + 7`) into a purely finite value — which is unsound.
+///
+/// This is the universal backstop applied at every rewrite-acceptance point
+/// (`Rule::apply` and the orchestrator root-shortcut dispatch), because the same
+/// "this additive combination is zero" conclusion is reached by a large family of
+/// independent rules and shortcuts. A *sound* resolution either keeps the value
+/// non-finite (`inf + 1 -> inf`) or folds to `undefined` — both of which still
+/// "carry", so they are never blocked. Function/quotient *evaluations* such as
+/// `atan(inf) -> pi/2` or `1/inf -> 0` operate on non-additive nodes, so they are
+/// never blocked either.
+pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: ExprId) -> bool {
+    matches!(ctx.get(before), Expr::Add(_, _) | Expr::Sub(_, _))
+        && expr_carries_nonfinite_or_undefined(ctx, before)
+        && !expr_carries_nonfinite_or_undefined(ctx, after)
+}
+
 /// Rewrite `a - a` to `0`, returning the cancelled inner expression.
 pub fn try_rewrite_sub_self_zero_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ArithmeticCancelRewrite> {
+    if expr_carries_nonfinite_or_undefined(ctx, expr) {
+        return None;
+    }
     let inner = match_sub_self_semantic_expr(ctx, expr)?;
     Some(ArithmeticCancelRewrite {
         rewritten: ctx.num(0),
@@ -979,6 +1034,9 @@ pub fn try_rewrite_add_inverse_zero_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ArithmeticCancelRewrite> {
+    if expr_carries_nonfinite_or_undefined(ctx, expr) {
+        return None;
+    }
     let inner = match_add_inverse_expr(ctx, expr)?;
     Some(ArithmeticCancelRewrite {
         rewritten: ctx.num(0),
@@ -989,12 +1047,95 @@ pub fn try_rewrite_add_inverse_zero_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        match_add_inverse_expr, match_sub_self_semantic_expr, try_rewrite_add_inverse_zero_expr,
+        expr_carries_nonfinite_or_undefined, match_add_inverse_expr, match_sub_self_semantic_expr,
+        rewrite_unsoundly_drops_nonfinite, try_rewrite_add_inverse_zero_expr,
         try_rewrite_sub_self_zero_expr,
     };
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+
+    #[test]
+    fn rewrite_filter_blocks_nonfinite_additive_drop_but_allows_evaluations() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let undef = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Undefined));
+
+        // Additive non-finite collapses to a finite value -> BLOCKED.
+        for src in [
+            "inf - inf",
+            "sqrt(inf) - sqrt(inf)",
+            "ln(inf) - ln(inf) + 7",
+            "x/0 - x/0 + y/0 - y/0",
+            "sin(undefined) - sin(undefined)",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            assert!(
+                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero),
+                "`{src}` -> 0 must be flagged as an unsound drop"
+            );
+        }
+
+        // Folding the SAME non-finite difference to `undefined` is allowed (after
+        // still carries the non-finite marker).
+        let inf_minus_inf = parse("inf - inf", &mut ctx).expect("parse");
+        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, inf_minus_inf, undef));
+
+        // A non-ADDITIVE node carrying non-finite (a function/quotient evaluation
+        // like `atan(inf) -> pi/2` or `1/inf -> 0`) is never blocked.
+        let atan_inf = parse("atan(inf)", &mut ctx).expect("parse");
+        let pi_half = parse("pi/2", &mut ctx).expect("parse");
+        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, atan_inf, pi_half));
+
+        // A purely finite additive expression simplifying is never blocked.
+        let finite = parse("2*x + 3*x", &mut ctx).expect("parse");
+        let five_x = parse("5*x", &mut ctx).expect("parse");
+        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, finite, five_x));
+    }
+
+    #[test]
+    fn detects_nonfinite_and_undefined_terms() {
+        let mut ctx = Context::new();
+        for src in ["inf", "undefined", "1/0", "x/0", "x/0 - x/0", "inf*x", "2 + inf"] {
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                expr_carries_nonfinite_or_undefined(&ctx, expr),
+                "expected `{src}` to carry a non-finite/undefined value"
+            );
+        }
+        for src in ["x", "x - x", "sin(x)", "1/x", "x/2 - x/2", "a/c - b/c"] {
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert!(
+                !expr_carries_nonfinite_or_undefined(&ctx, expr),
+                "expected `{src}` to be finite/defined"
+            );
+        }
+    }
+
+    #[test]
+    fn declines_sub_self_cancellation_for_division_by_zero() {
+        // `x/0 - x/0` must NOT cancel to 0: `x/0` is undefined, so the difference
+        // is indeterminate, not zero.
+        let mut ctx = Context::new();
+        let expr = parse("x/0 - x/0", &mut ctx).expect("parse");
+        assert!(try_rewrite_sub_self_zero_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn declines_add_inverse_cancellation_for_infinity() {
+        // `inf + (-inf)` is indeterminate, not 0.
+        let mut ctx = Context::new();
+        let expr = parse("inf + (-inf)", &mut ctx).expect("parse");
+        assert!(try_rewrite_add_inverse_zero_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn still_cancels_finite_sub_self() {
+        // Regression: ordinary finite self-subtraction must still cancel.
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)/2 - sin(x)/2", &mut ctx).expect("parse");
+        assert!(try_rewrite_sub_self_zero_expr(&mut ctx, expr).is_some());
+    }
 
     #[test]
     fn detects_sub_self_symbolic() {

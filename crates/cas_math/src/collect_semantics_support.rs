@@ -54,6 +54,15 @@ pub fn collect_with_semantics_mode(
         return None;
     }
 
+    // Collecting like terms sums coefficients, so `x/0 - x/0` would collapse to
+    // `0 * (x/0)` and then `0`. That is unsound: a term carrying a literal
+    // non-finite or undefined value does not vanish when its coefficients cancel
+    // (`0 * undefined` is indeterminate, not zero). Decline collection entirely
+    // for such expressions so they stay symbolic.
+    if crate::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined(ctx, expr) {
+        return None;
+    }
+
     let (allowed, assumption) = match mode {
         CollectSemanticsMode::Strict => {
             if undefined_risk {
@@ -123,6 +132,17 @@ mod tests {
         let out = collect_with_semantics_mode(&mut ctx, expr, CollectSemanticsMode::Generic, true)
             .expect("out");
         assert!(out.assumption.is_none());
+    }
+
+    #[test]
+    fn declines_collect_for_division_by_zero_even_in_generic() {
+        // Collecting `x/0 - x/0` would sum coefficients to `0 * (x/0) = 0`, which is
+        // unsound (`0 * undefined` is indeterminate). Generic mode normally cancels
+        // unconditionally, but the non-finite guard must still decline.
+        let mut ctx = Context::new();
+        let expr = parse("x/0 - x/0", &mut ctx).expect("parse");
+        let out = collect_with_semantics_mode(&mut ctx, expr, CollectSemanticsMode::Generic, false);
+        assert!(out.is_none());
     }
 
     #[test]

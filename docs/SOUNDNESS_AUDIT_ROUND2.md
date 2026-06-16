@@ -80,10 +80,57 @@ when an operand has no real finite value:
 - `(0/0) − (0/0) → 0`, `(1/0) − (1/0) → 0`, `tan(π/2) − tan(π/2) → 0`.
 - `factorial(-2)*0 → 0` (`∞·0` indeterminate), `0^0 − 1 → 0`, `0^0 − 0^0 → 0`.
 - `sum(k, k, 1, ∞) − sum(k, k, 1, ∞) → 0` (both divergent).
-**Fix:** cancellation / like-term combination must not fire when an operand is
-provably non-finite or undefined (∞, `0/0`, `1/0`, `tan(π/2)`, divergent sum,
-`factorial(neg)`). This touches the foundational cancellation path (higher huella)
-— scope carefully.
+**FIXED (commit `PENDING_HASH`) for literal non-finite/undefined operands.**
+The "this additive combination is zero / these terms cancel" conclusion is reached
+by a LARGE family of independent rules and orchestrator shortcuts (`Annihilation`,
+`Subtraction Self-Cancel`, `Add Inverse`, `Combine Like Terms`/collect,
+`Polynomial Identity`, `Collapse Common-Scale Equivalent Difference`, `Collapse
+Exact Zero Additive Subexpression`, …). Gating them one-by-one was whack-a-mole —
+the adversarial sweep kept surfacing new producers (function-wrapped `sqrt(inf)`,
+multi-pair `1/0-1/0+2/0-2/0`, …). The fix has two layers:
+- a shared predicate `cas_math::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined`
+  (Infinity/Undefined constant, or division by a provably-zero denominator, anywhere
+  in the tree), used to make the cas_math cancellation primitives (annihilation,
+  sub-self, add-inverse, collect-like-terms) DECLINE so 2-term forms fold to
+  `undefined`;
+- a UNIVERSAL post-filter `rewrite_unsoundly_drops_nonfinite` applied at the two
+  simplifier chokepoints (`transform_expr_recursive` per node at any depth, and the
+  `simplify_pipeline` shortcut dispatcher): no rewrite may turn a non-finite/undefined
+  Add/Sub into a result that no longer carries the non-finite. Function/quotient
+  *evaluations* (`atan(inf) → π/2`, `1/inf → 0`) operate on non-additive nodes and
+  are never blocked.
+
+Now: `inf − inf`, `x/0 − x/0`, `(1/0) − (1/0)`, `undefined − undefined` → `undefined`;
+`sqrt(inf) − sqrt(inf)`, `ln(inf) − ln(inf) + 7`, `1/0 − 1/0 + 2/0 − 2/0`,
+`sin(undefined) − sin(undefined)` stay symbolic (NOT `0`/finite). Two adversarial
+sweeps (≈725 probes, ~50 confirmed leaks in the first, 0 in the second) drove the
+universal-filter design; guardrail+pressure fingerprints BYTE-IDENTICAL.
+
+**R3-2 (deferred):** *semantic* indeterminates that look finite syntactically still
+fold: `tan(π/2) − tan(π/2) → 0` (the cancellation fires before `tan(π/2)` folds to
+`undefined`), `0^0 − 0^0 → 0`, `0^0 − 1 → 0` (the `0^0 = 1` convention applied in an
+additive context), `factorial(−2)·0 → 0`, `2·inf − inf → 0` and `sum(k,k,1,∞) −
+sum(k,k,1,∞) → 0`. These are *indeterminate-arithmetic / semantic-pole* defects,
+distinct from the structural "non-finite term never cancels" fix; they need a pole/
+indeterminate oracle (or `2·inf − inf` is a true `+inf`, a wrong-VALUE not honesty).
+
+**R3-3 (deferred — PRE-EXISTING, overlaps R4):** a denominator that is *provably*
+but not *literally* zero still cancels: `1/(x−x) − 1/(x−x) → 0`, `1/(0·x) − 1/(0·x)
+→ 0`, `1/(x²−x²) − 1/(x²−x²) → 0`, `sin(x)/(x−x) − sin(x)/(x−x) → 0`. The shared
+predicate only flags a `Div` whose denominator is a *literal* zero constant
+(`as_rational_const(den).is_zero()`); `x−x`, `0·x`, `x²−x²` are zero-VALUED but
+symbolic, so they slip the gate, and the `A − A` cancellation fires before the
+denominator simplifies to `0`. The engine even emits a self-contradictory
+`required_condition "0 ≠ 0"` on these, so it *knows* the denominator is zero. Closing
+this needs a provably-zero oracle in the predicate (or eager denominator
+simplification before cancellation); it overlaps R4 (provable `0/0`). Verified
+identical on HEAD — NOT a regression of this fix.
+
+**Not regressions (verified byte-identical on HEAD):** the adversarial flagged
+`5·a·b·c − a·b·c → 5·a·b·c − a·b·c` (collect fails for ≥3-factor products with an
+implicit-1 coefficient) and `cos(x) + cos(x) → 2·cos(0)·cos(x)` (a spurious unit
+`cos(0)` factor). Both pre-date this fix and involve no non-finite term, so the R3
+guards never touch them — a separate pre-existing collect-normalization defect.
 
 ### R4 — Numeric `0/0` folds to a finite value (WRONG/HONESTY, 3)
 - `(1²−1)/(1−1) → 0`, `(2²−4)/(2−2) → 0`: the `0/denominator → 0` fast path does
@@ -184,8 +231,9 @@ deeper isolation-strategy fix; own cycle. NOT YET FIXED.
    for rational roots; irrational extraneous (R5a-2) needs exact verification.
 5. **R1** — gate `f(f⁻¹(x)) = x` by the inverse's domain. FIXED (commit `261f1de28`)
    across four rule families.
-6. **R3** — block cancellation/like-term folding on non-finite/undefined operands
-   (foundational cancellation path; scope carefully — high huella).
+6. **R3** — block cancellation/like-term folding on non-finite/undefined operands.
+   FIXED (commit `PENDING_HASH`): shared predicate + universal post-filter at the two
+   simplifier chokepoints. R3-2 (semantic indeterminates / infinity-arithmetic) deferred.
 7. **R6** — dropped conditions (`(a*b)^x`, arccot, zero-summand sum). Lower severity.
 8. **R5c** — out-of-range transcendental solves (folds into R5/R1 domain work).
 
@@ -210,5 +258,7 @@ All in the explicitly-deferred families, confirming Round-1's scoping:
 - [x] R5a — `solve` abs extraneous-root filter *(FIXED 2026-06-15, commit `4d07aaee6`, rational roots; irrational extraneous split to R5a-2)*
 - [ ] R5a-2 — irrational/transcendental extraneous roots (e.g. `solve(|x|=2-e)`) need exact/symbolic back-substitution
 - [x] R1 — inverse-composition domain gate (`f(f⁻¹(x))`) *(FIXED 2026-06-16, commit `261f1de28`, four rule families)*
-- [ ] R3 — non-finite/undefined operand cancellation guard
+- [x] R3 — non-finite/undefined operand cancellation guard *(FIXED 2026-06-16, commit `PENDING_HASH`, shared predicate + universal post-filter at the two simplifier chokepoints; literal ∞/undefined/`c÷0` no longer cancel to 0)*
+- [ ] R3-2 — *semantic* indeterminates (`tan(π/2)−tan(π/2)`, `0^0−0^0`, `factorial(−2)·0`) and infinity-arithmetic (`2·inf−inf` → true `+inf`) need a pole/indeterminate oracle
+- [ ] R3-3 — *provably*-but-not-*literally*-zero denominators (`1/(x−x)`, `1/(0·x)`, `1/(x²−x²)`) cancel; needs a provably-zero oracle in the predicate (PRE-EXISTING, overlaps R4)
 - [ ] R6 — dropped conditions (`(a*b)^x`, arccot, zero-summand sum)

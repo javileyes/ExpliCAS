@@ -13021,6 +13021,14 @@ fn try_standard_common_scale_known_pair_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    // Factoring a non-finite common scale and zeroing the residual is unsound:
+    // `inf - inf` is `inf * (1 - 1)`, not `inf * 0 = 0`. The same holds for a
+    // `(1/0) - (1/0)` or `undefined - undefined` difference. Decline so the
+    // expression stays symbolic rather than collapsing to `0`.
+    if crate::rules::arithmetic::additive_term_is_nonfinite_or_undefined(ctx, expr) {
+        return None;
+    }
+
     let (_common_factor, residual_expr) =
         extract_common_multiplicative_residual_sum_root(ctx, expr)?;
     if !matches_direct_small_zero_or_known_pair_residual_root(ctx, residual_expr) {
@@ -13387,6 +13395,14 @@ fn try_standard_exact_zero_equivalence_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    // A term carrying a literal non-finite or undefined value never cancels with
+    // itself: `inf - inf`, `(1/0) - (1/0)` and `undefined - undefined` are
+    // indeterminate, not zero. Decline the whole exact-zero collapse so these
+    // stay symbolic rather than folding to `0`.
+    if crate::rules::arithmetic::additive_term_is_nonfinite_or_undefined(ctx, expr) {
+        return None;
+    }
+
     if matches_direct_log_square_product_split_zero_identity_root(ctx, expr)
         || matches_direct_ln_abs_product_split_zero_identity_root(ctx, expr)
     {
@@ -26208,6 +26224,28 @@ impl Orchestrator {
         expr: ExprId,
         simplifier: &mut Simplifier,
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
+        let (result, steps, stats) = self.simplify_pipeline_inner(expr, simplifier);
+        // Universal soundness backstop: the pipeline (root shortcuts + phases) must
+        // not collapse a non-finite/undefined additive combination into a purely
+        // finite value. `inf - inf`, `1/0 - 1/0 + 2/0 - 2/0`, `sqrt(inf) - sqrt(inf)`
+        // are indeterminate, not `0`. If a shortcut produced such a result, discard
+        // it and keep the input symbolic (a per-node sound path may still fold it to
+        // `undefined`).
+        if cas_math::arithmetic_cancel_support::rewrite_unsoundly_drops_nonfinite(
+            &simplifier.context,
+            expr,
+            result,
+        ) {
+            return (expr, Vec::new(), stats);
+        }
+        (result, steps, stats)
+    }
+
+    fn simplify_pipeline_inner(
+        &mut self,
+        expr: ExprId,
+        simplifier: &mut Simplifier,
+    ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         self.initialize_deadline_if_needed();
         let _probe_budget_scope =
             crate::rules::arithmetic::enter_default_simplify_probe_budget_scope();
@@ -27490,7 +27528,17 @@ impl Orchestrator {
                     )
                 );
             }
-            if add_root || sub_root {
+            // A difference whose terms carry a literal non-finite or undefined
+            // value never collapses to zero: `inf - inf`, `(1/0) - (1/0)` and
+            // `undefined - undefined` are indeterminate, not `0`. Skip the whole
+            // additive exact-zero / common-scale shortcut family so these stay
+            // symbolic instead of being folded by one of its many routes.
+            if (add_root || sub_root)
+                && !crate::rules::arithmetic::additive_term_is_nonfinite_or_undefined(
+                    &simplifier.context,
+                    expr,
+                )
+            {
                 if collect_steps
                     && simplifier.get_steps_mode() == crate::options::StepsMode::Compact
                 {

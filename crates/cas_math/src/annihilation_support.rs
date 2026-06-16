@@ -110,6 +110,16 @@ pub fn should_rewrite_annihilation_to_zero_with_mode_flags(
     strict_mode: bool,
     has_undefined_risk: impl Fn(&Context, ExprId) -> bool,
 ) -> Option<AnnihilationRewriteKind> {
+    // A term carrying a literal non-finite or undefined value never annihilates
+    // with itself: `x/0 - x/0`, `inf - inf` and `undefined - undefined` are
+    // indeterminate, not `0`. Decline regardless of domain mode so they stay
+    // symbolic. (The domain-mode/undefined-risk policy below covers terms that
+    // are only *potentially* undefined, e.g. `x/(x-1) - x/(x-1)`; this covers
+    // terms that are *definitely* non-finite.)
+    if crate::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined(ctx, expr) {
+        return None;
+    }
+
     let strict_domain = if assume_mode { false } else { strict_mode };
     should_rewrite_annihilation_to_zero_with(ctx, expr, strict_domain, has_undefined_risk)
 }
@@ -296,6 +306,45 @@ mod tests {
             true,
             true,
             |_core_ctx, _term| true,
+        );
+        assert_eq!(out, Some(AnnihilationRewriteKind::TwoTerm));
+    }
+
+    #[test]
+    fn declines_annihilation_for_nonfinite_terms_in_every_mode() {
+        // `x/0 - x/0`, `inf - inf`, `undefined - undefined` must never annihilate
+        // to 0 — they are indeterminate, not zero. This holds even in Assume mode
+        // (where the undefined-risk policy would otherwise allow cancellation).
+        for src in ["x/0 - x/0", "inf - inf", "undefined - undefined"] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).expect("parse");
+            for (assume, strict) in [(false, false), (true, false), (false, true)] {
+                let out = should_rewrite_annihilation_to_zero_with_mode_flags(
+                    &ctx,
+                    expr,
+                    assume,
+                    strict,
+                    |_core_ctx, _term| false,
+                );
+                assert_eq!(
+                    out, None,
+                    "`{src}` must not annihilate (assume={assume}, strict={strict})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn still_annihilates_finite_self_subtraction() {
+        // Regression: ordinary finite `x - x` still annihilates to 0.
+        let mut ctx = Context::new();
+        let expr = parse("x - x", &mut ctx).expect("parse");
+        let out = should_rewrite_annihilation_to_zero_with_mode_flags(
+            &ctx,
+            expr,
+            false,
+            false,
+            |_core_ctx, _term| false,
         );
         assert_eq!(out, Some(AnnihilationRewriteKind::TwoTerm));
     }
