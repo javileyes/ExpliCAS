@@ -1343,12 +1343,14 @@ fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
 }
 
 /// True when `expr` is genuinely UNDEFINED over ℝ because it is a power or function
-/// at a PROVABLY-ZERO argument that is a pole / indeterminate there:
-///   - `0^k` for `k ≤ 0`: `0^(neg) = 1/0` (the R4-6 reciprocal spelling) and `0^0`
-///     (the indeterminate form). A POSITIVE exponent gives `0^n = 0`, defined
-///     (handled by `is_provably_zero`); a symbolic / non-rational exponent is left
-///     unflagged (its sign is unknown, so soundness is preserved).
-///   - `cot(0)` and `csc(0)` = `c/0` (the `sin`-denominator trig poles).
+/// at a PROVABLY-ZERO argument that is a pole / indeterminate there.
+///
+/// `0^k` is undefined for `k ≤ 0`: `0^(neg) = 1/0` (the R4-6 reciprocal spelling) and
+/// `0^0` (the indeterminate form). A POSITIVE exponent gives `0^n = 0`, defined
+/// (handled by `is_provably_zero`); a symbolic / non-rational exponent is left
+/// unflagged (its sign is unknown, so soundness is preserved). `cot(0)` and `csc(0)`
+/// are `c/0`, the `sin`-denominator trig poles.
+///
 /// `ln(0) = −∞` is intentionally EXCLUDED — it is non-finite, not undefined, and
 /// `1/ln(0) = 0`, so flagging it would wrongly block `1/ln(0) − 1/ln(0) → 0`. The
 /// `tan`/`sec` poles at `π/2 + kπ` need argument-multiple analysis (deferred). Every
