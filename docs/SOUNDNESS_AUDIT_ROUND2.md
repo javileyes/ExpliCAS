@@ -126,13 +126,13 @@ legitimate cancellation is over-blocked (`cot(x) − cot(x) → 0`, `(x−x)^2 �
 provably-zero argument; (b) `ln(0) − ln(0)` — `ln(0) = −∞`, and since `1/ln(0) = 0`,
 flagging `ln(0)` would wrongly block `1/ln(0) − 1/ln(0) → 0`, so it needs additive-
 context-specific handling, not a blanket predicate; (c) — **CLOSED (commit
-`PENDING_HASH`)** by the exact special-function-value zero oracle below:
+`b4d25c53e737aa2bdea9dc773bbb24c9b4d66eaa`)** by the exact special-function-value zero oracle below:
 `csc(sin(0))`, `cot(ln(1))`, `csc(cos(0)−1)`, `0^sin(0)` (and the `e^0` spelling)
 now stay undefined; (d) `factorial(−2)·0`, `2·inf − inf` (true `+inf`, a wrong-VALUE),
 `sum(k,k,1,∞) − sum(…)` — infinity arithmetic. Closing these needs the per-function
 pole/indeterminate oracle that evaluates operand definedness before the cancellation.
 
-**Exact special-function-value zero oracle — FIXED (commit `PENDING_HASH`),
+**Exact special-function-value zero oracle — FIXED (commit `b4d25c53e737aa2bdea9dc773bbb24c9b4d66eaa`),
 CROSS-CUTTING.** The R3-2 (c) and R4-4 boundaries were both "the argument equals a
 special point only *after* function evaluation, which the *structural*
 `is_provably_zero` does not do" — so `csc(sin(0))`, `cot(ln(1))`, `csc(cos(0)−1)`,
