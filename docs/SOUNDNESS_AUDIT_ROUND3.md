@@ -15,6 +15,18 @@ oracle) fixes landed. Baseline commit: `983f8b8c6`.
   the R3-family non-finite/pole cancellation re-verified clean; no Round-2 fix
   regressed; the B-2/A-2 power-merge deferrals remain correctly scoped (not broken).
 
+**Fix progress (as of 2026-06-17).** Cluster **A** ✅ (`c26c608f5`), Cluster **B** ✅
+(`c55b1879a`), Cluster **C inverse-trig half** ✅ (`b97329291`), Cluster **E** ✅
+(`eaa02ecc8`) — all graduated, `make ci` green, guardrail+pressure fingerprints
+byte-identical. **Remaining:** Cluster C's extraneous-root filter (the `½(±√29−5)` /
+`½(1±√17)` negative roots — highest-value, but touches the most-exercised solve path so it
+needs its own scoped + adversarially-verified cycle) and its `ln(x)=ln(-x)→ℝ` collapse
+(needs the log sign-conditions threaded to `IdentityAllReals`); Cluster **D** (`acosh` in
+`--domain assume` — mode-semantics: surface vs drop the `x≥0` assumption); Cluster **F**
+(interval strictness — likely architectural). The four landed fixes retired ~17 of the 24
+probes (the entire complex-leak family A+B, the worst solve fabrications, and all empty
+sum/product wrong values).
+
 ## 1. Methodology
 
 This round hunted defects across ~20 independent axes (solve, powers-radicals, abs-sign-floor, hyperbolic, complex-leakage, series-sum, equation-systems-ineq, plus regression axes for the Round-2 fixes). Each axis was hunted in parallel by a dedicated prober that generated candidate failures, after which every candidate was handed to an independent **default-reject skeptic** who re-derived the truth from **numeric real-domain ground truth** (the engine's own evaluator at concrete points, plus Python `math`/`cmath` cross-checks) and discarded anything explainable as a sound symbolic residual, a capability gap, or a known-deferred item. Survivors were de-duplicated against the Round-2 fix ledger (R1 inverse-composition domain, R2 `acosh∘cosh`, R3-family non-finite/pole cancellation, R4-family zero-denominator, the exact special-value oracle) so that nothing already fixed or already scoped-out was double-counted. **24 defects** survived both the hunt and the adversarial verify.
