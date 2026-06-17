@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 192 (newest first)
+Active entries: 193 (newest first)
 
+- 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
@@ -8512,3 +8513,41 @@ Active entries: 192 (newest first)
   - reuse over rewrite: extending the shared undefined oracle (one detector arm) fixed an entire
     9-probe cluster across three different combining rules, with byte-identical huella, instead of
     guarding each rule - the same leverage as R4-5/R4-6.
+
+## 2026-06-17 - Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
+- area:
+  - block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-negativity classifier
+    `is_sum_of_nonnegative` (sqrt-form `Pow` arm + `Sqrt` builtin arm) and the `Abs Of Sqrt` identity
+    extractor `try_extract_abs_sqrt_like_arg`
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; Round-3 audit Cluster B; completes the `(-1)^(1/2)`
+    complex-leak theme started by Cluster A)
+- capture:
+  - investment_class: soundness
+  - cell: `abs(sqrt(-4)) -> 2*|(-1)^(1/2)|`, `abs((-1)^(1/2)) -> |(-1)^(1/2)|`,
+    `abs(sqrt(-9)) -> 3*|(-1)^(1/2)|`, `abs(sqrt(-4)+sqrt(-9)) -> 5*|(-1)^(1/2)|` (bars retained on the
+    imaginary part, were stripped); real radicands unchanged (`abs(sqrt(x)) -> sqrt(x)`,
+    `abs(sqrt(2)) -> sqrt(2)`, `sqrt(x^2) -> |x|`); odd-root real case correct (`abs((-8)^(1/3)) -> 2`)
+  - behavior_change_expected: yes - abs no longer strips bars from an even root of a negative literal;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, engine-fast no slow/timeout
+- observed (USER-DIRECTED, Round-3 Cluster B):
+  - the abs simplifier assumed every square root is `>= 0` on TWO independent surfaces: the
+    `is_sum_of_nonnegative` classifier (gating the "Abs Positive Factor" / sum-nonnegative strips) AND
+    the standalone `Abs Of Sqrt` identity (`|sqrt(r)| -> sqrt(r)` via `try_extract_abs_sqrt_like_arg`,
+    which bypasses the classifier entirely). The first probe `abs(2*(-1)^(1/2))` was fixed by patching
+    only the classifier, but `abs(sqrt(-4))` still leaked because it normalizes to `2*sqrt(-1)` and the
+    identity strip fires on the `sqrt(-1)` builtin form directly. Fixing both surfaces was required.
+  - Cluster A had already retired the dangerous `^2 -> -4` / `^2 -> -1` teeth (the universal filter
+    blocks the post-strip collapse); Cluster B is the residual bare-strip - the result was already
+    symbolic-undefined, so this is an honesty/warning-retention fix, not a false-finite-value fix.
+- retained learning:
+  - an "x is non-negative" classifier must treat an even root of a negative radicand as NOT
+    non-negative (it is imaginary, not a non-negative real). Gate the sqrt-form arms on
+    `as_rational_const(radicand).is_negative()` - exact, no false positive on symbolic radicands.
+  - a single semantic property (`sqrt(r) >= 0`) is often asserted on multiple independent code paths
+    (a shared classifier AND a dedicated identity rule); a probe that exercises one path can pass while
+    another still leaks. Trace the actual rule sequence (`--steps on`) and patch every surface that
+    encodes the assumption, not just the first one the probe happens to hit.
+  - residual kept honest: a symbolic always-negative radicand (`abs(sqrt(-x^2-1))`) still strips
+    because its negativity needs a symbolic-sign oracle, but the stripped result is itself
+    undefined-over-R everywhere, so no finite false value is produced - deferred, not a regression.

@@ -771,21 +771,28 @@ pub fn try_rewrite_abs_quotient_identity_expr(
 pub fn try_extract_abs_sqrt_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let abs_arg = try_unwrap_abs_arg(ctx, expr)?;
 
-    if let Expr::Function(fn_id, _) = ctx.get(abs_arg) {
-        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) {
-            return Some(abs_arg);
+    // Radicand of the matched sqrt-like form, when present.
+    let radicand = match ctx.get(abs_arg) {
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) => {
+            args.first().copied()
         }
-    }
-
-    if let Expr::Pow(_, exp) = ctx.get(abs_arg) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if n.numer() == &1.into() && n.denom() == &2.into() {
-                return Some(abs_arg);
+        Expr::Pow(base, exp) => {
+            let base = *base;
+            match ctx.get(*exp) {
+                Expr::Number(n) if n.numer() == &1.into() && n.denom() == &2.into() => Some(base),
+                _ => None,
             }
         }
+        _ => None,
+    }?;
+
+    // `|sqrt(r)| -> sqrt(r)` only holds where the root is real: an even root of
+    // a negative radicand is imaginary, so the absolute-value bars must stay.
+    if as_rational_const(ctx, radicand).is_some_and(|r| r.is_negative()) {
+        return None;
     }
 
-    None
+    Some(abs_arg)
 }
 
 /// Rewrite `|sqrt_like(x)| -> sqrt_like(x)` with canonical description.
@@ -1010,8 +1017,11 @@ pub fn is_sum_of_nonnegative(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         // x^(2k) is non-negative
         Expr::Pow(_, exp) => {
-            if crate::root_forms::extract_square_root_base(ctx, expr).is_some() {
-                return true;
+            if let Some(base) = crate::root_forms::extract_square_root_base(ctx, expr) {
+                // A square-root form `x^(1/2)` is non-negative only where it is
+                // real: an even root of a negative radicand is imaginary, so it
+                // is not a non-negative real and the bars must stay.
+                return !as_rational_const(ctx, base).is_some_and(|b| b.is_negative());
             }
             if let Expr::Number(n) = ctx.get(*exp) {
                 n.is_integer() && n.to_integer().is_even()
@@ -1021,7 +1031,10 @@ pub fn is_sum_of_nonnegative(ctx: &Context, expr: ExprId) -> bool {
         }
         // abs(x), sqrt(x), exp(x) are non-negative / positive on reals.
         Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Abs) => true,
-        Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Sqrt) => true,
+        // sqrt(x) >= 0 only where it is real: sqrt of a negative is imaginary.
+        Expr::Function(name, args) if ctx.is_builtin(*name, BuiltinFn::Sqrt) => {
+            args.len() == 1 && !as_rational_const(ctx, args[0]).is_some_and(|a| a.is_negative())
+        }
         Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Exp) => true,
         Expr::Number(n) => !n.is_negative(),
         Expr::Add(l, r) => is_sum_of_nonnegative(ctx, *l) && is_sum_of_nonnegative(ctx, *r),
@@ -1100,6 +1113,39 @@ mod tests {
         assert!(!is_sum_of_nonnegative(&ctx, x));
         assert!(!is_sum_of_nonnegative(&ctx, neg));
         assert!(!is_sum_of_nonnegative(&ctx, linear));
+    }
+
+    #[test]
+    fn rejects_even_root_of_negative_radicand() {
+        // sqrt(-4) and (-1)^(1/2) are imaginary, not non-negative reals: the
+        // classifier must not authorize stripping the abs bars from them.
+        let mut ctx = Context::new();
+        let neg_four = ctx.num(-4);
+        let neg_one = ctx.num(-1);
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let sqrt_neg = ctx.call_builtin(BuiltinFn::Sqrt, vec![neg_four]);
+        let pow_neg_half = ctx.add(Expr::Pow(neg_one, half));
+        // 2 * (-1)^(1/2): the imaginary factor must still reject the product.
+        let two = ctx.num(2);
+        let scaled = ctx.add(Expr::Mul(two, pow_neg_half));
+
+        assert!(!is_sum_of_nonnegative(&ctx, sqrt_neg));
+        assert!(!is_sum_of_nonnegative(&ctx, pow_neg_half));
+        assert!(!is_sum_of_nonnegative(&ctx, scaled));
+
+        // Positive radicands stay non-negative (no regression).
+        let two_pos = ctx.num(2);
+        let half2 = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let sqrt_two = ctx.call_builtin(BuiltinFn::Sqrt, vec![two_pos]);
+        let pow_two_half = ctx.add(Expr::Pow(two_pos, half2));
+        assert!(is_sum_of_nonnegative(&ctx, sqrt_two));
+        assert!(is_sum_of_nonnegative(&ctx, pow_two_half));
     }
 
     #[test]
