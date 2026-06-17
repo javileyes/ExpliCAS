@@ -44,9 +44,9 @@ No Round-2 fix regressed.
 ## 3. Defect Clusters by Root Cause
 
 ### Cluster A — `sqrt` of a negative literal fabricates a real value (the `i²=-1` leak)
-**Severity: honesty-violation. 9 probes. Largest cluster. — FIXED (commit `PENDING_HASH`).**
+**Severity: honesty-violation. 9 probes. Largest cluster. — FIXED (commit `c26c608f5d00f373accaabab5a0aefebe8516a62`).**
 
-**Fix (commit `PENDING_HASH`):** rather than guard each combining rule, the fix
+**Fix (commit `c26c608f5d00f373accaabab5a0aefebe8516a62`):** rather than guard each combining rule, the fix
 extends the exact undefined-over-ℝ detector `is_structurally_undefined_over_reals`
 (consumed by both `expr_carries_*` predicates, hence the R3/R4-5/R4-6 universal
 filter) to recognize an **even root of a provably-negative base** as undefined:
