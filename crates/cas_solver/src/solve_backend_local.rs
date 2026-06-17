@@ -10,16 +10,34 @@ use std::collections::HashMap;
 
 use crate::solve_backend_contract::{CoreSolverOptions, SolveBackend};
 
-/// True when `expr` contains a non-finite / undefined constant (∞ or undefined)
-/// anywhere. Such a value is never a real solution of an equation over ℝ.
+/// True when `expr` is not a real value: it contains a non-finite / undefined
+/// constant (∞ or undefined) anywhere, or an out-of-range inverse-trig term
+/// (`arcsin(c)` / `arccos(c)` with `|c| > 1`, whose real domain is `[-1, 1]`).
+/// Such a value is never a real solution of an equation over ℝ — e.g.
+/// `solve(cos(x)=2, x)` must not report `{ arccos(2) }`.
 fn solution_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
+    use cas_ast::BuiltinFn;
+    use num_traits::Signed;
     match ctx.get(expr) {
         Expr::Constant(Constant::Infinity | Constant::Undefined) => true,
         Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
             solution_contains_nonfinite(ctx, *a) || solution_contains_nonfinite(ctx, *b)
         }
         Expr::Neg(a) | Expr::Hold(a) => solution_contains_nonfinite(ctx, *a),
-        Expr::Function(_, args) => args.iter().any(|&c| solution_contains_nonfinite(ctx, c)),
+        Expr::Function(fn_id, args) => {
+            // arcsin/arccos of a constant outside [-1, 1] is undefined over ℝ.
+            if args.len() == 1
+                && (ctx.is_builtin(*fn_id, BuiltinFn::Arcsin)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Arccos)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Asin)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Acos))
+                && cas_math::numeric_eval::as_rational_const(ctx, args[0])
+                    .is_some_and(|c| c.abs() > num_rational::BigRational::from_integer(1.into()))
+            {
+                return true;
+            }
+            args.iter().any(|&c| solution_contains_nonfinite(ctx, c))
+        }
         Expr::Matrix { data, .. } => data.iter().any(|&c| solution_contains_nonfinite(ctx, c)),
         _ => false,
     }
@@ -192,5 +210,46 @@ impl SolveBackend for LocalSolveBackend {
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
         let set = filter_real_solutions(&simplifier.context, eq, var, set);
         Ok((set, steps))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::solution_contains_nonfinite;
+    use cas_ast::{Context, Expr};
+
+    #[test]
+    fn out_of_range_inverse_trig_root_is_not_real() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let neg_three = ctx.num(-3);
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let one = ctx.num(1);
+        let neg_one = ctx.num(-1);
+
+        // arcsin/arccos of |c| > 1 are undefined over ℝ — not real solutions.
+        let arcsin_two = ctx.call("arcsin", vec![two]);
+        let arccos_two = ctx.call("arccos", vec![two]);
+        let arcsin_neg_three = ctx.call("arcsin", vec![neg_three]);
+        assert!(solution_contains_nonfinite(&ctx, arcsin_two));
+        assert!(solution_contains_nonfinite(&ctx, arccos_two));
+        assert!(solution_contains_nonfinite(&ctx, arcsin_neg_three));
+
+        // A root that merely CONTAINS an out-of-range inverse-trig term is also
+        // non-real (e.g. `arcsin(2) + 1`).
+        let arcsin_two2 = ctx.call("arcsin", vec![two]);
+        let shifted = ctx.add(Expr::Add(arcsin_two2, one));
+        assert!(solution_contains_nonfinite(&ctx, shifted));
+
+        // In-range / boundary arguments are genuine real values — kept.
+        let arcsin_half = ctx.call("arcsin", vec![half]);
+        let arccos_one = ctx.call("arccos", vec![one]);
+        let arcsin_neg_one = ctx.call("arcsin", vec![neg_one]);
+        assert!(!solution_contains_nonfinite(&ctx, arcsin_half));
+        assert!(!solution_contains_nonfinite(&ctx, arccos_one));
+        assert!(!solution_contains_nonfinite(&ctx, arcsin_neg_one));
     }
 }

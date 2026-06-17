@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 193 (newest first)
+Active entries: 194 (newest first)
 
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
+- 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
@@ -8551,3 +8552,45 @@ Active entries: 193 (newest first)
   - residual kept honest: a symbolic always-negative radicand (`abs(sqrt(-x^2-1))`) still strips
     because its negativity needs a symbolic-sign oracle, but the stripped result is itself
     undefined-over-R everywhere, so no finite false value is produced - deferred, not a regression.
+
+## 2026-06-17 - Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
+- area:
+  - block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs` final real-solution
+    filter `solution_contains_nonfinite` (applied to every solve result at the backend boundary)
+- status:
+  - `retained` (HONESTY soundness fix; Round-3 audit Cluster C, partial - the inverse-trig sub-mechanism;
+    the extraneous-root filter and `ln(x)=ln(-x)->R` collapse remain scoped next steps)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(cos(x)=2,x)`, `solve(sin(x)=2,x)`, `solve(sin(x)=-5,x)`, `solve(2*cos(x)=3,x)`,
+    `solve(cos(x)=10001/10000,x)`, `solve(x=arcsin(2),x)`, `solve(sin(x)^2=2,x)` -> "No solution"
+    (were `{arccos(2)}` / `{arcsin(2)}` / ... fabricated non-real roots); boundary `|c|=1` kept
+    (`sin(x)=-1 -> {arcsin(-1)}`), in-range kept (`cos(x)=1/2 -> {pi/3}`), tan/arctan unaffected,
+    ordinary algebraic/exp/log solves unchanged
+  - behavior_change_expected: yes - out-of-range inverse-trig solves now return No solution;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, cargo test --workspace green, engine-fast clean
+- observed (USER-DIRECTED, Round-3 Cluster C):
+  - the solver inverts `sin(x)=c` / `cos(x)=c` to `arcsin(c)` / `arccos(c)` (function_inverse.rs
+    build_rhs) with NO range check, then emits the symbolic `arcsin(2)` as a discrete root even though
+    `arcsin(2)` is undefined over R. The engine already had the right machinery: `SolutionSet::Empty`
+    ("No solution", used soundly for `x^2=-1`, `exp(x)=-1`, `sqrt(x)=-1`) and the final filter
+    `filter_real_solutions` that drops non-finite roots and collapses an emptied set to Empty.
+  - the fix is at the VALUE level, NOT at the inversion site: `arcsin(c)`/`arccos(c)` with |c|>1 is
+    undefined over R, so it is just another "non-real value" the existing solution filter should drop.
+    `check_root` only classifies RATIONAL roots (arcsin(2) is a Function -> Unknown -> kept), and
+    `solution_contains_nonfinite` only saw Infinity/Undefined constants - extending THAT predicate
+    (used by both the Discrete filter and the Conditional gate) caught every out-of-range spelling at
+    one site, instead of threading a no-solution signal through the multi-layer inversion planner.
+- retained learning:
+  - prefer fixing at the final solution FILTER (one site, value-keyed) over the producing site when the
+    producing site is woven through planning/execution/didactic layers: the inverse-trig rewrite is
+    consumed in 4+ places, but every path funnels through `filter_real_solutions`. Same leverage as the
+    Cluster A/B universal-filter strategy: extend the "is this a real value" predicate, not each rule.
+  - an out-of-domain inverse-function VALUE (`arcsin(|c|>1)`) is undefined over R exactly like a pole or
+    an even root of a negative; gate on `as_rational_const(arg).abs() > 1` - exact, boundary |c|=1 kept
+    (arcsin(+-1) is defined), symbolic arg kept (conservative). Undefinedness propagates by containment,
+    so the recursive predicate also drops `arcsin(2)+1`, `cos(arcsin(2))`, etc.
+  - SCOPED next steps (do NOT conflate into this cycle): the extraneous-root half needs a condition
+    satisfaction evaluator wiring `Case::when` into `filter_real_solutions` (high huella risk - many
+    tests exercise the Conditional path); the `ln(x)=ln(-x)->R` half needs `IdentityAllReals` to apply
+    `domain_exclusions` like `ConstraintAllReals` already does (solve_analysis.rs:1335).
