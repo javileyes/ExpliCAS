@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 195 (newest first)
+Active entries: 196 (newest first)
 
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
+- 2026-06-17 | `retained` | solver final-filter + a new shared exact-arithmetic helper in cas_math; | Retained soundness fix: solve extraneous-root filter via EXACT surd-sign (Round-3 audit Cluster C, extraneous-root half)
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
@@ -8631,3 +8632,51 @@ Active entries: 195 (newest first)
     would have risked a huella delta.
   - the off-by-one `a=b+1` case returned 0/1 only by coincidence of the closed form, masking the bug
     for the narrowest reversed range; always probe a reversal of span >= 2 (`6..3`, not just `5..4`).
+
+## 2026-06-17 - Retained soundness fix: solve extraneous-root filter via EXACT surd-sign (Round-3 audit Cluster C, extraneous-root half)
+- area:
+  - solver final-filter + a new shared exact-arithmetic helper in cas_math;
+    `crates/cas_solver/src/solve_backend_local.rs` `filter_real_solutions`/`root_violates_required_condition`
+    consuming `crates/cas_math/src/root_forms.rs` `as_linear_surd` + `provable_sign_vs_zero`
+- status:
+  - `retained` (HONESTY/dropped-condition soundness fix; Round-3 audit Cluster C, extraneous-root half;
+    leaves only the ln(x)=ln(-x)->R collapse of Cluster C)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(ln(x)+ln(x+5)=0)->{1/2(sqrt29-5)}`, `solve(sqrt(x)*sqrt(x-1)=2)->{1/2(sqrt17+1)}`,
+    `solve(sqrt(x-2)*sqrt(x+2)=3)->{sqrt13}`, `solve(ln(x-1)+ln(x+1)=0)->{sqrt2}` (extraneous negative
+    branch dropped); KEEP-both held: `(x^2-2)/(x-131836323/93222358)=0`->{+-sqrt2}, `ln((x-2)(x+1))=0`,
+    `sqrt(x)=0->{0}`, `sqrt(-x)=2->{-4}`, `x^2=2`
+  - behavior_change_expected: yes - extraneous domain-violating roots dropped; guardrail+pressure
+    fingerprints BYTE-IDENTICAL (no lane runs solve root-sets; no fixture encoded the buggy output),
+    cargo test --workspace green
+- observed (USER-DIRECTED, Round-3 Cluster C; designed + adversarially verified by 2 workflows):
+  - the solver computes required_conditions (Positive/NonNegative/LowerBound/NonZero) and PRINTS them,
+    but never filters roots against them; `check_root` only classifies RATIONAL roots, and these roots
+    are irrational (1/2(-sqrt29-5)), so the extraneous branch survived. Fix wires
+    `ctx.required_conditions()` into the final filter and drops a root only on an EXACT proof of
+    violation (substitute root into the condition target, decide sign over a single quadratic surd
+    A+B*sqrt(n) via `provable_sign_vs_zero`). None (unprovable) => KEEP, so a valid root is never lost.
+  - the FIRST design used f64 to decide the sign; adversarial verification KILLED it: a NonZero
+    denominator C*x-d at an irrational convergent of sqrt(d) rounds to exactly 0.0 in f64 (true gap
+    below the ULP of a 1e8-magnitude product), wrongly dropping the valid root sqrt(2). Exact A+B*sqrt(n)
+    arithmetic is immune: such a value is irrational, hence NEVER exactly zero.
+  - second adversarial pass found an under-fix: the negative branch of a symmetric quadratic is spelled
+    -N*N^(-1/2) (reciprocal-surd power), which the +1/2-only `as_sqrt_like` missed -> as_linear_surd
+    extended to ALL half-integer powers b^(k/2)=b^((k-1)/2)*sqrt(b).
+- retained learning:
+  - SOUNDNESS GATES MUST BE EXACT, never f64: a drop/keep decision keyed on a float comparison is
+    unsound at a convergent / large-coefficient boundary. Decide on a PROOF (exact rational fold, exact
+    single-quadratic-surd sign A^2 vs B^2*n) and KEEP on "unknown". A float is fine for heuristics, never
+    for a gate. (Saved as a durable lesson in agent memory.)
+  - prefer fixing at the final FILTER (one value-keyed site) over the producing site, reusing the
+    solver's authoritative required_conditions rather than re-deriving them. Same leverage as A/B/C-trig.
+  - a value has many AST spellings (sqrt(b), b^(1/2), b^(-1/2)=reciprocal-surd, (a+-sqrt D)/q): an exact
+    extractor must be representation-complete for the forms the producer emits, or it silently under-fixes
+    (keeps an extraneous root) - the adversarial workflow is what surfaces the missing spellings.
+  - PROCESS: commit BEFORE launching an adversarial workflow - a verification subagent ran
+    `git checkout -- <files>` to A/B-test clean HEAD and destroyed the uncommitted fix (recovered).
+  - SCOPED residuals (never drop a valid root): un-normalized substituted targets (Pow(root,2)+... that
+    would need expanding to 10-3*sqrt13) and transcendental radicands (9+4e) keep the extraneous root;
+    closing needs simplify-before-extract or an algebraic-sign oracle. SEPARATE pre-existing bug:
+    `solve((x^2-2x-1)/(x-1+sqrt(2))=0)`->"No solution" (depth_overflow in surd-denominator NonZero path).

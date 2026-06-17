@@ -1724,6 +1724,183 @@ fn split_linear_surd(
     }
 }
 
+/// Reduce `expr` to the single quadratic-surd normal form `A + B·sqrt(n)` with
+/// `A`, `B` exact rationals and `n` a non-negative rational, returning
+/// `(A, B, n)`.
+///
+/// Handles rational constants, a single `sqrt(rational ≥ 0)` surd, the
+/// rational-linear closure over it (`Neg`, `rational · surd`, `surd / rational`,
+/// `Add`/`Sub` of compatible parts), and a rational base raised to a
+/// half-integer power (so the reciprocal-surd spelling `b^(-1/2)` is handled).
+/// Returns `None` for anything outside a single real quadratic surd — nested
+/// radicals, two distinct radicands, surd products of distinct radicands, `sqrt`
+/// of a negative or non-rational radicand, or any transcendental atom. Soundness
+/// callers must treat `None` as "not provable" and never act on it.
+pub fn as_linear_surd(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BigRational, BigRational)> {
+    fn normalize(
+        a: BigRational,
+        b: BigRational,
+        n: BigRational,
+    ) -> (BigRational, BigRational, BigRational) {
+        if b.is_zero() {
+            (a, BigRational::zero(), BigRational::zero())
+        } else {
+            (a, b, n)
+        }
+    }
+    fn combine(
+        l: (BigRational, BigRational, BigRational),
+        r: (BigRational, BigRational, BigRational),
+    ) -> Option<(BigRational, BigRational, BigRational)> {
+        let a = &l.0 + &r.0;
+        if l.1.is_zero() {
+            return Some(normalize(a, r.1, r.2));
+        }
+        if r.1.is_zero() {
+            return Some(normalize(a, l.1, l.2));
+        }
+        if l.2 != r.2 {
+            return None; // two distinct surds: not a single quadratic surd
+        }
+        Some(normalize(a, &l.1 + &r.1, l.2))
+    }
+
+    // Pure rational constant -> A.
+    if let Some(a) = crate::numeric_eval::as_rational_const(ctx, expr) {
+        return Some((a, BigRational::zero(), BigRational::zero()));
+    }
+    // A single sqrt(rational >= 0) surd -> 1·sqrt(n).
+    if let Some(radicand) = as_sqrt_like(ctx, expr) {
+        let n = crate::numeric_eval::as_rational_const(ctx, radicand)?;
+        if n.is_negative() {
+            return None; // even root of a negative is not a real value
+        }
+        return Some(normalize(BigRational::zero(), BigRational::one(), n));
+    }
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            let (a, b, n) = as_linear_surd(ctx, *inner)?;
+            Some((-a, -b, n))
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(c) = crate::numeric_eval::as_rational_const(ctx, l) {
+                let (a, b, n) = as_linear_surd(ctx, r)?;
+                return Some(normalize(&c * &a, &c * &b, n));
+            }
+            if let Some(c) = crate::numeric_eval::as_rational_const(ctx, r) {
+                let (a, b, n) = as_linear_surd(ctx, l)?;
+                return Some(normalize(&c * &a, &c * &b, n));
+            }
+            None // surd * surd would leave the quadratic field
+        }
+        Expr::Div(l, r) => {
+            let (l, r) = (*l, *r);
+            let c = crate::numeric_eval::as_rational_const(ctx, r)?;
+            if c.is_zero() {
+                return None;
+            }
+            let (a, b, n) = as_linear_surd(ctx, l)?;
+            Some(normalize(&a / &c, &b / &c, n))
+        }
+        Expr::Add(l, r) => combine(as_linear_surd(ctx, *l)?, as_linear_surd(ctx, *r)?),
+        Expr::Sub(l, r) => {
+            let lhs = as_linear_surd(ctx, *l)?;
+            let rhs = as_linear_surd(ctx, *r)?;
+            combine(lhs, (-rhs.0, -rhs.1, rhs.2))
+        }
+        // A rational base raised to a HALF-INTEGER power stays inside ℚ(√b):
+        // `b^(k/2) = b^((k−1)/2)·√b` for odd k (needs b ≥ 0), or a pure rational
+        // for even k. This covers the reciprocal-surd spelling `b^(-1/2)` the
+        // solver emits for the negative branch of a symmetric quadratic
+        // (`-N·N^(-1/2) = -√N`). The plain `b^(1/2)` / `sqrt(b)` form is already
+        // handled by the `as_sqrt_like` branch above.
+        Expr::Pow(base, exp) => {
+            fn ratio_pow(b: &BigRational, m: i32) -> BigRational {
+                let mut acc = BigRational::one();
+                for _ in 0..m.unsigned_abs() {
+                    acc = &acc * b;
+                }
+                if m < 0 {
+                    BigRational::one() / acc
+                } else {
+                    acc
+                }
+            }
+            let e = crate::numeric_eval::as_rational_const(ctx, *exp)?;
+            let b = crate::numeric_eval::as_rational_const(ctx, *base)?;
+            let two_e = &e + &e;
+            if !two_e.is_integer() {
+                return None;
+            }
+            let k = two_e.to_integer().to_i64()?;
+            if !(-64..=64).contains(&k) {
+                return None; // keep the integer power small and bounded
+            }
+            if k % 2 == 0 {
+                let m = (k / 2) as i32;
+                if b.is_zero() && m < 0 {
+                    return None; // 0 to a negative power is undefined
+                }
+                return Some((ratio_pow(&b, m), BigRational::zero(), BigRational::zero()));
+            }
+            if b.is_negative() {
+                return None; // an even root of a negative is not a real surd
+            }
+            if b.is_zero() {
+                return (k > 0).then(|| {
+                    (
+                        BigRational::zero(),
+                        BigRational::zero(),
+                        BigRational::zero(),
+                    )
+                });
+            }
+            let m = ((k - 1) / 2) as i32;
+            Some(normalize(BigRational::zero(), ratio_pow(&b, m), b))
+        }
+        _ => None,
+    }
+}
+
+/// Exact sign of `expr` versus zero, when `expr` reduces to a single quadratic
+/// surd (see [`as_linear_surd`]). `Some(Less | Equal | Greater)` is a PROOF over
+/// the reals; `None` means the sign could not be decided exactly and callers
+/// must not act on it. Immune to floating-point error — e.g.
+/// `93222358·sqrt(2) − 131836323` is correctly `Less` (never spuriously
+/// `Equal`), because `A + B·sqrt(n)` with `B ≠ 0` and `n` not a perfect square
+/// is irrational and thus never zero.
+pub fn provable_sign_vs_zero(ctx: &Context, expr: ExprId) -> Option<std::cmp::Ordering> {
+    let zero = BigRational::zero();
+    let (a, b, n) = as_linear_surd(ctx, expr)?;
+    // B == 0 (or n == 0): the value is the rational A.
+    if b.is_zero() || n.is_zero() {
+        return Some(a.cmp(&zero));
+    }
+    // A == 0: the value is B·sqrt(n); sign is sign(B) since sqrt(n) > 0 for n > 0.
+    if a.is_zero() {
+        return Some(b.cmp(&zero));
+    }
+    let sa = a.cmp(&zero);
+    let sb = b.cmp(&zero);
+    if sa == sb {
+        // A and B share a sign -> the value has that sign.
+        return Some(sa);
+    }
+    // Opposite signs: sign(A + B·sqrt(n)) = sign(B) · sign(B^2·n − A^2).
+    let b2n = b.clone() * b.clone() * n.clone();
+    let a2 = a.clone() * a.clone();
+    let inner = b2n.cmp(&a2);
+    Some(if b.is_negative() {
+        inner.reverse()
+    } else {
+        inner
+    })
+}
+
 fn solve_cube_in_quadratic_field(
     a: &BigRational,
     b: &BigRational,
@@ -2499,6 +2676,91 @@ mod tests {
     use super::*;
     use crate::poly_compare::poly_eq;
     use cas_parser::parse;
+
+    #[test]
+    fn as_linear_surd_extracts_and_signs_exactly() {
+        use std::cmp::Ordering;
+        let mut ctx = Context::new();
+
+        let rat = |a: i64, b: i64| BigRational::new(a.into(), b.into());
+
+        // sqrt(29) -> 0 + 1·sqrt(29).
+        let s29 = parse("sqrt(29)", &mut ctx).expect("sqrt29");
+        assert_eq!(
+            as_linear_surd(&ctx, s29),
+            Some((rat(0, 1), rat(1, 1), rat(29, 1)))
+        );
+
+        // 1/2·(-sqrt(29) - 5) -> -5/2 - 1/2·sqrt(29); strictly negative.
+        let r_neg = parse("1/2*(-sqrt(29) - 5)", &mut ctx).expect("rneg");
+        assert_eq!(
+            as_linear_surd(&ctx, r_neg),
+            Some((rat(-5, 2), rat(-1, 2), rat(29, 1)))
+        );
+        assert_eq!(provable_sign_vs_zero(&ctx, r_neg), Some(Ordering::Less));
+
+        // 1/2·(sqrt(29) - 5): A=-5/2, B=1/2; B^2·29=29/4 > A^2=25/4 -> positive.
+        let r_pos = parse("1/2*(sqrt(29) - 5)", &mut ctx).expect("rpos");
+        assert_eq!(provable_sign_vs_zero(&ctx, r_pos), Some(Ordering::Greater));
+
+        // sqrt(x)*sqrt(x-1)=2 roots: 1/2·(1 - sqrt(17)) < 0, 1/2·(1 + sqrt(17)) > 0.
+        let s_lo = parse("1/2*(1 - sqrt(17))", &mut ctx).expect("slo");
+        let s_hi = parse("1/2*(1 + sqrt(17))", &mut ctx).expect("shi");
+        assert_eq!(provable_sign_vs_zero(&ctx, s_lo), Some(Ordering::Less));
+        assert_eq!(provable_sign_vs_zero(&ctx, s_hi), Some(Ordering::Greater));
+
+        // For ln(x)+ln(x+5)=0, the extraneous root makes x+5 negative too.
+        let xp5_at_lo = parse("1/2*(-sqrt(29) - 5) + 5", &mut ctx).expect("xp5");
+        assert_eq!(provable_sign_vs_zero(&ctx, xp5_at_lo), Some(Ordering::Less));
+
+        // The adversarial convergent: 93222358·sqrt(2) - 131836323 is irrational,
+        // so it is PROVABLY nonzero, never spuriously Equal (f64 rounds it to 0.0).
+        // p²−2q² = 1 ⇒ q·sqrt(2) < p ⇒ strictly negative. The soundness-critical
+        // fact is that it is NOT Equal, so a NonZero condition is satisfied (kept).
+        let conv = parse("93222358*sqrt(2) - 131836323", &mut ctx).expect("conv");
+        assert_eq!(provable_sign_vs_zero(&ctx, conv), Some(Ordering::Less));
+        assert_ne!(provable_sign_vs_zero(&ctx, conv), Some(Ordering::Equal));
+
+        // Reciprocal-surd spelling: the solver emits the negative branch of a
+        // symmetric quadratic as -N·N^(-1/2) = -√N. `-13·13^(-1/2)` must reduce
+        // to -√13 = (0, -1, 13), and `-13·13^(-1/2) - 2` must be provably Less.
+        let recip = parse("-13*13^(-1/2)", &mut ctx).expect("recip");
+        assert_eq!(
+            as_linear_surd(&ctx, recip),
+            Some((rat(0, 1), rat(-1, 1), rat(13, 1)))
+        );
+        let recip_shift = parse("-13*13^(-1/2) - 2", &mut ctx).expect("recip_shift");
+        assert_eq!(
+            provable_sign_vs_zero(&ctx, recip_shift),
+            Some(Ordering::Less)
+        );
+        // b^(-1/2) itself is positive; b^(3/2) = b·√b is positive.
+        let inv = parse("13^(-1/2)", &mut ctx).expect("inv");
+        assert_eq!(provable_sign_vs_zero(&ctx, inv), Some(Ordering::Greater));
+        let three_halves = parse("4^(3/2)", &mut ctx).expect("th"); // = 4·√4 = 8 > 0
+        assert_eq!(
+            provable_sign_vs_zero(&ctx, three_halves),
+            Some(Ordering::Greater)
+        );
+
+        // Exact zero is detected: 1 - sqrt(1) = 0.
+        let z = parse("1 - sqrt(1)", &mut ctx).expect("zero");
+        assert_eq!(provable_sign_vs_zero(&ctx, z), Some(Ordering::Equal));
+
+        // Pure rationals.
+        let neg = parse("-5/2", &mut ctx).expect("neg");
+        assert_eq!(provable_sign_vs_zero(&ctx, neg), Some(Ordering::Less));
+
+        // Two distinct surds / transcendental atoms -> None (conservative KEEP).
+        let two_surds = parse("sqrt(2) + sqrt(3)", &mut ctx).expect("two");
+        assert_eq!(as_linear_surd(&ctx, two_surds), None);
+        let trig = parse("sin(x) + 1", &mut ctx).expect("trig");
+        assert_eq!(provable_sign_vs_zero(&ctx, trig), None);
+
+        // sqrt of a negative is not a real linear surd -> None.
+        let neg_rad = parse("sqrt(-2)", &mut ctx).expect("negrad");
+        assert_eq!(as_linear_surd(&ctx, neg_rad), None);
+    }
 
     fn eval_small_rat(ctx: &Context, id: ExprId) -> Option<BigRational> {
         match ctx.get(id) {

@@ -5,7 +5,8 @@
 //! changing call sites.
 
 use crate::{CasError, Simplifier, SolveCtx, SolveStep};
-use cas_ast::{Constant, Context, Equation, Expr, ExprId, SolutionSet};
+use cas_ast::{substitute_expr_by_id, Constant, Context, Equation, Expr, ExprId, SolutionSet};
+use cas_solver_core::domain_condition::ImplicitCondition;
 use std::collections::HashMap;
 
 use crate::solve_backend_contract::{CoreSolverOptions, SolveBackend};
@@ -103,16 +104,24 @@ fn check_root(ctx: &Context, eq: &Equation, var: &str, root: ExprId) -> RootChec
 /// and fully classifiable, the verified roots are returned unconditionally
 /// (back-substitution subsumes the branch guards); otherwise extraneous roots are
 /// dropped in place and the structure is preserved.
-fn filter_real_solutions(ctx: &Context, eq: &Equation, var: &str, set: SolutionSet) -> SolutionSet {
+fn filter_real_solutions(
+    ctx: &mut Context,
+    eq: &Equation,
+    var: &str,
+    set: SolutionSet,
+    conds: &[ImplicitCondition],
+) -> SolutionSet {
     match set {
         SolutionSet::Discrete(sols) => {
-            let kept: Vec<ExprId> = sols
-                .into_iter()
-                .filter(|&s| {
-                    !solution_contains_nonfinite(ctx, s)
-                        && check_root(ctx, eq, var, s) != RootCheck::Extraneous
-                })
-                .collect();
+            let mut kept: Vec<ExprId> = Vec::new();
+            for s in sols {
+                if !solution_contains_nonfinite(ctx, s)
+                    && check_root(ctx, eq, var, s) != RootCheck::Extraneous
+                    && !root_violates_required_condition(ctx, var, s, conds)
+                {
+                    kept.push(s);
+                }
+            }
             if kept.is_empty() {
                 SolutionSet::Empty
             } else {
@@ -149,15 +158,14 @@ fn filter_real_solutions(ctx: &Context, eq: &Equation, var: &str, set: SolutionS
                     SolutionSet::Discrete(verified)
                 }
             } else {
-                let kept: Vec<_> = cases
-                    .into_iter()
-                    .map(|mut case| {
-                        case.then.solutions =
-                            filter_real_solutions(ctx, eq, var, case.then.solutions.clone());
-                        case
-                    })
-                    .filter(|case| !matches!(case.then.solutions, SolutionSet::Empty))
-                    .collect();
+                let mut kept: Vec<_> = Vec::new();
+                for mut case in cases {
+                    case.then.solutions =
+                        filter_real_solutions(ctx, eq, var, case.then.solutions.clone(), conds);
+                    if !matches!(case.then.solutions, SolutionSet::Empty) {
+                        kept.push(case);
+                    }
+                }
                 if kept.is_empty() {
                     SolutionSet::Empty
                 } else {
@@ -167,6 +175,64 @@ fn filter_real_solutions(ctx: &Context, eq: &Equation, var: &str, set: SolutionS
         }
         other => other,
     }
+}
+
+/// True when `root` PROVABLY violates one of the equation's recorded real-domain
+/// conditions (`required_conditions`), making it an extraneous root the solver
+/// emitted without enforcing the domain it itself derived — e.g.
+/// `solve(ln(x)+ln(x+5)=0)` returns the negative root `½(-√29-5)` which violates
+/// `x > 0`. The check is EXACT: it substitutes the root into the condition target
+/// and decides the sign with [`provable_sign_vs_zero`] (which handles a single
+/// quadratic surd `A + B·√n`, the shape of every quadratic root). A `None` (sign
+/// not provable) or any non-matching condition KEEPS the root — we only ever drop
+/// on a proof, never on a float estimate, so a valid root can never be lost.
+fn root_violates_required_condition(
+    ctx: &mut Context,
+    var: &str,
+    root: ExprId,
+    conds: &[ImplicitCondition],
+) -> bool {
+    use cas_math::root_forms::provable_sign_vs_zero;
+    use std::cmp::Ordering;
+
+    if conds.is_empty() {
+        return false;
+    }
+    let var_id = ctx.var(var);
+    for cond in conds {
+        let violates = match cond {
+            // ln(e)/log(e) require e > 0; e ≤ 0 at the root is a violation
+            // (e = 0 makes the log undefined, so it is extraneous too).
+            ImplicitCondition::Positive(e) => {
+                let at = substitute_expr_by_id(ctx, *e, var_id, root);
+                matches!(
+                    provable_sign_vs_zero(ctx, at),
+                    Some(Ordering::Less | Ordering::Equal)
+                )
+            }
+            // sqrt(e) requires e ≥ 0; only e < 0 violates (boundary e = 0 is fine).
+            ImplicitCondition::NonNegative(e) => {
+                let at = substitute_expr_by_id(ctx, *e, var_id, root);
+                matches!(provable_sign_vs_zero(ctx, at), Some(Ordering::Less))
+            }
+            // 1/e requires e ≠ 0; only a PROVABLE exact zero violates.
+            ImplicitCondition::NonZero(e) => {
+                let at = substitute_expr_by_id(ctx, *e, var_id, root);
+                matches!(provable_sign_vs_zero(ctx, at), Some(Ordering::Equal))
+            }
+            // acosh(e) etc. require e ≥ lower; only e − lower < 0 violates.
+            ImplicitCondition::LowerBound(e, lower) => {
+                let at = substitute_expr_by_id(ctx, *e, var_id, root);
+                let lb = ctx.add(Expr::Number(lower.clone()));
+                let shifted = ctx.add(Expr::Sub(at, lb));
+                matches!(provable_sign_vs_zero(ctx, shifted), Some(Ordering::Less))
+            }
+        };
+        if violates {
+            return true;
+        }
+    }
+    false
 }
 
 /// True when the equation is `c/poly = 0` for a nonzero constant `c` — which has
@@ -208,15 +274,71 @@ impl SolveBackend for LocalSolveBackend {
             return Ok((SolutionSet::Empty, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
-        let set = filter_real_solutions(&simplifier.context, eq, var, set);
+        let conds = ctx.required_conditions();
+        let set = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);
         Ok((set, steps))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::solution_contains_nonfinite;
+    use super::{root_violates_required_condition, solution_contains_nonfinite};
     use cas_ast::{Context, Expr};
+    use cas_solver_core::domain_condition::ImplicitCondition;
+
+    #[test]
+    fn extraneous_root_violates_recorded_domain_condition() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+
+        // ln(x)+ln(x+5)=0 records x > 0. The extraneous root ½(-√29-5) ≈ -5.19
+        // violates it; the valid root ½(√29-5) ≈ 0.19 does not.
+        let positive_x = vec![ImplicitCondition::Positive(x)];
+        let ext = cas_parser::parse("1/2*(-sqrt(29) - 5)", &mut ctx).expect("ext");
+        let valid = cas_parser::parse("1/2*(sqrt(29) - 5)", &mut ctx).expect("valid");
+        assert!(root_violates_required_condition(
+            &mut ctx,
+            "x",
+            ext,
+            &positive_x
+        ));
+        assert!(!root_violates_required_condition(
+            &mut ctx,
+            "x",
+            valid,
+            &positive_x
+        ));
+        // No recorded conditions => never a violation (byte-identical to before).
+        assert!(!root_violates_required_condition(&mut ctx, "x", ext, &[]));
+
+        // sqrt(x)=0 => x=0 sits on the NonNegative boundary and must be KEPT.
+        let nonneg_x = vec![ImplicitCondition::NonNegative(x)];
+        let zero = ctx.num(0);
+        assert!(!root_violates_required_condition(
+            &mut ctx, "x", zero, &nonneg_x
+        ));
+
+        // Reciprocal-surd negative branch -13·13^(-1/2) = -√13 violates x-2 ≥ 0.
+        let xm2 = cas_parser::parse("x - 2", &mut ctx).expect("xm2");
+        let nonneg_xm2 = vec![ImplicitCondition::NonNegative(xm2)];
+        let neg_sqrt13 = cas_parser::parse("-13*13^(-1/2)", &mut ctx).expect("neg13");
+        assert!(root_violates_required_condition(
+            &mut ctx,
+            "x",
+            neg_sqrt13,
+            &nonneg_xm2
+        ));
+
+        // The adversarial convergent: NonZero(93222358·x - 131836323) at √2 must
+        // NOT fire (the value is irrational, provably nonzero) — exact arithmetic
+        // keeps the valid root where a float gate would drop it.
+        let denom = cas_parser::parse("93222358*x - 131836323", &mut ctx).expect("denom");
+        let nonzero = vec![ImplicitCondition::NonZero(denom)];
+        let root2 = cas_parser::parse("sqrt(2)", &mut ctx).expect("sqrt2");
+        assert!(!root_violates_required_condition(
+            &mut ctx, "x", root2, &nonzero
+        ));
+    }
 
     #[test]
     fn out_of_range_inverse_trig_root_is_not_real() {
