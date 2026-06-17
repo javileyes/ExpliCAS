@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 196 (newest first)
+Active entries: 197 (newest first)
 
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
 - 2026-06-17 | `retained` | solver final-filter + a new shared exact-arithmetic helper in cas_math; | Retained soundness fix: solve extraneous-root filter via EXACT surd-sign (Round-3 audit Cluster C, extraneous-root half)
+- 2026-06-17 | `retained` | solver eval-output display; `crates/cas_solver/src/eval_output_presentation_s... | Retained soundness fix: inequality intervals dropped open/closed strictness in display (Round-3 audit Cluster F)
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
@@ -8680,3 +8681,36 @@ Active entries: 196 (newest first)
     would need expanding to 10-3*sqrt13) and transcendental radicands (9+4e) keep the extraneous root;
     closing needs simplify-before-extract or an algebraic-sign oracle. SEPARATE pre-existing bug:
     `solve((x^2-2x-1)/(x-1+sqrt(2))=0)`->"No solution" (depth_overflow in surd-denominator NonZero path).
+
+## 2026-06-17 - Retained soundness fix: inequality intervals dropped open/closed strictness in display (Round-3 audit Cluster F)
+- area:
+  - solver eval-output display; `crates/cas_solver/src/eval_output_presentation_solution_display/interval.rs`
+    `format_output_interval`
+- status:
+  - `retained` (WRONG-VALUE / wrong-membership soundness fix; Round-3 audit Cluster F; last representational item)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(x>1)->(1, infinity)` (was `[1, infinity]`), `solve(x>=1)->[1, infinity)`,
+    `solve(x<=1)->(-infinity, 1]`, `solve(x^2>4)->(-infinity,-2) U (2,infinity)`,
+    `solve(x!=3)->(-infinity,3) U (3,infinity)` - strict vs non-strict now distinct, infinity always open
+  - behavior_change_expected: yes - inequality interval display now shows open endpoints;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, cargo test --workspace green
+- observed (USER-DIRECTED, Round-3 Cluster F):
+  - the audit GUESSED this was architectural ("no open-bracket representation"). FALSE: the `Interval`
+    type already carries per-endpoint `BoundType::{Open,Closed}`, and the solver's `isolated_var_solution`
+    already builds them correctly (Gt -> open, Geq -> closed, infinity -> open). The bug was ONE display
+    renderer (`format_output_interval`) hard-coding `"[{}, {}]"` and discarding the bound types. A sibling
+    renderer (`solution_display/interval.rs`) was already correct - only the eval-output path was broken.
+  - fix: render `(`/`)` vs `[`/`]` per endpoint from the interval's own BoundType. No type/solver change.
+- retained learning:
+  - VERIFY the audit's root-cause GUESS against the code before scoping: "architectural" was wrong here;
+    a 10-line display fix closed it. Probing `solve(x>1)` vs `solve(x>=1)` (identical output) localized the
+    loss; grepping the construction (`isolated_var_solution`, correct) vs the renderers found the one
+    renderer that ignored the flags. The cheapest fix is often a display/presentation layer, not the core.
+  - DUPLICATE renderers drift: two interval formatters existed; one respected BoundType, one didn't. When
+    a value has a "model is correct but output is wrong" smell, look for a second presentation path that
+    re-implements (and mis-implements) the formatting rather than reusing the canonical one. Consolidation
+    candidate: the eval-output display should delegate to the canonical `solution_display` renderer.
+  - low huella: no scorecard lane renders inequality intervals and no test asserted the closed-bracket
+    string, so the byte-identical guardrail held despite a visible output change - confirms solve display
+    is not yet under fingerprint coverage (a separate observability gap worth noting).

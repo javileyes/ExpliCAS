@@ -28,13 +28,11 @@ pub(crate) fn format_output_solution_set(ctx: &Context, solution_set: &SolutionS
             }
         }
         SolutionSet::Conditional(cases) => format_conditional_output_solution_set(ctx, cases),
-        SolutionSet::Continuous(interval) => {
-            format_output_interval(ctx, interval.min, interval.max)
-        }
+        SolutionSet::Continuous(interval) => format_output_interval(ctx, interval),
         SolutionSet::Union(intervals) => {
             let parts: Vec<String> = intervals
                 .iter()
-                .map(|int| format_output_interval(ctx, int.min, int.max))
+                .map(|int| format_output_interval(ctx, int))
                 .collect();
             parts.join(" U ")
         }
