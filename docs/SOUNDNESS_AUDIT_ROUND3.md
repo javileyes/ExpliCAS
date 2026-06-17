@@ -125,7 +125,7 @@ abs-strip itself (`abs(sqrt(-4)) → 2·(-1)^(1/2)`) is Cluster B, separate.
 **Fix direction.** Either (a) extend the R2 `acosh∘cosh = |x|` handling to the assume path so it does **not** strip the abs without recording a real `x≥0` assumption, or (b) make `collect_output_assumptions_used` populate `assumptions_used` on the default path (not only when steps are collected) and refuse to emit the bare identity under a vacuous condition. Likely owner: `crates/cas_solver/src/eval_output_presentation_conditions.rs` (`collect_output_assumptions_used`) plus the hyperbolic-cancellation / "Abs Under Positivity" rule.
 
 ### Cluster E — empty `sum`/`product` (reversed bounds) returns wrong finite value
-**Severity: wrong-value. 3 probes (axis series-sum).**
+**Severity: wrong-value. 3 probes (axis series-sum). — FIXED (commit `PENDING_HASH`).**
 
 | Probe | actual | expected |
 |---|---|---|
@@ -135,7 +135,7 @@ abs-strip itself (`abs(sqrt(-4)) → 2·(-1)^(1/2)`) is Cluster B, separate.
 
 **Root cause.** The closed-form anti-difference/Faulhaber and product formulas are applied **without an emptiness guard** (`lower ≤ upper`). With lower > upper the formula extrapolates: `sum(k,k,6,3) = F(3)−F(5) = 6−15 = −9`; constant case uses term-count `n−m+1` → negative; product divides past the boundary → `1/20`. The off-by-one `a=b+1` returns the correct `0`/`1` only coincidentally. (Note: `sum(2^k,k,5,1) → -28` too — the geometric form is equally unguarded, slightly wider than the original write-up suggested.) Forward sums/products are all correct, so the formulas themselves are right; only the empty case is unsound.
 
-**Fix direction.** Before applying any closed form, **guard `lower ≤ upper`**: return the empty-sum identity `0` (and empty-product `1`) when `lower > upper`. Cheap, localized one-shot. Likely owner: the `sum`/`product` closed-form evaluators in the series module.
+**Fix (commit `PENDING_HASH`).** Both planners `try_plan_finite_sum_evaluation` / `try_plan_finite_product_evaluation` in `crates/cas_math/src/summation_support.rs` now check `lower > upper` (both bounds exact integers) **before any closed form** and return the empty-aggregate identity via the existing direct builder — `start..=end` is an empty Rust range, so `build_finite_sum_substitution` yields `0` and `build_finite_product_substitution` yields `1`. The guard had to precede the closed-form attempts because `SumOfFirstIntegers` is tried first and was the source of `-9`. Result: `sum(k,k,6,3)`, `sum(1,k,5,1)`, `sum(k^2,k,10,1)`, `sum(k,k,0,-3)` → `0`; `product(k,k,6,3)`, `product(k+1,k,5,2)` → `1`. Forward ranges and single-element ranges (`sum(k,k,3,3) → 3`) are unchanged; guardrail + pressure fingerprints byte-identical (no fixture exercises a reversed range, so reusing the `FiniteDirect` kind caused no classification drift).
 
 ### Cluster F — inequality solver always emits closed brackets (strictness dropped)
 **Severity: wrong-value. 2 probes (axis equation-systems-ineq).**
@@ -163,7 +163,7 @@ abs-strip itself (`abs(sqrt(-4)) → 2·(-1)^(1/2)`) is Cluster B, separate.
 3. **Cluster C** — PARTIAL (`b97329291c00b60f8dc673239914c681038f22da`): the `|rhs|>1` inverse-trig half now returns "No solution" (out-of-range `arcsin/arccos` roots treated as non-real in the final filter). REMAINING: wire `required_conditions` (`Case::when`) into post-solve root filtering for extraneous roots; treat the `ln(x)=ln(-x)` `IdentityAllReals` collapse as empty by applying its domain exclusions. Both are small targeted fixes in `cas_solver` (`filter_real_solutions` / `solve_analysis.rs:1335`).
 
 **P1 — wrong/sign-wrong values:**
-4. **Cluster E** — add the `lower ≤ upper` empty-sum/product guard. **Trivial quick-cycle.**
+4. ~~**Cluster E** — add the `lower ≤ upper` empty-sum/product guard.~~ **DONE** (`PENDING_HASH`): both finite-aggregate planners short-circuit a reversed range to the empty identity (`0` / `1`) before any closed form.
 5. **Cluster D** — close the assume-mode `acosh∘cosh` abs-drop (extend R2 fix to the assume path or fix `assumptions_used` surfacing). Quick-ish; touches the presentation-conditions module.
 
 **P2 — representational:**

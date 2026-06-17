@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 194 (newest first)
+Active entries: 195 (newest first)
 
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
+- 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
 - 2026-06-16 | `retained` | cross-cutting arithmetic cancellation; shared `cas_math::arithmetic_cancel_su... | Retained soundness fix: non-finite/undefined terms never cancel to 0 (Round-2 audit R3)
@@ -8594,3 +8595,39 @@ Active entries: 194 (newest first)
     satisfaction evaluator wiring `Case::when` into `filter_real_solutions` (high huella risk - many
     tests exercise the Conditional path); the `ln(x)=ln(-x)->R` half needs `IdentityAllReals` to apply
     `domain_exclusions` like `ConstraintAllReals` already does (solve_analysis.rs:1335).
+
+## 2026-06-17 - Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
+- area:
+  - block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-aggregate planners
+    `try_plan_finite_sum_evaluation` / `try_plan_finite_product_evaluation`
+- status:
+  - `retained` (WRONG-VALUE soundness fix; Round-3 audit Cluster E; trivial quick-cycle)
+- capture:
+  - investment_class: soundness
+  - cell: `sum(k,k,6,3)` -> 0 (was -9), `sum(1,k,5,1)` -> 0 (was -3), `sum(k^2,k,10,1)` -> 0,
+    `sum(k,k,0,-3)` -> 0, `product(k,k,6,3)` -> 1 (was 1/20), `product(k+1,k,5,2)` -> 1; forward ranges
+    (`sum(k,k,1,5)=15`, `product(k,k,1,4)=24`, squares/cubes/geometric/constant) and single-element
+    (`sum(k,k,3,3)=3`) unchanged
+  - behavior_change_expected: yes - reversed-bound aggregates now return the empty identity;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, cargo test --workspace green, engine-fast clean
+- observed (USER-DIRECTED, Round-3 Cluster E):
+  - the closed-form Faulhaber/anti-difference (`SumOfFirstIntegers`, etc.) and product formulas are
+    applied with NO emptiness guard, so lower>upper extrapolates the formula: `sum(k,k,6,3)=F(3)-F(5)
+    =6-15=-9`, `product(k,k,6,3)=3!/5!=1/20`. The direct term-by-term path (`FiniteDirect`) already
+    bailed on start>end (`try_extract_bounded_integer_range`), but it is tried AFTER the closed forms,
+    so it never got the chance - the closed form fired first and produced the wrong value.
+  - fix: an early guard at the TOP of both planners (before any closed form) that returns the empty
+    identity for an integer reversed range, reusing the existing direct builders - `start..=end` with
+    start>end is an empty Rust range, so `build_finite_sum_substitution` returns `num(0)` and
+    `build_finite_product_substitution` returns `num(1)`. No new enum variant, no match-site churn.
+- retained learning:
+  - ORDER of a try-cascade is part of its contract: a correct guard placed AFTER an unguarded
+    closed-form is dead code. When a fallback path already has the right guard (here FiniteDirect's
+    start>end bail) but the wrong value still escapes, check whether an earlier branch fires first.
+  - prefer reusing an existing result kind (`FiniteDirect`) over adding an enum variant when the new
+    case is semantically a degenerate instance of it (an empty range evaluated "directly" over zero
+    terms IS the additive/multiplicative identity) - this avoided touching ~4 exhaustive match sites,
+    one of which (`classify_finite_series_vs_other_profile_pair`) emits SCORECARD keys where a new arm
+    would have risked a huella delta.
+  - the off-by-one `a=b+1` case returned 0/1 only by coincidence of the closed form, masking the bug
+    for the narrowest reversed range; always probe a reversal of span >= 2 (`6..3`, not just `5..4`).

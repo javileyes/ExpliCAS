@@ -160,6 +160,26 @@ pub fn try_plan_finite_sum_evaluation(
 ) -> Option<SumEvaluationPlan> {
     let call = try_extract_finite_aggregate_call(ctx, expr, "sum")?;
 
+    // Empty range (lower > upper): the empty sum is 0 by convention. This MUST
+    // be checked before any closed form, which would otherwise evaluate its
+    // formula at reversed bounds (e.g. `sum(k, k, 6, 3)` → 3·4/2 − 5·6/2 = −9
+    // instead of 0). `start..=end` with `start > end` is empty, so the direct
+    // builder returns the additive identity.
+    if let (Some(start), Some(end)) = (
+        crate::expr_extract::extract_i64_integer(ctx, call.start_expr),
+        crate::expr_extract::extract_i64_integer(ctx, call.end_expr),
+    ) {
+        if start > end {
+            let candidate =
+                build_finite_sum_substitution(ctx, call.term, call.var_expr, start, end);
+            return Some(SumEvaluationPlan {
+                call,
+                candidate,
+                kind: SumEvaluationKind::FiniteDirect { start, end },
+            });
+        }
+    }
+
     if let Some(candidate) = try_build_telescoping_rational_sum(
         ctx,
         call.term,
@@ -480,6 +500,26 @@ pub fn try_plan_finite_product_evaluation(
     max_span: i64,
 ) -> Option<ProductEvaluationPlan> {
     let call = try_extract_finite_aggregate_call(ctx, expr, "product")?;
+
+    // Empty range (lower > upper): the empty product is 1 by convention. This
+    // MUST be checked before any closed form, which would otherwise evaluate its
+    // formula at reversed bounds (e.g. `product(k, k, 6, 3)` → 3!/5! = 1/20
+    // instead of 1). `start..=end` with `start > end` is empty, so the direct
+    // builder returns the multiplicative identity.
+    if let (Some(start), Some(end)) = (
+        crate::expr_extract::extract_i64_integer(ctx, call.start_expr),
+        crate::expr_extract::extract_i64_integer(ctx, call.end_expr),
+    ) {
+        if start > end {
+            let candidate =
+                build_finite_product_substitution(ctx, call.term, call.var_expr, start, end);
+            return Some(ProductEvaluationPlan {
+                call,
+                candidate,
+                kind: ProductEvaluationKind::FiniteDirect { start, end },
+            });
+        }
+    }
 
     if let Some(candidate) = try_build_telescoping_product_shift1(
         ctx,
@@ -1818,6 +1858,45 @@ mod tests {
         assert_eq!(
             compare_expr(&ctx, plan.candidate, expected),
             std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn reversed_bounds_collapse_to_empty_sum_and_product() {
+        let zero = BigRational::from_integer(0.into());
+        let one = BigRational::from_integer(1.into());
+        let mut ctx = Context::new();
+
+        // sum(k, k, 6, 3): empty range -> 0 (NOT the reversed closed form -9).
+        let s = cas_parser::parse("sum(k, k, 6, 3)", &mut ctx).expect("sum");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, s, 1000).expect("empty sum plan");
+        assert!(matches!(
+            plan.kind,
+            SumEvaluationKind::FiniteDirect { start: 6, end: 3 }
+        ));
+        assert_eq!(eval_small_rat(&ctx, plan.candidate), Some(zero.clone()));
+
+        // product(k, k, 6, 3): empty range -> 1 (NOT 3!/5! = 1/20).
+        let p = cas_parser::parse("product(k, k, 6, 3)", &mut ctx).expect("product");
+        let pplan =
+            try_plan_finite_product_evaluation(&mut ctx, p, 1000).expect("empty product plan");
+        assert!(matches!(
+            pplan.kind,
+            ProductEvaluationKind::FiniteDirect { start: 6, end: 3 }
+        ));
+        assert_eq!(eval_small_rat(&ctx, pplan.candidate), Some(one));
+
+        // Negative-bound empty range too: sum(k, k, 0, -3) -> 0.
+        let neg = cas_parser::parse("sum(k, k, 0, -3)", &mut ctx).expect("sum neg");
+        let neg_plan = try_plan_finite_sum_evaluation(&mut ctx, neg, 1000).expect("empty sum plan");
+        assert_eq!(eval_small_rat(&ctx, neg_plan.candidate), Some(zero));
+
+        // A non-reversed range is unaffected (the guard must not fire): 1..5 -> 15.
+        let normal = cas_parser::parse("sum(k, k, 1, 5)", &mut ctx).expect("normal");
+        let normal_plan = try_plan_finite_sum_evaluation(&mut ctx, normal, 1000).expect("plan");
+        assert_eq!(
+            eval_small_rat(&ctx, normal_plan.candidate),
+            Some(BigRational::from_integer(15.into()))
         );
     }
 
