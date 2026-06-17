@@ -44,7 +44,24 @@ No Round-2 fix regressed.
 ## 3. Defect Clusters by Root Cause
 
 ### Cluster A — `sqrt` of a negative literal fabricates a real value (the `i²=-1` leak)
-**Severity: honesty-violation. 9 probes. Largest cluster.**
+**Severity: honesty-violation. 9 probes. Largest cluster. — FIXED (commit `PENDING_HASH`).**
+
+**Fix (commit `PENDING_HASH`):** rather than guard each combining rule, the fix
+extends the exact undefined-over-ℝ detector `is_structurally_undefined_over_reals`
+(consumed by both `expr_carries_*` predicates, hence the R3/R4-5/R4-6 universal
+filter) to recognize an **even root of a provably-negative base** as undefined:
+a `Pow(b, p/q)` with `b` numerically negative and `p/q` a non-integer rational with
+EVEN denominator (`(-2)^(1/2)`, `(-1)^(3/2)`, `(-4)^(1/4)`), plus the `Sqrt(neg)`
+builtin spelling the parser emits. The universal filter then reverts every merge
+that would drop it to a finite value: `sqrt(-2)^2`, `sqrt(-2)*sqrt(-2)`,
+`sqrt(-4)*sqrt(-9)`, `sqrt(-8)/sqrt(-2)`, `sqrt(-9)/sqrt(-4)`, `(-1)^(1/2)*(-1)^(1/2)`
+all stay symbolic (and `sqrt(-2)-sqrt(-2) → undefined` as a bonus). Exact and
+conservative — ODD roots stay real (`(-8)^(1/3)=-2`, `(-8)^(2/3)=4`), positive bases
+and integer powers are untouched (`(-2)^3=-8`, `sqrt(9)/sqrt(4)=3/2`), symbolic
+`sqrt(-2)*sqrt(-3)` stays symbolic, and `sqrt(-n)` standalone is unchanged. No
+cancel-rule edit needed; guardrail+pressure fingerprints BYTE-IDENTICAL; adversarial
+(3-lens) clean. The `abs(sqrt(-4))^2 → -4` half is fixed (no longer `-4`); the
+abs-strip itself (`abs(sqrt(-4)) → 2·(-1)^(1/2)`) is Cluster B, separate.
 
 | Probe | actual | expected |
 |---|---|---|

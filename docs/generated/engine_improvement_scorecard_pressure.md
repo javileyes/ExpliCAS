@@ -1,8 +1,8 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-06-16T15:49:34.393155+00:00
+- Generated: 2026-06-17T06:41:11.589069+00:00
 - Git branch: main
-- Git commit: `8271ddb3850259f3bfe33d50afbb9f8cf170c152`
+- Git commit: `afadce5ec16d453a1cb8686151d59143770c66c5`
 - Profile: `pressure`
 
 ## Generated Discovery Ledger
@@ -27,14 +27,14 @@
 - Dimension: raw engine pressure on composed zero-target expressions through the canonical eval path.
 - Interpretation: better runtime proxy than unified `proved-composed` counts for mixed additive/multiplicative workloads.
 - Harness: fixed corpus windows, not a full sweep, so pressure stays reproducible and cheap enough for routine iteration.
-- Composition hotspots: shifted_quotient total=100 failed=0 elapsed=835.19ms avg_case_ms=8.35 simplify=240.66ms avg_simplify_ms=2.41, sum total=200 failed=0 elapsed=705.18ms avg_case_ms=3.53 simplify=239.35ms avg_simplify_ms=1.20, product total=100 failed=0 elapsed=545.59ms avg_case_ms=5.46 simplify=158.24ms avg_simplify_ms=1.58, difference total=50 failed=0 elapsed=330.42ms avg_case_ms=6.61 simplify=105.84ms avg_simplify_ms=2.12
-- Engine hotspots: shifted_quotient simplify=240.66ms avg_simplify_ms=2.41 wall=835.19ms, sum simplify=239.35ms avg_simplify_ms=1.20 wall=705.18ms, product simplify=158.24ms avg_simplify_ms=1.58 wall=545.59ms, difference simplify=105.84ms avg_simplify_ms=2.12 wall=330.42ms
-- Window slices: shifted_quotient@0+100 failed=0 elapsed=835.19ms avg_case_ms=8.35 avg_simplify_ms=2.41, product@0+100 failed=0 elapsed=545.59ms avg_case_ms=5.46 avg_simplify_ms=1.58, sum@0+100 failed=0 elapsed=509.20ms avg_case_ms=5.09 avg_simplify_ms=1.66, difference@0+50 failed=0 elapsed=330.42ms avg_case_ms=6.61 avg_simplify_ms=2.12, sum@700+100 failed=0 elapsed=195.98ms avg_case_ms=1.96 avg_simplify_ms=0.73
-- Steady-state engine reruns: shifted_quotient@0+100 #176 shifted_quotient runs=3 median_simplify=13.08ms median_wire=13.15ms median_wall=50.34ms, product@0+100 #175 product runs=3 median_simplify=11.79ms median_wire=11.84ms median_wall=45.31ms, shifted_quotient@0+100 #4 shifted_quotient runs=3 median_simplify=10.86ms median_wire=10.93ms median_wall=41.21ms, sum@0+100 #173 sum runs=3 median_simplify=11.91ms median_wire=11.97ms median_wall=45.47ms, difference@0+50 #174 difference runs=3 median_simplify=12.26ms median_wire=12.31ms median_wall=45.91ms
-- Steady-state dominant expressions: shifted_quotient@0+100 #176 shifted_quotient expr=((1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + 1)/((ln(x^2 - y^2) - ln(x - y) - ln(x + y)) + 1), product@0+100 #175 product expr=(1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) * (ln(x^2 - y^2) - ln(x - y) - ln(x + y)), shifted_quotient@0+100 #4 shifted_quotient expr=((ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + 1)/((1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + 1)
+- Composition hotspots: shifted_quotient total=100 failed=0 elapsed=969.47ms avg_case_ms=9.69 simplify=246.49ms avg_simplify_ms=2.46, sum total=200 failed=0 elapsed=691.86ms avg_case_ms=3.46 simplify=233.53ms avg_simplify_ms=1.17, product total=100 failed=0 elapsed=450.89ms avg_case_ms=4.51 simplify=129.36ms avg_simplify_ms=1.29, difference total=50 failed=0 elapsed=304.11ms avg_case_ms=6.08 simplify=97.69ms avg_simplify_ms=1.95
+- Engine hotspots: shifted_quotient simplify=246.49ms avg_simplify_ms=2.46 wall=969.47ms, sum simplify=233.53ms avg_simplify_ms=1.17 wall=691.86ms, product simplify=129.36ms avg_simplify_ms=1.29 wall=450.89ms, difference simplify=97.69ms avg_simplify_ms=1.95 wall=304.11ms
+- Window slices: shifted_quotient@0+100 failed=0 elapsed=969.47ms avg_case_ms=9.69 avg_simplify_ms=2.46, sum@0+100 failed=0 elapsed=513.06ms avg_case_ms=5.13 avg_simplify_ms=1.67, product@0+100 failed=0 elapsed=450.89ms avg_case_ms=4.51 avg_simplify_ms=1.29, difference@0+50 failed=0 elapsed=304.11ms avg_case_ms=6.08 avg_simplify_ms=1.95, sum@700+100 failed=0 elapsed=178.80ms avg_case_ms=1.79 avg_simplify_ms=0.67
+- Steady-state engine reruns: shifted_quotient@0+100 #176 shifted_quotient runs=3 median_simplify=16.33ms median_wire=16.43ms median_wall=61.77ms, sum@0+100 #173 sum runs=3 median_simplify=15.29ms median_wire=15.36ms median_wall=58.63ms, difference@0+50 #174 difference runs=3 median_simplify=15.66ms median_wire=15.73ms median_wall=58.77ms, product@0+100 #175 product runs=3 median_simplify=15.09ms median_wire=15.16ms median_wall=57.10ms, shifted_quotient@0+100 #4 shifted_quotient runs=3 median_simplify=13.07ms median_wire=13.17ms median_wall=49.38ms
+- Steady-state dominant expressions: shifted_quotient@0+100 #176 shifted_quotient expr=((1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + 1)/((ln(x^2 - y^2) - ln(x - y) - ln(x + y)) + 1), sum@0+100 #173 sum expr=(1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + (ln(x^2 - y^2) - ln(x - y) - ln(x + y)), difference@0+50 #174 difference expr=(1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) - (ln(x^2 - y^2) - ln(x - y) - ln(x + y))
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
 | `simplify_zero_mixed` | `pass` | 2.42s | passed=450 failed=0 total=450 avg_case=5.378ms |
-| `calculus_diff_exhaustive_contract` | `pass` | 2.44s | passed=1 failed=0 |
-| `calculus_integrate_exhaustive_contract` | `pass` | 1.04s | passed=1 failed=0 |
+| `calculus_diff_exhaustive_contract` | `pass` | 2.94s | passed=1 failed=0 |
+| `calculus_integrate_exhaustive_contract` | `pass` | 874.99s | passed=1 failed=0 |

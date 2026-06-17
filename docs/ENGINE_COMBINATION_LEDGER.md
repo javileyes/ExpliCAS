@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 191 (newest first)
+Active entries: 192 (newest first)
 
 - 2026-06-16 | `retained` | block solver; `cas_solver/src/solve_backend_local.rs` (the active backend bou... | Retained soundness fix: solve back-substitutes rational roots to drop extraneous (Round-2 audit R5a)
 - 2026-06-16 | `retained` | block trig/inverse-trig + hyperbolic; four `cas_math` composition rules | Retained soundness fix: forward-of-inverse compositions decline out-of-domain literals (Round-2 audit R1)
@@ -128,6 +128,7 @@ Active entries: 191 (newest first)
 - 2026-06-16 | `retained` | block 1 (division/non-finite); extends the `Pow` arm of BOTH | Retained soundness fix: D^(-n) Pow-reciprocal of a zero denominator (Round-2 audit R4-6)
 - 2026-06-16 | `retained` | block 1 (non-finite) + block 5 (trig); a new `is_undefined_at_provable_zero_a... | Retained soundness fix: provably-zero-argument poles/indeterminates (Round-2 audit R3-2, part 1)
 - 2026-06-16 | `retained` | block 1 (non-finite) + block 5 (trig/transcendental); a new `special_function... | Retained soundness fix: exact special-function-value zero oracle (cross-cutting)
+- 2026-06-16 | `retained` | block 1 (non-finite) + powers/radicals; extends `is_structurally_undefined_ov... | Retained soundness fix: even-root-of-negative complex leak (Round-3 audit Cluster A)
 - 2026-06-15 | `retained` | calculus / limits / finite 0/0 quotient with two square-root terms (block 3) | Retained limits: sqrt-minus-sqrt finite 0/0 by conjugate
 - 2026-06-15 | `retained` | calculus / indefinite integration / f(x)*sinh(ax+b) or cosh(ax+b) where f is a | Retained integration: trig/exp times hyperbolic by exp lowering
 - 2026-06-15 | `retained` | calculus / definite integration / integral_a^b |c x + d| dx over rational bou... | Retained definite integration: |linear| split at its root
@@ -8473,3 +8474,41 @@ Active entries: 191 (newest first)
     direct arm returns Some(1) and is_provably_zero correctly says NOT zero), while cot(0)/csc(0)/ln(0)
     are poles left to is_undefined_at_provable_zero_arg. Returning the exact VALUE (0 or 1), not a
     bool, lets the same helper serve both the zero check and the additive-sum (cos(0)-1) fold.
+
+## 2026-06-16 - Retained soundness fix: even-root-of-negative complex leak (Round-3 audit Cluster A)
+- area:
+  - block 1 (non-finite) + powers/radicals; extends `is_structurally_undefined_over_reals` (consumed
+    by both `expr_carries_*` predicates -> the R3/R4-5/R4-6 universal filter) with an
+    even-root-of-negative arm + a `pow_is_even_root_of_negative` helper
+- status:
+  - `retained` (WRONG/HONESTY soundness fix; Round-3 audit Cluster A, the largest cluster / 9 probes)
+- capture:
+  - investment_class: soundness
+  - cell: `sqrt(-2)^2`, `sqrt(-2)*sqrt(-2)`, `sqrt(-4)*sqrt(-9)`, `sqrt(-8)/sqrt(-2)`,
+    `sqrt(-9)/sqrt(-4)`, `(-1)^(1/2)*(-1)^(1/2)` stay symbolic (were -2/-6/2/3/2/-1); real odd roots
+    `(-8)^(1/3)=-2`, `(-8)^(2/3)=4`, positive bases, integer powers, and symbolic `sqrt(-2)*sqrt(-3)`
+    unchanged (no false positive)
+  - behavior_change_expected: yes - sqrt-of-negative no longer collapses to a real; guardrail+pressure
+    fingerprints BYTE-IDENTICAL, engine-fast no slow/timeout
+- observed (USER-DIRECTED, Round-3 Cluster A; multi-agent audit found it):
+  - the engine soundly keeps `sqrt(-n)` symbolic standalone (with an imaginary-usage note) but the
+    power-COMBINING rules ("N-ary Mul Combine Powers", "Deshacer raiz y potencia", "Reconocer un
+    cociente notable") treat `(-1)^(1/2)` / `(-n)^(1/2)` as an ordinary base and merge exponents,
+    leaking `i^2=-1` into a value_domain=real evaluation. The sign tell is decisive:
+    `sqrt(-4)*sqrt(-9) -> -6` not `+6`.
+  - fixed at the VALUE level (the undefined predicate) not per-rule: once `(-n)^(1/2)` is flagged
+    undefined over R, the existing universal filter reverts every merge that drops it. This caught
+    8 of 9 probes immediately; the 9th (`sqrt(-9)/sqrt(-4)`, perfect squares) needed the `Sqrt`
+    BUILTIN spelling added too (the outer pipeline filter sees the original `Div(Sqrt(-9),Sqrt(-4))`
+    before children fold to the `(-1)^(1/2)` Pow form).
+- retained learning:
+  - EVEN vs ODD root is the soundness line for negative bases: `b^(p/q)` (b<0) is undefined over R
+    iff q is EVEN (even roots of negatives are non-real); ODD q is a genuine real root ((-8)^(1/3)=-2)
+    and must NOT be flagged. Gate on `exact_rational_value(exp).denom().is_even()` after confirming
+    `exact_rational_value(base) < 0` - exact, never a false positive on a symbolic base.
+  - a value spelled two ways (the `(-n)^(1/2)` Pow and the `Sqrt(n)` builtin) needs BOTH spellings in
+    the predicate; the outer pipeline filter compares the ORIGINAL input (pre-fold) against the result,
+    so the parser's surface spelling (here `Sqrt`) must be recognized, not only the normalized form.
+  - reuse over rewrite: extending the shared undefined oracle (one detector arm) fixed an entire
+    9-probe cluster across three different combining rules, with byte-identical huella, instead of
+    guarding each rule - the same leverage as R4-5/R4-6.

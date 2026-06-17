@@ -5,6 +5,7 @@ use crate::numeric_eval::as_rational_const;
 use crate::semantic_equality::SemanticEqualityChecker;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
@@ -1071,7 +1072,7 @@ pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
 /// function is defined, so it can never report a false zero. Returns `None` for a
 /// symbolic / non-special argument (`sin(x)`), an irrational value (`sin(1)`,
 /// `cos(π/4)`), a pole (`cot(0)`, `ln(0)` — those are handled by
-/// `is_undefined_at_provable_zero_arg`, never confused with a zero), or a trig
+/// `is_structurally_undefined_over_reals`, never confused with a zero), or a trig
 /// special angle (`sin(π/6)` — deferred).
 ///
 /// Vanish at a PROVABLY-ZERO argument (so `sin(x−x)` is covered, not only `sin(0)`):
@@ -1452,43 +1453,70 @@ fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
-/// True when `expr` is genuinely UNDEFINED over ℝ because it is a power or function
-/// at a PROVABLY-ZERO argument that is a pole / indeterminate there.
+/// True when `expr` is structurally UNDEFINED over ℝ by an exact rule:
+///   • `0^k` for `k ≤ 0` — `0^0` (indeterminate) and `0^(neg) = 1/0`. The zero exponent
+///     goes through `is_provably_zero` so `0^(x-x)` is covered; a positive exponent
+///     gives `0^n = 0` (defined, handled by `is_provably_zero`).
+///   • `b^(p/q)` an EVEN root of a provably-NEGATIVE base (`(-2)^(1/2)`, `(-1)^(3/2)`,
+///     `(-4)^(1/4)`) — an even root of a negative is undefined over ℝ. An ODD
+///     denominator is a real root and is NOT flagged (`(-8)^(1/3) = -2`).
+///   • `cot(0)` and `csc(0)` — the `c/0` sin-denominator poles (any provably-zero arg).
 ///
-/// `0^k` is undefined for `k ≤ 0`: `0^(neg) = 1/0` (the R4-6 reciprocal spelling) and
-/// `0^0` (the indeterminate form). A POSITIVE exponent gives `0^n = 0`, defined
-/// (handled by `is_provably_zero`); a symbolic / non-rational exponent is left
-/// unflagged (its sign is unknown, so soundness is preserved). `cot(0)` and `csc(0)`
-/// are `c/0`, the `sin`-denominator trig poles.
-///
-/// `ln(0) = −∞` is intentionally EXCLUDED — it is non-finite, not undefined, and
-/// `1/ln(0) = 0`, so flagging it would wrongly block `1/ln(0) − 1/ln(0) → 0`. The
-/// `tan`/`sec` poles at `π/2 + kπ` need argument-multiple analysis (deferred). Every
-/// case here is genuinely undefined (`1/cot(0) = 1/undefined = undefined`), so there
-/// is no `1/x → 0` reciprocal subtlety and no legitimate cancellation is over-blocked.
-fn is_undefined_at_provable_zero_arg(ctx: &Context, expr: ExprId) -> bool {
+/// `ln(0) = −∞` and the `tan`/`sec` `π/2`-poles are intentionally EXCLUDED (the former
+/// is non-finite not undefined, with `1/ln(0) = 0`; the latter needs rational-π
+/// analysis). Every case here is genuinely undefined, so no legitimate value or
+/// cancellation is ever over-blocked.
+fn is_structurally_undefined_over_reals(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
-            // `0^k` is undefined for `k ≤ 0`: a provably-ZERO exponent (`0^0`, incl.
-            // `0^(x-x)`) or a provably-NEGATIVE rational exponent (`0^(-1) = 1/0`).
-            // `exact_rational_value` only sees a negative *literal* sign, so the
-            // zero case must go through `is_provably_zero` (which folds `x-x`, etc.).
-            is_provably_zero(ctx, *base)
-                && (is_provably_zero(ctx, *exp)
-                    || exact_rational_value(ctx, *exp).is_some_and(|e| e.is_negative()))
+            let (base, exp) = (*base, *exp);
+            // `0^k`, k ≤ 0.
+            if is_provably_zero(ctx, base)
+                && (is_provably_zero(ctx, exp)
+                    || exact_rational_value(ctx, exp).is_some_and(|e| e.is_negative()))
+            {
+                return true;
+            }
+            // Even root of a provably-negative base.
+            pow_is_even_root_of_negative(ctx, base, exp)
         }
-        Expr::Function(fn_id, args) => {
-            args.len() == 1
-                && (ctx.is_builtin(*fn_id, BuiltinFn::Cot)
-                    || ctx.is_builtin(*fn_id, BuiltinFn::Csc))
-                && is_provably_zero(ctx, args[0])
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let arg = args[0];
+            // `cot(0)` / `csc(0)`: the `c/0` sin-denominator poles.
+            if (ctx.is_builtin(*fn_id, BuiltinFn::Cot) || ctx.is_builtin(*fn_id, BuiltinFn::Csc))
+                && is_provably_zero(ctx, arg)
+            {
+                return true;
+            }
+            // `sqrt` of a provably-negative argument: an even root of a negative,
+            // undefined over ℝ. (The `(-n)^(1/2)` spelling is the `Pow` arm above; this
+            // catches the `Sqrt` builtin the parser emits for `sqrt(...)`.) `cbrt` /
+            // odd roots are real and are NOT flagged.
+            ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+                && exact_rational_value(ctx, arg).is_some_and(|a| a.is_negative())
         }
         _ => false,
     }
 }
 
+/// `b^(p/q)` is an EVEN root of a provably-NEGATIVE base — undefined over ℝ
+/// (`sqrt(-2) = (-2)^(1/2)`, `(-1)^(3/2)`, `(-4)^(1/4)`). Exact and conservative: `b`
+/// must be numerically negative (via `exact_rational_value`, so a symbolic base never
+/// matches) and the exponent a NON-integer rational with EVEN denominator. An ODD
+/// denominator is a genuine real root and is NOT flagged (`(-8)^(1/3) = -2`,
+/// `(-8)^(2/3) = 4`); an integer exponent is fine (`(-2)^3 = -8`).
+fn pow_is_even_root_of_negative(ctx: &Context, base: ExprId, exp: ExprId) -> bool {
+    let Some(b) = exact_rational_value(ctx, base) else {
+        return false;
+    };
+    if !b.is_negative() {
+        return false;
+    }
+    exact_rational_value(ctx, exp).is_some_and(|e| !e.is_integer() && e.denom().is_even())
+}
+
 pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool {
-    if is_undefined_at_provable_zero_arg(ctx, expr) {
+    if is_structurally_undefined_over_reals(ctx, expr) {
         return true;
     }
     match ctx.get(expr) {
@@ -1569,7 +1597,7 @@ pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: E
 /// (`1/inf -> 0`, `tanh(inf) -> 1`, `sign(inf) -> 1`, `e^(-inf) -> 0`), so dropping
 /// it is frequently sound, whereas dropping a genuine `undefined`/`c/0` never is.
 pub fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
-    if is_undefined_at_provable_zero_arg(ctx, expr) {
+    if is_structurally_undefined_over_reals(ctx, expr) {
         return true;
     }
     match ctx.get(expr) {
@@ -1807,6 +1835,47 @@ mod tests {
         assert!(expr_carries_undefined(&ctx, cot_zero));
         let ln_zero = parse("ln(x-x)", &mut ctx).expect("parse");
         assert!(!expr_carries_undefined(&ctx, ln_zero)); // -inf, excluded
+
+        // Round-3 Cluster A: an EVEN root of a NEGATIVE base (`sqrt(-2) = (-2)^(1/2)`,
+        // and the `Sqrt` builtin form) is undefined over ℝ, so the power/quotient merges
+        // that produce a real value (`sqrt(-2)^2 → -2`, `sqrt(-2)*sqrt(-2) → -2`,
+        // `sqrt(-9)/sqrt(-4) → 3/2`) are unsound drops and must be blocked.
+        for src in [
+            "(-2)^(1/2) * (-2)^(1/2)",
+            "(-1)^(1/2) * (-1)^(1/2)",
+            "((-2)^(1/2))^2",
+            "(-1)^(3/2) - (-1)^(3/2)",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            let any = ctx.num(7); // a finite, undefined-free target
+            assert!(
+                rewrite_unsoundly_drops_nonfinite(&ctx, before, any),
+                "`{src}` -> finite must be flagged as an unsound drop"
+            );
+        }
+        // `expr_carries_undefined` flags even-roots-of-negative (both `Pow` and `Sqrt`
+        // spellings) but never a real odd root, a positive base, or an integer power.
+        for src in ["(-2)^(1/2)", "(-1)^(1/2)", "sqrt(-9)", "(-4)^(1/4)"] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert!(
+                expr_carries_undefined(&ctx, e),
+                "`{src}` is undefined over R"
+            );
+        }
+        for src in [
+            "(-8)^(1/3)",
+            "(-1)^(1/3)",
+            "(-8)^(2/3)",
+            "2^(1/2)",
+            "(-2)^3",
+            "sqrt(2)",
+        ] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert!(
+                !expr_carries_undefined(&ctx, e),
+                "`{src}` is a real value, must NOT be flagged undefined"
+            );
+        }
     }
 
     #[test]
