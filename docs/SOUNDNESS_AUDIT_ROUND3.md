@@ -22,7 +22,7 @@ filter** ✅ (`6461f0c238923bfe6d296b036c2add2571c1ca43`, exact single-quadratic
 green, guardrail+pressure fingerprints byte-identical. **Remaining:** Cluster C's
 `ln(x)=ln(-x)→ℝ` collapse (needs the log sign-conditions threaded to `IdentityAllReals`);
 Cluster **D** (`acosh` in `--domain assume` — mode-semantics: surface vs drop the `x≥0`
-assumption). Cluster **F** (interval strictness) ✅ (`PENDING_HASH`, eval-output renderer now
+assumption). Cluster **F** (interval strictness) ✅ (`5b08d258658c41362c2f9c65e1f610844e133d4f`, eval-output renderer now
 respects open/closed bounds). The six landed fixes retired ~21 of the 24 probes (the entire
 complex-leak family A+B, the worst solve fabrications, all empty sum/product wrong values, and
 the inequality-strictness membership error).
@@ -154,7 +154,7 @@ abs-strip itself (`abs(sqrt(-4)) → 2·(-1)^(1/2)`) is Cluster B, separate.
 **Fix (commit `eaa02ecc89a766f94425f9bd3b5e16ee32ee9f4f`).** Both planners `try_plan_finite_sum_evaluation` / `try_plan_finite_product_evaluation` in `crates/cas_math/src/summation_support.rs` now check `lower > upper` (both bounds exact integers) **before any closed form** and return the empty-aggregate identity via the existing direct builder — `start..=end` is an empty Rust range, so `build_finite_sum_substitution` yields `0` and `build_finite_product_substitution` yields `1`. The guard had to precede the closed-form attempts because `SumOfFirstIntegers` is tried first and was the source of `-9`. Result: `sum(k,k,6,3)`, `sum(1,k,5,1)`, `sum(k^2,k,10,1)`, `sum(k,k,0,-3)` → `0`; `product(k,k,6,3)`, `product(k+1,k,5,2)` → `1`. Forward ranges and single-element ranges (`sum(k,k,3,3) → 3`) are unchanged; guardrail + pressure fingerprints byte-identical (no fixture exercises a reversed range, so reusing the `FiniteDirect` kind caused no classification drift).
 
 ### Cluster F — inequality solver always emits closed brackets (strictness dropped)
-**Severity: wrong-value. 2 probes (axis equation-systems-ineq). — FIXED (commit `PENDING_HASH`).**
+**Severity: wrong-value. 2 probes (axis equation-systems-ineq). — FIXED (commit `5b08d258658c41362c2f9c65e1f610844e133d4f`).**
 
 | Probe | actual | expected |
 |---|---|---|
@@ -163,7 +163,7 @@ abs-strip itself (`abs(sqrt(-4)) → 2·(-1)^(1/2)`) is Cluster B, separate.
 
 **Root cause (corrected on fix).** NOT architectural — the original "no open-bracket representation" guess was wrong. The `Interval` type already carries per-endpoint `BoundType::{Open, Closed}` (`cas_ast/src/domain.rs`), and the solver's `isolated_var_solution` (`cas_solver_core/src/solution_set.rs`) already builds them correctly (`x>1 → (rhs, ∞)` open, `x≥1 → [rhs, ∞)`). The bug was purely in ONE display renderer: `eval_output_presentation_solution_display/interval.rs::format_output_interval` hard-coded `"[{}, {}]"`, discarding the bound types — so every interval, strict or not, printed with closed brackets (and ∞ wrongly closed). The sibling renderer `solution_display/interval.rs` was already correct; only the eval-output path was broken.
 
-**Fix (commit `PENDING_HASH`).** `format_output_interval` now takes the whole `&Interval` and renders `(`/`)` for `Open` and `[`/`]` for `Closed` per endpoint (mirroring the correct sibling renderer). No solver/type change. Result: `solve(x>1) → (1, infinity)`, `solve(x>=1) → [1, infinity)`, `solve(x<=1) → (-infinity, 1]`, `solve(x^2>4) → (-infinity, -2) U (2, infinity)`, `solve(x!=3) → (-infinity, 3) U (3, infinity)` — strict vs non-strict now distinct, ∞ always open. Guardrail + pressure byte-identical (no scorecard lane renders inequality intervals); no test asserted the old closed-bracket format. A renderer unit test (`renders_open_and_closed_bounds_distinctly`) locks it in.
+**Fix (commit `5b08d258658c41362c2f9c65e1f610844e133d4f`).** `format_output_interval` now takes the whole `&Interval` and renders `(`/`)` for `Open` and `[`/`]` for `Closed` per endpoint (mirroring the correct sibling renderer). No solver/type change. Result: `solve(x>1) → (1, infinity)`, `solve(x>=1) → [1, infinity)`, `solve(x<=1) → (-infinity, 1]`, `solve(x^2>4) → (-infinity, -2) U (2, infinity)`, `solve(x!=3) → (-infinity, 3) U (3, infinity)` — strict vs non-strict now distinct, ∞ always open. Guardrail + pressure byte-identical (no scorecard lane renders inequality intervals); no test asserted the old closed-bracket format. A renderer unit test (`renders_open_and_closed_bounds_distinctly`) locks it in.
 
 ### Axis areas with ZERO confirmed defects (positive results)
 
@@ -183,7 +183,7 @@ abs-strip itself (`abs(sqrt(-4)) → 2·(-1)^(1/2)`) is Cluster B, separate.
 5. **Cluster D** — close the assume-mode `acosh∘cosh` abs-drop (extend R2 fix to the assume path or fix `assumptions_used` surfacing). Quick-ish; touches the presentation-conditions module.
 
 **P2 — representational:**
-6. ~~**Cluster F** — open/closed interval endpoints for strict inequalities.~~ **DONE** (`PENDING_HASH`): it was plumbing, not architectural — the eval-output renderer ignored the (already-correct) `BoundType` flags; fixed to render open/closed per endpoint.
+6. ~~**Cluster F** — open/closed interval endpoints for strict inequalities.~~ **DONE** (`5b08d258658c41362c2f9c65e1f610844e133d4f`): it was plumbing, not architectural — the eval-output renderer ignored the (already-correct) `BoundType` flags; fixed to render open/closed per endpoint.
 
 ## 5. What Is Now Well-Covered — Confidence Statement
 
