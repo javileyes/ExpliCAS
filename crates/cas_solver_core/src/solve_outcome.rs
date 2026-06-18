@@ -201,11 +201,99 @@ fn try_abs_self_equation(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<So
     solve_linear_arg_vs_zero(ctx, arg, arg_op, var)
 }
 
+/// Recover `var = N/D(var)` (variable isolated but still in the denominator) by
+/// cross-multiplying to `var·D - N = 0` and solving that polynomial (Round-4
+/// Cluster A — the log-product/quotient reductions land here too).
+///
+/// Spurious roots where `D = 0` are dropped: for rational roots by exact
+/// evaluation of `D`, and for irrational (surd) roots by restricting to a LINEAR
+/// denominator, which can never vanish at an irrational point.
+fn try_cross_multiply_rational(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<SolutionSet> {
+    use cas_math::perfect_square_support::rational_sqrt;
+    use cas_math::polynomial::Polynomial;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    let (num, den) = crate::reciprocal::combine_fractions_deterministic(ctx, rhs)?;
+    if !contains_var(ctx, den, var) {
+        return None;
+    }
+    let var_expr = ctx.var(var);
+    let var_den = ctx.add(Expr::Mul(var_expr, den));
+    let poly_expr = ctx.add(Expr::Sub(var_den, num));
+    let poly = Polynomial::from_expr(ctx, poly_expr, var).ok()?;
+    let den_poly = Polynomial::from_expr(ctx, den, var).ok();
+    let den_is_linear = den_poly.as_ref().is_some_and(|p| p.degree() == 1);
+    let den_zero = |r: &BigRational| den_poly.as_ref().is_some_and(|p| p.eval(r).is_zero());
+
+    let zero = BigRational::zero();
+    match poly.degree() {
+        1 => {
+            let a = poly.coeffs.get(1)?.clone();
+            if a.is_zero() {
+                return None;
+            }
+            let b = poly.coeffs.first().cloned().unwrap_or_else(|| zero.clone());
+            let root = -b / a;
+            if den_zero(&root) {
+                return Some(SolutionSet::Empty);
+            }
+            let e = num_expr_from_rational(ctx, &root);
+            Some(SolutionSet::Discrete(vec![e]))
+        }
+        2 => {
+            let a = poly.coeffs.get(2)?.clone();
+            if a.is_zero() {
+                return None;
+            }
+            let b = poly.coeffs.get(1).cloned().unwrap_or_else(|| zero.clone());
+            let c = poly.coeffs.first().cloned().unwrap_or_else(|| zero.clone());
+            let four = BigRational::from_integer(4.into());
+            let two = BigRational::from_integer(2.into());
+            let disc = b.clone() * b.clone() - four * a.clone() * c;
+            if disc < zero {
+                return Some(SolutionSet::Empty);
+            }
+            let two_a = two * a.clone();
+            if let Some(sd) = rational_sqrt(&disc) {
+                let r1 = (-b.clone() - sd.clone()) / two_a.clone();
+                let r2 = (-b + sd) / two_a;
+                let mut roots: Vec<BigRational> = if r1 == r2 { vec![r1] } else { vec![r1, r2] };
+                roots.retain(|r| !den_zero(r));
+                let exprs: Vec<ExprId> = roots
+                    .iter()
+                    .map(|r| num_expr_from_rational(ctx, r))
+                    .collect();
+                Some(if exprs.is_empty() {
+                    SolutionSet::Empty
+                } else {
+                    SolutionSet::Discrete(exprs)
+                })
+            } else if den_is_linear {
+                let disc_expr = num_expr_from_rational(ctx, &disc);
+                let half = num_expr_from_rational(ctx, &BigRational::new(1.into(), 2.into()));
+                let sqrt_disc = ctx.add(Expr::Pow(disc_expr, half));
+                let neg_b = num_expr_from_rational(ctx, &(-b));
+                let two_a_expr = num_expr_from_rational(ctx, &two_a);
+                let lo_num = ctx.add(Expr::Sub(neg_b, sqrt_disc));
+                let r1 = ctx.add(Expr::Div(lo_num, two_a_expr));
+                let hi_num = ctx.add(Expr::Add(neg_b, sqrt_disc));
+                let r2 = ctx.add(Expr::Div(hi_num, two_a_expr));
+                Some(SolutionSet::Discrete(vec![r1, r2]))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Attempt to finish an isolated `var = rhs` equation (with `rhs` still
-/// containing `var`) instead of leaking a nested-`solve` residual. Currently
-/// recovers `|f| = ±f` self-equations (Round-4 Cluster J).
+/// containing `var`) instead of leaking a nested-`solve` residual. Recovers
+/// `|f| = ±f` self-equations (Cluster J) and `var = N/D(var)` rational
+/// equations (Cluster A).
 fn try_recover_isolated_eq(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<SolutionSet> {
-    try_abs_self_equation(ctx, rhs, var)
+    try_abs_self_equation(ctx, rhs, var).or_else(|| try_cross_multiply_rational(ctx, rhs, var))
 }
 
 /// Resolve the final outcome for `x op rhs` once the variable is syntactically
@@ -19776,6 +19864,46 @@ mod tests {
             }
             other => panic!("expected closed lower half-line, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn resolve_isolated_variable_outcome_cross_multiplies_rational() {
+        use num_traits::ToPrimitive;
+        // x = 8/(x+2)  =>  x(x+2) = 8  =>  x^2+2x-8 = 0  =>  {-4, 2}.
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let eight = ctx.num(8);
+        let two = ctx.num(2);
+        let x_plus_2 = ctx.add(Expr::Add(x, two));
+        let rhs = ctx.add(Expr::Div(eight, x_plus_2));
+        match resolve_isolated_variable_outcome(&mut ctx, rhs, RelOp::Eq, "x") {
+            IsolatedVariableOutcome::Solved(SolutionSet::Discrete(roots)) => {
+                let vals: std::collections::BTreeSet<i64> = roots
+                    .iter()
+                    .filter_map(|&r| match ctx.get(r) {
+                        Expr::Number(n) if n.is_integer() => n.to_integer().to_i64(),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(vals, [-4i64, 2].into_iter().collect());
+            }
+            other => panic!("expected discrete {{-4, 2}}, got {other:?}"),
+        }
+
+        // x = (x^2-4)/(x-2): cross-multiply gives x=2, a denominator zero =>
+        // excluded => Empty (the equation has no real solution).
+        let x2 = ctx.var("x");
+        let four = ctx.num(4);
+        let two_pow = ctx.num(2);
+        let x_sq = ctx.add(Expr::Pow(x2, two_pow));
+        let num = ctx.add(Expr::Sub(x_sq, four));
+        let two_b = ctx.num(2);
+        let den = ctx.add(Expr::Sub(x2, two_b));
+        let rhs2 = ctx.add(Expr::Div(num, den));
+        assert!(matches!(
+            resolve_isolated_variable_outcome(&mut ctx, rhs2, RelOp::Eq, "x"),
+            IsolatedVariableOutcome::Solved(SolutionSet::Empty)
+        ));
     }
 
     #[test]

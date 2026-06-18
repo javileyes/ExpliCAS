@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 206 (newest first)
+Active entries: 207 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
@@ -125,6 +125,7 @@ Active entries: 206 (newest first)
 - 2026-06-18 | `retained` | eval-path domain filter; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: log(b,-k*x)=log(b,x)+m over-claimed "All real numbers" (negative-coeff contradictory domain; generalize a==-b to negative proportionality)
 - 2026-06-18 | `retained` | CLI equiv path; `crates/cas_engine/src/eval/actions.rs` `eval_equiv` + new `e... | Retained soundness fix: equiv certified non-equivalent expressions as equal via a single f64 probe (Round-4 Cluster O)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_is... | Retained soundness fix: solve(|f|=-f) leaked a nested-solve residual instead of an interval (Round-4 Cluster J)
+- 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_is... | Retained soundness fix: solve(x=N/D(x)) leaked a nested-solve residual instead of cross-multiplying (Round-4 Cluster A)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -9058,3 +9059,38 @@ Active entries: 206 (newest first)
     build exactly (linear interval), keeping the under-answer sound.
   - lhs at this site is always the bare variable, so the full equation is reconstructable as ctx.var(var) =
     rhs without any extra plumbing.
+
+## 2026-06-18 - Retained soundness fix: solve(x=N/D(x)) leaked a nested-solve residual instead of cross-multiplying (Round-4 Cluster A)
+- area:
+  - core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_isolated_variable_outcome`
+    + new try_cross_multiply_rational
+- status:
+  - `retained` (HONESTY soundness fix; second half of Round-4 Clusters A+J)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(log(2,x)+log(2,x+2)=3)` -> {2}, `solve(log(3,x)+log(3,x-2)=1)` -> {3},
+    `solve(log(5,x)+log(5,x-4)=1)` -> {5}, `solve(log(2,x*(x-2))=3)` -> {-2,4}, `solve(x=8/(x+2))` -> {-4,2},
+    `solve(x=(x^2-4)/(x-2))` -> No solution (excludes the denominator-zero cross-multiply root x=2);
+    were all ok=true "Solve: solve(x = ..., x) = 0" garbage
+  - behavior_change_expected: yes - leaked residual -> discrete roots / empty; guardrail+pressure
+    BYTE-IDENTICAL, full cargo test --workspace green
+- observed (Round-4 audit Cluster A; scoping found the root cause is NOT log-specific):
+  - solve(x=8/(x+2)) leaks the SAME residual standalone while solve(x*(x+2)=8) -> {-4,2} works: the gap is
+    that solve(x = N/D(x), x) (variable isolated but still in the denominator) never cross-multiplies. The
+    log-product equations log(b,x)+log(b,x+k)=n reduce to this exact shape and inherit the leak.
+  - fix (non-recursive, same chokepoint as Cluster J): cross-multiply var*D - N = 0 (combine_fractions_
+    deterministic + Polynomial::from_expr which expands), solve the polynomial - rational roots exactly via
+    rational_sqrt, irrational roots as (-b +- sqrt(disc))/(2a) only for a LINEAR denominator (cannot vanish at
+    an irrational point). Drop denominator-zero roots exactly via Polynomial::eval(D). Domain (x>0) intersected
+    downstream by the existing guard, so {-4,2} ∩ {x>0} -> {2}.
+- retained learning:
+  - a "log" bug was actually a general rational-equation gap: solve(x = N/D(x)) on the isolated-variable path.
+    Probe the reduced/standalone form (solve(x=8/(x+2))) - if it leaks too, fix the general shape, not the
+    surface family. The same chokepoint then fixes every origin (standalone + log-reduction).
+  - cross-multiplication x = N/D => x*D = N can introduce the spurious root D=0; exclude it EXACTLY:
+    Polynomial::eval(D) at rational roots, and restrict surd roots to a LINEAR D (provably can't vanish at an
+    irrational point). Never rely solely on a downstream guard for a reduction-introduced denominator.
+  - non-recursive recovery trades clean output for simplicity: the manually-built surd roots are correct but
+    unsimplified ((2-sqrt(8))/2 vs the strategy's 1-sqrt(2)). Acceptable for a soundness fix (eliminates the
+    honesty-violation garbage); the rational headline (log-product) is clean. Surd beautification is a separate
+    cosmetic polish.
