@@ -1098,7 +1098,17 @@ fn boundary_touch_evaluation(
     let upper_sign = infinite_sign(ctx, upper_value);
     let lower_sign = infinite_sign(ctx, lower_value);
     let result = match (upper_sign, lower_sign) {
-        (Some(_), Some(_)) => return None, // infinity - infinity: indeterminate
+        // Poles at BOTH endpoints: the antiderivative diverges at each. Equal signs
+        // give an `inf - inf` indeterminate => the (doubly) improper integral
+        // diverges with no value (undefined); opposite signs give a definite
+        // `±infinity` (consistent with the single-endpoint-pole convention below).
+        (Some(us), Some(ls)) => {
+            if us == ls {
+                ctx.add(Expr::Constant(Constant::Undefined))
+            } else {
+                build_signed_infinity(ctx, us)
+            }
+        }
         (Some(sign), None) => build_signed_infinity(ctx, sign),
         (None, Some(sign)) => build_signed_infinity(ctx, -sign),
         (None, None) => ctx.add(Expr::Sub(upper_value, lower_value)),
@@ -2056,41 +2066,52 @@ fn trig_nonzero_on_interval(
     let k_low = approx_low.floor().to_integer();
     let k_high = approx_high.ceil().to_integer();
 
+    // Scan EVERY zero in the closed interval rather than returning at the first.
+    // A single boundary zero is a removable/improper endpoint, but a second zero
+    // (an interior pole, or a pole at BOTH endpoints) makes the integral divergent;
+    // returning early on the first endpoint zero misclassified those (e.g. integral
+    // of cos/sin^2 over [0, 2*pi] missed the interior pole at pi, and over [0, pi]
+    // saw only the lower pole and fabricated a one-sided signed infinity).
+    let mut interior_pole = false;
+    let mut undecidable = false;
+    let mut touch_lower = false;
+    let mut touch_upper = false;
     let mut k = k_low;
     while k <= k_high {
         let multiplier = &start + &step * BigRational::from_integer(k.clone());
         // The zero is exactly multiplier * pi: pi-pure, so comparisons
         // against pi-multiple bounds are exact rational comparisons.
         let zero = Endpoint::from_pi_multiple(multiplier);
-        let before_interval = matches!(zero.try_cmp(interval_low), Some(std::cmp::Ordering::Less));
-        let after_interval = matches!(
-            zero.try_cmp(interval_high),
-            Some(std::cmp::Ordering::Greater)
-        );
+        let cmp_low = zero.try_cmp(interval_low);
+        let cmp_high = zero.try_cmp(interval_high);
+        let before_interval = matches!(cmp_low, Some(std::cmp::Ordering::Less));
+        let after_interval = matches!(cmp_high, Some(std::cmp::Ordering::Greater));
         if !(before_interval || after_interval) {
-            let strictly_inside =
-                matches!(
-                    zero.try_cmp(interval_low),
-                    Some(std::cmp::Ordering::Greater)
-                ) && matches!(zero.try_cmp(interval_high), Some(std::cmp::Ordering::Less));
-            if strictly_inside {
-                return Some(IntervalCertificate::Undefined);
+            if matches!(cmp_low, Some(std::cmp::Ordering::Greater))
+                && matches!(cmp_high, Some(std::cmp::Ordering::Less))
+            {
+                interior_pole = true;
+            } else if matches!(cmp_low, Some(std::cmp::Ordering::Equal)) {
+                touch_lower = true;
+            } else if matches!(cmp_high, Some(std::cmp::Ordering::Equal)) {
+                touch_upper = true;
+            } else {
+                undecidable = true;
             }
-            if matches!(zero.try_cmp(interval_low), Some(std::cmp::Ordering::Equal)) {
-                return Some(IntervalCertificate::BoundaryTouch {
-                    lower: true,
-                    upper: false,
-                });
-            }
-            if matches!(zero.try_cmp(interval_high), Some(std::cmp::Ordering::Equal)) {
-                return Some(IntervalCertificate::BoundaryTouch {
-                    lower: false,
-                    upper: true,
-                });
-            }
-            return Some(IntervalCertificate::Unknown);
         }
         k += 1;
+    }
+    if interior_pole {
+        return Some(IntervalCertificate::Undefined);
+    }
+    if undecidable {
+        return Some(IntervalCertificate::Unknown);
+    }
+    if touch_lower || touch_upper {
+        return Some(IntervalCertificate::BoundaryTouch {
+            lower: touch_lower,
+            upper: touch_upper,
+        });
     }
     Some(IntervalCertificate::Certified)
 }
@@ -2365,6 +2386,35 @@ mod certificate_tests {
         assert_eq!(
             eval_definite("integrate(tan(x), x, 0, infinity)").as_deref(),
             Some("undefined")
+        );
+    }
+
+    #[test]
+    fn poles_at_both_endpoints_and_interior_are_undefined() {
+        // Regression for Round-4 Cluster K: the trig zero scan returned on the FIRST
+        // zero, so it saw only the lower pole and fabricated a one-sided signed
+        // infinity. sin has zeros at 0 AND pi -> BOTH endpoints of [0, pi] are poles
+        // of cos/sin^2 (antiderivative -1/sin -> -inf at each): an inf - inf
+        // indeterminate, so the integral diverges (undefined).
+        assert_eq!(
+            eval_definite("integrate(cos(x)/sin(x)^2, x, 0, pi)").as_deref(),
+            Some("undefined")
+        );
+        // Interior pole at pi inside [0, 2pi]: the second zero was missed when the
+        // scan short-circuited on the x=0 endpoint zero.
+        assert_eq!(
+            eval_definite("integrate(cos(x)/sin(x)^2, x, 0, 2*pi)").as_deref(),
+            Some("undefined")
+        );
+        // Poles at both pi and 2pi (the [pi, 2pi] endpoints).
+        assert_eq!(
+            eval_definite("integrate(cos(x)/sin(x)^2, x, pi, 2*pi)").as_deref(),
+            Some("undefined")
+        );
+        // A single endpoint pole still yields the honest one-sided divergence.
+        assert_eq!(
+            eval_definite("integrate(cos(x)/sin(x)^2, x, pi/2, pi)").as_deref(),
+            Some("-infinity")
         );
     }
 }

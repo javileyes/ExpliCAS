@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 207 (newest first)
+Active entries: 208 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
@@ -126,6 +126,7 @@ Active entries: 207 (newest first)
 - 2026-06-18 | `retained` | CLI equiv path; `crates/cas_engine/src/eval/actions.rs` `eval_equiv` + new `e... | Retained soundness fix: equiv certified non-equivalent expressions as equal via a single f64 probe (Round-4 Cluster O)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_is... | Retained soundness fix: solve(|f|=-f) leaked a nested-solve residual instead of an interval (Round-4 Cluster J)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_is... | Retained soundness fix: solve(x=N/D(x)) leaked a nested-solve residual instead of cross-multiplying (Round-4 Cluster A)
+- 2026-06-18 | `retained` | definite integration; `crates/cas_engine/src/rules/calculus/definite_integrat... | Retained soundness fix: definite integral with endpoint+interior poles fabricated a signed infinity (Round-4 Cluster K, CRITICAL sign-wrong)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -9094,3 +9095,39 @@ Active entries: 207 (newest first)
     unsimplified ((2-sqrt(8))/2 vs the strategy's 1-sqrt(2)). Acceptable for a soundness fix (eliminates the
     honesty-violation garbage); the rational headline (log-product) is clean. Surd beautification is a separate
     cosmetic polish.
+
+## 2026-06-18 - Retained soundness fix: definite integral with endpoint+interior poles fabricated a signed infinity (Round-4 Cluster K, CRITICAL sign-wrong)
+- area:
+  - definite integration; `crates/cas_engine/src/rules/calculus/definite_integration.rs`
+    trig_nonzero_on_interval (full pole scan) + boundary_touch_evaluation (both-pole arm)
+- status:
+  - `retained` (CRITICAL honesty-violation soundness fix; the worst Round-4 integration bug - a sign-wrong
+    definite value for a divergent integral)
+- capture:
+  - investment_class: soundness
+  - cell: integrate(cos(x)/sin(x)^2, x, {0,pi}/{0,2pi}/{pi,2pi}/{0,3pi/2}/{0,5pi/2}) and
+    integrate(csc(x)*cot(x), x, 0, pi) -> "undefined" (were +-infinity); single-endpoint pole
+    integrate(cos/sin^2, pi/2, pi) -> -infinity (honest divergence, unchanged); 1/x^2 over [-1,1] and
+    cos/sin^2 over [pi/2,3pi/2] stay undefined; all convergent integrals unchanged
+  - behavior_change_expected: yes - signed-infinity / residual -> undefined for divergent multi-pole integrals;
+    guardrail+pressure BYTE-IDENTICAL except the +1 new-test count, full cargo test --workspace green
+- observed (Round-4 audit Cluster K, critical):
+  - trig_nonzero_on_interval scanned multiplier*pi zeros in a k-loop but RETURNED on the FIRST zero found at a
+    boundary. For sin over [0,pi] it found x=0 (lower) and returned BoundaryTouch{lower:true,upper:false},
+    never reaching the x=pi upper pole; over [0,2pi] it returned on x=0 and missed the INTERIOR pole at pi.
+    The undetected pole was then evaluated by plain Newton-Leibniz -> a one-sided signed infinity (the
+    (None,Some)->signed-inf arm) instead of the (Some,Some)->indeterminate arm.
+  - fix: scan ALL zeros, accumulate interior_pole/touch_lower/touch_upper/undecidable, decide after the loop
+    (interior pole -> Undefined; both/either boundary touch -> BoundaryTouch{lower,upper}). Then make the
+    both-endpoints-infinite arm return undefined (same-sign inf-inf) or +-infinity (opposite sign), not a
+    residual.
+- retained learning:
+  - a "find the first obstruction" scan is unsound when MULTIPLE obstructions change the verdict: a single
+    boundary pole can be an improper-but-convergent endpoint, but a SECOND pole (interior, or the other
+    endpoint) makes it divergent. Enumerate ALL critical points in the closed interval before classifying;
+    never short-circuit on the first.
+  - the (None,Some)/(Some,None) one-sided-infinity arms are only valid when exactly ONE endpoint is a pole;
+    (Some,Some) must be handled explicitly (same-sign -> undefined inf-inf, opposite -> definite +-inf), not
+    left to fall through to a single-sided signed infinity or a residual.
+  - the both-endpoint-pole arm was UNREACHABLE before this fix (the old scan never emitted BoundaryTouch{both}),
+    so refining it changed no fixture (huella byte-identical) - confirming the new path is genuinely new.
