@@ -173,8 +173,41 @@ fn filter_real_solutions(
                 }
             }
         }
+        // `AllReals` means "every real satisfying the required conditions". When
+        // those conditions are mutually contradictory the real domain is EMPTY,
+        // so it is "No solution", not "All real numbers" — e.g.
+        // `solve(ln(x)=ln(-x), x)` collapses to an identity but requires both
+        // `x > 0` (from `ln(x)`) and `x < 0` (from `ln(-x)`).
+        SolutionSet::AllReals if required_conditions_are_contradictory(ctx, conds) => {
+            SolutionSet::Empty
+        }
         other => other,
     }
+}
+
+/// True when the conjunction of `conds` is unsatisfiable, so an `AllReals`
+/// result actually has an empty real domain. Detects the strict-sign
+/// contradiction `e > 0 ∧ -e > 0` (the `ln(x)=ln(-x)` collapse): two `Positive`
+/// conditions whose targets are negations of each other (`a == -b`). Conditions
+/// are a conjunction, so any contradictory pair empties the domain.
+fn required_conditions_are_contradictory(ctx: &Context, conds: &[ImplicitCondition]) -> bool {
+    use cas_math::poly_compare::{poly_relation, SignRelation};
+
+    for (i, c1) in conds.iter().enumerate() {
+        let ImplicitCondition::Positive(a) = c1 else {
+            continue;
+        };
+        for c2 in conds.iter().skip(i + 1) {
+            let ImplicitCondition::Positive(b) = c2 else {
+                continue;
+            };
+            // `a > 0` and `b > 0` with `a == -b` cannot both hold.
+            if matches!(poly_relation(ctx, *a, *b), Some(SignRelation::Negated)) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// True when `root` PROVABLY violates one of the equation's recorded real-domain
@@ -282,7 +315,10 @@ impl SolveBackend for LocalSolveBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::{root_violates_required_condition, solution_contains_nonfinite};
+    use super::{
+        required_conditions_are_contradictory, root_violates_required_condition,
+        solution_contains_nonfinite,
+    };
     use cas_ast::{Context, Expr};
     use cas_solver_core::domain_condition::ImplicitCondition;
 
@@ -338,6 +374,47 @@ mod tests {
         assert!(!root_violates_required_condition(
             &mut ctx, "x", root2, &nonzero
         ));
+    }
+
+    #[test]
+    fn contradictory_positive_conditions_empty_the_real_domain() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let neg_x = cas_parser::parse("-x", &mut ctx).expect("neg x");
+        let xp5 = cas_parser::parse("x + 5", &mut ctx).expect("x+5");
+
+        // `x > 0` AND `-x > 0` is impossible — this is the `ln(x)=ln(-x)`
+        // collapse (an `AllReals` carrying both must become Empty).
+        assert!(required_conditions_are_contradictory(
+            &ctx,
+            &[
+                ImplicitCondition::Positive(x),
+                ImplicitCondition::Positive(neg_x),
+            ]
+        ));
+        // `x > 0` AND `x+5 > 0` is satisfiable.
+        assert!(!required_conditions_are_contradictory(
+            &ctx,
+            &[
+                ImplicitCondition::Positive(x),
+                ImplicitCondition::Positive(xp5),
+            ]
+        ));
+        // NonNegative pair (`x >= 0` AND `-x >= 0`) meets at 0 — NOT contradictory
+        // (the check must be strict `> 0`, not `>= 0`).
+        assert!(!required_conditions_are_contradictory(
+            &ctx,
+            &[
+                ImplicitCondition::NonNegative(x),
+                ImplicitCondition::NonNegative(neg_x),
+            ]
+        ));
+        // A single condition (or none) is never contradictory.
+        assert!(!required_conditions_are_contradictory(
+            &ctx,
+            &[ImplicitCondition::Positive(x)]
+        ));
+        assert!(!required_conditions_are_contradictory(&ctx, &[]));
     }
 
     #[test]

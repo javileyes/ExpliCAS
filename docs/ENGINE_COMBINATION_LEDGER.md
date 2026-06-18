@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 198 (newest first)
+Active entries: 199 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
+- 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -8756,3 +8757,39 @@ Active entries: 198 (newest first)
   - recursion is structurally bounded: the rewritten num=0 has no top-level Div (cannot re-enter the Div
     route), the pipeline is depth/cycle guarded, and Quadratic precedes Isolation so the sqrt-route is
     never reached - the Mul route is the existence proof.
+
+## 2026-06-18 - Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
+- area:
+  - solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_real_solutions`
+    (new `AllReals` arm + `required_conditions_are_contradictory`)
+- status:
+  - `retained` (HONESTY soundness fix; completes Round-3 Cluster C - all three sub-mechanisms now fixed)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(ln(x)=ln(-x))`, `solve(ln(-x)=ln(x))`, `solve(log(x)=log(-x))`, `solve(ln(x-1)=ln(1-x))`,
+    `solve(ln(x)+ln(-x)=0)` -> "No solution" (were "All real numbers"); genuine identities unchanged
+    (`ln(x)=ln(x)`, `x+1=x+1`, `sin^2+cos^2=1` -> All real numbers); `sqrt(x)=sqrt(-x)` -> {0} (NOT empty)
+  - behavior_change_expected: yes - contradictory-domain AllReals collapses to Empty; guardrail+pressure
+    fingerprints BYTE-IDENTICAL, full cargo test --workspace green
+- observed (USER-DIRECTED "esto se soluciono?"):
+  - the engine ALREADY records the right conditions (required_conditions = [Positive(x), Positive(-x)] =
+    x>0 AND x<0) but reports "All real numbers" - it never checks the conditions for joint satisfiability.
+    An AllReals result means "every real satisfying the required conditions"; when the conditions are
+    contradictory the real domain is EMPTY -> "No solution".
+  - fix: `filter_real_solutions` (which already receives ctx.required_conditions() from the
+    extraneous-root cycle) gains an AllReals arm that returns Empty when any Positive(a)&Positive(b) pair
+    has a == -b (detected by cas_math::poly_compare::poly_relation -> Negated, representation-agnostic).
+- retained learning:
+  - the engine often KNOWS the right constraints but does not ENFORCE their joint satisfiability - the
+    recurring Round-3 theme (extraneous roots, inverse-trig range, this). Reuse the already-collected
+    required_conditions; do not re-derive.
+  - STRICT vs non-strict is the soundness line again: Positive(a)&Positive(-a) (x>0 AND x<0) is empty, but
+    NonNegative(a)&NonNegative(-a) (x>=0 AND x<=0) MEETS at 0 (sqrt(x)=sqrt(-x) -> {0}). Only the strict
+    pair contradicts; gate on Positive, never NonNegative.
+  - PATH LAYERING: the user-facing eval/CLI resolves the var-eliminated residual to AllReals before the
+    filter (so the fix lands there); the bare cas_solver::solve API returns the unresolved Residual (honest,
+    not a false AllReals). The eval-presentation filter is the right layer for "AllReals + contradictory
+    conditions -> Empty"; the bare API is not wrong (Residual), just less resolved. Unit-test the predicate
+    directly (required_conditions_are_contradictory) since bare solve() does not exercise the AllReals path.
+  - poly_relation (cas_math::poly_compare) gives representation-agnostic a==-b detection (x vs -x as Neg or
+    Mul(-1,x)) - reuse it for sign-relation checks instead of structural matching.
