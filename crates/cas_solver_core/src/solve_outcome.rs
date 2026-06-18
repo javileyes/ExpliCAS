@@ -1753,15 +1753,36 @@ fn is_provably_nonzero_constant(ctx: &Context, expr: ExprId) -> bool {
             }
             false
         }
-        // rational ± (irrational natural log): irrational + rational is
-        // irrational, hence != 0. Requires the log half to be a *natural* log of
-        // a rational != 1 (which is irrational); log2/log10/log(b,c) are NOT used
-        // here because they can be rational (e.g. log2(8) = 3), which would make
-        // `log2(8) - 3 = 0` a FALSE contradiction.
+        // `rational ± log-term`. Two sound sub-cases, both requiring exactly one
+        // side to fold to a rational and the other to be a single logarithm:
+        //   * natural log `±k·ln(c)`: irrational + rational is irrational, != 0
+        //     (see `is_irrational_natural_log`);
+        //   * rational-base log `±k·log_b(c)` (log2/log10/two-arg log): the residual
+        //     is zero iff `log_b(c) = m`, i.e. `c = b^m`, which is decided EXACTLY
+        //     by `rational_power_provably_not_equal` (never the simplifier's folding
+        //     — e.g. `log(2,8x)=log(2,x)+3` reduces to `log2(8)-3 = 0`, a genuine
+        //     identity that must stay all-reals, and the exact test confirms `8 = 2^3`).
         Expr::Add(l, r) | Expr::Sub(l, r) => {
+            let is_sub = matches!(ctx.get(expr), Expr::Sub(_, _));
             let (l, r) = (*l, *r);
-            (as_rational_const(ctx, l).is_some() && is_irrational_natural_log(ctx, r))
-                || (as_rational_const(ctx, r).is_some() && is_irrational_natural_log(ctx, l))
+            let (rational_side, log_side) = if let Some(s) = as_rational_const(ctx, l) {
+                (s, r)
+            } else if let Some(s) = as_rational_const(ctx, r) {
+                (s, l)
+            } else {
+                return false;
+            };
+            if is_irrational_natural_log(ctx, log_side) {
+                return true;
+            }
+            if let Some((k, b, c)) = as_rational_base_log_term(ctx, log_side) {
+                // residual = 0  iff  log_b(c) = m, where m = -s/k for `Add` and
+                // m = s/k for `Sub` (either operand order). k != 0 by construction.
+                let quotient = rational_side / k;
+                let m = if is_sub { quotient } else { -quotient };
+                return rational_power_provably_not_equal(&b, &m, &c);
+            }
+            false
         }
         // Single-argument logs ln/log2/log10 of a rational c > 0, c != 1.
         // log_b(c) = 0 iff c = 1, so such a value is exactly non-zero.
@@ -1821,6 +1842,112 @@ fn is_irrational_natural_log(ctx: &Context, expr: ExprId) -> bool {
         }
         _ => false,
     }
+}
+
+/// If `expr` is `±k·log_b(c)` for a *rational-base* logarithm — `log2(c)` (b=2),
+/// `log10(c)` (b=10), or two-arg `log(b, c)` — with `k` a non-zero rational and
+/// `b, c` rational, `b > 0, b != 1, c > 0`, return `(k, b, c)`.
+///
+/// Natural log is deliberately excluded (its base `e` is irrational, so the exact
+/// rational-power test below does not apply; it is handled by
+/// [`is_irrational_natural_log`]). Unlike a natural log, a rational-base log CAN be
+/// rational (`log2(8) = 3`), so non-zeroness of `k·log_b(c) + s` needs the exact
+/// `c = b^m` check rather than an irrationality argument.
+fn as_rational_base_log_term(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(
+    num_rational::BigRational,
+    num_rational::BigRational,
+    num_rational::BigRational,
+)> {
+    use cas_math::numeric_eval::as_rational_const;
+    let zero = num_rational::BigRational::from_integer(0.into());
+    let one = num_rational::BigRational::from_integer(1.into());
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            let (k, b, c) = as_rational_base_log_term(ctx, *inner)?;
+            Some((-k, b, c))
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(s) = as_rational_const(ctx, l) {
+                if s == zero {
+                    return None;
+                }
+                let (k, b, c) = as_rational_base_log_term(ctx, r)?;
+                return Some((s * k, b, c));
+            }
+            if let Some(s) = as_rational_const(ctx, r) {
+                if s == zero {
+                    return None;
+                }
+                let (k, b, c) = as_rational_base_log_term(ctx, l)?;
+                return Some((s * k, b, c));
+            }
+            None
+        }
+        Expr::Function(fn_id, args) => {
+            let two = num_rational::BigRational::from_integer(2.into());
+            let ten = num_rational::BigRational::from_integer(10.into());
+            match ctx.builtin_of(*fn_id) {
+                Some(BuiltinFn::Log2) if args.len() == 1 => as_rational_const(ctx, args[0])
+                    .filter(|c| *c > zero)
+                    .map(|c| (one, two, c)),
+                Some(BuiltinFn::Log10) if args.len() == 1 => as_rational_const(ctx, args[0])
+                    .filter(|c| *c > zero)
+                    .map(|c| (one, ten, c)),
+                Some(BuiltinFn::Log) if args.len() == 2 => {
+                    let b = as_rational_const(ctx, args[0])?;
+                    let c = as_rational_const(ctx, args[1])?;
+                    (b > zero && b != one && c > zero).then_some((one, b, c))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Exact: is `b^m != c` PROVABLE, for positive rationals `b, c` and rational `m`?
+///
+/// `b^(p/q) = c  <=>  b^p = c^q` (with `m = p/q`, `q > 0`). Both sides are computed
+/// exactly with bounded integer exponents. Returns `false` (i.e. *cannot prove the
+/// inequality*) when an exponent exceeds the bound, so a caller never turns an
+/// undecided case into a false contradiction — at worst it stays a vacuous
+/// `Constraint`. A `true` result is always backed by an exact rational comparison.
+fn rational_power_provably_not_equal(
+    b: &num_rational::BigRational,
+    m: &num_rational::BigRational,
+    c: &num_rational::BigRational,
+) -> bool {
+    use num_traits::ToPrimitive;
+    const EXP_LIMIT: u64 = 4096;
+    // x^e for x a positive rational and e a (possibly negative) bounded integer.
+    let ratio_pow = |x: &num_rational::BigRational, e: i64| -> Option<num_rational::BigRational> {
+        let mag = e.unsigned_abs();
+        if mag > EXP_LIMIT {
+            return None;
+        }
+        let mag = mag as u32;
+        let pow = num_rational::BigRational::new(x.numer().pow(mag), x.denom().pow(mag));
+        if e < 0 {
+            // x > 0, so pow > 0; reciprocal is well defined.
+            Some(num_rational::BigRational::new(
+                pow.denom().clone(),
+                pow.numer().clone(),
+            ))
+        } else {
+            Some(pow)
+        }
+    };
+    let (Some(p), Some(q)) = (m.numer().to_i64(), m.denom().to_i64()) else {
+        return false;
+    };
+    let (Some(b_p), Some(c_q)) = (ratio_pow(b, p), ratio_pow(c, q)) else {
+        return false;
+    };
+    b_p != c_q
 }
 
 /// Resolve variable-eliminated residuals into terminal solve outcomes.
@@ -9555,11 +9682,10 @@ mod tests {
 
     #[test]
     fn classify_two_arg_log_minus_rational_stays_constraint() {
-        // SOUNDNESS GUARD: log(2, 8) = 3 is rational, so `log(2, 8) - 3 = 0`.
-        // The `rational +- log` non-zero arm must NOT fire for two-arg log (only
-        // natural log is guaranteed irrational), else this would be a FALSE
-        // contradiction. is_irrational_natural_log rejects two-arg log, so this
-        // stays a Constraint (not wrongly classified as non-zero).
+        // SOUNDNESS GUARD: log(2, 8) = 3, so `log(2, 8) - 3 = 0` is a genuine
+        // identity (the residual of `log(2,8x) = log(2,x) + 3`). The rational-base
+        // `rational +- log` arm must recognise this via the EXACT `8 = 2^3` check
+        // and NOT flag it as a contradiction, else it would be a false "No solution".
         let mut ctx = Context::new();
         let two = ctx.num(2);
         let eight = ctx.num(8);
@@ -9570,6 +9696,72 @@ mod tests {
             classify_var_free_difference(&ctx, diff),
             VarFreeDiffKind::Constraint
         );
+    }
+
+    #[test]
+    fn classify_two_arg_log_minus_rational_nonzero_is_contradiction() {
+        // log(2, 3) - 1: log2(3) is irrational (3 != 2^1), so the residual of
+        // `log(2,3x) = log(2,x) + 1` is non-zero => No solution.
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let one = ctx.num(1);
+        let log_2_3 = ctx.call_builtin(BuiltinFn::Log, vec![two, three]);
+        let diff = ctx.add(Expr::Sub(log_2_3, one));
+        assert_eq!(
+            classify_var_free_difference(&ctx, diff),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+    }
+
+    #[test]
+    fn classify_log10_minus_rational_is_contradiction() {
+        // log10(30) - 1: 30 != 10^1, so non-zero => No solution.
+        let mut ctx = Context::new();
+        let thirty = ctx.num(30);
+        let one = ctx.num(1);
+        let log10_30 = ctx.call_builtin(BuiltinFn::Log10, vec![thirty]);
+        let diff = ctx.add(Expr::Sub(log10_30, one));
+        assert_eq!(
+            classify_var_free_difference(&ctx, diff),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+    }
+
+    #[test]
+    fn rational_power_provably_not_equal_is_exact() {
+        use num_rational::BigRational as R;
+        let r = |n: i64, d: i64| R::new(n.into(), d.into());
+        // 2^1 = 2 != 3            => provably not equal (log2(3) != 1)
+        assert!(super::rational_power_provably_not_equal(
+            &r(2, 1),
+            &r(1, 1),
+            &r(3, 1)
+        ));
+        // 2^3 = 8 == 8            => NOT provably not equal (log2(8) == 3, identity)
+        assert!(!super::rational_power_provably_not_equal(
+            &r(2, 1),
+            &r(3, 1),
+            &r(8, 1)
+        ));
+        // 4^(3/2) = 8 == 8        => fractional exponent identity, NOT flagged
+        assert!(!super::rational_power_provably_not_equal(
+            &r(4, 1),
+            &r(3, 2),
+            &r(8, 1)
+        ));
+        // 2^(-1) = 1/2 != 3       => negative exponent, provably not equal
+        assert!(super::rational_power_provably_not_equal(
+            &r(2, 1),
+            &r(-1, 1),
+            &r(3, 1)
+        ));
+        // 9^(3/2) = 27 == 27      => fractional identity, NOT flagged
+        assert!(!super::rational_power_provably_not_equal(
+            &r(9, 1),
+            &r(3, 2),
+            &r(27, 1)
+        ));
     }
 
     #[test]

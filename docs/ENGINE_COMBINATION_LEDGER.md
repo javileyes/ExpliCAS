@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 202 (newest first)
+Active entries: 203 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provabl... | Retained soundness fix: ln(2x)=ln(x)+1 returned "All real numbers" (var-free rational+irrational-log residual; surfaced by the ln(c*x) adversarial sweep)
 - 2026-06-18 | `retained` | simplifier log-cancellation; `crates/cas_engine/src/rules/arithmetic.rs` | Retained robustness fix: simplifier PANIC mixing ln and two-arg log(b,c) (ln-base sentinel reached compare_expr)
+- 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provabl... | Retained soundness fix: log_b(c*x)=log_b(x)+k for non-natural logs over-claimed "All real numbers" (Family A, exact c=b^m recognizer)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -8909,3 +8910,38 @@ Active entries: 202 (newest first)
   - a crash on valid input is the highest-severity defect (worse than a wrong answer): no result, no recovery.
     Worth fixing even when surfaced as a side finding, and the fix here also made the answer correct (the
     rational+-log classifier then sees ln(2)-3 and returns No solution).
+
+## 2026-06-18 - Retained soundness fix: log_b(c*x)=log_b(x)+k for non-natural logs over-claimed "All real numbers" (Family A, exact c=b^m recognizer)
+- area:
+  - core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provably_nonzero_constant`
+    (rational +- log arm) + new `as_rational_base_log_term` + `rational_power_provably_not_equal`
+- status:
+  - `retained` (HONESTY soundness fix; completes the log-equation family - the non-natural-log sibling of
+    the ln(2x)=ln(x)+1 fix, found pre-existing by the rational+-log adversarial sweep + bisection)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(log(2,3x)=log(2,x)+1)`, `solve(log(2,5x)=log(2,x)+2)`, `solve(log10(30x)=log10(x)+1)`,
+    `solve(log(3,5x)=log(3,x)+1)` -> "No solution" (were "All real numbers"); SOUNDNESS GUARD with FRACTIONAL
+    exponents `solve(log(4,8x)=log(4,x)+3/2)` and `solve(log(9,27x)=log(9,x)+3/2)` -> "All real numbers"
+    (genuine identities, 8=4^(3/2), 27=9^(3/2)) NOT collapsed; genuine solutions (log(2,x)=3->{8}) unchanged
+  - behavior_change_expected: yes - var-free rational+(rational-base-log) residual collapses to Empty when the
+    log is irrational; guardrail+pressure fingerprints BYTE-IDENTICAL, full cargo test --workspace green
+- observed (Family A from the rational+-log sweep; confirmed pre-existing by bisection):
+  - `log(2,3x)=log(2,x)+1` cancels x to leave `log(2,3)-1`. Unlike natural log, a rational-base log can BE
+    rational (log2(8)=3), so the irrationality argument used for ln does NOT apply - need the exact value test.
+  - KEY: the simplifier already folds log_b(c) to a rational for ALL rational results, integer AND fractional
+    (log(4,8)->3/2, log(8,2)->1/3), so identities fold the residual to 0 and never reach the recognizer. But
+    relying on that folding completeness as a soundness gate is fragile; instead the fix uses an exact,
+    self-contained check: log_b(c)=m iff c=b^m iff (m=p/q) b^p=c^q, computed exactly with bounded BigRational
+    integer powers. Undecidable (over-large exponent) returns false -> stays Constraint (no false contradiction).
+- retained learning:
+  - IRRATIONALITY (used for ln) and EXACT-VALUE (used here) are different proof obligations: ln(rational!=1) is
+    always irrational, but log_b(c) for rational b,c can be rational, so the non-zeroness of log_b(c)+rational
+    needs the exact c=b^m test, NOT an irrationality shortcut. Picking the wrong obligation (treating log2 as
+    "irrational like ln") would be a false contradiction on identities like log(2,8x)=log(2,x)+3.
+  - DO NOT use the simplifier's folding as a soundness gate even when it appears complete: implement the exact
+    decision independently. Here the exact c=b^m check is correct whether or not the simplifier folded the log,
+    and the fractional-exponent guard tests (4^(3/2)=8) prove it.
+  - bail DIRECTION is load-bearing in an exact gate: when the power check cannot decide (exponent too large),
+    return "not provably nonzero" (-> Constraint -> All real numbers), never "nonzero" - an undecided case must
+    degrade to the vacuous over-claim, never to a false contradiction. (Pairs with the soundness-gate lesson.)
