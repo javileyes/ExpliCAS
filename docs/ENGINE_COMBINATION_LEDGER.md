@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 200 (newest first)
+Active entries: 201 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
+- 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provabl... | Retained soundness fix: ln(2x)=ln(x)+1 returned "All real numbers" (var-free rational+irrational-log residual; surfaced by the ln(c*x) adversarial sweep)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -8834,3 +8835,36 @@ Active entries: 200 (newest first)
     at the presentation layer.
   - reuse numeric_eval::as_rational_const for the "folded rational" arm (it is exact: Functions/Pow/Constants
     -> None, so ln(2) never folds to a float) - generalizing the Number(_) literal case without unsoundness.
+
+## 2026-06-18 - Retained soundness fix: ln(2x)=ln(x)+1 returned "All real numbers" (var-free rational+irrational-log residual; surfaced by the ln(c*x) adversarial sweep)
+- area:
+  - core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provably_nonzero_constant`
+    (new `rational +- k*ln(c)` arm) + new `is_irrational_natural_log` predicate
+- status:
+  - `retained` (HONESTY soundness fix; follow-up extension of the ln(c*x) classifier fix, found by its own
+    104-probe adversarial sweep)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(ln(2x)=ln(x)+1)`, `solve(ln(2x)-1=ln(x))`, `solve(ln(3x)=ln(x)+2)`, `solve(ln(x)+1=ln(2x))`
+    -> "No solution" (were "All real numbers"); SOUNDNESS GUARD `solve(log(2,8x)=log(2,x)+3)` -> "All real
+    numbers" (genuine identity, log2(8)=3) NOT collapsed; identities/genuine solutions/c=1 boundary intact
+  - behavior_change_expected: yes - var-free rational+irrational-natural-log residual collapses to Empty;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, full cargo test --workspace green
+- observed (adversarial sweep of the sibling ln(c*x) fix flagged this):
+  - `ln(2x)=ln(x)+1` cancels the variable to leave `ln(2)-1`. The first fix recognized `±k*ln(c)` and folded
+    rationals, but NOT a sum of a log and a rational, so it conservatively left the pre-existing
+    "All real numbers" (an honesty violation: ln(2)!=1 so the set is empty).
+  - fix: `is_provably_nonzero_constant` gains an Add/Sub arm `rational +- (irrational natural log)`. ln(c) is
+    irrational for every rational c>0, c!=1 (ln(c)=p/q => c=e^(p/q) transcendental, contradiction; p/q=0 =>
+    c=1), so rational + irrational = irrational != 0.
+- retained learning:
+  - IRRATIONALITY is a STRONGER claim than NON-ZEROness, and only NATURAL log delivers it for rational args:
+    log_b(c) and log2/log10 can be RATIONAL (log2(8)=3), so `log2(8)-3=0`. Using a non-natural log in the
+    `rational +- log` arm would be a FALSE CONTRADICTION. The natural-log-only restriction in
+    is_irrational_natural_log is load-bearing - guard it with a unit test (classify_two_arg_log_minus_rational
+    _stays_constraint) AND a CLI regression (log(2,8x)=log(2,x)+3 must stay All real numbers).
+  - adversarial sweeps of a soundness fix pay for themselves: the 104-probe sweep confirmed the fix clean
+    (0 false contradictions) AND surfaced this exact same-family next step. Run them; mine the residuals.
+  - the honest residual boundary is now explicit: provably-nonzero requires either a folded rational, a log of
+    a rational (=0 iff arg=1), or rational+(natural log of rational). Transcendental constants (pi, e, sqrt(2),
+    products of logs) are NOT covered and over-report "All real numbers" - sound under-fix, not a false claim.

@@ -1717,11 +1717,20 @@ pub fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFreeDiffK
 /// True when `expr` is a variable-free constant that is provably non-zero.
 ///
 /// Sound, conservative extension of the `Number(nonzero)` case used by
-/// [`classify_var_free_difference`]: it recognises folded rational constants and
-/// signed/scaled logarithms `±k·ln(c)` (also `log2`/`log10`) of a rational
-/// `c > 0, c != 1`. Because `log_b(c) = 0` iff `c = 1`, such a logarithm is
-/// exactly non-zero. Anything it cannot prove non-zero returns `false`, leaving
-/// the prior `Constraint` classification untouched (no false contradictions).
+/// [`classify_var_free_difference`]. It recognises:
+///   * folded rational constants `!= 0`;
+///   * signed/scaled logarithms `±k·ln(c)` (also `log2`/`log10`) of a rational
+///     `c > 0, c != 1` — `log_b(c) = 0` iff `c = 1`, so such a value is exactly
+///     non-zero;
+///   * two-argument `log(b, c)` with `b, c` rational `> 0, != 1`;
+///   * a sum/difference of a rational and an irrational natural logarithm
+///     `rational ± k·ln(c)` (see [`is_irrational_natural_log`]): the log part is
+///     irrational while the other part is rational, so the total is irrational
+///     and hence non-zero (this is what makes `ln(2x) = ln(x) + 1`, residual
+///     `ln(2) - 1`, "No solution").
+///
+/// Anything it cannot prove non-zero returns `false`, leaving the prior
+/// `Constraint` classification untouched (no false contradictions).
 fn is_provably_nonzero_constant(ctx: &Context, expr: ExprId) -> bool {
     use cas_math::numeric_eval::as_rational_const;
     let zero = num_rational::BigRational::from_integer(0.into());
@@ -1744,6 +1753,16 @@ fn is_provably_nonzero_constant(ctx: &Context, expr: ExprId) -> bool {
             }
             false
         }
+        // rational ± (irrational natural log): irrational + rational is
+        // irrational, hence != 0. Requires the log half to be a *natural* log of
+        // a rational != 1 (which is irrational); log2/log10/log(b,c) are NOT used
+        // here because they can be rational (e.g. log2(8) = 3), which would make
+        // `log2(8) - 3 = 0` a FALSE contradiction.
+        Expr::Add(l, r) | Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            (as_rational_const(ctx, l).is_some() && is_irrational_natural_log(ctx, r))
+                || (as_rational_const(ctx, r).is_some() && is_irrational_natural_log(ctx, l))
+        }
         // Single-argument logs ln/log2/log10 of a rational c > 0, c != 1.
         // log_b(c) = 0 iff c = 1, so such a value is exactly non-zero.
         Expr::Function(fn_id, args) if args.len() == 1 => {
@@ -1765,6 +1784,40 @@ fn is_provably_nonzero_constant(ctx: &Context, expr: ExprId) -> bool {
                 (Some(b), Some(c)) => b > zero && b != one && c > zero && c != one,
                 _ => false,
             }
+        }
+        _ => false,
+    }
+}
+
+/// True when `expr` is a provably *irrational* value of the form `±k·ln(c)` with
+/// `k` a non-zero rational and `c` a rational `> 0, != 1`.
+///
+/// `ln(c)` is irrational for every rational `c > 0, c != 1`: if `ln(c) = p/q`
+/// were rational then `c = e^{p/q}`, transcendental for `p/q != 0` (Lindemann),
+/// contradicting `c` rational; and `p/q = 0` forces `c = 1`. Scaling by a
+/// non-zero rational keeps it irrational. This is the *natural* logarithm only —
+/// `log2`/`log10`/`log(b, c)` are deliberately excluded because they can be
+/// rational (`log2(8) = 3`), which would be unsound for the `rational ± log`
+/// non-zeroness argument in [`is_provably_nonzero_constant`].
+fn is_irrational_natural_log(ctx: &Context, expr: ExprId) -> bool {
+    use cas_math::numeric_eval::as_rational_const;
+    let zero = num_rational::BigRational::from_integer(0.into());
+    let one = num_rational::BigRational::from_integer(1.into());
+    match ctx.get(expr) {
+        Expr::Neg(inner) => is_irrational_natural_log(ctx, *inner),
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(k) = as_rational_const(ctx, l) {
+                return k != zero && is_irrational_natural_log(ctx, r);
+            }
+            if let Some(k) = as_rational_const(ctx, r) {
+                return k != zero && is_irrational_natural_log(ctx, l);
+            }
+            false
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            ctx.builtin_of(*fn_id) == Some(BuiltinFn::Ln)
+                && matches!(as_rational_const(ctx, args[0]), Some(c) if c > zero && c != one)
         }
         _ => false,
     }
@@ -9466,6 +9519,56 @@ mod tests {
         assert_eq!(
             classify_var_free_difference(&ctx, log_2_3),
             VarFreeDiffKind::ContradictionNonZero
+        );
+    }
+
+    #[test]
+    fn classify_natural_log_minus_rational_is_contradiction() {
+        // `ln(2x) = ln(x) + 1` cancels its variable to leave `ln(2) - 1`, which
+        // is irrational (ln(2) is irrational) hence non-zero: No solution.
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let one = ctx.num(1);
+        let ln_two = ctx.call_builtin(BuiltinFn::Ln, vec![two]);
+        let diff = ctx.add(Expr::Sub(ln_two, one));
+        assert_eq!(
+            classify_var_free_difference(&ctx, diff),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+    }
+
+    #[test]
+    fn classify_rational_plus_scaled_natural_log_is_contradiction() {
+        // 3 + 2*ln(5): rational plus an irrational natural log => non-zero.
+        let mut ctx = Context::new();
+        let five = ctx.num(5);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let ln_five = ctx.call_builtin(BuiltinFn::Ln, vec![five]);
+        let scaled = ctx.add(Expr::Mul(two, ln_five));
+        let diff = ctx.add(Expr::Add(three, scaled));
+        assert_eq!(
+            classify_var_free_difference(&ctx, diff),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+    }
+
+    #[test]
+    fn classify_two_arg_log_minus_rational_stays_constraint() {
+        // SOUNDNESS GUARD: log(2, 8) = 3 is rational, so `log(2, 8) - 3 = 0`.
+        // The `rational +- log` non-zero arm must NOT fire for two-arg log (only
+        // natural log is guaranteed irrational), else this would be a FALSE
+        // contradiction. is_irrational_natural_log rejects two-arg log, so this
+        // stays a Constraint (not wrongly classified as non-zero).
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let eight = ctx.num(8);
+        let three = ctx.num(3);
+        let log_2_8 = ctx.call_builtin(BuiltinFn::Log, vec![two, eight]);
+        let diff = ctx.add(Expr::Sub(log_2_8, three));
+        assert_eq!(
+            classify_var_free_difference(&ctx, diff),
+            VarFreeDiffKind::Constraint
         );
     }
 
