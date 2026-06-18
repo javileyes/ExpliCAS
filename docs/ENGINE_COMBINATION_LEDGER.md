@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 203 (newest first)
+Active entries: 204 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
@@ -122,6 +122,7 @@ Active entries: 203 (newest first)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provabl... | Retained soundness fix: ln(2x)=ln(x)+1 returned "All real numbers" (var-free rational+irrational-log residual; surfaced by the ln(c*x) adversarial sweep)
 - 2026-06-18 | `retained` | simplifier log-cancellation; `crates/cas_engine/src/rules/arithmetic.rs` | Retained robustness fix: simplifier PANIC mixing ln and two-arg log(b,c) (ln-base sentinel reached compare_expr)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provabl... | Retained soundness fix: log_b(c*x)=log_b(x)+k for non-natural logs over-claimed "All real numbers" (Family A, exact c=b^m recognizer)
+- 2026-06-18 | `retained` | eval-path domain filter; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: log(b,-k*x)=log(b,x)+m over-claimed "All real numbers" (negative-coeff contradictory domain; generalize a==-b to negative proportionality)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -8945,3 +8946,43 @@ Active entries: 203 (newest first)
   - bail DIRECTION is load-bearing in an exact gate: when the power check cannot decide (exponent too large),
     return "not provably nonzero" (-> Constraint -> All real numbers), never "nonzero" - an undecided case must
     degrade to the vacuous over-claim, never to a false contradiction. (Pairs with the soundness-gate lesson.)
+
+## 2026-06-18 - Retained soundness fix: log(b,-k*x)=log(b,x)+m over-claimed "All real numbers" (negative-coeff contradictory domain; generalize a==-b to negative proportionality)
+- area:
+  - eval-path domain filter; `crates/cas_solver/src/solve_backend_local.rs`
+    `required_conditions_are_contradictory` + new `cas_math::poly_compare::poly_negatively_proportional`
+- status:
+  - `retained` (HONESTY soundness fix; surfaced by Family A's own adversarial sweep, generalizes the
+    ln(x)=ln(-x) contradictory-domain collapse)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(log(2,-8x)=log(2,x)+3)`, `solve(log(2,-8x)=log(2,x)+4)`, `solve(ln(-2x)=ln(x))` -> "No
+    solution" (were "All real numbers"); regression guards: `solve(log(2,-x)=log(2,x)+1)` and `ln(-x)=ln(x)`
+    still No solution; `sqrt(x)=sqrt(-x)` -> {0} (NonNegative meets at 0, NOT collapsed); positive multiple
+    `Positive(2x) & Positive(x)` satisfiable, not flagged; identities/genuine solutions untouched
+  - behavior_change_expected: yes - Positive(-k*x) & Positive(x), k>0, now collapses AllReals -> Empty;
+    guardrail+pressure fingerprints BYTE-IDENTICAL, full cargo test --workspace green
+- observed (Family A 105-probe sweep; confirmed pre-existing - my classifier fix only adds contradictions, it
+  cannot produce a false AllReals, so this over-report cannot be its regression):
+  - the sweep re-confirmed the exact c=b^m recognizer SOUND (168 identities incl. fractional/large exponents
+    all stayed all-reals; the feared false contradiction never fired) and flagged a different mechanism:
+    `log(2,-8x)` requires -8x>0 (x<0) while log(2,x) requires x>0 - empty domain - but the solve path folds
+    the magnitude (|-8|=8, log2(8)=3) to an identity residual and reports all-reals, ignoring the recorded
+    contradictory required_conditions ['x<0','x>0'].
+  - internal inconsistency exposed the gap: coefficient -1 (log(2,-x)) WAS detected (a==-b), coefficient -8
+    was not. required_conditions_are_contradictory only matched exact negation; generalized to negative
+    proportionality.
+  - fix: new poly_negatively_proportional(a,b): a = lambda*b with lambda<0 (leading-coeff ratio gives the only
+    candidate lambda; verified exactly by a - lambda*b == 0 over MultiPoly). Replaces the SignRelation::Negated
+    check (which is the lambda=-1 special case).
+- retained learning:
+  - GENERALIZE soundness predicates to the mathematical invariant, not the first instance: "Positive(a) &
+    Positive(b) contradictory" is "a,b antiparallel (a=lambda*b, lambda<0)", of which a==-b is just lambda=-1.
+    Matching only the special case leaves siblings (any negative coefficient) silently unsound.
+  - MONOTONICITY is an attribution shortcut: a fix that only ADDS contradiction/Empty classifications cannot
+    cause a false-AllReals over-report, so such a finding is provably not its regression - no bisection needed
+    (complements [[bisect-before-believing-regression-attribution]] for the cases where logic settles it).
+  - exact proportionality test: leading-coeff ratio yields the ONLY candidate scale; verify with
+    a - lambda*b == 0 over MultiPoly so a non-proportional pair (wrong lambda) can never false-positive.
+  - the STRICT-vs-nonstrict line holds again: gate on Positive only; NonNegative(a)&NonNegative(-a) meets at 0
+    (sqrt(x)=sqrt(-x) -> {0}) and must never be collapsed.

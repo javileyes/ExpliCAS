@@ -191,7 +191,7 @@ fn filter_real_solutions(
 /// conditions whose targets are negations of each other (`a == -b`). Conditions
 /// are a conjunction, so any contradictory pair empties the domain.
 fn required_conditions_are_contradictory(ctx: &Context, conds: &[ImplicitCondition]) -> bool {
-    use cas_math::poly_compare::{poly_relation, SignRelation};
+    use cas_math::poly_compare::poly_negatively_proportional;
 
     for (i, c1) in conds.iter().enumerate() {
         let ImplicitCondition::Positive(a) = c1 else {
@@ -201,8 +201,11 @@ fn required_conditions_are_contradictory(ctx: &Context, conds: &[ImplicitConditi
             let ImplicitCondition::Positive(b) = c2 else {
                 continue;
             };
-            // `a > 0` and `b > 0` with `a == -b` cannot both hold.
-            if matches!(poly_relation(ctx, *a, *b), Some(SignRelation::Negated)) {
+            // `a > 0` and `b > 0` cannot both hold when `a = λ·b` with `λ < 0`
+            // (opposite signs everywhere). Covers exact negation `a == -b`
+            // (`ln(-x)=ln(x)`) and any negative multiple such as `-8·x` vs `x`
+            // (`log(2,-8x)=log(2,x)+k`).
+            if poly_negatively_proportional(ctx, *a, *b) {
                 return true;
             }
         }
@@ -407,6 +410,25 @@ mod tests {
             &[
                 ImplicitCondition::NonNegative(x),
                 ImplicitCondition::NonNegative(neg_x),
+            ]
+        ));
+        // `-8x > 0` AND `x > 0` is impossible — the generalized negative-multiple
+        // case (`log(2,-8x)=log(2,x)+k`), not just exact negation.
+        let neg_8x = cas_parser::parse("-8*x", &mut ctx).expect("-8x");
+        assert!(required_conditions_are_contradictory(
+            &ctx,
+            &[
+                ImplicitCondition::Positive(neg_8x),
+                ImplicitCondition::Positive(x),
+            ]
+        ));
+        // `2x > 0` AND `x > 0` is a POSITIVE multiple — satisfiable, NOT collapsed.
+        let two_x = cas_parser::parse("2*x", &mut ctx).expect("2x");
+        assert!(!required_conditions_are_contradictory(
+            &ctx,
+            &[
+                ImplicitCondition::Positive(two_x),
+                ImplicitCondition::Positive(x),
             ]
         ));
         // A single condition (or none) is never contradictory.
