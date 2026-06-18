@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 199 (newest first)
+Active entries: 200 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
+- 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -8793,3 +8794,43 @@ Active entries: 199 (newest first)
     directly (required_conditions_are_contradictory) since bare solve() does not exercise the AllReals path.
   - poly_relation (cas_math::poly_compare) gives representation-agnostic a==-b detection (x vs -x as Neg or
     Mul(-1,x)) - reuse it for sign-relation checks instead of structural matching.
+
+## 2026-06-18 - Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
+- area:
+  - core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_var_free_difference`
+    (new `is_provably_nonzero_constant` helper)
+- status:
+  - `retained` (HONESTY soundness fix; closes the distinct residual surfaced by the ln=ln adversarial sweep)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(ln(x)=ln(2x))`, `solve(ln(x)=ln(3x))`, `solve(ln(2x)=ln(x))`, `solve(ln(x)=ln(x)+ln(2))`,
+    `solve(ln(x)=ln(x/2))`, `solve(log10(x)=log10(10x))`, `solve(log(2,x)=log(2,3x))` -> "No solution"
+    (were "All real numbers"); c=1 boundary (`ln(x)=ln(1*x)`, `ln(x)=ln(x)+ln(1)`) and genuine identities
+    (`ln(x)=ln(x)`, `x+1=x+1`) stay All real numbers; genuine solutions (`ln(x)=ln(2)`->{2},
+    `log(2,x)=3`->{8}, `ln(x)=1`->{e}) untouched
+  - behavior_change_expected: yes - var-free provably-nonzero symbolic constant residual now collapses to
+    Empty; guardrail+pressure fingerprints BYTE-IDENTICAL, full cargo test --workspace green
+- observed:
+  - this is a SINGLE-condition case (only x>0), so the Positive(a)&Positive(-a) contradiction check from the
+    sibling ln=ln fix does NOT apply. Mechanism is different: `ln(x)-ln(c*x)` cancels its variable, leaving
+    the var-free symbolic constant `-ln(c)`. `classify_var_free_difference` only treated a bare
+    `Number(nonzero)` literal as ContradictionNonZero; a var-free SYMBOLIC constant that is provably nonzero
+    (like `-ln(2)`) fell through to Constraint -> ConstraintAllReals -> "All real numbers".
+  - fix: `is_provably_nonzero_constant` extends the nonzero classification soundly and conservatively:
+    (a) folded rational != 0 via numeric_eval::as_rational_const (EXACT, never a float gate),
+    (b) signed/scaled single-arg logs +-k*ln(c)/log2/log10 of a rational c>0, c!=1,
+    (c) two-arg log(b,c) with b,c rational >0, !=1 - all exact because log_b(c)=0 iff c=1.
+    Anything not provably nonzero stays Constraint (no false contradictions). Lives in cas_solver_core so
+    BOTH the eval/CLI path and the bare cas_solver::solve API are corrected (unlike the sibling fix, which
+    was eval-path-only).
+- retained learning:
+  - SAME Round-3 theme, third mechanism: the engine KNOWS the equation reduces to a nonzero constant but
+    does not ENFORCE "nonzero = 0 is unsatisfiable". A var-eliminated residual that is a provably-nonzero
+    CONSTANT (not just a Number literal) is a contradiction, not a vacuous constraint.
+  - the c=1 boundary is the soundness line here: log_b(c)=0 IFF c=1, so flag c!=1 only - never flag ln(1)
+    (=0, a genuine identity). Require c>0 too so the log is defined (an undefined log is not a contradiction).
+  - prefer fixing in the CORE classifier over the eval-path filter when the defect is path-independent: this
+    landed once and covers both APIs, where the sibling Positive(a)&Positive(-a) collapse had to be repeated
+    at the presentation layer.
+  - reuse numeric_eval::as_rational_const for the "folded rational" arm (it is exact: Functions/Pow/Constants
+    -> None, so ln(2) never folds to a float) - generalizing the Number(_) literal case without unsoundness.

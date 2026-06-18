@@ -6,8 +6,8 @@ use crate::log_domain::{
 };
 use crate::solution_set::{isolated_var_solution, open_positive_domain};
 use cas_ast::{
-    Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, RelOp, SolutionSet,
-    SolveResult,
+    BuiltinFn, Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, RelOp,
+    SolutionSet, SolveResult,
 };
 
 /// Classification of a variable-free equation residual `diff = lhs - rhs`.
@@ -1704,7 +1704,69 @@ pub fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFreeDiffK
             VarFreeDiffKind::IdentityZero
         }
         Expr::Number(_) => VarFreeDiffKind::ContradictionNonZero,
+        // A variable-free residual that is a PROVABLY non-zero constant is a
+        // contradiction (`nonzero = 0` is unsatisfiable), even when it is not a
+        // bare `Number` literal -- e.g. `ln(x) = ln(2x)` cancels its variable to
+        // leave `-ln(2)`, whose only algebraic root `x = 0` lies outside `x > 0`,
+        // so the real solution set is empty rather than all reals.
+        _ if is_provably_nonzero_constant(ctx, diff) => VarFreeDiffKind::ContradictionNonZero,
         _ => VarFreeDiffKind::Constraint,
+    }
+}
+
+/// True when `expr` is a variable-free constant that is provably non-zero.
+///
+/// Sound, conservative extension of the `Number(nonzero)` case used by
+/// [`classify_var_free_difference`]: it recognises folded rational constants and
+/// signed/scaled logarithms `±k·ln(c)` (also `log2`/`log10`) of a rational
+/// `c > 0, c != 1`. Because `log_b(c) = 0` iff `c = 1`, such a logarithm is
+/// exactly non-zero. Anything it cannot prove non-zero returns `false`, leaving
+/// the prior `Constraint` classification untouched (no false contradictions).
+fn is_provably_nonzero_constant(ctx: &Context, expr: ExprId) -> bool {
+    use cas_math::numeric_eval::as_rational_const;
+    let zero = num_rational::BigRational::from_integer(0.into());
+    let one = num_rational::BigRational::from_integer(1.into());
+    // Folded rational constant (covers `Number`, `6 - 3*2`, nested arithmetic).
+    if let Some(r) = as_rational_const(ctx, expr) {
+        return r != zero;
+    }
+    match ctx.get(expr) {
+        // ±core: a sign flip does not change non-zeroness.
+        Expr::Neg(inner) => is_provably_nonzero_constant(ctx, *inner),
+        // (nonzero rational)·core, in either factor order.
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(k) = as_rational_const(ctx, l) {
+                return k != zero && is_provably_nonzero_constant(ctx, r);
+            }
+            if let Some(k) = as_rational_const(ctx, r) {
+                return k != zero && is_provably_nonzero_constant(ctx, l);
+            }
+            false
+        }
+        // Single-argument logs ln/log2/log10 of a rational c > 0, c != 1.
+        // log_b(c) = 0 iff c = 1, so such a value is exactly non-zero.
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Ln | BuiltinFn::Log2 | BuiltinFn::Log10)
+            ) && matches!(as_rational_const(ctx, args[0]), Some(c) if c > zero && c != one)
+        }
+        // Two-argument log(base, arg): non-zero when both are rationals > 0 and
+        // != 1 (base != 1 keeps it defined, arg != 1 keeps it non-zero). Order
+        // of the two operands is irrelevant under these symmetric constraints.
+        Expr::Function(fn_id, args)
+            if args.len() == 2 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Log)) =>
+        {
+            match (
+                as_rational_const(ctx, args[0]),
+                as_rational_const(ctx, args[1]),
+            ) {
+                (Some(b), Some(c)) => b > zero && b != one && c > zero && c != one,
+                _ => false,
+            }
+        }
+        _ => false,
     }
 }
 
@@ -9360,6 +9422,62 @@ mod tests {
         let y = ctx.var("y");
         assert_eq!(
             classify_var_free_difference(&ctx, y),
+            VarFreeDiffKind::Constraint
+        );
+    }
+
+    #[test]
+    fn classify_negated_log_of_rational_is_contradiction() {
+        // `ln(x) = ln(2x)` cancels its variable to leave `-ln(2)`, a non-zero
+        // constant: the only algebraic root x=0 is excluded by x>0, so the real
+        // solution set is empty (No solution), not all reals.
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let ln_two = ctx.call_builtin(BuiltinFn::Ln, vec![two]);
+        let neg_ln_two = ctx.add(Expr::Neg(ln_two));
+        assert_eq!(
+            classify_var_free_difference(&ctx, neg_ln_two),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+    }
+
+    #[test]
+    fn classify_scaled_log_of_rational_is_contradiction() {
+        // 3*ln(2) is a non-zero constant.
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let ln_two = ctx.call_builtin(BuiltinFn::Ln, vec![two]);
+        let scaled = ctx.add(Expr::Mul(three, ln_two));
+        assert_eq!(
+            classify_var_free_difference(&ctx, scaled),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+    }
+
+    #[test]
+    fn classify_two_arg_log_of_rational_is_contradiction() {
+        // log(2, 3): base 2 and argument 3 are both rational, > 0, != 1, so the
+        // value is exactly non-zero.
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let log_2_3 = ctx.call_builtin(BuiltinFn::Log, vec![two, three]);
+        assert_eq!(
+            classify_var_free_difference(&ctx, log_2_3),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+    }
+
+    #[test]
+    fn classify_log_of_one_stays_constraint() {
+        // ln(1) = 0: the c=1 boundary must NOT be flagged as a contradiction
+        // (else a genuine identity would collapse to No solution).
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let ln_one = ctx.call_builtin(BuiltinFn::Ln, vec![one]);
+        assert_eq!(
+            classify_var_free_difference(&ctx, ln_one),
             VarFreeDiffKind::Constraint
         );
     }
