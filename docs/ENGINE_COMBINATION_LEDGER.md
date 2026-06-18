@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 205 (newest first)
+Active entries: 206 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
@@ -124,6 +124,7 @@ Active entries: 205 (newest first)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provabl... | Retained soundness fix: log_b(c*x)=log_b(x)+k for non-natural logs over-claimed "All real numbers" (Family A, exact c=b^m recognizer)
 - 2026-06-18 | `retained` | eval-path domain filter; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: log(b,-k*x)=log(b,x)+m over-claimed "All real numbers" (negative-coeff contradictory domain; generalize a==-b to negative proportionality)
 - 2026-06-18 | `retained` | CLI equiv path; `crates/cas_engine/src/eval/actions.rs` `eval_equiv` + new `e... | Retained soundness fix: equiv certified non-equivalent expressions as equal via a single f64 probe (Round-4 Cluster O)
+- 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_is... | Retained soundness fix: solve(|f|=-f) leaked a nested-solve residual instead of an interval (Round-4 Cluster J)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -9023,3 +9024,37 @@ Active entries: 205 (newest first)
   - a "genuine equivalence" test can be silently riding on an unsound mechanism: the sqrt(sec) derivative test
     only passed via the numeric confirmation. Removing the unsound path exposed it; the exact recovery (eval
     a-b==0) is what legitimately keeps it green.
+
+## 2026-06-18 - Retained soundness fix: solve(|f|=-f) leaked a nested-solve residual instead of an interval (Round-4 Cluster J)
+- area:
+  - core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_isolated_variable_outcome`
+    + new try_abs_self_equation / extract_linear_in_abs / solve_linear_arg_vs_zero
+- status:
+  - `retained` (HONESTY soundness fix; first half of Round-4 Clusters A+J)
+- capture:
+  - investment_class: soundness
+  - cell: `solve(abs(x-1)=1-x)` -> (-inf,1], `solve(abs(2x)=-2x)` -> (-inf,0], `solve(x+abs(x)=0)` -> (-inf,0],
+    `solve(x=abs(x))` -> [0,inf) (orientation leak); were all ok=true "Solve: solve(x = ..., x) = 0" garbage
+  - behavior_change_expected: yes - leaked residual -> closed half-line; guardrail+pressure BYTE-IDENTICAL,
+    full cargo test --workspace green
+- observed (Round-4 audit Cluster J; scoped by a read-only workflow):
+  - the abs-equation solver handled |f|=f but had no case for |f|=-f; after reorientation to x = f(x) the
+    isolated-variable resolver ran try_linear_collect (fails for abs) and fell to a nested-solve residual,
+    rendered "Solve: solve(x = -|x|, x) = 0" with ok=true. Even |f|=f leaked under this orientation
+    (solve(x=abs(x))).
+  - KEY DECISION: the scoping plan assumed a recursive solve was needed (interval from solving arg<=0),
+    requiring a callback threaded through 4 generic layers (default_routes -> dispatch -> entry x2 ->
+    resolver). Instead the fix is NON-recursive and self-contained in the chokepoint resolve_isolated_
+    variable_outcome (which already has &mut Context): recognize x = alpha*|arg| + beta, check whether
+    var-beta == +-alpha*arg (exact, exprs_equivalent over multipoly) to decide |arg|=arg (arg>=0) vs
+    |arg|=-arg (arg<=0), then for a LINEAR arg isolate x and emit the interval directly. Zero plumbing.
+- retained learning:
+  - PREFER the existing chokepoint that already has ctx over threading a recursive callback: the shared
+    resolve_isolated_variable_outcome is where ALL x=f(x) reorientations arrive (standalone AND mid-solve),
+    so a self-contained recognizer there fixes every origin without touching the generic dispatch wiring.
+  - |f|=f on {f>=0}, |f|=-f on {f<=0}, both CLOSED (boundary f=0 included). Decide via exact symbolic
+    equality var-beta == +-alpha*arg, never a numeric probe (soundness-gates-must-be-exact).
+  - a non-linear inner arg falls through to the honest residual - the recovery only claims an answer it can
+    build exactly (linear interval), keeping the under-answer sound.
+  - lhs at this site is always the bare variable, so the full equation is reconstructable as ctx.var(var) =
+    rhs without any extra plumbing.

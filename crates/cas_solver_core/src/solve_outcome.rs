@@ -56,6 +56,158 @@ pub enum CircularIsolatedOutcome<S> {
     Residual(SolutionSet),
 }
 
+/// Build a `Number` expression from a rational.
+fn num_expr_from_rational(ctx: &mut Context, r: &num_rational::BigRational) -> ExprId {
+    ctx.add(Expr::Number(r.clone()))
+}
+
+fn flip_relop(op: RelOp) -> RelOp {
+    match op {
+        RelOp::Leq => RelOp::Geq,
+        RelOp::Geq => RelOp::Leq,
+        RelOp::Lt => RelOp::Gt,
+        RelOp::Gt => RelOp::Lt,
+        other => other,
+    }
+}
+
+/// If `expr` is `alpha·|arg|` for a non-zero rational `alpha`, return `(alpha, arg)`.
+/// Pure read; handles `|arg|`, `-|arg|`, and `k·|arg|`.
+fn extract_scaled_abs(ctx: &Context, expr: ExprId) -> Option<(num_rational::BigRational, ExprId)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_traits::Zero;
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Abs) =>
+        {
+            Some((num_rational::BigRational::from_integer(1.into()), args[0]))
+        }
+        Expr::Neg(inner) => {
+            let (a, arg) = extract_scaled_abs(ctx, *inner)?;
+            Some((-a, arg))
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(k) = as_rational_const(ctx, l) {
+                if k.is_zero() {
+                    return None;
+                }
+                let (a, arg) = extract_scaled_abs(ctx, r)?;
+                return Some((k * a, arg));
+            }
+            if let Some(k) = as_rational_const(ctx, r) {
+                if k.is_zero() {
+                    return None;
+                }
+                let (a, arg) = extract_scaled_abs(ctx, l)?;
+                return Some((k * a, arg));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Decompose `expr = alpha·|arg| + beta` with `beta` free of `var`.
+fn extract_linear_in_abs(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(num_rational::BigRational, ExprId, ExprId)> {
+    if let Some((a, arg)) = extract_scaled_abs(ctx, expr) {
+        let zero = ctx.num(0);
+        return Some((a, zero, arg));
+    }
+    let split = match ctx.get(expr) {
+        Expr::Add(l, r) => Some((false, *l, *r)),
+        Expr::Sub(l, r) => Some((true, *l, *r)),
+        _ => None,
+    }?;
+    let (is_sub, l, r) = split;
+    if let Some((a, arg)) = extract_scaled_abs(ctx, l) {
+        if !contains_var(ctx, r, var) {
+            // alpha·|arg| (+ r) for Add, (- r) for Sub
+            let beta = if is_sub { ctx.add(Expr::Neg(r)) } else { r };
+            return Some((a, beta, arg));
+        }
+    }
+    if let Some((a, arg)) = extract_scaled_abs(ctx, r) {
+        if !contains_var(ctx, l, var) {
+            // l + alpha·|arg| for Add, l - alpha·|arg| for Sub (negate alpha)
+            let a = if is_sub { -a } else { a };
+            return Some((a, l, arg));
+        }
+    }
+    None
+}
+
+/// Solve `arg <op> 0` for a LINEAR `arg = a·x + b` (`a != 0`). `None` if non-linear.
+fn solve_linear_arg_vs_zero(
+    ctx: &mut Context,
+    arg: ExprId,
+    op: RelOp,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_math::polynomial::Polynomial;
+    use num_traits::{Signed, Zero};
+    let poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+    let a = poly.coeffs.get(1).cloned()?;
+    if a.is_zero() {
+        return None;
+    }
+    let b = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(num_rational::BigRational::zero);
+    // a·x + b <op> 0  <=>  x <op'> -b/a, where op' flips when a < 0.
+    let bound = -b / a.clone();
+    let isolated_op = if a.is_positive() { op } else { flip_relop(op) };
+    let bound_expr = num_expr_from_rational(ctx, &bound);
+    Some(isolated_var_solution(ctx, bound_expr, isolated_op))
+}
+
+/// Recover `|f(x)| = ±f(x)` equations that reorient to `x = α·|arg| + β`.
+///
+/// `|f| = f` holds exactly on `{f >= 0}` and `|f| = -f` exactly on `{f <= 0}`.
+/// The previously-leaked residual (rendered `Solve: solve(x = …, x) = 0`) is
+/// replaced by the closed half-line. Handles a *linear* inner argument; a
+/// non-linear `arg` falls through to the honest residual.
+fn try_abs_self_equation(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<SolutionSet> {
+    use cas_math::expr_domain::exprs_equivalent;
+    use num_traits::Zero;
+    let (alpha, beta, arg) = extract_linear_in_abs(ctx, rhs, var)?;
+    if alpha.is_zero() || !contains_var(ctx, arg, var) {
+        return None;
+    }
+    // Equation `var = α·|arg| + β`  <=>  `var - β = α·|arg|`.
+    // |arg| = arg  (arg >= 0)  iff  var - β == α·arg
+    // |arg| = -arg (arg <= 0)  iff  var - β == -α·arg
+    let var_expr = ctx.var(var);
+    let var_minus_beta = ctx.add(Expr::Sub(var_expr, beta));
+    let alpha_num = num_expr_from_rational(ctx, &alpha);
+    let alpha_arg = ctx.add(Expr::Mul(alpha_num, arg));
+    let neg_alpha_arg = ctx.add(Expr::Neg(alpha_arg));
+    let arg_op = if exprs_equivalent(ctx, var_minus_beta, alpha_arg) {
+        RelOp::Geq
+    } else if exprs_equivalent(ctx, var_minus_beta, neg_alpha_arg) {
+        RelOp::Leq
+    } else {
+        return None;
+    };
+    solve_linear_arg_vs_zero(ctx, arg, arg_op, var)
+}
+
+/// Attempt to finish an isolated `var = rhs` equation (with `rhs` still
+/// containing `var`) instead of leaking a nested-`solve` residual. Currently
+/// recovers `|f| = ±f` self-equations (Round-4 Cluster J).
+fn try_recover_isolated_eq(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<SolutionSet> {
+    try_abs_self_equation(ctx, rhs, var)
+}
+
 /// Resolve the final outcome for `x op rhs` once the variable is syntactically
 /// isolated on the left-hand side.
 pub fn resolve_isolated_variable_outcome(
@@ -65,6 +217,14 @@ pub fn resolve_isolated_variable_outcome(
     var: &str,
 ) -> IsolatedVariableOutcome {
     if contains_var(ctx, rhs, var) {
+        // The variable is still present on the RHS — not truly isolated. Before
+        // degrading to a nested-`solve` residual (rendered `Solve: … = 0` with
+        // ok=true), try to actually finish recognizable shapes.
+        if op == RelOp::Eq {
+            if let Some(set) = try_recover_isolated_eq(ctx, rhs, var) {
+                return IsolatedVariableOutcome::Solved(set);
+            }
+        }
         IsolatedVariableOutcome::ContainsTargetVariable
     } else {
         IsolatedVariableOutcome::Solved(isolated_var_solution(ctx, rhs, op))
@@ -19580,6 +19740,42 @@ mod tests {
             resolve_isolated_variable_outcome(&mut ctx, rhs, RelOp::Eq, "x"),
             IsolatedVariableOutcome::ContainsTargetVariable
         ));
+    }
+
+    #[test]
+    fn resolve_isolated_variable_outcome_recovers_abs_self_equation() {
+        use cas_ast::Interval;
+        use num_traits::Zero;
+        // x = -|x|  (from x + |x| = 0)  <=>  |x| = -x  <=>  x <= 0  =>  (-inf, 0].
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+        let neg_abs_x = ctx.add(Expr::Neg(abs_x));
+        match resolve_isolated_variable_outcome(&mut ctx, neg_abs_x, RelOp::Eq, "x") {
+            IsolatedVariableOutcome::Solved(SolutionSet::Continuous(Interval {
+                max,
+                max_type,
+                ..
+            })) => {
+                assert!(matches!(ctx.get(max), Expr::Number(n) if n.is_zero()));
+                assert_eq!(max_type, cas_ast::BoundType::Closed);
+            }
+            other => panic!("expected closed upper half-line, got {other:?}"),
+        }
+
+        // x = |x|  (from x = |x|)  <=>  |x| = x  <=>  x >= 0  =>  [0, inf).
+        let abs_x2 = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
+        match resolve_isolated_variable_outcome(&mut ctx, abs_x2, RelOp::Eq, "x") {
+            IsolatedVariableOutcome::Solved(SolutionSet::Continuous(Interval {
+                min,
+                min_type,
+                ..
+            })) => {
+                assert!(matches!(ctx.get(min), Expr::Number(n) if n.is_zero()));
+                assert_eq!(min_type, cas_ast::BoundType::Closed);
+            }
+            other => panic!("expected closed lower half-line, got {other:?}"),
+        }
     }
 
     #[test]
