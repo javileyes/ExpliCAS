@@ -1,0 +1,470 @@
+# Soundness Audit — Round 4 (2026-06-18)
+
+Fourth multi-axis adversarial soundness audit (ultracode), after Rounds 1–3 and the log-equation-family hardening landed this session. Baseline commit: `07acd585d`.
+
+## Method
+
+- **18 fronts** hunted in parallel via a `Workflow` pipeline: each axis's hunter ran the release CLI on concrete probes, then piped its candidates straight to a **default-reject skeptic** that re-derived the correct real-domain answer **exactly** (sympy 1.14 `solveset`/`integrate`/`limit`, by hand, and the engine's own evaluator at concrete points) — never float alone.
+
+- Every confirmed bug then faced an **independent second refuter** that had to reproduce it on the CLI and produce a concrete witness, or it was dropped. A synthesizer clustered the survivors by root cause and a completeness critic probed under-covered angles.
+
+- **108 agents, ~3.0M tokens.** Agents were given the full list of Rounds 1–3 + this-session fixes and the known-open residuals, and instructed to dedup against them (report regressions only, classify known items as `known_already_logged`).
+
+- **Read-only**: agents were forbidden any git/file mutation; CLI + python3 only.
+
+- **Accuracy spot-check (operator):** 9 representative claims across the clusters were re-run by hand and **all reproduce exactly** — e.g. `equiv(x,y)` → `true`, `solve(log(2,x)+log(2,x+2)=3,x)` → `Solve: solve(x = 2^3 / (x + 2), x) = 0`, `integrate(cos(x)/sin(x)^2,x,0,2*pi)` → `infinity`, `tan(pi/2)-tan(pi/2)` → `0`, `sum(k,k,1,inf)` → `1/2·infinity^2`, `solve(x/0=5,x)` → `All real numbers`, `((x^2)^(1/3))^(3/2)` → `x`. The report is faithful to engine behaviour, not agent narration.
+
+## Headline
+
+**77 findings, 74 unique confirmed, 64 survived the second refuter** → **64 twice-verified unsound bugs** in **15 clusters (A–O)**.
+
+
+| Axis | confirmed findings |
+|---|---|
+| solve-log-exp | 7 |
+| solve-radical | 4 |
+| solve-trig-inverse | 7 |
+| solve-rational-poly | 4 |
+| inequalities | 9 |
+| systems | 0 |
+| simplify-undefined-leak | 6 |
+| powers-radicals | 6 |
+| abs-sign-floor | 5 |
+| limits-finite | 0 |
+| limits-infinity | 0 |
+| integration-definite | 4 |
+| integration-indefinite | 0 |
+| differentiation | 1 |
+| series-sums-products | 8 |
+| trig-hyperbolic-identities | 3 |
+| special-values-constants | 6 |
+| numeric-float-leakage | 7 |
+
+## Overall assessment
+
+Real-domain soundness is NOT broadly guaranteed. The evaluator core (eval of concrete scalars) is largely sound -- it independently returns "undefined" for x/0, ln(-5), tan(pi/2), and folds (x^2)^(1/2) to |x| -- but every higher layer built on top of it leaks. The 64 confirmed bugs concentrate in five structural weak spots, each a place where a "finishing"/closed-form path commits to a confident answer without re-checking the domain invariants the evaluator already knows:
+
+1. The SOLVE pipeline is the single largest hazard (Clusters A, B, D, E, F, J: 33 of 64 bugs). It (a) leaks an internal unfinished "Solve: solve(...) = 0" token as an ok=true success on log-product, log-quotient, and |f|=-f reductions that the engine can in fact finish (the reduced quadratic solves correctly in isolation); (b) drops parameter-side sign conditions when inverting even roots with a symbolic RHS (sqrt(x)=a -> {a^2} unconditionally); (c) collapses provable-division-by-zero equations to "All real numbers"; (d) drops the denominator-sign case split for rational inequalities, returning sets disjoint from the truth; and (e) fails to intersect the argument-domain into the solution set for sqrt/ln/log inequalities, including the entire negative axis where the predicate is undefined. The default text output shows only the wrong interval with no caveat, so an educational user is actively misled.
+
+2. The infinite-series / infinite-product closed-form machinery (Cluster L, 6 bugs) blindly applies finite Faulhaber/geometric/factorial identities at an infinite upper bound, emitting literal "infinity" tokens inside the expression tree (1/2*infinity^2, 2^infinity-1, infinity!) for divergent sums/products -- the exact malformed-garbage class the charter names, and worse, infinity! folds as a finite atom so 0*product(k,k,1,inf) = 0.
+
+3. Definite integration over intervals with endpoint poles (Cluster K, 4 bugs) short-circuits its zero-scan at the first boundary zero, misses the interior/second pole, and fabricates a signed +/-infinity for genuinely indeterminate (inf-inf) integrals -- including a sign-wrong, critical-severity case over [0,2pi] with a non-integrable interior pole.
+
+4. The additive like-term collector (Cluster G, 4 bugs) cancels coefficients to zero BEFORE checking definedness, fabricating finite values (0, 1) for expressions containing undefined-over-R subterms (tan(pi/2)-tan(pi/2)=0, ln(-5)-ln(-5)=0), contradicting the evaluator's own verdict on every other arithmetic path.
+
+5. equiv (Cluster O, 7 bugs) is the most systemically dangerous primitive: a single shared numeric probe (all variables = 1.23456789) plus an absolute f64 epsilon (1e-9) certifies arbitrarily different expressions as equal whenever their residual vanishes on the diagonal x=y or at that one point. This is a textbook violation of the project's own MEMORY note 'Soundness gates must be exact -- never f64 for drop/keep decisions'. equiv(x,y)=true, equiv(x*y,x^2)=true, equiv(x/1e12,0)=true.
+
+The remaining clusters (C: surd/transcendental trig RHS bypassing the |c|<=1 range check, returning non-real arcsin/arccos as real roots; H: imaginary warning gated on input not result; I: rational-exponent power towers dropping abs; M: principal inv-trig asserting a provably-false range membership; N: choose/perm guard-ordering fabricating 0 for negative n) are narrower but all share the same meta-cause: a fast/closed-form path that does not re-validate against the domain facts the engine already possesses, frequently proven by the engine contradicting ITSELF (concrete-RHS solve says No solution while symbolic-RHS asserts a root; concrete eval gives |x| while symbolic gives x). Soundness is reachable in almost every case -- the answers are within the engine's grasp -- which makes these honesty violations rather than honest capability gaps.
+
+## Clusters by root cause
+
+
+### K. Definite-integral endpoint-pole zero-scan short-circuits at the first boundary zero, missing the second/interior pole and fabricating a signed +/-infinity for indeterminate integrals
+
+**Severity: critical · honesty-violation · 4 probes.**
+
+
+**Root cause.** trig_nonzero_on_interval (definite_integration.rs ~lines 2059-2095) returns at the FIRST zero of the denominator it finds. For sin(x) on [0,pi], it hits x=0 (k=0), returns BoundaryTouch{lower:true,upper:false}, and never iterates to the second zero at pi. The un-detected pole is then evaluated by plain Newton-Leibniz substitution (infinite_sign=None), driving the (None,Some(sign)) arm to build a one-sided signed infinity instead of the (Some,Some)->None indeterminate arm. Over [0,2pi] the interior pole at pi (where the integrand blows up to -inf from BOTH sides) is missed entirely, yielding a sign-wrong +infinity for a non-integrable interior pole. The controls integrate(1/x^2,-1,1) and integrate(.../sin^2, pi/2, 3pi/2) correctly return 'undefined', proving the IntervalCertificate::Undefined path exists but is suppressed by the short-circuit when endpoint zeros are also present.
+
+
+| probe | expected |
+|---|---|
+
+| `integrate(cos(x)/sin(x)^2, x, 0, pi)` | undefined / divergent |
+
+| `integrate(csc(x)*cot(x), x, 0, pi)` | undefined / divergent |
+
+| `integrate(cos(x)/sin(x)^2, x, 0, 2*pi)` | undefined / divergent (interior pole at pi) |
+
+| `integrate(cos(x)/sin(x)^2, x, pi, 2*pi)` | undefined / divergent |
+
+
+**Suggested fix.** Make trig_nonzero_on_interval enumerate ALL zeros of the denominator within [lower, upper] (closed), not just the first: continue the k-loop across the whole interval and record every boundary-touch and every interior pole. If two or more poles are found, or any interior pole exists, route to the IntervalCertificate::Undefined / (Some,Some)->None indeterminate arm (the path 1/x^2 over [-1,1] already uses). When both endpoints are poles, the antiderivative's two one-sided limits must be combined and, if they give inf-inf, return undefined -- never a single signed infinity. The Cauchy principal value is not the improper-integral value and must not be returned as one.
+
+
+### A. Solve log-product / log-quotient finishing path leaks an internal 'solve(...) = 0' token as ok=true
+
+**Severity: high · honesty-violation · 5 probes.**
+
+
+**Root cause.** After reducing log_b(f)+log_b(g)=k (or =1) to the rational equation x = b^k/(g) via the log-sum-to-product rewrite, the solver fails to recurse into / finalize the resulting equation and instead serializes the unevaluated inner solve(...) node, wrapping it in a 'Solve: ... = 0' display template. ok=true is asserted with no error/warning even though no solution set was produced. The engine CAN finish the reduced quadratic (solve(x*(x+2)=8,x) -> {-4,2}) and CAN evaluate the equation at the root, so the answer is fully reachable; only the log-substitution finishing step is broken. The valid in-domain root (and the recorded x>0 / x>k domain condition) is silently dropped.
+
+
+| probe | expected |
+|---|---|
+
+| `solve(log(2,x)+log(2,x+2)=3,x)` | {2} (x=-4 rejected by x>0) |
+
+| `solve(log(3,x)+log(3,x-2)=1,x)` | {3} (x=-1 rejected by x>2) |
+
+| `solve(log(5,x)+log(5,x-4)=1,x)` | {5} (x=-1 rejected by x>4) |
+
+| `solve(log(2,x*(x-2))=3,x)` | {-2, 4} (both in-domain) |
+
+| `solve(ln(x)/ln(x-1)=1,x)` | No solution / EmptySet |
+
+
+**Suggested fix.** In the log-product/log-quotient solve branch, after producing the reduced polynomial/rational equation, recursively call the solver on it (the same code path that already handles solve(x*(x+2)=8,x)), then intersect the returned root set with the recorded domain conditions (each log argument > 0). If the recursion returns no finished set, do NOT emit the inner solve(...) node as a result: either return the honest 'cannot solve' error (ok=false) or keep a clearly-marked symbolic residual. Never serialize an unevaluated nested solve(...) wrapped in 'Solve: ... = 0' as an ok=true result. Cross-check the ln/ln quotient form against the ln(x)=ln(x-1) reduction which already correctly returns No solution.
+
+
+### B. Symbolic-RHS even-root solve drops the parameter sign condition (a >= 0)
+
+**Severity: high · dropped-condition · 4 probes.**
+
+
+**Root cause.** When solving root(x)=a (or 2*sqrt(x)=a, x^(1/4)=a, sqrt(x-1)=a) for x with a SYMBOLIC right-hand side, the solver squares/raises both sides to get x = a^2 (etc.) and emits only the radicand-nonnegativity guard (x >= 0), which is vacuous because a^2 >= 0 always. The mandatory parameter condition a >= 0 (the principal even root has range [0,inf)) is never generated on this path. The engine demonstrably has the machinery -- solve(x^2=a,x) correctly emits 'a >= 0' and solve(sqrt(x)=-3,x) correctly returns No solution -- but the radical-equals-parameter inversion path omits it. Odd roots (x^(1/3)=a) are correctly unconditional, confirming the defect is specific to even-index radicals.
+
+
+| probe | expected |
+|---|---|
+
+| `solve(sqrt(x)=a,x)` | { a^2 } guarded by a >= 0 (No solution for a<0) |
+
+| `solve(x^(1/4)=a,x)` | { a^4 } guarded by a >= 0 |
+
+| `solve(sqrt(x-1)=a,x)` | { a^2 + 1 } guarded by a >= 0 |
+
+| `solve(2*sqrt(x)=a,x)` | { a^2/4 } guarded by a >= 0 |
+
+
+**Suggested fix.** In the radical-equals-RHS inversion, when the radical index is even, after computing x = RHS^index attach the parameter condition RHS >= 0 (i.e. require the original RHS to be nonnegative) to required_conditions, exactly as the inverse problem solve(x^2=a,x) already does. For a leading coefficient c (e.g. 2*sqrt(x)=a), the condition is a/c >= 0 with c's sign accounted for. Reuse the existing condition-emission machinery from the x^2=a path; do not rely on the radicand guard x>=0, which is vacuous for a squared RHS.
+
+
+### C. Trig solve range check |c|<=1 bypassed for non-rational (surd/transcendental) RHS, returns non-real inverse-trig as a real root
+
+**Severity: high · honesty-violation · 6 probes.**
+
+
+**Root cause.** solve(sin(x)=c) / solve(cos(x)=c) gates the |c|<=1 emptiness check on c folding to a rational/decidable literal. For c a surd (sqrt(2), sqrt(3), 1+sqrt(2)) or a transcendental constant (pi/2, e, pi, ln(10)), the comparison c-1>0 / c+1<0 is left symbolic/undecided, so the range gate is skipped and the solver returns { arcsin(c) } / { arccos(c) } (or +/- and pi - variants). Over the reals these inverse-trig values are non-real (complex) for |c|>1, so a non-real value is presented as a real solution in a real-domain-only engine. The rational/integer controls (sin(x)=2, cos(x)=3/2) correctly return No solution, proving the gate exists but is not fired for non-rational RHS.
+
+
+| probe | expected |
+|---|---|
+
+| `solve(sin(x)=sqrt(2),x)` | No solution (sqrt(2)~1.414 > 1) |
+
+| `solve(cos(x)=sqrt(3),x)` | No solution (sqrt(3)~1.732 > 1) |
+
+| `solve(sin(x)=pi/2,x)` | No solution (pi/2~1.571 > 1) |
+
+| `solve(sin(x)=-sqrt(2),x)` | No solution (-sqrt(2) < -1) |
+
+| `solve(cos(x)=-sqrt(3),x)` | No solution (-sqrt(3) < -1) |
+
+| `solve(cos(x)=e,x)` | No solution (e~2.718 > 1) |
+
+
+**Suggested fix.** Before constructing arcsin(c)/arccos(c) in the trig solve path, prove |c| <= 1 using the EXACT comparison machinery (not f64): decide c-1 and c+1 signs symbolically (the engine already evaluates sqrt(2)>1, e>1 elsewhere). If |c|<=1 cannot be proven, and especially if |c|>1 CAN be proven, return No solution / EmptySet. As a defense-in-depth backstop, refuse to admit arcsin/arccos of an argument the engine itself leaves unevaluated as out-of-domain (the engine already declines to fold arcsin(sqrt(2))). This is the same range gate already working for rational RHS, extended to surd/transcendental RHS.
+
+
+### D. Solve with provable division-by-zero collapses to identity -> 'All real numbers' instead of empty set
+
+**Severity: high · honesty-violation · 4 probes.**
+
+
+**Root cause.** The solver's identity/clear-denominator branch multiplies both sides by a denominator D and, when the equation reduces to a tautology, returns AllReals (R). When D is a PROVABLE zero (literal 0, or x-x which folds to 0, or 1/0), the guard D != 0 is either dropped entirely or canonicalized to the impossible NonZero(0) ('0 != 0'); either way the conditional case should collapse to Empty, but the inner AllReals is surfaced as the headline. The evaluator itself returns 'undefined' for x/0 and 1/0, so the solve path contradicts the engine's own division semantics. This is a regression of the Rounds 1-3 'div-by-provable-zero -> undefined' fix that did not cover the solve path. The control solve(0*x=5,x) (genuine zero coefficient) correctly returns No solution, isolating the broken division-by-provable-zero branch.
+
+
+| probe | expected |
+|---|---|
+
+| `solve(x/0=5,x)` | No solution (empty set) |
+
+| `solve(x/(x-x)=0,x)` | No solution (x-x folds to 0) |
+
+| `solve(x=1/0,x)` | No solution (1/0 undefined) |
+
+| `solve(x/0=0,x)` | No solution (empty set) |
+
+
+**Suggested fix.** In the solve clear-denominator / identity path, before emitting AllReals under a guard D != 0, evaluate D with the existing const-fold/zero-prover (the same one that makes eval x/0 -> undefined and folds x-x -> 0). If D is provably zero (or the NonZero guard canonicalizes to '0 != 0'), collapse the conditional case to SolutionSet::Empty. Likewise, if either side of the equation evaluates to undefined (k/0, 1/(1-1)), the equation has no real solution -> Empty. Do not let an undefined side propagate into a tautology.
+
+
+### E. Rational inequality solver drops the denominator-sign case split (and demotes the inequality to an equation)
+
+**Severity: high · honesty-violation · 5 probes.**
+
+
+**Root cause.** For f(x)/g(x) > c (or <, <=, >=), the solver finds the boundary root by solving the EQUATION f/g = c (visible in input_latex, which rewrites '1/(x-2)>1' to '1/(x-2)=1') and then emits a single ray above/below that root, never splitting on the sign of the denominator g(x) and never accounting for the pole. The result interval is frequently DISJOINT from the truth (e.g. (3,inf) instead of (2,3)), so every claimed membership is wrong. The engine's own exact arithmetic refutes its answer at concrete points. This is well-formed (no infinity-token garbage), so it is DISTINCT from the known-open malformed-token case solve(1/((x-1)*(x-3))>0,x).
+
+
+| probe | expected |
+|---|---|
+
+| `solve(1/(x-2)>1,x)` | (2, 3) |
+
+| `solve(1/(x-2)<1,x)` | (-inf, 2) U (3, inf) |
+
+| `solve(1/(x+1)>2,x)` | (-1, -1/2) |
+
+| `solve(2/(x-1)>1,x)` | (1, 3) |
+
+| `solve(1/(x-2)<-1,x)` | (1, 2) |
+
+
+**Suggested fix.** Implement the standard rational-inequality algorithm: move everything to one side (f/g - c), find the zeros of the numerator AND the poles (zeros of the denominator), partition the real line at all of these critical points, and determine the sign of the expression on each open subinterval by exact test-point evaluation. Take the union of intervals where the (strict/non-strict) inequality holds, excluding poles. Do NOT solve the demoted equation and emit a single monotone ray. The poles must always be excluded from the solution set. This same routine should subsume the known-open product-denominator case and eliminate the infinity-token output.
+
+
+### F. Domain inequality (sqrt/ln/log) does not intersect the result with the argument-domain; negative/undefined axis included
+
+**Severity: high · dropped-condition · 3 probes.**
+
+
+**Root cause.** For sqrt(x)<c, ln(x)<c, log(b,x)<c the solver inverts the function (square / exponentiate) to get the boundary and returns a half-line, but never intersects the solution set with the function's argument-domain (x>=0 for sqrt, x>0 for ln/log). The result therefore includes the entire region where the function is undefined over R (e.g. (-inf,4) for sqrt(x)<2, (-inf,1) for ln(x)<0). The x>0/x>=0 condition appears only in a separate required_display field that is NOT folded into the result and is absent from the default/only text output. The engine's equation contract DOES fold domain into the result (solve(sqrt(x)=-2,x)->No solution), so the inequality path violates that contract. The >/>= directions happen to be correct only because their true set already lies inside the domain.
+
+
+| probe | expected |
+|---|---|
+
+| `solve(sqrt(x)<2,x)` | [0, 4) |
+
+| `solve(ln(x)<0,x)` | (0, 1) |
+
+| `solve(log(2,x)<3,x)` | (0, 8) |
+
+
+**Suggested fix.** After solving the inverted inequality, intersect the resulting interval with the argument's real domain (sqrt: [0,inf); ln/log: (0,inf)) and emit THAT as the result set, mirroring the equation path that already returns No solution when the domain excludes the root. Use the exact closed/half-open endpoint at the domain boundary (e.g. [0,4) keeps x=0 for sqrt(x)<2 since sqrt(0)=0<2). Also fix the LaTeX endpoint rendering bug where -infinity is shown with a closed bracket '\left[-\infty'.
+
+
+### G. Additive like-term collector cancels coefficients BEFORE checking definedness, fabricating finite values for undefined/non-real subterms
+
+**Severity: high · honesty-violation · 4 probes.**
+
+
+**Root cause.** The like-term collector sums integer coefficients of matching atoms (e.g. tan(pi/2): 1 + (-1) = 0) and discards the atom when the coefficient is 0, BEFORE the pole/undefined/non-real fold runs. So tan(pi/2)-tan(pi/2) -> 0, sec(pi/2)+1-sec(pi/2) -> 1, ln(0)-ln(0) -> 0, ln(-5)-ln(-5) -> 0, even in strict mode. Every OTHER arithmetic path correctly propagates undefined (tan(pi/2)*0, tan(pi/2)+tan(pi/2), 2*ln(0)-ln(0), ln(-5)/ln(-5) all -> undefined), and sqrt(-5)-sqrt(-5) stays symbolic -- proving the fold-to-finite is an internal contradiction, not a defensible f-f=0 convention (the engine commits ln(0) to -infinity and applies inf-inf=undefined everywhere else).
+
+
+| probe | expected |
+|---|---|
+
+| `tan(pi/2)-tan(pi/2)` | undefined |
+
+| `sec(pi/2)+1-sec(pi/2)` | undefined |
+
+| `ln(0)-ln(0)` | undefined |
+
+| `ln(-5)-ln(-5)` | undefined (ln(-5) non-real over R) |
+
+
+**Suggested fix.** Before (or during) like-term coefficient collection, screen each term's atom for definedness over R: if any atom evaluates to undefined / a pole / a non-real value (using the same checks that already make tan(pi/2)*0 and ln(-5)/ln(-5) undefined), do NOT cancel it away to a zero coefficient -- propagate undefined for the whole sum (matching the extended-real inf-inf and (-inf)-(-inf) indeterminate rules the engine already applies on the matched-coefficient path 2*ln(0)-ln(0)). Equivalently, run the undefined/pole detection pass before the additive simplifier discards subterms.
+
+
+### H. Imaginary-Usage-Warning gated on the INPUT containing i, not the RESULT, so perfect-square radicals fold to k*i silently
+
+**Severity: high · honesty-violation · 4 probes.**
+
+
+**Root cause.** The warning is emitted only when contains_i scans the INPUT expression for literal sqrt(-1)/(-1)^(1/2)/I (numeric_eval.rs contains_i, gated at simplify_action.rs around line 5454). For sqrt(-4)+sqrt(-9) the input has no literal i, but the RESULT folds to 5*(-1)^(1/2) = 5i; the scan misses it, so value_domain is reported as 'real' with an EMPTY warnings array for an imaginary quantity. The structurally identical sqrt(-1)+sqrt(-1) (literal i in input) correctly warns. Keeping the expression symbolic is fine; the unsound part is the missing honesty caveat plus value_domain=real on an imaginary value.
+
+
+| probe | expected |
+|---|---|
+
+| `sqrt(-4)+sqrt(-9)` | kept symbolic WITH Imaginary Usage Warning and value_domain != real (it is 5i) |
+
+| `sqrt(-16)` | symbolic 4i WITH warning |
+
+| `sqrt(-25)` | symbolic 5i WITH warning |
+
+| `(-4)^(1/2)` | symbolic 2i WITH warning |
+
+
+**Suggested fix.** Move the imaginary-content check from the INPUT to the canonicalized RESULT: scan the final simplified expression for (-1)^(1/2) / I / any non-real factor (reuse contains_i but run it on `resolved`/result, not the input). If present, emit the Imaginary Usage Warning and set value_domain accordingly. This makes the warning fire uniformly across the perfect-square-radical family that folds to k*i.
+
+
+### I. Rational-exponent power-tower simplifier multiplies exponents and drops the absolute value (sign-wrong for x<0)
+
+**Severity: high · honesty-violation · 5 probes.**
+
+
+**Root cause.** ((x^p)^q) with rational p,q is simplified by multiplying exponents p*q and returning x^(p*q), discarding the sign information. Under the engine's own real even-root convention, an even-numerator inner exponent makes the base nonnegative (x^(2/3)=(x^2)^(1/3)>=0, x^(4/3)=(x^4)^(1/3)>=0), so the correct result carries an absolute value (|x| or |x|^k), but the simplifier returns bare x / x^3. The attached guard (e.g. x^(2/3) >= 0) is VACUOUS (true for all real x) so it excludes nothing. The engine's own concrete evaluator contradicts the symbolic answer (((-2)^2)^(1/3))^(3/2) -> 2 while symbolic 'x' -> -2; ((-8)^(2/3))^(9/2) -> 512 while x^3 -> -512). The sibling (x^2)^(1/2) correctly yields |x|, so the abs capability exists but is dropped here. Strict --domain mode is sound (keeps symbolic); the default generic/assume paths are unsound.
+
+
+| probe | expected |
+|---|---|
+
+| `((x^2)^(1/3))^(3/2)` | |x| |
+
+| `(x^(2/3))^(3/2)` | |x| |
+
+| `(x^(2/5))^(5/2)` | |x| |
+
+| `(x^(4/3))^(3/4)` | |x| |
+
+| `(x^(2/3))^(9/2)` | |x|^3 |
+
+
+**Suggested fix.** When collapsing (x^p)^q over the reals, detect when an intermediate even-index root forces the base nonnegative (even numerator in a rational exponent, or an even root applied to x). In that case the result must be |x|^(p*q) (= |x| when p*q=1), not x^(p*q). Reuse the exact rule already producing |x| for (x^2)^(1/2). Only drop the abs when x is provably nonnegative (a real, non-vacuous guard), and treat the emitted vacuous guard (which holds for all reals) as licensing nothing. Match the engine's own concrete-evaluation result, which already yields |x|.
+
+
+### J. Solve |f(x)| = -f(x) (and |f|=f-mirror gaps) leaks the 'Solve: solve(...) = 0' template, collapsing an interval answer to a phantom '= 0'
+
+**Severity: high · honesty-violation · 3 probes.**
+
+
+**Root cause.** The absolute-value solve branch handles |f|=f (returns a conditional AllReals) but has no case for |f| = -f(x); on that input it falls through to the same unfinished-residual template as Cluster A, emitting 'Solve: solve(x = -|...|, x) = 0' with ok=true and no warning. The trailing '= 0' is a constant display-template artifact (it appears verbatim for unsolved transcendentals where x=0 is NOT a root), so a reader takes the answer to be x=0 while the true solution set is the half-interval (-inf, c]. The engine handles the mirror case |f|=f correctly, isolating |f|=-f as the unhandled hole.
+
+
+| probe | expected |
+|---|---|
+
+| `solve(abs(x-1)=1-x,x)` | (-inf, 1] |
+
+| `solve(abs(2*x)=-2*x,x)` | (-inf, 0] |
+
+| `solve(x+abs(x)=0,x)` | (-inf, 0] |
+
+
+**Suggested fix.** Add the |f(x)| = -f(x) case to the abs-equation solver: it holds exactly when f(x) <= 0, so return the solution set { x : f(x) <= 0 } (an interval/region), mirroring the existing |f|=f -> { f(x) >= 0 } handling. More generally, never emit the 'Solve: solve(...) = 0' template as an ok=true result: if a branch cannot finish, return an honest ok=false / cannot-solve, or a clearly-marked symbolic residual -- not a nested unevaluated solve(...) with a phantom '= 0'.
+
+
+### L. Infinite sum/product applies finite closed-form identities at an infinite upper bound, leaking 'infinity' tokens into the expression tree for divergent series
+
+**Severity: high · honesty-violation · 6 probes.**
+
+
+**Root cause.** The Faulhaber (sum of k^p), geometric (sum of r^k), and factorial/product closed-form builders (summation_support.rs: try_build_geometric_power_sum ~line 447, try_build_product_of_first_integers ~line 608, try_build_product_of_powers ~line 635) substitute the upper bound n into the finite closed form WITHOUT checking that n is finite. With n=infinity they emit 1/2*infinity^2, 2^infinity-1, infinity!, 2^infinity, etc. -- divergent series presented as ok=true closed forms with no divergence warning. Worse, infinity! and 2^infinity are folded as finite atoms, so 0*product(k,k,1,inf) -> 0 and sum(k,k,1,inf)-sum(k,k,1,inf) -> 0 (true values are indeterminate 0*inf / inf-inf). The engine HAS an honest path -- it leaves sum(1/k^2,...), sum((1/2)^k,...), k^4/k^5/k^6 Faulhaber, and product(1/k^2,...) unevaluated -- so the closed-form path is the regression.
+
+
+| probe | expected |
+|---|---|
+
+| `sum(k, k, 1, inf)` | divergent (infinity) or unevaluated residual |
+
+| `sum(k^3, k, 1, inf)` | divergent (infinity) or unevaluated residual |
+
+| `sum(2^k, k, 0, inf)` | divergent (infinity) or unevaluated residual |
+
+| `sum(3^k, k, 1, inf)` | divergent (infinity) or unevaluated residual |
+
+| `product(k, k, 1, inf)` | divergent (infinity) or unevaluated residual |
+
+| `product(2, k, 1, inf)` | divergent (infinity) or unevaluated residual |
+
+
+**Suggested fix.** Guard every finite closed-form builder (Faulhaber, geometric, factorial/product) with a finiteness check on the upper bound: if end is infinity, do NOT substitute it into the finite formula. Instead apply a convergence test -- polynomial sum(k^p) with p>=0 and end=inf diverges; geometric sum(r^k) diverges iff |r|>=1; product(k,...) and product(c,...) with c>1 and infinite bound diverge -- and return the engine's first-class Constant::Infinity (the honest divergence convention used by sum(1,k,1,inf)) or keep the operator unevaluated (as the convergent siblings already do). Never produce fact(infinity) or pow(c, infinity) closed-form nodes.
+
+
+### O. equiv uses a single shared numeric probe (all vars = 1.23456789) plus an absolute f64 epsilon, certifying non-equivalent expressions as equal
+
+**Severity: high · honesty-violation · 7 probes.**
+
+
+**Root cause.** The CLI equiv path (actions.rs:445 eval_equiv -> Simplifier::are_equivalent, the BOOLEAN variant) falls back to a numeric check (engine/equivalence.rs:72-83) that builds default_equiv_probe_map (cas_solver_core/equivalence.rs:35-42) assigning the SAME value DEFAULT_EQUIV_NUMERIC_PROBE=1.23456789 to EVERY free variable, evaluates the residual once, and returns is_numeric_equiv_zero (|v|<1e-9, an ABSOLUTE float epsilon) DIRECTLY as the boolean truth value (allow_numerical_verification defaults true). Two failure modes: (1) all variables collapse to the diagonal x=y, so any residual vanishing on x=y is declared zero (equiv(x,y), equiv(x*y,x^2), equiv(sin(x),sin(y))); (2) any residual that happens to be small/zero at the single point x=1.23456789 (perfect squares tangent there, expressions scaled below 1e-9 like x/1e12) is declared zero. This is exactly the project MEMORY anti-pattern 'never f64 for drop/keep decisions'. The tri-state are_equivalent_extended path correctly returns Unknown, but the CLI does not use it.
+
+
+| probe | expected |
+|---|---|
+
+| `equiv(x, y)` | false |
+
+| `equiv(x*y, x^2)` | false |
+
+| `equiv(exp(x), exp(y))` | false |
+
+| `equiv(sin(x), sin(1.23456789))` | false |
+
+| `equiv(x/1000000000000, 0)` | false |
+
+| `equiv(x^2, 1.23456789*x)` | false |
+
+| `equiv(x^2, 2.46913578*x - 1.5241578750190521)` | false |
+
+
+**Suggested fix.** Three combined fixes: (1) assign DISTINCT probe values to distinct free variables (e.g. a deterministic sequence of mutually-incommensurate values), never the same value to all, so the diagonal x=y is not the only sample. (2) Sample at MULTIPLE points and require the residual to vanish at all of them; a single sample can never establish a function identity. (3) Replace the absolute f64 epsilon keep/drop gate with an exact symbolic zero test as the authority -- the numeric probe may only REFUTE equivalence (nonzero -> false), never CONFIRM it; if the symbolic simplifier cannot prove the residual is identically zero, route to the tri-state Unknown (use are_equivalent_extended from the CLI path) rather than returning a definitive true. This directly enforces the MEMORY rule that soundness gates must be exact.
+
+
+### M. Principal-branch inverse-trig folds arcfn(fn(u))->u without a range check, asserting a provably-false range-membership 'assumption'
+
+**Severity: medium · honesty-violation · 2 probes.**
+
+
+**Root cause.** try_plan_principal_branch_inverse_trig_expr (inverse_trig_composition_support.rs ~lines 1164-1176) matches arcsin(sin(u))/acos(cos(u)), extracts u, and unconditionally returns u with a templated assumption string 'u in <fn> principal range' -- it never tests whether u lies in the principal range. For a numeric LITERAL u the membership is fully decidable and PROVABLY FALSE (3 is outside [-pi/2,pi/2]; 10 is outside [0,pi]), yet the engine returns the bare argument (a concrete wrong real number, and for acos one outside the codomain [0,pi]) and asserts the false range-membership as a fact. Gated behind opt-in --inv-trig principal; default strict mode correctly keeps it symbolic.
+
+
+| probe | expected |
+|---|---|
+
+| `asin(sin(3)) --inv-trig principal` |  |
+
+| `acos(cos(10)) --inv-trig principal` |  |
+
+
+**Suggested fix.** In the principal-branch inverse-trig planner, when the argument u is a decidable numeric literal, evaluate whether u is actually in the principal range. If it is, fold to u; if not, compute the correct reduced value (arcsin(sin(u)) = the unique value in [-pi/2,pi/2] congruent under sin; acos(cos(u)) = the unique value in [0,pi]) via range reduction, or keep symbolic. Only emit the 'u in principal range' assumption when u is a free symbol whose membership is genuinely unknown -- never assert it for a literal where it is provably false. Optionally clamp acos/asin results to their real codomains as a backstop.
+
+
+### N. choose/perm guard ordering: the 'k > n -> 0' short-circuit fires before the 'k == 0 -> 1' boundary, fabricating 0 for negative first argument
+
+**Severity: medium · wrong-value · 5 probes.**
+
+
+**Root cause.** In compute_choose_expr (number_theory_support.rs lines 570-571) and compute_perm_expr (lines 601-602) the guard `if val_k.is_negative() || val_k > val_n { return 0; }` is evaluated BEFORE the `if val_k.is_zero() || val_k == val_n { return 1; }` boundary (line 573/604). For negative n, the comparison k > n (e.g. 0 > -5, 1 > -1, 2 > -1) is true, so the function returns 0 before reaching the k==0 branch. choose(n,0)=1 holds under EVERY convention (combinatorial empty-selection and generalized binomial), so the 0 is wrong with no exception; choose(-1,1)=-1 and choose(-1,2)=1 under the generalized binomial. The engine is self-inconsistent (choose(0,0)=choose(5,0)=1) and these all return ok=true with no warning, indistinguishable from a genuine choose(2,5)=0.
+
+
+| probe | expected |
+|---|---|
+
+| `choose(-5,0)` | 1 |
+
+| `choose(-1,1)` | -1 |
+
+| `choose(-1,2)` | 1 |
+
+| `perm(-3,0)` | 1 |
+
+| `choose(-1,0)` | 1 |
+
+
+**Suggested fix.** Reorder the guards so the k==0 (and k==n) boundary returning 1 is checked BEFORE the k>n -> 0 short-circuit, and restrict the 'k > n -> 0' rule to the case n >= 0 only. For negative n, either implement the generalized binomial via the falling factorial C(n,k)=ff(n,k)/k! (matching sympy.binomial) or, if the engine intends combinatorial-only semantics, return an honest error/symbolic residual for negative n -- never a fabricated 0. Apply the same fix to perm. Add tests covering choose/perm with negative n and k=0.
+
+
+## Recommended fix priority (best ROI first)
+
+1. O. equiv single-shared-probe + f64 epsilon (7 bugs, one shared root cause in cas_solver_core/equivalence.rs + engine/equivalence.rs; equiv is a core educational soundness primitive that silently certifies arbitrary inequalities as true; fix is localized: distinct multi-point probes + exact symbolic authority + route CLI to the existing tri-state are_equivalent_extended)
+
+2. A+J. Solve finishing-path 'Solve: solve(...) = 0' token leak (8 bugs: log-product/log-quotient + |f|=-f; one display/finishing mechanism; recursing into the reduced equation and refusing to serialize an unfinished nested solve as ok=true removes leaked garbage AND recovers the correct sets; the engine already solves the reductions in isolation)
+
+3. K. Endpoint-pole definite-integral zero-scan short-circuit (4 bugs incl. one CRITICAL sign-wrong interior-pole case; single fix in trig_nonzero_on_interval to enumerate ALL poles and route multi-pole/interior-pole to the existing Undefined certificate; high correctness stakes for a calculus engine)
+
+4. L. Infinite sum/product closed-form-at-infinity infinity-token leak (6 bugs; add a finite-upper-bound guard + convergence test in summation_support.rs builders; honest divergence path already exists for sibling cases)
+
+5. D. Solve div-by-provable-zero -> AllReals (4 bugs; reuse the evaluator's zero-prover in the solve clear-denominator branch to collapse to Empty; completes the Rounds 1-3 div-by-zero fix on the solve path)
+
+6. E+F. Rational and domain inequality solver (8 bugs; implement the standard critical-point sign-chart for rational inequalities and intersect sqrt/ln/log inequality results with the argument-domain; also subsumes the known-open infinity-token product-inequality case)
+
+7. C. Trig solve range-check bypass for surd/transcendental RHS (6 bugs; extend the existing |c|<=1 exact gate from rational RHS to surds/transcendentals; backstop by refusing arcsin/arccos of an argument the engine itself leaves unevaluated)
+
+8. B. Symbolic-RHS even-root solve dropped a>=0 condition (4 bugs; emit the parameter sign condition on the even-radical inversion path, reusing the x^2=a machinery)
+
+9. G. Additive like-term cancellation drops undefined subterms (4 bugs; run the undefined/pole/non-real screen before the additive collector discards zero-coefficient atoms)
+
+10. I. Rational-exponent power-tower abs-drop (5 bugs; preserve |x| when an even-index root forces a nonnegative base, reusing the (x^2)^(1/2)->|x| rule)
+
+11. N. choose/perm guard ordering for negative n (5 bugs; reorder the k==0 boundary before the k>n short-circuit and restrict k>n->0 to n>=0; localized 2-line ordering fix in number_theory_support.rs)
+
+12. H. Imaginary-usage warning gated on input not result (1 bug; scan the result for (-1)^(1/2) instead of the input)
+
+13. M. Principal inverse-trig false range-membership assertion (2 bugs; range-check/range-reduce for literal arguments; lowest priority since gated behind opt-in --inv-trig principal and not the default)
+
+
+## Completeness critic
+
+Gaps / under-covered (mostly honest capability gaps, not unsoundness):
+
+- Matrix operations beyond det: inverse([[...]]) returns an honest 'función no definida' error (capability gap, sound); could not exercise matrix algebra soundness because inverse/eigenvalue/rank verbs are not implemented.
+
+- System solving: solve([eq1,eq2],[x,y]), solve(eq1 and eq2,...), and solve(eq1,eq2) all return honest Parse errors (capability gap). The 2x2 linear-system soundness axis remains unprobed because the syntax is unsupported.
+
+- Complex value-domain mode: --complex on still returns sqrt(-4) as 2·(-1)^(1/2) with value_domain=real rather than 2i; this is an under-evaluation (conservative residual), not unsound, but the complex-mode evaluation path is effectively untested for actual i-folding.
+
+- floor/ceil do not const-fold even with --const-fold safe (floor(-0.5) stays floor(-1/2)); conservative non-fold, sound, but means floor/ceil numeric-correctness on concrete inputs is hard to stress.
+
+- Very large numbers (factorial(100), 2^1000, exp(100000)) compute exactly/symbolically with no overflow or wrong value observed; no defect found, axis appears robust.
+
+- Big-number symbolic comparison (2^1000 > 3^600) could not be evaluated as a standalone predicate (the engine treated it as containing variable x); boolean-comparison soundness for large literals remains unprobed via this surface.
+
+
+New witness found by the critic:
+
+- **[medium]** `integrate(cos(x)/sin(x)^2, x, 0, 3*pi/2)  [also 0..5pi/2 -> infinity, and pi..5pi/2 -> -infinity]` → engine `ok=true, result="infinity", required_display=["sin(x) ≠ 0"], exit code 0. Variant [0,5pi/2] -> "infinity"; variant [pi,5pi/2] -> "-infinity". All presented as definite signed-infinity definite results.`; correct: undefined / divergent (indeterminate, sympy returns nan for all three). The integrand cos(x)/sin(x)^2 has antiderivative -1/sin(x). On [0,3pi/2] the singular points are the LOWER ENDPOINT x=0 and an INTERIOR pole at x=pi (3pi/2 is regular, sin=-1). The piece near x=0 diverges to +inf (integral_0^(pi/2) = -1 - (-inf) = +inf) while the piece around the interior pole x=pi diverges to -inf (integral_(pi/2)^pi = -inf), giving an indeterminate +inf + (-inf) => divergent/undefined. Numeric shrink-cut around pi (eps=1e-3,1e-4) confirms the left and right tails blow up to -inf while the near-0 tail is +inf. So the correct verdict is undefined; the reported signed +infinity (and -infinity for [pi,5pi/2]) is both wrong-as-a-value and wrong-in-sign.
+  Genuine honesty-violation: the engine asserts a definite signed infinity (ok=true, no warning beyond the vacuous sin(x)≠0 note) for an improper integral that is actually a divergent ∞−∞ indeterminate (sympy=nan). This is the SAME root-cause family as already-logged findings #41-44 (the trig_nonzero_on_interval certifier short-circuits on the first endpoint zero), but these are NEW witnesses on genuinely different interval geometries: the logged cases all had poles at BOTH ENDPOINTS, whereas here the lower endpoint x=0 is a pole AND there is an INTERIOR pole at x=pi that is never scanned because the endpoint-zero short-circuit fires first. The decisive control proving this is a live distinct manifestation: integrate(cos/sin^2, pi/2, 3pi/2) (same interior pole at pi but REGULAR endpoints) correctly returns 'undefined', while integrate(cos/sin^2, 0, 3pi/2) (add an endpoint pole at 0) wrongly returns 'infinity' -- the only difference is the endpoint zero, which suppresses interior-pole detection. Marked medium (not high) because it shares root cause with already-logged high-severity items and is therefore an extension witness rather than a new defect class; it is not in the KNOWN-OPEN list and is not a sound residual or capability gap (the engine commits to a definite wrong signed value rather than 'undefined' or an honest error).
