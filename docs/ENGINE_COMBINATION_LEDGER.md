@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 197 (newest first)
+Active entries: 198 (newest first)
 
+- 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -8714,3 +8715,44 @@ Active entries: 197 (newest first)
   - low huella: no scorecard lane renders inequality intervals and no test asserted the closed-bracket
     string, so the byte-identical guardrail held despite a visible output change - confirms solve display
     is not yet under fingerprint coverage (a separate observability gap worth noting).
+
+## 2026-06-18 - Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
+- area:
+  - solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_isolation_custom_pow.rs`
+    Div-route numerator re-solve callback
+- status:
+  - `retained` (WRONG-ANSWER / dropped-root soundness fix; pre-existing, surfaced during Round-3 Cluster C
+    adversarial verification; separate from the Round-3 clusters)
+- capture:
+  - investment_class: soundness
+  - cell: `solve((x^2-2*x-1)/(x-1)=0)->{1-sqrt2,1+sqrt2}` (was malformed `solve(x=sqrt(2x+1))` residual);
+    `solve((x^2-2*x-1)/(x-1+sqrt2)=0)->{1+sqrt2}` (was "No solution"; 1-sqrt2 excluded by denom);
+    `solve((x^2-4*x+1)/(x-3)=0)->{2+-sqrt3}`, `(x^2-2*x-1)/(x-1)=5 -> {(7+-sqrt33)/2}`
+  - behavior_change_expected: yes - the malformed-residual / No-solution family flips to correct roots;
+    guardrail+pressure fingerprints BYTE-IDENTICAL (no scorecard lane enumerates rational solve), full
+    cargo test --workspace green
+- observed (USER-DIRECTED "se pueden corregir de forma enfocada y segura?"; scoped by a 4-agent workflow):
+  - the SAME quadratic numerator solves correctly STANDALONE in every form (x^2-2x-1=0, x^2=2x+1,
+    x^2-2x=1 all -> {1+-sqrt2}); the bug was ONLY that the Div route's numerator re-solve used the
+    isolation-only reentry (isolate_rewritten_with_var), which additively peels the linear term to
+    x^2=2x+1 then matches Expr::Pow and sqrt-isolates to the recursive x=sqrt(2x+1) (depth-overflow),
+    whereas the Mul route already uses the full strategy-selecting reentry (solve_split_case_with_var)
+    where Quadratic precedes Isolation. The fix routes a degree-2 EQUALITY equation through the full
+    solve, making Div consistent with Mul.
+- retained learning:
+  - asymmetry between sibling routes is a bug smell: Mul used full-solve, Div used isolation-only for the
+    "re-solve the rewritten side" callback. When one route mishandles what its sibling handles, check
+    whether they were given DIFFERENT recursion callbacks and unify them.
+  - a broad "always full-solve" swap was RESULT-correct everywhere but regressed didactic step text for
+    symbolic-linear numerators (michaelis-menten gained a circular "divide both sides by k" step). The
+    safe fix is a DISCRIMINATOR: full-solve only for a genuine degree-2 equation. Detect it as EITHER an
+    expanded quadratic (extract_quadratic_coefficients with a!=0) OR a factored product of >=2
+    var-bearing factors (the numerator factors to (x-a)(x-b) when the denominator matches a factor -
+    extract_quadratic_coefficients does NOT expand, so the Mul form must be matched separately).
+  - GATE solver-dispatch redirects on the relation op: this fix is `op == Eq` only, because the
+    inequality routes rely on the isolation pipeline's interval sign-analysis and error if a Mul/quadratic
+    is sent to the full equality solver (caught by stress_solve_tests::test_rational_multiple_discontinuities,
+    1/((x-1)(x-3))>0). The shared numerator/denominator callback feeds both, so the op gate is load-bearing.
+  - recursion is structurally bounded: the rewritten num=0 has no top-level Div (cannot re-enter the Div
+    route), the pipeline is depth/cycle guarded, and Quadratic precedes Isolation so the sqrt-route is
+    never reached - the Mul route is the existence proof.

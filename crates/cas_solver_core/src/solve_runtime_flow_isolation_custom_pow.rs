@@ -203,8 +203,77 @@ where
                 |state, expr| (is_known_negative.borrow_mut())(state, expr),
                 render_expr,
                 |state, expr| (simplify_linear_expr.borrow_mut())(state, expr),
+                // Re-solve the rewritten numerator/denominator equation.
+                //
+                // For a genuine QUADRATIC equation in the variable (degree-2
+                // numerator: `num/den = 0` ⇒ `num = 0`, e.g. `x^2-2x-1 = 0`) route
+                // through the FULL strategy-selecting solve (the same callback the
+                // Mul route uses) so the Quadratic strategy claims it — instead of
+                // the isolation-only reentry, which additively peels the linear
+                // term to `x^2 = 2x+1` and then √-isolates to the malformed
+                // recursive `x = sqrt(2x+1)` (a depth-overflow that drops the real
+                // roots). Recursion is bounded: the rewritten equation has no
+                // top-level Div (cannot re-enter this route), the solve pipeline is
+                // depth/cycle guarded, and Quadratic precedes Isolation so the
+                // √-isolation path is never reached.
+                //
+                // For linear / symbolic numerators keep the isolation reentry, so
+                // their didactic step text is preserved (e.g. `k·x/(x+c)=y` must
+                // not gain a circular "divide both sides by k" step).
                 |state, equation| {
-                    (isolate_rewritten_with_var.borrow_mut())(state, equation.clone(), solve_var)
+                    // Genuine quadratic iff either side (the numerator after the
+                    // div rewrite lands on `lhs`) carries a non-zero x^2 term.
+                    // Test the sides separately, not `lhs - rhs`: the rewritten
+                    // RHS can be an UN-simplified `0·den` that defeats the
+                    // polynomial extractor, while the numerator on `lhs` is clean.
+                    // Only redirect EQUALITY equations (`num/den = rhs`). The
+                    // inequality routes rely on the isolation pipeline's interval
+                    // sign-analysis; sending a Mul/quadratic there to the full
+                    // solver errors (e.g. `1/((x-1)(x-3)) > 0`).
+                    let is_quadratic = equation.op == RelOp::Eq && {
+                        let ctx = (context_mut)(state);
+                        let mut quadratic = false;
+                        for side in [equation.lhs, equation.rhs] {
+                            // (i) expanded degree-2 polynomial, e.g. `x^2-2x-1`.
+                            if let Some((a, _, _)) =
+                                crate::quadratic_coeffs::extract_quadratic_coefficients(
+                                    ctx, side, solve_var,
+                                )
+                            {
+                                if !crate::isolation_utils::is_numeric_zero(ctx, a) {
+                                    quadratic = true;
+                                    break;
+                                }
+                            }
+                            // (ii) factored product of >= 2 var-bearing factors,
+                            // e.g. `(x-1-sqrt2)(x-1+sqrt2)` — the numerator is
+                            // factored when the denominator matches a factor. A
+                            // single var-bearing factor (`k*x`) stays linear, so
+                            // michaelis-style step text is preserved.
+                            let mul_factors = match ctx.get(side) {
+                                cas_ast::Expr::Mul(l, r) => Some((*l, *r)),
+                                _ => None,
+                            };
+                            if let Some((l, r)) = mul_factors {
+                                if crate::isolation_utils::contains_var(ctx, l, solve_var)
+                                    && crate::isolation_utils::contains_var(ctx, r, solve_var)
+                                {
+                                    quadratic = true;
+                                    break;
+                                }
+                            }
+                        }
+                        quadratic
+                    };
+                    if is_quadratic {
+                        (solve_split_case_with_var.borrow_mut())(state, equation, solve_var)
+                    } else {
+                        (isolate_rewritten_with_var.borrow_mut())(
+                            state,
+                            equation.clone(),
+                            solve_var,
+                        )
+                    }
                 },
                 |state, expr| (prove_nonzero_status.borrow_mut())(state, expr),
                 |description, equation| (map_step.borrow_mut())(description, equation),

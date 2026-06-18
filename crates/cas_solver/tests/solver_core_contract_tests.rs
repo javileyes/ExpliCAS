@@ -87,6 +87,33 @@ fn test_solve_nonzero_over_poly_has_no_solution() {
 }
 
 #[test]
+fn test_solve_quadratic_numerator_over_poly_uses_quadratic_strategy() {
+    // Regression: `(quadratic)/(denom) = 0` used to √-isolate the numerator
+    // (`x^2-2x-1=0 -> x=sqrt(2x+1)`), emitting a malformed recursive residual
+    // (linear denom) or "No solution" (surd denom that factor-cancels). The
+    // div-numerator re-solve now routes a degree-2 numerator through the full
+    // quadratic strategy; the denominator-zero root is excluded as usual.
+    let solve_count = |lhs: &str| -> usize {
+        let mut simplifier = Simplifier::new();
+        let eq = make_eq(&mut simplifier.context, lhs, "0");
+        let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
+        match result {
+            SolutionSet::Discrete(solutions) => solutions.len(),
+            other => panic!(
+                "`{lhs} = 0` must yield discrete quadratic roots (not the old \
+                 malformed residual / No solution), got {other:?}"
+            ),
+        }
+    };
+
+    // Linear denom (x=1 is not a root): both quadratic roots kept.
+    assert_eq!(solve_count("(x^2-2*x-1)/(x-1)"), 2);
+    assert_eq!(solve_count("(x^2-4*x+1)/(x-3)"), 2);
+    // Surd denom equal to one root's factor: that root (1-sqrt(2)) is excluded.
+    assert_eq!(solve_count("(x^2-2*x-1)/(x-1+sqrt(2))"), 1);
+}
+
+#[test]
 fn test_solve_abs_rejects_extraneous_roots() {
     // Case-split abs solves must back-substitute: a candidate that fails the
     // original equation is extraneous. `solve(|x| = x-1)` has NO solution
