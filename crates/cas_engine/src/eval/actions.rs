@@ -373,7 +373,7 @@ impl Engine {
             EvalAction::Equiv { .. } => {
                 let resolved_other = resolved_equiv_other
                     .ok_or_else(|| anyhow::anyhow!("Missing resolved equivalence operand"))?;
-                self.eval_equiv(resolved, resolved_other)
+                self.eval_equiv(options, resolved, resolved_other)
             }
             EvalAction::Limit { var, approach } => {
                 self.eval_limit(options, resolved, &var, approach)
@@ -439,10 +439,26 @@ impl Engine {
     /// Handle `EvalAction::Equiv`: resolve other expression and check equivalence.
     pub(super) fn eval_equiv(
         &mut self,
+        options: &crate::options::EvalOptions,
         resolved: ExprId,
         resolved_other: ExprId,
     ) -> Result<ActionResult, anyhow::Error> {
-        let are_eq = self.simplifier.are_equivalent(resolved, resolved_other);
+        // Soundness: `equiv` must report `true` only from an EXACT symbolic proof,
+        // never a numeric coincidence. `are_equivalent`'s numeric fallback confirms
+        // equivalence from a SINGLE f64 probe — every variable gets the SAME value
+        // (collapsing `equiv(x,y)` onto the diagonal x=y) under an absolute 1e-9
+        // epsilon (so `equiv(x/1e12,0)` and probe-tangent pairs read as zero) — which
+        // certifies non-equivalent expressions as equal, violating the project rule
+        // that soundness gates must be exact. So: (1) disable numeric confirmation —
+        // a probe may never CONFIRM equivalence; (2) recover genuine identities the
+        // raw simplifier leaves in a non-cancelling form (e.g. derivative identities
+        // like d/dx √(sec x) = √(sec x)·tan(x)/2) by checking whether the FULL
+        // evaluator reduces `a - b` to exactly 0 — an exact symbolic zero, not numeric.
+        let saved_numeric = self.simplifier.allow_numerical_verification;
+        self.simplifier.allow_numerical_verification = false;
+        let are_eq = self.simplifier.are_equivalent(resolved, resolved_other)
+            || self.equiv_difference_evaluates_to_zero(options, resolved, resolved_other);
+        self.simplifier.allow_numerical_verification = saved_numeric;
         let rhs_domain = crate::infer_implicit_domain(
             &self.simplifier.context,
             resolved_other,
@@ -459,6 +475,30 @@ impl Engine {
             solver_required,
             vec![],
         ))
+    }
+
+    /// True when the FULL evaluator reduces `a - b` to exactly `0`.
+    ///
+    /// This is the sound, exact recovery path for `equiv`: the bare simplifier can
+    /// leave an identity in a non-cancelling form (e.g. it differentiates
+    /// `sqrt(sec(x))` to `sec(x)·tan(x)/(2·sqrt(sec(x)))` without collapsing
+    /// `sec(x)/sqrt(sec(x))` to `sqrt(sec(x))`), so `are_equivalent` misses it; the
+    /// `eval_simplify` pipeline applies the extra normalization that reduces the
+    /// difference to `0`. The result is a symbolic `Number(0)` — never a numeric
+    /// probe — so it stays an exact equivalence gate.
+    fn equiv_difference_evaluates_to_zero(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        a: ExprId,
+        b: ExprId,
+    ) -> bool {
+        let diff = self.simplifier.context.add(cas_ast::Expr::Sub(a, b));
+        match self.eval_simplify(options, diff) {
+            Ok((EvalResult::Expr(result), ..)) => {
+                matches!(self.simplifier.context.get(result), cas_ast::Expr::Number(n) if n.is_zero())
+            }
+            _ => false,
+        }
     }
 
     /// Handle `EvalAction::Limit`: compute limit using the limits engine.

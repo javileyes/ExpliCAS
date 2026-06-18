@@ -1617,6 +1617,41 @@ fn test_eval_json_reciprocal_trig_sqrt_derivative_equiv_verifies() {
 }
 
 #[test]
+fn test_eval_json_equiv_rejects_numeric_only_false_equivalences() {
+    // Soundness (Round-4 Cluster O): `equiv` must not CONFIRM equivalence from a
+    // single shared f64 probe. These non-equivalent pairs all vanish on the diagonal
+    // x=y or at the probe point x=1.23456789, so the old numeric gate wrongly returned
+    // true. With the exact-symbolic gate they must be `false`.
+    for expr in [
+        "equiv(x, y)",
+        "equiv(x*y, x^2)",
+        "equiv(exp(x), exp(y))",
+        "equiv(sin(x), sin(1.23456789))",
+        "equiv(x/1000000000000, 0)",
+        "equiv(x^2, 1.23456789*x)",
+    ] {
+        let json = eval_json(expr);
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(
+            json["result"], "false",
+            "expr should be non-equivalent: {expr}"
+        );
+    }
+
+    // Genuine equivalences proven symbolically must stay `true` (no regression).
+    for expr in [
+        "equiv(sin(x)^2+cos(x)^2, 1)",
+        "equiv((x+1)^2, x^2+2*x+1)",
+        "equiv(x/x, 1)",
+        "equiv(diff(sin(x),x), cos(x))",
+    ] {
+        let json = eval_json(expr);
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], "true", "expr should be equivalent: {expr}");
+    }
+}
+
+#[test]
 fn test_eval_json_reciprocal_trig_sqrt_derivative_residuals_collapse() {
     let cases = [
         (

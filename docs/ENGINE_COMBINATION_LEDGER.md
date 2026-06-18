@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 204 (newest first)
+Active entries: 205 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
@@ -123,6 +123,7 @@ Active entries: 204 (newest first)
 - 2026-06-18 | `retained` | simplifier log-cancellation; `crates/cas_engine/src/rules/arithmetic.rs` | Retained robustness fix: simplifier PANIC mixing ln and two-arg log(b,c) (ln-base sentinel reached compare_expr)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provabl... | Retained soundness fix: log_b(c*x)=log_b(x)+k for non-natural logs over-claimed "All real numbers" (Family A, exact c=b^m recognizer)
 - 2026-06-18 | `retained` | eval-path domain filter; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: log(b,-k*x)=log(b,x)+m over-claimed "All real numbers" (negative-coeff contradictory domain; generalize a==-b to negative proportionality)
+- 2026-06-18 | `retained` | CLI equiv path; `crates/cas_engine/src/eval/actions.rs` `eval_equiv` + new `e... | Retained soundness fix: equiv certified non-equivalent expressions as equal via a single f64 probe (Round-4 Cluster O)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -8986,3 +8987,39 @@ Active entries: 204 (newest first)
     a - lambda*b == 0 over MultiPoly so a non-proportional pair (wrong lambda) can never false-positive.
   - the STRICT-vs-nonstrict line holds again: gate on Positive only; NonNegative(a)&NonNegative(-a) meets at 0
     (sqrt(x)=sqrt(-x) -> {0}) and must never be collapsed.
+
+## 2026-06-18 - Retained soundness fix: equiv certified non-equivalent expressions as equal via a single f64 probe (Round-4 Cluster O)
+- area:
+  - CLI equiv path; `crates/cas_engine/src/eval/actions.rs` `eval_equiv` + new `equiv_difference_evaluates_to_zero`
+- status:
+  - `retained` (HONESTY soundness fix; first Round-4 fix, top ROI; enforces the "soundness gates must be exact" rule)
+- capture:
+  - investment_class: soundness
+  - cell: `equiv(x,y)`, `equiv(x*y,x^2)`, `equiv(exp(x),exp(y))`, `equiv(sin(x),sin(1.23456789))`,
+    `equiv(x/1e12,0)`, `equiv(x^2,1.23456789*x)` -> "false" (were "true"); genuine equivalences incl. the
+    d/dx sqrt(sec x) / sqrt(csc x) derivative-identity family stay "true"
+  - behavior_change_expected: yes - equiv only confirms from an exact symbolic zero now; guardrail+pressure
+    fingerprints BYTE-IDENTICAL, full cargo test --workspace green
+- observed (Round-4 adversarial audit, Cluster O):
+  - `Simplifier::are_equivalent` (boolean) fell back to a numeric probe that assigned the SAME value
+    (DEFAULT_EQUIV_NUMERIC_PROBE=1.23456789) to EVERY free variable and accepted |residual|<1e-9 (absolute
+    f64 epsilon) as proof of equivalence. Two failure modes: (1) all vars collapse onto the diagonal x=y so any
+    residual vanishing there (equiv(x,y), equiv(x*y,x^2)) reads as 0; (2) any residual small/zero at the single
+    probe point (equiv(x/1e12,0), perfect squares tangent there) reads as 0.
+  - fix: eval_equiv disables numeric confirmation (allow_numerical_verification=false) around the check, so a
+    probe can only refute, never confirm. To keep genuine identities that the bare simplifier leaves in a
+    non-cancelling form (e.g. it differentiates sqrt(sec x) without collapsing sec/sqrt(sec)=sqrt(sec)), it adds
+    an EXACT eval-level fallback: run eval_simplify on (a-b) and accept only a literal Number(0).
+- retained learning:
+  - a numeric probe may only REFUTE an equivalence (nonzero at a valid point -> not equal), NEVER CONFIRM one;
+    confirmation must be an exact symbolic zero. Restates the memory rule [[soundness-gates-must-be-exact]] for
+    the equivalence primitive: f64 + single shared probe is the textbook anti-pattern (diagonal collapse + epsilon).
+  - SIMPLIFY vs EVAL gap: the bare simplifier and the full eval pipeline are NOT interchangeable - eval applies
+    extra normalization (here, power-combining sec/sqrt(sec)) that reduces a derivative-identity difference to 0
+    while simplify leaves a non-cancelling form. When an exact-symbolic check needs the engine's full strength,
+    route through eval_simplify, not Simplifier::simplify.
+  - scope the fix to the USER-FACING path: are_equivalent (boolean) is also used by solve verification; leaving
+    it untouched and fixing only eval_equiv kept the huella byte-identical and avoided perturbing the solver.
+  - a "genuine equivalence" test can be silently riding on an unsound mechanism: the sqrt(sec) derivative test
+    only passed via the numeric confirmation. Removing the unsound path exposed it; the exact recovery (eval
+    a-b==0) is what legitimately keeps it green.
