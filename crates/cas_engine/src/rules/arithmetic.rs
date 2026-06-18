@@ -2588,8 +2588,13 @@ fn log_terms_match_up_to_abs_subject_for_cancellation(
         return false;
     };
 
+    // Compare bases with the log-base-aware comparator: `try_extract_*_log_term_parts`
+    // returns `ln_base_sentinel()` (a non-arena ExprId) for natural logs, which would
+    // panic `compare_expr`/`exprs_match_for_cancellation` (an out-of-bounds `Context::get`)
+    // when compared against a real base such as the `2` of `log(2, x)`. `bases_equal_for_logs`
+    // resolves the sentinel (it matches `e` and itself) without dereferencing it.
     if !exprs_match_for_cancellation(ctx, lhs_scale, rhs_scale)
-        || !exprs_match_for_cancellation(ctx, lhs_base, rhs_base)
+        || !cas_math::logarithm_inverse_support::bases_equal_for_logs(ctx, lhs_base, rhs_base)
     {
         return false;
     }
@@ -30614,6 +30619,23 @@ mod tests {
         let rewrite = rule.apply(&mut ctx, expr, &parent_ctx);
 
         assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn expand_log_product_power_cancellation_does_not_panic_on_mixed_ln_and_two_arg_log() {
+        // Regression: `ln(2*x) - ln(x) - log(2,8)` mixes a natural log (base =
+        // ln_base_sentinel(), a non-arena ExprId) with a two-arg log(2,8). The base
+        // comparison in log_terms_match_up_to_abs_subject_for_cancellation used to call
+        // compare_expr on the sentinel, panicking with an out-of-bounds Context::get.
+        // The ln-base sentinel never matches the real base 2, so no cancellation applies.
+        let mut ctx = Context::new();
+        let expr = parse("ln(2*x) - ln(x) - log(2,8)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandLogProductPowerToEnableCancellationRule;
+        // Must not panic; bases differ (ln vs log base 2) so the rule does not cancel.
+        assert!(rule.apply(&mut ctx, expr, &parent_ctx).is_none());
     }
 
     #[test]

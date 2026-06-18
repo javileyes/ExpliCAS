@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 201 (newest first)
+Active entries: 202 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `is_provabl... | Retained soundness fix: ln(2x)=ln(x)+1 returned "All real numbers" (var-free rational+irrational-log residual; surfaced by the ln(c*x) adversarial sweep)
+- 2026-06-18 | `retained` | simplifier log-cancellation; `crates/cas_engine/src/rules/arithmetic.rs` | Retained robustness fix: simplifier PANIC mixing ln and two-arg log(b,c) (ln-base sentinel reached compare_expr)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -8868,3 +8869,43 @@ Active entries: 201 (newest first)
   - the honest residual boundary is now explicit: provably-nonzero requires either a folded rational, a log of
     a rational (=0 iff arg=1), or rational+(natural log of rational). Transcendental constants (pi, e, sqrt(2),
     products of logs) are NOT covered and over-report "All real numbers" - sound under-fix, not a false claim.
+
+## 2026-06-18 - Retained robustness fix: simplifier PANIC mixing ln and two-arg log(b,c) (ln-base sentinel reached compare_expr)
+- area:
+  - simplifier log-cancellation; `crates/cas_engine/src/rules/arithmetic.rs`
+    `log_terms_match_up_to_abs_subject_for_cancellation` (base comparison)
+- status:
+  - `retained` (PRE-EXISTING crash; found by the rational+-log fix's own 61-probe adversarial sweep,
+    confirmed pre-existing by worktree bisection against the pre-fix commit)
+- capture:
+  - investment_class: soundness (robustness / DoS)
+  - cell: `ln(2*x)-ln(x)-log(2,8)` and `solve(ln(2x)=ln(x)+log(2,8),x)`, `solve(ln(3x)=ln(x)+log(2,8),x)`,
+    `solve(ln(2x)=ln(x)+log(3,9),x)` -> were process abort (exit 101, index out of bounds in Context::get);
+    now `ln(2)-3` / "No solution" respectively
+  - behavior_change_expected: only the previously-crashing path (no fixture could have captured a crash);
+    guardrail+pressure BYTE-IDENTICAL except the one added regression test's count; cargo test --workspace green
+- observed (adversarial sweep + bisection):
+  - the sweep's adjudicator flagged 6 probes as is_regression_from_fix=true. WORKTREE BISECTION against the
+    pre-fix commit proved ALL of them pre-existing (identical behavior before my classifier changes) - the
+    adjudicator confused "on the territory the fix touches" with "caused by the fix". My fix had ZERO regressions.
+  - root cause: try_extract_log_parts returns ln_base_sentinel() = ExprId::from_raw(u32::MAX) (a NON-ARENA id)
+    as the base of a natural log. log_terms_match_up_to_abs_subject_for_cancellation compared that base against
+    a real base (the 2 of log(2,8)) via the sentinel-unaware exprs_match_for_cancellation -> compare_expr ->
+    Context::get(sentinel) -> index out of bounds panic. Triggered only when a 3-term sum mixes a natural log
+    with a two-arg log(b,c) (the cancellation rule becomes a candidate and reaches the base compare).
+  - fix: compare log BASES with cas_math::logarithm_inverse_support::bases_equal_for_logs (already used this
+    way at logarithm_inverse_support.rs:915). It resolves the ln/log10 sentinels (sentinel matches e / itself)
+    WITHOUT dereferencing them. One-line change at the base-comparison site.
+- retained learning:
+  - SENTINEL EXprIds are a footgun: ln_base_sentinel()/log10_base_sentinel() are non-arena marker ids that
+    MUST only be compared with the sentinel-aware comparators (bases_equal_for_logs / exprs_match_for_logs),
+    never with the generic compare_expr / exprs_match_for_cancellation. Any code that extracts a log base via
+    try_extract_log_parts and compares it structurally is a latent panic. Grep audited: this was the only such
+    site in the engine; the math crate already used bases_equal_for_logs.
+  - ADVERSARIAL ADJUDICATORS CAN MISATTRIBUTE: their is_regression_from_fix verdict is a hypothesis, not
+    ground truth. When a sweep flags regressions, BISECT against the pre-fix commit (git worktree, build, probe)
+    before believing it. Here bisection flipped 6 "regressions" to pre-existing and protected a clean fix from
+    a needless revert.
+  - a crash on valid input is the highest-severity defect (worse than a wrong answer): no result, no recovery.
+    Worth fixing even when surfaced as a side finding, and the fix here also made the answer correct (the
+    rational+-log classifier then sees ln(2)-3 and returns No solution).
