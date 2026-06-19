@@ -1454,16 +1454,29 @@ fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
 }
 
 /// Evaluate `arg` to a rational multiple `k` of π (`arg = k·π`), unwrapping `Neg`
-/// and numeric `Div`/`Mul` at any position — `-π/2 = Div(Neg(π), 2)`, `-π`,
-/// `(-1/2)·π`, `3·π/2` all resolve. The shared `extract_rational_pi_multiple`
-/// matches only a few surface forms (no sign handling); this covers the rest
-/// WITHOUT touching that huella-sensitive helper (used by many trig/limit callers).
-/// Returns `None` for any symbolic (non-numeric-coefficient) shape — e.g. `x·π` —
-/// so a symbolic `tan(x·π)` is never flagged.
+/// `Neg`, numeric `Div`/`Mul`, and sums/differences (`Add`/`Sub`) at any position —
+/// `-π/2 = Div(Neg(π), 2)`, `-π`, `(-1/2)·π`, `3·π/2`, `π/4 + π/4`, `π/2 - π` all
+/// resolve (`0` counts as `0·π`). The shared `extract_rational_pi_multiple` matches
+/// only a few surface forms (no sign/sum handling); this covers the rest WITHOUT
+/// touching that huella-sensitive helper (used by many trig/limit callers).
+/// Returns `None` for any symbolic (non-numeric-coefficient) shape — e.g. `x·π` or
+/// `x + π/2` — so a symbolic `tan(x·π)` is never flagged.
 fn rational_pi_multiple_signed(ctx: &Context, arg: ExprId) -> Option<BigRational> {
     match ctx.get(arg) {
         Expr::Constant(cas_ast::Constant::Pi) => Some(BigRational::one()),
+        // `0 = 0·π` (a valid zero multiple, so `tan(π/2 + 0)` resolves); any OTHER
+        // bare number is NOT a multiple of π (`tan(5)` is `tan(5 rad)`, defined).
+        Expr::Number(n) if n.is_zero() => Some(BigRational::zero()),
         Expr::Neg(inner) => rational_pi_multiple_signed(ctx, *inner).map(|k| -k),
+        // Sums/differences of π-multiples (`π/4 + π/4 = π/2`, `π/2 - π = -π/2`).
+        // EVERY addend must itself be a π-multiple, else `None` — a symbolic
+        // `x + π/2` is not, so `tan(x + π/2)` is never flagged.
+        Expr::Add(l, r) => {
+            Some(rational_pi_multiple_signed(ctx, *l)? + rational_pi_multiple_signed(ctx, *r)?)
+        }
+        Expr::Sub(l, r) => {
+            Some(rational_pi_multiple_signed(ctx, *l)? - rational_pi_multiple_signed(ctx, *r)?)
+        }
         Expr::Div(num, den) => {
             let kn = rational_pi_multiple_signed(ctx, *num)?;
             let d = exact_rational_value(ctx, *den)?;
@@ -1497,7 +1510,8 @@ fn rational_pi_multiple_signed(ctx: &Context, arg: ExprId) -> Option<BigRational
 ///     multiple of π (`k = 0` also via `is_provably_zero`, which covers `x-x`).
 ///   • `tan(kπ)` and `sec(kπ)` — the cos-denominator poles at the half-odd-integer
 ///     multiples of π (`tan(π/2)`, `sec(3π/2)`), decided by exact rational-π analysis.
-///   • `ln(c)` / `log(c)` of a provably-NEGATIVE rational `c` (`ln(-5)`).
+///   • `ln(c)` / `log(c)` of a provably-NEGATIVE rational `c` (`ln(-5)`), and the
+///     two-argument `log(base, c)` of a provably-NEGATIVE value `c` (`log(2, -8)`).
 ///
 /// `ln(0) = −∞` is intentionally EXCLUDED (non-finite, not undefined, with
 /// `1/ln(0) = 0`). Every case here is genuinely undefined, so no legitimate value or
@@ -1546,6 +1560,14 @@ fn is_structurally_undefined_over_reals(ctx: &Context, expr: ExprId) -> bool {
             // odd roots are real and are NOT flagged.
             ctx.is_builtin(fid, BuiltinFn::Sqrt)
                 && exact_rational_value(ctx, arg).is_some_and(|a| a.is_negative())
+        }
+        // `log(base, value)` of a provably-NEGATIVE value is undefined over ℝ
+        // (`log(2, -8)`, `log(10, -3)`). The base-domain issues (base ≤ 0, base = 1)
+        // are handled elsewhere; here `args[1]` is the value (`log(2, 8) = 3`).
+        Expr::Function(fn_id, args)
+            if args.len() == 2 && ctx.is_builtin(*fn_id, BuiltinFn::Log) =>
+        {
+            exact_rational_value(ctx, args[1]).is_some_and(|v| v.is_negative())
         }
         _ => false,
     }
@@ -1952,17 +1974,38 @@ mod tests {
             "ln(-5) - ln(-5)",
             "ln(-1/2) - ln(-1/2)",
             "tan(pi/2) - tan(pi/2) + 5",
+            // Sum/difference arguments that normalize to a pole.
+            "tan(pi/4 + pi/4) - tan(pi/4 + pi/4)",
+            "tan(pi/3 + pi/6) - tan(pi/3 + pi/6)",
+            "tan(pi/2 + pi) - tan(pi/2 + pi)",
+            "tan(pi/2 - pi) - tan(pi/2 - pi)",
+            "tan(pi/2 + 0) - tan(pi/2 + 0)",
+            "cot(pi/2 + pi/2) - cot(pi/2 + pi/2)",
+            "csc(pi/3 + 2*pi/3) - csc(pi/3 + 2*pi/3)",
+            // Two-argument `log(base, value)` of a negative value.
+            "log(2,-8) - log(2,-8)",
+            "log(10,-3) - log(10,-3)",
+            "log(7,-2) - log(7,-2)",
         ] {
             let before = parse(src, &mut ctx).expect("parse");
             assert!(
                 rewrite_unsoundly_drops_nonfinite(&ctx, before, zero),
                 "`{src}` -> 0 must be flagged as an unsound drop (undefined)"
             );
-            let term = parse(src.split(" - ").next().unwrap(), &mut ctx).expect("parse term");
+        }
+        // Each pole term, standalone, carries undefined (so the additive guard sees it).
+        for term in [
+            "tan(pi/2)",
+            "tan(pi/4 + pi/4)",
+            "cot(pi/2 + pi/2)",
+            "sec(pi/2 + pi)",
+            "ln(-5)",
+            "log(2,-8)",
+        ] {
+            let e = parse(term, &mut ctx).expect("parse term");
             assert!(
-                expr_carries_nonfinite_or_undefined(&ctx, term),
-                "`{}` is undefined over ℝ",
-                src.split(" - ").next().unwrap()
+                expr_carries_nonfinite_or_undefined(&ctx, e),
+                "`{term}` is undefined over ℝ"
             );
         }
         // DEFINED trig values and `ln` of a positive are NOT flagged — their
@@ -1978,6 +2021,13 @@ mod tests {
             "ln(5)",
             "tan(0)",
             "sin(x)",
+            // Sum args that normalize to a DEFINED point must NOT be flagged:
+            "tan(pi/2 + pi/2)", // tan(π) = 0
+            "tan(pi/3 + pi/3)", // tan(2π/3) = -√3
+            "cot(pi/3 + pi/6)", // cot(π/2) = 0
+            "tan(x + pi/2)",    // symbolic argument — never flagged
+            "log(2, 8)",        // positive value
+            "log(10, 3)",
         ] {
             let e = parse(src, &mut ctx).expect("parse");
             assert!(
