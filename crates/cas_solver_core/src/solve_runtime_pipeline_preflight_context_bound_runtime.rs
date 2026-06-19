@@ -56,7 +56,17 @@ where
             domain.conditions_mut().insert(cond);
         },
         |lhs, rhs, domain, eval_domain| {
-            derive_requires_from_equation(core_ctx, lhs, rhs, domain, eval_domain)
+            let mut conds = derive_requires_from_equation(core_ctx, lhs, rhs, domain, eval_domain);
+            // Even-root RANGE condition, EQUALITY only: `even_root(g) = R` has a
+            // real solution only when `R ≥ 0` (the radicand DOMAIN `x ≥ 0` is added
+            // separately by the inference above). Gated to `op == Eq` because for
+            // an inequality (`sqrt(x) > a`) the other side may be negative.
+            if equation.op == cas_ast::RelOp::Eq {
+                conds.extend(crate::domain_inference::even_root_range_conditions(
+                    core_ctx, lhs, rhs,
+                ));
+            }
+            conds
         },
         crate::solve_runtime_types::RuntimeSolveDomainEnv::new,
         |domain_env, cond| {

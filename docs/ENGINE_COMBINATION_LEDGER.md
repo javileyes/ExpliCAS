@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 213 (newest first)
+Active entries: 214 (newest first)
 
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
 - 2026-06-19 | `retained` | real-solution filter; `crates/cas_solver/src/solve_backend_local.rs` solution... | Retained soundness fix: solve(sin(x)=sqrt(2)) -> {arcsin(sqrt(2))} (Round-4 Cluster C)
+- 2026-06-19 | `retained` | equation-level domain conditions; `crates/cas_solver_core/src/domain_inferenc... | Retained soundness fix: solve(sqrt(x)=a) dropped the a>=0 condition (Round-4 Cluster B)
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
@@ -9304,3 +9305,36 @@ Active entries: 213 (newest first)
   - drop ONLY on an exact proof of the bound: as_linear_surd returns None for transcendentals (pi, e) and
     nested radicals, and the gate then KEEPS the root (a sound under-drop), never guessing with a float -
     the same exact-or-keep discipline as root_violates_required_condition.
+
+## 2026-06-19 - Retained soundness fix: solve(sqrt(x)=a) dropped the a>=0 condition (Round-4 Cluster B)
+- area:
+  - equation-level domain conditions; `crates/cas_solver_core/src/domain_inference.rs`
+    even_root_range_conditions + op-gated application at the preflight derive-closure
+    (solve_runtime_pipeline_preflight_context_bound_runtime.rs)
+- status:
+  - `retained` (HONESTY soundness fix; closes the dropped even-root range condition)
+- capture:
+  - investment_class: soundness
+  - cell: solve(sqrt(x)=a), solve(x^(1/2)=a), solve(x^(1/4)=a), solve(sqrt(x-1)=a), solve(sqrt(x)=2a) now
+    carry "a >= 0" in required_display (were unconditional {a^2}); numeric unchanged (sqrt(x)=2 -> {4},
+    sqrt(x)=-2 -> No solution, sqrt(x)=0 -> {0}); odd root x^(1/3)=a -> {a^3} unconditional; inequalities
+    sqrt(x)>a / <a / >=a get NO a>=0 (op-gated)
+  - behavior_change_expected: yes - symbolic-RHS even-root equality gains the range condition a >= 0;
+    guardrail+pressure STRUCTURALLY byte-identical (no fixture solves a symbolic-RHS even-root equation),
+    full cargo test --workspace green
+- observed (Round-4 audit Cluster B):
+  - sqrt(x)=a recorded only the radicand DOMAIN x>=0 (from infer_implicit_domain) but dropped the even-root
+    RANGE condition a>=0 (sqrt has range [0,inf), so a<0 has no real solution). A scoping workflow established
+    that derive_requires_from_equation drops the relop and runs for inequalities too, so the new condition had
+    to be gated to op==Eq (for sqrt(x)>a, a may be negative).
+  - fix: even_root_range_conditions emits NonNegative(other-side) when exactly one side is a positive even
+    root; applied at the preflight derive-closure where the full equation (with op) is in scope, gated to Eq.
+- retained learning:
+  - a function's DOMAIN of definition (radicand x>=0) and its RANGE (sqrt output in [0,inf)) are two separate
+    conditions; inverting f(x)=a must record BOTH. infer_implicit_domain captures the domain; the range
+    condition (a in image(f)) is equation-level and was missing.
+  - when the cleanest fix needs the relop but the shared deriver dropped it (15+ call sites), do NOT thread op
+    through every signature: gate at the closure that still captures the full equation (preflight binding), so
+    the change is op-correct with zero signature churn. (Confirmed by a read-only scoping workflow first.)
+  - reuse the existing condition sink: NonNegative(rhs) flows through display (symbolic), contradiction-collapse
+    (numeric negative), and trivial-drop (numeric nonneg) exactly like the radicand x>=0 -- no new plumbing.

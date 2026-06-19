@@ -286,6 +286,46 @@ where
     derived
 }
 
+/// Even-root RANGE condition for an EQUALITY `even_root(g) = R`. An even root has
+/// range `[0, ∞)`, so the equation has a real solution only when the OTHER side
+/// is `≥ 0`. Returns `NonNegative(other_side)` when EXACTLY ONE side is a positive
+/// even root — `sqrt(·)` or `Pow(·, p/q)` with `q` even and `p > 0` (so `x^(1/2)`,
+/// `x^(1/4)`, `x^(3/4)`, `x^(5/2)` all qualify; odd roots and `1/sqrt` do not) —
+/// and empty otherwise (incl. both sides even roots, each already `≥ 0`).
+///
+/// THE CALLER MUST GATE THIS TO `op == RelOp::Eq`: for an inequality
+/// (`sqrt(x) > a`) the other side may be negative, so the condition is unsound.
+/// This is the equation RANGE condition; the radicand DOMAIN (`x ≥ 0`) is added
+/// separately by [`infer_implicit_domain`]. Without it `solve(sqrt(x)=a) → {a²}`
+/// silently drops the `a ≥ 0` caveat (and a numeric `a < 0` is, redundantly with
+/// the existing numeric path, correctly collapsed to "No solution").
+pub fn even_root_range_conditions(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> Vec<ImplicitCondition> {
+    let is_positive_even_root = |e: ExprId| -> bool {
+        if extract_sqrt_argument_view(ctx, e).is_some() {
+            return true;
+        }
+        if let Expr::Pow(_, exp) = ctx.get(e) {
+            if let Some(n) = as_rational_const(ctx, *exp) {
+                return is_even_root_exponent(&n) && n.is_positive();
+            }
+        }
+        false
+    };
+    let lhs_root = is_positive_even_root(lhs);
+    let rhs_root = is_positive_even_root(rhs);
+    if lhs_root && !rhs_root {
+        vec![ImplicitCondition::NonNegative(rhs)]
+    } else if rhs_root && !lhs_root {
+        vec![ImplicitCondition::NonNegative(lhs)]
+    } else {
+        vec![]
+    }
+}
+
 fn is_covered_by_stronger_predicate(
     ctx: &Context,
     predicate: &ImplicitCondition,
@@ -604,6 +644,55 @@ mod tests {
         assert!(domain.contains_positive(x));
         assert!(!domain.contains_nonnegative(x));
         assert!(!domain.contains_nonzero(x));
+    }
+
+    #[test]
+    fn even_root_range_conditions_constrain_the_non_radical_side() {
+        use super::even_root_range_conditions;
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let nn_a = ImplicitCondition::NonNegative(a);
+
+        // sqrt(x) = a  =>  a >= 0 (even root range); symmetric when the root is RHS.
+        let sqrt_x = ctx.call("sqrt", vec![x]);
+        assert_eq!(
+            even_root_range_conditions(&ctx, sqrt_x, a),
+            vec![nn_a.clone()]
+        );
+        assert_eq!(
+            even_root_range_conditions(&ctx, a, sqrt_x),
+            vec![nn_a.clone()]
+        );
+
+        // x^(1/4) = a (even denominator, positive numerator) => a >= 0.
+        let one = ctx.num(1);
+        let four = ctx.num(4);
+        let quarter = ctx.add(Expr::Div(one, four));
+        let x_quart = ctx.add(Expr::Pow(x, quarter));
+        assert_eq!(
+            even_root_range_conditions(&ctx, x_quart, a),
+            vec![nn_a.clone()]
+        );
+
+        // ODD root x^(1/3) = a: no range condition.
+        let one3 = ctx.num(1);
+        let three = ctx.num(3);
+        let third = ctx.add(Expr::Div(one3, three));
+        let x_cube = ctx.add(Expr::Pow(x, third));
+        assert!(even_root_range_conditions(&ctx, x_cube, a).is_empty());
+
+        // BOTH sides even roots: each already >= 0, no extra condition.
+        let sqrt_a = ctx.call("sqrt", vec![a]);
+        assert!(even_root_range_conditions(&ctx, sqrt_x, sqrt_a).is_empty());
+
+        // NEGATIVE even exponent (1/sqrt = x^(-1/2)): NOT a [0,∞) range form here
+        // (the radicand/positivity path owns it) — no range condition emitted.
+        let neg_one = ctx.num(-1);
+        let two = ctx.num(2);
+        let neg_half = ctx.add(Expr::Div(neg_one, two));
+        let recip_sqrt = ctx.add(Expr::Pow(x, neg_half));
+        assert!(even_root_range_conditions(&ctx, recip_sqrt, a).is_empty());
     }
 
     #[test]
