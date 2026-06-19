@@ -294,6 +294,49 @@ fn equation_is_nonzero_const_over_polynomial(simplifier: &mut Simplifier, eq: &E
         .is_some_and(|r| !r.is_zero())
 }
 
+/// True when the equation contains a denominator that is provably zero for ALL
+/// `x` — `x/0`, `1/0`, or `x/(x-x)` — so the equation is identically UNDEFINED
+/// over ℝ and therefore has NO real solution. Without this guard the isolation
+/// logic cancels or eliminates the undefined term and fabricates a spurious
+/// `All real numbers` (`solve(x/0=5) → ℝ`, `solve(x=1/0) → ℝ`) or an
+/// impossible-conditioned identity (`solve(x/(x-x)=0) → ℝ if 0 ≠ 0`).
+///
+/// "Provably zero everywhere" is decided EXACTLY: each `Div` denominator is
+/// simplified and accepted only when it folds to the rational constant `0`
+/// (covers the literal `0`, `x-x`, `0*x`, …). A denominator that merely vanishes
+/// at some points (`x` in `3/x`, `x-1` in `1/(x-1)`) does NOT match — those are
+/// legitimate excluded points, not an undefined equation. Unfoldable denominators
+/// keep the prior behaviour (conservative: never a false "No solution").
+fn equation_has_identically_zero_denominator(simplifier: &mut Simplifier, eq: &Equation) -> bool {
+    fn any_zero_denominator(simplifier: &mut Simplifier, expr: ExprId) -> bool {
+        match simplifier.context.get(expr).clone() {
+            Expr::Div(num, den) => {
+                denominator_is_identically_zero(simplifier, den)
+                    || any_zero_denominator(simplifier, num)
+                    || any_zero_denominator(simplifier, den)
+            }
+            Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
+                any_zero_denominator(simplifier, a) || any_zero_denominator(simplifier, b)
+            }
+            Expr::Neg(a) | Expr::Hold(a) => any_zero_denominator(simplifier, a),
+            Expr::Function(_, args) => args
+                .into_iter()
+                .any(|c| any_zero_denominator(simplifier, c)),
+            _ => false,
+        }
+    }
+    any_zero_denominator(simplifier, eq.lhs) || any_zero_denominator(simplifier, eq.rhs)
+}
+
+/// True when `den` simplifies to the exact rational constant `0` (identically
+/// zero everywhere). EXACT — `as_rational_const` never falls back to a float.
+fn denominator_is_identically_zero(simplifier: &mut Simplifier, den: ExprId) -> bool {
+    use num_traits::Zero;
+    let (simplified, _) = simplifier.simplify(den);
+    cas_math::numeric_eval::as_rational_const(&simplifier.context, simplified)
+        .is_some_and(|r| r.is_zero())
+}
+
 /// Local backend facade selected as the active backend.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LocalSolveBackend;
@@ -306,7 +349,9 @@ impl SolveBackend for LocalSolveBackend {
         opts: CoreSolverOptions,
         ctx: &SolveCtx,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        if equation_is_nonzero_const_over_polynomial(simplifier, eq) {
+        if equation_is_nonzero_const_over_polynomial(simplifier, eq)
+            || equation_has_identically_zero_denominator(simplifier, eq)
+        {
             return Ok((SolutionSet::Empty, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
@@ -472,5 +517,52 @@ mod tests {
         assert!(!solution_contains_nonfinite(&ctx, arcsin_half));
         assert!(!solution_contains_nonfinite(&ctx, arccos_one));
         assert!(!solution_contains_nonfinite(&ctx, arcsin_neg_one));
+    }
+
+    #[test]
+    fn identically_zero_denominator_makes_equation_unsolvable() {
+        use super::equation_has_identically_zero_denominator;
+        use cas_ast::{Equation, RelOp};
+
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let build = |simp: &mut crate::Simplifier, lhs: &str, rhs: &str| -> Equation {
+            let l = cas_parser::parse(lhs, &mut simp.context).expect("lhs");
+            let r = cas_parser::parse(rhs, &mut simp.context).expect("rhs");
+            Equation {
+                lhs: l,
+                rhs: r,
+                op: RelOp::Eq,
+            }
+        };
+
+        // Provably-zero denominators (literal 0, x-x, 0*x) => identically
+        // undefined over ℝ => caught, so the solver returns "No solution".
+        for (l, r) in [
+            ("x/0", "5"),
+            ("x", "1/0"),
+            ("x/(x-x)", "0"),
+            ("1/(0*x)", "2"),
+        ] {
+            let eq = build(&mut simplifier, l, r);
+            assert!(
+                equation_has_identically_zero_denominator(&mut simplifier, &eq),
+                "{l} = {r} has an identically-zero denominator"
+            );
+        }
+
+        // Denominators that are nonzero or merely vanish at isolated points are
+        // legitimate (excluded points, not an undefined equation) => NOT caught.
+        for (l, r) in [
+            ("3/x", "0"),
+            ("1/x", "2"),
+            ("x/(x-1)", "2"),
+            ("1/(x-x+1)", "1"),
+        ] {
+            let eq = build(&mut simplifier, l, r);
+            assert!(
+                !equation_has_identically_zero_denominator(&mut simplifier, &eq),
+                "{l} = {r} denominator is nonzero or only vanishes at a point"
+            );
+        }
     }
 }

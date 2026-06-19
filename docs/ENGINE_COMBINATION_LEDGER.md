@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 209 (newest first)
+Active entries: 210 (newest first)
 
+- 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
@@ -9164,3 +9165,38 @@ Active entries: 209 (newest first)
     representation choice is what makes 0*product(...inf) and sum-sum resolve to undefined instead of 0.
   - keep convergent / unclassifiable series UNEVALUATED (None), never guess: the engine already leaves
     sum(1/k^2) and sum((1/2)^k) unevaluated; the divergence classifier must only claim provable +-infinity.
+
+## 2026-06-19 - Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
+- area:
+  - solve preflight; `crates/cas_solver/src/solve_backend_local.rs`
+    LocalSolveBackend::solve_with_ctx_and_options + new equation_has_identically_zero_denominator /
+    denominator_is_identically_zero (beside the existing equation_is_nonzero_const_over_polynomial guard)
+- status:
+  - `retained` (HONESTY soundness fix; closes the division-by-provable-zero solve weak spot)
+- capture:
+  - investment_class: soundness
+  - cell: solve(x/0=5,x), solve(x/(x-x)=0,x), solve(x=1/0,x), solve(x/0=0,x), solve(x/0=x,x), solve(5/0=x,x)
+    -> "No solution" (were "All real numbers" / "All real numbers if x-x != 0")
+  - behavior_change_expected: yes - identically-undefined equations -> SolutionSet::Empty; controls unchanged
+    (solve(0*x=0)->R identity, solve(3/x=0)->No solution, solve(1/x=2)->{1/2}, solve(1/(x-x+1)=1)->R);
+    guardrail+pressure fingerprints STRUCTURALLY byte-identical (no fixture solves a zero-denominator eq),
+    full cargo test --workspace green
+- observed (Round-4 audit Cluster D):
+  - the isolation/clear-denominator branch multiplies through a denominator D and, on the resulting tautology,
+    returns AllReals; when D is provably zero (literal 0, x-x, 1/0) the D!=0 guard is dropped or canonicalized
+    to the impossible NonZero(0) ("0 != 0"), but the inner AllReals is surfaced as the headline -- contradicting
+    the evaluator's own x/0 -> undefined semantics. A regression of the Rounds 1-3 div-by-provable-zero fix that
+    never covered the solve path.
+  - fix: a preflight that walks both sides for any Div(_, D) whose denominator simplifies to the EXACT rational
+    constant 0 and returns Empty before isolation runs, so the spurious AllReals is never produced.
+- retained learning:
+  - a soundness rule proved at eval time (x/0 -> undefined) must be re-asserted at every OTHER entry point that
+    can reach the same shape: the solve path had its own isolation branch that never consulted the zero-prover,
+    so the engine contradicted itself. When closing a div-by-zero class, sweep solve/limit/derive too.
+  - decide "identically undefined" EXACTLY and conservatively: accept only a denominator that folds to the
+    rational constant 0 (literal 0, x-x, 0*x); a denominator that merely vanishes at points (3/x, 1/(x-1)) is a
+    legitimate excluded point, and an unfoldable identically-zero denominator keeps prior behavior -- never a
+    false "No solution".
+  - put the guard beside the sibling preflight (equation_is_nonzero_const_over_polynomial): both short-circuit
+    to Empty before isolation for the same reason (the equation has no real root for a structural reason the
+    isolation logic mis-handles), so they belong together as the solver's "unsatisfiable-by-construction" gate.
