@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 214 (newest first)
+Active entries: 215 (newest first)
 
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
 - 2026-06-19 | `retained` | real-solution filter; `crates/cas_solver/src/solve_backend_local.rs` solution... | Retained soundness fix: solve(sin(x)=sqrt(2)) -> {arcsin(sqrt(2))} (Round-4 Cluster C)
 - 2026-06-19 | `retained` | equation-level domain conditions; `crates/cas_solver_core/src/domain_inferenc... | Retained soundness fix: solve(sqrt(x)=a) dropped the a>=0 condition (Round-4 Cluster B)
+- 2026-06-19 | `retained` | solve backend post-step; `crates/cas_solver/src/solve_backend_local.rs` inter... | Retained soundness fix: sqrt/ln/log inequality drops the argument-domain (Round-4 Cluster F)
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
@@ -9338,3 +9339,38 @@ Active entries: 214 (newest first)
     the change is op-correct with zero signature churn. (Confirmed by a read-only scoping workflow first.)
   - reuse the existing condition sink: NonNegative(rhs) flows through display (symbolic), contradiction-collapse
     (numeric negative), and trivial-drop (numeric nonneg) exactly like the radicand x>=0 -- no new plumbing.
+
+## 2026-06-19 - Retained soundness fix: sqrt/ln/log inequality drops the argument-domain (Round-4 Cluster F)
+- area:
+  - solve backend post-step; `crates/cas_solver/src/solve_backend_local.rs` intersect_inequality_with_function_domain
+    + detect_monotonic_lhs + simplify_solution_bounds; LaTeX endpoint fix in
+    eval_output_presentation_solution_latex/intervals.rs
+- status:
+  - `retained` (HONESTY soundness fix; closes the dropped argument-domain on monotonic-function inequalities)
+- capture:
+  - investment_class: soundness
+  - cell: solve(sqrt(x)<2)->[0,4); solve(ln(x)<0)->(0,1); solve(log(2,x)<3)->(0,8); solve(sqrt(x)<-1)->No
+    solution; solve(sqrt(x)<=0)->{0}; solve(sqrt(x)>-1)->[0,inf) (was (1,inf), invalid squaring); >/>= positive
+    and equation paths unchanged; interval LaTeX brackets now respect bound type
+  - behavior_change_expected: yes - inequality results narrowed to the function domain / corrected for the
+    even-root range; guardrail+pressure STRUCTURALLY byte-identical (no fixture solves such inequalities), full
+    cargo test --workspace green
+- observed (Round-4 audit Cluster F + scoping workflow):
+  - the < direction inverted to a half-line (-inf, c^2)/(-inf, e^c) without intersecting the argument domain
+    (x>=0 / x>0), including the entire undefined axis. Scoping found two more: the > direction with a NEGATIVE
+    threshold squared invalidly (sqrt(x)>-1 -> (1,inf) instead of [0,inf)); and the inverted bound reaches the
+    result UNSIMPLIFIED (2^2), so an interval-validity gate would use structural ordering (compare(0,0^2)=Less),
+    a soundness hole for the disjoint case.
+  - fix: a backend post-step builds the function true domain, folds the even-root range c-sign edges
+    (impossible -> Empty; always-true -> whole domain) directly, simplifies the half-line bound, and intersects
+    via intersect_solution_sets. Only the bare-variable argument; compound arg / function-on-RHS are residuals.
+- retained learning:
+  - a function's DOMAIN must be folded into an INEQUALITY result the same way the equation path folds it (the
+    equation path already returned No solution for sqrt(x)=-2); a half-line from inverting a monotonic function
+    is only the pre-image, not intersected with where the function is defined.
+  - inverting a monotonic inequality by applying the inverse is sound ONLY on the side of the range that the
+    threshold lies in: squaring sqrt(x) > c is valid for c>=0 but for c<0 the inequality holds across the whole
+    domain. Enumerate the four op x c-sign edges explicitly; do not just invert-and-intersect.
+  - NEVER run an interval-validity gate on an unsimplified bound: compare_values falls back to STRUCTURAL
+    ordering on a Pow node (compare(0, 0^2)=Less), silently keeping an empty interval. Simplify the bound to a
+    number first so the gate is exact -- the recurring "soundness gates must be exact" lesson.

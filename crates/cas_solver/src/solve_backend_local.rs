@@ -379,6 +379,145 @@ fn denominator_is_identically_zero(simplifier: &mut Simplifier, den: ExprId) -> 
         .is_some_and(|r| r.is_zero())
 }
 
+/// A monotonic function whose inequality result must be intersected with its real
+/// argument-domain (which the inversion — square / exponentiate — drops).
+#[derive(Clone, Copy)]
+enum MonotonicFn {
+    /// Even root `√(arg)` / `arg^(1/2k)`: range `[0, ∞)`, domain `{arg ≥ 0}`.
+    EvenRoot,
+    /// `ln(arg)` / `log(b, arg)`: range `ℝ`, domain `{arg > 0}`.
+    Log,
+}
+
+/// Detect a monotonic `f(arg)` on the LHS, returning `(kind, arg)`. Covers the
+/// `sqrt` builtin, an even-root `Pow` (`x^(1/2)`, `x^(1/4)`, …), `ln`, and the
+/// two-argument `log(b, arg)`.
+fn detect_monotonic_lhs(ctx: &Context, lhs: ExprId) -> Option<(MonotonicFn, ExprId)> {
+    use cas_math::expr_extract::{
+        extract_log_base_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
+    };
+    if let Some(arg) = extract_sqrt_argument_view(ctx, lhs) {
+        return Some((MonotonicFn::EvenRoot, arg));
+    }
+    if let Expr::Pow(base, exp) = ctx.get(lhs) {
+        let (base, exp) = (*base, *exp);
+        if let Some(n) = cas_math::numeric_eval::as_rational_const(ctx, exp) {
+            use num_traits::Signed;
+            if cas_math::expr_predicates::is_even_root_exponent(&n) && n.is_positive() {
+                return Some((MonotonicFn::EvenRoot, base));
+            }
+        }
+    }
+    if let Some(arg) = extract_unary_log_argument_view(ctx, lhs) {
+        return Some((MonotonicFn::Log, arg));
+    }
+    if let Some((_base, arg)) = extract_log_base_argument_view(ctx, lhs) {
+        return Some((MonotonicFn::Log, arg));
+    }
+    None
+}
+
+/// Simplify the bound expressions of an interval solution set so a downstream
+/// interval-validity comparison uses an EXACT numeric path rather than falling
+/// back to structural ordering on unsimplified `Pow` bounds (e.g. `2^2`).
+fn simplify_solution_bounds(simplifier: &mut Simplifier, set: SolutionSet) -> SolutionSet {
+    fn simp_interval(simplifier: &mut Simplifier, i: cas_ast::Interval) -> cas_ast::Interval {
+        let (min, _) = simplifier.simplify(i.min);
+        let (max, _) = simplifier.simplify(i.max);
+        cas_ast::Interval {
+            min,
+            min_type: i.min_type,
+            max,
+            max_type: i.max_type,
+        }
+    }
+    match set {
+        SolutionSet::Continuous(i) => SolutionSet::Continuous(simp_interval(simplifier, i)),
+        SolutionSet::Union(v) => SolutionSet::Union(
+            v.into_iter()
+                .map(|i| simp_interval(simplifier, i))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// Intersect a monotonic-function inequality result with the function's real
+/// argument-domain, which the inversion drops — `solve(sqrt(x)<2) → [0,4)` (not
+/// `(-∞,4)`), `solve(ln(x)<0) → (0,1)`, `solve(log(2,x)<3) → (0,8)`. EXACT and
+/// EQ-safe: runs ONLY for the four inequality ops, ONLY when the LHS is
+/// `√(x)`/`ln(x)`/`log(b,x)` over the BARE solve variable. It also folds the
+/// even-root RANGE (`√ ≥ 0`), where squaring the threshold is invalid:
+/// `sqrt(x)<-1 → ∅`, `sqrt(x)>-1 → [0,∞)`, `sqrt(x)<=0 → {0}`.
+///
+/// The half-line bound is simplified before intersecting so the interval gate is
+/// an exact numeric comparison, never structural. A COMPOUND argument
+/// (`sqrt(x-1)`) or a function on the RHS is an honest residual (returned as-is).
+fn intersect_inequality_with_function_domain(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+    set: SolutionSet,
+) -> SolutionSet {
+    use cas_ast::{BoundType, Interval, RelOp};
+    use cas_solver_core::solution_set::{intersect_solution_sets, pos_inf};
+    use num_traits::Signed;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return set;
+    }
+    if !matches!(set, SolutionSet::Continuous(_) | SolutionSet::Union(_)) {
+        return set;
+    }
+    let Some((kind, arg)) = detect_monotonic_lhs(&simplifier.context, eq.lhs) else {
+        return set;
+    };
+    // Only the BARE solve variable as argument; a compound argument stays residual.
+    let arg_is_var = matches!(simplifier.context.get(arg), Expr::Variable(s)
+        if simplifier.context.sym_name(*s) == var);
+    if !arg_is_var {
+        return set;
+    }
+
+    // Argument-domain over ℝ: even root → [0, ∞) (closed at 0); ln/log → (0, ∞).
+    let domain_min_type = match kind {
+        MonotonicFn::EvenRoot => BoundType::Closed,
+        MonotonicFn::Log => BoundType::Open,
+    };
+    let domain = {
+        let ctx = &mut simplifier.context;
+        let zero = ctx.num(0);
+        let inf = pos_inf(ctx);
+        SolutionSet::Continuous(Interval {
+            min: zero,
+            min_type: domain_min_type,
+            max: inf,
+            max_type: BoundType::Open,
+        })
+    };
+
+    // Even-root RANGE correction (`√ ≥ 0`): inverting squares the threshold `c`,
+    // which is unsound when `c` is on the wrong side of 0 — handle those directly.
+    if let MonotonicFn::EvenRoot = kind {
+        if let Some(c) = cas_math::numeric_eval::as_rational_const(&simplifier.context, eq.rhs) {
+            let (neg, pos) = (c.is_negative(), c.is_positive());
+            match eq.op {
+                // √ < c≤0 and √ ≤ c<0 are impossible (√ ≥ 0).
+                RelOp::Lt if !pos => return SolutionSet::Empty,
+                RelOp::Leq if neg => return SolutionSet::Empty,
+                // √ > c<0 and √ ≥ c≤0 hold across the whole domain.
+                RelOp::Gt if neg => return domain,
+                RelOp::Geq if !pos => return domain,
+                _ => {}
+            }
+        }
+    }
+
+    // Valid side: simplify the half-line bound (so the gate is exact), intersect.
+    let set = simplify_solution_bounds(simplifier, set);
+    intersect_solution_sets(&simplifier.context, set, domain)
+}
+
 /// Local backend facade selected as the active backend.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LocalSolveBackend;
@@ -399,6 +538,9 @@ impl SolveBackend for LocalSolveBackend {
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
         let conds = ctx.required_conditions();
         let set = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);
+        // Fold the monotonic-function argument-domain into an inequality result
+        // (`sqrt(x)<2 → [0,4)`), which the inversion drops; no-op for equations.
+        let set = intersect_inequality_with_function_domain(simplifier, eq, var, set);
         Ok((set, steps))
     }
 }
@@ -406,11 +548,121 @@ impl SolveBackend for LocalSolveBackend {
 #[cfg(test)]
 mod tests {
     use super::{
-        required_conditions_are_contradictory, root_violates_required_condition,
-        solution_contains_nonfinite,
+        intersect_inequality_with_function_domain, required_conditions_are_contradictory,
+        root_violates_required_condition, solution_contains_nonfinite,
     };
     use cas_ast::{Context, Expr};
     use cas_solver_core::domain_condition::ImplicitCondition;
+
+    #[test]
+    fn monotonic_inequality_intersects_argument_domain() {
+        use cas_ast::{BoundType, Equation, ExprId, RelOp, SolutionSet};
+        use cas_solver_core::solution_set::{neg_inf, pos_inf};
+        use num_traits::Zero;
+
+        let mut simp = crate::Simplifier::with_default_rules();
+        let p = |simp: &mut crate::Simplifier, s: &str| -> ExprId {
+            cas_parser::parse(s, &mut simp.context).expect("parse")
+        };
+        // Build the engine's naive half-line: (-inf, bound) for `<`, (bound, inf) for `>`.
+        let half_line = |simp: &mut crate::Simplifier, bound: ExprId, lt: bool| -> SolutionSet {
+            let (min, min_t, max, max_t) = if lt {
+                (
+                    neg_inf(&mut simp.context),
+                    BoundType::Open,
+                    bound,
+                    BoundType::Open,
+                )
+            } else {
+                (
+                    bound,
+                    BoundType::Open,
+                    pos_inf(&mut simp.context),
+                    BoundType::Open,
+                )
+            };
+            SolutionSet::Continuous(cas_ast::Interval {
+                min,
+                min_type: min_t,
+                max,
+                max_type: max_t,
+            })
+        };
+        let eqn = |lhs: ExprId, rhs: ExprId, op: RelOp| Equation { lhs, rhs, op };
+
+        // sqrt(x) < 2 : naive (-inf, 2^2) intersected with [0, inf) => [0, 4).
+        let (sx, two, b4) = (
+            p(&mut simp, "sqrt(x)"),
+            p(&mut simp, "2"),
+            p(&mut simp, "2^2"),
+        );
+        let set = half_line(&mut simp, b4, true);
+        match intersect_inequality_with_function_domain(
+            &mut simp,
+            &eqn(sx, two, RelOp::Lt),
+            "x",
+            set,
+        ) {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(i.min_type, BoundType::Closed, "lower bound closed at 0");
+                assert!(
+                    matches!(simp.context.get(i.min), Expr::Number(n) if n.is_zero()),
+                    "lower bound is 0"
+                );
+            }
+            other => panic!("expected [0, 4), got {other:?}"),
+        }
+
+        // sqrt(x) < -1 : even-root range disjoint => No solution.
+        let (sx2, neg1, b1) = (
+            p(&mut simp, "sqrt(x)"),
+            p(&mut simp, "-1"),
+            p(&mut simp, "(-1)^2"),
+        );
+        let set = half_line(&mut simp, b1, true);
+        assert!(matches!(
+            intersect_inequality_with_function_domain(
+                &mut simp,
+                &eqn(sx2, neg1, RelOp::Lt),
+                "x",
+                set
+            ),
+            SolutionSet::Empty
+        ));
+
+        // sqrt(x) > -1 : always true on the domain => [0, inf).
+        let (sx3, neg1b, b1b) = (
+            p(&mut simp, "sqrt(x)"),
+            p(&mut simp, "-1"),
+            p(&mut simp, "(-1)^2"),
+        );
+        let set = half_line(&mut simp, b1b, false);
+        match intersect_inequality_with_function_domain(
+            &mut simp,
+            &eqn(sx3, neg1b, RelOp::Gt),
+            "x",
+            set,
+        ) {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(i.min_type, BoundType::Closed);
+                assert!(matches!(simp.context.get(i.min), Expr::Number(n) if n.is_zero()));
+            }
+            other => panic!("expected [0, inf), got {other:?}"),
+        }
+
+        // EQUATION path is untouched: sqrt(x) = 2 keeps its Discrete result.
+        let (sx4, two4) = (p(&mut simp, "sqrt(x)"), p(&mut simp, "2"));
+        let disc = SolutionSet::Discrete(vec![p(&mut simp, "4")]);
+        assert!(matches!(
+            intersect_inequality_with_function_domain(
+                &mut simp,
+                &eqn(sx4, two4, RelOp::Eq),
+                "x",
+                disc
+            ),
+            SolutionSet::Discrete(_)
+        ));
+    }
 
     #[test]
     fn extraneous_root_violates_recorded_domain_condition() {
