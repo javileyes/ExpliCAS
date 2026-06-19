@@ -286,12 +286,42 @@ where
     derived
 }
 
-/// Even-root RANGE condition for an EQUALITY `even_root(g) = R`. An even root has
-/// range `[0, ∞)`, so the equation has a real solution only when the OTHER side
-/// is `≥ 0`. Returns `NonNegative(other_side)` when EXACTLY ONE side is a positive
-/// even root — `sqrt(·)` or `Pow(·, p/q)` with `q` even and `p > 0` (so `x^(1/2)`,
-/// `x^(1/4)`, `x^(3/4)`, `x^(5/2)` all qualify; odd roots and `1/sqrt` do not) —
-/// and empty otherwise (incl. both sides even roots, each already `≥ 0`).
+/// True when `e` is a NON-NEGATIVE even-root form, i.e. its range is `[0, ∞)`:
+/// a bare even root (`sqrt(·)`, or `Pow(·, p/q)` with `q` even and `p > 0` — so
+/// `x^(1/2)`, `x^(1/4)`, `x^(3/4)`, `x^(5/2)`; odd roots and `1/√` do not match),
+/// OR a POSITIVE rational multiple/quotient of one (`3·√x`, `x^(1/4)/2`). A
+/// NEGATIVE coefficient (`-√x`, `-2·√x`) is NOT matched — its range is `(-∞, 0]`,
+/// needing the OTHER side `≤ 0` (`NonNegative(-other)`), which cannot be built
+/// from `&Context`; that sign-folded form stays an honest residual.
+fn is_nonnegative_even_root_form(ctx: &Context, e: ExprId) -> bool {
+    if extract_sqrt_argument_view(ctx, e).is_some() {
+        return true;
+    }
+    match ctx.get(e) {
+        Expr::Pow(_, exp) => as_rational_const(ctx, *exp)
+            .is_some_and(|n| is_even_root_exponent(&n) && n.is_positive()),
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(c) = as_rational_const(ctx, l) {
+                return c.is_positive() && is_nonnegative_even_root_form(ctx, r);
+            }
+            if let Some(c) = as_rational_const(ctx, r) {
+                return c.is_positive() && is_nonnegative_even_root_form(ctx, l);
+            }
+            false
+        }
+        Expr::Div(num, den) => as_rational_const(ctx, *den)
+            .is_some_and(|c| c.is_positive() && is_nonnegative_even_root_form(ctx, *num)),
+        _ => false,
+    }
+}
+
+/// Even-root RANGE condition for an EQUALITY `even_root(g) = R`. A non-negative
+/// even-root form has range `[0, ∞)`, so the equation has a real solution only
+/// when the OTHER side is `≥ 0`. Returns `NonNegative(other_side)` when EXACTLY
+/// ONE side is a non-negative even-root form (see [`is_nonnegative_even_root_form`]
+/// — a bare even root OR a positive multiple of one, `3·√x`, `4·x^(1/4)`), and
+/// empty otherwise (incl. both sides even roots, each already `≥ 0`).
 ///
 /// THE CALLER MUST GATE THIS TO `op == RelOp::Eq`: for an inequality
 /// (`sqrt(x) > a`) the other side may be negative, so the condition is unsound.
@@ -304,19 +334,8 @@ pub fn even_root_range_conditions(
     lhs: ExprId,
     rhs: ExprId,
 ) -> Vec<ImplicitCondition> {
-    let is_positive_even_root = |e: ExprId| -> bool {
-        if extract_sqrt_argument_view(ctx, e).is_some() {
-            return true;
-        }
-        if let Expr::Pow(_, exp) = ctx.get(e) {
-            if let Some(n) = as_rational_const(ctx, *exp) {
-                return is_even_root_exponent(&n) && n.is_positive();
-            }
-        }
-        false
-    };
-    let lhs_root = is_positive_even_root(lhs);
-    let rhs_root = is_positive_even_root(rhs);
+    let lhs_root = is_nonnegative_even_root_form(ctx, lhs);
+    let rhs_root = is_nonnegative_even_root_form(ctx, rhs);
     if lhs_root && !rhs_root {
         vec![ImplicitCondition::NonNegative(rhs)]
     } else if rhs_root && !lhs_root {
@@ -681,6 +700,26 @@ mod tests {
         let third = ctx.add(Expr::Div(one3, three));
         let x_cube = ctx.add(Expr::Pow(x, third));
         assert!(even_root_range_conditions(&ctx, x_cube, a).is_empty());
+
+        // POSITIVE coefficient on the radical (3·√x = a) still constrains a ≥ 0.
+        let three_c = ctx.num(3);
+        let three_sqrt_x = ctx.add(Expr::Mul(three_c, sqrt_x));
+        assert_eq!(
+            even_root_range_conditions(&ctx, three_sqrt_x, a),
+            vec![nn_a.clone()]
+        );
+        // √x / 2 = a likewise.
+        let two_d = ctx.num(2);
+        let sqrt_x_half = ctx.add(Expr::Div(sqrt_x, two_d));
+        assert_eq!(
+            even_root_range_conditions(&ctx, sqrt_x_half, a),
+            vec![nn_a.clone()]
+        );
+        // NEGATIVE coefficient (-√x): range is (-∞,0], needing a ≤ 0 which cannot be
+        // built here — emit NOTHING (a sound under-answer, never a WRONG a ≥ 0).
+        let neg_one_c = ctx.num(-1);
+        let neg_sqrt_x = ctx.add(Expr::Mul(neg_one_c, sqrt_x));
+        assert!(even_root_range_conditions(&ctx, neg_sqrt_x, a).is_empty());
 
         // BOTH sides even roots: each already >= 0, no extra condition.
         let sqrt_a = ctx.call("sqrt", vec![a]);
