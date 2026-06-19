@@ -1,11 +1,12 @@
 use crate::build::mul2_raw;
 use crate::expr_nary;
 use crate::expr_relations::is_structurally_zero;
+use crate::polynomial::Polynomial;
 use cas_ast::ordering::compare_expr;
 use cas_ast::views::as_rational_const;
-use cas_ast::{substitute_expr_by_id, Context, Expr, ExprId};
+use cas_ast::{substitute_expr_by_id, Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::One;
+use num_traits::{One, Signed, Zero};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FiniteAggregateCall {
@@ -24,7 +25,13 @@ pub enum SumEvaluationKind {
     SumOfCubes,
     SumOfConstant,
     GeometricPower,
-    FiniteDirect { start: i64, end: i64 },
+    FiniteDirect {
+        start: i64,
+        end: i64,
+    },
+    /// Series with an infinite upper bound whose divergence is classified
+    /// (`±infinity`) instead of substituting `infinity` into a finite formula.
+    DivergentInfinite,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,7 +48,13 @@ pub enum ProductEvaluationKind {
     ProductOfFirstIntegers,
     ProductOfPowers,
     ProductOfConstant,
-    FiniteDirect { start: i64, end: i64 },
+    FiniteDirect {
+        start: i64,
+        end: i64,
+    },
+    /// Product with an infinite upper bound whose divergence is classified
+    /// (`±infinity`/`0`) instead of substituting `infinity` into a finite formula.
+    DivergentInfinite,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,6 +156,107 @@ pub fn build_finite_product_substitution(
     result
 }
 
+/// True when `expr` is the literal `+infinity` constant.
+fn is_positive_infinity(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Constant(Constant::Infinity))
+}
+
+fn make_infinity(ctx: &mut Context) -> ExprId {
+    ctx.add(Expr::Constant(Constant::Infinity))
+}
+
+fn make_neg_infinity(ctx: &mut Context) -> ExprId {
+    let inf = make_infinity(ctx);
+    ctx.add(Expr::Neg(inf))
+}
+
+/// Classify a series `sum(term, k, a, infinity)` whose upper bound is infinite.
+///
+/// Returns the divergence value (`±infinity`, or `0` for a zero summand) when it
+/// can be proven, and `None` to leave the series UNEVALUATED (convergent or
+/// unclassifiable — e.g. `sum((1/2)^k)`, `sum(1/k^2)`). It never substitutes
+/// `infinity` into a finite closed form, so malformed tokens like
+/// `1/2*infinity^2` or `2^infinity` are no longer produced. Returning a genuine
+/// `Constant::Infinity` (rather than a folded `infinity!`/`pow(c,infinity)` atom)
+/// lets `0 * sum(...)` and `sum(...) - sum(...)` resolve to `undefined` via the
+/// extended-real arithmetic rules.
+fn classify_infinite_sum(ctx: &mut Context, call: &FiniteAggregateCall) -> Option<ExprId> {
+    use std::cmp::Ordering;
+    let zero = BigRational::zero();
+    // Constant summand c: sum diverges to sign(c)*infinity (or is 0 if c == 0).
+    if let Some(c) = as_rational_const(ctx, call.term, 8) {
+        return Some(match c.cmp(&zero) {
+            Ordering::Greater => make_infinity(ctx),
+            Ordering::Less => make_neg_infinity(ctx),
+            Ordering::Equal => ctx.num(0),
+        });
+    }
+    // Polynomial summand of degree >= 1: diverges with the sign of the leading
+    // coefficient (the high-degree term eventually dominates).
+    if let Ok(poly) = Polynomial::from_expr(ctx, call.term, &call.var_name) {
+        let deg = poly.degree();
+        if deg >= 1 {
+            let leading = poly
+                .coeffs
+                .get(deg)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+            if !leading.is_zero() {
+                return Some(if leading.is_negative() {
+                    make_neg_infinity(ctx)
+                } else {
+                    make_infinity(ctx)
+                });
+            }
+        }
+    }
+    // Geometric `r^k` with a rational base `r > 1`: diverges to +infinity.
+    // (|r| < 1 converges and r <= -1 oscillates -> left unevaluated.)
+    let pow_parts = match ctx.get(call.term) {
+        Expr::Pow(base, exp) => Some((*base, *exp)),
+        _ => None,
+    };
+    if let Some((base, exp)) = pow_parts {
+        if is_named_var(ctx, exp, &call.var_name) {
+            if let Some(r) = as_rational_const(ctx, base, 8) {
+                if r > BigRational::one() {
+                    return Some(make_infinity(ctx));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Classify a product `product(term, k, a, infinity)` whose upper bound is
+/// infinite. Returns the divergence value when provable, else `None`.
+fn classify_infinite_product(ctx: &mut Context, call: &FiniteAggregateCall) -> Option<ExprId> {
+    let one = BigRational::one();
+    let zero = BigRational::zero();
+    // product of the index variable itself (factorial-like): diverges to +infinity
+    // when the range starts at >= 1.
+    if is_named_var(ctx, call.term, &call.var_name) {
+        return match crate::expr_extract::extract_i64_integer(ctx, call.start_expr) {
+            Some(start) if start >= 1 => Some(make_infinity(ctx)),
+            _ => None,
+        };
+    }
+    // Constant factor c (independent of k): c^infinity.
+    if let Some(c) = as_rational_const(ctx, call.term, 8) {
+        if c > one {
+            return Some(make_infinity(ctx)); // |c| > 1 -> diverges
+        }
+        if c == one {
+            return Some(ctx.num(1)); // 1^infinity = 1
+        }
+        if c > zero && c < one {
+            return Some(ctx.num(0)); // 0 < c < 1 -> c^infinity = 0
+        }
+        // c <= 0: sign oscillates / includes zero -> leave unevaluated.
+    }
+    None
+}
+
 /// Build the best available finite-sum evaluation plan for `sum(...)`.
 ///
 /// Preference order:
@@ -191,6 +305,18 @@ pub fn try_plan_finite_sum_evaluation(
             call,
             candidate,
             kind: SumEvaluationKind::Telescoping,
+        });
+    }
+
+    // Infinite upper bound: NOT a finite sum. The closed-form builders below would
+    // substitute `infinity` into finite formulas (e.g. n(n+1)/2 -> 1/2*infinity^2,
+    // (r^(n+1)-r^a)/(r-1) -> 2^infinity-1). Classify the divergence here and return
+    // (or leave unevaluated) so those builders never run on an infinite bound.
+    if is_positive_infinity(ctx, call.end_expr) {
+        return classify_infinite_sum(ctx, &call).map(|candidate| SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::DivergentInfinite,
         });
     }
 
@@ -546,6 +672,17 @@ pub fn try_plan_finite_product_evaluation(
             call,
             candidate,
             kind: ProductEvaluationKind::FactorizedTelescoping,
+        });
+    }
+
+    // Infinite upper bound: NOT a finite product. Classify divergence here so the
+    // closed-form builders below never substitute `infinity` (e.g. -> infinity! or
+    // 2^infinity, which fold as finite atoms and make 0*product(...) collapse to 0).
+    if is_positive_infinity(ctx, call.end_expr) {
+        return classify_infinite_product(ctx, &call).map(|candidate| ProductEvaluationPlan {
+            call,
+            candidate,
+            kind: ProductEvaluationKind::DivergentInfinite,
         });
     }
 
@@ -1859,6 +1996,52 @@ mod tests {
             compare_expr(&ctx, plan.candidate, expected),
             std::cmp::Ordering::Equal
         );
+    }
+
+    #[test]
+    fn infinite_bound_classifies_divergence_instead_of_finite_formula() {
+        // Round-4 Cluster L: an infinite upper bound must NOT substitute into a
+        // finite closed form (which leaked 1/2*infinity^2, 2^infinity, infinity!).
+        let mut ctx = Context::new();
+        for s in [
+            "sum(k, k, 1, inf)",
+            "sum(k^3, k, 1, inf)",
+            "sum(2^k, k, 0, inf)",
+        ] {
+            let e = cas_parser::parse(s, &mut ctx).unwrap_or_else(|_| panic!("parse {s}"));
+            let plan = try_plan_finite_sum_evaluation(&mut ctx, e, 1000)
+                .unwrap_or_else(|| panic!("plan {s}"));
+            assert!(
+                matches!(plan.kind, SumEvaluationKind::DivergentInfinite),
+                "{s} kind"
+            );
+            assert!(
+                matches!(
+                    ctx.get(plan.candidate),
+                    Expr::Constant(cas_ast::Constant::Infinity)
+                ),
+                "{s} -> infinity"
+            );
+        }
+        // Divergent product -> infinity (not infinity!).
+        let p = cas_parser::parse("product(k, k, 1, inf)", &mut ctx).expect("product");
+        let plan = try_plan_finite_product_evaluation(&mut ctx, p, 1000).expect("product plan");
+        assert!(matches!(
+            plan.kind,
+            ProductEvaluationKind::DivergentInfinite
+        ));
+        assert!(matches!(
+            ctx.get(plan.candidate),
+            Expr::Constant(cas_ast::Constant::Infinity)
+        ));
+        // Convergent geometric stays UNEVALUATED (no plan), not a wrong value.
+        let conv = cas_parser::parse("sum((1/2)^k, k, 0, inf)", &mut ctx).expect("conv");
+        assert!(try_plan_finite_sum_evaluation(&mut ctx, conv, 1000).is_none());
+        // Finite bound is unaffected (still a finite closed form, never divergent).
+        let fin = cas_parser::parse("sum(k, k, 1, 10)", &mut ctx).expect("fin");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, fin, 1000).expect("fin plan");
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfFirstIntegers));
+        assert!(!matches!(plan.kind, SumEvaluationKind::DivergentInfinite));
     }
 
     #[test]

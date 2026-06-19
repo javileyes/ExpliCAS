@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 208 (newest first)
+Active entries: 209 (newest first)
 
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
@@ -127,6 +127,7 @@ Active entries: 208 (newest first)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_is... | Retained soundness fix: solve(|f|=-f) leaked a nested-solve residual instead of an interval (Round-4 Cluster J)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `resolve_is... | Retained soundness fix: solve(x=N/D(x)) leaked a nested-solve residual instead of cross-multiplying (Round-4 Cluster A)
 - 2026-06-18 | `retained` | definite integration; `crates/cas_engine/src/rules/calculus/definite_integrat... | Retained soundness fix: definite integral with endpoint+interior poles fabricated a signed infinity (Round-4 Cluster K, CRITICAL sign-wrong)
+- 2026-06-18 | `retained` | series closed forms; `crates/cas_math/src/summation_support.rs` try_plan_fini... | Retained soundness fix: infinite sum/product leaked malformed infinity tokens / wrong folds (Round-4 Cluster L)
 - 2026-06-17 | `retained` | block 1 (non-finite) + abs/sign; `crates/cas_math/src/abs_support.rs` non-neg... | Retained soundness fix: abs strips bars from an imaginary square root (Round-3 audit Cluster B)
 - 2026-06-17 | `retained` | block 1 (non-finite) + solver; `crates/cas_solver/src/solve_backend_local.rs`... | Retained soundness fix: solve emits out-of-range inverse-trig roots (Round-3 audit Cluster C, inverse-trig half)
 - 2026-06-17 | `retained` | block (series/aggregates); `crates/cas_math/src/summation_support.rs` finite-... | Retained soundness fix: empty sum/product over reversed bounds (Round-3 audit Cluster E)
@@ -9131,3 +9132,35 @@ Active entries: 208 (newest first)
     left to fall through to a single-sided signed infinity or a residual.
   - the both-endpoint-pole arm was UNREACHABLE before this fix (the old scan never emitted BoundaryTouch{both}),
     so refining it changed no fixture (huella byte-identical) - confirming the new path is genuinely new.
+
+## 2026-06-18 - Retained soundness fix: infinite sum/product leaked malformed infinity tokens / wrong folds (Round-4 Cluster L)
+- area:
+  - series closed forms; `crates/cas_math/src/summation_support.rs` try_plan_finite_sum_evaluation /
+    try_plan_finite_product_evaluation (infinite-bound guard) + new classify_infinite_sum / classify_infinite_product
+- status:
+  - `retained` (HONESTY soundness fix; closes the malformed-infinity-token weak spot)
+- capture:
+  - investment_class: soundness
+  - cell: sum(k/k^2/k^3/2k+1, 1, inf), sum(2^k/3^k, .., inf), product(k,1,inf), product(2,1,inf) -> "infinity"
+    (were 1/2*infinity^2, 1/6*infinity^3, 2^infinity-1, infinity!, 2^infinity); 0*product(k,1,inf) and
+    sum(k,1,inf)-sum(k,1,inf) -> "undefined" (were 0); convergent sum((1/2)^k)/sum(1/k^2) stay unevaluated;
+    telescoping sum(1/(k(k+1)),1,inf) -> 1 and all finite sums/products unchanged
+  - behavior_change_expected: yes - divergent infinite series/products -> Constant::Infinity (or undefined via
+    inf-arithmetic); guardrail+pressure fingerprints BYTE-IDENTICAL, full cargo test --workspace green
+- observed (Round-4 audit Cluster L):
+  - the Faulhaber / geometric / factorial closed-form builders substituted the upper bound n into the finite
+    formula WITHOUT a finiteness check, so n=infinity produced 1/2*infinity^2, 2^infinity-1, infinity!. Worse,
+    infinity! and 2^infinity fold as FINITE atoms, so 0*product(k,1,inf)=0 and sum(k,1,inf)-sum(k,1,inf)=0.
+  - fix: after the telescoping pass and before the substituting builders, guard on an infinite upper bound and
+    classify divergence (polynomial deg>=1 -> sign of leading coeff; nonzero constant -> sign*inf; geometric
+    r^k, r>1 -> +inf; product of k / c>1 -> +inf; 0<c<1 -> 0; c=1 -> 1) returning a genuine Constant::Infinity
+    via a new DivergentInfinite plan kind, or None to leave convergent/unclassifiable series unevaluated.
+- retained learning:
+  - a finite closed form is only valid for a FINITE bound: every Faulhaber/geometric/factorial builder must
+    guard the upper bound before substituting, or it emits malformed tokens at infinity. Guard at the dispatch
+    entry (after telescoping, before the substituting builders) so one check covers them all.
+  - return a GENUINE Constant::Infinity for divergence, never a folded infinity!/pow(c,infinity) atom: the
+    extended-real arithmetic (0*inf -> undefined, inf-inf -> undefined) only fires for a real infinity, so the
+    representation choice is what makes 0*product(...inf) and sum-sum resolve to undefined instead of 0.
+  - keep convergent / unclassifiable series UNEVALUATED (None), never guess: the engine already leaves
+    sum(1/k^2) and sum((1/2)^k) unevaluated; the divergence classifier must only claim provable +-infinity.

@@ -113,6 +113,13 @@ where
             start,
             end
         ),
+        SumEvaluationKind::DivergentInfinite => format!(
+            "Divergent infinite series: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
     }
 }
 
@@ -166,6 +173,13 @@ where
             call.var_name,
             start,
             end
+        ),
+        ProductEvaluationKind::DivergentInfinite => format!(
+            "Divergent infinite product: Π({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
         ),
     }
 }

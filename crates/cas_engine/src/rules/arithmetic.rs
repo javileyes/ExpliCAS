@@ -17470,6 +17470,7 @@ fn try_build_direct_finite_product_equivalence_rewrite(
                 | ProductEvaluationKind::ProductOfPowers
                 | ProductEvaluationKind::ProductOfConstant => "Finite Product Closed Form",
                 ProductEvaluationKind::FiniteDirect { .. } => "Finite Product",
+                ProductEvaluationKind::DivergentInfinite => "Divergent Infinite Product",
             };
             return Some(Rewrite::with_local(ctx.num(0), description, source, target));
         }
@@ -17487,6 +17488,7 @@ fn finite_sum_evaluation_description(kind: &SumEvaluationKind) -> &'static str {
         | SumEvaluationKind::SumOfConstant
         | SumEvaluationKind::GeometricPower => "Finite Sum Closed Form",
         SumEvaluationKind::FiniteDirect { .. } => "Finite Sum",
+        SumEvaluationKind::DivergentInfinite => "Divergent Infinite Series",
     }
 }
 
@@ -24366,6 +24368,9 @@ fn classify_finite_series_vs_other_profile_pair(
                 }
                 SumEvaluationKind::FiniteDirect { .. } => {
                     "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_direct"
+                }
+                SumEvaluationKind::DivergentInfinite => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_divergent_infinite"
                 }
             };
         }
