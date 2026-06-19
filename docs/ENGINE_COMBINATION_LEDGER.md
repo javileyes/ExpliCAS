@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 210 (newest first)
+Active entries: 211 (newest first)
 
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
+- 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
@@ -9200,3 +9201,40 @@ Active entries: 210 (newest first)
   - put the guard beside the sibling preflight (equation_is_nonzero_const_over_polynomial): both short-circuit
     to Empty before isolation for the same reason (the equation has no real root for a structural reason the
     isolation logic mis-handles), so they belong together as the solver's "unsatisfiable-by-construction" gate.
+
+## 2026-06-19 - Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
+- area:
+  - solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome.rs`
+    try_cross_multiply_rational (constant-denominator branch) + new solve_rational_quadratic /
+    normalize_quadratic_coeffs / split_square_factor / build_surd_roots
+- status:
+  - `retained` (HONESTY soundness fix; closes the x = deg-2 poly(x) leak surfaced by the Cluster D sweep)
+- capture:
+  - investment_class: soundness
+  - cell: solve(1/(x-1)+1/(x+1)=1) -> {1-sqrt2, 1+sqrt2}; solve(1/(x-2)+1/(x+2)=1) -> {1+-sqrt5};
+    solve(1/(x-1)+1/(x+1)=1/2) -> {2+-sqrt5}; solve(1/(x-2)=x-2) -> {1,3}; solve(x=x^2-2) -> {-1,2}
+    (all were "Solve: solve(x = ..., x) = 0" leaks with ok=true and no roots)
+  - behavior_change_expected: yes - x = deg-2 poly(x) reorientations now solved with canonical surd roots;
+    Cluster A var-denominator cases and linear/cubic/non-poly unchanged; guardrail+pressure STRUCTURALLY
+    byte-identical (only timing-derived fields differ); full cargo test --workspace green
+- observed (Round-4 audit, Cluster D adversarial sweep follow-up):
+  - the chokepoint's cross-multiply recovery (Cluster A) bailed unless the denominator contained the variable,
+    so a sum/difference of fractions that reorients to x = quadratic/CONSTANT (den = 2, or no denominator) fell
+    through to the nested-solve residual. Two traps on the constant-denominator path: (1) combine_fractions_
+    deterministic flattens via add_terms_no_sign, which DROPS subtracted-term signs (x^2-2 -> x^2+2 -> wrong
+    disc -> false "No solution"); (2) the raw surd builder rendered (2-sqrt8)/2 instead of 1-sqrt2.
+  - fix: when var - rhs is itself a polynomial (Polynomial::from_expr succeeds, which it does only when no
+    variable is in a denominator), build it DIRECTLY from rhs (sign-correct) and solve the degree-2 case;
+    canonicalize to a primitive integer quadratic with a>0 and emit roots as rat +- coeff*sqrt(squarefree).
+- retained learning:
+  - NEVER reuse a "combine fractions" helper that flattens with add_terms_no_sign for anything that needs the
+    polynomial's VALUE: it discards subtracted-term signs. For a var-free denominator, build the polynomial
+    directly from `var - rhs` via Polynomial::from_expr (sign-exact), and reserve the sign-lossy cross-multiply
+    for the genuine variable-in-denominator shape.
+  - Polynomial::from_expr returning Err on any variable-in-denominator is the clean routing oracle: Ok => the
+    expression is a true polynomial (var-free denominator, no poles) and can be solved directly; Err => a
+    rational function that must go through cross-multiply with pole exclusion. Let the type system route, don't
+    re-detect denominators by hand.
+  - canonical surd output (rat +- coeff*sqrt(squarefree), squarefree via trial-division) lets cas_solver_core
+    render educational roots WITHOUT the engine simplifier it cannot call; pull_square_from_sqrt only handles
+    sqrt(k*expr), not sqrt(literal), so a purely numeric discriminant needs explicit square-factor extraction.

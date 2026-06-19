@@ -61,6 +61,98 @@ fn num_expr_from_rational(ctx: &mut Context, r: &num_rational::BigRational) -> E
     ctx.add(Expr::Number(r.clone()))
 }
 
+/// Scale a quadratic's coefficients to a primitive integer triple with a
+/// positive leading coefficient. The roots are invariant under an overall
+/// nonzero scale, so this only canonicalizes the FORM — clearing rational
+/// denominators (`a = 1/4` from `x = (x^2-1)/4`) and a negative leading sign
+/// (`-x^2+2x+1` from `x = (x^2-1)/2`) — which lets the shared quadratic-formula
+/// builder render `1-√2` / `2-√5` instead of `(1-√(5/4))/(1/2)` / `-(-1-√2)/1`.
+fn normalize_quadratic_coeffs(
+    a: &mut num_rational::BigRational,
+    b: &mut num_rational::BigRational,
+    c: &mut num_rational::BigRational,
+) {
+    use num_bigint::BigInt;
+    use num_integer::Integer;
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+
+    // Clear denominators by the LCM, then divide by the GCD of the numerators.
+    let lcm_den = a.denom().lcm(b.denom()).lcm(c.denom());
+    let scale = BigRational::from_integer(lcm_den);
+    *a = a.clone() * scale.clone();
+    *b = b.clone() * scale.clone();
+    *c = c.clone() * scale;
+    let g = a.numer().gcd(b.numer()).gcd(c.numer());
+    if !g.is_zero() && g > BigInt::one() {
+        let gr = BigRational::from_integer(g);
+        *a = a.clone() / gr.clone();
+        *b = b.clone() / gr.clone();
+        *c = c.clone() / gr;
+    }
+    if *a < BigRational::zero() {
+        *a = -a.clone();
+        *b = -b.clone();
+        *c = -c.clone();
+    }
+}
+
+/// Factor a non-negative integer `n` as `s² · m` with `m` squarefree, returning
+/// `(s, m)` so that `√n = s·√m`. Trial division is capped, so a pathologically
+/// large `n` simply keeps a less-reduced (but still correct) radicand.
+fn split_square_factor(n: &num_bigint::BigInt) -> (num_bigint::BigInt, num_bigint::BigInt) {
+    use num_bigint::BigInt;
+    use num_traits::{One, Zero};
+
+    let one = BigInt::one();
+    let cap = BigInt::from(100_000i64);
+    let mut s = BigInt::one();
+    let mut m = n.clone();
+    let mut i = BigInt::from(2i64);
+    while i <= cap && &i * &i <= m {
+        let i2 = &i * &i;
+        while !m.is_zero() && (&m % &i2).is_zero() {
+            m = &m / &i2;
+            s = &s * &i;
+        }
+        i = &i + &one;
+    }
+    (s, m)
+}
+
+/// Build the two roots `rat ± coeff·√m` in canonical AST form, dropping a unit
+/// surd coefficient (`1·√2` → `√2`) and a zero rational part (`0 ± √2` → `±√2`).
+fn build_surd_roots(
+    ctx: &mut Context,
+    rat: &num_rational::BigRational,
+    coeff: &num_rational::BigRational,
+    m: &num_bigint::BigInt,
+) -> (ExprId, ExprId) {
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+
+    let m_expr = num_expr_from_rational(ctx, &BigRational::from_integer(m.clone()));
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let half = ctx.add(Expr::Div(one, two));
+    let sqrt_m = ctx.add(Expr::Pow(m_expr, half));
+    let surd = if coeff.is_one() {
+        sqrt_m
+    } else {
+        let coeff_expr = num_expr_from_rational(ctx, coeff);
+        ctx.add(Expr::Mul(coeff_expr, sqrt_m))
+    };
+    if rat.is_zero() {
+        let neg_surd = ctx.add(Expr::Neg(surd));
+        (neg_surd, surd)
+    } else {
+        let rat_expr = num_expr_from_rational(ctx, rat);
+        let r1 = ctx.add(Expr::Sub(rat_expr, surd));
+        let r2 = ctx.add(Expr::Add(rat_expr, surd));
+        (r1, r2)
+    }
+}
+
 fn flip_relop(op: RelOp) -> RelOp {
     match op {
         RelOp::Leq => RelOp::Geq,
@@ -201,31 +293,57 @@ fn try_abs_self_equation(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<So
     solve_linear_arg_vs_zero(ctx, arg, arg_op, var)
 }
 
-/// Recover `var = N/D(var)` (variable isolated but still in the denominator) by
-/// cross-multiplying to `var·D - N = 0` and solving that polynomial (Round-4
-/// Cluster A — the log-product/quotient reductions land here too).
+/// Recover `var = N/D` (variable isolated on the left but still present on the
+/// right) by cross-multiplying to `var·D - N = 0` and solving that polynomial
+/// (Round-4 Clusters A + the `x = deg-2 poly(x)` follow-up).
+///
+/// Two shapes land here, both of which otherwise leak a nested-`solve` residual:
+///   - `D` CONTAINS `var` (`x = 8/(x+2)`, the log-product/quotient reductions) —
+///     `var·D - N` is genuinely quadratic.
+///   - `D` is var-free (`x = (x^2-1)/2`, `x = x^2-2`, reached when a sum of
+///     fractions or a quotient reorients to `x = quadratic/constant`) — only the
+///     QUADRATIC arm is taken; a constant denominator producing a LINEAR
+///     polynomial is a plain linear equation already owned by the
+///     circular/linear-collect path, so it is left untouched (preserving its
+///     didactic steps).
 ///
 /// Spurious roots where `D = 0` are dropped: for rational roots by exact
-/// evaluation of `D`, and for irrational (surd) roots by restricting to a LINEAR
-/// denominator, which can never vanish at an irrational point.
+/// evaluation of `D`, and for irrational (surd) roots by restricting to a
+/// denominator of degree ≤ 1, which can never vanish at an irrational point (a
+/// constant denominator vanishes nowhere; a linear one only at a rational point).
 fn try_cross_multiply_rational(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<SolutionSet> {
-    use cas_math::perfect_square_support::rational_sqrt;
     use cas_math::polynomial::Polynomial;
     use num_rational::BigRational;
     use num_traits::Zero;
 
+    let var_expr = ctx.var(var);
+    // Constant / var-free denominator (or no denominator at all): `var - rhs` is
+    // itself a polynomial in `var`. Build it DIRECTLY from `rhs` so the term signs
+    // are preserved — `combine_fractions_deterministic` flattens via
+    // `add_terms_no_sign`, which DROPS the sign of subtracted terms (`x^2-2`
+    // would become `x^2+2`, fabricating a wrong discriminant / a false "No
+    // solution"). Only the QUADRATIC case is recovered here: a linear result is a
+    // plain linear equation owned by the linear-collect path, and a cubic+ stays
+    // an honest residual. A var-free denominator has no poles.
+    let direct = ctx.add(Expr::Sub(var_expr, rhs));
+    if let Ok(poly) = Polynomial::from_expr(ctx, direct, var) {
+        if poly.degree() == 2 {
+            return solve_rational_quadratic(ctx, &poly, None);
+        }
+        return None;
+    }
+
+    // Variable in the denominator (`x = N/D(x)`, e.g. `x = 8/(x+2)` and the
+    // log-product/quotient reductions): cross-multiply to `var·D - N = 0` and
+    // solve, excluding spurious roots where `D = 0`.
     let (num, den) = crate::reciprocal::combine_fractions_deterministic(ctx, rhs)?;
     if !contains_var(ctx, den, var) {
         return None;
     }
-    let var_expr = ctx.var(var);
     let var_den = ctx.add(Expr::Mul(var_expr, den));
     let poly_expr = ctx.add(Expr::Sub(var_den, num));
     let poly = Polynomial::from_expr(ctx, poly_expr, var).ok()?;
     let den_poly = Polynomial::from_expr(ctx, den, var).ok();
-    let den_is_linear = den_poly.as_ref().is_some_and(|p| p.degree() == 1);
-    let den_zero = |r: &BigRational| den_poly.as_ref().is_some_and(|p| p.eval(r).is_zero());
-
     let zero = BigRational::zero();
     match poly.degree() {
         1 => {
@@ -235,56 +353,79 @@ fn try_cross_multiply_rational(ctx: &mut Context, rhs: ExprId, var: &str) -> Opt
             }
             let b = poly.coeffs.first().cloned().unwrap_or_else(|| zero.clone());
             let root = -b / a;
-            if den_zero(&root) {
+            if den_poly.as_ref().is_some_and(|p| p.eval(&root).is_zero()) {
                 return Some(SolutionSet::Empty);
             }
             let e = num_expr_from_rational(ctx, &root);
             Some(SolutionSet::Discrete(vec![e]))
         }
-        2 => {
-            let a = poly.coeffs.get(2)?.clone();
-            if a.is_zero() {
-                return None;
-            }
-            let b = poly.coeffs.get(1).cloned().unwrap_or_else(|| zero.clone());
-            let c = poly.coeffs.first().cloned().unwrap_or_else(|| zero.clone());
-            let four = BigRational::from_integer(4.into());
-            let two = BigRational::from_integer(2.into());
-            let disc = b.clone() * b.clone() - four * a.clone() * c;
-            if disc < zero {
-                return Some(SolutionSet::Empty);
-            }
-            let two_a = two * a.clone();
-            if let Some(sd) = rational_sqrt(&disc) {
-                let r1 = (-b.clone() - sd.clone()) / two_a.clone();
-                let r2 = (-b + sd) / two_a;
-                let mut roots: Vec<BigRational> = if r1 == r2 { vec![r1] } else { vec![r1, r2] };
-                roots.retain(|r| !den_zero(r));
-                let exprs: Vec<ExprId> = roots
-                    .iter()
-                    .map(|r| num_expr_from_rational(ctx, r))
-                    .collect();
-                Some(if exprs.is_empty() {
-                    SolutionSet::Empty
-                } else {
-                    SolutionSet::Discrete(exprs)
-                })
-            } else if den_is_linear {
-                let disc_expr = num_expr_from_rational(ctx, &disc);
-                let half = num_expr_from_rational(ctx, &BigRational::new(1.into(), 2.into()));
-                let sqrt_disc = ctx.add(Expr::Pow(disc_expr, half));
-                let neg_b = num_expr_from_rational(ctx, &(-b));
-                let two_a_expr = num_expr_from_rational(ctx, &two_a);
-                let lo_num = ctx.add(Expr::Sub(neg_b, sqrt_disc));
-                let r1 = ctx.add(Expr::Div(lo_num, two_a_expr));
-                let hi_num = ctx.add(Expr::Add(neg_b, sqrt_disc));
-                let r2 = ctx.add(Expr::Div(hi_num, two_a_expr));
-                Some(SolutionSet::Discrete(vec![r1, r2]))
-            } else {
-                None
-            }
-        }
+        2 => solve_rational_quadratic(ctx, &poly, den_poly.as_ref()),
         _ => None,
+    }
+}
+
+/// Solve a degree-2 polynomial `poly` (in `var`) arising from a `var = N/D`
+/// reorientation, returning its real roots with spurious denominator roots
+/// excluded. `den_poly` is the denominator as a polynomial when `D` contains
+/// `var` (used to drop poles); `None` means a var-free denominator (no poles).
+///
+/// The quadratic is canonicalized to a primitive integer triple with `a > 0`
+/// (roots are unchanged) so surd roots render as `1-√2` / `2+√5`. Irrational
+/// roots are only emitted when the denominator has degree ≤ 1 (it can never
+/// vanish at an irrational point, so no surd pole-check is needed).
+fn solve_rational_quadratic(
+    ctx: &mut Context,
+    poly: &cas_math::polynomial::Polynomial,
+    den_poly: Option<&cas_math::polynomial::Polynomial>,
+) -> Option<SolutionSet> {
+    use cas_math::perfect_square_support::rational_sqrt;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    let zero = BigRational::zero();
+    let mut a = poly.coeffs.get(2)?.clone();
+    if a.is_zero() {
+        return None;
+    }
+    let mut b = poly.coeffs.get(1).cloned().unwrap_or_else(|| zero.clone());
+    let mut c = poly.coeffs.first().cloned().unwrap_or_else(|| zero.clone());
+    normalize_quadratic_coeffs(&mut a, &mut b, &mut c);
+    let four = BigRational::from_integer(4.into());
+    let two = BigRational::from_integer(2.into());
+    let disc = b.clone() * b.clone() - four * a.clone() * c.clone();
+    if disc < zero {
+        return Some(SolutionSet::Empty);
+    }
+    let den_zero = |r: &BigRational| den_poly.is_some_and(|p| p.eval(r).is_zero());
+    let surd_safe = den_poly.is_none_or(|p| p.degree() <= 1);
+
+    if let Some(sd) = rational_sqrt(&disc) {
+        let two_a = two * a.clone();
+        let r1 = (-b.clone() - sd.clone()) / two_a.clone();
+        let r2 = (-b.clone() + sd) / two_a;
+        let mut roots: Vec<BigRational> = if r1 == r2 { vec![r1] } else { vec![r1, r2] };
+        roots.retain(|r| !den_zero(r));
+        let exprs: Vec<ExprId> = roots
+            .iter()
+            .map(|r| num_expr_from_rational(ctx, r))
+            .collect();
+        Some(if exprs.is_empty() {
+            SolutionSet::Empty
+        } else {
+            SolutionSet::Discrete(exprs)
+        })
+    } else if surd_safe {
+        // Canonical `rat ± coeff·√m` with a squarefree radicand (renders cleanly
+        // without a downstream simplifier, which this crate cannot invoke).
+        let disc_int = disc.to_integer();
+        let (s, m) = split_square_factor(&disc_int);
+        let two_a = two * a.clone();
+        let rat = -b.clone() / two_a.clone();
+        let coeff = BigRational::from_integer(s) / two_a;
+        let (r1, r2) = build_surd_roots(ctx, &rat, &coeff, &m);
+        Some(SolutionSet::Discrete(vec![r1, r2]))
+    } else {
+        None
     }
 }
 
@@ -19904,6 +20045,93 @@ mod tests {
             resolve_isolated_variable_outcome(&mut ctx, rhs2, RelOp::Eq, "x"),
             IsolatedVariableOutcome::Solved(SolutionSet::Empty)
         ));
+    }
+
+    #[test]
+    fn resolve_isolated_variable_outcome_solves_constant_denominator_quadratic() {
+        use num_traits::ToPrimitive;
+        // x = x^2 - 2  =>  x^2 - x - 2 = 0  =>  {-1, 2} (rational roots, den = 1).
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let x_sq = ctx.add(Expr::Pow(x, two));
+        let two_b = ctx.num(2);
+        let rhs = ctx.add(Expr::Sub(x_sq, two_b));
+        match resolve_isolated_variable_outcome(&mut ctx, rhs, RelOp::Eq, "x") {
+            IsolatedVariableOutcome::Solved(SolutionSet::Discrete(roots)) => {
+                let vals: std::collections::BTreeSet<i64> = roots
+                    .iter()
+                    .filter_map(|&r| match ctx.get(r) {
+                        Expr::Number(n) if n.is_integer() => n.to_integer().to_i64(),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(vals, [-1i64, 2].into_iter().collect());
+            }
+            other => panic!("expected discrete {{-1, 2}}, got {other:?}"),
+        }
+
+        // x = (x^2 - 1)/2  =>  x^2 - 2x - 1 = 0  =>  {1 ± √2}: two distinct surd
+        // roots (constant denominator producing a degree-2 polynomial). Before the
+        // follow-up this leaked a nested-`solve` residual.
+        let x2 = ctx.var("x");
+        let twop = ctx.num(2);
+        let xsq2 = ctx.add(Expr::Pow(x2, twop));
+        let one = ctx.num(1);
+        let numer = ctx.add(Expr::Sub(xsq2, one));
+        let two_den = ctx.num(2);
+        let rhs2 = ctx.add(Expr::Div(numer, two_den));
+        match resolve_isolated_variable_outcome(&mut ctx, rhs2, RelOp::Eq, "x") {
+            IsolatedVariableOutcome::Solved(SolutionSet::Discrete(roots)) => {
+                assert_eq!(roots.len(), 2, "expected the two surd roots 1 ± √2");
+                // Neither root is an integer literal — they are genuine surds.
+                assert!(roots
+                    .iter()
+                    .all(|&r| !matches!(ctx.get(r), Expr::Number(n) if n.is_integer())));
+            }
+            other => panic!("expected two discrete surd roots, got {other:?}"),
+        }
+
+        // A constant denominator producing a LINEAR polynomial (`x = 2x + 1`) is a
+        // plain linear equation; it is NOT claimed here (left to linear-collect).
+        let x3 = ctx.var("x");
+        let two_c = ctx.num(2);
+        let two_x = ctx.add(Expr::Mul(two_c, x3));
+        let one_c = ctx.num(1);
+        let lin_rhs = ctx.add(Expr::Add(two_x, one_c));
+        assert!(matches!(
+            resolve_isolated_variable_outcome(&mut ctx, lin_rhs, RelOp::Eq, "x"),
+            IsolatedVariableOutcome::ContainsTargetVariable
+        ));
+    }
+
+    #[test]
+    fn split_square_factor_and_normalize_quadratic_coeffs_canonicalize() {
+        use num_bigint::BigInt;
+        use num_rational::BigRational;
+
+        // √n = s·√m with m squarefree.
+        for (n, s, m) in [(8, 2, 2), (20, 2, 5), (12, 2, 3), (48, 4, 3), (7, 1, 7)] {
+            assert_eq!(
+                split_square_factor(&BigInt::from(n)),
+                (BigInt::from(s), BigInt::from(m)),
+                "split_square_factor({n})"
+            );
+        }
+
+        let int = |v: i64| BigRational::from_integer(v.into());
+        // -x^2 + 2x + 1  ->  x^2 - 2x - 1  (positive leading coefficient).
+        let (mut a, mut b, mut c) = (int(-1), int(2), int(1));
+        normalize_quadratic_coeffs(&mut a, &mut b, &mut c);
+        assert_eq!((a, b, c), (int(1), int(-2), int(-1)));
+        // (1/4)x^2 - x - 1/4  ->  x^2 - 4x - 1  (cleared denominators).
+        let (mut a2, mut b2, mut c2) = (
+            BigRational::new(1.into(), 4.into()),
+            int(-1),
+            BigRational::new((-1).into(), 4.into()),
+        );
+        normalize_quadratic_coeffs(&mut a2, &mut b2, &mut c2);
+        assert_eq!((a2, b2, c2), (int(1), int(-4), int(-1)));
     }
 
     #[test]
