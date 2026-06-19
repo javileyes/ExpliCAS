@@ -11,14 +11,57 @@ use std::collections::HashMap;
 
 use crate::solve_backend_contract::{CoreSolverOptions, SolveBackend};
 
+/// True when the argument `c` of `arcsin`/`arccos` is PROVABLY outside `[-1, 1]`,
+/// so the inverse-trig value is non-real and any candidate root containing it must
+/// be dropped. EXACT: decides `|c| > 1` for any single quadratic surd `A + B·√n`
+/// — covering rationals (`2`, `5/4`) AND surds (`√2`, `√3`, `√2/2`) — via the same
+/// exact surd-sign logic as [`cas_math::root_forms::provable_sign_vs_zero`]
+/// (`|c| > 1 ⟺ c − 1 > 0 ∨ c + 1 < 0`). A transcendental argument (`π`, `e`) or
+/// anything `as_linear_surd` cannot reduce yields `false`, so a valid root is NEVER
+/// dropped on an unproven bound (the boundary `|c| = 1`, `arcsin(±1) = ±π/2`, is
+/// kept). Never uses f64 — a float gate could drop a root at `c = √2`.
+fn inv_trig_arg_provably_out_of_range(ctx: &Context, c: ExprId) -> bool {
+    use cas_math::root_forms::as_linear_surd;
+    use num_rational::BigRational;
+    use num_traits::{Signed, Zero};
+    use std::cmp::Ordering;
+
+    let Some((a, b, n)) = as_linear_surd(ctx, c) else {
+        return false;
+    };
+    // Exact sign of `p + B·√n` versus zero (`n ≥ 0` from `as_linear_surd`).
+    let surd_sign = |p: BigRational| -> Ordering {
+        let zero = BigRational::zero();
+        if b.is_zero() || n.is_zero() {
+            return p.cmp(&zero);
+        }
+        if p.is_zero() {
+            return b.cmp(&zero); // B·√n, with √n > 0
+        }
+        let (sp, sb) = (p.cmp(&zero), b.cmp(&zero));
+        if sp == sb {
+            return sp; // same sign -> that sign
+        }
+        // Opposite signs: sign(p + B·√n) = sign(B) · sign(B²·n − p²).
+        let inner = (b.clone() * b.clone() * n.clone()).cmp(&(p.clone() * p.clone()));
+        if b.is_negative() {
+            inner.reverse()
+        } else {
+            inner
+        }
+    };
+    let one = BigRational::from_integer(1.into());
+    surd_sign(a.clone() - one.clone()) == Ordering::Greater || surd_sign(a + one) == Ordering::Less
+}
+
 /// True when `expr` is not a real value: it contains a non-finite / undefined
 /// constant (∞ or undefined) anywhere, or an out-of-range inverse-trig term
 /// (`arcsin(c)` / `arccos(c)` with `|c| > 1`, whose real domain is `[-1, 1]`).
 /// Such a value is never a real solution of an equation over ℝ — e.g.
-/// `solve(cos(x)=2, x)` must not report `{ arccos(2) }`.
+/// `solve(cos(x)=2, x)` must not report `{ arccos(2) }`, and `solve(sin(x)=√2, x)`
+/// must not report `{ arcsin(√2) }`.
 fn solution_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
     use cas_ast::BuiltinFn;
-    use num_traits::Signed;
     match ctx.get(expr) {
         Expr::Constant(Constant::Infinity | Constant::Undefined) => true,
         Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
@@ -26,14 +69,13 @@ fn solution_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
         }
         Expr::Neg(a) | Expr::Hold(a) => solution_contains_nonfinite(ctx, *a),
         Expr::Function(fn_id, args) => {
-            // arcsin/arccos of a constant outside [-1, 1] is undefined over ℝ.
+            // arcsin/arccos of a constant PROVABLY outside [-1, 1] is non-real over ℝ.
             if args.len() == 1
                 && (ctx.is_builtin(*fn_id, BuiltinFn::Arcsin)
                     || ctx.is_builtin(*fn_id, BuiltinFn::Arccos)
                     || ctx.is_builtin(*fn_id, BuiltinFn::Asin)
                     || ctx.is_builtin(*fn_id, BuiltinFn::Acos))
-                && cas_math::numeric_eval::as_rational_const(ctx, args[0])
-                    .is_some_and(|c| c.abs() > num_rational::BigRational::from_integer(1.into()))
+                && inv_trig_arg_provably_out_of_range(ctx, args[0])
             {
                 return true;
             }
@@ -517,6 +559,27 @@ mod tests {
         assert!(!solution_contains_nonfinite(&ctx, arcsin_half));
         assert!(!solution_contains_nonfinite(&ctx, arccos_one));
         assert!(!solution_contains_nonfinite(&ctx, arcsin_neg_one));
+
+        // Round-4 Cluster C: a SURD argument outside [-1, 1] (`√2 ≈ 1.41`, `√3`,
+        // `2√2`) is non-real and must be dropped — EXACTLY, via the quadratic-surd
+        // sign logic (a float gate could drop a valid root). In-range surds
+        // (`√2/2 ≈ 0.71`, `√3/2`) are kept.
+        for src in ["sqrt(2)", "sqrt(3)", "2*sqrt(2)", "sqrt(8)", "-sqrt(2)"] {
+            let arg = cas_parser::parse(src, &mut ctx).expect("surd");
+            let call = ctx.call("arcsin", vec![arg]);
+            assert!(
+                solution_contains_nonfinite(&ctx, call),
+                "arcsin({src}) is non-real (|arg| > 1)"
+            );
+        }
+        for src in ["sqrt(2)/2", "sqrt(3)/2", "1/2", "-sqrt(2)/2"] {
+            let arg = cas_parser::parse(src, &mut ctx).expect("surd");
+            let call = ctx.call("arccos", vec![arg]);
+            assert!(
+                !solution_contains_nonfinite(&ctx, call),
+                "arccos({src}) is in range (|arg| <= 1), must be KEPT"
+            );
+        }
     }
 
     #[test]

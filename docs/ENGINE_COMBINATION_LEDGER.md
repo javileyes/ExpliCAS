@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 212 (newest first)
+Active entries: 213 (newest first)
 
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
+- 2026-06-19 | `retained` | real-solution filter; `crates/cas_solver/src/solve_backend_local.rs` solution... | Retained soundness fix: solve(sin(x)=sqrt(2)) -> {arcsin(sqrt(2))} (Round-4 Cluster C)
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
@@ -9275,3 +9276,31 @@ Active entries: 212 (newest first)
   - do NOT extend the shared extract_rational_pi_multiple to gain sign handling: it has many trig/limit callers
     (huella risk). A locally-scoped recursive pi-multiple evaluator (Neg/Div/Mul by value) gets full coverage
     without disturbing them.
+
+## 2026-06-19 - Retained soundness fix: solve(sin(x)=sqrt(2)) -> {arcsin(sqrt(2))} (Round-4 Cluster C)
+- area:
+  - real-solution filter; `crates/cas_solver/src/solve_backend_local.rs` solution_contains_nonfinite +
+    new inv_trig_arg_provably_out_of_range (reuses cas_math::root_forms::as_linear_surd)
+- status:
+  - `retained` (HONESTY soundness fix; closes the non-real-inverse-trig-root weak spot for surd RHS)
+- capture:
+  - investment_class: soundness
+  - cell: solve(sin(x)=sqrt(2)), solve(cos(x)=sqrt(2)), solve(sin(x)=sqrt(3)), solve(sin(x)=2*sqrt(2)),
+    solve(sin(x)=sqrt(8)) -> "No solution" (were {arcsin(sqrt(2))} etc.); in-range surds/rationals unchanged
+    (sin(x)=sqrt(2)/2 -> {pi/4}, cos(x)=sqrt(3)/2 -> {pi/6}, sin(x)=1 -> {pi/2}, cos(x)=-1 -> {arccos(-1)})
+  - behavior_change_expected: yes - surd arcsin/arccos arg with |c|>1 -> dropped (No solution);
+    guardrail+pressure STRUCTURALLY byte-identical (state/passed/failed + scalar counters unchanged), full
+    cargo test --workspace green
+- observed (Round-4 audit Cluster C):
+  - the out-of-range drop decided |c|>1 only via as_rational_const, so a surd argument (sqrt(2)) returned None
+    and slipped through, leaking a non-real arcsin(sqrt(2)) as a real root. The rational |c|>1 cases
+    (sin(x)=2) were already dropped; only the non-rational arguments leaked.
+  - fix: reduce c to the quadratic-surd normal form A + B*sqrt(n) (as_linear_surd) and decide |c|>1 via the
+    exact surd-sign logic (c-1>0 or c+1<0), never f64.
+- retained learning:
+  - a domain gate keyed on as_rational_const silently passes every IRRATIONAL constant. When the real domain
+    is an interval bound (|c|<=1, x>=0, ...), decide it with the exact surd machinery (as_linear_surd +
+    provable_sign_vs_zero), which proves the bound for A+B*sqrt(n), not just rationals.
+  - drop ONLY on an exact proof of the bound: as_linear_surd returns None for transcendentals (pi, e) and
+    nested radicals, and the gate then KEEPS the root (a sound under-drop), never guessing with a float -
+    the same exact-or-keep discipline as root_violates_required_condition.
