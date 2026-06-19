@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 215 (newest first)
+Active entries: 216 (newest first)
 
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
@@ -122,6 +122,7 @@ Active entries: 215 (newest first)
 - 2026-06-19 | `retained` | real-solution filter; `crates/cas_solver/src/solve_backend_local.rs` solution... | Retained soundness fix: solve(sin(x)=sqrt(2)) -> {arcsin(sqrt(2))} (Round-4 Cluster C)
 - 2026-06-19 | `retained` | equation-level domain conditions; `crates/cas_solver_core/src/domain_inferenc... | Retained soundness fix: solve(sqrt(x)=a) dropped the a>=0 condition (Round-4 Cluster B)
 - 2026-06-19 | `retained` | solve backend post-step; `crates/cas_solver/src/solve_backend_local.rs` inter... | Retained soundness fix: sqrt/ln/log inequality drops the argument-domain (Round-4 Cluster F)
+- 2026-06-19 | `retained` | combinatorics; `crates/cas_math/src/number_theory_support.rs` compute_choose_... | Retained soundness fix: choose/perm fabricated 0 for negative n (Round-4 Cluster N)
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
@@ -9374,3 +9375,28 @@ Active entries: 215 (newest first)
   - NEVER run an interval-validity gate on an unsimplified bound: compare_values falls back to STRUCTURAL
     ordering on a Pow node (compare(0, 0^2)=Less), silently keeping an empty interval. Simplify the bound to a
     number first so the gate is exact -- the recurring "soundness gates must be exact" lesson.
+
+## 2026-06-19 - Retained soundness fix: choose/perm fabricated 0 for negative n (Round-4 Cluster N)
+- area:
+  - combinatorics; `crates/cas_math/src/number_theory_support.rs` compute_choose_expr / compute_perm_expr
+    guard reordering + generalized binomial / falling factorial for n<0
+- status:
+  - `retained` (HONESTY soundness fix; closes the choose/perm guard-ordering wrong-value)
+- capture:
+  - investment_class: soundness
+  - cell: choose(-5,0)=1, choose(-1,1)=-1, choose(-1,2)=1, choose(-1,3)=-1, choose(-2,3)=-4, perm(-3,0)=1,
+    perm(-3,2)=12 (all were 0); positive cases unchanged (choose(5,2)=10, choose(2,5)=0, perm(5,2)=20)
+  - behavior_change_expected: yes - negative-n choose/perm now the generalized binomial / falling factorial;
+    guardrail+pressure STRUCTURALLY byte-identical, full cargo test --workspace green; 255-cell sympy grid clean
+- observed (Round-4 audit Cluster N):
+  - the guard `if k.is_negative() || k > n { return 0; }` ran BEFORE `if k.is_zero() || k == n { return 1; }`,
+    so for n<0 the comparison k>n (e.g. 0 > -5) fired and returned 0 before the k==0 boundary -- contradicting
+    choose(n,0)=1 (true under every convention) and the engine's own choose(0,0)=choose(5,0)=1.
+  - fix: check k<0 -> 0 and k=0 -> 1 first; restrict k>n -> 0 (and the C(n,k)=C(n,n-k) symmetry) to n>=0; for
+    n<0 fall through to C(n,k)=ff(n,k)/k! (matches sympy.binomial). Same shape for perm (falling factorial).
+- retained learning:
+  - GUARD ORDER is correctness: a boundary value (k=0 -> 1) must be checked before a short-circuit (k>n -> 0)
+    whose precondition (n>=0) it does not share. The k>n->0 rule silently assumes n>=0; gate it explicitly.
+  - extend to the GENERALIZED convention rather than erroring: C(n,k)=ff(n,k)/k! is integer-valued for all
+    integer n and k>=0 and naturally yields 0 for 0<=n<k (the product hits the n-i=0 factor), unifying the
+    combinatorial and generalized cases in one falling-factorial loop. Cross-check the whole grid vs sympy.

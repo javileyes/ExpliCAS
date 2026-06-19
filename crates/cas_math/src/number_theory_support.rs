@@ -567,17 +567,34 @@ pub fn compute_choose_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<Ex
     let val_n = extract_integer_bigint(ctx, n)?;
     let val_k = extract_integer_bigint(ctx, k)?;
 
-    if val_k.is_negative() || val_k > val_n {
+    // `k < 0` is the empty selection under EVERY convention.
+    if val_k.is_negative() {
         return Some(ctx.num(0));
     }
-    if val_k.is_zero() || val_k == val_n {
+    // `k = 0 → 1` for ANY `n` — combinatorial empty selection AND the generalized
+    // binomial. (Round-4 Cluster N: this boundary must be checked BEFORE the
+    // `k > n → 0` short-circuit, which for `n < 0` would wrongly fabricate 0.)
+    if val_k.is_zero() {
         return Some(ctx.num(1));
     }
-
-    let k_eff = if &val_k * 2 > val_n {
-        &val_n - &val_k
+    // For `n ≥ 0` the combinatorial rules apply: `k > n → 0`, `k == n → 1`, and the
+    // symmetry `C(n,k) = C(n, n-k)` keeps the product short. For `n < 0` fall through
+    // to the generalized binomial `C(n,k) = ff(n,k)/k!` (matches `sympy.binomial`,
+    // e.g. `C(-1,2)=1`, `C(-2,3)=-4`) — never a fabricated 0.
+    let k_eff = if !val_n.is_negative() {
+        if val_k > val_n {
+            return Some(ctx.num(0));
+        }
+        if val_k == val_n {
+            return Some(ctx.num(1));
+        }
+        if &val_k * 2 > val_n {
+            &val_n - &val_k
+        } else {
+            val_k.clone()
+        }
     } else {
-        val_k
+        val_k.clone()
     };
 
     let mut num = BigInt::one();
@@ -598,11 +615,19 @@ pub fn compute_perm_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<Expr
     let val_n = extract_integer_bigint(ctx, n)?;
     let val_k = extract_integer_bigint(ctx, k)?;
 
-    if val_k.is_negative() || val_k > val_n {
+    // `k < 0` is empty; `k = 0 → 1` for ANY `n` (checked BEFORE the `k > n → 0`
+    // short-circuit so a negative `n` is not fabricated to 0 — Round-4 Cluster N).
+    if val_k.is_negative() {
         return Some(ctx.num(0));
     }
     if val_k.is_zero() {
         return Some(ctx.num(1));
+    }
+    // `k > n → 0` is combinatorial and applies only for `n ≥ 0`. For `n < 0`,
+    // `perm` continues as the falling factorial `ff(n,k)` (matches `sympy.ff`,
+    // e.g. `perm(-3,2)=12`) — never a fabricated 0.
+    if !val_n.is_negative() && val_k > val_n {
+        return Some(ctx.num(0));
     }
 
     let mut res = BigInt::one();
@@ -657,6 +682,59 @@ pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
 mod tests {
     use super::*;
     use cas_parser::parse;
+
+    #[test]
+    fn choose_and_perm_handle_negative_n_via_generalized_binomial() {
+        // Round-4 Cluster N: the `k > n -> 0` short-circuit must NOT fire before the
+        // `k == 0 -> 1` boundary, and `n < 0` follows the generalized binomial
+        // C(n,k) = ff(n,k)/k! (matches sympy.binomial) — never a fabricated 0.
+        let int_val = |ctx: &Context, e: ExprId| -> i64 {
+            match ctx.get(e) {
+                Expr::Number(r) if r.is_integer() => {
+                    use num_traits::ToPrimitive;
+                    r.to_integer().to_i64().expect("fits i64")
+                }
+                other => panic!("expected integer, got {other:?}"),
+            }
+        };
+        let mut ctx = Context::new();
+        let chk_choose = |ctx: &mut Context, n: i64, k: i64, want: i64| {
+            let (ne, ke) = (ctx.num(n), ctx.num(k));
+            let got = compute_choose_expr(ctx, ne, ke).expect("choose");
+            assert_eq!(int_val(ctx, got), want, "choose({n},{k})");
+        };
+        let chk_perm = |ctx: &mut Context, n: i64, k: i64, want: i64| {
+            let (ne, ke) = (ctx.num(n), ctx.num(k));
+            let got = compute_perm_expr(ctx, ne, ke).expect("perm");
+            assert_eq!(int_val(ctx, got), want, "perm({n},{k})");
+        };
+
+        // The 5 audit probes + the generalized values (sympy-verified).
+        chk_choose(&mut ctx, -5, 0, 1);
+        chk_choose(&mut ctx, -1, 0, 1);
+        chk_choose(&mut ctx, -1, 1, -1);
+        chk_choose(&mut ctx, -1, 2, 1);
+        chk_choose(&mut ctx, -1, 3, -1);
+        chk_choose(&mut ctx, -2, 3, -4);
+        chk_perm(&mut ctx, -3, 0, 1);
+        chk_perm(&mut ctx, -3, 2, 12);
+
+        // Positive controls unchanged + k>n -> 0 still holds for n>=0.
+        chk_choose(&mut ctx, 5, 2, 10);
+        chk_choose(&mut ctx, 5, 0, 1);
+        chk_choose(&mut ctx, 5, 5, 1);
+        chk_choose(&mut ctx, 2, 5, 0);
+        chk_choose(&mut ctx, 0, 0, 1);
+        chk_choose(&mut ctx, 10, 3, 120);
+        chk_perm(&mut ctx, 5, 2, 20);
+        chk_perm(&mut ctx, 3, 3, 6);
+        chk_perm(&mut ctx, 2, 5, 0);
+
+        // k < 0 is empty under every convention.
+        chk_choose(&mut ctx, 5, -1, 0);
+        chk_choose(&mut ctx, -1, -1, 0);
+        chk_perm(&mut ctx, 5, -2, 0);
+    }
 
     #[test]
     fn detects_poly_result_even_inside_hold() {

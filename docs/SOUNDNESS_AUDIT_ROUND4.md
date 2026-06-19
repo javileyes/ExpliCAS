@@ -404,6 +404,8 @@ The remaining clusters (C: surd/transcendental trig RHS bypassing the |c|<=1 ran
 
 ### N. choose/perm guard ordering: the 'k > n -> 0' short-circuit fires before the 'k == 0 -> 1' boundary, fabricating 0 for negative first argument
 
+**Severity: medium · wrong-value · 5 probes. — FIXED (commit `PENDING_HASH_N`).** `compute_choose_expr` / `compute_perm_expr` (`crates/cas_math/src/number_theory_support.rs`) reordered: `k < 0 → 0` and `k = 0 → 1` (for ANY `n`) are checked FIRST; the `k > n → 0` short-circuit (and, for `choose`, the `C(n,k)=C(n,n-k)` symmetry) is now restricted to `n ≥ 0`. For `n < 0` the code falls through to the GENERALIZED binomial `C(n,k) = ff(n,k)/k!` (and `perm` to the falling factorial `ff(n,k)`), exactly matching `sympy.binomial` / `sympy.ff` — never a fabricated 0. Now all 5 probes are correct: `choose(-5,0)=1`, `choose(-1,1)=-1`, `choose(-1,2)=1`, `perm(-3,0)=1`, `choose(-1,0)=1`, plus the generalized values `choose(-2,3)=-4`, `choose(-1,3)=-1`, `perm(-3,2)=12`. Positive cases are unchanged (`choose(5,2)=10`, `choose(2,5)=0`, `choose(0,0)=1`, `perm(5,2)=20`, `perm(2,5)=0`) and `k<0` stays `0`. **A 255-cell grid cross-check against sympy** (`n ∈ [-6,12]`, `k ∈ [-2,10]`, plus large/boundary spot checks `choose(1000,998)`, `choose(-100,5)`, `choose(50,50)`) found **ZERO mismatches** for both functions. Guardrail+pressure structurally byte-identical; new unit test `choose_and_perm_handle_negative_n_via_generalized_binomial`.
+
 **Severity: medium · wrong-value · 5 probes.**
 
 
