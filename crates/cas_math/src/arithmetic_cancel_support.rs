@@ -1453,6 +1453,39 @@ fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
+/// Evaluate `arg` to a rational multiple `k` of π (`arg = k·π`), unwrapping `Neg`
+/// and numeric `Div`/`Mul` at any position — `-π/2 = Div(Neg(π), 2)`, `-π`,
+/// `(-1/2)·π`, `3·π/2` all resolve. The shared `extract_rational_pi_multiple`
+/// matches only a few surface forms (no sign handling); this covers the rest
+/// WITHOUT touching that huella-sensitive helper (used by many trig/limit callers).
+/// Returns `None` for any symbolic (non-numeric-coefficient) shape — e.g. `x·π` —
+/// so a symbolic `tan(x·π)` is never flagged.
+fn rational_pi_multiple_signed(ctx: &Context, arg: ExprId) -> Option<BigRational> {
+    match ctx.get(arg) {
+        Expr::Constant(cas_ast::Constant::Pi) => Some(BigRational::one()),
+        Expr::Neg(inner) => rational_pi_multiple_signed(ctx, *inner).map(|k| -k),
+        Expr::Div(num, den) => {
+            let kn = rational_pi_multiple_signed(ctx, *num)?;
+            let d = exact_rational_value(ctx, *den)?;
+            if d.is_zero() {
+                None
+            } else {
+                Some(kn / d)
+            }
+        }
+        Expr::Mul(l, r) => {
+            if let Some(c) = exact_rational_value(ctx, *l) {
+                rational_pi_multiple_signed(ctx, *r).map(|k| k * c)
+            } else if let Some(c) = exact_rational_value(ctx, *r) {
+                rational_pi_multiple_signed(ctx, *l).map(|k| k * c)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 /// True when `expr` is structurally UNDEFINED over ℝ by an exact rule:
 ///   • `0^k` for `k ≤ 0` — `0^0` (indeterminate) and `0^(neg) = 1/0`. The zero exponent
 ///     goes through `is_provably_zero` so `0^(x-x)` is covered; a positive exponent
@@ -1460,12 +1493,16 @@ fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
 ///   • `b^(p/q)` an EVEN root of a provably-NEGATIVE base (`(-2)^(1/2)`, `(-1)^(3/2)`,
 ///     `(-4)^(1/4)`) — an even root of a negative is undefined over ℝ. An ODD
 ///     denominator is a real root and is NOT flagged (`(-8)^(1/3) = -2`).
-///   • `cot(0)` and `csc(0)` — the `c/0` sin-denominator poles (any provably-zero arg).
+///   • `cot(kπ)` and `csc(kπ)` — the `c/0` sin-denominator poles at every integer
+///     multiple of π (`k = 0` also via `is_provably_zero`, which covers `x-x`).
+///   • `tan(kπ)` and `sec(kπ)` — the cos-denominator poles at the half-odd-integer
+///     multiples of π (`tan(π/2)`, `sec(3π/2)`), decided by exact rational-π analysis.
+///   • `ln(c)` / `log(c)` of a provably-NEGATIVE rational `c` (`ln(-5)`).
 ///
-/// `ln(0) = −∞` and the `tan`/`sec` `π/2`-poles are intentionally EXCLUDED (the former
-/// is non-finite not undefined, with `1/ln(0) = 0`; the latter needs rational-π
-/// analysis). Every case here is genuinely undefined, so no legitimate value or
-/// cancellation is ever over-blocked.
+/// `ln(0) = −∞` is intentionally EXCLUDED (non-finite, not undefined, with
+/// `1/ln(0) = 0`). Every case here is genuinely undefined, so no legitimate value or
+/// cancellation is ever over-blocked — in particular a defined trig value such as
+/// `tan(π/3)` (`k = 1/3`, not a half-odd-integer) and `ln(5)` are never flagged.
 fn is_structurally_undefined_over_reals(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
@@ -1482,17 +1519,32 @@ fn is_structurally_undefined_over_reals(ctx: &Context, expr: ExprId) -> bool {
         }
         Expr::Function(fn_id, args) if args.len() == 1 => {
             let arg = args[0];
-            // `cot(0)` / `csc(0)`: the `c/0` sin-denominator poles.
-            if (ctx.is_builtin(*fn_id, BuiltinFn::Cot) || ctx.is_builtin(*fn_id, BuiltinFn::Csc))
-                && is_provably_zero(ctx, arg)
-            {
-                return true;
+            let fid = *fn_id;
+            // `cot`/`csc` poles: `sin(arg) = 0`  ⟺  `arg = k·π`, `k ∈ ℤ`. `k = 0` is
+            // also caught by `is_provably_zero` (covering `x-x` and friends).
+            if ctx.is_builtin(fid, BuiltinFn::Cot) || ctx.is_builtin(fid, BuiltinFn::Csc) {
+                return is_provably_zero(ctx, arg)
+                    || rational_pi_multiple_signed(ctx, arg).is_some_and(|k| k.is_integer());
+            }
+            // `tan`/`sec` poles: `cos(arg) = 0`  ⟺  `arg = (2m+1)·π/2`, i.e. `k = arg/π`
+            // is a half-odd-integer (`2k` is an odd integer — `2k` is integral while
+            // `k` is not). `tan(π/2)` matches; `tan(π/3)`, `tan(π/4)` do not.
+            if ctx.is_builtin(fid, BuiltinFn::Tan) || ctx.is_builtin(fid, BuiltinFn::Sec) {
+                return rational_pi_multiple_signed(ctx, arg).is_some_and(|k| {
+                    let double = k.clone() * BigRational::from_integer(num_bigint::BigInt::from(2));
+                    double.is_integer() && !k.is_integer()
+                });
+            }
+            // `ln`/`log` of a provably-NEGATIVE argument is undefined over ℝ (`ln(-5)`).
+            // `ln(0) = −∞` (non-finite) is deliberately NOT flagged here.
+            if ctx.is_builtin(fid, BuiltinFn::Ln) || ctx.is_builtin(fid, BuiltinFn::Log) {
+                return exact_rational_value(ctx, arg).is_some_and(|a| a.is_negative());
             }
             // `sqrt` of a provably-negative argument: an even root of a negative,
             // undefined over ℝ. (The `(-n)^(1/2)` spelling is the `Pow` arm above; this
             // catches the `Sqrt` builtin the parser emits for `sqrt(...)`.) `cbrt` /
             // odd roots are real and are NOT flagged.
-            ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+            ctx.is_builtin(fid, BuiltinFn::Sqrt)
                 && exact_rational_value(ctx, arg).is_some_and(|a| a.is_negative())
         }
         _ => false,
@@ -1874,6 +1926,63 @@ mod tests {
             assert!(
                 !expr_carries_undefined(&ctx, e),
                 "`{src}` is a real value, must NOT be flagged undefined"
+            );
+        }
+    }
+
+    #[test]
+    fn trig_poles_and_negative_log_block_additive_cancellation() {
+        // Round-4 Cluster G: a VAR-FREE constant that is undefined over ℝ —
+        // `tan`/`sec` at a half-odd-integer multiple of π, `cot`/`csc` at an integer
+        // multiple of π, `ln`/`log` of a negative — must NOT cancel with itself to a
+        // finite value (`tan(π/2) - tan(π/2)` is `undefined`, not `0`). Sign and
+        // representation variants (`-π/2`, `3π/2`, `(-1/2)·π`) all resolve.
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        for src in [
+            "tan(pi/2) - tan(pi/2)",
+            "tan(-pi/2) - tan(-pi/2)",
+            "tan(3*pi/2) - tan(3*pi/2)",
+            "sec(pi/2) - sec(pi/2)",
+            "sec(-pi/2) - sec(-pi/2)",
+            "cot(pi) - cot(pi)",
+            "cot(-pi) - cot(-pi)",
+            "cot(2*pi) - cot(2*pi)",
+            "csc(pi) - csc(pi)",
+            "ln(-5) - ln(-5)",
+            "ln(-1/2) - ln(-1/2)",
+            "tan(pi/2) - tan(pi/2) + 5",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            assert!(
+                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero),
+                "`{src}` -> 0 must be flagged as an unsound drop (undefined)"
+            );
+            let term = parse(src.split(" - ").next().unwrap(), &mut ctx).expect("parse term");
+            assert!(
+                expr_carries_nonfinite_or_undefined(&ctx, term),
+                "`{}` is undefined over ℝ",
+                src.split(" - ").next().unwrap()
+            );
+        }
+        // DEFINED trig values and `ln` of a positive are NOT flagged — their
+        // cancellation is sound (`tan(π/3) - tan(π/3) -> 0`). `tan(π/4)`, `cot(π/2)`
+        // (= 0), `cos(π)`, `sin(-π)` are all finite.
+        for src in [
+            "tan(pi/3)",
+            "tan(-pi/3)",
+            "tan(pi/4)",
+            "cot(pi/2)",
+            "cos(pi)",
+            "sin(-pi)",
+            "ln(5)",
+            "tan(0)",
+            "sin(x)",
+        ] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert!(
+                !expr_carries_nonfinite_or_undefined(&ctx, e),
+                "`{src}` is a finite real value, must NOT be flagged undefined"
             );
         }
     }

@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 211 (newest first)
+Active entries: 212 (newest first)
 
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
+- 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
@@ -9238,3 +9239,39 @@ Active entries: 211 (newest first)
   - canonical surd output (rat +- coeff*sqrt(squarefree), squarefree via trial-division) lets cas_solver_core
     render educational roots WITHOUT the engine simplifier it cannot call; pull_square_from_sqrt only handles
     sqrt(k*expr), not sqrt(literal), so a purely numeric discriminant needs explicit square-factor extraction.
+
+## 2026-06-19 - Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
+- area:
+  - additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs`
+    is_structurally_undefined_over_reals (trig pi-poles + ln/log of negative) + new local helper
+    rational_pi_multiple_signed
+- status:
+  - `retained` (HONESTY soundness fix; closes the undefined-additive-cancellation weak spot)
+- capture:
+  - investment_class: soundness
+  - cell: tan(pi/2)-tan(pi/2), tan(-pi/2)-.., sec(+-pi/2)-.., cot(+-pi)-.., csc(pi)-.., ln(-5)-ln(-5),
+    tan(pi/2)-tan(pi/2)+5 -> "undefined" (were 0 / a fabricated finite); controls (tan(pi/3), tan(pi/4),
+    cot(pi/2), cos(pi), sin(-pi), tan(0), ln(5), x-x, sin(x)-sin(x)) still cancel to 0
+  - behavior_change_expected: yes - additive cancellation of a var-free undefined constant -> undefined;
+    guardrail+pressure STRUCTURALLY byte-identical (state/passed/failed + all scalar counters unchanged;
+    only timing-ranked diagnostic lists reshuffle), full cargo test --workspace green
+- observed (Round-4 audit Cluster G):
+  - the like-term collector summed integer coefficients of matching atoms (tan(pi/2): 1 + (-1) = 0) and
+    dropped the atom BEFORE the pole/undefined fold ran, so tan(pi/2)-tan(pi/2) -> 0 even though every other
+    arithmetic path (tan(pi/2)*0, tan(pi/2)+tan(pi/2), ln(-5)/ln(-5)) correctly propagated undefined. The
+    annihilation guard already declined LITERAL non-finite terms (1/0, inf, undefined) via
+    is_structurally_undefined_over_reals, but that structural check did not recognise a var-free FUNCTION call
+    (tan(pi/2), ln(-5)) that evaluates to undefined.
+  - fix: extend is_structurally_undefined_over_reals with exact var-free rules - tan/sec poles at half-odd-
+    integer multiples of pi, cot/csc poles at integer multiples of pi, ln/log of a provably-negative rational -
+    reading the pi-multiple via a local recursive evaluator that resolves Neg/Div/Mul sign placement.
+- retained learning:
+  - a structural "is this undefined" backstop that only matches LITERAL undefined nodes misses var-free
+    FUNCTION calls that evaluate to undefined (tan(pi/2), ln(-5)). Extend the structural rule with the exact,
+    closed-form domain facts (trig pi-poles, ln of negative) so the universal additive-drop guard sees them.
+  - the backstop is sound precisely because it blocks only ADDITIVE drops; function evaluations live on
+    non-additive nodes and are never blocked, so flagging tan(pi/2) as undefined makes u-u survive to fold to
+    undefined WITHOUT preventing tan(pi/2) from evaluating standalone. Verify both halves when extending it.
+  - do NOT extend the shared extract_rational_pi_multiple to gain sign handling: it has many trig/limit callers
+    (huella risk). A locally-scoped recursive pi-multiple evaluator (Neg/Div/Mul by value) gets full coverage
+    without disturbing them.
