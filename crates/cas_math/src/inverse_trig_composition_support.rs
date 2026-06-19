@@ -1142,6 +1142,74 @@ pub fn try_rewrite_arccot_to_arctan_expr(
     })
 }
 
+/// Rational multiple `k` of π from `arg = k·π`, unwrapping `Neg` and numeric
+/// `Div`/`Mul` at any position (`-π/2`, `3·π/4`, `π/4`). `None` for any non-numeric
+/// shape. Local so the principal-branch gate can decide a `k·π` argument exactly.
+fn signed_pi_multiple(ctx: &Context, arg: ExprId) -> Option<num_rational::BigRational> {
+    use num_rational::BigRational;
+    match ctx.get(arg) {
+        Expr::Constant(Constant::Pi) => Some(BigRational::one()),
+        Expr::Neg(inner) => signed_pi_multiple(ctx, *inner).map(|k| -k),
+        Expr::Div(num, den) => {
+            let kn = signed_pi_multiple(ctx, *num)?;
+            let d = as_rational_const(ctx, *den)?;
+            if d == BigRational::from_integer(0.into()) {
+                None
+            } else {
+                Some(kn / d)
+            }
+        }
+        Expr::Mul(l, r) => {
+            if let Some(c) = as_rational_const(ctx, *l) {
+                signed_pi_multiple(ctx, *r).map(|k| k * c)
+            } else if let Some(c) = as_rational_const(ctx, *r) {
+                signed_pi_multiple(ctx, *l).map(|k| k * c)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// True when folding `arcfn(fn(u)) → u` is PROVABLY sound — `u` lies in the inverse
+/// function's principal range, so `u` IS the principal value. Round-4 Cluster M:
+/// a numeric / `k·π` argument OUTSIDE the range must NOT fold to the bare argument
+/// (it would assert a provably-FALSE range membership and return a wrong value).
+///
+///   - `k·π` (exact via the coefficient): `arcsin·sin` `|k| ≤ 1/2`; `arccos·cos`
+///     `0 ≤ k ≤ 1`; `arctan·tan` `|k| < 1/2`.
+///   - a bare rational `v` (decided against tight rational bounds on `π/2` / `π`,
+///     PROVABLY-IN only; an out-of-range or boundary literal yields `false`).
+///   - any other (free symbol / symbolic expression): `true` — the membership is
+///     genuinely unknown and the fold is an honest conditional assumption.
+fn principal_fold_is_sound(ctx: &Context, u: ExprId, kind: PrincipalBranchInverseTrigKind) -> bool {
+    use num_rational::BigRational;
+    use PrincipalBranchInverseTrigKind::{ArccosCos, ArcsinSin, ArctanSinOverCos, ArctanTan};
+
+    let half = BigRational::new(1.into(), 2.into());
+    let one = BigRational::one();
+    let zero = BigRational::from_integer(0.into());
+
+    if let Some(k) = signed_pi_multiple(ctx, u) {
+        return match kind {
+            ArcsinSin => -&half <= k && k <= half,
+            ArccosCos => zero <= k && k <= one,
+            ArctanTan | ArctanSinOverCos => -&half < k && k < half,
+        };
+    }
+    if let Some(v) = as_rational_const(ctx, u) {
+        let l_half = BigRational::new(15707.into(), 10000.into()); // < π/2
+        let l_pi = BigRational::new(31415.into(), 10000.into()); // < π
+        return match kind {
+            ArcsinSin | ArctanTan | ArctanSinOverCos => -&l_half <= v && v <= l_half,
+            ArccosCos => zero <= v && v <= l_pi,
+        };
+    }
+    // Symbolic argument: membership unknown — keep the assumption-gated fold.
+    true
+}
+
 /// Plan principal-branch inverse-trig rewrites that require a range assumption.
 pub fn try_plan_principal_branch_inverse_trig_expr(
     ctx: &mut Context,
@@ -1163,7 +1231,14 @@ pub fn try_plan_principal_branch_inverse_trig_expr(
 
     if ctx.is_builtin(*outer_name, BuiltinFn::Arcsin) {
         if let Some((inner_name, inner_args)) = &inner_fn_info {
-            if ctx.is_builtin(*inner_name, BuiltinFn::Sin) && inner_args.len() == 1 {
+            if ctx.is_builtin(*inner_name, BuiltinFn::Sin)
+                && inner_args.len() == 1
+                && principal_fold_is_sound(
+                    ctx,
+                    inner_args[0],
+                    PrincipalBranchInverseTrigKind::ArcsinSin,
+                )
+            {
                 let u = inner_args[0];
                 return Some(PrincipalBranchInverseTrigPlan {
                     rewritten: u,
@@ -1178,7 +1253,14 @@ pub fn try_plan_principal_branch_inverse_trig_expr(
 
     if ctx.is_builtin(*outer_name, BuiltinFn::Arccos) {
         if let Some((inner_name, inner_args)) = &inner_fn_info {
-            if ctx.is_builtin(*inner_name, BuiltinFn::Cos) && inner_args.len() == 1 {
+            if ctx.is_builtin(*inner_name, BuiltinFn::Cos)
+                && inner_args.len() == 1
+                && principal_fold_is_sound(
+                    ctx,
+                    inner_args[0],
+                    PrincipalBranchInverseTrigKind::ArccosCos,
+                )
+            {
                 let u = inner_args[0];
                 return Some(PrincipalBranchInverseTrigPlan {
                     rewritten: u,
@@ -1193,7 +1275,14 @@ pub fn try_plan_principal_branch_inverse_trig_expr(
 
     if ctx.is_builtin(*outer_name, BuiltinFn::Arctan) {
         if let Some((inner_name, inner_args)) = &inner_fn_info {
-            if ctx.is_builtin(*inner_name, BuiltinFn::Tan) && inner_args.len() == 1 {
+            if ctx.is_builtin(*inner_name, BuiltinFn::Tan)
+                && inner_args.len() == 1
+                && principal_fold_is_sound(
+                    ctx,
+                    inner_args[0],
+                    PrincipalBranchInverseTrigKind::ArctanTan,
+                )
+            {
                 let u = inner_args[0];
                 return Some(PrincipalBranchInverseTrigPlan {
                     rewritten: u,
@@ -1224,6 +1313,11 @@ pub fn try_plan_principal_branch_inverse_trig_expr(
                     && d_args.len() == 1
                     && (n_args[0] == d_args[0]
                         || compare_expr(ctx, n_args[0], d_args[0]) == std::cmp::Ordering::Equal)
+                    && principal_fold_is_sound(
+                        ctx,
+                        n_args[0],
+                        PrincipalBranchInverseTrigKind::ArctanSinOverCos,
+                    )
                 {
                     let u = n_args[0];
                     return Some(PrincipalBranchInverseTrigPlan {
@@ -1256,6 +1350,34 @@ mod tests {
     };
     use cas_ast::{Context, Expr};
     use cas_parser::parse;
+
+    #[test]
+    fn principal_branch_fold_gated_by_provable_range_membership() {
+        // Round-4 Cluster M: arcfn(fn(u)) -> u only when `u` is PROVABLY in the
+        // principal range. An out-of-range numeric / k·π argument must NOT fold to
+        // the bare argument (which would assert a provably-false membership).
+        let mut ctx = Context::new();
+        let plans = |ctx: &mut Context, src: &str| -> bool {
+            let e = parse(src, ctx).expect("parse");
+            super::try_plan_principal_branch_inverse_trig_expr(ctx, e).is_some()
+        };
+        // In range -> folds. (Canonical builtin names: the eval pipeline
+        // normalizes `asin`->`arcsin` before this planner; `parse` does not.)
+        assert!(plans(&mut ctx, "arcsin(sin(1))"));
+        assert!(plans(&mut ctx, "arccos(cos(2))"));
+        assert!(plans(&mut ctx, "arccos(cos(3))")); // 3 < π
+        assert!(plans(&mut ctx, "arcsin(sin(pi/4))"));
+        assert!(plans(&mut ctx, "arctan(tan(pi/6))"));
+        assert!(plans(&mut ctx, "arcsin(sin(-1))"));
+        // Free symbol -> assumption-gated fold is kept.
+        assert!(plans(&mut ctx, "arcsin(sin(x))"));
+        // Out of range -> NOT folded (provably-false membership).
+        assert!(!plans(&mut ctx, "arcsin(sin(3))")); // 3 > π/2
+        assert!(!plans(&mut ctx, "arccos(cos(10))")); // 10 > π
+        assert!(!plans(&mut ctx, "arctan(tan(3*pi/4))")); // 3/4 > 1/2
+        assert!(!plans(&mut ctx, "arcsin(sin(2))")); // 2 > π/2
+        assert!(!plans(&mut ctx, "arccos(cos(-1))")); // < 0, outside [0, π]
+    }
 
     #[test]
     fn strict_requires_interval_proof() {

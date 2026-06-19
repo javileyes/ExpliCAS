@@ -155,9 +155,12 @@ fn cli_domain_generic_pow_zero_proven_base_unconditional() {
 fn cli_branch_flag_is_alias_of_inv_trig() {
     // --branch is a deprecated alias of --inv-trig: principal must actually
     // apply the principal inverse-trig policy (it was a silent no-op before).
+    // Use an IN-RANGE argument: 1 ∈ (-π/2, π/2), so arctan(tan(1)) = 1 is correct
+    // and the principal fold is SOUND. (Round-4 Cluster M: an out-of-range arg
+    // such as arctan(tan(2)) — 2 > π/2 — must NOT fold to the bare argument.)
     let (output, _code) = run_cli(&[
         "eval",
-        "arctan(tan(2))",
+        "arctan(tan(1))",
         "--format",
         "json",
         "--branch",
@@ -166,12 +169,12 @@ fn cli_branch_flag_is_alias_of_inv_trig() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["ok"], true);
-    assert_eq!(wire["result"], "2");
+    assert_eq!(wire["result"], "1");
 
     // Default stays conservative.
-    let (default_output, _code) = run_cli(&["eval", "arctan(tan(2))", "--format", "json"]);
+    let (default_output, _code) = run_cli(&["eval", "arctan(tan(1))", "--format", "json"]);
     let default_wire = parse_wire(&default_output);
-    assert_eq!(default_wire["result"], "arctan(tan(2))");
+    assert_eq!(default_wire["result"], "arctan(tan(1))");
 }
 
 #[test]

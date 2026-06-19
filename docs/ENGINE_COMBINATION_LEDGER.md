@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 216 (newest first)
+Active entries: 217 (newest first)
 
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
@@ -123,6 +123,7 @@ Active entries: 216 (newest first)
 - 2026-06-19 | `retained` | equation-level domain conditions; `crates/cas_solver_core/src/domain_inferenc... | Retained soundness fix: solve(sqrt(x)=a) dropped the a>=0 condition (Round-4 Cluster B)
 - 2026-06-19 | `retained` | solve backend post-step; `crates/cas_solver/src/solve_backend_local.rs` inter... | Retained soundness fix: sqrt/ln/log inequality drops the argument-domain (Round-4 Cluster F)
 - 2026-06-19 | `retained` | combinatorics; `crates/cas_math/src/number_theory_support.rs` compute_choose_... | Retained soundness fix: choose/perm fabricated 0 for negative n (Round-4 Cluster N)
+- 2026-06-19 | `retained` | inverse-trig composition; `crates/cas_math/src/inverse_trig_composition_suppo... | Retained soundness fix: principal-branch inv-trig folds without a range check (Round-4 Cluster M)
 - 2026-06-18 | `retained` | solver isolation dispatch; `crates/cas_solver_core/src/solve_runtime_flow_iso... | Retained soundness fix: solve(num/den=0) with a quadratic numerator dropped its roots (pre-existing rational-dispatch bug)
 - 2026-06-18 | `retained` | solver final filter; `crates/cas_solver/src/solve_backend_local.rs` `filter_r... | Retained soundness fix: ln(x)=ln(-x) returned "All real numbers" instead of "No solution" (Round-3 Cluster C, ln=ln collapse)
 - 2026-06-18 | `retained` | core solve outcome; `crates/cas_solver_core/src/solve_outcome.rs` `classify_v... | Retained soundness fix: ln(x)=ln(c*x) for c!=1 returned "All real numbers" instead of "No solution" (Round-3 Cluster C follow-up, single-condition identity collapse)
@@ -9400,3 +9401,31 @@ Active entries: 216 (newest first)
   - extend to the GENERALIZED convention rather than erroring: C(n,k)=ff(n,k)/k! is integer-valued for all
     integer n and k>=0 and naturally yields 0 for 0<=n<k (the product hits the n-i=0 factor), unifying the
     combinatorial and generalized cases in one falling-factorial loop. Cross-check the whole grid vs sympy.
+
+## 2026-06-19 - Retained soundness fix: principal-branch inv-trig folds without a range check (Round-4 Cluster M)
+- area:
+  - inverse-trig composition; `crates/cas_math/src/inverse_trig_composition_support.rs`
+    try_plan_principal_branch_inverse_trig_expr + new principal_fold_is_sound / signed_pi_multiple
+- status:
+  - `retained` (HONESTY soundness fix; closes the false range-membership fold; opt-in --inv-trig principal)
+- capture:
+  - investment_class: soundness
+  - cell: asin(sin(3))/acos(cos(10)) --inv-trig principal now stay symbolic (were the wrong bare 3/10);
+    atan(tan(3pi/4)) stays symbolic (was 3pi/4); in-range folds preserved (asin(sin(1))=1, acos(cos(3))=3,
+    asin(sin(pi/4))=pi/4, asin(sin(x))=x); default strict unchanged
+  - behavior_change_expected: yes - out-of-range/undecidable literal no longer folds; guardrail+pressure
+    structurally byte-identical, full cargo test --workspace green (one CLI contract test retargeted)
+- observed (Round-4 audit Cluster M):
+  - the planner matched arcsin(sin(u))/acos(cos(u))/atan(tan(u)), extracted u, and UNCONDITIONALLY returned u
+    with a templated 'u in principal range' assumption -- never testing membership. For a numeric/k*pi literal
+    the membership is decidable and provably FALSE (3 outside [-pi/2,pi/2]; 3pi/4 outside), so it returned a
+    wrong concrete value and asserted a false fact. (asin/acos pi-multiples were already reduced because the
+    inner sin/cos evaluates first and bypasses the planner; bare rationals and atan reach the planner.)
+  - fix: gate the fold behind principal_fold_is_sound -- exact for k*pi (coefficient range), tight rational
+    pi bounds for bare rationals (provably-in only), and keep the assumption-gated fold for a free symbol.
+- retained learning:
+  - an opt-in 'fold' rule still must not ASSERT a provably-false fact: a templated assumption ('u in range')
+    is only honest when the membership is genuinely UNKNOWN (free symbol); for a decidable literal, test it.
+  - decide range membership in the EXACT layer that fits the argument shape: k*pi -> the rational coefficient
+    (no transcendental bound needed); bare rational -> tight rational bounds on pi/2 and pi, provably-IN only,
+    bailing (symbolic) on out-of-range/boundary rather than guessing -- the exact-or-keep discipline again.
