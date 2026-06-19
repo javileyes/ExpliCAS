@@ -391,18 +391,23 @@ enum MonotonicFn {
 
 /// Detect a monotonic `f(arg)` on the LHS, returning `(kind, arg)`. Covers the
 /// `sqrt` builtin, an even-root `Pow` (`x^(1/2)`, `x^(1/4)`, …), `ln`, and the
-/// two-argument `log(b, arg)`.
+/// two-argument `log(b, arg)` — and sees THROUGH a POSITIVE rational
+/// multiplicative coefficient or divisor (`2·√x`, `√x/2`), which preserves both
+/// the argument-domain and the `[0,∞)` even-root range, so the range correction
+/// (keyed on the threshold sign) is unaffected. A NEGATIVE coefficient (flips the
+/// range) and an ADDITIVE shift (`√x + 1`, shifts the range) are NOT matched and
+/// stay honest residuals.
 fn detect_monotonic_lhs(ctx: &Context, lhs: ExprId) -> Option<(MonotonicFn, ExprId)> {
     use cas_math::expr_extract::{
         extract_log_base_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
     };
+    use num_traits::Signed;
     if let Some(arg) = extract_sqrt_argument_view(ctx, lhs) {
         return Some((MonotonicFn::EvenRoot, arg));
     }
     if let Expr::Pow(base, exp) = ctx.get(lhs) {
         let (base, exp) = (*base, *exp);
         if let Some(n) = cas_math::numeric_eval::as_rational_const(ctx, exp) {
-            use num_traits::Signed;
             if cas_math::expr_predicates::is_even_root_exponent(&n) && n.is_positive() {
                 return Some((MonotonicFn::EvenRoot, base));
             }
@@ -414,7 +419,32 @@ fn detect_monotonic_lhs(ctx: &Context, lhs: ExprId) -> Option<(MonotonicFn, Expr
     if let Some((_base, arg)) = extract_log_base_argument_view(ctx, lhs) {
         return Some((MonotonicFn::Log, arg));
     }
-    None
+    let is_pos = |e: ExprId| {
+        cas_math::numeric_eval::as_rational_const(ctx, e).is_some_and(|c| c.is_positive())
+    };
+    match ctx.get(lhs) {
+        // `(positive const)·f(arg)` or `f(arg)·(positive const)`.
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if is_pos(l) {
+                detect_monotonic_lhs(ctx, r)
+            } else if is_pos(r) {
+                detect_monotonic_lhs(ctx, l)
+            } else {
+                None
+            }
+        }
+        // `f(arg) / (positive const)` (NOT `const / f(arg)`, a reciprocal).
+        Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
+            if is_pos(den) {
+                detect_monotonic_lhs(ctx, num)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Simplify the bound expressions of an interval solution set so a downstream
@@ -648,6 +678,31 @@ mod tests {
                 assert!(matches!(simp.context.get(i.min), Expr::Number(n) if n.is_zero()));
             }
             other => panic!("expected [0, inf), got {other:?}"),
+        }
+
+        // POSITIVE multiplicative coefficient is seen through: 2·sqrt(x) < 6 has
+        // the same [0, ∞) range, so the naive (-inf, 9) folds to [0, 9).
+        let (csx, six, b9) = (
+            p(&mut simp, "2*sqrt(x)"),
+            p(&mut simp, "6"),
+            p(&mut simp, "9"),
+        );
+        let set = half_line(&mut simp, b9, true);
+        match intersect_inequality_with_function_domain(
+            &mut simp,
+            &eqn(csx, six, RelOp::Lt),
+            "x",
+            set,
+        ) {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(
+                    i.min_type,
+                    BoundType::Closed,
+                    "2·sqrt(x)<6 lower bound closed at 0"
+                );
+                assert!(matches!(simp.context.get(i.min), Expr::Number(n) if n.is_zero()));
+            }
+            other => panic!("expected [0, 9), got {other:?}"),
         }
 
         // EQUATION path is untouched: sqrt(x) = 2 keeps its Discrete result.
