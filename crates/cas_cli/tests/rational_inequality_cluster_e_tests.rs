@@ -104,18 +104,36 @@ fn cluster_e_negative_fraction_rhs_is_sign_correct() {
 }
 
 #[test]
-fn cluster_e_zero_rhs_guards_unchanged() {
-    // c = 0 is NOT folded (kept on the legacy path); these were already correct
-    // and must stay so.
+fn cluster_e_variable_in_numerator_nonzero_rhs() {
+    // The variable-in-numerator case `f/g (op) c` with c != 0 folds to
+    // `(f - c*g)/g (op) 0` so the variable lands on the LHS of the branch.
     assert_eq!(
-        solve_render("1 / x", RelOp::Gt, "0"),
-        "(0, infinity)",
-        "1/x > 0 guard"
+        solve_render("(x + 1) / (x - 2)", RelOp::Gt, "3"),
+        "(2, 7/2)"
     );
+    assert_eq!(solve_render("x / (x - 2)", RelOp::Gt, "2"), "(2, 4)");
+    // Fractional RHS (folded numerator has a fractional coefficient).
+    assert_eq!(solve_render("x / (x - 2)", RelOp::Gt, "3/2"), "(2, 6)");
+    // The variable CANCELS in `p = f - c*g` (here p = 2): reduce `c'/g (op) 0` to a
+    // single strict inequality on the denominator, pole excluded.
     assert_eq!(
-        solve_render("1 / x", RelOp::Lt, "0"),
-        "(-infinity, 0)",
-        "1/x < 0 guard"
+        solve_render("(x - 1) / (x - 3)", RelOp::Geq, "1"),
+        "(3, infinity)"
+    );
+}
+
+#[test]
+fn cluster_e_zero_rhs_is_sign_reduced() {
+    // `c/g (op) 0` (constant numerator, RHS = 0) folds to `p = c` and reduces to a
+    // strict inequality on the denominator -- the sign of the constant matters.
+    assert_eq!(solve_render("1 / (x - 2)", RelOp::Gt, "0"), "(2, infinity)");
+    assert_eq!(solve_render("1 / x", RelOp::Gt, "0"), "(0, infinity)");
+    assert_eq!(solve_render("1 / x", RelOp::Lt, "0"), "(-infinity, 0)");
+    // Negative numerator flips the ray (this was a pre-existing sign bug).
+    assert_eq!(solve_render("-1 / x", RelOp::Gt, "0"), "(-infinity, 0)");
+    assert_eq!(
+        solve_render("2 / (x - 3)", RelOp::Geq, "0"),
+        "(3, infinity)"
     );
 }
 

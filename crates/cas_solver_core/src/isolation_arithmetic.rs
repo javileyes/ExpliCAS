@@ -3,9 +3,9 @@
 //! These wrappers keep equation-rewrite orchestration in `cas_solver_core`
 //! while callers provide stateful hooks for simplification and recursion.
 
-use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 use cas_math::polynomial::Polynomial;
-use num_traits::Zero;
+use num_traits::Signed;
 
 use crate::isolation_utils::{is_inequality_relop, should_try_reciprocal_solve};
 use crate::linear_collect::{
@@ -1375,62 +1375,94 @@ where
     let map_denominator_item_to_step = map_denominator_item_to_step;
     let mut finalize_denominator_solved_sets = finalize_denominator_solved_sets;
     let route = derive_div_isolation_route(context_ref(state), numerator, var);
-    // Cluster E: a rational INEQUALITY with the solve variable only in the
-    // denominator (constant numerator, e.g. `1/(x-2) > 1`) must take the
-    // denominator-sign case split, not plain denominator isolation. The latter
-    // demotes to the boundary equation `f/g = c` and emits a single monotone ray
-    // that drops the pole and is frequently DISJOINT from the truth (`(3, ∞)`
-    // instead of `(2, 3)`).
+    // Cluster E: a rational INEQUALITY `f/g (op) c` against a LINEAR denominator
+    // must take the denominator-sign case split. Plain denominator isolation (for a
+    // constant numerator, `1/(x-2) > 1`) demotes to the boundary equation and emits
+    // a single ray that drops the pole (`(3, ∞)` instead of `(2, 3)`); the
+    // numerator-side path (`(x+1)/(x-2) > 3`) instead returns a spurious "No
+    // solution" because the cross-multiplied branch `f (op) c*g` keeps the variable
+    // on both sides and degenerates.
     //
-    // To reuse the existing (correct) numerator-side sign split, first fold the
-    // RHS into a single fraction: `f/g (op) c  ==>  (f - c*g)/g (op) 0`. The
-    // combined numerator `p = f - c*g` then carries the variable (for `c != 0`),
-    // so the split's branch equation is `p (op) 0` with the variable on the LHS --
-    // which the branch solver can isolate. (The raw `f (op) c*g` cross-multiply
-    // leaves the variable on the RHS, which the low-level isolate cannot handle.)
-    // The pole stays excluded by the split's strict open domain guards
-    // `g > 0` / `g < 0`. Only applies when the denominator is a polynomial in the
-    // variable, so each branch is a polynomial inequality the machinery solves
-    // exactly; non-polynomial denominators keep the legacy isolation path.
+    // Both are fixed by folding the RHS into a single fraction first:
+    // `f/g (op) c  ==>  (f - c*g)/g (op) 0`. The combined numerator `p = f - c*g`
+    // is then compared against ZERO, so the split's branch equation is `p (op) 0`
+    // with the variable on the LHS (or a clean constant), which the branch solver
+    // handles. The pole stays excluded by the split's strict open domain guards
+    // `g > 0` / `g < 0` (open even for `<=`/`>=`). Routed through the numerator
+    // pipeline, which owns the sign split + finalize.
     //
-    // Gated on a RHS that resolves to a NON-ZERO rational: with `c = 0` the fold is
-    // a no-op (`p = f`) that leaves a constant numerator (no variable to isolate in
-    // the branch), so those `f/g (op) 0` forms keep the legacy path (where
-    // `1/x > 0 -> (0, ∞)` is already correct). The check is on the EXACT rational
-    // value, not the literal node shape, so a folded zero (`1 - 1`) is excluded too;
-    // a non-rational RHS (e.g. `sqrt(2)`) likewise stays on the legacy path (the
-    // fold is only validated for rational constants).
+    // The RHS must resolve to a RATIONAL (`c = 0` is fine -- the fold then leaves
+    // `p = f`, handled identically); a non-rational RHS (e.g. `sqrt(2)`) stays on the
+    // legacy path since the fold is only validated for rational constants. The folded
+    // forms below subsume the `c = 0` cases too, so `1/(x-2) > 0` and `-1/x > 0` are
+    // sign-reduced correctly rather than left to the malformed legacy ray.
     //
-    // Restricted to a LINEAR denominator (degree 1): the two-way denominator-sign
-    // split (`g > 0` / `g < 0`) only captures a SINGLE pole/sign change, which is
-    // exactly a linear `g`. A quadratic-or-higher denominator has multiple poles
-    // and needs a full critical-point partition, so it stays an honest residual on
-    // the legacy path rather than producing a wrong two-branch answer.
-    let cluster_e_split = matches!(route, DivIsolationRoute::VariableInDenominator)
-        && is_inequality_relop(&op)
-        && cas_math::numeric_eval::as_rational_const(context_ref(state), rhs)
-            .is_some_and(|c| !c.is_zero())
-        && Polynomial::from_expr(context_ref(state), denominator, var)
-            .is_ok_and(|g| g.degree() == 1);
-    let (numerator, rhs, route) = if cluster_e_split {
-        let ctx = context_mut(state);
-        // Rebuild the RHS as a canonical `Number` before folding. A fractional/
-        // negative literal can arrive as a raw `Div`/`Neg` node (e.g. `-1/2` as
-        // `Div(-1, 2)`); building `Mul(raw_rhs, g)` from it mis-signs the polynomial
-        // extraction of `p = f - c*g`. (The gate guarantees a rational here.)
-        let rhs_const = cas_math::numeric_eval::as_rational_const(ctx, rhs)
-            .map(|r| ctx.add(Expr::Number(r)))
-            .unwrap_or(rhs);
-        let scaled_rhs = ctx.add(Expr::Mul(rhs_const, denominator));
-        let combined_numerator = ctx.add(Expr::Sub(numerator, scaled_rhs));
-        let zero = ctx.num(0);
-        (
-            combined_numerator,
-            zero,
-            DivIsolationRoute::VariableInNumerator,
-        )
+    // Restricted to a LINEAR denominator (degree 1 in the variable, which also
+    // guarantees the pole exists): the two-way denominator-sign split (`g > 0` /
+    // `g < 0`) captures a SINGLE sign change. A quadratic-or-higher denominator has
+    // multiple poles and needs a full critical-point partition, so it stays an
+    // honest residual on the legacy path rather than a wrong two-branch answer.
+    //
+    // `p` is built via EXACT polynomial arithmetic (`f_poly - c*g_poly`) so it
+    // arrives canonically collected. Building `Sub(f, c*g)` and simplifying instead
+    // left a var-minus-var shape (`(3/2)*(2-x) + x`) uncollected, which degenerated
+    // to a spurious "No solution". This also requires the NUMERATOR to be a
+    // polynomial; a non-polynomial numerator stays on the legacy path.
+    let cluster_e_fold = if is_inequality_relop(&op) {
+        let ctx = context_ref(state);
+        match (
+            cas_math::numeric_eval::as_rational_const(ctx, rhs),
+            Polynomial::from_expr(ctx, numerator, var),
+            Polynomial::from_expr(ctx, denominator, var),
+        ) {
+            (Some(c), Ok(f_poly), Ok(g_poly)) if g_poly.degree() == 1 => {
+                let c_poly = Polynomial::new(vec![c], var.to_string());
+                Some(f_poly.sub(&c_poly.mul(&g_poly)))
+            }
+            _ => None,
+        }
     } else {
-        (numerator, rhs, route)
+        None
+    };
+    let (numerator, rhs, route) = match cluster_e_fold {
+        // `p == 0` (`f == c*g`): `f/g == c` identically off the pole, so the relation
+        // is `c (op) c` -- an identity or empty, NOT a ray. Leave it on the legacy
+        // path rather than fabricating a one-sided answer.
+        Some(p_poly) if p_poly.is_zero() => (numerator, rhs, route),
+        // LINEAR `p` carries the variable: route through the numerator sign split,
+        // whose branch equation `p (op) 0` has the variable on the LHS. The pole
+        // stays excluded by the split's strict open domain guards `g > 0` / `g < 0`.
+        Some(p_poly) if p_poly.degree() == 1 => {
+            let ctx = context_mut(state);
+            let p_expr = p_poly.to_expr(ctx);
+            let zero = ctx.num(0);
+            (p_expr, zero, DivIsolationRoute::VariableInNumerator)
+        }
+        // `p` is a nonzero CONSTANT `c'` (the variable cancelled): then
+        // `c'/g (op) 0  <=>  g (strict op) 0` -- the value is never zero, so `>=`/`<=`
+        // collapse to strict and the only excluded point is the pole (`g = 0`).
+        // Reduce to one linear inequality on the denominator.
+        Some(p_poly) if p_poly.degree() == 0 => {
+            let c_positive = p_poly.leading_coeff().is_positive();
+            let op_is_upper = matches!(op, RelOp::Gt | RelOp::Geq);
+            let denominator_op = if op_is_upper == c_positive {
+                RelOp::Gt
+            } else {
+                RelOp::Lt
+            };
+            let zero = context_mut(state).num(0);
+            let equation = Equation {
+                lhs: denominator,
+                rhs: zero,
+                op: denominator_op,
+            };
+            return solve_isolate(state, &equation);
+        }
+        // QUADRATIC-or-higher folded numerator: the branch inequality `p (op) 0`
+        // would need a polynomial-inequality solve the numerator pipeline does not
+        // reliably deliver here, so leave it an honest residual on the legacy path.
+        Some(_) => (numerator, rhs, route),
+        None => (numerator, rhs, route),
     };
 
     match route {

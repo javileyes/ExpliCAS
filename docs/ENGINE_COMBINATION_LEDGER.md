@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 220 (newest first)
+Active entries: 221 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
+- 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality fold generalized to var-in-numerator + zero-RHS-linear (Round-4 Cluster E follow-up)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9538,3 +9539,40 @@ Active entries: 220 (newest first)
   - keep the blast radius bounded by the decision procedure's actual reach: a linear-denominator gate plus a
     fallback to the legacy path on every other shape kept the huella byte-identical and left quadratic/zero-RHS
     cases as honest residuals rather than emitting a wrong two-branch answer.
+
+## 2026-06-20 - Retained soundness fix: rational inequality fold generalized to var-in-numerator + zero-RHS-linear (Round-4 Cluster E follow-up)
+- area:
+  - rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic.rs` (div-isolation route
+    seam) -- rebuilt the Cluster E fold on exact `Polynomial` arithmetic
+- status:
+  - `retained` (REAL-domain soundness; closes the var-in-numerator "No solution" gap and the c=0 linear residual)
+- capture:
+  - investment_class: soundness
+  - cell: (x+1)/(x-2)>3 -> (2,7/2); x/(x-2)>2 -> (2,4); x/(x-2)>3/2 -> (2,6); (x-1)/(x-3)>=1 -> (3,inf)
+    (variable cancels, p=2); 1/(x-2)>0 -> (2,inf); 2/(x-3)>=0 -> (3,inf); -1/x>0 -> (-inf,0) (pre-existing
+    sign bug fixed); guards 1/x>0 -> (0,inf), 1/x<0 -> (-inf,0) unchanged
+  - behavior_change_expected: yes - any linear-denominator rational inequality now folds; guardrail+pressure
+    STRUCTURALLY byte-identical (no fixture solves a rational inequality), workspace green
+- observed (Round-4 audit Cluster E follow-up):
+  - the adversarial audit of 7dab4b5a2 flagged a var-in-numerator completeness gap ((x+1)/(x-2)>3 -> "No
+    solution"). The same fold fixes it, but the variable-in-numerator branch revealed two new failure modes:
+    (1) `Sub(f, c*g)` + the engine's partial simplify leaves a var-minus-var shape ((3/2)*(2-x)+x) uncollected,
+    which the sign split degenerates to "No solution"; (2) when the variable cancels (p constant) the numerator
+    pipeline cannot isolate a constant.
+  - fix: build p with EXACT Polynomial arithmetic (f_poly.sub(&c_poly.mul(&g_poly))) for a canonically
+    collected form, and dispatch on deg(p): 0-and-zero -> identity (legacy); ==1 -> numerator split; ==0-nonzero
+    -> reduce c'/g (op) 0 to a single STRICT g (op') 0 (value never zero, pole excluded); >=2 -> legacy. Dropping
+    the nonzero-RHS gate lets the same path subsume the c=0 linear cases (and fix -1/x>0).
+- retained learning:
+  - build a derived polynomial with Polynomial arithmetic + to_expr, NOT Expr::Sub/Mul + the in-pipeline
+    simplifier: the latter is only a partial normalizer and leaves var-minus-var products uncollected, which
+    downstream solvers silently mis-handle. The exact-arithmetic layer is the canonical-form authority.
+  - a constant result after folding (`c'/g (op) 0`, the variable cancelled) is NOT a degenerate failure -- it
+    is a clean ray: reduce to `g (strict op) 0`, because the value is never zero so `>=`/`<=` collapse to strict
+    and only the pole is excluded. Distinguish c'=0 (identity, leave to legacy) from c'!=0 (the ray).
+  - removing an over-narrow gate can be the fix: the nonzero-RHS guard was added defensively for an earlier
+    failure mode that the Polynomial rebuild eliminated; once the constant branch was sign-reduced correctly,
+    the c=0 linear cases (incl. the pre-existing -1/x>0 sign bug) fell out of the SAME code path for free.
+  - bisect every "new" mismatch before attributing it: twelve sweep misses looked like regressions but were
+    byte-identical at the prior commit -- the var-in-numerator forms that pre-combine to const/g (rhs=0) were
+    already wrong, and the generalized fold then FIXED them rather than introducing them.
