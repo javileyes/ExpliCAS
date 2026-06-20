@@ -37,9 +37,9 @@ exp(ln(x)) + ln(exp(x)),complex,generic,contains_all,ln;e^
 ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,generic,exact,0
 ln(a^2 * b^3) - 2*ln(a) - 3*ln(b),real,assume,exact,0
 
-# Complex-enabled const-fold behavior
-sqrt(-1),complex,strict,exact,(-1)^(1/2)
-(-1)^(1/2),complex,strict,exact,(-1)^(1/2)
+# Complex-enabled const-fold behavior: negative even roots fold to imaginary forms
+sqrt(-1),complex,strict,exact,i
+(-1)^(1/2),complex,strict,exact,i
 i^2,real,generic,contains_all,i
 i^2,complex,generic,exact,-1
 i^3,complex,generic,exact,-i

@@ -26231,10 +26231,13 @@ impl Orchestrator {
         // are indeterminate, not `0`. If a shortcut produced such a result, discard
         // it and keep the input symbolic (a per-node sound path may still fold it to
         // `undefined`).
-        if cas_math::arithmetic_cancel_support::rewrite_unsoundly_drops_nonfinite(
+        if cas_math::arithmetic_cancel_support::rewrite_unsoundly_drops_nonfinite_in_domain(
             &simplifier.context,
             expr,
             result,
+            cas_math::abs_support::value_domain_mode_from_flag(
+                self.options.shared.semantics.value_domain.is_real_only(),
+            ),
         ) {
             return (expr, Vec::new(), stats);
         }

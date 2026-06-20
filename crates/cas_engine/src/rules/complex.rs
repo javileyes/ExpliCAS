@@ -8,7 +8,7 @@ pub use cas_math::complex_support::{extract_gaussian, GaussianRational};
 use cas_math::complex_support::{
     try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
     try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
-    try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
+    try_rewrite_negative_base_half_power_expr, try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
 };
 
 fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
@@ -98,6 +98,21 @@ define_rule!(
     }
 );
 
+define_rule!(
+    NegativeBaseHalfPowerRule,
+    "Negative Base Square Root Power",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+
+        // The canonical Pow form `(-n)^(1/2)` -> `i·√n` (complements SqrtNegativeRule,
+        // which only matches the `sqrt(...)` call form).
+        let rewrite = try_rewrite_negative_base_half_power_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ImaginaryPowerRule));
     simplifier.add_rule(Box::new(ISquaredMulRule));
@@ -105,4 +120,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(GaussianAddRule));
     simplifier.add_rule(Box::new(GaussianDivRule));
     simplifier.add_rule(Box::new(SqrtNegativeRule));
+    simplifier.add_rule(Box::new(NegativeBaseHalfPowerRule));
 }

@@ -333,10 +333,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
         // independent rules; rather than gate each, reject any rule result that
         // drops the non-finite here, keeping the pre-rule form so a sound path
         // (folding to `undefined`, or staying symbolic) wins instead.
-        if cas_math::arithmetic_cancel_support::rewrite_unsoundly_drops_nonfinite(
+        if cas_math::arithmetic_cancel_support::rewrite_unsoundly_drops_nonfinite_in_domain(
             self.context,
             expr_with_simplified_children,
             result,
+            cas_math::abs_support::value_domain_mode_from_flag(
+                self.initial_parent_ctx.value_domain().is_real_only(),
+            ),
         ) {
             result = expr_with_simplified_children;
         }

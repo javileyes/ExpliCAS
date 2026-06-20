@@ -9,7 +9,7 @@
 
 # Complex behavior on eval path respects const_fold and value_domain
 sqrt(-1),real,generic,on,safe,exact,undefined
-sqrt(-1),complex,generic,on,off,exact,(-1)^(1/2)
+sqrt(-1),complex,generic,on,off,exact,i
 sqrt(-1),complex,generic,on,safe,exact,i
 i^2,real,generic,on,safe,exact,i^2
 i^2,complex,generic,on,safe,exact,-1

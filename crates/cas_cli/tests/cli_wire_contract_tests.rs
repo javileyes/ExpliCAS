@@ -351,7 +351,7 @@ fn test_envelope_wire_value_domain_gates_imaginary_warning() {
         .as_array()
         .unwrap();
 
-    assert_eq!(complex_wire["result"]["value"]["display"], "(-1)^(1/2)");
+    assert_eq!(complex_wire["result"]["value"]["display"], "i");
     assert!(
         complex_assumed.is_empty(),
         "Complex envelope should not emit imaginary warning"

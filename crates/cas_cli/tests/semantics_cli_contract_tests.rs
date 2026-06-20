@@ -557,6 +557,58 @@ fn const_fold_safe_complex_i_squared_reaches_cli_runtime() {
     assert_eq!(wire["result"], "-1");
 }
 
+/// Default (rule-based) folding of negative even roots in complex mode. This is the
+/// path the rewrite rules drive (`SqrtNegativeRule` / `NegativeBaseHalfPowerRule`),
+/// distinct from the `--const-fold safe` path above. Regression guard for the
+/// value-domain-aware non-finite backstop: it must NOT revert `(-1)^(1/2) -> i`
+/// (an "undefined over ℝ" form that is a defined finite value `i` in ℂ).
+#[test]
+fn complex_negative_even_root_folds_to_imaginary_by_rules() {
+    for (src, expected) in [
+        ("(-1)^(1/2)", "i"),
+        ("sqrt(-1)", "i"),
+        ("sqrt(-4)", "2·i"),
+        ("(-9)^(1/2)", "3·i"),
+        ("(-3)^(1/2)", "i·sqrt(3)"),
+        // Additive cancellation of a now-defined complex value is sound.
+        ("(-1)^(1/2) - (-1)^(1/2)", "0"),
+        ("sqrt(-4) - sqrt(-4)", "0"),
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["semantics"]["value_domain"], "complex");
+        assert_eq!(
+            wire["result"], expected,
+            "complex `{src}` should fold to `{expected}`"
+        );
+    }
+
+    // REAL mode must keep the same forms symbolic (never `i`): the backstop's
+    // real-domain semantics are unchanged.
+    for (src, expected) in [("(-1)^(1/2)", "(-1)^(1/2)"), ("sqrt(-4)", "2·(-1)^(1/2)")] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json", "--value-domain", "real"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "real `{src}` must stay symbolic");
+    }
+
+    // Genuine undefined (`c/0`) stays undefined in complex mode: the backstop is only
+    // loosened for ℂ-defined forms, never for division by a provably-zero denominator.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1/(x-x) - 1/(x-x)",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(
+        wire["result"], "undefined",
+        "`1/(x-x) - 1/(x-x)` must stay undefined in ℂ (1/0 is undefined in ℂ too)"
+    );
+}
+
 #[test]
 fn subtraction_self_cancel_shortcut_handles_abs_sub_mirror_runtime_shape() {
     let (output, _code) = run_cli(&[

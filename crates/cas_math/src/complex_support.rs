@@ -344,37 +344,62 @@ pub fn try_rewrite_sqrt_negative_expr(ctx: &mut Context, expr: ExprId) -> Option
         _ => return None,
     };
 
+    Some(ComplexRewrite {
+        rewritten: negative_abs_to_i_sqrt(ctx, abs_value),
+        kind: ComplexRewriteKind::SqrtNegative,
+    })
+}
+
+/// Build `i·√(abs_value)` for a non-negative `abs_value`, folding a perfect-square
+/// radicand to an integer coefficient (`abs_value = 4 → 2·i`, `1 → i`, `3 → i·√3`).
+fn negative_abs_to_i_sqrt(ctx: &mut Context, abs_value: BigRational) -> ExprId {
     let i = ctx.add(Expr::Constant(Constant::I));
-    let rewritten = if abs_value.is_integer() {
+    if abs_value.is_integer() {
         let int_val = abs_value.to_integer();
         if let Some(f) = int_val.to_f64() {
             let sqrt_f = f.sqrt();
             if sqrt_f.fract() == 0.0 && sqrt_f > 0.0 {
                 let sqrt_int = sqrt_f as i64;
                 let sqrt_num = ctx.num(sqrt_int);
-                if sqrt_int == 1 {
+                return if sqrt_int == 1 {
                     i
                 } else {
                     ctx.add(Expr::Mul(sqrt_num, i))
-                }
-            } else {
-                let abs_num = ctx.add(Expr::Number(abs_value));
-                let sqrt_abs = ctx.call_builtin(BuiltinFn::Sqrt, vec![abs_num]);
-                ctx.add(Expr::Mul(i, sqrt_abs))
+                };
             }
-        } else {
-            let abs_num = ctx.add(Expr::Number(abs_value));
-            let sqrt_abs = ctx.call_builtin(BuiltinFn::Sqrt, vec![abs_num]);
-            ctx.add(Expr::Mul(i, sqrt_abs))
         }
-    } else {
-        let abs_num = ctx.add(Expr::Number(abs_value));
-        let sqrt_abs = ctx.call_builtin(BuiltinFn::Sqrt, vec![abs_num]);
-        ctx.add(Expr::Mul(i, sqrt_abs))
-    };
+    }
+    let abs_num = ctx.add(Expr::Number(abs_value));
+    let sqrt_abs = ctx.call_builtin(BuiltinFn::Sqrt, vec![abs_num]);
+    ctx.add(Expr::Mul(i, sqrt_abs))
+}
 
+/// Rewrite the POW form `(-n)^(1/2)` (negative numeric base, exponent exactly `1/2`)
+/// into `i·√n` in complex mode. The simplifier canonicalises `sqrt(-n)` to this Pow
+/// form, which [`try_rewrite_sqrt_negative_expr`] (matching only the `sqrt(...)` call
+/// form) misses -- so this is what actually folds `(-1)^(1/2) → i`, `(-4)^(1/2) → 2i`.
+pub fn try_rewrite_negative_base_half_power_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ComplexRewrite> {
+    use crate::numeric_eval::as_rational_const;
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let base = *base;
+    let exp = *exp;
+    // Exponent must fold to exactly 1/2 (handles `Number(1/2)` and `Div(1,2)` forms).
+    let half = BigRational::new(1.into(), 2.into());
+    if as_rational_const(ctx, exp)? != half {
+        return None;
+    }
+    // Base must fold to a negative rational literal (`-1`, `-4`, `Neg(4)`, ...).
+    let base_val = as_rational_const(ctx, base)?;
+    if !base_val.is_negative() {
+        return None;
+    }
     Some(ComplexRewrite {
-        rewritten,
+        rewritten: negative_abs_to_i_sqrt(ctx, -base_val),
         kind: ComplexRewriteKind::SqrtNegative,
     })
 }

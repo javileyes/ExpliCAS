@@ -25,7 +25,10 @@ fn evaluate_envelope_wire_command_returns_wire_contract() {
 }
 
 #[test]
-fn evaluate_envelope_wire_command_complex_value_domain_preserves_sqrt_negative_without_warning() {
+fn evaluate_envelope_wire_command_complex_value_domain_folds_sqrt_negative_to_i_without_warning() {
+    // In complex mode `sqrt(-1)` folds to the imaginary unit `i` (a defined finite
+    // value), with no domain warning or required condition. The value-domain-aware
+    // non-finite backstop must not revert this rule-driven fold.
     let payload = evaluate_envelope_wire_command(
         "sqrt(-1)",
         EvalDomainMode::Generic,
@@ -34,7 +37,7 @@ fn evaluate_envelope_wire_command_complex_value_domain_preserves_sqrt_negative_w
     let wire = parse_envelope(&payload);
 
     assert_eq!(wire["result"]["kind"], "eval_result");
-    assert_eq!(wire["result"]["value"]["display"], "(-1)^(1/2)");
+    assert_eq!(wire["result"]["value"]["display"], "i");
     assert_eq!(
         wire["transparency"]["required_conditions"]
             .as_array()

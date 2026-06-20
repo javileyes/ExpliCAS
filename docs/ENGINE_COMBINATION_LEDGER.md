@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 233 (newest first)
+Active entries: 234 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
+- 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -9991,3 +9992,63 @@ Active entries: 233 (newest first)
   - residual (sound, not done): floor/ceil/round of an IRRATIONAL but sign-bounded constant
     (floor(pi)=3, floor(sqrt(2))=1) could fold via the const_sign value bounds (if [lo,hi] of the arg
     sits inside [n, n+1) then floor = n); left as a next step.
+
+## 2026-06-21 - Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
+- area:
+  - `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_nonfinite_in_domain`,
+    `expr_carries_undefined_in_domain`, `expr_carries_nonfinite_or_undefined_in_domain`,
+    `is_structurally_undefined(ctx, expr, vd)` — the old `is_structurally_undefined_over_reals`
+    folded into the `RealOnly` arm);
+    `crates/cas_engine/src/engine/transform/mod.rs` + `crates/cas_engine/src/orchestrator.rs`
+    (the two backstop call sites now pass the active `ValueDomainMode`);
+    `crates/cas_engine/src/rules/complex.rs` + `crates/cas_math/src/complex_support.rs`
+    (the `NegativeBaseHalfPowerRule` / `try_rewrite_negative_base_half_power_expr` that folds the
+    canonical `(-n)^(1/2)` Pow form, complementing the `sqrt(...)`-only `SqrtNegativeRule`)
+- status:
+  - `retained` (completeness: `--value-domain complex` now folds negative even roots to imaginary
+    forms instead of leaving them symbolic)
+- capture:
+  - investment_class: completeness
+  - cell: complex `(-1)^(1/2)→i`, `sqrt(-1)→i`, `sqrt(-4)→2·i`, `(-9)^(1/2)→3·i`,
+    `(-3)^(1/2)→i·√3`, `sqrt(-12)→2·i·√3`, `(-1)^(1/2)+3→3+i`; additive cancellation
+    `sqrt(-4)−sqrt(-4)→0` (sound — both are `2i`). REAL mode byte-identical: `(-1)^(1/2)` stays
+    `(-1)^(1/2)`, `sqrt(-4)` stays `2·(-1)^(1/2)`. Genuine undefined preserved in BOTH domains:
+    complex `1/(x-x)−1/(x-x)→undefined`, `0^0` undefined.
+  - primary_dimension: completeness_value (complex evaluation path)
+  - behavior_change_expected: complex-mode negative-even-root folding flips from symbolic to `i`;
+    guardrail+pressure huella structurally clean (only timing + timing-ranked `*_slowest_*` lists
+    reshuffle); workspace + clippy + fmt + lint_string_compares green
+- observed (Completeness-critic item #3 from the Round-4 audit; the LAST of the four completeness
+  items, after #4 floor/ceil/round, #5 large numbers, #6 big-number comparison):
+  - the complex rewrite rules ALREADY produced `i` (and `const_fold::fold_pow` does too on the
+    `--const-fold safe` path), but the engine displayed `(-1)^(1/2)`. The fold was produced then
+    REVERTED downstream. Traced the full pipeline: rule fires (`apply_rules` → `i`, passes the
+    semantic-equality skip with `are_equal=false` and the domain airbag with `blocked=false`),
+    `normalize_core` keeps `i` — but `transform_expr_recursive`'s universal soundness backstop
+    `rewrite_unsoundly_drops_nonfinite(before=(-1)^(1/2), after=i)` returned `true` (because
+    `is_structurally_undefined_over_reals((-1)^(1/2)) = true`) and reset `result = before` every
+    pass. The cycle detector then broke the invisible `(-1)^(1/2)↔i` oscillation at `(-1)^(1/2)`,
+    so the user saw the input unchanged with NO steps.
+  - the fix is value-domain-awareness, not loosening: in `ComplexEnabled` mode an even root of a
+    negative and `ln`/`log` of a negative are DEFINED finite complex values (`(-1)^(1/2)=i`,
+    `ln(-5)=ln5+iπ`), so they must not count as "dropped undefined"; `c/0`, `Undefined`, `0^k`
+    (k≤0) and the `cot`/`csc`/`tan`/`sec` poles stay undefined in ℂ too and remain blocked.
+- retained learning:
+  - a rule firing correctly is NOT sufficient: the engine has a UNIVERSAL post-rule soundness
+    backstop (`rewrite_unsoundly_drops_nonfinite`, applied in BOTH `transform_expr_recursive` and
+    `simplify_pipeline`) that can silently revert a sound rewrite. When a new rule's output "doesn't
+    stick" and leaves NO step, suspect this backstop (and the `best_so_far` rollback) before the
+    rule itself. The smoking gun was `are_equal(before, after)=false` + the result reverting with no
+    recorded step — i.e. an invisible cycle, not a skip.
+  - the real-domain "undefined" predicates (`is_structurally_undefined_over_reals` and the
+    `expr_carries_*` family) are CORRECT for ℝ but WRONG for ℂ for sqrt/even-root/ln/log of
+    negatives. Make such a predicate domain-aware by threading `ValueDomainMode` and keeping the
+    pre-existing public fn as a `RealOnly` wrapper — zero churn to the ℝ-domain callers/tests, and
+    the Cluster-J `tan(kπ)`/`ln(-5)` real-domain contract (commit `ce1e8dbb5`/`d7f8eef8d`) is
+    preserved byte-for-byte.
+  - the simplifier canonicalises `sqrt(-n)` to the `(-n)^(1/2)` Pow form, which the `sqrt(...)`-only
+    `SqrtNegativeRule` misses; the companion `NegativeBaseHalfPowerRule` matches the Pow form via
+    `as_rational_const` (handles `Number(1/2)` and `Div(1,2)`), so both spellings fold.
+  - residual (sound, not done): complex `ln(-5)` still folds to `undefined` (no principal-branch
+    complex-log evaluation); the backstop already treats it as defined, so the fold is the only
+    missing piece. Left as a peldaño.

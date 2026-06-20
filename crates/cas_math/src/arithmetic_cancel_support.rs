@@ -1072,7 +1072,7 @@ pub fn is_provably_zero(ctx: &Context, expr: ExprId) -> bool {
 /// function is defined, so it can never report a false zero. Returns `None` for a
 /// symbolic / non-special argument (`sin(x)`), an irrational value (`sin(1)`,
 /// `cos(π/4)`), a pole (`cot(0)`, `ln(0)` — those are handled by
-/// `is_structurally_undefined_over_reals`, never confused with a zero), or a trig
+/// `is_structurally_undefined`, never confused with a zero), or a trig
 /// special angle (`sin(π/6)` — deferred).
 ///
 /// Vanish at a PROVABLY-ZERO argument (so `sin(x−x)` is covered, not only `sin(0)`):
@@ -1517,25 +1517,40 @@ fn rational_pi_multiple_signed(ctx: &Context, arg: ExprId) -> Option<BigRational
 /// `1/ln(0) = 0`). Every case here is genuinely undefined, so no legitimate value or
 /// cancellation is ever over-blocked — in particular a defined trig value such as
 /// `tan(π/3)` (`k = 1/3`, not a half-odd-integer) and `ln(5)` are never flagged.
-fn is_structurally_undefined_over_reals(ctx: &Context, expr: ExprId) -> bool {
+///
+/// Domain-aware: the `vd` parameter selects the ℝ-vs-ℂ universe. In `RealOnly` mode
+/// every case above is flagged. In `ComplexEnabled` mode the forms that are undefined
+/// over ℝ but **defined finite complex values** are NOT flagged: an even root of a
+/// negative (`(-1)^(1/2) = i`, `sqrt(-4) = 2i`) and `ln`/`log` of a negative
+/// (`ln(-5) = ln(5) + iπ`, principal branch) become legitimate. The forms that stay
+/// undefined in ℂ too — `0^k` (k ≤ 0) and the `cot`/`csc`/`tan`/`sec` poles (zeros of
+/// `sin`/`cos` are the same in ℂ) — remain flagged in both domains.
+fn is_structurally_undefined(
+    ctx: &Context,
+    expr: ExprId,
+    vd: crate::abs_support::ValueDomainMode,
+) -> bool {
+    let complex = vd == crate::abs_support::ValueDomainMode::ComplexEnabled;
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             let (base, exp) = (*base, *exp);
-            // `0^k`, k ≤ 0.
+            // `0^k`, k ≤ 0 — undefined over ℝ and ℂ alike.
             if is_provably_zero(ctx, base)
                 && (is_provably_zero(ctx, exp)
                     || exact_rational_value(ctx, exp).is_some_and(|e| e.is_negative()))
             {
                 return true;
             }
-            // Even root of a provably-negative base.
-            pow_is_even_root_of_negative(ctx, base, exp)
+            // Even root of a provably-negative base: undefined over ℝ, but a defined
+            // finite value (`i·√|·|`) in ℂ — only flag in real mode.
+            !complex && pow_is_even_root_of_negative(ctx, base, exp)
         }
         Expr::Function(fn_id, args) if args.len() == 1 => {
             let arg = args[0];
             let fid = *fn_id;
             // `cot`/`csc` poles: `sin(arg) = 0`  ⟺  `arg = k·π`, `k ∈ ℤ`. `k = 0` is
-            // also caught by `is_provably_zero` (covering `x-x` and friends).
+            // also caught by `is_provably_zero` (covering `x-x` and friends). Poles in
+            // ℝ and ℂ alike (`sin`/`cos` are entire with the same real zeros).
             if ctx.is_builtin(fid, BuiltinFn::Cot) || ctx.is_builtin(fid, BuiltinFn::Csc) {
                 return is_provably_zero(ctx, arg)
                     || rational_pi_multiple_signed(ctx, arg).is_some_and(|k| k.is_integer());
@@ -1549,25 +1564,28 @@ fn is_structurally_undefined_over_reals(ctx: &Context, expr: ExprId) -> bool {
                     double.is_integer() && !k.is_integer()
                 });
             }
-            // `ln`/`log` of a provably-NEGATIVE argument is undefined over ℝ (`ln(-5)`).
+            // `ln`/`log` of a provably-NEGATIVE argument is undefined over ℝ (`ln(-5)`)
+            // but a defined finite complex value (principal-branch complex log) in ℂ.
             // `ln(0) = −∞` (non-finite) is deliberately NOT flagged here.
             if ctx.is_builtin(fid, BuiltinFn::Ln) || ctx.is_builtin(fid, BuiltinFn::Log) {
-                return exact_rational_value(ctx, arg).is_some_and(|a| a.is_negative());
+                return !complex && exact_rational_value(ctx, arg).is_some_and(|a| a.is_negative());
             }
             // `sqrt` of a provably-negative argument: an even root of a negative,
-            // undefined over ℝ. (The `(-n)^(1/2)` spelling is the `Pow` arm above; this
-            // catches the `Sqrt` builtin the parser emits for `sqrt(...)`.) `cbrt` /
-            // odd roots are real and are NOT flagged.
-            ctx.is_builtin(fid, BuiltinFn::Sqrt)
+            // undefined over ℝ but `= i·√|·|` in ℂ. (The `(-n)^(1/2)` spelling is the
+            // `Pow` arm above; this catches the `Sqrt` builtin the parser emits for
+            // `sqrt(...)`.) `cbrt` / odd roots are real and are NOT flagged.
+            !complex
+                && ctx.is_builtin(fid, BuiltinFn::Sqrt)
                 && exact_rational_value(ctx, arg).is_some_and(|a| a.is_negative())
         }
         // `log(base, value)` of a provably-NEGATIVE value is undefined over ℝ
-        // (`log(2, -8)`, `log(10, -3)`). The base-domain issues (base ≤ 0, base = 1)
-        // are handled elsewhere; here `args[1]` is the value (`log(2, 8) = 3`).
+        // (`log(2, -8)`, `log(10, -3)`) but defined in ℂ. The base-domain issues
+        // (base ≤ 0, base = 1) are handled elsewhere; here `args[1]` is the value
+        // (`log(2, 8) = 3`).
         Expr::Function(fn_id, args)
             if args.len() == 2 && ctx.is_builtin(*fn_id, BuiltinFn::Log) =>
         {
-            exact_rational_value(ctx, args[1]).is_some_and(|v| v.is_negative())
+            !complex && exact_rational_value(ctx, args[1]).is_some_and(|v| v.is_negative())
         }
         _ => false,
     }
@@ -1590,24 +1608,40 @@ fn pow_is_even_root_of_negative(ctx: &Context, base: ExprId, exp: ExprId) -> boo
 }
 
 pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool {
-    if is_structurally_undefined_over_reals(ctx, expr) {
+    expr_carries_nonfinite_or_undefined_in_domain(
+        ctx,
+        expr,
+        crate::abs_support::ValueDomainMode::RealOnly,
+    )
+}
+
+/// Domain-aware variant of [`expr_carries_nonfinite_or_undefined`]. In `ComplexEnabled`
+/// mode the structurally-real-undefined forms that are defined in ℂ (even roots of
+/// negatives, `ln`/`log` of negatives) are not counted as non-finite; genuine
+/// non-finites (`Infinity`, `Undefined`, `c/0`, trig poles) still are.
+pub fn expr_carries_nonfinite_or_undefined_in_domain(
+    ctx: &Context,
+    expr: ExprId,
+    vd: crate::abs_support::ValueDomainMode,
+) -> bool {
+    if is_structurally_undefined(ctx, expr, vd) {
         return true;
     }
     match ctx.get(expr) {
         Expr::Constant(cas_ast::Constant::Infinity | cas_ast::Constant::Undefined) => true,
         Expr::Div(num, den) => {
             is_provably_zero(ctx, *den)
-                || expr_carries_nonfinite_or_undefined(ctx, *num)
-                || expr_carries_nonfinite_or_undefined(ctx, *den)
+                || expr_carries_nonfinite_or_undefined_in_domain(ctx, *num, vd)
+                || expr_carries_nonfinite_or_undefined_in_domain(ctx, *den, vd)
         }
         Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
-            expr_carries_nonfinite_or_undefined(ctx, *a)
-                || expr_carries_nonfinite_or_undefined(ctx, *b)
+            expr_carries_nonfinite_or_undefined_in_domain(ctx, *a, vd)
+                || expr_carries_nonfinite_or_undefined_in_domain(ctx, *b, vd)
         }
-        Expr::Neg(a) | Expr::Hold(a) => expr_carries_nonfinite_or_undefined(ctx, *a),
+        Expr::Neg(a) | Expr::Hold(a) => expr_carries_nonfinite_or_undefined_in_domain(ctx, *a, vd),
         Expr::Function(_, args) => args
             .iter()
-            .any(|&c| expr_carries_nonfinite_or_undefined(ctx, c)),
+            .any(|&c| expr_carries_nonfinite_or_undefined_in_domain(ctx, c, vd)),
         _ => false,
     }
 }
@@ -1637,6 +1671,27 @@ pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool 
 /// (not any non-finite-bearing `Div`), so a legitimate evaluation like `1/inf -> 0`
 /// (where `inf` is non-zero) is never blocked.
 pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: ExprId) -> bool {
+    rewrite_unsoundly_drops_nonfinite_in_domain(
+        ctx,
+        before,
+        after,
+        crate::abs_support::ValueDomainMode::RealOnly,
+    )
+}
+
+/// Domain-aware variant of [`rewrite_unsoundly_drops_nonfinite`]. In `ComplexEnabled`
+/// mode the forms that are undefined over ℝ but defined finite complex values — an
+/// even root of a negative (`(-1)^(1/2) = i`, `sqrt(-4) = 2i`) and `ln`/`log` of a
+/// negative — are NOT treated as undefined, so folding them to their principal complex
+/// value (`(-1)^(1/2) -> i`) is allowed instead of being reverted by this backstop.
+/// Genuine undefined (`c/0`, `Undefined`, `0^k` with k ≤ 0, trig poles) and additive
+/// `Infinity` indeterminates stay blocked in both domains.
+pub fn rewrite_unsoundly_drops_nonfinite_in_domain(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+    vd: crate::abs_support::ValueDomainMode,
+) -> bool {
     // Clause 1 — genuine UNDEFINED (a `c/0` provably-zero denominator or an
     // `Undefined` constant) anywhere in `before`, under ANY node: the result must
     // stay undefined. Real-domain functions/products/powers are strict, so a
@@ -1648,7 +1703,9 @@ pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: E
     // does NOT excuse dropping the undefined: `ln(1/(x-x) - 1/(x-x)) -> -inf` is
     // unsound because `ln(undefined) = undefined`, not `-inf`. Only `after` STILL
     // being undefined (`1/(x-x) -> undefined`) is a sound resolution.
-    if expr_carries_undefined(ctx, before) && !expr_carries_undefined(ctx, after) {
+    if expr_carries_undefined_in_domain(ctx, before, vd)
+        && !expr_carries_undefined_in_domain(ctx, after, vd)
+    {
         return true;
     }
     // Clause 2 — additive INDETERMINATE carrying `Infinity` (`inf - inf`,
@@ -1659,8 +1716,8 @@ pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: E
     // `Infinity` evaluations (`1/inf -> 0`, `tanh(inf) -> 1`, `atan(inf) -> pi/2`)
     // are never additive and so are never blocked.
     matches!(ctx.get(before), Expr::Add(_, _) | Expr::Sub(_, _))
-        && expr_carries_nonfinite_or_undefined(ctx, before)
-        && !expr_carries_nonfinite_or_undefined(ctx, after)
+        && expr_carries_nonfinite_or_undefined_in_domain(ctx, before, vd)
+        && !expr_carries_nonfinite_or_undefined_in_domain(ctx, after, vd)
 }
 
 /// True when `expr` is genuinely UNDEFINED over the reals — it carries an
@@ -1671,21 +1728,36 @@ pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: E
 /// (`1/inf -> 0`, `tanh(inf) -> 1`, `sign(inf) -> 1`, `e^(-inf) -> 0`), so dropping
 /// it is frequently sound, whereas dropping a genuine `undefined`/`c/0` never is.
 pub fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
-    if is_structurally_undefined_over_reals(ctx, expr) {
+    expr_carries_undefined_in_domain(ctx, expr, crate::abs_support::ValueDomainMode::RealOnly)
+}
+
+/// Domain-aware variant of [`expr_carries_undefined`]. In `ComplexEnabled` mode the
+/// structurally-real-undefined forms that are defined in ℂ (even roots of negatives,
+/// `ln`/`log` of negatives) are not counted; `c/0`, `Undefined`, `0^k` (k ≤ 0) and
+/// trig poles still are.
+pub fn expr_carries_undefined_in_domain(
+    ctx: &Context,
+    expr: ExprId,
+    vd: crate::abs_support::ValueDomainMode,
+) -> bool {
+    if is_structurally_undefined(ctx, expr, vd) {
         return true;
     }
     match ctx.get(expr) {
         Expr::Constant(cas_ast::Constant::Undefined) => true,
         Expr::Div(num, den) => {
             is_provably_zero(ctx, *den)
-                || expr_carries_undefined(ctx, *num)
-                || expr_carries_undefined(ctx, *den)
+                || expr_carries_undefined_in_domain(ctx, *num, vd)
+                || expr_carries_undefined_in_domain(ctx, *den, vd)
         }
         Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
-            expr_carries_undefined(ctx, *a) || expr_carries_undefined(ctx, *b)
+            expr_carries_undefined_in_domain(ctx, *a, vd)
+                || expr_carries_undefined_in_domain(ctx, *b, vd)
         }
-        Expr::Neg(a) | Expr::Hold(a) => expr_carries_undefined(ctx, *a),
-        Expr::Function(_, args) => args.iter().any(|&c| expr_carries_undefined(ctx, c)),
+        Expr::Neg(a) | Expr::Hold(a) => expr_carries_undefined_in_domain(ctx, *a, vd),
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|&c| expr_carries_undefined_in_domain(ctx, c, vd)),
         _ => false,
     }
 }
@@ -1725,11 +1797,61 @@ mod tests {
     use super::{
         expr_carries_nonfinite_or_undefined, expr_carries_undefined, is_provably_zero,
         match_add_inverse_expr, match_sub_self_semantic_expr, rewrite_unsoundly_drops_nonfinite,
-        try_rewrite_add_inverse_zero_expr, try_rewrite_sub_self_zero_expr,
+        rewrite_unsoundly_drops_nonfinite_in_domain, try_rewrite_add_inverse_zero_expr,
+        try_rewrite_sub_self_zero_expr,
     };
+    use crate::abs_support::ValueDomainMode;
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+
+    #[test]
+    fn backstop_is_value_domain_aware_for_complex_defined_forms() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+
+        // Forms undefined over ℝ but defined finite complex values: in ComplexEnabled
+        // mode folding them away (`(-1)^(1/2) -> i`, the additive cancellation
+        // `sqrt(-4) - sqrt(-4) -> 0`, `ln(-5) - ln(-5) -> 0`) is SOUND and must NOT be
+        // flagged; in RealOnly mode the same drop stays blocked.
+        for src in [
+            "(-1)^(1/2) - (-1)^(1/2)",
+            "sqrt(-4) - sqrt(-4)",
+            "ln(-5) - ln(-5)",
+        ] {
+            let before = parse(src, &mut ctx).expect("parse");
+            assert!(
+                rewrite_unsoundly_drops_nonfinite_in_domain(
+                    &ctx,
+                    before,
+                    zero,
+                    ValueDomainMode::RealOnly
+                ),
+                "`{src}` -> 0 must be blocked over ℝ"
+            );
+            assert!(
+                !rewrite_unsoundly_drops_nonfinite_in_domain(
+                    &ctx,
+                    before,
+                    zero,
+                    ValueDomainMode::ComplexEnabled
+                ),
+                "`{src}` -> 0 must be allowed in ℂ (defined finite value)"
+            );
+        }
+
+        // Genuinely undefined in BOTH domains: `c/0` and `0^0` stay blocked even in
+        // ComplexEnabled mode (1/0 is undefined in ℂ too).
+        for src in ["1/(x-x) - 1/(x-x)", "0^0 - 0^0"] {
+            let before = parse(src, &mut ctx).expect("parse");
+            for vd in [ValueDomainMode::RealOnly, ValueDomainMode::ComplexEnabled] {
+                assert!(
+                    rewrite_unsoundly_drops_nonfinite_in_domain(&ctx, before, zero, vd),
+                    "`{src}` -> 0 must stay blocked in {vd:?} (undefined in both domains)"
+                );
+            }
+        }
+    }
 
     #[test]
     fn rewrite_filter_blocks_nonfinite_additive_drop_but_allows_evaluations() {
