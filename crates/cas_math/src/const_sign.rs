@@ -172,6 +172,18 @@ fn ln_bounds(x: &BigRational) -> Option<(BigRational, BigRational)> {
     Some((&e_r * &l2_lo + lm_lo, &e_r * &l2_hi + lm_hi))
 }
 
+/// `ln` of a positive interval `[al, ah]`. `ln` is monotone increasing, so
+/// `ln([al, ah]) = [ln_lower(al), ln_upper(ah)]`; bails if the lower endpoint is
+/// not strictly positive (real-domain `ln`).
+fn ln_interval_bounds((al, ah): (BigRational, BigRational)) -> Option<(BigRational, BigRational)> {
+    if !al.is_positive() {
+        return None;
+    }
+    let (lo, _) = ln_bounds(&al)?;
+    let (_, hi) = ln_bounds(&ah)?;
+    Some((lo, hi))
+}
+
 fn interval_neg((lo, hi): (BigRational, BigRational)) -> (BigRational, BigRational) {
     (-hi, -lo)
 }
@@ -253,15 +265,23 @@ fn const_value_bounds_depth(
                 let (lo, _) = sqrt_bounds(&al)?;
                 Some((lo, hi))
             } else if ctx.is_builtin_call(expr, BuiltinFn::Ln) && args.len() == 1 {
-                // ln is monotone increasing: ln([al, ah]) = [ln(al), ln(ah)]; the
-                // argument's lower bound must be strictly positive (real-domain ln).
-                let (al, ah) = bounds(args[0])?;
-                if !al.is_positive() {
-                    return None;
-                }
-                let (lo, _) = ln_bounds(&al)?;
-                let (_, hi) = ln_bounds(&ah)?;
-                Some((lo, hi))
+                ln_interval_bounds(bounds(args[0])?)
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Log2) && args.len() == 1 {
+                // log2(c) = ln(c) / ln(2); ln(2) > 0 so the reciprocal is well-defined.
+                let num = ln_interval_bounds(bounds(args[0])?)?;
+                let den = interval_recip(ln_bounds(&BigRational::from_integer(BigInt::from(2)))?)?;
+                Some(interval_mul(num, den))
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Log10) && args.len() == 1 {
+                // log10(c) = ln(c) / ln(10).
+                let num = ln_interval_bounds(bounds(args[0])?)?;
+                let den = interval_recip(ln_bounds(&BigRational::from_integer(BigInt::from(10)))?)?;
+                Some(interval_mul(num, den))
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Log) && args.len() == 2 {
+                // log(base, arg) = ln(arg) / ln(base); the base interval must not
+                // straddle 1 (else ln(base) brackets 0 and the ratio is unbounded).
+                let num = ln_interval_bounds(bounds(args[1])?)?;
+                let den = interval_recip(ln_interval_bounds(bounds(args[0])?)?)?;
+                Some(interval_mul(num, den))
             } else {
                 None
             }
@@ -443,6 +463,22 @@ mod tests {
         assert_eq!(sign("ln(1/2) + 1/2"), Some(ConstSign::Negative)); // -0.693 + 0.5 < 0
                                                                       // Composes with the other constants (ln of a bounded irrational argument).
         assert_eq!(sign("ln(pi) - 1"), Some(ConstSign::Positive)); // ln(3.1416)=1.14 > 1
+    }
+
+    #[test]
+    fn log_base_value_bounds_decide_comparisons() {
+        // log_b(c) = ln(c)/ln(b) value comparisons, via the ln bounds + interval
+        // division: log2(3)=1.585, log2(10)=3.322, log10(50)=1.699, log_3(10)=2.096.
+        assert_eq!(sign("log2(3) - 2"), Some(ConstSign::Negative)); // 1.585 < 2
+        assert_eq!(sign("log2(3) - 1"), Some(ConstSign::Positive)); // 1.585 > 1
+        assert_eq!(sign("log2(10) - 3"), Some(ConstSign::Positive)); // 3.322 > 3
+        assert_eq!(sign("log10(50) - 2"), Some(ConstSign::Negative)); // 1.699 < 2
+        assert_eq!(sign("log10(50) - 1"), Some(ConstSign::Positive)); // 1.699 > 1
+        assert_eq!(sign("log(3, 10) - 2"), Some(ConstSign::Positive)); // 2.096 > 2
+        assert_eq!(sign("log(3, 10) - 5/2"), Some(ConstSign::Negative)); // 2.096 < 2.5
+                                                                         // Sign-only cases still decided (log2(8)=3 > 0, log2(1/2)=-1 < 0).
+        assert_eq!(sign("log2(8)"), Some(ConstSign::Positive));
+        assert_eq!(sign("log2(1/2)"), Some(ConstSign::Negative));
     }
 
     #[test]

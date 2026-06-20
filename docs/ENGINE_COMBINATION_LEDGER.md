@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 228 (newest first)
+Active entries: 229 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
@@ -127,6 +127,7 @@ Active entries: 228 (newest first)
 - 2026-06-20 | `retained` | `crates/cas_math/src/trig_table.rs` `parse_angle_from_expr` (Mul + Div arms) | Retained soundness fix: special-angle parser truncated fractional π-coefficients
 - 2026-06-20 | `retained` | `crates/cas_math/src/numeric_eval.rs` `numeric_poly_zero_check` (variable-fre... | Retained soundness fix: exact zero-check replaces an f64 gate in numeric_poly_zero_check
 - 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`atanh_ln_bounds`, `ln_bounds`, `const_v... | Retained completeness: exact ln(c) value bounds in the const-sign oracle (cycle 1/4)
+- 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`ln_interval_bounds` helper; Log2/Log10/... | Retained completeness: log2/log10/two-arg log value bounds via ln-ratio (cycle 2/4)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9815,3 +9816,34 @@ Active entries: 228 (newest first)
     is sound but incomplete; an exact bound upgrades it to a definite verdict WITHOUT reintroducing an
     f64 gate. Each new const_value_bounds case (ln here; log2/log10/exp next) auto-upgrades every
     const-relation that reduces to that constant.
+
+## 2026-06-20 - Retained completeness: log2/log10/two-arg log value bounds via ln-ratio (cycle 2/4)
+- area:
+  - `crates/cas_math/src/const_sign.rs` (`ln_interval_bounds` helper; Log2/Log10/Log arms of
+    `const_value_bounds`)
+- status:
+  - `retained` (completeness: `log_b(c)` VALUE comparisons against a rational threshold are now
+    definite verdicts, not honest conditionals)
+- capture:
+  - investment_class: completeness
+  - cell: log2(3)<2 -> AllReals; log2(3)>2 -> Empty; log2(10)>3 -> AllReals; log10(50)<2 -> AllReals;
+    log10(50)>2 -> Empty; log(3,10)>2 -> AllReals; log(3,10)<2 -> Empty. EqZero identities
+    (log2(8)-3=0, log10(100)-2=0 -> AllReals) and sign-only cases unchanged.
+  - behavior_change_expected: yes - log-base value conditionals become definite; guardrail+pressure
+    huella STRUCTURALLY NONE; workspace green (313 ok-suites)
+- observed:
+  - direct reuse of cycle 1's ln_bounds via the change-of-base identity log_b(c)=ln(c)/ln(b):
+    extracted `ln_interval_bounds((al,ah))` (ln of a positive interval, monotone) and added the
+    Log2/Log10 arms as `interval_mul(ln_interval_bounds(arg), interval_recip(ln_bounds(base)))`, and
+    the two-arg Log arm as `ln(arg)/ln(base)` where the BASE interval must not straddle 1 (else
+    interval_recip bails -> None, sound). 446-case mpmath sweep: 0 wrong (2 honest conditionals at
+    exact integer boundaries like log10(100) vs 2, where the value sits on the threshold).
+- retained learning:
+  - once a transcendental has a sound VALUE-bound primitive (ln here), every algebraically-related
+    transcendental is one interval-arithmetic identity away: log_b is ln(c)/ln(b), so the marginal
+    cost of log2/log10/two-arg log was a 5-line helper + three arms, no new series. Build the
+    primitive bound once; derive the rest with interval_mul/recip.
+  - the EqZero exact prover and the value-bound oracle are COMPLEMENTARY and must not collide: a
+    boundary identity (log2(8)-3) gives value bounds that STRADDLE 0 (const_sign returns None there),
+    so the Eq verdict still routes to the exact a^q==b^p prover -> AllReals; the value bounds only
+    upgrade the strict-inequality away-from-boundary cases. Sound by construction.
