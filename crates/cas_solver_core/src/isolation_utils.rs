@@ -101,6 +101,15 @@ pub fn should_split_product_zero_inequality(
 }
 
 /// True iff `numerator/denominator op rhs` should split by denominator sign.
+///
+/// The split is valid whenever the solve variable is in the DENOMINATOR and the
+/// relation is an inequality — cross-multiplying by the denominator's signed value
+/// is sound regardless of whether the (var-free or var-bearing) numerator also
+/// contains the variable. This is only ever consulted from the
+/// `VariableInNumerator` route, where `contains_var(numerator)` is already
+/// guaranteed, so omitting that redundant check is behaviour-preserving there
+/// while also licensing the Cluster E constant-numerator case `1/(x-2) > 1`
+/// (deliberately routed through the numerator pipeline for the split).
 pub fn should_split_division_denominator_sign_cases(
     ctx: &Context,
     numerator: ExprId,
@@ -108,9 +117,8 @@ pub fn should_split_division_denominator_sign_cases(
     op: &RelOp,
     var: &str,
 ) -> bool {
-    contains_var(ctx, numerator, var)
-        && contains_var(ctx, denominator, var)
-        && is_inequality_relop(op)
+    let _ = numerator;
+    contains_var(ctx, denominator, var) && is_inequality_relop(op)
 }
 
 /// True iff already-isolated denominator variable `x op rhs` should split
@@ -492,6 +500,23 @@ mod tests {
             x,
             x_plus_one,
             &RelOp::Eq,
+            "x"
+        ));
+        // Cluster E: a CONSTANT numerator over a var-bearing denominator must also
+        // split (e.g. `1/(x-2) > 1`) -- the var is in the denominator.
+        assert!(should_split_division_denominator_sign_cases(
+            &ctx,
+            one,
+            x_plus_one,
+            &RelOp::Gt,
+            "x"
+        ));
+        // No variable in the denominator -> no split.
+        assert!(!should_split_division_denominator_sign_cases(
+            &ctx,
+            x,
+            one,
+            &RelOp::Gt,
             "x"
         ));
     }

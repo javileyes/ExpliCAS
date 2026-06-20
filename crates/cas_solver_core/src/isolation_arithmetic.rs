@@ -3,9 +3,11 @@
 //! These wrappers keep equation-rewrite orchestration in `cas_solver_core`
 //! while callers provide stateful hooks for simplification and recursion.
 
-use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
+use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_math::polynomial::Polynomial;
+use num_traits::Zero;
 
-use crate::isolation_utils::should_try_reciprocal_solve;
+use crate::isolation_utils::{is_inequality_relop, should_try_reciprocal_solve};
 use crate::linear_collect::{
     execute_linear_collect_additive_pipeline_with_default_kernel_and_unified_step_mapper_with_state,
     execute_linear_collect_factored_pipeline_with_default_kernel_and_unified_step_mapper_with_state,
@@ -1373,6 +1375,63 @@ where
     let map_denominator_item_to_step = map_denominator_item_to_step;
     let mut finalize_denominator_solved_sets = finalize_denominator_solved_sets;
     let route = derive_div_isolation_route(context_ref(state), numerator, var);
+    // Cluster E: a rational INEQUALITY with the solve variable only in the
+    // denominator (constant numerator, e.g. `1/(x-2) > 1`) must take the
+    // denominator-sign case split, not plain denominator isolation. The latter
+    // demotes to the boundary equation `f/g = c` and emits a single monotone ray
+    // that drops the pole and is frequently DISJOINT from the truth (`(3, ∞)`
+    // instead of `(2, 3)`).
+    //
+    // To reuse the existing (correct) numerator-side sign split, first fold the
+    // RHS into a single fraction: `f/g (op) c  ==>  (f - c*g)/g (op) 0`. The
+    // combined numerator `p = f - c*g` then carries the variable (for `c != 0`),
+    // so the split's branch equation is `p (op) 0` with the variable on the LHS --
+    // which the branch solver can isolate. (The raw `f (op) c*g` cross-multiply
+    // leaves the variable on the RHS, which the low-level isolate cannot handle.)
+    // The pole stays excluded by the split's strict open domain guards
+    // `g > 0` / `g < 0`. Only applies when the denominator is a polynomial in the
+    // variable, so each branch is a polynomial inequality the machinery solves
+    // exactly; non-polynomial denominators keep the legacy isolation path.
+    //
+    // Gated on a RHS that resolves to a NON-ZERO rational: with `c = 0` the fold is
+    // a no-op (`p = f`) that leaves a constant numerator (no variable to isolate in
+    // the branch), so those `f/g (op) 0` forms keep the legacy path (where
+    // `1/x > 0 -> (0, ∞)` is already correct). The check is on the EXACT rational
+    // value, not the literal node shape, so a folded zero (`1 - 1`) is excluded too;
+    // a non-rational RHS (e.g. `sqrt(2)`) likewise stays on the legacy path (the
+    // fold is only validated for rational constants).
+    //
+    // Restricted to a LINEAR denominator (degree 1): the two-way denominator-sign
+    // split (`g > 0` / `g < 0`) only captures a SINGLE pole/sign change, which is
+    // exactly a linear `g`. A quadratic-or-higher denominator has multiple poles
+    // and needs a full critical-point partition, so it stays an honest residual on
+    // the legacy path rather than producing a wrong two-branch answer.
+    let cluster_e_split = matches!(route, DivIsolationRoute::VariableInDenominator)
+        && is_inequality_relop(&op)
+        && cas_math::numeric_eval::as_rational_const(context_ref(state), rhs)
+            .is_some_and(|c| !c.is_zero())
+        && Polynomial::from_expr(context_ref(state), denominator, var)
+            .is_ok_and(|g| g.degree() == 1);
+    let (numerator, rhs, route) = if cluster_e_split {
+        let ctx = context_mut(state);
+        // Rebuild the RHS as a canonical `Number` before folding. A fractional/
+        // negative literal can arrive as a raw `Div`/`Neg` node (e.g. `-1/2` as
+        // `Div(-1, 2)`); building `Mul(raw_rhs, g)` from it mis-signs the polynomial
+        // extraction of `p = f - c*g`. (The gate guarantees a rational here.)
+        let rhs_const = cas_math::numeric_eval::as_rational_const(ctx, rhs)
+            .map(|r| ctx.add(Expr::Number(r)))
+            .unwrap_or(rhs);
+        let scaled_rhs = ctx.add(Expr::Mul(rhs_const, denominator));
+        let combined_numerator = ctx.add(Expr::Sub(numerator, scaled_rhs));
+        let zero = ctx.num(0);
+        (
+            combined_numerator,
+            zero,
+            DivIsolationRoute::VariableInNumerator,
+        )
+    } else {
+        (numerator, rhs, route)
+    };
 
     match route {
         DivIsolationRoute::VariableInNumerator => {

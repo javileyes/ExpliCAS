@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 219 (newest first)
+Active entries: 220 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
+- 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9499,3 +9500,41 @@ Active entries: 219 (newest first)
     u + assume(u>0) silently discards the u<0 branch whose true value is -u. Prefer the unconditional |u| when
     the parity makes it an identity, and reserve the positivity assumption for the genuinely domain-restricted
     odd-numerator/even-denominator case.
+
+## 2026-06-20 - Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
+- area:
+  - rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic.rs` (div-isolation route
+    seam) + `isolation_utils.rs` (`should_split_division_denominator_sign_cases` relaxed)
+- status:
+  - `retained` (REAL-domain soundness fix; closes the dropped-pole single-ray answer for `c/g (op) k`)
+- capture:
+  - investment_class: soundness
+  - cell: 1/(x-2)>1 -> (2,3); 1/(x-2)<1 -> (-inf,2)U(3,inf); 1/(x+1)>2 -> (-1,-1/2); 2/(x-1)>1 -> (1,3);
+    1/(x-2)<-1 -> (1,2); non-strict 1/(x-2)>=1 -> (2,3] (pole open, root closed); negative fraction
+    1/(x-2)>-1/2 -> (-inf,0)U(2,inf); guards 1/x>0 -> (0,inf), 1/x<0 -> (-inf,0) unchanged
+  - behavior_change_expected: yes - var-only-in-denominator linear rational inequalities now case-split;
+    guardrail+pressure STRUCTURALLY byte-identical (no fixture solves a rational inequality), workspace green
+- observed (Round-4 audit Cluster E):
+  - the scoping workflow CORRECTED the audit's framing: the denominator-sign split already exists and is
+    correct for the variable-in-NUMERATOR route ((x-1)/(x-3)>=0 -> (-inf,1]U(3,inf)). The gap was purely
+    route selection: derive_div_isolation_route keys on the numerator, so a CONSTANT numerator over a
+    var-bearing denominator (1/(x-2)>1) took plain denominator isolation -> single ray, dropped pole.
+  - fix: fold f/g (op) c into (f - c*g)/g (op) 0 so the combined numerator carries the variable, then route
+    through the numerator pipeline (its branch equation `p (op) 0` has the var on the LHS, solvable; the raw
+    `f (op) c*g` cross-multiply leaves the var on the RHS, which the low-level isolate cannot handle). Gated
+    to a LINEAR denominator (one pole = one sign change) and NON-ZERO RHS.
+- retained learning:
+  - SCOPE before patching a "missing feature": the workflow proved the machine already existed and worked on
+    a sibling input; the bug was a route-selection criterion, not absent logic. Verifying the live binary
+    (numerator route correct, denominator route wrong) reframed a "build the algorithm" task into a one-seam
+    redirect, avoiding a duplicate divergent code path.
+  - normalize a constant to a canonical Number BEFORE using it to build a polynomial: a fractional/negative
+    literal can arrive as a raw Div/Neg node, and feeding it into Mul/Sub mis-signs the polynomial extraction
+    (every -1/2 RHS was inverted until the rhs->as_rational_const->Number normalization). Same exact-arithmetic
+    discipline as the soundness gates: resolve to the exact value, do not trust the surface node shape.
+  - put the variable-bearing side on the LHS of the branch equation: the low-level isolate the sign split
+    recurses into cannot solve `const (op) var-expr`, only `var-expr (op) const`. Folding c into the
+    numerator (rhs becomes 0) guarantees the var lands on the LHS for every branch.
+  - keep the blast radius bounded by the decision procedure's actual reach: a linear-denominator gate plus a
+    fallback to the legacy path on every other shape kept the huella byte-identical and left quadratic/zero-RHS
+    cases as honest residuals rather than emitting a wrong two-branch answer.
