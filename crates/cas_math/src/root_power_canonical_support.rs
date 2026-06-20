@@ -388,8 +388,9 @@ pub fn classify_root_pow_cancel_pattern(
 
 /// Try `(x^m)^n -> |x|^(m*n)` when the absolute value is required over the reals.
 ///
-/// When the inner exponent `m` is an even integer, `x^m = |x|^m >= 0` for all real
-/// `x`, so `(x^m)^n = |x|^(m*n)` exactly. The plain power `x^(m*n)` is real-equal
+/// When the inner exponent `m` has an even (reduced) numerator, `x^m >= 0` for all
+/// real `x` (the even numerator squares the base), so `(x^m)^n = |x|^(m*n)` exactly.
+/// The plain power `x^(m*n)` is real-equal
 /// to `|x|^(m*n)` only when the product exponent `P = m*n` (in lowest terms) has an
 /// EVEN numerator — then the sign is already absorbed (e.g. `(x^4)^(1/2) = x^2`,
 /// `(x^2)^(2/3) = x^(4/3)`). When `P` has an ODD numerator the plain power either
@@ -418,20 +419,23 @@ pub fn try_rewrite_power_power_even_root_abs_expr(
         _ => return None,
     };
 
-    // Gate on an even-integer inner exponent: that is what makes `x^m >= 0` and
-    // hence `(x^m)^n = |x|^(m*n)` an identity over the reals.
-    let inner_int = match ctx.get(inner_exp) {
-        Expr::Number(n) if n.is_integer() && n.to_integer().is_even() => n.to_integer(),
+    // Gate on an inner exponent whose REDUCED numerator is EVEN: an even numerator
+    // squares the base, so `x^(a/b) = (x^a)^(1/b) >= 0` and hence
+    // `(x^(a/b))^n = |x|^((a/b)*n)` is an identity over the reals. This SUBSUMES the
+    // even-INTEGER case (`(x^2)^(1/2) = |x|`) and now also catches a rational inner
+    // exponent (`(x^(2/3))^(3/2) = |x|`, `(x^(2/3))^(9/2) = |x|^3`). An ODD numerator
+    // is sign-preserving — no absolute value.
+    let inner_rat = match crate::numeric_eval::as_rational_const(ctx, inner_exp) {
+        Some(r) if r.numer().is_even() => r,
         _ => return None,
     };
 
-    // P = m * n: if it is a rational constant we can decide parity (and drop the
-    // abs when the numerator is even, since the plain power is then sign-safe).
-    // If it is symbolic, parity is undecidable, so the abs must be kept.
+    // P = (a/b) * n: if `n` is a rational constant we can decide parity (and drop
+    // the abs when the resulting numerator is even, since `x^even = |x|^even` is
+    // already sign-safe). If `n` is symbolic, parity is undecidable, so keep the abs.
     let prod_exp = match crate::numeric_eval::as_rational_const(ctx, outer_exp) {
         Some(outer_rat) => {
-            let prod = num_rational::BigRational::from_integer(inner_int) * outer_rat;
-            // Even numerator => the plain power is sign-safe; defer to MultiplyExponents.
+            let prod = inner_rat * outer_rat;
             if prod.numer().is_even() {
                 return None;
             }
@@ -647,6 +651,24 @@ where
         return None;
     }
 
+    // When the inner exponent `y` is a rational constant with an EVEN (reduced)
+    // numerator, `x^y >= 0` for all real `x` (the even numerator squares the base),
+    // so `(x^y)^(1/y) = |x|` over ALL reals -- NOT `x` with an `x > 0` assumption,
+    // which silently drops the `x < 0` branch (where the true value is `-x`).
+    // e.g. `(x^(2/3))^(3/2) = |x|`, `(x^(2/5))^(5/2) = |x|`. The reduced numerator
+    // and denominator are coprime, so an even numerator forces an ODD denominator;
+    // the `x^y` is therefore real and nonnegative for every real `x`.
+    if crate::numeric_eval::as_rational_const(ctx, y).is_some_and(|r| r.numer().is_even()) {
+        let abs_u = ctx.call_builtin(BuiltinFn::Abs, vec![u]);
+        return Some(PowPowCancelReciprocalRewrite {
+            rewritten: abs_u,
+            base: u,
+            inner_exp: y,
+            assume_base_positive: false,
+            assume_exp_nonzero: false,
+        });
+    }
+
     let proof_u_pos = prove_positive(ctx, u);
     let proof_y_nonzero = prove_nonzero(ctx, y);
     if strict_mode && (!proof_u_pos.is_proven() || !proof_y_nonzero.is_proven()) {
@@ -753,6 +775,68 @@ mod tests {
         assert!(rewrite.is_none());
     }
 
+    // Build `(x^(a/b))^(b/a)` with FOLDED `Number` exponents, matching what the
+    // simplifier feeds the rule (raw `parse` keeps `b/a` as `Div`, which
+    // `has_reciprocal_outer_exponent` does not recognize as a reciprocal).
+    fn powpow_reciprocal_expr(ctx: &mut Context, a: i64, b: i64) -> ExprId {
+        let x = parse("x", ctx).expect("x");
+        let inner_exp = ctx.rational(a, b);
+        let inner = ctx.add(cas_ast::Expr::Pow(x, inner_exp));
+        let outer_exp = ctx.rational(b, a);
+        ctx.add(cas_ast::Expr::Pow(inner, outer_exp))
+    }
+
+    #[test]
+    fn powpow_cancel_even_numerator_reciprocal_yields_abs_over_all_reals() {
+        // (x^y)^(1/y) with y = a/b and EVEN numerator a: x^y >= 0 for every real x,
+        // so the reciprocal cancellation is |x| over ALL reals -- NOT `x` with an
+        // x>0 assumption (which drops the x<0 branch). This must hold even in strict
+        // mode and even when the prove callbacks report Unknown, because it is an
+        // unconditional identity. Cluster I: (x^(2/3))^(3/2) = |x|, not x.
+        let render =
+            |ctx: &Context, id: ExprId| cas_formatter::DisplayExpr { context: ctx, id }.to_string();
+        for (a, b) in [(2i64, 3i64), (2, 5), (4, 3)] {
+            for strict in [false, true] {
+                let mut ctx = Context::new();
+                let expr = powpow_reciprocal_expr(&mut ctx, a, b);
+                let rewrite = try_rewrite_powpow_cancel_reciprocal_expr_with(
+                    &mut ctx,
+                    expr,
+                    strict,
+                    |_ctx, _e| TriProof::Unknown,
+                    |_ctx, _e| TriProof::Unknown,
+                )
+                .unwrap_or_else(|| panic!("must cancel to |x|: ({a}/{b}) strict={strict}"));
+                assert_eq!(render(&ctx, rewrite.rewritten), "|x|", "for ({a}/{b})");
+                assert!(
+                    !rewrite.assume_base_positive,
+                    "even-numerator cancel must NOT assume base>0: ({a}/{b})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn powpow_cancel_odd_numerator_reciprocal_keeps_plain_base() {
+        // Odd numerator: the even-numerator abs branch must NOT fire, so the cancel
+        // falls through to the general u>0 path (rewritten = base, with assumption).
+        let render =
+            |ctx: &Context, id: ExprId| cas_formatter::DisplayExpr { context: ctx, id }.to_string();
+        for (a, b) in [(3i64, 5i64), (5, 3)] {
+            let mut ctx = Context::new();
+            let expr = powpow_reciprocal_expr(&mut ctx, a, b);
+            let rewrite = try_rewrite_powpow_cancel_reciprocal_expr_with(
+                &mut ctx,
+                expr,
+                false,
+                |_ctx, _e| TriProof::Unknown,
+                |_ctx, _e| TriProof::Unknown,
+            )
+            .unwrap_or_else(|| panic!("must cancel: ({a}/{b})"));
+            assert_eq!(render(&ctx, rewrite.rewritten), "x", "for ({a}/{b})");
+        }
+    }
+
     #[test]
     fn root_pow_cancel_even_goes_to_abs() {
         let mut ctx = Context::new();
@@ -787,6 +871,11 @@ mod tests {
             ("(x^2)^(1/4)", "|x|^(1/2)"), // P = 1/2 (odd numer, even denom -> domain)
             ("(x^2)^(3/4)", "|x|^(3/2)"), // P = 3/2 (odd numer)
             ("(x^2)^(1/6)", "|x|^(1/3)"), // P = 1/3 (odd numer)
+            // Rational inner exponent with EVEN numerator: x^(a/b) >= 0, so the abs
+            // is required just like the even-integer case (Cluster I power towers).
+            ("(x^(2/3))^(9/2)", "|x|^3"),  // P = 3 (odd numer)
+            ("(x^(2/5))^(15/2)", "|x|^3"), // P = 3 (odd numer)
+            ("(x^(4/3))^(9/4)", "|x|^3"),  // P = 3 (odd numer)
         ] {
             let expr = parse(source, &mut ctx).expect(source);
             let rewrite = try_rewrite_power_power_even_root_abs_expr(&mut ctx, expr)

@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 218 (newest first)
+Active entries: 219 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
+- 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9459,3 +9460,42 @@ Active entries: 218 (newest first)
     A parallel result-only detector adds the caveat with zero behavior change.
   - an EVEN root of a negative is imaginary, an ODD root is real ((-8)^(1/3)=-2): gate on the reduced exponent
     DENOMINATOR being even, never on "base is negative" alone.
+
+## 2026-06-20 - Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
+- area:
+  - power-tower canonicalization; `crates/cas_math/src/root_power_canonical_support.rs`: generalized the
+    even-root abs gate in try_rewrite_power_power_even_root_abs_expr and added an even-numerator branch to
+    try_rewrite_powpow_cancel_reciprocal_expr_with
+- status:
+  - `retained` (REAL-domain soundness fix; closes the sign-wrong power-tower collapse for x<0)
+- capture:
+  - investment_class: soundness
+  - cell: ((x^2)^(1/3))^(3/2), (x^(2/3))^(3/2), (x^(2/5))^(5/2), (x^(4/3))^(3/4) now -> |x| (were x);
+    (x^(2/3))^(9/2) -> |x|^3 (was x^3); symbolic outer (x^(2/3))^y -> |x|^(2/3*y); odd-numerator reciprocals
+    (x^3)^(1/3) stay x; provably-nonneg base ((x^2)^(2/3))^(3/2) -> x^2 (abs collapses)
+  - behavior_change_expected: yes - even-numerator power towers now carry |.|; guardrail+pressure STRUCTURALLY
+    byte-identical (the forms are not in any lane fixture), full cargo test --workspace green
+- observed (Round-4 audit Cluster I):
+  - the abs capability existed only for an even-INTEGER inner exponent ((x^2)^(1/2)=|x|); a rational inner
+    exponent with an even NUMERATOR (x^(2/3), x^(4/3)) was equally nonnegative but routed to the plain
+    multiply-exponents collapse, dropping the sign. The product-1 (reciprocal) probes were even worse: a
+    SEPARATE rule (PowPowCancelReciprocalRule / try_rewrite_powpow_cancel_reciprocal_expr_with) fired FIRST and
+    cancelled (x^y)^(1/y) -> x with a silent x>0 assumption, deleting the x<0 branch entirely (true value |x|).
+  - root cause located by instrumenting all three nested-Pow rules in registration order: RootPowCancelRule
+    (declines on non-integer inner), PowerPowerRule (the even-root-abs path), and PowPowCancelReciprocalRule
+    (the reciprocal-cancel path) -- the last is the one that beat the others to the product-1 forms.
+  - fix: gate both paths on as_rational_const(inner).numer().is_even() instead of an even integer; the
+    reciprocal path returns |x| unconditionally (identity over all reals, strict and assume alike), the
+    multiply path emits |x|^P (deferring to the plain power only when P is itself even-numerator/sign-safe).
+- retained learning:
+  - even-NUMERATOR is the real nonnegativity trigger, not even-INTEGER: x^(a/b) = (x^a)^(1/b) >= 0 for all real
+    x whenever a is even (b then odd by coprimality), so any abs capability written for x^(2k) must generalize
+    to the rational exponent or it silently under-covers the same identity.
+  - when several rules can rewrite the same shape, FIND WHICH ONE WINS before patching: registration order put
+    a reciprocal-cancel rule ahead of the abs-aware power-of-power rule, so fixing only the latter left the
+    product-1 cases (exactly the reciprocal forms) still wrong. Instrument every candidate rule, not just the
+    one that looks responsible.
+  - a 'cancel with assumption' (u>0) is unsound when the identity actually holds over ALL reals as |u|: emitting
+    u + assume(u>0) silently discards the u<0 branch whose true value is -u. Prefer the unconditional |u| when
+    the parity makes it an identity, and reserve the positivity assumption for the genuinely domain-restricted
+    odd-numerator/even-denominator case.
