@@ -486,11 +486,15 @@ Gaps / under-covered (mostly honest capability gaps, not unsoundness):
 
 - Complex value-domain mode: --complex on still returns sqrt(-4) as 2·(-1)^(1/2) with value_domain=real rather than 2i; this is an under-evaluation (conservative residual), not unsound, but the complex-mode evaluation path is effectively untested for actual i-folding.
 
-- floor/ceil do not const-fold even with --const-fold safe (floor(-0.5) stays floor(-1/2)); conservative non-fold, sound, but means floor/ceil numeric-correctness on concrete inputs is hard to stress.
+- floor/ceil do not const-fold even with --const-fold safe (floor(-0.5) stays floor(-1/2)); conservative non-fold, sound, but means floor/ceil numeric-correctness on concrete inputs is hard to stress. *(FIXED 2026-06-21 `PENDING_HASH_FLOOR`: `floor`/`ceil`/`round` of a foldable rational constant now evaluate to the exact integer — `floor(7/2)→3`, `ceil(7/2)→4`, `floor(5)→5`, `round(5/2)→3` with round half-away-from-zero matching the f64 evaluator — via `cas_math::const_eval::try_eval_floor_ceil_round` + the `EvaluateFloorCeilRoundRule`; symbolic/irrational args stay symbolic, sound. Peldaño: an IRRATIONAL but sign-bounded argument (`floor(pi)=3`) could fold via the `const_sign` value bounds — not done.)*
 
-- Very large numbers (factorial(100), 2^1000, exp(100000)) compute exactly/symbolically with no overflow or wrong value observed; no defect found, axis appears robust.
+- Very large numbers (factorial(100), 2^1000, exp(100000)) compute exactly/symbolically with no overflow or wrong value observed; no defect found, axis appears robust. *(Re-confirmed robust 2026-06-21.)*
 
-- Big-number symbolic comparison (2^1000 > 3^600) could not be evaluated as a standalone predicate (the engine treated it as containing variable x); boolean-comparison soundness for large literals remains unprobed via this surface.
+- Big-number symbolic comparison (2^1000 > 3^600) could not be evaluated as a standalone predicate (the engine treated it as containing variable x); boolean-comparison soundness for large literals remains unprobed via this surface. *(RESOLVED via the const-relation path: `solve(x-x+2^1000>3^600,x)→AllReals` (correct — `as_rational_const` folds both to exact BigInt and compares); the bare-predicate parse surface is a separate minor gap.)*
+
+### Status (2026-06-21 re-probe)
+
+Of the six items above: **#5 (large numbers)** and **#6 (big-number comparison)** are RESOLVED (the latter by the `const_sign`/const-relation work); **#4 (floor/ceil/round const-fold)** is FIXED (see above). Still OPEN (all COMPLETENESS, sound-but-conservative): **#1 matrix `inverse`/`eigenvalues`/`rank`** (not implemented; big), **#2 system solving** `solve([eq1,eq2],[x,y])` (parser + multivariable solver; big), **#3 complex i-folding** `sqrt(-4)→2i` (under-evaluation in `--value-domain complex`; moderate).
 
 
 New witness found by the critic:

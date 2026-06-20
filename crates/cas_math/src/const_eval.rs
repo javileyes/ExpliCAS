@@ -66,6 +66,50 @@ pub fn try_eval_pow_literal(ctx: &mut Context, base: ExprId, exp: ExprId) -> Opt
     Some(mk_rational(ctx, result))
 }
 
+/// Evaluate `floor(c)`, `ceil(c)`, or `round(c)` for a foldable-rational argument to
+/// its exact integer value. `round` rounds half AWAY FROM ZERO (matching the `f64`
+/// evaluator: `round(5/2)=3`, `round(-5/2)=-3`). Returns `None` for a non-constant
+/// argument (kept symbolic) or any other function. `floor`/`ceil` are builtins;
+/// `round` is a named function.
+pub fn try_eval_floor_ceil_round(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    use crate::numeric_eval::as_rational_const;
+    use cas_ast::BuiltinFn;
+    use num_bigint::BigInt;
+    use num_traits::Signed;
+
+    // Single argument of a Function call.
+    let arg = match ctx.get(expr) {
+        Expr::Function(_, args) if args.len() == 1 => args[0],
+        _ => return None,
+    };
+    // 0 = floor, 1 = ceil, 2 = round.
+    let kind = if ctx.is_builtin_call(expr, BuiltinFn::Floor) {
+        0u8
+    } else if ctx.is_builtin_call(expr, BuiltinFn::Ceil) {
+        1
+    } else if ctx.is_call_named(expr, "round") {
+        2
+    } else {
+        return None;
+    };
+    // Fold the argument to an EXACT rational (handles `7/2`, `3.9`, `6-3*2`, ...).
+    let r = as_rational_const(ctx, arg)?;
+    let result = match kind {
+        0 => r.floor(),
+        1 => r.ceil(),
+        _ => {
+            // round half away from zero: sign(r) * floor(|r| + 1/2).
+            let half = BigRational::new(BigInt::from(1), BigInt::from(2));
+            if r.is_negative() {
+                -((-&r + &half).floor())
+            } else {
+                (&r + &half).floor()
+            }
+        }
+    };
+    Some(ctx.add(Expr::Number(result)))
+}
+
 // =============================================================================
 // Literal extraction helpers
 // =============================================================================
@@ -249,5 +293,46 @@ mod tests {
         assert!(try_eval_pow_literal(&mut ctx, x, two).is_none());
         // 2^x - not literal exp
         assert!(try_eval_pow_literal(&mut ctx, two, x).is_none());
+    }
+
+    #[test]
+    fn test_floor_ceil_round_const_fold() {
+        use cas_parser::parse;
+        // (source, expected integer). `round` is half AWAY FROM ZERO.
+        for (src, expect) in [
+            ("floor(7/2)", "3"),
+            ("floor(-7/2)", "-4"),
+            ("floor(5)", "5"),
+            ("floor(-1/2)", "-1"),
+            ("ceil(7/2)", "4"),
+            ("ceil(-7/2)", "-3"),
+            ("ceil(5)", "5"),
+            ("round(5/2)", "3"),
+            ("round(7/2)", "4"),
+            ("round(-5/2)", "-3"),
+            ("round(1/2)", "1"),
+            ("round(3)", "3"),
+        ] {
+            let mut ctx = setup();
+            let e = parse(src, &mut ctx).expect("parse");
+            let r = try_eval_floor_ceil_round(&mut ctx, e)
+                .unwrap_or_else(|| panic!("{src} should fold"));
+            assert_eq!(display(&ctx, r), expect, "{src}");
+        }
+        // Non-constant, irrational, or non-rounding arguments bail to None (sound).
+        let mut ctx = setup();
+        for src in [
+            "floor(x)",
+            "floor(pi)",
+            "ceil(sqrt(2))",
+            "sin(1/2)",
+            "abs(-3)",
+        ] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_eval_floor_ceil_round(&mut ctx, e).is_none(),
+                "{src} must not fold here"
+            );
+        }
     }
 }

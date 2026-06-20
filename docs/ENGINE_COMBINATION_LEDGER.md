@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 232 (newest first)
+Active entries: 233 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
+- 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -9957,3 +9958,36 @@ Active entries: 232 (newest first)
     parametric expression instead of a constant.
   - an unconditional AllReals for a relation the engine cannot prove is the SAME unsoundness class
     whether the residual is a hard constant or a free parameter; route both to the honest conditional.
+
+## 2026-06-21 - Retained completeness: floor/ceil/round const-fold of rational constants
+- area:
+  - `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`);
+    `crates/cas_engine/src/rules/functions.rs` (`EvaluateFloorCeilRoundRule` + registration)
+- status:
+  - `retained` (completeness: floor/ceil/round of a foldable rational constant now evaluate to the
+    exact integer instead of staying symbolic)
+- capture:
+  - investment_class: completeness
+  - cell: floor(7/2)->3, floor(-7/2)->-4, floor(5)->5, ceil(7/2)->4, ceil(-7/2)->-3,
+    round(5/2)->3, round(7/2)->4, round(-5/2)->-3 (round half AWAY FROM ZERO, matching the f64
+    evaluator), floor(3.9)->3. Symbolic/irrational args (floor(x), floor(pi), ceil(sqrt(2))) stay
+    symbolic (sound); other functions (sin, abs) untouched.
+  - behavior_change_expected: floor/ceil/round of rational constants fold; guardrail+pressure huella
+    STRUCTURALLY clean; workspace + make ci green
+- observed (Completeness-critic item #4 from the Round-4 audit; #5 large numbers and #6 big-number
+  comparison were already resolved -- #6 by the const_sign/const-relation work):
+  - floor/ceil are BuiltinFns, round is a NAMED function; neither folded even on concrete rationals
+    (floor(5) stayed floor(5)). Mirrored the existing EvaluateAbsRule pattern: a cas_math support
+    fn (as_rational_const(arg) -> exact floor/ceil/round) plus a `define_rule!` wrapper registered
+    next to EvaluateAbs/EvaluateSign. Folds via as_rational_const, so it bails (stays symbolic) for
+    irrational/symbolic args -- sound.
+- retained learning:
+  - the unary-builtin const-fold idiom in this engine is: cas_math `try_rewrite_*`/`try_eval_*`
+    (exact rational compute) + cas_engine `define_rule!(..., TargetKindSet::FUNCTION, |ctx,expr| ...)`
+    + `simplifier.add_rule` in the functions register. Reuse it for any new function-of-constant fold.
+  - `round` is not a BuiltinFn (it is a named call); detect it with `ctx.is_call_named(expr,"round")`,
+    NOT `sym_name(...) == "round"` (the latter trips cas_engine's lint_string_compares). Match its
+    half-away-from-zero convention to the f64 evaluator so symbolic and numeric paths agree.
+  - residual (sound, not done): floor/ceil/round of an IRRATIONAL but sign-bounded constant
+    (floor(pi)=3, floor(sqrt(2))=1) could fold via the const_sign value bounds (if [lo,hi] of the arg
+    sits inside [n, n+1) then floor = n); left as a next step.

@@ -216,6 +216,18 @@ define_rule!(
 );
 
 define_rule!(
+    EvaluateFloorCeilRoundRule,
+    "Evaluate Floor/Ceil/Round",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        // floor/ceil/round of a foldable RATIONAL constant -> its exact integer
+        // (`floor(7/2) -> 3`, `ceil(7/2) -> 4`, `round(5/2) -> 3`, `floor(5) -> 5`).
+        let rewritten = cas_math::const_eval::try_eval_floor_ceil_round(ctx, expr)?;
+        Some(Rewrite::new(rewritten).desc("Evaluate floor/ceil/round of a constant"))
+    }
+);
+
+define_rule!(
     EvenPowerOverAbsRule,
     "Even Power Over Absolute Value",
     Some(crate::target_kind::TargetKindSet::DIV),
@@ -926,6 +938,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SymbolicRootCancelRule)); // V2.14.45: sqrt(x^n, n) -> x in Assume mode
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(EvaluateSignRule));
+    simplifier.add_rule(Box::new(EvaluateFloorCeilRoundRule));
     simplifier.add_rule(Box::new(EvenPowerOverAbsRule));
     simplifier.add_rule(Box::new(AbsNegativeSimplifyRule)); // |x| -> -x when inherited domain proves x < 0
     simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
