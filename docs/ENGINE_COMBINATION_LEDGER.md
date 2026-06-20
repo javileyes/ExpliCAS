@@ -9576,3 +9576,7 @@ Active entries: 221 (newest first)
   - bisect every "new" mismatch before attributing it: twelve sweep misses looked like regressions but were
     byte-identical at the prior commit -- the var-in-numerator forms that pre-combine to const/g (rhs=0) were
     already wrong, and the generalized fold then FIXED them rather than introducing them.
+  - an ADVERSARIAL workflow's "caused by this fix" verdict is a hypothesis, not a fact: a 3-lens audit confirmed
+    a real soundness bug in the constant-value case (f a scalar multiple of g, e.g. (2x-4)/(x-2)>2 -> "All real
+    numbers"), but a worktree bisect against the prior commit proved it BYTE-IDENTICAL -- the fraction cancels to
+    a constant UPSTREAM of the solver, so the fold never sees it. Bisect every counterexample before reverting.
