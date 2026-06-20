@@ -134,9 +134,10 @@ fn irrational_constant_relations_use_the_exact_sign_oracle() {
 
 #[test]
 fn undecidable_constant_inequality_is_honest_conditional_not_a_wrong_verdict() {
-    // A variable-free constant whose sign the oracle CANNOT prove (sin/cos, or an
-    // ln/exp VALUE comparison) must NOT default to a definite "All real numbers" /
+    // A variable-free constant whose sign the oracle CANNOT prove (sin/cos/tan
+    // VALUE comparisons) must NOT default to a definite "All real numbers" /
     // "No solution" -- it returns an honest `AllReals if <relation>, else Empty`.
+    // (`ln` VALUE comparisons ARE now decided; see the assertions below.)
     assert!(matches!(
         solve_set("x - x + sin(1)", RelOp::Gt, "2"),
         SolutionSet::Conditional(_)
@@ -145,15 +146,29 @@ fn undecidable_constant_inequality_is_honest_conditional_not_a_wrong_verdict() {
         solve_set("x - x + cos(2)", RelOp::Lt, "0"),
         SolutionSet::Conditional(_)
     ));
-    // ln VALUE comparison (only the bare-ln SIGN is decided; the value is not).
+    // sin/cos VALUE comparisons stay undecidable (no range-reduced bounds yet).
     assert!(matches!(
-        solve_set("x - x + ln(2)", RelOp::Lt, "1"),
+        solve_set("x - x + tan(1)", RelOp::Gt, "2"),
         SolutionSet::Conditional(_)
     ));
     // But an oracle-DECIDABLE constant stays a definite verdict (no over-hedging).
     assert_eq!(solve_set("x - x + pi", RelOp::Gt, "4"), SolutionSet::Empty);
     assert_eq!(
         solve_set("x - x + ln(2)", RelOp::Gt, "0"),
+        SolutionSet::AllReals
+    );
+    // ln VALUE comparisons are now DECIDED by the exact atanh-series bounds
+    // (previously an honest conditional): ln(2) ~ 0.693, ln(5) ~ 1.609.
+    assert_eq!(
+        solve_set("x - x + ln(2)", RelOp::Lt, "1"),
+        SolutionSet::AllReals
+    );
+    assert_eq!(
+        solve_set("x - x + ln(2)", RelOp::Gt, "1"),
+        SolutionSet::Empty
+    );
+    assert_eq!(
+        solve_set("x - x + ln(5)", RelOp::Gt, "1"),
         SolutionSet::AllReals
     );
 }

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 227 (newest first)
+Active entries: 228 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
@@ -126,6 +126,7 @@ Active entries: 227 (newest first)
 - 2026-06-20 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (new `is_provably_zero_constant... | Retained soundness fix: exact EqZero prover closes the undecidable-equation hole
 - 2026-06-20 | `retained` | `crates/cas_math/src/trig_table.rs` `parse_angle_from_expr` (Mul + Div arms) | Retained soundness fix: special-angle parser truncated fractional π-coefficients
 - 2026-06-20 | `retained` | `crates/cas_math/src/numeric_eval.rs` `numeric_poly_zero_check` (variable-fre... | Retained soundness fix: exact zero-check replaces an f64 gate in numeric_poly_zero_check
+- 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`atanh_ln_bounds`, `ln_bounds`, `const_v... | Retained completeness: exact ln(c) value bounds in the const-sign oracle (cycle 1/4)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9783,3 +9784,34 @@ Active entries: 227 (newest first)
   - dual-prover note: preserving genuine rational-log identities (log_b(a)=p/q) while killing the
     coincidences needs the exact `a^q == b^p` test (the EqZero dual), not f64. Dropped here as a
     deliberate completeness residual; recoverable if a fraction case ever needs it.
+
+## 2026-06-20 - Retained completeness: exact ln(c) value bounds in the const-sign oracle (cycle 1/4)
+- area:
+  - `crates/cas_math/src/const_sign.rs` (`atanh_ln_bounds`, `ln_bounds`, `const_value_bounds` ln arm)
+- status:
+  - `retained` (completeness: a `ln` VALUE comparison against a rational threshold is now a DEFINITE
+    verdict instead of an honest conditional)
+- capture:
+  - investment_class: completeness
+  - cell: solve(x-x+ln(2)<1) -> AllReals (was conditional); ln(2)>1 -> Empty; ln(5)>1 -> AllReals;
+    ln(10)>2 -> AllReals; ln(10)<3 -> AllReals; ln(1/2)<0 -> AllReals; ln(pi)-1 -> Positive.
+    Sign-only cases (ln(2)>0, pi>4) unchanged; sin/cos/tan VALUE stay honest conditionals.
+  - behavior_change_expected: yes - converts undecidable ln-value conditionals to definite verdicts;
+    contract `undecidable_constant_inequality...` updated (ln no longer in the undecidable list);
+    guardrail+pressure huella STRUCTURALLY NONE; workspace green (313 ok-suites)
+- observed:
+  - const_value_bounds had no VALUE bounds for ln (only transcendental_sign gave the ln SIGN via arg
+    vs 1), so ln(2)<1 fell to the honest conditional left by the H1/EqZero soundness work. Added exact
+    rational bounds for ln(x), x>0, via the atanh series ln(m)=2*sum y^(2k+1)/(2k+1), y=(m-1)/(m+1),
+    with an EXACT geometric remainder bound 2*y^(2N+3)/((2N+3)(1-y^2)) for the upper gap; range-reduce
+    x=2^e*m, m in [1,2), so y<=1/3 and N=60 gives width ~1e-58. ln is monotone, so
+    const_value_bounds(ln(arg))=[ln_lower(arg_lo), ln_upper(arg_hi)] for arg_lo>0 -- composes with the
+    existing pi/e/phi/sqrt bounds (ln(pi) works).
+- retained learning:
+  - a sound VALUE-bound oracle for a transcendental needs a truncated series WITH an exact rational
+    remainder term, not a fixed table: the partial sum is the lower bound, partial-sum + exact tail
+    bound is the upper bound. Range-reduce first so the series argument stays small (fast, tight).
+  - this is the dual completeness side of the EqZero/honest-conditional soundness work: the conditional
+    is sound but incomplete; an exact bound upgrades it to a definite verdict WITHOUT reintroducing an
+    f64 gate. Each new const_value_bounds case (ln here; log2/log10/exp next) auto-upgrades every
+    const-relation that reduces to that constant.

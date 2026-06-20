@@ -110,6 +110,68 @@ fn exact_sqrt(q: &BigRational) -> Option<BigRational> {
     }
 }
 
+/// Tight rational bounds `(lo, hi)` with `lo <= ln(m) <= hi` for `m >= 1`, via the
+/// inverse-hyperbolic-tangent series `ln(m) = 2·Σ_{k>=0} y^(2k+1)/(2k+1)` with
+/// `y = (m-1)/(m+1) ∈ [0,1)`. The partial sum `2·S_N` is a LOWER bound (every
+/// omitted term is positive); the tail `R_N = 2·Σ_{k>N} y^(2k+1)/(2k+1)` is bounded
+/// above by `2·y^(2N+3) / ((2N+3)·(1-y²))`, an exact rational, giving the UPPER bound.
+fn atanh_ln_bounds(m: &BigRational) -> (BigRational, BigRational) {
+    if m.is_one() {
+        return (zero(), zero());
+    }
+    let two = BigRational::from_integer(BigInt::from(2));
+    let y = (m - one()) / (m + one()); // ∈ (0, 1) for m > 1
+    let y2 = &y * &y;
+    // N chosen so the tail < 1e-50 even at the worst reduced argument (y = 1/3,
+    // i.e. m = 2): (1/3)^(2N+3) < 1e-50  =>  N >= 52. Use 60 for margin.
+    const N: i64 = 60;
+    let mut term = y.clone(); // y^(2k+1), starts at k=0 (y^1)
+    let mut sum = zero();
+    let mut k: i64 = 0;
+    while k <= N {
+        sum = &sum + &term / BigRational::from_integer(BigInt::from(2 * k + 1));
+        term = &term * &y2; // advance to y^(2(k+1)+1)
+        k += 1;
+    }
+    // `term` is now y^(2N+3).
+    let lo = &two * &sum;
+    let rem = &two * &term / (BigRational::from_integer(BigInt::from(2 * N + 3)) * (one() - &y2));
+    let hi = &lo + rem;
+    (lo, hi)
+}
+
+/// Tight rational bounds `(lo, hi)` with `lo <= ln(x) <= hi` for `x > 0`, else `None`
+/// (real `ln` is undefined for `x <= 0`). Range-reduces `x = 2^e · m` with `m ∈ [1,2)`
+/// so the series argument stays `<= 1/3` (fast convergence): `ln(x) = e·ln(2) + ln(m)`.
+fn ln_bounds(x: &BigRational) -> Option<(BigRational, BigRational)> {
+    if !x.is_positive() {
+        return None;
+    }
+    if x.is_one() {
+        return Some((zero(), zero()));
+    }
+    if x < &one() {
+        // ln(x) = -ln(1/x); 1/x > 1 reduces to the handled branch.
+        let (lo, hi) = ln_bounds(&(one() / x))?;
+        return Some((-hi, -lo));
+    }
+    // x >= 1: reduce to m ∈ [1, 2).
+    let two = BigRational::from_integer(BigInt::from(2));
+    let mut m = x.clone();
+    let mut e: i64 = 0;
+    while m >= two {
+        m = &m / &two;
+        e += 1;
+        if e > 1_000_000 {
+            return None; // defensive: absurdly large argument
+        }
+    }
+    let (l2_lo, l2_hi) = atanh_ln_bounds(&two); // ln(2)
+    let (lm_lo, lm_hi) = atanh_ln_bounds(&m); // ln(m), m ∈ [1, 2)
+    let e_r = BigRational::from_integer(BigInt::from(e));
+    Some((&e_r * &l2_lo + lm_lo, &e_r * &l2_hi + lm_hi))
+}
+
 fn interval_neg((lo, hi): (BigRational, BigRational)) -> (BigRational, BigRational) {
     (-hi, -lo)
 }
@@ -189,6 +251,16 @@ fn const_value_bounds_depth(
                 }
                 let (_, hi) = sqrt_bounds(&ah)?;
                 let (lo, _) = sqrt_bounds(&al)?;
+                Some((lo, hi))
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Ln) && args.len() == 1 {
+                // ln is monotone increasing: ln([al, ah]) = [ln(al), ln(ah)]; the
+                // argument's lower bound must be strictly positive (real-domain ln).
+                let (al, ah) = bounds(args[0])?;
+                if !al.is_positive() {
+                    return None;
+                }
+                let (lo, _) = ln_bounds(&al)?;
+                let (_, hi) = ln_bounds(&ah)?;
                 Some((lo, hi))
             } else {
                 None
@@ -355,6 +427,49 @@ mod tests {
         assert_eq!(sign("log2(8)"), Some(ConstSign::Positive));
         assert_eq!(sign("exp(5)"), Some(ConstSign::Positive)); // exp > 0
         assert_eq!(sign("exp(-3)"), Some(ConstSign::Positive));
+    }
+
+    #[test]
+    fn ln_value_bounds_decide_comparisons() {
+        // VALUE (not just sign) comparisons against rational thresholds are now
+        // decided by the exact atanh-series bounds: ln(2)~0.693, ln(5)~1.609,
+        // ln(10)~2.303, ln(1/2)~-0.693.
+        assert_eq!(sign("ln(2) - 1"), Some(ConstSign::Negative)); // 0.693 < 1
+        assert_eq!(sign("ln(2) - 1/2"), Some(ConstSign::Positive)); // 0.693 > 0.5
+        assert_eq!(sign("ln(5) - 1"), Some(ConstSign::Positive)); // 1.609 > 1
+        assert_eq!(sign("ln(10) - 2"), Some(ConstSign::Positive)); // 2.303 > 2
+        assert_eq!(sign("ln(10) - 3"), Some(ConstSign::Negative)); // 2.303 < 3
+        assert_eq!(sign("ln(1/2) + 1"), Some(ConstSign::Positive)); // -0.693 + 1 > 0
+        assert_eq!(sign("ln(1/2) + 1/2"), Some(ConstSign::Negative)); // -0.693 + 0.5 < 0
+                                                                      // Composes with the other constants (ln of a bounded irrational argument).
+        assert_eq!(sign("ln(pi) - 1"), Some(ConstSign::Positive)); // ln(3.1416)=1.14 > 1
+    }
+
+    #[test]
+    fn ln_bounds_bracket_known_values_tightly() {
+        // Bounds must be SOUND (bracket the true value) and TIGHT (width < 1e-40).
+        let max_width = BigRational::new(BigInt::one(), BigInt::from(10).pow(40));
+        for x in [2i64, 3, 5, 7, 10, 100] {
+            let (lo, hi) = ln_bounds(&BigRational::from_integer(BigInt::from(x))).unwrap();
+            assert!(lo < hi, "ln({x}) bounds must be ordered");
+            assert!(&hi - &lo < max_width, "ln({x}) bounds must be tight");
+        }
+        // Coarse SOUNDNESS sanity (the bounds are far tighter than these intervals,
+        // so they must sit strictly inside — catches a grossly wrong series).
+        // ln(2)=0.69314…, ln(5)=1.60943…, ln(10)=2.30258…
+        let (lo2, hi2) = ln_bounds(&BigRational::from_integer(BigInt::from(2))).unwrap();
+        assert!(lo2 > ratio(6931, 10000) && hi2 < ratio(6932, 10000));
+        let (lo5, hi5) = ln_bounds(&BigRational::from_integer(BigInt::from(5))).unwrap();
+        assert!(lo5 > ratio(16094, 10000) && hi5 < ratio(16095, 10000));
+        let (lo10, hi10) = ln_bounds(&BigRational::from_integer(BigInt::from(10))).unwrap();
+        assert!(lo10 > ratio(23025, 10000) && hi10 < ratio(23026, 10000));
+        // ln(1) is EXACTLY 0 (not merely bracketed); ln of x<1 is symmetric.
+        assert_eq!(ln_bounds(&one()), Some((zero(), zero())));
+        let (loh, hih) = ln_bounds(&ratio(1, 2)).unwrap(); // ln(1/2) = -ln(2)
+        assert!(loh == -hi2 && hih == -lo2);
+        // Non-positive arguments have no real ln.
+        assert_eq!(ln_bounds(&zero()), None);
+        assert_eq!(ln_bounds(&ratio(-1, 1)), None);
     }
 
     #[test]
