@@ -143,8 +143,11 @@ fn undecidable_constant_inequality_is_honest_conditional_not_a_wrong_verdict() {
         solve_set("x - x + sin(200)", RelOp::Gt, "0"),
         SolutionSet::Conditional(_)
     ));
+    // sqrt(8) = 2.83 lies in (pi/2, pi), OUTSIDE sin's principal monotone piece, so
+    // the interval bound bails (an interval argument inside (-pi/2, pi/2) IS decided --
+    // see the sin(sqrt(2)) assertion below).
     assert!(matches!(
-        solve_set("x - x + sin(sqrt(2))", RelOp::Gt, "0"),
+        solve_set("x - x + sin(sqrt(8))", RelOp::Gt, "0"),
         SolutionSet::Conditional(_)
     ));
     // Oracle-DECIDABLE constants stay definite verdicts (no over-hedging).
@@ -187,6 +190,16 @@ fn undecidable_constant_inequality_is_honest_conditional_not_a_wrong_verdict() {
     assert_eq!(
         solve_set("x - x + tan(1)", RelOp::Gt, "1"),
         SolutionSet::AllReals
+    );
+    // An IRRATIONAL argument inside the principal monotone piece is also decided
+    // (interval bound via the monotone endpoints): sin(sqrt(2))~0.988, sin(pi/7)~0.434.
+    assert_eq!(
+        solve_set("x - x + sin(sqrt(2))", RelOp::Gt, "0"),
+        SolutionSet::AllReals
+    );
+    assert_eq!(
+        solve_set("x - x + sin(pi/7)", RelOp::Gt, "1/2"),
+        SolutionSet::Empty
     );
 }
 

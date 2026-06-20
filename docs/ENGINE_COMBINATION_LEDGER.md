@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 230 (newest first)
+Active entries: 231 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
@@ -129,6 +129,7 @@ Active entries: 230 (newest first)
 - 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`atanh_ln_bounds`, `ln_bounds`, `const_v... | Retained completeness: exact ln(c) value bounds in the const-sign oracle (cycle 1/4)
 - 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`ln_interval_bounds` helper; Log2/Log10/... | Retained completeness: log2/log10/two-arg log value bounds via ln-ratio (cycle 2/4)
 - 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`trig_taylor_bounds`, `sin_bounds`, `cos... | Retained completeness: sin/cos/tan value bounds (Taylor + Lagrange remainder) (cycle 3/4)
+- 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`half_pi_inner`, `sin_arg_bounds`, `cos_... | Retained completeness: trig value bounds at irrational arguments (interval, principal piece) (cycle 4/4)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9884,3 +9885,40 @@ Active entries: 230 (newest first)
   - scope a non-monotone function's interval bound to POINT arguments first; the interval/extremum
     and range-reduction (mod 2pi) cases are a separate, harder step -- keep them honest conditionals
     rather than risk an unsound interval bound.
+
+## 2026-06-20 - Retained completeness: trig value bounds at irrational arguments (interval, principal piece) (cycle 4/4)
+- area:
+  - `crates/cas_math/src/const_sign.rs` (`half_pi_inner`, `sin_arg_bounds`, `cos_arg_bounds`,
+    `tan_arg_bounds`; reworked Sin/Cos/Tan arms of `const_value_bounds`)
+- status:
+  - `retained` (completeness: sin/cos/tan at an IRRATIONAL argument inside the principal monotone
+    piece are now decided, not honest conditionals)
+- capture:
+  - investment_class: completeness
+  - cell: sin(sqrt(2))>0 -> AllReals; sin(sqrt(2))>1 -> Empty; cos(sqrt(2))<1/2 -> AllReals;
+    sin(pi/7)>1/2 -> Empty; tan(sqrt(2))>5 -> AllReals. POINT args (sin(1), sin(2)) and special
+    angles (sin(pi/6)=1/2) unchanged. Interval args OUTSIDE the principal piece (sin(sqrt(8)),
+    sqrt(8)=2.83 in (pi/2,pi)) still bail -> honest conditional.
+  - behavior_change_expected: yes - trig at irrational args in (-pi/2,pi/2) (sin/tan) or [0,pi) (cos)
+    become definite; one constant_relation contract assertion updated (sin(sqrt(2)) moved from the
+    undecidable example to the decided list; sin(sqrt(8)) is the new undecidable example);
+    guardrail+pressure huella STRUCTURALLY clean; workspace green (313 ok-suites)
+- observed:
+  - the planned cycle 4 (large-arg RANGE REDUCTION mod 2pi) was found LOW VALUE: the cycle-3 cap
+    |c|<=100 already decides sin(10)/sin(50)/sin(99)/sin(100) correctly (the Lagrange remainder is
+    rigorous for any c; only |c|>100 bails, which is exotic). The genuinely-missing case is trig at
+    an IRRATIONAL argument (sin(sqrt(2)), sin(pi/7)) -- previously bailed because the argument is a
+    non-degenerate INTERVAL. Generalized the point-arg trig bounds to an interval: when [al,ah] lies
+    PROVABLY inside one monotone piece -- (-pi/2,pi/2) increasing for sin/tan, [0,pi) decreasing for
+    cos (endpoints compared against pi_lo/2 and pi_lo, sound inner bounds) -- bound by the monotone
+    endpoints sin(al)/sin(ah); else bail (sin is not monotone across an extremum). 620-case mpmath
+    sweep over irrational args: 0 wrong (40 honest conditionals for args outside the piece).
+- retained learning:
+  - to bound a NON-monotone function over a (tiny) interval soundly: prove the interval stays inside a
+    single monotone piece by comparing its endpoints to the extrema (reuse the existing pi bounds for
+    +-pi/2, pi), then use the monotone endpoint values; bail otherwise. The tiny width of a const
+    interval (~1e-40) means it crosses an extremum only when the argument is within ~1e-40 of one, so
+    the bail is rare and honest.
+  - probe the real frontier before committing to the PLANNED cycle: the "obvious" next step
+    (range reduction) was nearly worthless because the previous cycle's rigorous bound already covered
+    the realistic range; the actual gap was a different shape (interval vs large argument).

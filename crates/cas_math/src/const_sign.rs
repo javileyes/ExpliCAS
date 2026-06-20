@@ -228,6 +228,66 @@ fn cos_bounds(c: &BigRational) -> Option<(BigRational, BigRational)> {
     trig_taylor_bounds(c, false)
 }
 
+/// A sound INNER bound for `pi/2`: `pi_lo/2 < pi/2`. Comparing a rational endpoint
+/// against this proves it is strictly inside `(-pi/2, pi/2)`.
+fn half_pi_inner() -> BigRational {
+    let (pl, _) = pi_bounds();
+    pl / BigRational::from_integer(BigInt::from(2))
+}
+
+/// Bounds for `sin` over an argument interval `[al, ah]`. An EXACT rational POINT
+/// argument uses the direct Taylor bound (any `|c| <= 100`); a non-degenerate
+/// interval is bounded only when it lies PROVABLY inside the principal increasing
+/// piece `(-pi/2, pi/2)` (so `sin` is monotone there), else bails — sin is not
+/// monotone across an extremum.
+fn sin_arg_bounds((al, ah): (BigRational, BigRational)) -> Option<(BigRational, BigRational)> {
+    if al == ah {
+        return sin_bounds(&al);
+    }
+    let hp = half_pi_inner();
+    let neg_hp = BigRational::zero() - &hp;
+    if al >= neg_hp && ah <= hp {
+        let (lo, _) = sin_bounds(&al)?; // increasing: sin(al) is the lower end
+        let (_, hi) = sin_bounds(&ah)?;
+        return Some((lo, hi));
+    }
+    None
+}
+
+/// Bounds for `cos` over `[al, ah]`. Point args use the direct Taylor bound; an
+/// interval is bounded only when provably inside the decreasing piece `[0, pi)`.
+fn cos_arg_bounds((al, ah): (BigRational, BigRational)) -> Option<(BigRational, BigRational)> {
+    if al == ah {
+        return cos_bounds(&al);
+    }
+    let (pl, _) = pi_bounds();
+    if !al.is_negative() && ah <= pl {
+        let (lo, _) = cos_bounds(&ah)?; // decreasing: cos(ah) is the lower end
+        let (_, hi) = cos_bounds(&al)?;
+        return Some((lo, hi));
+    }
+    None
+}
+
+/// Bounds for `tan` over `[al, ah]`. Point args divide sin/cos directly; an interval
+/// is bounded only when provably inside the increasing pole-free piece `(-pi/2, pi/2)`.
+fn tan_arg_bounds((al, ah): (BigRational, BigRational)) -> Option<(BigRational, BigRational)> {
+    if al == ah {
+        let s = sin_bounds(&al)?;
+        let c = cos_bounds(&al)?;
+        return Some(interval_mul(s, interval_recip(c)?));
+    }
+    let hp = half_pi_inner();
+    let neg_hp = BigRational::zero() - &hp;
+    if al >= neg_hp && ah <= hp {
+        // tan increasing on (-pi/2, pi/2): tan(arg) in [tan(al), tan(ah)].
+        let lo = interval_mul(sin_bounds(&al)?, interval_recip(cos_bounds(&al)?)?).0;
+        let hi = interval_mul(sin_bounds(&ah)?, interval_recip(cos_bounds(&ah)?)?).1;
+        return Some((lo, hi));
+    }
+    None
+}
+
 fn interval_neg((lo, hi): (BigRational, BigRational)) -> (BigRational, BigRational) {
     (-hi, -lo)
 }
@@ -327,25 +387,14 @@ fn const_value_bounds_depth(
                 let den = interval_recip(ln_interval_bounds(bounds(args[0])?)?)?;
                 Some(interval_mul(num, den))
             } else if ctx.is_builtin_call(expr, BuiltinFn::Sin) && args.len() == 1 {
-                // Only an EXACT rational argument (a point interval): sin is not
-                // monotone, so bounding it over a non-degenerate interval would need
-                // extremum reasoning. A special angle like `pi/6` yields a
-                // non-degenerate `pi` interval and is left to the angle evaluator.
-                let (al, ah) = bounds(args[0])?;
-                (al == ah).then(|| sin_bounds(&al)).flatten()
+                // Rational point arg: direct Taylor (any |c| <= 100). Non-degenerate
+                // interval (an irrational arg like `sqrt(2)` or `pi/7`): bounded only
+                // when provably inside the principal monotone piece (-pi/2, pi/2).
+                sin_arg_bounds(bounds(args[0])?)
             } else if ctx.is_builtin_call(expr, BuiltinFn::Cos) && args.len() == 1 {
-                let (al, ah) = bounds(args[0])?;
-                (al == ah).then(|| cos_bounds(&al)).flatten()
+                cos_arg_bounds(bounds(args[0])?)
             } else if ctx.is_builtin_call(expr, BuiltinFn::Tan) && args.len() == 1 {
-                // tan(c) = sin(c)/cos(c); interval_recip bails if cos brackets 0
-                // (the argument is near an odd multiple of pi/2 -> pole).
-                let (al, ah) = bounds(args[0])?;
-                if al != ah {
-                    return None;
-                }
-                let s = sin_bounds(&al)?;
-                let c = cos_bounds(&al)?;
-                Some(interval_mul(s, interval_recip(c)?))
+                tan_arg_bounds(bounds(args[0])?)
             } else {
                 None
             }
@@ -560,8 +609,22 @@ mod tests {
         assert_eq!(sign("sin(0)"), Some(ConstSign::Zero)); // sin(0) is exactly 0
                                                            // A LARGE argument bails (range reduction not implemented yet) -> None.
         assert_eq!(sign("sin(200)"), None);
-        // An IRRATIONAL (interval) argument bails (no monotonicity reasoning) -> None.
-        assert_eq!(sign("sin(sqrt(2))"), None);
+    }
+
+    #[test]
+    fn trig_value_bounds_decide_irrational_argument_in_principal_piece() {
+        // An IRRATIONAL (interval) argument inside the principal monotone piece is now
+        // decided: sin increasing on (-pi/2, pi/2), cos decreasing on [0, pi].
+        // sin(sqrt2)=0.988, cos(sqrt2)=0.156, sin(pi/7)=0.434, tan(sqrt2)=6.34.
+        assert_eq!(sign("sin(sqrt(2))"), Some(ConstSign::Positive)); // 0.988 > 0
+        assert_eq!(sign("sin(sqrt(2)) - 1"), Some(ConstSign::Negative)); // 0.988 < 1
+        assert_eq!(sign("cos(sqrt(2))"), Some(ConstSign::Positive)); // 0.156 > 0
+        assert_eq!(sign("cos(sqrt(2)) - 1/2"), Some(ConstSign::Negative)); // 0.156 < 0.5
+        assert_eq!(sign("sin(pi/7) - 1/2"), Some(ConstSign::Negative)); // 0.434 < 0.5
+        assert_eq!(sign("tan(sqrt(2)) - 5"), Some(ConstSign::Positive)); // 6.34 > 5
+                                                                         // An interval argument OUTSIDE the principal piece still bails (sin is not
+                                                                         // monotone across the extremum at pi/2): sqrt(8) = 2.83 lies in (pi/2, pi).
+        assert_eq!(sign("sin(sqrt(8))"), None);
     }
 
     #[test]
