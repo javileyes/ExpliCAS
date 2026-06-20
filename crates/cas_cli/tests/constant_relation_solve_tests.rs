@@ -134,31 +134,26 @@ fn irrational_constant_relations_use_the_exact_sign_oracle() {
 
 #[test]
 fn undecidable_constant_inequality_is_honest_conditional_not_a_wrong_verdict() {
-    // A variable-free constant whose sign the oracle CANNOT prove (sin/cos/tan
-    // VALUE comparisons) must NOT default to a definite "All real numbers" /
-    // "No solution" -- it returns an honest `AllReals if <relation>, else Empty`.
-    // (`ln` VALUE comparisons ARE now decided; see the assertions below.)
+    // A variable-free constant whose sign the oracle CANNOT prove must NOT default to
+    // a definite verdict -- it returns an honest `AllReals if <relation>, else Empty`.
+    // After the value-bounds cycles, the remaining undecidable trig cases are a LARGE
+    // rational argument (range reduction not yet implemented -> bail) and an IRRATIONAL
+    // (interval) argument.
     assert!(matches!(
-        solve_set("x - x + sin(1)", RelOp::Gt, "2"),
+        solve_set("x - x + sin(200)", RelOp::Gt, "0"),
         SolutionSet::Conditional(_)
     ));
     assert!(matches!(
-        solve_set("x - x + cos(2)", RelOp::Lt, "0"),
+        solve_set("x - x + sin(sqrt(2))", RelOp::Gt, "0"),
         SolutionSet::Conditional(_)
     ));
-    // sin/cos VALUE comparisons stay undecidable (no range-reduced bounds yet).
-    assert!(matches!(
-        solve_set("x - x + tan(1)", RelOp::Gt, "2"),
-        SolutionSet::Conditional(_)
-    ));
-    // But an oracle-DECIDABLE constant stays a definite verdict (no over-hedging).
+    // Oracle-DECIDABLE constants stay definite verdicts (no over-hedging).
     assert_eq!(solve_set("x - x + pi", RelOp::Gt, "4"), SolutionSet::Empty);
     assert_eq!(
         solve_set("x - x + ln(2)", RelOp::Gt, "0"),
         SolutionSet::AllReals
     );
-    // ln VALUE comparisons are now DECIDED by the exact atanh-series bounds
-    // (previously an honest conditional): ln(2) ~ 0.693, ln(5) ~ 1.609.
+    // ln/log VALUE comparisons are decided by the exact atanh-series bounds.
     assert_eq!(
         solve_set("x - x + ln(2)", RelOp::Lt, "1"),
         SolutionSet::AllReals
@@ -169,6 +164,28 @@ fn undecidable_constant_inequality_is_honest_conditional_not_a_wrong_verdict() {
     );
     assert_eq!(
         solve_set("x - x + ln(5)", RelOp::Gt, "1"),
+        SolutionSet::AllReals
+    );
+    assert_eq!(
+        solve_set("x - x + log2(3)", RelOp::Lt, "2"),
+        SolutionSet::AllReals
+    );
+    // sin/cos/tan VALUE comparisons (rational argument) are decided by the exact
+    // Taylor bounds with Lagrange remainder: sin(1)~0.841, cos(2)~-0.416, tan(1)~1.557.
+    assert_eq!(
+        solve_set("x - x + sin(1)", RelOp::Gt, "1/2"),
+        SolutionSet::AllReals
+    );
+    assert_eq!(
+        solve_set("x - x + sin(1)", RelOp::Gt, "2"),
+        SolutionSet::Empty
+    );
+    assert_eq!(
+        solve_set("x - x + cos(2)", RelOp::Lt, "0"),
+        SolutionSet::AllReals
+    );
+    assert_eq!(
+        solve_set("x - x + tan(1)", RelOp::Gt, "1"),
         SolutionSet::AllReals
     );
 }
@@ -185,12 +202,18 @@ fn undecidable_constant_equation_separates_identity_from_false_equality() {
         solve_set("x - x + log10(100) - 2", RelOp::Eq, "0"),
         SolutionSet::AllReals
     );
-    // A FALSE equality the engine cannot refute (`sin(1) = 1/2`) becomes an honest
-    // conditional -- previously the legacy default wrongly returned "All real numbers".
+    // A FALSE equality the engine cannot refute (a LARGE-argument trig value, where
+    // range reduction is not yet implemented) stays an honest conditional.
     assert!(matches!(
-        solve_set("x - x + sin(1)", RelOp::Eq, "1/2"),
+        solve_set("x - x + sin(200)", RelOp::Eq, "1/2"),
         SolutionSet::Conditional(_)
     ));
+    // A small-argument trig equality IS now refuted: sin(1) ~ 0.841 != 1/2 is provably
+    // nonzero via the exact Taylor bounds, so the equation is a definite "No solution".
+    assert_eq!(
+        solve_set("x - x + sin(1)", RelOp::Eq, "1/2"),
+        SolutionSet::Empty
+    );
     // The provably-irrational residual `ln(2) - 1` stays a definite "No solution"
     // (a regression guard: the EqZero work must not hedge a provably-nonzero diff).
     assert_eq!(

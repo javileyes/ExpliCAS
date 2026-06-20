@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 229 (newest first)
+Active entries: 230 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
@@ -128,6 +128,7 @@ Active entries: 229 (newest first)
 - 2026-06-20 | `retained` | `crates/cas_math/src/numeric_eval.rs` `numeric_poly_zero_check` (variable-fre... | Retained soundness fix: exact zero-check replaces an f64 gate in numeric_poly_zero_check
 - 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`atanh_ln_bounds`, `ln_bounds`, `const_v... | Retained completeness: exact ln(c) value bounds in the const-sign oracle (cycle 1/4)
 - 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`ln_interval_bounds` helper; Log2/Log10/... | Retained completeness: log2/log10/two-arg log value bounds via ln-ratio (cycle 2/4)
+- 2026-06-20 | `retained` | `crates/cas_math/src/const_sign.rs` (`trig_taylor_bounds`, `sin_bounds`, `cos... | Retained completeness: sin/cos/tan value bounds (Taylor + Lagrange remainder) (cycle 3/4)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9847,3 +9848,39 @@ Active entries: 229 (newest first)
     boundary identity (log2(8)-3) gives value bounds that STRADDLE 0 (const_sign returns None there),
     so the Eq verdict still routes to the exact a^q==b^p prover -> AllReals; the value bounds only
     upgrade the strict-inequality away-from-boundary cases. Sound by construction.
+
+## 2026-06-20 - Retained completeness: sin/cos/tan value bounds (Taylor + Lagrange remainder) (cycle 3/4)
+- area:
+  - `crates/cas_math/src/const_sign.rs` (`trig_taylor_bounds`, `sin_bounds`, `cos_bounds`; Sin/Cos/Tan
+    arms of `const_value_bounds`)
+- status:
+  - `retained` (completeness: sin/cos/tan VALUE comparisons at a rational argument are now definite
+    verdicts, not honest conditionals)
+- capture:
+  - investment_class: completeness
+  - cell: sin(1)>1/2 -> AllReals; sin(1)<1/2 -> Empty; cos(2)<0 -> AllReals; tan(1)>1 -> AllReals;
+    sin(3)>1/2 -> Empty. sin(1)=1/2 now REFUTED to Empty (was conditional). LARGE arg (sin(200)) and
+    IRRATIONAL/interval arg (sin(sqrt(2))) still bail -> honest conditional. Special-angle args
+    (sin(pi/6)=1/2) unchanged (handled by the angle evaluator).
+  - behavior_change_expected: yes - small-rational-argument trig value conditionals become definite;
+    two constant_relation contract assertions updated (the undecidable examples moved to large/interval
+    args); guardrail+pressure huella STRUCTURALLY clean; workspace green (313 ok-suites)
+- observed:
+  - candidate (a) exp(c) value bounds was ALREADY covered: the engine rewrites exp(c) -> e^c and
+    const_value_bounds handles Pow(e, rational) via interval_pow + e_bounds (frontier probe caught it
+    -- "what you think is residual may already work"). Pivoted to the substantive sin/cos/tan.
+  - sin/cos bounds via the Taylor series truncated with the RIGOROUS Lagrange remainder
+    |R_n| <= |c|^(n+1)/(n+1)! (every derivative of sin/cos is <=1 in absolute value), so no
+    alternating-monotone assumption is needed and the bound holds for ANY real c; iterate terms until
+    the remainder < 1e-60. tan(c)=sin(c)/cos(c) via interval division (interval_recip bails if cos
+    brackets 0 -> near a pole). Scoped to EXACT rational point arguments (bounds(arg) degenerate):
+    sin is not monotone, so bounding it over a non-degenerate interval needs extremum reasoning
+    (deferred). 756-case mpmath sweep (sin/cos/tan x 14 args incl. negatives and near-poles x ops):
+    0 wrong.
+- retained learning:
+  - the Lagrange remainder is the clean, universal error bound for sin/cos value bounds: a single
+    `|f^(n+1)| <= 1` fact makes the truncation rigorous for every argument, sidestepping the
+    alternating-series monotone-decrease precondition (which fails for |c| past the first hump).
+  - scope a non-monotone function's interval bound to POINT arguments first; the interval/extremum
+    and range-reduction (mod 2pi) cases are a separate, harder step -- keep them honest conditionals
+    rather than risk an unsound interval bound.

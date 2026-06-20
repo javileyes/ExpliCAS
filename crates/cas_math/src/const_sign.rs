@@ -184,6 +184,50 @@ fn ln_interval_bounds((al, ah): (BigRational, BigRational)) -> Option<(BigRation
     Some((lo, hi))
 }
 
+/// Tight rational bounds `(lo, hi)` with `lo <= sin(c) <= hi` (or `cos`) for a
+/// RATIONAL `c` in radians, via the Taylor series truncated with the RIGOROUS
+/// Lagrange remainder `|R_n| <= |c|^(n+1)/(n+1)!` (every derivative of sin/cos is
+/// bounded by 1 in absolute value, so this holds for ANY real `c` — no
+/// alternating-monotone assumption). `is_sin` selects the odd (sin, start degree 1)
+/// or even (cos, start degree 0) series. Bails for `|c| > 100` (range reduction
+/// would be needed and the factorials get expensive) — sound, just incomplete.
+fn trig_taylor_bounds(c: &BigRational, is_sin: bool) -> Option<(BigRational, BigRational)> {
+    let abs_c = c.abs();
+    if abs_c > BigRational::from_integer(BigInt::from(100)) {
+        return None;
+    }
+    let neg_c2 = -(c * c);
+    // First term: sin -> `c` (degree 1); cos -> `1` (degree 0).
+    let (mut term, mut deg) = if is_sin {
+        (c.clone(), 1i64)
+    } else {
+        (one(), 0i64)
+    };
+    let mut sum = term.clone();
+    let eps = BigRational::new(BigInt::one(), BigInt::from(10).pow(60));
+    for _ in 0..2000 {
+        // Lagrange remainder after the degree-`deg` term: |c|^(deg+1)/(deg+1)! =
+        // |term| * |c| / (deg+1)  (since |term| = |c|^deg / deg!).
+        let rem = &term.abs() * &abs_c / BigRational::from_integer(BigInt::from(deg + 1));
+        if rem < eps {
+            return Some((&sum - &rem, &sum + &rem));
+        }
+        // Advance to the next non-zero term: multiply by -c^2 / ((deg+1)(deg+2)).
+        let denom = BigRational::from_integer(BigInt::from((deg + 1) * (deg + 2)));
+        term = &term * &neg_c2 / denom;
+        sum = &sum + &term;
+        deg += 2;
+    }
+    None
+}
+
+fn sin_bounds(c: &BigRational) -> Option<(BigRational, BigRational)> {
+    trig_taylor_bounds(c, true)
+}
+fn cos_bounds(c: &BigRational) -> Option<(BigRational, BigRational)> {
+    trig_taylor_bounds(c, false)
+}
+
 fn interval_neg((lo, hi): (BigRational, BigRational)) -> (BigRational, BigRational) {
     (-hi, -lo)
 }
@@ -282,6 +326,26 @@ fn const_value_bounds_depth(
                 let num = ln_interval_bounds(bounds(args[1])?)?;
                 let den = interval_recip(ln_interval_bounds(bounds(args[0])?)?)?;
                 Some(interval_mul(num, den))
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Sin) && args.len() == 1 {
+                // Only an EXACT rational argument (a point interval): sin is not
+                // monotone, so bounding it over a non-degenerate interval would need
+                // extremum reasoning. A special angle like `pi/6` yields a
+                // non-degenerate `pi` interval and is left to the angle evaluator.
+                let (al, ah) = bounds(args[0])?;
+                (al == ah).then(|| sin_bounds(&al)).flatten()
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Cos) && args.len() == 1 {
+                let (al, ah) = bounds(args[0])?;
+                (al == ah).then(|| cos_bounds(&al)).flatten()
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Tan) && args.len() == 1 {
+                // tan(c) = sin(c)/cos(c); interval_recip bails if cos brackets 0
+                // (the argument is near an odd multiple of pi/2 -> pole).
+                let (al, ah) = bounds(args[0])?;
+                if al != ah {
+                    return None;
+                }
+                let s = sin_bounds(&al)?;
+                let c = cos_bounds(&al)?;
+                Some(interval_mul(s, interval_recip(c)?))
             } else {
                 None
             }
@@ -479,6 +543,25 @@ mod tests {
                                                                          // Sign-only cases still decided (log2(8)=3 > 0, log2(1/2)=-1 < 0).
         assert_eq!(sign("log2(8)"), Some(ConstSign::Positive));
         assert_eq!(sign("log2(1/2)"), Some(ConstSign::Negative));
+    }
+
+    #[test]
+    fn trig_value_bounds_decide_rational_argument_comparisons() {
+        // sin/cos/tan at a RATIONAL argument (radians) via the Taylor series with the
+        // Lagrange remainder: sin(1)=0.841, sin(2)=0.909, sin(3)=0.141, cos(1)=0.540,
+        // cos(2)=-0.416, tan(1)=1.557.
+        assert_eq!(sign("sin(1) - 1/2"), Some(ConstSign::Positive)); // 0.841 > 0.5
+        assert_eq!(sign("sin(1) - 1"), Some(ConstSign::Negative)); // 0.841 < 1
+        assert_eq!(sign("sin(2)"), Some(ConstSign::Positive)); // 0.909 > 0
+        assert_eq!(sign("sin(3) - 1/2"), Some(ConstSign::Negative)); // 0.141 < 0.5
+        assert_eq!(sign("cos(1) - 1/2"), Some(ConstSign::Positive)); // 0.540 > 0.5
+        assert_eq!(sign("cos(2)"), Some(ConstSign::Negative)); // -0.416 < 0
+        assert_eq!(sign("tan(1) - 1"), Some(ConstSign::Positive)); // 1.557 > 1
+        assert_eq!(sign("sin(0)"), Some(ConstSign::Zero)); // sin(0) is exactly 0
+                                                           // A LARGE argument bails (range reduction not implemented yet) -> None.
+        assert_eq!(sign("sin(200)"), None);
+        // An IRRATIONAL (interval) argument bails (no monotonicity reasoning) -> None.
+        assert_eq!(sign("sin(sqrt(2))"), None);
     }
 
     #[test]
