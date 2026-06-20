@@ -77,6 +77,7 @@ where
                 state,
                 residual,
                 var_name,
+                &original_equation.op,
                 domain_exclusions,
                 |state| collect_steps(state),
                 |state| context_mut(state),

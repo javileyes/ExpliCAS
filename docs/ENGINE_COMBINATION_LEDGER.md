@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 221 (newest first)
+Active entries: 222 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality fold generalized to var-in-numerator + zero-RHS-linear (Round-4 Cluster E follow-up)
+- 2026-06-20 | `retained` | equation/inequality solving; `crates/cas_solver_core/src/solve_analysis.rs` | Retained soundness fix: constant-relation truth + canceled-pole exclusion in var-eliminated solve
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9580,3 +9581,39 @@ Active entries: 221 (newest first)
     a real soundness bug in the constant-value case (f a scalar multiple of g, e.g. (2x-4)/(x-2)>2 -> "All real
     numbers"), but a worktree bisect against the prior commit proved it BYTE-IDENTICAL -- the fraction cancels to
     a constant UPSTREAM of the solver, so the fold never sees it. Bisect every counterexample before reverting.
+
+## 2026-06-20 - Retained soundness fix: constant-relation truth + canceled-pole exclusion in var-eliminated solve
+- area:
+  - equation/inequality solving; `crates/cas_solver_core/src/solve_analysis.rs`
+    (`resolve_var_eliminated_residual_with_exclusions` + new `const_relation_truth`), with `op` threaded down
+    the var-eliminated resolver chain (`solve_runtime_flow_pipeline_resolution.rs`,
+    `solve_runtime_flow_pipeline_execute_default_resolve.rs`)
+- status:
+  - `retained` (REAL-domain soundness; fixes false constant relations and dropped removable-singularity poles)
+- capture:
+  - investment_class: soundness
+  - cell: x-x>0 -> Empty (was AllReals); x-x>=0 -> AllReals; x-x!=0 -> Empty; (2x-4)/(x-2)>2 -> Empty;
+    (2x-4)/(x-2)>=2 -> R\{2}; (2x-4)/(x-2)=2 -> R\{2}; (x-1)/(x-1)>=1 -> R\{1}; genuine solves unchanged
+  - behavior_change_expected: yes - constant relations now truth-evaluated and canceled poles excluded;
+    guardrail+pressure STRUCTURALLY byte-identical, workspace green
+- observed (Cluster E follow-up adversarial finding, then scoped):
+  - the constant-value/`(x-1)/(x-1)` cases I had documented as a pre-existing UPSTREAM cancellation residual
+    were actually a solver bug: the cancellation RECORDS a NonZero condition; the var-eliminated resolver
+    mishandled it. TWO independent defects: RC-A (an inequality's constant relation `diff (op) 0` was never
+    truth-evaluated -- the pipeline used equation semantics, so `0>0` wrongly became AllReals) and RC-B (the
+    NonZero pole exclusions were applied to only 1 of 3 terminal arms, dropping `x != pole`).
+  - fix: a new const_relation_truth (exact BigRational; Eq + non-rational diff fall back) maps true->AllReals /
+    false->Empty for inequalities/Neq; apply the exclusion guards to ALL terminal arms (also fixes the equation
+    path `(2x-4)/(x-2)=2 -> R\{2}`). `op` threaded down the resolver chain; Eq semantics byte-for-byte unchanged.
+- retained learning:
+  - "the cancellation loses the domain" was the wrong hypothesis: the engine RECORDS `NonZero(denom)` and the
+    bug was downstream (the resolver ignored it on 2 of 3 arms). Scope the recorded conditions before assuming
+    the simplifier dropped information -- a worktree scout traced the condition all the way to the resolver.
+  - equation semantics silently leak into inequality resolution when a shared residual path doesn't carry the
+    operator: `diff==0 => AllReals` is correct for `=` and `>=`/`<=` BY LUCK but wrong for `>`/`<`/`!=`. Thread
+    the RelOp into any var-eliminated/residual chokepoint and evaluate the actual relation.
+  - apply domain guards UNIFORMLY across every terminal arm of a resolver, not just the one that happened to
+    need them first: the identity and contradiction arms silently dropped the pole for years because only the
+    symbolic-constraint arm was guarded.
+  - sign decisions stay EXACT: const_relation_truth uses as_rational_const + BigRational compares and returns
+    None for irrationals (no f64, no guessing) -- the recurring soundness-gates-must-be-exact discipline.

@@ -1,4 +1,4 @@
-use cas_ast::{Equation, ExprId, SolutionSet};
+use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 
 /// Resolve a variable-eliminated residual with domain exclusions using the
 /// default solve-analysis resolver and runtime-provided rendering/step mapping.
@@ -14,6 +14,7 @@ pub fn resolve_var_eliminated_residual_with_default_exclusion_policy_and_unified
     state: &mut T,
     residual: ExprId,
     var: &str,
+    op: &RelOp,
     domain_exclusions: &[ExprId],
     mut collect_steps: FCollectSteps,
     mut context_mut: FContextMut,
@@ -31,6 +32,7 @@ where
         context_mut(state),
         residual,
         var,
+        op,
         include_item,
         domain_exclusions,
         |ctx, expr| render_expr(ctx, expr),

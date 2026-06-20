@@ -1,5 +1,5 @@
 use cas_ast::{
-    Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, SolutionSet,
+    Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, RelOp, SolutionSet,
 };
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -1307,12 +1307,36 @@ pub fn apply_nonzero_exclusion_guards_if_any(
     }
 }
 
-/// Resolve a variable-eliminated residual (`diff == 0`) to a final solution set,
+/// Evaluate the truth value of `diff (op) 0` when `diff` is an EXACT rational
+/// constant. Returns `None` for `Eq` (the equation-semantics path below is
+/// preserved byte-for-byte) and for any non-rational `diff` -- there is no sign
+/// oracle for irrational constants (`ln(2)` etc.), so those conservatively fall
+/// back to the existing classification. Exact `BigRational` comparison only; never
+/// an `f64` gate.
+fn const_relation_truth(ctx: &Context, diff: ExprId, op: &RelOp) -> Option<bool> {
+    use num_traits::{Signed, Zero};
+    if matches!(op, RelOp::Eq) {
+        return None;
+    }
+    let r = cas_math::numeric_eval::as_rational_const(ctx, diff)?;
+    Some(match op {
+        RelOp::Gt => r.is_positive(),
+        RelOp::Geq => !r.is_negative(),
+        RelOp::Lt => r.is_negative(),
+        RelOp::Leq => !r.is_positive(),
+        RelOp::Neq => !r.is_zero(),
+        RelOp::Eq => return None,
+    })
+}
+
+/// Resolve a variable-eliminated residual (`diff (op) 0`) to a final solution set,
 /// applying denominator non-zero guards when needed.
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_var_eliminated_residual_with_exclusions<S, FRender, FMapStep>(
     ctx: &mut Context,
     diff_simplified: ExprId,
     var: &str,
+    op: &RelOp,
     include_item: bool,
     domain_exclusions: &[ExprId],
     render_expr: FRender,
@@ -1322,23 +1346,47 @@ where
     FRender: Fn(&Context, ExprId) -> String,
     FMapStep: FnMut(String, Equation) -> S,
 {
-    let reduced_outcome = solve_var_eliminated_outcome_pipeline_with(
-        ctx,
-        diff_simplified,
-        var,
-        include_item,
-        render_expr,
-        map_step,
-    );
+    // RC-A: for an INEQUALITY (or `Neq`) whose residual reduces to a rational
+    // CONSTANT, evaluate the relation's ACTUAL truth value `diff (op) 0`. The
+    // var-eliminated pipeline below uses EQUATION semantics (`diff == 0` => identity
+    // => AllReals), so a false constant relation like `0 > 0` would wrongly become
+    // AllReals instead of Empty. `Eq` and non-rational residuals return `None` and
+    // keep the existing classification untouched.
+    let (base_set, steps) = match const_relation_truth(ctx, diff_simplified, op) {
+        Some(true) => (SolutionSet::AllReals, vec![]),
+        Some(false) => (SolutionSet::Empty, vec![]),
+        None => {
+            let reduced_outcome = solve_var_eliminated_outcome_pipeline_with(
+                ctx,
+                diff_simplified,
+                var,
+                include_item,
+                render_expr,
+                map_step,
+            );
+            match reduced_outcome {
+                VarEliminatedOutcomePipelineSolved::IdentityAllReals => {
+                    (SolutionSet::AllReals, vec![])
+                }
+                VarEliminatedOutcomePipelineSolved::ContradictionEmpty => {
+                    (SolutionSet::Empty, vec![])
+                }
+                VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
+                    (SolutionSet::AllReals, steps)
+                }
+            }
+        }
+    };
 
-    match reduced_outcome {
-        VarEliminatedOutcomePipelineSolved::IdentityAllReals => (SolutionSet::AllReals, vec![]),
-        VarEliminatedOutcomePipelineSolved::ContradictionEmpty => (SolutionSet::Empty, vec![]),
-        VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => (
-            apply_nonzero_exclusion_guards_if_any(SolutionSet::AllReals, domain_exclusions),
-            steps,
-        ),
-    }
+    // RC-B: subtract the canceled poles (`x != denom-root`) from EVERY terminal set.
+    // The pipeline previously guarded only the symbolic-constraint arm, so a fully
+    // canceled fraction (`(2x-4)/(x-2) (op) c` => `x != 2`) dropped its domain on the
+    // identity/contradiction arms. Guarding `Empty` is a no-op; guarding `AllReals`
+    // yields `R \ {poles}`.
+    (
+        apply_nonzero_exclusion_guards_if_any(base_set, domain_exclusions),
+        steps,
+    )
 }
 
 /// Lift guard application over solved `(SolutionSet, payload)` results.
@@ -1418,6 +1466,7 @@ mod tests {
             &mut ctx,
             zero,
             "x",
+            &RelOp::Eq,
             false,
             &[],
             |_ctx, _expr| String::new(),
@@ -1439,6 +1488,7 @@ mod tests {
             &mut ctx,
             diff,
             "x",
+            &RelOp::Eq,
             true,
             &[x],
             |_ctx, _expr| String::new(),
