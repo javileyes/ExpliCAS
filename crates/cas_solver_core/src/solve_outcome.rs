@@ -2339,6 +2339,91 @@ fn rational_power_provably_not_equal(
     b_p != c_q
 }
 
+/// True iff `b^m == c` is decided EXACTLY (the dual of
+/// [`rational_power_provably_not_equal`]). `b^m = c  <=>  b^p = c^q` for `m = p/q`
+/// and `b, c > 0`. Returns `false` when not computable (never a false "equal").
+fn rational_power_provably_equal(
+    b: &num_rational::BigRational,
+    m: &num_rational::BigRational,
+    c: &num_rational::BigRational,
+) -> bool {
+    use num_traits::ToPrimitive;
+    const EXP_LIMIT: u64 = 4096;
+    let ratio_pow = |x: &num_rational::BigRational, e: i64| -> Option<num_rational::BigRational> {
+        let mag = e.unsigned_abs();
+        if mag > EXP_LIMIT {
+            return None;
+        }
+        let mag = mag as u32;
+        let pow = num_rational::BigRational::new(x.numer().pow(mag), x.denom().pow(mag));
+        if e < 0 {
+            Some(num_rational::BigRational::new(
+                pow.denom().clone(),
+                pow.numer().clone(),
+            ))
+        } else {
+            Some(pow)
+        }
+    };
+    let (Some(p), Some(q)) = (m.numer().to_i64(), m.denom().to_i64()) else {
+        return false;
+    };
+    let (Some(b_p), Some(c_q)) = (ratio_pow(b, p), ratio_pow(c, q)) else {
+        return false;
+    };
+    b_p == c_q
+}
+
+/// True when `expr` is a variable-free constant that is provably EXACTLY zero --
+/// the dual of [`is_provably_nonzero_constant`]. Recognises a folded rational `0`,
+/// anything the exact sign oracle pins to zero (e.g. `sqrt(4) - 2`), a
+/// rational-base logarithm identity `k*log_b(c) + s = 0` decided by `c = b^m`
+/// (e.g. `log2(8) - 3 = 0`, which the simplifier does NOT fold), and `log_b(1) = 0`.
+/// Anything it cannot prove zero returns `false` (no false identities), so a false
+/// equality like `sin(1) = 1/2` is NEVER reported as an identity.
+pub(crate) fn is_provably_zero_constant(ctx: &Context, expr: ExprId) -> bool {
+    use cas_math::numeric_eval::as_rational_const;
+    let zero = num_rational::BigRational::from_integer(0.into());
+    let one = num_rational::BigRational::from_integer(1.into());
+    if let Some(r) = as_rational_const(ctx, expr) {
+        return r == zero;
+    }
+    if cas_math::const_sign::provable_const_sign(ctx, expr)
+        == Some(cas_math::const_sign::ConstSign::Zero)
+    {
+        return true;
+    }
+    match ctx.get(expr) {
+        Expr::Neg(inner) => is_provably_zero_constant(ctx, *inner),
+        // `rational ± k*log_b(c)` is zero iff `log_b(c) = m`, i.e. `c = b^m`.
+        Expr::Add(l, r) | Expr::Sub(l, r) => {
+            let is_sub = matches!(ctx.get(expr), Expr::Sub(_, _));
+            let (l, r) = (*l, *r);
+            let (rational_side, log_side) = if let Some(s) = as_rational_const(ctx, l) {
+                (s, r)
+            } else if let Some(s) = as_rational_const(ctx, r) {
+                (s, l)
+            } else {
+                return false;
+            };
+            if let Some((k, b, c)) = as_rational_base_log_term(ctx, log_side) {
+                let quotient = rational_side / k;
+                let m = if is_sub { quotient } else { -quotient };
+                return rational_power_provably_equal(&b, &m, &c);
+            }
+            false
+        }
+        // Bare `log_b(1) = 0` (rational-base or natural).
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Ln | BuiltinFn::Log2 | BuiltinFn::Log10)
+            ) && matches!(as_rational_const(ctx, args[0]), Some(c) if c == one)
+        }
+        _ => false,
+    }
+}
+
 /// Resolve variable-eliminated residuals into terminal solve outcomes.
 ///
 /// This consolidates identity/contradiction handling and, for symbolic
@@ -10067,6 +10152,42 @@ mod tests {
             classify_var_free_difference(&ctx, diff),
             VarFreeDiffKind::ContradictionNonZero
         );
+    }
+
+    #[test]
+    fn is_provably_zero_constant_separates_identity_from_false_and_irrational() {
+        let mut ctx = Context::new();
+        // log2(8) - 3 = 0  (8 = 2^3): a genuine identity.
+        let eight = ctx.num(8);
+        let three = ctx.num(3);
+        let log2_8 = ctx.call_builtin(BuiltinFn::Log2, vec![eight]);
+        let identity = ctx.add(Expr::Sub(log2_8, three));
+        assert!(super::is_provably_zero_constant(&ctx, identity));
+
+        // log2(7) - 3 != 0  (7 != 2^3): NOT an identity.
+        let seven = ctx.num(7);
+        let three_b = ctx.num(3);
+        let log2_7 = ctx.call_builtin(BuiltinFn::Log2, vec![seven]);
+        let false_eq = ctx.add(Expr::Sub(log2_7, three_b));
+        assert!(!super::is_provably_zero_constant(&ctx, false_eq));
+
+        // sqrt(4) - 2 = 0 via the exact sign oracle.
+        let four = ctx.num(4);
+        let two = ctx.num(2);
+        let sqrt4 = ctx.call_builtin(BuiltinFn::Sqrt, vec![four]);
+        let sqrt_id = ctx.add(Expr::Sub(sqrt4, two));
+        assert!(super::is_provably_zero_constant(&ctx, sqrt_id));
+
+        // ln(2) - 1 is irrational nonzero (regression guard: must NOT be a false zero).
+        let two_c = ctx.num(2);
+        let one = ctx.num(1);
+        let ln2 = ctx.call_builtin(BuiltinFn::Ln, vec![two_c]);
+        let irrational = ctx.add(Expr::Sub(ln2, one));
+        assert!(!super::is_provably_zero_constant(&ctx, irrational));
+
+        // Literal zero.
+        let z = ctx.num(0);
+        assert!(super::is_provably_zero_constant(&ctx, z));
     }
 
     #[test]

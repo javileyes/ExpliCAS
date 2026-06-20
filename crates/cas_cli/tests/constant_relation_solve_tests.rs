@@ -103,15 +103,33 @@ fn irrational_constant_relations_use_the_exact_sign_oracle() {
     // exact rational bounds (pi/e/phi/sqrt + bare-log sign), so the relation is
     // truth-evaluated instead of defaulting to "All real numbers".
     assert_eq!(solve_set("x - x + pi", RelOp::Gt, "4"), SolutionSet::Empty); // pi < 4
-    assert_eq!(solve_set("x - x + pi", RelOp::Gt, "3"), SolutionSet::AllReals); // pi > 3
-    assert_eq!(solve_set("x - x + 2*pi", RelOp::Lt, "6"), SolutionSet::Empty); // 2pi > 6
+    assert_eq!(
+        solve_set("x - x + pi", RelOp::Gt, "3"),
+        SolutionSet::AllReals
+    ); // pi > 3
+    assert_eq!(
+        solve_set("x - x + 2*pi", RelOp::Lt, "6"),
+        SolutionSet::Empty
+    ); // 2pi > 6
     assert_eq!(solve_set("x - x + e", RelOp::Lt, "2"), SolutionSet::Empty); // e > 2
-    assert_eq!(solve_set("x - x + sqrt(2)", RelOp::Gt, "2"), SolutionSet::Empty); // sqrt2 < 2
-    assert_eq!(solve_set("x - x + sqrt(5)", RelOp::Gt, "2"), SolutionSet::AllReals); // sqrt5 > 2
-    assert_eq!(solve_set("x - x + ln(2)", RelOp::Gt, "0"), SolutionSet::AllReals); // ln2 > 0
-    // The equation arm overrides only for a provably-NONZERO constant.
+    assert_eq!(
+        solve_set("x - x + sqrt(2)", RelOp::Gt, "2"),
+        SolutionSet::Empty
+    ); // sqrt2 < 2
+    assert_eq!(
+        solve_set("x - x + sqrt(5)", RelOp::Gt, "2"),
+        SolutionSet::AllReals
+    ); // sqrt5 > 2
+    assert_eq!(
+        solve_set("x - x + ln(2)", RelOp::Gt, "0"),
+        SolutionSet::AllReals
+    ); // ln2 > 0
+       // The equation arm overrides only for a provably-NONZERO constant.
     assert_eq!(solve_set("x - x + pi", RelOp::Eq, "4"), SolutionSet::Empty); // pi != 4
-    assert_eq!(solve_set("x - x + pi", RelOp::Neq, "4"), SolutionSet::AllReals);
+    assert_eq!(
+        solve_set("x - x + pi", RelOp::Neq, "4"),
+        SolutionSet::AllReals
+    );
 }
 
 #[test]
@@ -134,5 +152,36 @@ fn undecidable_constant_inequality_is_honest_conditional_not_a_wrong_verdict() {
     ));
     // But an oracle-DECIDABLE constant stays a definite verdict (no over-hedging).
     assert_eq!(solve_set("x - x + pi", RelOp::Gt, "4"), SolutionSet::Empty);
-    assert_eq!(solve_set("x - x + ln(2)", RelOp::Gt, "0"), SolutionSet::AllReals);
+    assert_eq!(
+        solve_set("x - x + ln(2)", RelOp::Gt, "0"),
+        SolutionSet::AllReals
+    );
+}
+
+#[test]
+fn undecidable_constant_equation_separates_identity_from_false_equality() {
+    // A GENUINE but un-foldable identity (`log2(8) = 3`, i.e. `log2(8) - 3 = 0`) must
+    // stay a definite AllReals via the exact EqZero prover (`8 = 2^3`).
+    assert_eq!(
+        solve_set("x - x + log2(8) - 3", RelOp::Eq, "0"),
+        SolutionSet::AllReals
+    );
+    assert_eq!(
+        solve_set("x - x + log10(100) - 2", RelOp::Eq, "0"),
+        SolutionSet::AllReals
+    );
+    // A FALSE equality the engine cannot refute (`sin(1) = 1/2`) becomes an honest
+    // conditional -- previously the legacy default wrongly returned "All real numbers".
+    assert!(matches!(
+        solve_set("x - x + sin(1)", RelOp::Eq, "1/2"),
+        SolutionSet::Conditional(_)
+    ));
+    // The provably-irrational residual `ln(2) - 1` stays a definite "No solution"
+    // (a regression guard: the EqZero work must not hedge a provably-nonzero diff).
+    assert_eq!(
+        solve_set("x - x + ln(2) - 1", RelOp::Eq, "0"),
+        SolutionSet::Empty
+    );
+    // Provably-nonzero algebraic constant stays Empty.
+    assert_eq!(solve_set("x - x + pi", RelOp::Eq, "4"), SolutionSet::Empty);
 }

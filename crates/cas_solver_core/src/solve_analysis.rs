@@ -1340,7 +1340,7 @@ fn const_relation_truth(ctx: &Context, diff: ExprId, op: &RelOp) -> Option<bool>
 /// `x-x+sin(1) > 2` wrongly returns "All real numbers"). The conditional never
 /// asserts a verdict it cannot justify; `Conditional::simplify` collapses it to a
 /// definite set only if a downstream prover can actually decide the predicate.
-fn undetermined_constant_inequality(ctx: &mut Context, diff: ExprId, op: &RelOp) -> SolutionSet {
+fn undetermined_constant_relation(ctx: &mut Context, diff: ExprId, op: &RelOp) -> SolutionSet {
     let predicate = match op {
         RelOp::Gt => ConditionPredicate::Positive(diff),
         RelOp::Geq => ConditionPredicate::NonNegative(diff),
@@ -1348,7 +1348,7 @@ fn undetermined_constant_inequality(ctx: &mut Context, diff: ExprId, op: &RelOp)
         RelOp::Lt => ConditionPredicate::Positive(ctx.add(Expr::Neg(diff))),
         RelOp::Leq => ConditionPredicate::NonNegative(ctx.add(Expr::Neg(diff))),
         RelOp::Neq => ConditionPredicate::NonZero(diff),
-        RelOp::Eq => return SolutionSet::Empty, // not reached: `Eq` keeps the legacy path
+        RelOp::Eq => ConditionPredicate::EqZero(diff),
     };
     SolutionSet::Conditional(vec![
         Case::new(ConditionSet::single(predicate), SolutionSet::AllReals),
@@ -1393,7 +1393,7 @@ where
             && cas_ast::collect_variables(ctx, diff_simplified).is_empty() =>
         {
             (
-                undetermined_constant_inequality(ctx, diff_simplified, op),
+                undetermined_constant_relation(ctx, diff_simplified, op),
                 vec![],
             )
         }
@@ -1413,8 +1413,26 @@ where
                 VarEliminatedOutcomePipelineSolved::ContradictionEmpty => {
                     (SolutionSet::Empty, vec![])
                 }
+                // The UNDECIDABLE residual (not a literal zero, not provably nonzero).
+                // For a variable-free EQUATION, separate a genuine but un-foldable
+                // identity (`log2(8) - 3 = 0` -> AllReals, via the exact EqZero prover)
+                // from a false equality (`sin(1) = 1/2` -> honest conditional, never the
+                // wrong AllReals default). A PARAMETRIC residual keeps the legacy AllReals.
                 VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
-                    (SolutionSet::AllReals, steps)
+                    if matches!(op, RelOp::Eq)
+                        && cas_ast::collect_variables(ctx, diff_simplified).is_empty()
+                    {
+                        if crate::solve_outcome::is_provably_zero_constant(ctx, diff_simplified) {
+                            (SolutionSet::AllReals, vec![])
+                        } else {
+                            (
+                                undetermined_constant_relation(ctx, diff_simplified, op),
+                                vec![],
+                            )
+                        }
+                    } else {
+                        (SolutionSet::AllReals, steps)
+                    }
                 }
             }
         }

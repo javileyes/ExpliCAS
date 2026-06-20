@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 224 (newest first)
+Active entries: 225 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
@@ -123,6 +123,7 @@ Active entries: 224 (newest first)
 - 2026-06-20 | `retained` | equation/inequality solving; `crates/cas_solver_core/src/solve_analysis.rs` | Retained soundness fix: constant-relation truth + canceled-pole exclusion in var-eliminated solve
 - 2026-06-20 | `retained` | new `crates/cas_math/src/const_sign.rs` (rational interval bounds + sign orac... | Retained capability: exact rational constant-sign oracle (cas_math::const_sign)
 - 2026-06-20 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` (`resolve_var_eliminated_resid... | Retained soundness fix: honest conditional for undecidable constant inequalities
+- 2026-06-20 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (new `is_provably_zero_constant... | Retained soundness fix: exact EqZero prover closes the undecidable-equation hole
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9681,3 +9682,31 @@ Active entries: 224 (newest first)
   - gate the new branch on collect_variables(diff).is_empty() to separate a pure-constant undecidable from a
     PARAMETRIC residual: the parametric case (a>0) is genuinely conditional-on-a and is a different (untouched)
     concern, so scoping to var-free avoids regressing parametric solving.
+
+## 2026-06-20 - Retained soundness fix: exact EqZero prover closes the undecidable-equation hole
+- area:
+  - `crates/cas_solver_core/src/solve_outcome.rs` (new `is_provably_zero_constant` + `rational_power_provably_equal`);
+    `solve_analysis.rs` resolver undecidable-Eq arm
+- status:
+  - `retained` (closes the last var-cancellation soundness hole: a false equality no longer defaults to AllReals)
+- capture:
+  - investment_class: soundness
+  - cell: log2(8)-3=0 -> AllReals (identity); log10(100)-2=0 -> AllReals; sin(1)=1/2 -> honest conditional
+    (was AllReals); ln(2)-1=0 -> Empty (preserved); pi=4 -> Empty; sqrt(4)-2=0 -> AllReals
+  - behavior_change_expected: yes - undecidable var-free EQUATIONS now split identity / honest-conditional;
+    guardrail+pressure STRUCTURALLY byte-identical, workspace green
+- observed (final step of the constants-zone soundness work):
+  - the honest-conditional fix covered inequalities but left Eq on the legacy Constraint->AllReals default
+    (sin(1)=1/2 -> AllReals, wrong). The hazard: a genuine identity the engine cannot fold (log2(8)-3=0) would
+    regress AllReals->conditional. Resolved by building the DUAL of is_provably_nonzero_constant: a
+    rational-base log identity k*log_b(c)+s=0 is decided EXACTLY by b^p==c^q (rational_power_provably_equal),
+    plus rational 0, the sign-oracle Zero, and log_b(1)=0. The resolver's undecidable-Eq arm then gives AllReals
+    for a proven identity and the honest conditional only for a genuinely-undecidable equality; is_provably_
+    nonzero (ln(2)-1 irrational) is untouched, so its Empty verdict is preserved. 720-case sweep: 0 wrong verdicts.
+- retained learning:
+  - build the prover in DUAL pairs: a sound "provably nonzero" is not enough to decide an equation -- you also
+    need "provably zero", and the two are NOT complements (each can be Unknown). The exact c=b^m test serves
+    both (b^p != c^q for nonzero, b^p == c^q for zero); reuse the same arithmetic, flip the comparison.
+  - separate "the engine cannot fold it" from "it is not an identity": log2(8) does not simplify to 3, but it
+    IS exactly 3 -- a structural prover (c = b^m) decides the identity the simplifier misses, which is what lets
+    the honest-conditional default stay sound without hedging genuine identities.
