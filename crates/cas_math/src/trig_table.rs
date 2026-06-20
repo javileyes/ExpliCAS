@@ -557,17 +557,17 @@ pub fn parse_angle_from_expr(ctx: &Context, expr: ExprId) -> Option<AngleSpec> {
         Expr::Mul(a, b) => {
             // Check if one is π and the other is integer
             if matches!(ctx.get(*a), Expr::Constant(cas_ast::Constant::Pi)) {
-                // π * k
+                // π * k, where k may be a folded rational p/q (e.g. (2/7)·π).
+                // Using `to_integer()` here would TRUNCATE the fraction (2/7 -> 0),
+                // mis-parsing the angle as 0; carry numerator AND denominator.
                 if let Expr::Number(n) = ctx.get(*b) {
-                    let k = n.to_integer().to_i32()?;
-                    return Some(AngleSpec::new(k, 1));
+                    return Some(AngleSpec::new(n.numer().to_i32()?, n.denom().to_i32()?));
                 }
             }
             if matches!(ctx.get(*b), Expr::Constant(cas_ast::Constant::Pi)) {
-                // k * π
+                // k * π, where k may be a folded rational p/q (carry both parts).
                 if let Expr::Number(n) = ctx.get(*a) {
-                    let k = n.to_integer().to_i32()?;
-                    return Some(AngleSpec::new(k, 1));
+                    return Some(AngleSpec::new(n.numer().to_i32()?, n.denom().to_i32()?));
                 }
                 // (k/n) * π
                 if let Expr::Div(num, den) = ctx.get(*a) {
@@ -596,18 +596,23 @@ pub fn parse_angle_from_expr(ctx: &Context, expr: ExprId) -> Option<AngleSpec> {
                     return Some(AngleSpec::new(1, denom));
                 }
 
-                // (k * π) / n
+                // (k * π) / n, where k may be a folded rational p/q:
+                // (p/q)·π/n = p·π/(q·n). Truncating k would mis-parse the angle.
                 if let Expr::Mul(a, b) = ctx.get(*num) {
                     if matches!(ctx.get(*b), Expr::Constant(cas_ast::Constant::Pi)) {
                         if let Expr::Number(n) = ctx.get(*a) {
-                            let k = n.to_integer().to_i32()?;
-                            return Some(AngleSpec::new(k, denom));
+                            return Some(AngleSpec::new(
+                                n.numer().to_i32()?,
+                                n.denom().to_i32()?.checked_mul(denom)?,
+                            ));
                         }
                     }
                     if matches!(ctx.get(*a), Expr::Constant(cas_ast::Constant::Pi)) {
                         if let Expr::Number(n) = ctx.get(*b) {
-                            let k = n.to_integer().to_i32()?;
-                            return Some(AngleSpec::new(k, denom));
+                            return Some(AngleSpec::new(
+                                n.numer().to_i32()?,
+                                n.denom().to_i32()?.checked_mul(denom)?,
+                            ));
                         }
                     }
                 }
@@ -1027,5 +1032,43 @@ mod tests {
         assert_eq!(norm.base, AngleSpec::PI_6);
         assert_eq!(norm.sin_sign, -1);
         assert_eq!(norm.cos_sign, 1);
+    }
+
+    #[test]
+    fn parse_angle_keeps_fractional_pi_coefficient() {
+        // Regression (soundness): `(2/7)·π` — a FOLDED rational coefficient times π,
+        // which is how the simplifier stores `2·π/7` — must parse to AngleSpec 2/7,
+        // NOT be truncated to 0 by `to_integer()`. The truncation bug made
+        // eval_trig_special treat the angle as 0, returning sin=0 / cos=1, which
+        // collapsed products like sin(π/7)·cos(π/7) to a FALSE 0.
+        let mut ctx = Context::new();
+        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+        let coeff = ctx.add(Expr::Number(num_rational::BigRational::new(
+            2.into(),
+            7.into(),
+        )));
+        let two_sevenths_pi = ctx.add(Expr::Mul(coeff, pi)); // (2/7)·π
+        let pi_two_sevenths = ctx.add(Expr::Mul(pi, coeff)); // π·(2/7), other order
+        let three = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+            3.into(),
+        )));
+        let three_pi = ctx.add(Expr::Mul(three, pi)); // 3·π (integer coeff still works)
+
+        assert_eq!(
+            parse_angle_from_expr(&ctx, two_sevenths_pi),
+            Some(AngleSpec::new(2, 7))
+        );
+        assert_eq!(
+            parse_angle_from_expr(&ctx, pi_two_sevenths),
+            Some(AngleSpec::new(2, 7))
+        );
+        assert_eq!(
+            parse_angle_from_expr(&ctx, three_pi),
+            Some(AngleSpec::new(3, 1))
+        );
+
+        // A non-table angle must yield NO special value (never a false 0/1).
+        assert!(eval_trig_special(&mut ctx, TrigFn::Sin, two_sevenths_pi).is_none());
+        assert!(eval_trig_special(&mut ctx, TrigFn::Cos, two_sevenths_pi).is_none());
     }
 }

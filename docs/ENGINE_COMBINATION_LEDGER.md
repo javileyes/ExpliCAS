@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 225 (newest first)
+Active entries: 226 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
@@ -124,6 +124,7 @@ Active entries: 225 (newest first)
 - 2026-06-20 | `retained` | new `crates/cas_math/src/const_sign.rs` (rational interval bounds + sign orac... | Retained capability: exact rational constant-sign oracle (cas_math::const_sign)
 - 2026-06-20 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` (`resolve_var_eliminated_resid... | Retained soundness fix: honest conditional for undecidable constant inequalities
 - 2026-06-20 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (new `is_provably_zero_constant... | Retained soundness fix: exact EqZero prover closes the undecidable-equation hole
+- 2026-06-20 | `retained` | `crates/cas_math/src/trig_table.rs` `parse_angle_from_expr` (Mul + Div arms) | Retained soundness fix: special-angle parser truncated fractional π-coefficients
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9710,3 +9711,38 @@ Active entries: 225 (newest first)
   - separate "the engine cannot fold it" from "it is not an identity": log2(8) does not simplify to 3, but it
     IS exactly 3 -- a structural prover (c = b^m) decides the identity the simplifier misses, which is what lets
     the honest-conditional default stay sound without hedging genuine identities.
+
+## 2026-06-20 - Retained soundness fix: special-angle parser truncated fractional π-coefficients
+- area:
+  - `crates/cas_math/src/trig_table.rs` `parse_angle_from_expr` (Mul + Div arms)
+- status:
+  - `retained` (closes a simplifier soundness hole: 2-factor trig products at non-constructible
+    angles returned mathematically WRONG values in plain `eval`)
+- capture:
+  - investment_class: soundness
+  - cell: sin(pi/7)·cos(pi/7) -> 0 (was; true ~0.39); cos(pi/7)·cos(2pi/7) -> 1 (was; ~0.56);
+    sin(pi/7)·sin(pi/7) -> 0 (was; ~0.19). After fix all preserved symbolically. Constructible
+    angles (sin(pi/5)·sin(2pi/5)=sqrt(5)/4) and the dyadic identity 8·cos(pi/9)cos(2pi/9)cos(4pi/9)=1
+    unchanged; double-angle 2·sin(pi/7)·cos(pi/7)=sin(2pi/7) still fires.
+  - behavior_change_expected: trig products at non-table angles now bail instead of collapsing to
+    a false constant; guardrail+pressure STRUCTURALLY clean (timing / non-det list order only), workspace green
+- observed (this was the true root cause of audit residual H2, surfaced by the EqZero adversarial sweep):
+  - the adversarial sweep framed it as "solver commits to a false Empty"; bisect + instrumentation
+    showed the solver was innocent. `parse_angle_from_expr` read the π-coefficient of
+    `Mul(Number(k/n), pi)` with `n.to_integer().to_i32()`, TRUNCATING the fraction: `(2/7)·π` (the
+    folded form of `2·π/7`) parsed as `0·π`, so the special-angle TABLE returned sin(0)=0, cos(0)=1.
+    Two orchestrator Mul shortcuts (special_angle_exact_value_factor, two_factor_direct_pair_anchor)
+    multiplied those bogus per-factor values; the solver then signed the corrupted constant -> Empty.
+  - bisected to 6ed8d388 (the orchestrator-rewrite commit that introduced the special-angle product
+    shortcuts; the underlying truncation in the parser was exposed by them).
+- retained learning:
+  - a downstream symptom (solver "false Empty") can be a clean component fed CORRUPT input by an
+    upstream simplifier shortcut; instrument the actual value that reaches the decision point
+    (the diff the resolver receives) before attributing the bug to the decision logic. Here the
+    resolver received `-sqrt(7)/8`, not the trig product -- the product had already been zeroed.
+  - `to_integer()` on a rational is a TRUNCATION, not an exactness gate: any code that extracts an
+    integer "coefficient" from a possibly-folded `Number(p/q)` must carry both numer and denom (or
+    bail), or it silently maps every proper fraction to 0. The dual of "soundness gates must be
+    exact": parsing/normalization that drops precision is as unsound as an f64 keep/drop gate.
+  - a special-angle table that BAILS on a miss is sound; one whose miss path defaults to a value
+    (here via a mis-parse to angle 0) is not. Make the miss return None, never a guessed 0/1.

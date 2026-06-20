@@ -328,3 +328,44 @@ fn test_sin_pi_fractions_do_combine() {
         result
     );
 }
+
+/// Regression (soundness): a 2-factor product of trig at a NON-constructible angle
+/// (π/7, π/9, π/11, ...) must NOT collapse to a false constant. A truncation bug in
+/// the special-angle parser (`parse_angle_from_expr`) treated a folded rational
+/// coefficient `(k/n)·π` as the integer `0` (via `to_integer()`), so the table
+/// evaluated sin→0, cos→1. That made `sin(π/7)·cos(π/7)` simplify to a FALSE `0`
+/// (true value ≈ 0.39), `cos(π/7)·cos(2π/7)` to `1` (≈ 0.56), and `sin(π/7)²`
+/// (written as a product) to `0` (≈ 0.19).
+#[test]
+fn test_non_constructible_trig_products_not_collapsed() {
+    for input in [
+        "sin(pi/7) * cos(pi/7)",
+        "sin(pi/7) * sin(2*pi/7)",
+        "cos(pi/7) * cos(2*pi/7)",
+        "sin(pi/7) * sin(pi/7)",
+        "sin(pi/9) * sin(2*pi/9)",
+    ] {
+        let result = simplify(input);
+        assert!(
+            result != "0" && result != "1" && result != "-1",
+            "{input} must not collapse to a false constant, got: {result}"
+        );
+        assert!(
+            result.contains("sin") || result.contains("cos") || result.contains("tan"),
+            "{input} should retain its trig structure, got: {result}"
+        );
+    }
+}
+
+/// The double-angle contraction (which DOES have a closed form) must still fire,
+/// proving the fix only blocked the false collapse, not legitimate evaluation:
+/// 2·sin(π/7)·cos(π/7) = sin(2π/7).
+#[test]
+fn test_double_angle_contraction_still_works_at_seventh() {
+    let result = simplify("2 * sin(pi/7) * cos(pi/7)");
+    let compact = result.replace(' ', "");
+    assert!(
+        compact.contains("sin") && (compact.contains("2/7") || compact.contains("2*pi/7")),
+        "2·sin(π/7)·cos(π/7) should contract to sin(2π/7), got: {result}"
+    );
+}
