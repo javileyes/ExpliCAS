@@ -5452,7 +5452,7 @@ impl Engine {
         }
 
         if effective_opts.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
-            && cas_math::numeric_eval::contains_i(&self.simplifier.context, resolved)
+            && cas_math::numeric_eval::expr_contains_imaginary(&self.simplifier.context, resolved)
         {
             let i_warning = DomainWarning {
                 message: "To use complex arithmetic (i² = -1), run: semantics set value complex"

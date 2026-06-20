@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 217 (newest first)
+Active entries: 218 (newest first)
 
+- 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9429,3 +9430,32 @@ Active entries: 217 (newest first)
   - decide range membership in the EXACT layer that fits the argument shape: k*pi -> the rational coefficient
     (no transcendental bound needed); bare rational -> tight rational bounds on pi/2 and pi, provably-IN only,
     bailing (symbolic) on out-of-range/boundary rather than guessing -- the exact-or-keep discipline again.
+
+## 2026-06-20 - Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
+- area:
+  - eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_imaginary; warning gate in
+    crates/cas_engine/src/eval/simplify_action.rs switched from contains_i to expr_contains_imaginary
+- status:
+  - `retained` (HONESTY soundness fix; closes the missing imaginary-usage caveat for perfect-square radicals)
+- capture:
+  - investment_class: soundness
+  - cell: sqrt(-4)+sqrt(-9), sqrt(-16), sqrt(-25), (-4)^(1/2) now emit the Imaginary Usage Warning (were silent
+    with value_domain=real); sqrt(-2)/(-8)^(3/2)/(-16)^(1/4) too; real results (incl. ODD root (-8)^(1/3)=-2,
+    even roots of positives, sqrt(2), x^2) do NOT warn
+  - behavior_change_expected: yes - the warning now fires on imaginary RESULTS; results/value_domain unchanged
+    (only the caveat); guardrail+pressure STRUCTURALLY byte-identical, full cargo test --workspace green
+- observed (Round-4 audit Cluster H):
+  - the warning was gated on contains_i(resolved), but contains_i only matched a base of exactly -1; the engine
+    stores sqrt(-25) as (-25)^(1/2) (display factors out 5*(-1)^(1/2)), so the scan missed every non-(-1) base
+    and reported value_domain=real with an empty warnings[] for an imaginary quantity.
+  - fix: a new expr_contains_imaginary = contains_i OR (even-denominator exponent on a provably-negative base),
+    used only at the warning site; contains_i (and the input-gated ComplexMode::Auto) left untouched.
+- retained learning:
+  - scan the RESULT, and scan for the GENERAL shape, not a single literal: an honesty caveat about imaginary
+    output must recognise (-n)^(1/2) for any negative n, not just the literal (-1)^(1/2), because the engine
+    stores the un-factored radical and only the display normalizes it to k*(-1)^(1/2).
+  - keep a broadened detector SEPARATE from the one wired into mode/behavior resolution: contains_i drives
+    ComplexMode::Auto on the INPUT; widening it there would change which expressions enter complex arithmetic.
+    A parallel result-only detector adds the caveat with zero behavior change.
+  - an EVEN root of a negative is imaginary, an ODD root is real ((-8)^(1/3)=-2): gate on the reduced exponent
+    DENOMINATOR being even, never on "base is negative" alone.

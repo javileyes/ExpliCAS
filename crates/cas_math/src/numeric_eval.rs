@@ -183,6 +183,64 @@ pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
     false
 }
 
+/// Like [`contains_i`], but also recognizes an EVEN ROOT OF A PROVABLY-NEGATIVE
+/// value — `(-4)^(1/2)`, `sqrt(-9)`, `(-2)^(3/2)`, `(-16)^(1/4)` — which the engine
+/// stores as `(-n)^(1/2)` (and renders as the imaginary `k·(-1)^(1/2)`). Used to
+/// emit the imaginary-usage caveat on a RESULT that folded to an imaginary value
+/// even when the INPUT had no literal `i` (Round-4 Cluster H: `sqrt(-4)+sqrt(-9)`
+/// → `5·(-1)^(1/2)`). Kept SEPARATE from `contains_i` so the input-gated
+/// complex-mode resolution is unaffected — only the result-level caveat changes.
+pub fn expr_contains_imaginary(ctx: &Context, root: ExprId) -> bool {
+    use num_traits::Signed;
+
+    let is_neg_const = |e: ExprId| as_rational_const(ctx, e).is_some_and(|v| v.is_negative());
+    let mut stack = vec![root];
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Constant(c) if *c == cas_ast::Constant::I => return true,
+            // `sqrt` of a provably-negative value (covers `sqrt(-1)`).
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
+            {
+                if is_neg_const(args[0]) {
+                    return true;
+                }
+                stack.push(args[0]);
+            }
+            // An EVEN root (`exp` with even denominator) of a provably-negative base
+            // is imaginary; an odd root (`(-8)^(1/3) = -2`) is real and is NOT flagged.
+            Expr::Pow(base, exp) => {
+                let (base, exp) = (*base, *exp);
+                if as_rational_const(ctx, exp)
+                    .is_some_and(|n| crate::expr_predicates::is_even_root_exponent(&n))
+                    && is_neg_const(base)
+                {
+                    return true;
+                }
+                stack.push(base);
+                stack.push(exp);
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => {
+                for a in args {
+                    stack.push(*a);
+                }
+            }
+            Expr::Matrix { data, .. } => {
+                for el in data {
+                    stack.push(*el);
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Check if an expression represents -1
 fn is_negative_one(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -704,7 +762,7 @@ pub fn eval_f64_with_substitution(
 
 #[cfg(test)]
 mod tests {
-    use super::numeric_poly_zero_check;
+    use super::{expr_contains_imaginary, numeric_poly_zero_check};
     use cas_ast::Context;
     use cas_parser::parse;
 
@@ -714,5 +772,44 @@ mod tests {
         let expr = parse("a + 1 - abs(a + 1)", &mut ctx).expect("parse");
 
         assert!(!numeric_poly_zero_check(&ctx, expr));
+    }
+
+    #[test]
+    fn expr_contains_imaginary_detects_even_root_of_negative() {
+        // Round-4 Cluster H: an even root of a provably-negative value is imaginary,
+        // even when the input has no literal `i` (the engine stores `(-n)^(1/2)`).
+        let mut ctx = Context::new();
+        for src in [
+            "(-1)^(1/2)",
+            "(-4)^(1/2)",
+            "(-25)^(1/2)",
+            "(-2)^(1/2)",
+            "(-8)^(3/2)",
+            "(-16)^(1/4)",
+            "(-4)^(1/2) + (-9)^(1/2)",
+            "5*(-1)^(1/2)",
+            "i",
+            "sqrt(-9)",
+        ] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert!(expr_contains_imaginary(&ctx, e), "`{src}` is imaginary");
+        }
+        // Real values must NOT be flagged — including ODD roots of a negative.
+        for src in [
+            "(-8)^(1/3)",  // = -2, real
+            "(-27)^(1/3)", // = -3, real
+            "4^(1/2)",     // = 2
+            "sqrt(2)",
+            "5",
+            "x^2",
+            "(-1)^2",
+            "2 + 3",
+        ] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert!(
+                !expr_contains_imaginary(&ctx, e),
+                "`{src}` is a real value, must NOT be flagged imaginary"
+            );
+        }
     }
 }
