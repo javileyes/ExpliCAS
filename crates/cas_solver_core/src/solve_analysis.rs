@@ -1333,13 +1333,14 @@ fn const_relation_truth(ctx: &Context, diff: ExprId, op: &RelOp) -> Option<bool>
     }
 }
 
-/// Build an HONEST conditional for a variable-free constant inequality whose sign
-/// the oracle could not prove: `AllReals` exactly when the relation holds, else
-/// `Empty`. This replaces the unsound default (the equation-semantics fallback
-/// commits to a definite `AllReals`/`Empty` for an undecidable constant, e.g.
-/// `x-x+sin(1) > 2` wrongly returns "All real numbers"). The conditional never
-/// asserts a verdict it cannot justify; `Conditional::simplify` collapses it to a
-/// definite set only if a downstream prover can actually decide the predicate.
+/// Build an HONEST conditional for a relation `diff (op) 0` whose residual is
+/// independent of the solve variable but whose truth the engine could not prove:
+/// `AllReals` exactly when the relation holds, else `Empty`. The residual may be an
+/// undecidable CONSTANT (`sin(1) - 2`) or PARAMETRIC in other free variables
+/// (`a`, `a - b`) -- in both cases an unconditional verdict is unsound
+/// (`x-x+a > 0` is `Empty` for `a <= 0`; `x-x+sin(1) > 2` is unprovable). The
+/// conditional never asserts a verdict it cannot justify; `Conditional::simplify`
+/// collapses it to a definite set only if a downstream prover can decide the predicate.
 fn undetermined_constant_relation(ctx: &mut Context, diff: ExprId, op: &RelOp) -> SolutionSet {
     let predicate = match op {
         RelOp::Gt => ConditionPredicate::Positive(diff),
@@ -1387,8 +1388,9 @@ where
         // oracle could not decide (e.g. `sin(1) - 2`, an `ln` VALUE comparison): do NOT
         // fall to the equation-semantics default, which commits to a wrong definite
         // `AllReals`/`Empty`. Return an honest conditional instead -- sound (it never
-        // asserts an unjustified verdict). A PARAMETRIC residual (free variable, e.g.
-        // `a > 0`) and the `Eq` identity logic keep the legacy classification.
+        // asserts an unjustified verdict). This is the fast path for the var-free case;
+        // a PARAMETRIC residual (`a > 0`) and the `Eq` cases reach the same honest
+        // conditional via the `ConstraintAllReals` arm below.
         None if !matches!(op, RelOp::Eq)
             && cas_ast::collect_variables(ctx, diff_simplified).is_empty() =>
         {
@@ -1414,24 +1416,28 @@ where
                     (SolutionSet::Empty, vec![])
                 }
                 // The UNDECIDABLE residual (not a literal zero, not provably nonzero).
-                // For a variable-free EQUATION, separate a genuine but un-foldable
-                // identity (`log2(8) - 3 = 0` -> AllReals, via the exact EqZero prover)
-                // from a false equality (`sin(1) = 1/2` -> honest conditional, never the
-                // wrong AllReals default). A PARAMETRIC residual keeps the legacy AllReals.
+                // The relation has reduced to one INDEPENDENT of the solve variable --
+                // either a variable-free constant the oracle could not decide, or a
+                // PARAMETRIC residual in other free variables (`a`, `a-b`). Its truth --
+                // hence whether the solution set in the solve variable is all reals or
+                // empty -- depends only on those parameters, so an unconditional
+                // `AllReals` is UNSOUND (`solve(x-x+a>0,x)` is `Empty` for `a <= 0`).
+                // Return an honest conditional, EXCEPT a proven variable-free EQUATION
+                // identity (`log2(8)-3=0`, via the exact EqZero prover) which stays a
+                // definite `AllReals`. A residual that somehow still contains the solve
+                // variable keeps the legacy pipeline result.
                 VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
-                    if matches!(op, RelOp::Eq)
-                        && cas_ast::collect_variables(ctx, diff_simplified).is_empty()
-                    {
-                        if crate::solve_outcome::is_provably_zero_constant(ctx, diff_simplified) {
-                            (SolutionSet::AllReals, vec![])
-                        } else {
-                            (
-                                undetermined_constant_relation(ctx, diff_simplified, op),
-                                vec![],
-                            )
-                        }
-                    } else {
+                    if crate::isolation_utils::contains_var(ctx, diff_simplified, var) {
                         (SolutionSet::AllReals, steps)
+                    } else if matches!(op, RelOp::Eq)
+                        && crate::solve_outcome::is_provably_zero_constant(ctx, diff_simplified)
+                    {
+                        (SolutionSet::AllReals, vec![])
+                    } else {
+                        (
+                            undetermined_constant_relation(ctx, diff_simplified, op),
+                            vec![],
+                        )
                     }
                 }
             }

@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 231 (newest first)
+Active entries: 232 (newest first)
 
+- 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -9922,3 +9923,37 @@ Active entries: 231 (newest first)
   - probe the real frontier before committing to the PLANNED cycle: the "obvious" next step
     (range reduction) was nearly worthless because the previous cycle's rigorous bound already covered
     the realistic range; the actual gap was a different shape (interval vs large argument).
+
+## 2026-06-21 - Retained soundness fix: parametric var-eliminated relation -> honest conditional
+- area:
+  - `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residual_with_exclusions`
+    (the `ConstraintAllReals` arm)
+- status:
+  - `retained` (closes a soundness hole: a relation whose residual depends on a free PARAMETER no
+    longer commits to an unconditional verdict)
+- capture:
+  - investment_class: soundness
+  - cell: solve(x-x+a>0,x) -> "AllReals if a>0" (was unconditional AllReals, wrong for a<=0);
+    a<0 -> "AllReals if -a>0"; a>=0, a=0, a!=0, 2a>0, a-b>0 all honest conditionals. Genuine
+    constants (5>3 -> AllReals, pi>4 -> Empty), the EqZero identity (log2(8)-3=0 -> AllReals), the
+    true identity (x-x>=0 -> AllReals, x-x>0 -> Empty), and ordinary solves are unchanged.
+  - behavior_change_expected: parametric var-eliminated relations become honest conditionals;
+    guardrail+pressure huella STRUCTURALLY clean; workspace green (313 ok-suites)
+- observed (the parametric case the const-relation / honest-conditional / EqZero work had deferred):
+  - after the solve variable cancels, the residual `diff` can be a CONSTANT or PARAMETRIC (free vars
+    other than the solve var). The honest-conditional fast path only fired for a variable-FREE constant
+    (`collect_variables(diff).is_empty()`); a parametric residual fell through to the pipeline's
+    `ConstraintAllReals -> AllReals` default, asserting the relation true for ALL parameter values --
+    unsound (`x-x+a>0` is Empty for a<=0). Reworked the arm: when `diff` does NOT contain the solve
+    variable, return `undetermined_constant_relation(diff, op)` (the honest conditional, which already
+    builds the right predicate for any op including Eq), EXCEPT a proven var-free Eq identity stays a
+    definite AllReals via the EqZero prover; a residual that still contains the solve var keeps the
+    legacy result.
+- retained learning:
+  - "variable-free constant" and "independent of the SOLVE variable" are different predicates: a
+    parametric residual is solve-var-free but not constant, and the honest-conditional treatment keys
+    on the latter (`!contains_var(diff, solve_var)`), not `collect_variables(diff).is_empty()`. The
+    same Conditional[pred -> AllReals, else Empty] machinery serves both -- the predicate just wraps a
+    parametric expression instead of a constant.
+  - an unconditional AllReals for a relation the engine cannot prove is the SAME unsoundness class
+    whether the residual is a hard constant or a free parameter; route both to the honest conditional.

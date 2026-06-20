@@ -236,3 +236,45 @@ fn undecidable_constant_equation_separates_identity_from_false_equality() {
     // Provably-nonzero algebraic constant stays Empty.
     assert_eq!(solve_set("x - x + pi", RelOp::Eq, "4"), SolutionSet::Empty);
 }
+
+#[test]
+fn parametric_var_eliminated_relation_is_honest_conditional() {
+    // When the solve variable cancels and a FREE PARAMETER remains, the truth of the
+    // relation -- hence the solution set in `x` -- depends only on that parameter, so
+    // an unconditional "All real numbers" is UNSOUND (`x-x+a>0` is Empty for a <= 0).
+    // The honest answer is `Conditional[relation -> AllReals, else Empty]`.
+    assert!(matches!(
+        solve_set("x - x + a", RelOp::Gt, "0"),
+        SolutionSet::Conditional(_)
+    ));
+    assert!(matches!(
+        solve_set("x - x + a", RelOp::Lt, "0"),
+        SolutionSet::Conditional(_)
+    ));
+    assert!(matches!(
+        solve_set("x - x + a", RelOp::Geq, "0"),
+        SolutionSet::Conditional(_)
+    ));
+    assert!(matches!(
+        solve_set("x - x + a", RelOp::Eq, "0"),
+        SolutionSet::Conditional(_)
+    ));
+    assert!(matches!(
+        solve_set("x - x + a", RelOp::Neq, "0"),
+        SolutionSet::Conditional(_)
+    ));
+    // A two-parameter residual is likewise conditional.
+    assert!(matches!(
+        solve_set("x - x + a - b", RelOp::Gt, "0"),
+        SolutionSet::Conditional(_)
+    ));
+    // Regression: a genuine constant relation keeps its DEFINITE verdict (not hedged).
+    assert_eq!(
+        solve_set("x - x + 5", RelOp::Gt, "3"),
+        SolutionSet::AllReals
+    );
+    assert_eq!(solve_set("x - x + pi", RelOp::Gt, "4"), SolutionSet::Empty);
+    // The genuine identity `0 (op) 0` keeps its definite verdict.
+    assert_eq!(solve_set("x - x", RelOp::Geq, "0"), SolutionSet::AllReals);
+    assert_eq!(solve_set("x - x", RelOp::Gt, "0"), SolutionSet::Empty);
+}
