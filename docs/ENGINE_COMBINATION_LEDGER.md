@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 222 (newest first)
+Active entries: 223 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality fold generalized to var-in-numerator + zero-RHS-linear (Round-4 Cluster E follow-up)
 - 2026-06-20 | `retained` | equation/inequality solving; `crates/cas_solver_core/src/solve_analysis.rs` | Retained soundness fix: constant-relation truth + canceled-pole exclusion in var-eliminated solve
+- 2026-06-20 | `retained` | new `crates/cas_math/src/const_sign.rs` (rational interval bounds + sign orac... | Retained capability: exact rational constant-sign oracle (cas_math::const_sign)
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9617,3 +9618,35 @@ Active entries: 222 (newest first)
     symbolic-constraint arm was guarded.
   - sign decisions stay EXACT: const_relation_truth uses as_rational_const + BigRational compares and returns
     None for irrationals (no f64, no guessing) -- the recurring soundness-gates-must-be-exact discipline.
+
+## 2026-06-20 - Retained capability: exact rational constant-sign oracle (cas_math::const_sign)
+- area:
+  - new `crates/cas_math/src/const_sign.rs` (rational interval bounds + sign oracle); wired into
+    `cas_solver_core::solve_analysis::const_relation_truth`
+- status:
+  - `retained` (closes the algebraic-constant half of the irrational constant-relation residual)
+- capture:
+  - investment_class: soundness
+  - cell: x-x+pi>4 -> Empty; x-x+pi>3 -> AllReals; 2*pi<6 -> Empty; e<2 -> Empty; sqrt(2)>2 -> Empty;
+    sqrt(5)>2 -> AllReals; ln(2)>0 -> AllReals; x-x+pi=4 -> Empty (Eq override); x-x+pi!=4 -> AllReals
+  - behavior_change_expected: yes - constant relations over pi/e/phi/sqrt are now truth-evaluated;
+    guardrail+pressure STRUCTURALLY byte-identical, workspace green
+- observed (adversarial follow-up to the constant-relation fix):
+  - the constant-relation truth-eval bailed on every irrational diff (no sign oracle), so a FALSE irrational
+    inequality (pi>4) wrongly returned AllReals. Built an EXACT rational interval evaluator: pi/e/phi via
+    hand-verified rational bounds, sqrt via Newton-from-above (each iterate rounded UP stays an upper bound;
+    lower bound = q/hi) plus a perfect-square fast path, interval arithmetic for +-*/ and integer powers; bare
+    ln/log sign by comparing the argument to 1; exp always positive. provable_const_sign returns None (BAIL)
+    whenever the interval straddles 0 -- never a float guess.
+  - a 1,872-case sweep vs sympy found ZERO unsound verdicts on pi/e/phi/sqrt; the only residual is ln/log/exp
+    VALUE comparisons (ln(2)<1) which need ln/exp value bounds (bisect-confirmed pre-existing).
+- retained learning:
+  - a SIGN oracle only needs the interval to EXCLUDE zero, not to be tight: hand-verified 8-digit rational
+    bounds for pi/e/phi and Newton-rounded sqrt bounds suffice to decide almost every practical comparison,
+    and the BAIL-on-straddle-zero rule keeps it sound without any float (the soundness-gates-must-be-exact rule
+    generalized from drop/keep gates to comparison oracles).
+  - rounding a Newton iterate UP each step (ceil to a fixed denominator) keeps it a valid upper bound for sqrt
+    AND bounds the rational size, so the exact iteration cannot blow up; the matching lower bound q/hi is free.
+  - reuse the cheap structural sign before the heavy value bounds: a base->1 logarithm's sign is just arg-vs-1
+    and exp is always positive, so those need no series at all -- only ln/exp VALUE comparisons need the (still
+    unbuilt) series-with-error-bound machinery.

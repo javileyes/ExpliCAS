@@ -96,3 +96,20 @@ fn genuine_solves_unchanged() {
         SolutionSet::Discrete(roots) if roots.len() == 2
     ));
 }
+
+#[test]
+fn irrational_constant_relations_use_the_exact_sign_oracle() {
+    // The variable cancels to an IRRATIONAL constant whose sign is provable by
+    // exact rational bounds (pi/e/phi/sqrt + bare-log sign), so the relation is
+    // truth-evaluated instead of defaulting to "All real numbers".
+    assert_eq!(solve_set("x - x + pi", RelOp::Gt, "4"), SolutionSet::Empty); // pi < 4
+    assert_eq!(solve_set("x - x + pi", RelOp::Gt, "3"), SolutionSet::AllReals); // pi > 3
+    assert_eq!(solve_set("x - x + 2*pi", RelOp::Lt, "6"), SolutionSet::Empty); // 2pi > 6
+    assert_eq!(solve_set("x - x + e", RelOp::Lt, "2"), SolutionSet::Empty); // e > 2
+    assert_eq!(solve_set("x - x + sqrt(2)", RelOp::Gt, "2"), SolutionSet::Empty); // sqrt2 < 2
+    assert_eq!(solve_set("x - x + sqrt(5)", RelOp::Gt, "2"), SolutionSet::AllReals); // sqrt5 > 2
+    assert_eq!(solve_set("x - x + ln(2)", RelOp::Gt, "0"), SolutionSet::AllReals); // ln2 > 0
+    // The equation arm overrides only for a provably-NONZERO constant.
+    assert_eq!(solve_set("x - x + pi", RelOp::Eq, "4"), SolutionSet::Empty); // pi != 4
+    assert_eq!(solve_set("x - x + pi", RelOp::Neq, "4"), SolutionSet::AllReals);
+}

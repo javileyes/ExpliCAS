@@ -1307,26 +1307,30 @@ pub fn apply_nonzero_exclusion_guards_if_any(
     }
 }
 
-/// Evaluate the truth value of `diff (op) 0` when `diff` is an EXACT rational
-/// constant. Returns `None` for `Eq` (the equation-semantics path below is
-/// preserved byte-for-byte) and for any non-rational `diff` -- there is no sign
-/// oracle for irrational constants (`ln(2)` etc.), so those conservatively fall
-/// back to the existing classification. Exact `BigRational` comparison only; never
-/// an `f64` gate.
+/// Evaluate the truth value of `diff (op) 0` using the EXACT constant sign oracle
+/// (`cas_math::const_sign`): rationals, `pi`/`e`/`phi`, `sqrt`, and `ln`/`log`/`exp`
+/// signs are decided by verified rational bounds (never an `f64` gate). Returns
+/// `None` when the sign cannot be proven (the relation then falls back to the
+/// existing classification). For `Eq`, only a provably-NONZERO `diff` is overridden
+/// (=> contradiction/Empty); a provably-zero or undecidable `diff` defers to the
+/// existing identity logic, preserving the carefully-built log-residual handling.
 fn const_relation_truth(ctx: &Context, diff: ExprId, op: &RelOp) -> Option<bool> {
-    use num_traits::{Signed, Zero};
-    if matches!(op, RelOp::Eq) {
-        return None;
+    use cas_math::const_sign::{provable_const_sign, ConstSign};
+    let sign = provable_const_sign(ctx, diff)?;
+    match op {
+        RelOp::Gt => Some(sign == ConstSign::Positive),
+        RelOp::Geq => Some(sign != ConstSign::Negative),
+        RelOp::Lt => Some(sign == ConstSign::Negative),
+        RelOp::Leq => Some(sign != ConstSign::Positive),
+        RelOp::Neq => Some(sign != ConstSign::Zero),
+        RelOp::Eq => {
+            if sign == ConstSign::Zero {
+                None
+            } else {
+                Some(false)
+            }
+        }
     }
-    let r = cas_math::numeric_eval::as_rational_const(ctx, diff)?;
-    Some(match op {
-        RelOp::Gt => r.is_positive(),
-        RelOp::Geq => !r.is_negative(),
-        RelOp::Lt => r.is_negative(),
-        RelOp::Leq => !r.is_positive(),
-        RelOp::Neq => !r.is_zero(),
-        RelOp::Eq => return None,
-    })
 }
 
 /// Resolve a variable-eliminated residual (`diff (op) 0`) to a final solution set,
