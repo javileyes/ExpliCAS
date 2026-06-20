@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 226 (newest first)
+Active entries: 227 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
@@ -125,6 +125,7 @@ Active entries: 226 (newest first)
 - 2026-06-20 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` (`resolve_var_eliminated_resid... | Retained soundness fix: honest conditional for undecidable constant inequalities
 - 2026-06-20 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (new `is_provably_zero_constant... | Retained soundness fix: exact EqZero prover closes the undecidable-equation hole
 - 2026-06-20 | `retained` | `crates/cas_math/src/trig_table.rs` `parse_angle_from_expr` (Mul + Div arms) | Retained soundness fix: special-angle parser truncated fractional π-coefficients
+- 2026-06-20 | `retained` | `crates/cas_math/src/numeric_eval.rs` `numeric_poly_zero_check` (variable-fre... | Retained soundness fix: exact zero-check replaces an f64 gate in numeric_poly_zero_check
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9746,3 +9747,39 @@ Active entries: 226 (newest first)
     exact": parsing/normalization that drops precision is as unsound as an f64 keep/drop gate.
   - a special-angle table that BAILS on a miss is sound; one whose miss path defaults to a value
     (here via a mis-parse to angle 0) is not. Make the miss return None, never a guessed 0/1.
+
+## 2026-06-20 - Retained soundness fix: exact zero-check replaces an f64 gate in numeric_poly_zero_check
+- area:
+  - `crates/cas_math/src/numeric_eval.rs` `numeric_poly_zero_check` (variable-free branch)
+- status:
+  - `retained` (closes a false-identity soundness hole: a nonzero transcendental that f64-matches a
+    decimal literal is no longer declared exactly zero)
+- capture:
+  - investment_class: soundness
+  - cell: log(2)/log(3) - 0.6309297535714574 -> ln(2)/ln(3) - 3154648767857287/5000000000000000
+    (was 0; true residual ~3.7e-17); log(5)/log(2) - 2.321928094887362 stays symbolic (was 0);
+    1/log(3) - 0.9102392266268373 stays symbolic (was 0). Surd zeros (sqrt(2)*sqrt(2)-2, sqrt(4)-2,
+    (sqrt(2)+1)(sqrt(2)-1)-1) still -> 0; fraction combine (1/(x-2)+1/(x+2)) intact.
+  - behavior_change_expected: false transcendental-zero collapses removed; one COMPLETENESS loss
+    (genuine rational-log identity log(4)/log(2)-2 no longer folds to 0 in fraction contexts);
+    guardrail+pressure STRUCTURALLY clean (timing/non-det list order only), workspace green
+- observed (audit residual H1, surfaced by the EqZero adversarial sweep; bisected to c9a46c5e):
+  - the fraction zero-numerator / denominator-equivalence checks call numeric_poly_zero_check; for a
+    variable-free constant it tried as_rational_const (exact) and then FELL BACK to
+    `eval_f64(expr).abs() < 1e-10`. A decimal literal is the f64 rounding of the transcendental it
+    approximates, so the difference evaluates to ~1e-17 in f64 -> < 1e-10 -> "zero" -> the fraction
+    collapsed. Only log-RATIO forms triggered it because only `Div` expressions reach the fraction
+    callers (pi - decimal / ln(2) - decimal have no Div, so they stayed symbolic).
+  - fix: drop the f64 gate; decide zero EXACTLY via as_rational_const==0 or
+    const_sign::provable_const_sign==Zero (rationals + perfect-square surds, bails otherwise).
+- retained learning:
+  - an f64 "near zero" is a NECESSARY but never a SUFFICIENT condition for exact zero; using it as a
+    drop/keep gate manufactures false identities precisely when a decimal literal is the float
+    rounding of an irrational. Same lesson as the H2 truncation: precision-dropping in a
+    decision path is as unsound as an explicit float gate. (cf. [[soundness-gates-must-be-exact]])
+  - the exact rational sign oracle (const_sign) is the right sound replacement for an f64 zero gate:
+    it CONFIRMS rational and perfect-square-surd zeros and BAILS (None) instead of guessing -- so the
+    caller stays sound and loses only the cases no exact method can prove.
+  - dual-prover note: preserving genuine rational-log identities (log_b(a)=p/q) while killing the
+    coincidences needs the exact `a^q == b^p` test (the EqZero dual), not f64. Dropped here as a
+    deliberate completeness residual; recoverable if a fraction case ever needs it.

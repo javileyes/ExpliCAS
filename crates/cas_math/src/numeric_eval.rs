@@ -294,15 +294,21 @@ pub fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
     // Collect variables in the expression
     let vars = cas_ast::collect_variables(ctx, expr);
     if vars.is_empty() {
-        // No variables: direct numeric evaluation
+        // No variables: decide zero EXACTLY. An f64 near-zero is NEVER a sufficient
+        // condition for "is zero" — it falsely collapses a nonzero IRRATIONAL constant
+        // that merely f64-matches a decimal literal (e.g. `ln(2)/ln(3) - 0.6309297535714574`,
+        // whose true residual is ~3.7e-17 but folds to 0 under a `1e-10` gate, asserting a
+        // false identity). Soundness gates must be exact (no `f64` drop/keep decisions).
         if let Some(v) = as_rational_const(ctx, expr) {
             return v.is_zero();
         }
-        // Fallback: try f64 evaluation for constant expressions with surds
-        if let Some(v) = eval_f64(ctx, expr) {
-            return v.abs() < 1e-10;
-        }
-        return false;
+        // Exact algebraic-zero check (rationals, perfect-square surds like `sqrt(4)-2`,
+        // and anything the exact rational sign oracle pins to zero); bails to `false`
+        // when it cannot PROVE zero, never guessing from a float.
+        return matches!(
+            crate::const_sign::provable_const_sign(ctx, expr),
+            Some(crate::const_sign::ConstSign::Zero)
+        );
     }
 
     // Limit to reasonable number of variables (avoid combinatorial explosion)
@@ -497,12 +503,6 @@ fn eval_with_substitution(
         // Functions, Hold, Matrix, SessionRef: bail out
         _ => None,
     }
-}
-
-/// Evaluate a constant expression (no variables) to f64.
-/// Handles fractional exponents via `f64::powf()`, enabling evaluation of surds like `3^(1/2)`.
-fn eval_f64(ctx: &Context, expr: ExprId) -> Option<f64> {
-    eval_f64_with_substitution(ctx, expr, &[], &[])
 }
 
 /// Evaluate an expression by substituting f64 values for variables.
@@ -772,6 +772,27 @@ mod tests {
         let expr = parse("a + 1 - abs(a + 1)", &mut ctx).expect("parse");
 
         assert!(!numeric_poly_zero_check(&ctx, expr));
+    }
+
+    #[test]
+    fn numeric_poly_zero_check_is_exact_not_f64_for_constants() {
+        // SOUNDNESS (H1): a nonzero IRRATIONAL constant that merely f64-matches a
+        // decimal literal must NOT be deemed zero. `ln(2)/ln(3) - 0.6309297535714574`
+        // has true residual ~3.7e-17 (a transcendental ratio cannot equal a finite
+        // decimal); the old `eval_f64(...).abs() < 1e-10` gate folded it to a false 0.
+        let mut ctx = Context::new();
+        let near = parse("log(2)/log(3) - 0.6309297535714574", &mut ctx).expect("parse");
+        assert!(
+            !numeric_poly_zero_check(&ctx, near),
+            "f64-close transcendental must not be deemed exactly zero"
+        );
+
+        // Still detects EXACT zeros (rational + perfect-square surd via the exact
+        // sign oracle), so the fix does not lose sound zero-detection.
+        let rat = parse("1/2 - 0.5", &mut ctx).expect("parse");
+        assert!(numeric_poly_zero_check(&ctx, rat));
+        let surd = parse("sqrt(4) - 2", &mut ctx).expect("parse");
+        assert!(numeric_poly_zero_check(&ctx, surd));
     }
 
     #[test]
