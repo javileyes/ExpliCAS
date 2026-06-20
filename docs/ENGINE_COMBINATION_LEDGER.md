@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 223 (newest first)
+Active entries: 224 (newest first)
 
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
@@ -122,6 +122,7 @@ Active entries: 223 (newest first)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality fold generalized to var-in-numerator + zero-RHS-linear (Round-4 Cluster E follow-up)
 - 2026-06-20 | `retained` | equation/inequality solving; `crates/cas_solver_core/src/solve_analysis.rs` | Retained soundness fix: constant-relation truth + canceled-pole exclusion in var-eliminated solve
 - 2026-06-20 | `retained` | new `crates/cas_math/src/const_sign.rs` (rational interval bounds + sign orac... | Retained capability: exact rational constant-sign oracle (cas_math::const_sign)
+- 2026-06-20 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` (`resolve_var_eliminated_resid... | Retained soundness fix: honest conditional for undecidable constant inequalities
 - 2026-06-19 | `retained` | solve preflight; `crates/cas_solver/src/solve_backend_local.rs` | Retained soundness fix: solve(x/0=5) collapsed to 'All real numbers' (Round-4 Cluster D)
 - 2026-06-19 | `retained` | solve isolated-variable chokepoint; `crates/cas_solver_core/src/solve_outcome... | Retained soundness fix: solve(1/(x-1)+1/(x+1)=1) leaked a recursive-solve token (Round-4 follow-up: x = deg-2 poly(x))
 - 2026-06-19 | `retained` | additive annihilation guard; `crates/cas_math/src/arithmetic_cancel_support.rs` | Retained soundness fix: tan(pi/2)-tan(pi/2) -> 0 (Round-4 Cluster G)
@@ -9650,3 +9651,33 @@ Active entries: 223 (newest first)
   - reuse the cheap structural sign before the heavy value bounds: a base->1 logarithm's sign is just arg-vs-1
     and exp is always positive, so those need no series at all -- only ln/exp VALUE comparisons need the (still
     unbuilt) series-with-error-bound machinery.
+
+## 2026-06-20 - Retained soundness fix: honest conditional for undecidable constant inequalities
+- area:
+  - `crates/cas_solver_core/src/solve_analysis.rs` (`resolve_var_eliminated_residual_with_exclusions` +
+    new `undetermined_constant_inequality`)
+- status:
+  - `retained` (closes the var-eliminated resolver's wrong-definite-verdict hole at its root)
+- capture:
+  - investment_class: soundness
+  - cell: x-x+sin(1)>2 -> "All real numbers if sin(1)-2 > 0" (was "All real numbers"); x-x+ln(2)<1 -> honest
+    conditional (was "No solution"); oracle-decidable x-x+pi>4 -> Empty unchanged; parametric x-x+a>0 unchanged
+  - behavior_change_expected: yes - undecidable var-free constant inequalities now return a Conditional;
+    guardrail+pressure STRUCTURALLY byte-identical, workspace green
+- observed (adversarial follow-up to the constant-sign oracle):
+  - the real soundness hole was the resolver DEFAULT, not the oracle: when provable_const_sign bails on a
+    variable-free constant, the equation-semantics fallback still committed to a definite AllReals/Empty -- a
+    wrong verdict for any constant the oracle cannot bound (sin/cos, ln VALUE). Fix: for an inequality whose
+    residual is a variable-FREE constant the oracle could not decide, return Conditional[pred(diff) -> AllReals,
+    else -> Empty] (Positive/NonNegative/NonZero, with -diff for the < / <= directions). Eq and the parametric
+    (free-variable) case keep the legacy path.
+- retained learning:
+  - a sign ORACLE that correctly bails is only half the soundness story: the CALLER's default when the oracle
+    bails is where the wrong verdict actually escapes. Audit the fallback, not just the prover -- "returns None"
+    is sound only if the caller treats None as "undetermined", not "assume true".
+  - the honest representation of an undecidable constant relation is a CONDITIONAL guarded by the relation
+    itself (AllReals if diff>0 else Empty), not a Residual template (which is shaped for unsolved equations in
+    x) and not a definite set. Conditional::simplify keeps the option open for a later prover to decide it.
+  - gate the new branch on collect_variables(diff).is_empty() to separate a pure-constant undecidable from a
+    PARAMETRIC residual: the parametric case (a>0) is genuinely conditional-on-a and is a different (untouched)
+    concern, so scoping to var-free avoids regressing parametric solving.

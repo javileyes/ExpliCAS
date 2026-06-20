@@ -1333,6 +1333,30 @@ fn const_relation_truth(ctx: &Context, diff: ExprId, op: &RelOp) -> Option<bool>
     }
 }
 
+/// Build an HONEST conditional for a variable-free constant inequality whose sign
+/// the oracle could not prove: `AllReals` exactly when the relation holds, else
+/// `Empty`. This replaces the unsound default (the equation-semantics fallback
+/// commits to a definite `AllReals`/`Empty` for an undecidable constant, e.g.
+/// `x-x+sin(1) > 2` wrongly returns "All real numbers"). The conditional never
+/// asserts a verdict it cannot justify; `Conditional::simplify` collapses it to a
+/// definite set only if a downstream prover can actually decide the predicate.
+fn undetermined_constant_inequality(ctx: &mut Context, diff: ExprId, op: &RelOp) -> SolutionSet {
+    let predicate = match op {
+        RelOp::Gt => ConditionPredicate::Positive(diff),
+        RelOp::Geq => ConditionPredicate::NonNegative(diff),
+        // `diff < 0  <=>  -diff > 0`; `diff <= 0  <=>  -diff >= 0`.
+        RelOp::Lt => ConditionPredicate::Positive(ctx.add(Expr::Neg(diff))),
+        RelOp::Leq => ConditionPredicate::NonNegative(ctx.add(Expr::Neg(diff))),
+        RelOp::Neq => ConditionPredicate::NonZero(diff),
+        RelOp::Eq => return SolutionSet::Empty, // not reached: `Eq` keeps the legacy path
+    };
+    SolutionSet::Conditional(vec![
+        Case::new(ConditionSet::single(predicate), SolutionSet::AllReals),
+        Case::new(ConditionSet::empty(), SolutionSet::Empty),
+    ])
+    .simplify()
+}
+
 /// Resolve a variable-eliminated residual (`diff (op) 0`) to a final solution set,
 /// applying denominator non-zero guards when needed.
 #[allow(clippy::too_many_arguments)]
@@ -1359,6 +1383,20 @@ where
     let (base_set, steps) = match const_relation_truth(ctx, diff_simplified, op) {
         Some(true) => (SolutionSet::AllReals, vec![]),
         Some(false) => (SolutionSet::Empty, vec![]),
+        // An INEQUALITY (or `Neq`) whose residual is a variable-FREE constant the sign
+        // oracle could not decide (e.g. `sin(1) - 2`, an `ln` VALUE comparison): do NOT
+        // fall to the equation-semantics default, which commits to a wrong definite
+        // `AllReals`/`Empty`. Return an honest conditional instead -- sound (it never
+        // asserts an unjustified verdict). A PARAMETRIC residual (free variable, e.g.
+        // `a > 0`) and the `Eq` identity logic keep the legacy classification.
+        None if !matches!(op, RelOp::Eq)
+            && cas_ast::collect_variables(ctx, diff_simplified).is_empty() =>
+        {
+            (
+                undetermined_constant_inequality(ctx, diff_simplified, op),
+                vec![],
+            )
+        }
         None => {
             let reduced_outcome = solve_var_eliminated_outcome_pipeline_with(
                 ctx,
