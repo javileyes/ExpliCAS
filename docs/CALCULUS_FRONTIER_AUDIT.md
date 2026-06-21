@@ -631,7 +631,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   integrales definidas que crucen 0; `1/(x⁶−1)` levantar el cap de
   factores del backend racional; `1/(x⁵−1)` las cuárticas ciclotómicas
   Φ5 con √5)*
-  *(precursor `factor` 2026-06-21 PENDING_HASH_QF: `factor` ahora parte
+  *(precursor `factor` 2026-06-21 f2313025cb7f61e3c5e58603303943a764475835: `factor` ahora parte
   las cuárticas pares REDUCIBLES `a·x⁴+b·x²+c` en dos cuadráticas sobre ℚ
   — biquadrática `(x²+r)(x²+s)` y Sophie-Germain `(x²+ex+f)(x²-ex+f)`:
   `factor(x⁴+x²+1)→(x²+x+1)(x²-x+1)`, `factor(4x⁴+1)→(2x²+2x+1)(2x²-2x+1)`,
