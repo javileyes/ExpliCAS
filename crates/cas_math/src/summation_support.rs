@@ -914,6 +914,26 @@ pub fn try_build_polynomial_sum(
     for &term in &terms[1..] {
         combined = ctx.add(Expr::Add(combined, term));
     }
+
+    // Collect the linearity sum into a single canonical polynomial in `end`
+    // (`2·n·(n+1) − 2·n → 2·n²`, `n·(n+1) + n → n² + 2·n`): the per-power Faulhaber
+    // terms are correct but left as an UNcombined sum. Only for a MULTI-term result —
+    // a single power keeps its compact factored form (`Σk² = n(n+1)(2n+1)/6`) — and only
+    // when `end` is a bare variable with a constant `start`, so `combined` is a univariate
+    // polynomial in that variable. Exact (`BigRational`); the value never changes.
+    if terms.len() >= 2 {
+        let end_name = match ctx.get(end) {
+            Expr::Variable(sym_id) => Some(ctx.sym_name(*sym_id).to_string()),
+            _ => None,
+        };
+        if let Some(end_name) = end_name {
+            if as_rational_const(ctx, start, 8).is_some() {
+                if let Ok(poly_in_end) = Polynomial::from_expr(ctx, combined, &end_name) {
+                    combined = poly_in_end.to_expr(ctx);
+                }
+            }
+        }
+    }
     Some(combined)
 }
 
@@ -2481,7 +2501,7 @@ mod tests {
         build_finite_product_substitution, build_finite_sum_substitution,
         detect_one_minus_reciprocal_power, detect_reciprocal_power, extract_linear_offset,
         try_build_factorizable_product_for_one_minus_reciprocal_square,
-        try_build_geometric_power_sum, try_build_product_of_constant,
+        try_build_geometric_power_sum, try_build_polynomial_sum, try_build_product_of_constant,
         try_build_product_of_first_integers, try_build_product_of_powers,
         try_build_sum_of_constant, try_build_sum_of_cubes, try_build_sum_of_first_integers,
         try_build_sum_of_squares, try_build_telescoping_product_shift1,
@@ -2489,6 +2509,7 @@ mod tests {
         try_extract_finite_aggregate_call, try_plan_finite_product_evaluation,
         try_plan_finite_sum_evaluation, ProductEvaluationKind, SumEvaluationKind,
     };
+    use crate::polynomial::Polynomial;
     use cas_ast::ordering::compare_expr;
     use cas_ast::{substitute_expr_by_id, Context, Expr};
     use num_rational::BigRational;
@@ -2696,6 +2717,51 @@ mod tests {
                     "{expr} [{a},{n}]"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn polynomial_sum_collects_multi_term_linearity_into_canonical_form() {
+        // The linearity path summed each power by Faulhaber but left the terms UNcombined
+        // (`Σ(4k−2) = 2·n·(n+1) − 2·n`). The collection step folds them into one canonical
+        // polynomial in `n`. Verify BOTH the value (brute force) and that the output is the
+        // collected form (structural compare with the expected polynomial).
+        type Term = fn(i64) -> i64;
+        let cases: [(&str, &[i64], Term); 3] = [
+            ("2*k+1", &[0, 2, 1], |k| 2 * k + 1), // Σ(2k+1) = n² + 2n
+            ("4*k-2", &[0, 0, 2], |k| 4 * k - 2), // Σ(4k−2) = 2n²
+            ("3*k^2-k", &[0, 0, 1, 1], |k| 3 * k * k - k), // Σ(3k²−k) = n³ + n²
+        ];
+        for (summand_src, want, term) in cases {
+            let mut ctx = Context::new();
+            let summand = cas_parser::parse(summand_src, &mut ctx).expect("parse summand");
+            let start = ctx.num(1);
+            let n = ctx.var("n");
+            let result = try_build_polynomial_sum(&mut ctx, summand, "k", start, n)
+                .expect("polynomial sum builds");
+
+            let want_coeffs: Vec<BigRational> = want
+                .iter()
+                .map(|&c| BigRational::from_integer(c.into()))
+                .collect();
+            let want_poly = Polynomial::new(want_coeffs, "n".to_string());
+
+            // Brute force at n = 6 confirms the expected coefficients are the true closed form.
+            let brute: i64 = (1..=6).map(term).sum();
+            assert_eq!(
+                want_poly.eval(&BigRational::from_integer(6.into())),
+                BigRational::from_integer(brute.into()),
+                "expected coeffs for Σ {summand_src} disagree with brute force"
+            );
+
+            // The builder output must be the COLLECTED canonical polynomial (not an uncombined
+            // sum of Faulhaber terms): structurally identical to the expected polynomial's expr.
+            let expected = want_poly.to_expr(&mut ctx);
+            assert_eq!(
+                compare_expr(&ctx, result, expected),
+                std::cmp::Ordering::Equal,
+                "Σ {summand_src} should collect to the canonical polynomial with coeffs {want:?}"
+            );
         }
     }
 

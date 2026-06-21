@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 281 (newest first)
+Active entries: 282 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
+- 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -11958,3 +11959,44 @@ Active entries: 281 (newest first)
   - residual (peldaño): radicandos con `π` y combinaciones más ricas (`e^x`, productos de
     constantes) ya los cubre `rational_bounds` para grados ≤16; quedan fuera bases-potencia
     de base negativa y divisiones por no-constante (declinan, conservan — sound).
+
+## 2026-06-22 - Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso de colección
+    tras el ensamblado de los términos de Faulhaber)
+- status:
+  - `retained` (capability/educativo — P3 pulido de presentación; la salida era correcta pero
+    sin combinar)
+- capture:
+  - investment_class: capability (Fase 1, P3 — presentación educativa; reusa `Polynomial`)
+  - primary_dimension: north_star_completeness (forma cerrada legible para sumatorios)
+  - secondary_dimension: reuse_value (reusa `Polynomial::from_expr`/`to_expr` ya existente)
+  - cell: `sum(4k-2) → 2·n²` (antes `2·n·(n+1) − 2·n`); `sum(2k+1) → n²+2n`;
+    `sum(3k²−k) → n³+n²`; `sum(k(k+1)) → 1/3·(n³+3n²+2n)`. Sumas de potencia única intactas:
+    `sum(k²) → 1/6·n·(n+1)·(2n+1)` factorizada (NO se expande).
+  - behavior_change_expected: los sumatorios polinómicos MULTI-término (vía linealidad) pasan de
+    la suma SIN combinar de términos de Faulhaber al polinomio canónico único en `n`. Sumas de
+    potencia única conservan su forma factorizada compacta. Huella guardrail+pressure NONE; ningún
+    test fijaba las formas sin combinar.
+  - SOUNDNESS: la colección es EXACTA (`Polynomial::from_expr`/`to_expr`, BigRational) y solo
+    reescribe la MISMA expresión en forma canónica — el valor nunca cambia (verificado por
+    fuerza bruta en el test). Gateada a ≥2 términos (una potencia única queda factorizada),
+    `end` variable libre y `start` constante racional (entonces `combined` es univariado en
+    `end`); start simbólico o `end` no-variable conservan el comportamiento previo.
+- observed:
+  - `try_build_polynomial_sum` sumaba cada potencia por Faulhaber y las unía con `Expr::Add`
+    crudo, sin combinar: `Σ(4k−2)` salía `2·n·(n+1) − 2·n` (correcto, feo). El simplificador
+    general NO colecciona estas formas (`simplify(2n(n+1)−2n)` no cambia), pero `expand` sí; la
+    máquina exacta `Polynomial` da la forma canónica sin tocar el simplificador global.
+  - las sumas de potencia única (`Σk²`) las resuelven builders dedicados antes en el dispatch y
+    salen ya factorizadas; expandirlas sería una regresión — de ahí el gate ≥2 términos.
+- retained learning:
+  - cuando una ruta ensambla un resultado por linealidad (`Σ a_p·CF_p`), conviene colectar el
+    resultado final a forma canónica en la máquina exacta de polinomios del dominio, NO confiar
+    en que el simplificador global lo combine (no lo hace para estas formas) ni expandir a ciegas
+    (regresaría las formas factorizadas bonitas de los casos de término único).
+  - reusar `Polynomial::from_expr`/`to_expr` da colección exacta y barata sin tocar el
+    simplificador (cero blast radius en otras familias; huella NONE lo confirma).
+  - residual (peldaño): `end` no-variable (`sum(..., k, 1, 2n)`) y `start` simbólico
+    (`sum(..., k, m, n)`) quedan sin colectar (conservador, correcto); la forma factorizada
+    ideal `n(n+1)(n+2)/3` para cúbicas multi-término requeriría un factorizador post-colección.
