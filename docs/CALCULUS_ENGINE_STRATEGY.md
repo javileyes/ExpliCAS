@@ -1003,7 +1003,14 @@ calculus result.
 ## Deferred Horizons
 
 These are explicitly out of the current block plan, named so their boundary is
-visible and so present-day decisions do not make them needlessly expensive:
+visible and so present-day decisions do not make them needlessly expensive.
+
+**Sequencing:** the deferral is ordering, not abandonment. The active target is
+Phase 1 (real, univariate, elementary + basic educational); once it matures, the
+deferred horizons below become Phase 2 (elementary principal-branch complex +
+multivariable vector calculus, both ~M over the existing foundation) and Phase 3
+(analytic layers). The concrete per-phase item list and the cross-phase guardrails
+that keep Phases 2/3 cheap live in `docs/CALCULUS_ENGINE_DEVELOPMENT_PHASES.md`.
 
 - **Complex domain.** Deferred until the real-domain north star is mature.
   Guardrails for today: keep branch policy explicit and family-owned (never

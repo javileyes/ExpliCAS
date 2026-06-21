@@ -1,0 +1,168 @@
+# Hoja de ruta por fases — del real-univariable al multivariable y complejo
+
+Documento de secuenciación del north star (`CALCULUS_ENGINE_STRATEGY.md`: engine de
+cálculo diferencial/integral **universal Y educativo** en dominio real). Fija el ORDEN de
+los horizontes y, para cada uno, los items concretos. Fundado en dos evaluaciones
+multi-agente (2026-06-21): la de completitud de la frontera real, y la de extensibilidad
+arquitectónica a complejo y multivariable.
+
+**Regla de oro:** la **Fase 1 es el ÚNICO objetivo activo**. Las Fases 2 y 3 NO se empiezan
+hasta cruzar el umbral de Fase 1 — existen aquí para que las decisiones de HOY las
+mantengan baratas (ver §Guardrails inter-fase). No son "deferred = abandonadas"; son
+"deferred = secuenciadas, y conscientemente preparadas".
+
+**Qué ordena la fase (y qué no).** La restricción de fase ordena SOLO el trabajo de
+**nueva capacidad de cálculo**. Quedan EXENTOS y van siempre primero: (a) los **fixes de
+soundness/honestidad** — cualquier wrong-answer o condición de dominio perdida, en
+CUALQUIER comando (solve, inecuaciones, factor, gcd, series, abs, matrices incluidos),
+aunque no sean cálculo real-univariable elemental; y (b) los **ciclos arquitectónicos /
+de extracción (clase A)**. El north-star de fase no deroga el "mayor ROI retenible" del
+proceso maestro; cuando la cola P0 de soundness y la restricción de fase chocan, gana P0.
+
+---
+
+## Estado de partida (2026-06-21)
+
+*Procedencia: cifras derivadas de las dos re-evaluaciones multi-agente del 2026-06-21
+(completitud de frontera real + extensibilidad), no de la tabla del audit committeado
+`CALCULUS_FRONTIER_AUDIT.md` (2026-06-12), que usó otra base de sondas y da reparto distinto
+(Dif ~80%, integral ~60-65%, límites ~45-50%). No hay re-audit committeado del 2026-06-21.*
+
+- **Soundness/honestidad: ~88%** (piso más alto; 0 wrong-answers en sondas adversariales;
+  los P0 de wrong-answer confirmados arreglados). El engine es de fiar HOY.
+- Diferenciación ~72%, integral indefinida elemental ~72% (racional/algebraico ~66%),
+  definida/impropia ~62-75%, límites ~68%, **series ~28%**, **educativo bimodal** (diff/integrate
+  narran; **límites ~0% educativo**).
+- Infra ya presente para horizontes futuros: `ValueDomain` enhebrado (76 archivos, 18 de
+  `rules/` lo gatean), `GaussianRational`, política principal-branch binding; `MultiPoly`
+  n-variable, `Matrix` nodo AST, sistemas lineales, **derivadas parciales e integrales
+  iteradas YA funcionan**.
+
+---
+
+## Fase 1 — Serio y universal: real, univariable, elemental + educativo básico  **[ACTIVA]**
+
+**Criterio de salida (checklist mecánico, NO cualitativo):** Fase 2 se abre cuando, y solo
+cuando, los tres se cumplen:
+1. **Integración racional sin residual** sobre los probes nombrados: `1/(x^5-1)`,
+   `1/(x^6±1)`, `1/(x^8-1)`, `1/(x^4-4)`, `1/(x^3-2)` (todos integran y verifican).
+2. **Límites con cadena didáctica no-cáscara** en `cas_didactic` (límites-educativo deja de
+   ser ~0%: existe al menos L'Hôpital / límite notable / squeeze / factor-cancela narrados).
+3. **Los wins P1 baratos aterrizados** (`diff(x,n)`/`diff(x,y)`, `taylor()`/`series()` +
+   linealidad de sumatorios, sustitución-u general transcendente).
+
+*Estimación de duración (no es el gate): **~25-40 ciclos efectivos**, dominados por dos*
+*gatekeepers clase L.*
+
+### Gatekeepers (máxima prioridad — desbloquean cada mitad del north star)
+- **G1 · Integración racional UNIVERSAL** (factor-over-ℝ / Lazard-Rioboo-Trager) — **L,
+  ~8-12 ciclos.** Hoy residual: `1/(x^5-1)`, `1/(x^6±1)`, `1/(x^8-1)`, `1/(x^4-4)`,
+  `1/(x^3-2)`. El backend solo factoriza sobre ℚ. Es la promesa definitoria de "universal"
+  en integración y el item remanente declarado de la Phase 4 del backend.
+- **G2 · Narrativa educativa de límites** (L'Hôpital / límite notable / squeeze /
+  factor-y-cancela) — **L, ~6-10 ciclos.** Hoy CADA límite colapsa a un paso-cáscara único
+  (salto mágico que los docs prohíben). No existe ninguna cadena didáctica de límites en
+  `cas_didactic`. Es la mitad EDUCATIVA del north star, hoy a ~0% — **pesa lo mismo que la
+  universal**. *Prioridad sobre varios P2 de cobertura: mientras los límites no narren, el
+  umbral "serio Y educativo" no se cruza.*
+
+### Wins P1 baratos y de alto ROI (intercalar con los gatekeepers)
+- **Sintaxis `diff(expr, x, n)` (orden superior) y `diff(expr, x, y)` (parcial-mixta)** — S
+  cada una. Hoy ERROR; cableado iterado sobre maquinaria existente. (`try_extract_diff_call`
+  hard-codea `args.len()==2`.) **El win más visible y barato.**
+- **Sustitución-u general para `g` transcendente** — M. `cos(x)·e^(sin x)`, `cos(ln x)/x`,
+  `e^x·e^(e^x)` residuales aunque elementales (solo se matchea `g` polinómica).
+- **Comando `taylor()`/`series()` + linealidad de sumatorios** — M+S. Series está a ~28%
+  (la más baja in-scope); `taylor_at_zero` ya existe interno, falta exponerlo. La linealidad
+  de sumatorios (`sum(2k)`, `sum(k^2+k)`) es ~1 ciclo y duplica cobertura efectiva.
+  **El motor de series univariable que esto crea también desbloquea el Taylor de la Fase 3.**
+
+### P2 / P3 (cobertura y pulido educativo)
+- Verifier false-negative de `1/(x^6-1)` (la antiderivada YA es correcta; falla al no reducir
+  `sqrt(3)·sqrt(3)`) — M, toca el verifier del bloque 12.
+- Normalización `1/x^p → x^(-p)` hacia power-rule/maquinaria impropia (aparece en 3
+  dimensiones) — S, alto ROI.
+- `x·a^x` por-partes (S; la tabla `a^x/ln(a)` ya integra); ∞−∞ diferencia de fracciones en límites (M); parámetros simbólicos
+  en límites (M); cbrt en límites (S); evaluación definida del log-combinado de fracciones
+  parciales (S-M).
+- Educativo P3: localización de nombres de regla en inglés (S); `--steps` en CLI text, `+C`,
+  artefactos `ln(e)`/`x^(2-1)`, fold `cos(0)=1` en FTC (todo S, cosmético).
+
+### Residuo P0 (no urgente)
+- FTC con cota inferior singular removible (`diff(∫ sin(t)/t [0,x]) → undefined` en vez de
+  `sin(x)/x`): **under-answer conservador, NO wrong-answer.** No compromete soundness; importa
+  para "completo", no para "serio".
+
+---
+
+## Fase 2 — Complejo elemental principal-branch + cálculo vectorial multivariable  **[SIGUIENTE, gated]**
+
+**No se empieza hasta cruzar el umbral de Fase 1.** *Estimación de los audits, sin re-medir:*
+ambos serían **≈ M total y sin reescritura fundamental** sobre los cimientos reales. Es la
+proyección de dos evaluaciones de un solo día (2026-06-21), no una medición asentada: **estas
+estimaciones se re-validan con un scoping workflow al cruzar el umbral, no antes.** Cuál ir
+primero es decisión de currículo/estrategia, no de viabilidad. (El único hecho estructural
+duro fundado en audit es el scope-out de Riemann/multivaluado — ver final de Fase 3.)
+
+### Complejo elemental (single-valued principal-branch — modelo binding de la estrategia)
+- **C-álgebra** (ya parcialmente live): `(a+bi)^n`, builtins `conjugate`/`Re`/`Im`/`Arg`/
+  `abs` complejo — S/M (extensión de enum + reglas gaussian-aware sobre `GaussianRational`).
+- **C-elemental**: Euler `e^(iθ)`, `Log`/`Arg` principal, `ln(-1)→iπ`, potencias con cortes — S
+  (slot directo en `define_rule!` + value_domain-gate; cero cambio arquitectónico).
+- **Evaluador numérico complejo** (`num_complex`) — **M, la pieza cara.** `evaluator_f64`
+  rechaza `Constant::I`, y el verificador cruza-chequea vía `eval_f64`, así que en modo
+  complejo la red de soundness numérica está ausente: hay que respaldarla.
+
+### Cálculo vectorial multivariable (CABLEADO barato — ~60-70% ya existe)
+- **Cables que faltan** — S: aridad lista-de-vars en extractores, y **diff componentwise
+  sobre nodo `Matrix`** (`diff([x^2,x^3],x)`).
+- **Gradiente / Jacobiano / Hessiano / divergencia / rotacional / Laplaciano** — S-M cada uno:
+  "registrar verbo + map sobre `[vars]` + ensamblar `Matrix`", reutilizando
+  `differentiate_symbolic_expr` sin tocar. El tipo vector/campo ya existe (nodo `Matrix` n×1).
+- (Derivadas parciales, integrales iteradas/múltiples, álgebra multipoly, matrices, sistemas:
+  **YA funcionan**.)
+
+---
+
+## Fase 3 — Capas analíticas  **[DESPUÉS, L, varianza alta — mayormente net-new]**
+
+- **Series/Taylor**: motor de series univariable (si no aterrizó en Fase 1) → **Taylor
+  multivariable** vía book-keeping multi-índice (`∂^α/α!`).
+- **Límites complejos** y **límites multivariables**: ambos capas analíticas nuevas. Los
+  multivariables son path-dependent e indecidibles en general → **detectar no-existencia /
+  punt honesto, NUNCA fabricar respuesta** (coherente con la disciplina de soundness exacta).
+- **Integrales de línea/superficie**: parametrización + pullback (subsistema nuevo;
+  substitute+integrate ya existen como primitivas).
+- **Residuos / integración por contornos**: matemática net-new; la estrategia lo cuestiona
+  explícitamente para el scope educativo — **no planificar sin un caso curricular**.
+
+**FUERA del norte (no cuenta como faltante):** análisis complejo completo / multivaluado /
+Riemann (cambiar `BranchPolicy::Principal` por Riemann sería la ÚNICA reescritura profunda —
+deliberadamente fuera de scope); EDOs; funciones especiales (erf/Γ/Si/Ei/LambertW) como
+valores de salida. Y los residuales no-elementales protegidos (`e^(-x^2)` (indefinida —
+la DEFINIDA gaussiana ya está soportada), `sin(x)/x`,
+`1/ln(x)`, oscilantes, divergentes): **resolverlos sería un bug de soundness, no un avance.**
+
+---
+
+## Guardrails inter-fase (OBLIGATORIOS en cada ciclo de Fase 1)
+
+Son la razón de que el orden real-primero sea correcto: **seguirlos no cuesta más hoy y vuelve
+las Fases 2/3 ≈ M en vez de L.** Derivan de los "Deferred Horizons" de la estrategia y están
+confirmados como puntos de extensión load-bearing por el audit.
+
+1. **Enhebra `ValueDomain` en toda regla nueva cuyo resultado dependa del dominio de
+   valores** (log/sqrt/exp/potencias/inversas). Gatea esas reglas real-only
+   (`value_domain() == RealOnly => return None`) — como ya hacen log/sqrt/exp. NUNCA
+   hard-codees RealOnly en un contrato público donde una representación estructurada cuesta
+   lo mismo. Las reglas puramente **sintácticas, de presentación o de narración** (p.ej.
+   `diff(expr,x,n)`, linealidad de sumatorios, trazas) NO necesitan el gate: añadirlo es
+   código muerto + un contrato RealOnly engañoso sobre algo sin análogo complejo.
+2. **Mantén diff/integrate parametrizados por variable** (per-variable; nunca sesgo
+   single-var). Es lo que hace que las parciales y las iteradas ya funcionen.
+3. **Predicados de condición estructurados y extensibles** (cortes de rama, condiciones de
+   dominio), no supuestos real-only horneados en los contratos.
+4. **Backstop de soundness domain-aware y EXACTO** (`BigRational`, patrón `*_in_domain` de
+   `arithmetic_cancel_support`). Nunca f64 para decisiones keep/drop.
+5. **Resultados como contrato**: cargan las decisiones de rama/dominio que hicieron (espeja
+   el result-model del backend). Sin "branch hops" silenciosos en limpieza de display.

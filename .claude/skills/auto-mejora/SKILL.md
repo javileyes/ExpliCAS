@@ -31,6 +31,73 @@ contexto — son tu memoria externa):
    P1 capítulos a 0%, P2 familias, P3 educativo), con clase de ciclo
    (F familia / A arquitectónico / I fuera del norte) y la lista de
    residuales honestos que NUNCA deben "resolverse".
+7. `docs/CALCULUS_ENGINE_DEVELOPMENT_PHASES.md` — la SECUENCIA de fases del
+   north star (Fase 1 real-univariable-elemental+educativo → Fase 2 complejo
+   elemental + vectorial multivariable → Fase 3 capas analíticas), con los
+   items por fase y los **guardrails inter-fase** que mantienen baratas las
+   fases futuras. Define a qué apuntar; las fuentes 4/6 dicen qué item.
+
+## Fases del north star (a qué apuntar)
+
+El north star tiene un ORDEN de fases deliberado (detalle en la fuente 7). La
+**Fase 1 es el ÚNICO objetivo activo**; las Fases 2-3 NO se empiezan hasta cruzar
+su umbral — existen para que las decisiones de HOY las mantengan baratas (no son
+"abandonadas", son "secuenciadas y preparadas").
+
+**Qué ordena la restricción de fase (y qué NO).** La restricción de fase ordena
+SOLO el trabajo de **nueva capacidad de cálculo**. **NO** están sujetos a ella y
+van SIEMPRE primero:
+- **Fixes de soundness/honestidad** — cualquier wrong-answer o condición de dominio
+  perdida, en **CUALQUIER** comando (solve, inecuaciones, factor, gcd, series, abs,
+  matrices incluidos), aunque no sean cálculo real-univariable elemental. P0 antes
+  que capacidad.
+- **Ciclos arquitectónicos / de extracción (clase A)** — cohesión, ownership,
+  architecture-pressure-first.
+
+Esto es deliberado: los ~30 ciclos recientes retenidos (gcd que devolvía 1, signos
+de denominador en inecuaciones, abs de imaginario, power-tower, factor, inversa de
+matriz, series geométricas) son soundness/arquitectura, no cálculo elemental — y
+fueron correctos. "Alterna frentes" y "mayor ROI retenible" del prompt maestro
+operan DENTRO de este marco: el north-star de fase ORDENA la capacidad nueva, no
+deroga el ROI retenible. Cuando la cola P0 de la fuente 6 y la restricción de fase
+de la fuente 7 chocan, **gana P0/soundness**.
+
+- **Fase 1 (ACTIVA) — serio y universal: real, univariable, elemental + educativo
+  básico.** Todo candidato de **capacidad nueva** debe estar aquí (los de soundness/
+  arquitectura quedan exentos, ver arriba). A igualdad de coste, prioriza:
+  1. Los dos *gatekeepers* del umbral: **integración racional universal**
+     (factor-over-ℝ / LRT) y **narrativa educativa de límites** (L'Hôpital /
+     límite notable / squeeze / factor-cancela). Desbloquean la promesa
+     "universal" en integración y la mitad EDUCATIVA del north star (límites a
+     ~0% educativo — pesa lo mismo que la universal; va por delante de varios P2
+     de cobertura, porque "serio Y educativo" no se cruza mientras no narren).
+  2. Wins P1 baratos: sintaxis `diff(x,n)`/`diff(x,y)`, sustitución-u general
+     transcendente, comando `taylor()`/`series()` + linealidad de sumatorios.
+  3. P2/P3 de cobertura y pulido educativo.
+- **Fase 2 (SIGUIENTE, gated) — complejo elemental principal-branch + cálculo
+  vectorial multivariable.** NO la abras hasta el umbral de Fase 1. Ambos ≈ M
+  sobre los cimientos reales, sin reescritura.
+- **Fase 3 (DESPUÉS) — capas analíticas** (Taylor multivariable, límites
+  complejos/multivariable con punt honesto, integrales de línea/superficie;
+  residuos solo con caso curricular). El complejo multivaluado / análisis
+  complejo completo está FUERA del norte.
+
+**Guardrails inter-fase — OBLIGATORIOS en cada ciclo de Fase 1.** No cuestan más
+hoy y son la razón de que el orden real-primero sea correcto (vuelven Fase 2/3 ≈ M,
+no L):
+1. En toda regla nueva **cuyo resultado dependa del dominio de valores**
+   (log/sqrt/exp/potencias/inversas) enhebra `ValueDomain` y gatea real-only
+   (`value_domain() == RealOnly => return None`); nunca hard-codees RealOnly en un
+   contrato público. Las reglas puramente sintácticas, de presentación o de
+   narración (p.ej. `diff(x,n)`, linealidad de sumatorios, trazas) NO necesitan el
+   gate — no lo añadas como ceremonia (código muerto + contrato RealOnly engañoso).
+2. Mantén diff/integrate parametrizados por variable (per-variable, sin sesgo
+   single-var).
+3. Predicados de condición estructurados/extensibles (cortes de rama, dominio),
+   no supuestos real-only horneados.
+4. Backstop de soundness domain-aware y EXACTO (`BigRational`, patrón
+   `*_in_domain`); nunca f64 para keep/drop.
+5. Resultados como contrato (cargan decisiones de rama/dominio).
 
 ## Protocolo de un ciclo
 
@@ -42,17 +109,34 @@ contexto — son tu memoria externa):
   `cp docs/generated/engine_improvement_scorecard_pressure.json /tmp/scorecard_pressure_before.json`
 
 ### 1. Selección del candidato (mayor ROI)
+- **Si el candidato es capacidad NUEVA, DEBE estar en Fase 1** (ver "Fases del
+  north star"); no abras Fase 2/3 hasta cruzar su umbral. **Los fixes de
+  soundness/honestidad (cualquier comando) y los ciclos clase A NO están sujetos a
+  la fase: van primero.** A igualdad de coste dentro de Fase 1, prioriza los dos
+  gatekeepers y luego los wins P1 baratos.
+- **Los gatekeepers son clase L** (G1 ~8-12 ciclos, G2 ~6-10): NUNCA se entran como
+  un solo ciclo. Se entran SIEMPRE como **scoping workflow que produce una SECUENCIA
+  de sub-ciclos acotados y retenibles** (cada uno con su commit y su green-before-
+  commit). Si en este ciclo no hay un sub-paso retenible del gatekeeper, **cae a los
+  wins P1 baratos o a un candidato de soundness/arquitectura** — no arranques un LRT
+  o una cadena didáctica a medio construir que falle el verde y fuerce revert.
 - Parte de la "siguiente iteración recomendada" del informe del ciclo
   anterior (ledger/roadmap), de los items `[in progress]`/`[pending]`,
   y de la cola priorizada de `docs/CALCULUS_FRONTIER_AUDIT.md`
   (P0 antes que P1 antes que P2/P3 a igualdad de coste; los items
   clase A exigen scoping workflow primero; los clase I no son ciclos).
+  **Salvedad del único P0 abierto:** el de FTC con borde singular es un
+  *under-answer conservador no urgente* (un-answer, no wrong-answer); no compromete
+  soundness, así que los dos gatekeepers van por delante. La precedencia
+  "wrong-answer-P0-primero" sigue intacta para cualquier P0 real de respuesta
+  incorrecta.
 - Criterios: avanza un gate incompleto del north star; acotado a un
   ciclo; retenible (capacidad nueva verificable, fix de soundness, o
   extracción behavior-preserving); reutiliza maquinaria existente antes
   de inventar.
 - Alterna frentes cuando uno acumula varios ciclos seguidos: la mitad
-  educativa (steps, Phase 6) cuenta lo mismo que la universal.
+  educativa (steps, Phase 6 — hoy límites a ~0%) cuenta lo mismo que la
+  universal, y el educativo de límites es un gatekeeper de Fase 1.
 
 ### 2. Sondeo antes de implementar
 - Sonda la frontera real con probes del CLI (`target/release/cas_cli
@@ -71,6 +155,11 @@ contexto — son tu memoria externa):
   `verification_normalization.rs`), no los god files.
 - Reutiliza: solver lineal compartido, builders arctan/log, verificador
   algebraico, `Polynomial`. Extraer antes de abstraer.
+- **Respeta los guardrails inter-fase** (ver "Fases del north star"): regla nueva
+  **value-dependent** (log/sqrt/exp/potencias/inversas) enhebra `ValueDomain` y
+  gatea real-only — las sintácticas/de presentación no; diff/integrate per-variable;
+  condiciones estructuradas; backstop exacto domain-aware. No cuesta más hoy y es
+  lo que mantiene baratas las Fases 2/3 — incumplirlos es deuda que se paga L.
 - Los residuales fuera de alcance se quedan residuales **honestos** y se
   anotan en el roadmap como siguiente peldaño.
 
