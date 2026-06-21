@@ -79,9 +79,12 @@ cuando, los tres se cumplen:
   (la más baja in-scope); `taylor_at_zero` ya existe interno, falta exponerlo.
   ✅ **Linealidad de sumatorios ATERRIZADA 2026-06-21**: `try_build_polynomial_sum` cierra
   cualquier sumando polinómico (grado ≤ 3) por Faulhaber término-a-término — `sum(2k)`,
-  `sum(k^2+k)`, `sum(3k^2-k+1)`, con cota inferior simbólica. Pendientes de este win:
-  exponer `taylor()`/`series()`. **El motor de series univariable que esto crea también
-  desbloquea el Taylor de la Fase 3.**
+  `sum(k^2+k)`, `sum(3k^2-k+1)`, con cota inferior simbólica.
+  ✅ **`taylor()`/`series()` EXPUESTOS 2026-06-21**: `TaylorRule` sobre el motor Maclaurin
+  interno (`taylor_at_zero`) — `taylor(exp(x), x, 0, 4)`, `sin`/`cos`/`tan`/`ln(1+x)`/`atan`/
+  `asin` + polinomios, productos, composiciones. Residuales honestos: punto ≠ 0, funciones
+  racionales (`1/(1-x)`), orden negativo. **El motor de series univariable que esto crea
+  también desbloquea el Taylor de la Fase 3.**
 
 ### P2 / P3 (cobertura y pulido educativo)
 - Verifier false-negative de `1/(x^6-1)` (la antiderivada YA es correcta; falla al no reducir

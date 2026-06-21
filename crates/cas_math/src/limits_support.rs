@@ -4466,6 +4466,22 @@ fn lhopital_evaluate(
 /// for expressions built from polynomials, the standard analytic functions
 /// (sin, cos, tan, exp, sinh, cosh, atan, asin, ln), and their sums,
 /// products, integer powers, and compositions with a zero-at-0 argument.
+/// Public Maclaurin expansion (expansion point `0`) of `expr` in `var_name`, truncated to
+/// total degree `order` (inclusive), returned as an expression. `None` when the summand is
+/// outside the supported analytic family — the same coverage the limit engine relies on
+/// (polynomials, `exp`/`sin`/`cos`/`sinh`/`cosh`/`tan`/`atan`/`asin`/`ln`, their sums,
+/// products, integer powers, and compositions with a series vanishing at 0). Expansion
+/// points other than 0 are NOT handled here; the caller must restrict to `point = 0`.
+pub fn taylor_series_at_zero_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    order: usize,
+) -> Option<ExprId> {
+    let series = taylor_at_zero(ctx, expr, var_name, order)?;
+    Some(series.to_expr(ctx))
+}
+
 fn taylor_at_zero(ctx: &Context, expr: ExprId, var_name: &str, order: usize) -> Option<Polynomial> {
     if let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) {
         return Some(truncate_polynomial(&poly, order, var_name));

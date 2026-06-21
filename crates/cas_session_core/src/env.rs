@@ -28,6 +28,8 @@ const RESERVED_NAMES: &[&str] = &[
     "limit",
     "sum",
     "product",
+    "taylor",
+    "series",
     "timeline",
     "explain",
     "trace",

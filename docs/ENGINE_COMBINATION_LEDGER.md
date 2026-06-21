@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 245 (newest first)
+Active entries: 246 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -130,6 +130,7 @@ Active entries: 245 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`try_univariate_euclidean_gcd`; the | Soundness fix: poly gcd command returned 1 for expanded polynomials
 - 2026-06-21 | `retained` | `crates/cas_engine/src/symbolic_calculus_call_support.rs` (`try_desugar_highe... | Higher-order and mixed-partial diff syntax: diff(f, x, n) / diff(f, x, y)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`, helpers | Summation linearity: sum of any polynomial summand by Faulhaber per monomial
+- 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_series_at_zero_expr` public ... | Expose taylor()/series() command over the internal Maclaurin engine
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10538,3 +10539,51 @@ Active entries: 245 (newest first)
     all rather than adding a wildcard that would silently mislabel future variants.
   - residual (peldaño): degree ≥ 4 needs general Faulhaber (Bernoulli numbers); `sum(k·2^k)`
     (arithmetic-geometric) and `sum(1/(k(k+1)))`-style are separate families.
+
+## 2026-06-21 - Expose taylor()/series() command over the internal Maclaurin engine
+- area:
+  - `crates/cas_math/src/limits_support.rs` (`taylor_series_at_zero_expr` public wrapper over
+    the existing private `taylor_at_zero`)
+  - `crates/cas_engine/src/rules/calculus/taylor.rs` (NEW: `TaylorRule` + `try_extract_taylor_call`)
+    + registration in `rules/calculus/mod.rs`
+  - `crates/cas_session_core/src/eval.rs` (arity gate) + `env.rs` (RESERVED_NAMES)
+- status:
+  - `retained` (new Phase-1 capability: the `taylor()`/`series()` half of the
+    "taylor/series + summation linearity" P1 win; the summation half landed earlier today)
+- capture:
+  - investment_class: capability (expose existing engine as a public command)
+  - primary_dimension: north_star_completeness (Phase 1 series)
+  - cell: `taylor(exp(x), x, 0, 4) = 1 + x + x^2/2 + x^3/6 + x^4/24`,
+    `taylor(sin(x), x, 0, 5)` (= x - x^3/6 + x^5/120), `taylor(cos(x), x, 4)`,
+    `taylor(ln(1+x), x, 0, 4)`, `taylor(tan(x), x, 0, 5)` (= x + x^3/3 + 2x^5/15);
+    `series(...)` is an alias and the 3-arg form `taylor(f, x, n)` defaults the point to 0.
+  - rejects (honest residual, left unevaluated): non-zero expansion point (`taylor(f, x, 1, n)`),
+    negative/non-integer order, and non-analytic-at-0 summands (`1/x`, `1/(1-x)` rational
+    functions — the Maclaurin engine covers exp/sin/cos/sinh/cosh/tan/atan/asin/ln + polys,
+    products, integer powers, compositions, but not Div / negative powers).
+  - behavior_change_expected: `taylor(...)`/`series(...)` flip from "función no definida" to the
+    truncated Taylor polynomial. Guardrail huella structurally NONE except
+    `calculus_integrate_backend_mode_boundary.filtered_out 2225 -> 2228` (+3 = the three new
+    cas_engine taylor unit tests in that binary); pressure NONE. Limits that share
+    `taylor_at_zero` ((sin x - x)/x^3 -> -1/6, (1-cos x)/x^2 -> 1/2) unchanged. Workspace 12235
+    passed / 0 failed; clippy/fmt green.
+- observed:
+  - the analytic Maclaurin engine already existed as the PRIVATE `taylor_at_zero` (built for the
+    L'Hopital/Taylor limit quotient rule); exposing it was a thin public wrapper + a command
+    rule, not new mathematics. The order argument means "max degree inclusive" (the engine
+    truncates with `take(order + 1)`).
+  - `taylor_at_zero` expands only at 0 and only over the analytic family; rational functions and
+    non-zero points are genuinely unsupported, so the command declines them rather than
+    fabricating — consistent with the soundness discipline.
+- retained learning:
+  - before building a "new" capability, grep for an INTERNAL engine that already does the math
+    for a neighbouring feature (here the limit evaluator's series engine): exposing it as a
+    command is a thin wrapper + arity gate + reserved name, and inherits the trust the internal
+    path already earned (the limit tests exercise it).
+  - a command that wraps an internal partial engine must mirror its DOMAIN exactly in the
+    extractor (point = 0 only, non-negative integer order) so unsupported inputs stay honest
+    residuals instead of silently wrong or panicking.
+  - residual (peldaño): rational/geometric Taylor (`1/(1-x)`, `1/(1+x^2)`) via series division
+    or the geometric expansion; non-zero expansion point `taylor(f, x, a, n)` via the shift
+    `f(x) -> f(a + h)`; and a prettier per-term display (today `Polynomial::to_expr` factors a
+    common denominator: `1/24·(x^4 + ... + 24)`).

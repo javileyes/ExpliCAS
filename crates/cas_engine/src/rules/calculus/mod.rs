@@ -211,6 +211,7 @@ mod surd_quotient_args;
 mod surd_quotient_derivative_routes;
 mod surd_quotient_presentation;
 mod tanh_primitive_derivative_presentation;
+mod taylor;
 mod trig_by_parts_integrand_presentation;
 mod trig_odd_power_result_presentation;
 mod trig_power_integrand_presentation;
@@ -304,4 +305,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DiffRule));
     simplifier.add_rule(Box::new(summation::SumRule));
     simplifier.add_rule(Box::new(summation::ProductRule));
+    simplifier.add_rule(Box::new(taylor::TaylorRule));
 }
