@@ -1462,7 +1462,8 @@ pub fn try_build_telescoping_product_shift1(
 }
 
 /// Build product closed form for `1 - 1/var^2`:
-/// `∏(1 - 1/k^2) = ((start-1)*(end+1))/(start*end)`.
+/// `∏_{start}^{end}(1 - 1/k^2) = ((start-1)*(end+1))/(start*end)`, and the convergent infinite
+/// product `∏_{start}^∞ = (start-1)/start`.
 pub fn try_build_factorizable_product_for_one_minus_reciprocal_square(
     ctx: &mut Context,
     factor: ExprId,
@@ -1473,6 +1474,21 @@ pub fn try_build_factorizable_product_for_one_minus_reciprocal_square(
     let base = detect_factorized_telescoping_square_base(ctx, factor, var)?;
     let var_expr = ctx.var(var);
     let start_base = substitute_expr_by_id(ctx, base, var_expr, start);
+
+    // Convergent infinite product: the boundary factor `(end_base+1)/end_base → 1`, leaving
+    // `(start_base − 1)/start_base`. Emit the limit directly (the ∞-substitution of the finite form
+    // `((start-1)(end+1))/(start·end)` reduces to 1 instead of the true limit). Requires a literal
+    // integer `start ≥ 1` (the factors `1 - 1/k² ∈ (0,1]` over `[start, ∞)`, so the product
+    // converges); a symbolic or non-positive lower bound declines.
+    if is_positive_infinity(ctx, end) {
+        let start_value = crate::expr_extract::extract_i64_integer(ctx, start)?;
+        if start_value < 1 {
+            return None;
+        }
+        let start_minus_1 = shift_expr(ctx, start_base, -1);
+        return Some(ctx.add(Expr::Div(start_minus_1, start_base)));
+    }
+
     let end_base = substitute_expr_by_id(ctx, base, var_expr, end);
     let start_minus_1 = shift_expr(ctx, start_base, -1);
     let end_plus_1 = shift_expr(ctx, end_base, 1);
@@ -2745,6 +2761,19 @@ mod tests {
         assert_eq!(
             eval_small_rat(&ctx, result),
             Some(BigRational::new(5.into(), 8.into()))
+        );
+
+        // Convergent infinite product `∏_{k=2}^∞ (1 - 1/k²) = (2-1)/2 = 1/2` (the ∞-substitution of
+        // the finite form wrongly gave 1).
+        let two = ctx.num(2);
+        let inf = super::make_infinity(&mut ctx);
+        let infinite = try_build_factorizable_product_for_one_minus_reciprocal_square(
+            &mut ctx, factor, "k", two, inf,
+        )
+        .expect("convergent infinite product");
+        assert_eq!(
+            eval_small_rat(&ctx, infinite),
+            Some(BigRational::new(1.into(), 2.into()))
         );
     }
 

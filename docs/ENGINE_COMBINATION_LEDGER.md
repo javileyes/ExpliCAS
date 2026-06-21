@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 275 (newest first)
+Active entries: 276 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -160,6 +160,7 @@ Active entries: 275 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Telescópica de TRES factores consecutivos 1/(k(k+1)(k+2)) (finita)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Graduada la suma INFINITA de 3 factores Σ 1/(k(k+1)(k+2)) = 1/4
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_product_sh... | P0 SOUNDNESS: producto telescópico den-higher daba el RECÍPROCO
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | P0 SOUNDNESS: producto infinito ∏(1−1/k²) daba 1 (debía 1/2)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11715,3 +11716,35 @@ Active entries: 275 (newest first)
   - residual (peldaño): `∏(1−1/k²)` INFINITO da 1 (debería 1/2): la ∞-sustitución del builder
     factorizable `((start-1)(end+1))/(start·end)` no reduce `(∞+1)/∞`. Mismo patrón que el 3-factor
     del ciclo 1 — emitir el valor del límite directamente (siguiente ciclo).
+
+## 2026-06-21 - P0 SOUNDNESS: producto infinito ∏(1−1/k²) daba 1 (debía 1/2)
+- area:
+  - `crates/cas_math/src/summation_support.rs`
+    (`try_build_factorizable_product_for_one_minus_reciprocal_square`: caso de cota infinita)
+- status:
+  - `retained` (FIX de soundness P0 — wrong-answer en producto infinito; gradúa el peldaño del ciclo 2)
+- capture:
+  - investment_class: soundness (wrong-answer en `product` infinito)
+  - primary_dimension: correctness
+  - cell: `product(1-1/k^2, k, 2, inf)` daba **1**, correcto **1/2**; `,3,inf` daba 1, correcto 2/3;
+    `(k^2-1)/k^2` igual. La forma finita `((start-1)(end+1))/(start·end)` es correcta; solo el
+    infinito fallaba.
+  - behavior_change_expected: el producto infinito de Wallis-like `∏(1-1/k²)` pasa de 1 (incorrecto)
+    a `(start-1)/start`. Huella NONE.
+  - SOUNDNESS: el factor de borde `(end_base+1)/end_base → 1`, así que `∏_{start}^∞ = (start_base-1)/
+    start_base`. Se emite el VALOR del límite directamente (la ∞-sustitución de la forma finita
+    reducía `(∞+1)/∞` a 1, no al límite). Gate: start entero literal ≥ 1 (factores ∈ (0,1], converge);
+    simbólico o ≤ 0 declina. Verificado fold-vs-fuerza-bruta.
+- observed:
+  - MISMO patrón que el ciclo 1 (3-factor infinito): la infra de ∞-sustitución no reduce un cociente
+    de grado ≥1 a su límite (`(∞+1)/∞→1` en vez de mantener el factor). La solución recurrente: el
+    builder emite el valor del límite (borde→1 o →0) en vez de una forma para sustituir ∞.
+- retained learning:
+  - patrón consolidado (3ª vez este run/anterior): cuando un builder finito tiene cota ∞ y su forma
+    cerrada tiene un factor de borde que la ∞-sustitución no reduce, el builder debe DETECTAR ∞ y
+    emitir el valor del límite a mano (borde → 1 para productos convergentes, → 0 para colas de
+    sumas). Más barato y local que arreglar la aritmética de ∞ del simplificador.
+  - los productos telescópicos/factorizables son un nido de bugs de soundness (orientación en el
+    ciclo 2, ∞ aquí): cualquier builder de producto debe barrerse con fuerza bruta finito E infinito.
+  - residual (peldaño): la aritmética de ∞ del simplificador no reduce `P(∞)/Q(∞)` por grados (clase
+    A): arreglarla en el núcleo evitaría tener que emitir el límite a mano en cada builder.
