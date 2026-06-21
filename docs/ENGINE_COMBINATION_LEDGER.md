@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 270 (newest first)
+Active entries: 271 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -155,6 +155,7 @@ Active entries: 270 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Suma INFINITA aritmético-geométrica convergente Σ_{k=a}^∞ p(k)·r^k (|r|<1)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_rational_s... | P0 SOUNDNESS: suma telescópica con gap ≥ 2 daba RESPUESTA INCORRECTA
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Telescópica con denominador cuadrático EXPANDIDO 1/(k²−1), 1/(k²−5k+6)
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: dominancia en forma PRODUCTO p(x)·e^{-q(x)} → 0
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11534,3 +11535,36 @@ Active entries: 270 (newest first)
     el gate es `root*root == disc` en enteros (regla de soundness: nunca f64 para keep/drop).
   - residual (peldaño): cuadrática NO mónica `1/(4k²−1)` (factores afines `(2k-1)(2k+1)`, ruta
     afín existente); raíces racionales no enteras; denominador cúbico+ con factores telescópicos.
+
+## 2026-06-21 - G2 narrativa: dominancia en forma PRODUCTO p(x)·e^{-q(x)} → 0
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`limit_infinity_dominance`: rama de producto; helper `limit_is_decaying_exponential`)
+- status:
+  - `retained` (sub-ciclo G2: narra la dominancia exponencial en forma producto, antes sin substep)
+- capture:
+  - investment_class: capability (gatekeeper G2 — narración educativa de límites)
+  - primary_dimension: north_star_completeness (Fase 1, G2)
+  - secondary_dimension: didactic_value (reusa `limit_growth_class` del ciclo 1 para clasificar los
+    factores no-exponenciales)
+  - cell: `x²·e^{-x} → 0`, `x·e^{-x} → 0`, `x⁵·e^{-2x} → 0`, `e^{-x²}·x³ → 0` narran "la exponencial
+    decae más rápido de lo que crece la potencia → producto → 0". Antes el narrador solo veía
+    cocientes (`x²/e^x`); esta es la grafía PRODUCTO.
+  - behavior_change_expected: los productos polinomio×exponencial-decreciente en ∞ pasan de
+    sin-substep a narrados. Huella NONE.
+  - SOUNDNESS: narra solo si el resultado es 0 Y hay un factor exponencial DECRECIENTE genuino
+    (`e^{q}` con q→−∞: grado≥1, coeficiente líder NEGATIVO) Y todo otro factor es sub-exponencial
+    (Power/Log/constante). `x²·e^x → ∞` (exp creciente) y `sin(x)·e^{-x}` (sin no clasificado)
+    declinan. Requiere ≥2 factores. Narración pura → sin gate de fase.
+- observed:
+  - el narrador de dominancia solo cubría `num/den`; `x²·e^{-x}` es un Mul (no Div) y caía a None.
+    La forma producto es el complemento natural del cociente: clasificar cada factor y exigir
+    exactamente un decreciente-exponencial con el resto sub-exponencial.
+  - reusa `limit_growth_class` (ciclo 1) para los factores no-exp; solo añade el reconocedor de
+    exponencial DECRECIENTE (coeficiente líder negativo, simétrico al creciente del ciclo 1).
+- retained learning:
+  - cuando un narrador de cociente está hecho, la grafía PRODUCTO equivalente (`p·e^{-x}` = `p/e^x`)
+    suele ser un sub-ciclo barato: descomponer en factores y clasificar, con el resultado como
+    oráculo. El par creciente/decreciente de la exponencial es simétrico (signo del coef. líder).
+  - residual (peldaño G2): producto en 0+ `x·ln(x) → 0` (mecanismo distinto, no es ∞); bases `b^x`
+    (b<1) decrecientes; L'Hôpital/Taylor paso a paso para `(eˣ−1−x)/x² → 1/2`.

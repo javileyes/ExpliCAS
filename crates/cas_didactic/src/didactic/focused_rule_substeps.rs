@@ -20056,7 +20056,46 @@ fn limit_infinity_dominance(ctx: &Context, before: ExprId, after: ExprId) -> Opt
         return Some("Dominancia: un polinomio de grado ≥ 1 tiende a ±∞".to_string());
     }
 
+    // Product form `p(x)·e^{q(x)}` with a DECAYING exponential factor (q → −∞) and every other
+    // factor sub-exponential (Power/Log/constant): the decay beats polynomial growth → 0. This is
+    // the product spelling of the quotient `x²/e^x` handled above.
+    if after_value.as_ref() == Some(&BigRational::zero()) {
+        if let Some(var) = limit_single_var_name(ctx, before) {
+            let factors = expr_nary::mul_leaves(ctx, before);
+            let mut has_decaying_exp = false;
+            let mut others_sub_exponential = true;
+            for &factor in &factors {
+                if limit_is_decaying_exponential(ctx, factor, &var) {
+                    has_decaying_exp = true;
+                } else if as_rational_const(ctx, factor, 8).is_some() {
+                    // a constant factor does not change the growth class
+                } else if !matches!(
+                    limit_growth_class(ctx, factor, &var),
+                    Some(LimitGrowthClass::Power | LimitGrowthClass::Log)
+                ) {
+                    others_sub_exponential = false;
+                }
+            }
+            if has_decaying_exp && others_sub_exponential && factors.len() >= 2 {
+                return Some(
+                    "Dominancia: la exponencial decae más rápido de lo que crece la potencia, así que el producto → 0"
+                        .to_string(),
+                );
+            }
+        }
+    }
+
     None
+}
+
+/// `expr` is a DECAYING exponential at `var → ∞`: `e^{q(var)}` with `q(var) → −∞` (a polynomial of
+/// degree ≥ 1 with a negative leading coefficient, e.g. `e^{-x}`, `e^{-x²}`).
+fn limit_is_decaying_exponential(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    let Some(arg) = extract_exp_argument(ctx, expr) else {
+        return false;
+    };
+    Polynomial::from_expr(ctx, arg, var)
+        .is_ok_and(|p| p.degree() >= 1 && p.leading_coeff() < BigRational::zero())
 }
 
 /// Growth-rate class of an expression at `var → ∞`, ordered `Log < Power < Exp` (the standard
@@ -21751,6 +21790,20 @@ mod limit_notable_tests {
         assert!(substep_titles_at_infinity("sin(x)/x", "0").is_empty());
         // e^{-x} decays (negative leading exponent), so x^2/e^{-x} is not classified as exp.
         assert!(substep_titles_at_infinity("x^2/exp(-x)", "infinity").is_empty());
+        // Product form `p(x)·e^{-q(x)} → 0`: the decaying exponential beats the polynomial.
+        for before in ["x^2*exp(-x)", "x^5*exp(-2*x)", "exp(-x^2)*x^3"] {
+            let titles = substep_titles_at_infinity(before, "0");
+            assert_eq!(titles.len(), 1, "{before} should narrate product decay");
+            assert!(
+                titles[0].contains("la exponencial decae"),
+                "{before}: expected product-decay dominance in `{}`",
+                titles[0]
+            );
+        }
+        // A GROWING exponential product (x²·e^x → ∞) and a bounded·decay product (sin(x)·e^{-x},
+        // sin not sub-exponential) must not narrate product decay.
+        assert!(substep_titles_at_infinity("x^2*exp(x)", "infinity").is_empty());
+        assert!(substep_titles_at_infinity("sin(x)*exp(-x)", "0").is_empty());
     }
 
     #[test]

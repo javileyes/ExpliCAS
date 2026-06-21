@@ -79,7 +79,7 @@ cuando, los tres se cumplen:
   **dominancia logarítmica/exponencial** `ln(x)/x→0`, `x²/eˣ→0`, `eˣ/x³→∞`, `√x/ln(x)→∞` (sub-ciclo 8:
   jerarquía `ln≪potencia≪exp` vía `enum LimitGrowthClass`, sound por confirmación del resultado).
   Todo sound por chequeo de resultado/grado, huella NONE. Siguiente sub-ciclo: raíz `(√(1+u)−1)/u→1/2`;
-  forma PRODUCTO `e^{−x}·x²→0` (no cociente); bases `b^x`; y (arquitectónico) cablear el PUNTO del
+  bases `b^x`; y (arquitectónico) cablear el PUNTO del
   límite al paso para mostrar la sustitución concreta, narrar L'Hôpital/Taylor paso a paso.
 
 ### Wins P1 baratos y de alto ROI (intercalar con los gatekeepers)
