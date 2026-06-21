@@ -1356,6 +1356,34 @@ pub fn detect_one_minus_reciprocal_power(ctx: &Context, expr: ExprId, var: &str)
     None
 }
 
+/// Extract `(coefficient, offset)` from an integer linear expression `coefficient·var + offset`,
+/// or `None` if it is not linear with integer coefficients.
+fn linear_int_coeff_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<(i64, i64)> {
+    let poly = Polynomial::from_expr(ctx, expr, var).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+    let to_i64 = |coeff: Option<&BigRational>| -> Option<i64> {
+        let value = coeff.cloned().unwrap_or_else(BigRational::zero);
+        if !value.is_integer() {
+            return None;
+        }
+        value.to_integer().try_into().ok()
+    };
+    Some((to_i64(poly.coeffs.get(1))?, to_i64(poly.coeffs.first())?))
+}
+
+/// Build `coefficient·anchor + offset` (the affine factor `c·k + off` evaluated at `anchor`).
+fn affine_value_at(ctx: &mut Context, anchor: ExprId, coefficient: i64, offset: i64) -> ExprId {
+    let scaled = if coefficient == 1 {
+        anchor
+    } else {
+        let coeff = ctx.num(coefficient);
+        ctx.add(Expr::Mul(coeff, anchor))
+    };
+    shift_expr(ctx, scaled, offset)
+}
+
 /// Build telescoping product closed form for shift-1 pattern `(k+a)/(k+b)` where `a-b=1`.
 ///
 /// Returns `(end + a) / (start + b)` as an expression when applicable.
@@ -1371,14 +1399,29 @@ pub fn try_build_telescoping_product_shift1(
         _ => return None,
     };
 
-    if let (Some(num_offset), Some(den_offset)) = (
-        extract_linear_offset(ctx, num, var),
-        extract_linear_offset(ctx, den, var),
+    // Orientation-aware INTEGER telescoping: factors `α·k + c` with equal nonzero coefficient α and
+    // offsets differing by exactly α (one factor is the other shifted one step). The DIRECTION
+    // matters — `∏ (k+1)/k = n+1` but `∏ k/(k+1) = 1/(n+1)` (the reciprocal). The old code returned
+    // the same `n+1` for both orientations (a wrong answer for every denominator-higher product).
+    if let (Some((num_coeff, num_off)), Some((den_coeff, den_off))) = (
+        linear_int_coeff_offset(ctx, num, var),
+        linear_int_coeff_offset(ctx, den, var),
     ) {
-        if num_offset - den_offset == 1 {
-            let end_plus_offset = shift_expr(ctx, end, num_offset);
-            let start_plus_offset = shift_expr(ctx, start, den_offset);
-            return Some(ctx.add(Expr::Div(end_plus_offset, start_plus_offset)));
+        if num_coeff == den_coeff && num_coeff != 0 {
+            let alpha = num_coeff;
+            let end_plus_one = shift_expr(ctx, end, 1);
+            if den_off == num_off + alpha {
+                // den(k) = num(k+1): ∏ num(k)/num(k+1) = num(start)/num(end+1).
+                let num_start = affine_value_at(ctx, start, alpha, num_off);
+                let num_end1 = affine_value_at(ctx, end_plus_one, alpha, num_off);
+                return Some(ctx.add(Expr::Div(num_start, num_end1)));
+            }
+            if num_off == den_off + alpha {
+                // num(k) = den(k+1): ∏ den(k+1)/den(k) = den(end+1)/den(start).
+                let den_start = affine_value_at(ctx, start, alpha, den_off);
+                let den_end1 = affine_value_at(ctx, end_plus_one, alpha, den_off);
+                return Some(ctx.add(Expr::Div(den_end1, den_start)));
+            }
         }
     }
 
@@ -1390,7 +1433,18 @@ pub fn try_build_telescoping_product_shift1(
         let one = ctx.num(1);
         let end_plus_one = ctx.add(Expr::Add(end, one));
         let end_next_base = substitute_expr_by_id(ctx, base, var_expr, end_plus_one);
-        return Some(ctx.add(Expr::Div(end_next_base, start_base)));
+        // `base` is the LOWER of the two factors. When it is the denominator the numerator is the
+        // higher factor (the product grows): `base(end+1)/base(start)`. When `base` is the numerator
+        // the denominator is higher (the product shrinks): the reciprocal `base(start)/base(end+1)`.
+        // (The old code always used the first orientation — a reciprocal wrong answer for the
+        // denominator-higher case.) `compare_expr` here is on the original factors, not a
+        // substituted form, so it is reliable for symbolic affine bases too.
+        let numerator_is_higher = compare_expr(ctx, base, den) == std::cmp::Ordering::Equal;
+        return Some(if numerator_is_higher {
+            ctx.add(Expr::Div(end_next_base, start_base))
+        } else {
+            ctx.add(Expr::Div(start_base, end_next_base))
+        });
     }
 
     let base = extract_unit_shifted_base(ctx, den, var)?;
@@ -2585,6 +2639,41 @@ mod tests {
         };
         assert_eq!(eval_small_int(&ctx, *num), Some(5));
         assert_eq!(eval_small_int(&ctx, *den), Some(2));
+    }
+
+    #[test]
+    fn telescoping_product_respects_numerator_denominator_orientation() {
+        // P0 regression: `∏ k/(k+1) = 1/(n+1)`, NOT `n+1` — the old builder returned the same
+        // `n+1` for both `k/(k+1)` and `(k+1)/k` (a reciprocal wrong answer for every
+        // denominator-higher product). Covers integer and affine factors, both orientations.
+        type Factor = fn(i64) -> (i64, i64);
+        let cases: [(&str, Factor); 4] = [
+            ("k/(k+1)", |k| (k, k + 1)),
+            ("(k+1)/k", |k| (k + 1, k)),
+            ("(2*k+1)/(2*k+3)", |k| (2 * k + 1, 2 * k + 3)),
+            ("(2*k+3)/(2*k+1)", |k| (2 * k + 3, 2 * k + 1)),
+        ];
+        for (expr, factor) in cases {
+            for (a, n) in [(1i64, 5i64), (2, 7)] {
+                let mut ctx = Context::new();
+                let parsed = cas_parser::parse(expr, &mut ctx).expect("parse");
+                let start = ctx.num(a);
+                let end = ctx.num(n);
+                let result =
+                    try_build_telescoping_product_shift1(&mut ctx, parsed, "k", start, end)
+                        .expect("build");
+                let mut brute = BigRational::from_integer(1.into());
+                for k in a..=n {
+                    let (numer, denom) = factor(k);
+                    brute *= BigRational::new(numer.into(), denom.into());
+                }
+                assert_eq!(
+                    eval_small_rat(&ctx, result),
+                    Some(brute),
+                    "{expr} [{a},{n}]"
+                );
+            }
+        }
     }
 
     #[test]

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 274 (newest first)
+Active entries: 275 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -159,6 +159,7 @@ Active entries: 274 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`factor_telescoping_quadratic_den... | Telescópica NO mónica vía factores afines 1/(4k²−1) = (2k−1)(2k+1)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Telescópica de TRES factores consecutivos 1/(k(k+1)(k+2)) (finita)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Graduada la suma INFINITA de 3 factores Σ 1/(k(k+1)(k+2)) = 1/4
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_product_sh... | P0 SOUNDNESS: producto telescópico den-higher daba el RECÍPROCO
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11675,3 +11676,42 @@ Active entries: 274 (newest first)
     con start entero literal; symbolic o polo-cruzado declina (residual honesto).
   - residual (peldaño): `(k-1)k(k+1)` (el motor expande (k-1)(k+1)→k²-1, esconde la estructura de 3
     factores); telescópica de 3 factores NO consecutivos vía fracciones parciales.
+
+## 2026-06-21 - P0 SOUNDNESS: producto telescópico den-higher daba el RECÍPROCO
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_product_shift1`, ramas entera
+    y afín; helpers `linear_int_coeff_offset`, `affine_value_at`)
+- status:
+  - `retained` (FIX de soundness P0 — wrong-answer; precede a toda capacidad)
+- capture:
+  - investment_class: soundness (wrong-answer en `product`)
+  - primary_dimension: correctness (cualquier comando, exento de la restricción de fase)
+  - cell: `product(k/(k+1), k, 1, n)` daba **n+1**, correcto **1/(n+1)**; `(k+1)/(k+2)` daba n+1,
+    correcto 2/(n+2); `(2k+1)/(2k+3)` daba 11/3, correcto 3/11; simbólico `(a·k+b)/(a·k+b+a)` daba
+    (b+5a)/(a+b), correcto (a+b)/(b+5a). Las orientaciones num-higher SÍ eran correctas.
+  - behavior_change_expected: los productos telescópicos donde el DENOMINADOR es el factor mayor
+    pasan de un valor RECÍPROCO incorrecto al correcto (entero, afín y simbólico). Huella NONE
+    (ninguna fixture cubría den-higher).
+  - SOUNDNESS: la dirección importa — `∏ num(k)/den(k)` con den=num(k+1) telescopia a
+    `num(start)/num(end+1)` (encoge), con num=den(k+1) a `den(end+1)/den(start)` (crece). El builder
+    viejo SIEMPRE emitía la forma "crece". La rama entera nueva extrae (coef, offset) y decide por
+    `den_off==num_off+α` vs `num_off==den_off+α`. La rama afín simbólica decide por
+    `compare_expr(base, den)` sobre los factores ORIGINALES (no sustituidos → fiable). Barridos
+    adversariales: 192 casos enteros/afines (ambas orientaciones) + simbólico ambas direcciones, 0
+    respuestas incorrectas.
+- observed:
+  - el bug era SISTEMÁTICO: TODO producto telescópico con denominador mayor daba el recíproco. La
+    rama entera (offsets coef-1) solo cubría `diff==1` (num-higher); `k/(k+1)` (diff -1) caía a la
+    rama afín, que emitía siempre `base(end+1)/base(start)` ignorando cuál factor era el menor.
+  - `detect_affine_..._base_and_gap` devuelve el factor MENOR como base; la orientación se recupera
+    comparando `base` con `den` (igual → num-higher; distinto → den-higher → recíproco).
+- retained learning:
+  - un telescopio (suma O producto) es DIRECCIONAL: el factor que "sobrevive" en cada borde depende
+    de cuál término está desplazado hacia arriba. Cualquier builder de telescopio debe testearse con
+    fuerza bruta en AMBAS orientaciones (num/den intercambiados) — la orientación num-higher esconde
+    el bug (igual que gap-1 escondía el bug de suma telescópica del run previo).
+  - para decidir orientación con bases SIMBÓLICAS, compara los factores ORIGINALES (no las formas
+    sustituidas, que quedan sin simplificar y rompen `compare_expr`).
+  - residual (peldaño): `∏(1−1/k²)` INFINITO da 1 (debería 1/2): la ∞-sustitución del builder
+    factorizable `((start-1)(end+1))/(start·end)` no reduce `(∞+1)/∞`. Mismo patrón que el 3-factor
+    del ciclo 1 — emitir el valor del límite directamente (siguiente ciclo).
