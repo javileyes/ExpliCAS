@@ -446,6 +446,20 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    if let Some(candidate) = try_build_telescoping_three_factor_sum(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::Telescoping,
+        });
+    }
+
     // Infinite upper bound: NOT a finite sum. The closed-form builders below would
     // substitute `infinity` into finite formulas (e.g. n(n+1)/2 -> 1/2*infinity^2,
     // (r^(n+1)-r^a)/(r-1) -> 2^infinity-1). Classify the divergence here and return
@@ -1983,6 +1997,60 @@ fn factor_telescoping_quadratic_denominator(
     Some((factor1, factor2))
 }
 
+/// Build the telescoping closed form for `1/((k+a)(k+a+1)(k+a+2))` — a product of THREE consecutive
+/// linear factors (the classic `Σ 1/(k(k+1)(k+2)) = 1/4`). Uses the second-order telescope
+/// `1/((k+a)(k+a+1)(k+a+2)) = (1/2)·[g(k) − g(k+1)]` with `g(k) = 1/((k+a)(k+a+1))`, so
+/// `Σ_{k=start}^{end} = (1/2)·[1/((start+a)(start+a+1)) − 1/((end+a+1)(end+a+2))]`. Non-consecutive
+/// or non-unit-numerator products are declined (honest residuals).
+pub fn try_build_telescoping_three_factor_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    // The infinite-sum path substitutes the bound directly; this builder's closed form has a
+    // degree-2 boundary term `1/((end+a+1)(end+a+2))` that the ∞-substitution does not reduce (it
+    // leaves `∞²`), so decline an infinite bound and keep it a clean residual. The finite closed
+    // form is exact; the convergent infinite value is a separate peldaño.
+    if is_positive_infinity(ctx, end) {
+        return None;
+    }
+    let (num, den) = match ctx.get(summand) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return None,
+    };
+    if !matches!(ctx.get(num), Expr::Number(n) if n.is_one()) {
+        return None;
+    }
+    let factors = expr_nary::mul_leaves(ctx, den);
+    if factors.len() != 3 {
+        return None;
+    }
+    let mut offsets: Vec<i64> = factors
+        .iter()
+        .map(|&f| extract_linear_offset(ctx, f, var))
+        .collect::<Option<_>>()?;
+    offsets.sort_unstable();
+    let a = offsets[0];
+    if offsets[1] != a + 1 || offsets[2] != a + 2 {
+        return None; // only three CONSECUTIVE factors telescope to this closed form
+    }
+    // (1/2)·[1/((start+a)(start+a+1)) − 1/((end+a+1)(end+a+2))].
+    let mut reciprocal_product = |anchor: ExprId, lo: i64| -> ExprId {
+        let left = shift_expr(ctx, anchor, lo);
+        let right = shift_expr(ctx, anchor, lo + 1);
+        let product = ctx.add(Expr::Mul(left, right));
+        let one = ctx.num(1);
+        ctx.add(Expr::Div(one, product))
+    };
+    let first = reciprocal_product(start, a);
+    let second = reciprocal_product(end, a + 1);
+    let diff = ctx.add(Expr::Sub(first, second));
+    let two = ctx.num(2);
+    Some(ctx.add(Expr::Div(diff, two)))
+}
+
 /// Build telescoping rational sum closed form for `1/((k+b)*(k+c))`.
 ///
 /// Uses identity:
@@ -2714,6 +2782,55 @@ mod tests {
                 "1/({expr}) must stay residual"
             );
         }
+    }
+
+    #[test]
+    fn telescoping_three_factor_sum_matches_brute_force() {
+        // `1/((k+a)(k+a+1)(k+a+2))` — three consecutive linear factors (the classic
+        // `Σ 1/(k(k+1)(k+2))`) — telescopes via the second-order identity. Finite bounds only.
+        let den = |offsets: (i64, i64, i64), k: i64| -> i64 {
+            (k + offsets.0) * (k + offsets.1) * (k + offsets.2)
+        };
+        for offsets in [(0i64, 1i64, 2i64), (1, 2, 3), (2, 3, 4)] {
+            for (a, n) in [(1i64, 6i64), (3, 9)] {
+                let mut ctx = Context::new();
+                let summand = cas_parser::parse(
+                    &format!("1/((k+{})*(k+{})*(k+{}))", offsets.0, offsets.1, offsets.2),
+                    &mut ctx,
+                )
+                .expect("parse");
+                let start = ctx.num(a);
+                let end = ctx.num(n);
+                let result =
+                    super::try_build_telescoping_three_factor_sum(&mut ctx, summand, "k", start, end)
+                        .expect("build");
+                let mut brute = BigRational::from_integer(0.into());
+                for k in a..=n {
+                    brute += BigRational::new(1.into(), den(offsets, k).into());
+                }
+                assert_eq!(
+                    eval_small_rat(&ctx, result),
+                    Some(brute),
+                    "3-factor {offsets:?} [{a},{n}]"
+                );
+            }
+        }
+        // Non-consecutive factors and an infinite bound are declined (honest residuals).
+        let mut ctx = Context::new();
+        let nonconsec = cas_parser::parse("1/(k*(k+1)*(k+3))", &mut ctx).expect("parse");
+        let one = ctx.num(1);
+        let n = ctx.num(5);
+        assert!(
+            super::try_build_telescoping_three_factor_sum(&mut ctx, nonconsec, "k", one, n).is_none(),
+            "non-consecutive 3-factor must stay residual"
+        );
+        let consec = cas_parser::parse("1/(k*(k+1)*(k+2))", &mut ctx).expect("parse");
+        let one = ctx.num(1);
+        let inf = super::make_infinity(&mut ctx);
+        assert!(
+            super::try_build_telescoping_three_factor_sum(&mut ctx, consec, "k", one, inf).is_none(),
+            "infinite bound must decline (the ∞-substitution leaves an unreduced degree-2 term)"
+        );
     }
 
     #[test]

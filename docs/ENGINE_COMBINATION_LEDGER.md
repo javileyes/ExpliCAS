@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 272 (newest first)
+Active entries: 273 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -157,6 +157,7 @@ Active entries: 272 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Telescópica con denominador cuadrático EXPANDIDO 1/(k²−1), 1/(k²−5k+6)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: dominancia en forma PRODUCTO p(x)·e^{-q(x)} → 0
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`factor_telescoping_quadratic_den... | Telescópica NO mónica vía factores afines 1/(4k²−1) = (2k−1)(2k+1)
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Telescópica de TRES factores consecutivos 1/(k(k+1)(k+2)) (finita)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11605,3 +11606,35 @@ Active entries: 272 (newest first)
     latente en la hermana. La ruta afín estaba bien (declina gap≥2), así que construir encima fue seguro.
   - residual (peldaño): telescópica de 3 factores `1/(k(k+1)(k+2))` (telescopio de 2º orden);
     afín gap≥2 (digamma, fuera de elemental); no-primitivo con escala (`2k²−2`).
+
+## 2026-06-21 - Telescópica de TRES factores consecutivos 1/(k(k+1)(k+2)) (finita)
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_factor_sum` + wiring)
+- status:
+  - `retained` (capability: telescopio de 2º orden para producto de 3 factores lineales consecutivos)
+- capture:
+  - investment_class: capability (Fase 1, P2 — familia telescópica; cierre de los ciclos 4-5-7)
+  - primary_dimension: north_star_completeness (sumatorios)
+  - secondary_dimension: reuse_value (reusa `extract_linear_offset`, `shift_expr`, `mul_leaves`)
+  - cell: `Σ_{1}^{5} 1/(k(k+1)(k+2)) = 5/21`, `Σ_{1}^{n} = 1/2·(1/2 − 1/((n+1)(n+2)))`. Identidad de
+    2º orden `1/((k+a)(k+a+1)(k+a+2)) = 1/2·[g(k) − g(k+1)]` con `g(k)=1/((k+a)(k+a+1))`.
+  - behavior_change_expected: el producto de 3 factores lineales CONSECUTIVOS pasa de residual a
+    forma cerrada FINITA. Huella NONE.
+  - SOUNDNESS: exige numerador 1 y 3 offsets enteros consecutivos (a, a+1, a+2); no-consecutivos
+    declinan. Verificado fold-vs-fuerza-bruta. La cota INFINITA se DECLINA (residual honesto): la
+    infra de suma infinita sustituye ∞ directamente en la forma cerrada y NO reduce el término de
+    borde de grado 2 `1/((∞+1)(∞+2))` (deja `∞²`); declinar evita ese artefacto de presentación.
+- observed:
+  - el `limit(forma_cerrada, n, inf)` AISLADO sí da 1/4, pero la ruta de suma infinita no pasa por
+    el evaluador de límites — sustituye ∞ en la forma cerrada del builder finito. El de 2 factores
+    (`n/(n+1)`) reduce bajo ∞ (grado 1), pero el de 3 factores (boundary grado 2) no. Declinar la
+    cota infinita en el builder restaura el residual limpio sin regresión.
+- retained learning:
+  - un builder finito NUEVO puede introducir una REGRESIÓN de presentación en la ruta INFINITA si la
+    infra de suma infinita sustituye ∞ en su forma cerrada sin reducir (boundary de grado ≥ 2 → `∞²`).
+    Probar SIEMPRE la cota infinita tras añadir un builder finito; si la infra no reduce, declinar
+    `is_positive_infinity(end)` mantiene el residual honesto.
+  - residual (peldaño): (1) que la ruta de suma infinita use el evaluador de LÍMITES (que sí reduce
+    racionales de grado 2) en vez de sustituir ∞ — desbloquearía `Σ_{∞} 1/(k(k+1)(k+2)) = 1/4` y
+    cierra una clase A de infra; (2) telescópica de 3 factores NO consecutivos vía fracciones
+    parciales (cancelación armónica).
