@@ -19613,8 +19613,14 @@ fn notable_limit_name(
     at_infinity: bool,
 ) -> Option<String> {
     // Limits at infinity have their own dominance methods; the finite forms below (notable
-    // limits at 0, continuity, factor-and-cancel) do not apply there.
+    // limits at 0, continuity, factor-and-cancel) do not apply there. The one infinity-side
+    // NOTABLE is the definition of e — narrated only when the result is exactly e.
     if at_infinity {
+        if matches!(ctx.get(after), Expr::Constant(Constant::E))
+            && limit_is_one_plus_reciprocal_power(ctx, before)
+        {
+            return Some("Aplicar el límite notable: lím(x→∞) (1 + 1/x)^x = e".to_string());
+        }
         return limit_infinity_dominance(ctx, before, after);
     }
 
@@ -19685,7 +19691,7 @@ fn notable_limit_name(
         // contributes its linear scale (a notable `g(b·u) ~ b·u`, so scale b). At least one side
         // must be a genuine notable function (else it is plain `a·u/(b·u)` cancellation). SOUNDNESS:
         // narrate only when the result equals a/b exactly (the result is the oracle, as elsewhere).
-        if let Some(u_name) = limit_single_variable_name(ctx, before) {
+        if let Some(u_name) = limit_single_var_name(ctx, before) {
             if let (Some((a, num_fn)), Some((b, den_fn))) = (
                 limit_first_order_factor(ctx, num, &u_name),
                 limit_first_order_factor(ctx, den, &u_name),
@@ -19774,12 +19780,6 @@ fn linear_scale_of(ctx: &Context, expr: ExprId, u_name: &str) -> Option<BigRatio
         return None;
     }
     poly.coeffs.get(1).cloned().filter(|scale| !scale.is_zero())
-}
-
-/// The single variable name appearing in `expr`, or `None` when there is not exactly one.
-fn limit_single_variable_name(ctx: &Context, expr: ExprId) -> Option<String> {
-    let vars = cas_ast::traversal::collect_variables(ctx, expr);
-    (vars.len() == 1).then(|| vars.into_iter().next().unwrap())
 }
 
 /// The linear scale a side of a `num/den` notable quotient contributes at `u → 0`: a bare `a·u`
@@ -20080,6 +20080,28 @@ fn limit_is_one_plus_to_reciprocal(ctx: &Context, before: ExprId) -> bool {
         return false;
     }
     limit_is_one_plus(ctx, base, u)
+}
+
+/// `before` is `(1 + 1/x)^x` with `x` the bare variable (→ ∞): the infinity-side form of the e
+/// limit. The exponent must be the bare variable and the base exactly `1 + 1/x` (numerator 1), so
+/// `(1 + 2/x)^x → e²` and `(1 + 1/x)^(2x) → e²` decline structurally (and by the result check).
+fn limit_is_one_plus_reciprocal_power(ctx: &Context, before: ExprId) -> bool {
+    let Some((base, exponent)) = as_pow(ctx, before) else {
+        return false;
+    };
+    if !matches!(ctx.get(exponent), Expr::Variable(_)) {
+        return false;
+    }
+    let Expr::Add(left, right) = *ctx.get(base) else {
+        return false;
+    };
+    let is_one_plus_reciprocal = |constant: ExprId, reciprocal: ExprId| -> bool {
+        limit_is_number(ctx, constant, 1)
+            && as_div(ctx, reciprocal).is_some_and(|(one, u)| {
+                limit_is_number(ctx, one, 1) && compare_expr(ctx, u, exponent) == Ordering::Equal
+            })
+    };
+    is_one_plus_reciprocal(left, right) || is_one_plus_reciprocal(right, left)
 }
 
 fn display_expr(ctx: &Context, expr: ExprId) -> String {
@@ -21541,6 +21563,24 @@ mod limit_notable_tests {
                 titles[0]
             );
         }
+    }
+
+    #[test]
+    fn names_the_e_limit_at_infinity() {
+        // The infinity-side notable: the definition of e.
+        for before in ["(1+1/x)^x", "(1+1/n)^n"] {
+            let titles = substep_titles_at_infinity(before, "e");
+            assert_eq!(titles.len(), 1, "{before} should name the e limit");
+            assert!(
+                titles[0].contains("(1 + 1/x)^x = e"),
+                "{before}: expected the e notable in `{}`",
+                titles[0]
+            );
+        }
+        // Wrong structure → wrong value: (1+2/x)^x → e² and (1+1/x)^(2x) → e² must decline (both
+        // structurally and because the result is not e).
+        assert!(substep_titles_at_infinity("(1+2/x)^x", "e^2").is_empty());
+        assert!(substep_titles_at_infinity("(1+1/x)^(2*x)", "e^2").is_empty());
     }
 
     #[test]

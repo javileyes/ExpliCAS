@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 264 (newest first)
+Active entries: 265 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -149,6 +149,7 @@ Active entries: 264 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Σ p(k)/r^k: la forma Div (cociente) de la suma aritmético-geométrica fraccionaria
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: límite notable de argumento escalado f(a·u)/u → a
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: límite notable cruzado f(a·u)/g(b·u) → a/b
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: el límite notable en infinito (1+1/x)^x → e (definición de e)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11317,4 +11318,41 @@ Active entries: 264 (newest first)
     propagar la variable por toda la firma de los narradores — barato y local.
   - residual (peldaño G2): `(√(1+u)−1)/u → 1/2` (equivalente de la raíz / racionalización);
     `(1+1/x)^x → e` y `ln(x)/x → 0` en ∞ (notable/dominancia logarítmica aún sin narrar);
+    L'Hôpital/Taylor paso a paso y el cableado del PUNTO del límite (arquitectónico).
+
+## 2026-06-21 - G2 narrativa: el límite notable en infinito (1+1/x)^x → e (definición de e)
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`notable_limit_name`: rama at_infinity reconoce `(1+1/x)^x → e`; helper
+    `limit_is_one_plus_reciprocal_power`; HIGIENE: elimina el duplicado `limit_single_variable_name`
+    del ciclo previo y usa el `limit_single_var_name` ya existente)
+- status:
+  - `retained` (sub-ciclo G2: narra el ÚNICO notable del lado infinito, la definición de e)
+- capture:
+  - investment_class: capability (gatekeeper G2 — narración educativa de límites)
+  - primary_dimension: north_star_completeness (Fase 1, G2)
+  - secondary_dimension: didactic_value (cierra el par con el `(1+u)^(1/u)→e` del lado u→0 ya narrado)
+  - cell: `limit((1+1/x)^x, x, inf) = e` narra "lím(x→∞) (1 + 1/x)^x = e"; idem con otra variable
+    (`(1+1/n)^n`). El lado u→0 `(1+u)^(1/u)→e` ya estaba; ahora el par está completo.
+  - behavior_change_expected: el notable de e en infinito pasa de sin-substep a narrado. Huella NONE.
+  - SOUNDNESS: narra solo si el resultado es exactamente `e` (Constant::E) Y la estructura es
+    `(1+1/x)^x` (exponente = variable bare, base = 1 + 1/x con numerador 1). Doble guarda: `(1+2/x)^x
+    → e²` (numerador 2) y `(1+1/x)^(2x) → e²` (exponente 2x) declinan por estructura Y por resultado.
+- observed:
+  - la rama at_infinity retornaba directamente `limit_infinity_dominance` (cocientes de polinomios);
+    el notable de e es el único caso no-dominancia del lado infinito, así que va ANTES del return de
+    dominancia. El matcher refleja `limit_is_one_plus_to_reciprocal` (lado u→0) pero con exponente =
+    variable en vez de 1/variable.
+  - se detectó y eliminó una duplicación introducida en el ciclo 5: `limit_single_variable_name`
+    (vía `collect_variables`) replicaba el `limit_single_var_name` ya presente — consolidado al
+    existente. Lección: antes de añadir un helper "obtener la única variable", grep el módulo.
+- retained learning:
+  - los notables suelen venir en PARES por cambio de variable (`(1+u)^(1/u)` en u→0 ↔ `(1+1/x)^x`
+    en x→∞; `sin(u)/u` ↔ ...): al narrar uno, el gemelo del otro lado suele ser un sub-ciclo barato
+    y de alto valor didáctico que reusa el mismo matcher con la sustitución u=1/x.
+  - el chequeo de resultado como oráculo de soundness escala a TODA la familia de narración de
+    límites de este run (escalado, cruzado, e en infinito): la narración nunca calcula el valor, lo
+    CONFIRMA contra el límite que el motor ya resolvió — estructura + resultado exacto = sound.
+  - residual (peldaño G2): `(√(1+u)−1)/u → 1/2` (equivalente de la raíz / racionalización);
+    `ln(x)/x → 0` y `x^a/e^x → 0` (dominancias logarítmica/exponencial en ∞ aún sin narrar);
     L'Hôpital/Taylor paso a paso y el cableado del PUNTO del límite (arquitectónico).
