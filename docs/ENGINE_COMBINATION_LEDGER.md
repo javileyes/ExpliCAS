@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 279 (newest first)
+Active entries: 280 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -164,6 +164,7 @@ Active entries: 279 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Telescópica de m factores consecutivos generalizada (1/18, 1/96, …)
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`eval_limit_at_infinity`: fallback d... | Límite en ∞ por sustitución recíproca x↦1/u (x·sin(1/x)→1, notables)
 - 2026-06-21 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_ln_quotient_... | ln(c)/ln(b) → log_b(c) racional (solve(2^x=8) = {3}, no {ln(8)/ln(2)})
+- 2026-06-21 | `retained` | `crates/cas_solver_core/src/quadratic_sqrt.rs` (`pull_square_from_sqrt`: extr... | P0 soundness: la fórmula cuadrática perdía un factor 2 del radical con discriminante factorizado
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11863,3 +11864,46 @@ Active entries: 279 (newest first)
     FUNCTION; y `define_rule!` requiere registro explícito en la `register` del módulo.
   - residual (peldaño): el cambio de base con argumentos no-enteros pero racionales-potencia
     (`ln(√8)/ln(2)`), y `log_b(c)` simbólico cuando c=b^k con k simbólico.
+
+## 2026-06-21 - P0 soundness: la fórmula cuadrática perdía un factor 2 del radical con discriminante factorizado
+- area:
+  - `crates/cas_solver_core/src/quadratic_sqrt.rs` (`pull_square_from_sqrt`: extracción de
+    factor cuadrado-perfecto del radicando del discriminante)
+- status:
+  - `retained` (P0 soundness — wrong-answer en `solve` de cuadráticas con coeficiente
+    transcendente/simbólico)
+- capture:
+  - investment_class: soundness (corrige valor erróneo; exenta de la restricción de fase)
+  - primary_dimension: north_star_soundness (solve devuelve raíces correctas)
+  - secondary_dimension: reuse_value (no añade maquinaria; arregla la existente)
+  - cell: `solve(x^2-4*x-e=0) → {2-√(4+e), 2+√(4+e)}` (antes `{(4±√(4+e))/2}`, valor FALSO
+    ~3.30/0.70 que NO satisface la ecuación); `solve(x^2-2*x-e=0) → {1±√(1+e)}`;
+    `solve(ln(x)+ln(x-4)=1) → {2+√(4+e)}` correcto end-to-end.
+  - behavior_change_expected: las cuadráticas cuyo discriminante simplifica a la forma
+    FACTORIZADA `k²·(suma)` con un término simbólico (`4·(4+e)`) pasan de raíces erróneas
+    (radical a la mitad) a las correctas. Huella guardrail+pressure NONE (ningún fixture
+    capturaba estas raíces erróneas).
+  - SOUNDNESS: `√(k²·R) = k·√R` exacto. El bug dividía el cofactor `R` (ya extraído por la
+    rama Mul de `split_numeric_factor`) por `k` una SEGUNDA vez, dando `k·√(R/k²) = √R`
+    (la mitad del valor real). La división por `k` solo es válida en la rama Add (donde
+    `split` devuelve la SUMA entera sin dividir). Fix: gatear la división en
+    `base_is_additive`, no en "`rest` es Add/Sub".
+- observed:
+  - descubierto por verificación adversarial del ciclo del filtro de dominio (ciclo 2): un
+    barrido `solve(ln(x)+ln(x-a)=c)` comparando nº de raíces contra el conteo real reveló
+    `No solution` donde había raíz válida → la raíz que el solver computaba era errónea, no
+    el filtro. El sondeo aisló `solve(x^2-4*x-e=0)` (wrong) vs `x^2-3*x-e=0` (right): la
+    diferencia es que `16+4e` factoriza como `4·(4+e)` (Mul) y `9+4e` no (gcd 1).
+  - `sqrt(16+4*e)` STANDALONE ya daba `2·√(4+e)` correcto; el bug solo aparecía DENTRO del
+    constructor de raíces, donde el discriminante llega pre-factorizado como `Mul(4, 4+e)`.
+- retained learning:
+  - un helper de "extraer factor cuadrado" tiene DOS contratos según la forma de entrada:
+    factor multiplicativo ya separado (`Mul(k², R)` → cofactor R listo) vs gcd de una suma
+    (`Add` → suma entera, divídela por el gcd). Mezclar las dos ramas con un único "¿es
+    Add?" sobre el RESTO (que puede ser una suma cofactor) divide de más. La condición debe
+    leer la forma del ARGUMENTO ORIGINAL (`base`), no la del resto extraído.
+  - un wrong-answer puede vivir en un constructor intermedio aunque la simplificación
+    standalone de la misma subexpresión sea correcta: hay que sondear el VALOR de la raíz
+    (back-substitución/numérico), no solo su forma.
+  - residual (peldaño): el filtro de raíces extrañas para radicandos transcendentes (raíz
+    fuera de dominio en `solve(ln+ln=cte)`) es el ciclo 2, ortogonal a este.

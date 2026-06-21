@@ -33,7 +33,14 @@ pub fn pull_square_from_sqrt(ctx: &mut Context, sqrt_expr: ExprId) -> ExprId {
         return sqrt_expr;
     }
 
-    let actual_rest = if matches!(ctx.get(rest), Expr::Add(_, _) | Expr::Sub(_, _)) {
+    // Whether `rest` already has the factor `k` removed.
+    //   - Additive base (`16 + 4·e`): `split_numeric_factor` returns the WHOLE sum as
+    //     `rest`, so we must divide by `k` to leave `√((16+4e)/4) = √(4+e)` under the root.
+    //   - Multiplicative base (`4·(4+e)`): `rest` is ALREADY the cofactor `(4+e)`, so dividing
+    //     again would halve the radical (`2·√((4+e)/4) = √(4+e)`, a wrong, smaller value) — the
+    //     factor must be taken as-is so the result is `2·√(4+e)`.
+    let base_is_additive = matches!(ctx.get(base), Expr::Add(_, _) | Expr::Sub(_, _));
+    let actual_rest = if base_is_additive {
         let k_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
             k.into(),
         )));
@@ -175,5 +182,62 @@ mod tests {
         let sqrt = ctx.add(Expr::Pow(mul, half));
         let out = pull_square_from_sqrt(&mut ctx, sqrt);
         assert!(matches!(ctx.get(out), Expr::Mul(_, _)));
+    }
+
+    /// Numeric value of a constant `expr` (`e` folds to `2.718…`), for asserting the
+    /// radical was preserved (not silently halved). `None` if the expr is not foldable.
+    fn approx(ctx: &Context, expr: ExprId) -> Option<f64> {
+        let map = std::collections::HashMap::new();
+        cas_math::evaluator_f64::eval_f64(ctx, expr, &map)
+    }
+
+    #[test]
+    fn pulls_square_from_factored_additive_base_keeps_coefficient() {
+        // REGRESSION: `√(4·(4+e))` must be `2·√(4+e)` (≈ 5.18), NOT `√(4+e)` (≈ 2.59).
+        // The discriminant of `x²−4x−e` simplifies to the FACTORED form `4·(4+e)`; the old
+        // code divided the already-extracted cofactor `(4+e)` by `4` a second time, halving the
+        // radical and yielding wrong quadratic roots (`(4+√(4+e))/2` instead of `2+√(4+e)`).
+        let mut ctx = Context::new();
+        let four = ctx.num(4);
+        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+        let four_plus_e = ctx.add(Expr::Add(four, e));
+        let four2 = ctx.num(4);
+        let base = ctx.add(Expr::Mul(four2, four_plus_e)); // 4·(4+e)
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let half = ctx.add(Expr::Div(one, two));
+        let sqrt = ctx.add(Expr::Pow(base, half));
+
+        let out = pull_square_from_sqrt(&mut ctx, sqrt);
+        let got = approx(&ctx, out).expect("foldable");
+        let want = (4.0 * (4.0 + std::f64::consts::E)).sqrt(); // √(4·(4+e)) ≈ 5.18
+        assert!(
+            (got - want).abs() < 1e-9,
+            "expected √(4·(4+e)) ≈ {want}, got {got} (radical was halved)"
+        );
+    }
+
+    #[test]
+    fn pulls_square_from_unfactored_additive_base_divides_once() {
+        // `√(16+4e)` (unfactored sum) must still reduce to `2·√(4+e)` ≈ 5.18 — the Add branch of
+        // `split_numeric_factor` returns the whole sum, so dividing by the gcd `4` once is correct.
+        let mut ctx = Context::new();
+        let sixteen = ctx.num(16);
+        let four = ctx.num(4);
+        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+        let four_e = ctx.add(Expr::Mul(four, e));
+        let base = ctx.add(Expr::Add(sixteen, four_e)); // 16 + 4e
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let half = ctx.add(Expr::Div(one, two));
+        let sqrt = ctx.add(Expr::Pow(base, half));
+
+        let out = pull_square_from_sqrt(&mut ctx, sqrt);
+        let got = approx(&ctx, out).expect("foldable");
+        let want = (16.0 + 4.0 * std::f64::consts::E).sqrt();
+        assert!(
+            (got - want).abs() < 1e-9,
+            "expected √(16+4e) ≈ {want}, got {got}"
+        );
     }
 }

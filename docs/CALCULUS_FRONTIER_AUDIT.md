@@ -45,6 +45,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
+- [x] **(F) Fórmula cuadrática pierde un factor del radical con discriminante factorizado**:
+  `solve(x^2-4*x-e=0)` devolvía `(4±√(4+e))/2` (≈3.30/0.70, valor FALSO que NO satisface la
+  ecuación) en vez de `2±√(4+e)`; mismo error en toda cuadrática cuyo discriminante simplifica a
+  la forma factorizada `k²·(suma)` con término simbólico (`4·(4+e)`, `4·(1+e)`). Se propagaba a
+  `solve(ln(x)+ln(x-a)=c)` (raíz válida perdida → `No solution`).
+  *(graduado 2026-06-22 20348864d: `pull_square_from_sqrt` dividía el cofactor `R` —ya extraído
+  por la rama Mul de `split_numeric_factor` de `√(k²·R)`— por `k` una SEGUNDA vez, dando
+  `k·√(R/k²)=√R` (mitad del valor real). La división por `k` solo es válida en la rama Add (donde
+  `split` devuelve la suma entera sin dividir); ahora se gatea en `base_is_additive`, leyendo la
+  forma del ARGUMENTO original, no la del resto extraído. `sqrt(16+4e)` standalone ya daba
+  `2√(4+e)` correcto — el bug solo vivía dentro del constructor de raíces con el discriminante
+  pre-factorizado. Unit-test-locked (valor numérico, no forma); huella guardrail+pressure NONE.
+  Descubierto por verificación adversarial del filtro de raíces extrañas (ciclo hermano). Peldaño:
+  el filtro de dominio para radicandos transcendentes es el ciclo siguiente, ortogonal.)*
 - [x] **(F) `0·∞` plegado a 0 en punto finito**: `limit(x·sinh(1/x²),x,0)`
   devolvía `0` cuando el límite real es `+∞` (sinh(1/x²)→+∞, y 0·∞ es
   indeterminado, no 0); mismo error en `x·cosh(1/x²)`, `x·exp(1/x²)`,
