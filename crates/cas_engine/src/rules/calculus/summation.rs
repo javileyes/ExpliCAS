@@ -120,6 +120,13 @@ where
             render_expr(call.start_expr),
             render_expr(call.end_expr)
         ),
+        SumEvaluationKind::ConvergentInfinite => format!(
+            "Convergent geometric series: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
     }
 }
 

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 240 (newest first)
+Active entries: 241 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -125,6 +125,7 @@ Active entries: 240 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`split_reducible_even_poly`; `factor_over_ra... | Retained capability: factor reducible even polynomials (deg ≥6) via t=x²
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`factor_sum_difference_of_cubes`, wired into... | Retained capability: factor sum/difference of cubes (bivariate)
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`perfect_cube_root`, `rational_cbrt`; | Retained capability: factor coefficient cubes (perfect-cube coefficients)
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`extract_geometric_term`, | Retained capability: convergent infinite geometric series closed form
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10314,3 +10315,48 @@ Active entries: 240 (newest first)
     sensitive change unsuitable for a bounded cycle. NEXT runs should deliberately open a
     different front — the well-diagnosed `1/(x⁶-1)` verifier hardening is the highest-value
     deferred calculus item.
+
+## 2026-06-21 - Retained capability: convergent infinite geometric series closed form
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`extract_geometric_term`,
+    `try_convergent_infinite_geometric_sum`, `rational_pow_int`, `SumEvaluationKind::ConvergentInfinite`,
+    dispatch in `try_plan_finite_sum_evaluation`);
+    narration arms in `cas_engine` (rules/arithmetic.rs, rules/calculus/summation.rs) and
+    `cas_solver` (derive_command.rs)
+- status:
+  - `retained` (capability: `sum(c·r^k, k, a, inf)` with rational `|r|<1` now returns the
+    closed form `c·r^a/(1-r)` instead of staying residual)
+- capture:
+  - investment_class: capability (series / Phase-6-adjacent calculus)
+  - cell: `sum(1/2^k,k,0,inf)→2`, `sum(1/3^k,k,0,inf)→3/2`, `sum((1/2)^k,k,1,inf)→1`,
+    `sum(2*(1/3)^k,k,0,inf)→3`, `sum((-1/2)^k,k,0,inf)→2/3` (alternating),
+    `sum(3^(-k),k,0,inf)→3/2`, `sum(5/4^k,k,2,inf)→5/12`. Divergent (`2^k`, `(3/2)^k`)→
+    `infinity`; oscillating (`(-2)^k`) and non-geometric (`k·2^k`, `2^k+3^k`) stay residual.
+  - primary_dimension: completeness (infinite series)
+  - behavior_change_expected: convergent geometric flips from residual to closed form
+    (updates the explicit "stays UNEVALUATED" contract); a new `ConvergentInfinite` sum kind
+    narrated "Convergent Geometric Series". Calculus guardrail+pressure huella structurally
+    NONE; workspace+clippy+fmt green.
+- observed (frontier probe: `sum(1/2^k,k,0,inf)` residual while divergent geometric already
+  classified to `infinity`):
+  - `classify_infinite_sum` handled constant/polynomial/`r>1`-base divergence but explicitly
+    left `|r|<1` UNEVALUATED. The closed form is standard; the only subtlety is the summand's
+    normalised form — `(1/2)^k`, `1/2^k`, `3^(-k)` all reach the matcher as `Pow`, `Div`, or
+    `b^(s·k+t)` shapes.
+  - `extract_geometric_term` is a STRUCTURAL matcher returning `(coeff, ratio)` from
+    `b^(s·k+t)` (integer `s`,`t` keep `r=b^s`, `c=b^t` rational, covering reciprocals and
+    negative bases), `Div(const, geometric)`, `Mul(const, geometric)`, and `Neg`. The
+    structural match is the PROOF the term is geometric — `k·2^k` / `2^k+3^k` don't match.
+- retained learning:
+  - prefer a STRUCTURAL geometric matcher over a numeric ratio test: matching the
+    `c·b^(s·k+t)` shape (with `s`,`t` integers) is exact and sound — it both extracts the
+    ratio and CERTIFIES the term is purely geometric, so a non-geometric summand can't slip
+    through (a 2-point numeric ratio test could be fooled). The convergence gate `|r|<1` is
+    an exact `BigRational` comparison.
+  - adding a new `SumEvaluationKind` variant requires arms in FOUR match sites across three
+    crates (the kind→label in arithmetic.rs, the profiling-label match, and the step
+    descriptors in cas_engine summation.rs + cas_solver derive_command.rs); the compiler's
+    non-exhaustive-match errors enumerate them — let it drive the wiring.
+  - residual (peldaño): symbolic lower bound (`sum((1/2)^k,k,m,inf)=2^(1-m)`), finite
+    geometric with fractional ratio (`sum(1/2^k,k,0,n)` still residual), and non-geometric
+    convergent series (p-series `1/k²=π²/6`, telescoping-to-constant).

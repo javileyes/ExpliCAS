@@ -32,6 +32,9 @@ pub enum SumEvaluationKind {
     /// Series with an infinite upper bound whose divergence is classified
     /// (`±infinity`) instead of substituting `infinity` into a finite formula.
     DivergentInfinite,
+    /// Convergent infinite series with a closed form (`sum(c·r^k, k, a, inf) =
+    /// c·r^a/(1-r)` for a rational ratio `|r| < 1`).
+    ConvergentInfinite,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -228,6 +231,96 @@ fn classify_infinite_sum(ctx: &mut Context, call: &FiniteAggregateCall) -> Optio
     None
 }
 
+/// `b^n` for an integer exponent `n` (negative → reciprocal). `None` for `0^(n<0)`.
+fn rational_pow_int(base: &BigRational, n: i64) -> Option<BigRational> {
+    if n >= 0 {
+        Some(num_traits::pow(base.clone(), n as usize))
+    } else if base.is_zero() {
+        None
+    } else {
+        Some(num_traits::pow(base.clone(), (-n) as usize).recip())
+    }
+}
+
+/// Extract `(coefficient, ratio)` from a term that is structurally `c · r^k` with
+/// rational `c`, `r`. Recognises the `b^(s·k+t)` power form (`s`, `t` integers, so
+/// `r=b^s`, `c=b^t` stay rational, including a reciprocal `2^(-k)` and a negative base
+/// `(-1/2)^k`), a `Div(constant, geometric)`, a `Mul(constant, geometric)`, and a `Neg`.
+/// The structural match is the proof the term is genuinely geometric — a non-geometric
+/// summand like `k·2^k` or `2^k+3^k` returns `None`.
+fn extract_geometric_term(
+    ctx: &Context,
+    term: ExprId,
+    var: &str,
+) -> Option<(BigRational, BigRational)> {
+    match ctx.get(term) {
+        Expr::Pow(base, exp) => {
+            let base = *base;
+            let exp = *exp;
+            let b = as_rational_const(ctx, base, 8)?;
+            // Exponent must be linear in `var`: `s·k + t`.
+            let ep = Polynomial::from_expr(ctx, exp, var).ok()?;
+            if ep.degree() != 1 {
+                return None;
+            }
+            let s = ep.coeffs.get(1).cloned().unwrap_or_else(BigRational::zero);
+            let t = ep.coeffs.first().cloned().unwrap_or_else(BigRational::zero);
+            if !s.is_integer() || !t.is_integer() {
+                return None;
+            }
+            let si = s.to_integer().try_into().ok()?;
+            let ti = t.to_integer().try_into().ok()?;
+            let ratio = rational_pow_int(&b, si)?;
+            let coeff = rational_pow_int(&b, ti)?;
+            Some((coeff, ratio))
+        }
+        Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
+            let c = as_rational_const(ctx, num, 8)?; // numerator independent of k
+            let (dc, dr) = extract_geometric_term(ctx, den, var)?;
+            if dr.is_zero() || dc.is_zero() {
+                return None;
+            }
+            // c / (dc · dr^k) = (c/dc) · (1/dr)^k
+            Some((c / dc, dr.recip()))
+        }
+        Expr::Mul(a, b) => {
+            let (a, b) = (*a, *b);
+            if let Some(c) = as_rational_const(ctx, a, 8) {
+                let (gc, gr) = extract_geometric_term(ctx, b, var)?;
+                Some((c * gc, gr))
+            } else if let Some(c) = as_rational_const(ctx, b, 8) {
+                let (gc, gr) = extract_geometric_term(ctx, a, var)?;
+                Some((c * gc, gr))
+            } else {
+                None
+            }
+        }
+        Expr::Neg(inner) => extract_geometric_term(ctx, *inner, var).map(|(c, r)| (-c, r)),
+        _ => None,
+    }
+}
+
+/// Closed form of a convergent geometric series `sum(c·r^k, k, a, inf) = c·r^a/(1-r)`
+/// for a rational ratio `|r| < 1` and an integer lower bound `a`. Returns `None` when the
+/// term is not geometric, the ratio does not converge (`|r| ≥ 1`, or `r = 0`), or the
+/// lower bound is not an integer literal (a symbolic lower bound is a sound peldaño).
+fn try_convergent_infinite_geometric_sum(
+    ctx: &mut Context,
+    call: &FiniteAggregateCall,
+) -> Option<ExprId> {
+    let (coeff, ratio) = extract_geometric_term(ctx, call.term, &call.var_name)?;
+    // Convergence: |r| < 1 and r ≠ 0 (r = 0 leaves only the k = a term — out of scope).
+    if ratio.is_zero() || ratio.abs() >= BigRational::one() {
+        return None;
+    }
+    let a = crate::expr_extract::extract_i64_integer(ctx, call.start_expr)?;
+    let ratio_a = rational_pow_int(&ratio, a)?;
+    // c · r^a / (1 - r), an exact rational.
+    let value = coeff * ratio_a / (BigRational::one() - &ratio);
+    Some(ctx.add(Expr::Number(value)))
+}
+
 /// Classify a product `product(term, k, a, infinity)` whose upper bound is
 /// infinite. Returns the divergence value when provable, else `None`.
 fn classify_infinite_product(ctx: &mut Context, call: &FiniteAggregateCall) -> Option<ExprId> {
@@ -313,6 +406,15 @@ pub fn try_plan_finite_sum_evaluation(
     // (r^(n+1)-r^a)/(r-1) -> 2^infinity-1). Classify the divergence here and return
     // (or leave unevaluated) so those builders never run on an infinite bound.
     if is_positive_infinity(ctx, call.end_expr) {
+        // Convergent geometric series `sum(c·r^k, k, a, inf) = c·r^a/(1-r)` (|r| < 1)
+        // is tried first; otherwise classify the divergence.
+        if let Some(candidate) = try_convergent_infinite_geometric_sum(ctx, &call) {
+            return Some(SumEvaluationPlan {
+                call,
+                candidate,
+                kind: SumEvaluationKind::ConvergentInfinite,
+            });
+        }
         return classify_infinite_sum(ctx, &call).map(|candidate| SumEvaluationPlan {
             call,
             candidate,
@@ -2034,14 +2136,83 @@ mod tests {
             ctx.get(plan.candidate),
             Expr::Constant(cas_ast::Constant::Infinity)
         ));
-        // Convergent geometric stays UNEVALUATED (no plan), not a wrong value.
+        // Convergent geometric now evaluates to its closed form `1/(1-1/2) = 2`.
         let conv = cas_parser::parse("sum((1/2)^k, k, 0, inf)", &mut ctx).expect("conv");
-        assert!(try_plan_finite_sum_evaluation(&mut ctx, conv, 1000).is_none());
+        let conv_plan = try_plan_finite_sum_evaluation(&mut ctx, conv, 1000).expect("conv plan");
+        assert!(matches!(
+            conv_plan.kind,
+            SumEvaluationKind::ConvergentInfinite
+        ));
+        assert_eq!(
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: conv_plan.candidate
+                }
+            ),
+            "2"
+        );
         // Finite bound is unaffected (still a finite closed form, never divergent).
         let fin = cas_parser::parse("sum(k, k, 1, 10)", &mut ctx).expect("fin");
         let plan = try_plan_finite_sum_evaluation(&mut ctx, fin, 1000).expect("fin plan");
         assert!(matches!(plan.kind, SumEvaluationKind::SumOfFirstIntegers));
         assert!(!matches!(plan.kind, SumEvaluationKind::DivergentInfinite));
+    }
+
+    #[test]
+    fn convergent_geometric_series_closed_forms_and_rejections() {
+        // (source, expected closed form) for convergent geometric series |r| < 1.
+        for (src, expect) in [
+            ("sum(1/2^k, k, 0, inf)", "2"),
+            ("sum(1/3^k, k, 0, inf)", "3/2"),
+            ("sum((1/2)^k, k, 1, inf)", "1"),
+            ("sum(2*(1/3)^k, k, 0, inf)", "3"),
+            ("sum((2/3)^k, k, 0, inf)", "3"),
+            ("sum((-1/2)^k, k, 0, inf)", "2/3"), // alternating
+            ("sum(3^(-k), k, 0, inf)", "3/2"),   // reciprocal-exponent form
+            ("sum(5/4^k, k, 2, inf)", "5/12"),   // coefficient + offset start
+        ] {
+            let mut ctx = Context::new();
+            let e = cas_parser::parse(src, &mut ctx).expect(src);
+            let plan = try_plan_finite_sum_evaluation(&mut ctx, e, 1000)
+                .unwrap_or_else(|| panic!("{src} should have a plan"));
+            assert!(
+                matches!(plan.kind, SumEvaluationKind::ConvergentInfinite),
+                "{src} should be ConvergentInfinite"
+            );
+            assert_eq!(
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &ctx,
+                        id: plan.candidate
+                    }
+                ),
+                expect,
+                "{src}"
+            );
+        }
+
+        // Rejections: divergent (|r| ≥ 1) and non-geometric summands.
+        // `2^k`/`(3/2)^k` diverge to +infinity (classified, not convergent);
+        // `(-2)^k` oscillates, `k·2^k` and `2^k+3^k` are not pure geometric.
+        for (src, must_be_convergent) in [
+            ("sum(2^k, k, 0, inf)", false),     // -> infinity (DivergentInfinite)
+            ("sum((3/2)^k, k, 0, inf)", false), // -> infinity
+            ("sum((-2)^k, k, 0, inf)", false),  // oscillates -> no plan
+            ("sum(k*2^k, k, 0, inf)", false),   // arithmetico-geometric -> no plan
+            ("sum(2^k+3^k, k, 0, inf)", false), // sum of geometrics -> no plan
+        ] {
+            let mut ctx = Context::new();
+            let e = cas_parser::parse(src, &mut ctx).expect(src);
+            let plan = try_plan_finite_sum_evaluation(&mut ctx, e, 1000);
+            let is_convergent = plan
+                .as_ref()
+                .map(|p| matches!(p.kind, SumEvaluationKind::ConvergentInfinite))
+                .unwrap_or(false);
+            assert_eq!(is_convergent, must_be_convergent, "{src}");
+        }
     }
 
     #[test]
