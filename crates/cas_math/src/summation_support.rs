@@ -1958,47 +1958,40 @@ pub fn try_build_telescoping_rational_sum(
         (Some(offset1), Some(offset2)) => (offset1, offset2),
         _ => return None,
     };
-    let a = offset2 - offset1;
-    if a == 0 {
-        return None;
+    if offset1 == offset2 {
+        return None; // a repeated factor `1/(k+b)^2` is not telescoping
     }
 
-    let start_shifted = if offset1 == 0 {
-        start
-    } else {
-        let offset = ctx.num(offset1);
-        ctx.add(Expr::Add(start, offset))
-    };
-
-    let end_shifted = if offset2 == 0 {
-        end
-    } else {
-        let offset = ctx.num(offset2);
-        ctx.add(Expr::Add(end, offset))
-    };
-
-    let one1 = ctx.num(1);
-    let one2 = ctx.num(1);
-    let first_term = ctx.add(Expr::Div(one1, start_shifted));
-    let second_term = ctx.add(Expr::Div(one2, end_shifted));
-    let diff = ctx.add(Expr::Sub(first_term, second_term));
-
-    let result = if a.abs() == 1 {
-        if a > 0 {
-            diff
-        } else {
-            ctx.add(Expr::Neg(diff))
+    // `1/((k+b)(k+c)) = 1/(c-b)·(1/(k+b) − 1/(k+c))`. With `b` the SMALLER offset and gap `d = c−b`,
+    // `Σ_{k=start}^{end} (1/(k+b) − 1/(k+b+d))` telescopes leaving `d` boundary terms at EACH end:
+    //   (1/d)·[ Σ_{j=0}^{d-1} 1/(start+b+j) − Σ_{j=0}^{d-1} 1/(end+b+1+j) ].
+    // The previous single-term form (one boundary term per end) was correct ONLY for `d = 1` and
+    // produced WRONG values for wider gaps (e.g. `Σ 1/(k(k+2))` gave 1/2 instead of 3/4).
+    let b = offset1.min(offset2);
+    let gap = (offset1 - offset2).unsigned_abs() as i64;
+    let mut boundary = |anchor: ExprId, base_shift: i64| -> ExprId {
+        let mut sum: Option<ExprId> = None;
+        for j in 0..gap {
+            let denom = shift_expr(ctx, anchor, base_shift + j);
+            let one = ctx.num(1);
+            let term = ctx.add(Expr::Div(one, denom));
+            sum = Some(match sum {
+                None => term,
+                Some(acc) => ctx.add(Expr::Add(acc, term)),
+            });
         }
-    } else {
-        let a_expr = ctx.num(a.abs());
-        let unsigned_result = ctx.add(Expr::Div(diff, a_expr));
-        if a > 0 {
-            unsigned_result
-        } else {
-            ctx.add(Expr::Neg(unsigned_result))
-        }
+        sum.expect("gap >= 1 yields at least one boundary term")
     };
+    let start_sum = boundary(start, b);
+    let end_sum = boundary(end, b + 1);
+    let diff = ctx.add(Expr::Sub(start_sum, end_sum));
 
+    let result = if gap == 1 {
+        diff
+    } else {
+        let gap_expr = ctx.num(gap);
+        ctx.add(Expr::Div(diff, gap_expr))
+    };
     Some(result)
 }
 
@@ -2554,6 +2547,33 @@ mod tests {
             eval_small_rat(&ctx, result),
             Some(BigRational::new(4.into(), 5.into()))
         );
+    }
+
+    #[test]
+    fn telescoping_rational_sum_wide_gap_matches_brute_force() {
+        // Regression for the gap ≥ 2 wrong-answer: the closed form must keep `gap` boundary terms at
+        // EACH end, so `Σ_{1}^{n} 1/(k(k+2))` is `(1/2)(3/2 − 1/(n+1) − 1/(n+2))`, not the
+        // single-term `(n+1)/(2(n+2))` (which wrongly limits to 1/2 instead of 3/4).
+        for (p, q) in [(0i64, 2i64), (0, 3), (0, 4), (1, 3), (2, 5)] {
+            for (a, n) in [(1i64, 6i64), (2, 9), (3, 7)] {
+                let mut ctx = Context::new();
+                let summand =
+                    cas_parser::parse(&format!("1/((k+{p})*(k+{q}))"), &mut ctx).expect("parse");
+                let start = ctx.num(a);
+                let end = ctx.num(n);
+                let result = try_build_telescoping_rational_sum(&mut ctx, summand, "k", start, end)
+                    .expect("build");
+                let mut brute = BigRational::from_integer(0.into());
+                for k in a..=n {
+                    brute += BigRational::new(1.into(), ((k + p) * (k + q)).into());
+                }
+                assert_eq!(
+                    eval_small_rat(&ctx, result),
+                    Some(brute),
+                    "Σ 1/((k+{p})(k+{q})) over [{a},{n}]"
+                );
+            }
+        }
     }
 
     #[test]

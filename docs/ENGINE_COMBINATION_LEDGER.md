@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 268 (newest first)
+Active entries: 269 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -153,6 +153,7 @@ Active entries: 268 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: dominancia logarítmica/exponencial en ∞ (ln ≪ potencia ≪ exp)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: equivalente binomial/raíz ((1+u)^a − 1)/u → a
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Suma INFINITA aritmético-geométrica convergente Σ_{k=a}^∞ p(k)·r^k (|r|<1)
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_rational_s... | P0 SOUNDNESS: suma telescópica con gap ≥ 2 daba RESPUESTA INCORRECTA
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11463,3 +11464,37 @@ Active entries: 268 (newest first)
     el ciclo previo tuvo que limpiar a posteriori (lección de dedup aplicada por adelantado).
   - residual (peldaño): cofactor de grado ≥3 (colas Sₚ generales); cota inferior simbólica;
     `Σ p(k)·r^k` con r irracional; y la forma producto `e^{−x}·x²` para el narrador de límites.
+
+## 2026-06-21 - P0 SOUNDNESS: suma telescópica con gap ≥ 2 daba RESPUESTA INCORRECTA
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_rational_sum`, ruta general
+    de factores lineales `(k+b)(k+c)`)
+- status:
+  - `retained` (FIX de soundness P0 — wrong-answer; precede a toda capacidad)
+- capture:
+  - investment_class: soundness (wrong-answer en `sum`)
+  - primary_dimension: correctness (cualquier comando, exento de la restricción de fase)
+  - cell: `sum(1/(k(k+2)), k, 1, inf)` daba **1/2**, correcto **3/4**; `[1,4]` daba **5/12**, correcto
+    **17/30**; `sum(1/(k(k+3)))` daba **1/3**, correcto **11/18**; `1/(k(k+4))` daba 1/4, correcto 25/48.
+  - behavior_change_expected: las telescópicas racionales `1/((k+b)(k+c))` con gap |c−b| ≥ 2 pasan de
+    un valor INCORRECTO al correcto, finito e infinito. Huella guardrail+pressure NONE (ninguna fixture
+    de las lanes cubría gap ≥ 2 — el bug estaba en comportamiento de usuario no capturado).
+  - SOUNDNESS: la identidad `1/((k+b)(k+c)) = 1/(c−b)·(1/(k+b) − 1/(k+c))` con gap d = c−b telescopia
+    dejando d términos de borde en CADA extremo: `(1/d)·[Σ_{j=0}^{d-1} 1/(start+b+j) − Σ_{j=0}^{d-1}
+    1/(end+b+1+j)]`. La fórmula vieja usaba UN solo término por extremo (correcto solo para d=1).
+    Barrido de fuerza bruta: 108 casos (gaps 1-5, varios start/n, finito+infinito), 0 fallos.
+- observed:
+  - el bug solo afectaba la ruta GENERAL (gap arbitrario); las rutas `detect_consecutive` (gap 1) y
+    `detect_affine_consecutive_..._and_gap` (consecutivos afines, p.ej. `(2k+1)(2k+3)`) eran correctas
+    (un término por extremo ES correcto para gap 1). El infinito reusaba la fórmula finita vía
+    `lim_{n→∞}`, así que el valor incorrecto se propagaba a ambos.
+  - los tests existentes NO encodaban el valor incorrecto (solo cubrían gap 1), así que el fix no rompió
+    ningún contrato — confirma que era un hueco de cobertura, no una decisión.
+- retained learning:
+  - una fórmula de telescopio "primer término − último término" es un ERROR para gap ≥ 2: el número de
+    términos de borde que NO se cancelan es exactamente el gap. Cualquier sumatorio/telescopio nuevo
+    debe testearse con FUERZA BRUTA a gap variable, no solo gap 1 — el caso gap-1 esconde el bug.
+  - un wrong-answer puede sobrevivir a una huella verde si ninguna fixture cubre el régimen (aquí
+    gap ≥ 2): los fixtures de soundness deben barrer el PARÁMETRO (gap), no un único representante.
+  - residual (peldaño): telescópicas con denominador EXPANDIDO `1/(k²−1)`, `1/(4k²−1)` (el motor
+    expande `(k-1)(k+1)→k²−1` antes del builder; factorizar el cuadrático es el siguiente sub-ciclo).
