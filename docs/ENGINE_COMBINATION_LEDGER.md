@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 238 (newest first)
+Active entries: 239 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -123,6 +123,7 @@ Active entries: 238 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::inverse` + `MatrixInverseOutcome`, | Retained completeness: matrix inverse via adjugate/determinant (numeric exact)
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`split_reducible_even_quartic`, `rational_sq... | Retained capability: factor reducible even quartics over ℚ
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`split_reducible_even_poly`; `factor_over_ra... | Retained capability: factor reducible even polynomials (deg ≥6) via t=x²
+- 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`factor_sum_difference_of_cubes`, wired into... | Retained capability: factor sum/difference of cubes (bivariate)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10239,3 +10240,38 @@ Active entries: 238 (newest first)
   - generalisable: when an integral comes back residual, probe BOTH `is_some` and
     `verification_status` of the backend function. A `Some + verify=Failed` means the
     construction may be RIGHT and the verifier wrong — don't "fix" the (correct) construction.
+
+## 2026-06-21 - Retained capability: factor sum/difference of cubes (bivariate)
+- area:
+  - `crates/cas_math/src/factor.rs` (`factor_sum_difference_of_cubes`, wired into `factor`
+    after the difference-of-squares matcher)
+- status:
+  - `retained` (capability: `factor` recognises the bivariate sum/difference of cubes
+    identity `a³±b³`)
+- capture:
+  - investment_class: capability (pre-calculus factorization)
+  - cell: `factor(x³+y³)→(x+y)(x²-xy+y²)`, `factor(x³-y³)→(x-y)(x²+xy+y²)`,
+    `factor(a³-b³)→(a-b)(a²+ab+b²)`. Non-cube binomials/squares (`x²+y²`, `x³+y²`, `x+y`)
+    decline; univariate numeric cubes (`x³-8`) stay owned by `factor_polynomial` (rational
+    roots). Every factorization verified exact (`poly_eq` guard + expand∘factor=id test).
+  - behavior_change_expected: `factor` newly factors `a³±b³`; calculus guardrail+pressure
+    huella structurally NONE; workspace+clippy+fmt green
+- observed:
+  - the univariate factorizer (`factor_polynomial`) handles single-variable cubes via
+    rational roots (`x³-8`), but bivariate `a³±b³` is invisible to it (two variables). The
+    classic identity `a³+b³=(a+b)(a²-ab+b²)`, `a³-b³=(a-b)(a²+ab+b²)` is its own matcher,
+    sibling to the existing difference-of-squares / Sophie-Germain / binomial-cube
+    identities — distinct from the cycle-1/2 univariate even-poly work.
+- retained learning:
+  - guard an IDENTITY-based factor matcher with `poly_eq(input, candidate)`: build the
+    candidate `(a±b)(a²∓ab+b²)` from `get_cube_root_base`, then return it only if it equals
+    the input as a polynomial. This makes a simple cube-root extractor SAFE (a wrong/partial
+    root yields a candidate that fails `poly_eq` → declines) and is the same exactness
+    discipline the Vandermonde matcher uses.
+  - residual (peldaño): coefficient cubes `8x³+27y³=(2x+3y)(4x²-6xy+9y²)` need a richer
+    cube-root extractor (`get_cube_root_base` only matches the bare `Pow(_,3)` form), and
+    `factor(x¹²-1)` returns the call unevaluated (a separate higher-degree factor cap).
+  - REMAINING higher-value frontier (deferred, well-diagnosed): the `1/(x⁶-1)`
+    rational-integration verifier false-negative (`sqrt(3)·sqrt(3)` unreduced) — see the
+    even-poly ledger entry. That is the next north-star integration win when the verifier
+    is hardened.

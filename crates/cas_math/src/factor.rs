@@ -34,6 +34,11 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
         return res;
     }
 
+    // 4b. Try sum/difference of cubes: a³ ± b³ = (a ± b)(a² ∓ ab + b²)
+    if let Some(res) = factor_sum_difference_of_cubes(ctx, expr) {
+        return res;
+    }
+
     // 5. Try Sophie Germain identity: a^4 + 4b^4 = (a² + 2ab + 2b²)(a² - 2ab + 2b²)
     if let Some(res) = factor_sophie_germain(ctx, expr) {
         return res;
@@ -425,6 +430,49 @@ fn split_reducible_even_quartic(poly: &Polynomial) -> Option<(Polynomial, Polyno
         }
     }
     None
+}
+
+/// Factors a sum or difference of cubes: `a³ + b³ = (a+b)(a²-ab+b²)`,
+/// `a³ - b³ = (a-b)(a²+ab+b²)`. Recognises the `Pow(_, 3)` cube form (`x³±y³`,
+/// `a³-b³`); the candidate factorization is checked exact via `poly_eq`, so only a
+/// genuine identity is returned. (Univariate numeric cubes like `x³-8` are already
+/// factored by `factor_polynomial` via rational roots; coefficient cubes such as
+/// `8x³+27y³` need a richer cube-root extractor and stay whole here.)
+pub fn factor_sum_difference_of_cubes(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (l, r, is_difference) = match ctx.get(expr).clone() {
+        Expr::Sub(l, r) => (l, r, true),
+        Expr::Add(a, b) => {
+            if is_negative_term(ctx, b) {
+                (a, negate_term(ctx, b), true)
+            } else if is_negative_term(ctx, a) {
+                (b, negate_term(ctx, a), true)
+            } else {
+                (a, b, false)
+            }
+        }
+        _ => return None,
+    };
+    let a = get_cube_root_base(ctx, l)?;
+    let b = get_cube_root_base(ctx, r)?;
+
+    let two = ctx.num(2);
+    let a2 = ctx.add(Expr::Pow(a, two));
+    let b2 = ctx.add(Expr::Pow(b, two));
+    let ab = mul2_raw(ctx, a, b);
+
+    let (linear, quadratic) = if is_difference {
+        // (a - b)(a² + ab + b²)
+        let lin = ctx.add(Expr::Sub(a, b));
+        let inner = ctx.add(Expr::Add(a2, ab));
+        (lin, ctx.add(Expr::Add(inner, b2)))
+    } else {
+        // (a + b)(a² - ab + b²)
+        let lin = ctx.add(Expr::Add(a, b));
+        let inner = ctx.add(Expr::Sub(a2, ab));
+        (lin, ctx.add(Expr::Add(inner, b2)))
+    };
+    let candidate = mul2_raw(ctx, linear, quadratic);
+    poly_eq(ctx, expr, candidate).then_some(candidate)
 }
 
 /// Factors difference of squares: a^2 - b^2 -> (a-b)(a+b)
@@ -929,6 +977,41 @@ mod tests {
             let expr = parse(src, &mut ctx).unwrap();
             let factored = factor(&mut ctx, expr);
             assert_eq!(s(&ctx, factored), expect, "factor({src})");
+        }
+    }
+
+    #[test]
+    fn test_factor_sum_difference_of_cubes() {
+        for (src, expect) in [
+            ("x^3 + y^3", "(x + y) * (x^2 + y^2 - x * y)"),
+            ("x^3 - y^3", "(x - y) * (x^2 + y^2 + x * y)"),
+            ("a^3 - b^3", "(a - b) * (a^2 + b^2 + a * b)"),
+            ("a^3 + b^3", "(a + b) * (a^2 + b^2 - a * b)"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).unwrap();
+            let factored = factor(&mut ctx, expr);
+            assert_eq!(s(&ctx, factored), expect, "factor({src})");
+            // Exact: the factorization equals the input as a polynomial.
+            let reparsed = parse(&s(&ctx, factored), &mut ctx).unwrap();
+            assert!(
+                crate::poly_compare::poly_eq(&ctx, reparsed, expr),
+                "factor({src}) must be exact"
+            );
+        }
+    }
+
+    #[test]
+    fn test_cube_matcher_does_not_misfire() {
+        // Non-cube binomials and squares must NOT be factored by the cube matcher.
+        for src in ["x^2 + y^2", "x^3 + y^2", "x + y", "x^4 - y^4"] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).unwrap();
+            // The cube matcher specifically declines (returns None) for these.
+            assert!(
+                super::factor_sum_difference_of_cubes(&mut ctx, expr).is_none(),
+                "cube matcher must decline {src}"
+            );
         }
     }
 
