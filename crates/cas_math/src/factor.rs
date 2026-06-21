@@ -351,6 +351,51 @@ fn split_reducible_even_poly(poly: &Polynomial) -> Option<Vec<Polynomial>> {
     Some(result)
 }
 
+/// Exact rational cube root: `∛(p/q)` is rational iff `p` and `q` are both perfect cubes
+/// (cube root preserves sign, so negatives are fine). Returns `None` otherwise.
+fn rational_cbrt(r: &BigRational) -> Option<BigRational> {
+    use num_integer::Roots;
+    let (n, d) = (r.numer(), r.denom());
+    let (cn, cd) = (Roots::cbrt(n), Roots::cbrt(d));
+    if &(&cn * &cn * &cn) == n && &(&cd * &cd * &cd) == d {
+        Some(BigRational::new(cn, cd))
+    } else {
+        None
+    }
+}
+
+/// The exact cube root of a perfect-cube expression, or `None`. Handles a perfect-cube
+/// rational (`8 → 2`, `-27 → -3`), the `Pow(b, 3k)` form (`x³ → x`, `x⁶ → x²`), a product
+/// of perfect cubes (`8·x³ → 2·x`), and a negated cube. Used (under a `poly_eq` guard) by
+/// the sum/difference-of-cubes matcher so `8x³+27y³` factors too.
+fn perfect_cube_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Number(n) => rational_cbrt(&n).map(|c| ctx.add(Expr::Number(c))),
+        Expr::Pow(base, exp) => {
+            let e = match ctx.get(exp) {
+                Expr::Number(n) if n.is_integer() => n.to_integer().to_i64()?,
+                _ => return None,
+            };
+            if e <= 0 || e % 3 != 0 {
+                return None;
+            }
+            if e == 3 {
+                Some(base)
+            } else {
+                let k = ctx.num(e / 3);
+                Some(ctx.add(Expr::Pow(base, k)))
+            }
+        }
+        Expr::Mul(a, b) => {
+            let ra = perfect_cube_root(ctx, a)?;
+            let rb = perfect_cube_root(ctx, b)?;
+            Some(mul2_raw(ctx, ra, rb))
+        }
+        Expr::Neg(inner) => perfect_cube_root(ctx, inner).map(|r| ctx.add(Expr::Neg(r))),
+        _ => None,
+    }
+}
+
 /// Exact rational square root: `√(p/q)` for a non-negative reduced rational is rational
 /// iff both `p` and `q` are perfect squares. Returns `None` for negatives or non-squares.
 fn rational_sqrt(r: &BigRational) -> Option<BigRational> {
@@ -452,8 +497,8 @@ pub fn factor_sum_difference_of_cubes(ctx: &mut Context, expr: ExprId) -> Option
         }
         _ => return None,
     };
-    let a = get_cube_root_base(ctx, l)?;
-    let b = get_cube_root_base(ctx, r)?;
+    let a = perfect_cube_root(ctx, l)?;
+    let b = perfect_cube_root(ctx, r)?;
 
     let two = ctx.num(2);
     let a2 = ctx.add(Expr::Pow(a, two));
@@ -471,6 +516,16 @@ pub fn factor_sum_difference_of_cubes(ctx: &mut Context, expr: ExprId) -> Option
         let inner = ctx.add(Expr::Sub(a2, ab));
         (lin, ctx.add(Expr::Add(inner, b2)))
     };
+    // Expand the quadratic factor so a coefficient cube reads `4x²-6xy+9y²`, not
+    // `(2x)²-(2x)(3y)+(3y)²`. Value-preserving, so the `poly_eq` guard still holds.
+    let budget = PolyBudget {
+        max_terms: 16,
+        max_total_degree: 8,
+        max_pow_exp: 4,
+    };
+    let quadratic = multipoly_from_expr(ctx, quadratic, &budget)
+        .map(|p| multipoly_to_expr(&p, ctx))
+        .unwrap_or(quadratic);
     let candidate = mul2_raw(ctx, linear, quadratic);
     poly_eq(ctx, expr, candidate).then_some(candidate)
 }
@@ -987,6 +1042,12 @@ mod tests {
             ("x^3 - y^3", "(x - y) * (x^2 + y^2 + x * y)"),
             ("a^3 - b^3", "(a - b) * (a^2 + b^2 + a * b)"),
             ("a^3 + b^3", "(a + b) * (a^2 + b^2 - a * b)"),
+            // Coefficient cubes (perfect-cube coefficients).
+            (
+                "8*x^3 + 27*y^3",
+                "(2 * x + 3 * y) * (4 * x^2 + 9 * y^2 - 6 * x * y)",
+            ),
+            ("x^3 - 8*y^3", "(x - 2 * y) * (x^2 + 2 * x * y + 4 * y^2)"),
         ] {
             let mut ctx = Context::new();
             let expr = parse(src, &mut ctx).unwrap();

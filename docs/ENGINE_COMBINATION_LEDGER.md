@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 239 (newest first)
+Active entries: 240 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -124,6 +124,7 @@ Active entries: 239 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`split_reducible_even_quartic`, `rational_sq... | Retained capability: factor reducible even quartics over ℚ
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`split_reducible_even_poly`; `factor_over_ra... | Retained capability: factor reducible even polynomials (deg ≥6) via t=x²
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`factor_sum_difference_of_cubes`, wired into... | Retained capability: factor sum/difference of cubes (bivariate)
+- 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`perfect_cube_root`, `rational_cbrt`; | Retained capability: factor coefficient cubes (perfect-cube coefficients)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10275,3 +10276,41 @@ Active entries: 239 (newest first)
     rational-integration verifier false-negative (`sqrt(3)·sqrt(3)` unreduced) — see the
     even-poly ledger entry. That is the next north-star integration win when the verifier
     is hardened.
+
+## 2026-06-21 - Retained capability: factor coefficient cubes (perfect-cube coefficients)
+- area:
+  - `crates/cas_math/src/factor.rs` (`perfect_cube_root`, `rational_cbrt`;
+    `factor_sum_difference_of_cubes` now uses `perfect_cube_root` and expands the quadratic
+    factor via multipoly)
+- status:
+  - `retained` (capability: completes the previous cycle's bivariate cubes to cover
+    perfect-cube coefficients `8x³+27y³`)
+- capture:
+  - investment_class: capability (pre-calculus factorization)
+  - cell: `factor(8x³+27y³)→(2x+3y)(4x²-6xy+9y²)`, `factor(27a³-8b³)→(3a-2b)(9a²+6ab+4b²)`,
+    `factor(x³-8y³)→(x-2y)(x²+2xy+4y²)`; bare-variable cubes (`x³±y³`) and univariate numeric
+    cubes (`x³-8`, owned by `factor_polynomial`) unaffected. Exact (`poly_eq` guard +
+    expand∘factor=id test) and clean display (quadratic factor expanded, not `(2x)²`).
+  - behavior_change_expected: `factor` newly factors coefficient cubes; calculus
+    guardrail+pressure huella structurally NONE; workspace+clippy+fmt green
+- observed:
+  - `get_cube_root_base` only matched the bare `Pow(_,3)` form, so `8x³=Mul(8,x³)` had no
+    cube root. `perfect_cube_root` recurses: a perfect-cube rational via `rational_cbrt`
+    (numer and denom both perfect cubes, sign-preserving), the `Pow(b,3k)` form (`x⁶→x²`), a
+    product of perfect cubes (`8·x³→2·x`), and a negated cube.
+  - the built quadratic `(2x)²-(2x)(3y)+(3y)²` is value-correct but displays ugly; expanding
+    it through `multipoly_from_expr`/`multipoly_to_expr` yields `4x²-6xy+9y²` while keeping
+    the overall product factored — and it's value-preserving so the `poly_eq` guard still
+    certifies exactness.
+- retained learning:
+  - an identity-factor matcher that builds compound roots (`2x`, not just `x`) should EXPAND
+    its sub-factors through the multipoly round-trip for clean output; the `poly_eq`
+    exactness guard is unaffected by the expansion (same value).
+  - run summary (4 cycles): all four landed on the factorization front (reducible even
+    quartics → even polynomials deg≥6 → bivariate cubes → coefficient cubes) because the
+    cleanest, lowest-risk retainable wins clustered there; the strongest NON-factor
+    candidates probed (limit DNE diagnosis, `cos(0)` FTC folding, the `1/(x⁶-1)` verifier
+    `√3` false-negative) each turned out to be contract-conflicting or a deep, huella-
+    sensitive change unsuitable for a bounded cycle. NEXT runs should deliberately open a
+    different front — the well-diagnosed `1/(x⁶-1)` verifier hardening is the highest-value
+    deferred calculus item.
