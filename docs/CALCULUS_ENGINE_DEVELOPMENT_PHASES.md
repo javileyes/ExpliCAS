@@ -67,7 +67,7 @@ cuando, los tres se cumplen:
   (salto mágico que los docs prohíben). Es la mitad EDUCATIVA del north star — **pesa lo mismo
   que la universal**. *Prioridad sobre varios P2 de cobertura: mientras los límites no narren, el
   umbral "serio Y educativo" no se cruza.*
-  🔨 **Sub-ciclos 1-7 ATERRIZADOS 2026-06-21**: infraestructura de narración de límites en el
+  🔨 **Sub-ciclos 1-8 ATERRIZADOS 2026-06-21**: infraestructura de narración de límites en el
   pipeline de enriquecimiento de `cas_didactic` (`generate_limit_substeps`) + **métodos nombrados**
   — notables `sin/tan/arcsin/arctan/sinh/tanh(u)/u→1`, `(eᵘ−1)/u→1`, `(aᵘ−1)/u→ln(a)`, `ln(1+u)/u→1`,
   `(1−cos u)/u²→1/2`, `(1+u)^(1/u)→e` y su gemelo en ∞ `(1+1/x)^x→e` (sub-ciclo 7, definición de e);
@@ -76,9 +76,11 @@ cuando, los tres se cumplen:
   `tan(3x)/sin(2x)→3/2` cociente de DOS notables, `arcsin(x)/(5x)→1/5`); **teorema del sándwich**
   `u^k·sin/cos(1/u)→0`; **continuidad/sustitución directa** (polinomios); **factor-y-cancela** (0/0
   removible); y **dominancia en infinito** (cociente de coeficientes líderes / grado mayor → 0/±∞).
+  **dominancia logarítmica/exponencial** `ln(x)/x→0`, `x²/eˣ→0`, `eˣ/x³→∞`, `√x/ln(x)→∞` (sub-ciclo 8:
+  jerarquía `ln≪potencia≪exp` vía `enum LimitGrowthClass`, sound por confirmación del resultado).
   Todo sound por chequeo de resultado/grado, huella NONE. Siguiente sub-ciclo: raíz `(√(1+u)−1)/u→1/2`;
-  dominancia logarítmica/exponencial `ln(x)/x→0`, `x^a/e^x→0` en ∞; y (arquitectónico) cablear el PUNTO
-  del límite al paso para mostrar la sustitución concreta, narrar L'Hôpital/Taylor paso a paso.
+  forma PRODUCTO `e^{−x}·x²→0` (no cociente); bases `b^x`; y (arquitectónico) cablear el PUNTO del
+  límite al paso para mostrar la sustitución concreta, narrar L'Hôpital/Taylor paso a paso.
 
 ### Wins P1 baratos y de alto ROI (intercalar con los gatekeepers)
 - **Sintaxis `diff(expr, x, n)` (orden superior) y `diff(expr, x, y)` (parcial-mixta)** —

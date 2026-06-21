@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 265 (newest first)
+Active entries: 266 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -150,6 +150,7 @@ Active entries: 265 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: límite notable de argumento escalado f(a·u)/u → a
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: límite notable cruzado f(a·u)/g(b·u) → a/b
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: el límite notable en infinito (1+1/x)^x → e (definición de e)
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: dominancia logarítmica/exponencial en ∞ (ln ≪ potencia ≪ exp)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11356,3 +11357,41 @@ Active entries: 265 (newest first)
   - residual (peldaño G2): `(√(1+u)−1)/u → 1/2` (equivalente de la raíz / racionalización);
     `ln(x)/x → 0` y `x^a/e^x → 0` (dominancias logarítmica/exponencial en ∞ aún sin narrar);
     L'Hôpital/Taylor paso a paso y el cableado del PUNTO del límite (arquitectónico).
+
+## 2026-06-21 - G2 narrativa: dominancia logarítmica/exponencial en ∞ (ln ≪ potencia ≪ exp)
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`limit_infinity_dominance`: rama cruzada de clases de crecimiento antes de la comparación de
+    grados polinómica; nuevo `enum LimitGrowthClass {Log<Power<Exp}` + `limit_growth_class` +
+    `limit_is_log_power`)
+- status:
+  - `retained` (sub-ciclo G2: narra la jerarquía de dominancia ln≪potencia≪exp, antes sin substep)
+- capture:
+  - investment_class: capability (gatekeeper G2 — narración educativa de límites)
+  - primary_dimension: north_star_completeness (Fase 1, G2)
+  - secondary_dimension: didactic_value (una clasificación de crecimiento cubre 6+ formas cruzadas)
+  - cell: `ln(x)/x → 0`, `ln(x)²/x → 0`, `√x/ln(x) → ∞`, `x²/eˣ → 0`, `eˣ/x³ → ∞`, `ln(x)/eˣ → 0`
+    narran la jerarquía ("X crece más despacio/rápido que Y (ln ≪ potencia ≪ exp)"). La dominancia
+    polinómica (grados) ya existía; esto añade las clases log y exp.
+  - behavior_change_expected: cocientes cruzados log/potencia/exp en ∞ pasan de sin-substep a
+    narrados. Huella guardrail+pressure NONE.
+  - SOUNDNESS: narra solo cuando el resultado lo confirma (0 para la clase menor sobre la mayor, ±∞
+    para la mayor sobre la menor); la clase exp exige `e^{p(var)}` con grado≥1 y coeficiente líder
+    POSITIVO (así `e^{−x}` no se clasifica como exp y `x²/e^{−x}` declina); `sin(x)/x` (sin no está
+    en la jerarquía) declina. Narración pura → el gate de fase NO aplica.
+- observed:
+  - el `Polynomial::from_expr(num).ok()?` previo retornaba None en cuanto un lado no era polinomio
+    (`ln(x)`, `eˣ`), así que la rama cruzada DEBE ir antes; las mismas-clase (potencia/potencia)
+    caen a la comparación de grados existente intacta.
+  - `sqrt(x)` en el `before` del límite queda como `Function(sqrt)` (el simplificador no siempre lo
+    reescribe a `x^(1/2)`), mientras que `x^(1/2)` explícito sí es `Pow`: hubo que añadir el arm
+    `BuiltinFn::Sqrt`. Lección: clasificar por forma debe cubrir AMBAS grafías (función y potencia).
+- retained learning:
+  - una "jerarquía de dominancia" se modela como un `enum` ordenado (Ord derivado) + un clasificador
+    por expresión; la narración es entonces `clase(num) vs clase(den)` confirmada por el resultado.
+    Más general y robusto que un matcher por cada par de formas.
+  - el resultado como oráculo de soundness escala también a las dominancias: no se decide el límite,
+    se nombra la jerarquía que el motor ya resolvió (0 / ±∞).
+  - residual (peldaño G2): forma PRODUCTO `e^{−x}·x² → 0`, `x·e^{−x} → 0` (no es cociente; el
+    narrador solo ve `num/den`); `(√(1+u)−1)/u → 1/2` (equivalente de raíz); dominancia con bases
+    `b^x` (b>1) además de `eˣ`; L'Hôpital paso a paso.

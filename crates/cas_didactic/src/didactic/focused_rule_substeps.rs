@@ -19975,6 +19975,28 @@ fn limit_infinity_dominance(ctx: &Context, before: ExprId, after: ExprId) -> Opt
 
     if let Some((num, den)) = as_div(ctx, before) {
         let var = limit_single_var_name(ctx, num).or_else(|| limit_single_var_name(ctx, den))?;
+        // Cross-class growth dominance `ln(x) ≪ x^a ≪ e^x`: the higher class wins. Tried before the
+        // polynomial degree comparison so non-polynomial sides (ln(x), e^x) are classified; same-class
+        // quotients (power/power) fall through to the degree comparison below.
+        if let (Some(num_class), Some(den_class)) = (
+            limit_growth_class(ctx, num, &var),
+            limit_growth_class(ctx, den, &var),
+        ) {
+            if num_class < den_class && after_value.as_ref() == Some(&BigRational::zero()) {
+                return Some(format!(
+                    "Dominancia: {} crece más despacio que {} (jerarquía ln ≪ potencia ≪ exp), así que el cociente → 0",
+                    num_class.name(),
+                    den_class.name()
+                ));
+            }
+            if num_class > den_class && after_is_inf {
+                return Some(format!(
+                    "Dominancia: {} crece más rápido que {} (jerarquía ln ≪ potencia ≪ exp), así que el cociente → ±∞",
+                    num_class.name(),
+                    den_class.name()
+                ));
+            }
+        }
         let p = Polynomial::from_expr(ctx, num, &var).ok()?;
         let q = Polynomial::from_expr(ctx, den, &var).ok()?;
         return match p.degree().cmp(&q.degree()) {
@@ -20002,6 +20024,72 @@ fn limit_infinity_dominance(ctx: &Context, before: ExprId, after: ExprId) -> Opt
     }
 
     None
+}
+
+/// Growth-rate class of an expression at `var → ∞`, ordered `Log < Power < Exp` (the standard
+/// dominance hierarchy `ln(x) ≪ x^a ≪ e^x`). `None` for shapes outside the hierarchy.
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+enum LimitGrowthClass {
+    Log,
+    Power,
+    Exp,
+}
+
+impl LimitGrowthClass {
+    fn name(self) -> &'static str {
+        match self {
+            LimitGrowthClass::Log => "el logaritmo",
+            LimitGrowthClass::Power => "la potencia",
+            LimitGrowthClass::Exp => "la exponencial",
+        }
+    }
+}
+
+fn limit_growth_class(ctx: &Context, expr: ExprId, var: &str) -> Option<LimitGrowthClass> {
+    // Exponential `e^{p(var)}` with `p(var) → +∞` (polynomial of degree ≥ 1, positive leading
+    // coefficient) — the fastest class; checked first since `e^x` matches no other case.
+    if let Some(arg) = extract_exp_argument(ctx, expr) {
+        let p = Polynomial::from_expr(ctx, arg, var).ok()?;
+        return (p.degree() >= 1 && p.leading_coeff() > BigRational::zero())
+            .then_some(LimitGrowthClass::Exp);
+    }
+    // Logarithmic `ln(var)` or a positive-integer power of it — the slowest class.
+    if limit_is_log_power(ctx, expr, var) {
+        return Some(LimitGrowthClass::Log);
+    }
+    // Power: a polynomial of degree ≥ 1, or `var^a` with `a > 0` rational (covers `√x`).
+    if Polynomial::from_expr(ctx, expr, var).is_ok_and(|p| p.degree() >= 1) {
+        return Some(LimitGrowthClass::Power);
+    }
+    if let Some((base, exponent)) = as_pow(ctx, expr) {
+        if is_named_var(ctx, base, var) {
+            if let Some(a) = as_rational_const(ctx, exponent, 8) {
+                return (a > BigRational::zero()).then_some(LimitGrowthClass::Power);
+            }
+        }
+    }
+    // `sqrt(var)` left in function form (the simplifier does not always rewrite it to `var^(1/2)`)
+    // is also the Power class.
+    if let Some((arg, BuiltinFn::Sqrt)) = limit_unary_builtin(ctx, expr) {
+        return is_named_var(ctx, arg, var).then_some(LimitGrowthClass::Power);
+    }
+    None
+}
+
+/// `expr` is `ln(var)` or a positive-integer power of it (`ln(var)^k`, `k ≥ 1`).
+fn limit_is_log_power(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    let base = match ctx.get(expr) {
+        Expr::Pow(b, e) => {
+            let positive_integer = as_rational_const(ctx, *e, 8)
+                .is_some_and(|k| k.is_integer() && k > BigRational::zero());
+            if !positive_integer {
+                return false;
+            }
+            *b
+        }
+        _ => expr,
+    };
+    matches!(limit_unary_builtin(ctx, base), Some((arg, BuiltinFn::Ln)) if is_named_var(ctx, arg, var))
 }
 
 /// `expr` is `±∞` (`Constant::Infinity` or its negation).
@@ -21581,6 +21669,55 @@ mod limit_notable_tests {
         // structurally and because the result is not e).
         assert!(substep_titles_at_infinity("(1+2/x)^x", "e^2").is_empty());
         assert!(substep_titles_at_infinity("(1+1/x)^(2*x)", "e^2").is_empty());
+    }
+
+    #[test]
+    fn names_growth_class_dominance_at_infinity() {
+        // The hierarchy ln(x) ≪ x^a ≪ e^x: the higher class wins, narrated by the result (0 or ∞).
+        for (before, after, needle) in [
+            (
+                "ln(x)/x",
+                "0",
+                "el logaritmo crece más despacio que la potencia",
+            ),
+            (
+                "ln(x)^2/x",
+                "0",
+                "el logaritmo crece más despacio que la potencia",
+            ),
+            (
+                "sqrt(x)/ln(x)",
+                "infinity",
+                "la potencia crece más rápido que el logaritmo",
+            ),
+            (
+                "x^2/exp(x)",
+                "0",
+                "la potencia crece más despacio que la exponencial",
+            ),
+            (
+                "exp(x)/x^3",
+                "infinity",
+                "la exponencial crece más rápido que la potencia",
+            ),
+            (
+                "ln(x)/exp(x)",
+                "0",
+                "el logaritmo crece más despacio que la exponencial",
+            ),
+        ] {
+            let titles = substep_titles_at_infinity(before, after);
+            assert_eq!(titles.len(), 1, "{before} should name one dominance method");
+            assert!(
+                titles[0].contains(needle),
+                "{before}: expected `{needle}` in `{}`",
+                titles[0]
+            );
+        }
+        // Outside the hierarchy (bounded sin) or a wrong/structure-mismatched result must decline.
+        assert!(substep_titles_at_infinity("sin(x)/x", "0").is_empty());
+        // e^{-x} decays (negative leading exponent), so x^2/e^{-x} is not classified as exp.
+        assert!(substep_titles_at_infinity("x^2/exp(-x)", "infinity").is_empty());
     }
 
     #[test]
