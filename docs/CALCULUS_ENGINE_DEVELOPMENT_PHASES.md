@@ -116,8 +116,12 @@ cuando, los tres se cumplen:
   (`k²·(1/2)^k`) por la normalización a forma Div `k²/2^k` (preexistente: `k/2^k` ya era residual).
   El builder es exacto en ambos (test fold-vs-fuerza-bruta lo fija). ✅ **Forma cociente Div
   AÑADIDA 2026-06-21**: la suma aritmético-geométrica escrita `p(k)/r^k` (clásico `Σ k/2^k = 13/8`
-  en [1,4]) cierra leyendo la ratio 1/r del denominador. Residuales (peldaños): grado-2 fraccionario
-  (misma oscilación del orquestador) y la suma INFINITA convergente `Σ k·r^k` con |r|<1.
+  en [1,4]) cierra leyendo la ratio 1/r del denominador. ✅ **Suma INFINITA convergente AÑADIDA
+  2026-06-21**: `Σ_{k=a}^∞ p(k)·r^k` con |r|<1 → racional exacto (`Σ k/2^k = 2`, `Σ k²/2^k = 6`,
+  `Σ_{0} k/3^k = 3/4`); colas `r/(1−r)`, `r/(1−r)²`, `r(1+r)/(1−r)³` corregidas por la cota inferior
+  (refactor `decompose_arithmetic_geometric` compartido finito/infinito). Residuales (peldaños):
+  cofactor grado ≥3, cota inferior simbólica, r irracional; grado-2 fraccionario (oscilación del
+  orquestador).
 
 ### P2 / P3 (cobertura y pulido educativo)
 - Verifier false-negative de `1/(x^6-1)` (la antiderivada YA es correcta; falla al no reducir

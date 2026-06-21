@@ -325,6 +325,47 @@ fn try_convergent_infinite_geometric_sum(
     Some(ctx.add(Expr::Number(value)))
 }
 
+/// Closed form of a convergent arithmetic-geometric series `sum(p(k)·c·r^k, k, a, inf)` for a
+/// polynomial cofactor `p` of degree 1 or 2 and `|r| < 1` (integer lower bound `a ≥ 0`). The infinite
+/// tails from `k = 1` are exact rationals — `Σ r^k = r/(1−r)`, `Σ k·r^k = r/(1−r)²`,
+/// `Σ k²·r^k = r(1+r)/(1−r)³` — and the lower bound is corrected by the finite head (`Σ_{1}^{a-1}`)
+/// or, for `a = 0`, the extra `k = 0` term `p(0) = γ`. Returns `None` on divergence or a non-integer
+/// / negative lower bound (sound peldaños). Pure geometric (degree 0) is declined to its own builder.
+fn try_convergent_infinite_arithmetic_geometric_sum(
+    ctx: &mut Context,
+    call: &FiniteAggregateCall,
+) -> Option<ExprId> {
+    let (geometric_coefficient, ratio, [gamma, beta, alpha]) =
+        decompose_arithmetic_geometric(ctx, call.term, &call.var_name)?;
+    if ratio.is_zero() || ratio.abs() >= BigRational::one() {
+        return None;
+    }
+    let a = crate::expr_extract::extract_i64_integer(ctx, call.start_expr)?;
+    if a < 0 {
+        return None;
+    }
+    let one = BigRational::one();
+    let one_minus_r = one.clone() - ratio.clone();
+    let s0 = ratio.clone() / one_minus_r.clone();
+    let s1 = ratio.clone() / (one_minus_r.clone() * one_minus_r.clone());
+    let s2 = ratio.clone() * (one.clone() + ratio.clone())
+        / (one_minus_r.clone() * one_minus_r.clone() * one_minus_r.clone());
+    let mut value = alpha.clone() * s2 + beta.clone() * s1 + gamma.clone() * s0;
+    // Lower-bound correction relative to the `k ≥ 1` tails above.
+    if a == 0 {
+        value += gamma.clone(); // the extra k = 0 term: p(0)·r^0 = γ
+    } else {
+        for k in 1..a {
+            let rk = rational_pow_int(&ratio, k)?;
+            let kk = BigRational::from_integer(k.into());
+            let pk = alpha.clone() * kk.clone() * kk.clone() + beta.clone() * kk + gamma.clone();
+            value -= pk * rk;
+        }
+    }
+    value *= geometric_coefficient;
+    Some(ctx.add(Expr::Number(value)))
+}
+
 /// Classify a product `product(term, k, a, infinity)` whose upper bound is
 /// infinite. Returns the divergence value when provable, else `None`.
 fn classify_infinite_product(ctx: &mut Context, call: &FiniteAggregateCall) -> Option<ExprId> {
@@ -413,6 +454,13 @@ pub fn try_plan_finite_sum_evaluation(
         // Convergent geometric series `sum(c·r^k, k, a, inf) = c·r^a/(1-r)` (|r| < 1)
         // is tried first; otherwise classify the divergence.
         if let Some(candidate) = try_convergent_infinite_geometric_sum(ctx, &call) {
+            return Some(SumEvaluationPlan {
+                call,
+                candidate,
+                kind: SumEvaluationKind::ConvergentInfinite,
+            });
+        }
+        if let Some(candidate) = try_convergent_infinite_arithmetic_geometric_sum(ctx, &call) {
             return Some(SumEvaluationPlan {
                 call,
                 candidate,
@@ -1491,26 +1539,17 @@ fn is_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
 }
 
-/// Closed form for the polynomial-times-geometric sum `Σ_{k=start}^{end} p(k)·c·r^k`, where
-/// `p` is a polynomial in the index of degree 1 or 2 and `r` is a rational ratio ≠ 0, 1.
-/// Matches a product of one geometric power `r^k` and a polynomial cofactor (the bare index
-/// `k`, `k²`, and constants), then sums by linearity:
-/// `Σ(α·k² + β·k + γ)·r^k = α·S₂ + β·S₁ + γ·S₀`, with `S₀ = Σr^k`, `S₁ = Σk·r^k`,
-/// `S₂ = Σk²·r^k`. Degree 0 (a pure geometric) is declined so the geometric builder owns it.
-pub fn try_build_arithmetic_geometric_sum(
+/// Decompose `summand` as `c · p(k) · r^k`, with `r` a rational ratio ≠ 0, 1 and `p` a polynomial
+/// cofactor of degree 1 or 2 in the index. Returns `(c, r, [γ, β, α])` for `p(k) = α·k² + β·k + γ`.
+/// Flattens the product into one geometric factor `r^k` and a polynomial cofactor (the bare `k`,
+/// `k²`, constants); a single `Div(p(k), r^k)` leaf (e.g. `k/2^k`) is the geometric written with a
+/// negative exponent, which `mul_leaves` does not split, so `len == 1` is admissible. Degree 0 (a
+/// pure geometric) and non-polynomial cofactors (`1/k`, `√k`) are declined.
+fn decompose_arithmetic_geometric(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
-    start: ExprId,
-    end: ExprId,
-) -> Option<ExprId> {
-    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
-        return None;
-    }
-    // Flatten the product: exactly one geometric `c·r^k`; everything else forms a polynomial
-    // cofactor p(k) in the index (the bare `k`, `k²`, and constant factors). A single
-    // `Div(p(k), r^k)` leaf (e.g. `k/2^k`) is the geometric written with a negative exponent —
-    // `mul_leaves` does not split it, so `len == 1` is admissible when that leaf is such a quotient.
+) -> Option<(BigRational, BigRational, [BigRational; 3])> {
     let leaves = expr_nary::mul_leaves(ctx, summand);
     if leaves.is_empty() {
         return None;
@@ -1545,30 +1584,37 @@ pub fn try_build_arithmetic_geometric_sum(
     if geometric_coefficient.is_zero() {
         return None;
     }
-    // The remaining factors must form a polynomial in the index of degree 1 or 2. A degree-0
-    // cofactor (no index dependence) is a pure geometric sum — declined here so the geometric
-    // builder owns it; a non-polynomial cofactor (e.g. `1/k`, `√k`) makes `from_expr` fail.
     let cofactor = product_of_leaves(ctx, &cofactor_leaves)?;
     let poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
     let degree = poly.degree();
     if degree == 0 || degree > 2 {
         return None;
     }
-    let gamma = poly
-        .coeffs
-        .first()
-        .cloned()
-        .unwrap_or_else(BigRational::zero);
-    let beta = poly
-        .coeffs
-        .get(1)
-        .cloned()
-        .unwrap_or_else(BigRational::zero);
-    let alpha = poly
-        .coeffs
-        .get(2)
-        .cloned()
-        .unwrap_or_else(BigRational::zero);
+    let coeff = |i: usize| {
+        poly.coeffs
+            .get(i)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+    };
+    Some((geometric_coefficient, ratio, [coeff(0), coeff(1), coeff(2)]))
+}
+
+/// Closed form for the polynomial-times-geometric sum `Σ_{k=start}^{end} p(k)·c·r^k`, where
+/// `p` is a polynomial in the index of degree 1 or 2 and `r` is a rational ratio ≠ 0, 1.
+/// Sums by linearity `Σ(α·k² + β·k + γ)·r^k = α·S₂ + β·S₁ + γ·S₀`, with `S₀ = Σr^k`, `S₁ = Σk·r^k`,
+/// `S₂ = Σk²·r^k`. Degree 0 (a pure geometric) is declined so the geometric builder owns it.
+pub fn try_build_arithmetic_geometric_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
+        return None;
+    }
+    let (geometric_coefficient, ratio, [gamma, beta, alpha]) =
+        decompose_arithmetic_geometric(ctx, summand, var)?;
 
     // α·S₂ + β·S₁ + γ·S₀, then the geometric coefficient out front.
     let mut terms: Vec<ExprId> = Vec::new();
@@ -2995,6 +3041,32 @@ mod tests {
                 assert_eq!(value, brute, "sum({summand}, k, {start}, {n})");
             }
         }
+    }
+
+    #[test]
+    fn convergent_infinite_arithmetic_geometric_sums_are_exact() {
+        // `Σ_{k=a}^∞ p(k)·r^k` for |r| < 1 is an exact rational (tails r/(1−r), r/(1−r)², r(1+r)/
+        // (1−r)³ corrected for the lower bound). Each closed form is checked against its known value.
+        for (src, num, den) in [
+            ("sum(k/2^k, k, 1, inf)", 2i64, 1i64),
+            ("sum(k^2/2^k, k, 1, inf)", 6, 1),
+            ("sum(k*(1/2)^k, k, 1, inf)", 2, 1),
+            ("sum(k/3^k, k, 0, inf)", 3, 4),
+            ("sum((2*k+1)/2^k, k, 1, inf)", 5, 1),
+            ("sum(k/3^k, k, 2, inf)", 5, 12),
+        ] {
+            let mut ctx = Context::new();
+            let full = cas_parser::parse(src, &mut ctx).expect("parse");
+            let plan = try_plan_finite_sum_evaluation(&mut ctx, full, 1000)
+                .unwrap_or_else(|| panic!("plan for {src}"));
+            let value = fold_const(&ctx, plan.candidate).unwrap_or_else(|| panic!("fold {src}"));
+            assert_eq!(value, BigRational::new(num.into(), den.into()), "{src}");
+        }
+        // Divergent ratio (|r| ≥ 1) is not a convergent arithmetic-geometric series.
+        let mut ctx = Context::new();
+        let div = cas_parser::parse("sum(k*2^k, k, 1, inf)", &mut ctx).expect("parse");
+        let call = super::try_extract_finite_aggregate_call(&ctx, div, "sum").expect("call");
+        assert!(super::try_convergent_infinite_arithmetic_geometric_sum(&mut ctx, &call).is_none());
     }
 
     #[test]

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 267 (newest first)
+Active entries: 268 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -152,6 +152,7 @@ Active entries: 267 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: el límite notable en infinito (1+1/x)^x → e (definición de e)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: dominancia logarítmica/exponencial en ∞ (ln ≪ potencia ≪ exp)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: equivalente binomial/raíz ((1+u)^a − 1)/u → a
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Suma INFINITA aritmético-geométrica convergente Σ_{k=a}^∞ p(k)·r^k (|r|<1)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11426,3 +11427,39 @@ Active entries: 267 (newest first)
     "lee el parámetro, el resultado es el oráculo". La librería de notables converge a esa plantilla.
   - residual (peldaño): el EVALUADOR de límites no computa raíces no-cuadradas `(1+x)^(1/n)` ni la
     forma producto `e^{−x}·x²`; narrar L'Hôpital paso a paso; cablear el PUNTO del límite.
+
+## 2026-06-21 - Suma INFINITA aritmético-geométrica convergente Σ_{k=a}^∞ p(k)·r^k (|r|<1)
+- area:
+  - `crates/cas_math/src/summation_support.rs`
+    (`try_convergent_infinite_arithmetic_geometric_sum` + wiring en la rama de cota infinita;
+    REFACTOR: extraído `decompose_arithmetic_geometric` compartido por el builder finito y el infinito)
+- status:
+  - `retained` (capability: cierra la serie infinita aritmético-geométrica convergente, antes residual)
+- capture:
+  - investment_class: capability (Fase 1, win P1 — sumatorios; peldaño declarado del run previo)
+  - primary_dimension: north_star_completeness (Fase 1, sumatorios)
+  - secondary_dimension: reuse_value (las colas infinitas son las identidades finitas con r^n→0;
+    el REFACTOR DRY hace que finito e infinito compartan la descomposición)
+  - cell: `Σ k/2^k = 2`, `Σ k²/2^k = 6`, `Σ k·(1/2)^k = 2`, `Σ_{0} k/3^k = 3/4`, `Σ (2k+1)/2^k = 5`,
+    `Σ_{2} k/3^k = 5/12` — resultado RACIONAL exacto. Colas k≥1: `r/(1−r)`, `r/(1−r)²`, `r(1+r)/(1−r)³`;
+    corrección de cota inferior por el head finito `Σ_{1}^{a-1}` (o el término k=0 = γ si a=0).
+  - behavior_change_expected: las series infinitas `p(k)·r^k` con |r|<1 pasan de residual a un número.
+    Huella guardrail+pressure NONE (ninguna fixture cubría infinito arith-geo).
+  - SOUNDNESS: todo `BigRational` exacto; convergencia gateada por `|r|<1` (divergente declina → cae a
+    `classify_infinite_sum` → ∞); cota inferior no-entera o negativa → residual honesto. Test compara
+    las formas cerradas con sus valores conocidos y verifica el rechazo divergente (`Σ k·2^k`).
+- observed:
+  - la serie INFINITA convergente es más simple que la finita: el resultado es un NÚMERO (no expr
+    simbólica), porque los términos r^n, r^(n+1) de la fórmula finita se anulan con |r|<1. Las colas
+    quedan como tres rationals; la cota inferior se corrige con un head finito por fuerza bruta (a-1
+    términos) o el término k=0.
+  - el REFACTOR `decompose_arithmetic_geometric` (descomposición c·p(k)·r^k → (c, r, [γ,β,α]),
+    incluida la grafía Div `k/2^k`) se reusa entre el builder finito y el infinito sin duplicar.
+- retained learning:
+  - cuando ya existe el builder FINITO de una familia, el INFINITO convergente suele ser "toma el
+    límite n→∞ de la forma cerrada": con |r|<1 los términos de borde se anulan y queda un valor
+    exacto. Reusar la descomposición (no la construcción simbólica) es el corte natural.
+  - antes de añadir el caso infinito, EXTRAE la descomposición compartida — evita el duplicado que
+    el ciclo previo tuvo que limpiar a posteriori (lección de dedup aplicada por adelantado).
+  - residual (peldaño): cofactor de grado ≥3 (colas Sₚ generales); cota inferior simbólica;
+    `Σ p(k)·r^k` con r irracional; y la forma producto `e^{−x}·x²` para el narrador de límites.
