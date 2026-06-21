@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 254 (newest first)
+Active entries: 255 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -139,6 +139,7 @@ Active entries: 254 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 gatekeeper sub-ciclo 3: continuidad (sustitución directa) y factor-y-cancela
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`limit_infinity_... | G2 gatekeeper sub-ciclo 4: límites en infinito por dominancia
 - 2026-06-21 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` | Transcendental u-substitution by guess-and-verify (cos(x)·e^(sin x), etc.)
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 narration: reciprocal notable limits (u/sin(u) → 1, etc.)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10931,3 +10932,28 @@ Active entries: 254 (newest first)
     constant the engine doesn't pre-factor; `f(g)/x` log-substitution forms where the derivative's
     `1/x` is a `Mul`-reciprocal vs the integrand's `Div` (e.g. `sin(ln x)/x`); and outer `f` beyond
     exp/sin/cos/sinh/cosh (tan, ln, inverse-trig).
+
+## 2026-06-21 - G2 narration: reciprocal notable limits (u/sin(u) → 1, etc.)
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_name`: a
+    reciprocal arm `u/f(u) → 1`)
+- status:
+  - `retained` (extends the limit-pedagogy gatekeeper narration to the reciprocal first-order
+    equivalents)
+- capture:
+  - investment_class: capability (educational narration)
+  - primary_dimension: north_star_completeness (Fase 1, gatekeeper G2)
+  - cell: `limit(x/sin(x), x, 0)` narra "lím(u→0) u/sin(u) = 1"; igual para `u/tan(u)`,
+    `u/arcsin(u)`, `u/arctan(u)`, `u/sinh(u)`, `u/tanh(u)`, y `u/(e^u − 1) = 1`.
+  - behavior_change_expected: los recíprocos de los equivalentes de primer orden ganan substep.
+    Huella guardrail+pressure NONE. Workspace 12247 passed / 0 failed; clippy/fmt verdes.
+  - SOUNDNESS: solo narra cuando `after == 1` y `num` es la variable bare con `den = f(num)`
+    estructuralmente — `x/sin(x)` en un punto ≠ 0 (no 0/0) no se narra.
+- observed:
+  - el recíproco reusa los mismos helpers (`first_order_equivalent_name`, `limit_is_exp_minus_one`)
+    intercambiando numerador/denominador; una rama de ~12 líneas.
+- retained learning:
+  - una familia de narración por reconocimiento de patrón se duplica casi gratis por sus inversos
+    cuando el oráculo de resultado (after == valor) sigue siendo el mismo; reutiliza los matchers.
+  - residual (peldaño): sigue pendiente el sub-ciclo arquitectónico de cablear el PUNTO del límite
+    para la sustitución concreta y L'Hôpital/Taylor narrados (sin cambios respecto al run anterior).

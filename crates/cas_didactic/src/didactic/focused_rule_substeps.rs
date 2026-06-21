@@ -19648,6 +19648,19 @@ fn notable_limit_name(
                 }
             }
         }
+        // num is the bare variable u: the RECIPROCAL notables u/f(u) → 1.
+        if matches!(ctx.get(num), Expr::Variable(_)) && after_is(BigRational::one()) {
+            if let Some((arg, builtin)) = limit_unary_builtin(ctx, den) {
+                if compare_expr(ctx, arg, num) == Ordering::Equal {
+                    if let Some(name) = first_order_equivalent_name(builtin) {
+                        return Some(format!("{prefix}lím(u→0) u/{name}(u) = 1"));
+                    }
+                }
+            }
+            if limit_is_exp_minus_one(ctx, den, num) {
+                return Some(format!("{prefix}lím(u→0) u/(e^u − 1) = 1"));
+            }
+        }
         // den is u²: (1 − cos(u))/u² → 1/2.
         if after_is(BigRational::new(1.into(), 2.into())) {
             if let Some(u) = limit_square_of_var(ctx, den) {
@@ -21467,6 +21480,10 @@ mod limit_notable_tests {
             ("(1+x)^(1/x)", "e", "(1 + u)^(1/u) = e"),
             ("x*sin(1/x)", "0", "teorema del sándwich"),
             ("x^2*cos(1/x)", "0", "teorema del sándwich"),
+            ("x/sin(x)", "1", "u/sin(u) = 1"),
+            ("x/tan(x)", "1", "u/tan(u) = 1"),
+            ("x/(exp(x)-1)", "1", "u/(e^u − 1) = 1"),
+            ("x/arcsin(x)", "1", "u/arcsin(u) = 1"),
         ] {
             let titles = substep_titles(before, after);
             assert_eq!(titles.len(), 1, "{before} should name one notable limit");
