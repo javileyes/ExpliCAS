@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 235 (newest first)
+Active entries: 236 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
 - 2026-06-21 | `retained` | `crates/cas_api_models/src/wire_types.rs` (`parse_solve_system_list_command` ... | Retained completeness: solve([eqs], [vars]) list form routed to the existing linear-system solver
+- 2026-06-21 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::inverse` + `MatrixInverseOutcome`, | Retained completeness: matrix inverse via adjugate/determinant (numeric exact)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10103,3 +10104,53 @@ Active entries: 235 (newest first)
     over/under-determined systems through the list surface; a parametric/`Conditional`
     rendering of the infinite-solution family (`LinSolveResult::Infinite` currently prints
     a message, not `x = 2t, y = 3 - t`).
+
+## 2026-06-21 - Retained completeness: matrix inverse via adjugate/determinant (numeric exact)
+- area:
+  - `crates/cas_math/src/matrix.rs` (`Matrix::inverse` + `MatrixInverseOutcome`,
+    `Matrix::det_of_slice`);
+    `crates/cas_engine/src/matrix_rule_support.rs` (`MatrixFunctionEval::Inverse` variant,
+    `"inverse"|"inv"` dispatch, rewrite materialization + desc);
+    `crates/cas_session_core/src/eval.rs` (`is_known_eval_engine_function` allowlist) and
+    `.../env.rs` (`RESERVED_NAMES`)
+- status:
+  - `retained` (completeness: `inverse(M)`/`inv(M)` evaluate; the flagship op of
+    Completeness-critic item #1, matrix algebra)
+- capture:
+  - investment_class: completeness
+  - cell: `inverse([[1,2],[3,4]])→[[-2, 1], [3/2, -1/2]]`;
+    3×3 `inverse([[1,2,3],[0,1,4],[5,6,0]])→[[-24, 18, 5], [20, -15, -4], [-5, 4, 1]]`
+    (`A·inverse(A)=I` verified exactly); `inverse([[5]])→[1/5]`; singular (det 0, incl.
+    two equal symbolic rows) → `undefined`; non-square → symbolic. det/trace/transpose
+    unchanged.
+  - behavior_change_expected: a new evaluated matrix function; calculus/simplify
+    guardrail+pressure huella structurally NONE (no overlap); workspace+clippy+fmt green
+- observed (Completeness-critic item #1 from the Round-4 audit — matrix algebra):
+  - the audit flagged "inverse/eigenvalues/rank; big". Scoping found det/trace/transpose
+    (incl. an n≥4 symbolic cofactor `determinant`) and matrix +/×/scalar already present.
+    Inverse reuses that cofactor machinery: `inverse = adjugate/det`,
+    `adjugate[i][j]=cofactor[j][i]`, `cofactor[i][j]=(-1)^(i+j)·det(minor(i,j))`. Added a
+    clean recursive `det_of_slice` (handles all n, with the 0×0 base = empty product 1 so
+    1×1 cofactors bottom out).
+  - the singular guard is `as_rational_const(det)==0` (numeric) OR `is_provably_zero(det)`
+    (structural, e.g. equal rows) ⇒ no inverse ⇒ `undefined` (honest, sound).
+- retained learning:
+  - the SAME node-growth guard that reverted the complex i-fold this batch (see the
+    value-domain-aware-backstop entry) also silently swallows a matrix rewrite: the raw
+    `cofactor/det` inverse (det repeated per entry) is far larger than `inverse(M)`, so the
+    rule fired but the result didn't stick (only 1×1 and the `undefined` singular case,
+    both small, survived). The fix is to emit a SMALL result: fold each numeric entry to an
+    exact rational with `as_rational_const` BEFORE building the matrix. General lesson: a
+    rule that materialises a big intermediate must pre-fold to its compact final form, or
+    the anti-worsen/growth guard rejects it.
+  - a new evaluated function needs THREE registrations beyond the math: the name dispatch
+    (`try_eval_matrix_function_expr`), the eval-engine allowlist
+    (`cas_session_core::eval::is_known_eval_engine_function`, else "función no definida"
+    fires before the rule), and `RESERVED_NAMES` (so it can't be shadowed as a variable).
+    det/transpose/trace are the template for all three.
+  - residual (sound, not done): `rank` (numeric Gaussian row-reduction — needs a rational
+    row-reducer in cas_math, since the linear_system one lives in cas_solver, which
+    cas_math cannot depend on), `eigenvalues` (characteristic-polynomial roots, often
+    irrational/complex — a genuinely larger effort), and the SYMBOLIC non-singular inverse
+    `[[a,b],[c,d]]→[[d,-b],[-c,a]]/(ad-bc)` (kept symbolic; the quotient form trips the
+    growth guard — would need an always-keep/didactic exemption).

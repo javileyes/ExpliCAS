@@ -374,6 +374,111 @@ impl Matrix {
 
         minor
     }
+
+    /// Determinant of an `n×n` matrix given as a row-major slice, by recursive cofactor
+    /// expansion along the first row. `n = 0` is the empty product `1` (the determinant
+    /// of the `0×0` matrix), which lets the `1×1` cofactors of a `1×1` inverse bottom out
+    /// cleanly. Builds a symbolic expression, so it works for numeric and symbolic
+    /// entries alike; numeric entries fold to an exact rational under simplification.
+    fn det_of_slice(ctx: &mut Context, n: usize, data: &[ExprId]) -> ExprId {
+        match n {
+            0 => ctx.num(1),
+            1 => data[0],
+            2 => {
+                let ad = mul2_raw(ctx, data[0], data[3]);
+                let bc = mul2_raw(ctx, data[1], data[2]);
+                ctx.add(Expr::Sub(ad, bc))
+            }
+            _ => {
+                let mut result: Option<ExprId> = None;
+                for j in 0..n {
+                    let minor = Self::get_minor(data, n, 0, j);
+                    let minor_det = Self::det_of_slice(ctx, n - 1, &minor);
+                    let prod = mul2_raw(ctx, data[j], minor_det);
+                    let term = if j % 2 == 0 {
+                        prod
+                    } else {
+                        ctx.add(Expr::Neg(prod))
+                    };
+                    result = Some(match result {
+                        None => term,
+                        Some(acc) => ctx.add(Expr::Add(acc, term)),
+                    });
+                }
+                result.unwrap_or_else(|| ctx.num(0))
+            }
+        }
+    }
+
+    /// Compute the inverse of a square matrix as `adjugate / determinant`, where
+    /// `adjugate[i][j] = cofactor[j][i]` and `cofactor[i][j] = (-1)^(i+j)·det(minor(i,j))`.
+    ///
+    /// Returns `None` for a non-square matrix (the `inverse(...)` call is left symbolic),
+    /// [`MatrixInverseOutcome::Singular`] when the determinant is provably zero (no
+    /// inverse exists), and otherwise the inverse matrix. Each entry is built as
+    /// `cofactor / det`; for a numeric matrix this folds to an exact rational under
+    /// simplification (e.g. `inverse([[1,2],[3,4]]) = [[-2, 1], [3/2, -1/2]]`), and for a
+    /// symbolic matrix it yields the standard generic inverse (valid where `det ≠ 0`).
+    pub fn inverse(&self, ctx: &mut Context) -> Option<MatrixInverseOutcome> {
+        if self.rows != self.cols {
+            return None; // inverse is only defined for square matrices
+        }
+        let n = self.rows;
+        let det = self.determinant(ctx)?;
+        // Provably-singular ⇒ no inverse. The numeric `as_rational_const` check catches a
+        // det that folds to literal `0` (`[[1,2],[2,4]]`); `is_provably_zero` additionally
+        // catches structural zeros (e.g. two equal rows of a symbolic matrix).
+        let det_is_zero = crate::numeric_eval::as_rational_const(ctx, det)
+            .map(|r| num_traits::Zero::is_zero(&r))
+            .unwrap_or(false)
+            || crate::arithmetic_cancel_support::is_provably_zero(ctx, det);
+        if det_is_zero {
+            return Some(MatrixInverseOutcome::Singular);
+        }
+
+        // Fold the determinant to a literal rational when the matrix is numeric, so each
+        // inverse entry can be emitted as an exact rational rather than a deep
+        // `cofactor / det` quotient (the latter trips the simplifier's node-growth guard
+        // and leaves `inverse(...)` unfolded).
+        let det_rat = crate::numeric_eval::as_rational_const(ctx, det);
+
+        let mut data = Vec::with_capacity(n * n);
+        for i in 0..n {
+            for j in 0..n {
+                // inverse[i][j] = adjugate[i][j] / det = cofactor(j, i) / det.
+                let minor = Self::get_minor(&self.data, n, j, i);
+                let minor_det = Self::det_of_slice(ctx, n - 1, &minor);
+                let signed = if (i + j) % 2 == 0 {
+                    minor_det
+                } else {
+                    ctx.add(Expr::Neg(minor_det))
+                };
+                // Numeric matrix ⇒ exact rational entry; symbolic matrix ⇒ the generic
+                // `cofactor / det` quotient (valid where `det ≠ 0`).
+                let entry = match (
+                    &det_rat,
+                    crate::numeric_eval::as_rational_const(ctx, signed),
+                ) {
+                    (Some(den), Some(num)) => ctx.add(Expr::Number(num / den)),
+                    _ => ctx.add(Expr::Div(signed, det)),
+                };
+                data.push(entry);
+            }
+        }
+        Some(MatrixInverseOutcome::Inverse(Matrix {
+            rows: n,
+            cols: n,
+            data,
+        }))
+    }
+}
+
+/// Result of a matrix inversion: either the inverse matrix, or a proof that the matrix
+/// is singular (its determinant is provably zero ⇒ no inverse exists).
+#[derive(Debug, Clone)]
+pub enum MatrixInverseOutcome {
+    Inverse(Matrix),
+    Singular,
 }
 
 #[cfg(test)]
@@ -480,5 +585,126 @@ mod tests {
         // The result is an expression tree, would need simplification to verify = -2
         // For now just check it returns something
         assert!(matches!(ctx.get(det), Expr::Sub(_, _)));
+    }
+
+    // Build an n×n matrix from a row-major list of integers.
+    fn int_matrix(ctx: &mut Context, n: usize, vals: &[i64]) -> Matrix {
+        Matrix {
+            rows: n,
+            cols: n,
+            data: vals.iter().map(|&v| ctx.num(v)).collect(),
+        }
+    }
+
+    // Expect each entry of a folded (numeric) inverse to equal the given rational.
+    fn assert_inverse_entries(ctx: &Context, inv: &Matrix, expected: &[(i64, i64)]) {
+        use num_rational::BigRational;
+        assert_eq!(inv.data.len(), expected.len());
+        for (entry, &(num, den)) in inv.data.iter().zip(expected) {
+            let got = crate::numeric_eval::as_rational_const(ctx, *entry)
+                .unwrap_or_else(|| panic!("inverse entry should fold to a rational"));
+            assert_eq!(
+                got,
+                BigRational::new(num.into(), den.into()),
+                "entry value mismatch"
+            );
+        }
+    }
+
+    #[test]
+    fn test_inverse_2x2_numeric() {
+        let mut ctx = Context::new();
+        // inverse([[1,2],[3,4]]) = [[-2, 1], [3/2, -1/2]]
+        let m = int_matrix(&mut ctx, 2, &[1, 2, 3, 4]);
+        let MatrixInverseOutcome::Inverse(inv) = m.inverse(&mut ctx).unwrap() else {
+            panic!("expected an invertible matrix");
+        };
+        assert_eq!((inv.rows, inv.cols), (2, 2));
+        assert_inverse_entries(&ctx, &inv, &[(-2, 1), (1, 1), (3, 2), (-1, 2)]);
+    }
+
+    #[test]
+    fn test_inverse_diagonal_and_1x1() {
+        let mut ctx = Context::new();
+        // inverse([[2,0],[0,4]]) = [[1/2, 0], [0, 1/4]]
+        let diag = int_matrix(&mut ctx, 2, &[2, 0, 0, 4]);
+        let MatrixInverseOutcome::Inverse(inv) = diag.inverse(&mut ctx).unwrap() else {
+            panic!("expected invertible");
+        };
+        assert_inverse_entries(&ctx, &inv, &[(1, 2), (0, 1), (0, 1), (1, 4)]);
+
+        // inverse([[5]]) = [[1/5]]
+        let one = int_matrix(&mut ctx, 1, &[5]);
+        let MatrixInverseOutcome::Inverse(inv1) = one.inverse(&mut ctx).unwrap() else {
+            panic!("expected invertible 1x1");
+        };
+        assert_inverse_entries(&ctx, &inv1, &[(1, 5)]);
+    }
+
+    #[test]
+    fn test_inverse_3x3_numeric() {
+        let mut ctx = Context::new();
+        // det = 1; inverse([[1,2,3],[0,1,4],[5,6,0]]) = [[-24,18,5],[20,-15,-4],[-5,4,1]]
+        let m = int_matrix(&mut ctx, 3, &[1, 2, 3, 0, 1, 4, 5, 6, 0]);
+        let MatrixInverseOutcome::Inverse(inv) = m.inverse(&mut ctx).unwrap() else {
+            panic!("expected invertible 3x3");
+        };
+        assert_inverse_entries(
+            &ctx,
+            &inv,
+            &[
+                (-24, 1),
+                (18, 1),
+                (5, 1),
+                (20, 1),
+                (-15, 1),
+                (-4, 1),
+                (-5, 1),
+                (4, 1),
+                (1, 1),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_inverse_singular_is_detected() {
+        let mut ctx = Context::new();
+        // det([[1,2],[2,4]]) = 0 -> singular.
+        let m = int_matrix(&mut ctx, 2, &[1, 2, 2, 4]);
+        assert!(matches!(
+            m.inverse(&mut ctx).unwrap(),
+            MatrixInverseOutcome::Singular
+        ));
+
+        // Two identical symbolic rows are structurally singular for all values.
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let sym = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![a, b, a, b],
+        };
+        assert!(matches!(
+            sym.inverse(&mut ctx).unwrap(),
+            MatrixInverseOutcome::Singular
+        ));
+    }
+
+    #[test]
+    fn test_inverse_non_square_is_none() {
+        let mut ctx = Context::new();
+        let m = Matrix {
+            rows: 2,
+            cols: 3,
+            data: vec![
+                ctx.num(1),
+                ctx.num(2),
+                ctx.num(3),
+                ctx.num(4),
+                ctx.num(5),
+                ctx.num(6),
+            ],
+        };
+        assert!(m.inverse(&mut ctx).is_none());
     }
 }

@@ -3,8 +3,8 @@
 //! These helpers evaluate matrix operation patterns directly from expression
 //! nodes and return structured metadata for caller-owned narration.
 
-use cas_ast::{Context, Expr, ExprId};
-use cas_math::matrix::Matrix;
+use cas_ast::{Constant, Context, Expr, ExprId};
+use cas_math::matrix::{Matrix, MatrixInverseOutcome};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MatrixShape {
@@ -99,6 +99,12 @@ pub enum MatrixFunctionEval {
         shape: MatrixShape,
         value: ExprId,
     },
+    Inverse {
+        shape: MatrixShape,
+        /// `Some(inverse)` for an invertible matrix; `None` when the matrix is provably
+        /// singular (determinant zero ⇒ no inverse, rewritten to `undefined`).
+        matrix: Option<Matrix>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -121,6 +127,16 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
         }
         MatrixFunctionEval::Trace { shape, .. } => {
             format!("trace({}×{} matrix)", shape.rows, shape.cols)
+        }
+        MatrixFunctionEval::Inverse { shape, matrix } => {
+            if matrix.is_some() {
+                format!("inverse({}×{} matrix)", shape.rows, shape.cols)
+            } else {
+                format!(
+                    "inverse({}×{} matrix): singular (determinant 0, no inverse)",
+                    shape.rows, shape.cols
+                )
+            }
         }
     }
 }
@@ -239,6 +255,16 @@ pub fn try_eval_matrix_function_expr(
         "trace" | "tr" => matrix
             .trace(ctx)
             .map(|value| MatrixFunctionEval::Trace { shape, value }),
+        "inverse" | "inv" => match matrix.inverse(ctx)? {
+            MatrixInverseOutcome::Inverse(inv) => Some(MatrixFunctionEval::Inverse {
+                shape,
+                matrix: Some(inv),
+            }),
+            MatrixInverseOutcome::Singular => Some(MatrixFunctionEval::Inverse {
+                shape,
+                matrix: None,
+            }),
+        },
         _ => None,
     }
 }
@@ -274,6 +300,18 @@ pub fn try_rewrite_matrix_function_rule_expr(
                 rewritten: value,
                 desc,
             })
+        }
+        MatrixFunctionEval::Inverse { shape, matrix } => {
+            let desc = format_matrix_function_desc(&MatrixFunctionEval::Inverse {
+                shape,
+                matrix: matrix.clone(),
+            });
+            // Invertible ⇒ the inverse matrix; provably singular ⇒ `undefined`.
+            let rewritten = match matrix {
+                Some(m) => m.to_expr(ctx),
+                None => ctx.add(Expr::Constant(Constant::Undefined)),
+            };
+            Some(MatrixFunctionRewrite { rewritten, desc })
         }
     }
 }
