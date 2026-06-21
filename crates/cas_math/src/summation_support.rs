@@ -446,7 +446,7 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
-    if let Some(candidate) = try_build_telescoping_three_factor_sum(
+    if let Some(candidate) = try_build_telescoping_consecutive_factor_sum(
         ctx,
         call.term,
         &call.var_name,
@@ -2067,12 +2067,13 @@ fn factor_telescoping_quadratic_denominator(
     Some((factor1, factor2))
 }
 
-/// Build the telescoping closed form for `1/((k+a)(k+a+1)(k+a+2))` — a product of THREE consecutive
-/// linear factors (the classic `Σ 1/(k(k+1)(k+2)) = 1/4`). Uses the second-order telescope
-/// `1/((k+a)(k+a+1)(k+a+2)) = (1/2)·[g(k) − g(k+1)]` with `g(k) = 1/((k+a)(k+a+1))`, so
-/// `Σ_{k=start}^{end} = (1/2)·[1/((start+a)(start+a+1)) − 1/((end+a+1)(end+a+2))]`. Non-consecutive
-/// or non-unit-numerator products are declined (honest residuals).
-pub fn try_build_telescoping_three_factor_sum(
+/// Build the telescoping closed form for `1/((k+a)(k+a+1)···(k+a+m-1))` — a product of `m ≥ 3`
+/// CONSECUTIVE linear factors (`Σ 1/(k(k+1)(k+2)) = 1/4`, `Σ 1/(k(k+1)(k+2)(k+3)) = 1/18`). Uses the
+/// higher-order telescope `1/∏_{j=0}^{m-1}(k+a+j) = 1/(m-1)·[g(k) − g(k+1)]` with `g(k) =
+/// 1/∏_{j=0}^{m-2}(k+a+j)` (the first `m-1` factors), so `Σ_{k=start}^{end} = 1/(m-1)·[g(start) −
+/// g(end+1)]`, and the convergent infinite sum (`start+a ≥ 1`) is `1/(m-1)·g(start)`. Two factors are
+/// handled by the dedicated builder; non-consecutive or non-unit-numerator products are declined.
+pub fn try_build_telescoping_consecutive_factor_sum(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -2087,8 +2088,9 @@ pub fn try_build_telescoping_three_factor_sum(
         return None;
     }
     let factors = expr_nary::mul_leaves(ctx, den);
-    if factors.len() != 3 {
-        return None;
+    let m = factors.len();
+    if m < 3 {
+        return None; // two factors have their own builder
     }
     let mut offsets: Vec<i64> = factors
         .iter()
@@ -2096,38 +2098,43 @@ pub fn try_build_telescoping_three_factor_sum(
         .collect::<Option<_>>()?;
     offsets.sort_unstable();
     let a = offsets[0];
-    if offsets[1] != a + 1 || offsets[2] != a + 2 {
-        return None; // only three CONSECUTIVE factors telescope to this closed form
+    if (0..m as i64).any(|j| offsets[j as usize] != a + j) {
+        return None; // only CONSECUTIVE factors telescope to this closed form
     }
-    let reciprocal_product = |ctx: &mut Context, anchor: ExprId, lo: i64| -> ExprId {
-        let left = shift_expr(ctx, anchor, lo);
-        let right = shift_expr(ctx, anchor, lo + 1);
-        let product = ctx.add(Expr::Mul(left, right));
+    // g(anchor) = 1/∏_{j=0}^{m-2}(anchor + lo + j): the reciprocal of the first m-1 factors.
+    let reciprocal_first_factors = |ctx: &mut Context, anchor: ExprId, lo: i64| -> ExprId {
+        let mut product: Option<ExprId> = None;
+        for j in 0..(m as i64 - 1) {
+            let term = shift_expr(ctx, anchor, lo + j);
+            product = Some(match product {
+                None => term,
+                Some(acc) => ctx.add(Expr::Mul(acc, term)),
+            });
+        }
+        let product = product.expect("m ≥ 3 yields at least two factors");
         let one = ctx.num(1);
         ctx.add(Expr::Div(one, product))
     };
+    let order = ctx.num(m as i64 - 1);
 
-    // Convergent infinite sum: the boundary term `1/((end+a+1)(end+a+2)) → 0`, leaving
-    // `(1/2)·1/((start+a)(start+a+1))`. Compute it directly (the ∞-substitution path cannot reduce
-    // the degree-2 boundary term — it leaves `∞²` — so the finite closed form is NOT reused for ∞).
-    // Requires a literal integer `start` with `start+a ≥ 1`: all three factors are then positive over
-    // `[start, ∞)` (no pole), so the positive `~1/k³` tail converges; otherwise decline (residual).
+    // Convergent infinite sum: the boundary `g(end+1) → 0`, leaving `1/(m-1)·g(start)`. Emit the
+    // limit directly (the ∞-substitution path cannot reduce the degree-(m-1) boundary term).
+    // Requires a literal integer `start` with `start+a ≥ 1`: all factors are positive over `[start,
+    // ∞)` (no pole), so the positive `~1/k^m` tail converges; otherwise decline (residual).
     if is_positive_infinity(ctx, end) {
         let start_value = crate::expr_extract::extract_i64_integer(ctx, start)?;
         if start_value.checked_add(a)? < 1 {
             return None;
         }
-        let first = reciprocal_product(ctx, start, a);
-        let two = ctx.num(2);
-        return Some(ctx.add(Expr::Div(first, two)));
+        let g_start = reciprocal_first_factors(ctx, start, a);
+        return Some(ctx.add(Expr::Div(g_start, order)));
     }
 
-    // Finite: (1/2)·[1/((start+a)(start+a+1)) − 1/((end+a+1)(end+a+2))].
-    let first = reciprocal_product(ctx, start, a);
-    let second = reciprocal_product(ctx, end, a + 1);
-    let diff = ctx.add(Expr::Sub(first, second));
-    let two = ctx.num(2);
-    Some(ctx.add(Expr::Div(diff, two)))
+    // Finite: 1/(m-1)·[g(start) − g(end+1)].
+    let g_start = reciprocal_first_factors(ctx, start, a);
+    let g_end_next = reciprocal_first_factors(ctx, end, a + 1);
+    let diff = ctx.add(Expr::Sub(g_start, g_end_next));
+    Some(ctx.add(Expr::Div(diff, order)))
 }
 
 /// Build telescoping rational sum closed form for `1/((k+b)*(k+c))`.
@@ -2928,7 +2935,7 @@ mod tests {
                 .expect("parse");
                 let start = ctx.num(a);
                 let end = ctx.num(n);
-                let result = super::try_build_telescoping_three_factor_sum(
+                let result = super::try_build_telescoping_consecutive_factor_sum(
                     &mut ctx, summand, "k", start, end,
                 )
                 .expect("build");
@@ -2949,7 +2956,7 @@ mod tests {
         let one = ctx.num(1);
         let n = ctx.num(5);
         assert!(
-            super::try_build_telescoping_three_factor_sum(&mut ctx, nonconsec, "k", one, n)
+            super::try_build_telescoping_consecutive_factor_sum(&mut ctx, nonconsec, "k", one, n)
                 .is_none(),
             "non-consecutive 3-factor must stay residual"
         );
@@ -2958,7 +2965,7 @@ mod tests {
         let one = ctx.num(1);
         let inf = super::make_infinity(&mut ctx);
         let infinite =
-            super::try_build_telescoping_three_factor_sum(&mut ctx, consec, "k", one, inf)
+            super::try_build_telescoping_consecutive_factor_sum(&mut ctx, consec, "k", one, inf)
                 .expect("convergent infinite sum");
         assert_eq!(
             eval_small_rat(&ctx, infinite),
@@ -2970,9 +2977,54 @@ mod tests {
         let zero = ctx.num(0);
         let inf = super::make_infinity(&mut ctx);
         assert!(
-            super::try_build_telescoping_three_factor_sum(&mut ctx, consec, "k", zero, inf)
+            super::try_build_telescoping_consecutive_factor_sum(&mut ctx, consec, "k", zero, inf)
                 .is_none(),
             "a lower bound at a pole must decline"
+        );
+    }
+
+    #[test]
+    fn telescoping_consecutive_factor_sum_generalizes_to_m_factors() {
+        // `1/∏_{j=0}^{m-1}(k+a+j)` for m = 4, 5 consecutive factors: `Σ 1/(k(k+1)(k+2)(k+3)) = 1/18`,
+        // `Σ 1/(k…(k+4)) = 1/96`. Finite folds match brute force; the infinite value is `1/(m-1)·g(1)`.
+        let products: [(&str, &[i64]); 3] = [
+            ("(k)*(k+1)*(k+2)*(k+3)", &[0, 1, 2, 3]),
+            ("(k+1)*(k+2)*(k+3)*(k+4)", &[1, 2, 3, 4]),
+            ("(k)*(k+1)*(k+2)*(k+3)*(k+4)", &[0, 1, 2, 3, 4]),
+        ];
+        for (expr, offsets) in products {
+            let den = |k: i64| -> i64 { offsets.iter().map(|&o| k + o).product() };
+            for (a, n) in [(1i64, 6i64), (2, 8)] {
+                let mut ctx = Context::new();
+                let summand = cas_parser::parse(&format!("1/({expr})"), &mut ctx).expect("parse");
+                let start = ctx.num(a);
+                let end = ctx.num(n);
+                let result = super::try_build_telescoping_consecutive_factor_sum(
+                    &mut ctx, summand, "k", start, end,
+                )
+                .expect("build");
+                let mut brute = BigRational::from_integer(0.into());
+                for k in a..=n {
+                    brute += BigRational::new(1.into(), den(k).into());
+                }
+                assert_eq!(
+                    eval_small_rat(&ctx, result),
+                    Some(brute),
+                    "{expr} [{a},{n}]"
+                );
+            }
+        }
+        // `Σ_{k=1}^∞ 1/(k(k+1)(k+2)(k+3)) = (1/3)·1/(1·2·3) = 1/18`.
+        let mut ctx = Context::new();
+        let summand = cas_parser::parse("1/(k*(k+1)*(k+2)*(k+3))", &mut ctx).expect("parse");
+        let one = ctx.num(1);
+        let inf = super::make_infinity(&mut ctx);
+        let infinite =
+            super::try_build_telescoping_consecutive_factor_sum(&mut ctx, summand, "k", one, inf)
+                .expect("convergent infinite 4-factor sum");
+        assert_eq!(
+            eval_small_rat(&ctx, infinite),
+            Some(BigRational::new(1.into(), 18.into()))
         );
     }
 

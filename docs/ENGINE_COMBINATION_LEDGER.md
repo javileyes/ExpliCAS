@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 276 (newest first)
+Active entries: 277 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -161,6 +161,7 @@ Active entries: 276 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Graduada la suma INFINITA de 3 factores Σ 1/(k(k+1)(k+2)) = 1/4
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_product_sh... | P0 SOUNDNESS: producto telescópico den-higher daba el RECÍPROCO
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | P0 SOUNDNESS: producto infinito ∏(1−1/k²) daba 1 (debía 1/2)
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Telescópica de m factores consecutivos generalizada (1/18, 1/96, …)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11748,3 +11749,35 @@ Active entries: 276 (newest first)
     ciclo 2, ∞ aquí): cualquier builder de producto debe barrerse con fuerza bruta finito E infinito.
   - residual (peldaño): la aritmética de ∞ del simplificador no reduce `P(∞)/Q(∞)` por grados (clase
     A): arreglarla en el núcleo evitaría tener que emitir el límite a mano en cada builder.
+
+## 2026-06-21 - Telescópica de m factores consecutivos generalizada (1/18, 1/96, …)
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_factor_sum` renombrado
+    y generalizado a `try_build_telescoping_consecutive_factor_sum` para m ≥ 3 factores)
+- status:
+  - `retained` (capability: generaliza el telescopio de 3 factores a m consecutivos arbitrarios)
+- capture:
+  - investment_class: capability (Fase 1, P2 — familia telescópica; cierre de la familia)
+  - primary_dimension: north_star_completeness (sumatorios)
+  - secondary_dimension: reuse_value (una generalización cubre 3, 4, 5, … factores; el caso m=3
+    queda como instancia, tests del ciclo 1 intactos)
+  - cell: `Σ 1/(k(k+1)(k+2)(k+3)) = 1/18`, `Σ 1/((k+1)…(k+4)) = 1/72`, `Σ 1/(k…(k+4)) = 1/96`,
+    finito e infinito. Telescopio de orden m-1: `1/∏_{0}^{m-1}(k+a+j) = 1/(m-1)·[g(k)−g(k+1)]` con
+    `g(k)=1/∏_{0}^{m-2}(k+a+j)`.
+  - behavior_change_expected: los productos de m≥4 factores lineales CONSECUTIVOS pasan de residual a
+    forma cerrada (finito e infinito). Huella NONE.
+  - SOUNDNESS: exige numerador 1, m≥3 offsets enteros consecutivos (a, a+1, …, a+m-1); no-consecutivos
+    declinan. Infinito gateado por start entero ≥ 1-a (sin polo, cola ~1/k^m converge) emitiendo el
+    valor del límite `1/(m-1)·g(start)`. Verificado fold-vs-fuerza-bruta para m=4,5.
+- observed:
+  - la generalización fue cambiar `len()==3` por `len()>=3` y el producto de 2 factores por uno de
+    m-1 factores en `g`; el orden del telescopio es m-1. El caso m=3 (ciclo 1) es la instancia base.
+  - el 2-factor sigue en su builder dedicado (más simple); este maneja m≥3.
+- retained learning:
+  - cuando un builder cubre el caso k de una familia paramétrica (3 factores), generalizar a m suele
+    ser reemplazar la aridad fija por un bucle sobre m-1 términos y ajustar el factor `1/(m-1)` — más
+    valioso que añadir cada aridad a mano. El gate de convergencia (start+a≥1) y el valor del límite
+    (borde→0) se generalizan sin cambio.
+  - residual (peldaño): telescópica de m factores NO consecutivos (gaps mezclados) vía fracciones
+    parciales con cancelación de varios órdenes; y la clase A del simplificador (∞-aritmética por
+    grados) que evitaría emitir el límite a mano.
