@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 269 (newest first)
+Active entries: 270 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -154,6 +154,7 @@ Active entries: 269 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: equivalente binomial/raíz ((1+u)^a − 1)/u → a
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Suma INFINITA aritmético-geométrica convergente Σ_{k=a}^∞ p(k)·r^k (|r|<1)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_rational_s... | P0 SOUNDNESS: suma telescópica con gap ≥ 2 daba RESPUESTA INCORRECTA
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Telescópica con denominador cuadrático EXPANDIDO 1/(k²−1), 1/(k²−5k+6)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11498,3 +11499,38 @@ Active entries: 269 (newest first)
     gap ≥ 2): los fixtures de soundness deben barrer el PARÁMETRO (gap), no un único representante.
   - residual (peldaño): telescópicas con denominador EXPANDIDO `1/(k²−1)`, `1/(4k²−1)` (el motor
     expande `(k-1)(k+1)→k²−1` antes del builder; factorizar el cuadrático es el siguiente sub-ciclo).
+
+## 2026-06-21 - Telescópica con denominador cuadrático EXPANDIDO 1/(k²−1), 1/(k²−5k+6)
+- area:
+  - `crates/cas_math/src/summation_support.rs`
+    (`try_build_telescoping_rational_sum`: nueva rama de factorización; helper
+    `factor_telescoping_quadratic_denominator`)
+- status:
+  - `retained` (capability: completa la telescópica racional cuando el motor entrega el denominador
+    cuadrático ya EXPANDIDO; peldaño directo del fix P0 del ciclo previo)
+- capture:
+  - investment_class: capability (Fase 1, P2 — familia de sumatorios telescópicos)
+  - primary_dimension: north_star_completeness (sumatorios)
+  - secondary_dimension: reuse_value (reusa la ruta telescópica ya arreglada; solo añade el factoreo)
+  - cell: `Σ_{2}^∞ 1/(k²−1) = 3/4`, `Σ_{3}^∞ 1/(k²−4) = 25/48`, `1/(k²+3k+2) → 1/2`,
+    `Σ_{4}^∞ 1/(k²−5k+6) = 1`. El motor EXPANDE `(k-1)(k+1)→k²−1`; el builder requería el producto.
+  - behavior_change_expected: las telescópicas con denominador cuadrático mónico de raíces enteras
+    distintas pasan de residual a forma cerrada (finito e infinito). Huella NONE.
+  - SOUNDNESS: factor solo cuadráticas MÓNICAS con coeficientes enteros y dos raíces ENTERAS
+    distintas (discriminante > 0 cuadrado perfecto, raíces pares). Raíz cuadrada entera EXACTA
+    (semilla f64 + corrección por bucle; la decisión keep/drop es `root*root == disc`, nunca f64).
+    `4k²−1` (no mónica), `k²+1`/`k²+k+1` (irreducibles) declinan → residuales honestos. Barrido de
+    fuerza bruta finito+infinito 0 fallos.
+- observed:
+  - el factoreo reconstruye los dos factores lineales `(k−r1)(k−r2)` y los alimenta a la lógica
+    telescópica existente (que ya casa gap≥2 tras el fix del ciclo previo) — sin duplicar la suma.
+  - este ciclo DEPENDÍA del fix P0 anterior: factorizar `k²−1`→`(k-1)(k+1)` (gap 2) sin el
+    multi-término de borde habría dado un valor incorrecto. Capacidad sobre soundness, en orden.
+- retained learning:
+  - cuando el motor normaliza/expande la entrada antes del builder (`(k-1)(k+1)→k²−1`), el builder
+    debe DES-normalizar (factorizar) para reconocer la forma — un patrón recurrente (igual que la
+    grafía Div de las geométricas, o sqrt función vs potencia). Factorizar el cuadrático es barato.
+  - una raíz cuadrada entera para una decisión exacta NO usa f64 como gate: f64 es solo semilla,
+    el gate es `root*root == disc` en enteros (regla de soundness: nunca f64 para keep/drop).
+  - residual (peldaño): cuadrática NO mónica `1/(4k²−1)` (factores afines `(2k-1)(2k+1)`, ruta
+    afín existente); raíces racionales no enteras; denominador cúbico+ con factores telescópicos.

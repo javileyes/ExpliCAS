@@ -1893,6 +1893,60 @@ fn shift_expr(ctx: &mut Context, base: ExprId, delta: i64) -> ExprId {
     }
 }
 
+/// Factor a MONIC quadratic denominator `k² + B·k + C` (integer `B`, `C`) with two distinct integer
+/// roots into its linear factors `(k − r1)`, `(k − r2)`. The engine expands a factored denominator
+/// like `(k-1)(k+1)` to `k²-1`, so the telescoping builder needs this to recover the factors.
+/// Returns `None` for non-monic, non-integer-coefficient, irreducible (negative discriminant),
+/// repeated-root, or irrational/non-integer-root quadratics — all left as honest residuals.
+fn factor_telescoping_quadratic_denominator(
+    ctx: &mut Context,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let poly = Polynomial::from_expr(ctx, den, var).ok()?;
+    if poly.degree() != 2 {
+        return None;
+    }
+    let as_i64 = |coeff: Option<&BigRational>| -> Option<i64> {
+        let value = coeff.cloned().unwrap_or_else(BigRational::zero);
+        if !value.is_integer() {
+            return None;
+        }
+        value.to_integer().try_into().ok()
+    };
+    if as_i64(poly.coeffs.get(2))? != 1 {
+        return None; // monic only; `4k²-1` (affine factors) is a separate peldaño
+    }
+    let b = as_i64(poly.coeffs.get(1))?;
+    let c = as_i64(poly.coeffs.first())?;
+    let discriminant = b.checked_mul(b)?.checked_sub(4i64.checked_mul(c)?)?;
+    if discriminant <= 0 {
+        return None; // ≤ 0 → repeated root or irreducible over ℝ
+    }
+    // Exact integer square root (seed with f64, then correct — the keep/drop decision is the exact
+    // `root*root == discriminant` test, never the float).
+    let mut root = (discriminant as f64).sqrt() as i64;
+    while root > 0 && root * root > discriminant {
+        root -= 1;
+    }
+    while (root + 1) * (root + 1) <= discriminant {
+        root += 1;
+    }
+    if root * root != discriminant {
+        return None; // irrational roots
+    }
+    if (-b + root) % 2 != 0 || (-b - root) % 2 != 0 {
+        return None; // non-integer roots
+    }
+    let r1 = (-b + root) / 2;
+    let r2 = (-b - root) / 2;
+    // r1 != r2 since discriminant > 0. Build `(k − r1)`, `(k − r2)`.
+    let var_expr = ctx.var(var);
+    let factor1 = shift_expr(ctx, var_expr, -r1);
+    let factor2 = shift_expr(ctx, var_expr, -r2);
+    Some((factor1, factor2))
+}
+
 /// Build telescoping rational sum closed form for `1/((k+b)*(k+c))`.
 ///
 /// Uses identity:
@@ -1918,7 +1972,9 @@ pub fn try_build_telescoping_rational_sum(
 
     let (factor1, factor2) = match ctx.get(den) {
         Expr::Mul(l, r) => (*l, *r),
-        _ => return None,
+        // The engine expands a factored denominator like `(k-1)(k+1)` to `k²-1`; recover the two
+        // linear factors so the telescoping logic below can run.
+        _ => factor_telescoping_quadratic_denominator(ctx, den, var)?,
     };
 
     if let Some(base) = detect_consecutive_telescoping_sum_base(ctx, factor1, factor2, var) {
@@ -2573,6 +2629,52 @@ mod tests {
                     "Σ 1/((k+{p})(k+{q})) over [{a},{n}]"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn telescoping_rational_sum_factors_expanded_quadratic_denominator() {
+        // The engine expands a factored denominator like `(k-1)(k+1)` to `k²-1`; the builder must
+        // factor the monic quadratic back into linear factors and telescope (the gap-≥2 cases also
+        // exercise the fixed multi-boundary-term formula).
+        let den = |expr: &str, k: i64| -> i64 {
+            match expr {
+                "k^2-1" => k * k - 1,
+                "k^2-4" => k * k - 4,
+                "k^2+3*k+2" => k * k + 3 * k + 2,
+                "k^2-5*k+6" => k * k - 5 * k + 6,
+                _ => unreachable!(),
+            }
+        };
+        for expr in ["k^2-1", "k^2-4", "k^2+3*k+2", "k^2-5*k+6"] {
+            for (a, n) in [(4i64, 9i64), (5, 11)] {
+                let mut ctx = Context::new();
+                let summand = cas_parser::parse(&format!("1/({expr})"), &mut ctx).expect("parse");
+                let start = ctx.num(a);
+                let end = ctx.num(n);
+                let result = try_build_telescoping_rational_sum(&mut ctx, summand, "k", start, end)
+                    .expect("build");
+                let mut brute = BigRational::from_integer(0.into());
+                for k in a..=n {
+                    brute += BigRational::new(1.into(), den(expr, k).into());
+                }
+                assert_eq!(
+                    eval_small_rat(&ctx, result),
+                    Some(brute),
+                    "1/({expr}) [{a},{n}]"
+                );
+            }
+        }
+        // Non-monic (`4k²-1`) and irreducible (`k²+1`, `k²+k+1`) quadratics are declined.
+        for expr in ["4*k^2-1", "k^2+1", "k^2+k+1"] {
+            let mut ctx = Context::new();
+            let summand = cas_parser::parse(&format!("1/({expr})"), &mut ctx).expect("parse");
+            let one = ctx.num(1);
+            let n = ctx.num(5);
+            assert!(
+                try_build_telescoping_rational_sum(&mut ctx, summand, "k", one, n).is_none(),
+                "1/({expr}) must stay residual"
+            );
         }
     }
 
