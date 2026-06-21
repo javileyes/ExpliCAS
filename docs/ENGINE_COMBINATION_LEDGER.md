@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 277 (newest first)
+Active entries: 278 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -162,6 +162,7 @@ Active entries: 277 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_product_sh... | P0 SOUNDNESS: producto telescópico den-higher daba el RECÍPROCO
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | P0 SOUNDNESS: producto infinito ∏(1−1/k²) daba 1 (debía 1/2)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Telescópica de m factores consecutivos generalizada (1/18, 1/96, …)
+- 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`eval_limit_at_infinity`: fallback d... | Límite en ∞ por sustitución recíproca x↦1/u (x·sin(1/x)→1, notables)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11781,3 +11782,45 @@ Active entries: 277 (newest first)
   - residual (peldaño): telescópica de m factores NO consecutivos (gaps mezclados) vía fracciones
     parciales con cancelación de varios órdenes; y la clase A del simplificador (∞-aritmética por
     grados) que evitaría emitir el límite a mano.
+
+## 2026-06-21 - Límite en ∞ por sustitución recíproca x↦1/u (x·sin(1/x)→1, notables)
+- area:
+  - `crates/cas_math/src/limits_support.rs` (`eval_limit_at_infinity`: fallback de sustitución
+    recíproca; helpers `try_limit_at_infinity_by_reciprocal_substitution`,
+    `reduce_reciprocal_substitution_artifacts`, `mul_drop_unit`)
+- status:
+  - `retained` (capability: cierra la familia notable `x·f(c/x)` en ∞ vía el cambio de variable u=1/x)
+- capture:
+  - investment_class: capability (Fase 1, P2/P3 — límites; frente educativo/universal)
+  - primary_dimension: north_star_completeness (límites)
+  - secondary_dimension: reuse_value (delega en el evaluador finito de un lado YA existente; un solo
+    fallback cubre sin/tan/arctan/exp/escalados)
+  - cell: `x·sin(1/x) → 1`, `x·sin(3/x) → 3`, `x·tan(1/x) → 1`, `x·arctan(1/x) → 1`,
+    `x·(eˣ⁻¹... e^(1/x)−1) → 1`, `2x·sin(1/x) → 2`. Identidad exacta `lim_{x→∞} g(x) =
+    lim_{u→0⁺} g(1/u)` (u=1/x→0⁺).
+  - behavior_change_expected: los notables `x·f(c/x)` en ∞ pasan de residual a su valor. Huella
+    guardrail+pressure NONE (ninguna fixture capturaba estos residuales).
+  - SOUNDNESS: la sustitución es un cambio de variable EXACTO; se aplica SOLO como fallback cuando las
+    reglas directas de ∞ declinan, así que nunca anula un resultado directo — solo resuelve residuales.
+    Delega en el evaluador finito de un lado (domain-aware). Barrido adversarial (15 casos, incluidos
+    oscilantes sin límite `x·sin(x)`, `sin(x)` que DEBEN declinar y cocientes con valor conocido): 0
+    respuestas incorrectas; los oscilantes quedan residuales (sin fabricación).
+- observed:
+  - la sustitución `x↦1/x` deja artefactos que los normalizadores de cas_math NO reducen:
+    reciprocales anidados `1/(1/x)` (normalize_core no lo toca) y factores unidad `(1·sin(x))/x` (el
+    matcher notable `sin(u)/u` exige la forma EXACTA `sin(x)/x`). Hubo que escribir un reductor
+    estructural bottom-up (`a/(b/c)→(a·c)/b`, `a·(1/d)→a/d`, `1·e→e`) — value-preserving, no afecta
+    el límite, solo la forma.
+  - cas_math no puede usar `cas_formatter` fuera de tests (printer de debug estructural a mano).
+- retained learning:
+  - el límite en ∞ por reciprocal-substitution es un fallback potente y SOUND (identidad exacta) que
+    reusa todo el evaluador finito; el coste oculto es la LIMPIEZA de la forma sustituida — los
+    matchers notables exigen formas canónicas exactas (`sin(x)/x`, no `(1·sin(x))/x`), y los
+    normalizadores de cas_math no reducen reciprocales anidados ni factores unidad. Un reductor
+    estructural pequeño y testeado salva la distancia.
+  - un fallback que SOLO se activa tras declinar la ruta directa no puede regresar comportamiento
+    existente (solo añade), lo que acota el riesgo de huella a "resuelve residuales" (verificar que
+    ninguna fixture los fijaba como residual — aquí NONE).
+  - residual (peldaño): `x²·(1−cos(1/x)) → 1/2` (el finito necesita el notable (1−cos u)/u² tras
+    sustituir), `(1+a/x)^x → e^a` SIMBÓLICO (el e-limit finito solo casa numerador literal),
+    `x·cos(1/x) → ∞` (under-answer); y NegInfinity con el lado izquierdo.

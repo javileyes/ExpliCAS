@@ -9873,6 +9873,17 @@ pub fn eval_limit_at_infinity(
                 warning: None,
             };
         }
+        // Reciprocal-substitution fallback: `lim_{x→±∞} g(x) = lim_{u→0±} g(1/u)` (exact — `u = 1/x`
+        // approaches 0 from the matching side). Only reached when the direct ∞ rules declined, so it
+        // can RESOLVE a previously-residual limit but never overrides a direct result.
+        if let Some(result_expr) =
+            try_limit_at_infinity_by_reciprocal_substitution(ctx, simplified_expr, var, sign)
+        {
+            return LimitEvalOutcome {
+                expr: result_expr,
+                warning: None,
+            };
+        }
     }
 
     let residual = mk_limit_for_approach(ctx, simplified_expr, var, approach);
@@ -9889,6 +9900,127 @@ pub fn eval_limit_at_infinity(
     LimitEvalOutcome {
         expr: residual,
         warning: Some(warning),
+    }
+}
+
+/// Evaluate `lim_{x→±∞} expr` by the exact change of variable `u = 1/x`: the limit equals
+/// `lim_{u→0±} expr[x ↦ 1/u]` (`u → 0⁺` for `x → +∞`, `u → 0⁻` for `x → −∞`). Reusing the SAME
+/// variable for `u` avoids introducing a fresh symbol. Closes notable forms the direct ∞ rules miss,
+/// e.g. `x·sin(1/x) → 1` and `(1 + a/x)^x → e^a`. Sound because the substitution is an exact identity
+/// and the finite one-sided evaluator it delegates to is itself sound.
+fn try_limit_at_infinity_by_reciprocal_substitution(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    sign: InfSign,
+) -> Option<ExprId> {
+    let one = ctx.num(1);
+    let reciprocal = ctx.add(Expr::Div(one, var));
+    let substituted = cas_ast::substitute_expr_by_id(ctx, expr, var, reciprocal);
+    // The substitution leaves nested reciprocals and unit factors (`1/(1/x)`, `(1·sin(x))/x`);
+    // normalize so the finite evaluator sees the reduced form (`x·sin(1/x)` → `sin(x)/x`). The
+    // finite one-sided evaluator re-checks the domain, so canonical normalization is safe here.
+    // The substitution leaves nested reciprocals and unit factors (`1/(1/x)`, `sin(x)·(1/x)`) that
+    // the cas_math normalizers do not reduce; clean them so the finite evaluator sees `sin(x)/x`.
+    let substituted = reduce_reciprocal_substitution_artifacts(ctx, substituted);
+    let zero = ctx.num(0);
+    let side = match sign {
+        InfSign::Pos => FiniteLimitSide::Right,
+        InfSign::Neg => FiniteLimitSide::Left,
+    };
+    try_limit_rules_at_finite_one_sided(ctx, substituted, var, zero, side)
+}
+
+/// Multiply two expressions, dropping a unit factor (`1·e → e`).
+fn mul_drop_unit(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    if expr_is_one(ctx, a) {
+        return b;
+    }
+    if expr_is_one(ctx, b) {
+        return a;
+    }
+    ctx.add(Expr::Mul(a, b))
+}
+
+/// Bottom-up cleanup of the artifacts that `x ↦ 1/x` substitution introduces: nested reciprocals
+/// (`a/(b/c) → (a·c)/b`, so `1/(1/x) → x`), products by a reciprocal (`a·(1/d) → a/d`), and unit
+/// `Mul` factors (`1·e → e`). Purely structural and value-preserving, so it does not affect the
+/// limit; it only puts the substituted expression in the shape the finite evaluator recognises.
+fn reduce_reciprocal_substitution_artifacts(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let rebuilt = match *ctx.get(expr) {
+        Expr::Add(a, b) => {
+            let a = reduce_reciprocal_substitution_artifacts(ctx, a);
+            let b = reduce_reciprocal_substitution_artifacts(ctx, b);
+            ctx.add(Expr::Add(a, b))
+        }
+        Expr::Sub(a, b) => {
+            let a = reduce_reciprocal_substitution_artifacts(ctx, a);
+            let b = reduce_reciprocal_substitution_artifacts(ctx, b);
+            ctx.add(Expr::Sub(a, b))
+        }
+        Expr::Mul(a, b) => {
+            let a = reduce_reciprocal_substitution_artifacts(ctx, a);
+            let b = reduce_reciprocal_substitution_artifacts(ctx, b);
+            ctx.add(Expr::Mul(a, b))
+        }
+        Expr::Div(a, b) => {
+            let a = reduce_reciprocal_substitution_artifacts(ctx, a);
+            let b = reduce_reciprocal_substitution_artifacts(ctx, b);
+            ctx.add(Expr::Div(a, b))
+        }
+        Expr::Pow(a, b) => {
+            let a = reduce_reciprocal_substitution_artifacts(ctx, a);
+            let b = reduce_reciprocal_substitution_artifacts(ctx, b);
+            ctx.add(Expr::Pow(a, b))
+        }
+        Expr::Neg(a) => {
+            let a = reduce_reciprocal_substitution_artifacts(ctx, a);
+            ctx.add(Expr::Neg(a))
+        }
+        Expr::Function(fn_id, ref args) => {
+            let args: Vec<ExprId> = args.clone();
+            let reduced: Vec<ExprId> = args
+                .into_iter()
+                .map(|arg| reduce_reciprocal_substitution_artifacts(ctx, arg))
+                .collect();
+            ctx.add(Expr::Function(fn_id, reduced))
+        }
+        _ => expr,
+    };
+    // Local rewrites on the rebuilt (children-reduced) node.
+    match *ctx.get(rebuilt) {
+        // a / (b/c) = (a·c)/b  →  in particular 1/(1/x) = x.
+        Expr::Div(num, den) => {
+            if let Expr::Div(inner_num, inner_den) = *ctx.get(den) {
+                let new_num = mul_drop_unit(ctx, num, inner_den);
+                if expr_is_one(ctx, inner_num) {
+                    return new_num; // (a·c)/1
+                }
+                return ctx.add(Expr::Div(new_num, inner_num));
+            }
+            rebuilt
+        }
+        // a·(1/d) = a/d, and drop unit factors.
+        Expr::Mul(a, b) => {
+            if expr_is_one(ctx, a) {
+                return b;
+            }
+            if expr_is_one(ctx, b) {
+                return a;
+            }
+            if let Expr::Div(bn, bd) = *ctx.get(b) {
+                if expr_is_one(ctx, bn) {
+                    return ctx.add(Expr::Div(a, bd));
+                }
+            }
+            if let Expr::Div(an, ad) = *ctx.get(a) {
+                if expr_is_one(ctx, an) {
+                    return ctx.add(Expr::Div(b, ad));
+                }
+            }
+            rebuilt
+        }
+        _ => rebuilt,
     }
 }
 
@@ -16815,6 +16947,39 @@ mod tests {
         let expr = parse_expr(&mut ctx, "x/x");
         let out = presimplify_safe_for_limit(&mut ctx, expr);
         assert!(matches!(ctx.get(out), Expr::Div(_, _)));
+    }
+
+    #[test]
+    fn reciprocal_substitution_resolves_notable_infinity_limits() {
+        // `lim_{x→∞} g(x) = lim_{u→0⁺} g(1/u)`: the notable products `x·f(c/x)` the direct ∞ rules
+        // miss. The artifact reducer turns the substituted `f(1/(1/x))·(1/x)` into `f(x)/x`.
+        for (src, expected) in [
+            ("x*sin(1/x)", "1"),
+            ("x*sin(3/x)", "3"),
+            ("x*tan(1/x)", "1"),
+            ("x*arctan(1/x)", "1"),
+            ("x*(exp(1/x)-1)", "1"),
+            ("2*x*sin(1/x)", "2"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse_expr(&mut ctx, src);
+            let x = ctx.var("x");
+            let result =
+                try_limit_at_infinity_by_reciprocal_substitution(&mut ctx, expr, x, InfSign::Pos)
+                    .unwrap_or_else(|| panic!("must resolve: {src}"));
+            assert_eq!(display_expr(&ctx, result), expected, "{src}");
+        }
+        // Genuinely limitless oscillators must decline — the substitution must not fabricate a value.
+        for src in ["x*sin(x)", "sin(x)"] {
+            let mut ctx = Context::new();
+            let expr = parse_expr(&mut ctx, src);
+            let x = ctx.var("x");
+            assert!(
+                try_limit_at_infinity_by_reciprocal_substitution(&mut ctx, expr, x, InfSign::Pos)
+                    .is_none(),
+                "{src} has no limit and must decline"
+            );
+        }
     }
 
     #[test]
