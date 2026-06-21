@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 242 (newest first)
+Active entries: 243 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -127,6 +127,7 @@ Active entries: 242 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`perfect_cube_root`, `rational_cbrt`; | Retained capability: factor coefficient cubes (perfect-cube coefficients)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`extract_geometric_term`, | Retained capability: convergent infinite geometric series closed form
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_geometric_rational_sum... | Retained capability: finite geometric sum with general rational ratio
+- 2026-06-21 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`try_univariate_euclidean_gcd`; the | Soundness fix: poly gcd command returned 1 for expanded polynomials
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10398,3 +10399,43 @@ Active entries: 242 (newest first)
     helper is needed for the test.
   - residual (peldaño): symbolic LOWER bound (`sum((1/2)^k,k,m,inf)` / `…,m,n)`), and the
     display ambiguity `(p/q)^n → p/q^n` is a formatter gap worth a separate cosmetic cycle.
+
+## 2026-06-21 - Soundness fix: poly gcd command returned 1 for expanded polynomials
+- area:
+  - `crates/cas_math/src/poly_gcd_dispatch.rs` (`try_univariate_euclidean_gcd`; the
+    `GcdMode::Structural` arm of `compute_poly_gcd_unified_with` now falls back to it)
+- status:
+  - `retained` (soundness/correctness: `gcd(x^3-1, x^2-1)` returned `1` — falsely claiming
+    coprime — and now returns the correct `x-1`)
+- capture:
+  - investment_class: soundness (wrong-answer fix)
+  - cell: `gcd(x^3-1, x^2-1) = x-1`, `gcd(x^2-1, x-1) = x-1`, `gcd(x^2-4, x^2-x-2) = x-2`,
+    `gcd(x^3-x^2-2x, x^3+x^2+x+1) = x+1` (clean monic, not a `5/4·x+5/4` scale). Coprime
+    pairs (`gcd(x, x+1)`, `gcd(x^2+1, x-1)`) correctly stay `1`; numeric (`gcd(6,4)=2`) and
+    factored-form structural fast path (`gcd((x-1)(x+1), (x-1)(x+2)) = x-1`) unchanged.
+  - behavior_change_expected: `gcd`/`poly_gcd` of EXPANDED univariate polynomials flips from
+    a wrong `1` to the correct gcd. Calculus guardrail+pressure huella structurally NONE;
+    fraction-cancellation domain conditions unchanged (strict `(x^2-1)/(x-1)` still keeps
+    `x-1 ≠ 0` and declines). Workspace + clippy + fmt green.
+- observed:
+  - `poly_gcd_structural` only collects shared `Mul` factors, so for an EXPANDED pair (which
+    has no product structure) it returns `1` — claiming coprime when the true gcd is `x-1`.
+    BOTH `gcd(...)` (number-theory dispatch) and `poly_gcd(...)` route through this default
+    Structural mode, so the wrong answer was user-visible on both. The `exact` mode was
+    already correct (`poly_gcd(..., exact) = x-1`), and `Polynomial::gcd` (Euclidean) is
+    correct too — the bug was purely the default mode not using them.
+  - fix: when structural returns `1`, fall back to the primitive Euclidean `Polynomial::gcd`
+    for univariate (clean, exact) and `gcd_exact` for multivariate. Made the univariate
+    result MONIC by dividing by the leading coefficient, because `Polynomial::content()`
+    returns `1` for non-integer coefficients so the Euclidean result can carry an arbitrary
+    rational scale (`5/4·(x+1)`); monic normalisation gives the canonical `x+1`.
+- retained learning:
+  - a "structural"/syntactic shortcut that returns a UNIT (`1` for gcd, `0` for a difference)
+    as its not-found fallback is UNSOUND when a real answer exists — it must fall back to the
+    complete algorithm (here Euclidean/exact), not silently report coprime. Structural-only
+    matchers belong as a fast path with a correct fallback, never as the whole answer.
+  - `Polynomial::content()` is a known stub for non-integer coefficients (returns `1`), so
+    `Polynomial::gcd`'s "primitive" normalisation can leave a rational scale; normalise gcd
+    output to MONIC (divide by leading coeff) for a canonical form.
+  - residual (peldaño): multivariate `gcd` clean-form via the exact path, and `gcd`/`pgcd`
+    of more-than-two arguments.

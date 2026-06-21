@@ -70,6 +70,35 @@ where
     }
 }
 
+/// The primitive-normalised gcd of two single-variable polynomials over ℚ via
+/// `Polynomial::gcd` (Euclidean), or `None` if either side is not a polynomial in one
+/// shared variable. Gives the clean `x-1`/`x+1` form rather than an arbitrary rational
+/// scale, and `1` exactly when the two polynomials are coprime.
+fn try_univariate_euclidean_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
+    let mut vars = cas_ast::collect_variables(ctx, a);
+    vars.extend(cas_ast::collect_variables(ctx, b));
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.into_iter().next()?;
+    let pa = crate::polynomial::Polynomial::from_expr(ctx, a, &var).ok()?;
+    let pb = crate::polynomial::Polynomial::from_expr(ctx, b, &var).ok()?;
+    if pa.is_zero() || pb.is_zero() {
+        return None;
+    }
+    // Make the gcd monic. `Polynomial::gcd` normalises by content, but `content()` returns
+    // `1` for non-integer coefficients, so an arbitrary rational scale (`5/4·(x+1)`) can
+    // survive; dividing by the leading coefficient gives the canonical monic gcd (`x+1`).
+    let g = pa.gcd(&pb);
+    let lc = g.leading_coeff();
+    let g = if num_traits::Zero::is_zero(&lc) || num_traits::One::is_one(&lc) {
+        g
+    } else {
+        g.div_scalar(&lc)
+    };
+    Some(g.to_expr(ctx))
+}
+
 /// Compute polynomial GCD using the selected mode.
 ///
 /// `pre_evaluate` lets runtime crates unwrap/evaluate wrappers before exact/modp paths.
@@ -93,6 +122,23 @@ where
     match mode {
         GcdMode::Structural => {
             let gcd = poly_gcd_structural(ctx, a, b);
+            // Structural matching only finds shared `Mul` factors, so it returns `1` for an
+            // EXPANDED pair that genuinely shares a factor (`gcd(x^3-1, x^2-1)` -> `1`
+            // instead of `x-1`). When it finds nothing, fall back to a correct gcd: the
+            // primitive-normalised univariate Euclidean `Polynomial::gcd` (clean `x-1`, not
+            // a `5/4·x+5/4` scale), and the exact gcd for multivariate inputs. `1` survives
+            // only when the polynomials are genuinely coprime.
+            let gcd = if matches!(ctx.get(gcd), Expr::Number(n) if n.is_one()) {
+                if let Some(univariate) = try_univariate_euclidean_gcd(ctx, a, b) {
+                    univariate
+                } else {
+                    let eval_a = pre_evaluate(ctx, a);
+                    let eval_b = pre_evaluate(ctx, b);
+                    gcd_exact(ctx, eval_a, eval_b, &GcdExactBudget::default()).gcd
+                }
+            } else {
+                gcd
+            };
             let desc = format!("poly_gcd({}, {})", render(ctx, a), render(ctx, b));
             (gcd, desc)
         }
@@ -239,6 +285,44 @@ mod tests {
         );
         assert!(desc.contains("poly_gcd("));
         assert!(!matches!(ctx.get(gcd), Expr::Number(_)));
+    }
+
+    #[test]
+    fn structural_mode_falls_back_to_euclidean_for_expanded_polynomials() {
+        // Expanded pairs share no structural `Mul` factor, so the structural matcher returns
+        // `1`; the Euclidean fallback recovers the correct monic gcd, and leaves `1` only
+        // for genuinely coprime polynomials.
+        for (lhs, rhs, expect) in [
+            ("x^3-1", "x^2-1", "x - 1"),
+            ("x^2-1", "x-1", "x - 1"),
+            ("x^2-4", "x^2-x-2", "x - 2"),
+            ("x^3-x^2-2*x", "x^3+x^2+x+1", "x + 1"), // was a 5/4·x+5/4 scale before monic norm
+            ("x", "x+1", "1"),                       // coprime
+            ("x^2+1", "x-1", "1"),                   // coprime
+        ] {
+            let mut ctx = cas_ast::Context::new();
+            let a = parse(lhs, &mut ctx).expect("parse a");
+            let b = parse(rhs, &mut ctx).expect("parse b");
+            let (gcd, _desc) = compute_poly_gcd_unified_with(
+                &mut ctx,
+                a,
+                b,
+                GcdGoal::UserPolyGcd,
+                GcdMode::Structural,
+                None,
+                None,
+                |_ctx, id| id,
+                |_ctx, id| format!("{id:?}"),
+            );
+            let rendered = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: gcd
+                }
+            );
+            assert_eq!(rendered, expect, "gcd({lhs}, {rhs})");
+        }
     }
 
     #[test]
