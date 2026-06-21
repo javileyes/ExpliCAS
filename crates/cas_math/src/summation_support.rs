@@ -1893,11 +1893,35 @@ fn shift_expr(ctx: &mut Context, base: ExprId, delta: i64) -> ExprId {
     }
 }
 
-/// Factor a MONIC quadratic denominator `k² + B·k + C` (integer `B`, `C`) with two distinct integer
-/// roots into its linear factors `(k − r1)`, `(k − r2)`. The engine expands a factored denominator
-/// like `(k-1)(k+1)` to `k²-1`, so the telescoping builder needs this to recover the factors.
-/// Returns `None` for non-monic, non-integer-coefficient, irreducible (negative discriminant),
-/// repeated-root, or irrational/non-integer-root quadratics — all left as honest residuals.
+/// Greatest common divisor of two non-negative `i64`, at least 1.
+fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a.abs().max(1)
+}
+
+/// Build the affine factor `d·k − n` (`d ≥ 1`).
+fn build_affine_factor(ctx: &mut Context, var: &str, d: i64, n: i64) -> ExprId {
+    let var_expr = ctx.var(var);
+    let base = if d == 1 {
+        var_expr
+    } else {
+        let coeff = ctx.num(d);
+        ctx.add(Expr::Mul(coeff, var_expr))
+    };
+    shift_expr(ctx, base, -n)
+}
+
+/// Factor a quadratic denominator `A·k² + B·k + C` (integer coefficients, `A > 0`) with two distinct
+/// rational roots into its linear/affine factors `(d1·k − n1)(d2·k − n2)`. The engine expands a
+/// factored denominator like `(k-1)(k+1)` to `k²-1` (and `(2k-1)(2k+1)` to `4k²-1`), so the
+/// telescoping builder needs this to recover the factors. Requires `d1·d2 == A` (a primitive
+/// factorisation, numerator stays 1 with no leftover scale). Returns `None` for non-integer
+/// coefficients, `A ≤ 0`, irreducible (negative discriminant), repeated-root, irrational-root, or
+/// non-primitive quadratics — all left as honest residuals.
 fn factor_telescoping_quadratic_denominator(
     ctx: &mut Context,
     den: ExprId,
@@ -1914,12 +1938,15 @@ fn factor_telescoping_quadratic_denominator(
         }
         value.to_integer().try_into().ok()
     };
-    if as_i64(poly.coeffs.get(2))? != 1 {
-        return None; // monic only; `4k²-1` (affine factors) is a separate peldaño
-    }
+    let a = as_i64(poly.coeffs.get(2))?;
     let b = as_i64(poly.coeffs.get(1))?;
     let c = as_i64(poly.coeffs.first())?;
-    let discriminant = b.checked_mul(b)?.checked_sub(4i64.checked_mul(c)?)?;
+    if a <= 0 {
+        return None; // negative leading coefficient left residual
+    }
+    let discriminant = b
+        .checked_mul(b)?
+        .checked_sub(4i64.checked_mul(a)?.checked_mul(c)?)?;
     if discriminant <= 0 {
         return None; // ≤ 0 → repeated root or irreducible over ℝ
     }
@@ -1935,15 +1962,24 @@ fn factor_telescoping_quadratic_denominator(
     if root * root != discriminant {
         return None; // irrational roots
     }
-    if (-b + root) % 2 != 0 || (-b - root) % 2 != 0 {
-        return None; // non-integer roots
+    // Roots `(-B ± √disc)/(2A)` as reduced fractions `n/d` with `d > 0`.
+    let denom = 2i64.checked_mul(a)?;
+    let reduce = |numer: i64| -> (i64, i64) {
+        let g = gcd_i64(numer, denom);
+        (numer / g, denom / g)
+    };
+    let (n1, d1) = reduce(-b + root);
+    let (n2, d2) = reduce(-b - root);
+    if n1 * d2 == n2 * d1 {
+        return None; // repeated root
     }
-    let r1 = (-b + root) / 2;
-    let r2 = (-b - root) / 2;
-    // r1 != r2 since discriminant > 0. Build `(k − r1)`, `(k − r2)`.
-    let var_expr = ctx.var(var);
-    let factor1 = shift_expr(ctx, var_expr, -r1);
-    let factor2 = shift_expr(ctx, var_expr, -r2);
+    // The affine factors `(d1·k − n1)(d2·k − n2)` have leading coefficient `d1·d2`, which must equal
+    // `A` for them to multiply back to `den` (so the numerator stays 1, no leftover scale factor).
+    if d1.checked_mul(d2)? != a {
+        return None;
+    }
+    let factor1 = build_affine_factor(ctx, var, d1, n1);
+    let factor2 = build_affine_factor(ctx, var, d2, n2);
     Some((factor1, factor2))
 }
 
@@ -2665,8 +2701,10 @@ mod tests {
                 );
             }
         }
-        // Non-monic (`4k²-1`) and irreducible (`k²+1`, `k²+k+1`) quadratics are declined.
-        for expr in ["4*k^2-1", "k^2+1", "k^2+k+1"] {
+        // Irreducible (`k²+1`, `k²+k+1`), non-primitive (`2k²-2`, factors `(k-1)(k+1)` don't carry
+        // the leading 2), and non-telescoping affine (`9k²-1` → `(3k-1)(3k+1)`, an index gap of 2 in
+        // the affine base, declined by the affine path) quadratics stay residual.
+        for expr in ["k^2+1", "k^2+k+1", "2*k^2-2", "9*k^2-1"] {
             let mut ctx = Context::new();
             let summand = cas_parser::parse(&format!("1/({expr})"), &mut ctx).expect("parse");
             let one = ctx.num(1);
@@ -2674,6 +2712,29 @@ mod tests {
             assert!(
                 try_build_telescoping_rational_sum(&mut ctx, summand, "k", one, n).is_none(),
                 "1/({expr}) must stay residual"
+            );
+        }
+    }
+
+    #[test]
+    fn telescoping_rational_sum_factors_non_monic_affine_denominator() {
+        // `4k²-1 = (2k-1)(2k+1)`: the difference of squares (which the engine keeps expanded)
+        // telescopes via the affine path — the classic `Σ 1/(4k²-1) = 1/2`.
+        for (a, n) in [(1i64, 7i64), (2, 9)] {
+            let mut ctx = Context::new();
+            let summand = cas_parser::parse("1/(4*k^2-1)", &mut ctx).expect("parse");
+            let start = ctx.num(a);
+            let end = ctx.num(n);
+            let result = try_build_telescoping_rational_sum(&mut ctx, summand, "k", start, end)
+                .expect("build");
+            let mut brute = BigRational::from_integer(0.into());
+            for k in a..=n {
+                brute += BigRational::new(1.into(), (4 * k * k - 1).into());
+            }
+            assert_eq!(
+                eval_small_rat(&ctx, result),
+                Some(brute),
+                "Σ 1/(4k²-1) [{a},{n}]"
             );
         }
     }

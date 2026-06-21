@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 271 (newest first)
+Active entries: 272 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -156,6 +156,7 @@ Active entries: 271 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_rational_s... | P0 SOUNDNESS: suma telescópica con gap ≥ 2 daba RESPUESTA INCORRECTA
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Telescópica con denominador cuadrático EXPANDIDO 1/(k²−1), 1/(k²−5k+6)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: dominancia en forma PRODUCTO p(x)·e^{-q(x)} → 0
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`factor_telescoping_quadratic_den... | Telescópica NO mónica vía factores afines 1/(4k²−1) = (2k−1)(2k+1)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11568,3 +11569,39 @@ Active entries: 271 (newest first)
     oráculo. El par creciente/decreciente de la exponencial es simétrico (signo del coef. líder).
   - residual (peldaño G2): producto en 0+ `x·ln(x) → 0` (mecanismo distinto, no es ∞); bases `b^x`
     (b<1) decrecientes; L'Hôpital/Taylor paso a paso para `(eˣ−1−x)/x² → 1/2`.
+
+## 2026-06-21 - Telescópica NO mónica vía factores afines 1/(4k²−1) = (2k−1)(2k+1)
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`factor_telescoping_quadratic_denominator`
+    generalizado a no-mónico vía raíces racionales; helpers `gcd_i64`, `build_affine_factor`)
+- status:
+  - `retained` (capability: completa la familia telescópica racional con el caso no-mónico afín)
+- capture:
+  - investment_class: capability (Fase 1, P2 — familia telescópica; peldaño de los ciclos 4-5)
+  - primary_dimension: north_star_completeness (sumatorios)
+  - secondary_dimension: reuse_value (reusa la ruta afín existente `detect_affine_..._and_gap`,
+    correcta y que YA declina gap≥2 — verificado antes de construir encima)
+  - cell: `Σ 1/(4k²−1) = 1/2` (clásico), `Σ_{2} 1/(4k²−1) = 1/6`. Factoriza `A k²+Bk+C` con raíces
+    racionales a factores AFINES `(d1·k−n1)(d2·k−n2)` cuando `d1·d2 == A`.
+  - behavior_change_expected: las telescópicas con cuadrático no-mónico que factoriza en afines de
+    gap-1 pasan de residual a forma cerrada. Huella NONE.
+  - SOUNDNESS: raíces racionales `(-B±√disc)/(2A)` reducidas a `n/d`; factor afín `(d·k−n)`; requiere
+    `d1·d2 == A` (factorización primitiva, numerador queda 1 sin escala sobrante). Los casos que NO
+    telescopian simple DECLINAN (residual): `9k²−1`→(3k-1)(3k+1) gap-2 afín, `6k²+5k+1` factores
+    de coef. distinto, `2k²−2` no primitivo, `k²+1`/`k²+k+1` irreducibles. BARRIDO ADVERSARIAL:
+    1912 cuadráticas (A,B,C variados, finito), 0 respuestas incorrectas. isqrt exacto (no f64 gate).
+  - PRECAUCIÓN VERIFICADA: antes de factorizar a afines, comprobé que la ruta afín no tiene el bug
+    de gap≥2 del ciclo 4 — declina gap≥2 (residual, no wrong). Así factorizar es seguro: nunca
+    produce un wrong-answer, solo cierra los gap-1 y deja residual lo demás.
+- observed:
+  - `4k²−1`=(2k−1)(2k+1) es gap-1 afín (telescopia); `9k²−1`=(3k−1)(3k+1) es gap-2 afín (no
+    telescopia simple, es digamma) → residual correcto. El factoreo respeta esto automáticamente
+    porque delega en la ruta afín, que ya distingue gap-1 de gap≥2.
+  - generalizar el factoreo mónico (ciclo 5) a no-mónico fue cambiar `lead==1` por raíces racionales
+    + el gate `d1·d2==A`; el caso mónico es `d1=d2=1` (preservado, tests verdes).
+- retained learning:
+  - antes de hacer que un builder ALIMENTE a otra ruta (aquí afín), AUDITA esa ruta para el mismo
+    tipo de bug que acabas de arreglar (gap≥2): un fix de soundness en una ruta puede tener un gemelo
+    latente en la hermana. La ruta afín estaba bien (declina gap≥2), así que construir encima fue seguro.
+  - residual (peldaño): telescópica de 3 factores `1/(k(k+1)(k+2))` (telescopio de 2º orden);
+    afín gap≥2 (digamma, fuera de elemental); no-primitivo con escala (`2k²−2`).
