@@ -4482,6 +4482,53 @@ pub fn taylor_series_at_zero_expr(
     Some(series.to_expr(ctx))
 }
 
+/// Taylor series of `expr` around a constant `point` to `order`, built directly from the
+/// definition `Σ_{k=0}^{order} f^(k)(point)/k! · (var − point)^k` by repeated differentiation and
+/// substitution. Handles a general expansion point (use [`taylor_series_at_zero_expr`] for the
+/// Maclaurin case, whose analytic engine gives nicer closed forms). `None` if a needed
+/// derivative is unavailable.
+pub fn taylor_series_at_point_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    point: ExprId,
+    order: usize,
+) -> Option<ExprId> {
+    use num_bigint::BigInt;
+    use num_traits::One;
+
+    let var_id = ctx.var(var_name);
+    let mut derivative = expr;
+    let mut factorial = BigInt::one();
+    let mut sum: Option<ExprId> = None;
+    for k in 0..=order {
+        // f^(k)(point) / k!
+        let value = cas_ast::substitute_expr_by_id(ctx, derivative, var_id, point);
+        let factorial_expr = ctx.add(Expr::Number(BigRational::from_integer(factorial.clone())));
+        let coefficient = ctx.add(Expr::Div(value, factorial_expr));
+        // · (var − point)^k
+        let term = if k == 0 {
+            coefficient
+        } else {
+            let shifted = ctx.add(Expr::Sub(var_id, point));
+            let exponent = ctx.num(k as i64);
+            let power = ctx.add(Expr::Pow(shifted, exponent));
+            ctx.add(Expr::Mul(coefficient, power))
+        };
+        sum = Some(match sum {
+            None => term,
+            Some(acc) => ctx.add(Expr::Add(acc, term)),
+        });
+        if k < order {
+            derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                ctx, derivative, var_name,
+            )?;
+            factorial *= BigInt::from(k + 1);
+        }
+    }
+    sum
+}
+
 /// Power-series reciprocal `1/den` to `order`, via the standard recurrence
 /// `r_0 = 1/d_0`, `r_k = -(1/d_0)·Σ_{i=1}^{k} d_i·r_{k-i}`. Requires `den(0) ≠ 0`
 /// (returns `None` otherwise — a pole at 0 has no Maclaurin expansion).

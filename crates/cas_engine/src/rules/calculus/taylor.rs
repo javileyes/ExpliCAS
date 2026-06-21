@@ -1,5 +1,6 @@
-//! `taylor(...)` / `series(...)` command: Maclaurin (expansion point 0) series to a
-//! requested order, delegating to the same analytic series engine the limit evaluator uses.
+//! `taylor(...)` / `series(...)` command: Taylor/Maclaurin series to a requested order. The
+//! Maclaurin (point 0) case delegates to the limit evaluator's analytic series engine; a
+//! non-zero expansion point is built from the definition by repeated differentiation.
 
 use cas_ast::{Context, Expr, ExprId};
 
@@ -7,10 +8,13 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 
 /// Parse `taylor(f, x, n)` and `taylor(f, x, point, n)` (and the `series` alias).
-/// Returns `(target, var_name, order)` for an expansion at `point = 0` with a
-/// non-negative integer `order`. Non-zero expansion points and non-integer / negative
-/// orders are declined (left as honest residuals).
-fn try_extract_taylor_call(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, String, usize)> {
+/// Returns `(target, var_name, point_expr, order)`. `point_expr` is the expansion point
+/// (the literal `0` node when the 3-argument form omits it); a non-negative integer `order`
+/// is required (negative/non-integer orders are declined as honest residuals).
+fn try_extract_taylor_call(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, String, ExprId, usize)> {
     if !ctx.is_call_named(expr, "taylor") && !ctx.is_call_named(expr, "series") {
         return None;
     }
@@ -29,25 +33,27 @@ fn try_extract_taylor_call(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, S
     };
     let var_name = ctx.sym_name(*var_sym).to_string();
 
-    // Only the Maclaurin point (0) is supported; a non-zero expansion point is a residual.
-    if let Some(point) = point_expr {
-        if cas_math::numeric::as_i64(ctx, point) != Some(0) {
-            return None;
-        }
-    }
-
+    let point = point_expr.unwrap_or_else(|| ctx.num(0));
     let order = cas_math::numeric::as_i64(ctx, order_expr)?;
     if order < 0 {
         return None;
     }
-    Some((target, var_name, order as usize))
+    Some((target, var_name, point, order as usize))
 }
 
 define_rule!(TaylorRule, "Taylor Series", |ctx, expr| {
-    let (target, var_name, order) = try_extract_taylor_call(ctx, expr)?;
-    let series =
-        cas_math::limits_support::taylor_series_at_zero_expr(ctx, target, &var_name, order)?;
-    Some(Rewrite::new(series).desc("serie de Taylor (Maclaurin)"))
+    let (target, var_name, point, order) = try_extract_taylor_call(ctx, expr)?;
+    // The Maclaurin point uses the analytic engine (nicer closed forms); a non-zero point
+    // expands from the definition by repeated differentiation.
+    if cas_math::numeric::as_i64(ctx, point) == Some(0) {
+        let series =
+            cas_math::limits_support::taylor_series_at_zero_expr(ctx, target, &var_name, order)?;
+        return Some(Rewrite::new(series).desc("serie de Taylor (Maclaurin)"));
+    }
+    let series = cas_math::limits_support::taylor_series_at_point_expr(
+        ctx, target, &var_name, point, order,
+    )?;
+    Some(Rewrite::new(series).desc("serie de Taylor"))
 });
 
 #[cfg(test)]
@@ -59,7 +65,7 @@ mod tests {
     fn extract(src: &str) -> Option<(String, usize)> {
         let mut ctx = Context::new();
         let expr = parse(src, &mut ctx).expect("parse");
-        try_extract_taylor_call(&mut ctx, expr).map(|(_, v, o)| (v, o))
+        try_extract_taylor_call(&mut ctx, expr).map(|(_, v, _, o)| (v, o))
     }
 
     #[test]
@@ -73,18 +79,45 @@ mod tests {
     }
 
     #[test]
-    fn declines_nonzero_point_and_bad_order() {
-        assert_eq!(extract("taylor(exp(x), x, 1, 4)"), None); // non-zero expansion point
+    fn accepts_nonzero_point_and_declines_bad_order() {
+        assert_eq!(
+            extract("taylor(exp(x), x, 1, 4)"),
+            Some(("x".to_string(), 4))
+        ); // point a = 1
         assert_eq!(extract("taylor(exp(x), x, -1)"), None); // negative order
         assert_eq!(extract("taylor(exp(x), x)"), None); // too few args
         assert_eq!(extract("diff(exp(x), x)"), None); // not a taylor/series call
     }
 
     #[test]
+    fn expands_around_a_nonzero_point() {
+        let mut ctx = Context::new();
+        // d/dx of the Taylor of exp around 1 must reproduce the integrand value e at x=1.
+        let expr = parse("taylor(exp(x), x, 1, 3)", &mut ctx).expect("parse");
+        let (target, var, point, order) =
+            try_extract_taylor_call(&mut ctx, expr).expect("taylor call");
+        let series = cas_math::limits_support::taylor_series_at_point_expr(
+            &mut ctx, target, &var, point, order,
+        )
+        .expect("series");
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: series
+            }
+        );
+        // The expansion is in powers of (x − 1), with the e coefficient.
+        assert!(rendered.contains("x - 1"), "{rendered}");
+        assert!(rendered.contains('e'), "{rendered}");
+    }
+
+    #[test]
     fn expands_exponential_to_requested_order() {
         let mut ctx = Context::new();
         let expr = parse("taylor(exp(x), x, 0, 4)", &mut ctx).expect("parse");
-        let (target, var, order) = try_extract_taylor_call(&mut ctx, expr).expect("taylor call");
+        let (target, var, _point, order) =
+            try_extract_taylor_call(&mut ctx, expr).expect("taylor call");
         let series =
             cas_math::limits_support::taylor_series_at_zero_expr(&mut ctx, target, &var, order)
                 .expect("series");
@@ -105,7 +138,8 @@ mod tests {
     fn expands_geometric_rational_function() {
         let mut ctx = Context::new();
         let expr = parse("taylor(1/(1-x), x, 0, 4)", &mut ctx).expect("parse");
-        let (target, var, order) = try_extract_taylor_call(&mut ctx, expr).expect("taylor call");
+        let (target, var, _point, order) =
+            try_extract_taylor_call(&mut ctx, expr).expect("taylor call");
         let series =
             cas_math::limits_support::taylor_series_at_zero_expr(&mut ctx, target, &var, order)
                 .expect("series");
