@@ -503,6 +503,23 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    // General rational-ratio finite geometric (`sum(1/2^k, k, a, n)`,
+    // `sum((2/3)^k, k, 1, n)`): the integer-base builder above declines a fractional
+    // or negative ratio, so this catches them via the shared geometric matcher.
+    if let Some(candidate) = try_build_geometric_rational_sum(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::GeometricPower,
+        });
+    }
+
     None
 }
 
@@ -711,6 +728,40 @@ pub fn try_build_geometric_power_sum(
     }
     let denominator = ctx.num(denominator_value);
     Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+/// Closed form of a finite geometric sum with a general rational ratio:
+/// `sum(c·r^k, k, a, n) = c·(r^a - r^(n+1))/(1-r)` for `r ≠ 1`. Reuses the shared
+/// [`extract_geometric_term`] matcher, so it covers fractional and negative ratios that
+/// the integer-base [`try_build_geometric_power_sum`] declines, with a numeric OR symbolic
+/// upper bound. Returns `None` for a non-geometric summand, `r = 1` (a constant sum, owned
+/// elsewhere), or a bound that contains the index variable.
+pub fn try_build_geometric_rational_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
+        return None;
+    }
+    let (coeff, ratio) = extract_geometric_term(ctx, summand, var)?;
+    if ratio == BigRational::one() {
+        return None; // constant sum (r = 1) is handled by the sum-of-constant builder
+    }
+
+    // c · (r^a - r^(n+1)) / (1 - r).
+    let ratio_num = ctx.add(Expr::Number(ratio.clone()));
+    let r_pow_a = ctx.add(Expr::Pow(ratio_num, start));
+    let one = ctx.num(1);
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let r_pow_np1 = ctx.add(Expr::Pow(ratio_num, end_plus_one));
+    let diff = ctx.add(Expr::Sub(r_pow_a, r_pow_np1));
+    let coeff_num = ctx.add(Expr::Number(coeff));
+    let numerator = mul2_raw(ctx, coeff_num, diff);
+    let one_minus_r = ctx.add(Expr::Number(BigRational::one() - &ratio));
+    Some(ctx.add(Expr::Div(numerator, one_minus_r)))
 }
 
 /// Build the best available finite-product evaluation plan for `product(...)`.
@@ -2212,6 +2263,70 @@ mod tests {
                 .map(|p| matches!(p.kind, SumEvaluationKind::ConvergentInfinite))
                 .unwrap_or(false);
             assert_eq!(is_convergent, must_be_convergent, "{src}");
+        }
+    }
+
+    // Fold a constant expression (including integer powers) to an exact rational.
+    fn fold_const(ctx: &Context, e: cas_ast::ExprId) -> Option<BigRational> {
+        use num_traits::{ToPrimitive, Zero};
+        match ctx.get(e) {
+            Expr::Number(n) => Some(n.clone()),
+            Expr::Neg(i) => fold_const(ctx, *i).map(|v| -v),
+            Expr::Add(l, r) => Some(fold_const(ctx, *l)? + fold_const(ctx, *r)?),
+            Expr::Sub(l, r) => Some(fold_const(ctx, *l)? - fold_const(ctx, *r)?),
+            Expr::Mul(l, r) => Some(fold_const(ctx, *l)? * fold_const(ctx, *r)?),
+            Expr::Div(l, r) => {
+                let d = fold_const(ctx, *r)?;
+                if d.is_zero() {
+                    None
+                } else {
+                    Some(fold_const(ctx, *l)? / d)
+                }
+            }
+            Expr::Pow(b, ex) => {
+                let bv = fold_const(ctx, *b)?;
+                let ev = fold_const(ctx, *ex)?;
+                if !ev.is_integer() {
+                    return None;
+                }
+                super::rational_pow_int(&bv, ev.to_integer().to_i64()?)
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn finite_geometric_rational_ratio_closed_forms() {
+        // (summand, start a, upper n, expected value of `sum(summand, k, a, n)`).
+        // Verified by substituting `m -> n` in the symbolic closed form and folding to an
+        // exact rational — display-independent (the formatter shows `(2/3)^m` as `2/3^m`).
+        for (src, a, n, num, den) in [
+            ("1/2^k", 0i64, 3i64, 15i64, 8i64),
+            ("(2/3)^k", 0, 5, 665, 243),
+            ("(2/3)^k", 1, 4, 130, 81),
+            ("1/3^k", 1, 3, 13, 27),
+            ("(-1/2)^k", 0, 4, 11, 16),
+            ("5/4^k", 2, 5, 425, 1024),
+        ] {
+            let mut ctx = Context::new();
+            let full =
+                cas_parser::parse(&format!("sum({src}, k, {a}, m)"), &mut ctx).expect("parse");
+            let plan =
+                try_plan_finite_sum_evaluation(&mut ctx, full, 1000).expect("geometric plan");
+            assert!(
+                matches!(plan.kind, SumEvaluationKind::GeometricPower),
+                "{src} should be a geometric closed form"
+            );
+            let m = ctx.var("m");
+            let nval = ctx.num(n);
+            let substituted = cas_ast::substitute_expr_by_id(&mut ctx, plan.candidate, m, nval);
+            let value = fold_const(&ctx, substituted)
+                .unwrap_or_else(|| panic!("{src} closed form should fold at m={n}"));
+            assert_eq!(
+                value,
+                BigRational::new(num.into(), den.into()),
+                "sum({src}, k, {a}, {n})"
+            );
         }
     }
 

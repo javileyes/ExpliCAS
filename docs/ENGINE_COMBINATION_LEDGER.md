@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 241 (newest first)
+Active entries: 242 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -126,6 +126,7 @@ Active entries: 241 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`factor_sum_difference_of_cubes`, wired into... | Retained capability: factor sum/difference of cubes (bivariate)
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`perfect_cube_root`, `rational_cbrt`; | Retained capability: factor coefficient cubes (perfect-cube coefficients)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`extract_geometric_term`, | Retained capability: convergent infinite geometric series closed form
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_geometric_rational_sum... | Retained capability: finite geometric sum with general rational ratio
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10360,3 +10361,40 @@ Active entries: 241 (newest first)
   - residual (peldaño): symbolic lower bound (`sum((1/2)^k,k,m,inf)=2^(1-m)`), finite
     geometric with fractional ratio (`sum(1/2^k,k,0,n)` still residual), and non-geometric
     convergent series (p-series `1/k²=π²/6`, telescoping-to-constant).
+
+## 2026-06-21 - Retained capability: finite geometric sum with general rational ratio
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_geometric_rational_sum`, wired
+    into `try_plan_finite_sum_evaluation` after the integer-base `try_build_geometric_power_sum`)
+- status:
+  - `retained` (capability: `sum(c·r^k, k, a, n)` with a fractional/negative rational ratio
+    and a symbolic OR numeric upper bound now closes; completes the previous cycle's
+    geometric series work to the finite case)
+- capture:
+  - investment_class: capability (series / Phase-6-adjacent)
+  - cell: `sum(1/2^k,k,0,n) = 2 - 2·(1/2)^(n+1)`, `sum((2/3)^k,k,1,n) = 2 - 3·(2/3)^(n+1)`,
+    `sum(1/3^k,k,0,n) = 3/2·(1-(1/3)^(n+1))`, `sum((-1/2)^k,k,0,n) = 2/3·(1-(-1/2)^(n+1))`.
+    Integer-base finite (`sum(2^k,k,0,n) = 2^(n+1)-1`) is UNCHANGED (existing builder runs
+    first). Closed form verified exact against brute force at large numeric bounds
+    (0 mismatches over 25 ratio×bound cases).
+  - behavior_change_expected: fractional/negative-ratio finite geometric flips from residual
+    to closed form (reuses the `GeometricPower` kind, no new narration). Calculus
+    guardrail+pressure huella structurally NONE; workspace+clippy+fmt green.
+- observed:
+  - the existing `try_build_geometric_power_sum` only matched `Pow(integer≥2, k)`. Placing a
+    general-ratio builder AFTER it (reusing the shared `extract_geometric_term`) catches the
+    declined fractional/negative ratios while leaving the integer-base output byte-identical
+    — the standard formula `c·(r^a - r^(n+1))/(1-r)` reproduces `2^(n+1)-1` for `r=2`, so
+    even if the ordering changed the value would agree.
+- retained learning:
+  - to extend a family without huella churn, add the new branch AFTER the incumbent so the
+    already-covered shapes keep their exact existing output; the new branch only ever runs
+    on inputs the incumbent declined.
+  - VERIFY a symbolic closed form by substituting the bound and folding to an exact rational,
+    NOT by re-parsing the display: the formatter renders `(2/3)^m` as the ambiguous `2/3^m`
+    (a pre-existing display quirk), so a sweep that re-parses the display gets the wrong
+    value while the internal `Pow(2/3, ·)` is correct. `as_rational_const` (both the
+    `cas_ast::views` and `numeric_eval` variants) does NOT fold `Pow`, so a power-aware fold
+    helper is needed for the test.
+  - residual (peldaño): symbolic LOWER bound (`sum((1/2)^k,k,m,inf)` / `…,m,n)`), and the
+    display ambiguity `(p/q)^n → p/q^n` is a formatter gap worth a separate cosmetic cycle.
