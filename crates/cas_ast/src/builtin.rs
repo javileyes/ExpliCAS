@@ -218,6 +218,13 @@ impl BuiltinFn {
             "asinh" => Some(BuiltinFn::Asinh),
             "acosh" => Some(BuiltinFn::Acosh),
             "atanh" => Some(BuiltinFn::Atanh),
+            // `arc*` input spellings of the inverse hyperbolics, mirroring the trig `arcsin`
+            // aliases: the engine already implements `asinh`/`acosh`/`atanh` fully (and emits
+            // them from integration), so a user who writes `arcsinh(x)` — by analogy with the
+            // accepted `arcsin(x)` — should get the same function, not "función no definida".
+            "arcsinh" => Some(BuiltinFn::Asinh),
+            "arccosh" => Some(BuiltinFn::Acosh),
+            "arctanh" => Some(BuiltinFn::Atanh),
             "ln" => Some(BuiltinFn::Ln),
             "log" => Some(BuiltinFn::Log),
             "log2" => Some(BuiltinFn::Log2),
@@ -397,6 +404,18 @@ mod tests {
         assert_eq!(BuiltinFn::Sin.name(), "sin");
         assert_eq!(BuiltinFn::Sqrt.name(), "sqrt");
         assert_eq!(BuiltinFn::Hold.name(), "__hold");
+    }
+
+    #[test]
+    fn arc_prefixed_inverse_hyperbolics_alias_the_a_spelling() {
+        // `arcsinh`/`arccosh`/`arctanh` are accepted input spellings of the existing inverse
+        // hyperbolics (mirroring the `arcsin` trig alias), resolving to the same variants.
+        assert_eq!(BuiltinFn::from_name("arcsinh"), Some(BuiltinFn::Asinh));
+        assert_eq!(BuiltinFn::from_name("arccosh"), Some(BuiltinFn::Acosh));
+        assert_eq!(BuiltinFn::from_name("arctanh"), Some(BuiltinFn::Atanh));
+        // The `a*` spellings still resolve to the same variants.
+        assert_eq!(BuiltinFn::from_name("asinh"), Some(BuiltinFn::Asinh));
+        assert_eq!(BuiltinFn::from_name("atanh"), Some(BuiltinFn::Atanh));
     }
 
     #[test]

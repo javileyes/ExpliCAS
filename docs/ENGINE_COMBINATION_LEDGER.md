@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 284 (newest first)
+Active entries: 285 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate ... | Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
 - 2026-06-22 | `rejected` | `crates/cas_math/src/fraction_multivar_gcd.rs` (`try_multivar_gcd`: gate | RECHAZADO: cancelar gcd num/den con numerador univariado (perturba la verificación del backend)
+- 2026-06-22 | `retained` | `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: aliases `arcsinh`/`a... | Aceptar las grafías arc* de las inversas hiperbólicas (arcsinh = asinh)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12082,3 +12083,39 @@ Active entries: 284 (newest first)
     verificación del backend reconozca `(lineal)²+positivo ≠ 0` como vacuo (reusar
     `is_strictly_positive_univariate_quadratic` de `prove_sign.rs`). Hacer ese sub-paso del
     backend habilita el cancelador sin la regresión de condición vacua.
+
+## 2026-06-22 - Aceptar las grafías arc* de las inversas hiperbólicas (arcsinh = asinh)
+- area:
+  - `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: aliases `arcsinh`/`arccosh`/`arctanh`)
+- status:
+  - `retained` (capability/usabilidad — P1/P3; consistencia de entrada, reusa funciones existentes)
+- capture:
+  - investment_class: capability (Fase 1; las funciones `asinh`/`acosh`/`atanh` ya existen)
+  - primary_dimension: north_star_completeness (consistencia de la superficie de entrada)
+  - secondary_dimension: reuse_value (alias puro a variantes existentes; cero lógica nueva)
+  - cell: `diff(arcsinh(x)) → 1/√(x²+1)`, `diff(arccosh(x)) → 1/(√(x−1)√(x+1))`,
+    `diff(arctanh(x)) → 1/(1−x²)`, `arcsinh(0) → 0`, `arcsinh(x) → asinh(x)` (canoniza a la
+    grafía `a*`). Antes: `función [arcsinh] no definida`.
+  - behavior_change_expected: `arcsinh`/`arccosh`/`arctanh` pasan de error de parseo a alias de
+    `asinh`/`acosh`/`atanh`. Puramente ADITIVO (grafías nuevas aceptadas); ningún input previo
+    cambia. Huella guardrail+pressure NONE (ningún fixture usaba `arc*` hiperbólico — erraba).
+  - SOUNDNESS: alias sintáctico de entrada; sin lógica de dominio/valor (no aplica el guardrail
+    `ValueDomain`). `from_name` es la ÚNICA fuente de verdad de nombres de función (el parser la
+    usa; no hay lista separada), confirmado porque el alias bastó.
+- observed:
+  - asimetría: el trig YA aceptaba `arcsin` (variante distinta `Arcsin`) además de `asin`; el
+    motor EMITE `asinh`/`atanh` desde integración (`∫1/√(x²+1)=asinh(x)`, `∫1/(1−x²)=atanh(x)`)
+    pero NO reconocía la entrada `arcsinh`/`arctanh` — un usuario que escribe `arcsinh` por
+    analogía con `arcsin` recibía "no definida".
+  - opción elegida: alias a las variantes `Asinh`/`Acosh`/`Atanh` existentes (NO nuevas variantes
+    `Arcsinh` como en el trig) — minimal, cero blast-radius en los match exhaustivos de BuiltinFn,
+    el output canoniza a `a*`. Mirror exacto del trig (variantes separadas) sería L (ramas nuevas
+    en derivada/formatter/latex/evaluador) sin ganancia funcional.
+- retained learning:
+  - cuando el motor EMITE una función pero no acepta una grafía-alias de ENTRADA común para ella,
+    el cierre suele ser una línea en la tabla de nombres del parser — alias a la variante
+    existente, no una variante nueva. Verifica primero que la tabla de nombres es la única fuente
+    de verdad (lo es aquí) antes de buscar listas paralelas.
+  - residual (peldaño): `arsinh`/`artanh` (prefijo "ar" técnicamente correcto para inversas
+    hiperbólicas) y las inversas hiperbólicas sin función base (`asech`/`acsch`/`acoth`, que el
+    motor no implementa) quedan fuera.
