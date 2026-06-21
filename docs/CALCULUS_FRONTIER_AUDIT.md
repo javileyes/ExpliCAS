@@ -637,7 +637,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `factor(x⁴+x²+1)→(x²+x+1)(x²-x+1)`, `factor(4x⁴+1)→(2x²+2x+1)(2x²-2x+1)`,
   `factor(x⁶-1)→(x-1)(x+1)(x²+x+1)(x²-x+1)`; las irreducibles `x⁴+1`,
   `x⁴-x²+1`, Φ5 quedan enteras.)*
-  *(extensión `factor` even-poly 2026-06-21 PENDING_HASH_EP: `factor` parte
+  *(extensión `factor` even-poly 2026-06-21 bfd669727b629bdbba8340e380e493cc773cd3ae: `factor` parte
   también polinomios PARES REDUCIBLES de grado ≥6 vía t=x²:
   `factor(x⁶+1)→(x²+1)(x⁴-x²+1)`, `factor(x⁶+x⁴+x²+1)→(x²+1)(x⁴+1)`,
   `factor(x⁸-1)→(x-1)(x+1)(x²+1)(x⁴+1)`, `factor(x⁸+x⁴+1)→(x²+x+1)(x²-x+1)(x⁴-x²+1)`;
