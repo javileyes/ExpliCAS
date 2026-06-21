@@ -17,6 +17,7 @@ use cas_math::abs_support::{
     value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind, AbsFixedRewriteKind,
     SymbolicRootCancelRewriteKind,
 };
+use cas_math::difference_of_cubes_support::try_rewrite_cbrt_perfect_cube_expr;
 use cas_math::expr_nary::{AddView, Sign};
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
 
@@ -655,6 +656,19 @@ define_rule!(
     }
 );
 
+// EvaluateCbrtPerfectCubeRule: cbrt(8) → 2, cbrt(-8) → -2, cbrt(8/27) → 2/3.
+// Mirrors the perfect-square folding of sqrt; a non-cube argument (cbrt(2), cbrt(16)) is
+// left symbolic, so only exact rational cube roots collapse.
+define_rule!(
+    EvaluateCbrtPerfectCubeRule,
+    "Evaluate Cube Root of Perfect Cube",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewritten = try_rewrite_cbrt_perfect_cube_expr(ctx, expr)?;
+        Some(Rewrite::new(rewritten).desc("∛ of a perfect cube"))
+    }
+);
+
 // SimplifySqrtOddPowerRule: x^(n/2) -> |x|^k * sqrt(x) where n = 2k+1 (odd >= 3)
 // Works on canonicalized form: sqrt(x^3) becomes x^(3/2) before reaching this rule
 // Examples:
@@ -930,11 +944,12 @@ define_rule!(
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
-                                                           // V2.14.45: SimplifySqrtOddPowerRule DISABLED - causes split/merge cycle with ProductPowerRule
-                                                           // x^(5/2) → |x|²*√x is a "worsening" transformation (increases AST nodes).
-                                                           // The canonical form for odd half-integer powers is Pow(x, n/2), NOT the product form.
-                                                           // If visual "extracted square" form is desired, it belongs in a renderer or explain-mode.
-                                                           // simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
+    simplifier.add_rule(Box::new(EvaluateCbrtPerfectCubeRule)); // cbrt(8) → 2 (perfect cubes only)
+                                                                // V2.14.45: SimplifySqrtOddPowerRule DISABLED - causes split/merge cycle with ProductPowerRule
+                                                                // x^(5/2) → |x|²*√x is a "worsening" transformation (increases AST nodes).
+                                                                // The canonical form for odd half-integer powers is Pow(x, n/2), NOT the product form.
+                                                                // If visual "extracted square" form is desired, it belongs in a renderer or explain-mode.
+                                                                // simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
     simplifier.add_rule(Box::new(SymbolicRootCancelRule)); // V2.14.45: sqrt(x^n, n) -> x in Assume mode
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(EvaluateSignRule));

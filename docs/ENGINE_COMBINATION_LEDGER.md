@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 286 (newest first)
+Active entries: 287 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -122,6 +122,7 @@ Active entries: 286 (newest first)
 - 2026-06-22 | `rejected` | `crates/cas_math/src/fraction_multivar_gcd.rs` (`try_multivar_gcd`: gate | RECHAZADO: cancelar gcd num/den con numerador univariado (perturba la verificación del backend)
 - 2026-06-22 | `retained` | `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: aliases `arcsinh`/`a... | Aceptar las grafías arc* de las inversas hiperbólicas (arcsinh = asinh)
 - 2026-06-22 | `retained` | `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: `sen`/`tg`/`cotg`/`c... | Aceptar la notación trigonométrica española/europea (sen, tg, arctg, cotg)
+- 2026-06-22 | `retained` | `crates/cas_math/src/difference_of_cubes_support.rs` (`rational_cbrt`, | Evaluar la raíz cúbica de un cubo perfecto (cbrt(8) = 2)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12153,3 +12154,43 @@ Active entries: 286 (newest first)
   - residual (peldaño): `ch`/`sh`/`th` (notación francesa de hiperbólicas) y `lg` (AMBIGUO:
     log10 vs log2 según convención — NO añadir sin decidir base) quedan fuera a propósito; `2**3`
     (potencia estilo Python) es un cambio de lexer, no de tabla de nombres.
+
+## 2026-06-22 - Evaluar la raíz cúbica de un cubo perfecto (cbrt(8) = 2)
+- area:
+  - `crates/cas_math/src/difference_of_cubes_support.rs` (`rational_cbrt`,
+    `try_rewrite_cbrt_perfect_cube_expr`)
+  - `crates/cas_engine/src/rules/functions.rs` (`EvaluateCbrtPerfectCubeRule`, registrada)
+- status:
+  - `retained` (capability/consistencia — P1/P2; `cbrt` quedaba inerte mientras `root(_,3)` y
+    `sqrt` SÍ evaluaban)
+- capture:
+  - investment_class: capability (Fase 1, real-elemental; reusa el patrón de `sqrt` de cubo perfecto)
+  - primary_dimension: north_star_completeness (consistencia de la familia de raíces)
+  - secondary_dimension: reuse_value (espeja `rational_sqrt`/`try_rewrite_sqrt_perfect_square`)
+  - cell: `cbrt(8) → 2`, `cbrt(27) → 3`, `cbrt(-8) → -2`, `cbrt(64) → 4`, `cbrt(1000) → 10`,
+    `cbrt(8/27) → 2/3`, `cbrt(-27/8) → -3/2`, `cbrt(1) → 1`, `cbrt(0) → 0`. Simbólicos intactos:
+    `cbrt(2)`, `cbrt(9)`, `cbrt(16)` (cubo PARCIAL), `cbrt(x)`, `cbrt(x^3)`; `diff(cbrt(x)) = ⅓x^(−2/3)`.
+  - behavior_change_expected: `cbrt(n)` con `n` cubo perfecto racional pasa de inerte a su valor
+    exacto. Solo cubos PERFECTOS colapsan (display preservado para no-cubos). Huella
+    guardrail+pressure NONE (ningún fixture fijaba `cbrt(cubo)` sin evaluar).
+  - SOUNDNESS: EXACTO — `rational_cbrt` verifica re-cubicando los candidatos (`numer`/`denom`
+    deben ser cubos perfectos), nunca f64; el signo real se conserva (`cbrt(-8) = -2`, raíz impar
+    real). `as_rational_const` gatea a argumentos numéricos; no-cubos y argumentos simbólicos
+    declinan (None → conserva). Sin lógica de dominio dependiente de valor (raíz cúbica real
+    definida en todo ℝ) ⇒ no aplica el gate `ValueDomain`.
+- observed:
+  - asimetría: `root(8,3) → 2`, `(-8)^(1/3) → -2`, `sqrt(9) → 3` evaluaban (vía
+    `extract_root_factor` de `power_eval_support` y `rational_sqrt`), pero `cbrt` NO tenía regla de
+    evaluación — `cbrt(8)` quedaba inerte. La función dedicada existía solo para display/derivada.
+  - se reusó el patrón EXACTO de `sqrt` (`rational_sqrt` + `try_rewrite_sqrt_perfect_square_expr` +
+    rule en functions.rs) en vez de canonizar `cbrt(x) → x^(1/3)` (que cambiaría el display de
+    `cbrt(2)` a `2^(1/3)` y movería muchos fixtures).
+  - `BigInt` tiene `.cbrt()` inherente (num-bigint 0.4); no hace falta `num_integer::Roots`.
+- retained learning:
+  - cuando una familia de funciones (raíces) tiene un miembro que EVALÚA (`sqrt`, `root`) y otro
+    que no (`cbrt`), el cierre es espejar la regla de evaluación del miembro que funciona, no
+    canonizar a una forma común (que regresa el display de los casos irracionales). El gate
+    "solo colapsa si es valor exacto/perfecto" preserva el display simbólico.
+  - residual (peldaño): cubo PARCIAL (`cbrt(16) → 2·cbrt(2)`, análogo a `sqrt(8) → 2·sqrt(2)`) y
+    `cbrt(x^3) → x` (simbólico, depende del signo: `cbrt(x^3)=x` real siempre, a diferencia de
+    `sqrt(x^2)=|x|`) quedan fuera de este ciclo.

@@ -4,7 +4,7 @@ use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use num_traits::{One, Signed};
+use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -233,12 +233,74 @@ fn perfect_cube_root(value: &BigRational) -> Option<BigRational> {
     None
 }
 
+/// Exact rational cube root: `Some(∛r)` only when the numerator and denominator are BOTH perfect
+/// cubes, carrying the real sign (`∛(-8) = -2`, the real odd root). `None` otherwise, so `∛2`,
+/// `∛9`, `∛16` (a non-perfect cube) stay symbolic. EXACT — verified by re-cubing the candidate
+/// roots, never an `f64` estimate.
+pub fn rational_cbrt(r: &BigRational) -> Option<BigRational> {
+    if r.is_zero() {
+        return Some(BigRational::from_integer(0.into()));
+    }
+    let negative = r.is_negative();
+    let numer = r.numer().abs();
+    let denom = r.denom().clone(); // a normalized BigRational has a positive denominator
+    let numer_root = numer.cbrt();
+    if &numer_root * &numer_root * &numer_root != numer {
+        return None;
+    }
+    let denom_root = denom.cbrt();
+    if &denom_root * &denom_root * &denom_root != denom {
+        return None;
+    }
+    let root = BigRational::new(numer_root, denom_root);
+    Some(if negative { -root } else { root })
+}
+
+/// Fold `cbrt(n)` to its exact rational value when `n` is a perfect-cube rational
+/// (`cbrt(8) → 2`, `cbrt(-8) → -2`, `cbrt(8/27) → 2/3`, `cbrt(1) → 1`, `cbrt(0) → 0`); a
+/// non-cube argument (`cbrt(2)`, `cbrt(16)`) is left symbolic. Mirrors the perfect-square
+/// folding of `sqrt`, closing the gap where `root(8,3) = 2` evaluated but `cbrt(8)` did not.
+pub fn try_rewrite_cbrt_perfect_cube_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let arg = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Cbrt) && args.len() == 1 =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+    let value = crate::numeric_eval::as_rational_const(ctx, arg)?;
+    let root = rational_cbrt(&value)?;
+    Some(ctx.add(Expr::Number(root)))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::try_plan_cancel_cube_root_difference_expr;
+    use super::{rational_cbrt, try_plan_cancel_cube_root_difference_expr};
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+    use num_rational::BigRational;
+
+    #[test]
+    fn rational_cbrt_folds_perfect_cubes_and_keeps_non_cubes_symbolic() {
+        let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
+        // Perfect cubes (incl. negative and rational) resolve exactly.
+        assert_eq!(rational_cbrt(&r(8, 1)), Some(r(2, 1)));
+        assert_eq!(rational_cbrt(&r(27, 1)), Some(r(3, 1)));
+        assert_eq!(rational_cbrt(&r(-8, 1)), Some(r(-2, 1)));
+        assert_eq!(rational_cbrt(&r(64, 1)), Some(r(4, 1)));
+        assert_eq!(rational_cbrt(&r(1000, 1)), Some(r(10, 1)));
+        assert_eq!(rational_cbrt(&r(8, 27)), Some(r(2, 3)));
+        assert_eq!(rational_cbrt(&r(-27, 8)), Some(r(-3, 2)));
+        assert_eq!(rational_cbrt(&r(0, 1)), Some(r(0, 1)));
+        assert_eq!(rational_cbrt(&r(1, 1)), Some(r(1, 1)));
+        // Non-cubes (incl. a partial cube `16 = 2³·2`) stay symbolic.
+        assert_eq!(rational_cbrt(&r(2, 1)), None);
+        assert_eq!(rational_cbrt(&r(9, 1)), None);
+        assert_eq!(rational_cbrt(&r(16, 1)), None);
+        assert_eq!(rational_cbrt(&r(8, 9)), None); // numerator cube, denominator not
+    }
 
     #[test]
     fn plan_cancel_cube_root_difference_matches_basic_shape() {
