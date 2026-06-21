@@ -5,7 +5,7 @@ use crate::numeric::gcd_rational;
 use crate::perfect_square_support::{extract_square_root_of_term, rational_sqrt};
 use crate::sqrt_square_support::{detect_sqrt_square_pattern, SqrtSquarePattern};
 use cas_ast::ordering::compare_expr;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -1901,6 +1901,216 @@ pub fn provable_sign_vs_zero(ctx: &Context, expr: ExprId) -> Option<std::cmp::Or
     })
 }
 
+/// `base^k` for `k ≥ 0` (exact rational power).
+fn pow_rat_nonneg(base: &BigRational, k: i64) -> BigRational {
+    let mut acc = BigRational::one();
+    for _ in 0..k {
+        acc *= base;
+    }
+    acc
+}
+
+/// PROVABLE rational lower/upper bounds for a CONSTANT expression built from rationals, `e`, `π`,
+/// and their sums, differences, products, positive-integer powers, and division by a positive
+/// rational. The constant bounds `2.718 < e < 2.719` and `3.141 < π < 3.142` are exact mathematical
+/// facts and interval arithmetic preserves enclosure, so a comparison decided by these bounds is
+/// EXACT (never an f64 estimate). `None` for any shape outside this grammar (a free variable, a
+/// negative-base power, division by a non-positive value, …).
+fn rational_bounds(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRational)> {
+    use crate::numeric_eval::as_rational_const;
+    let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
+    if let Some(v) = as_rational_const(ctx, expr) {
+        return Some((v.clone(), v));
+    }
+    match ctx.get(expr) {
+        Expr::Constant(Constant::E) => Some((r(2718, 1000), r(2719, 1000))),
+        Expr::Constant(Constant::Pi) => Some((r(3141, 1000), r(3142, 1000))),
+        Expr::Neg(a) => {
+            let (lo, hi) = rational_bounds(ctx, *a)?;
+            Some((-hi, -lo))
+        }
+        Expr::Add(a, b) => {
+            let (al, ah) = rational_bounds(ctx, *a)?;
+            let (bl, bh) = rational_bounds(ctx, *b)?;
+            Some((al + bl, ah + bh))
+        }
+        Expr::Sub(a, b) => {
+            let (al, ah) = rational_bounds(ctx, *a)?;
+            let (bl, bh) = rational_bounds(ctx, *b)?;
+            Some((al - bh, ah - bl))
+        }
+        Expr::Mul(a, b) => {
+            let (al, ah) = rational_bounds(ctx, *a)?;
+            let (bl, bh) = rational_bounds(ctx, *b)?;
+            let prods = [&al * &bl, &al * &bh, &ah * &bl, &ah * &bh];
+            let lo = prods.iter().min().cloned()?;
+            let hi = prods.iter().max().cloned()?;
+            Some((lo, hi))
+        }
+        Expr::Pow(base, exp) => {
+            let n = as_rational_const(ctx, *exp)?;
+            if !n.is_integer() {
+                return None;
+            }
+            let k = n.to_integer().to_i64()?;
+            if !(0..=16).contains(&k) {
+                return None; // keep the power small/bounded
+            }
+            let (bl, bh) = rational_bounds(ctx, *base)?;
+            if bl.is_negative() {
+                return None; // only a nonnegative base, to avoid even/odd sign juggling
+            }
+            Some((pow_rat_nonneg(&bl, k), pow_rat_nonneg(&bh, k)))
+        }
+        Expr::Div(a, b) => {
+            let c = as_rational_const(ctx, *b)?;
+            if !c.is_positive() {
+                return None;
+            }
+            let (al, ah) = rational_bounds(ctx, *a)?;
+            Some((al / &c, ah / &c))
+        }
+        _ => None,
+    }
+}
+
+/// Provable sign of `expr − threshold` for a constant `expr` (decided by exact rational bounds).
+fn provable_const_minus_rational_sign(
+    ctx: &Context,
+    expr: ExprId,
+    threshold: &BigRational,
+) -> Option<std::cmp::Ordering> {
+    use std::cmp::Ordering;
+    let (lo, hi) = rational_bounds(ctx, expr)?;
+    if &lo > threshold {
+        return Some(Ordering::Greater);
+    }
+    if &hi < threshold {
+        return Some(Ordering::Less);
+    }
+    if &lo == threshold && &hi == threshold {
+        return Some(Ordering::Equal);
+    }
+    None
+}
+
+/// Like [`as_linear_surd`] but the radicand may be ANY constant expression (e.g. `9 + 4e`), returned
+/// as `(A, B, radicand)` for `A + B·√radicand` (`radicand = None` when `B = 0`). Only the `√`
+/// (`as_sqrt_like`) spelling of the surd is decomposed.
+fn as_linear_surd_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BigRational, Option<ExprId>)> {
+    use crate::numeric_eval::as_rational_const;
+    fn combine(
+        ctx: &Context,
+        l: (BigRational, BigRational, Option<ExprId>),
+        r: (BigRational, BigRational, Option<ExprId>),
+    ) -> Option<(BigRational, BigRational, Option<ExprId>)> {
+        let a = &l.0 + &r.0;
+        if l.1.is_zero() {
+            return Some((a, r.1.clone(), if r.1.is_zero() { None } else { r.2 }));
+        }
+        if r.1.is_zero() {
+            return Some((a, l.1, l.2));
+        }
+        let (lr, rr) = (l.2?, r.2?);
+        if compare_expr(ctx, lr, rr) != std::cmp::Ordering::Equal {
+            return None; // two distinct surds: not a single quadratic surd
+        }
+        let b = &l.1 + &r.1;
+        Some((a, b.clone(), if b.is_zero() { None } else { Some(lr) }))
+    }
+    if let Some(a) = as_rational_const(ctx, expr) {
+        return Some((a, BigRational::zero(), None));
+    }
+    if let Some(radicand) = as_sqrt_like(ctx, expr) {
+        return Some((BigRational::zero(), BigRational::one(), Some(radicand)));
+    }
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            let (a, b, rad) = as_linear_surd_expr(ctx, *inner)?;
+            Some((-a, -b, rad))
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(c) = as_rational_const(ctx, l) {
+                let (a, b, rad) = as_linear_surd_expr(ctx, r)?;
+                return Some((&c * &a, &c * &b, rad));
+            }
+            if let Some(c) = as_rational_const(ctx, r) {
+                let (a, b, rad) = as_linear_surd_expr(ctx, l)?;
+                return Some((&c * &a, &c * &b, rad));
+            }
+            None
+        }
+        Expr::Div(l, r) => {
+            let (l, r) = (*l, *r);
+            let c = as_rational_const(ctx, r)?;
+            if c.is_zero() {
+                return None;
+            }
+            let (a, b, rad) = as_linear_surd_expr(ctx, l)?;
+            Some((&a / &c, &b / &c, rad))
+        }
+        Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
+            combine(
+                ctx,
+                as_linear_surd_expr(ctx, l)?,
+                as_linear_surd_expr(ctx, r)?,
+            )
+        }
+        Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            let rhs = as_linear_surd_expr(ctx, r)?;
+            combine(ctx, as_linear_surd_expr(ctx, l)?, (-rhs.0, -rhs.1, rhs.2))
+        }
+        _ => None,
+    }
+}
+
+/// Provable sign vs 0 of a quadratic surd `A + B·√R` whose radicand `R` is a constant expression
+/// that may involve `e`/`π` (the transcendental case [`provable_sign_vs_zero`] declines, since it
+/// needs a RATIONAL radicand). Decides the sign by `sign(A + B·√R) = sign(B)·sign(R − (A/B)²)` (for
+/// opposite signs of `A`, `B`), proving the radicand comparison with [`provable_const_minus_rational_sign`].
+/// EXACT: never a float estimate — `None` when the comparison is not provable, so a valid root is
+/// never dropped.
+pub fn provable_sign_vs_zero_const_radicand(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<std::cmp::Ordering> {
+    use std::cmp::Ordering;
+    let zero = BigRational::zero();
+    let (a, b, radicand) = as_linear_surd_expr(ctx, expr)?;
+    let Some(radicand) = radicand else {
+        return Some(a.cmp(&zero)); // pure rational
+    };
+    // √R requires R > 0 (and √R > 0); decline when R's positivity is not provable.
+    if provable_const_minus_rational_sign(ctx, radicand, &zero)? != Ordering::Greater {
+        return None;
+    }
+    if b.is_zero() {
+        return Some(a.cmp(&zero));
+    }
+    if a.is_zero() {
+        return Some(b.cmp(&zero)); // B·√R, R > 0
+    }
+    let sa = a.cmp(&zero);
+    let sb = b.cmp(&zero);
+    if sa == sb {
+        return Some(sa);
+    }
+    // Opposite signs: sign(A + B·√R) = sign(B) · sign(R − (A/B)²).
+    let threshold = (&a * &a) / (&b * &b);
+    let inner = provable_const_minus_rational_sign(ctx, radicand, &threshold)?;
+    Some(if b.is_negative() {
+        inner.reverse()
+    } else {
+        inner
+    })
+}
+
 fn solve_cube_in_quadratic_field(
     a: &BigRational,
     b: &BigRational,
@@ -2676,6 +2886,40 @@ mod tests {
     use super::*;
     use crate::poly_compare::poly_eq;
     use cas_parser::parse;
+
+    #[test]
+    fn provable_sign_const_radicand_decides_transcendental_surds() {
+        use std::cmp::Ordering;
+        let mut ctx = Context::new();
+        // `(3 − √(9+4e))/2 < 0` (the extraneous root of `ln(x)+ln(x-3)=1`): proven because
+        // `√(9+4e) > 3 ⟺ 9+4e > 9 ⟺ 4e > 0`.
+        let neg = parse("(3 - sqrt(9 + 4*e))/2", &mut ctx).expect("neg root");
+        assert_eq!(
+            provable_sign_vs_zero_const_radicand(&ctx, neg),
+            Some(Ordering::Less)
+        );
+        // `(3 + √(9+4e))/2 > 0` (the valid root): both terms positive.
+        let pos = parse("(3 + sqrt(9 + 4*e))/2", &mut ctx).expect("pos root");
+        assert_eq!(
+            provable_sign_vs_zero_const_radicand(&ctx, pos),
+            Some(Ordering::Greater)
+        );
+        // `√π − 1 > 0` (π > 1, so √π > 1), decided by the rational bound `π > 3.141`.
+        let sp = parse("sqrt(pi) - 1", &mut ctx).expect("sqrt pi - 1");
+        assert_eq!(
+            provable_sign_vs_zero_const_radicand(&ctx, sp),
+            Some(Ordering::Greater)
+        );
+        // `2 − √(e²+1) < 0` (`e² > 3`, decided by `e > 2.718` ⇒ `e² > 7.38`).
+        let sq = parse("2 - sqrt(e^2 + 1)", &mut ctx).expect("sqrt(e^2+1)");
+        assert_eq!(
+            provable_sign_vs_zero_const_radicand(&ctx, sq),
+            Some(Ordering::Less)
+        );
+        // A radicand that is provably NEGATIVE (`e − π < 0`) is not a real surd → decline (keep).
+        let mixed = parse("sqrt(e - pi)", &mut ctx).expect("sqrt(e-pi)");
+        assert_eq!(provable_sign_vs_zero_const_radicand(&ctx, mixed), None);
+    }
 
     #[test]
     fn as_linear_surd_extracts_and_signs_exactly() {

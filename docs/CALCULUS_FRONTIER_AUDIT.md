@@ -45,6 +45,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
+- [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
+  devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
+  propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).
+  *(graduado 2026-06-22 d343097b8: `provable_sign_vs_zero_const_radicand` decide el signo de
+  `A+B·√R` con R constante transcendente por `sign(B)·sign(R−(A/B)²)`, probando la comparación
+  `R vs (A/B)²` con `rational_bounds` —aritmética de intervalos con cotas racionales PROVABLES
+  `2.718<e<2.719`, `3.141<π<3.142`, exacta, decide solo en separación estricta; frontera ⇒ None ⇒
+  conserva—; encadenado tras el probador racional en `root_violates_required_condition` por
+  `.or_else`. Cubre `9+4e`, `e²+1`, π y grados ≤16. Barrido adversarial conteo-de-raíces
+  `solve(ln(x)+ln(x-a)=c)` (25 casos) = nº real de raíces válidas, 0 mismatches; huella NONE.
+  NUNCA f64 para keep/drop. Peldaño: bases-potencia de base negativa y divisiones por
+  no-constante declinan (conservan, sound).)*
 - [x] **(F) Fórmula cuadrática pierde un factor del radical con discriminante factorizado**:
   `solve(x^2-4*x-e=0)` devolvía `(4±√(4+e))/2` (≈3.30/0.70, valor FALSO que NO satisface la
   ecuación) en vez de `2±√(4+e)`; mismo error en toda cuadrática cuyo discriminante simplifica a

@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 280 (newest first)
+Active entries: 281 (newest first)
 
+- 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -11907,3 +11908,53 @@ Active entries: 280 (newest first)
     (back-substitución/numérico), no solo su forma.
   - residual (peldaño): el filtro de raíces extrañas para radicandos transcendentes (raíz
     fuera de dominio en `solve(ln+ln=cte)`) es el ciclo 2, ortogonal a este.
+
+## 2026-06-22 - P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
+- area:
+  - `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`,
+    `as_linear_surd_expr`, `rational_bounds`, `pow_rat_nonneg`,
+    `provable_const_minus_rational_sign`)
+  - `crates/cas_solver/src/solve_backend_local.rs` (`root_violates_required_condition`:
+    fallback `sign_vs_zero` que encadena el probador transcendente tras el racional)
+- status:
+  - `retained` (P0 soundness — wrong-answer: raíz extraña fuera del dominio derivado por el
+    propio solver)
+- capture:
+  - investment_class: soundness (corrige valor erróneo; exenta de la restricción de fase)
+  - primary_dimension: north_star_soundness (solve respeta el dominio que él mismo deriva)
+  - secondary_dimension: reuse_value (extiende el patrón de `provable_sign_vs_zero` a
+    radicandos no-racionales; reusa `as_sqrt_like`, `compare_expr`)
+  - cell: `solve(ln(x)+ln(x-3)=1) → {(3+√(9+4e))/2}` (antes incluía la extraña
+    `(3−√(9+4e))/2 ≈ −0.73`, que viola x>3); barrido `solve(ln(x)+ln(x-a)=c)` a∈1..5,
+    c∈0..4 (25 casos) con conteo de raíces = nº real de raíces válidas, 0 mismatches.
+  - behavior_change_expected: las raíces de `solve` con condición de dominio implícita
+    (`Positive`/`NonNegative`/`NonZero`/`LowerBound`) y forma `A+B·√R` con R constante
+    transcendente (`9+4e`, `e²+1`) que PROVABLEMENTE violan la condición se descartan; antes
+    se conservaban (el probador racional declinaba en R no-racional). Huella NONE.
+  - SOUNDNESS: EXACTO, nunca f64 para keep/drop. `rational_bounds` da cotas racionales
+    PROVABLES (`2.718<e<2.719`, `3.141<π<3.142` son hechos exactos; la aritmética de
+    intervalos preserva el enclosure) y solo decide cuando las cotas separan ESTRICTAMENTE
+    del umbral (`lo>t` ⇒ Greater, `hi<t` ⇒ Less); en frontera/no-probable devuelve None ⇒
+    mantiene la raíz. Una raíz válida NUNCA se pierde sobre una cota no probada.
+- observed:
+  - el filtro `root_violates_required_condition` ya descartaba extrañas con radicando
+    RACIONAL (`provable_sign_vs_zero` vía `as_linear_surd`, que exige `A+B·√n`, n racional);
+    para `9+4e` declinaba (None) y la extraña sobrevivía.
+  - el signo de `A+B·√R` (signos opuestos de A,B) se decide por `sign(B)·sign(R−(A/B)²)`;
+    basta probar la comparación `R vs (A/B)²` por cotas racionales, sin computar √R.
+  - la verificación adversarial (barrido conteo-de-raíces) destapó un SEGUNDO bug, ortogonal
+    y más profundo: las raíces que el solver computaba eran erróneas (factor del radical a la
+    mitad) — arreglado en el ciclo hermano `pull_square_from_sqrt` ANTES de este, para que el
+    filtro opere sobre raíces correctas.
+- retained learning:
+  - aritmética de intervalos con cotas racionales PROVABLES de constantes (`e`, `π`) es la
+    herramienta sound para decidir signos/comparaciones de expresiones constantes
+    transcendentes en gates de keep/drop — más general que el reconocimiento lineal-en-{1,e,π}
+    (que no prueba magnitudes como `π>1` o `e²>3`) y exacta (decide solo en separación
+    estricta; frontera ⇒ None ⇒ conserva). NUNCA f64.
+  - un decididor de signo escrito para UNA grafía de radicando (racional) se extiende a otra
+    (transcendente) replicando la descomposición `as_linear_surd` con el radicando como
+    ExprId y `compare_expr` para igualar radicandos; el cierre encadena por `.or_else`.
+  - residual (peldaño): radicandos con `π` y combinaciones más ricas (`e^x`, productos de
+    constantes) ya los cubre `rational_bounds` para grados ≤16; quedan fuera bases-potencia
+    de base negativa y divisiones por no-constante (declinan, conservan — sound).

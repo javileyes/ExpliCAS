@@ -270,12 +270,18 @@ fn root_violates_required_condition(
     root: ExprId,
     conds: &[ImplicitCondition],
 ) -> bool {
-    use cas_math::root_forms::provable_sign_vs_zero;
+    use cas_math::root_forms::{provable_sign_vs_zero, provable_sign_vs_zero_const_radicand};
     use std::cmp::Ordering;
 
     if conds.is_empty() {
         return false;
     }
+    // Exact sign of a root vs 0: the rational-radicand prover first, then the transcendental-radicand
+    // one (radicand `9 + 4e` etc.). Both are proofs, never float estimates, so a valid root is never
+    // dropped — a `None` simply keeps the root.
+    let sign_vs_zero = |ctx: &Context, at: ExprId| -> Option<Ordering> {
+        provable_sign_vs_zero(ctx, at).or_else(|| provable_sign_vs_zero_const_radicand(ctx, at))
+    };
     let var_id = ctx.var(var);
     for cond in conds {
         let violates = match cond {
@@ -284,26 +290,26 @@ fn root_violates_required_condition(
             ImplicitCondition::Positive(e) => {
                 let at = substitute_expr_by_id(ctx, *e, var_id, root);
                 matches!(
-                    provable_sign_vs_zero(ctx, at),
+                    sign_vs_zero(ctx, at),
                     Some(Ordering::Less | Ordering::Equal)
                 )
             }
             // sqrt(e) requires e ≥ 0; only e < 0 violates (boundary e = 0 is fine).
             ImplicitCondition::NonNegative(e) => {
                 let at = substitute_expr_by_id(ctx, *e, var_id, root);
-                matches!(provable_sign_vs_zero(ctx, at), Some(Ordering::Less))
+                matches!(sign_vs_zero(ctx, at), Some(Ordering::Less))
             }
             // 1/e requires e ≠ 0; only a PROVABLE exact zero violates.
             ImplicitCondition::NonZero(e) => {
                 let at = substitute_expr_by_id(ctx, *e, var_id, root);
-                matches!(provable_sign_vs_zero(ctx, at), Some(Ordering::Equal))
+                matches!(sign_vs_zero(ctx, at), Some(Ordering::Equal))
             }
             // acosh(e) etc. require e ≥ lower; only e − lower < 0 violates.
             ImplicitCondition::LowerBound(e, lower) => {
                 let at = substitute_expr_by_id(ctx, *e, var_id, root);
                 let lb = ctx.add(Expr::Number(lower.clone()));
                 let shifted = ctx.add(Expr::Sub(at, lb));
-                matches!(provable_sign_vs_zero(ctx, shifted), Some(Ordering::Less))
+                matches!(sign_vs_zero(ctx, shifted), Some(Ordering::Less))
             }
         };
         if violates {
