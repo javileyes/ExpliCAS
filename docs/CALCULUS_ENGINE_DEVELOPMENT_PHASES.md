@@ -103,7 +103,13 @@ cuando, los tres se cumplen:
   2026-06-21** (`taylor_at_zero_with_rational`, recíproco de series, aislado del path de
   límites): `1/(1-x)`, `1/(1+x^2)`, `1/(1-x)^2`, `exp(x)/(1-x)`. Residuales honestos: punto ≠ 0,
   polos en 0 (`1/x`), orden negativo. **El motor de series univariable que esto crea también
-  desbloquea el Taylor de la Fase 3.**
+  desbloquea el Taylor de la Fase 3.** ✅ **Aritmético-geométrica grado 2 AÑADIDA 2026-06-21**:
+  `try_build_arithmetic_geometric_sum` generalizado a cofactor polinómico ≤2 (`Σ(αk²+βk+γ)·r^k =
+  α·S₂+β·S₁+γ·S₀`) — `sum(k²·2^k)`, `sum((2k²−3k+1)·2^k)`, `sum((k²+2k)·2^k)`. Residuales honestos
+  (peldaños, NO regresión, net-cero): (a) cofactores prónicos `k(k±1)=k²±k` por una oscilación
+  factor↔distribuye del sumando en el orquestador (clase A); (b) ratio fraccionaria de grado 2
+  (`k²·(1/2)^k`) por la normalización a forma Div `k²/2^k` (preexistente: `k/2^k` ya era residual).
+  El builder es exacto en ambos (test fold-vs-fuerza-bruta lo fija).
 
 ### P2 / P3 (cobertura y pulido educativo)
 - Verifier false-negative de `1/(x^6-1)` (la antiderivada YA es correcta; falla al no reducir

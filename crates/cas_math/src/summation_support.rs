@@ -1491,9 +1491,12 @@ fn is_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
 }
 
-/// Closed form for the arithmetic-geometric sum `Σ_{k=start}^{end} c·k·r^k` (`r` a rational
-/// ratio ≠ 0, 1). Matches a product of the bare index `k`, a geometric power `r^k`, and any
-/// constant factors.
+/// Closed form for the polynomial-times-geometric sum `Σ_{k=start}^{end} p(k)·c·r^k`, where
+/// `p` is a polynomial in the index of degree 1 or 2 and `r` is a rational ratio ≠ 0, 1.
+/// Matches a product of one geometric power `r^k` and a polynomial cofactor (the bare index
+/// `k`, `k²`, and constants), then sums by linearity:
+/// `Σ(α·k² + β·k + γ)·r^k = α·S₂ + β·S₁ + γ·S₀`, with `S₀ = Σr^k`, `S₁ = Σk·r^k`,
+/// `S₂ = Σk²·r^k`. Degree 0 (a pure geometric) is declined so the geometric builder owns it.
 pub fn try_build_arithmetic_geometric_sum(
     ctx: &mut Context,
     summand: ExprId,
@@ -1504,40 +1507,82 @@ pub fn try_build_arithmetic_geometric_sum(
     if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
         return None;
     }
-    // Flatten the product: exactly one bare index `k`, one geometric `c·r^k`, the rest constants.
+    // Flatten the product: exactly one geometric `c·r^k`; everything else forms a polynomial
+    // cofactor p(k) in the index (the bare `k`, `k²`, and constant factors).
     let leaves = expr_nary::mul_leaves(ctx, summand);
     if leaves.len() < 2 {
         return None;
     }
-    let mut index_factors = 0usize;
     let mut geometric: Option<(BigRational, BigRational)> = None;
-    let mut constant = BigRational::one();
+    let mut cofactor_leaves: Vec<ExprId> = Vec::new();
     for &leaf in &leaves {
-        if is_named_var(ctx, leaf, var) {
-            index_factors += 1;
-        } else if let Some((coefficient, ratio)) = extract_geometric_term(ctx, leaf, var) {
+        if let Some((coefficient, ratio)) = extract_geometric_term(ctx, leaf, var) {
             if ratio.is_zero() || ratio.is_one() || geometric.is_some() {
                 return None;
             }
             geometric = Some((coefficient, ratio));
-        } else if let Some(value) = as_rational_const(ctx, leaf, 8) {
-            constant *= value;
         } else {
-            return None; // a factor that depends on the index but is neither `k` nor `r^k`
+            cofactor_leaves.push(leaf);
         }
     }
-    if index_factors != 1 {
-        return None;
-    }
     let (geometric_coefficient, ratio) = geometric?;
-    let total_coefficient = constant * geometric_coefficient;
-    if total_coefficient.is_zero() {
+    if geometric_coefficient.is_zero() {
         return None;
     }
+    // The remaining factors must form a polynomial in the index of degree 1 or 2. A degree-0
+    // cofactor (no index dependence) is a pure geometric sum — declined here so the geometric
+    // builder owns it; a non-polynomial cofactor (e.g. `1/k`, `√k`) makes `from_expr` fail.
+    let cofactor = product_of_leaves(ctx, &cofactor_leaves)?;
+    let poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+    let degree = poly.degree();
+    if degree == 0 || degree > 2 {
+        return None;
+    }
+    let gamma = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let beta = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let alpha = poly
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
 
-    let series = arithmetic_geometric_closed_form(ctx, &ratio, start, end);
-    let coefficient_expr = ctx.add(Expr::Number(total_coefficient));
-    Some(mul2_raw(ctx, coefficient_expr, series))
+    // α·S₂ + β·S₁ + γ·S₀, then the geometric coefficient out front.
+    let mut terms: Vec<ExprId> = Vec::new();
+    if !alpha.is_zero() {
+        let s2 = arithmetic_geometric_square_closed_form(ctx, &ratio, start, end);
+        let coeff = ctx.add(Expr::Number(alpha));
+        terms.push(mul2_raw(ctx, coeff, s2));
+    }
+    if !beta.is_zero() {
+        let s1 = arithmetic_geometric_closed_form(ctx, &ratio, start, end);
+        let coeff = ctx.add(Expr::Number(beta));
+        terms.push(mul2_raw(ctx, coeff, s1));
+    }
+    if !gamma.is_zero() {
+        let s0 = geometric_sum_closed_form(ctx, &ratio, start, end);
+        let coeff = ctx.add(Expr::Number(gamma));
+        terms.push(mul2_raw(ctx, coeff, s0));
+    }
+    let mut iter = terms.into_iter();
+    let first = iter.next()?;
+    let combined = iter.fold(first, |acc, term| ctx.add(Expr::Add(acc, term)));
+    let coefficient_expr = ctx.add(Expr::Number(geometric_coefficient));
+    Some(mul2_raw(ctx, coefficient_expr, combined))
+}
+
+/// Multiply a non-empty slice of factors left to right; `None` if the slice is empty.
+fn product_of_leaves(ctx: &mut Context, leaves: &[ExprId]) -> Option<ExprId> {
+    let mut iter = leaves.iter().copied();
+    let first = iter.next()?;
+    Some(iter.fold(first, |acc, leaf| mul2_raw(ctx, acc, leaf)))
 }
 
 /// Sum of an additive combination of geometric / arithmetic-geometric terms by LINEARITY:
@@ -1612,6 +1657,84 @@ fn arithmetic_geometric_one_to(ctx: &mut Context, ratio: &BigRational, m: ExprId
     // (1 − r)^2
     let one_minus_r = ctx.add(Expr::Sub(one, r));
     let denominator = ctx.add(Expr::Pow(one_minus_r, two));
+    ctx.add(Expr::Div(numerator, denominator))
+}
+
+/// `S₀ = Σ_{k=start}^{end} r^k = (r^start − r^(end+1))/(1−r)` (coefficient 1), the geometric
+/// partial sum reused by the polynomial-cofactor arithmetic-geometric builder for the `γ` term.
+fn geometric_sum_closed_form(
+    ctx: &mut Context,
+    ratio: &BigRational,
+    start: ExprId,
+    end: ExprId,
+) -> ExprId {
+    let r = ctx.add(Expr::Number(ratio.clone()));
+    let one = ctx.num(1);
+    let r_pow_a = ctx.add(Expr::Pow(r, start));
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let r_pow_np1 = ctx.add(Expr::Pow(r, end_plus_one));
+    let diff = ctx.add(Expr::Sub(r_pow_a, r_pow_np1));
+    let one_minus_r = ctx.add(Expr::Number(BigRational::one() - ratio));
+    ctx.add(Expr::Div(diff, one_minus_r))
+}
+
+/// `S₂ = Σ_{k=start}^{end} k²·r^k = U₂(end) − U₂(start−1)` with
+/// `U₂(m) = r·(1 + r − (m+1)²·r^m + (2m²+2m−1)·r^(m+1) − m²·r^(m+2))/(1−r)^3`. The `k = 0` term
+/// vanishes (`0²·r^0 = 0`), so a `start` of 0 or 1 needs no lower correction (mirrors S₁).
+fn arithmetic_geometric_square_closed_form(
+    ctx: &mut Context,
+    ratio: &BigRational,
+    start: ExprId,
+    end: ExprId,
+) -> ExprId {
+    let upper = arithmetic_geometric_square_one_to(ctx, ratio, end);
+    if expr_is_zero(ctx, start) || expr_is_one(ctx, start) {
+        return upper;
+    }
+    let one = ctx.num(1);
+    let start_minus_one = ctx.add(Expr::Sub(start, one));
+    let lower = arithmetic_geometric_square_one_to(ctx, ratio, start_minus_one);
+    ctx.add(Expr::Sub(upper, lower))
+}
+
+/// `U₂(m) = Σ_{k=1}^{m} k²·r^k = r·(1 + r − (m+1)²·r^m + (2m²+2m−1)·r^(m+1) − m²·r^(m+2))/(1−r)^3`.
+fn arithmetic_geometric_square_one_to(ctx: &mut Context, ratio: &BigRational, m: ExprId) -> ExprId {
+    let r = ctx.add(Expr::Number(ratio.clone()));
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    // (m+1)²·r^m
+    let m_plus_one = ctx.add(Expr::Add(m, one));
+    let m_plus_one_sq = ctx.add(Expr::Pow(m_plus_one, two));
+    let r_pow_m = ctx.add(Expr::Pow(r, m));
+    let term_a = mul2_raw(ctx, m_plus_one_sq, r_pow_m);
+    // (2m² + 2m − 1)·r^(m+1)
+    let m_sq = ctx.add(Expr::Pow(m, two));
+    let two_m_sq = mul2_raw(ctx, two, m_sq);
+    let two_m = mul2_raw(ctx, two, m);
+    let cofactor = {
+        let sum = ctx.add(Expr::Add(two_m_sq, two_m));
+        ctx.add(Expr::Sub(sum, one))
+    };
+    let m_plus_one_exp = ctx.add(Expr::Add(m, one));
+    let r_pow_m1 = ctx.add(Expr::Pow(r, m_plus_one_exp));
+    let term_b = mul2_raw(ctx, cofactor, r_pow_m1);
+    // m²·r^(m+2)
+    let m_sq2 = ctx.add(Expr::Pow(m, two));
+    let m_plus_two = ctx.add(Expr::Add(m, two));
+    let r_pow_m2 = ctx.add(Expr::Pow(r, m_plus_two));
+    let term_c = mul2_raw(ctx, m_sq2, r_pow_m2);
+    // 1 + r − term_a + term_b − term_c
+    let inner = {
+        let s1 = ctx.add(Expr::Add(one, r));
+        let s2 = ctx.add(Expr::Sub(s1, term_a));
+        let s3 = ctx.add(Expr::Add(s2, term_b));
+        ctx.add(Expr::Sub(s3, term_c))
+    };
+    let numerator = mul2_raw(ctx, r, inner);
+    // (1 − r)^3
+    let one_minus_r = ctx.add(Expr::Sub(one, r));
+    let denominator = ctx.add(Expr::Pow(one_minus_r, three));
     ctx.add(Expr::Div(numerator, denominator))
 }
 
@@ -2817,6 +2940,74 @@ mod tests {
                     "sum({summand}, k, {start}, {n})"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn quadratic_arithmetic_geometric_sums_match_brute_force() {
+        // Σ p(k)·r^k for a degree-2 cofactor p(k) = α·k² + β·k + γ: the closed form
+        // α·S₂ + β·S₁ + γ·S₀ folded at concrete n vs the brute-force sum.
+        type BruteTerm = fn(i64) -> i128;
+        let cases: [(&str, BruteTerm); 4] = [
+            ("k^2*2^k", |k| (k as i128).pow(2) * 2i128.pow(k as u32)),
+            ("k^2*3^k", |k| (k as i128).pow(2) * 3i128.pow(k as u32)),
+            ("(2*k^2-3*k+1)*2^k", |k| {
+                (2 * (k as i128).pow(2) - 3 * k as i128 + 1) * 2i128.pow(k as u32)
+            }),
+            ("(k^2+1)*2^k", |k| {
+                ((k as i128).pow(2) + 1) * 2i128.pow(k as u32)
+            }),
+        ];
+        for (summand, term) in cases {
+            for (start, n) in [(1i64, 5i64), (2, 6), (1, 7)] {
+                let brute: i128 = (start..=n).map(term).sum();
+                let mut ctx = Context::new();
+                let src = format!("sum({summand}, k, {start}, m)");
+                let full = cas_parser::parse(&src, &mut ctx).expect("parse");
+                let plan = try_plan_finite_sum_evaluation(&mut ctx, full, 1000)
+                    .unwrap_or_else(|| panic!("plan for {src}"));
+                let m = ctx.var("m");
+                let nval = ctx.num(n);
+                let substituted = cas_ast::substitute_expr_by_id(&mut ctx, plan.candidate, m, nval);
+                let value =
+                    fold_const(&ctx, substituted).unwrap_or_else(|| panic!("fold {src} at m={n}"));
+                assert_eq!(
+                    value,
+                    BigRational::from_integer(brute.into()),
+                    "sum({summand}, k, {start}, {n})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pronic_cofactor_arithmetic_geometric_builder_is_exact() {
+        // The pronic cofactors k(k±1) = k²±k carry a common index factor, so the engine
+        // oscillates between the factored `2^k·k·(k+1)` and the distributed
+        // `k²·2^k + k·2^k` summand and `sum((k²+k)·2^k)` stays an honest residual END TO END
+        // (a separate orchestration concern, tracked as a peldaño). The arithmetic-geometric
+        // BUILDER is exact regardless: its closed form must fold to Σ k(k+1)·r^k. This pins the
+        // math so a future orchestration fix lands a verified-correct result, not a new bug.
+        let mut ctx = Context::new();
+        let summand = cas_parser::parse("2^k*(k^2+k)", &mut ctx).expect("parse");
+        let start = ctx.num(1);
+        let end = ctx.var("m");
+        let candidate =
+            super::try_build_arithmetic_geometric_sum(&mut ctx, summand, "k", start, end)
+                .expect("builder handles the pronic cofactor");
+        for n in [3i64, 5, 7] {
+            let brute: i128 = (1..=n)
+                .map(|k| (k as i128) * (k as i128 + 1) * 2i128.pow(k as u32))
+                .sum();
+            let m = ctx.var("m");
+            let nval = ctx.num(n);
+            let substituted = cas_ast::substitute_expr_by_id(&mut ctx, candidate, m, nval);
+            let value = fold_const(&ctx, substituted).expect("fold pronic closed form");
+            assert_eq!(
+                value,
+                BigRational::from_integer(brute.into()),
+                "Σ k(k+1)·2^k at n={n}"
+            );
         }
     }
 

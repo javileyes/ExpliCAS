@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 260 (newest first)
+Active entries: 261 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -145,6 +145,7 @@ Active entries: 260 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | Arithmetic-geometric sum: closed form for Σ k·r^k
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | Affine arithmetic-geometric: c·k·r^k and the distributed (αk+β)·r^k
 - 2026-06-21 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` | G1 gatekeeper sub-ciclo: 1/(x^6-1) integra (subir el budget del zero-test)
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Σ p(k)·r^k con cofactor polinómico de grado ≤2 (k²·r^k y combinaciones)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11127,3 +11128,62 @@ Active entries: 260 (newest first)
   - residual (peldaño G1): factor-over-ℝ para las cuárticas irreducibles sobre ℚ (`1/(x^8-1)`,
     `1/(x^6+1)`, `1/(x^5-1)` con √5, `1/(x^4-4)` con √2) — el LRT / factorización real es el
     siguiente sub-ciclo del gatekeeper, ahora sí genuinamente net-new.
+
+## 2026-06-21 - Σ p(k)·r^k con cofactor polinómico de grado ≤2 (k²·r^k y combinaciones)
+- area:
+  - `crates/cas_math/src/summation_support.rs`
+    (`try_build_arithmetic_geometric_sum` generalizado de cofactor lineal a polinómico ≤2;
+    nuevos `geometric_sum_closed_form` (S₀), `arithmetic_geometric_square_closed_form` /
+    `arithmetic_geometric_square_one_to` (S₂), helper `product_of_leaves`)
+- status:
+  - `retained` (capability P1 barata: `taylor()`/`series()` + LINEALIDAD de sumatorios — extiende
+    la suma aritmético-geométrica de grado 1 a grado 2, net-new sobre maquinaria existente)
+- capture:
+  - investment_class: capability (Fase 1, win P1 — linealidad de sumatorios)
+  - primary_dimension: north_star_completeness (Fase 1, ítem "linealidad de sumatorios")
+  - secondary_dimension: reuse_value (reusa `Polynomial::from_expr`, `extract_geometric_term`,
+    `arithmetic_geometric_closed_form` ya existentes; el builder S₁ viejo es ahora el caso β del general)
+  - cell: `sum(k²·2^k, k, 1, n)`, `sum(k²·3^k)`, `sum((2k²−3k+1)·2^k)`, `sum((k²+1)·2^k)`,
+    `sum((k²+2k)·2^k)` → forma cerrada exacta (verificado fold vs fuerza bruta en n concretos).
+    El builder descompone p(k)=αk²+βk+γ vía `Polynomial::from_expr` y emite α·S₂ + β·S₁ + γ·S₀.
+  - behavior_change_expected: los productos `cofactor_grado2 · r^k` pasan de residual a forma cerrada.
+    Cofactor grado 0 (geométrica pura) se declina → lo posee el builder geométrico; grado >2 o
+    no-polinómico (1/k, √k) → `from_expr` falla y declina. Huella guardrail+pressure estructuralmente
+    NONE (ninguna fixture cubría k²·r^k).
+  - SOUNDNESS: las tres formas cerradas S₀, S₁, S₂ son identidades exactas sobre `BigRational`;
+    el test `quadratic_arithmetic_geometric_sums_match_brute_force` las pliega a n concreto y compara
+    con la suma directa. El gate de fase NO aplica (regla sintáctica/de presentación, sin dominio de
+    valores: no enhebra `ValueDomain` — sería ceremonia muerta).
+- observed:
+  - el motor PRE-FACTORIZA el sumando: `(k²+1)·2^k` llega como `2^k·(k²+1)`, y la suma
+    `k²·2^k + k·2^k` se factoriza a `2^k·(k²+k)`. `mul_leaves` separa el factor geométrico del
+    cofactor, que se reconstruye con `product_of_leaves` y se pasa a `Polynomial::from_expr` (que
+    EXPANDE Mul/Pow, p.ej. `k·(k+1)→k²+k`). El nuevo builder cubre ambas representaciones.
+  - RESIDUAL HONESTO (peldaño, NO regresión): los cofactores PRÓNICOS `k(k±1)=k²±k` quedan
+    residuales END TO END (`sum((k²+k)·2^k)` → `sum(2^k·(k²+k))`) aunque el builder los resuelve
+    bien. Causa: el cofactor lleva factor común `k`, así que el sumando OSCILA entre la forma
+    factorizada `2^k·k·(k+1)` y la distribuida `k²·2^k+k·2^k` durante la normalización del subárbol
+    del sumando, y el nodo `sum` nunca se estabiliza → el orquestador descarta la forma cerrada
+    (que es CORRECTA: `SumRule` la produce, fold=124 en n=3). `k²+2k=k(k+2)` SÍ funciona (no es
+    prónico), así que el gap es estrecho. Es un artefacto del orquestador (factor↔distribuye del
+    sumando), preexistente y net-cero (esos casos ya eran residuales antes del ciclo).
+- retained learning:
+  - cuando un builder de familia ya existe para grado d, generalizar a grado d+1 suele ser
+    "extraer el cofactor como `Polynomial` y combinar linealmente las sumas base Sᵢ" — más barato y
+    más general que un matcher nuevo por forma. El builder lineal viejo es el caso β del general.
+  - una capacidad nueva puede EXPONER una oscilación factor↔distribuye preexistente del orquestador
+    sin introducirla: si el output no cambia (residual antes y después) NO es regresión. Pínchalo con
+    un test que demuestre que el BUILDER es exacto (fold vs fuerza bruta) para que un fix futuro del
+    orquestador aterrice un resultado verificado, no un bug nuevo. La frontera del gap (prónicos
+    k(k±1), cofactor con factor común de índice) es la intención declarada del siguiente peldaño.
+  - RESIDUAL HONESTO #2 (preexistente, NO de este ciclo): la ratio FRACCIONARIA en grado 2 queda
+    residual end-to-end (`sum(k²·(1/2)^k)` → `sum(1/2^k·k²)`). El builder es exacto (el test de
+    grado 1 cubre ratio 1/2), pero el motor normaliza la entrada de grado 2 a la forma Div/potencia-
+    negativa `k²/2^k`, y `k/2^k` (grado 1, forma Div) YA era residual antes del ciclo → es un gap de
+    NORMALIZACIÓN de representación (Div vs `(1/2)^k` explícito), no de la suma. `k·(1/2)^k` (forma
+    explícita) sí cierra. Net-cero respecto al ciclo.
+  - residual (peldaño): (1) estabilizar la normalización factor/distribuye del sumando para los
+    prónicos k(k±1) — concern del orquestador, clase A, no de la familia de sumas; (2) normalizar la
+    forma Div/potencia-negativa del factor geométrico (`k^p/2^k`) a `(1/2)^k` antes de `SumRule` para
+    cerrar la ratio fraccionaria en grado ≥1-Div y grado 2; (3) cofactor polinómico de grado ≥3 (Sₚ
+    general vía el operador (r·d/dr)^p sobre Σr^k) si la cola lo pide.
