@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 249 (newest first)
+Active entries: 250 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -134,6 +134,7 @@ Active entries: 249 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_at_zero_with_rational`, `rec... | Rational/geometric Taylor: series of 1/(1-x), 1/(1+x^2) for the taylor() command
 - 2026-06-21 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` | Integrate p(x)·a^x by parts for a general constant base
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`faulhaber_power_sum_coeffs`, `bi... | General Faulhaber: polynomial sums of any degree (lifts the cycle-2 degree-3 cap)
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | G2 gatekeeper (límites educativos) sub-ciclo 1: nombrar los límites notables
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10719,3 +10720,49 @@ Active entries: 249 (newest first)
     degree or a single bound would miss recurrence and start-offset errors.
   - residual (peldaño): degree > 12 (raise the cap if ever needed — the recurrence is O(p²)); and
     arithmetic-geometric `Σ k·r^k` / `Σ k^2·r^k`, a separate family from pure polynomial sums.
+
+## 2026-06-21 - G2 gatekeeper (límites educativos) sub-ciclo 1: nombrar los límites notables
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_substeps`,
+    `notable_limit_name` + matchers); dispatched in
+    `enrichment_pipeline/rule_dispatch.rs`; whitelisted past the same-snapshot pruner in
+    `enrichment_pipeline/step_loop.rs`
+- status:
+  - `retained` (primer sub-ciclo retenible del gatekeeper L "narrativa educativa de límites";
+    los límites pasaban de un paso-cáscara único a nombrar el método)
+- capture:
+  - investment_class: capability (educational narration — la mitad EDUCATIVA del north star)
+  - primary_dimension: north_star_completeness (Fase 1, gatekeeper G2)
+  - cell: `limit(sin(x)/x, x, 0)` ahora narra el substep "Aplicar el límite notable:
+    lím(u→0) sin(u)/u = 1"; igual para `tan(u)/u → 1`, `(e^u−1)/u → 1`, `ln(1+u)/u → 1`,
+    `(1−cos u)/u² → 1/2`. El valor del límite y el rule_name ("Evaluar límite finito") no cambian.
+  - behavior_change_expected: los pasos de límite finito GANAN un substep que nombra el límite
+    notable cuando aplica. Huella guardrail+pressure estructuralmente NONE (solo se añaden
+    substeps; valores, reglas y contadores idénticos). Workspace 12242 passed / 0 failed;
+    clippy/fmt verdes.
+  - SOUNDNESS: el substep se emite SOLO cuando el RESULTADO es el valor notable y la forma
+    estructural casa exactamente — `limit(sin(x)/x, x, 5) = sin(5)/5` (valor ≠ 1) y
+    `sin(2x)/x → 2` (forma escalada) NO se narran como el notable. Sin fabricación.
+- observed:
+  - la narración de diff vive en el pipeline de enriquecimiento de `cas_didactic`, que
+    RECONSTRUYE el método desde el before/after del paso (el motor de diff no graba el método).
+    Los límites se narran igual: un generador que casa el patrón de `before` y exige que `after`
+    sea el valor notable — sin tocar el motor de límites (`limits_support`), así que cero riesgo
+    de soundness sobre los valores.
+  - los substeps wire vienen SOLO de `enriched.sub_steps` (el `Step` se ignora en
+    `collect_step_payload_substeps`), así que la narración DEBE añadirse en el pipeline de
+    enriquecimiento, no en la creación del paso.
+  - un substep "same snapshot" (mismo before/after que el paso) lo poda `prune_redundant_substeps`
+    salvo whitelist; para los notables el naming ES el contenido didáctico, así que se whitelist-ea
+    por `rule_name.starts_with("Evaluar límite")`.
+- retained learning:
+  - para narrar un comando que hoy es paso-cáscara, MIRROR el patrón de diff: un generador en el
+    pipeline de enriquecimiento de `cas_didactic` que reconstruye el "cómo" desde el before/after,
+    sin que el motor de cómputo grabe nada. Mantiene el motor (y su soundness) intacto.
+  - una narración por reconocimiento de patrón es SOUND si exige que el RESULTADO coincida con el
+    valor del patrón: el resultado actúa de oráculo (sin(x)/x→1 solo es el notable cuando da 1).
+  - residual (peldaño G2): siguientes sub-ciclos — sustitución directa por continuidad
+    (`limit(x²+1,x,2)=5` → "sustituir x=2"), factor-y-cancela (`(x²−1)/(x−1)`), y L'Hôpital/Taylor
+    narrados. Estos necesitan el PUNTO del límite (hoy ausente del paso: el `before` es la expr
+    desnuda); el siguiente sub-ciclo lo cableará (envolver el before en `limit(expr,var,punto)` o
+    pasar el punto al enriquecimiento).

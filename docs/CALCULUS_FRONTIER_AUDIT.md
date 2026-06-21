@@ -849,10 +849,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P3 — educativo transversal
 
-- [ ] **(F) Límites con pedagogía**: los soportados no justifican nada
+- [~] **(F) Límites con pedagogía**: los soportados no justifican nada
   (`sin(x)/x = 1` sin nombrar el límite notable/L'Hôpital/sandwich);
   impropias muestran `lim` sin evaluarlo con justificación
   (`lim e^(-x)(-x-1) = 0` por dominancia).
+  *(parcial PENDING_HASH_LIMIT 2026-06-21: primer sub-ciclo del gatekeeper G2 — los LÍMITES
+  NOTABLES ya se nombran como substep (`sin(u)/u→1`, `tan(u)/u→1`, `(eᵘ−1)/u→1`,
+  `ln(1+u)/u→1`, `(1−cos u)/u²→1/2`) vía el pipeline de enriquecimiento de cas_didactic,
+  sound por chequeo de resultado. Quedan: sustitución directa por continuidad, factor-y-cancela,
+  L'Hôpital/Taylor narrados (necesitan el punto del límite en el paso), y la justificación de
+  impropias por dominancia.)*
 - [ ] **(F) Presentación**: ~10 nombres de regla en inglés dentro de
   narración española ('Normalize Negative Exponent', 'Identity
   Power'...); `--steps` ignorado en modo texto del CLI (los pasos solo

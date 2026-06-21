@@ -19586,6 +19586,114 @@ fn nested_trig_log_factor_arg(ctx: &Context, expr: ExprId) -> Option<(ExprId, Ex
     }
 }
 
+/// Narrate the NAMED notable limit behind a resolved finite-limit step (the audit gap:
+/// `sin(x)/x = 1` is computed but the rule is never named). Sound by the result check:
+/// the substep is emitted ONLY when the result equals the notable value, so
+/// `limit(sin(x)/x, x, 5) = sin(5)/5` is correctly NOT narrated as `sin(u)/u → 1`.
+pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let Some(name) = notable_limit_name(ctx, step.before, step.after) else {
+        return Vec::new();
+    };
+    vec![SubStep::new(
+        format!("Aplicar el límite notable: {name}"),
+        display_expr(ctx, step.before),
+        display_expr(ctx, step.after),
+    )]
+}
+
+/// Identify the standard ("notable") limit a `before/after` finite-limit step realises,
+/// matching the structural form of `before` AND requiring `after` to be the notable value.
+fn notable_limit_name(ctx: &Context, before: ExprId, after: ExprId) -> Option<&'static str> {
+    let (num, den) = as_div(ctx, before)?;
+    let after_value = as_rational_const(ctx, after, 8);
+    let after_is = |target: BigRational| after_value.as_ref() == Some(&target);
+
+    // den is the bare variable u: sin(u)/u, tan(u)/u, (e^u − 1)/u, ln(1+u)/u → 1.
+    if matches!(ctx.get(den), Expr::Variable(_)) && after_is(BigRational::one()) {
+        if let Some((arg, builtin)) = limit_unary_builtin(ctx, num) {
+            if compare_expr(ctx, arg, den) == Ordering::Equal {
+                match builtin {
+                    BuiltinFn::Sin => return Some("lím(u→0) sin(u)/u = 1"),
+                    BuiltinFn::Tan => return Some("lím(u→0) tan(u)/u = 1"),
+                    _ => {}
+                }
+            }
+            if builtin == BuiltinFn::Ln && limit_is_one_plus(ctx, arg, den) {
+                return Some("lím(u→0) ln(1+u)/u = 1");
+            }
+        }
+        if limit_is_exp_minus_one(ctx, num, den) {
+            return Some("lím(u→0) (e^u − 1)/u = 1");
+        }
+    }
+
+    // den is u²: (1 − cos(u))/u² → 1/2.
+    if after_is(BigRational::new(1.into(), 2.into())) {
+        if let Some(u) = limit_square_of_var(ctx, den) {
+            if limit_is_one_minus_cos(ctx, num, u) {
+                return Some("lím(u→0) (1 − cos(u))/u² = 1/2");
+            }
+        }
+    }
+
+    None
+}
+
+fn limit_unary_builtin(ctx: &Context, expr: ExprId) -> Option<(ExprId, BuiltinFn)> {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1 {
+            if let Some(builtin) = ctx.builtin_of(*fn_id) {
+                return Some((args[0], builtin));
+            }
+        }
+    }
+    None
+}
+
+fn limit_is_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
+    as_rational_const(ctx, expr, 8).as_ref() == Some(&BigRational::from_integer(value.into()))
+}
+
+fn limit_square_of_var(ctx: &Context, den: ExprId) -> Option<ExprId> {
+    let (base, exponent) = as_pow(ctx, den)?;
+    (matches!(ctx.get(base), Expr::Variable(_)) && limit_is_number(ctx, exponent, 2))
+        .then_some(base)
+}
+
+fn limit_is_one_plus(ctx: &Context, arg: ExprId, u: ExprId) -> bool {
+    if let Expr::Add(left, right) = ctx.get(arg) {
+        let (left, right) = (*left, *right);
+        (limit_is_number(ctx, left, 1) && compare_expr(ctx, right, u) == Ordering::Equal)
+            || (limit_is_number(ctx, right, 1) && compare_expr(ctx, left, u) == Ordering::Equal)
+    } else {
+        false
+    }
+}
+
+fn limit_is_exp_minus_one(ctx: &Context, num: ExprId, u: ExprId) -> bool {
+    if let Expr::Sub(left, right) = ctx.get(num) {
+        let (left, right) = (*left, *right);
+        if limit_is_number(ctx, right, 1) {
+            if let Some(arg) = extract_exp_argument(ctx, left) {
+                return compare_expr(ctx, arg, u) == Ordering::Equal;
+            }
+        }
+    }
+    false
+}
+
+fn limit_is_one_minus_cos(ctx: &Context, num: ExprId, u: ExprId) -> bool {
+    if let Expr::Sub(left, right) = ctx.get(num) {
+        let (left, right) = (*left, *right);
+        if limit_is_number(ctx, left, 1) {
+            if let Some((arg, BuiltinFn::Cos)) = limit_unary_builtin(ctx, right) {
+                return compare_expr(ctx, arg, u) == Ordering::Equal;
+            }
+        }
+    }
+    false
+}
+
 fn display_expr(ctx: &Context, expr: ExprId) -> String {
     format!(
         "{}",
@@ -20999,5 +21107,55 @@ fn difference_like_terms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)
             _ => None,
         },
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod limit_notable_tests {
+    use super::generate_limit_substeps;
+    use crate::runtime::Step;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    fn substep_titles(before_src: &str, after_src: &str) -> Vec<String> {
+        let mut ctx = Context::new();
+        let before = parse(before_src, &mut ctx).expect("parse before");
+        let after = parse(after_src, &mut ctx).expect("parse after");
+        let step = Step::new_compact("desc", "Evaluar límite finito", before, after);
+        generate_limit_substeps(&ctx, &step)
+            .into_iter()
+            .map(|s| s.description)
+            .collect()
+    }
+
+    #[test]
+    fn names_the_standard_notable_limits() {
+        for (before, after, needle) in [
+            ("sin(x)/x", "1", "sin(u)/u = 1"),
+            ("tan(x)/x", "1", "tan(u)/u = 1"),
+            ("(exp(x)-1)/x", "1", "(e^u − 1)/u = 1"),
+            ("ln(1+x)/x", "1", "ln(1+u)/u = 1"),
+            ("(1-cos(x))/x^2", "1/2", "(1 − cos(u))/u² = 1/2"),
+        ] {
+            let titles = substep_titles(before, after);
+            assert_eq!(titles.len(), 1, "{before} should name one notable limit");
+            assert!(
+                titles[0].contains(needle),
+                "{before}: expected `{needle}` in `{}`",
+                titles[0]
+            );
+        }
+    }
+
+    #[test]
+    fn declines_when_result_is_not_the_notable_value() {
+        // sin(x)/x at a non-zero point evaluates to sin(5)/5, NOT 1 — must not be narrated.
+        assert!(substep_titles("sin(x)/x", "sin(5)/5").is_empty());
+        // Scaled argument sin(2x)/x → 2 is not the bare notable sin(u)/u.
+        assert!(substep_titles("sin(2*x)/x", "2").is_empty());
+        // A continuous polynomial limit is no notable limit.
+        assert!(substep_titles("x^2+1", "5").is_empty());
+        // Right structural form but wrong value (fabricated) must decline.
+        assert!(substep_titles("sin(x)/x", "2").is_empty());
     }
 }

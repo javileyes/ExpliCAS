@@ -1,4 +1,6 @@
-use super::super::focused_rule_substeps::generate_focused_rule_substeps;
+use super::super::focused_rule_substeps::{
+    generate_focused_rule_substeps, generate_limit_substeps,
+};
 use super::super::gcd_factorization::generate_gcd_factorization_substeps;
 use super::super::generic_rule_substeps::generate_generic_rule_substeps;
 use super::super::nested_fraction_analysis::classify_nested_fraction;
@@ -46,6 +48,10 @@ pub(super) fn extend_step_specific_substeps(
 
     if step.rule_name.contains("Root Denesting") {
         sub_steps.extend(generate_root_denesting_substeps(ctx, step));
+    }
+
+    if step.rule_name.starts_with("Evaluar límite") {
+        sub_steps.extend(generate_limit_substeps(ctx, step));
     }
 
     if sub_steps.is_empty() {

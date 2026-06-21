@@ -172,7 +172,11 @@ fn is_noisy_template_substep(sub_step: &SubStep) -> bool {
 }
 
 fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) -> bool {
-    normalized_substep.starts_with("aquí ")
+    // A notable-limit substep names the method (e.g. "sin(u)/u → 1") over the SAME
+    // before/after as the limit step — that naming IS the didactic content, so keep it.
+    (step.rule_name.starts_with("Evaluar límite")
+        && normalized_substep.starts_with("aplicar el límite notable"))
+        || normalized_substep.starts_with("aquí ")
         || normalized_substep.starts_with("aqui ")
         || normalized_substep.starts_with("reescribir el denominador sacando factor común ")
         || normalized_substep.starts_with("reescribir el numerador sacando factor común ")

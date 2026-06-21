@@ -61,10 +61,14 @@ cuando, los tres se cumplen:
   en integración y el item remanente declarado de la Phase 4 del backend.
 - **G2 · Narrativa educativa de límites** (L'Hôpital / límite notable / squeeze /
   factor-y-cancela) — **L, ~6-10 ciclos.** Hoy CADA límite colapsa a un paso-cáscara único
-  (salto mágico que los docs prohíben). No existe ninguna cadena didáctica de límites en
-  `cas_didactic`. Es la mitad EDUCATIVA del north star, hoy a ~0% — **pesa lo mismo que la
-  universal**. *Prioridad sobre varios P2 de cobertura: mientras los límites no narren, el
+  (salto mágico que los docs prohíben). Es la mitad EDUCATIVA del north star — **pesa lo mismo
+  que la universal**. *Prioridad sobre varios P2 de cobertura: mientras los límites no narren, el
   umbral "serio Y educativo" no se cruza.*
+  🔨 **Sub-ciclo 1 ATERRIZADO 2026-06-21**: infraestructura de narración de límites en el pipeline
+  de enriquecimiento de `cas_didactic` (`generate_limit_substeps`) + **límites notables nombrados**
+  (`sin(u)/u→1`, `tan(u)/u→1`, `(eᵘ−1)/u→1`, `ln(1+u)/u→1`, `(1−cos u)/u²→1/2`), sound por chequeo
+  de resultado. Siguientes sub-ciclos: sustitución directa por continuidad, factor-y-cancela,
+  L'Hôpital/Taylor (necesitan cablear el PUNTO del límite al paso, hoy ausente).
 
 ### Wins P1 baratos y de alto ROI (intercalar con los gatekeepers)
 - **Sintaxis `diff(expr, x, n)` (orden superior) y `diff(expr, x, y)` (parcial-mixta)** —
