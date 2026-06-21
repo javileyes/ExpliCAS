@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 282 (newest first)
+Active entries: 283 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
+- 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate ... | Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12000,3 +12001,39 @@ Active entries: 282 (newest first)
   - residual (peldaño): `end` no-variable (`sum(..., k, 1, 2n)`) y `start` simbólico
     (`sum(..., k, m, n)`) quedan sin colectar (conservador, correcto); la forma factorizada
     ideal `n(n+1)(n+2)/3` para cúbicas multi-término requeriría un factorizador post-colección.
+
+## 2026-06-22 - Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate de colección
+    por número de variables libres en `combined`, no por forma de `end`)
+- status:
+  - `retained` (capability/educativo — P3; extensión directa del ciclo previo [[colección de
+    sumatorios]], misma maquinaria, blast radius cero)
+- capture:
+  - investment_class: capability (Fase 1, P3 — presentación; reusa `Polynomial` + `collect_variables`)
+  - primary_dimension: north_star_completeness (forma cerrada legible con cotas no triviales)
+  - secondary_dimension: reuse_value (generaliza el gate del ciclo anterior; menos código, más casos)
+  - cell: `sum(2k+1, k, 1, 2n) → 4n²+4n`; `sum(2k+1, k, 1, n+1) → n²+4n+3`;
+    `sum(4k-2, k, 0, n) → 2n²−2`; `sum(k+1, k, 1, 3n) → 9/2·n²+9/2·n`. Intactos:
+    `sum(2k+1,1,n) → n²+2n`, `sum(k²) → 1/6·n(n+1)(2n+1)` factorizada,
+    `sum(2k+1, k, m, n)` simbólico SIN colectar.
+  - behavior_change_expected: los sumatorios multi-término con cota superior ESCALADA/AFÍN
+    (`2n`, `n+1`, `3n`) o inicio constante ≠1 (`0`) ahora colectan; antes solo con `end` variable
+    desnuda. Huella guardrail+pressure NONE.
+  - SOUNDNESS: el gate pasa de "`end` es Variable y `start` racional" a "`combined` tiene
+    EXACTAMENTE una variable libre" (`cas_ast::traversal::collect_variables`) — más general y más
+    simple: una cota construida de una sola variable con `start` constante deja `combined`
+    univariado; un `start` simbólico deja dos variables y se salta (correcto, no se puede colectar
+    univariadamente). Colección exacta (`Polynomial`, BigRational); valor invariante (test por
+    fuerza bruta).
+- observed:
+  - el gate del ciclo previo era innecesariamente estrecho (exigía `end` Variable desnuda); la
+    condición REAL para colectar univariadamente es "una sola variable libre en el resultado", que
+    `collect_variables` decide directamente y subsume el caso desnudo.
+- retained learning:
+  - cuando un gate restringe por la FORMA de un input (`end` es Variable) cuando la condición real
+    es una PROPIEDAD del resultado (univariado), gatear por la propiedad del resultado es más
+    general y más simple a la vez — y suele eliminar código de casos.
+  - residual (peldaño): cotas con DOS variables genuinas (`sum(..., k, m, n)`) siguen sin colectar
+    (no son univariadas); la forma factorizada ideal para cúbicas multi-término sigue pendiente de
+    un factorizador post-colección.

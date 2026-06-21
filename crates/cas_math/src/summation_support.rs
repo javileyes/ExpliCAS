@@ -915,22 +915,19 @@ pub fn try_build_polynomial_sum(
         combined = ctx.add(Expr::Add(combined, term));
     }
 
-    // Collect the linearity sum into a single canonical polynomial in `end`
-    // (`2·n·(n+1) − 2·n → 2·n²`, `n·(n+1) + n → n² + 2·n`): the per-power Faulhaber
-    // terms are correct but left as an UNcombined sum. Only for a MULTI-term result —
-    // a single power keeps its compact factored form (`Σk² = n(n+1)(2n+1)/6`) — and only
-    // when `end` is a bare variable with a constant `start`, so `combined` is a univariate
-    // polynomial in that variable. Exact (`BigRational`); the value never changes.
+    // Collect the linearity sum into a single canonical polynomial (`2·n·(n+1) − 2·n → 2·n²`,
+    // `n·(n+1) + n → n² + 2·n`, and with a scaled bound `Σ_{1}^{2n}(2k+1) → 4n² + 4n`): the
+    // per-power Faulhaber terms are correct but left as an UNcombined sum. Only for a MULTI-term
+    // result — a single power keeps its compact factored form (`Σk² = n(n+1)(2n+1)/6`) — and only
+    // when `combined` is UNIVARIATE (exactly one free variable: a constant `start` and an `end`
+    // built from a single variable, so the closed form is a polynomial in it). A symbolic `start`
+    // (`Σ_{m}^{n}`) leaves two variables and stays as-is. Exact (`BigRational`); value unchanged.
     if terms.len() >= 2 {
-        let end_name = match ctx.get(end) {
-            Expr::Variable(sym_id) => Some(ctx.sym_name(*sym_id).to_string()),
-            _ => None,
-        };
-        if let Some(end_name) = end_name {
-            if as_rational_const(ctx, start, 8).is_some() {
-                if let Ok(poly_in_end) = Polynomial::from_expr(ctx, combined, &end_name) {
-                    combined = poly_in_end.to_expr(ctx);
-                }
+        let vars = cas_ast::traversal::collect_variables(ctx, combined);
+        if vars.len() == 1 {
+            let only_var = vars.into_iter().next().expect("one variable");
+            if let Ok(poly) = Polynomial::from_expr(ctx, combined, &only_var) {
+                combined = poly.to_expr(ctx);
             }
         }
     }
@@ -2763,6 +2760,39 @@ mod tests {
                 "Σ {summand_src} should collect to the canonical polynomial with coeffs {want:?}"
             );
         }
+    }
+
+    #[test]
+    fn polynomial_sum_collects_with_scaled_upper_bound() {
+        // Σ_{k=1}^{2n}(2k+1) = 4n² + 4n: a scaled bound `end = 2·n` is still univariate in `n`,
+        // so the linearity result collects to a single canonical polynomial (coeffs [0, 4, 4]).
+        let mut ctx = Context::new();
+        let summand = cas_parser::parse("2*k+1", &mut ctx).expect("parse summand");
+        let start = ctx.num(1);
+        let n = ctx.var("n");
+        let two = ctx.num(2);
+        let end = ctx.add(Expr::Mul(two, n)); // 2·n
+        let result =
+            try_build_polynomial_sum(&mut ctx, summand, "k", start, end).expect("sum builds");
+
+        let want = [0_i64, 4, 4];
+        let want_poly = Polynomial::new(
+            want.iter()
+                .map(|&c| BigRational::from_integer(c.into()))
+                .collect(),
+            "n".to_string(),
+        );
+        // Brute force at n = 3: Σ_{k=1}^{6}(2k+1) = 48.
+        assert_eq!(
+            want_poly.eval(&BigRational::from_integer(3.into())),
+            BigRational::from_integer((1..=6).map(|k| 2 * k + 1).sum::<i64>().into()),
+        );
+        let expected = want_poly.to_expr(&mut ctx);
+        assert_eq!(
+            compare_expr(&ctx, result, expected),
+            std::cmp::Ordering::Equal,
+            "Σ_{{1}}^{{2n}}(2k+1) should collect to 4n² + 4n"
+        );
     }
 
     #[test]
