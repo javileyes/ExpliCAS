@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 250 (newest first)
+Active entries: 251 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -135,6 +135,7 @@ Active entries: 250 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` | Integrate p(x)·a^x by parts for a general constant base
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`faulhaber_power_sum_coeffs`, `bi... | General Faulhaber: polynomial sums of any degree (lifts the cycle-2 degree-3 cap)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | G2 gatekeeper (límites educativos) sub-ciclo 1: nombrar los límites notables
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 gatekeeper sub-ciclo 2: más límites notables + sándwich + (a^u−1)/u y (1+u)^(1/u)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10766,3 +10767,41 @@ Active entries: 250 (newest first)
     narrados. Estos necesitan el PUNTO del límite (hoy ausente del paso: el `before` es la expr
     desnuda); el siguiente sub-ciclo lo cableará (envolver el before en `limit(expr,var,punto)` o
     pasar el punto al enriquecimiento).
+
+## 2026-06-21 - G2 gatekeeper sub-ciclo 2: más límites notables + sándwich + (a^u−1)/u y (1+u)^(1/u)
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_name` ampliado:
+    arcsin/arctan/sinh/tanh/asinh/atanh, `(a^u−1)/u → ln(a)`, `(1+u)^(1/u) → e`, teorema del
+    sándwich `u^k·sin/cos(1/u) → 0`); whitelist de poda simplificada en
+    `enrichment_pipeline/step_loop.rs`
+- status:
+  - `retained` (segundo sub-ciclo del gatekeeper G2; amplía la narración de límites de 5 a 14
+    formas estándar reconocidas)
+- capture:
+  - investment_class: capability (educational narration)
+  - primary_dimension: north_star_completeness (Fase 1, gatekeeper G2)
+  - cell: `arcsin(x)/x`, `arctan(x)/x`, `sinh(x)/x`, `tanh(x)/x → 1` (equivalentes de primer orden);
+    `(2^x−1)/x → ln(2)`, `(3^x−1)/x → ln(3)` (exponencial general); `(1+x)^(1/x) → e` (Euler);
+    `x·sin(1/x)`, `x²·cos(1/x) → 0` (sándwich). Todos narran su método/teorema.
+  - behavior_change_expected: los pasos de límite ganan substep para 9 formas estándar más.
+    Huella guardrail+pressure NONE (solo substeps; valores y reglas idénticos). Workspace 12242
+    passed / 0 failed; clippy/fmt verdes.
+  - SOUNDNESS: cada forma exige que el RESULTADO coincida — `(2^x−1)/x` solo narra si el resultado
+    es `ln(2)` (no `ln(3)`); el sándwich exige que el oscilador sin/cos tenga la variable en un
+    DENOMINADOR (reciprocal), así que `x·sin(x) → 0` (continuidad, no sándwich) NO se narra.
+- observed:
+  - los equivalentes de primer orden (sin/tan/arcsin/arctan/sinh/tanh ~ u) comparten el mismo
+    patrón `f(u)/u → 1`: una tabla `first_order_equivalent_name(builtin)` los unifica.
+  - distinguir el sándwich genuino de la continuidad necesita inspeccionar el ARGUMENTO del
+    oscilador: `x·sin(1/x)` (la variable en denominador → no converge → sándwich) vs `x·sin(x)`
+    (argumento continuo → simple producto de límites). `limit_var_in_denominator` lo decide.
+  - cambiar `notable_limit_name` a devolver `Option<String>` (descripción completa, con su propio
+    prefijo) deja que el sándwich y los notables convivan; la whitelist de poda se simplifica a
+    "conservar cualquier substep de un paso de límite" (los controlo todos).
+- retained learning:
+  - una familia de narraciones por reconocimiento de patrón crece barata si el RESULTADO es el
+    oráculo de soundness y los discriminantes estructurales (reciprocal-en-denominador) separan
+    el caso genuino del homónimo trivial (sándwich vs continuidad).
+  - residual (peldaño G2): siguen pendientes los métodos que necesitan el PUNTO del límite
+    (sustitución directa por continuidad, factor-y-cancela, L'Hôpital/Taylor narrados) — el punto
+    sigue ausente del paso; cablearlo es el siguiente sub-ciclo arquitectónico del gatekeeper.

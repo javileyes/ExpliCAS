@@ -19591,52 +19591,92 @@ fn nested_trig_log_factor_arg(ctx: &Context, expr: ExprId) -> Option<(ExprId, Ex
 /// the substep is emitted ONLY when the result equals the notable value, so
 /// `limit(sin(x)/x, x, 5) = sin(5)/5` is correctly NOT narrated as `sin(u)/u → 1`.
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    let Some(name) = notable_limit_name(ctx, step.before, step.after) else {
+    let Some(description) = notable_limit_name(ctx, step.before, step.after) else {
         return Vec::new();
     };
     vec![SubStep::new(
-        format!("Aplicar el límite notable: {name}"),
+        description,
         display_expr(ctx, step.before),
         display_expr(ctx, step.after),
     )]
 }
 
-/// Identify the standard ("notable") limit a `before/after` finite-limit step realises,
-/// matching the structural form of `before` AND requiring `after` to be the notable value.
-fn notable_limit_name(ctx: &Context, before: ExprId, after: ExprId) -> Option<&'static str> {
-    let (num, den) = as_div(ctx, before)?;
+/// Full didactic description of the standard ("notable") limit / theorem a `before/after`
+/// finite-limit step realises, matching the structural form of `before` AND requiring `after`
+/// to be the notable value (the result acts as the soundness oracle — a structural match with
+/// the wrong value is rejected). Returns `None` when no standard form is recognised.
+fn notable_limit_name(ctx: &Context, before: ExprId, after: ExprId) -> Option<String> {
+    let prefix = "Aplicar el límite notable: ";
     let after_value = as_rational_const(ctx, after, 8);
     let after_is = |target: BigRational| after_value.as_ref() == Some(&target);
 
-    // den is the bare variable u: sin(u)/u, tan(u)/u, (e^u − 1)/u, ln(1+u)/u → 1.
-    if matches!(ctx.get(den), Expr::Variable(_)) && after_is(BigRational::one()) {
-        if let Some((arg, builtin)) = limit_unary_builtin(ctx, num) {
-            if compare_expr(ctx, arg, den) == Ordering::Equal {
-                match builtin {
-                    BuiltinFn::Sin => return Some("lím(u→0) sin(u)/u = 1"),
-                    BuiltinFn::Tan => return Some("lím(u→0) tan(u)/u = 1"),
-                    _ => {}
+    if let Some((num, den)) = as_div(ctx, before) {
+        // den is the bare variable u.
+        if matches!(ctx.get(den), Expr::Variable(_)) {
+            // f(u)/u → 1 for the first-order equivalents (sin, tan, arcsin, arctan, sinh, ...).
+            if after_is(BigRational::one()) {
+                if let Some((arg, builtin)) = limit_unary_builtin(ctx, num) {
+                    if compare_expr(ctx, arg, den) == Ordering::Equal {
+                        if let Some(name) = first_order_equivalent_name(builtin) {
+                            return Some(format!("{prefix}lím(u→0) {name}(u)/u = 1"));
+                        }
+                    }
+                    if builtin == BuiltinFn::Ln && limit_is_one_plus(ctx, arg, den) {
+                        return Some(format!("{prefix}lím(u→0) ln(1+u)/u = 1"));
+                    }
+                }
+                if limit_is_exp_minus_one(ctx, num, den) {
+                    return Some(format!("{prefix}lím(u→0) (e^u − 1)/u = 1"));
                 }
             }
-            if builtin == BuiltinFn::Ln && limit_is_one_plus(ctx, arg, den) {
-                return Some("lím(u→0) ln(1+u)/u = 1");
+            // (a^u − 1)/u → ln(a) for a positive rational base a ≠ 1 (result must be ln(a)).
+            if let Some(base) = limit_rational_base_pow_minus_one(ctx, num, den) {
+                if limit_after_is_ln_of(ctx, after, base) {
+                    return Some(format!("{prefix}lím(u→0) (aᵘ − 1)/u = ln(a)"));
+                }
             }
         }
-        if limit_is_exp_minus_one(ctx, num, den) {
-            return Some("lím(u→0) (e^u − 1)/u = 1");
+        // den is u²: (1 − cos(u))/u² → 1/2.
+        if after_is(BigRational::new(1.into(), 2.into())) {
+            if let Some(u) = limit_square_of_var(ctx, den) {
+                if limit_is_one_minus_cos(ctx, num, u) {
+                    return Some(format!("{prefix}lím(u→0) (1 − cos(u))/u² = 1/2"));
+                }
+            }
         }
     }
 
-    // den is u²: (1 − cos(u))/u² → 1/2.
-    if after_is(BigRational::new(1.into(), 2.into())) {
-        if let Some(u) = limit_square_of_var(ctx, den) {
-            if limit_is_one_minus_cos(ctx, num, u) {
-                return Some("lím(u→0) (1 − cos(u))/u² = 1/2");
-            }
-        }
+    // Squeeze theorem: (power of u) · (bounded sin/cos of a reciprocal in u) → 0.
+    if after_value.as_ref() == Some(&BigRational::zero()) && limit_is_squeeze_product(ctx, before) {
+        return Some(
+            "Aplicar el teorema del sándwich: factor acotado × infinitésimo → 0".to_string(),
+        );
+    }
+
+    // (1 + u)^(1/u) → e.
+    if matches!(ctx.get(after), Expr::Constant(Constant::E))
+        && limit_is_one_plus_to_reciprocal(ctx, before)
+    {
+        return Some(format!("{prefix}lím(u→0) (1 + u)^(1/u) = e"));
     }
 
     None
+}
+
+/// The display name of a unary function `f` whose first-order equivalent at 0 is `u`
+/// (so `f(u)/u → 1`), or `None` if `f` has no such standard equivalent.
+fn first_order_equivalent_name(builtin: BuiltinFn) -> Option<&'static str> {
+    match builtin {
+        BuiltinFn::Sin => Some("sin"),
+        BuiltinFn::Tan => Some("tan"),
+        BuiltinFn::Asin | BuiltinFn::Arcsin => Some("arcsin"),
+        BuiltinFn::Atan | BuiltinFn::Arctan => Some("arctan"),
+        BuiltinFn::Sinh => Some("sinh"),
+        BuiltinFn::Tanh => Some("tanh"),
+        BuiltinFn::Asinh => Some("asinh"),
+        BuiltinFn::Atanh => Some("atanh"),
+        _ => None,
+    }
 }
 
 fn limit_unary_builtin(ctx: &Context, expr: ExprId) -> Option<(ExprId, BuiltinFn)> {
@@ -19692,6 +19732,119 @@ fn limit_is_one_minus_cos(ctx: &Context, num: ExprId, u: ExprId) -> bool {
         }
     }
     false
+}
+
+/// `num = a^u − 1` with `a` a positive rational ≠ 1 and the exponent equal to `u`; returns `a`.
+fn limit_rational_base_pow_minus_one(ctx: &Context, num: ExprId, u: ExprId) -> Option<ExprId> {
+    let Expr::Sub(left, right) = ctx.get(num) else {
+        return None;
+    };
+    let (left, right) = (*left, *right);
+    if !limit_is_number(ctx, right, 1) {
+        return None;
+    }
+    let (base, exponent) = as_pow(ctx, left)?;
+    if compare_expr(ctx, exponent, u) != Ordering::Equal {
+        return None;
+    }
+    let base_value = as_rational_const(ctx, base, 8)?;
+    (base_value.is_positive() && !base_value.is_one()).then_some(base)
+}
+
+/// `after == ln(base)` (structurally), confirming the `(a^u − 1)/u → ln(a)` result.
+fn limit_after_is_ln_of(ctx: &Context, after: ExprId, base: ExprId) -> bool {
+    matches!(limit_unary_builtin(ctx, after), Some((arg, BuiltinFn::Ln))
+        if compare_expr(ctx, arg, base) == Ordering::Equal)
+}
+
+/// `before = (power of a variable u) · (bounded sin/cos whose argument is a reciprocal in u)`:
+/// the squeeze (sandwich) shape `u^k · sin(1/u) → 0`.
+fn limit_is_squeeze_product(ctx: &Context, before: ExprId) -> bool {
+    let Expr::Mul(left, right) = ctx.get(before) else {
+        return false;
+    };
+    let (left, right) = (*left, *right);
+    [(left, right), (right, left)]
+        .into_iter()
+        .any(|(power, bounded)| {
+            limit_power_of_var(ctx, power)
+                .is_some_and(|u| limit_is_bounded_reciprocal_oscillator(ctx, bounded, u))
+        })
+}
+
+/// `expr` is `u` or `u^k` (k a positive integer) for a variable `u`; returns that variable.
+fn limit_power_of_var(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if matches!(ctx.get(expr), Expr::Variable(_)) {
+        return Some(expr);
+    }
+    let (base, exponent) = as_pow(ctx, expr)?;
+    let exp_value = as_rational_const(ctx, exponent, 8)?;
+    (matches!(ctx.get(base), Expr::Variable(_))
+        && exp_value.is_integer()
+        && exp_value.is_positive())
+    .then_some(base)
+}
+
+/// `expr = sin(arg)` or `cos(arg)` where `arg` contains `u` inside a denominator (so the
+/// oscillator does not converge at the point — the genuine squeeze case, not mere continuity).
+fn limit_is_bounded_reciprocal_oscillator(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
+    let Some((arg, builtin)) = limit_unary_builtin(ctx, expr) else {
+        return false;
+    };
+    matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) && limit_var_in_denominator(ctx, arg, u)
+}
+
+/// True if `u` appears inside a denominator of `expr` (a `Div(_, d)` with `u` in `d`, or a
+/// negative power of `u`).
+fn limit_var_in_denominator(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => {
+            let (numerator, denominator) = (*numerator, *denominator);
+            limit_expr_contains(ctx, denominator, u) || limit_var_in_denominator(ctx, numerator, u)
+        }
+        Expr::Pow(base, exponent) => {
+            let (base, exponent) = (*base, *exponent);
+            as_rational_const(ctx, exponent, 8).is_some_and(|v| v.is_negative())
+                && limit_expr_contains(ctx, base, u)
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
+            let (a, b) = (*a, *b);
+            limit_var_in_denominator(ctx, a, u) || limit_var_in_denominator(ctx, b, u)
+        }
+        Expr::Neg(inner) => limit_var_in_denominator(ctx, *inner, u),
+        _ => false,
+    }
+}
+
+/// True if `expr` references the variable `u` anywhere.
+fn limit_expr_contains(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
+    if compare_expr(ctx, expr, u) == Ordering::Equal {
+        return true;
+    }
+    match ctx.get(expr) {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            let (a, b) = (*a, *b);
+            limit_expr_contains(ctx, a, u) || limit_expr_contains(ctx, b, u)
+        }
+        Expr::Neg(inner) => limit_expr_contains(ctx, *inner, u),
+        Expr::Function(_, args) => args.clone().iter().any(|&a| limit_expr_contains(ctx, a, u)),
+        _ => false,
+    }
+}
+
+/// `before = (1 + u)^(1/u)` for a variable `u` (the Euler-number limit shape).
+fn limit_is_one_plus_to_reciprocal(ctx: &Context, before: ExprId) -> bool {
+    let Some((base, exponent)) = as_pow(ctx, before) else {
+        return false;
+    };
+    // exponent = 1/u with u a variable.
+    let Some((one, u)) = as_div(ctx, exponent) else {
+        return false;
+    };
+    if !limit_is_number(ctx, one, 1) || !matches!(ctx.get(u), Expr::Variable(_)) {
+        return false;
+    }
+    limit_is_one_plus(ctx, base, u)
 }
 
 fn display_expr(ctx: &Context, expr: ExprId) -> String {
@@ -21133,9 +21286,18 @@ mod limit_notable_tests {
         for (before, after, needle) in [
             ("sin(x)/x", "1", "sin(u)/u = 1"),
             ("tan(x)/x", "1", "tan(u)/u = 1"),
+            ("arcsin(x)/x", "1", "arcsin(u)/u = 1"),
+            ("arctan(x)/x", "1", "arctan(u)/u = 1"),
+            ("sinh(x)/x", "1", "sinh(u)/u = 1"),
+            ("tanh(x)/x", "1", "tanh(u)/u = 1"),
             ("(exp(x)-1)/x", "1", "(e^u − 1)/u = 1"),
             ("ln(1+x)/x", "1", "ln(1+u)/u = 1"),
             ("(1-cos(x))/x^2", "1/2", "(1 − cos(u))/u² = 1/2"),
+            ("(2^x-1)/x", "ln(2)", "(aᵘ − 1)/u = ln(a)"),
+            ("(3^x-1)/x", "ln(3)", "(aᵘ − 1)/u = ln(a)"),
+            ("(1+x)^(1/x)", "e", "(1 + u)^(1/u) = e"),
+            ("x*sin(1/x)", "0", "teorema del sándwich"),
+            ("x^2*cos(1/x)", "0", "teorema del sándwich"),
         ] {
             let titles = substep_titles(before, after);
             assert_eq!(titles.len(), 1, "{before} should name one notable limit");
@@ -21157,5 +21319,9 @@ mod limit_notable_tests {
         assert!(substep_titles("x^2+1", "5").is_empty());
         // Right structural form but wrong value (fabricated) must decline.
         assert!(substep_titles("sin(x)/x", "2").is_empty());
+        // x·sin(x) → 0 is continuity, NOT the squeeze theorem (the argument is not a reciprocal).
+        assert!(substep_titles("x*sin(x)", "0").is_empty());
+        // (2^x − 1)/x → ln(3) would be a fabricated base; the result must be ln of the base.
+        assert!(substep_titles("(2^x-1)/x", "ln(3)").is_empty());
     }
 }
