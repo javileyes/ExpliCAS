@@ -853,12 +853,15 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (`sin(x)/x = 1` sin nombrar el límite notable/L'Hôpital/sandwich);
   impropias muestran `lim` sin evaluarlo con justificación
   (`lim e^(-x)(-x-1) = 0` por dominancia).
-  *(parcial f73db6948 2026-06-21: primer sub-ciclo del gatekeeper G2 — los LÍMITES
-  NOTABLES ya se nombran como substep (`sin(u)/u→1`, `tan(u)/u→1`, `(eᵘ−1)/u→1`,
-  `ln(1+u)/u→1`, `(1−cos u)/u²→1/2`) vía el pipeline de enriquecimiento de cas_didactic,
-  sound por chequeo de resultado. Quedan: sustitución directa por continuidad, factor-y-cancela,
-  L'Hôpital/Taylor narrados (necesitan el punto del límite en el paso), y la justificación de
-  impropias por dominancia.)*
+  *(parcial f73db6948..PENDING_HASH_DOM 2026-06-21: 4 sub-ciclos del gatekeeper G2 vía el
+  pipeline de enriquecimiento de cas_didactic, todo sound por chequeo de resultado/grado y huella
+  NONE — (1) límites NOTABLES `sin/tan/arcsin/arctan/sinh/tanh(u)/u→1`, `(eᵘ−1)/u→1`,
+  `(aᵘ−1)/u→ln(a)`, `ln(1+u)/u→1`, `(1−cos u)/u²→1/2`, `(1+u)^(1/u)→e`; (2) teorema del SÁNDWICH
+  `u^k·sin/cos(1/u)→0`; (3) CONTINUIDAD/sustitución directa (polinomios) y FACTOR-Y-CANCELA (0/0
+  removible); (4) DOMINANCIA en infinito (cociente de coeficientes líderes / grado mayor → 0/±∞).
+  Quedan: mostrar la SUSTITUCIÓN concreta y la factorización explícita (necesitan cablear el
+  punto/factor al paso), L'Hôpital/Taylor narrados paso a paso, y dominancia EXPONENCIAL
+  (`e^(−x)·p(x)→0`).)*
 - [ ] **(F) Presentación**: ~10 nombres de regla en inglés dentro de
   narración española ('Normalize Negative Exponent', 'Identity
   Power'...); `--steps` ignorado en modo texto del CLI (los pasos solo

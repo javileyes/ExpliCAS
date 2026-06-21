@@ -19591,7 +19591,8 @@ fn nested_trig_log_factor_arg(ctx: &Context, expr: ExprId) -> Option<(ExprId, Ex
 /// the substep is emitted ONLY when the result equals the notable value, so
 /// `limit(sin(x)/x, x, 5) = sin(5)/5` is correctly NOT narrated as `sin(u)/u → 1`.
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    let Some(description) = notable_limit_name(ctx, step.before, step.after) else {
+    let at_infinity = step.rule_name.contains("infinito");
+    let Some(description) = notable_limit_name(ctx, step.before, step.after, at_infinity) else {
         return Vec::new();
     };
     vec![SubStep::new(
@@ -19601,11 +19602,22 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     )]
 }
 
-/// Full didactic description of the standard ("notable") limit / theorem a `before/after`
-/// finite-limit step realises, matching the structural form of `before` AND requiring `after`
-/// to be the notable value (the result acts as the soundness oracle — a structural match with
-/// the wrong value is rejected). Returns `None` when no standard form is recognised.
-fn notable_limit_name(ctx: &Context, before: ExprId, after: ExprId) -> Option<String> {
+/// Full didactic description of the standard ("notable") limit / theorem / method a `before/after`
+/// limit step realises, matching the structural form of `before` AND requiring `after` to be the
+/// matching value (the result acts as the soundness oracle — a structural match with the wrong
+/// value is rejected). Returns `None` when no standard form is recognised.
+fn notable_limit_name(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+    at_infinity: bool,
+) -> Option<String> {
+    // Limits at infinity have their own dominance methods; the finite forms below (notable
+    // limits at 0, continuity, factor-and-cancel) do not apply there.
+    if at_infinity {
+        return limit_infinity_dominance(ctx, before, after);
+    }
+
     let prefix = "Aplicar el límite notable: ";
     let after_value = as_rational_const(ctx, after, 8);
     let after_is = |target: BigRational| after_value.as_ref() == Some(&target);
@@ -19845,6 +19857,53 @@ fn limit_expr_contains(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
         }
         Expr::Neg(inner) => limit_expr_contains(ctx, *inner, u),
         Expr::Function(_, args) => args.clone().iter().any(|&a| limit_expr_contains(ctx, a, u)),
+        _ => false,
+    }
+}
+
+/// Narrate a limit at infinity by leading-term DOMINANCE. For a rational `P/Q` as the variable
+/// → ∞: lower-degree numerator → 0, equal degrees → ratio of leading coefficients, higher-degree
+/// numerator → ±∞. Bare polynomials of degree ≥ 1 → ±∞. Sound by matching `after` to each regime.
+fn limit_infinity_dominance(ctx: &Context, before: ExprId, after: ExprId) -> Option<String> {
+    let after_value = as_rational_const(ctx, after, 8);
+    let after_is_inf = limit_is_infinite(ctx, after);
+
+    if let Some((num, den)) = as_div(ctx, before) {
+        let var = limit_single_var_name(ctx, num).or_else(|| limit_single_var_name(ctx, den))?;
+        let p = Polynomial::from_expr(ctx, num, &var).ok()?;
+        let q = Polynomial::from_expr(ctx, den, &var).ok()?;
+        return match p.degree().cmp(&q.degree()) {
+            Ordering::Less if after_value.as_ref() == Some(&BigRational::zero()) => Some(
+                "Dominancia: el denominador tiene mayor grado, así que el cociente → 0".to_string(),
+            ),
+            Ordering::Equal
+                if after_value.as_ref() == Some(&(p.leading_coeff() / q.leading_coeff())) =>
+            {
+                Some(
+                    "Dominancia: grados iguales, el límite es el cociente de los coeficientes líderes"
+                        .to_string(),
+                )
+            }
+            Ordering::Greater if after_is_inf => Some(
+                "Dominancia: el numerador tiene mayor grado, así que el cociente → ±∞".to_string(),
+            ),
+            _ => None,
+        };
+    }
+
+    // A bare polynomial of degree ≥ 1 diverges to ±∞.
+    if after_is_inf && limit_is_polynomial(ctx, before) {
+        return Some("Dominancia: un polinomio de grado ≥ 1 tiende a ±∞".to_string());
+    }
+
+    None
+}
+
+/// `expr` is `±∞` (`Constant::Infinity` or its negation).
+fn limit_is_infinite(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Constant(Constant::Infinity) => true,
+        Expr::Neg(inner) => matches!(ctx.get(*inner), Expr::Constant(Constant::Infinity)),
         _ => false,
     }
 }
@@ -21342,14 +21401,53 @@ mod limit_notable_tests {
     use cas_parser::parse;
 
     fn substep_titles(before_src: &str, after_src: &str) -> Vec<String> {
+        substep_titles_for_rule("Evaluar límite finito", before_src, after_src)
+    }
+
+    fn substep_titles_at_infinity(before_src: &str, after_src: &str) -> Vec<String> {
+        substep_titles_for_rule("Evaluar límite en infinito", before_src, after_src)
+    }
+
+    fn substep_titles_for_rule(rule: &str, before_src: &str, after_src: &str) -> Vec<String> {
         let mut ctx = Context::new();
         let before = parse(before_src, &mut ctx).expect("parse before");
         let after = parse(after_src, &mut ctx).expect("parse after");
-        let step = Step::new_compact("desc", "Evaluar límite finito", before, after);
+        let step = Step::new_compact("desc", rule, before, after);
         generate_limit_substeps(&ctx, &step)
             .into_iter()
             .map(|s| s.description)
             .collect()
+    }
+
+    #[test]
+    fn names_infinity_dominance_methods() {
+        for (before, after, needle) in [
+            ("(x^2+1)/(2*x^2-3)", "1/2", "coeficientes líderes"),
+            ("(3*x^2+1)/(x^2-5)", "3", "coeficientes líderes"),
+            ("(x+1)/(x^2+1)", "0", "denominador tiene mayor grado"),
+            ("(x^3+1)/(x^2+1)", "infinity", "numerador tiene mayor grado"),
+            ("x^2+1", "infinity", "polinomio de grado ≥ 1"),
+        ] {
+            let titles = substep_titles_at_infinity(before, after);
+            assert_eq!(titles.len(), 1, "{before} should name one dominance method");
+            assert!(
+                titles[0].contains(needle),
+                "{before}: expected `{needle}` in `{}`",
+                titles[0]
+            );
+        }
+    }
+
+    #[test]
+    fn dominance_rejects_mismatched_results_and_does_not_fire_at_finite_points() {
+        // Equal degrees but a fabricated ratio (real ratio is 1/2) must decline.
+        assert!(substep_titles_at_infinity("(x^2+1)/(2*x^2-3)", "7").is_empty());
+        // At a FINITE point the dominance narrator must not fire (the rule routes elsewhere).
+        let finite = substep_titles("(x^2+1)/(2*x^2-3)", "1/2");
+        assert!(
+            finite.iter().all(|t| !t.contains("Dominancia")),
+            "dominance must not narrate a finite-point limit: {finite:?}"
+        );
     }
 
     #[test]

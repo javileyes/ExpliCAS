@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 252 (newest first)
+Active entries: 253 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -137,6 +137,7 @@ Active entries: 252 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | G2 gatekeeper (límites educativos) sub-ciclo 1: nombrar los límites notables
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 gatekeeper sub-ciclo 2: más límites notables + sándwich + (a^u−1)/u y (1+u)^(1/u)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 gatekeeper sub-ciclo 3: continuidad (sustitución directa) y factor-y-cancela
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`limit_infinity_... | G2 gatekeeper sub-ciclo 4: límites en infinito por dominancia
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10845,3 +10846,41 @@ Active entries: 252 (newest first)
     (`(x−1)(x+1)`) necesita el punto y el factor en el paso — el cableado del punto sigue pendiente
     como el sub-ciclo arquitectónico que desbloquea L'Hôpital/Taylor narrados y la justificación de
     impropias por dominancia.
+
+## 2026-06-21 - G2 gatekeeper sub-ciclo 4: límites en infinito por dominancia
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`limit_infinity_dominance`,
+    `limit_is_infinite`; `notable_limit_name` toma ahora `at_infinity` y separa los métodos de
+    infinito de los finitos; `generate_limit_substeps` deduce `at_infinity` del rule_name)
+- status:
+  - `retained` (cuarto sub-ciclo del gatekeeper G2; cierra la queja del audit sobre impropias/
+    infinito sin justificación — la rama de límites al infinito)
+- capture:
+  - investment_class: capability (educational narration)
+  - primary_dimension: north_star_completeness (Fase 1, gatekeeper G2)
+  - cell: `limit((x²+1)/(2x²−3), x, ∞) = 1/2`, `(3x²+1)/(x²−5) → 3`, `(2x+1)/(3x−2) → 2/3`
+    narran "Dominancia: grados iguales, cociente de coeficientes líderes"; `(x+1)/(x²+1) → 0`,
+    `1/x → 0` narran "el denominador tiene mayor grado → 0"; `(x³+1)/(x²+1) → ∞` narra "el
+    numerador tiene mayor grado → ±∞"; `x²+1 → ∞` narra "un polinomio de grado ≥ 1 → ±∞".
+  - behavior_change_expected: los pasos de límite EN INFINITO ganan substep de dominancia. Huella
+    guardrail+pressure NONE. Workspace 12246 passed / 0 failed; clippy/fmt verdes.
+  - SOUNDNESS: la dominancia se decide por los GRADOS de num/den (Polynomial::degree) y se verifica
+    contra el resultado — grados iguales solo narra si `after == lead(P)/lead(Q)` (un ratio
+    fabricado se rechaza); numerador-mayor solo si `after` es ±∞. Los métodos finitos (notables,
+    continuidad, factor-cancela) NO disparan en infinito (gate por `at_infinity` del rule_name) y
+    viceversa — verificado.
+- observed:
+  - el "punto" de un límite al infinito está IMPLÍCITO en el rule_name ("Evaluar límite en
+    infinito"), así que la dominancia se narra sin el problema del punto ausente que bloquea los
+    métodos finitos avanzados — `generate_limit_substeps` ramifica por rule_name.
+  - separar finito vs infinito en `notable_limit_name` evita falsos positivos cruzados: la misma
+    forma racional significa cosas distintas en 0 (factor-cancela) y en ∞ (dominancia).
+- retained learning:
+  - cuando la "dirección" de un límite vive en el rule_name (infinito) y no en la expresión, úsala
+    como gate para elegir la familia de métodos; ahorra cablear el dato y evita narrar el método
+    equivocado para la misma forma estructural en regímenes distintos.
+  - resumen del gatekeeper G2 tras 4 sub-ciclos: límites notables (×6 equivalentes + (aᵘ−1)/u +
+    Euler + (1−cos)/u²), sándwich, continuidad, factor-y-cancela y dominancia en infinito ya se
+    narran, todo sound por chequeo de resultado/grado, huella NONE. Residual (peldaño): mostrar la
+    SUSTITUCIÓN concreta y la factorización explícita (necesita cablear el punto/factor al paso),
+    L'Hôpital/Taylor narrados paso a paso, y dominancia exponencial (`e^(−x)·p(x) → 0`).
