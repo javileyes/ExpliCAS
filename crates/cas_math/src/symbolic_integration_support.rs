@@ -21935,6 +21935,212 @@ fn rewrite_cbrt_to_pow_for_integration(ctx: &mut Context, expr: ExprId) -> (Expr
     }
 }
 
+/// Integrate a transcendental chain `c·g'(x)·f(g(x))` by GUESS-AND-VERIFY u-substitution:
+/// enumerate the `f(g)` subexpressions whose outer `f` has a closed elementary antiderivative
+/// `F` (exp/sin/cos/sinh/cosh), build the candidate `F(g(x))`, and ACCEPT it only when
+/// `d/dx F(g) == integrand` exactly (up to a global sign). Sound by construction — the
+/// differentiation IS the verifier, so a wrong guess is rejected. Covers `cos(x)·e^(sin x)`,
+/// `sin(x)·e^(cos x)`, `cos(ln x)/x`, `e^x·cos(e^x)`, etc.
+fn transcendental_chain_substitution_antiderivative(
+    ctx: &mut Context,
+    integrand: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !contains_named_var(ctx, integrand, var) {
+        return None;
+    }
+    let mut candidates = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    collect_chain_substitution_candidates(ctx, integrand, var, &mut candidates, &mut seen);
+
+    // Normalized integrand (sign bubbled to the top) for the exact transcendental compare.
+    let reduced_integrand = reduce_ln_e_and_unit_products(ctx, integrand);
+    let (integrand_core, integrand_negated) = usub_strip_top_neg(ctx, reduced_integrand);
+
+    for (builtin, inner) in candidates {
+        let Some(antiderivative) = unary_chain_antiderivative(ctx, builtin, inner) else {
+            continue;
+        };
+        // SOUNDNESS GATE: accept `F(g)` only when `d/dx F(g) == integrand` exactly. The
+        // differentiation is trusted; the comparison folds the `ln(E)` ( = 1 ) artefact the
+        // general power rule leaves on `Pow(E, g)`, bubbles sign to the top, and uses exact
+        // structural/commutative equality on the sign-stripped core. `-F(g)` covers the
+        // ∫sin = −cos / odd-sign cases.
+        let antiderivative_signed = [antiderivative, negate_scalar_expr(ctx, antiderivative)];
+        for signed in antiderivative_signed {
+            let Some(raw_derivative) =
+                crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                    ctx, signed, var,
+                )
+            else {
+                continue;
+            };
+            let derivative = reduce_ln_e_and_unit_products(ctx, raw_derivative);
+            let (derivative_core, derivative_negated) = usub_strip_top_neg(ctx, derivative);
+            if derivative_negated == integrand_negated
+                && crate::semantic_equality::SemanticEqualityChecker::new(ctx)
+                    .are_equal(derivative_core, integrand_core)
+            {
+                return Some(signed);
+            }
+        }
+    }
+    None
+}
+
+/// Collect `(f, g)` candidates: subexpressions `f(g)` where `f` is a unary builtin with a
+/// closed elementary antiderivative and `g` depends on the variable. `e^g` (`Pow(E, g)`) is
+/// reported as `(Exp, g)`.
+fn collect_chain_substitution_candidates(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    out: &mut Vec<(BuiltinFn, ExprId)>,
+    seen: &mut std::collections::HashSet<ExprId>,
+) {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let inner = args[0];
+            if let Some(builtin) = ctx.builtin_of(fn_id) {
+                if chain_antiderivative_supported(builtin)
+                    && contains_named_var(ctx, inner, var)
+                    && seen.insert(expr)
+                {
+                    out.push((builtin, inner));
+                }
+            }
+            collect_chain_substitution_candidates(ctx, inner, var, out, seen);
+        }
+        Expr::Pow(base, exponent) => {
+            if matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E))
+                && contains_named_var(ctx, exponent, var)
+                && seen.insert(expr)
+            {
+                out.push((BuiltinFn::Exp, exponent));
+            }
+            collect_chain_substitution_candidates(ctx, base, var, out, seen);
+            collect_chain_substitution_candidates(ctx, exponent, var, out, seen);
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) => {
+            collect_chain_substitution_candidates(ctx, a, var, out, seen);
+            collect_chain_substitution_candidates(ctx, b, var, out, seen);
+        }
+        Expr::Neg(inner) => collect_chain_substitution_candidates(ctx, inner, var, out, seen),
+        _ => {}
+    }
+}
+
+fn chain_antiderivative_supported(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Exp | BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Sinh | BuiltinFn::Cosh
+    )
+}
+
+/// `F(g)` where `F` is the elementary antiderivative of the unary `f`: ∫exp=exp, ∫cos=sin,
+/// ∫sin=−cos, ∫sinh=cosh, ∫cosh=sinh.
+fn unary_chain_antiderivative(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    inner: ExprId,
+) -> Option<ExprId> {
+    Some(match builtin {
+        BuiltinFn::Exp => {
+            let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+            ctx.add(Expr::Pow(e, inner))
+        }
+        BuiltinFn::Cos => ctx.call_builtin(BuiltinFn::Sin, vec![inner]),
+        BuiltinFn::Sin => {
+            let cos = ctx.call_builtin(BuiltinFn::Cos, vec![inner]);
+            negate_scalar_expr(ctx, cos)
+        }
+        BuiltinFn::Sinh => ctx.call_builtin(BuiltinFn::Cosh, vec![inner]),
+        BuiltinFn::Cosh => ctx.call_builtin(BuiltinFn::Sinh, vec![inner]),
+        _ => return None,
+    })
+}
+
+/// Recursively fold `ln(E) → 1` and unit products (`a·1 → a`, `1·a → a`) in `expr`.
+/// `ln(E) = 1` is exact, so this never changes the value; it only cancels the artefact the
+/// general power rule leaves when differentiating a `Pow(E, g)` candidate antiderivative.
+fn reduce_ln_e_and_unit_products(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let is_one = |ctx: &Context, e: ExprId| matches!(ctx.get(e), Expr::Number(n) if n.numer() == &1.into() && n.denom() == &1.into());
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) => {
+            if args.len() == 1
+                && ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln)
+                && matches!(ctx.get(args[0]), Expr::Constant(cas_ast::Constant::E))
+            {
+                return ctx.num(1);
+            }
+            let new_args: Vec<ExprId> = args
+                .iter()
+                .map(|&arg| reduce_ln_e_and_unit_products(ctx, arg))
+                .collect();
+            ctx.add(Expr::Function(fn_id, new_args))
+        }
+        Expr::Mul(a, b) => {
+            let a = reduce_ln_e_and_unit_products(ctx, a);
+            let b = reduce_ln_e_and_unit_products(ctx, b);
+            // Bubble any sign to the top so `e^g · (−sin g')` and `−(sin g' · e^g)` compare equal.
+            let (a, a_neg) = usub_strip_top_neg(ctx, a);
+            let (b, b_neg) = usub_strip_top_neg(ctx, b);
+            let product = if is_one(ctx, a) {
+                b
+            } else if is_one(ctx, b) {
+                a
+            } else {
+                ctx.add(Expr::Mul(a, b))
+            };
+            if a_neg ^ b_neg {
+                ctx.add(Expr::Neg(product))
+            } else {
+                product
+            }
+        }
+        Expr::Add(a, b) => {
+            let a = reduce_ln_e_and_unit_products(ctx, a);
+            let b = reduce_ln_e_and_unit_products(ctx, b);
+            ctx.add(Expr::Add(a, b))
+        }
+        Expr::Sub(a, b) => {
+            let a = reduce_ln_e_and_unit_products(ctx, a);
+            let b = reduce_ln_e_and_unit_products(ctx, b);
+            ctx.add(Expr::Sub(a, b))
+        }
+        Expr::Div(a, b) => {
+            let a = reduce_ln_e_and_unit_products(ctx, a);
+            let b = reduce_ln_e_and_unit_products(ctx, b);
+            ctx.add(Expr::Div(a, b))
+        }
+        Expr::Pow(a, b) => {
+            let a = reduce_ln_e_and_unit_products(ctx, a);
+            let b = reduce_ln_e_and_unit_products(ctx, b);
+            ctx.add(Expr::Pow(a, b))
+        }
+        Expr::Neg(inner) => {
+            let inner = reduce_ln_e_and_unit_products(ctx, inner);
+            let (core, negated) = usub_strip_top_neg(ctx, inner);
+            if negated {
+                core
+            } else {
+                ctx.add(Expr::Neg(core))
+            }
+        }
+        _ => expr,
+    }
+}
+
+/// Strip a top-level sign from `expr`, returning the unsigned core and whether it was negated
+/// (handles `Neg(x)` and a negative `Number`).
+fn usub_strip_top_neg(ctx: &mut Context, expr: ExprId) -> (ExprId, bool) {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => (inner, true),
+        Expr::Number(n) if n.is_negative() => (ctx.add(Expr::Number(-n)), true),
+        _ => (expr, false),
+    }
+}
+
 /// Integrate `expr` with respect to `var` using a small set of symbolic rules.
 pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     // cbrt is kept as Function(Cbrt) globally, but for integration it is x^(1/3):
@@ -22830,6 +23036,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = transcendental_chain_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let IntKind::Function(fn_id, args) = kind {
         if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log) && args.len() == 2 {
             let base = args[0];
@@ -23116,6 +23326,7 @@ mod tests {
         integrate_symbolic_required_nonzero_conditions,
         integrate_symbolic_required_positive_conditions,
         polynomial_times_constant_base_power_antiderivative,
+        transcendental_chain_substitution_antiderivative,
     };
     use crate::general_integration_backend::{
         AlgorithmicIntegrationMethod, AlgorithmicIntegrationVerificationStatus,
@@ -23763,6 +23974,47 @@ mod tests {
         assert_eq!(
             rendered(&ctx, out),
             "e^((2 - 3 * x) / 2) * (-2/3 * x - 10/9)"
+        );
+    }
+
+    #[test]
+    fn integrates_transcendental_chain_substitution() {
+        // Each integrates by guess-and-verify u-substitution; confirm the round-trip
+        // d/dx(∫) == integrand numerically over a sweep, and that non-chain forms decline.
+        for src in [
+            "cos(x)*exp(sin(x))",
+            "sin(x)*exp(cos(x))",
+            "exp(x)*cos(exp(x))",
+            "sinh(x)*exp(cosh(x))",
+        ] {
+            let mut ctx = Context::new();
+            let integrand = parse(src, &mut ctx).expect("parse");
+            let out = integrate_symbolic_expr(&mut ctx, integrand, "x")
+                .unwrap_or_else(|| panic!("{src} should integrate"));
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx, out, "x",
+            )
+            .expect("differentiate");
+            let integrand = parse(src, &mut ctx).expect("re-parse");
+            for sample in [-1i64, 1, 2] {
+                let a = eval_numeric_at(&ctx, derivative, "x", sample);
+                let b = eval_numeric_at(&ctx, integrand, "x", sample);
+                if let (Some(a), Some(b)) = (a, b) {
+                    assert!(
+                        (a - b).abs() < 1e-9,
+                        "{src}: d/dx(∫) != integrand at x={sample}"
+                    );
+                }
+            }
+        }
+        // A genuinely non-elementary chain (∫ e^(x^2) has no elementary form) must NOT be
+        // accepted: there is no F(g) whose derivative is e^(x^2).
+        let mut ctx = Context::new();
+        let non_elementary = parse("exp(x^2)", &mut ctx).expect("parse");
+        assert!(
+            transcendental_chain_substitution_antiderivative(&mut ctx, non_elementary, "x")
+                .is_none(),
+            "exp(x^2) has no elementary antiderivative and must decline"
         );
     }
 

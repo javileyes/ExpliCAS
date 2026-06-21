@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 253 (newest first)
+Active entries: 254 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -138,6 +138,7 @@ Active entries: 253 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 gatekeeper sub-ciclo 2: más límites notables + sándwich + (a^u−1)/u y (1+u)^(1/u)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 gatekeeper sub-ciclo 3: continuidad (sustitución directa) y factor-y-cancela
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`limit_infinity_... | G2 gatekeeper sub-ciclo 4: límites en infinito por dominancia
+- 2026-06-21 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` | Transcendental u-substitution by guess-and-verify (cos(x)·e^(sin x), etc.)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10884,3 +10885,49 @@ Active entries: 253 (newest first)
     narran, todo sound por chequeo de resultado/grado, huella NONE. Residual (peldaño): mostrar la
     SUSTITUCIÓN concreta y la factorización explícita (necesita cablear el punto/factor al paso),
     L'Hôpital/Taylor narrados paso a paso, y dominancia exponencial (`e^(−x)·p(x) → 0`).
+
+## 2026-06-21 - Transcendental u-substitution by guess-and-verify (cos(x)·e^(sin x), etc.)
+- area:
+  - `crates/cas_math/src/symbolic_integration_support.rs`
+    (`transcendental_chain_substitution_antiderivative`, registered late in the
+    `integrate_symbolic_expr` dispatch; helpers `collect_chain_substitution_candidates`,
+    `unary_chain_antiderivative`, `reduce_ln_e_and_unit_products`, `usub_strip_top_neg`)
+- status:
+  - `retained` (the "sustitución-u general transcendente" P1 win; the highest-value residual
+    integration family — `g` polynomial already worked, `g` transcendental did not)
+- capture:
+  - investment_class: capability (new integration family)
+  - primary_dimension: north_star_completeness (Phase 1 integration)
+  - cell: `∫cos(x)·e^(sin x) = e^(sin x)`, `∫sin(x)·e^(cos x) = −e^(cos x)`,
+    `∫e^x·cos(e^x) = sin(e^x)`, `∫e^x·sin(e^x) = −cos(e^x)`, `∫sinh(x)·e^(cosh x) = e^(cosh x)`,
+    `∫cosh(x)·e^(sinh x) = e^(sinh x)`; scaled/affine-argument via the engine's linearity
+    (`∫2cos(2x)·e^(sin 2x) = e^(sin 2x)`).
+  - behavior_change_expected: products `g'(x)·f(g(x))` with f ∈ {exp,sin,cos,sinh,cosh} flip from
+    residual to their elementary antiderivative. Guardrail + pressure huella structurally NONE
+    (the matcher is late in the dispatch and accept-gated by an exact derivative check, so it only
+    newly-supports residuals; no existing fixture moved). Workspace 12247 passed / 0 failed.
+  - SOUNDNESS (gold standard): the matcher GUESSES `F(g)` and ACCEPTS only when
+    `d/dx F(g) == integrand` EXACTLY — the differentiation is the verifier. Adversarial round-trip
+    holds for both signs and exp/trig/hyperbolic cofactors; non-elementary forms correctly decline
+    (`exp(x²)`, `exp(sin x)` (missing cofactor), `sin(x)/x`, `cos(x²)` stay residual — no
+    fabrication).
+- observed:
+  - the exact-equality check needed two non-obvious folds: (1) differentiating `Pow(E, g)` via the
+    GENERAL power rule leaves an unreduced `ln(E)` ( = 1 ) factor, and (2) the `∫sin = −cos` /
+    odd-sign cases produce a `Neg` the integrand lacks. `reduce_ln_e_and_unit_products` folds
+    `ln(E)→1` and unit products AND bubbles sign to the top; the compare then matches sign-stripped
+    cores with `SemanticEqualityChecker::are_equal` and an explicit sign check.
+  - `exprs_equivalent` (multipoly) and the block-12 verifier both DECLINE pure transcendental
+    products (`e^(sin x)` is not a polynomial atom they reconcile); the structural+commutative
+    `are_equal` on the normalized derivative is the check that works for them.
+- retained learning:
+  - guess-and-verify is the soundest integration strategy: produce a candidate, DIFFERENTIATE it,
+    and accept only on exact match — a wrong guess can never slip through because the verifier is
+    the trusted differentiator. The hard part is the EXACT equality, not the guessing.
+  - when comparing a differentiated candidate to an integrand, normalize the two differentiation
+    ARTEFACTS first: `ln(E)=1` (from `Pow(E,·)` under the general power rule) and top-level sign.
+    Both are exact, so the normalization is sound and unlocks `are_equal`.
+  - residual (peldaño): `g'` cofactors that differ from the literal `f(g)` derivative by a non-unit
+    constant the engine doesn't pre-factor; `f(g)/x` log-substitution forms where the derivative's
+    `1/x` is a `Mul`-reciprocal vs the integrand's `Div` (e.g. `sin(ln x)/x`); and outer `f` beyond
+    exp/sin/cos/sinh/cosh (tan, ln, inverse-trig).

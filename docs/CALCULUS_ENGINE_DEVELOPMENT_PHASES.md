@@ -81,8 +81,13 @@ cuando, los tres se cumplen:
   argumentos, reusando toda la cascada de diferenciación existente. Órdenes 0/negativo,
   fraccionario y conteo-lidera-lista quedan como residuales honestos (sin evaluar). Peldaño:
   narración paso-a-paso de las derivadas sucesivas (hoy solo se muestra la forma final).
-- **Sustitución-u general para `g` transcendente** — M. `cos(x)·e^(sin x)`, `cos(ln x)/x`,
-  `e^x·e^(e^x)` residuales aunque elementales (solo se matchea `g` polinómica).
+- **Sustitución-u general para `g` transcendente** —
+  ✅ **ATERRIZADO 2026-06-21.** `transcendental_chain_substitution_antiderivative` integra
+  `g'(x)·f(g(x))` con f ∈ {exp,sin,cos,sinh,cosh} por **guess-and-verify**: adivina `F(g)` y la
+  acepta solo si `d/dx F(g) == integrando` EXACTO (la diferenciación ES el verificador → sound por
+  construcción). `cos(x)·e^(sin x)→e^(sin x)`, `sin(x)·e^(cos x)→−e^(cos x)`, `e^x·cos(e^x)→sin(e^x)`,
+  hiperbólicas, y escaladas vía linealidad. Peldaños: cofactores con constante no-unidad,
+  `f(g)/x` (forma Div vs Mul-recíproco, `sin(ln x)/x`), y outer f más allá de exp/trig/hiperbólicas.
 - **Comando `taylor()`/`series()` + linealidad de sumatorios** — M+S. Series está a ~28%
   (la más baja in-scope); `taylor_at_zero` ya existe interno, falta exponerlo.
   ✅ **Linealidad de sumatorios ATERRIZADA 2026-06-21**: `try_build_polynomial_sum` cierra
