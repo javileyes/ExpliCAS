@@ -19625,14 +19625,25 @@ fn notable_limit_name(
     if let Some((num, den)) = as_div(ctx, before) {
         // den is the bare variable u.
         if matches!(ctx.get(den), Expr::Variable(_)) {
-            // f(u)/u → 1 for the first-order equivalents (sin, tan, arcsin, arctan, sinh, ...).
-            if after_is(BigRational::one()) {
-                if let Some((arg, builtin)) = limit_unary_builtin(ctx, num) {
-                    if compare_expr(ctx, arg, den) == Ordering::Equal {
-                        if let Some(name) = first_order_equivalent_name(builtin) {
-                            return Some(format!("{prefix}lím(u→0) {name}(u)/u = 1"));
+            // f(a·u)/u → a for the first-order equivalents (sin, tan, arcsin, arctan, sinh, ...):
+            // the bare notable f(u)/u = 1 is the a = 1 case, and the scaled `sin(3x)/x → 3` follows
+            // from sin(au)/u = a·sin(au)/(au) → a. SOUNDNESS: narrate only when the result equals
+            // the scale a exactly, so `sin(3x)/x → 2` (fabricated) and `sin(x)/x → sin(5)/5` decline.
+            if let Some((arg, builtin)) = limit_unary_builtin(ctx, num) {
+                if let Some(name) = first_order_equivalent_name(builtin) {
+                    if let Some(scale) = limit_linear_scale(ctx, arg, den) {
+                        if !scale.is_zero() && after_is(scale.clone()) {
+                            return Some(if scale.is_one() {
+                                format!("{prefix}lím(u→0) {name}(u)/u = 1")
+                            } else {
+                                format!("{prefix}lím(u→0) {name}({scale}·u)/u = {scale}")
+                            });
                         }
                     }
+                }
+            }
+            if after_is(BigRational::one()) {
+                if let Some((arg, builtin)) = limit_unary_builtin(ctx, num) {
                     if builtin == BuiltinFn::Ln && limit_is_one_plus(ctx, arg, den) {
                         return Some(format!("{prefix}lím(u→0) ln(1+u)/u = 1"));
                     }
@@ -19703,6 +19714,28 @@ fn notable_limit_name(
     }
 
     None
+}
+
+/// If `arg` is `a·u` for a nonzero rational `a` and the bare variable `u` (no constant offset),
+/// return `a`. This is the scale of the notable argument `f(a·u)/u → a` (`a = 1` is the bare
+/// `f(u)/u`); `1 + u` and `a·u + b` with `b ≠ 0` return `None` so only the pure linear form matches.
+fn limit_linear_scale(ctx: &Context, arg: ExprId, u: ExprId) -> Option<BigRational> {
+    let Expr::Variable(sym) = ctx.get(u) else {
+        return None;
+    };
+    let name = ctx.sym_name(*sym).to_string();
+    let poly = Polynomial::from_expr(ctx, arg, &name).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+    if poly
+        .coeffs
+        .first()
+        .is_some_and(|constant| !constant.is_zero())
+    {
+        return None;
+    }
+    poly.coeffs.get(1).cloned().filter(|scale| !scale.is_zero())
 }
 
 /// The display name of a unary function `f` whose first-order equivalent at 0 is `u`
@@ -21472,6 +21505,11 @@ mod limit_notable_tests {
             ("arctan(x)/x", "1", "arctan(u)/u = 1"),
             ("sinh(x)/x", "1", "sinh(u)/u = 1"),
             ("tanh(x)/x", "1", "tanh(u)/u = 1"),
+            // Scaled arguments f(a·u)/u → a (a = 1 is the bare form above).
+            ("sin(3*x)/x", "3", "sin(3·u)/u = 3"),
+            ("tan(2*x)/x", "2", "tan(2·u)/u = 2"),
+            ("arctan(5*x)/x", "5", "arctan(5·u)/u = 5"),
+            ("sin(-2*x)/x", "-2", "sin(-2·u)/u = -2"),
             ("(exp(x)-1)/x", "1", "(e^u − 1)/u = 1"),
             ("ln(1+x)/x", "1", "ln(1+u)/u = 1"),
             ("(1-cos(x))/x^2", "1/2", "(1 − cos(u))/u² = 1/2"),
@@ -21528,8 +21566,11 @@ mod limit_notable_tests {
     fn declines_when_result_is_not_the_notable_value() {
         // sin(x)/x at a non-zero point evaluates to sin(5)/5, NOT 1 — must not be narrated.
         assert!(substep_titles("sin(x)/x", "sin(5)/5").is_empty());
-        // Scaled argument sin(2x)/x → 2 is not the bare notable sin(u)/u.
-        assert!(substep_titles("sin(2*x)/x", "2").is_empty());
+        // Scaled argument sin(a·u)/u narrates ONLY when the result equals the scale: sin(2x)/x → 3
+        // is fabricated (real limit is 2) and must decline, while sin(2x)/x → 2 is narrated (see
+        // names_the_standard_notable_limits). A constant offset (sin(x+1)/x) is not the notable form.
+        assert!(substep_titles("sin(2*x)/x", "3").is_empty());
+        assert!(substep_titles("sin(x+1)/x", "1").is_empty());
         // Right structural form but wrong value (fabricated) must decline.
         assert!(substep_titles("sin(x)/x", "2").is_empty());
         // x·sin(x) → 0 is continuity, NOT the squeeze theorem (the argument is not a reciprocal).

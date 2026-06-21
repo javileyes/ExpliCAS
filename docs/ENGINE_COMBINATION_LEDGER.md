@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 262 (newest first)
+Active entries: 263 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -147,6 +147,7 @@ Active entries: 262 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` | G1 gatekeeper sub-ciclo: 1/(x^6-1) integra (subir el budget del zero-test)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Σ p(k)·r^k con cofactor polinómico de grado ≤2 (k²·r^k y combinaciones)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Σ p(k)/r^k: la forma Div (cociente) de la suma aritmético-geométrica fraccionaria
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: límite notable de argumento escalado f(a·u)/u → a
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11234,3 +11235,44 @@ Active entries: 262 (newest first)
   - residual (peldaño): (1) suma infinita aritmético-geométrica convergente (`Σ k·r^k`, |r|<1);
     (2) la estabilización factor↔distribuye / Div↔potencia-negativa del orquestador que cerraría
     a la vez prónicos k(k±1) y fraccionario grado 2.
+
+## 2026-06-21 - G2 narrativa: límite notable de argumento escalado f(a·u)/u → a
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`notable_limit_name`: la rama `f(u)/u` generalizada a `f(a·u)/u → a`; nuevo helper
+    `limit_linear_scale` que extrae la escala `a` de `a·u` vía `Polynomial::from_expr`)
+- status:
+  - `retained` (sub-ciclo del gatekeeper G2 "narrativa educativa de límites": narra los notables
+    de argumento escalado, antes no narrados)
+- capture:
+  - investment_class: capability (gatekeeper G2 — la mitad EDUCATIVA del north star, límites)
+  - primary_dimension: north_star_completeness (Fase 1, gatekeeper G2 narración de límites)
+  - secondary_dimension: didactic_value (cubre la familia escalada con una sola generalización)
+  - cell: `limit(sin(3x)/x, x, 0) = 3` narra "lím(u→0) sin(3·u)/u = 3"; `tan(2x)/x → 2`,
+    `arctan(5x)/x → 5`, escala fraccionaria `sin(x/2)/x → 1/2`, escala negativa `sin(-2x)/x → -2`.
+    El notable base `sin(u)/u = 1` es el caso a=1. Cubre la familia de equivalentes de primer orden
+    (sin, tan, arcsin, arctan, sinh, tanh, asinh, atanh).
+  - behavior_change_expected: los notables `f(a·u)/u` pasan de sin-substep a narrados. Huella
+    guardrail+pressure NONE (ninguna fixture cubre argumento escalado). Contrato actualizado: el test
+    que fijaba `sin(2x)/x → 2` como NO narrado ahora lo narra (era una decisión conservadora, no
+    soundness — `sin(au)/u = a·sin(au)/(au) → a` es un notable estándar).
+  - SOUNDNESS: la narración solo dispara cuando el RESULTADO es exactamente la escala a (`after_is(
+    scale)`), así que `sin(2x)/x → 3` (fabricado, el real es 2) y `sin(x)/x` en x=5 (→ sin(5)/5)
+    declinan. `limit_linear_scale` exige forma `a·u` pura (sin término constante): `sin(x+1)/x`
+    declina. Sin dominio de valores → el gate de fase NO aplica (narración).
+- observed:
+  - el notable base ya existía pero EXIGÍA `arg == u` (compare_expr Equal); el hueco era el factor de
+    escala. `Polynomial::from_expr(arg, u)` con grado 1 y término constante 0 da la escala exacta y
+    cubre `3x`, `x*3`, `-x`, `x/2` de un golpe — más robusto que un matcher Mul a mano.
+  - el orden importa: la rama escalada (escala = a) va ANTES que las ramas `after==1` (ln(1+u)/u,
+    (e^u−1)/u) porque esas no son `first_order_equivalent_name` (Ln/exp) ni forma `a·u`, así que no
+    colisionan; ln(1+u) tiene término constante → `limit_linear_scale` la declina.
+- retained learning:
+  - una narración "solo la forma base" (arg == u) suele generalizar a "la forma con parámetro"
+    (arg == a·u) leyendo el parámetro con `Polynomial::from_expr` y exigiendo que el resultado lo
+    confirme exactamente — la confirmación por resultado ES el gate de soundness de la narración
+    (no fabrica un valor, lo verifica contra el límite ya calculado por el motor).
+  - residual (peldaño G2): (1) denominador escalado `sin(u)/(a·u) → 1/a` y forma cruzada
+    `sin(a·u)/(b·u) → a/b` (relajar el guard `den == Variable` a `den == b·u`); (2) `(sqrt(1+u)−1)/u
+    → 1/2` (equivalente de primer orden de la raíz / racionalización); (3) `(1+1/x)^x → e` y
+    `ln(x)/x → 0` (x→∞) sin substep — notables/dominancias aún no narrados.
