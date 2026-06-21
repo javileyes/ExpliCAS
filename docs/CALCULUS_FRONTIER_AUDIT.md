@@ -48,7 +48,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).
-  *(graduado 2026-06-22 d343097b8: `provable_sign_vs_zero_const_radicand` decide el signo de
+  *(graduado 2026-06-22 7100e3afb: `provable_sign_vs_zero_const_radicand` decide el signo de
   `A+B·√R` con R constante transcendente por `sign(B)·sign(R−(A/B)²)`, probando la comparación
   `R vs (A/B)²` con `rational_bounds` —aritmética de intervalos con cotas racionales PROVABLES
   `2.718<e<2.719`, `3.141<π<3.142`, exacta, decide solo en separación estricta; frontera ⇒ None ⇒
@@ -62,7 +62,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   ecuación) en vez de `2±√(4+e)`; mismo error en toda cuadrática cuyo discriminante simplifica a
   la forma factorizada `k²·(suma)` con término simbólico (`4·(4+e)`, `4·(1+e)`). Se propagaba a
   `solve(ln(x)+ln(x-a)=c)` (raíz válida perdida → `No solution`).
-  *(graduado 2026-06-22 20348864d: `pull_square_from_sqrt` dividía el cofactor `R` —ya extraído
+  *(graduado 2026-06-22 1dbe290ee: `pull_square_from_sqrt` dividía el cofactor `R` —ya extraído
   por la rama Mul de `split_numeric_factor` de `√(k²·R)`— por `k` una SEGUNDA vez, dando
   `k·√(R/k²)=√R` (mitad del valor real). La división por `k` solo es válida en la rama Add (donde
   `split` devuelve la suma entera sin dividir); ahora se gatea en `base_is_additive`, leyendo la
