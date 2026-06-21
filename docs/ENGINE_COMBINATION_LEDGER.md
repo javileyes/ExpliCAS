@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 256 (newest first)
+Active entries: 257 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -141,6 +141,7 @@ Active entries: 256 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` | Transcendental u-substitution by guess-and-verify (cos(x)·e^(sin x), etc.)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 narration: reciprocal notable limits (u/sin(u) → 1, etc.)
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_series_at_point_expr`) | taylor()/series() around a non-zero expansion point
+- 2026-06-21 | `retained` | `crates/cas_math/src/number_theory_support.rs` (`try_eval_simple_number_theor... | Soundness fix: gcd/lcm of 3+ arguments ignored all but the first two
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10992,3 +10993,30 @@ Active entries: 256 (newest first)
     construction because the differentiator is trusted and substitution is exact.
   - residual (peldaño): non-rational `a` gives transcendental coefficients (`sin(1)`); the output
     is correct but unfactored — a cosmetic peldaño.
+
+## 2026-06-21 - Soundness fix: gcd/lcm of 3+ arguments ignored all but the first two
+- area:
+  - `crates/cas_math/src/number_theory_support.rs` (`try_eval_simple_number_theory_call`: the
+    `gcd`/`lcm` arms fold over ALL arguments)
+  - `crates/cas_session_core/src/eval.rs` (arity gate `"gcd" | "lcm" => arity >= 2`)
+- status:
+  - `retained` (soundness / wrong-answer fix + capability: multi-arg lcm)
+- capture:
+  - investment_class: soundness (wrong-answer fix)
+  - cell: `gcd(8, 12, 6) = 2` (was 4), `gcd(30, 20, 12) = 2` (was 10), `gcd(100, 60, 45) = 5`
+    (was 20), `gcd(7, 11, 13) = 1`; `lcm(4, 6, 8) = 24` (was "lcm no definida"),
+    `lcm(2, 3, 4, 5) = 60`. Two-argument `gcd(8,12)=4`, `lcm(4,6)=12` unchanged.
+  - behavior_change_expected: `gcd`/`lcm` of 3+ integer arguments flips from a wrong value (or a
+    not-defined error for lcm) to the correct fold. Guardrail + pressure huella structurally NONE.
+    Workspace 12249 passed / 0 failed; clippy/fmt green.
+- observed:
+  - the `gcd` arm matched `args.len() >= 2` but computed only `gcd(args[0], args[1])`, silently
+    dropping the rest — a wrong answer whenever the third+ argument tightened the gcd. `lcm` was
+    gated to exactly 2 args, so 3+ errored. Both now fold `gcd(gcd(a,b),c,…)` /
+    `lcm(lcm(a,b),c,…)` over the slice.
+- retained learning:
+  - an n-ary reduction guarded by `len() >= 2` but implemented on `args[0..2]` is a latent
+    wrong-answer: the guard ADMITS the larger arities it then silently truncates. Match the
+    implementation to the guard — fold over the whole slice.
+  - when fixing one n-ary op (gcd), check its siblings (lcm, and any min/max/and/or style reducer)
+    for the same truncation; lcm had the dual bug (errored instead of folding).

@@ -79,7 +79,12 @@ pub fn try_eval_simple_number_theory_call(
 ) -> Option<NumberTheorySimpleRewrite> {
     match name {
         "gcd" if args.len() >= 2 => {
-            let result = compute_integer_gcd_expr(ctx, args[0], args[1])?;
+            // Fold over ALL arguments: gcd(a, b, c, …) = gcd(gcd(a, b), c, …). Using only the
+            // first two silently returned wrong answers (gcd(8, 12, 6) → 4 instead of 2).
+            let mut result = args[0];
+            for &arg in &args[1..] {
+                result = compute_integer_gcd_expr(ctx, result, arg)?;
+            }
             Some(NumberTheorySimpleRewrite::Binary {
                 name: "gcd",
                 lhs: args[0],
@@ -87,8 +92,11 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
-        "lcm" if args.len() == 2 => {
-            let result = compute_lcm_expr(ctx, args[0], args[1])?;
+        "lcm" if args.len() >= 2 => {
+            let mut result = args[0];
+            for &arg in &args[1..] {
+                result = compute_lcm_expr(ctx, result, arg)?;
+            }
             Some(NumberTheorySimpleRewrite::Binary {
                 name: "lcm",
                 lhs: args[0],
@@ -808,6 +816,30 @@ mod tests {
 
         let perm = compute_perm_expr(&mut ctx, five, two).expect("perm");
         assert_eq!(extract_integer_bigint(&ctx, perm), Some(BigInt::from(20)));
+    }
+
+    #[test]
+    fn folds_gcd_and_lcm_over_three_or_more_arguments() {
+        // Regression: gcd/lcm of 3+ args must fold over ALL of them, not just the first two
+        // (gcd(8, 12, 6) silently returned 4 instead of 2 before the fix).
+        for (name, values, expected) in [
+            ("gcd", vec![8, 12, 6], 2),
+            ("gcd", vec![30, 20, 12], 2),
+            ("gcd", vec![100, 60, 45], 5),
+            ("gcd", vec![7, 11, 13], 1),
+            ("lcm", vec![4, 6, 8], 24),
+            ("lcm", vec![2, 3, 4, 5], 60),
+        ] {
+            let mut ctx = Context::new();
+            let args: Vec<ExprId> = values.iter().map(|&v| ctx.num(v)).collect();
+            let rewrite = try_eval_simple_number_theory_call(&mut ctx, name, &args)
+                .unwrap_or_else(|| panic!("{name}{values:?} should evaluate"));
+            assert_eq!(
+                extract_integer_bigint(&ctx, rewrite.result()),
+                Some(BigInt::from(expected)),
+                "{name}{values:?}"
+            );
+        }
     }
 
     #[test]
