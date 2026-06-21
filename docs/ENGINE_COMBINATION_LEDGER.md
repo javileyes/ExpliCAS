@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 251 (newest first)
+Active entries: 252 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -136,6 +136,7 @@ Active entries: 251 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`faulhaber_power_sum_coeffs`, `bi... | General Faulhaber: polynomial sums of any degree (lifts the cycle-2 degree-3 cap)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | G2 gatekeeper (límites educativos) sub-ciclo 1: nombrar los límites notables
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 gatekeeper sub-ciclo 2: más límites notables + sándwich + (a^u−1)/u y (1+u)^(1/u)
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 gatekeeper sub-ciclo 3: continuidad (sustitución directa) y factor-y-cancela
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10805,3 +10806,42 @@ Active entries: 251 (newest first)
   - residual (peldaño G2): siguen pendientes los métodos que necesitan el PUNTO del límite
     (sustitución directa por continuidad, factor-y-cancela, L'Hôpital/Taylor narrados) — el punto
     sigue ausente del paso; cablearlo es el siguiente sub-ciclo arquitectónico del gatekeeper.
+
+## 2026-06-21 - G2 gatekeeper sub-ciclo 3: continuidad (sustitución directa) y factor-y-cancela
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_name` +2 brazos:
+    continuidad polinómica y factor-y-cancela; helpers `limit_single_var_name`,
+    `limit_share_polynomial_factor`, `limit_is_polynomial`)
+- status:
+  - `retained` (tercer sub-ciclo del gatekeeper G2; cubre los DOS métodos más comunes de límites
+    de curso intro: continuidad/sustitución directa y 0/0 removible por factorización)
+- capture:
+  - investment_class: capability (educational narration)
+  - primary_dimension: north_star_completeness (Fase 1, gatekeeper G2)
+  - cell: `limit(x²+1, x, 2) = 5` y `limit(3x−1, x, 5) = 14` narran "Sustitución directa:
+    el límite de un polinomio es su valor en el punto (continuidad)"; `(x²−1)/(x−1) → 2`,
+    `(x²−4)/(x−2) → 4`, `(x³−1)/(x−1) → 3` narran "Factorizar numerador y denominador y cancelar
+    el factor común antes de evaluar".
+  - behavior_change_expected: los pasos de límite ganan substep para los dos métodos básicos.
+    Huella guardrail+pressure NONE. Workspace 12244 passed / 0 failed; clippy/fmt verdes.
+  - SOUNDNESS: continuidad solo para `before` polinómico (continuo en todo punto → el límite ES el
+    valor, siempre cierto); factor-y-cancela solo cuando `gcd(num,den)` tiene grado ≥ 1 (existe
+    factor común, detectable del `before` sin el punto). El mensaje de factor-y-cancela es NEUTRO
+    (no afirma "0/0", que requeriría el punto): la cancelación `(x²−1)/(x−1)=x+1` es algebraicamente
+    válida en CUALQUIER punto — verificado en x=5 (=6). Coprimos (`(x²+1)/(x−1)`, polo genuino) son
+    "Conservar límite residual" (otra regla) → no narrados; constantes sin variable → no narrados.
+- observed:
+  - sin el punto del límite no se puede afirmar "0/0" (la misma `(x²−1)/(x−1)` en x=5 vale 6, no es
+    indeterminado); pero el ACTO de factorizar-y-cancelar es válido en cualquier punto, así que un
+    mensaje neutro es sound. La existencia del factor común se decide con `Polynomial::gcd` sobre el
+    `before` — el resultado del motor confirma que el límite es finito.
+  - continuidad para polinomios es universalmente sound (un polinomio es continuo en ℝ), así que no
+    necesita el punto para justificar la sustitución directa.
+- retained learning:
+  - cuando falta un dato (aquí el punto), elige el MENSAJE más fuerte que siga siendo sound SIN ese
+    dato: "factorizar y cancelar" (válido siempre) en vez de "0/0 removible" (cierto solo en la
+    raíz). El alcance de la afirmación debe igualar lo verificable.
+  - residual (peldaño G2): mostrar la sustitución CONCRETA (`x=2 → 5`) y la factorización explícita
+    (`(x−1)(x+1)`) necesita el punto y el factor en el paso — el cableado del punto sigue pendiente
+    como el sub-ciclo arquitectónico que desbloquea L'Hôpital/Taylor narrados y la justificación de
+    impropias por dominancia.

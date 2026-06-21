@@ -19644,6 +19644,23 @@ fn notable_limit_name(ctx: &Context, before: ExprId, after: ExprId) -> Option<St
                 }
             }
         }
+        // Rational with a shared polynomial factor (gcd ≠ 1) and a finite result:
+        // factor-and-cancel — `(x²−1)/(x−1) = x+1`. The cancellation is a valid algebraic
+        // step at ANY point (no "0/0" claim, which would need the limit point).
+        if after_value.is_some() && limit_share_polynomial_factor(ctx, num, den) {
+            return Some(
+                "Factorizar numerador y denominador y cancelar el factor común antes de evaluar"
+                    .to_string(),
+            );
+        }
+    }
+
+    // Continuous polynomial: the limit is the value at the point (direct substitution).
+    if after_value.is_some() && as_div(ctx, before).is_none() && limit_is_polynomial(ctx, before) {
+        return Some(
+            "Sustitución directa: el límite de un polinomio es su valor en el punto (continuidad)"
+                .to_string(),
+        );
     }
 
     // Squeeze theorem: (power of u) · (bounded sin/cos of a reciprocal in u) → 0.
@@ -19830,6 +19847,60 @@ fn limit_expr_contains(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
         Expr::Function(_, args) => args.clone().iter().any(|&a| limit_expr_contains(ctx, a, u)),
         _ => false,
     }
+}
+
+/// The single variable name occurring in `expr`, or `None` if there is not exactly one.
+fn limit_single_var_name(ctx: &Context, expr: ExprId) -> Option<String> {
+    let mut names = std::collections::BTreeSet::new();
+    limit_collect_var_names(ctx, expr, &mut names);
+    (names.len() == 1).then(|| names.into_iter().next().unwrap())
+}
+
+fn limit_collect_var_names(
+    ctx: &Context,
+    expr: ExprId,
+    names: &mut std::collections::BTreeSet<String>,
+) {
+    match ctx.get(expr) {
+        Expr::Variable(sym) => {
+            names.insert(ctx.sym_name(*sym).to_string());
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            let (a, b) = (*a, *b);
+            limit_collect_var_names(ctx, a, names);
+            limit_collect_var_names(ctx, b, names);
+        }
+        Expr::Neg(inner) => limit_collect_var_names(ctx, *inner, names),
+        Expr::Function(_, args) => {
+            for arg in args.clone() {
+                limit_collect_var_names(ctx, arg, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `num` and `den` are polynomials in the (single) variable sharing a factor of degree ≥ 1.
+fn limit_share_polynomial_factor(ctx: &Context, num: ExprId, den: ExprId) -> bool {
+    let Some(var) = limit_single_var_name(ctx, num).or_else(|| limit_single_var_name(ctx, den))
+    else {
+        return false;
+    };
+    let (Ok(p), Ok(q)) = (
+        Polynomial::from_expr(ctx, num, &var),
+        Polynomial::from_expr(ctx, den, &var),
+    ) else {
+        return false;
+    };
+    p.gcd(&q).degree() >= 1
+}
+
+/// `expr` is a polynomial of degree ≥ 1 in its single variable.
+fn limit_is_polynomial(ctx: &Context, expr: ExprId) -> bool {
+    let Some(var) = limit_single_var_name(ctx, expr) else {
+        return false;
+    };
+    Polynomial::from_expr(ctx, expr, &var).is_ok_and(|p| p.degree() >= 1)
 }
 
 /// `before = (1 + u)^(1/u)` for a variable `u` (the Euler-number limit shape).
@@ -21310,13 +21381,40 @@ mod limit_notable_tests {
     }
 
     #[test]
+    fn names_continuity_and_factor_cancel_methods() {
+        for (before, after, needle) in [
+            ("(x^2-1)/(x-1)", "2", "cancelar el factor común"),
+            ("(x^2-4)/(x-2)", "4", "cancelar el factor común"),
+            ("(x^3-1)/(x-1)", "3", "cancelar el factor común"),
+            ("x^2+1", "5", "Sustitución directa"),
+            ("3*x-1", "14", "Sustitución directa"),
+        ] {
+            let titles = substep_titles(before, after);
+            assert_eq!(titles.len(), 1, "{before} should name one method");
+            assert!(
+                titles[0].contains(needle),
+                "{before}: expected `{needle}` in `{}`",
+                titles[0]
+            );
+        }
+    }
+
+    #[test]
+    fn declines_method_narration_for_coprime_rational_and_constant() {
+        // (x^2+1)/(x-1): no shared factor (genuine pole) — not factor-and-cancel.
+        assert!(substep_titles("(x^2+1)/(x-1)", "3").is_empty());
+        // A constant has no variable, so the continuity narration does not apply.
+        assert!(substep_titles("5", "5").is_empty());
+        // A non-finite result (the symbolic limit form) is never narrated.
+        assert!(substep_titles("x^2+1", "limit(x^2+1, x, 2)").is_empty());
+    }
+
+    #[test]
     fn declines_when_result_is_not_the_notable_value() {
         // sin(x)/x at a non-zero point evaluates to sin(5)/5, NOT 1 — must not be narrated.
         assert!(substep_titles("sin(x)/x", "sin(5)/5").is_empty());
         // Scaled argument sin(2x)/x → 2 is not the bare notable sin(u)/u.
         assert!(substep_titles("sin(2*x)/x", "2").is_empty());
-        // A continuous polynomial limit is no notable limit.
-        assert!(substep_titles("x^2+1", "5").is_empty());
         // Right structural form but wrong value (fabricated) must decline.
         assert!(substep_titles("sin(x)/x", "2").is_empty());
         // x·sin(x) → 0 is continuity, NOT the squeeze theorem (the argument is not a reciprocal).

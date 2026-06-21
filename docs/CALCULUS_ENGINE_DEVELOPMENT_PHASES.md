@@ -64,13 +64,14 @@ cuando, los tres se cumplen:
   (salto mágico que los docs prohíben). Es la mitad EDUCATIVA del north star — **pesa lo mismo
   que la universal**. *Prioridad sobre varios P2 de cobertura: mientras los límites no narren, el
   umbral "serio Y educativo" no se cruza.*
-  🔨 **Sub-ciclos 1-2 ATERRIZADOS 2026-06-21**: infraestructura de narración de límites en el
-  pipeline de enriquecimiento de `cas_didactic` (`generate_limit_substeps`) + **14 formas estándar
-  nombradas** — notables `sin/tan/arcsin/arctan/sinh/tanh(u)/u→1`, `(eᵘ−1)/u→1`, `(aᵘ−1)/u→ln(a)`,
-  `ln(1+u)/u→1`, `(1−cos u)/u²→1/2`, `(1+u)^(1/u)→e`, y el **teorema del sándwich**
-  `u^k·sin/cos(1/u)→0` (distinguido de la continuidad por el reciprocal en el argumento). Sound por
-  chequeo de resultado. Siguientes sub-ciclos: sustitución directa por continuidad, factor-y-cancela,
-  L'Hôpital/Taylor (necesitan cablear el PUNTO del límite al paso, hoy ausente).
+  🔨 **Sub-ciclos 1-3 ATERRIZADOS 2026-06-21**: infraestructura de narración de límites en el
+  pipeline de enriquecimiento de `cas_didactic` (`generate_limit_substeps`) + **16 formas/métodos
+  nombrados** — notables `sin/tan/arcsin/arctan/sinh/tanh(u)/u→1`, `(eᵘ−1)/u→1`, `(aᵘ−1)/u→ln(a)`,
+  `ln(1+u)/u→1`, `(1−cos u)/u²→1/2`, `(1+u)^(1/u)→e`, el **teorema del sándwich** `u^k·sin/cos(1/u)→0`,
+  la **continuidad/sustitución directa** (polinomios) y el **factor-y-cancela** (0/0 removible,
+  `gcd(num,den)≠1`). Todo sound por chequeo de resultado/estructura. Siguiente sub-ciclo (arquitectónico):
+  cablear el PUNTO del límite al paso (hoy ausente) para mostrar la sustitución concreta y narrar
+  L'Hôpital/Taylor y la justificación de impropias por dominancia.
 
 ### Wins P1 baratos y de alto ROI (intercalar con los gatekeepers)
 - **Sintaxis `diff(expr, x, n)` (orden superior) y `diff(expr, x, y)` (parcial-mixta)** —
