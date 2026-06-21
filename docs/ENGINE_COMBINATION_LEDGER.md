@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 234 (newest first)
+Active entries: 235 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
+- 2026-06-21 | `retained` | `crates/cas_api_models/src/wire_types.rs` (`parse_solve_system_list_command` ... | Retained completeness: solve([eqs], [vars]) list form routed to the existing linear-system solver
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10052,3 +10053,53 @@ Active entries: 234 (newest first)
   - residual (sound, not done): complex `ln(-5)` still folds to `undefined` (no principal-branch
     complex-log evaluation); the backstop already treats it as defined, so the fold is the only
     missing piece. Left as a peldaño.
+
+## 2026-06-21 - Retained completeness: solve([eqs], [vars]) list form routed to the existing linear-system solver
+- area:
+  - `crates/cas_api_models/src/wire_types.rs` (`parse_solve_system_list_command` + the
+    `split_top_level_commas`/`bracketed_inner`/`has_top_level_eq` helpers, wired into
+    `parse_eval_special_command`);
+    `crates/cas_solver/src/repl_command_preprocess.rs`
+    (`preprocess_repl_function_syntax` calls the shared parser so the REPL routes the
+    list form too)
+- status:
+  - `retained` (completeness: the natural `solve([eq1, eq2], [x, y])` system syntax now
+    works on both the eval/wire and REPL surfaces)
+- capture:
+  - investment_class: completeness
+  - cell: `solve([x+y=3, x-y=1], [x,y])→{ x = 2, y = 1 }`;
+    3×3 `solve([x+y+z=6, x-y=0, z=3], [x,y,z])→{ x = 3/2, y = 3/2, z = 3 }`;
+    bare expressions read as `=0` (`solve([x+y-3, x-y-1], [x,y])` works); dependent →
+    "infinitely many solutions"; inconsistent → "no solution"; non-linear →
+    honest "degree > 1" error; single-equation `solve(eq, var)` unaffected.
+  - behavior_change_expected: a new accepted surface; calculus/simplify guardrail+pressure
+    huella structurally NONE (no overlap); workspace + clippy + fmt green
+- observed (Completeness-critic item #2 from the Round-4 audit):
+  - the audit called this "parser + multivariable solver; big" — but a SCOPING pass found
+    the solver was already complete and battle-tested (`cas_solver::linear_system`:
+    2×2/3×3 Cramer + n×n Gaussian elimination + classify, exact `BigRational`, display
+    `{ x = 2, y = 1 }`), reachable only via the `solve_system(eq1; eq2; ...; v1; v2; ...)`
+    semicolon syntax. The ENTIRE gap was the parse surface. So the cycle is a thin,
+    behaviour-preserving surface adapter, not a solver build.
+  - the cleanest sound integration is a pure string normalisation
+    `solve([eqs], [vars]) → "eq1; ...; eqn; v1; ...; vn"` that reuses the existing
+    `SolveSystem` pipeline verbatim. To stay sound it REQUIRES `#eqs == #vars` (≥2): the
+    semicolon spec splits eqs-vs-vars by position, so an unequal split would silently
+    mis-classify an equation as a variable — guarded by returning `None` (honest parse
+    error) for unequal/under-sized lists.
+- retained learning:
+  - PROBE the frontier before estimating cost: an item flagged "big (parser + solver)"
+    was 90% already built; the real work was a ~90-line surface adapter. The scoping
+    Explore pass (map the existing solver, result type, and parse entry points) converted
+    a feared multi-cycle feature into one small cycle.
+  - the CLI has TWO independent command-parse surfaces that must agree: the eval/wire path
+    (`cas_api_models::parse_eval_special_command`) and the REPL
+    (`cas_solver::repl_command_preprocess::preprocess_repl_function_syntax`, fed by
+    `split_repl_statements`). A new `solve(...)`-family surface must be added to BOTH, or
+    it works via `cas_cli eval "..."` but parse-errors in the interactive REPL. Sharing
+    one `pub` normalisation fn (here lifted into `cas_api_models`, which `cas_solver`
+    already depends on) keeps them from diverging.
+  - residual (sound, not done): `solve(eq1 and eq2, ...)` boolean-conjunction syntax;
+    over/under-determined systems through the list surface; a parametric/`Conditional`
+    rendering of the infinite-solution family (`LinSolveResult::Infinite` currently prints
+    a message, not `x = 2t, y = 3 - t`).

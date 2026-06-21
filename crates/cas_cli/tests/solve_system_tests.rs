@@ -194,3 +194,62 @@ fn test_solve_system_4x4_inconsistent() {
         .success()
         .stdout(predicate::str::contains("no solution"));
 }
+
+// =============================================================================
+// `solve([eqs], [vars])` list form — the natural surface routed to the same solver
+// =============================================================================
+
+#[test]
+fn test_solve_list_form_2x2_unique() {
+    // solve([x+y=3, x-y=1], [x, y]) -> x = 2, y = 1 (same as solve_system).
+    run_cas("solve([x+y=3, x-y=1], [x, y])\n")
+        .success()
+        .stdout(predicate::str::contains("x = 2"))
+        .stdout(predicate::str::contains("y = 1"));
+}
+
+#[test]
+fn test_solve_list_form_bare_expressions_read_as_zero() {
+    // A bare expression (no `=`) is read as `expr = 0`.
+    run_cas("solve([x+y-3, x-y-1], [x, y])\n")
+        .success()
+        .stdout(predicate::str::contains("x = 2"))
+        .stdout(predicate::str::contains("y = 1"));
+}
+
+#[test]
+fn test_solve_list_form_3x3_unique() {
+    // x + y + z = 6, x - y = 0, z = 3 -> x = 3/2, y = 3/2, z = 3.
+    run_cas("solve([x+y+z=6, x-y=0, z=3], [x, y, z])\n")
+        .success()
+        .stdout(predicate::str::contains("x = 3/2"))
+        .stdout(predicate::str::contains("y = 3/2"))
+        .stdout(predicate::str::contains("z = 3"));
+}
+
+#[test]
+fn test_solve_list_form_infinite_and_inconsistent() {
+    run_cas("solve([x+y=1, 2*x+2*y=2], [x, y])\n")
+        .success()
+        .stdout(predicate::str::contains("infinitely many solutions"));
+    run_cas("solve([x+y=1, x+y=2], [x, y])\n")
+        .success()
+        .stdout(predicate::str::contains("no solution"));
+}
+
+#[test]
+fn test_solve_list_form_nonlinear_is_honest_error() {
+    // A non-linear system must not silently produce a wrong answer.
+    run_cas("solve([x^2+y=1, x-y=0], [x, y])\n")
+        .success()
+        .stdout(predicate::str::contains("non-linear"));
+}
+
+#[test]
+fn test_single_equation_solve_unaffected_by_list_routing() {
+    // The single-equation `solve(eq, var)` form still works (not captured by the list parser).
+    run_cas("solve(x^2-4=0, x)\n")
+        .success()
+        .stdout(predicate::str::contains("-2"))
+        .stdout(predicate::str::contains("2"));
+}

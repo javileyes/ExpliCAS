@@ -10,6 +10,15 @@ pub fn preprocess_repl_function_syntax(line: &str) -> String {
         return format!("simplify {}", content);
     }
 
+    // `solve([eq1, eq2, ...], [x, y, ...])` is the natural list form of a linear system;
+    // rewrite it to `solve_system <eq; ...; var; ...>` so it routes to the system solver
+    // (the same normalisation the eval/wire path applies). Must be tried BEFORE the
+    // generic `solve(` handling, which would otherwise send it to the single-equation
+    // solver and fail to parse the `[...]`.
+    if let Some(spec) = cas_api_models::parse_solve_system_list_command(line) {
+        return format!("solve_system {}", spec);
+    }
+
     if line.starts_with("solve(") && line.ends_with(')') {
         let content = &line["solve(".len()..line.len() - 1];
         return format!("solve {}", content);

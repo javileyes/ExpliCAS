@@ -511,6 +511,14 @@ pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
     if let Some((equation, var)) = parse_solve_command(input) {
         return Some(EvalSpecialCommand::Solve { equation, var });
     }
+    // `solve([eq1, eq2, ...], [x, y, ...])` — the natural list form of a linear system,
+    // routed to the same pipeline as `solve_system(...)`. Tried after the single-equation
+    // `solve(eq, var)` form (which declines the list shape).
+    if let Some(system_input) = parse_solve_system_list_command(input) {
+        return Some(EvalSpecialCommand::SolveSystem {
+            input: system_input,
+        });
+    }
     if let Some(system_input) = parse_solve_system_command(input) {
         return Some(EvalSpecialCommand::SolveSystem {
             input: system_input,
@@ -629,6 +637,96 @@ fn parse_solve_command(input: &str) -> Option<(String, String)> {
     }
 
     Some((equation_part.to_string(), variable_part.to_string()))
+}
+
+/// Split `s` by top-level commas, ignoring commas nested inside `()` or `[]`.
+fn split_top_level_commas(s: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(s[start..i].trim().to_string());
+                start = i + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(s[start..].trim().to_string());
+    parts
+}
+
+/// Return the inside of a `[ ... ]` group (trimmed), or `None` if `s` is not bracketed.
+fn bracketed_inner(s: &str) -> Option<&str> {
+    let s = s.trim();
+    s.strip_prefix('[')?.strip_suffix(']').map(str::trim)
+}
+
+/// True when `s` contains a top-level `=` (not nested inside `()`/`[]`). Used to decide
+/// whether an equation part already carries a relation or should be read as `expr = 0`.
+fn has_top_level_eq(s: &str) -> bool {
+    let mut depth = 0i32;
+    for ch in s.chars() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            '=' if depth == 0 => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Parse the natural system-solve list form
+/// `solve([eq1, eq2, ...], [var1, var2, ...])` into the canonical `solve_system`
+/// semicolon spec `eq1; eq2; ...; var1; var2; ...`, so it reuses the existing linear
+/// system pipeline verbatim. An equation part with no top-level `=` is read as
+/// `expr = 0` (so `solve([x+y-3, x-y-1], [x, y])` works too). Requires equal, ≥2 counts
+/// of equations and variables (a square system); a single-equation solve goes through
+/// `solve(eq, var)`. Variables must be plain identifiers.
+pub fn parse_solve_system_list_command(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if !trimmed.to_lowercase().starts_with("solve(") || !trimmed.ends_with(')') {
+        return None;
+    }
+    let content = trimmed["solve(".len()..trimmed.len() - 1].trim();
+    let groups = split_top_level_commas(content);
+    if groups.len() != 2 {
+        return None;
+    }
+    let eqs = split_top_level_commas(bracketed_inner(&groups[0])?);
+    let vars = split_top_level_commas(bracketed_inner(&groups[1])?);
+    // Square system with ≥2 equations; single solves use `solve(eq, var)`.
+    if eqs.len() != vars.len() || eqs.len() < 2 {
+        return None;
+    }
+
+    let mut parts: Vec<String> = Vec::with_capacity(eqs.len() + vars.len());
+    for eq in &eqs {
+        let eq = eq.trim();
+        if eq.is_empty() {
+            return None;
+        }
+        if has_top_level_eq(eq) {
+            parts.push(eq.to_string());
+        } else {
+            parts.push(format!("{eq} = 0"));
+        }
+    }
+    for var in &vars {
+        let var = var.trim();
+        if var.is_empty()
+            || !var.chars().next()?.is_alphabetic()
+            || !var.chars().all(|c| c.is_alphanumeric() || c == '_')
+        {
+            return None;
+        }
+        parts.push(var.to_string());
+    }
+    Some(parts.join("; "))
 }
 
 fn parse_derive_command(input: &str) -> Option<String> {
@@ -1953,10 +2051,11 @@ impl OutputEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_eval_limit_command_error, parse_eval_special_command, DomainWire, EngineWireError,
-        EngineWireResponse, ErrorWireOutput, EvalLimitApproach, EvalOutputBuild, EvalRunOptions,
-        EvalWireOutput, ExprStatsWire, LimitWireResponse, OptionsWire, SemanticsWire,
-        SubstituteRunOptions, TimingsWire,
+        parse_eval_limit_command_error, parse_eval_special_command,
+        parse_solve_system_list_command, DomainWire, EngineWireError, EngineWireResponse,
+        ErrorWireOutput, EvalLimitApproach, EvalOutputBuild, EvalRunOptions, EvalWireOutput,
+        ExprStatsWire, LimitWireResponse, OptionsWire, SemanticsWire, SubstituteRunOptions,
+        TimingsWire,
     };
 
     #[test]
@@ -2304,6 +2403,56 @@ mod tests {
         assert!(parse_eval_special_command("limit(abs(x)/x, x, 0++)").is_none());
         assert!(parse_eval_special_command("limit(abs(x)/x, x, 0, safe)").is_none());
         assert!(parse_eval_special_command("x + 1").is_none());
+    }
+
+    #[test]
+    fn parse_eval_special_command_parses_solve_list_system_form() {
+        // `solve([eqs], [vars])` routes to the same SolveSystem pipeline as
+        // `solve_system(...)`, normalising to the `eq; ...; var; ...` spec.
+        let two_by_two =
+            parse_eval_special_command("solve([x+y=3, x-y=1], [x, y])").expect("list system");
+        assert_eq!(
+            two_by_two,
+            super::EvalSpecialCommand::SolveSystem {
+                input: "x+y=3; x-y=1; x; y".to_string(),
+            }
+        );
+
+        // A bare expression (no top-level `=`) is read as `expr = 0`.
+        let implicit_zero =
+            parse_eval_special_command("solve([x+y-3, x-y-1], [x, y])").expect("implicit zero");
+        assert_eq!(
+            implicit_zero,
+            super::EvalSpecialCommand::SolveSystem {
+                input: "x+y-3 = 0; x-y-1 = 0; x; y".to_string(),
+            }
+        );
+
+        // 3×3 with commas inside the (function-call) terms stays at the right depth.
+        let three =
+            parse_eval_special_command("solve([x+y+z=6, x-y=0, z=3], [x, y, z])").expect("3x3");
+        assert_eq!(
+            three,
+            super::EvalSpecialCommand::SolveSystem {
+                input: "x+y+z=6; x-y=0; z=3; x; y; z".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_eval_special_command_declines_malformed_list_system() {
+        // Single equation/variable -> not a system (use `solve(eq, var)`).
+        assert!(parse_solve_system_list_command("solve([x+y=1], [x])").is_none());
+        // Mismatched equation/variable counts.
+        assert!(parse_solve_system_list_command("solve([x+y=3, x-y=1], [x, y, z])").is_none());
+        // Second argument not a bracketed list.
+        assert!(parse_solve_system_list_command("solve([x+y=3, x-y=1], x)").is_none());
+        // A non-identifier "variable".
+        assert!(parse_solve_system_list_command("solve([x+y=3, x-y=1], [x, 2*y])").is_none());
+        // Empty groups.
+        assert!(parse_solve_system_list_command("solve([], [])").is_none());
+        // The single-equation `solve(eq, var)` form is NOT captured by the list parser.
+        assert!(parse_solve_system_list_command("solve(x+y=3, x)").is_none());
     }
 
     #[test]
