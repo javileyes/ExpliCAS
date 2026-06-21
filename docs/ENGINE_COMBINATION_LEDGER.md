@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 278 (newest first)
+Active entries: 279 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -163,6 +163,7 @@ Active entries: 278 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | P0 SOUNDNESS: producto infinito ∏(1−1/k²) daba 1 (debía 1/2)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Telescópica de m factores consecutivos generalizada (1/18, 1/96, …)
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`eval_limit_at_infinity`: fallback d... | Límite en ∞ por sustitución recíproca x↦1/u (x·sin(1/x)→1, notables)
+- 2026-06-21 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_ln_quotient_... | ln(c)/ln(b) → log_b(c) racional (solve(2^x=8) = {3}, no {ln(8)/ln(2)})
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11824,3 +11825,41 @@ Active entries: 278 (newest first)
   - residual (peldaño): `x²·(1−cos(1/x)) → 1/2` (el finito necesita el notable (1−cos u)/u² tras
     sustituir), `(1+a/x)^x → e^a` SIMBÓLICO (el e-limit finito solo casa numerador literal),
     `x·cos(1/x) → ∞` (under-answer); y NegInfinity con el lado izquierdo.
+
+## 2026-06-21 - ln(c)/ln(b) → log_b(c) racional (solve(2^x=8) = {3}, no {ln(8)/ln(2)})
+- area:
+  - `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_ln_quotient_to_rational_expr`,
+    helper `ln_positive_integer_argument`)
+  - `crates/cas_engine/src/rules/logarithms/mod.rs` (`LnQuotientRationalRule`, registrada)
+- status:
+  - `retained` (capability/cosmético: cierra el cambio de base racional `ln(c)/ln(b)` que dejaba
+    `solve(b^x=c)` sin simplificar)
+- capture:
+  - investment_class: capability (Fase 1, P3 — pulido/presentación; reusa maquinaria existente)
+  - primary_dimension: north_star_completeness (presentación de solve/log)
+  - secondary_dimension: reuse_value (reusa `eval_log_rational` ya existente — log_b(c) por
+    factorización prima; solo añade el ruteo de la forma `Div(ln, ln)`)
+  - cell: `ln(8)/ln(2) → 3`, `ln(16)/ln(4) → 2`, `ln(2)/ln(8) → 1/3`, `ln(8)/ln(4) → 3/2`;
+    `solve(2^x=8) → {3}`, `solve(4^x=8) → {3/2}`, `solve(9^x=3) → {1/2}`.
+  - behavior_change_expected: `ln(c)/ln(b)` con c,b enteros potencias de una base común pasa de la
+    forma sin simplificar al racional exacto. Snapshot `solve_two_pow_x_eq_8` actualizado de
+    `{ln(8)/ln(2)}` a `{3}` (el comentario del test ya decía "x = 3"). Huella guardrail+pressure NONE.
+  - SOUNDNESS: `ln(c)/ln(b) = log_b(c)` es exacto; `eval_log_rational` solo devuelve Some cuando el
+    log es racional (mismo soporte primo, exponentes proporcionales) y guarda `b>1` (denominador
+    `ln(1)=0` declina, no divide por cero). Irracionales (`ln(7)/ln(2)`, `ln(8)/ln(3)`), no-enteros
+    (`ln(x)/ln(2)`) y no-`ln` quedan EXACTAMENTE como están. Sin variable → sin gate de dominio.
+- observed:
+  - el motor YA computaba `log_b(c)` racional (`eval_log_rational`, usado por `LogPowerBaseRule` para
+    la forma `log(base,arg)`); solo faltaba reconocer la forma equivalente `ln(c)/ln(b)` y rutearla.
+    Una regla nueva con target `DIV` (no FUNCTION) la casa.
+  - la regla se registra en `logarithms/mod.rs::register` con `add_rule(Box::new(...))` — el sistema
+    de reglas NO auto-registra los `define_rule!`; hay que añadirlas a la lista de `register`.
+- retained learning:
+  - cuando una simplificación existe para UNA grafía (`log(base,arg)`) pero no para su EQUIVALENTE
+    (`ln(c)/ln(b)`), el cierre suele ser una regla fina que reconoce la segunda forma y reusa el
+    helper de la primera — barato y sound. El `solve` se beneficia gratis (su salida pasa por el
+    simplificador).
+  - el target del rule importa: una regla sobre `Div(ln,ln)` necesita `TargetKindSet::DIV`, no
+    FUNCTION; y `define_rule!` requiere registro explícito en la `register` del módulo.
+  - residual (peldaño): el cambio de base con argumentos no-enteros pero racionales-potencia
+    (`ln(√8)/ln(2)`), y `log_b(c)` simbólico cuando c=b^k con k simbólico.

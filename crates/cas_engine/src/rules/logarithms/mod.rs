@@ -21,7 +21,8 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::logarithm_inverse_support::{
     try_rewrite_evaluate_log_expr, try_rewrite_ln_e_div_expr, try_rewrite_ln_e_product_expr,
-    try_rewrite_log_perfect_square_expr, LnEDivRewriteKind, LogContractionRewriteKind,
+    try_rewrite_ln_quotient_to_rational_expr, try_rewrite_log_perfect_square_expr,
+    LnEDivRewriteKind, LogContractionRewriteKind,
 };
 
 fn format_ln_e_div_desc(kind: LnEDivRewriteKind) -> &'static str {
@@ -37,6 +38,16 @@ fn format_log_contraction_desc(kind: LogContractionRewriteKind) -> &'static str 
         LogContractionRewriteKind::Sub => "ln(a) - ln(b) = ln(a/b)",
     }
 }
+
+define_rule!(
+    LnQuotientRationalRule,
+    "Evaluate ln Quotient as Rational Log",
+    Some(crate::target_kind::TargetKindSet::DIV),
+    |ctx, expr| {
+        let rewritten = try_rewrite_ln_quotient_to_rational_expr(ctx, expr)?;
+        Some(Rewrite::new(rewritten).desc("ln(c)/ln(b) = log_b(c)"))
+    }
+);
 
 define_rule!(
     EvaluateLogRule,
@@ -185,6 +196,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // LogPerfectSquareRule: ln(A² ± 2AB + B²) → 2·ln(|A ± B|)
     // Factor perfect-square trinomials inside log arguments (e.g. u⁴+2u²+1 → (u²+1)²)
     simplifier.add_rule(Box::new(LogPerfectSquareRule));
+
+    // ln(c)/ln(b) → log_b(c) when both are integers and the ratio is rational (ln(8)/ln(2) → 3).
+    simplifier.add_rule(Box::new(LnQuotientRationalRule));
 
     simplifier.add_rule(Box::new(EvaluateLogRule));
 

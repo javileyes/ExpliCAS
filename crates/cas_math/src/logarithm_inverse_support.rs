@@ -841,6 +841,41 @@ pub fn try_rewrite_ln_e_product_expr(ctx: &mut Context, expr: ExprId) -> Option<
 }
 
 /// Rewrite:
+/// The positive-integer argument `n` of `ln(n)`, or `None` if `expr` is not `ln(positive integer)`.
+fn ln_positive_integer_argument(ctx: &Context, expr: ExprId) -> Option<num_bigint::BigInt> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.builtin_of(*fn_id) != Some(BuiltinFn::Ln) || args.len() != 1 {
+        return None;
+    }
+    let Expr::Number(n) = ctx.get(args[0]) else {
+        return None;
+    };
+    if !n.is_integer() {
+        return None;
+    }
+    let value = n.to_integer();
+    use num_traits::Signed;
+    value.is_positive().then_some(value)
+}
+
+/// Rewrite `ln(c)/ln(b)` to the exact rational `log_b(c)` when `c` and `b` are positive integer
+/// literals whose logarithm is rational (`ln(8)/ln(2) → 3`, `ln(8)/ln(4) → 3/2`, `ln(2)/ln(8) → 1/3`).
+/// Returns `None` for irrational ratios (`ln(7)/ln(2)`) and non-integer / non-positive arguments.
+/// Sound: `ln(c)/ln(b) = log_b(c)` exactly, computed by prime factorization in `eval_log_rational`
+/// (which guards `b > 1`, so `ln(1)` denominators decline rather than divide by zero).
+pub fn try_rewrite_ln_quotient_to_rational_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let (num, den) = (*num, *den);
+    let c = ln_positive_integer_argument(ctx, num)?;
+    let b = ln_positive_integer_argument(ctx, den)?;
+    let ratio = eval_log_rational(&b, &c)?;
+    Some(ctx.add(Expr::Number(ratio)))
+}
+
 /// - `ln(x/e)` -> `ln(x) - 1`
 /// - `ln(e/x)` -> `1 - ln(x)`
 pub fn try_rewrite_ln_e_div_expr(ctx: &mut Context, expr: ExprId) -> Option<LnEDivRewrite> {
@@ -1941,6 +1976,45 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("3*log(x)", &mut ctx).expect("expr");
         assert!(is_log(&ctx, expr));
+    }
+
+    #[test]
+    fn ln_quotient_rewrites_only_rational_change_of_base() {
+        use cas_formatter::DisplayExpr;
+        // `ln(c)/ln(b) = log_b(c)` resolves exactly when both are integer powers of a common base.
+        for (src, expected) in [
+            ("ln(8)/ln(2)", "3"),
+            ("ln(9)/ln(3)", "2"),
+            ("ln(16)/ln(4)", "2"),
+            ("ln(2)/ln(8)", "1/3"),
+            ("ln(8)/ln(4)", "3/2"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).expect(src);
+            let out = try_rewrite_ln_quotient_to_rational_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("must rewrite {src}"));
+            let rendered = DisplayExpr {
+                context: &ctx,
+                id: out,
+            }
+            .to_string();
+            assert_eq!(rendered, expected, "{src}");
+        }
+        // Irrational ratios and non-integer / non-`ln` arguments decline (left exactly as written).
+        for src in [
+            "ln(7)/ln(2)",
+            "ln(6)/ln(2)",
+            "ln(x)/ln(2)",
+            "ln(8)/x",
+            "ln(8)/ln(1)",
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).expect(src);
+            assert!(
+                try_rewrite_ln_quotient_to_rational_expr(&mut ctx, expr).is_none(),
+                "{src} must not rewrite"
+            );
+        }
     }
 
     #[test]

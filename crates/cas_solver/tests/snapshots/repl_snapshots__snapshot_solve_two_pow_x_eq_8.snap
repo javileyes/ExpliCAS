@@ -1,5 +1,5 @@
 ---
-source: crates/cas_engine/tests/repl_snapshots.rs
+source: crates/cas_solver/tests/repl_snapshots.rs
 expression: result
 ---
-{ ln(8) / ln(2) }
+{ 3 }
