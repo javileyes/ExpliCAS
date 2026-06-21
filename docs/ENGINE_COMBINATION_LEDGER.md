@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 266 (newest first)
+Active entries: 267 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -151,6 +151,7 @@ Active entries: 266 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: límite notable cruzado f(a·u)/g(b·u) → a/b
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: el límite notable en infinito (1+1/x)^x → e (definición de e)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: dominancia logarítmica/exponencial en ∞ (ln ≪ potencia ≪ exp)
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: equivalente binomial/raíz ((1+u)^a − 1)/u → a
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11395,3 +11396,33 @@ Active entries: 266 (newest first)
   - residual (peldaño G2): forma PRODUCTO `e^{−x}·x² → 0`, `x·e^{−x} → 0` (no es cociente; el
     narrador solo ve `num/den`); `(√(1+u)−1)/u → 1/2` (equivalente de raíz); dominancia con bases
     `b^x` (b>1) además de `eˣ`; L'Hôpital paso a paso.
+
+## 2026-06-21 - G2 narrativa: equivalente binomial/raíz ((1+u)^a − 1)/u → a
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`notable_limit_name`, rama `den==Variable`: check binomial; helper
+    `limit_one_plus_power_minus_one_exponent`)
+- status:
+  - `retained` (sub-ciclo G2: narra el equivalente de primer orden binomial/raíz, antes sin substep)
+- capture:
+  - investment_class: capability (gatekeeper G2 — narración educativa de límites)
+  - primary_dimension: north_star_completeness (Fase 1, G2)
+  - secondary_dimension: didactic_value (un check cubre raíz cuadrada, cúbica y potencias enteras)
+  - cell: `(√(1+x)−1)/x → 1/2` narra "lím(u→0) ((1+u)^(1/2) − 1)/u = 1/2 (equivalente (1+u)^a ~
+    1 + a·u)"; `((1+x)^3−1)/x → 3`; `((1+x)^(1/2)−1)/x → 1/2`. Generaliza a CUALQUIER exponente
+    racional a: la grafía √ (Function sqrt) y la Pow `(1+u)^a` ambas cubiertas.
+  - behavior_change_expected: el equivalente binomial pasa de sin-substep a narrado. Huella NONE.
+  - SOUNDNESS: narra solo si el resultado == a (el exponente); estructura exige base EXACTA `1+u`
+    (`√(2+x)` declina) y término restado 1; `a=0` se salta (trivial). Narración pura → sin gate.
+- observed:
+  - el motor NO computa `((1+x)^(1/3)−1)/x` (raíz cúbica) — queda residual, así que no hay step que
+    narrar (limitación del EVALUADOR de límites, no del narrador). El narrador solo nombra lo que el
+    motor ya resolvió: √ y potencias enteras sí, raíz cúbica no (peldaño del evaluador).
+  - la grafía importa otra vez: `√(1+u)` es `Function(sqrt)` y `(1+u)^(1/2)` es `Pow` — el helper
+    cubre ambas (mismo aprendizaje que el sqrt de la dominancia del ciclo previo).
+- retained learning:
+  - los equivalentes de primer orden `f(u) ~ a·u` se narran con un solo patrón "extrae a, confírmalo
+    contra el resultado": `sin(au)/u→a`, `(aᵘ−1)/u→ln(a)`, `((1+u)^a−1)/u→a` son la misma forma
+    "lee el parámetro, el resultado es el oráculo". La librería de notables converge a esa plantilla.
+  - residual (peldaño): el EVALUADOR de límites no computa raíces no-cuadradas `(1+x)^(1/n)` ni la
+    forma producto `e^{−x}·x²`; narrar L'Hôpital paso a paso; cablear el PUNTO del límite.

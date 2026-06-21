@@ -19664,6 +19664,15 @@ fn notable_limit_name(
                     return Some(format!("{prefix}lím(u→0) (aᵘ − 1)/u = ln(a)"));
                 }
             }
+            // ((1+u)^a − 1)/u → a, the binomial / root first-order equivalent
+            // `(1+u)^a ~ 1 + a·u` (a = 1/2 is `(√(1+u) − 1)/u → 1/2`). The result must equal a.
+            if let Some(a) = limit_one_plus_power_minus_one_exponent(ctx, num, den) {
+                if !a.is_zero() && after_is(a.clone()) {
+                    return Some(format!(
+                        "{prefix}lím(u→0) ((1+u)^({a}) − 1)/u = {a}  (equivalente de primer orden (1+u)^a ~ 1 + a·u)"
+                    ));
+                }
+            }
         }
         // num is the bare variable u: the RECIPROCAL notables u/f(u) → 1.
         if matches!(ctx.get(num), Expr::Variable(_)) && after_is(BigRational::one()) {
@@ -19842,6 +19851,30 @@ fn limit_is_one_plus(ctx: &Context, arg: ExprId, u: ExprId) -> bool {
     } else {
         false
     }
+}
+
+/// The rational exponent `a` for which `num == (1+u)^a − 1`, including the `√(1+u) − 1` spelling
+/// (a = 1/2). `None` if `num` is not that shape. The first-order equivalent gives `num/u → a`.
+fn limit_one_plus_power_minus_one_exponent(
+    ctx: &Context,
+    num: ExprId,
+    u: ExprId,
+) -> Option<BigRational> {
+    let Expr::Sub(left, right) = *ctx.get(num) else {
+        return None;
+    };
+    if !limit_is_number(ctx, right, 1) {
+        return None;
+    }
+    if let Some((base, exponent)) = as_pow(ctx, left) {
+        return limit_is_one_plus(ctx, base, u)
+            .then(|| as_rational_const(ctx, exponent, 8))
+            .flatten();
+    }
+    if let Some((arg, BuiltinFn::Sqrt)) = limit_unary_builtin(ctx, left) {
+        return limit_is_one_plus(ctx, arg, u).then(|| BigRational::new(1.into(), 2.into()));
+    }
+    None
 }
 
 fn limit_is_exp_minus_one(ctx: &Context, num: ExprId, u: ExprId) -> bool {
@@ -21757,6 +21790,9 @@ mod limit_notable_tests {
             ("(2^x-1)/x", "ln(2)", "(aᵘ − 1)/u = ln(a)"),
             ("(3^x-1)/x", "ln(3)", "(aᵘ − 1)/u = ln(a)"),
             ("(1+x)^(1/x)", "e", "(1 + u)^(1/u) = e"),
+            // Binomial / root first-order equivalent ((1+u)^a − 1)/u → a.
+            ("(sqrt(1+x)-1)/x", "1/2", "((1+u)^(1/2) − 1)/u = 1/2"),
+            ("((1+x)^3-1)/x", "3", "((1+u)^(3) − 1)/u = 3"),
             ("x*sin(1/x)", "0", "teorema del sándwich"),
             ("x^2*cos(1/x)", "0", "teorema del sándwich"),
             ("x/sin(x)", "1", "u/sin(u) = 1"),
@@ -21816,6 +21852,10 @@ mod limit_notable_tests {
         // `cos(2x)/(3x)` (cos has no first-order equivalent) and a fabricated ratio both decline.
         assert!(substep_titles("cos(2*x)/(3*x)", "2/3").is_empty());
         assert!(substep_titles("sin(3*x)/(2*x)", "5").is_empty());
+        // Binomial equivalent must be exactly `(1+u)^a − 1`: a different shift (√(2+x)) and a
+        // fabricated value both decline.
+        assert!(substep_titles("(sqrt(2+x)-1)/x", "1/2").is_empty());
+        assert!(substep_titles("(sqrt(1+x)-1)/x", "3").is_empty());
         // Right structural form but wrong value (fabricated) must decline.
         assert!(substep_titles("sin(x)/x", "2").is_empty());
         // x·sin(x) → 0 is continuity, NOT the squeeze theorem (the argument is not a reciprocal).
