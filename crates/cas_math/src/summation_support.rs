@@ -2009,13 +2009,6 @@ pub fn try_build_telescoping_three_factor_sum(
     start: ExprId,
     end: ExprId,
 ) -> Option<ExprId> {
-    // The infinite-sum path substitutes the bound directly; this builder's closed form has a
-    // degree-2 boundary term `1/((end+a+1)(end+a+2))` that the ∞-substitution does not reduce (it
-    // leaves `∞²`), so decline an infinite bound and keep it a clean residual. The finite closed
-    // form is exact; the convergent infinite value is a separate peldaño.
-    if is_positive_infinity(ctx, end) {
-        return None;
-    }
     let (num, den) = match ctx.get(summand) {
         Expr::Div(num, den) => (*num, *den),
         _ => return None,
@@ -2036,16 +2029,32 @@ pub fn try_build_telescoping_three_factor_sum(
     if offsets[1] != a + 1 || offsets[2] != a + 2 {
         return None; // only three CONSECUTIVE factors telescope to this closed form
     }
-    // (1/2)·[1/((start+a)(start+a+1)) − 1/((end+a+1)(end+a+2))].
-    let mut reciprocal_product = |anchor: ExprId, lo: i64| -> ExprId {
+    let reciprocal_product = |ctx: &mut Context, anchor: ExprId, lo: i64| -> ExprId {
         let left = shift_expr(ctx, anchor, lo);
         let right = shift_expr(ctx, anchor, lo + 1);
         let product = ctx.add(Expr::Mul(left, right));
         let one = ctx.num(1);
         ctx.add(Expr::Div(one, product))
     };
-    let first = reciprocal_product(start, a);
-    let second = reciprocal_product(end, a + 1);
+
+    // Convergent infinite sum: the boundary term `1/((end+a+1)(end+a+2)) → 0`, leaving
+    // `(1/2)·1/((start+a)(start+a+1))`. Compute it directly (the ∞-substitution path cannot reduce
+    // the degree-2 boundary term — it leaves `∞²` — so the finite closed form is NOT reused for ∞).
+    // Requires a literal integer `start` with `start+a ≥ 1`: all three factors are then positive over
+    // `[start, ∞)` (no pole), so the positive `~1/k³` tail converges; otherwise decline (residual).
+    if is_positive_infinity(ctx, end) {
+        let start_value = crate::expr_extract::extract_i64_integer(ctx, start)?;
+        if start_value.checked_add(a)? < 1 {
+            return None;
+        }
+        let first = reciprocal_product(ctx, start, a);
+        let two = ctx.num(2);
+        return Some(ctx.add(Expr::Div(first, two)));
+    }
+
+    // Finite: (1/2)·[1/((start+a)(start+a+1)) − 1/((end+a+1)(end+a+2))].
+    let first = reciprocal_product(ctx, start, a);
+    let second = reciprocal_product(ctx, end, a + 1);
     let diff = ctx.add(Expr::Sub(first, second));
     let two = ctx.num(2);
     Some(ctx.add(Expr::Div(diff, two)))
@@ -2801,9 +2810,10 @@ mod tests {
                 .expect("parse");
                 let start = ctx.num(a);
                 let end = ctx.num(n);
-                let result =
-                    super::try_build_telescoping_three_factor_sum(&mut ctx, summand, "k", start, end)
-                        .expect("build");
+                let result = super::try_build_telescoping_three_factor_sum(
+                    &mut ctx, summand, "k", start, end,
+                )
+                .expect("build");
                 let mut brute = BigRational::from_integer(0.into());
                 for k in a..=n {
                     brute += BigRational::new(1.into(), den(offsets, k).into());
@@ -2821,15 +2831,30 @@ mod tests {
         let one = ctx.num(1);
         let n = ctx.num(5);
         assert!(
-            super::try_build_telescoping_three_factor_sum(&mut ctx, nonconsec, "k", one, n).is_none(),
+            super::try_build_telescoping_three_factor_sum(&mut ctx, nonconsec, "k", one, n)
+                .is_none(),
             "non-consecutive 3-factor must stay residual"
         );
+        // Convergent infinite sum (start+a ≥ 1): `Σ_{k=1}^∞ 1/(k(k+1)(k+2)) = (1/2)·1/(1·2) = 1/4`.
         let consec = cas_parser::parse("1/(k*(k+1)*(k+2))", &mut ctx).expect("parse");
         let one = ctx.num(1);
         let inf = super::make_infinity(&mut ctx);
+        let infinite =
+            super::try_build_telescoping_three_factor_sum(&mut ctx, consec, "k", one, inf)
+                .expect("convergent infinite sum");
+        assert_eq!(
+            eval_small_rat(&ctx, infinite),
+            Some(BigRational::new(1.into(), 4.into()))
+        );
+        // A lower bound that crosses a pole (start+a < 1, here `k=0`) declines — the term is
+        // undefined, not a convergent tail.
+        let consec = cas_parser::parse("1/(k*(k+1)*(k+2))", &mut ctx).expect("parse");
+        let zero = ctx.num(0);
+        let inf = super::make_infinity(&mut ctx);
         assert!(
-            super::try_build_telescoping_three_factor_sum(&mut ctx, consec, "k", one, inf).is_none(),
-            "infinite bound must decline (the ∞-substitution leaves an unreduced degree-2 term)"
+            super::try_build_telescoping_three_factor_sum(&mut ctx, consec, "k", zero, inf)
+                .is_none(),
+            "a lower bound at a pole must decline"
         );
     }
 

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 273 (newest first)
+Active entries: 274 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -158,6 +158,7 @@ Active entries: 273 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: dominancia en forma PRODUCTO p(x)·e^{-q(x)} → 0
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`factor_telescoping_quadratic_den... | Telescópica NO mónica vía factores afines 1/(4k²−1) = (2k−1)(2k+1)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Telescópica de TRES factores consecutivos 1/(k(k+1)(k+2)) (finita)
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_fact... | Graduada la suma INFINITA de 3 factores Σ 1/(k(k+1)(k+2)) = 1/4
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11638,3 +11639,39 @@ Active entries: 273 (newest first)
     racionales de grado 2) en vez de sustituir ∞ — desbloquearía `Σ_{∞} 1/(k(k+1)(k+2)) = 1/4` y
     cierra una clase A de infra; (2) telescópica de 3 factores NO consecutivos vía fracciones
     parciales (cancelación armónica).
+
+## 2026-06-21 - Graduada la suma INFINITA de 3 factores Σ 1/(k(k+1)(k+2)) = 1/4
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_telescoping_three_factor_sum`: el caso
+    de cota infinita calcula el valor directamente en vez de declinar)
+- status:
+  - `retained` (capability: gradúa el peldaño infinito del ciclo previo, el clásico Σ 1/(k(k+1)(k+2)))
+- capture:
+  - investment_class: capability (Fase 1, P2 — familia telescópica; cierre del peldaño del ciclo 8 previo)
+  - primary_dimension: north_star_completeness (sumatorios)
+  - secondary_dimension: reuse_value (reusa el builder finito; solo añade la rama de cota ∞)
+  - cell: `Σ_{1}^∞ 1/(k(k+1)(k+2)) = 1/4`, `Σ_{1}^∞ 1/((k+1)(k+2)(k+3)) = 1/12`, `Σ_{2}^∞ 1/(k(k+1)(k+2))
+    = 1/12`. El término de borde `1/((end+a+1)(end+a+2)) → 0`, así que el valor infinito es
+    `(1/2)·1/((start+a)(start+a+1))` — calculado directamente.
+  - behavior_change_expected: el clásico de 3 factores consecutivos pasa de residual (declinado en el
+    ciclo previo por el artefacto ∞²) a forma cerrada exacta. Huella NONE.
+  - SOUNDNESS: el run previo DECLINÓ el infinito porque la sustitución directa de ∞ dejaba un racional
+    de grado 2 sin reducir (`(∞²-2)/(4∞²)`). Este ciclo NO sustituye ∞: calcula el valor del límite
+    a mano (el borde se anula). Gate de convergencia/polo: `start` entero literal con `start+a ≥ 1`
+    (los 3 factores positivos sobre [start,∞), sin polo, cola ~1/k³ converge); si no, declina
+    (residual). Verificado fold-vs-fuerza-bruta.
+- observed:
+  - DIAGNÓSTICO del run previo corregido: el telescoping se intenta ANTES de la rama de cota infinita
+    en el dispatch, así que el builder SÍ recibe end=∞. La sustitución directa reduce `1/∞→0` y
+    `∞/(∞+1)→1` (las formas de 2 factores) pero NO un racional de grado 2 combinado. Solución: no
+    sustituir — emitir el valor del límite (borde anulado) directamente desde el builder.
+  - `(k-1)·k·(k+1)` queda residual porque el motor lo expande a `k·(k²-1)` (no 3 factores lineales);
+    ése es un peldaño de representación distinto.
+- retained learning:
+  - cuando la infra de sustitución de ∞ no reduce la forma cerrada de un builder (borde de grado ≥2),
+    la salida limpia NO es declinar — es que el BUILDER emita el valor del límite directamente
+    (el término de borde convergente se anula a mano). Más barato y local que arreglar la infra de ∞.
+  - un gate de convergencia para una telescópica positiva es "sin polo en [start,∞)": `start+a ≥ 1`
+    con start entero literal; symbolic o polo-cruzado declina (residual honesto).
+  - residual (peldaño): `(k-1)k(k+1)` (el motor expande (k-1)(k+1)→k²-1, esconde la estructura de 3
+    factores); telescópica de 3 factores NO consecutivos vía fracciones parciales.
