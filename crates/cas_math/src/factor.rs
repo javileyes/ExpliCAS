@@ -227,8 +227,8 @@ pub fn factor_polynomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
             return None;
         }
 
-        // 1. Extract content (common constant factor)
-        let factors = poly.factor_rational_roots();
+        // 1. Factor over ℚ: rational (linear) roots plus any reducible even quartic.
+        let factors = factor_over_rationals(&poly);
 
         if factors.len() == 1 {
             // Irreducible (over rationals) or just trivial
@@ -273,6 +273,102 @@ pub fn factor_polynomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
         // println!("factor_polynomial: {} -> {}", cas_formatter::DisplayExpr { context: ctx, id: expr }, cas_formatter::DisplayExpr { context: ctx, id: res });
 
         return Some(res);
+    }
+    None
+}
+
+/// Factor a univariate polynomial over ℚ as far as this module supports: peel the
+/// rational (linear) roots via [`Polynomial::factor_rational_roots`], then split each
+/// residual reducible even quartic `a·x⁴+b·x²+c` into two quadratics. Used by both the
+/// `factor` command and the rational-integration partial-fraction path so a degree-6+
+/// denominator like `x⁶-1` decomposes fully into linear × irreducible-quadratic factors.
+pub(crate) fn factor_over_rationals(poly: &Polynomial) -> Vec<Polynomial> {
+    poly.factor_rational_roots()
+        .into_iter()
+        .flat_map(|f| match split_reducible_even_quartic(&f) {
+            Some((g, h)) => vec![g, h],
+            None => vec![f],
+        })
+        .collect()
+}
+
+/// Exact rational square root: `√(p/q)` for a non-negative reduced rational is rational
+/// iff both `p` and `q` are perfect squares. Returns `None` for negatives or non-squares.
+fn rational_sqrt(r: &BigRational) -> Option<BigRational> {
+    use num_integer::Roots;
+    if r.is_negative() {
+        return None;
+    }
+    let (n, d) = (r.numer(), r.denom());
+    let (sn, sd) = (Roots::sqrt(n), Roots::sqrt(d));
+    if &(&sn * &sn) == n && &(&sd * &sd) == d {
+        Some(BigRational::new(sn, sd))
+    } else {
+        None
+    }
+}
+
+/// Split a reducible **even** quartic `a·x⁴ + b·x² + c` (no odd-power terms) into two
+/// quadratic factors over ℚ, or `None` if it is irreducible (e.g. `x⁴+1`, `x⁴-x²+1`).
+///
+/// Two reducible forms are covered:
+/// - **Biquadratic** `a(x²-r)(x²-s)`, when `a·t²+b·t+c` (t = x²) has rational roots r, s
+///   (i.e. `b²-4ac` is a rational square). Emitted as `(x²-r)·(a·x²-a·s)` so both factors
+///   have rational coefficients. Example: `x⁴+3x²+2 → (x²+1)(x²+2)`.
+/// - **Sophie-Germain** `(α x²+β x+γ)(α x²-β x+γ) = α²x⁴ + (2αγ-β²)x² + γ²`, when
+///   `α=√a`, `γ=±√c` and `β²=2αγ-b` are all rational squares. Example:
+///   `x⁴+x²+1 → (x²+x+1)(x²-x+1)`, `4x⁴+1 → (2x²+2x+1)(2x²-2x+1)`.
+///
+/// Only applied to factors that survived [`Polynomial::factor_rational_roots`], so the
+/// quartic has no rational root and the resulting quadratics are irreducible over ℚ.
+fn split_reducible_even_quartic(poly: &Polynomial) -> Option<(Polynomial, Polynomial)> {
+    use num_traits::Zero;
+    if poly.degree() != 4 {
+        return None;
+    }
+    let coeff = |i: usize| {
+        poly.coeffs
+            .get(i)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+    };
+    let (c, c1, b, c3, a) = (coeff(0), coeff(1), coeff(2), coeff(3), coeff(4));
+    // Must be a pure even quartic with non-zero leading coefficient.
+    if !c1.is_zero() || !c3.is_zero() || a.is_zero() {
+        return None;
+    }
+    let var = poly.var.clone();
+    let quad = |c0: BigRational, c1: BigRational, c2: BigRational| {
+        Polynomial::new(vec![c0, c1, c2], var.clone())
+    };
+    let two = BigRational::from_integer(2.into());
+    let four = BigRational::from_integer(4.into());
+
+    // Biquadratic: rational roots of a·t²+b·t+c (t = x²).
+    let disc = &b * &b - &four * &a * &c;
+    if let Some(sq) = rational_sqrt(&disc) {
+        let two_a = &two * &a;
+        let r = (-&b + &sq) / &two_a;
+        let s = (-&b - &sq) / &two_a;
+        // a·x⁴+b·x²+c = (x²-r)·(a·x²-a·s).
+        let f1 = quad(-r, BigRational::zero(), BigRational::one());
+        let f2 = quad(-(&a * &s), BigRational::zero(), a.clone());
+        return Some((f1, f2));
+    }
+
+    // Sophie-Germain symmetric split: α=√a, γ=±√c, β=√(2αγ-b).
+    let alpha = rational_sqrt(&a)?;
+    let root_c = rational_sqrt(&c)?;
+    for gamma in [root_c.clone(), -root_c] {
+        let beta_sq = &two * &alpha * &gamma - &b;
+        if let Some(beta) = rational_sqrt(&beta_sq) {
+            if beta.is_zero() {
+                continue; // β=0 is the biquadratic case, already handled above
+            }
+            let f1 = quad(gamma.clone(), beta.clone(), alpha.clone());
+            let f2 = quad(gamma.clone(), -beta, alpha.clone());
+            return Some((f1, f2));
+        }
     }
     None
 }
@@ -758,6 +854,44 @@ mod tests {
 
     fn s(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    #[test]
+    fn test_factor_reducible_even_quartics() {
+        // Reducible even quartics `a·x⁴+b·x²+c` split into two quadratics over ℚ.
+        // (source, expected factorization). Display orders a quadratic's constant
+        // before the `-x` term, e.g. `x^2 + 1 - x`.
+        for (src, expect) in [
+            ("x^4 + x^2 + 1", "(x^2 + x + 1) * (x^2 + 1 - x)"), // Sophie-Germain
+            ("x^4 + 3*x^2 + 2", "(x^2 + 1) * (x^2 + 2)"),       // biquadratic
+            ("x^4 - 3*x^2 + 1", "(x^2 + x - 1) * (x^2 - x - 1)"),
+            ("4*x^4 + 1", "(2 * x^2 + 2 * x + 1) * (2 * x^2 + 1 - 2 * x)"), // non-monic Sophie-Germain
+            (
+                "x^6 - 1",
+                "(x - 1) * (x + 1) * (x^2 + x + 1) * (x^2 + 1 - x)",
+            ), // transitive
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).unwrap();
+            let factored = factor(&mut ctx, expr);
+            assert_eq!(s(&ctx, factored), expect, "factor({src})");
+        }
+    }
+
+    #[test]
+    fn test_irreducible_quartics_stay_whole() {
+        // Quartics irreducible over ℚ must NOT be split (soundness).
+        for src in ["x^4 + 1", "x^4 - x^2 + 1", "x^4 + x^3 + x^2 + x + 1"] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).unwrap();
+            let factored = factor(&mut ctx, expr);
+            // `factor` returns the input unchanged (no factorization found).
+            assert!(
+                crate::poly_compare::poly_eq(&ctx, factored, expr),
+                "factor({src}) must stay whole, got {}",
+                s(&ctx, factored)
+            );
+        }
     }
 
     #[test]

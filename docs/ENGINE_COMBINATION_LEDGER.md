@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 236 (newest first)
+Active entries: 237 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
 - 2026-06-21 | `retained` | `crates/cas_api_models/src/wire_types.rs` (`parse_solve_system_list_command` ... | Retained completeness: solve([eqs], [vars]) list form routed to the existing linear-system solver
 - 2026-06-21 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::inverse` + `MatrixInverseOutcome`, | Retained completeness: matrix inverse via adjugate/determinant (numeric exact)
+- 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`split_reducible_even_quartic`, `rational_sq... | Retained capability: factor reducible even quartics over ℚ
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10154,3 +10155,45 @@ Active entries: 236 (newest first)
     irrational/complex — a genuinely larger effort), and the SYMBOLIC non-singular inverse
     `[[a,b],[c,d]]→[[d,-b],[-c,a]]/(ad-bc)` (kept symbolic; the quotient form trips the
     growth guard — would need an always-keep/didactic exemption).
+
+## 2026-06-21 - Retained capability: factor reducible even quartics over ℚ
+- area:
+  - `crates/cas_math/src/factor.rs` (`split_reducible_even_quartic`, `rational_sqrt`,
+    `factor_over_rationals`; `factor_polynomial` now routes through `factor_over_rationals`)
+- status:
+  - `retained` (capability: `factor` splits reducible even quartics `a·x⁴+b·x²+c` into two
+    quadratics over ℚ; precursor for the `1/(x⁶-1)` rational-integration family)
+- capture:
+  - investment_class: capability (pre-calculus factorization)
+  - cell: `factor(x⁴+x²+1)→(x²+x+1)(x²-x+1)` (Sophie-Germain),
+    `factor(x⁴+3x²+2)→(x²+1)(x²+2)` (biquadratic), `factor(x⁴-3x²+1)→(x²+x-1)(x²-x-1)`,
+    `factor(4x⁴+1)→(2x²+2x+1)(2x²-2x+1)` (non-monic), and transitively
+    `factor(x⁶-1)→(x-1)(x+1)(x²+x+1)(x²-x+1)`. Irreducible quartics `x⁴+1`, `x⁴-x²+1` (Φ12),
+    `x⁴+x³+x²+x+1` (Φ5) stay whole (soundness).
+  - behavior_change_expected: `factor` output changes for reducible quartics; calculus
+    guardrail+pressure huella structurally NONE; workspace+clippy+fmt green
+- observed (frontier-audit P2 "Cuárticas+ irreducibles", line ~620):
+  - `factor_rational_roots` only peels LINEAR (rational-root) factors, leaving a reducible
+    even quartic like `x⁴+x²+1` whole. The two closed-form factorizations are: biquadratic
+    `a(x²-r)(x²-s)` when `a·t²+b·t+c` (t=x²) has rational roots; Sophie-Germain
+    `(αx²+βx+γ)(αx²-βx+γ)` with `α=√a`, `γ=±√c`, `β²=2αγ-b` all rational squares.
+  - IMPORTANT re-diagnosis: this does NOT close `integrate(1/(x⁶-1))`. The rational
+    integrator has its OWN factorization (`even_quartic_descent`/`split_general_quartic` in
+    the block-12 backend) that already splits the quartic; `general_rational_partial_fraction_antiderivative`
+    returns Some for `1/(x⁶-1)` but its VERIFICATION fails (wrong antiderivative when linear
+    factors accompany the even quartic; the standalone `1/(x⁴+x²+1)` verifies). So the
+    integration blocker is a partial-fraction CONSTRUCTION bug, not factorization.
+- retained learning:
+  - "doesn't integrate" can have THREE distinct causes that look identical at the CLI
+    (residual): missing factorization, missing partial-fraction support, OR a computed-but-
+    verification-rejected wrong antiderivative. Probe the backend function directly
+    (`is_some`) AND its `verification_status` to tell them apart before picking a fix — here
+    the backend returned Some with `verify=Failed`, redirecting the fix from "factor harder"
+    (wrong) to "fix the mixed linear+quadratic partial-fraction construction" (right). The
+    verification gate makes the wrong answer an HONEST residual, not unsound.
+  - `factor_rational_roots` is contractually "peel rational (linear) roots"; don't overload
+    it. A separate `factor_over_rationals` (rational roots + quartic split) keeps the
+    linear-root callers untouched while giving `factor` the fuller factorization.
+  - next iteration: fix the block-12 `mixed_partial_fraction_terms` / coefficient solve so
+    the composed even-quartic case (`1/(x⁶-1)`, `1/(x·(x⁴+x²+1))`) verifies — that closes the
+    audit's cuárticas integration item.

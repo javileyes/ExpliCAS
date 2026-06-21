@@ -631,6 +631,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   integrales definidas que crucen 0; `1/(x⁶−1)` levantar el cap de
   factores del backend racional; `1/(x⁵−1)` las cuárticas ciclotómicas
   Φ5 con √5)*
+  *(precursor `factor` 2026-06-21 PENDING_HASH_QF: `factor` ahora parte
+  las cuárticas pares REDUCIBLES `a·x⁴+b·x²+c` en dos cuadráticas sobre ℚ
+  — biquadrática `(x²+r)(x²+s)` y Sophie-Germain `(x²+ex+f)(x²-ex+f)`:
+  `factor(x⁴+x²+1)→(x²+x+1)(x²-x+1)`, `factor(4x⁴+1)→(2x²+2x+1)(2x²-2x+1)`,
+  `factor(x⁶-1)→(x-1)(x+1)(x²+x+1)(x²-x+1)`; las irreducibles `x⁴+1`,
+  `x⁴-x²+1`, Φ5 quedan enteras. Re-diagnóstico del hueco de INTEGRACIÓN:
+  NO es el cap de factores ni la factorización — el backend racional
+  `general_rational_partial_fraction_antiderivative` YA factoriza la
+  cuártica (`even_quartic_descent` parte `x⁴+x²+1`) y produce una
+  antiderivada para `1/(x⁶-1)`, pero la VERIFICACIÓN por derivación FALLA
+  (antiderivada incorrecta cuando hay factores lineales JUNTO a la cuártica
+  par; `1/(x⁴+x²+1)` sola SÍ verifica). El bloqueo es un bug en la
+  construcción de fracciones parciales mixtas lineal+cuadrática del
+  backend, no la factorización — siguiente peldaño/ciclo.)*
 - [x] **(F) Composición de límites con interno conocido**:
   `e^(1/x) en 0±` (→ ∞ / 0), `atan(1/x) en 0+` (→ π/2) fallan aunque
   `1/x → ±∞` resuelve; regla de composición continua/monótona barata
