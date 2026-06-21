@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 243 (newest first)
+Active entries: 244 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -128,6 +128,7 @@ Active entries: 243 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`extract_geometric_term`, | Retained capability: convergent infinite geometric series closed form
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_geometric_rational_sum... | Retained capability: finite geometric sum with general rational ratio
 - 2026-06-21 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`try_univariate_euclidean_gcd`; the | Soundness fix: poly gcd command returned 1 for expanded polynomials
+- 2026-06-21 | `retained` | `crates/cas_engine/src/symbolic_calculus_call_support.rs` (`try_desugar_highe... | Higher-order and mixed-partial diff syntax: diff(f, x, n) / diff(f, x, y)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10439,3 +10440,52 @@ Active entries: 243 (newest first)
     output to MONIC (divide by leading coeff) for a canonical form.
   - residual (peldaño): multivariate `gcd` clean-form via the exact path, and `gcd`/`pgcd`
     of more-than-two arguments.
+
+## 2026-06-21 - Higher-order and mixed-partial diff syntax: diff(f, x, n) / diff(f, x, y)
+- area:
+  - `crates/cas_engine/src/symbolic_calculus_call_support.rs` (`try_desugar_higher_order_diff`)
+  - `crates/cas_engine/src/rules/calculus/diff_rule.rs` (`HigherOrderDiffRule`) + registration in
+    `rules/calculus/mod.rs`
+  - `crates/cas_session_core/src/eval.rs` (arity gate `"diff" => arity >= 2`)
+- status:
+  - `retained` (new Phase-1 capability: the cheapest, most visible P1 win in
+    `CALCULUS_ENGINE_DEVELOPMENT_PHASES.md`)
+- capture:
+  - investment_class: capability (new public syntax)
+  - primary_dimension: north_star_completeness (Phase 1 elementary differentiation)
+  - cell: `diff(x^4, x, 2) = 12·x^2`, `diff(sin(x), x, 4) = sin(x)`, `diff(exp(x), x, 3) = e^x`,
+    `diff(x^3*y^2, x, y) = 6·y·x^2` (mixed partial ∂²/∂y∂x), `diff(x^3*y^2, x, x) = 6·x·y^2`,
+    `diff(x^3*y^2, x, 2, y, 2) = 12·x` (SymPy mixed-count syntax). `diff(f, x, 1)` folds to the
+    ordinary first derivative; `diff(f, x)` and the 1-arg error are unchanged.
+  - rejects (honest, left unevaluated — never a wrong answer): `diff(f, 2, x)` (a count may not
+    lead the variable list), `diff(f, x, 0)` / `diff(f, x, -1)` (order < 1), `diff(f, x, 1/2)`
+    (fractional/non-integer order — fractional calculus is out of scope).
+  - behavior_change_expected: `diff` with 3+ args flips from the targeted
+    "diff requiere variable explícita" error to the evaluated higher-order / mixed-partial
+    derivative. Guardrail+pressure huella structurally NONE except
+    `calculus_integrate_backend_mode_boundary.filtered_out 2220 -> 2225` (+5 = the five new
+    cas_engine unit tests sharing that test binary; a harness bookkeeping count, not an engine
+    metric) and timing-noise in `derive_didactic_audit` hotspot lists. Workspace 12229 passed /
+    0 failed; clippy/fmt green.
+- observed:
+  - the whole differentiation pipeline (presentation routes + generic fallback) keys off a
+    two-argument `NamedVarCall` from `try_extract_diff_call`, which only matches `args.len()==2`.
+    Rather than thread an order through every route, desugar `diff(f, x, n)` / `diff(f, x, y)`
+    into nested two-argument `diff(diff(...))` so each layer flows through the EXISTING (already
+    trusted) machinery. `diff(f, x, 3) == diff(diff(diff(f, x), x), x)` verified byte-identical
+    against manual nesting for `x^6`, `cos`, `e^(2x)`, `1/x`, and a bivariate target.
+  - SymPy count semantics implemented uniformly: walk the arg tail; a Variable contributes one
+    step and becomes the "current" variable; a positive-integer literal repeats the current
+    variable `n-1` more times (it was already applied once). An integer leading the tail has no
+    variable to repeat → reject.
+- retained learning:
+  - to add a higher-arity / variadic form of an existing rule family, DESUGAR to the form the
+    family already trusts (nested two-argument calls here) instead of teaching every route the
+    new arity. The new behavior is then correct by construction and adds ~zero risk to the
+    incumbent paths — the existing 2-arg routes are reached unchanged.
+  - a "new capability" cycle can still be huella-clean: routing through the trusted lower-arity
+    path leaves every existing fixture byte-identical; the only structural delta is the
+    test-binary `filtered_out` bookkeeping from the new unit tests, which is expected and named.
+  - residual (peldaño): `diff(f, x, 0) = f` and fractional/symbolic order are deliberately left
+    as honest residuals; higher-order *step narration* (showing each successive derivative) is a
+    separate educational cycle — today only the final form is shown.

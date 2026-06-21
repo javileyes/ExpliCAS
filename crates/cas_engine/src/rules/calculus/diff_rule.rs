@@ -1,5 +1,6 @@
 use crate::define_rule;
-use crate::symbolic_calculus_call_support::try_extract_diff_call;
+use crate::rule::Rewrite;
+use crate::symbolic_calculus_call_support::{try_desugar_higher_order_diff, try_extract_diff_call};
 
 use super::acosh_derivative_routes::constant_scaled_acosh_derivative_rewrite;
 use super::arctan_sqrt_positive_affine_derivative_routes::arctan_sqrt_positive_affine_derivative_rewrite;
@@ -48,6 +49,18 @@ define_rule!(
             return Some(rewrite);
         }
         supported_integral_diff_shortcut_rewrite(ctx, &call, target)
+    }
+);
+
+define_rule!(
+    HigherOrderDiffRule,
+    "Higher-Order Differentiation",
+    |ctx, expr| {
+        // `diff(f, x, n)` / `diff(f, x, y)` desugar to nested two-argument diffs so the
+        // ordinary differentiation cascade evaluates each layer. Two-argument calls are
+        // left to `DiffRule` (the desugar only matches 3+ args).
+        let desugared = try_desugar_higher_order_diff(ctx, expr)?;
+        Some(Rewrite::new(desugared).desc("derivada de orden superior"))
     }
 );
 

@@ -75,7 +75,9 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "simplify" | "factor" | "expand" | "expand_log" => arity == 1,
         "collect" => arity == 2,
         // Symbolic calculus calls handled by engine calculus rules.
-        "diff" => arity == 2,
+        // 2 args = `diff(f, x)`; 3+ args = higher-order / mixed-partial `diff(f, x, n)`
+        // / `diff(f, x, y)` desugared by `HigherOrderDiffRule`.
+        "diff" => arity >= 2,
         "integrate" => matches!(arity, 1 | 2 | 4),
         "sum" | "product" => arity == 4,
         // Number-theory calls dispatched by engine/math support.
@@ -192,6 +194,9 @@ mod unknown_function_tests {
         assert!(is_known_eval_engine_function("expand_log", 1));
         assert!(is_known_eval_engine_function("collect", 2));
         assert!(is_known_eval_engine_function("diff", 2));
+        assert!(is_known_eval_engine_function("diff", 3));
+        assert!(is_known_eval_engine_function("diff", 5));
+        assert!(!is_known_eval_engine_function("diff", 1));
         assert!(is_known_eval_engine_function("integrate", 1));
         assert!(is_known_eval_engine_function("integrate", 2));
         assert!(is_known_eval_engine_function("integrate", 4));

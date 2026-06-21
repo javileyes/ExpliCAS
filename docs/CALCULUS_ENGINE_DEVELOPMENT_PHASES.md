@@ -67,9 +67,12 @@ cuando, los tres se cumplen:
   umbral "serio Y educativo" no se cruza.*
 
 ### Wins P1 baratos y de alto ROI (intercalar con los gatekeepers)
-- **Sintaxis `diff(expr, x, n)` (orden superior) y `diff(expr, x, y)` (parcial-mixta)** — S
-  cada una. Hoy ERROR; cableado iterado sobre maquinaria existente. (`try_extract_diff_call`
-  hard-codea `args.len()==2`.) **El win más visible y barato.**
+- **Sintaxis `diff(expr, x, n)` (orden superior) y `diff(expr, x, y)` (parcial-mixta)** —
+  ✅ **ATERRIZADO 2026-06-21.** `HigherOrderDiffRule` desugara `diff(f, x, n)`/`diff(f, x, y)`
+  (y la sintaxis de conteos mixtos SymPy `diff(f, x, 2, y, 2)`) a `diff` anidados de dos
+  argumentos, reusando toda la cascada de diferenciación existente. Órdenes 0/negativo,
+  fraccionario y conteo-lidera-lista quedan como residuales honestos (sin evaluar). Peldaño:
+  narración paso-a-paso de las derivadas sucesivas (hoy solo se muestra la forma final).
 - **Sustitución-u general para `g` transcendente** — M. `cos(x)·e^(sin x)`, `cos(ln x)/x`,
   `e^x·e^(e^x)` residuales aunque elementales (solo se matchea `g` polinómica).
 - **Comando `taylor()`/`series()` + linealidad de sumatorios** — M+S. Series está a ~28%

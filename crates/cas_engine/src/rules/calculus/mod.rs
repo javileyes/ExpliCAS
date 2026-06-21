@@ -224,7 +224,7 @@ pub(crate) use arctan_sqrt_additive_derivative_presentation::{
     arctan_sqrt_small_additive_elementary_derivative_presentation_with_domain,
 };
 pub(crate) use arctan_sqrt_quotient_derivative_presentation::arctan_sqrt_positive_polynomial_quotient_derivative_for_diff_call;
-pub use diff_rule::{DiffRule, IntegralDiffShortcutRule};
+pub use diff_rule::{DiffRule, HigherOrderDiffRule, IntegralDiffShortcutRule};
 pub(crate) use direct_symbolic_calculus_presimplify_routes::try_resolve_direct_symbolic_calculus_before_general_simplify;
 pub(crate) use domain_checks::diff_target_known_undefined_over_reals;
 use elementary_sqrt_derivative_presentation::signed_elementary_sqrt_polynomial_derivative_presentation;
@@ -300,6 +300,7 @@ pub(crate) use tanh_primitive_derivative_presentation::diff_target_is_tanh_cubic
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(IntegrateRule));
     simplifier.add_rule(Box::new(IntegralDiffShortcutRule));
+    simplifier.add_rule(Box::new(HigherOrderDiffRule));
     simplifier.add_rule(Box::new(DiffRule));
     simplifier.add_rule(Box::new(summation::SumRule));
     simplifier.add_rule(Box::new(summation::ProductRule));

@@ -150,6 +150,43 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_text_simplify_with_session_evaluates_higher_order_diff() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "diff(x^4, x, 2)",
+            false,
+        )
+        .expect("higher-order diff succeeds");
+        // Second derivative of x^4 is 12·x^2.
+        assert!(out.contains("12"), "{out}");
+        assert!(out.contains("x^2"), "{out}");
+        assert!(!out.contains("diff"), "{out}");
+    }
+
+    #[test]
+    fn evaluate_eval_text_simplify_with_session_evaluates_mixed_partial_diff() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "diff(x^3*y^2, x, y)",
+            false,
+        )
+        .expect("mixed-partial diff succeeds");
+        // d/dy d/dx (x^3 y^2) = d/dy (3 x^2 y^2) = 6 x^2 y.
+        assert!(out.contains('6'), "{out}");
+        assert!(out.contains("x^2"), "{out}");
+        assert!(out.contains('y'), "{out}");
+        assert!(!out.contains("diff"), "{out}");
+    }
+
+    #[test]
     fn evaluate_eval_text_simplify_with_session_accepts_collect_function() {
         let mut engine = cas_solver::runtime::Engine::new();
         let mut session = SessionState::new();
