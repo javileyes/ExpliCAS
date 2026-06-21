@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 246 (newest first)
+Active entries: 247 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -131,6 +131,7 @@ Active entries: 246 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_engine/src/symbolic_calculus_call_support.rs` (`try_desugar_highe... | Higher-order and mixed-partial diff syntax: diff(f, x, n) / diff(f, x, y)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`, helpers | Summation linearity: sum of any polynomial summand by Faulhaber per monomial
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_series_at_zero_expr` public ... | Expose taylor()/series() command over the internal Maclaurin engine
+- 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_at_zero_with_rational`, `rec... | Rational/geometric Taylor: series of 1/(1-x), 1/(1+x^2) for the taylor() command
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10587,3 +10588,46 @@ Active entries: 246 (newest first)
     or the geometric expansion; non-zero expansion point `taylor(f, x, a, n)` via the shift
     `f(x) -> f(a + h)`; and a prettier per-term display (today `Polynomial::to_expr` factors a
     common denominator: `1/24·(x^4 + ... + 24)`).
+
+## 2026-06-21 - Rational/geometric Taylor: series of 1/(1-x), 1/(1+x^2) for the taylor() command
+- area:
+  - `crates/cas_math/src/limits_support.rs` (`taylor_at_zero_with_rational`, `reciprocal_series`;
+    the public `taylor_series_at_zero_expr` wrapper now routes through the rational extension)
+- status:
+  - `retained` (extends today's `taylor()`/`series()` command to rational summands)
+- capture:
+  - investment_class: capability (series of rational functions)
+  - primary_dimension: north_star_completeness (Phase 1 series)
+  - cell: `taylor(1/(1-x), x, 0, 4) = 1 + x + x^2 + x^3 + x^4`,
+    `taylor(1/(1+x), x, 0, 4) = 1 - x + x^2 - x^3 + x^4`,
+    `taylor(1/(1+x^2), x, 0, 6) = 1 - x^2 + x^4 - x^6`, `taylor(1/(2-x), x, 0, 3)`,
+    `taylor(1/(1-x)^2, x, 0, 3) = 1 + 2x + 3x^2 + 4x^3`, `taylor(exp(x)/(1-x), x, 0, 3)`
+    (analytic numerator × rational denominator). `1/x`, `1/x^2` (pole at 0) stay residual;
+    `1/(x-x)` folds to `undefined`.
+  - behavior_change_expected: `taylor()`/`series()` of a quotient or negative integer power flips
+    from unevaluated to its Maclaurin polynomial. Guardrail huella structurally NONE except
+    `calculus_integrate_backend_mode_boundary.filtered_out 2228 -> 2229` (+1 new cas_engine test);
+    pressure NONE. **Limits are completely unaffected**: the rational extension is a SEPARATE
+    function the command wrapper calls; the limit evaluator keeps calling the original
+    `taylor_at_zero`. Workspace 12238 passed / 0 failed; clippy/fmt green.
+- observed:
+  - `taylor_at_zero` (the limit engine's series) only handled analytic forms; a quotient returned
+    None. Added `taylor_at_zero_with_rational = taylor_at_zero + Div + negative-integer-Pow`,
+    using a power-series reciprocal `1/den` (recurrence `r_0 = 1/d_0`,
+    `r_k = -(1/d_0)Σ d_i r_{k-i}`) which requires `den(0) ≠ 0` and so DECLINES poles at 0.
+  - keeping the rational branch in a separate function (not folded into `taylor_at_zero`) is what
+    makes it huella-safe: the limit quotient rule, which calls `taylor_at_zero` on numerator and
+    denominator independently, sees no change.
+- retained learning:
+  - when extending an internal engine that a DIFFERENT feature also depends on, branch the
+    extension into a new function the new caller routes through, leaving the shared callers on the
+    original. Isolation by call graph (not by flag) is the cleanest way to add capability with
+    zero regression risk to the incumbent consumer — confirmed here by limits staying byte-identical.
+  - the power-series reciprocal recurrence is the one primitive that unlocks ALL rational Taylor
+    (quotients and negative powers reduce to it); gating it on `den(0) ≠ 0` is exactly the
+    analyticity condition, so poles decline for free.
+  - residual (peldaño): non-zero expansion point `taylor(f, x, a, n)` (shift `f(a+h)`); series of
+    `arctan`/`asin` via their derivative's geometric series if ever wanted as closed sums; and the
+    transcendental u-substitution integration win (`cos(x)·e^(sin x)`) remains open — it needs a
+    sound exact verifier in the 29k-line block-12 backend, a properly-scoped larger cycle, not a
+    bounded one.

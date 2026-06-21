@@ -4478,8 +4478,70 @@ pub fn taylor_series_at_zero_expr(
     var_name: &str,
     order: usize,
 ) -> Option<ExprId> {
-    let series = taylor_at_zero(ctx, expr, var_name, order)?;
+    let series = taylor_at_zero_with_rational(ctx, expr, var_name, order)?;
     Some(series.to_expr(ctx))
+}
+
+/// Power-series reciprocal `1/den` to `order`, via the standard recurrence
+/// `r_0 = 1/d_0`, `r_k = -(1/d_0)·Σ_{i=1}^{k} d_i·r_{k-i}`. Requires `den(0) ≠ 0`
+/// (returns `None` otherwise — a pole at 0 has no Maclaurin expansion).
+fn reciprocal_series(den: &Polynomial, order: usize, var_name: &str) -> Option<Polynomial> {
+    use num_traits::{One, Zero};
+    let d0 = den.coeffs.first().cloned().filter(|c| !c.is_zero())?;
+    let mut r = vec![BigRational::zero(); order + 1];
+    r[0] = BigRational::one() / d0.clone();
+    for k in 1..=order {
+        let mut acc = BigRational::zero();
+        for i in 1..=k {
+            let di = den.coeffs.get(i).cloned().unwrap_or_else(BigRational::zero);
+            acc += di * r[k - i].clone();
+        }
+        r[k] = -acc / d0.clone();
+    }
+    Some(Polynomial::new(r, var_name.to_string()))
+}
+
+/// Maclaurin expansion extended to RATIONAL summands: the analytic `taylor_at_zero`
+/// plus quotients `num/den` and negative integer powers `base^(-m)` whose denominator
+/// is non-zero at 0 (so the function is analytic there). Kept SEPARATE from
+/// `taylor_at_zero` so the limit evaluator's series path is unaffected — only the public
+/// `taylor()`/`series()` command sees the rational extension.
+fn taylor_at_zero_with_rational(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+    order: usize,
+) -> Option<Polynomial> {
+    if let Some(series) = taylor_at_zero(ctx, expr, var_name, order) {
+        return Some(series);
+    }
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) => {
+            let num_series = taylor_at_zero_with_rational(ctx, num, var_name, order)?;
+            let den_series = taylor_at_zero_with_rational(ctx, den, var_name, order)?;
+            let recip = reciprocal_series(&den_series, order, var_name)?;
+            Some(truncate_polynomial(
+                &num_series.mul(&recip),
+                order,
+                var_name,
+            ))
+        }
+        Expr::Pow(base, exponent) => {
+            // base^(negative integer) = 1 / base^|n|.
+            let exp_value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+            if !exp_value.is_integer() || !exp_value.is_negative() {
+                return None;
+            }
+            let m: u32 = (-exp_value.to_integer()).try_into().ok()?;
+            let base_series = taylor_at_zero_with_rational(ctx, base, var_name, order)?;
+            let mut den_pow = Polynomial::one(var_name.to_string());
+            for _ in 0..m {
+                den_pow = truncate_polynomial(&den_pow.mul(&base_series), order, var_name);
+            }
+            reciprocal_series(&den_pow, order, var_name)
+        }
+        _ => None,
+    }
 }
 
 fn taylor_at_zero(ctx: &Context, expr: ExprId, var_name: &str, order: usize) -> Option<Polynomial> {
@@ -9918,6 +9980,48 @@ mod tests {
             id: expr,
         }
         .to_string()
+    }
+
+    fn assert_rational_taylor(src: &str, order: usize, expected: &[(i64, i64)]) {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, src);
+        let poly = taylor_at_zero_with_rational(&ctx, expr, "x", order)
+            .unwrap_or_else(|| panic!("{src} should expand"));
+        for (k, (num, den)) in expected.iter().enumerate() {
+            let coeff = poly
+                .coeffs
+                .get(k)
+                .cloned()
+                .unwrap_or_else(|| BigRational::new(0.into(), 1.into()));
+            assert_eq!(
+                coeff,
+                BigRational::new((*num).into(), (*den).into()),
+                "{src}: coefficient of x^{k}"
+            );
+        }
+    }
+
+    #[test]
+    fn rational_taylor_matches_known_geometric_series() {
+        assert_rational_taylor("1/(1-x)", 4, &[(1, 1), (1, 1), (1, 1), (1, 1), (1, 1)]);
+        assert_rational_taylor("1/(1+x)", 4, &[(1, 1), (-1, 1), (1, 1), (-1, 1), (1, 1)]);
+        assert_rational_taylor("1/(1+x^2)", 4, &[(1, 1), (0, 1), (-1, 1), (0, 1), (1, 1)]);
+        assert_rational_taylor("1/(2-x)", 3, &[(1, 2), (1, 4), (1, 8), (1, 16)]);
+        assert_rational_taylor("1/(1-x)^2", 3, &[(1, 1), (2, 1), (3, 1), (4, 1)]);
+        assert_rational_taylor("x/(1-x)", 4, &[(0, 1), (1, 1), (1, 1), (1, 1), (1, 1)]);
+    }
+
+    #[test]
+    fn rational_taylor_declines_pole_at_zero() {
+        // 1/x and 1/(x - 1 + 1) style poles at 0 have no Maclaurin expansion.
+        for src in ["1/x", "1/x^2", "(1+x)/x"] {
+            let mut ctx = Context::new();
+            let expr = parse_expr(&mut ctx, src);
+            assert!(
+                taylor_at_zero_with_rational(&ctx, expr, "x", 4).is_none(),
+                "{src} has a pole at 0 and must not expand"
+            );
+        }
     }
 
     fn assert_number_expr(ctx: &Context, expr: ExprId, numerator: i64, denominator: i64) {

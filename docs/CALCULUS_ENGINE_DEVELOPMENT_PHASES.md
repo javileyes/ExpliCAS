@@ -82,9 +82,11 @@ cuando, los tres se cumplen:
   `sum(k^2+k)`, `sum(3k^2-k+1)`, con cota inferior simbólica.
   ✅ **`taylor()`/`series()` EXPUESTOS 2026-06-21**: `TaylorRule` sobre el motor Maclaurin
   interno (`taylor_at_zero`) — `taylor(exp(x), x, 0, 4)`, `sin`/`cos`/`tan`/`ln(1+x)`/`atan`/
-  `asin` + polinomios, productos, composiciones. Residuales honestos: punto ≠ 0, funciones
-  racionales (`1/(1-x)`), orden negativo. **El motor de series univariable que esto crea
-  también desbloquea el Taylor de la Fase 3.**
+  `asin` + polinomios, productos, composiciones. ✅ **Racionales/geométricos AÑADIDOS
+  2026-06-21** (`taylor_at_zero_with_rational`, recíproco de series, aislado del path de
+  límites): `1/(1-x)`, `1/(1+x^2)`, `1/(1-x)^2`, `exp(x)/(1-x)`. Residuales honestos: punto ≠ 0,
+  polos en 0 (`1/x`), orden negativo. **El motor de series univariable que esto crea también
+  desbloquea el Taylor de la Fase 3.**
 
 ### P2 / P3 (cobertura y pulido educativo)
 - Verifier false-negative de `1/(x^6-1)` (la antiderivada YA es correcta; falla al no reducir

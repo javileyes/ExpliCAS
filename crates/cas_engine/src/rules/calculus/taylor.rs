@@ -100,4 +100,25 @@ mod tests {
             assert!(rendered.contains(needle), "{rendered}");
         }
     }
+
+    #[test]
+    fn expands_geometric_rational_function() {
+        let mut ctx = Context::new();
+        let expr = parse("taylor(1/(1-x), x, 0, 4)", &mut ctx).expect("parse");
+        let (target, var, order) = try_extract_taylor_call(&mut ctx, expr).expect("taylor call");
+        let series =
+            cas_math::limits_support::taylor_series_at_zero_expr(&mut ctx, target, &var, order)
+                .expect("series");
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: series
+            }
+        );
+        // 1/(1-x) = 1 + x + x^2 + x^3 + x^4.
+        for needle in ["x^2", "x^3", "x^4"] {
+            assert!(rendered.contains(needle), "{rendered}");
+        }
+    }
 }
