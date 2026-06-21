@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 261 (newest first)
+Active entries: 262 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -146,6 +146,7 @@ Active entries: 261 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | Affine arithmetic-geometric: c·k·r^k and the distributed (αk+β)·r^k
 - 2026-06-21 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` | G1 gatekeeper sub-ciclo: 1/(x^6-1) integra (subir el budget del zero-test)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Σ p(k)·r^k con cofactor polinómico de grado ≤2 (k²·r^k y combinaciones)
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Σ p(k)/r^k: la forma Div (cociente) de la suma aritmético-geométrica fraccionaria
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11187,3 +11188,49 @@ Active entries: 261 (newest first)
     forma Div/potencia-negativa del factor geométrico (`k^p/2^k`) a `(1/2)^k` antes de `SumRule` para
     cerrar la ratio fraccionaria en grado ≥1-Div y grado 2; (3) cofactor polinómico de grado ≥3 (Sₚ
     general vía el operador (r·d/dr)^p sobre Σr^k) si la cola lo pide.
+
+## 2026-06-21 - Σ p(k)/r^k: la forma Div (cociente) de la suma aritmético-geométrica fraccionaria
+- area:
+  - `crates/cas_math/src/summation_support.rs`
+    (`try_build_arithmetic_geometric_sum`: el bucle de hojas acepta una hoja `Div(num, den)` con
+    `den` geométrico → geométrica = (1/dc, 1/dr) y `num` al cofactor; guard `len < 2` relajado a
+    `is_empty` porque `mul_leaves` no parte un único `Div(p(k), r^k)`)
+- status:
+  - `retained` (capability P1: cierra la suma aritmético-geométrica escrita como cociente
+    `p(k)/r^k`, p.ej. el clásico `Σ k/2^k` finito — antes residual)
+- capture:
+  - investment_class: capability (Fase 1, win P1 — linealidad/cierre de sumatorios)
+  - primary_dimension: north_star_completeness (continuación directa del ciclo de cofactor grado-2)
+  - secondary_dimension: reuse_value (reusa `extract_geometric_term` sobre el DENOMINADOR; el resto
+    del builder grado-≤2 ya estaba)
+  - cell: `sum(k/2^k, k, 1, n)` (`Σ k/2^k 1..4 = 13/8` verificado), `sum(k/3^k)`, `sum((2k+1)/2^k)`,
+    `sum(3k/2^k)`, `sum((k+1)/2^k)`, cota inferior 0/1 → forma cerrada exacta (fold vs fuerza bruta
+    BigRational). `extract_geometric_term` lee la ratio 1/r del denominador y el numerador es el cofactor.
+  - behavior_change_expected: los cocientes `p(k)/r^k` (p polinomio grado 1, r entero ≥2) pasan de
+    residual a forma cerrada. Huella guardrail+pressure estructuralmente NONE.
+  - SOUNDNESS: misma identidad exacta `BigRational` que el ciclo previo; el cociente solo cambia la
+    ratio a 1/r vía `recip()`. Regla sintáctica/de presentación → el gate de fase NO aplica.
+- observed:
+  - `mul_leaves` NO descompone `Div`: `k/2^k` llega como una sola hoja `Div(k, 2^k)`, por eso el
+    guard `len < 2` la rechazaba antes de mirarla. `extract_geometric_term` ya cubría `Div(CONST,
+    geom)` (`1/2^k`); el hueco era `Div(POLINOMIO, geom)`.
+  - RESIDUAL HONESTO (peldaño, NO regresión): la ratio fraccionaria en GRADO 2 (`k²/2^k`,
+    `k²·(1/2)^k`) sigue residual. El builder produce el candidato correcto (ratio 1/2, S₂), pero el
+    orquestador OSCILA entre las formas Div / potencia-negativa / `(1/2)^k` del factor geométrico y
+    el nodo `sum` no se estabiliza — MISMA clase que la oscilación prónica del ciclo anterior
+    (concern del orquestador, clase A, no de la familia de sumas). Grado 1 fraccionario sí converge.
+  - RESIDUAL HONESTO #2 (peldaño): la suma INFINITA aritmético-geométrica convergente (`Σ_{1}^{∞}
+    k/2^k = 2`) sigue residual: `try_convergent_infinite_geometric_sum` solo cubre la geométrica
+    pura; extenderla al caso aritmético-geométrico es un peldaño separado y acotado.
+- retained learning:
+  - una FAMILIA de suma escrita como cociente vs producto son la misma matemática pero distinto
+    árbol: `mul_leaves` parte `Mul` pero no `Div`, así que un guard `len < 2` esconde el caso
+    cociente de una sola hoja. Al añadir una familia producto, comprueba siempre la grafía `Div`
+    equivalente (a menudo es la forma canónica del motor para ratio < 1).
+  - el límite del cierre end-to-end no es el builder sino la convergencia del ORQUESTADOR: grado 1
+    fraccionario converge, grado 2 fraccionario no (misma oscilación que los prónicos). La frontera
+    "grado del cofactor × representación del factor geométrico" es la intención del peldaño de
+    estabilización del orquestador (clase A) que unificaría prónicos + fraccionario-grado-2.
+  - residual (peldaño): (1) suma infinita aritmético-geométrica convergente (`Σ k·r^k`, |r|<1);
+    (2) la estabilización factor↔distribuye / Div↔potencia-negativa del orquestador que cerraría
+    a la vez prónicos k(k±1) y fraccionario grado 2.

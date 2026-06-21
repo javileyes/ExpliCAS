@@ -1508,9 +1508,11 @@ pub fn try_build_arithmetic_geometric_sum(
         return None;
     }
     // Flatten the product: exactly one geometric `c·r^k`; everything else forms a polynomial
-    // cofactor p(k) in the index (the bare `k`, `k²`, and constant factors).
+    // cofactor p(k) in the index (the bare `k`, `k²`, and constant factors). A single
+    // `Div(p(k), r^k)` leaf (e.g. `k/2^k`) is the geometric written with a negative exponent —
+    // `mul_leaves` does not split it, so `len == 1` is admissible when that leaf is such a quotient.
     let leaves = expr_nary::mul_leaves(ctx, summand);
-    if leaves.len() < 2 {
+    if leaves.is_empty() {
         return None;
     }
     let mut geometric: Option<(BigRational, BigRational)> = None;
@@ -1521,6 +1523,20 @@ pub fn try_build_arithmetic_geometric_sum(
                 return None;
             }
             geometric = Some((coefficient, ratio));
+        } else if let Expr::Div(num, den) = *ctx.get(leaf) {
+            // `num / (dc·dr^k) = num · (1/dc)·(1/dr)^k`: the denominator carries the geometric, the
+            // numerator joins the polynomial cofactor. Declines (numerator → cofactor) when the
+            // denominator is not geometric, so `1/(k+1)` etc. fall through to `from_expr` failure.
+            match extract_geometric_term(ctx, den, var) {
+                Some((dc, dr)) if !dc.is_zero() && !dr.is_zero() && !dr.is_one() => {
+                    if geometric.is_some() {
+                        return None;
+                    }
+                    geometric = Some((dc.recip(), dr.recip()));
+                    cofactor_leaves.push(num);
+                }
+                _ => cofactor_leaves.push(leaf),
+            }
         } else {
             cofactor_leaves.push(leaf);
         }
@@ -2939,6 +2955,44 @@ mod tests {
                     BigRational::from_integer(brute.into()),
                     "sum({summand}, k, {start}, {n})"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn fractional_quotient_arithmetic_geometric_sums_match_brute_force() {
+        // The Div spelling `p(k)/r^k` of a fractional-ratio arithmetic-geometric sum (e.g. the
+        // textbook Σ k/2^k → 2). `mul_leaves` keeps the quotient as one leaf, so the builder reads
+        // the geometric off the DENOMINATOR (ratio 1/r) and the numerator as the cofactor.
+        type BruteTerm = fn(i64) -> BigRational;
+        let cases: [(&str, BruteTerm); 3] = [
+            ("k/2^k", |k| {
+                BigRational::new(k.into(), 2i64.pow(k as u32).into())
+            }),
+            ("k/3^k", |k| {
+                BigRational::new(k.into(), 3i64.pow(k as u32).into())
+            }),
+            ("(2*k+1)/2^k", |k| {
+                BigRational::new((2 * k + 1).into(), 2i64.pow(k as u32).into())
+            }),
+        ];
+        for (summand, term) in cases {
+            for (start, n) in [(1i64, 5i64), (2, 6), (1, 7)] {
+                let mut brute = BigRational::from_integer(0.into());
+                for k in start..=n {
+                    brute += term(k);
+                }
+                let mut ctx = Context::new();
+                let src = format!("sum({summand}, k, {start}, m)");
+                let full = cas_parser::parse(&src, &mut ctx).expect("parse");
+                let plan = try_plan_finite_sum_evaluation(&mut ctx, full, 1000)
+                    .unwrap_or_else(|| panic!("plan for {src}"));
+                let m = ctx.var("m");
+                let nval = ctx.num(n);
+                let substituted = cas_ast::substitute_expr_by_id(&mut ctx, plan.candidate, m, nval);
+                let value =
+                    fold_const(&ctx, substituted).unwrap_or_else(|| panic!("fold {src} at m={n}"));
+                assert_eq!(value, brute, "sum({summand}, k, {start}, {n})");
             }
         }
     }

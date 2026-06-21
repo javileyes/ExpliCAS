@@ -109,7 +109,10 @@ cuando, los tres se cumplen:
   (peldaños, NO regresión, net-cero): (a) cofactores prónicos `k(k±1)=k²±k` por una oscilación
   factor↔distribuye del sumando en el orquestador (clase A); (b) ratio fraccionaria de grado 2
   (`k²·(1/2)^k`) por la normalización a forma Div `k²/2^k` (preexistente: `k/2^k` ya era residual).
-  El builder es exacto en ambos (test fold-vs-fuerza-bruta lo fija).
+  El builder es exacto en ambos (test fold-vs-fuerza-bruta lo fija). ✅ **Forma cociente Div
+  AÑADIDA 2026-06-21**: la suma aritmético-geométrica escrita `p(k)/r^k` (clásico `Σ k/2^k = 13/8`
+  en [1,4]) cierra leyendo la ratio 1/r del denominador. Residuales (peldaños): grado-2 fraccionario
+  (misma oscilación del orquestador) y la suma INFINITA convergente `Σ k·r^k` con |r|<1.
 
 ### P2 / P3 (cobertura y pulido educativo)
 - Verifier false-negative de `1/(x^6-1)` (la antiderivada YA es correcta; falla al no reducir
