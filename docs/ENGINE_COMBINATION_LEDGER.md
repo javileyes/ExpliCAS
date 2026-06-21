@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 285 (newest first)
+Active entries: 286 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate ... | Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
 - 2026-06-22 | `rejected` | `crates/cas_math/src/fraction_multivar_gcd.rs` (`try_multivar_gcd`: gate | RECHAZADO: cancelar gcd num/den con numerador univariado (perturba la verificación del backend)
 - 2026-06-22 | `retained` | `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: aliases `arcsinh`/`a... | Aceptar las grafías arc* de las inversas hiperbólicas (arcsinh = asinh)
+- 2026-06-22 | `retained` | `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: `sen`/`tg`/`cotg`/`c... | Aceptar la notación trigonométrica española/europea (sen, tg, arctg, cotg)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12119,3 +12120,36 @@ Active entries: 285 (newest first)
   - residual (peldaño): `arsinh`/`artanh` (prefijo "ar" técnicamente correcto para inversas
     hiperbólicas) y las inversas hiperbólicas sin función base (`asech`/`acsch`/`acoth`, que el
     motor no implementa) quedan fuera.
+
+## 2026-06-22 - Aceptar la notación trigonométrica española/europea (sen, tg, arctg, cotg)
+- area:
+  - `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: `sen`/`tg`/`cotg`/`ctg`/`cosec`/
+    `arcsen`/`arctg`)
+- status:
+  - `retained` (capability/usabilidad — P1; alineado con el público del motor, narra en español)
+- capture:
+  - investment_class: capability (Fase 1; reusa las variantes trig existentes)
+  - primary_dimension: north_star_completeness (superficie de entrada para el público hispanohablante)
+  - secondary_dimension: reuse_value (alias puros; cero lógica nueva) — extiende [[arcsinh-alias]]
+  - cell: `diff(sen(x)) → cos(x)`, `diff(tg(x)) → 1/cos(x)²`, `diff(arctg(x)) → 1/(x²+1)`,
+    `diff(arcsen(x)) → 1/√(1−x²)`, `diff(cotg(x)) = diff(ctg(x)) → −1/sin(x)²`,
+    `integrate(sen(x)) → −cos(x)`, `limit(sen(x)/x, x, 0) → 1`. Antes: `función no definida`.
+  - behavior_change_expected: `sen`/`tg`/`cotg`/`ctg`/`cosec`/`arcsen`/`arctg` pasan de error a
+    alias de `Sin`/`Tan`/`Cot`/`Csc`/`Arcsin`/`Arctan`. Aditivo; el output canoniza a la grafía
+    inglesa (`sin`, `tan`). Huella guardrail+pressure NONE; workspace 12273/0 (ningún fixture
+    usaba `sen`/`tg`/… como variable — el riesgo de colisión es teórico y no se materializó).
+  - SOUNDNESS: alias sintáctico; sin lógica de dominio/valor. Tradeoff documentado: tokens cortos
+    (`tg`, `sen`) ahora "reservan" esos nombres como funciones (bare `tg` → referencia a tan); en
+    un motor de matemáticas en español eso ES el nombre de la función, no una variable plausible.
+- observed:
+  - el motor narra en ESPAÑOL (mensajes y pasos) pero solo aceptaba notación trig inglesa; un
+    estudiante hispanohablante que escribe `sen(x)` o `tg(x)` (notación estándar en España/Europa
+    y Latinoamérica) recibía "no definida". Mismo cierre de una línea que [[arcsinh-alias]].
+- retained learning:
+  - la superficie de ENTRADA de un motor educativo debe hablar el idioma de su público: si narra
+    en español, aceptar `sen`/`tg`/`arctg` es coherencia, no scope creep. El patrón es el mismo
+    que para grafías-alias (arcsinh): una línea en `from_name` por nombre, alias a la variante
+    existente.
+  - residual (peldaño): `ch`/`sh`/`th` (notación francesa de hiperbólicas) y `lg` (AMBIGUO:
+    log10 vs log2 según convención — NO añadir sin decidir base) quedan fuera a propósito; `2**3`
+    (potencia estilo Python) es un cambio de lexer, no de tabla de nombres.

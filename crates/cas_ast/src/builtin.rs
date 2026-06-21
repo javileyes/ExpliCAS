@@ -212,6 +212,17 @@ impl BuiltinFn {
             "arcsec" => Some(BuiltinFn::Arcsec),
             "arccsc" => Some(BuiltinFn::Arccsc),
             "arccot" => Some(BuiltinFn::Arccot),
+            // Spanish/European trig spellings — the standard notation in Spanish-language maths
+            // (`sen` = seno, `tg` = tangente, `cotg`/`ctg` = cotangente, `cosec` = cosecante),
+            // aliased to the existing variants. This engine narrates in Spanish, so a student who
+            // writes `sen(x)` or `tg(x)` should get the function, not "función no definida".
+            "sen" => Some(BuiltinFn::Sin),
+            "tg" => Some(BuiltinFn::Tan),
+            "cotg" => Some(BuiltinFn::Cot),
+            "ctg" => Some(BuiltinFn::Cot),
+            "cosec" => Some(BuiltinFn::Csc),
+            "arcsen" => Some(BuiltinFn::Arcsin),
+            "arctg" => Some(BuiltinFn::Arctan),
             "sinh" => Some(BuiltinFn::Sinh),
             "cosh" => Some(BuiltinFn::Cosh),
             "tanh" => Some(BuiltinFn::Tanh),
@@ -404,6 +415,19 @@ mod tests {
         assert_eq!(BuiltinFn::Sin.name(), "sin");
         assert_eq!(BuiltinFn::Sqrt.name(), "sqrt");
         assert_eq!(BuiltinFn::Hold.name(), "__hold");
+    }
+
+    #[test]
+    fn spanish_european_trig_spellings_alias_the_standard_variants() {
+        // `sen`/`tg`/`cotg`/`ctg`/`cosec` and `arcsen`/`arctg` are the standard Spanish/European
+        // spellings, aliased to the existing trig variants.
+        assert_eq!(BuiltinFn::from_name("sen"), Some(BuiltinFn::Sin));
+        assert_eq!(BuiltinFn::from_name("tg"), Some(BuiltinFn::Tan));
+        assert_eq!(BuiltinFn::from_name("cotg"), Some(BuiltinFn::Cot));
+        assert_eq!(BuiltinFn::from_name("ctg"), Some(BuiltinFn::Cot));
+        assert_eq!(BuiltinFn::from_name("cosec"), Some(BuiltinFn::Csc));
+        assert_eq!(BuiltinFn::from_name("arcsen"), Some(BuiltinFn::Arcsin));
+        assert_eq!(BuiltinFn::from_name("arctg"), Some(BuiltinFn::Arctan));
     }
 
     #[test]
