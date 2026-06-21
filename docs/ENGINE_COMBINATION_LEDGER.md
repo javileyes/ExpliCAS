@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 283 (newest first)
+Active entries: 284 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate ... | Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
+- 2026-06-22 | `rejected` | `crates/cas_math/src/fraction_multivar_gcd.rs` (`try_multivar_gcd`: gate | RECHAZADO: cancelar gcd num/den con numerador univariado (perturba la verificación del backend)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12037,3 +12038,47 @@ Active entries: 283 (newest first)
   - residual (peldaño): cotas con DOS variables genuinas (`sum(..., k, m, n)`) siguen sin colectar
     (no son univariadas); la forma factorizada ideal para cúbicas multi-término sigue pendiente de
     un factorizador post-colección.
+
+## 2026-06-22 - RECHAZADO: cancelar gcd num/den con numerador univariado (perturba la verificación del backend)
+- area:
+  - `crates/cas_math/src/fraction_multivar_gcd.rs` (`try_multivar_gcd`: gate
+    `p_num.vars.len() <= 1` → recuento de variables COMBINADO num+den)
+- status:
+  - `rejected` (revertido; el árbol queda en el commit del ciclo previo)
+- capture:
+  - investment_class: soundness/quality (reducción de factor común en resultados racionales)
+  - hypothesis: gatear por "≥2 variables en num+den" (en vez de "numerador multivariado") deja
+    pasar `2y/(4x) → y/(2x)`, `y²/(y³+yx²) → y/(y²+x²)`, `diff(arctan(x/y)) → y/(x²+y²)` reusando
+    la maquinaria de content-gcd/mono-gcd ya presente, sin tocar la ruta univariada.
+  - reject_if: cualquier contador estructural de las lanes cambia sin justificación de mejora.
+- observed:
+  - el cambio FUNCIONA para el objetivo: `2y/(4x) → y/(2x)`, `2y/(2x+2z) → y/(x+z)`,
+    `y²/(y³+yx²) → y/(y²+x²)`, `diff(arctan(x/y)) → y/(x²+y²)`; `cargo test --workspace` 12272/0
+    (CERO tests rotos); la ruta univariada (`(x²−1)/(x−1) → x+1`) intacta.
+  - PERO la lane `calculus_integrate_command_matrix_smoke` baja 313→312: el caso
+    `inverse_trig_symbolic_affine_expanded_square_radius_positive_quadratic_table` pasa de
+    `required=('a ≠ 0',)` a `('a ≠ 0', 'a²x²+2abx+b²+4 ≠ 0')`. La condición extra es VACUA
+    (`(ax+b)²+4 > 0` siempre, bajo `a≠0`): la antiderivada `arctan((ax+b)/2)/(2a)` NO cambia y
+    es correcta, pero al reducir una fracción INTERMEDIA de la verificación del backend (derivar
+    la antiderivada y normalizar), el extractor de condiciones del backend emite el denominador
+    cuadrático positivo-definido como `≠ 0` en vez de reconocerlo como nunca-cero.
+- decision:
+  - RECHAZAR: añadir una condición de dominio vacua es una regresión de calidad de narración
+    (el contrato de la lane fijaba la limpia `a≠0`); aceptarla actualizando el fixture sería
+    aceptar ruido. El fix correcto vive en el backend (que el extractor de condiciones de la
+    verificación pruebe positividad-definida `(lineal)²+positivo > 0` y suprima el `≠0`), no en
+    el cancelador de fracciones. Es trabajo de backend separado, no parte de este ciclo.
+- retained learning:
+  - una mejora de simplificación de bajo blast-radius en los TESTS unitarios puede aun así
+    perturbar contadores de las lanes a través de una ruta INDIRECTA: la verificación
+    algebraica del backend normaliza fracciones intermedias, así que un cancelador más agresivo
+    cambia qué condiciones de dominio EMITE el verificador. Validar una mejora del simplificador
+    SIEMPRE contra `make engine-scorecard`, no solo `cargo test`.
+  - PELDAÑO de alto valor: la cancelación de factor común (numérico y de potencia) para
+    numeradores univariados sobre denominadores con otra variable o gcd de contenido —
+    `2y/(4x)`, `y²/(y³+yx²)`, `diff(arctan(x/y))`— está a UN gate de distancia
+    (`try_multivar_gcd` ya calcula content_gcd y mono_gcd; solo hay que extender el gate al
+    recuento combinado de variables). Requiere PRIMERO que el extractor de condiciones de la
+    verificación del backend reconozca `(lineal)²+positivo ≠ 0` como vacuo (reusar
+    `is_strictly_positive_univariate_quadratic` de `prove_sign.rs`). Hacer ese sub-paso del
+    backend habilita el cancelador sin la regresión de condición vacua.
