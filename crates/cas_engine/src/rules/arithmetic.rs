@@ -17486,7 +17486,8 @@ fn finite_sum_evaluation_description(kind: &SumEvaluationKind) -> &'static str {
         | SumEvaluationKind::SumOfSquares
         | SumEvaluationKind::SumOfCubes
         | SumEvaluationKind::SumOfConstant
-        | SumEvaluationKind::GeometricPower => "Finite Sum Closed Form",
+        | SumEvaluationKind::GeometricPower
+        | SumEvaluationKind::PolynomialLinearity => "Finite Sum Closed Form",
         SumEvaluationKind::FiniteDirect { .. } => "Finite Sum",
         SumEvaluationKind::DivergentInfinite => "Divergent Infinite Series",
         SumEvaluationKind::ConvergentInfinite => "Convergent Geometric Series",
@@ -24366,6 +24367,9 @@ fn classify_finite_series_vs_other_profile_pair(
                 }
                 SumEvaluationKind::GeometricPower => {
                     "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_geometric_power"
+                }
+                SumEvaluationKind::PolynomialLinearity => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_polynomial_linearity"
                 }
                 SumEvaluationKind::FiniteDirect { .. } => {
                     "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_direct"

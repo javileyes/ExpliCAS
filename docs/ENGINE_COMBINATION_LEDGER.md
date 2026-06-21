@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 244 (newest first)
+Active entries: 245 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -129,6 +129,7 @@ Active entries: 244 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_geometric_rational_sum... | Retained capability: finite geometric sum with general rational ratio
 - 2026-06-21 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`try_univariate_euclidean_gcd`; the | Soundness fix: poly gcd command returned 1 for expanded polynomials
 - 2026-06-21 | `retained` | `crates/cas_engine/src/symbolic_calculus_call_support.rs` (`try_desugar_highe... | Higher-order and mixed-partial diff syntax: diff(f, x, n) / diff(f, x, y)
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`, helpers | Summation linearity: sum of any polynomial summand by Faulhaber per monomial
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10489,3 +10490,51 @@ Active entries: 244 (newest first)
   - residual (peldaño): `diff(f, x, 0) = f` and fractional/symbolic order are deliberately left
     as honest residuals; higher-order *step narration* (showing each successive derivative) is a
     separate educational cycle — today only the final form is shown.
+
+## 2026-06-21 - Summation linearity: sum of any polynomial summand by Faulhaber per monomial
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`, helpers
+    `power_sum_one_to` / `power_sum_start_to_end`, `SumEvaluationKind::PolynomialLinearity`,
+    dispatched LAST in `try_plan_finite_sum_evaluation`)
+  - `crates/cas_engine/src/rules/calculus/summation.rs` + `rules/arithmetic.rs` and
+    `crates/cas_solver/src/derive_command.rs` (the three exhaustive `SumEvaluationKind` matches)
+- status:
+  - `retained` (new Phase-1 capability: the "linealidad de sumatorios" P1 win;
+    series was ~28%, the lowest in-scope chapter)
+- capture:
+  - investment_class: capability (new closed forms)
+  - primary_dimension: north_star_completeness (Phase 1 series)
+  - cell: `sum(2k, k, 1, n) = n(n+1)`, `sum(k^2+k, k, 1, n)`, `sum(3k^2, k, 1, n)`,
+    `sum(k+1, k, 1, n)`, `sum(k(k+1), k, 1, n)` (product expanded), `sum(3k^2-k+1, k, 1, n)`,
+    and symbolic start `sum(2k, k, m, n) = m(1-m) + n(n+1)`. Degree > 3 (`sum(k^4)`) and
+    non-polynomial (`sum(1/k)`, `sum(2^k)`) stay residual / owned by other builders.
+  - behavior_change_expected: scaled / multi-term polynomial sums with a SYMBOLIC upper bound
+    flip from unevaluated to a closed form. Guardrail + pressure huella structurally NONE
+    (this builder only fires on shapes the dedicated builders declined; bare `k`/`k^2`/`k^3`,
+    constants, geometric, and finite-numeric ranges keep their exact existing output).
+    Workspace 12232 passed / 0 failed; clippy/fmt green.
+- observed:
+  - the closed-form dispatch matched only BARE shapes (`k`, `k^2`, `k^3`, constant, geometric);
+    any coefficient or extra term fell through to unevaluated. Adding a polynomial fallback that
+    reads the summand as a `Polynomial` in the index and sums each monomial `a_p·k^p` by its
+    Faulhaber closed form (`Σk = n(n+1)/2`, `Σk^2`, `Σk^3`) covers the whole linear-combination
+    family at once, reusing the EXACT expressions the single-power builders emit.
+  - placed LAST in the dispatch (after the single-power, constant, geometric, and
+    finite-numeric builders) so every already-owned shape keeps byte-identical output; the new
+    branch only ever runs on inputs the incumbents declined — hence huella-NONE.
+  - `Polynomial::from_expr` expands products, so `k(k+1)` is summed as `k^2+k` for free;
+    symbolic lower bounds work via `Σ_{start}^{end} = Σ_1^{end} − Σ_1^{start-1}` (the `k=0`
+    term vanishes for `p ≥ 1`, matching the existing builders' start∈{0,1} fast path).
+- retained learning:
+  - a closed-form family keyed on BARE shapes generalises cheaply and huella-safely by adding a
+    Polynomial-based linearity fallback AFTER the specific builders: linearity over a basis whose
+    elements you already close (here `Σk^p`) covers every linear combination with one matcher.
+  - verify a symbolic summation closed form by an INDEPENDENT brute force — substitute the bound
+    and fold to an exact rational, compare to `Σ_{k=start}^{n} poly(k)` summed term by term in
+    plain Rust over a coefficient/bound sweep. This catches bound off-by-ones and coefficient
+    mismatches that a single hand-checked example would miss.
+  - adding a `SumEvaluationKind` variant touches THREE exhaustive matches (engine arithmetic
+    label + didactic render, solver derive render); the compiler's E0004 lists each — fix them
+    all rather than adding a wildcard that would silently mislabel future variants.
+  - residual (peldaño): degree ≥ 4 needs general Faulhaber (Bernoulli numbers); `sum(k·2^k)`
+    (arithmetic-geometric) and `sum(1/(k(k+1)))`-style are separate families.

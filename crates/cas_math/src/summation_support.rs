@@ -25,6 +25,10 @@ pub enum SumEvaluationKind {
     SumOfCubes,
     SumOfConstant,
     GeometricPower,
+    /// Linear combination of integer powers, summed term by term via the Faulhaber
+    /// closed forms (`sum(2k)`, `sum(k^2+k)`, `sum(3k^2 - k + 1)`). Reached only when
+    /// the dedicated single-power builders decline (a scaled or multi-term polynomial).
+    PolynomialLinearity,
     FiniteDirect {
         start: i64,
         end: i64,
@@ -520,6 +524,24 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    // Linearity fallback for any remaining polynomial summand (`sum(2k)`,
+    // `sum(k^2+k)`): tried LAST so the dedicated single-power and constant builders
+    // above keep their exact output; this only fires on the scaled/multi-term cases
+    // they declined.
+    if let Some(candidate) = try_build_polynomial_sum(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::PolynomialLinearity,
+        });
+    }
+
     None
 }
 
@@ -647,6 +669,88 @@ fn build_triangular_square(ctx: &mut Context, first: ExprId, second: ExprId) -> 
     let numerator = mul2_raw(ctx, first, second);
     let triangular_number = ctx.add(Expr::Div(numerator, two));
     ctx.add(Expr::Pow(triangular_number, square))
+}
+
+/// Closed form for `Σ_{k=1}^{n} k^p` (`p ∈ {1, 2, 3}`), reusing the same expressions
+/// the dedicated single-power builders emit. Returns `None` for unsupported powers.
+fn power_sum_one_to(ctx: &mut Context, p: usize, n: ExprId) -> Option<ExprId> {
+    match p {
+        1 => Some(build_triangular_number(ctx, n)),
+        2 => Some(build_square_pyramid_number(ctx, n)),
+        3 => {
+            let one = ctx.num(1);
+            let n_plus_one = ctx.add(Expr::Add(n, one));
+            Some(build_triangular_square(ctx, n, n_plus_one))
+        }
+        _ => None,
+    }
+}
+
+/// Closed form for `Σ_{k=start}^{end} k^p` via `Σ_{1}^{end} − Σ_{1}^{start−1}` (the
+/// `k = 0` term vanishes for `p ≥ 1`, so a `start` of 0 or 1 needs no lower correction).
+fn power_sum_start_to_end(
+    ctx: &mut Context,
+    p: usize,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    let upper = power_sum_one_to(ctx, p, end)?;
+    if expr_is_zero(ctx, start) || expr_is_one(ctx, start) {
+        return Some(upper);
+    }
+    let one = ctx.num(1);
+    let start_minus_one = ctx.add(Expr::Sub(start, one));
+    let lower = power_sum_one_to(ctx, p, start_minus_one)?;
+    Some(ctx.add(Expr::Sub(upper, lower)))
+}
+
+/// Sum of any polynomial summand by LINEARITY: `Σ Σ_p a_p·k^p = Σ_p a_p·(Σ k^p)`,
+/// each power summed by its Faulhaber closed form. Covers `sum(2k)`, `sum(k^2+k)`,
+/// `sum(3k^2 - k + 1)`, `sum(k(k+1))`, etc. — the scaled/multi-term cases the dedicated
+/// single-power builders decline. Bounded to degree ≤ 3 (the closed forms available);
+/// constants are owned by [`try_build_sum_of_constant`] and bare single powers by their
+/// dedicated builders earlier in the dispatch, so this only ever runs on what they left.
+pub fn try_build_polynomial_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
+        return None;
+    }
+
+    // The summand must be a polynomial in the index variable; `2^k`, `1/k`, `sin(k)`
+    // (and any rational/transcendental form) decline here and stay residual.
+    let poly = Polynomial::from_expr(ctx, summand, var).ok()?;
+    let degree = poly.degree();
+    if degree == 0 || degree > 3 || poly.is_zero() {
+        return None;
+    }
+
+    let coeffs = poly.coeffs.clone();
+    let mut terms: Vec<ExprId> = Vec::new();
+    for (p, coeff) in coeffs.iter().enumerate() {
+        if coeff.is_zero() {
+            continue;
+        }
+        let coeff_node = ctx.add(Expr::Number(coeff.clone()));
+        let term = if p == 0 {
+            let count = build_inclusive_range_count(ctx, start, end);
+            mul2_raw(ctx, coeff_node, count)
+        } else {
+            let power_sum = power_sum_start_to_end(ctx, p, start, end)?;
+            mul2_raw(ctx, coeff_node, power_sum)
+        };
+        terms.push(term);
+    }
+
+    let mut combined = *terms.first()?;
+    for &term in &terms[1..] {
+        combined = ctx.add(Expr::Add(combined, term));
+    }
+    Some(combined)
 }
 
 pub fn try_build_sum_of_constant(
@@ -2327,6 +2431,130 @@ mod tests {
                 BigRational::new(num.into(), den.into()),
                 "sum({src}, k, {a}, {n})"
             );
+        }
+    }
+
+    #[test]
+    fn polynomial_linearity_closed_forms_match_known_values() {
+        // (summand, start a, upper n, expected exact value of `sum(summand, k, a, n)`).
+        // Verified by substituting `m -> n` in the symbolic closed form and folding to an
+        // exact rational — display-independent.
+        for (src, a, n, num, den) in [
+            ("2*k", 1i64, 5i64, 30i64, 1i64), // 2·(1+..+5) = 30
+            ("k^2+k", 1, 4, 40, 1),           // (2+6+12+20) = 40
+            ("3*k^2-k+1", 1, 3, 39, 1),       // (3+11+25) = 39
+            ("k+1", 1, 4, 14, 1),             // (2+3+4+5) = 14
+            ("k*(k+1)", 1, 3, 20, 1),         // (2+6+12) = 20, product expanded
+            ("2*k", 2, 4, 18, 1),             // 2·(2+3+4) = 18, symbolic-style start
+        ] {
+            let mut ctx = Context::new();
+            let full =
+                cas_parser::parse(&format!("sum({src}, k, {a}, m)"), &mut ctx).expect("parse");
+            let plan =
+                try_plan_finite_sum_evaluation(&mut ctx, full, 1000).expect("linearity plan");
+            assert!(
+                matches!(plan.kind, SumEvaluationKind::PolynomialLinearity),
+                "{src} should sum by polynomial linearity"
+            );
+            let m = ctx.var("m");
+            let nval = ctx.num(n);
+            let substituted = cas_ast::substitute_expr_by_id(&mut ctx, plan.candidate, m, nval);
+            let value = fold_const(&ctx, substituted)
+                .unwrap_or_else(|| panic!("{src} closed form should fold at m={n}"));
+            assert_eq!(
+                value,
+                BigRational::new(num.into(), den.into()),
+                "sum({src}, k, {a}, {n})"
+            );
+        }
+    }
+
+    #[test]
+    fn polynomial_linearity_matches_brute_force_over_a_sweep() {
+        // Independent brute-force ground truth: Σ_{k=start}^{n} (a3 k^3 + a2 k^2 + a1 k + a0)
+        // computed term by term, compared to the symbolic closed form folded at the same n.
+        // Sweeps coefficient signs/zeros, integer and symbolic-style starts, and bounds.
+        let coeff_sets: [(i64, i64, i64, i64); 6] = [
+            (0, 0, 2, 0),  // 2k
+            (0, 1, 1, 0),  // k^2 + k
+            (3, 0, -1, 1), // 3k^3 - k + 1
+            (1, -2, 0, 5), // k^3 - 2k^2 + 5
+            (0, 0, 1, 1),  // k + 1
+            (2, 3, 0, 0),  // 2k^3 + 3k^2
+        ];
+        for (a3, a2, a1, a0) in coeff_sets {
+            // Build the summand source `a3*k^3 + a2*k^2 + a1*k + a0`, dropping zero terms.
+            let mut parts: Vec<String> = Vec::new();
+            if a3 != 0 {
+                parts.push(format!("({a3})*k^3"));
+            }
+            if a2 != 0 {
+                parts.push(format!("({a2})*k^2"));
+            }
+            if a1 != 0 {
+                parts.push(format!("({a1})*k"));
+            }
+            if a0 != 0 {
+                parts.push(format!("({a0})"));
+            }
+            if parts.is_empty() {
+                continue;
+            }
+            let summand = parts.join(" + ");
+            for (start, n) in [(1i64, 6i64), (1, 9), (2, 7), (3, 8), (0, 5)] {
+                let brute: i64 = (start..=n)
+                    .map(|k| a3 * k * k * k + a2 * k * k + a1 * k + a0)
+                    .sum();
+                let mut ctx = Context::new();
+                let full = cas_parser::parse(&format!("sum({summand}, k, {start}, m)"), &mut ctx)
+                    .expect("parse");
+                let plan = try_plan_finite_sum_evaluation(&mut ctx, full, 1000)
+                    .unwrap_or_else(|| panic!("plan for {summand} [{start}..]"));
+                let m = ctx.var("m");
+                let nval = ctx.num(n);
+                let substituted = cas_ast::substitute_expr_by_id(&mut ctx, plan.candidate, m, nval);
+                let value = fold_const(&ctx, substituted)
+                    .unwrap_or_else(|| panic!("fold {summand} at m={n}"));
+                assert_eq!(
+                    value,
+                    BigRational::from_integer(brute.into()),
+                    "sum({summand}, k, {start}, {n}) closed form != brute force {brute}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn polynomial_linearity_leaves_owned_and_out_of_scope_shapes_alone() {
+        // Bare single powers and constants stay owned by their dedicated builders (the
+        // linearity fallback runs after them); degree > 3 and non-polynomial summands are
+        // declined entirely (honest residual).
+        for (src, expected_owned_kind) in [
+            (
+                "sum(k, k, 1, n)",
+                Some(SumEvaluationKind::SumOfFirstIntegers),
+            ),
+            ("sum(k^2, k, 1, n)", Some(SumEvaluationKind::SumOfSquares)),
+            ("sum(k^3, k, 1, n)", Some(SumEvaluationKind::SumOfCubes)),
+            ("sum(5, k, 1, n)", Some(SumEvaluationKind::SumOfConstant)),
+            ("sum(2^k, k, 1, n)", Some(SumEvaluationKind::GeometricPower)),
+            ("sum(k^4, k, 1, n)", None), // degree > 3: no closed form, stays residual
+            ("sum(1/k, k, 1, n)", None), // not a polynomial in k
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000);
+            match expected_owned_kind {
+                Some(kind) => {
+                    let plan = plan.unwrap_or_else(|| panic!("{src} should have a plan"));
+                    assert_eq!(
+                        std::mem::discriminant(&plan.kind),
+                        std::mem::discriminant(&kind),
+                        "{src} should keep its dedicated builder, not polynomial linearity"
+                    );
+                }
+                None => assert!(plan.is_none(), "{src} should stay residual"),
+            }
         }
     }
 

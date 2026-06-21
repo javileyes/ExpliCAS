@@ -7834,6 +7834,13 @@ where
             render_expr(call.start_expr),
             render_expr(call.end_expr)
         ),
+        SumEvaluationKind::PolynomialLinearity => format!(
+            "Polynomial sum by linearity: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
         SumEvaluationKind::FiniteDirect { start, end } => format!(
             "sum({}, {}, {}, {})",
             render_expr(call.term),

@@ -76,9 +76,12 @@ cuando, los tres se cumplen:
 - **Sustitución-u general para `g` transcendente** — M. `cos(x)·e^(sin x)`, `cos(ln x)/x`,
   `e^x·e^(e^x)` residuales aunque elementales (solo se matchea `g` polinómica).
 - **Comando `taylor()`/`series()` + linealidad de sumatorios** — M+S. Series está a ~28%
-  (la más baja in-scope); `taylor_at_zero` ya existe interno, falta exponerlo. La linealidad
-  de sumatorios (`sum(2k)`, `sum(k^2+k)`) es ~1 ciclo y duplica cobertura efectiva.
-  **El motor de series univariable que esto crea también desbloquea el Taylor de la Fase 3.**
+  (la más baja in-scope); `taylor_at_zero` ya existe interno, falta exponerlo.
+  ✅ **Linealidad de sumatorios ATERRIZADA 2026-06-21**: `try_build_polynomial_sum` cierra
+  cualquier sumando polinómico (grado ≤ 3) por Faulhaber término-a-término — `sum(2k)`,
+  `sum(k^2+k)`, `sum(3k^2-k+1)`, con cota inferior simbólica. Pendientes de este win:
+  exponer `taylor()`/`series()`. **El motor de series univariable que esto crea también
+  desbloquea el Taylor de la Fase 3.**
 
 ### P2 / P3 (cobertura y pulido educativo)
 - Verifier false-negative de `1/(x^6-1)` (la antiderivada YA es correcta; falla al no reducir
