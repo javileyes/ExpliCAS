@@ -78,8 +78,9 @@ cuando, los tres se cumplen:
 - **Comando `taylor()`/`series()` + linealidad de sumatorios** — M+S. Series está a ~28%
   (la más baja in-scope); `taylor_at_zero` ya existe interno, falta exponerlo.
   ✅ **Linealidad de sumatorios ATERRIZADA 2026-06-21**: `try_build_polynomial_sum` cierra
-  cualquier sumando polinómico (grado ≤ 3) por Faulhaber término-a-término — `sum(2k)`,
-  `sum(k^2+k)`, `sum(3k^2-k+1)`, con cota inferior simbólica.
+  cualquier sumando polinómico por Faulhaber término-a-término — `sum(2k)`, `sum(k^2+k)`,
+  `sum(3k^2-k+1)`, con cota inferior simbólica. **Grado generalizado 2026-06-21** vía la
+  recurrencia de Faulhaber (`power_sum_one_to` p≥4): `sum(k^4)`, `sum(k^5+k^2)`, … hasta grado 12.
   ✅ **`taylor()`/`series()` EXPUESTOS 2026-06-21**: `TaylorRule` sobre el motor Maclaurin
   interno (`taylor_at_zero`) — `taylor(exp(x), x, 0, 4)`, `sin`/`cos`/`tan`/`ln(1+x)`/`atan`/
   `asin` + polinomios, productos, composiciones. ✅ **Racionales/geométricos AÑADIDOS

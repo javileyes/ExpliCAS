@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 248 (newest first)
+Active entries: 249 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -133,6 +133,7 @@ Active entries: 248 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_series_at_zero_expr` public ... | Expose taylor()/series() command over the internal Maclaurin engine
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_at_zero_with_rational`, `rec... | Rational/geometric Taylor: series of 1/(1-x), 1/(1+x^2) for the taylor() command
 - 2026-06-21 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` | Integrate p(x)·a^x by parts for a general constant base
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`faulhaber_power_sum_coeffs`, `bi... | General Faulhaber: polynomial sums of any degree (lifts the cycle-2 degree-3 cap)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10679,3 +10680,42 @@ Active entries: 248 (newest first)
     the a^x outer factor); and integrate-command-matrix rows for this family are deferred — the
     matrix's ~15 interdependent counter assertions make row-addition its own bounded task, and the
     capability is already locked by the round-trip-verified unit test.
+
+## 2026-06-21 - General Faulhaber: polynomial sums of any degree (lifts the cycle-2 degree-3 cap)
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`faulhaber_power_sum_coeffs`, `binomial`,
+    `horner_power_sum_expr`; `power_sum_one_to` extended to `p ≥ 4`; the degree cap in
+    `try_build_polynomial_sum` lifted from 3 to `MAX_POLYNOMIAL_SUM_DEGREE = 12`)
+- status:
+  - `retained` (closes the explicit degree-≤3 residual left by the 2026-06-21 summation-linearity
+    cycle; `sum(k^4)`, `sum(k^5+k^2)`, … now have closed forms with a symbolic bound)
+- capture:
+  - investment_class: capability (higher-degree closed forms)
+  - primary_dimension: north_star_completeness (Phase 1 series)
+  - cell: `sum(k^4, k, 1, n) = n^5/5 + n^4/2 + n^3/3 − n/30`, `sum(k^5, k, 1, n)`,
+    `sum(k^4+k^2, k, 1, n)`, `sum(k^6)`, … up to degree 12; finite numeric checks
+    (k^4 1..3 = 98, k^5 1..4 = 1300, k^7 1..2 = 129) all match.
+  - behavior_change_expected: polynomial summands of degree 4..12 with a symbolic bound flip from
+    residual to their Faulhaber closed form. Degree > 12 stays residual (a deliberate bound on the
+    closed-form size, not a math limit). Guardrail + pressure huella structurally NONE — p ≤ 3
+    keeps its byte-identical factored output (the dedicated `power_sum_one_to` arms are untouched);
+    only p ≥ 4 uses the new recurrence path. Contract test updated: `sum(k^4)` now plans as
+    `PolynomialLinearity` instead of residual. Workspace 12240 passed / 0 failed; clippy/fmt green.
+- observed:
+  - the cycle-2 linearity path summed each monomial via `power_sum_one_to`, which only knew the
+    hard-coded `Σk`, `Σk^2`, `Σk^3`. The Faulhaber recurrence
+    `(p+1)S_p = (n+1)^(p+1) − 1 − Σ_{j<p} C(p+1,j)S_j` (with `S_0 = n`) computes `S_p(n)` as an
+    exact rational-coefficient polynomial from the lower sums; Horner-building it at the bound
+    expression closes any degree.
+  - keeping `p ≤ 3` on the original factored expressions (not the recurrence) is what keeps the
+    huella byte-identical: `sum(2k)`/`sum(k^2+k)`/`sum(k^3)` render exactly as before.
+- retained learning:
+  - a closed-form family capped at small degree generalises to ALL degree by the standard
+    recurrence over its own lower members (Faulhaber here); add the general path ONLY for the
+    degrees the hard-coded forms don't cover, so the already-shipped low-degree output stays
+    byte-identical and the huella never moves.
+  - verify a degree-parametric closed form by substituting the bound and folding to an exact
+    rational vs an independent brute force, swept over BOTH degree (4..8) and bounds — a single
+    degree or a single bound would miss recurrence and start-offset errors.
+  - residual (peldaño): degree > 12 (raise the cap if ever needed — the recurrence is O(p²)); and
+    arithmetic-geometric `Σ k·r^k` / `Σ k^2·r^k`, a separate family from pure polynomial sums.

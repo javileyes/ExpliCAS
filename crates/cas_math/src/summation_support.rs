@@ -671,10 +671,73 @@ fn build_triangular_square(ctx: &mut Context, first: ExprId, second: ExprId) -> 
     ctx.add(Expr::Pow(triangular_number, square))
 }
 
-/// Closed form for `Σ_{k=1}^{n} k^p` (`p ∈ {1, 2, 3}`), reusing the same expressions
-/// the dedicated single-power builders emit. Returns `None` for unsupported powers.
+/// Binomial coefficient `C(n, k)` as an exact `BigInt` (incremental, no factorial overflow).
+fn binomial(n: usize, k: usize) -> num_bigint::BigInt {
+    use num_bigint::BigInt;
+    use num_traits::{One, Zero};
+    if k > n {
+        return BigInt::zero();
+    }
+    let k = k.min(n - k);
+    let mut result = BigInt::one();
+    for i in 0..k {
+        result = result * BigInt::from(n - i) / BigInt::from(i + 1);
+    }
+    result
+}
+
+/// Coefficients (index `i` = coefficient of `n^i`) of the Faulhaber polynomial
+/// `S_p(n) = Σ_{k=1}^{n} k^p`, via the recurrence
+/// `(p+1)·S_p = (n+1)^(p+1) − 1 − Σ_{j=0}^{p-1} C(p+1, j)·S_j` with `S_0(n) = n`.
+fn faulhaber_power_sum_coeffs(p: usize) -> Vec<BigRational> {
+    use num_traits::{One, Zero};
+    let mut sums: Vec<Vec<BigRational>> = Vec::with_capacity(p + 1);
+    sums.push(vec![BigRational::zero(), BigRational::one()]); // S_0(n) = n
+    for q in 1..=p {
+        let m = q + 1;
+        // (n+1)^m = Σ_{i=0}^{m} C(m, i) n^i
+        let mut acc: Vec<BigRational> = (0..=m)
+            .map(|i| BigRational::from_integer(binomial(m, i)))
+            .collect();
+        acc[0] -= BigRational::one(); // − 1
+        for (j, sj) in sums.iter().enumerate().take(q) {
+            // − C(m, j) · S_j
+            let c = BigRational::from_integer(binomial(m, j));
+            for (i, coeff) in sj.iter().enumerate() {
+                acc[i] -= &c * coeff;
+            }
+        }
+        let denom = BigRational::from_integer(num_bigint::BigInt::from(q + 1));
+        for a in acc.iter_mut() {
+            *a /= &denom;
+        }
+        sums.push(acc);
+    }
+    sums.pop().unwrap_or_default()
+}
+
+/// Build `Σ_i coeffs[i]·n^i` (a polynomial in the bound expression `n`) by Horner.
+fn horner_power_sum_expr(ctx: &mut Context, coeffs: &[BigRational], n: ExprId) -> ExprId {
+    let mut acc: Option<ExprId> = None;
+    for coeff in coeffs.iter().rev() {
+        let coeff_node = ctx.add(Expr::Number(coeff.clone()));
+        acc = Some(match acc {
+            None => coeff_node,
+            Some(prev) => {
+                let scaled = mul2_raw(ctx, prev, n);
+                ctx.add(Expr::Add(scaled, coeff_node))
+            }
+        });
+    }
+    acc.unwrap_or_else(|| ctx.num(0))
+}
+
+/// Closed form for `Σ_{k=1}^{n} k^p`. `p ∈ {1, 2, 3}` reuse the same factored expressions
+/// the dedicated single-power builders emit (keeping their output byte-identical);
+/// `p ≥ 4` build the Faulhaber polynomial directly. Returns `None` for `p = 0`.
 fn power_sum_one_to(ctx: &mut Context, p: usize, n: ExprId) -> Option<ExprId> {
     match p {
+        0 => None,
         1 => Some(build_triangular_number(ctx, n)),
         2 => Some(build_square_pyramid_number(ctx, n)),
         3 => {
@@ -682,7 +745,10 @@ fn power_sum_one_to(ctx: &mut Context, p: usize, n: ExprId) -> Option<ExprId> {
             let n_plus_one = ctx.add(Expr::Add(n, one));
             Some(build_triangular_square(ctx, n, n_plus_one))
         }
-        _ => None,
+        _ => {
+            let coeffs = faulhaber_power_sum_coeffs(p);
+            Some(horner_power_sum_expr(ctx, &coeffs, n))
+        }
     }
 }
 
@@ -704,12 +770,17 @@ fn power_sum_start_to_end(
     Some(ctx.add(Expr::Sub(upper, lower)))
 }
 
+/// Upper degree bound for the polynomial-summation linearity path. The Faulhaber recurrence
+/// is exact at any degree; this cap just keeps the closed form from ballooning on pathological
+/// inputs while covering every realistic polynomial summand.
+const MAX_POLYNOMIAL_SUM_DEGREE: usize = 12;
+
 /// Sum of any polynomial summand by LINEARITY: `Σ Σ_p a_p·k^p = Σ_p a_p·(Σ k^p)`,
 /// each power summed by its Faulhaber closed form. Covers `sum(2k)`, `sum(k^2+k)`,
-/// `sum(3k^2 - k + 1)`, `sum(k(k+1))`, etc. — the scaled/multi-term cases the dedicated
-/// single-power builders decline. Bounded to degree ≤ 3 (the closed forms available);
-/// constants are owned by [`try_build_sum_of_constant`] and bare single powers by their
-/// dedicated builders earlier in the dispatch, so this only ever runs on what they left.
+/// `sum(3k^2 - k + 1)`, `sum(k^4)`, `sum(k^5 - k)`, `sum(k(k+1))`, etc. — the scaled/
+/// multi-term cases the dedicated single-power builders decline. Constants are owned by
+/// [`try_build_sum_of_constant`] and bare single powers by their dedicated builders earlier
+/// in the dispatch, so this only ever runs on what they left.
 pub fn try_build_polynomial_sum(
     ctx: &mut Context,
     summand: ExprId,
@@ -725,7 +796,7 @@ pub fn try_build_polynomial_sum(
     // (and any rational/transcendental form) decline here and stay residual.
     let poly = Polynomial::from_expr(ctx, summand, var).ok()?;
     let degree = poly.degree();
-    if degree == 0 || degree > 3 || poly.is_zero() {
+    if degree == 0 || degree > MAX_POLYNOMIAL_SUM_DEGREE || poly.is_zero() {
         return None;
     }
 
@@ -2525,10 +2596,40 @@ mod tests {
     }
 
     #[test]
+    fn faulhaber_high_degree_sums_match_brute_force() {
+        // For p = 4..8 the closed form S_p(n) has no dedicated builder; verify the symbolic
+        // Faulhaber polynomial folds to the brute-force Σ_{k=start}^{n} k^p at concrete n.
+        for p in 4u32..=8 {
+            for (start, n) in [(1i64, 5i64), (1, 7), (2, 6), (3, 8)] {
+                let brute: i128 = (start..=n).map(|k| (k as i128).pow(p)).sum();
+                let mut ctx = Context::new();
+                let full = cas_parser::parse(&format!("sum(k^{p}, k, {start}, m)"), &mut ctx)
+                    .expect("parse");
+                let plan = try_plan_finite_sum_evaluation(&mut ctx, full, 1000)
+                    .unwrap_or_else(|| panic!("plan for k^{p} [{start}..]"));
+                assert!(
+                    matches!(plan.kind, SumEvaluationKind::PolynomialLinearity),
+                    "k^{p} should sum by Faulhaber linearity"
+                );
+                let m = ctx.var("m");
+                let nval = ctx.num(n);
+                let substituted = cas_ast::substitute_expr_by_id(&mut ctx, plan.candidate, m, nval);
+                let value =
+                    fold_const(&ctx, substituted).unwrap_or_else(|| panic!("fold k^{p} at m={n}"));
+                assert_eq!(
+                    value,
+                    BigRational::from_integer(brute.into()),
+                    "sum(k^{p}, k, {start}, {n}) closed form != brute force {brute}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn polynomial_linearity_leaves_owned_and_out_of_scope_shapes_alone() {
-        // Bare single powers and constants stay owned by their dedicated builders (the
-        // linearity fallback runs after them); degree > 3 and non-polynomial summands are
-        // declined entirely (honest residual).
+        // Bare single powers up to cube and constants stay owned by their dedicated builders
+        // (the linearity fallback runs after them); degree 4..12 are summed by Faulhaber
+        // linearity; degree > 12 and non-polynomial summands are declined (honest residual).
         for (src, expected_owned_kind) in [
             (
                 "sum(k, k, 1, n)",
@@ -2538,8 +2639,16 @@ mod tests {
             ("sum(k^3, k, 1, n)", Some(SumEvaluationKind::SumOfCubes)),
             ("sum(5, k, 1, n)", Some(SumEvaluationKind::SumOfConstant)),
             ("sum(2^k, k, 1, n)", Some(SumEvaluationKind::GeometricPower)),
-            ("sum(k^4, k, 1, n)", None), // degree > 3: no closed form, stays residual
-            ("sum(1/k, k, 1, n)", None), // not a polynomial in k
+            (
+                "sum(k^4, k, 1, n)",
+                Some(SumEvaluationKind::PolynomialLinearity),
+            ),
+            (
+                "sum(k^12, k, 1, n)",
+                Some(SumEvaluationKind::PolynomialLinearity),
+            ),
+            ("sum(k^13, k, 1, n)", None), // degree > 12: declined to bound the closed form
+            ("sum(1/k, k, 1, n)", None),  // not a polynomial in k
         ] {
             let mut ctx = Context::new();
             let expr = cas_parser::parse(src, &mut ctx).expect("parse");
