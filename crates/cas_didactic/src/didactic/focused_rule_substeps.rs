@@ -19680,6 +19680,38 @@ fn notable_limit_name(
                 }
             }
         }
+        // f(a·u)/g(b·u) → a/b for first-order equivalents on one or both sides (the bare side is
+        // just `b·u`): `sin(3x)/(2x) → 3/2`, `tan(3x)/sin(2x) → 3/2`, `sin(x)/(2x) → 1/2`. Each side
+        // contributes its linear scale (a notable `g(b·u) ~ b·u`, so scale b). At least one side
+        // must be a genuine notable function (else it is plain `a·u/(b·u)` cancellation). SOUNDNESS:
+        // narrate only when the result equals a/b exactly (the result is the oracle, as elsewhere).
+        if let Some(u_name) = limit_single_variable_name(ctx, before) {
+            if let (Some((a, num_fn)), Some((b, den_fn))) = (
+                limit_first_order_factor(ctx, num, &u_name),
+                limit_first_order_factor(ctx, den, &u_name),
+            ) {
+                if (num_fn.is_some() || den_fn.is_some()) && !b.is_zero() {
+                    let ratio = &a / &b;
+                    if after_is(ratio.clone()) {
+                        // `f(a·u)` is self-delimited; a bare `a·u` (a ≠ 1) is parenthesised so the
+                        // quotient reads unambiguously (`(2·u)`, not `2·u`).
+                        let side = |scale: &BigRational, name: Option<&str>| -> String {
+                            match name {
+                                Some(f) if scale.is_one() => format!("{f}(u)"),
+                                Some(f) => format!("{f}({scale}·u)"),
+                                None if scale.is_one() => "u".to_string(),
+                                None => format!("({scale}·u)"),
+                            }
+                        };
+                        return Some(format!(
+                            "{prefix}lím(u→0) {}/{} = {ratio}",
+                            side(&a, num_fn),
+                            side(&b, den_fn),
+                        ));
+                    }
+                }
+            }
+        }
         // Rational with a shared polynomial factor (gcd ≠ 1) and a finite result:
         // factor-and-cancel — `(x²−1)/(x−1) = x+1`. The cancellation is a valid algebraic
         // step at ANY point (no "0/0" claim, which would need the limit point).
@@ -19724,7 +19756,13 @@ fn limit_linear_scale(ctx: &Context, arg: ExprId, u: ExprId) -> Option<BigRation
         return None;
     };
     let name = ctx.sym_name(*sym).to_string();
-    let poly = Polynomial::from_expr(ctx, arg, &name).ok()?;
+    linear_scale_of(ctx, arg, &name)
+}
+
+/// The nonzero rational `a` for which `expr == a·u` (`u` the variable named `u_name`, no constant
+/// offset), or `None` if `expr` is not that pure linear form.
+fn linear_scale_of(ctx: &Context, expr: ExprId, u_name: &str) -> Option<BigRational> {
+    let poly = Polynomial::from_expr(ctx, expr, u_name).ok()?;
     if poly.degree() != 1 {
         return None;
     }
@@ -19736,6 +19774,27 @@ fn limit_linear_scale(ctx: &Context, arg: ExprId, u: ExprId) -> Option<BigRation
         return None;
     }
     poly.coeffs.get(1).cloned().filter(|scale| !scale.is_zero())
+}
+
+/// The single variable name appearing in `expr`, or `None` when there is not exactly one.
+fn limit_single_variable_name(ctx: &Context, expr: ExprId) -> Option<String> {
+    let vars = cas_ast::traversal::collect_variables(ctx, expr);
+    (vars.len() == 1).then(|| vars.into_iter().next().unwrap())
+}
+
+/// The linear scale a side of a `num/den` notable quotient contributes at `u → 0`: a bare `a·u`
+/// gives `(a, None)`, and a first-order-equivalent notable `f(a·u)` gives `(a, Some("f"))` since
+/// `f(a·u) ~ a·u`. A unary function without a first-order equivalent (cos, ln, …) returns `None`.
+fn limit_first_order_factor(
+    ctx: &Context,
+    expr: ExprId,
+    u_name: &str,
+) -> Option<(BigRational, Option<&'static str>)> {
+    if let Some((arg, builtin)) = limit_unary_builtin(ctx, expr) {
+        let name = first_order_equivalent_name(builtin)?;
+        return Some((linear_scale_of(ctx, arg, u_name)?, Some(name)));
+    }
+    Some((linear_scale_of(ctx, expr, u_name)?, None))
 }
 
 /// The display name of a unary function `f` whose first-order equivalent at 0 is `u`
@@ -21510,6 +21569,11 @@ mod limit_notable_tests {
             ("tan(2*x)/x", "2", "tan(2·u)/u = 2"),
             ("arctan(5*x)/x", "5", "arctan(5·u)/u = 5"),
             ("sin(-2*x)/x", "-2", "sin(-2·u)/u = -2"),
+            // Cross / scaled-denominator forms f(a·u)/g(b·u) → a/b (one or both sides notable).
+            ("sin(3*x)/(2*x)", "3/2", "sin(3·u)/(2·u) = 3/2"),
+            ("sin(x)/(2*x)", "1/2", "sin(u)/(2·u) = 1/2"),
+            ("tan(3*x)/sin(2*x)", "3/2", "tan(3·u)/sin(2·u) = 3/2"),
+            ("arcsin(x)/(5*x)", "1/5", "arcsin(u)/(5·u) = 1/5"),
             ("(exp(x)-1)/x", "1", "(e^u − 1)/u = 1"),
             ("ln(1+x)/x", "1", "ln(1+u)/u = 1"),
             ("(1-cos(x))/x^2", "1/2", "(1 − cos(u))/u² = 1/2"),
@@ -21571,6 +21635,10 @@ mod limit_notable_tests {
         // names_the_standard_notable_limits). A constant offset (sin(x+1)/x) is not the notable form.
         assert!(substep_titles("sin(2*x)/x", "3").is_empty());
         assert!(substep_titles("sin(x+1)/x", "1").is_empty());
+        // Cross-form must have a genuine notable on at least one side and the exact a/b result:
+        // `cos(2x)/(3x)` (cos has no first-order equivalent) and a fabricated ratio both decline.
+        assert!(substep_titles("cos(2*x)/(3*x)", "2/3").is_empty());
+        assert!(substep_titles("sin(3*x)/(2*x)", "5").is_empty());
         // Right structural form but wrong value (fabricated) must decline.
         assert!(substep_titles("sin(x)/x", "2").is_empty());
         // x·sin(x) → 0 is continuity, NOT the squeeze theorem (the argument is not a reciprocal).

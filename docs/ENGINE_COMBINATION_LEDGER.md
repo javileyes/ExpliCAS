@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 263 (newest first)
+Active entries: 264 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -148,6 +148,7 @@ Active entries: 263 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Σ p(k)·r^k con cofactor polinómico de grado ≤2 (k²·r^k y combinaciones)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` | Σ p(k)/r^k: la forma Div (cociente) de la suma aritmético-geométrica fraccionaria
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: límite notable de argumento escalado f(a·u)/u → a
+- 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | G2 narrativa: límite notable cruzado f(a·u)/g(b·u) → a/b
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11276,3 +11277,44 @@ Active entries: 263 (newest first)
     `sin(a·u)/(b·u) → a/b` (relajar el guard `den == Variable` a `den == b·u`); (2) `(sqrt(1+u)−1)/u
     → 1/2` (equivalente de primer orden de la raíz / racionalización); (3) `(1+1/x)^x → e` y
     `ln(x)/x → 0` (x→∞) sin substep — notables/dominancias aún no narrados.
+
+## 2026-06-21 - G2 narrativa: límite notable cruzado f(a·u)/g(b·u) → a/b
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`notable_limit_name`: rama nueva para `num/den` con den NO bare-var; helpers
+    `linear_scale_of`, `limit_single_variable_name`, `limit_first_order_factor`; `limit_linear_scale`
+    refactorizado para compartir `linear_scale_of`)
+- status:
+  - `retained` (sub-ciclo G2: narra la familia notable cruzada/denominador-escalado, antes no narrada)
+- capture:
+  - investment_class: capability (gatekeeper G2 — narración educativa de límites)
+  - primary_dimension: north_star_completeness (Fase 1, G2)
+  - secondary_dimension: didactic_value (cubre dos familias —denominador escalado y cociente de dos
+    notables— con una sola generalización por escala lineal)
+  - cell: `sin(3x)/(2x) → 3/2` narra "lím(u→0) sin(3·u)/(2·u) = 3/2"; `sin(x)/(2x) → 1/2`;
+    `tan(3x)/sin(2x) → 3/2` (cociente de DOS notables); `arcsin(x)/(5x) → 1/5`. Cada lado aporta su
+    escala lineal: bare `b·u` → b, notable `g(b·u)` → b (porque `g(bu) ~ bu`).
+  - behavior_change_expected: los cocientes notables cruzados pasan de sin-substep a narrados.
+    Huella guardrail+pressure NONE.
+  - SOUNDNESS: narra solo cuando el resultado es exactamente a/b (`after_is(ratio)`), así que
+    `sin(3x)/(2x) → 5` (fabricado) declina y en punto ≠ 0 el resultado no es a/b limpio → declina.
+    Exige ≥1 lado notable genuino (`num_fn.is_some() || den_fn.is_some()`): `cos(2x)/(3x)` (cos sin
+    equivalente de primer orden) y `2x/(3x)` (cancelación trivial) declinan. Sin dominio → sin gate.
+- observed:
+  - el notable base usaba `den == Variable`; el cruzado necesita la VARIABLE del límite, que
+    `notable_limit_name` no recibe. `cas_ast::traversal::collect_variables` da el único nombre de
+    variable (univariable) sin enhebrar la firma. `Polynomial::from_expr(lado, u)` con grado 1 y
+    término constante 0 da la escala de cada lado uniformemente (bare o argumento de notable).
+  - el orden de ramas importa: la cruzada va tras `den==Variable` y `(1−cos)/u²`, antes de
+    factor-y-cancela; los casos polinómicos (`(x²−1)/(x−1)`) tienen `linear_scale_of = None` (grado≠1
+    o término constante) así que no colisionan y caen a factor-cancela.
+- retained learning:
+  - cuando una narración de cociente se generaliza de "den = u" a "den = b·u" (o a "ambos lados son
+    notables"), modela cada LADO como (escala, nombre-opcional) y narra la razón de escalas: una
+    abstracción ("factor de primer orden") cubre denominador-escalado y cociente-de-dos-notables a la
+    vez. La función notable y la bare `b·u` son el mismo objeto (escala) a efectos del límite.
+  - obtener la variable del límite vía `collect_variables` (univariable ⇒ exactamente una) evita
+    propagar la variable por toda la firma de los narradores — barato y local.
+  - residual (peldaño G2): `(√(1+u)−1)/u → 1/2` (equivalente de la raíz / racionalización);
+    `(1+1/x)^x → e` y `ln(x)/x → 0` en ∞ (notable/dominancia logarítmica aún sin narrar);
+    L'Hôpital/Taylor paso a paso y el cableado del PUNTO del límite (arquitectónico).

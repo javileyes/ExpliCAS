@@ -67,15 +67,15 @@ cuando, los tres se cumplen:
   (salto mágico que los docs prohíben). Es la mitad EDUCATIVA del north star — **pesa lo mismo
   que la universal**. *Prioridad sobre varios P2 de cobertura: mientras los límites no narren, el
   umbral "serio Y educativo" no se cruza.*
-  🔨 **Sub-ciclos 1-5 ATERRIZADOS 2026-06-21**: infraestructura de narración de límites en el
+  🔨 **Sub-ciclos 1-6 ATERRIZADOS 2026-06-21**: infraestructura de narración de límites en el
   pipeline de enriquecimiento de `cas_didactic` (`generate_limit_substeps`) + **métodos nombrados**
   — notables `sin/tan/arcsin/arctan/sinh/tanh(u)/u→1`, `(eᵘ−1)/u→1`, `(aᵘ−1)/u→ln(a)`, `ln(1+u)/u→1`,
   `(1−cos u)/u²→1/2`, `(1+u)^(1/u)→e`; **argumento escalado** `f(a·u)/u→a` (sub-ciclo 5: `sin(3x)/x→3`,
-  `sin(x/2)/x→1/2`, escala leída con `Polynomial::from_expr`, sound por confirmación de resultado);
-  **teorema del sándwich** `u^k·sin/cos(1/u)→0`; **continuidad/sustitución directa** (polinomios);
-  **factor-y-cancela** (0/0 removible); y **dominancia en infinito** (cociente de coeficientes líderes
-  / grado mayor → 0/±∞). Todo sound por chequeo de resultado/grado, huella NONE. Siguiente sub-ciclo:
-  denominador escalado `sin(u)/(a·u)→1/a` y cruzado `sin(au)/(bu)→a/b`; raíz `(√(1+u)−1)/u→1/2`;
+  `sin(x/2)/x→1/2`); **cruzado/denominador escalado** `f(a·u)/g(b·u)→a/b` (sub-ciclo 6: `sin(3x)/(2x)→3/2`,
+  `tan(3x)/sin(2x)→3/2` cociente de DOS notables, `arcsin(x)/(5x)→1/5`); **teorema del sándwich**
+  `u^k·sin/cos(1/u)→0`; **continuidad/sustitución directa** (polinomios); **factor-y-cancela** (0/0
+  removible); y **dominancia en infinito** (cociente de coeficientes líderes / grado mayor → 0/±∞).
+  Todo sound por chequeo de resultado/grado, huella NONE. Siguiente sub-ciclo: raíz `(√(1+u)−1)/u→1/2`;
   `(1+1/x)^x→e` y `ln(x)/x→0` en ∞; y (arquitectónico) cablear el PUNTO del límite al paso para mostrar
   la sustitución concreta, narrar L'Hôpital/Taylor paso a paso, y la dominancia EXPONENCIAL.
 
