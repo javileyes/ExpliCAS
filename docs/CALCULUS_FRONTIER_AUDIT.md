@@ -636,15 +636,24 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   — biquadrática `(x²+r)(x²+s)` y Sophie-Germain `(x²+ex+f)(x²-ex+f)`:
   `factor(x⁴+x²+1)→(x²+x+1)(x²-x+1)`, `factor(4x⁴+1)→(2x²+2x+1)(2x²-2x+1)`,
   `factor(x⁶-1)→(x-1)(x+1)(x²+x+1)(x²-x+1)`; las irreducibles `x⁴+1`,
-  `x⁴-x²+1`, Φ5 quedan enteras. Re-diagnóstico del hueco de INTEGRACIÓN:
-  NO es el cap de factores ni la factorización — el backend racional
-  `general_rational_partial_fraction_antiderivative` YA factoriza la
-  cuártica (`even_quartic_descent` parte `x⁴+x²+1`) y produce una
-  antiderivada para `1/(x⁶-1)`, pero la VERIFICACIÓN por derivación FALLA
-  (antiderivada incorrecta cuando hay factores lineales JUNTO a la cuártica
-  par; `1/(x⁴+x²+1)` sola SÍ verifica). El bloqueo es un bug en la
-  construcción de fracciones parciales mixtas lineal+cuadrática del
-  backend, no la factorización — siguiente peldaño/ciclo.)*
+  `x⁴-x²+1`, Φ5 quedan enteras.)*
+  *(extensión `factor` even-poly 2026-06-21 PENDING_HASH_EP: `factor` parte
+  también polinomios PARES REDUCIBLES de grado ≥6 vía t=x²:
+  `factor(x⁶+1)→(x²+1)(x⁴-x²+1)`, `factor(x⁶+x⁴+x²+1)→(x²+1)(x⁴+1)`,
+  `factor(x⁸-1)→(x-1)(x+1)(x²+1)(x⁴+1)`, `factor(x⁸+x⁴+1)→(x²+x+1)(x²-x+1)(x⁴-x²+1)`;
+  irreducibles `x⁶+x³+1` (Φ9) enteras. Verificado exacto (expand∘factor=id).)*
+  *(re-diagnóstico EXACTO del hueco de INTEGRACIÓN — corrige la nota previa:
+  NO es factorización NI una antiderivada incorrecta. El backend racional
+  `general_rational_partial_fraction_antiderivative` produce la antiderivada
+  CORRECTA de `1/(x⁶-1)` (coincide byte-a-byte con sympy: 4 logs + 2 arctan).
+  El `verify=Failed` es un FALSO NEGATIVO de la verificación: `differentiate_symbolic_expr`
+  deja `sqrt(3)·sqrt(3)` y `(a/sqrt(3))²` SIN reducir en las derivadas de arctan,
+  y la normalización del verificador no combina los 6 términos racionales para el caso
+  más rico (2 lineales + 2 cuadráticas, grado 6). TODO lo de grado ≤5 verifica
+  (`1/(x³-1)`, `1/(x⁴-1)`, `1/((x-1)(x²+x+1)(x²-x+1))`) y `1/(x⁴+x²+1)` sola (2 cuadráticas)
+  también. Peldaño: reducir `sqrt(k)·sqrt(k)→k` en el verificador (o verificar la
+  DESCOMPOSICIÓN en vez de derivar el arctan) — toca el verificador del bloque-12
+  (huella-sensible, exige verificación adversarial), no es un ciclo rápido.)*
 - [x] **(F) Composición de límites con interno conocido**:
   `e^(1/x) en 0±` (→ ∞ / 0), `atan(1/x) en 0+` (→ π/2) fallan aunque
   `1/x → ±∞` resuelve; regla de composición continua/monótona barata

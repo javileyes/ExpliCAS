@@ -279,17 +279,71 @@ pub fn factor_polynomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 
 /// Factor a univariate polynomial over ℚ as far as this module supports: peel the
 /// rational (linear) roots via [`Polynomial::factor_rational_roots`], then split each
-/// residual reducible even quartic `a·x⁴+b·x²+c` into two quadratics. Used by both the
-/// `factor` command and the rational-integration partial-fraction path so a degree-6+
-/// denominator like `x⁶-1` decomposes fully into linear × irreducible-quadratic factors.
+/// residual reducible even quartic `a·x⁴+b·x²+c` into two quadratics, and any reducible
+/// even polynomial of degree ≥ 6 (`x⁶+1`, `x⁶+x⁴+x²+1`) via the `t = x²` substitution.
+/// Used by both the `factor` command and the rational-integration partial-fraction path
+/// so a degree-6+ denominator like `x⁶-1` decomposes fully into linear × quadratic factors.
 pub(crate) fn factor_over_rationals(poly: &Polynomial) -> Vec<Polynomial> {
     poly.factor_rational_roots()
         .into_iter()
-        .flat_map(|f| match split_reducible_even_quartic(&f) {
-            Some((g, h)) => vec![g, h],
-            None => vec![f],
+        .flat_map(|f| {
+            if let Some((g, h)) = split_reducible_even_quartic(&f) {
+                return vec![g, h];
+            }
+            if let Some(factors) = split_reducible_even_poly(&f) {
+                return factors;
+            }
+            vec![f]
         })
         .collect()
+}
+
+/// Factor a reducible **even** polynomial `f(x) = g(x²)` of degree ≥ 6 (only even-power
+/// terms) by factoring `g(t)` over ℚ (`t = x²`) and back-substituting each factor, then
+/// re-factoring it (so a back-substituted even quartic gets the Sophie-Germain split).
+/// Returns `None` for a non-even polynomial, degree < 6, or an `g(t)` irreducible over ℚ
+/// (no progress) — e.g. `x⁶+1 → (x²+1)(x⁴-x²+1)`, `x⁶+x⁴+x²+1 → (x²+1)(x⁴+1)`.
+///
+/// Even quartics are handled directly by [`split_reducible_even_quartic`] (which also
+/// covers the Sophie-Germain case `t²+t+1` irreducible), so this only fires for degree ≥ 6.
+fn split_reducible_even_poly(poly: &Polynomial) -> Option<Vec<Polynomial>> {
+    use num_traits::Zero;
+    let d = poly.degree();
+    if d < 6 || !d.is_multiple_of(2) {
+        return None;
+    }
+    // Every odd-power coefficient must be zero (a pure even polynomial).
+    for i in (1..=d).step_by(2) {
+        if !poly.coeffs.get(i).is_none_or(|c| c.is_zero()) {
+            return None;
+        }
+    }
+    // g(t) with g.coeffs[k] = f.coeffs[2k].
+    let g_coeffs: Vec<BigRational> = (0..=d / 2)
+        .map(|k| {
+            poly.coeffs
+                .get(2 * k)
+                .cloned()
+                .unwrap_or_else(BigRational::zero)
+        })
+        .collect();
+    let g = Polynomial::new(g_coeffs, poly.var.clone());
+    let g_factors = factor_over_rationals(&g);
+    if g_factors.len() <= 1 {
+        return None; // g irreducible over ℚ ⇒ f = g(x²) does not factor this way
+    }
+    // Back-substitute each gᵢ(t) → gᵢ(x²) and re-factor (handles `x²-r` linears and even
+    // quartics from a quadratic-in-t factor).
+    let mut result = Vec::new();
+    for gi in g_factors {
+        let mut bs_coeffs = vec![BigRational::zero(); 2 * gi.degree() + 1];
+        for (k, c) in gi.coeffs.iter().enumerate() {
+            bs_coeffs[2 * k] = c.clone();
+        }
+        let bs = Polynomial::new(bs_coeffs, poly.var.clone());
+        result.extend(factor_over_rationals(&bs));
+    }
+    Some(result)
 }
 
 /// Exact rational square root: `√(p/q)` for a non-negative reduced rational is rational
@@ -875,6 +929,47 @@ mod tests {
             let expr = parse(src, &mut ctx).unwrap();
             let factored = factor(&mut ctx, expr);
             assert_eq!(s(&ctx, factored), expect, "factor({src})");
+        }
+    }
+
+    #[test]
+    fn test_factor_reducible_even_polynomials() {
+        // Reducible even polynomials of degree ≥ 6 factor via t = x² substitution.
+        for (src, expect) in [
+            ("x^6 + 1", "(x^2 + 1) * (x^4 + 1 - x^2)"),
+            ("x^6 + x^4 + x^2 + 1", "(x^2 + 1) * (x^4 + 1)"),
+            ("x^8 - 1", "(x - 1) * (x + 1) * (x^2 + 1) * (x^4 + 1)"),
+            // Degree 8 with Sophie-Germain on the back-substituted quartic-in-t.
+            (
+                "x^8 + x^4 + 1",
+                "(x^2 + x + 1) * (x^2 + 1 - x) * (x^4 + 1 - x^2)",
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).unwrap();
+            let factored = factor(&mut ctx, expr);
+            assert_eq!(s(&ctx, factored), expect, "factor({src})");
+            // The factorization is exact: it expands back to the input.
+            let reparsed = parse(&s(&ctx, factored), &mut ctx).unwrap();
+            assert!(
+                crate::poly_compare::poly_eq(&ctx, reparsed, expr),
+                "factor({src}) must be exact"
+            );
+        }
+    }
+
+    #[test]
+    fn test_irreducible_even_polynomials_stay_whole() {
+        // Irreducible-over-ℚ even polys and polys with odd terms must NOT be split.
+        for src in ["x^6 + x^3 + 1", "x^6 + x^5 + 1", "x^2 + 1"] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).unwrap();
+            let factored = factor(&mut ctx, expr);
+            assert!(
+                crate::poly_compare::poly_eq(&ctx, factored, expr),
+                "factor({src}) must stay whole, got {}",
+                s(&ctx, factored)
+            );
         }
     }
 

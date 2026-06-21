@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 237 (newest first)
+Active entries: 238 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -122,6 +122,7 @@ Active entries: 237 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_api_models/src/wire_types.rs` (`parse_solve_system_list_command` ... | Retained completeness: solve([eqs], [vars]) list form routed to the existing linear-system solver
 - 2026-06-21 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::inverse` + `MatrixInverseOutcome`, | Retained completeness: matrix inverse via adjugate/determinant (numeric exact)
 - 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`split_reducible_even_quartic`, `rational_sq... | Retained capability: factor reducible even quartics over ℚ
+- 2026-06-21 | `retained` | `crates/cas_math/src/factor.rs` (`split_reducible_even_poly`; `factor_over_ra... | Retained capability: factor reducible even polynomials (deg ≥6) via t=x²
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10197,3 +10198,44 @@ Active entries: 237 (newest first)
   - next iteration: fix the block-12 `mixed_partial_fraction_terms` / coefficient solve so
     the composed even-quartic case (`1/(x⁶-1)`, `1/(x·(x⁴+x²+1))`) verifies — that closes the
     audit's cuárticas integration item.
+
+## 2026-06-21 - Retained capability: factor reducible even polynomials (deg ≥6) via t=x²
+- area:
+  - `crates/cas_math/src/factor.rs` (`split_reducible_even_poly`; `factor_over_rationals`
+    now also applies it after the rational-roots + even-quartic split)
+- status:
+  - `retained` (capability: `factor` fully factors reducible even polynomials `g(x²)` of
+    degree ≥ 6 over ℚ; completes the cycle-1 even-quartic work to all even degrees)
+- capture:
+  - investment_class: capability (pre-calculus factorization)
+  - cell: `factor(x⁶+1)→(x²+1)(x⁴-x²+1)`, `factor(x⁶+x⁴+x²+1)→(x²+1)(x⁴+1)`,
+    `factor(x⁸-1)→(x-1)(x+1)(x²+1)(x⁴+1)`,
+    `factor(x⁸+x⁴+1)→(x²+x+1)(x²-x+1)(x⁴-x²+1)` (Sophie-Germain on the back-substituted
+    quartic-in-t). Irreducible even polys (`x⁶+x³+1`=Φ9) and odd-term polys stay whole.
+    Every factorization verified exact (expand∘factor = id).
+  - behavior_change_expected: `factor` output changes for reducible even polys deg ≥6;
+    guardrail+pressure huella structurally NONE; workspace+clippy+fmt green
+- observed:
+  - an even polynomial `f(x)=g(x²)` factors over ℚ as `Π gᵢ(x²)` where `gᵢ` are the
+    factors of `g(t)`. Substitute t=x², factor g via the existing `factor_over_rationals`
+    (rational roots + the cycle-1 quartic split), back-substitute each gᵢ → gᵢ(x²), and
+    re-factor (so a quadratic-in-t factor becomes an even quartic and gets the
+    Sophie-Germain split). Mutual recursion terminates: every back-substituted piece has
+    strictly smaller degree, and the even-poly splitter only fires for degree ≥ 6.
+  - the t-substitution and the cycle-1 Sophie-Germain split are COMPLEMENTARY: t=x² handles
+    `g(t)` reducible over ℚ (biquadratic-style); Sophie-Germain handles `x⁴+px²+q` where
+    `g(t)=t²+pt+q` is irreducible-in-t but the quartic still factors via the cross term.
+    Applying both at each level gives the maximal ℚ-factorization.
+- retained learning:
+  - EXACT re-diagnosis of the `1/(x⁶-1)` rational-INTEGRATION gap (corrects the cycle-1
+    ledger note): the block-12 backend produces the CORRECT antiderivative (byte-identical
+    to sympy); `verify=Failed` is a verifier FALSE NEGATIVE — `differentiate_symbolic_expr`
+    leaves `sqrt(3)·sqrt(3)` and `(a/sqrt(3))²` unreduced in the arctan derivatives, and the
+    normalization can't combine the 6 rational terms for the richest case (2 linear + 2
+    quadratic, deg 6). Everything ≤ deg 5 verifies, as does the standalone 2-quadratic
+    `1/(x⁴+x²+1)`. The fix is verifier-side (reduce `sqrt(k)·sqrt(k)→k`, or verify the
+    partial-fraction DECOMPOSITION instead of differentiating the arctan) — a huella-
+    sensitive block-12 verifier change needing adversarial validation, deferred.
+  - generalisable: when an integral comes back residual, probe BOTH `is_some` and
+    `verification_status` of the backend function. A `Some + verify=Failed` means the
+    construction may be RIGHT and the verifier wrong — don't "fix" the (correct) construction.
