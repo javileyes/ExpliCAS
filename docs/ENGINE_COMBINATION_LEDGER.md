@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 259 (newest first)
+Active entries: 260 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -144,6 +144,7 @@ Active entries: 259 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/number_theory_support.rs` (`try_eval_simple_number_theor... | Soundness fix: gcd/lcm of 3+ arguments ignored all but the first two
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | Arithmetic-geometric sum: closed form for Σ k·r^k
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | Affine arithmetic-geometric: c·k·r^k and the distributed (αk+β)·r^k
+- 2026-06-21 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` | G1 gatekeeper sub-ciclo: 1/(x^6-1) integra (subir el budget del zero-test)
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11087,3 +11088,42 @@ Active entries: 259 (newest first)
     shape the pipeline actually produces.
   - residual (peldaño): higher-degree polynomial cofactors `k^2·r^k` (a second arithmetic-geometric
     order), and non-rational ratios.
+
+## 2026-06-21 - G1 gatekeeper sub-ciclo: 1/(x^6-1) integra (subir el budget del zero-test)
+- area:
+  - `crates/cas_math/src/general_integration_backend/verification_algebraic.rs`
+    (`algebraic_zero_test_budget`: max_terms 64→256, max_total_degree 16→32, max_pow_exp 16→24)
+- status:
+  - `retained` (primer sub-ciclo retenible del gatekeeper G1 "integración racional universal":
+    los racionales de grado 6 que factorizan ENTEROS sobre ℚ ya verifican)
+- capture:
+  - investment_class: capability (gatekeeper G1) — la promesa "universal" en integración racional
+  - primary_dimension: north_star_completeness (Fase 1, gatekeeper G1)
+  - cell: `integrate(1/(x^6-1)) = 1/6·ln|x−1| + 1/12·ln(x²−x+1) − …` (round-trip `diff = 1/(x^6-1)`),
+    `1/(x^6-64)`, `1/(2x^6-2)`. Honestidad preservada: `1/(x^8-1)`, `1/(x^6+1)`, `1/(x^5-1)`,
+    `1/(x^4-4)` (cuárticas IRREDUCIBLES sobre ℚ, requieren factor-over-ℝ) siguen residuales.
+  - behavior_change_expected: racionales de grado 6 cuyo denominador parte en lineales +
+    cuadráticas irreducibles sobre ℚ pasan de residual a forma cerrada. Huella guardrail+pressure
+    estructuralmente NONE (ninguna fixture cubría `1/(x^6-1)`). Workspace 12253 passed / 0 failed.
+  - SOUNDNESS: el `algebraic_rational_zero_test` es una DECISIÓN exacta (mapea √c a un átomo t y
+    reduce por t²=c); subir el budget del multipoly NO puede crear falsos positivos — solo permite
+    decidir residuales más grandes. Round-trip diff verificado en los casos nuevos.
+- observed:
+  - DIAGNÓSTICO CORREGIDO respecto al run anterior: el gap de `1/(x^6-1)` NO era un rationalizador
+    de radicales faltante en el verifier (el `algebraic_rational_zero_test` YA hace √c↦t, t²=c). El
+    verifier llegaba al zero-test (node_count 110 < cap 160, radicand √3 nonneg representado) pero
+    `expr_to_rational` fallaba por el BUDGET del multipoly (max_terms 64 / max_total_degree 16): el
+    residual de grado 6 sobre el denominador común excede esos límites. Subirlos lo resuelve.
+  - `1/(x^4+x^2+1)` (cuártica SG sola) ya verificaba porque su residual cabía en el budget viejo;
+    `1/(x^6-1)` añade dos factores lineales → residual mayor → no cabía.
+- retained learning:
+  - antes de inventar un procedimiento de decisión nuevo, COMPRUEBA si el existente ya cubre el
+    caso y solo lo bloquea un budget/cap: instrumenta el punto de bail (node_count, radicands,
+    expr_to_rational) en vez de asumir el peor caso. Aquí el "radical rationalizer M+" que parecía
+    necesario era en realidad un budget de 3 constantes.
+  - subir un budget de un verificador EXACTO es soundness-safe (no añade falsos positivos, solo
+    decide entradas mayores); el coste es perf, así que mídelo con la huella de tiempo y mantén el
+    cap del node_count como cota dura contra blow-ups.
+  - residual (peldaño G1): factor-over-ℝ para las cuárticas irreducibles sobre ℚ (`1/(x^8-1)`,
+    `1/(x^6+1)`, `1/(x^5-1)` con √5, `1/(x^4-4)` con √2) — el LRT / factorización real es el
+    siguiente sub-ciclo del gatekeeper, ahora sí genuinamente net-new.

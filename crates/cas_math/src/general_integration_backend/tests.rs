@@ -182,6 +182,55 @@ fn diagnostic_empty_backend_reports_unsupported_without_public_candidate() {
 }
 
 #[test]
+fn sextic_rational_factoring_fully_over_q_verifies() {
+    // 1/(x^6-1) = 1/((x-1)(x+1)(x^2+x+1)(x^2-x+1)): linears + Sophie-Germain quadratics, all
+    // over Q. The algebraic zero test (sqrt(3) atom, t^2=3) decides it once the multipoly budget
+    // is large enough for the degree-6 residual.
+    for src in ["1/(x^6-1)", "1/(x^6-64)"] {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse(src, &mut ctx).expect("integrand");
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert_eq!(candidate.method, AlgorithmicIntegrationMethod::Rational);
+        assert!(
+            matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{src}: expected verified, got {:?} (blocker {:?})",
+            candidate.verification_status,
+            candidate.verification_blocker
+        );
+    }
+}
+
+#[test]
+fn sextic_rational_irreducible_over_q_stays_residual() {
+    // 1/(x^6+1) and 1/(x^8-1) need factoring over R (irreducible-over-Q quartics): they must
+    // NOT be claimed — the budget raise does not turn an unfactorable denominator into a result.
+    for src in ["1/(x^6+1)", "1/(x^8-1)"] {
+        let mut ctx = Context::new();
+        let integrand = cas_parser::parse(src, &mut ctx).expect("integrand");
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert_ne!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::Verified,
+            "{src} should stay residual (needs factoring over R)"
+        );
+    }
+}
+
+#[test]
 fn diagnostic_rational_probe_verifies_but_is_not_fallback_consumable() {
     let mut ctx = Context::new();
     let integrand = cas_parser::parse("1/(x+1)", &mut ctx).expect("integrand");

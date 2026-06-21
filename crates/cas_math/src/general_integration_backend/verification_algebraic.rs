@@ -27,10 +27,14 @@ const ALGEBRAIC_ZERO_TEST_MAX_RELATIONS: usize = 2;
 const ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS: usize = 256;
 
 fn algebraic_zero_test_budget() -> PolyBudget {
+    // Sized so a degree-≤8 rational integrand whose squarefree denominator splits into
+    // linears + irreducible quadratics (e.g. `1/(x^6-1)`) reduces: the residual over the common
+    // denominator reaches ~degree 12 in the variable plus the sqrt atom. Raising this is sound —
+    // the zero test stays an exact decision procedure; a larger budget only handles bigger inputs.
     PolyBudget {
-        max_terms: 64,
-        max_total_degree: 16,
-        max_pow_exp: 16,
+        max_terms: 256,
+        max_total_degree: 32,
+        max_pow_exp: 24,
     }
 }
 

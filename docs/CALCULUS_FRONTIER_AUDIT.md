@@ -637,6 +637,12 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `factor(x⁴+x²+1)→(x²+x+1)(x²-x+1)`, `factor(4x⁴+1)→(2x²+2x+1)(2x²-2x+1)`,
   `factor(x⁶-1)→(x-1)(x+1)(x²+x+1)(x²-x+1)`; las irreducibles `x⁴+1`,
   `x⁴-x²+1`, Φ5 quedan enteras.)*
+  *(`1/(x⁶−1)` GRADUADO PENDING_HASH_SEXTIC 2026-06-21: sube el budget del multipoly del
+  `algebraic_rational_zero_test` (max_terms 64→256, grado 16→32) — el verifier YA hacía √c↦t,
+  t²=c, solo no cabía el residual de grado 6. `1/(x⁶−1)`, `1/(x⁶−64)` integran y round-trip-an.
+  Diagnóstico corregido: NO faltaba un rationalizador de radicales, faltaba budget. Quedan
+  residuales honestos los que requieren factor-over-ℝ: `1/(x⁴+1)` ya cubierto por la sustitución
+  simétrica, pero `1/(x⁸−1)`, `1/(x⁶+1)`, `1/(x⁵−1)` (Φ5/√5), `1/(x⁴−4)` (√2) necesitan LRT.)*
   *(extensión `factor` even-poly 2026-06-21 bfd669727b629bdbba8340e380e493cc773cd3ae: `factor` parte
   también polinomios PARES REDUCIBLES de grado ≥6 vía t=x²:
   `factor(x⁶+1)→(x²+1)(x⁴-x²+1)`, `factor(x⁶+x⁴+x²+1)→(x²+1)(x⁴+1)`,

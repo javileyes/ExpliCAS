@@ -56,9 +56,12 @@ cuando, los tres se cumplen:
 
 ### Gatekeepers (máxima prioridad — desbloquean cada mitad del north star)
 - **G1 · Integración racional UNIVERSAL** (factor-over-ℝ / Lazard-Rioboo-Trager) — **L,
-  ~8-12 ciclos.** Hoy residual: `1/(x^5-1)`, `1/(x^6±1)`, `1/(x^8-1)`, `1/(x^4-4)`,
-  `1/(x^3-2)`. El backend solo factoriza sobre ℚ. Es la promesa definitoria de "universal"
-  en integración y el item remanente declarado de la Phase 4 del backend.
+  ~8-12 ciclos.** 🔨 **Sub-ciclo 1 ATERRIZADO 2026-06-21**: `1/(x^6-1)`, `1/(x^6-64)` (factorizan
+  ENTEROS sobre ℚ) ya integran y verifican — subiendo el budget del multipoly del
+  `algebraic_rational_zero_test` (el verifier ya hacía √c↦t, t²=c; solo no cabía el residual de
+  grado 6). Residual GENUINAMENTE net-new (necesita factor-over-ℝ/LRT): `1/(x^5-1)` (Φ5/√5),
+  `1/(x^6+1)`, `1/(x^8-1)`, `1/(x^4-4)` (√2), `1/(x^3-2)` (∛2). Es la promesa definitoria de
+  "universal" en integración y el item remanente declarado de la Phase 4 del backend.
 - **G2 · Narrativa educativa de límites** (L'Hôpital / límite notable / squeeze /
   factor-y-cancela) — **L, ~6-10 ciclos.** Hoy CADA límite colapsa a un paso-cáscara único
   (salto mágico que los docs prohíben). Es la mitad EDUCATIVA del north star — **pesa lo mismo
