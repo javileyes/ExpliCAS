@@ -15121,6 +15121,101 @@ fn is_polynomial_times_exp_linear_target(ctx: &mut Context, expr: ExprId, var: &
     true
 }
 
+/// ∫ p(x)·a^x dx for a positive rational base `a ≠ 1` and a polynomial cofactor `p`
+/// (degree ≥ 1), by repeated integration by parts:
+///   ∫ p(x)·a^x dx = a^x · Σ_{k=0}^{deg p} (-1)^k p^(k)(x) / (ln a)^(k+1).
+/// Since `a^x = e^(x ln a)`, the by-parts slope is the SYMBOLIC `ln a`; the rational-slope
+/// `e^(cx)` kernel above cannot be reused, but the antiderivative has the same series shape.
+fn polynomial_times_constant_base_power_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    use num_traits::{One, Signed, Zero};
+
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    // Locate the unique constant-base power factor `a^x = Pow(base, x)`.
+    let mut power_index = None;
+    let mut base_expr = None;
+    for (index, &factor) in factors.iter().enumerate() {
+        let Expr::Pow(base, exponent) = ctx.get(factor) else {
+            continue;
+        };
+        let (base, exponent) = (*base, *exponent);
+        let is_var_exponent =
+            matches!(ctx.get(exponent), Expr::Variable(sym) if ctx.sym_name(*sym) == var);
+        if !is_var_exponent {
+            continue;
+        }
+        let Some(base_value) = crate::numeric_eval::as_rational_const(ctx, base) else {
+            continue;
+        };
+        if !base_value.is_positive() || base_value.is_one() || base_value.is_zero() {
+            continue;
+        }
+        if power_index.is_some() {
+            return None; // more than one a^x factor — out of scope
+        }
+        power_index = Some(index);
+        base_expr = Some(base);
+    }
+    let power_index = power_index?;
+    let base = base_expr?;
+    let power_factor = factors[power_index];
+
+    // The remaining factors must form a polynomial cofactor of degree ≥ 1.
+    let cofactor_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter_map(|(index, &factor)| (index != power_index).then_some(factor))
+        .collect();
+    let cofactor = if cofactor_factors.len() == 1 {
+        cofactor_factors[0]
+    } else {
+        build_balanced_mul(ctx, &cofactor_factors)
+    };
+    let poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+    let degree = poly.degree();
+    if degree == 0 || degree > MAX_EXP_POLYNOMIAL_BY_PARTS_DEGREE {
+        return None;
+    }
+
+    // inner = Σ_{k=0}^{deg} (-1)^k p^(k)(x) / (ln a)^(k+1)
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+    let mut derivative = poly.clone();
+    let mut inner: Option<ExprId> = None;
+    for k in 0..=degree {
+        if derivative.is_zero() {
+            break;
+        }
+        let numerator = derivative.to_expr(ctx);
+        let power = ctx.num((k + 1) as i64);
+        let denominator = ctx.add(Expr::Pow(ln_base, power));
+        let term = ctx.add(Expr::Div(numerator, denominator));
+        inner = Some(match inner {
+            None if k % 2 == 0 => term,
+            None => negate_scalar_expr(ctx, term),
+            Some(acc) if k % 2 == 0 => ctx.add(Expr::Add(acc, term)),
+            Some(acc) => ctx.add(Expr::Sub(acc, term)),
+        });
+        derivative = derivative.derivative();
+    }
+    let inner = inner?;
+    Some(mul2_raw(ctx, power_factor, inner))
+}
+
+pub fn integrate_symbolic_is_polynomial_times_constant_base_power_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    polynomial_times_constant_base_power_antiderivative(ctx, expr, var).is_some()
+}
+
 fn polynomial_exp_by_parts_inner(poly: &Polynomial, arg_slope: &BigRational) -> Polynomial {
     let mut inner = Polynomial::zero(poly.var.clone());
     let mut derivative = poly.clone();
@@ -22096,6 +22191,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = polynomial_times_constant_base_power_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = exp_trig_same_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -23016,6 +23115,7 @@ mod tests {
         integrate_symbolic_is_positive_quadratic_cube_target,
         integrate_symbolic_required_nonzero_conditions,
         integrate_symbolic_required_positive_conditions,
+        polynomial_times_constant_base_power_antiderivative,
     };
     use crate::general_integration_backend::{
         AlgorithmicIntegrationMethod, AlgorithmicIntegrationVerificationStatus,
@@ -23664,6 +23764,81 @@ mod tests {
             rendered(&ctx, out),
             "e^((2 - 3 * x) / 2) * (-2/3 * x - 10/9)"
         );
+    }
+
+    #[test]
+    fn integrates_polynomial_times_constant_base_power_by_parts() {
+        let mut ctx = Context::new();
+        // ∫ x·2^x dx = 2^x·(x/ln 2 − 1/ln(2)^2). Verified by differentiating back below.
+        let expr = parse("x*2^x", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+            &mut ctx, out, "x",
+        )
+        .expect("differentiate antiderivative");
+        let integrand = parse("x*2^x", &mut ctx).expect("parse integrand");
+        // d/dx of the antiderivative must equal the integrand (numerically over a sweep).
+        for sample in [-2i64, -1, 1, 2, 3] {
+            let a = eval_numeric_at(&ctx, derivative, "x", sample);
+            let b = eval_numeric_at(&ctx, integrand, "x", sample);
+            let (a, b) = (a.expect("eval derivative"), b.expect("eval integrand"));
+            assert!(
+                (a - b).abs() < 1e-9,
+                "x*2^x: d/dx(∫) {a} != integrand {b} at x={sample}"
+            );
+        }
+
+        // Bare 2^x (degree-0 cofactor) is NOT this kernel — the table owns it.
+        let bare = parse("2^x", &mut ctx).expect("parse");
+        assert!(
+            polynomial_times_constant_base_power_antiderivative(&mut ctx, bare, "x").is_none(),
+            "bare 2^x must be left to the a^x table, not the by-parts kernel"
+        );
+        // Base e is the exp kernel's job, not this one (no constant rational base).
+        let exp_case = parse("x*exp(x)", &mut ctx).expect("parse");
+        assert!(
+            polynomial_times_constant_base_power_antiderivative(&mut ctx, exp_case, "x").is_none(),
+            "x*e^x belongs to the exp-linear kernel"
+        );
+    }
+
+    fn eval_numeric_at(ctx: &Context, expr: cas_ast::ExprId, var: &str, value: i64) -> Option<f64> {
+        use cas_ast::Expr;
+        match ctx.get(expr) {
+            Expr::Number(n) => {
+                use num_traits::ToPrimitive;
+                n.to_f64()
+            }
+            Expr::Variable(sym) if ctx.sym_name(*sym) == var => Some(value as f64),
+            Expr::Constant(cas_ast::Constant::E) => Some(std::f64::consts::E),
+            Expr::Neg(inner) => Some(-eval_numeric_at(ctx, *inner, var, value)?),
+            Expr::Add(l, r) => {
+                Some(eval_numeric_at(ctx, *l, var, value)? + eval_numeric_at(ctx, *r, var, value)?)
+            }
+            Expr::Sub(l, r) => {
+                Some(eval_numeric_at(ctx, *l, var, value)? - eval_numeric_at(ctx, *r, var, value)?)
+            }
+            Expr::Mul(l, r) => {
+                Some(eval_numeric_at(ctx, *l, var, value)? * eval_numeric_at(ctx, *r, var, value)?)
+            }
+            Expr::Div(l, r) => {
+                Some(eval_numeric_at(ctx, *l, var, value)? / eval_numeric_at(ctx, *r, var, value)?)
+            }
+            Expr::Pow(b, e) => Some(
+                eval_numeric_at(ctx, *b, var, value)?.powf(eval_numeric_at(ctx, *e, var, value)?),
+            ),
+            Expr::Function(fn_id, args) if args.len() == 1 => {
+                let arg = eval_numeric_at(ctx, args[0], var, value)?;
+                match ctx.builtin_of(*fn_id)? {
+                    cas_ast::BuiltinFn::Ln => Some(arg.ln()),
+                    cas_ast::BuiltinFn::Exp => Some(arg.exp()),
+                    cas_ast::BuiltinFn::Sin => Some(arg.sin()),
+                    cas_ast::BuiltinFn::Cos => Some(arg.cos()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
     }
 
     #[test]

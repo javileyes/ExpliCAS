@@ -93,7 +93,9 @@ cuando, los tres se cumplen:
   `sqrt(3)·sqrt(3)`) — M, toca el verifier del bloque 12.
 - Normalización `1/x^p → x^(-p)` hacia power-rule/maquinaria impropia (aparece en 3
   dimensiones) — S, alto ROI.
-- `x·a^x` por-partes (S; la tabla `a^x/ln(a)` ya integra); ∞−∞ diferencia de fracciones en límites (M); parámetros simbólicos
+- ✅ **`x·a^x` por-partes ATERRIZADO 2026-06-21** (`polynomial_times_constant_base_power_antiderivative`:
+  `∫p(x)·a^x = a^x·Σ(-1)^k p^(k)/(ln a)^(k+1)`, base racional positiva ≠ 1, exponente = var,
+  cofactor grado 1..8; round-trip diff verificado); ∞−∞ diferencia de fracciones en límites (M); parámetros simbólicos
   en límites (M); cbrt en límites (S); evaluación definida del log-combinado de fracciones
   parciales (S-M).
 - Educativo P3: localización de nombres de regla en inglés (S); `--steps` en CLI text, `+C`,

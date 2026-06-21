@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 247 (newest first)
+Active entries: 248 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -132,6 +132,7 @@ Active entries: 247 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`, helpers | Summation linearity: sum of any polynomial summand by Faulhaber per monomial
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_series_at_zero_expr` public ... | Expose taylor()/series() command over the internal Maclaurin engine
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_at_zero_with_rational`, `rec... | Rational/geometric Taylor: series of 1/(1-x), 1/(1+x^2) for the taylor() command
+- 2026-06-21 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` | Integrate p(x)·a^x by parts for a general constant base
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -10631,3 +10632,50 @@ Active entries: 247 (newest first)
     transcendental u-substitution integration win (`cos(x)·e^(sin x)`) remains open — it needs a
     sound exact verifier in the 29k-line block-12 backend, a properly-scoped larger cycle, not a
     bounded one.
+
+## 2026-06-21 - Integrate p(x)·a^x by parts for a general constant base
+- area:
+  - `crates/cas_math/src/symbolic_integration_support.rs`
+    (`polynomial_times_constant_base_power_antiderivative`, registered in the main symbolic
+    integration dispatch right after the e^(linear) by-parts kernel;
+    `integrate_symbolic_is_polynomial_times_constant_base_power_target` predicate)
+- status:
+  - `retained` (new Phase-1 capability: the `x·a^x` by-parts P2 win; the `a^x/ln(a)` table
+    already integrated, the polynomial cofactor case was residual for any base ≠ e)
+- capture:
+  - investment_class: capability (new integration family)
+  - primary_dimension: north_star_completeness (Phase 1 elementary integration)
+  - cell: `integrate(x·2^x) = x·2^x/ln(2) − 2^x/ln(2)^2`, `integrate(x·3^x)`, `integrate(x^2·2^x)`,
+    `integrate((x+1)·2^x)`, `integrate(x·(3/2)^x)`, and the definite
+    `integrate(x·2^x, 0, 1) = (2ln2 − 1)/ln(2)^2`. Round-trip `diff(integrate(p·a^x)) = p·a^x`
+    holds for every probed case.
+  - behavior_change_expected: `polynomial · a^x` (constant rational base a > 0, a ≠ 1, exponent
+    exactly the variable, cofactor degree 1..8) flips from residual to its by-parts antiderivative.
+    Guardrail + pressure huella structurally NONE (no existing fixture covered this shape; the new
+    unit test lives in cas_math, not the cas_engine binary). Workspace 12239 passed / 0 failed;
+    clippy/fmt green.
+  - adversarial: round-trip diff verified for linear/quadratic/cubic cofactors, fractional base,
+    negative cofactor, scaled cofactor. Honest residuals (no mis-fire): exponent ≠ x
+    (`2^(2x)`, `2^(x+1)`), zero base (`0^x`), negative base (`(-2)^x`, no real antiderivative),
+    base 1 (folds to a polynomial), and two power factors (`2^x·3^x` folds to `6^x` → table).
+- observed:
+  - `a^x = e^(x·ln a)`, so the by-parts antiderivative is `a^x·Σ_{k} (-1)^k p^(k)(x)/(ln a)^(k+1)` —
+    the SAME series shape as the e^(cx) kernel, but the "slope" is the SYMBOLIC `ln a`, not a
+    rational `c`. The existing kernel (`polynomial_exp_by_parts_inner`) builds a `Polynomial`
+    with a `BigRational` slope and cannot represent `1/(ln a)^k`, so a parallel matcher that
+    builds the sum as a symbolic expression (powers of `ln(a)` in the denominators) was required.
+  - the antiderivative is EXACT by construction (the by-parts identity), so no separate verifier
+    is needed; the round-trip diff check is confirmation, not the soundness gate.
+- retained learning:
+  - a rational-slope by-parts kernel does NOT generalise to a symbolic slope by parameter swap:
+    the inner accumulator is a `Polynomial` (rational coefficients), but `1/(ln a)^k` is not a
+    rational coefficient. The symbolic-slope sibling must build the result as an EXPRESSION tree,
+    not a `Polynomial` — a clean parallel matcher beats contorting the polynomial kernel.
+  - exact guards make a structural integration matcher sound without a verifier: positive rational
+    base ≠ 0,1 (excludes `(-2)^x`/`0^x`/`1^x`), exponent EXACTLY the variable (excludes affine
+    exponents that would need a slope factor), polynomial cofactor of degree ≥ 1 (degree 0 is the
+    table's job). Each guard maps to a real soundness or ownership boundary.
+  - residual (peldaño): affine exponent `a^(cx+d)` (needs the e^(cx) slope handling carried into
+    the a^x outer factor); and integrate-command-matrix rows for this family are deferred — the
+    matrix's ~15 interdependent counter assertions make row-addition its own bounded task, and the
+    capability is already locked by the round-trip-verified unit test.
