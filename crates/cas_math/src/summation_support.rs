@@ -524,6 +524,21 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    // Arithmetic-geometric `sum(k·r^k)`: a linear cofactor times a geometric power.
+    if let Some(candidate) = try_build_arithmetic_geometric_sum(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::GeometricPower,
+        });
+    }
+
     // Linearity fallback for any remaining polynomial summand (`sum(2k)`,
     // `sum(k^2+k)`): tried LAST so the dedicated single-power and constant builders
     // above keep their exact output; this only fires on the scaled/multi-term cases
@@ -1458,6 +1473,82 @@ fn contains_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 
 fn is_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
+}
+
+/// Closed form for the arithmetic-geometric sum `Σ_{k=start}^{end} k·r^k` (`r` a rational
+/// ratio ≠ 0, 1). Matches a product of the bare index `k` and a geometric power `c·r^k`.
+pub fn try_build_arithmetic_geometric_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
+        return None;
+    }
+    let (left, right) = match ctx.get(summand) {
+        Expr::Mul(a, b) => (*a, *b),
+        _ => return None,
+    };
+    // One factor is the bare index `k`, the other a geometric `c·r^k`.
+    let geometric = if is_named_var(ctx, left, var) {
+        right
+    } else if is_named_var(ctx, right, var) {
+        left
+    } else {
+        return None;
+    };
+    let (coefficient, ratio) = extract_geometric_term(ctx, geometric, var)?;
+    if ratio.is_zero() || ratio.is_one() || coefficient.is_zero() {
+        return None;
+    }
+
+    let series = arithmetic_geometric_closed_form(ctx, &ratio, start, end);
+    let coefficient_expr = ctx.add(Expr::Number(coefficient));
+    Some(mul2_raw(ctx, coefficient_expr, series))
+}
+
+/// `Σ_{k=start}^{end} k·r^k = T(end) − T(start−1)` with `T(m) = r·(1 − (m+1)r^m + m·r^(m+1))/(1−r)^2`
+/// (the `k = 0` term vanishes, so a `start` of 0 or 1 needs no lower correction).
+fn arithmetic_geometric_closed_form(
+    ctx: &mut Context,
+    ratio: &BigRational,
+    start: ExprId,
+    end: ExprId,
+) -> ExprId {
+    let upper = arithmetic_geometric_one_to(ctx, ratio, end);
+    if expr_is_zero(ctx, start) || expr_is_one(ctx, start) {
+        return upper;
+    }
+    let one = ctx.num(1);
+    let start_minus_one = ctx.add(Expr::Sub(start, one));
+    let lower = arithmetic_geometric_one_to(ctx, ratio, start_minus_one);
+    ctx.add(Expr::Sub(upper, lower))
+}
+
+fn arithmetic_geometric_one_to(ctx: &mut Context, ratio: &BigRational, m: ExprId) -> ExprId {
+    let r = ctx.add(Expr::Number(ratio.clone()));
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    // (m + 1)·r^m
+    let m_plus_one = ctx.add(Expr::Add(m, one));
+    let r_pow_m = ctx.add(Expr::Pow(r, m));
+    let term2 = mul2_raw(ctx, m_plus_one, r_pow_m);
+    // m·r^(m+1)
+    let m_plus_one_exp = ctx.add(Expr::Add(m, one));
+    let r_pow_m1 = ctx.add(Expr::Pow(r, m_plus_one_exp));
+    let term3 = mul2_raw(ctx, m, r_pow_m1);
+    // 1 − (m+1)r^m + m·r^(m+1)
+    let inner = {
+        let diff = ctx.add(Expr::Sub(one, term2));
+        ctx.add(Expr::Add(diff, term3))
+    };
+    let numerator = mul2_raw(ctx, r, inner);
+    // (1 − r)^2
+    let one_minus_r = ctx.add(Expr::Sub(one, r));
+    let denominator = ctx.add(Expr::Pow(one_minus_r, two));
+    ctx.add(Expr::Div(numerator, denominator))
 }
 
 fn expr_is_square_of_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
@@ -2590,6 +2681,39 @@ mod tests {
                     value,
                     BigRational::from_integer(brute.into()),
                     "sum({summand}, k, {start}, {n}) closed form != brute force {brute}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn arithmetic_geometric_sums_match_brute_force() {
+        // Σ_{k=start}^{n} k·r^k closed form folded at concrete n vs the brute-force sum.
+        for (ratio_num, ratio_den) in [(2i64, 1i64), (3, 1), (1, 2)] {
+            for (start, n) in [(1i64, 5i64), (1, 7), (2, 6), (3, 5)] {
+                let ratio = BigRational::new(ratio_num.into(), ratio_den.into());
+                let mut brute = BigRational::from_integer(0.into());
+                for k in start..=n {
+                    let pow = super::rational_pow_int(&ratio, k).expect("pow");
+                    brute += BigRational::from_integer(k.into()) * pow;
+                }
+                let mut ctx = Context::new();
+                let src = if ratio_den == 1 {
+                    format!("sum(k*{ratio_num}^k, k, {start}, m)")
+                } else {
+                    format!("sum(k*(1/{ratio_den})^k, k, {start}, m)")
+                };
+                let full = cas_parser::parse(&src, &mut ctx).expect("parse");
+                let plan = try_plan_finite_sum_evaluation(&mut ctx, full, 1000)
+                    .unwrap_or_else(|| panic!("plan for {src}"));
+                let m = ctx.var("m");
+                let nval = ctx.num(n);
+                let substituted = cas_ast::substitute_expr_by_id(&mut ctx, plan.candidate, m, nval);
+                let value =
+                    fold_const(&ctx, substituted).unwrap_or_else(|| panic!("fold {src} at m={n}"));
+                assert_eq!(
+                    value, brute,
+                    "sum(k·{ratio_num}/{ratio_den}^k, k, {start}, {n})"
                 );
             }
         }

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 257 (newest first)
+Active entries: 258 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -142,6 +142,7 @@ Active entries: 257 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2 narration: reciprocal notable limits (u/sin(u) → 1, etc.)
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_series_at_point_expr`) | taylor()/series() around a non-zero expansion point
 - 2026-06-21 | `retained` | `crates/cas_math/src/number_theory_support.rs` (`try_eval_simple_number_theor... | Soundness fix: gcd/lcm of 3+ arguments ignored all but the first two
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | Arithmetic-geometric sum: closed form for Σ k·r^k
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11020,3 +11021,35 @@ Active entries: 257 (newest first)
     implementation to the guard — fold over the whole slice.
   - when fixing one n-ary op (gcd), check its siblings (lcm, and any min/max/and/or style reducer)
     for the same truncation; lcm had the dual bug (errored instead of folding).
+
+## 2026-06-21 - Arithmetic-geometric sum: closed form for Σ k·r^k
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_sum`,
+    `arithmetic_geometric_closed_form`, `arithmetic_geometric_one_to`; dispatched after the
+    geometric builders, reusing `SumEvaluationKind::GeometricPower`)
+- status:
+  - `retained` (closes the arithmetic-geometric residual the cycle-2/summation work left as a
+    peldaño)
+- capture:
+  - investment_class: capability (new closed form)
+  - primary_dimension: north_star_completeness (Phase 1 series)
+  - cell: `sum(k·2^k, k, 1, n) = 2 − (n+1)·2^(n+1) + … ` (folds to 98 at n=4), `sum(k·3^k, 1, 3) = 102`,
+    `sum(k·2^k, k, 2, 4) = 96` (symbolic lower bound), `sum(k·(1/2)^k, …)`. Bare geometric
+    `sum(2^k) = 2^(n+1) − 2` and polynomial sums unchanged (the builder needs the `k·` cofactor).
+  - behavior_change_expected: `sum(k·r^k)` with a symbolic bound flips from residual to its closed
+    form via `T(m) = r(1 − (m+1)r^m + m·r^(m+1))/(1−r)^2`, `Σ_{start}^{end} = T(end) − T(start−1)`.
+    Guardrail + pressure huella structurally NONE. Workspace 12250 passed / 0 failed.
+  - SOUNDNESS: verified by an independent brute force — substitute the bound, fold to an exact
+    rational, compare to `Σ k·r^k` summed term by term over a ratio (2, 3, 1/2) × bound sweep.
+- observed:
+  - reused `extract_geometric_term` to pull the ratio `r` (and any `r^t` offset coefficient) from
+    the geometric factor, and `is_named_var` to find the bare `k` cofactor; the only new math is
+    the standard arithmetic-geometric closed form.
+  - reused `SumEvaluationKind::GeometricPower` rather than adding a variant, avoiding the
+    three-exhaustive-match churn for a narration label that is geometric-adjacent.
+- retained learning:
+  - a one-line-cofactor extension of a geometric family (`k·r^k` on top of `r^k`) costs only the
+    closed form plus the existing geometric extractor; reuse the ratio extractor and the
+    start-offset subtraction pattern already proven for the power sums.
+  - residual (peldaño): general affine cofactor `(αk+β)·r^k` (split as α·Σk·r^k + β·Σr^k) and
+    higher-degree `k^2·r^k`.
