@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 258 (newest first)
+Active entries: 259 (newest first)
 
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
@@ -143,6 +143,7 @@ Active entries: 258 (newest first)
 - 2026-06-21 | `retained` | `crates/cas_math/src/limits_support.rs` (`taylor_series_at_point_expr`) | taylor()/series() around a non-zero expansion point
 - 2026-06-21 | `retained` | `crates/cas_math/src/number_theory_support.rs` (`try_eval_simple_number_theor... | Soundness fix: gcd/lcm of 3+ arguments ignored all but the first two
 - 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | Arithmetic-geometric sum: closed form for Σ k·r^k
+- 2026-06-21 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | Affine arithmetic-geometric: c·k·r^k and the distributed (αk+β)·r^k
 - 2026-06-20 | `retained` | eval honesty caveat; `crates/cas_math/src/numeric_eval.rs` new expr_contains_... | Retained soundness fix: imaginary-usage warning missed even-root-of-negative results (Round-4 Cluster H)
 - 2026-06-20 | `retained` | power-tower canonicalization; `crates/cas_math/src/root_power_canonical_suppo... | Retained soundness fix: rational-exponent power towers dropped the absolute value (Round-4 Cluster I)
 - 2026-06-20 | `retained` | rational inequality solving; `crates/cas_solver_core/src/isolation_arithmetic... | Retained soundness fix: rational inequality dropped the denominator-sign split for constant numerators (Round-4 Cluster E)
@@ -11053,3 +11054,36 @@ Active entries: 258 (newest first)
     start-offset subtraction pattern already proven for the power sums.
   - residual (peldaño): general affine cofactor `(αk+β)·r^k` (split as α·Σk·r^k + β·Σr^k) and
     higher-degree `k^2·r^k`.
+
+## 2026-06-21 - Affine arithmetic-geometric: c·k·r^k and the distributed (αk+β)·r^k
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_sum` flattened via
+    `mul_leaves` to absorb constant factors; new `try_build_geometric_additive_sum` for the
+    distributed sum, dispatched after the arithmetic-geometric builder)
+- status:
+  - `retained` (completes the arithmetic-geometric family to the affine cofactor `(αk+β)·r^k`)
+- capture:
+  - investment_class: capability (closed-form coverage)
+  - primary_dimension: north_star_completeness (Phase 1 series)
+  - cell: `sum(3·k·2^k, k, 1, n)` (folds to 102 at n=3), `sum((2k+1)·2^k, k, 1, n)` (= 82 at n=3),
+    `sum((2k+1)·2^k, k, 2, 4) = 220` (symbolic lower bound). Bare geometric and polynomial sums
+    unchanged.
+  - behavior_change_expected: `c·k·r^k` and the affine `(αk+β)·r^k` (which the engine distributes
+    to `r^k + α·k·r^(k+1)`) flip from residual to closed form. Guardrail + pressure huella
+    structurally NONE. Workspace passed / 0 failed; verified by an independent brute force over the
+    distributed forms × bounds.
+- observed:
+  - the engine DISTRIBUTES `(αk+β)·r^k` into a sum before the summation builders run, so the affine
+    case is really a linearity over geometric + arithmetic-geometric TERMS — handled by splitting
+    the additive summand (`AddView`) and summing each term. The constant-coefficient `c·k·r^k`
+    needed only flattening the product with `mul_leaves` and multiplying the coefficients.
+  - the additive builder declines unless EVERY term is geometric / arithmetic-geometric, so
+    polynomial sums (`k^2+k`) fall through untouched to their own linearity builder.
+- retained learning:
+  - when the engine pre-distributes a product (`(αk+β)·r^k → r^k + α·k·r^(k+1)`), the matcher must
+    target the DISTRIBUTED form: split the additive summand and sum each term, rather than trying
+    to match the factored product the user typed. A unit test that bypasses the engine's
+    simplification (bare `parse`) sees the un-distributed form and misleads — test the distributed
+    shape the pipeline actually produces.
+  - residual (peldaño): higher-degree polynomial cofactors `k^2·r^k` (a second arithmetic-geometric
+    order), and non-rational ratios.
