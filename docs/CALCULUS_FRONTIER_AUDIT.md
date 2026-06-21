@@ -853,7 +853,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (`sin(x)/x = 1` sin nombrar el límite notable/L'Hôpital/sandwich);
   impropias muestran `lim` sin evaluarlo con justificación
   (`lim e^(-x)(-x-1) = 0` por dominancia).
-  *(parcial f73db6948..PENDING_HASH_DOM 2026-06-21: 4 sub-ciclos del gatekeeper G2 vía el
+  *(parcial f73db6948..6dfaa5479 2026-06-21: 4 sub-ciclos del gatekeeper G2 vía el
   pipeline de enriquecimiento de cas_didactic, todo sound por chequeo de resultado/grado y huella
   NONE — (1) límites NOTABLES `sin/tan/arcsin/arctan/sinh/tanh(u)/u→1`, `(eᵘ−1)/u→1`,
   `(aᵘ−1)/u→ln(a)`, `ln(1+u)/u→1`, `(1−cos u)/u²→1/2`, `(1+u)^(1/u)→e`; (2) teorema del SÁNDWICH
