@@ -106,6 +106,24 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `log(1/2,16)→-4`, `log(2/3,9/4)→-2` vía vector de exponentes primos con signo). La base
   DEGENERADA también se cierra (2026-06-22, guard de validez de base: `log(1,1)→undefined` —antes
   `0`—, y `log(0,·)`/`log(neg,·)→undefined`).)*
+- [x] **(S) Multiplicación de matrices no-cuadradas → broadcast malformado**: `[[1,2],[3,4]]·[[5,6,7],[8,9,10]]`
+  (2x2·2x3) devolvía una matriz-de-matrices malformada en vez de `[[21,24,27],[47,54,61]]`;
+  `[[1],[2],[3]]·[[4,5,6]]` (3x1·1x3) igual; y un producto de dimensiones incompatibles (`2x3·2x2`)
+  fabricaba una matriz finita en vez de quedar sin evaluar. Los productos CUADRADOS pequeños
+  (2x2·2x2) sí funcionaban, ocultando el defecto. (P0 soundness en comando no-cálculo; exento del
+  orden de fase.)
+  *(graduado 2026-06-22 329f5534f: dos capas que se enmascaraban — `MatrixMultiplyRule` (registrada
+  ANTES que `ScalarMatrixRule`) SÍ producía el producto correcto, pero cada entrada de salida es una
+  suma sin plegar de `inner_dim` productos → el resultado cruzaba el presupuesto anti-empeoramiento
+  (>30 nodos abs, >1.5×) y el simplificador lo rechazaba (`continue`), cayendo a `ScalarMatrixRule`
+  que difundía una matriz como escalar. Fix: (1) `MatrixMultiplyRule` declara `budget_exempt`
+  ACOTADO (MAX_N=16, celdas≤256, inner≤16) para que la reducción definitoria se confirme antes de
+  plegar; (2) `ScalarMatrixRule` declina cuando AMBOS operandos son matrices → mismatch queda como
+  residual honesto. Diagnosticado instrumentando `try_eval_matrix_mul_expr` + leyendo el bucle de
+  aceptación `apply_rules`. Verificado vs sympy (3x3·I, 1x3·3x3, 3x2·2x4, 1x1, fracciones); huella
+  `filtered_out` +7 (tests añadidos), passed/failed idénticos. Peldaño: `M·M` no-cuadrada se colecta
+  a `M^2` sin evaluar y los productos que exceden los caps quedan sin evaluar — ambos residuales
+  honestos.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).
