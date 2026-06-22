@@ -49,7 +49,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   divide a `x²-x`) en vez de `x`, y `gcd(x²+x+1, x²-x+1)` devolvía `x²+x+1` en vez de `1` (coprimos).
   La clave AC del gcd estructural ignoraba el signo de los términos aditivos, colisionando `x²+x`
   con `x²-x`.
-  *(graduado 2026-06-22 PENDING_GC: la rama `Add` de `expr_key_hash` usaba `add_terms_no_sign`, que
+  *(graduado 2026-06-22 41a827a5b: la rama `Add` de `expr_key_hash` usaba `add_terms_no_sign`, que
   aplanaba `Add`/`Sub`/`Neg` DESCARTANDO el signo → ambos hasheaban a `{x²,x}` → `expr_equal_ac`
   true → el "factor común" era el primer argumento entero (no-divisor). Reemplazado por
   `add_terms_signed` (rastrea el signo, hashea negados vía `expr_key_neg`, igual que la rama `Sub`
