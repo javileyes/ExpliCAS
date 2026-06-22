@@ -984,10 +984,15 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `(sin(x−1)−(x−1))/(x−1)³→−1/6` en 1, `(eˣ⁻²−1)/(x−2)→1` en 2 narran "0/0 en x=1/2". SOUND: den→0 en
   el punto + resultado finito ⟹ num→0; `ln(x)/(x−1)` declina en 0 (den→−1) y `cos(x)/(x−1)` en 1
   declina (num≠0→∞). vs sympy, huella 0 deltas.)*
+  *(parcial 2026-06-22 03045f628: sub-ciclo (5c) el 0/0 con denominador TRIG/HIPERBÓLICO que se anula
+  en el punto — el oráculo `limit_denominator_vanishes_at` se hace recursivo: polinomio ∪ `f(g)` con
+  `f∈{sin,tan,sinh,tanh,arcsin,arctan,...}` (todas `f(0)=0`) y `g→0` ∪ `d^k` con `d→0`. `(cos x−1)/sin x→0`,
+  `(1−cos x)/tan x→0`, `x²/sin x→0`, `(x−sin x)/sin x³→1/6`, `(eˣ−1)/sin x→1` narran 0/0 en x=0. SOUND:
+  `f(g)→f(0)=0` cuando `g→0`; `cos`/`cosh` (valor 1 en 0) NO certifican. `1/cos(x)`, infinitos y puntos
+  irracionales declinan. vs sympy, huella 0 deltas.)*
   Quedan: mostrar la SUSTITUCIÓN concreta y la factorización explícita (el punto YA está cableado;
-  falta el factor), L'Hôpital/Taylor DERIVADOS paso a paso (no solo nombrados), el 0/0 en punto con
-  denominador NO-polinómico (`tan x/sin x` en π — el cero del den es transcendente), y la dominancia
-  EXPONENCIAL (ya narrada — no era peldaño real).
+  falta el factor), L'Hôpital/Taylor DERIVADOS paso a paso (no solo nombrados), y el 0/0 en punto
+  IRRACIONAL (`tan x/sin x` en π — el cero del argumento es transcendente, fuera de `as_rational_const`).
 - [~] **(F) Presentación**: ~10 nombres de regla en inglés dentro de
   narración española ('Normalize Negative Exponent', 'Identity
   Power'...); `--steps` ignorado en modo texto del CLI (los pasos solo
