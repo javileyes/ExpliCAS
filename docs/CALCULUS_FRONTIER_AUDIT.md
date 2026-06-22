@@ -978,10 +978,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   num→0, luego es 0/0 demostrable. Requirió cablear el punto al paso (`StepMeta.limit_point`). Falsos
   positivos refutados: `(x+1)/x` en 2 y `sin(πx)/x` en 1 (punto≠0, sustitución directa) declinan. Huella
   0 deltas; valores verificados vs sympy.)*
+  *(parcial 2026-06-22 51a481fc0: sub-ciclo (5b) el 0/0 narrado en punto DESPLAZADO — generaliza
+  (5) de punto-0 a cualquier punto racional verificando que el denominador POLINÓMICO se anule EN EL
+  PUNTO del límite (`Polynomial::eval(punto)`); `ln(x)/(x−1)→1`, `(1−cos(x−1))/(x−1)²→1/2`,
+  `(sin(x−1)−(x−1))/(x−1)³→−1/6` en 1, `(eˣ⁻²−1)/(x−2)→1` en 2 narran "0/0 en x=1/2". SOUND: den→0 en
+  el punto + resultado finito ⟹ num→0; `ln(x)/(x−1)` declina en 0 (den→−1) y `cos(x)/(x−1)` en 1
+  declina (num≠0→∞). vs sympy, huella 0 deltas.)*
   Quedan: mostrar la SUSTITUCIÓN concreta y la factorización explícita (el punto YA está cableado;
-  falta el factor), L'Hôpital/Taylor DERIVADOS paso a paso (no solo nombrados), el 0/0 narrado en punto
-  DESPLAZADO (`ln(x)/(x−1)` en 1 — el motor lo calcula, narrarlo necesita verificar la anulación en el
-  punto), y dominancia EXPONENCIAL (`e^(−x)·p(x)→0`).
+  falta el factor), L'Hôpital/Taylor DERIVADOS paso a paso (no solo nombrados), el 0/0 en punto con
+  denominador NO-polinómico (`tan x/sin x` en π — el cero del den es transcendente), y la dominancia
+  EXPONENCIAL (ya narrada — no era peldaño real).
 - [ ] **(F) Presentación**: ~10 nombres de regla en inglés dentro de
   narración española ('Normalize Negative Exponent', 'Identity
   Power'...); `--steps` ignorado en modo texto del CLI (los pasos solo
