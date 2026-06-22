@@ -6487,6 +6487,24 @@ pub fn residual_solution_set(
     rhs: ExprId,
     var: &str,
 ) -> SolutionSet {
+    // No-progress isolation: the variable survives on BOTH sides. This happens when the solver
+    // peels a low-degree term off an UNSOLVABLE polynomial and leaves the higher-degree remainder
+    // on the other side — `solve(x^3+x+1=0)` "isolated" to the self-referential `x = -x^3-1`.
+    // Emit the HONEST one-sided residual `solve((lhs - rhs) = 0, var)` instead; expanding the
+    // difference collapses `x - (-x^3-1)` to the clean `x^3 + x + 1`. (Progressing isolations
+    // never reach here — by this point every strategy has declined.)
+    if contains_var(ctx, lhs, var) && contains_var(ctx, rhs, var) {
+        let diff = ctx.add(Expr::Sub(lhs, rhs));
+        // Collect to a clean canonical polynomial when possible (`x - (-x^3-1) -> x^3 + x + 1`);
+        // fall back to the expanded difference for a non-polynomial diff (e.g. a cube-root
+        // isolation `x - (x-1)^(1/3)`), which is still honest and one-sided.
+        let normalized = match cas_math::polynomial::Polynomial::from_expr(ctx, diff, var) {
+            Ok(poly) => poly.to_expr(ctx),
+            Err(_) => cas_math::expand_ops::expand(ctx, diff),
+        };
+        let zero = ctx.num(0);
+        return SolutionSet::Residual(residual_expression(ctx, normalized, zero, var));
+    }
     SolutionSet::Residual(residual_expression(ctx, lhs, rhs, var))
 }
 
@@ -10049,6 +10067,55 @@ pub fn power_equals_base_symbolic_outcome(ctx: &mut Context, base: ExprId) -> So
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn residual_solution_set_de_self_references_no_progress_isolation() {
+        use cas_parser::parse;
+        // `x = -x^3 - 1` (the self-referential garble from isolating an irreducible cubic): the
+        // residual must become the HONEST one-sided `solve(x^3 + x + 1 = 0, x)` — variable on a
+        // single side, collected polynomial.
+        let mut ctx = Context::new();
+        let lhs = parse("x", &mut ctx).expect("parse lhs");
+        let rhs = parse("-x^3 - 1", &mut ctx).expect("parse rhs");
+        let SolutionSet::Residual(expr) = residual_solution_set(&mut ctx, lhs, rhs, "x") else {
+            panic!("expected residual");
+        };
+        // expr = solve(Eq(inner_lhs, inner_rhs), var); dig out the inner equation.
+        let cas_ast::Expr::Function(_, args) = ctx.get(expr).clone() else {
+            panic!("residual is a solve(...) call");
+        };
+        let cas_ast::Expr::Function(_, eq_args) = ctx.get(args[0]).clone() else {
+            panic!("first arg is Eq(...)");
+        };
+        let (inner_lhs, inner_rhs) = (eq_args[0], eq_args[1]);
+        // The fix's defining property: the variable no longer survives on the RHS.
+        assert!(
+            !contains_var(&ctx, inner_rhs, "x"),
+            "residual must not be self-referential (x on both sides)"
+        );
+        assert!(contains_var(&ctx, inner_lhs, "x"));
+        // And the LHS is the collected polynomial x^3 + x + 1 (checked numerically at x = 2: 11).
+        let mut map = std::collections::HashMap::new();
+        map.insert("x".to_string(), 2.0);
+        let v = cas_math::evaluator_f64::eval_f64(&ctx, inner_lhs, &map).expect("foldable");
+        assert!((v - 11.0).abs() < 1e-9, "x^3+x+1 at x=2 is 11, got {v}");
+
+        // A genuinely-isolated residual (var on one side already) is untouched.
+        let mut ctx2 = Context::new();
+        let v = parse("x", &mut ctx2).expect("x");
+        let five = parse("5", &mut ctx2).expect("5");
+        let SolutionSet::Residual(e2) = residual_solution_set(&mut ctx2, v, five, "x") else {
+            panic!("expected residual");
+        };
+        let cas_ast::Expr::Function(_, a2) = ctx2.get(e2).clone() else {
+            panic!("solve call");
+        };
+        let cas_ast::Expr::Function(_, eq2) = ctx2.get(a2[0]).clone() else {
+            panic!("Eq");
+        };
+        // lhs stays `x`, rhs stays `5` (no rewrite).
+        assert!(matches!(ctx2.get(eq2[1]), cas_ast::Expr::Number(_)));
+    }
 
     #[test]
     fn classify_zero_number() {

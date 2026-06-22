@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 299 (newest first)
+Active entries: 300 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -135,6 +135,7 @@ Active entries: 299 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`signed_prime_exponent_map`, | Logaritmos de base fraccionaria (log(1/2,16) = -4)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | P0 soundness: log de base degenerada (log(1,1) = 0 → undefined)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`as_fraction`: extractor num/den ext... | Límites ∞−∞ de recíproco-trig (csc²x−1/x² = 1/3, cot²x−1/x² = −2/3)
+- 2026-06-22 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`residual_solution_set`: guard... | Residual honesto en aislamiento sin progreso (solve(x^3+x+1=0) ya no es garbled)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12641,3 +12642,45 @@ Active entries: 299 (newest first)
     que desbloquea la evaluación de la fracción combinada.
   - residual (peldaño): `1/tan²x − 1/x²` y otras con tan/cot crudo cuyo sub-límite no resuelve
     (las reglas de polo no cubren tan); habría que extender esas reglas a tan/cot.
+
+## 2026-06-22 - Residual honesto en aislamiento sin progreso (solve(x^3+x+1=0) ya no es garbled)
+- area:
+  - `crates/cas_solver_core/src/solve_outcome.rs` (`residual_solution_set`: guard de variable en
+    ambos lados)
+- status:
+  - `retained` (honestidad/soundness-adjacent — de residual garbled auto-referencial a residual
+    honesto; afecta ecuaciones E inecuaciones)
+- capture:
+  - investment_class: soundness/honestidad (residual confuso → residual claro; el audit trata los
+    residuales honestos como contrato)
+  - primary_dimension: north_star_soundness (honestidad de la degradación del solver)
+  - secondary_dimension: reuse_value (un guard en el punto de convergencia del residual)
+  - cell: `solve(x^3+x+1=0) → solve(x^3+x+1 = 0, x)` (antes `solve(x = -x^3-1)`, auto-referencial);
+    igual `x^3+x+1<0`, `x^5+x+1<0`, `x^4+x+1>0`; los de raíz-cúbica (`x^3-x+1>0`) pasan a
+    `solve(x - (x-1)^(1/3) = 0)` (honesto, un solo lado).
+  - behavior_change_expected: cuando el aislamiento deja la variable en AMBOS lados (sin progreso:
+    pelar un término de bajo grado de un polinomio IRREDUCIBLE deja el resto en el otro lado), el
+    residual pasa de la ecuación reescrita auto-referencial al residual honesto de un solo lado
+    `solve((lhs-rhs)=0, var)`, colectado a polinomio canónico cuando aplica. Huella NONE; workspace
+    12288/0; ningún fixture fijaba la salida garbled.
+  - SOUNDNESS: el guard `contains_var(lhs) && contains_var(rhs)` solo se evalúa DENTRO de
+    `residual_solution_set`, alcanzado únicamente tras declinar TODAS las estrategias — los casos
+    que progresan (potencia pura `x^3-2`, factorizables `x^3+x`, lineales/cuadráticos,
+    `sqrt(x)=3→x=9`) nunca llegan aquí. La diferencia se colecta vía `Polynomial` (canónico) o
+    `expand` (no-polinómicos), exacto.
+  - scoping: localizado por subagente — el residual auto-referencial converge en
+    `residual_solution_set` (los 4 casos), tras `isolate_add_operand` pelar el término lineal y
+    `resolve_isolated_variable_outcome` devolver `ContainsTargetVariable`.
+- observed:
+  - la causa es COMPARTIDA por ecuaciones e inecuaciones (ambas funnel por `residual_solution_set`;
+    `mk_residual_solve` ya descarta el op, por eso `<0` se renderiza como `=0`). El garble venía de
+    aislar el término de grado 1 y dejar el polinomio de mayor grado en el RHS.
+- retained learning:
+  - un "aislamiento" que deja la variable en AMBOS lados NO es progreso; el residual debe ser la
+    forma de un solo lado `(lhs-rhs)=0` del problema original, no la ecuación reescrita
+    auto-referencial. Gatear en el punto de convergencia del residual (tras declinar todo) es
+    seguro: los caminos que progresan no lo alcanzan.
+  - residual (peldaño): la FORMA limpia para los casos de raíz-cúbica (`solve(x^3-x+1=0)` en vez de
+    `solve(x - (x-1)^(1/3)=0)`) necesitaría enhebrar la ecuación ORIGINAL por la recursión de
+    aislamiento (candidato b, más invasivo). Y `mk_residual_solve` descarta el op de la inecuación
+    (muestra `=0`): preservarlo es otra mejora.

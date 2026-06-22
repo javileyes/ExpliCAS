@@ -54,8 +54,10 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   → ruta product-sign existente (que ya resolvía factorizadas). Guard anti-loop sobre la forma
   CRUDA + re-entrada por `isolate_equation`. Irreducibles (`x^4-10`, `x^3-2`), cuadráticas,
   ya-factorizadas y ecuaciones declinan/intactas. Factorizador exacto BigRational. Scoping por
-  subagente; brute-force 10/10 vs sympy; huella NONE. Peldaño: cúbicas IRREDUCIBLES con raíz
-  irracional (`x^3+x+1<0`) siguen garbled — necesitan aislamiento real de raíces grado≥3.)*
+  subagente; brute-force 10/10 vs sympy; huella NONE. Las cúbicas IRREDUCIBLES ya no dan garble:
+  ahora residual honesto (2026-06-22, guard de no-progreso en `residual_solution_set`:
+  `solve(x^3+x+1<0) → solve(x^3+x+1 = 0, x)`). Peldaño restante: no hay raíz cerrada (Cardano) ni
+  el op de la inecuación en el residual.)*
 - [x] **(F) Límite ∞−∞ del mismo signo colapsaba a 0**: `limit(1/sin²x − 1/x², x, 0)` devolvía `0`
   (valor real 1/3); igual `csc²x − 1/x²` y `1/x² − 1/(x²+x³)` (real divergente). La resta de dos
   sub-límites infinitos iguales se colapsaba por un atajo estructural.
