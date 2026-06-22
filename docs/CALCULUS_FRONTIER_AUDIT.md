@@ -969,10 +969,19 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   NONE — (1) límites NOTABLES `sin/tan/arcsin/arctan/sinh/tanh(u)/u→1`, `(eᵘ−1)/u→1`,
   `(aᵘ−1)/u→ln(a)`, `ln(1+u)/u→1`, `(1−cos u)/u²→1/2`, `(1+u)^(1/u)→e`; (2) teorema del SÁNDWICH
   `u^k·sin/cos(1/u)→0`; (3) CONTINUIDAD/sustitución directa (polinomios) y FACTOR-Y-CANCELA (0/0
-  removible); (4) DOMINANCIA en infinito (cociente de coeficientes líderes / grado mayor → 0/±∞).
-  Quedan: mostrar la SUSTITUCIÓN concreta y la factorización explícita (necesitan cablear el
-  punto/factor al paso), L'Hôpital/Taylor narrados paso a paso, y dominancia EXPONENCIAL
-  (`e^(−x)·p(x)→0`).)*
+  removible); (4) DOMINANCIA en infinito (cociente de coeficientes líderes / grado mayor → 0/±∞).)*
+  *(parcial 2026-06-22 335fb440e: sub-ciclo (5) la INDETERMINACIÓN 0/0 de orden superior en x=0
+  narrada como L'Hôpital/Taylor — `(x−sin x)/x³`, `(eˣ−1−x)/x²`, `(tan x−x)/x³`, `(sin x−x)/x³`,
+  `(cos x−1)/x²`, `(arctan x−x)/x³`, `(1−cos 2x)/x²`. El motor ya las calcula; faltaba nombrarlas.
+  SOUND: un denominador `u^k` se anula solo en 0, así que la narración "0/0 en 0" es correcta exactamente
+  cuando el punto del límite es 0 (chequeado literal); dado punto 0, den→0 y un resultado finito fuerza
+  num→0, luego es 0/0 demostrable. Requirió cablear el punto al paso (`StepMeta.limit_point`). Falsos
+  positivos refutados: `(x+1)/x` en 2 y `sin(πx)/x` en 1 (punto≠0, sustitución directa) declinan. Huella
+  0 deltas; valores verificados vs sympy.)*
+  Quedan: mostrar la SUSTITUCIÓN concreta y la factorización explícita (el punto YA está cableado;
+  falta el factor), L'Hôpital/Taylor DERIVADOS paso a paso (no solo nombrados), el 0/0 narrado en punto
+  DESPLAZADO (`ln(x)/(x−1)` en 1 — el motor lo calcula, narrarlo necesita verificar la anulación en el
+  punto), y dominancia EXPONENCIAL (`e^(−x)·p(x)→0`).
 - [ ] **(F) Presentación**: ~10 nombres de regla en inglés dentro de
   narración española ('Normalize Negative Exponent', 'Identity
   Power'...); `--steps` ignorado en modo texto del CLI (los pasos solo
