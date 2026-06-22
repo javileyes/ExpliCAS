@@ -49,7 +49,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (real `(-2,-1)∪(1,2)`) y `solve(x^3-x<0)` un aislamiento garbled `solve(x=x^(1/3))`; las formas
   factorizadas equivalentes sí resolvían. Las estrategias degree-aware (Quadratic, RationalRoots)
   gatean `op==Eq`, así que las inecuaciones caían a aislamiento de variable.
-  *(graduado 2026-06-22 PENDING_GB: nuevo `try_factor_polynomial_inequality` — antes de aislar, si
+  *(graduado 2026-06-22 b3089a272: nuevo `try_factor_polynomial_inequality` — antes de aislar, si
   es inecuación de polinomio univariado grado≥3 REDUCIBLE, reescribe a `factor(p) OP 0` y re-aísla
   → ruta product-sign existente (que ya resolvía factorizadas). Guard anti-loop sobre la forma
   CRUDA + re-entrada por `isolate_equation`. Irreducibles (`x^4-10`, `x^3-2`), cuadráticas,
