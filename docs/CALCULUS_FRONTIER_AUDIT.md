@@ -988,11 +988,20 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   falta el factor), L'Hôpital/Taylor DERIVADOS paso a paso (no solo nombrados), el 0/0 en punto con
   denominador NO-polinómico (`tan x/sin x` en π — el cero del den es transcendente), y la dominancia
   EXPONENCIAL (ya narrada — no era peldaño real).
-- [ ] **(F) Presentación**: ~10 nombres de regla en inglés dentro de
+- [~] **(F) Presentación**: ~10 nombres de regla en inglés dentro de
   narración española ('Normalize Negative Exponent', 'Identity
   Power'...); `--steps` ignorado en modo texto del CLI (los pasos solo
   viven en JSON); sin `+C` en antiderivadas; artefactos `ln(e)`,
   `x^(2-1)` en substeps de derivadas anidadas.
+  *(parcial 2026-06-22 e8d20481c: los ~10 nombres de regla en inglés TRADUCIDOS al
+  español — añadidas 10 entradas al chokepoint de display `visible_rule_name`
+  ("Evaluate Meta Functions", "Cancel Same-Base Powers", "Factor Polynomial",
+  "Identity Power", "Distribute Division Into Sum", "Normalize Negative Exponent",
+  "Evaluate Logarithms", "N-ary Mul Combine Powers", "Combine Constants", "Abs Of
+  Even Power"). El `rule_name` interno (clave de detección de ciclos/dispatch) queda
+  intacto; solo cambia la etiqueta de display. Huella 0 deltas; smokes verdes. Quedan
+  los OTROS sub-items: `--steps` en modo texto, `+C` en antiderivadas, y los artefactos
+  `ln(e)`/`x^(2-1)` en substeps de derivadas anidadas.)*
 - [ ] **(F) Etiquetas legibles en pre-cálculo**: `factor(x^2-9)` narra
   "Factor Polynomial" sin diferencia de cuadrados;
   `expand((x+2)^3)` narra "Evaluate Meta Functions".
