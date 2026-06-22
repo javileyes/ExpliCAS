@@ -65,8 +65,73 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
         return n1.cmp(&n2);
     }
 
+    // Exact comparison of quadratic-surd values (e.g. the irrational roots of a quadratic) by the
+    // sign of `a − b`. The structural fallback below does NOT reflect numeric value, so irrational
+    // interval endpoints were emitted UNORDERED — `solve(x^2-3<0)` produced `(√3, -√3)`, a reversed
+    // (empty) interval, and `solve(x^2-3>0)` produced an all-of-ℝ union. Rational endpoints already
+    // ordered correctly via the Number branch above; this closes the surd case.
+    if let Some(ord) = compare_quadratic_surds(ctx, a, b) {
+        return ord;
+    }
+
     // Fallback: Use structural comparison if we can't compare values
     cas_ast::ordering::compare_expr(ctx, a, b)
+}
+
+/// Decompose `expr` into the quadratic-surd normal form `A + B·√n` (`n ≥ 0` rational), also
+/// recognising the golden ratio `φ = ½ + ½·√5`. `None` for anything outside a single real
+/// quadratic surd (delegates to [`cas_math::root_forms::as_linear_surd`]).
+fn as_surd_value(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRational, BigRational)> {
+    if matches!(ctx.get(expr), Expr::Constant(Constant::Phi)) {
+        let half = BigRational::new(1.into(), 2.into());
+        return Some((half.clone(), half, BigRational::from_integer(5.into())));
+    }
+    cas_math::root_forms::as_linear_surd(ctx, expr)
+}
+
+/// Exact sign of the quadratic surd `p + q·√n` (`n ≥ 0`).
+fn sign_of_linear_surd(p: &BigRational, q: &BigRational, n: &BigRational) -> Ordering {
+    let zero = BigRational::zero();
+    if q.is_zero() || n.is_zero() {
+        return p.cmp(&zero);
+    }
+    // n > 0, q ≠ 0.
+    if p.is_zero() {
+        return q.cmp(&zero); // sign(q), since √n > 0
+    }
+    let sp = p.cmp(&zero);
+    let sq = q.cmp(&zero);
+    if sp == sq {
+        return sp; // same sign ⇒ that sign
+    }
+    // Opposite signs: sign(p + q·√n) = sign(q)·sign(q²·n − p²).
+    let inner = (q.clone() * q.clone() * n.clone()).cmp(&(p.clone() * p.clone()));
+    if sq == Ordering::Less {
+        inner.reverse()
+    } else {
+        inner
+    }
+}
+
+/// Compare two quadratic-surd values `a`, `b` by VALUE via the exact sign of `a − b`. `None` when
+/// either is not a single real quadratic surd, or when the two carry DISTINCT radicands with both
+/// surd parts non-zero (the two roots of one quadratic always share a radicand, the common case).
+fn compare_quadratic_surds(ctx: &Context, a: ExprId, b: ExprId) -> Option<Ordering> {
+    let (aa, ab, an) = as_surd_value(ctx, a)?;
+    let (ba, bb, bn) = as_surd_value(ctx, b)?;
+    // a − b = (aa − ba) + ab·√an − bb·√bn. Combine the surd parts only when they share a radicand
+    // (or one side has no surd part).
+    let p = aa - ba;
+    let (q, n) = if ab.is_zero() {
+        (-bb, bn)
+    } else if bb.is_zero() {
+        (ab, an)
+    } else if an == bn {
+        (ab - bb, an)
+    } else {
+        return None;
+    };
+    Some(sign_of_linear_surd(&p, &q, &n))
 }
 
 /// Order two expression ids so the first is `<=` the second under `compare_values`.
@@ -520,6 +585,31 @@ pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) 
 mod tests {
     use super::*;
     use cas_ast::Context;
+
+    #[test]
+    fn compare_values_orders_quadratic_surds_by_value() {
+        use cas_parser::parse;
+        // -√3 < √3, √2 < 2, (1-√5)/2 < φ, and φ > 1 — by VALUE, not structure. Before the surd
+        // branch these fell to structural comparison and irrational interval endpoints reversed.
+        let cases: [(&str, &str, Ordering); 6] = [
+            ("sqrt(3)", "-sqrt(3)", Ordering::Greater),
+            ("-sqrt(3)", "sqrt(3)", Ordering::Less),
+            ("sqrt(2)", "2", Ordering::Less),
+            ("phi", "1/2*(1 - sqrt(5))", Ordering::Greater),
+            ("1/2*(1 - sqrt(5))", "phi", Ordering::Less),
+            ("phi", "1", Ordering::Greater),
+        ];
+        for (a_src, b_src, want) in cases {
+            let mut ctx = Context::new();
+            let a = parse(a_src, &mut ctx).expect("parse a");
+            let b = parse(b_src, &mut ctx).expect("parse b");
+            assert_eq!(
+                compare_values(&ctx, a, b),
+                want,
+                "compare_values({a_src}, {b_src})"
+            );
+        }
+    }
 
     fn make_interval(
         ctx: &mut Context,

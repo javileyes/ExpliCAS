@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 291 (newest first)
+Active entries: 292 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -127,6 +127,7 @@ Active entries: 291 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/trig_eval_table_support.rs` (`rewrite_negative_trig_argu... | Evaluar trig inversa de argumento negativo por simetría (arccos(-1/2) = 2π/3)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | Evaluar logaritmos de argumento racional (log2(1/4) = -2)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | P0 soundness: log(b, 0) ignoraba la base (signo erróneo para 0<b<1, base 1)
+- 2026-06-22 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values`: comparación e... | P0 soundness: endpoints surd de inecuaciones sin ordenar por valor (solve(x²<3) daba ∅)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12334,3 +12335,42 @@ Active entries: 291 (newest first)
     `log(1/2,1/8) → 3`) sigue inerte — `eval_log_rational` toma base entera; falta el caso
     `log_{p/q}(c)`. Y `log(1,1) → 0` (debería ser undefined) es el mismo régimen degenerado de
     base 1 en la rama `n=1`, no tocado aquí.
+
+## 2026-06-22 - P0 soundness: endpoints surd de inecuaciones sin ordenar por valor (solve(x²<3) daba ∅)
+- area:
+  - `crates/cas_solver_core/src/solution_set.rs` (`compare_values`: comparación exacta de surds
+    cuadráticos; helpers `as_surd_value`, `sign_of_linear_surd`, `compare_quadratic_surds`)
+- status:
+  - `retained` (P0 soundness — wrong-answer: conjunto solución de inecuación cuadrática perdido o
+    invertido; cazado por hunt adversarial)
+- capture:
+  - investment_class: soundness (corrige valor erróneo; exenta de la restricción de fase)
+  - primary_dimension: north_star_soundness (inecuaciones cuadráticas con raíces irracionales)
+  - secondary_dimension: reuse_value (reusa `as_linear_surd` y la misma fórmula de signo exacta
+    de `provable_sign_vs_zero`)
+  - cell: `solve(x²-3<0) → (-√3, √3)` (antes `(√3, -√3)` invertido = ∅); `solve(x²-3>0) →
+    (-∞,-√3)∪(√3,∞)` (antes cubría todo ℝ); `solve(x²≤3) → [-√3, √3]`; `solve(x²-x-1<0) →
+    ((1-√5)/2, φ)` (golden ratio); `solve(2x²-6<0) → (-√3, √3)`. Endpoints racionales
+    (`solve(x²-4<0) → (-2,2)`) intactos.
+  - behavior_change_expected: las inecuaciones cuadráticas con raíces IRRACIONALES pasan de
+    intervalo invertido/vacío (o unión que cubre ℝ) al intervalo correcto. Huella NONE; workspace
+    12280/0 (ningún fixture fijaba el orden invertido).
+  - SOUNDNESS: orden EXACTO por el signo de `a−b` como surd cuadrático `P+Q√n` (n≥0), nunca f64.
+    `compare_values` resolvía racionales (rama Number) pero caía a comparación ESTRUCTURAL para
+    surds — que no refleja el valor. `as_linear_surd` garantiza `n≥0` racional; φ=(½+½√5) se
+    reconoce localmente. Radicandos distintos o transcendentes declinan → fallback estructural
+    (no peor que antes).
+- observed:
+  - el hunt adversarial (5 lentes, refutación sympy/mpmath) destapó 6 casos: `x²-3`, `x²-2`,
+    `2x²-6`, `x²-x-1` en `<`/`>`/`≤`. La causa común: `order_pair_by_value → compare_values`
+    ordenaba bien enteros (`x²-4<0 → (-2,2)`) pero NO surds (estructural), invirtiendo `(√3,-√3)`.
+  - el caso φ (`x²-x-1`) necesitaba reconocer la constante golden-ratio como surd `½+½√5`.
+- retained learning:
+  - una comparación de VALORES que cae a comparación ESTRUCTURAL para no-racionales es un
+    wrong-answer latente en cualquier construcción de intervalo con endpoints irracionales. El
+    arreglo es el signo exacto del surd `a−b` (misma fórmula que `provable_sign_vs_zero`), NUNCA
+    f64 (un gate flotante podría invertir endpoints cercanos). Las constantes nombradas con forma
+    surd cerrada (φ) deben mapearse a su `A+B√n`.
+  - residual (peldaño): endpoints surd de radicando DISTINTO con ambas partes surd no-cero, y
+    surds de raíz cúbica/orden superior (raíces de cúbicas irreducibles), siguen cayendo a
+    estructural; el display sin racionalizar (`-3·3^(-1/2)` por `-√3`) es ortogonal (otro wart).

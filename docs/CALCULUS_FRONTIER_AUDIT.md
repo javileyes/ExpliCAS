@@ -45,6 +45,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
+- [x] **(F) Endpoints surd de inecuaciones sin ordenar por valor**: `solve(x²-3<0)` devolvía
+  `(√3, -√3)` (intervalo invertido = ∅) en vez de `(-√3, √3)`, y `solve(x²-3>0)` una unión que
+  cubría todo ℝ; misma falla en `x²-2`, `2x²-6`, `x²-x-1` (raíz φ). Los endpoints RACIONALES
+  (`x²-4<0 → (-2,2)`) sí se ordenaban.
+  *(graduado 2026-06-22 PENDING_GA: `compare_values` resolvía racionales (rama Number) pero caía a
+  comparación ESTRUCTURAL para surds — que no refleja el valor. Añadido `compare_quadratic_surds`:
+  ordena por el signo EXACTO de `a−b` como surd `P+Q√n` (n≥0, misma fórmula que
+  `provable_sign_vs_zero`, nunca f64), reusando `as_linear_surd`; φ=(½+½√5) reconocido localmente.
+  Radicandos distintos/transcendentes declinan → fallback estructural. Cazado por hunt adversarial
+  5-lente con refutación sympy/mpmath; brute-force 14/14 ordenados; huella NONE. Peldaño: surds de
+  radicando distinto y raíces de orden ≥3 siguen estructurales; display sin racionalizar es otro
+  wart.)*
 - [x] **(F) `log(b, 0)` ignoraba la base (signo erróneo)**: `log(1/2, 0)` devolvía `-∞` cuando el
   valor real es `+∞` (`log_b(0)=ln(0)/ln(b)`, y `ln(b)<0` para `0<b<1` invierte el signo), y
   `log(1, 0)` devolvía `-∞` en vez de `undefined` (base 1 degenerada). La rama `n=0` emitía `-∞`
