@@ -19739,27 +19739,29 @@ fn notable_limit_name(
                     .to_string(),
             );
         }
-        // Generic 0/0 at the point, not captured by a specific notable above. SOUNDNESS: the
-        // denominator is a positive power of the bare variable (u, u², u³, …), which vanishes
-        // ONLY at 0 — so this narration is correct exactly when the limit point IS 0 (checked
-        // literally below; `(x+1)/x → x→2` and `sin(πx)/x → x→1` have a nonzero point and decline).
-        // Given point 0: den → 0, and a FINITE result forces num → 0 too
-        // (lím num = result · lím den = result · 0 = 0), so the form is provably 0/0 — no Taylor
-        // re-derivation needed. Fires only as a fallback (every specific notable / factor-cancel
-        // returns earlier) and only when the numerator genuinely involves the variable (a constant
-        // numerator gives ±∞, never a finite result). `(x − sin x)/x³ → 1/6`, `(eˣ − 1 − x)/x² → 1/2`.
-        let point_is_zero =
-            point.is_some_and(|p| matches!(ctx.get(p), Expr::Number(n) if n.is_zero()));
-        if point_is_zero
-            && after_value.is_some()
-            && limit_var_or_int_power_of_var(ctx, den).is_some()
-            && limit_single_var_name(ctx, num).is_some()
-        {
-            return Some(
-                "Indeterminación 0/0 en u→0: aplica la regla de L'Hôpital (deriva numerador y \
-                 denominador) o el desarrollo de Taylor"
-                    .to_string(),
-            );
+        // Generic 0/0 at the limit point, not captured by a specific notable above. SOUNDNESS: the
+        // denominator is a polynomial that vanishes AT THE LIMIT POINT (evaluated exactly), so it
+        // tends to 0 there; a FINITE result then forces the numerator to vanish too
+        // (lím num = result · lím den = result · 0 = 0), making the form provably 0/0 — no Taylor
+        // re-derivation needed and no need to substitute the (possibly transcendental) numerator.
+        // The point is checked at the ACTUAL approached value, so `ln(x)/(x−1)` narrates at 1 but
+        // declines at 0 (where x−1 → −1 ≠ 0), and `(x+1)/x → x→2` / `sin(πx)/x → x→1` decline
+        // (their denominator does not vanish at the point). Fires only as a fallback (every specific
+        // notable / factor-cancel returns earlier) and only when the numerator involves the variable
+        // (a constant numerator gives ±∞, never a finite result). Covers `(x − sin x)/x³ → 1/6` at 0,
+        // `(1 − cos(x−1))/(x−1)² → 1/2` and `ln(x)/(x−1) → 1` at 1.
+        if let Some(point) = point {
+            if after_value.is_some()
+                && limit_single_var_name(ctx, num).is_some()
+                && limit_polynomial_denominator_vanishes_at(ctx, den, point)
+            {
+                let var = limit_single_var_name(ctx, before).unwrap_or_else(|| "x".to_string());
+                return Some(format!(
+                    "Indeterminación 0/0 en {var}={}: aplica la regla de L'Hôpital (deriva \
+                     numerador y denominador) o el desarrollo de Taylor",
+                    display_expr(ctx, point)
+                ));
+            }
         }
     }
 
@@ -19868,19 +19870,18 @@ fn limit_square_of_var(ctx: &Context, den: ExprId) -> Option<ExprId> {
         .then_some(base)
 }
 
-/// `den` is a positive integer power of the bare variable — `u`, `u²`, `u³`, … — i.e. a
-/// denominator that vanishes at `u = 0`. Returns the variable. A bare `Variable` is the `k = 1`
-/// case; `Pow(Variable, k)` requires `k` an integer `≥ 1`.
-fn limit_var_or_int_power_of_var(ctx: &Context, den: ExprId) -> Option<ExprId> {
-    if matches!(ctx.get(den), Expr::Variable(_)) {
-        return Some(den);
-    }
-    let (base, exponent) = as_pow(ctx, den)?;
-    if !matches!(ctx.get(base), Expr::Variable(_)) {
-        return None;
-    }
-    let k = as_rational_const(ctx, exponent, 4)?;
-    (k.is_integer() && k >= BigRational::one()).then_some(base)
+/// `den` is a single-variable polynomial that vanishes at the limit `point` (evaluated exactly).
+/// Such a denominator tends to 0 at the point, so — paired with a finite result — it certifies a
+/// genuine `0/0` indeterminate form there (`x³` at 0, `x−1` and `(x−1)²` at 1, …). The point must
+/// be a rational constant for the exact polynomial evaluation.
+fn limit_polynomial_denominator_vanishes_at(ctx: &Context, den: ExprId, point: ExprId) -> bool {
+    let Some(p) = as_rational_const(ctx, point, 8) else {
+        return false;
+    };
+    let Some(var) = limit_single_var_name(ctx, den) else {
+        return false;
+    };
+    Polynomial::from_expr(ctx, den, &var).is_ok_and(|poly| poly.eval(&p).is_zero())
 }
 
 fn limit_is_one_plus(ctx: &Context, arg: ExprId, u: ExprId) -> bool {
@@ -21778,21 +21779,47 @@ mod limit_notable_tests {
             let titles = substep_titles_finite_at_point(before, after, "0");
             assert_eq!(titles.len(), 1, "{before} should narrate a 0/0 technique");
             assert!(
-                titles[0].contains("0/0") && titles[0].contains("Hôpital"),
-                "{before}: expected the 0/0 L'Hôpital/Taylor narration in `{}`",
+                titles[0].contains("0/0")
+                    && titles[0].contains("Hôpital")
+                    && titles[0].contains("x=0"),
+                "{before}: expected the 0/0 L'Hôpital/Taylor narration at x=0 in `{}`",
                 titles[0]
             );
         }
     }
 
     #[test]
-    fn declines_generic_zero_over_zero_unless_point_is_origin() {
-        // SOUNDNESS: a `u^k` denominator vanishes ONLY at 0, so a nonzero limit point is plain
-        // direct substitution (not 0/0) and must NOT be narrated as an indeterminate form.
+    fn names_generic_zero_over_zero_at_shifted_point() {
+        // The denominator is a polynomial that vanishes at the (nonzero) limit point, so the form
+        // is a genuine 0/0 there — narrate it with the actual point. (sympy: 1, 1/2, -1/6.)
+        for (before, after) in [
+            ("ln(x)/(x-1)", "1"),
+            ("(1-cos(x-1))/(x-1)^2", "1/2"),
+            ("(sin(x-1)-(x-1))/(x-1)^3", "-1/6"),
+        ] {
+            let titles = substep_titles_finite_at_point(before, after, "1");
+            assert_eq!(
+                titles.len(),
+                1,
+                "{before} should narrate a 0/0 technique at 1"
+            );
+            assert!(
+                titles[0].contains("0/0") && titles[0].contains("x=1"),
+                "{before}: expected 0/0 narration at x=1 in `{}`",
+                titles[0]
+            );
+        }
+    }
+
+    #[test]
+    fn declines_generic_zero_over_zero_unless_denominator_vanishes_at_the_point() {
+        // SOUNDNESS: the denominator must vanish AT THE LIMIT POINT. A point where it does not
+        // vanish is plain direct substitution (not 0/0) and must NOT be narrated.
         assert!(substep_titles_finite_at_point("(x+1)/x", "3/2", "2").is_empty());
         assert!(substep_titles_finite_at_point("sin(pi*x)/x", "0", "1").is_empty());
-        // Without point information (no limit_point on the step) the 0/0-at-0 claim cannot be
-        // justified, so it declines even for a genuine origin form.
+        // `x-1` vanishes at 1, not at 0 — so `ln(x)/(x-1)` at 0 (which is +∞, not 0/0) declines.
+        assert!(substep_titles_finite_at_point("ln(x)/(x-1)", "1", "0").is_empty());
+        // Without point information (no limit_point on the step) the 0/0 claim cannot be justified.
         assert!(substep_titles("(x-sin(x))/x^3", "1/6").is_empty());
     }
 

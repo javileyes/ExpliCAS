@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 302 (newest first)
+Active entries: 303 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -138,6 +138,7 @@ Active entries: 302 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`residual_solution_set`: guard... | Residual honesto en aislamiento sin progreso (solve(x^3+x+1=0) ya no es garbled)
 - 2026-06-22 | `retained` | `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixMultiplyRule::apply_simpl... | P0 soundness: multiplicación de matrices no-cuadradas producía un broadcast malformado
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/step_model.rs` (`StepMeta.limit_point`: nuevo campo) | G2: narrar la indeterminación 0/0 en x=0 como L'Hôpital/Taylor
+- 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2: generalizar la narración 0/0 al punto desplazado (denominador polinómico)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12793,3 +12794,47 @@ Active entries: 302 (newest first)
     nombrarla; (b) narrar el 0/0 en punto DESPLAZADO (`ln(x)/(x−1)` en 1) — el motor ya lo calcula vía
     `apply_finite_lhopital_nonzero_point_quotient_rule`, pero narrarlo necesita verificar la anulación
     en el punto (sustituir y simplificar, no solo chequear punto==0); (c) dominancia EXPONENCIAL narrada.
+
+## 2026-06-22 - G2: generalizar la narración 0/0 al punto desplazado (denominador polinómico)
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_name`: la rama
+    fallback 0/0 ahora chequea que el denominador polinómico se ANULE en el punto del límite;
+    `limit_polynomial_denominator_vanishes_at` reemplaza a `limit_var_or_int_power_of_var`)
+- status:
+  - `retained` (capacidad educativa — peldaño (b) del sub-ciclo G2 0/0; generaliza el ciclo previo de
+    punto-0 a cualquier punto racional; resultado calculado intacto)
+- capture:
+  - investment_class: educativo (narración de técnica) con oráculo de soundness exacto
+  - primary_dimension: north_star_educational (mitad educativa — límites)
+  - secondary_dimension: reuse_value (reusa el punto ya cableado en `StepMeta.limit_point` y
+    `Polynomial::eval`)
+  - cell: `ln(x)/(x−1) → 1` en 1, `(1−cos(x−1))/(x−1)² → 1/2` en 1, `(sin(x−1)−(x−1))/(x−1)³ → −1/6`
+    en 1, `(eˣ⁻²−1)/(x−2) → 1` en 2 — ahora narran "Indeterminación 0/0 en x=1/2: L'Hôpital o Taylor";
+    los de punto 0 siguen narrando "en x=0".
+  - behavior_change_expected: el fallback 0/0 (último de la cascada) pasa de "den = u^k ∧ punto==0" a
+    "den es polinomio que se anula EN EL PUNTO del límite (`Polynomial::eval(punto).is_zero()`)
+    ∧ resultado finito ∧ num con la variable". Narra el punto real. Resultado intacto; huella 0 deltas;
+    smoke de límites verde.
+  - SOUNDNESS: el denominador polinómico evaluado EXACTAMENTE en el punto del límite (BigRational) →
+    si vale 0, den→0 ahí; un resultado finito fuerza num→0, luego 0/0 demostrable. La evaluación es EN
+    EL PUNTO DEL LÍMITE (no en una raíz arbitraria del denominador): `ln(x)/(x−1)` narra en 1 pero
+    DECLINA en 0 (x−1→−1≠0, resultado +∞). Falsos positivos refutados: `(x+1)/x` en 2, `sin(πx)/x` en 1
+    (den no se anula en el punto), `cos(x)/(x−1)` en 1 (den se anula pero num≠0 → resultado ∞, no
+    finito). Punto irracional o den no-polinómico (`tan x/sin x` en π) → declina (peldaño). Verificado
+    vs sympy.
+  - scoping: reusó el mapeo del ciclo anterior; verificación adversarial manual (refutación de falsos
+    positivos en punto donde el den no se anula + ground-truth sympy de los valores desplazados).
+- observed:
+  - factor-y-cancela tiene PRECEDENCIA para num/den polinómicos que comparten factor (`(x²−3x+2)/(x−1)`,
+    `(x−2)/(x²−4)`), así que el fallback 0/0 solo recibe los de numerador NO-polinómico/transcendente
+    (`ln`, `eˣ`, `sin/cos` desplazados) — exactamente los que ninguna técnica específica nombraba.
+- retained learning:
+  - cuando una narración depende del punto, evaluar el denominador EN EL PUNTO DEL LÍMITE (no buscar
+    sus raíces) es el chequeo correcto y barato: certifica den→0 ahí sin resolver. Y como un
+    resultado finito ya fuerza num→0, no hace falta evaluar el numerador (que puede ser transcendente)
+    — el resultado es el segundo oráculo. Esto evita necesitar substitución-y-simplificación en el
+    narrador (que solo tiene `ctx` de solo-lectura).
+  - peldaño restante: (a) DERIVACIÓN L'Hôpital paso a paso; punto con den NO-polinómico (`tan x/sin x`
+    en π — el cero del den es transcendente); y la dominancia EXPONENCIAL ya estaba narrada (no era
+    peldaño real).
