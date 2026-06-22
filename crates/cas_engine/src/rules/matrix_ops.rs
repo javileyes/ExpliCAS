@@ -74,7 +74,37 @@ impl SimpleRule for MatrixMultiplyRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let eval = try_eval_matrix_mul_expr(ctx, expr)?;
-        Some(Rewrite::new(eval.result.to_expr(ctx)).desc(eval.mul_desc()))
+        let rewrite = Rewrite::new(eval.result.to_expr(ctx)).desc(eval.mul_desc());
+
+        // Matrix multiplication is a definitional evaluation: each output entry is a
+        // sum of `inner_dim` products, so the result can transiently exceed the
+        // anti-worsen node budget (unfolded `a*c + b*d` sums) before the recursive
+        // pass folds the arithmetic. Exempt it so valid products — including
+        // non-square ones whose entries are large unfolded sums — are committed
+        // instead of being rejected and falling through to a (wrong) scalar broadcast.
+        //
+        // The exemption is BOUNDED (so it cannot be abused to explode the tree): it
+        // applies only when every dimension stays within MAX_N, the output cell count
+        // stays within the output-size cap, and the contracted (inner) dimension stays
+        // within the input-size cap. A product larger than that keeps the normal budget
+        // — if it then worsens too much it stays an honest unevaluated residual rather
+        // than blowing up. The bounds comfortably cover educational matrices (≤16×16).
+        const MATRIX_MUL_MAX_N: usize = 16; // MAX_N: per-dimension cap
+        const MATRIX_MUL_MAX_OUTPUT_CELLS: usize = 256; // output-size cap: result entries
+        const MATRIX_MUL_MAX_INNER: usize = 16; // input-size cap: contracted dimension
+        let rows = eval.result.rows;
+        let cols = eval.result.cols;
+        let inner = eval.left.cols; // == eval.right.rows (the contracted dimension)
+        let within_caps = rows <= MATRIX_MUL_MAX_N
+            && cols <= MATRIX_MUL_MAX_N
+            && inner <= MATRIX_MUL_MAX_INNER
+            && rows.saturating_mul(cols) <= MATRIX_MUL_MAX_OUTPUT_CELLS;
+
+        Some(if within_caps {
+            rewrite.budget_exempt()
+        } else {
+            rewrite
+        })
     }
 }
 

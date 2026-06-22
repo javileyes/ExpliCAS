@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 300 (newest first)
+Active entries: 301 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -136,6 +136,7 @@ Active entries: 300 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | P0 soundness: log de base degenerada (log(1,1) = 0 → undefined)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`as_fraction`: extractor num/den ext... | Límites ∞−∞ de recíproco-trig (csc²x−1/x² = 1/3, cot²x−1/x² = −2/3)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`residual_solution_set`: guard... | Residual honesto en aislamiento sin progreso (solve(x^3+x+1=0) ya no es garbled)
+- 2026-06-22 | `retained` | `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixMultiplyRule::apply_simpl... | P0 soundness: multiplicación de matrices no-cuadradas producía un broadcast malformado
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12684,3 +12685,57 @@ Active entries: 300 (newest first)
     `solve(x - (x-1)^(1/3)=0)`) necesitaría enhebrar la ecuación ORIGINAL por la recursión de
     aislamiento (candidato b, más invasivo). Y `mk_residual_solve` descarta el op de la inecuación
     (muestra `=0`): preservarlo es otra mejora.
+
+## 2026-06-22 - P0 soundness: multiplicación de matrices no-cuadradas producía un broadcast malformado
+
+- area:
+  - `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixMultiplyRule::apply_simple`: exención de
+    presupuesto acotada)
+  - `crates/cas_engine/src/matrix_rule_support.rs` (`try_eval_scalar_matrix_mul_expr`: guard
+    matriz×matriz)
+  - `crates/cas_solver/tests/inv_trig_n_angle_tests.rs` (allowlist de `budget_exempt`)
+- status:
+  - `retained` (P0 soundness — wrong-answer → resultado correcto / residual honesto; comando no-cálculo,
+    exento de orden de fase)
+- capture:
+  - investment_class: soundness/honestidad (matriz-de-matrices fabricada → producto correcto o residual)
+  - primary_dimension: north_star_soundness (corrección de respuesta en cualquier comando)
+  - secondary_dimension: reuse_value (el producto correcto ya lo calculaba `Matrix::multiply`; solo había
+    que dejar que se confirmara)
+  - cell: `[[1,2],[3,4]]·[[5,6,7],[8,9,10]] = [[21,24,27],[47,54,61]]` (antes una matriz-de-matrices
+    malformada por broadcast escalar); `[[1],[2],[3]]·[[4,5,6]] = [[4,5,6],[8,10,12],[12,15,18]]` (igual);
+    mismatch `[[1,2,3],[4,5,6]]·[[1,2],[3,4]]` se queda SIN evaluar (antes fabricaba una matriz finita).
+  - behavior_change_expected: productos válidos (cuadrados Y no-cuadrados, fracciones, identidad) se
+    evalúan a la matriz correcta; productos de dimensiones incompatibles quedan como residual honesto en
+    vez de un valor inventado. Verificado vs sympy (3x3·I, 1x3·3x3, 3x2·2x4, 1x1, fracciones); huella:
+    `filtered_out` +7 (tests añadidos) en `calculus_integrate_backend_mode_boundary`, `passed`/`failed`/
+    `status` idénticos en las 16+3 suites.
+  - SOUNDNESS: la exención del presupuesto anti-empeoramiento está ACOTADA (MAX_N=16 por dimensión,
+    celdas de salida ≤256, dimensión contraída ≤16) — un producto mayor mantiene el presupuesto normal y,
+    si empeora demasiado, queda como residual honesto en vez de explotar. El guard escalar usa
+    `Matrix::from_expr(...).is_some()` sobre ambos operandos (exacto, no heurístico).
+  - scoping: la causa raíz se diagnosticó instrumentando `try_eval_matrix_mul_expr` (DBGMMRULE) y leyendo
+    el bucle `apply_rules` (`engine/transform/rule_application.rs`): el producto correcto SÍ se generaba
+    pero el presupuesto anti-empeoramiento lo rechazaba (`continue`), cayendo a la regla escalar.
+- observed:
+  - el bug tenía DOS capas que se enmascaraban: (1) `MatrixMultiplyRule` (registrada ANTES que
+    `ScalarMatrixRule`) producía el producto correcto, pero como cada entrada de salida es una suma SIN
+    plegar de `inner_dim` productos, el resultado crecía > umbral anti-empeoramiento (>30 nodos abs y
+    >1.5×) y el simplificador lo rechazaba; (2) al caer por el `continue`, `ScalarMatrixRule` trataba una
+    de las matrices como escalar y la difundía sobre la otra → matriz-de-matrices malformada (y, en
+    mismatch dimensional, una matriz finita inventada). Los productos CUADRADOS pequeños (2x2·2x2) no
+    cruzaban el umbral, así que "funcionaban" — ocultando el defecto en los no-cuadrados.
+- retained learning:
+  - cuando un valor correcto "no aparece" pese a que la regla lo produce, sospechar de las CAPAS DE
+    ACEPTACIÓN del simplificador (presupuesto anti-empeoramiento, igualdad semántica, airbag de dominio),
+    no solo de la regla. Una regla cuya salida es una reducción DEFINITORIA que crece temporalmente antes
+    de plegarse (multiplicación de matrices, expansión multinomial) debe declararse `budget_exempt` —
+    pero SIEMPRE acotada (MAX_N + cap de salida + cap de entrada) y en el allowlist, nunca como exención
+    abierta.
+  - un fallback entre reglas que se alcanza al rechazar la regla "correcta" puede convertir un
+    under-answer en un WRONG-answer: `ScalarMatrixRule` solo debía disparar con EXACTAMENTE un operando
+    matriz; difundir una matriz como escalar sobre otra matriz es siempre incorrecto. Gatear el caso
+    degenerado (ambos matrices) primero.
+  - peldaño: `M·M` con `M` no-cuadrada se colecta sintácticamente a `M^2` (residual honesto, no
+    evaluado); y un producto que excede los caps queda sin evaluar. Ambos son residuales honestos, no
+    wrong-answers.

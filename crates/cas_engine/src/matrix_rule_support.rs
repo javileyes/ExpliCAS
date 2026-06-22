@@ -202,6 +202,18 @@ pub fn try_eval_scalar_matrix_mul_expr(
     let left = *left;
     let right = *right;
 
+    // Scalar-matrix multiplication requires EXACTLY ONE operand to be a matrix. When BOTH are
+    // matrices this is matrix-matrix multiplication (handled by MatrixMultiplyRule); treating one
+    // matrix as a scalar broadcasts it over the other's entries, corrupting a valid product into a
+    // malformed matrix-of-matrices (`[[1,2],[3,4]] * [[5,6,7],[8,9,10]]`) and even fabricating a
+    // finite result for a dimension-mismatched product. Decline so the proper rule (or an honest
+    // residual on mismatch) is used.
+    let left_is_matrix = Matrix::from_expr(ctx, left).is_some();
+    let right_is_matrix = Matrix::from_expr(ctx, right).is_some();
+    if left_is_matrix && right_is_matrix {
+        return None;
+    }
+
     if let Some(matrix) = Matrix::from_expr(ctx, right) {
         let result = matrix.scalar_mul(left, ctx);
         return Some(ScalarMatrixEval {

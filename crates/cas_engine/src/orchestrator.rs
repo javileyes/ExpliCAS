@@ -29691,6 +29691,53 @@ mod tests {
         format!("{}", DisplayExpr { context: ctx, id })
     }
 
+    fn simplify_render(input: &str) -> String {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr =
+            parse(input, &mut simplifier.context).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        render(&simplifier.context, rewritten)
+    }
+
+    // A non-square matrix product expands each output entry into a sum of `inner_dim`
+    // products, so the unfolded result transiently exceeds the anti-worsen node budget.
+    // MatrixMultiplyRule must be budget-exempt so the valid product commits instead of
+    // being rejected and falling through to the (wrong) scalar-broadcast rule.
+    #[test]
+    fn matrix_multiply_non_square_product_commits_through_budget() {
+        assert_eq!(
+            simplify_render("[[1,2],[3,4]] * [[5,6,7],[8,9,10]]"),
+            "[[21, 24, 27], [47, 54, 61]]"
+        );
+    }
+
+    #[test]
+    fn matrix_multiply_outer_product_commits() {
+        assert_eq!(
+            simplify_render("[[1],[2],[3]] * [[4,5,6]]"),
+            "[[4, 5, 6], [8, 10, 12], [12, 15, 18]]"
+        );
+    }
+
+    // A dimension-mismatched product must stay an honest unevaluated residual, never a
+    // fabricated finite matrix-of-matrices from the scalar-broadcast misfire.
+    #[test]
+    fn matrix_multiply_dimension_mismatch_stays_residual() {
+        assert_eq!(
+            simplify_render("[[1,2,3],[4,5,6]] * [[1,2],[3,4]]"),
+            "[[1, 2, 3], [4, 5, 6]] * [[1, 2], [3, 4]]"
+        );
+    }
+
+    #[test]
+    fn matrix_multiply_square_product_unchanged() {
+        assert_eq!(
+            simplify_render("[[1,2],[3,4]] * [[5,6],[7,8]]"),
+            "[[19, 22], [43, 50]]"
+        );
+    }
+
     #[test]
     fn standard_pythagorean_additive_shortcut_handles_negated_numeric_pair() {
         let mut ctx = Context::new();
