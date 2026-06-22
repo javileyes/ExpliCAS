@@ -49,7 +49,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   valor real es `+∞` (`log_b(0)=ln(0)/ln(b)`, y `ln(b)<0` para `0<b<1` invierte el signo), y
   `log(1, 0)` devolvía `-∞` en vez de `undefined` (base 1 degenerada). La rama `n=0` emitía `-∞`
   incondicionalmente, sound solo para `b>1`.
-  *(graduado 2026-06-22 PENDING_C12: la rama `n.is_zero()` de `try_rewrite_evaluate_log_expr`
+  *(graduado 2026-06-22 b3cb0efd5: la rama `n.is_zero()` de `try_rewrite_evaluate_log_expr`
   ahora gatea por la base: `b>1 → -∞`, `0<b<1 → +∞`, `b=1` o `b≤0 → undefined`; `e`/`π`/base
   simbólica conservan `-∞` (régimen `b>1`). Cazado por verificación adversarial 2-lente (sonda +
   refutación con mpmath/sympy) — los tests verdes solo ejercían bases >1, enmascarando el defecto.
