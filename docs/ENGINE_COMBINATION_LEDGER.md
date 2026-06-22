@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 295 (newest first)
+Active entries: 296 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -131,6 +131,7 @@ Active entries: 295 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/poly_gcd_structural.rs` (`expr_key_hash` rama `Add`; `ad... | P0 soundness: clave AC del gcd estructural ignoraba el signo (gcd(x²+x,x²-x) = x²+x)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`finite_sub_result` → `Option`, guar... | P0 soundness: límite ∞−∞ del mismo signo colapsaba a 0 (lim 1/sin²x − 1/x² = 0)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`try_factor_polynomial_inequ... | P0 soundness: inecuaciones polinómicas grado≥3 expandidas (solve(x^4-5x^2+4<0) = ∅)
+- 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`combine_difference_over_common_deno... | Entregar el valor de límites ∞−∞ combinando sobre denominador común (1/sin²x−1/x² = 1/3)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12505,3 +12506,40 @@ Active entries: 295 (newest first)
     siguen dando aislamiento garbled — el factorizador no las parte; necesitan aislamiento real de
     raíces de grado≥3 (o punt honesto). El factorizador tampoco es completo sobre ℚ (deja factores
     reducibles sin raíz racional en algunos grados altos).
+
+## 2026-06-22 - Entregar el valor de límites ∞−∞ combinando sobre denominador común (1/sin²x−1/x² = 1/3)
+- area:
+  - `crates/cas_math/src/limits_support.rs` (`combine_difference_over_common_denominator`; retry en
+    el brazo `Expr::Sub` de `try_limit_rules_at_finite`)
+- status:
+  - `retained` (capability — gradúa el peldaño del ciclo ∞−∞: de residual honesto al VALOR)
+- capture:
+  - investment_class: capability (Fase 1, límites; reusa la evaluación de la fracción combinada que
+    ya funcionaba)
+  - primary_dimension: north_star_completeness (límites ∞−∞ resueltos, no solo no-erróneos)
+  - secondary_dimension: reuse_value (la forma combinada `(x²−sin²x)/(x²sin²x)` ya daba 1/3)
+  - cell: `limit(1/sin²x − 1/x², x, 0) → 1/3` (antes residual honesto tras el fix de soundness).
+    Intactos: determinados (`1/x²−5 → ∞`), diferencias finitas (`sin(x)/x − cos(x) → 0`,
+    `(1−cos x)/x² → 1/2`), `1/x²−1/x² → 0`.
+  - behavior_change_expected: cuando el split operando-a-operando deja ∞−∞ (mismo signo) y AL MENOS
+    un operando es fracción, se combina `lhs−rhs` sobre denominador común y se reintenta el límite
+    de la fracción única. Solo MEJORA (residual → valor) o se mantiene residual. Huella NONE;
+    workspace 12284/0.
+  - SOUNDNESS: la combinación `a/b − c/d = (ad − cb)/(bd)` es una identidad exacta; el reintento
+    evalúa la fracción por las reglas de límite existentes (que ya resolvían la forma combinada).
+    Anti-loop: la fracción combinada es un `Div` (no `Sub`), no re-entra al brazo Sub; y solo se
+    intenta tras `finite_sub_result` declinar (∞−∞ mismo signo), nunca en los casos que ya resolvían.
+- observed:
+  - el fix de soundness previo (∞−∞ mismo signo → residual) eliminó el wrong-0; este ciclo entrega
+    el valor. La pieza clave ya existía: el motor evalúa `(x²−sin²x)/(x²sin²x) → 1/3`; solo faltaba
+    PUENTEAR la resta a esa forma antes del split operando-a-operando.
+  - `1/x − 1/sin(x)` NO llega al combine (su sub-límite `1/x` es DNE bilateral y corta antes con `?`)
+    → sigue residual (no regresión).
+- retained learning:
+  - patrón recurrente: una capacidad existe para una grafía (`(x²−sin²x)/(x²sin²x)`) pero no para su
+    equivalente (`1/sin²x − 1/x²`); el puente barato es normalizar (combinar fracciones) hacia la
+    grafía que funciona — el mismo principio que el ciclo de inecuaciones polinómicas (factorizar
+    hacia el producto). Reintentar sobre una forma de NODO distinto (Div, no Sub) evita el bucle.
+  - residual (peldaño): las grafías de recíproco-trig que NO son `Div` literal (`csc²x − 1/x²`,
+    `cot²x − 1/x²`, `(cos/sin)² − 1/x²`) siguen residuales — el extractor de fracción no convierte
+    csc/sec/cot a 1/sin etc. Extenderlo a esas formas cerraría la familia.

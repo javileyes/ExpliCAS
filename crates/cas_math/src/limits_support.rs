@@ -4016,7 +4016,15 @@ fn try_limit_rules_at_finite(
         Expr::Sub(lhs, rhs) => {
             let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
             let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
-            finite_sub_result(ctx, lhs_limit, rhs_limit)
+            if let Some(result) = finite_sub_result(ctx, lhs_limit, rhs_limit) {
+                return Some(result);
+            }
+            // finite_sub_result declined the indeterminate same-sign ∞ - ∞: combine `lhs - rhs`
+            // over a common denominator and retry the limit of the single fraction. The engine
+            // evaluates `(x² - sin²x)/(x²·sin²x) -> 1/3`, recovering the value the operand-wise
+            // split could not. The combined form is a `Div` (not a `Sub`), so this does not loop.
+            let combined = combine_difference_over_common_denominator(ctx, lhs, rhs)?;
+            try_limit_rules_at_finite(ctx, combined, var, point)
         }
         Expr::Mul(lhs, rhs) => {
             let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
@@ -5617,6 +5625,37 @@ fn finite_add_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
         return lhs;
     }
     ctx.add(Expr::Add(lhs, rhs))
+}
+
+/// Combine `lhs - rhs` over a common denominator into a single fraction
+/// `(num_l·den_r - num_r·den_l) / (den_l·den_r)`, treating a non-fraction term as denominator 1.
+/// `None` when NEITHER side is a fraction (combining a pure polynomial difference yields no new
+/// structure). Used to resolve a `∞ - ∞` finite limit: `1/sin²x - 1/x²` becomes
+/// `(x² - sin²x)/(x²·sin²x)`, which the limit engine evaluates to `1/3`.
+fn combine_difference_over_common_denominator(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> Option<ExprId> {
+    let lhs_frac = match ctx.get(lhs) {
+        Expr::Div(n, d) => Some((*n, *d)),
+        _ => None,
+    };
+    let rhs_frac = match ctx.get(rhs) {
+        Expr::Div(n, d) => Some((*n, *d)),
+        _ => None,
+    };
+    if lhs_frac.is_none() && rhs_frac.is_none() {
+        return None;
+    }
+    let one = ctx.num(1);
+    let (num_l, den_l) = lhs_frac.unwrap_or((lhs, one));
+    let (num_r, den_r) = rhs_frac.unwrap_or((rhs, one));
+    let t1 = ctx.add(Expr::Mul(num_l, den_r));
+    let t2 = ctx.add(Expr::Mul(num_r, den_l));
+    let num = ctx.add(Expr::Sub(t1, t2));
+    let den = ctx.add(Expr::Mul(den_l, den_r));
+    Some(ctx.add(Expr::Div(num, den)))
 }
 
 fn finite_sub_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
@@ -10166,6 +10205,31 @@ mod tests {
 
     fn parse_expr(ctx: &mut Context, s: &str) -> ExprId {
         parse(s, ctx).expect("parse failed")
+    }
+
+    #[test]
+    fn combine_difference_over_common_denominator_builds_single_fraction() {
+        use std::collections::HashMap;
+        // 1/x - 1/y -> (y - x)/(x*y); check the combined fraction's value at x=2, y=3 is 1/6.
+        let mut ctx = Context::new();
+        let lhs = parse_expr(&mut ctx, "1/x");
+        let rhs = parse_expr(&mut ctx, "1/y");
+        let combined = combine_difference_over_common_denominator(&mut ctx, lhs, rhs)
+            .expect("two fractions combine");
+        assert!(
+            matches!(ctx.get(combined), Expr::Div(_, _)),
+            "combined is a single fraction"
+        );
+        let mut map = HashMap::new();
+        map.insert("x".to_string(), 2.0);
+        map.insert("y".to_string(), 3.0);
+        let v = crate::evaluator_f64::eval_f64(&ctx, combined, &map).expect("foldable");
+        assert!((v - 1.0 / 6.0).abs() < 1e-12, "1/2 - 1/3 = 1/6, got {v}");
+
+        // Neither side is a fraction -> declines (no new structure to gain).
+        let a = parse_expr(&mut ctx, "x^2");
+        let b = parse_expr(&mut ctx, "x");
+        assert!(combine_difference_over_common_denominator(&mut ctx, a, b).is_none());
     }
 
     #[test]
