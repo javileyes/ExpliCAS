@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 301 (newest first)
+Active entries: 302 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -137,6 +137,7 @@ Active entries: 301 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`as_fraction`: extractor num/den ext... | Límites ∞−∞ de recíproco-trig (csc²x−1/x² = 1/3, cot²x−1/x² = −2/3)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`residual_solution_set`: guard... | Residual honesto en aislamiento sin progreso (solve(x^3+x+1=0) ya no es garbled)
 - 2026-06-22 | `retained` | `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixMultiplyRule::apply_simpl... | P0 soundness: multiplicación de matrices no-cuadradas producía un broadcast malformado
+- 2026-06-22 | `retained` | `crates/cas_solver_core/src/step_model.rs` (`StepMeta.limit_point`: nuevo campo) | G2: narrar la indeterminación 0/0 en x=0 como L'Hôpital/Taylor
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12739,3 +12740,56 @@ Active entries: 301 (newest first)
   - peldaño: `M·M` con `M` no-cuadrada se colecta sintácticamente a `M^2` (residual honesto, no
     evaluado); y un producto que excede los caps queda sin evaluar. Ambos son residuales honestos, no
     wrong-answers.
+
+## 2026-06-22 - G2: narrar la indeterminación 0/0 en x=0 como L'Hôpital/Taylor
+
+- area:
+  - `crates/cas_solver_core/src/step_model.rs` (`StepMeta.limit_point`: nuevo campo)
+  - `crates/cas_engine/src/eval/actions.rs` (`eval_limit`: cablea el punto del límite finito al paso)
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_name`: nueva rama
+    fallback de 0/0 genérica, gateada por punto==0)
+- status:
+  - `retained` (capacidad educativa — sub-ciclo 5 del gatekeeper G2 "Límites con pedagogía", Fase 1
+    educativa; el resultado calculado NO cambia, solo se añade el substep narrativo)
+- capture:
+  - investment_class: educativo (narración de técnica) con oráculo de soundness explícito
+  - primary_dimension: north_star_educational (mitad educativa del north star — límites)
+  - secondary_dimension: reuse_value (reusa el pipeline de enriquecimiento y los matchers notables
+    existentes; añade un solo fallback al final de la cascada)
+  - cell: `(x−sin x)/x³ → 1/6`, `(eˣ−1−x)/x² → 1/2`, `(tan x−x)/x³ → 1/3`, `(sin x−x)/x³ → −1/6`,
+    `(cos x−1)/x² → −1/2`, `(arctan x−x)/x³ → −1/3`, `(1−cos 2x)/x² → 2` — todos narran ahora
+    "Indeterminación 0/0 en u→0: aplica L'Hôpital o el desarrollo de Taylor"; antes no narraban nada.
+  - behavior_change_expected: cuando una técnica específica (notable, factor-cancela, sándwich,
+    dominancia) NO casa, pero el cociente tiene denominador `u^k` (potencia entera ≥1 de la variable),
+    resultado finito racional, y el PUNTO del límite es exactamente 0, se añade un substep que nombra
+    L'Hôpital/Taylor. Resultado calculado intacto; huella guardrail+pressure 0 deltas; smoke de límites
+    verde (substring-containment).
+  - SOUNDNESS (oráculo de narración): el denominador `u^k` se anula SOLO en 0, así que la narración
+    "0/0 en 0" es correcta exactamente cuando el punto del límite es 0 — chequeado LITERAL
+    (`Expr::Number(n) if n.is_zero()`). Dado punto 0: den→0, y un resultado FINITO fuerza num→0
+    (lím num = resultado·lím den = resultado·0 = 0), luego es 0/0 demostrable sin re-derivar Taylor.
+    Para poder chequear el punto hubo que CABLEARLO al paso (`StepMeta.limit_point`, puesto en
+    `eval_limit` solo para `Approach::Finite`). Falsos positivos refutados: `(x+1)/x → x→2 = 3/2` y
+    `sin(πx)/x → x→1 = 0` (punto≠0, sustitución directa, NO 0/0) declinan; `(x−sin x)/x³` en punto 1
+    o −1 (resultado irracional) declina; infinitos (`sin x/x³`) declinan (resultado no finito).
+  - scoping: 2 agentes paralelos mapearon (a) el dispatch de límites finitos y dónde se emite el paso
+    genérico "Evaluar límite finito", y (b) la API de pasos + el riesgo de huella (el smoke de límites
+    usa substring-containment, los substeps no cambian `steps_count` ni el `rule_name`). Verificación
+    adversarial manual: refutación de falsos positivos + ground-truth vs sympy de los 7 valores.
+- observed:
+  - la narración de límites ya estaba SUSTANCIALMENTE completa (notables, factor-cancela, sándwich,
+    dominancia, equivalentes de primer orden, e-límite) — sub-ciclos 1-4 del G2 (2026-06-21). El hueco
+    era el 0/0 de orden superior (Taylor/L'Hôpital) que el MOTOR ya calcula pero que ninguna técnica
+    específica nombraba. Mi primera versión sin el punto era UNSOUND (narraba 0/0 para `(x+1)/x` en 2);
+    el oráculo correcto necesita el punto.
+- retained learning:
+  - un oráculo de narración basado solo en (forma estructural + resultado) es UNSOUND para formas cuya
+    validez depende del PUNTO del límite (un denominador `u^k` se anula solo en 0). Los matchers notables
+    existentes esquivan esto porque FIJAN el valor exacto (que solo se da en 0); una narración genérica
+    sin valor fijo DEBE conocer el punto. Cablear el punto al paso (campo en `StepMeta`, defaulteado a
+    None, sin coste de huella) es la habilitación mínima — y abre la puerta a narrar la sustitución
+    concreta y los notables DESPLAZADOS en el futuro.
+  - peldaño: (a) mostrar la DERIVACIÓN L'Hôpital paso a paso (derivar arriba/abajo y reevaluar), no solo
+    nombrarla; (b) narrar el 0/0 en punto DESPLAZADO (`ln(x)/(x−1)` en 1) — el motor ya lo calcula vía
+    `apply_finite_lhopital_nonzero_point_quotient_rule`, pero narrarlo necesita verificar la anulación
+    en el punto (sustituir y simplificar, no solo chequear punto==0); (c) dominancia EXPONENCIAL narrada.

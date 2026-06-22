@@ -19592,7 +19592,9 @@ fn nested_trig_log_factor_arg(ctx: &Context, expr: ExprId) -> Option<(ExprId, Ex
 /// `limit(sin(x)/x, x, 5) = sin(5)/5` is correctly NOT narrated as `sin(u)/u → 1`.
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
-    let Some(description) = notable_limit_name(ctx, step.before, step.after, at_infinity) else {
+    let point = step.meta.as_ref().and_then(|m| m.limit_point);
+    let Some(description) = notable_limit_name(ctx, step.before, step.after, at_infinity, point)
+    else {
         return Vec::new();
     };
     vec![SubStep::new(
@@ -19611,6 +19613,7 @@ fn notable_limit_name(
     before: ExprId,
     after: ExprId,
     at_infinity: bool,
+    point: Option<ExprId>,
 ) -> Option<String> {
     // Limits at infinity have their own dominance methods; the finite forms below (notable
     // limits at 0, continuity, factor-and-cancel) do not apply there. The one infinity-side
@@ -19736,6 +19739,28 @@ fn notable_limit_name(
                     .to_string(),
             );
         }
+        // Generic 0/0 at the point, not captured by a specific notable above. SOUNDNESS: the
+        // denominator is a positive power of the bare variable (u, u², u³, …), which vanishes
+        // ONLY at 0 — so this narration is correct exactly when the limit point IS 0 (checked
+        // literally below; `(x+1)/x → x→2` and `sin(πx)/x → x→1` have a nonzero point and decline).
+        // Given point 0: den → 0, and a FINITE result forces num → 0 too
+        // (lím num = result · lím den = result · 0 = 0), so the form is provably 0/0 — no Taylor
+        // re-derivation needed. Fires only as a fallback (every specific notable / factor-cancel
+        // returns earlier) and only when the numerator genuinely involves the variable (a constant
+        // numerator gives ±∞, never a finite result). `(x − sin x)/x³ → 1/6`, `(eˣ − 1 − x)/x² → 1/2`.
+        let point_is_zero =
+            point.is_some_and(|p| matches!(ctx.get(p), Expr::Number(n) if n.is_zero()));
+        if point_is_zero
+            && after_value.is_some()
+            && limit_var_or_int_power_of_var(ctx, den).is_some()
+            && limit_single_var_name(ctx, num).is_some()
+        {
+            return Some(
+                "Indeterminación 0/0 en u→0: aplica la regla de L'Hôpital (deriva numerador y \
+                 denominador) o el desarrollo de Taylor"
+                    .to_string(),
+            );
+        }
     }
 
     // Continuous polynomial: the limit is the value at the point (direct substitution).
@@ -19841,6 +19866,21 @@ fn limit_square_of_var(ctx: &Context, den: ExprId) -> Option<ExprId> {
     let (base, exponent) = as_pow(ctx, den)?;
     (matches!(ctx.get(base), Expr::Variable(_)) && limit_is_number(ctx, exponent, 2))
         .then_some(base)
+}
+
+/// `den` is a positive integer power of the bare variable — `u`, `u²`, `u³`, … — i.e. a
+/// denominator that vanishes at `u = 0`. Returns the variable. A bare `Variable` is the `k = 1`
+/// case; `Pow(Variable, k)` requires `k` an integer `≥ 1`.
+fn limit_var_or_int_power_of_var(ctx: &Context, den: ExprId) -> Option<ExprId> {
+    if matches!(ctx.get(den), Expr::Variable(_)) {
+        return Some(den);
+    }
+    let (base, exponent) = as_pow(ctx, den)?;
+    if !matches!(ctx.get(base), Expr::Variable(_)) {
+        return None;
+    }
+    let k = as_rational_const(ctx, exponent, 4)?;
+    (k.is_integer() && k >= BigRational::one()).then_some(base)
 }
 
 fn limit_is_one_plus(ctx: &Context, arg: ExprId, u: ExprId) -> bool {
@@ -21704,6 +21744,68 @@ mod limit_notable_tests {
             .into_iter()
             .map(|s| s.description)
             .collect()
+    }
+
+    fn substep_titles_finite_at_point(
+        before_src: &str,
+        after_src: &str,
+        point_src: &str,
+    ) -> Vec<String> {
+        let mut ctx = Context::new();
+        let before = parse(before_src, &mut ctx).expect("parse before");
+        let after = parse(after_src, &mut ctx).expect("parse after");
+        let point = parse(point_src, &mut ctx).expect("parse point");
+        let mut step = Step::new_compact("desc", "Evaluar límite finito", before, after);
+        step.meta_mut().limit_point = Some(point);
+        generate_limit_substeps(&ctx, &step)
+            .into_iter()
+            .map(|s| s.description)
+            .collect()
+    }
+
+    #[test]
+    fn names_generic_zero_over_zero_at_origin() {
+        // Genuine 0/0 at 0 not matched by a specific notable: a `u^k` denominator with a finite
+        // result. The denominator vanishes at 0 and the finite result forces the numerator to
+        // vanish too, so the form is provably 0/0 — narrate L'Hôpital / Taylor. (Values verified
+        // against sympy: 1/6, 1/2, 1/3, -1/6.)
+        for (before, after) in [
+            ("(x-sin(x))/x^3", "1/6"),
+            ("(exp(x)-1-x)/x^2", "1/2"),
+            ("(tan(x)-x)/x^3", "1/3"),
+            ("(sin(x)-x)/x^3", "-1/6"),
+        ] {
+            let titles = substep_titles_finite_at_point(before, after, "0");
+            assert_eq!(titles.len(), 1, "{before} should narrate a 0/0 technique");
+            assert!(
+                titles[0].contains("0/0") && titles[0].contains("Hôpital"),
+                "{before}: expected the 0/0 L'Hôpital/Taylor narration in `{}`",
+                titles[0]
+            );
+        }
+    }
+
+    #[test]
+    fn declines_generic_zero_over_zero_unless_point_is_origin() {
+        // SOUNDNESS: a `u^k` denominator vanishes ONLY at 0, so a nonzero limit point is plain
+        // direct substitution (not 0/0) and must NOT be narrated as an indeterminate form.
+        assert!(substep_titles_finite_at_point("(x+1)/x", "3/2", "2").is_empty());
+        assert!(substep_titles_finite_at_point("sin(pi*x)/x", "0", "1").is_empty());
+        // Without point information (no limit_point on the step) the 0/0-at-0 claim cannot be
+        // justified, so it declines even for a genuine origin form.
+        assert!(substep_titles("(x-sin(x))/x^3", "1/6").is_empty());
+    }
+
+    #[test]
+    fn generic_zero_over_zero_does_not_shadow_specific_notables() {
+        // The specific notables / factor-cancel must still win at the origin (they return earlier).
+        let sin = substep_titles_finite_at_point("sin(x)/x", "1", "0");
+        assert!(sin.len() == 1 && sin[0].contains("sin(u)/u = 1"), "{sin:?}");
+        let cos = substep_titles_finite_at_point("(1-cos(x))/x^2", "1/2", "0");
+        assert!(
+            cos.len() == 1 && cos[0].contains("(1 − cos(u))/u² = 1/2"),
+            "{cos:?}"
+        );
     }
 
     #[test]

@@ -30,6 +30,10 @@ pub struct StepMeta {
     pub is_chained: bool,
     /// Educational sub-steps explaining rule application.
     pub substeps: Vec<SubStep>,
+    /// For a finite-limit step, the point the variable approaches (e.g. `0` in `lím(x→0)`).
+    /// Used by didactic narration to soundly identify an indeterminate `0/0` form at the point
+    /// (a `u^k` denominator only vanishes at `0`, so the narration must know the point is `0`).
+    pub limit_point: Option<ExprId>,
 }
 
 #[derive(Debug, Clone)]

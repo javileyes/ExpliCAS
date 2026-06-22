@@ -567,6 +567,11 @@ impl Engine {
                     );
                     step.importance = crate::ImportanceLevel::Medium;
                     step.category = crate::StepCategory::Limits;
+                    // Record the approached point for finite limits so didactic narration can
+                    // soundly recognise an indeterminate 0/0 at that point.
+                    if let crate::limits::Approach::Finite(point) = approach {
+                        step.meta_mut().limit_point = Some(point);
+                    }
                     steps.push(step);
                 }
                 let mut warnings: Vec<DomainWarning> = result
