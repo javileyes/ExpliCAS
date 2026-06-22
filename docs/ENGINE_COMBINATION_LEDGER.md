@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 305 (newest first)
+Active entries: 306 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -141,6 +141,7 @@ Active entries: 305 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2: generalizar la narración 0/0 al punto desplazado (denominador polinómico)
 - 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/visible_rule_names.rs` (mapa `visible_rule_... | Presentación: traducir nombres de regla en inglés a español en la narración
 - 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`limit_polynomia... | G2: narrar el 0/0 con denominador trigonométrico/hiperbólico que se anula en el punto
+- 2026-06-22 | `retained` | `crates/cas_math/src/power_product_support.rs` (`try_rewrite_exp_quotient_exp... | Combinar e^a/e^b a través de productos (x·e^a/e^b → x·e^(a-b))
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12928,3 +12929,49 @@ Active entries: 305 (newest first)
     simplificación de mayor valor pendiente: `x·eᵃ/eᵇ` NO combina los exponenciales (solo el caso puro
     `eᵃ/eᵇ` lo hace), lo que produce blobs feos en derivadas altas de `e^(−x²)` (`diff(e^(−x²),x,5)`
     con `ln(e)`, `x^(2−1)`, `e^(4x²)^(2−1)` sin plegar) — candidato de simplificación del próximo ciclo.
+
+## 2026-06-22 - Combinar e^a/e^b a través de productos (x·e^a/e^b → x·e^(a-b))
+
+- area:
+  - `crates/cas_math/src/power_product_support.rs` (`try_rewrite_exp_quotient_expr`: fallback que
+    escanea productos; helpers `split_e_power_factors` + `sum_exponent_chain`)
+- status:
+  - `retained` (simplificación/presentación — el resultado YA era correcto, solo ilegible; identidad
+    exacta `e^a/e^b=e^(a-b)`, form-only, valor intacto)
+- capture:
+  - investment_class: simplificación (legibilidad; afecta sobre todo derivadas de exponenciales)
+  - primary_dimension: north_star_educational (resultados legibles)
+  - secondary_dimension: reuse_value (extiende `ExpQuotientRule` existente; reusa `mul_leaves`/
+    `build_balanced_mul`/`is_e_constant_expr`, sin regla nueva)
+  - cell: `x·e^(x²)/e^(2x²) → x/e^(x²)` (antes sin combinar); `2·x·e^a/e^b → 2·x·e^(a-b)`;
+    `e^a/(y·e^b) → e^(a-b)/y`; el PAGO: `diff(e^(−x²),x,1) = -2·x/e^(x²)` (antes `-2·e^(x²)·x/e^(2x²)`),
+    `diff(e^(−x²),x,3)` pasa de un blob con `e^(7x²)/e^(8x²)` a un único `/e^(x²)`.
+  - behavior_change_expected: la regla `e^a/e^b → e^(a-b)` (que requería num y den ser un `Pow` único)
+    ahora también dispara cuando un `e`-power vive DENTRO de un producto en cualquier lado. Resultado
+    matemáticamente idéntico (identidad exacta), solo más legible. Huella: smokes diff e integrate
+    verdes; guardrail solo `filtered_out` +3 (los 3 tests añadidos), passed/failed idénticos; pressure 0.
+  - SOUNDNESS: `e^x ≠ 0` para todo `x` real ⟹ `e^a/e^b = e^(a-b)` es INCONDICIONAL — sin gate de
+    dominio (consistente con las ramas puras de la misma regla). Solo dispara si hay un `e`-power en
+    AMBOS lados (combinación genuina de cociente) y al menos un lado es un producto (`len>1`, evita
+    re-tocar el caso puro que ya retornó). Sin bucle: tras combinar, el lado sin `e`-power restante hace
+    declinar la re-entrada.
+  - scoping: 2 agentes paralelos — (1) localizó la regla (`ExpQuotientRule`→`try_rewrite_exp_quotient_expr`,
+    el bloqueo era el `as_pow`-sobre-num que falla en un `Mul`) y descartó el camino de gcd-polinómico
+    (no aplica a base `e` con exponente simbólico); (2) huella GO de bajo riesgo (predijo 1 fixture roto
+    que en realidad NO rompe porque `derive` preserva la forma expandida). Verificación: identidad exacta
+    (form-only) + spot-checks numéricos de derivadas vs sympy.
+- observed:
+  - el caso `x·y⁵/y³ → x·y²` SÍ funcionaba — pero por el camino de gcd POLINÓMICO
+    (`try_plan_fraction_gcd_rewrite`), que ve `y` como indeterminada con exponente ENTERO. `e^(x²)` es
+    `Pow(E, x²)` con exponente SIMBÓLICO: gcd polinómico lo trata como átomo transcendente opaco y no
+    cancela. La cancelación solo existe a nivel de EXPONENTE — que es justo lo que la identidad
+    exponencial captura, no el gcd. Por eso se generaliza la regla exponencial, no la de gcd.
+- retained learning:
+  - cuando una identidad de cociente combina el caso "puro" `f(a)/f(b)` pero no `c·f(a)/f(b)`, la causa
+    típica es que el matcher exige que el numerador SEA el nodo (no que lo CONTENGA): `as_pow(num)`
+    devuelve None para un `Mul`. La extensión sound es aplanar con `mul_leaves`, extraer el factor que
+    casa, recomponer el resto con `build_balanced_mul`. El ORDEN de factores lo dejan las reglas
+    downstream (Canonicalize / normalización de exponente negativo), no el rewrite.
+  - peldaño: las derivadas de orden ≥4 de `e^(−x²)` aún dejan `e`-powers sin combinar cuando están
+    MULTIPLICADOS sobre una SUMA (`e^(−6x²)·(...e^(5x²)...)`): eso necesita DISTRIBUIR el `e`-power en la
+    suma antes de combinar (operación distinta, más cara) — siguiente peldaño de legibilidad.

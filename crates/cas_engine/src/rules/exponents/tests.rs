@@ -41,6 +41,55 @@ fn test_exp_quotient_direct() {
     );
 }
 
+fn apply_exp_quotient(src: &str) -> String {
+    let mut ctx = Context::new();
+    let expr = parse(src, &mut ctx).unwrap();
+    let rewrite = ExpQuotientRule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap_or_else(|| panic!("ExpQuotientRule should fire on `{src}`"));
+    format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: rewrite.new_expr
+        }
+    )
+}
+
+#[test]
+fn test_exp_quotient_combines_through_a_numerator_product() {
+    // A co-factor in the numerator no longer blocks the e^a/e^b combination.
+    assert_eq!(apply_exp_quotient("x * e^a / e^b"), "x * e^(a - b)");
+    assert_eq!(apply_exp_quotient("2 * x * e^a / e^b"), "2 * x * e^(a - b)");
+}
+
+#[test]
+fn test_exp_quotient_combines_with_denominator_and_both_side_products() {
+    assert_eq!(apply_exp_quotient("e^a / (y * e^b)"), "e^(a - b) / y");
+    assert_eq!(
+        apply_exp_quotient("x * e^a / (y * e^b)"),
+        "x * e^(a - b) / y"
+    );
+}
+
+#[test]
+fn test_exp_quotient_declines_without_e_on_both_sides() {
+    // No `e` power in the denominator → not a quotient combination → decline.
+    let mut ctx = Context::new();
+    let expr = parse("x * e^a / y", &mut ctx).unwrap();
+    assert!(ExpQuotientRule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root()
+        )
+        .is_none());
+}
+
 #[test]
 fn product_power_rule_targets_mul_only() {
     let targets = ProductPowerRule

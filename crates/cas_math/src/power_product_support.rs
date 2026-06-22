@@ -4,7 +4,7 @@ use crate::build::mul2_raw;
 use crate::canonical_forms::is_canonical_form;
 use crate::exponents_support::{add_exp, has_numeric_factor};
 use crate::expr_destructure::{as_div, as_mul, as_pow};
-use crate::expr_nary::mul_leaves;
+use crate::expr_nary::{build_balanced_mul, mul_leaves};
 use crate::expr_predicates::is_e_constant_expr;
 use crate::root_forms::can_distribute_root_safely;
 use cas_ast::ordering::compare_expr;
@@ -479,10 +479,47 @@ pub fn try_rewrite_power_quotient_expr(
     None
 }
 
+/// Split a product's leaves into (exponents of base-`e` powers, the other factors).
+/// A bare `e` contributes exponent `1`.
+fn split_e_power_factors(ctx: &mut Context, leaves: &[ExprId]) -> (Vec<ExprId>, Vec<ExprId>) {
+    let mut e_exps = Vec::new();
+    let mut others = Vec::new();
+    for &leaf in leaves {
+        if is_e_constant_expr(ctx, leaf) {
+            let one = ctx.num(1);
+            e_exps.push(one);
+        } else if let Some((base, exp)) = as_pow(ctx, leaf) {
+            if is_e_constant_expr(ctx, base) {
+                e_exps.push(exp);
+            } else {
+                others.push(leaf);
+            }
+        } else {
+            others.push(leaf);
+        }
+    }
+    (e_exps, others)
+}
+
+/// Sum a non-empty list of exponent expressions into a single additive chain.
+fn sum_exponent_chain(ctx: &mut Context, exps: Vec<ExprId>) -> ExprId {
+    let mut iter = exps.into_iter();
+    let mut acc = iter
+        .next()
+        .expect("sum_exponent_chain requires a non-empty list");
+    for exp in iter {
+        acc = ctx.add(Expr::Add(acc, exp));
+    }
+    acc
+}
+
 /// Try exponential quotient rewrites for base `e`:
 /// - `e^a / e^b -> e^(a-b)`
 /// - `e / e^b -> e^(1-b)`
 /// - `e^a / e -> e^(a-1)`
+/// - `Mul(.., e^a) / e^b -> .. * e^(a-b)` (and the symmetric / both-product shapes): the same
+///   combination when an `e` power sits inside a product on either side, so a co-factor no longer
+///   blocks it (e.g. `x·e^(x²)/e^(2x²) -> x·e^(-x²)`, which keeps high-order exp derivatives legible).
 pub fn try_rewrite_exp_quotient_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -530,6 +567,38 @@ pub fn try_rewrite_exp_quotient_expr(
                         kind: PowerProductRewriteKind::ExpPowerOverExp,
                     });
                 }
+            }
+        }
+
+        // Fallback: an `e` power wrapped in a product on either side. The pure single-power shapes
+        // above have already returned, so this only fires when at least one side is a product
+        // (`num_leaves.len() > 1 || den_leaves.len() > 1`). We require an `e` power on BOTH sides so
+        // this is a genuine quotient combination (not a within-product merge), and we collect the
+        // other factors verbatim. SOUNDNESS: `e^x ≠ 0` for all real `x`, so `e^a/e^b = e^(a-b)` is
+        // unconditional — no domain gate (consistent with the pure-case branches above).
+        let num_leaves = mul_leaves(ctx, num);
+        let den_leaves = mul_leaves(ctx, den);
+        if num_leaves.len() > 1 || den_leaves.len() > 1 {
+            let (num_e_exps, mut num_others) = split_e_power_factors(ctx, &num_leaves);
+            let (den_e_exps, den_others) = split_e_power_factors(ctx, &den_leaves);
+            if !num_e_exps.is_empty() && !den_e_exps.is_empty() {
+                let num_sum = sum_exponent_chain(ctx, num_e_exps);
+                let den_sum = sum_exponent_chain(ctx, den_e_exps);
+                let diff = ctx.add(Expr::Sub(num_sum, den_sum));
+                let e = ctx.add(Expr::Constant(Constant::E));
+                let e_pow = ctx.add(Expr::Pow(e, diff));
+                num_others.push(e_pow);
+                let new_num = build_balanced_mul(ctx, &num_others);
+                let rewritten = if den_others.is_empty() {
+                    new_num
+                } else {
+                    let new_den = build_balanced_mul(ctx, &den_others);
+                    ctx.add(Expr::Div(new_num, new_den))
+                };
+                return Some(PowerProductRewrite {
+                    rewritten,
+                    kind: PowerProductRewriteKind::ExpQuotient,
+                });
             }
         }
     }
