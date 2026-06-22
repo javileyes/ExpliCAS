@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 298 (newest first)
+Active entries: 299 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -134,6 +134,7 @@ Active entries: 298 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`combine_difference_over_common_deno... | Entregar el valor de límites ∞−∞ combinando sobre denominador común (1/sin²x−1/x² = 1/3)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`signed_prime_exponent_map`, | Logaritmos de base fraccionaria (log(1/2,16) = -4)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | P0 soundness: log de base degenerada (log(1,1) = 0 → undefined)
+- 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`as_fraction`: extractor num/den ext... | Límites ∞−∞ de recíproco-trig (csc²x−1/x² = 1/3, cot²x−1/x² = −2/3)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12607,3 +12608,36 @@ Active entries: 298 (newest first)
   - las reglas de "valor en un punto especial del ARGUMENTO" (`log(b,1)=0`, `log(b,0)=±∞`) deben
     estar gateadas por la validez de la BASE; una base degenerada invalida el logaritmo ENTERO,
     así que el chequeo de base va PRIMERO. Mismo principio que el fix de signo de `log(b,0)`.
+
+## 2026-06-22 - Límites ∞−∞ de recíproco-trig (csc²x−1/x² = 1/3, cot²x−1/x² = −2/3)
+- area:
+  - `crates/cas_math/src/limits_support.rs` (`as_fraction`: extractor num/den extendido a
+    csc/sec/cot y `(a/b)^k`; usado por `combine_difference_over_common_denominator`)
+- status:
+  - `retained` (capability — cierra el peldaño recíproco-trig del ciclo ∞−∞)
+- capture:
+  - investment_class: capability (Fase 1, límites; reusa el combine + retry del ciclo previo)
+  - primary_dimension: north_star_completeness (familia ∞−∞ de recíproco-trig)
+  - secondary_dimension: reuse_value (mismo combine-y-reintenta; solo amplía qué cuenta como fracción)
+  - cell: `limit(csc²x − 1/x²) → 1/3`, `limit(cot²x − 1/x²) → -2/3`,
+    `limit((cos x/sin x)² − 1/x²) → -2/3`, `limit(1/x² − cot²x) → 2/3`, `limit(1/x² − csc²x) → -1/3`.
+    Intacto el caso `Div` literal (`1/sin²x − 1/x² → 1/3`) y los determinados/finitos.
+  - behavior_change_expected: las restas ∞−∞ con operandos recíproco-trig (`csc(u)^k`, `cot(u)^k`,
+    `(a/b)^k`) ahora se combinan sobre denominador común convirtiendo a sin/cos, y se reintenta el
+    límite (que ya evaluaba la forma sin/cos). Huella NONE; workspace 12287/0.
+  - SOUNDNESS: conversiones exactas `csc=1/sin`, `sec=1/cos`, `cot=cos/sin`, `(a/b)^k=a^k/b^k`.
+    El combine solo dispara tras declinar ∞−∞ (mismo signo); la forma combinada es un `Div`
+    (no `Sub`) → no hay bucle. Solo MEJORA (residual → valor) o se mantiene residual.
+- observed:
+  - sub-límites que resuelven a ∞: `csc²x`, `cot²x`, `(cos/sin)²` (vía las reglas de polo
+    recíproco-trig de seno/coseno); `sec²x→1` (no es ∞−∞) y `1/tan²x` NO resuelve (tan fuera de
+    las reglas de polo) → fuera de alcance. La pieza que faltaba era convertir csc/cot a sin/cos
+    en el extractor de fracción (la forma `(x²csc²x−1)/x²` sin convertir no evaluaba; la convertida
+    `(x²−sin²x)/(x²sin²x)` sí).
+- retained learning:
+  - extender un extractor de "fracción" a las grafías recíprocas canónicas (csc/sec/cot,
+    potencias de cociente) generaliza un combinador de límites sin tocar su lógica — el mismo
+    patrón "normaliza a la grafía que el motor ya evalúa". Convertir a sin/cos (no dejar csc) es lo
+    que desbloquea la evaluación de la fracción combinada.
+  - residual (peldaño): `1/tan²x − 1/x²` y otras con tan/cot crudo cuyo sub-límite no resuelve
+    (las reglas de polo no cubren tan); habría que extender esas reglas a tan/cot.

@@ -66,8 +66,9 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   resolviendo a ±∞. Wrong-answer → residual honesto. Localizado por subagente de scoping; huella
   NONE. El VALOR 1/3 se entrega después (2026-06-22, `combine_difference_over_common_denominator`:
   al declinar ∞−∞ se combina `lhs−rhs` sobre denominador común y se reintenta → `1/sin²x−1/x² = 1/3`).
-  Peldaño restante: las grafías de recíproco-trig que no son `Div` literal (`csc²x−1/x²`, `cot²x−1/x²`)
-  siguen residuales — falta convertir csc/sec/cot a 1/sin etc. en el extractor de fracción.)*
+  Las grafías de recíproco-trig se cierran después (2026-06-22, `as_fraction` extendido a
+  csc/sec/cot y `(a/b)^k`: `csc²x−1/x²=1/3`, `cot²x−1/x²=-2/3`). Peldaño restante: `1/tan²x−1/x²` y
+  otras con tan crudo cuyo sub-límite no resuelve (las reglas de polo no cubren tan).)*
 - [x] **(F) gcd de polinomios devolvía un NO-divisor**: `gcd(x²+x, x²-x)` devolvía `x²+x` (que no
   divide a `x²-x`) en vez de `x`, y `gcd(x²+x+1, x²-x+1)` devolvía `x²+x+1` en vez de `1` (coprimos).
   La clave AC del gcd estructural ignoraba el signo de los términos aditivos, colisionando `x²+x`

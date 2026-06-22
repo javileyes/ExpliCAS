@@ -5632,19 +5632,56 @@ fn finite_add_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
 /// `None` when NEITHER side is a fraction (combining a pure polynomial difference yields no new
 /// structure). Used to resolve a `∞ - ∞` finite limit: `1/sin²x - 1/x²` becomes
 /// `(x² - sin²x)/(x²·sin²x)`, which the limit engine evaluates to `1/3`.
+/// Decompose `expr` into `(numerator, denominator)` for fraction-like forms, so an `∞ - ∞`
+/// difference can be put over a common denominator. Handles an explicit `Div`, a power of a
+/// quotient `(a/b)^k → (a^k, b^k)`, and the reciprocal-trig functions `csc`/`sec`/`cot` and their
+/// powers: `csc(u)^k → (1, sin(u)^k)`, `sec(u)^k → (1, cos(u)^k)`, `cot(u)^k → (cos(u)^k, sin(u)^k)`.
+/// `None` for anything else (the caller then treats it as denominator 1).
+fn as_fraction(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    use cas_ast::BuiltinFn;
+    let (base, exp) = match ctx.get(expr).clone() {
+        Expr::Pow(b, e) => (b, Some(e)),
+        _ => (expr, None),
+    };
+    let (num_base, den_base) = match ctx.get(base).clone() {
+        Expr::Div(n, d) => (n, d),
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let arg = args[0];
+            if ctx.is_builtin(fn_id, BuiltinFn::Csc) {
+                let one = ctx.num(1);
+                let sin = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+                (one, sin)
+            } else if ctx.is_builtin(fn_id, BuiltinFn::Sec) {
+                let one = ctx.num(1);
+                let cos = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+                (one, cos)
+            } else if ctx.is_builtin(fn_id, BuiltinFn::Cot) {
+                let cos = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+                let sin = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+                (cos, sin)
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+    match exp {
+        Some(e) => {
+            let num = ctx.add(Expr::Pow(num_base, e));
+            let den = ctx.add(Expr::Pow(den_base, e));
+            Some((num, den))
+        }
+        None => Some((num_base, den_base)),
+    }
+}
+
 fn combine_difference_over_common_denominator(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
 ) -> Option<ExprId> {
-    let lhs_frac = match ctx.get(lhs) {
-        Expr::Div(n, d) => Some((*n, *d)),
-        _ => None,
-    };
-    let rhs_frac = match ctx.get(rhs) {
-        Expr::Div(n, d) => Some((*n, *d)),
-        _ => None,
-    };
+    let lhs_frac = as_fraction(ctx, lhs);
+    let rhs_frac = as_fraction(ctx, rhs);
     if lhs_frac.is_none() && rhs_frac.is_none() {
         return None;
     }
@@ -10230,6 +10267,35 @@ mod tests {
         let a = parse_expr(&mut ctx, "x^2");
         let b = parse_expr(&mut ctx, "x");
         assert!(combine_difference_over_common_denominator(&mut ctx, a, b).is_none());
+    }
+
+    #[test]
+    fn as_fraction_extracts_reciprocal_trig_forms() {
+        use std::collections::HashMap;
+        // csc(x)^2 -> (1, sin(x)^2); cot(x) -> (cos(x), sin(x)); (cos/sin)^2 -> ((cos)^2, (sin)^2).
+        // Verify num/den numerically equals the original at x = 0.5.
+        let mut map = HashMap::new();
+        map.insert("x".to_string(), 0.5);
+        for (src, expect) in [
+            ("csc(x)^2", 1.0 / (0.5_f64.sin().powi(2))),
+            ("cot(x)", 0.5_f64.cos() / 0.5_f64.sin()),
+            ("(cos(x)/sin(x))^2", (0.5_f64.cos() / 0.5_f64.sin()).powi(2)),
+        ] {
+            let mut ctx = Context::new();
+            let e = parse_expr(&mut ctx, src);
+            let (num, den) = as_fraction(&mut ctx, e)
+                .unwrap_or_else(|| panic!("{src} should decompose as a fraction"));
+            let ratio = ctx.add(Expr::Div(num, den));
+            let v = crate::evaluator_f64::eval_f64(&ctx, ratio, &map).expect("foldable");
+            assert!(
+                (v - expect).abs() < 1e-9,
+                "{src}: num/den = {v}, expected {expect}"
+            );
+        }
+        // A non-reciprocal-trig function is NOT a fraction.
+        let mut ctx = Context::new();
+        let s = parse_expr(&mut ctx, "sin(x)");
+        assert!(as_fraction(&mut ctx, s).is_none());
     }
 
     #[test]
