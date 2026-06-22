@@ -48,7 +48,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 - [x] **(F) Límite ∞−∞ del mismo signo colapsaba a 0**: `limit(1/sin²x − 1/x², x, 0)` devolvía `0`
   (valor real 1/3); igual `csc²x − 1/x²` y `1/x² − 1/(x²+x³)` (real divergente). La resta de dos
   sub-límites infinitos iguales se colapsaba por un atajo estructural.
-  *(graduado 2026-06-22 PENDING_GD: `finite_sub_result` tenía un atajo `lhs == rhs ⇒ 0` que mordía
+  *(graduado 2026-06-22 bcdbd3317: `finite_sub_result` tenía un atajo `lhs == rhs ⇒ 0` que mordía
   porque `mk_infinity` interna `Constant(Infinity)` — ambos sub-límites devuelven el MISMO ExprId.
   Ahora declina (`Option`) si AMBOS operandos son infinitos del MISMO signo (∞−∞ indeterminado),
   consistente con el rechazo existente de `ln(x)−ln(x)`; ∞−finito y signo-opuesto siguen
