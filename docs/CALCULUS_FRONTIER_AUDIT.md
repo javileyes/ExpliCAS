@@ -1010,9 +1010,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 - [ ] **(F) Etiquetas legibles en pre-cálculo**: `factor(x^2-9)` narra
   "Factor Polynomial" sin diferencia de cuadrados;
   `expand((x+2)^3)` narra "Evaluate Meta Functions".
-- [ ] **(F) Cosmético diff**: `e^(3x^2)/e^(4x^2)` no se combina a
+- [~] **(F) Cosmético diff**: `e^(3x^2)/e^(4x^2)` no se combina a
   `e^(-x^2)` en derivadas 2ª/3ª de `exp(-x^2)`; derivadas anidadas de
   orden 4-5 devuelven blobs con `ln(e)`, `x^0`, `x^(2-1)`.
+  *(parcial 2026-06-22 b44842e6: el COCIENTE `e^a/e^b` ahora combina aunque haya un
+  co-factor en el producto — `try_rewrite_exp_quotient_expr` escanea el `Mul` con
+  `mul_leaves`, extrae el `e`-power y recompone el resto. `diff(e^(−x²),x,1) = -2·x/e^(x²)`
+  (antes `-2·e^(x²)·x/e^(2x²)`), y las derivadas 2ª/3ª pierden el `e^(7x²)/e^(8x²)` quedando
+  un único `/e^(x²)`. Identidad exacta `e^a/e^b=e^(a-b)` (e≠0), sin gate; smokes diff/integrate
+  verdes, huella solo +3 filtered_out. Quedan: las derivadas de orden ≥4 con `e`-powers
+  MULTIPLICADOS sobre una SUMA (`e^(−6x²)·(...e^(5x²)...)`) — necesitan DISTRIBUIR antes de
+  combinar; y los artefactos `ln(e)`/`x^0`/`x^(2-1)` en substeps (que en el RESULTADO ya se
+  pliegan).)*
 
 ### Fuera del norte actual (clase I — no son ciclos)
 
