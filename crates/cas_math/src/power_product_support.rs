@@ -479,18 +479,72 @@ pub fn try_rewrite_power_quotient_expr(
     None
 }
 
-/// Split a product's leaves into (exponents of base-`e` powers, the other factors).
-/// A bare `e` contributes exponent `1`.
-fn split_e_power_factors(ctx: &mut Context, leaves: &[ExprId]) -> (Vec<ExprId>, Vec<ExprId>) {
-    let mut e_exps = Vec::new();
+/// A base whose powers may be combined across a quotient WITHOUT any domain condition: the natural
+/// base `e`, or a positive numeric constant. For `c > 0`, `c^x` is a positive real for every real
+/// `x`, so `c^a / c^b = c^(a-b)` holds unconditionally. A symbolic base (`x^a/x^b`) is NOT combinable
+/// here — it would need `x > 0` — so it is left untouched (honest).
+fn combinable_exp_base(ctx: &Context, base: ExprId) -> bool {
+    is_e_constant_expr(ctx, base) || matches!(ctx.get(base), Expr::Number(n) if n.is_positive())
+}
+
+/// Whether `c^a/c^b` should be combined HERE rather than left to the numeric/radical rules. The
+/// natural base `e` always combines. A positive numeric base combines only when at least one
+/// exponent is non-numeric — i.e. a genuine symbolic exponential like `2^a`, not a radical
+/// `2^(1/2)` (= √2) or an evaluable integer power, which the sqrt/numeric rules own (combining those
+/// here would only churn canonical radical forms).
+fn exponents_warrant_combination(ctx: &Context, base: ExprId, exps: &[ExprId]) -> bool {
+    is_e_constant_expr(ctx, base) || exps.iter().any(|&e| !matches!(ctx.get(e), Expr::Number(_)))
+}
+
+/// If `leaf` is a power of a combinable base (or the bare base itself), return that base.
+fn combinable_base_of_leaf(ctx: &Context, leaf: ExprId) -> Option<ExprId> {
+    if combinable_exp_base(ctx, leaf) {
+        return Some(leaf);
+    }
+    match as_pow(ctx, leaf) {
+        Some((base, _)) if combinable_exp_base(ctx, base) => Some(base),
+        _ => None,
+    }
+}
+
+/// Find a combinable base that appears (as a power or as the bare base) on BOTH sides of a quotient,
+/// so the `base^a / base^b` combination has something to cancel. Returns the first such base.
+fn shared_combinable_quotient_base(
+    ctx: &Context,
+    num_leaves: &[ExprId],
+    den_leaves: &[ExprId],
+) -> Option<ExprId> {
+    for &num_leaf in num_leaves {
+        if let Some(num_base) = combinable_base_of_leaf(ctx, num_leaf) {
+            let shared = den_leaves.iter().any(|&den_leaf| {
+                combinable_base_of_leaf(ctx, den_leaf).is_some_and(|den_base| {
+                    compare_expr(ctx, num_base, den_base) == Ordering::Equal
+                })
+            });
+            if shared {
+                return Some(num_base);
+            }
+        }
+    }
+    None
+}
+
+/// Split a product's leaves into (exponents of the powers of `base`, the other factors). A bare
+/// `base` contributes exponent `1`.
+fn split_base_power_factors(
+    ctx: &mut Context,
+    leaves: &[ExprId],
+    base: ExprId,
+) -> (Vec<ExprId>, Vec<ExprId>) {
+    let mut exps = Vec::new();
     let mut others = Vec::new();
     for &leaf in leaves {
-        if is_e_constant_expr(ctx, leaf) {
+        if compare_expr(ctx, leaf, base) == Ordering::Equal {
             let one = ctx.num(1);
-            e_exps.push(one);
-        } else if let Some((base, exp)) = as_pow(ctx, leaf) {
-            if is_e_constant_expr(ctx, base) {
-                e_exps.push(exp);
+            exps.push(one);
+        } else if let Some((leaf_base, exp)) = as_pow(ctx, leaf) {
+            if compare_expr(ctx, leaf_base, base) == Ordering::Equal {
+                exps.push(exp);
             } else {
                 others.push(leaf);
             }
@@ -498,7 +552,7 @@ fn split_e_power_factors(ctx: &mut Context, leaves: &[ExprId]) -> (Vec<ExprId>, 
             others.push(leaf);
         }
     }
-    (e_exps, others)
+    (exps, others)
 }
 
 /// Sum a non-empty list of exponent expressions into a single additive chain.
@@ -513,12 +567,13 @@ fn sum_exponent_chain(ctx: &mut Context, exps: Vec<ExprId>) -> ExprId {
     acc
 }
 
-/// Try exponential quotient rewrites for base `e`:
-/// - `e^a / e^b -> e^(a-b)`
-/// - `e / e^b -> e^(1-b)`
-/// - `e^a / e -> e^(a-1)`
-/// - `Mul(.., e^a) / e^b -> .. * e^(a-b)` (and the symmetric / both-product shapes): the same
-///   combination when an `e` power sits inside a product on either side, so a co-factor no longer
+/// Try exponential quotient rewrites for a combinable base `c` (the natural base `e` or a positive
+/// numeric constant — see [`combinable_exp_base`], which makes `c^a/c^b = c^(a-b)` unconditional):
+/// - `c^a / c^b -> c^(a-b)`
+/// - `c / c^b -> c^(1-b)`
+/// - `c^a / c -> c^(a-1)`
+/// - `Mul(.., c^a) / c^b -> .. * c^(a-b)` (and the symmetric / both-product shapes): the same
+///   combination when a `c` power sits inside a product on either side, so a co-factor no longer
 ///   blocks it (e.g. `x·e^(x²)/e^(2x²) -> x·e^(-x²)`, which keeps high-order exp derivatives legible).
 pub fn try_rewrite_exp_quotient_expr(
     ctx: &mut Context,
@@ -529,10 +584,12 @@ pub fn try_rewrite_exp_quotient_expr(
         let den_pow = as_pow(ctx, den);
 
         if let (Some((num_base, num_exp)), Some((den_base, den_exp))) = (num_pow, den_pow) {
-            if is_e_constant_expr(ctx, num_base) && is_e_constant_expr(ctx, den_base) {
+            if combinable_exp_base(ctx, num_base)
+                && compare_expr(ctx, num_base, den_base) == Ordering::Equal
+                && exponents_warrant_combination(ctx, num_base, &[num_exp, den_exp])
+            {
                 let diff = ctx.add(Expr::Sub(num_exp, den_exp));
-                let e = ctx.add(Expr::Constant(Constant::E));
-                let rewritten = ctx.add(Expr::Pow(e, diff));
+                let rewritten = ctx.add(Expr::Pow(num_base, diff));
                 return Some(PowerProductRewrite {
                     rewritten,
                     kind: PowerProductRewriteKind::ExpQuotient,
@@ -540,13 +597,14 @@ pub fn try_rewrite_exp_quotient_expr(
             }
         }
 
-        if is_e_constant_expr(ctx, num) {
+        if combinable_exp_base(ctx, num) {
             if let Some((den_base, den_exp)) = den_pow {
-                if is_e_constant_expr(ctx, den_base) {
+                if compare_expr(ctx, num, den_base) == Ordering::Equal
+                    && exponents_warrant_combination(ctx, num, &[den_exp])
+                {
                     let one = ctx.num(1);
                     let diff = ctx.add(Expr::Sub(one, den_exp));
-                    let e = ctx.add(Expr::Constant(Constant::E));
-                    let rewritten = ctx.add(Expr::Pow(e, diff));
+                    let rewritten = ctx.add(Expr::Pow(num, diff));
                     return Some(PowerProductRewrite {
                         rewritten,
                         kind: PowerProductRewriteKind::ExpOverExpPower,
@@ -555,13 +613,14 @@ pub fn try_rewrite_exp_quotient_expr(
             }
         }
 
-        if is_e_constant_expr(ctx, den) {
+        if combinable_exp_base(ctx, den) {
             if let Some((num_base, num_exp)) = num_pow {
-                if is_e_constant_expr(ctx, num_base) {
+                if compare_expr(ctx, den, num_base) == Ordering::Equal
+                    && exponents_warrant_combination(ctx, den, &[num_exp])
+                {
                     let one = ctx.num(1);
                     let diff = ctx.add(Expr::Sub(num_exp, one));
-                    let e = ctx.add(Expr::Constant(Constant::E));
-                    let rewritten = ctx.add(Expr::Pow(e, diff));
+                    let rewritten = ctx.add(Expr::Pow(den, diff));
                     return Some(PowerProductRewrite {
                         rewritten,
                         kind: PowerProductRewriteKind::ExpPowerOverExp,
@@ -570,24 +629,31 @@ pub fn try_rewrite_exp_quotient_expr(
             }
         }
 
-        // Fallback: an `e` power wrapped in a product on either side. The pure single-power shapes
-        // above have already returned, so this only fires when at least one side is a product
-        // (`num_leaves.len() > 1 || den_leaves.len() > 1`). We require an `e` power on BOTH sides so
-        // this is a genuine quotient combination (not a within-product merge), and we collect the
-        // other factors verbatim. SOUNDNESS: `e^x ≠ 0` for all real `x`, so `e^a/e^b = e^(a-b)` is
-        // unconditional — no domain gate (consistent with the pure-case branches above).
+        // Fallback: a combinable-base power wrapped in a product on either side. The pure
+        // single-power shapes above have already returned, so this only fires when at least one side
+        // is a product (`num_leaves.len() > 1 || den_leaves.len() > 1`). We combine the powers of one
+        // base that appears on BOTH sides (a genuine quotient combination), keeping the other factors
+        // verbatim. SOUNDNESS: only combinable bases (`e` or positive numeric) qualify, so
+        // `c^a/c^b = c^(a-b)` is unconditional — no domain gate, consistent with the pure branches.
         let num_leaves = mul_leaves(ctx, num);
         let den_leaves = mul_leaves(ctx, den);
         if num_leaves.len() > 1 || den_leaves.len() > 1 {
-            let (num_e_exps, mut num_others) = split_e_power_factors(ctx, &num_leaves);
-            let (den_e_exps, den_others) = split_e_power_factors(ctx, &den_leaves);
-            if !num_e_exps.is_empty() && !den_e_exps.is_empty() {
-                let num_sum = sum_exponent_chain(ctx, num_e_exps);
-                let den_sum = sum_exponent_chain(ctx, den_e_exps);
+            if let Some(base) = shared_combinable_quotient_base(ctx, &num_leaves, &den_leaves) {
+                let (num_exps, mut num_others) = split_base_power_factors(ctx, &num_leaves, base);
+                let (den_exps, den_others) = split_base_power_factors(ctx, &den_leaves, base);
+                let all_warrant = {
+                    let mut all = num_exps.clone();
+                    all.extend(den_exps.iter().copied());
+                    exponents_warrant_combination(ctx, base, &all)
+                };
+                if !all_warrant {
+                    return None;
+                }
+                let num_sum = sum_exponent_chain(ctx, num_exps);
+                let den_sum = sum_exponent_chain(ctx, den_exps);
                 let diff = ctx.add(Expr::Sub(num_sum, den_sum));
-                let e = ctx.add(Expr::Constant(Constant::E));
-                let e_pow = ctx.add(Expr::Pow(e, diff));
-                num_others.push(e_pow);
+                let combined = ctx.add(Expr::Pow(base, diff));
+                num_others.push(combined);
                 let new_num = build_balanced_mul(ctx, &num_others);
                 let rewritten = if den_others.is_empty() {
                     new_num

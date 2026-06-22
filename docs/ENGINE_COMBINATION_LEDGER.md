@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 306 (newest first)
+Active entries: 307 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -142,6 +142,7 @@ Active entries: 306 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/visible_rule_names.rs` (mapa `visible_rule_... | Presentación: traducir nombres de regla en inglés a español en la narración
 - 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`limit_polynomia... | G2: narrar el 0/0 con denominador trigonométrico/hiperbólico que se anula en el punto
 - 2026-06-22 | `retained` | `crates/cas_math/src/power_product_support.rs` (`try_rewrite_exp_quotient_exp... | Combinar e^a/e^b a través de productos (x·e^a/e^b → x·e^(a-b))
+- 2026-06-22 | `retained` | `crates/cas_math/src/power_product_support.rs` (`try_rewrite_exp_quotient_exp... | Generalizar el cociente exponencial a base positiva (2^a/2^b → 2^(a-b))
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12975,3 +12976,46 @@ Active entries: 306 (newest first)
   - peldaño: las derivadas de orden ≥4 de `e^(−x²)` aún dejan `e`-powers sin combinar cuando están
     MULTIPLICADOS sobre una SUMA (`e^(−6x²)·(...e^(5x²)...)`): eso necesita DISTRIBUIR el `e`-power en la
     suma antes de combinar (operación distinta, más cara) — siguiente peldaño de legibilidad.
+
+## 2026-06-22 - Generalizar el cociente exponencial a base positiva (2^a/2^b → 2^(a-b))
+
+- area:
+  - `crates/cas_math/src/power_product_support.rs` (`try_rewrite_exp_quotient_expr`: predicado
+    `combinable_exp_base` (e ∪ numérico>0), helpers base-aware `shared_combinable_quotient_base`/
+    `split_base_power_factors`, gate `exponents_warrant_combination`)
+- status:
+  - `retained` (simplificación — completa la familia del cociente exponencial; antes solo base `e`
+    combinaba, ni siquiera el caso puro `2^a/2^b`)
+- capture:
+  - investment_class: simplificación (legibilidad/universalidad de `a^x`)
+  - primary_dimension: north_star_educational (resultados legibles, base general)
+  - secondary_dimension: reuse_value (generaliza la regla del ciclo anterior haciéndola base-aware)
+  - cell: `2^a/2^b → 2^(a-b)`, `x·2^a/2^b → x·2^(a-b)`, `3^x/3^y → 3^(x-y)`, `(1/2)^a/(1/2)^b →
+    (1/2)^(a-b)` — antes NINGUNO combinaba (solo base `e`). Caso `e` intacto.
+  - behavior_change_expected: `c^a/c^b → c^(a-b)` (puro y con co-factor) ahora dispara para `c` = `e`
+    O un numérico positivo, SIEMPRE que al menos un exponente sea simbólico. Resultado idéntico
+    (identidad exacta), más legible. Huella: smokes diff/integrate verdes; guardrail solo `filtered_out`
+    +2 (tests añadidos), passed/failed idénticos; pressure 0.
+  - SOUNDNESS (dos gates): (1) BASE — solo `e` o numérico `>0` (`c>0 ⇒ c^x>0` real para todo `x`, así
+    que `c^a/c^b=c^(a-b)` es INCONDICIONAL). Base SIMBÓLICA (`x^a/x^b`, necesita `x>0`), NEGATIVA
+    (`(-2)^a/(-2)^b`, no-real para exponente no-entero) y bases DISTINTAS (`3^x/2^x`) declinan. (2)
+    EXPONENTE — para base numérica, al menos un exponente NO-numérico; así los RADICALES (`2^(1/2)=√2`)
+    y potencias enteras evaluables quedan para las reglas de raíz/numéricas, sin churn de su forma
+    canónica. (`e` no necesita el gate-2: combina siempre, como antes.)
+  - scoping: extiende el trabajo del ciclo anterior; verificación: identidad exacta + refutación de los
+    4 tipos de decline + ground-truth de los valores.
+- observed:
+  - el gate-2 (exponente simbólico para base numérica) surgió de un FALLO real: sin él, tratar
+    `√2=2^(1/2)` como base-2 combinable reordenaba `√2·a → a·√2` en `integrate(1/((ax+b)²+2))`
+    (resultado idéntico, pero un fixture lo fijaba) y, en general, mete la regla exponencial en
+    territorio de las reglas de raíz. Restringir base-numérica a exponente simbólico deja los radicales
+    intactos y elimina la rotura del fixture.
+- retained learning:
+  - al generalizar una identidad de base `e` a "base positiva", `c^(1/2)` (=√c) entra en el conjunto y
+    pisa las reglas de RADICALES (que tienen su propia forma canónica). La frontera correcta no es solo
+    el SIGNO de la base sino el TIPO de exponente: combina exponentes SIMBÓLICOS (el `a^x` genuino),
+    deja los exponentes NUMÉRICOS (radicales / potencias evaluables) a sus dueños. `e` es la excepción
+    histórica (combina siempre).
+  - peldaño: bases numéricas con TODOS los exponentes numéricos no-evaluables (`2^(1/2)/2^(1/3)`) se
+    dejan a las reglas de raíz a propósito; y la base simbólica con asunción `x>0` (modo Assume)
+    seguiría declinando — extensible si se enhebra `ValueDomain`.

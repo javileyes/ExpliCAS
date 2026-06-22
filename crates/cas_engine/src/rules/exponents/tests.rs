@@ -91,6 +91,34 @@ fn test_exp_quotient_declines_without_e_on_both_sides() {
 }
 
 #[test]
+fn test_exp_quotient_combines_positive_numeric_base() {
+    // `c^a/c^b = c^(a-b)` is unconditional for a positive numeric base (`c > 0 ⇒ c^x > 0`).
+    assert_eq!(apply_exp_quotient("2^a / 2^b"), "2^(a - b)");
+    assert_eq!(apply_exp_quotient("x * 2^a / 2^b"), "x * 2^(a - b)");
+    assert_eq!(apply_exp_quotient("3^x / 3^y"), "3^(x - y)");
+}
+
+#[test]
+fn test_exp_quotient_declines_for_unsound_or_unshared_bases() {
+    // A SYMBOLIC base would need `x > 0`; a NEGATIVE base is not a real power for non-integer
+    // exponents; DIFFERENT bases share nothing to cancel. All must decline (left to other rules).
+    for src in ["x^a / x^b", "(-2)^a / (-2)^b", "3^x / 2^x"] {
+        let mut ctx = Context::new();
+        let expr = parse(src, &mut ctx).unwrap();
+        assert!(
+            ExpQuotientRule
+                .apply(
+                    &mut ctx,
+                    expr,
+                    &crate::parent_context::ParentContext::root()
+                )
+                .is_none(),
+            "ExpQuotientRule must decline `{src}`"
+        );
+    }
+}
+
+#[test]
 fn product_power_rule_targets_mul_only() {
     let targets = ProductPowerRule
         .target_types()
