@@ -100,8 +100,9 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   simbólica conservan `-∞` (régimen `b>1`). Cazado por verificación adversarial 2-lente (sonda +
   refutación con mpmath/sympy) — los tests verdes solo ejercían bases >1, enmascarando el defecto.
   Huella NONE. La base FRACCIONARIA se cierra después (2026-06-22, `eval_log_rational_full`:
-  `log(1/2,16)→-4`, `log(2/3,9/4)→-2` vía vector de exponentes primos con signo). Peldaño restante:
-  `log(1,1)→0` (debería undefined) es el mismo régimen degenerado en la rama `n=1`.)*
+  `log(1/2,16)→-4`, `log(2/3,9/4)→-2` vía vector de exponentes primos con signo). La base
+  DEGENERADA también se cierra (2026-06-22, guard de validez de base: `log(1,1)→undefined` —antes
+  `0`—, y `log(0,·)`/`log(neg,·)→undefined`).)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

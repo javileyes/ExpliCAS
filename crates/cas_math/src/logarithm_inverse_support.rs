@@ -277,6 +277,29 @@ pub fn try_rewrite_evaluate_log_expr(
 ) -> Option<EvaluateLogRewrite> {
     let (base, arg) = extract_log_base_argument(ctx, expr)?;
 
+    // A DEGENERATE base makes the logarithm undefined for EVERY argument: `b = 1` (since `1^y = 1`
+    // for all `y`, so `log_1` has no inverse — `log(1,1)` is indeterminate, not 0) and `b ≤ 0`
+    // (no real log). Check this BEFORE the argument-based rules below, which otherwise returned
+    // `log(1, 1) = 0` and left `log(1, 5)` un-evaluated. Only an explicit numeric base hits this;
+    // `e`/`10`/`2` from `ln`/`log10`/`log2` are all valid.
+    {
+        use num_traits::{One, Signed, Zero};
+        // Undefined iff `b <= 0` or `b == 1`. A base in `(0, 1)` is valid (e.g. `log_{1/2}`).
+        let degenerate_base = match ctx.get(base) {
+            Expr::Number(b) if b.is_one() || b.is_negative() || b.is_zero() => Some(b.clone()),
+            _ => None,
+        };
+        if let Some(b) = degenerate_base {
+            let rewritten = ctx.add(Expr::Constant(Constant::Undefined));
+            let desc = format!("log({}, x) = undefined (base = 1 or base <= 0)", b);
+            return Some(EvaluateLogRewrite {
+                rewritten,
+                desc,
+                assume_positive_base: None,
+            });
+        }
+    }
+
     if let Expr::Number(n) = ctx.get(arg) {
         let n = n.clone();
         if n.is_one() {
@@ -2224,6 +2247,43 @@ mod tests {
         assert!(eval_log_rational_full(&r(1, 2), &r(3, 1)).is_none());
         assert!(eval_log_rational_full(&r(1, 1), &r(4, 1)).is_none()); // base 1
         assert!(eval_log_rational_full(&r(1, 2), &r(-4, 1)).is_none()); // negative arg
+    }
+
+    #[test]
+    fn evaluate_log_degenerate_base_is_undefined() {
+        use cas_ast::BuiltinFn;
+        use num_rational::BigRational;
+        let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
+        // base = 1 or base <= 0 -> undefined for ANY argument (incl. arg = 1, which previously
+        // returned 0 via the `log(b,1)=0` shortcut).
+        for (base, arg) in [
+            (r(1, 1), r(1, 1)),
+            (r(1, 1), r(5, 1)),
+            (r(1, 1), r(0, 1)),
+            (r(0, 1), r(5, 1)),
+            (r(-2, 1), r(4, 1)),
+        ] {
+            let mut ctx = Context::new();
+            let b = ctx.add(Expr::Number(base.clone()));
+            let a = ctx.add(Expr::Number(arg.clone()));
+            let expr = ctx.call_builtin(BuiltinFn::Log, vec![b, a]);
+            let rw = try_rewrite_evaluate_log_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("log({base}, {arg}) should evaluate"));
+            assert!(
+                matches!(ctx.get(rw.rewritten), Expr::Constant(Constant::Undefined)),
+                "log({base}, {arg}) must be undefined, got {:?}",
+                ctx.get(rw.rewritten)
+            );
+        }
+        // A valid base in (0,1) is NOT degenerate: log_{1/2}(16) = -4, log_{1/2}(1) = 0.
+        {
+            let mut ctx = Context::new();
+            let b = ctx.add(Expr::Number(r(1, 2)));
+            let a = ctx.add(Expr::Number(r(16, 1)));
+            let expr = ctx.call_builtin(BuiltinFn::Log, vec![b, a]);
+            let rw = try_rewrite_evaluate_log_expr(&mut ctx, expr).expect("evaluates");
+            assert!(matches!(ctx.get(rw.rewritten), Expr::Number(n) if *n == r(-4, 1)));
+        }
     }
 
     #[test]

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 297 (newest first)
+Active entries: 298 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -133,6 +133,7 @@ Active entries: 297 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`try_factor_polynomial_inequ... | P0 soundness: inecuaciones polinómicas grado≥3 expandidas (solve(x^4-5x^2+4<0) = ∅)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`combine_difference_over_common_deno... | Entregar el valor de límites ∞−∞ combinando sobre denominador común (1/sin²x−1/x² = 1/3)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`signed_prime_exponent_map`, | Logaritmos de base fraccionaria (log(1/2,16) = -4)
+- 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | P0 soundness: log de base degenerada (log(1,1) = 0 → undefined)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12577,3 +12578,32 @@ Active entries: 297 (newest first)
     exponentes de numerador y denominador. Mismo núcleo, dominio más amplio.
   - residual (peldaño): `log_2(√8)` (arg con raíz, exponente fraccionario en el vector primo) y
     bases/args con factores transcendentes quedan fuera (sin soporte primo racional).
+
+## 2026-06-22 - P0 soundness: log de base degenerada (log(1,1) = 0 → undefined)
+- area:
+  - `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log_expr`: guard de
+    base degenerada antes de las reglas por-argumento)
+- status:
+  - `retained` (P0 soundness — wrong-answer; gradúa el peldaño de base-1 del ciclo log(b,0))
+- capture:
+  - investment_class: soundness (corrige valor erróneo; exenta de la restricción de fase)
+  - primary_dimension: north_star_soundness (dominio del logaritmo)
+  - secondary_dimension: reuse_value (un guard temprano; reusa el flujo de evaluación de log)
+  - cell: `log(1,1) → undefined` (antes `0`, FALSO: `log_1` no tiene inversa, `1^y=1 ∀y`);
+    `log(1,5)`, `log(0,5)`, `log(-2,4) → undefined` (antes simbólicos). Intactos: `log(2,8)→3`,
+    `log(1/2,16)→-4`, `log(2,1)→0`, `log(1/2,1)→0`, `log(1/2,0)→∞`, `ln(e²)→2`.
+  - behavior_change_expected: `log(b,·)` con base numérica `b≤0` o `b==1` pasa a `undefined` para
+    CUALQUIER argumento (antes `log(1,1)=0` por el atajo `log(b,1)=0`, y `log(1,5)`/`log(0,·)`
+    simbólicos). Bases válidas (incl. `0<b<1`) intactas. Huella NONE; workspace 12286/0.
+  - SOUNDNESS: `log_b` está definido solo para `b>0, b≠1`. La base `1` es degenerada (`1^y=1` ∀y,
+    sin inversa); `b≤0` no tiene log real. El guard se chequea ANTES de las reglas por-argumento
+    (que devolvían `log(1,1)=0`). Solo afecta a base numérica EXPLÍCITA; `e`/`10`/`2` de
+    `ln`/`log10`/`log2` son válidas. Una base en `(0,1)` NO es degenerada (`log_{1/2}` válido).
+- observed:
+  - el ciclo `log(b,0)` (base-aware en la rama `n=0`) dejó como peldaño `log(1,1)=0`. La causa: la
+    rama `n.is_one() ⇒ 0` no miraba la base. Un guard de validez de base al inicio lo cierra y
+    además vuelve `undefined` (más correcto que simbólico) los `log(0,·)`/`log(neg,·)`.
+- retained learning:
+  - las reglas de "valor en un punto especial del ARGUMENTO" (`log(b,1)=0`, `log(b,0)=±∞`) deben
+    estar gateadas por la validez de la BASE; una base degenerada invalida el logaritmo ENTERO,
+    así que el chequeo de base va PRIMERO. Mismo principio que el fix de signo de `log(b,0)`.
