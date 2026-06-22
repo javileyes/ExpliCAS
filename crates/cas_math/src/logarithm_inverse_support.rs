@@ -243,10 +243,23 @@ pub fn try_rewrite_evaluate_log_expr(
 
         if let Expr::Number(b) = ctx.get(base) {
             let b = b.clone();
-            if b.is_integer() && n.is_integer() {
+            if b.is_integer() {
                 let b_int = b.to_integer();
-                let n_int = n.to_integer();
-                if let Some(ratio) = eval_log_rational(&b_int, &n_int) {
+                // `n` is already > 0 here (the 0/1/negative arguments are handled above).
+                let ratio = if n.is_integer() {
+                    eval_log_rational(&b_int, &n.to_integer())
+                } else {
+                    // Rational argument p/q: log_b(p/q) = log_b(p) − log_b(q), exact when both
+                    // numerator and denominator are integer-power logs (`log2(1/4) = -2`).
+                    match (
+                        eval_log_rational(&b_int, &n.numer().clone()),
+                        eval_log_rational(&b_int, &n.denom().clone()),
+                    ) {
+                        (Some(lp), Some(lq)) => Some(lp - lq),
+                        _ => None,
+                    }
+                };
+                if let Some(ratio) = ratio {
                     let rewritten = ctx.add(Expr::Number(ratio.clone()));
                     return Some(EvaluateLogRewrite {
                         rewritten,
@@ -2085,6 +2098,41 @@ mod tests {
         let base = num_bigint::BigInt::from(6);
         let val = num_bigint::BigInt::from(8);
         assert!(eval_log_rational(&base, &val).is_none());
+    }
+
+    #[test]
+    fn evaluate_log_rewrite_handles_rational_argument() {
+        use cas_ast::BuiltinFn;
+        use num_rational::BigRational;
+        // The rule sees the FOLDED argument `Number(p/q)` (the simplifier folds `1/4` before this
+        // rule runs), not the raw `Div(1, 4)` parse tree. log_b(p/q) = log_b(p) − log_b(q):
+        // log2(1/4) = -2, log2(1/8) = -3, log(3, 1/9) = -2; a non-power rational stays symbolic.
+        let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
+        // (base, p, q, expected) — `None` expected means it stays symbolic.
+        let cases: [(i64, i64, i64, Option<i64>); 4] = [
+            (2, 1, 4, Some(-2)),
+            (2, 1, 8, Some(-3)),
+            (3, 1, 9, Some(-2)),
+            (2, 3, 4, None),
+        ];
+        for (base, p, q, want) in cases {
+            let mut ctx = Context::new();
+            let base_n = ctx.add(Expr::Number(r(base, 1)));
+            let arg = ctx.add(Expr::Number(r(p, q)));
+            let expr = ctx.call_builtin(BuiltinFn::Log, vec![base_n, arg]);
+            let rw = try_rewrite_evaluate_log_expr(&mut ctx, expr);
+            match want {
+                Some(v) => {
+                    let rw = rw.unwrap_or_else(|| panic!("log({base}, {p}/{q}) should evaluate"));
+                    assert!(
+                        matches!(ctx.get(rw.rewritten), Expr::Number(n) if *n == r(v, 1)),
+                        "log({base}, {p}/{q}): expected {v}, got {:?}",
+                        ctx.get(rw.rewritten)
+                    );
+                }
+                None => assert!(rw.is_none(), "log({base}, {p}/{q}) should stay symbolic"),
+            }
+        }
     }
 
     #[test]

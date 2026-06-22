@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 289 (newest first)
+Active entries: 290 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -125,6 +125,7 @@ Active entries: 289 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/difference_of_cubes_support.rs` (`rational_cbrt`, | Evaluar la raíz cúbica de un cubo perfecto (cbrt(8) = 2)
 - 2026-06-22 | `retained` | `crates/cas_math/src/expr_extract.rs` (`extract_log_base_argument`: arm `Log2... | Evaluar log2 de potencias de 2 (log2(8) = 3)
 - 2026-06-22 | `retained` | `crates/cas_math/src/trig_eval_table_support.rs` (`rewrite_negative_trig_argu... | Evaluar trig inversa de argumento negativo por simetría (arccos(-1/2) = 2π/3)
+- 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | Evaluar logaritmos de argumento racional (log2(1/4) = -2)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12268,3 +12269,32 @@ Active entries: 289 (newest first)
   - residual (peldaño): argumentos surd negativos con coeficiente (`arcsin(-√3/2)` que llega como
     `-3/2·3^(-1/2)`, coef ≠ -1) siguen inertes — `extract_negated_inner` solo pela coef -1; y los
     racionales no-notables (`arccos(-1/3)`) correctamente no evalúan.
+
+## 2026-06-22 - Evaluar logaritmos de argumento racional (log2(1/4) = -2)
+- area:
+  - `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log_expr`: rama
+    de argumento racional p/q)
+- status:
+  - `retained` (capability/consistencia — P2; extensión directa de [[log2-de-potencia-de-2]])
+- capture:
+  - investment_class: capability (Fase 1; reusa `eval_log_rational`)
+  - primary_dimension: north_star_completeness (logs de fracciones)
+  - secondary_dimension: reuse_value (log_b(p/q) = log_b(p) − log_b(q) sobre el helper existente)
+  - cell: `log2(1/4) → -2`, `log2(1/8) → -3`, `log10(1/100) → -2`, `log(2,1/4) → -2`,
+    `log(3,1/9) → -2`, `log2(1/2) → -1`. Simbólicos intactos: `log2(1/3)`, `log2(3/4)`,
+    `log10(1/3)`; enteros (`log2(8) → 3`) sin cambios.
+  - behavior_change_expected: `log_b(p/q)` con base entera y p,q ambos potencias-de-primos-de-b
+    pasa de inerte al racional exacto. Huella guardrail+pressure NONE; workspace 12278/0.
+  - SOUNDNESS: `log_b(p/q) = log_b(p) − log_b(q)` exacto; solo emite si AMBOS `eval_log_rational(b,p)`
+    y `eval_log_rational(b,q)` son Some (prima-compatibles). Si uno falla → None → conserva. `n` ya
+    es > 0 en este punto (0/1/negativos atajados antes). Sin lógica de dominio dependiente de valor.
+- observed:
+  - el ciclo previo [[log2-de-potencia-de-2]] dejó como peldaño el argumento RACIONAL; la rama
+    entera gateaba `n.is_integer()`. La descomposición numerador/denominador sobre el MISMO helper
+    lo cierra — un `else` de 6 líneas.
+  - el test inicial con `parse("log2(1/4)")` falló: la regla ve el `Number(1/4)` PLEGADO, no el
+    `Div(1,4)` crudo del parser (mismo aprendizaje que [[trig-inversa-de-negativo]]).
+- retained learning:
+  - cuando una evaluación cubre el caso entero, el racional suele ser la misma identidad aplicada a
+    numerador y denominador por separado sobre el mismo helper — barato y sound. El gate "ambos
+    deben resolver" mantiene los irracionales (`log2(1/3)`) simbólicos.
