@@ -22,6 +22,9 @@ pub enum TrigNegativeParityKind {
     Sin,
     Cos,
     Tan,
+    Arcsin,
+    Arccos,
+    Arctan,
 }
 
 /// Lookup result for trig/inverse-trig exact-value tables.
@@ -78,8 +81,26 @@ pub fn rewrite_negative_trig_argument(
     fn_name: &str,
     arg: ExprId,
 ) -> Option<(ExprId, TrigNegativeParityKind)> {
-    let inner = extract_negated_inner(ctx, arg)?;
-    match fn_name {
+    use num_traits::Signed;
+    let canonical = canonical_table_fn_name(fn_name);
+    // The positive counterpart of a negative argument: a `Neg(...)` / `(-1)·x` wrapper, or — for
+    // inverse trig only — a bare negative numeric literal (`arccos(-1/2)` arrives as `Number(-1/2)`,
+    // which `extract_negated_inner` does not treat as a negation). Forward trig keeps its prior
+    // behavior, since a bare negative literal there has no special-angle value to unlock.
+    let inner = match extract_negated_inner(ctx, arg) {
+        Some(i) => i,
+        None => {
+            let neg_literal = match ctx.get(arg) {
+                Expr::Number(n) if n.is_negative() => Some(-n.clone()),
+                _ => None,
+            };
+            match (canonical, neg_literal) {
+                ("arcsin" | "arccos" | "arctan", Some(pos)) => ctx.add(Expr::Number(pos)),
+                _ => return None,
+            }
+        }
+    };
+    match canonical {
         "sin" => {
             let sin_inner = ctx.call_builtin(BuiltinFn::Sin, vec![inner]);
             Some((ctx.add(Expr::Neg(sin_inner)), TrigNegativeParityKind::Sin))
@@ -91,6 +112,21 @@ pub fn rewrite_negative_trig_argument(
         "tan" => {
             let tan_inner = ctx.call_builtin(BuiltinFn::Tan, vec![inner]);
             Some((ctx.add(Expr::Neg(tan_inner)), TrigNegativeParityKind::Tan))
+        }
+        // arcsin(-x) = -arcsin(x), arctan(-x) = -arctan(x) (both odd).
+        "arcsin" => {
+            let call = ctx.call_builtin(BuiltinFn::Arcsin, vec![inner]);
+            Some((ctx.add(Expr::Neg(call)), TrigNegativeParityKind::Arcsin))
+        }
+        "arctan" => {
+            let call = ctx.call_builtin(BuiltinFn::Arctan, vec![inner]);
+            Some((ctx.add(Expr::Neg(call)), TrigNegativeParityKind::Arctan))
+        }
+        // arccos(-x) = π − arccos(x).
+        "arccos" => {
+            let call = ctx.call_builtin(BuiltinFn::Arccos, vec![inner]);
+            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+            Some((ctx.add(Expr::Sub(pi, call)), TrigNegativeParityKind::Arccos))
         }
         _ => None,
     }
@@ -265,6 +301,34 @@ mod tests {
             }
             _ => panic!("expected cos(x)"),
         }
+    }
+
+    #[test]
+    fn rewrite_negative_inverse_trig_via_symmetry_end_to_end() {
+        // arccos(-1/2) = 2π/3, arcsin(-1/2) = -π/6, arctan(-1) = -π/4 — driven by the inverse-trig
+        // symmetries on a bare negative numeric literal (not a `Neg(...)` wrapper).
+        // The rule sees the SIMPLIFIED argument, a single `Number(-1/2)` (the simplifier folds the
+        // literal before the trig rule runs), not the raw `Div(-1, 2)` parse tree.
+        let neg_half_val = num_rational::BigRational::new((-1).into(), 2.into());
+        for (src, want_kind) in [
+            ("arccos", TrigNegativeParityKind::Arccos),
+            ("arcsin", TrigNegativeParityKind::Arcsin),
+            ("arctan", TrigNegativeParityKind::Arctan),
+        ] {
+            let mut ctx = Context::new();
+            let neg_half = ctx.add(Expr::Number(neg_half_val.clone()));
+            let (_rewritten, kind) = rewrite_negative_trig_argument(&mut ctx, src, neg_half)
+                .expect("inverse-trig negative literal should rewrite");
+            assert_eq!(kind, want_kind);
+        }
+        // The `a*` spelling canonicalizes to the same rewrite.
+        let mut ctx = Context::new();
+        let neg_one = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+            (-1).into(),
+        )));
+        let (_e, kind) =
+            rewrite_negative_trig_argument(&mut ctx, "asin", neg_one).expect("asin alias rewrite");
+        assert_eq!(kind, TrigNegativeParityKind::Arcsin);
     }
 
     #[test]

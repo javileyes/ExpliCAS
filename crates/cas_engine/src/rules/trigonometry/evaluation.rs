@@ -14,6 +14,9 @@ fn format_trig_negative_parity_desc(kind: TrigNegativeParityKind) -> &'static st
         TrigNegativeParityKind::Sin => "sin(-x) = -sin(x)",
         TrigNegativeParityKind::Cos => "cos(-x) = cos(x)",
         TrigNegativeParityKind::Tan => "tan(-x) = -tan(x)",
+        TrigNegativeParityKind::Arcsin => "arcsin(-x) = -arcsin(x)",
+        TrigNegativeParityKind::Arccos => "arccos(-x) = π - arccos(x)",
+        TrigNegativeParityKind::Arctan => "arctan(-x) = -arctan(x)",
     }
 }
 

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 288 (newest first)
+Active entries: 289 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -124,6 +124,7 @@ Active entries: 288 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: `sen`/`tg`/`cotg`/`c... | Aceptar la notación trigonométrica española/europea (sen, tg, arctg, cotg)
 - 2026-06-22 | `retained` | `crates/cas_math/src/difference_of_cubes_support.rs` (`rational_cbrt`, | Evaluar la raíz cúbica de un cubo perfecto (cbrt(8) = 2)
 - 2026-06-22 | `retained` | `crates/cas_math/src/expr_extract.rs` (`extract_log_base_argument`: arm `Log2... | Evaluar log2 de potencias de 2 (log2(8) = 3)
+- 2026-06-22 | `retained` | `crates/cas_math/src/trig_eval_table_support.rs` (`rewrite_negative_trig_argu... | Evaluar trig inversa de argumento negativo por simetría (arccos(-1/2) = 2π/3)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12231,3 +12232,39 @@ Active entries: 288 (newest first)
   - residual (peldaño): `log2(1/4) → -2` y `log10(1/100) → -2` (argumento RACIONAL no-entero)
     siguen inertes — `try_rewrite_evaluate_log_expr` gatea `n.is_integer()` y `eval_log_rational`
     toma enteros; falta `log_b(p/q) = log_b(p) − log_b(q)` para potencias-de-primos-de-b racionales.
+
+## 2026-06-22 - Evaluar trig inversa de argumento negativo por simetría (arccos(-1/2) = 2π/3)
+- area:
+  - `crates/cas_math/src/trig_eval_table_support.rs` (`rewrite_negative_trig_argument`: arms
+    arcsin/arccos/arctan + detección de literal numérico negativo; enum `TrigNegativeParityKind`)
+  - `crates/cas_engine/src/rules/trigonometry/evaluation.rs` (descripciones de los 3 kinds nuevos)
+- status:
+  - `retained` (capability/consistencia — P1/P2; valores estándar de trig inversa)
+- capture:
+  - investment_class: capability (Fase 1, real-elemental; entradas comunes de estudiante)
+  - primary_dimension: north_star_completeness (tabla exacta de trig inversa cubre los negativos)
+  - secondary_dimension: reuse_value (re-evalúa el arccos/arcsin POSITIVO con la tabla existente)
+  - cell: `arccos(-1/2) → 2π/3`, `arcsin(-1/2) → -π/6`, `arctan(-1) → -π/4`, `arcsin(-1) → -π/2`,
+    `arccos(-1) → π`; `asin(-1/2)`/`acos(-1/2)` (grafía a*) igual. Positivos y trig directa intactos
+    (`sin(-π/6) = -1/2`).
+  - behavior_change_expected: trig inversa con argumento NEGATIVO (literal racional) pasa de inerte
+    al valor exacto por simetría (`arcsin`/`arctan` impares → `-f(x)`; `arccos(-x) = π - arccos(x)`),
+    re-evaluando el positivo con la tabla. Huella guardrail+pressure NONE; workspace verde.
+  - SOUNDNESS: las identidades son exactas. La detección de literal negativo se GATEA a trig inversa
+    (`arcsin`/`arccos`/`arctan`) para no tocar la trig directa (un literal negativo en `sin` no tiene
+    valor de ángulo notable). `canonical_table_fn_name` normaliza `asin→arcsin` etc.
+- observed:
+  - `rewrite_negative_trig_argument` solo manejaba la PARIDAD de trig DIRECTA (`sin(-x)`,`cos`,`tan`);
+    la trig INVERSA caía a `_ => None`. Además `extract_negated_inner` reconoce `Neg(...)`/`(-1)·x`
+    pero NO un literal `Number(-1/2)` (que es como llega `arccos(-1/2)` ya simplificado) — por eso
+    `arccos(-√2/2)` (envuelto) funcionaba pero `arccos(-1/2)` (literal) no.
+  - el test unitario inicial usó `parse("-1/2")` (árbol `Div(-1,2)` SIN plegar) y falló; la regla ve
+    el `Number(-1/2)` ya plegado por el simplificador — construir el literal directo lo arregla.
+- retained learning:
+  - una función de "reescribir argumento negativo" puede cubrir una familia (trig directa) y olvidar
+    la hermana (trig inversa); y la detección de "negativo" debe incluir el literal `Number(-n)` ya
+    plegado, no solo el envoltorio `Neg`. Probar reglas que ven formas SIMPLIFICADAS con el nodo
+    plegado, no con el `parse` crudo.
+  - residual (peldaño): argumentos surd negativos con coeficiente (`arcsin(-√3/2)` que llega como
+    `-3/2·3^(-1/2)`, coef ≠ -1) siguen inertes — `extract_negated_inner` solo pela coef -1; y los
+    racionales no-notables (`arccos(-1/3)`) correctamente no evalúan.
