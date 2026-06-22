@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 290 (newest first)
+Active entries: 291 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -126,6 +126,7 @@ Active entries: 290 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/expr_extract.rs` (`extract_log_base_argument`: arm `Log2... | Evaluar log2 de potencias de 2 (log2(8) = 3)
 - 2026-06-22 | `retained` | `crates/cas_math/src/trig_eval_table_support.rs` (`rewrite_negative_trig_argu... | Evaluar trig inversa de argumento negativo por simetría (arccos(-1/2) = 2π/3)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | Evaluar logaritmos de argumento racional (log2(1/4) = -2)
+- 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | P0 soundness: log(b, 0) ignoraba la base (signo erróneo para 0<b<1, base 1)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12298,3 +12299,38 @@ Active entries: 290 (newest first)
   - cuando una evaluación cubre el caso entero, el racional suele ser la misma identidad aplicada a
     numerador y denominador por separado sobre el mismo helper — barato y sound. El gate "ambos
     deben resolver" mantiene los irracionales (`log2(1/3)`) simbólicos.
+
+## 2026-06-22 - P0 soundness: log(b, 0) ignoraba la base (signo erróneo para 0<b<1, base 1)
+- area:
+  - `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log_expr`, rama
+    `n.is_zero()` ahora consciente de la base)
+- status:
+  - `retained` (P0 soundness — wrong-answer; cazado por verificación adversarial multi-lente)
+- capture:
+  - investment_class: soundness (corrige valor erróneo; exenta de la restricción de fase)
+  - primary_dimension: north_star_soundness (log(b,0) correcto en todo régimen de base)
+  - secondary_dimension: reuse_value (gateo por valor de base, sin maquinaria nueva)
+  - cell: `log(1/2,0) → +∞` (antes -∞, FALSO); `log(1,0) → undefined` (antes -∞); `log(1/4,0)`,
+    `log(2/3,0) → +∞`; `log(-2,0)`, `log(0,0) → undefined`; `log(2,0)`, `log10(0)`, `ln(0)`,
+    `log2(0)`, `log(b,0)` simbólico → -∞ (intactos).
+  - behavior_change_expected: `log_b(0)` con base numérica `0<b<1` pasa de -∞ a +∞, y base `b=1`/
+    `b≤0` de -∞ a undefined. Bases `b>1` (incl. e, π, log10, log2) y base simbólica sin cambio.
+    Huella guardrail+pressure NONE; workspace 12279/0.
+  - SOUNDNESS: `log_b(0) = ln(0)/ln(b) = -∞/ln(b)`. El signo depende de `ln(b)`: `b>1 ⇒ ln(b)>0 ⇒
+    -∞`; `0<b<1 ⇒ ln(b)<0 ⇒ +∞`; `b=1 ⇒ ln(1)=0 ⇒ indeterminado` (y `1^y=1≠0`) ⇒ undefined;
+    `b≤0` base inválida ⇒ undefined. La rama emitía -∞ INCONDICIONALMENTE (sound solo para b>1).
+- observed:
+  - el defecto se enmascaraba porque los tests verdes solo ejercían bases >1 (e, 10, 2), donde -∞
+    es correcto. La verificación adversarial de 2 lentes (sonda + refutación numérica con mpmath/
+    sympy) lo destapó: probó bases fraccionarias y la base degenerada 1 que ningún test cubría.
+  - el patrón correcto ya existía 8 líneas abajo: la rama `n<0` devuelve undefined; la de `n=0`
+    simplemente no miraba la base.
+- retained learning:
+  - una regla de "valor en un punto especial" (log de 0) cuyo RESULTADO depende de un parámetro
+    (la base) debe inspeccionar ese parámetro; un resultado constante hard-coded es sound solo en
+    el régimen que los tests felices ejercen. La verificación adversarial con cómputo independiente
+    (mpmath/sympy) y refutación numérica es la que caza estos signos — los tests verdes no.
+  - residual (peldaño): base FRACCIONARIA con argumento no-cero (`log(1/2,16) → -4`,
+    `log(1/2,1/8) → 3`) sigue inerte — `eval_log_rational` toma base entera; falta el caso
+    `log_{p/q}(c)`. Y `log(1,1) → 0` (debería ser undefined) es el mismo régimen degenerado de
+    base 1 en la rama `n=1`, no tocado aquí.

@@ -45,6 +45,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
+- [x] **(F) `log(b, 0)` ignoraba la base (signo erróneo)**: `log(1/2, 0)` devolvía `-∞` cuando el
+  valor real es `+∞` (`log_b(0)=ln(0)/ln(b)`, y `ln(b)<0` para `0<b<1` invierte el signo), y
+  `log(1, 0)` devolvía `-∞` en vez de `undefined` (base 1 degenerada). La rama `n=0` emitía `-∞`
+  incondicionalmente, sound solo para `b>1`.
+  *(graduado 2026-06-22 PENDING_C12: la rama `n.is_zero()` de `try_rewrite_evaluate_log_expr`
+  ahora gatea por la base: `b>1 → -∞`, `0<b<1 → +∞`, `b=1` o `b≤0 → undefined`; `e`/`π`/base
+  simbólica conservan `-∞` (régimen `b>1`). Cazado por verificación adversarial 2-lente (sonda +
+  refutación con mpmath/sympy) — los tests verdes solo ejercían bases >1, enmascarando el defecto.
+  Huella NONE. Peldaño: base FRACCIONARIA con argumento no-cero (`log(1/2,16)→-4`) sigue inerte, y
+  `log(1,1)→0` (debería undefined) es el mismo régimen degenerado en la rama `n=1`.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

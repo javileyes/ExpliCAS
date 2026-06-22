@@ -224,11 +224,48 @@ pub fn try_rewrite_evaluate_log_expr(
             });
         }
         if n.is_zero() {
-            let inf = ctx.add(Expr::Constant(Constant::Infinity));
-            let rewritten = ctx.add(Expr::Neg(inf));
+            // `log_b(0)` is `ln(0)/ln(b) = -∞/ln(b)`, so its sign depends on the BASE — the
+            // previous code returned `-∞` unconditionally, sound only for `b > 1`:
+            //   b > 1     → ln(b) > 0 → -∞
+            //   0 < b < 1 → ln(b) < 0 → +∞   (the sign flips)
+            //   b = 1 or b ≤ 0        → undefined (degenerate base: 1^y = 1 ≠ 0; non-positive base
+            //                            has no real log)
+            // `e` and `π` are > 1; a symbolic base keeps the conventional `-∞` (standard `b > 1`).
+            enum LogZeroBase {
+                NegInf,
+                PosInf,
+                Undefined,
+            }
+            let kind = match ctx.get(base) {
+                Expr::Number(b) => {
+                    let one = num_rational::BigRational::one();
+                    if *b <= num_rational::BigRational::zero() || *b == one {
+                        LogZeroBase::Undefined
+                    } else if *b > one {
+                        LogZeroBase::NegInf
+                    } else {
+                        LogZeroBase::PosInf
+                    }
+                }
+                _ => LogZeroBase::NegInf,
+            };
+            let (rewritten, desc) = match kind {
+                LogZeroBase::NegInf => {
+                    let inf = ctx.add(Expr::Constant(Constant::Infinity));
+                    (ctx.add(Expr::Neg(inf)), "log(b, 0) = -infinity (b > 1)")
+                }
+                LogZeroBase::PosInf => (
+                    ctx.add(Expr::Constant(Constant::Infinity)),
+                    "log(b, 0) = +infinity (0 < b < 1)",
+                ),
+                LogZeroBase::Undefined => (
+                    ctx.add(Expr::Constant(Constant::Undefined)),
+                    "log(b, 0) = undefined (b = 1 or b <= 0)",
+                ),
+            };
             return Some(EvaluateLogRewrite {
                 rewritten,
-                desc: "log(b, 0) = -infinity".to_string(),
+                desc: desc.to_string(),
                 assume_positive_base: None,
             });
         }
@@ -2098,6 +2135,48 @@ mod tests {
         let base = num_bigint::BigInt::from(6);
         let val = num_bigint::BigInt::from(8);
         assert!(eval_log_rational(&base, &val).is_none());
+    }
+
+    #[test]
+    fn evaluate_log_zero_argument_is_base_aware() {
+        use cas_ast::BuiltinFn;
+        use num_rational::BigRational;
+        // log_b(0): b > 1 → -∞, 0 < b < 1 → +∞, b = 1 or b ≤ 0 → undefined.
+        #[derive(PartialEq, Debug)]
+        enum Want {
+            NegInf,
+            PosInf,
+            Undef,
+        }
+        let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
+        let cases = [
+            (r(2, 1), Want::NegInf),
+            (r(10, 1), Want::NegInf),
+            (r(1, 2), Want::PosInf),
+            (r(2, 3), Want::PosInf),
+            (r(1, 1), Want::Undef),
+            (r(-2, 1), Want::Undef),
+            (r(0, 1), Want::Undef),
+        ];
+        for (base_val, want) in cases {
+            let mut ctx = Context::new();
+            let base = ctx.add(Expr::Number(base_val.clone()));
+            let zero = ctx.add(Expr::Number(BigRational::zero()));
+            let expr = ctx.call_builtin(BuiltinFn::Log, vec![base, zero]);
+            let rw = try_rewrite_evaluate_log_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("log({base_val}, 0) should evaluate"));
+            let got = match ctx.get(rw.rewritten) {
+                Expr::Neg(inner)
+                    if matches!(ctx.get(*inner), Expr::Constant(Constant::Infinity)) =>
+                {
+                    Want::NegInf
+                }
+                Expr::Constant(Constant::Infinity) => Want::PosInf,
+                Expr::Constant(Constant::Undefined) => Want::Undef,
+                other => panic!("log({base_val}, 0): unexpected {other:?}"),
+            };
+            assert_eq!(got, want, "log({base_val}, 0)");
+        }
     }
 
     #[test]
