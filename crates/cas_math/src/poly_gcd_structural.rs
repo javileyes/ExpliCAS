@@ -83,9 +83,21 @@ fn expr_key_ac(ctx: &Context, expr: ExprId) -> ExprKey {
 fn expr_key_hash<H: Hasher>(ctx: &Context, expr: ExprId, hasher: &mut H) {
     match ctx.get(expr) {
         Expr::Add(_, _) => {
-            let mut keys: Vec<ExprKey> = add_terms_no_sign(ctx, expr)
+            // The key MUST be sign-aware: `x^2 + x` and `x^2 - x` are different polynomials and
+            // must not collide. `add_terms_no_sign` stripped the sign of each term, hashing both to
+            // `{x^2, x}` — so `expr_equal_ac(x^2+x, x^2-x)` was true and the structural gcd wrongly
+            // took the whole first argument as a common factor (`gcd(x^2+x, x^2-x)` returned
+            // `x^2+x` instead of `x`). Key each SIGNED term, mirroring the `Sub` arm below (a
+            // negated term hashes through `expr_key_neg`).
+            let mut keys: Vec<ExprKey> = add_terms_signed(ctx, expr)
                 .into_iter()
-                .map(|e| expr_key_ac(ctx, e))
+                .map(|(e, negated)| {
+                    if negated {
+                        expr_key_neg(ctx, e)
+                    } else {
+                        expr_key_ac(ctx, e)
+                    }
+                })
                 .collect();
             keys.sort();
 
@@ -282,28 +294,31 @@ fn extract_power_base_exp(ctx: &Context, expr: ExprId) -> (ExprId, i64) {
     }
 }
 
-fn add_terms_no_sign(ctx: &Context, root: ExprId) -> Vec<ExprId> {
+/// Flatten an additive expression into its terms, tracking the SIGN of each through nested
+/// `Add`/`Sub`/`Neg` (so `x^2 - x` yields `[(x^2, false), (x, true)]`, distinct from `x^2 + x`).
+/// Sign-awareness is required: an AC key that ignored it would collide `x^2+x` with `x^2-x`.
+fn add_terms_signed(ctx: &Context, root: ExprId) -> Vec<(ExprId, bool)> {
     let mut out = Vec::new();
-    let mut stack = vec![root];
+    let mut stack = vec![(root, false)];
 
-    while let Some(id) = stack.pop() {
+    while let Some((id, negated)) = stack.pop() {
         if crate::poly_result::is_poly_ref_or_result(ctx, id) {
-            out.push(id);
+            out.push((id, negated));
             continue;
         }
 
         let id = cas_ast::hold::unwrap_hold(ctx, id);
         match ctx.get(id) {
             Expr::Add(l, r) => {
-                stack.push(*r);
-                stack.push(*l);
+                stack.push((*r, negated));
+                stack.push((*l, negated));
             }
             Expr::Sub(l, r) => {
-                stack.push(*r);
-                stack.push(*l);
+                stack.push((*r, !negated));
+                stack.push((*l, negated));
             }
-            Expr::Neg(inner) => stack.push(*inner),
-            _ => out.push(id),
+            Expr::Neg(inner) => stack.push((*inner, !negated)),
+            _ => out.push((id, negated)),
         }
     }
 
@@ -331,4 +346,36 @@ fn mul_factors(ctx: &Context, root: ExprId) -> Vec<ExprId> {
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_parser::parse;
+
+    #[test]
+    fn ac_key_is_sign_aware_for_additive_terms() {
+        // REGRESSION: `x^2 + x` and `x^2 - x` differ only in the sign of the linear term; the AC
+        // key must NOT collide them, or the structural gcd wrongly takes the whole first argument
+        // as a common factor (`gcd(x^2+x, x^2-x)` returned `x^2+x` instead of `x`).
+        let mut ctx = Context::new();
+        let p = parse("x^2 + x", &mut ctx).expect("parse +");
+        let m = parse("x^2 - x", &mut ctx).expect("parse -");
+        assert!(
+            !expr_equal_ac(&ctx, p, m),
+            "x^2+x and x^2-x must have distinct AC keys"
+        );
+        // A genuine match still holds (same polynomial, different spelling order).
+        let p2 = parse("x + x^2", &mut ctx).expect("parse reordered");
+        assert!(expr_equal_ac(&ctx, p, p2), "x^2+x == x+x^2 (AC)");
+
+        // The structural gcd of the sign-differing pair finds NO common Mul factor → 1 (the true
+        // gcd `x` is then recovered by the Euclidean fallback in the dispatch, not here).
+        let g = poly_gcd_structural(&mut ctx, p, m);
+        assert!(
+            matches!(ctx.get(g), Expr::Number(n) if num_traits::One::is_one(n)),
+            "structural gcd(x^2+x, x^2-x) must be 1, got {:?}",
+            ctx.get(g)
+        );
+    }
 }

@@ -45,6 +45,17 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
+- [x] **(F) gcd de polinomios devolvía un NO-divisor**: `gcd(x²+x, x²-x)` devolvía `x²+x` (que no
+  divide a `x²-x`) en vez de `x`, y `gcd(x²+x+1, x²-x+1)` devolvía `x²+x+1` en vez de `1` (coprimos).
+  La clave AC del gcd estructural ignoraba el signo de los términos aditivos, colisionando `x²+x`
+  con `x²-x`.
+  *(graduado 2026-06-22 PENDING_GC: la rama `Add` de `expr_key_hash` usaba `add_terms_no_sign`, que
+  aplanaba `Add`/`Sub`/`Neg` DESCARTANDO el signo → ambos hasheaban a `{x²,x}` → `expr_equal_ac`
+  true → el "factor común" era el primer argumento entero (no-divisor). Reemplazado por
+  `add_terms_signed` (rastrea el signo, hashea negados vía `expr_key_neg`, igual que la rama `Sub`
+  ya hacía). El bug solo mordía cuando los términos sin-signo coincidían (`+x`/`-x`);
+  `gcd(x²+2x, x²-3x)` ya era correcto. Cazado por hunt adversarial; brute-force 16/16 vs sympy;
+  huella NONE. Peldaño: grupos B (ineq grado 4 → ∅) y D (lim ∞−∞ → 0) del mismo hunt.)*
 - [x] **(F) Endpoints surd de inecuaciones sin ordenar por valor**: `solve(x²-3<0)` devolvía
   `(√3, -√3)` (intervalo invertido = ∅) en vez de `(-√3, √3)`, y `solve(x²-3>0)` una unión que
   cubría todo ℝ; misma falla en `x²-2`, `2x²-6`, `x²-x-1` (raíz φ). Los endpoints RACIONALES

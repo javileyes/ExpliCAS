@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 292 (newest first)
+Active entries: 293 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -128,6 +128,7 @@ Active entries: 292 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | Evaluar logaritmos de argumento racional (log2(1/4) = -2)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | P0 soundness: log(b, 0) ignoraba la base (signo erróneo para 0<b<1, base 1)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values`: comparación e... | P0 soundness: endpoints surd de inecuaciones sin ordenar por valor (solve(x²<3) daba ∅)
+- 2026-06-22 | `retained` | `crates/cas_math/src/poly_gcd_structural.rs` (`expr_key_hash` rama `Add`; `ad... | P0 soundness: clave AC del gcd estructural ignoraba el signo (gcd(x²+x,x²-x) = x²+x)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12374,3 +12375,44 @@ Active entries: 292 (newest first)
   - residual (peldaño): endpoints surd de radicando DISTINTO con ambas partes surd no-cero, y
     surds de raíz cúbica/orden superior (raíces de cúbicas irreducibles), siguen cayendo a
     estructural; el display sin racionalizar (`-3·3^(-1/2)` por `-√3`) es ortogonal (otro wart).
+
+## 2026-06-22 - P0 soundness: clave AC del gcd estructural ignoraba el signo (gcd(x²+x,x²-x) = x²+x)
+- area:
+  - `crates/cas_math/src/poly_gcd_structural.rs` (`expr_key_hash` rama `Add`; `add_terms_no_sign`
+    → `add_terms_signed`)
+- status:
+  - `retained` (P0 soundness — wrong-answer: gcd de polinomios devolvía un NO-divisor; cazado por
+    hunt adversarial)
+- capture:
+  - investment_class: soundness (corrige valor erróneo; exenta de la restricción de fase)
+  - primary_dimension: north_star_soundness (gcd de polinomios correcto)
+  - secondary_dimension: reuse_value (espeja la rama `Sub` ya correcta, que usa `expr_key_neg`)
+  - cell: `gcd(x²+x, x²-x) → x` (antes `x²+x`, ¡no divide a x²-x!); `gcd(x²+x+1, x²-x+1) → 1`
+    (coprimos; antes `x²+x+1`); `gcd(x³+x, x³-x) → x`; `gcd(x⁴+x², x⁴-x²) → x²`. Intactos:
+    `gcd(x²-1, x²-2x+1) → x-1`, `gcd(x*(x+1), x*(x-1)) → x`, `gcd(6,9) → 3`.
+  - behavior_change_expected: pares de polinomios que difieren SOLO en el signo de un término
+    (`x²+x` vs `x²-x`) dejan de colisionar en la clave AC; el gcd estructural ya no toma el primer
+    argumento entero como factor común espurio. Brute-force 16/16 vs sympy; huella NONE; workspace
+    12281/0.
+  - SOUNDNESS: la clave AC de una suma DEBE ser consciente del signo. `add_terms_no_sign` aplanaba
+    `Add`/`Sub`/`Neg` DESCARTANDO el signo, así que `x²+x` y `x²-x` hasheaban a `{x², x}` →
+    `expr_equal_ac(x²+x, x²-x)=true` → el factor común "encontrado" era el primer argumento entero
+    (un no-divisor). `add_terms_signed` rastrea el signo por anidación y hashea los términos
+    negados vía `expr_key_neg` (igual que la rama `Sub` ya hacía). El bug solo mordía cuando los
+    términos sin-signo COINCIDÍAN (`+x` vs `-x`); `gcd(x²+2x, x²-3x) → x` ya era correcto (coefs
+    distintos).
+- observed:
+  - el gcd `eval` usa modo Structural (no Exact) por defecto (`select_poly_gcd_mode`); el
+    estructural compara claves AC de factores `Mul`. Para entradas EXPANDIDAS (Add), el único
+    "factor" es el polinomio entero; la clave AC sin-signo lo hacía colisionar con su gemelo de
+    signo opuesto, cortocircuitando el fallback euclidiano que SÍ daba la respuesta correcta.
+  - la rama `Sub` de `expr_key_hash` ya era correcta (`expr_key_neg`); solo la rama `Add`
+    (vía el colector sin-signo) tenía el defecto — asimetría entre dos ramas del mismo match.
+- retained learning:
+  - una CLAVE de igualdad/hash AC para sumas debe preservar el signo de cada término; un colector
+    "sin signo" colisiona `A+B` con `A−B` y convierte cualquier consumidor (gcd estructural,
+    cancelación de fracciones) en un wrong-answer latente cuando los términos coinciden en
+    magnitud. Cuando dos ramas de un match construyen la "misma" clave (`Add` y `Sub` aquí), deben
+    ser consistentes en el tratamiento del signo.
+  - residual (peldaño): los grupos B (inecuación de grado 4 expandida → ∅) y D (límite ∞−∞ → 0)
+    del mismo hunt siguen abiertos.
