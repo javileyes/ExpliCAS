@@ -49,7 +49,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `(√3, -√3)` (intervalo invertido = ∅) en vez de `(-√3, √3)`, y `solve(x²-3>0)` una unión que
   cubría todo ℝ; misma falla en `x²-2`, `2x²-6`, `x²-x-1` (raíz φ). Los endpoints RACIONALES
   (`x²-4<0 → (-2,2)`) sí se ordenaban.
-  *(graduado 2026-06-22 PENDING_GA: `compare_values` resolvía racionales (rama Number) pero caía a
+  *(graduado 2026-06-22 86a77d28d: `compare_values` resolvía racionales (rama Number) pero caía a
   comparación ESTRUCTURAL para surds — que no refleja el valor. Añadido `compare_quadratic_surds`:
   ordena por el signo EXACTO de `a−b` como surd `P+Q√n` (n≥0, misma fórmula que
   `provable_sign_vs_zero`, nunca f64), reusando `as_linear_surd`; φ=(½+½√5) reconocido localmente.
