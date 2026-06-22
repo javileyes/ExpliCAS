@@ -99,7 +99,8 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   ahora gatea por la base: `b>1 → -∞`, `0<b<1 → +∞`, `b=1` o `b≤0 → undefined`; `e`/`π`/base
   simbólica conservan `-∞` (régimen `b>1`). Cazado por verificación adversarial 2-lente (sonda +
   refutación con mpmath/sympy) — los tests verdes solo ejercían bases >1, enmascarando el defecto.
-  Huella NONE. Peldaño: base FRACCIONARIA con argumento no-cero (`log(1/2,16)→-4`) sigue inerte, y
+  Huella NONE. La base FRACCIONARIA se cierra después (2026-06-22, `eval_log_rational_full`:
+  `log(1/2,16)→-4`, `log(2/3,9/4)→-2` vía vector de exponentes primos con signo). Peldaño restante:
   `log(1,1)→0` (debería undefined) es el mismo régimen degenerado en la rama `n=1`.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el

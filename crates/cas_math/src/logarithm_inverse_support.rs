@@ -198,6 +198,70 @@ pub fn eval_log_rational(
     ratio
 }
 
+/// Signed prime-exponent vector of a positive rational: for `r = num/den`, the exponent of each
+/// prime `p` is `(exp in num) − (exp in den)`. E.g. `1/2 → {2: -1}`, `16 → {2: 4}`,
+/// `9/4 → {3: 2, 2: -2}`. Zero-exponent primes are dropped.
+fn signed_prime_exponent_map(r: &num_rational::BigRational) -> HashMap<num_bigint::BigInt, i64> {
+    let mut map: HashMap<num_bigint::BigInt, i64> = HashMap::new();
+    for (p, e) in prime_exponent_map(r.numer()) {
+        *map.entry(p).or_insert(0) += i64::from(e);
+    }
+    for (p, e) in prime_exponent_map(r.denom()) {
+        *map.entry(p).or_insert(0) -= i64::from(e);
+    }
+    map.retain(|_, e| *e != 0);
+    map
+}
+
+/// `log_base(val)` for a POSITIVE RATIONAL base (≠ 1) and a positive rational `val`, exact when
+/// both are powers of a common set of primes with a CONSISTENT exponent ratio. Generalizes
+/// [`eval_log_rational`] to fractional bases — `log_{1/2}(16) = -4`, `log_{1/4}(1/2) = 1/2`,
+/// `log_{2/3}(9/4) = -2` — and rational arguments. `None` when there is no rational power relation.
+pub fn eval_log_rational_full(
+    base: &num_rational::BigRational,
+    val: &num_rational::BigRational,
+) -> Option<num_rational::BigRational> {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    // Domain: base > 0, base ≠ 1, val > 0.
+    if base.is_negative() || base.is_zero() || base.is_one() || val.is_negative() || val.is_zero() {
+        return None;
+    }
+    if val.is_one() {
+        return Some(BigRational::zero());
+    }
+    if base == val {
+        return Some(BigRational::one());
+    }
+
+    let fb = signed_prime_exponent_map(base);
+    let fv = signed_prime_exponent_map(val);
+    if fb.is_empty() {
+        return None;
+    }
+    // The prime supports must match: a prime present in one but not the other has an exponent
+    // ratio of 0 or ∞, so no single rational exponent satisfies `base^e = val`.
+    if fb.keys().collect::<std::collections::HashSet<_>>()
+        != fv.keys().collect::<std::collections::HashSet<_>>()
+    {
+        return None;
+    }
+
+    let mut ratio: Option<BigRational> = None;
+    for (prime, exp_base) in &fb {
+        let exp_val = fv.get(prime)?;
+        let r = BigRational::new(BigInt::from(*exp_val), BigInt::from(*exp_base));
+        match &ratio {
+            None => ratio = Some(r),
+            Some(prev) if *prev == r => {}
+            _ => return None,
+        }
+    }
+    ratio
+}
+
 /// Rewrite/evaluate simple logarithm identities:
 /// - `log(b, 1) -> 0`, `log(b, 0) -> -infinity`, `log(b, neg) -> undefined`
 /// - numeric ratio evaluation when both base/arg are compatible integer powers
@@ -280,10 +344,10 @@ pub fn try_rewrite_evaluate_log_expr(
 
         if let Expr::Number(b) = ctx.get(base) {
             let b = b.clone();
-            if b.is_integer() {
+            // `n` is already > 0 here (the 0/1/negative arguments are handled above).
+            let ratio = if b.is_integer() {
                 let b_int = b.to_integer();
-                // `n` is already > 0 here (the 0/1/negative arguments are handled above).
-                let ratio = if n.is_integer() {
+                if n.is_integer() {
                     eval_log_rational(&b_int, &n.to_integer())
                 } else {
                     // Rational argument p/q: log_b(p/q) = log_b(p) − log_b(q), exact when both
@@ -295,15 +359,18 @@ pub fn try_rewrite_evaluate_log_expr(
                         (Some(lp), Some(lq)) => Some(lp - lq),
                         _ => None,
                     }
-                };
-                if let Some(ratio) = ratio {
-                    let rewritten = ctx.add(Expr::Number(ratio.clone()));
-                    return Some(EvaluateLogRewrite {
-                        rewritten,
-                        desc: format!("log({}, {}) = {}", b, n, ratio),
-                        assume_positive_base: None,
-                    });
                 }
+            } else {
+                // Fractional (non-integer rational) base, e.g. `log_{1/2}(16) = -4`.
+                eval_log_rational_full(&b, &n)
+            };
+            if let Some(ratio) = ratio {
+                let rewritten = ctx.add(Expr::Number(ratio.clone()));
+                return Some(EvaluateLogRewrite {
+                    rewritten,
+                    desc: format!("log({}, {}) = {}", b, n, ratio),
+                    assume_positive_base: None,
+                });
             }
         }
     }
@@ -2135,6 +2202,28 @@ mod tests {
         let base = num_bigint::BigInt::from(6);
         let val = num_bigint::BigInt::from(8);
         assert!(eval_log_rational(&base, &val).is_none());
+    }
+
+    #[test]
+    fn eval_log_rational_full_handles_fractional_bases() {
+        use num_rational::BigRational;
+        let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
+        // log_{1/2}(16) = -4, log_{1/2}(1/8) = 3, log_{1/3}(9) = -2,
+        // log_{1/4}(1/2) = 1/2, log_{2/3}(9/4) = -2, log_{4/9}(8/27) = 3/2.
+        assert_eq!(eval_log_rational_full(&r(1, 2), &r(16, 1)), Some(r(-4, 1)));
+        assert_eq!(eval_log_rational_full(&r(1, 2), &r(1, 8)), Some(r(3, 1)));
+        assert_eq!(eval_log_rational_full(&r(1, 3), &r(9, 1)), Some(r(-2, 1)));
+        assert_eq!(eval_log_rational_full(&r(1, 4), &r(1, 2)), Some(r(1, 2)));
+        assert_eq!(eval_log_rational_full(&r(2, 3), &r(9, 4)), Some(r(-2, 1)));
+        assert_eq!(eval_log_rational_full(&r(4, 9), &r(8, 27)), Some(r(3, 2)));
+        // log_b(1) = 0, log_b(b) = 1.
+        assert_eq!(eval_log_rational_full(&r(1, 2), &r(1, 1)), Some(r(0, 1)));
+        assert_eq!(eval_log_rational_full(&r(2, 3), &r(2, 3)), Some(r(1, 1)));
+        // No rational power relation, or invalid base/arg -> None.
+        assert!(eval_log_rational_full(&r(1, 2), &r(6, 1)).is_none());
+        assert!(eval_log_rational_full(&r(1, 2), &r(3, 1)).is_none());
+        assert!(eval_log_rational_full(&r(1, 1), &r(4, 1)).is_none()); // base 1
+        assert!(eval_log_rational_full(&r(1, 2), &r(-4, 1)).is_none()); // negative arg
     }
 
     #[test]

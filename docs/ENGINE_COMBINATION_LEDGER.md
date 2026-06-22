@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 296 (newest first)
+Active entries: 297 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -132,6 +132,7 @@ Active entries: 296 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`finite_sub_result` → `Option`, guar... | P0 soundness: límite ∞−∞ del mismo signo colapsaba a 0 (lim 1/sin²x − 1/x² = 0)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`try_factor_polynomial_inequ... | P0 soundness: inecuaciones polinómicas grado≥3 expandidas (solve(x^4-5x^2+4<0) = ∅)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`combine_difference_over_common_deno... | Entregar el valor de límites ∞−∞ combinando sobre denominador común (1/sin²x−1/x² = 1/3)
+- 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`signed_prime_exponent_map`, | Logaritmos de base fraccionaria (log(1/2,16) = -4)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12543,3 +12544,36 @@ Active entries: 296 (newest first)
   - residual (peldaño): las grafías de recíproco-trig que NO son `Div` literal (`csc²x − 1/x²`,
     `cot²x − 1/x²`, `(cos/sin)² − 1/x²`) siguen residuales — el extractor de fracción no convierte
     csc/sec/cot a 1/sin etc. Extenderlo a esas formas cerraría la familia.
+
+## 2026-06-22 - Logaritmos de base fraccionaria (log(1/2,16) = -4)
+- area:
+  - `crates/cas_math/src/logarithm_inverse_support.rs` (`signed_prime_exponent_map`,
+    `eval_log_rational_full`; rama de base no-entera en `try_rewrite_evaluate_log_expr`)
+- status:
+  - `retained` (capability — gradúa el peldaño de base fraccionaria de [[log2-de-potencia-de-2]] y
+    el ciclo log(b,0))
+- capture:
+  - investment_class: capability (Fase 1; generaliza `eval_log_rational` a base/arg racionales)
+  - primary_dimension: north_star_completeness (cambio de base completo sobre ℚ)
+  - secondary_dimension: reuse_value (reusa `prime_exponent_map`; misma lógica de ratio de exponentes)
+  - cell: `log(1/2,16) → -4`, `log(1/2,1/8) → 3`, `log(1/3,9) → -2`, `log(1/4,1/2) → 1/2`,
+    `log(2/3,9/4) → -2`, `log(4/9,8/27) → 3/2`. Simbólicos: `log(1/2,6)`, `log(2/3,5)`. Intactos
+    todos los de base entera (`log(4,8) → 3/2`, `log2(8) → 3`, `log2(1/4) → -2`, `log(b,0)` por signo).
+  - behavior_change_expected: `log_{p/q}(c)` con base racional positiva ≠1 y `c` racional positivo,
+    ambos potencias-de-primos-comunes con ratio de exponentes CONSISTENTE, pasa de inerte al racional
+    exacto. Huella NONE; workspace 12285/0.
+  - SOUNDNESS: `eval_log_rational_full` usa el VECTOR DE EXPONENTES PRIMOS CON SIGNO de un racional
+    (`r=num/den` ⇒ exp(p) = exp_num(p) − exp_den(p)); `log_b(c)=e` exige `e·exp_b(p) = exp_c(p)`
+    para todo primo, i.e. ratio constante y soportes iguales. Exacto (BigRational/BigInt), nunca
+    f64. Dominio gateado: base>0, ≠1, arg>0. La rama de base ENTERA (ciclos 9/11) queda intacta;
+    solo se añade la rama no-entera.
+- observed:
+  - el cambio de base ya funcionaba para base ENTERA (cycle 9/11/12); el `b.is_integer()` bloqueaba
+    las bases fraccionarias. La generalización a exponentes-primos-con-signo subsume ambos
+    (base/arg racionales) — pero se mantuvo la ruta entera existente para cero regresión.
+- retained learning:
+  - el logaritmo racional `log_b(c)` sobre ℚ es exactamente "ratio constante de los vectores de
+    exponentes primos con signo de c y b"; extender de enteros a racionales es restar los
+    exponentes de numerador y denominador. Mismo núcleo, dominio más amplio.
+  - residual (peldaño): `log_2(√8)` (arg con raíz, exponente fraccionario en el vector primo) y
+    bases/args con factores transcendentes quedan fuera (sin soporte primo racional).
