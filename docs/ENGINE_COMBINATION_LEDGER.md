@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 287 (newest first)
+Active entries: 288 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -123,6 +123,7 @@ Active entries: 287 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: aliases `arcsinh`/`a... | Aceptar las grafías arc* de las inversas hiperbólicas (arcsinh = asinh)
 - 2026-06-22 | `retained` | `crates/cas_ast/src/builtin.rs` (`BuiltinFn::from_name`: `sen`/`tg`/`cotg`/`c... | Aceptar la notación trigonométrica española/europea (sen, tg, arctg, cotg)
 - 2026-06-22 | `retained` | `crates/cas_math/src/difference_of_cubes_support.rs` (`rational_cbrt`, | Evaluar la raíz cúbica de un cubo perfecto (cbrt(8) = 2)
+- 2026-06-22 | `retained` | `crates/cas_math/src/expr_extract.rs` (`extract_log_base_argument`: arm `Log2... | Evaluar log2 de potencias de 2 (log2(8) = 3)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12194,3 +12195,39 @@ Active entries: 287 (newest first)
   - residual (peldaño): cubo PARCIAL (`cbrt(16) → 2·cbrt(2)`, análogo a `sqrt(8) → 2·sqrt(2)`) y
     `cbrt(x^3) → x` (simbólico, depende del signo: `cbrt(x^3)=x` real siempre, a diferencia de
     `sqrt(x^2)=|x|`) quedan fuera de este ciclo.
+
+## 2026-06-22 - Evaluar log2 de potencias de 2 (log2(8) = 3)
+- area:
+  - `crates/cas_math/src/expr_extract.rs` (`extract_log_base_argument`: arm `Log2 → (2, arg)`)
+- status:
+  - `retained` (capability/consistencia — P1/P2; `log2` inerte mientras `log10` y `log(b,c)`
+    evaluaban — mismo patrón de asimetría que [[cbrt-de-cubo-perfecto]])
+- capture:
+  - investment_class: capability (Fase 1; reusa `eval_log_rational` ya existente)
+  - primary_dimension: north_star_completeness (consistencia de la familia logarítmica)
+  - secondary_dimension: reuse_value (un arm en el extractor habilita TODA la maquinaria de log)
+  - cell: `log2(2) → 1`, `log2(8) → 3`, `log2(32) → 5`, `log2(1024) → 10`, `log2(1) → 0`,
+    `log2(2^x) → x` (composición inversa, bonus); simbólicos intactos `log2(3)`, `log2(6)`,
+    `log2(x)`; `diff(log2(x)) = 1/(x·ln2)`; `log10`/`log(b,c)`/`ln` sin cambios.
+  - behavior_change_expected: `log2(arg)` pasa de inerte a evaluar como log base-2 (vía la misma
+    ruta que `log(2,arg)`). Huella guardrail+pressure NONE; workspace 12275/0.
+  - SOUNDNESS: `eval_log_rational(2, n)` es exacto (factorización prima; Some solo si el log es
+    racional). No-potencias-de-2 declinan (None → conserva `log2(3)`). Sin lógica de dominio
+    dependiente de valor nueva.
+- observed:
+  - `extract_log_base_argument_view` (no-mutante) llevaba la base implícita SOLO de log10 (vía
+    `log10_base_sentinel`, porque no puede asignar un nodo numérico); `Log2` simplemente FALTABA,
+    así que `try_rewrite_evaluate_log_expr` (y las otras 4 reglas de log que comparten el extractor)
+    nunca veían base 2 → `log2(8)` quedaba inerte aunque `log10(1000)=3` y `log(2,8)=3` SÍ.
+  - elegido: añadir el arm `Log2 → (2,arg)` en la versión MUTANTE `extract_log_base_argument` (que
+    SÍ puede asignar `ctx.num(2)`), evitando un `log2_base_sentinel` que rippleaba por todos los
+    callers del view que hacen `base == log10_base_sentinel()`. Las 5 reglas de log ganan log2
+    consistentemente (de ahí el bonus `log2(2^x)=x`); huella NONE confirma cero regresión.
+- retained learning:
+  - misma lección que [[cbrt-de-cubo-perfecto]]: un miembro de una familia (log10) evalúa y otro
+    (log2) no porque el EXTRACTOR de base no lo reconoce. El cierre es un arm en el extractor, no
+    nueva lógica de evaluación — reusa toda la cadena. Preferir el punto mutante para materializar
+    la base numérica en vez de un sentinel que obliga a tocar todos los consumidores del view.
+  - residual (peldaño): `log2(1/4) → -2` y `log10(1/100) → -2` (argumento RACIONAL no-entero)
+    siguen inertes — `try_rewrite_evaluate_log_expr` gatea `n.is_integer()` y `eval_log_rational`
+    toma enteros; falta `log_b(p/q) = log_b(p) − log_b(q)` para potencias-de-primos-de-b racionales.

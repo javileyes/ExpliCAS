@@ -148,6 +148,23 @@ pub fn extract_exp_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 /// - `ln(arg)` -> `(e, arg)` where `e` is inserted in the context
 /// - `log10(arg)` -> `(10, arg)` where `10` is inserted in the context
 pub fn extract_log_base_argument(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    // log2(arg) -> (2, arg). The non-mutating view carries an implicit base only for log10 (via a
+    // sentinel, since it cannot allocate a numeric node); log2 was simply absent, so base-2 logs
+    // never reached the evaluator (`log2(8)` stayed inert while `log10(1000) = 3`). Supply the
+    // numeric base here — the mutating entry point can allocate it — mirroring the log10 sentinel.
+    let log2_arg = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log2) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    };
+    if let Some(arg) = log2_arg {
+        let two = ctx.num(2);
+        return Some((two, arg));
+    }
+
     let (base_opt, arg) = extract_log_base_argument_view(ctx, expr)?;
     if let Some(base) = base_opt {
         if base == log10_base_sentinel() {
@@ -535,6 +552,23 @@ mod tests {
         let x = parse("x", &mut ctx).expect("parse x");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, base, ten),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_materialized_base_argument_from_log2() {
+        let mut ctx = Context::new();
+        let expr = parse("log2(x)", &mut ctx).expect("parse log2(x)");
+        let (base, arg) = extract_log_base_argument(&mut ctx, expr).expect("must extract log2(x)");
+        let two = ctx.num(2);
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, base, two),
             std::cmp::Ordering::Equal
         );
         assert_eq!(
