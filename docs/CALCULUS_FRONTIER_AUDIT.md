@@ -45,6 +45,17 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
+- [x] **(F) Inecuaciones polinómicas de grado≥3 expandidas**: `solve(x^4-5x^2+4<0)` devolvía ∅
+  (real `(-2,-1)∪(1,2)`) y `solve(x^3-x<0)` un aislamiento garbled `solve(x=x^(1/3))`; las formas
+  factorizadas equivalentes sí resolvían. Las estrategias degree-aware (Quadratic, RationalRoots)
+  gatean `op==Eq`, así que las inecuaciones caían a aislamiento de variable.
+  *(graduado 2026-06-22 PENDING_GB: nuevo `try_factor_polynomial_inequality` — antes de aislar, si
+  es inecuación de polinomio univariado grado≥3 REDUCIBLE, reescribe a `factor(p) OP 0` y re-aísla
+  → ruta product-sign existente (que ya resolvía factorizadas). Guard anti-loop sobre la forma
+  CRUDA + re-entrada por `isolate_equation`. Irreducibles (`x^4-10`, `x^3-2`), cuadráticas,
+  ya-factorizadas y ecuaciones declinan/intactas. Factorizador exacto BigRational. Scoping por
+  subagente; brute-force 10/10 vs sympy; huella NONE. Peldaño: cúbicas IRREDUCIBLES con raíz
+  irracional (`x^3+x+1<0`) siguen garbled — necesitan aislamiento real de raíces grado≥3.)*
 - [x] **(F) Límite ∞−∞ del mismo signo colapsaba a 0**: `limit(1/sin²x − 1/x², x, 0)` devolvía `0`
   (valor real 1/3); igual `csc²x − 1/x²` y `1/x² − 1/(x²+x³)` (real divergente). La resta de dos
   sub-límites infinitos iguales se colapsaba por un atajo estructural.

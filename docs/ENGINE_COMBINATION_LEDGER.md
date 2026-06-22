@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 294 (newest first)
+Active entries: 295 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -130,6 +130,7 @@ Active entries: 294 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values`: comparación e... | P0 soundness: endpoints surd de inecuaciones sin ordenar por valor (solve(x²<3) daba ∅)
 - 2026-06-22 | `retained` | `crates/cas_math/src/poly_gcd_structural.rs` (`expr_key_hash` rama `Add`; `ad... | P0 soundness: clave AC del gcd estructural ignoraba el signo (gcd(x²+x,x²-x) = x²+x)
 - 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`finite_sub_result` → `Option`, guar... | P0 soundness: límite ∞−∞ del mismo signo colapsaba a 0 (lim 1/sin²x − 1/x² = 0)
+- 2026-06-22 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`try_factor_polynomial_inequ... | P0 soundness: inecuaciones polinómicas grado≥3 expandidas (solve(x^4-5x^2+4<0) = ∅)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12458,3 +12459,49 @@ Active entries: 294 (newest first)
     combinada `(x²−sin²x)/(x²sin²x)` YA evalúa a 1/3; falta rutear la resta de polos por la
     fracción común (o expansión de Laurent) antes de la recursión operando-a-operando. Grupo B del
     hunt (inecuación polinómica grado≥3 expandida → ∅/aislamiento garbled) sigue abierto.
+
+## 2026-06-22 - P0 soundness: inecuaciones polinómicas grado≥3 expandidas (solve(x^4-5x^2+4<0) = ∅)
+- area:
+  - `crates/cas_solver_core/src/isolation_utils.rs` (`try_factor_polynomial_inequality`)
+  - `crates/cas_solver_core/src/solve_runtime_flow_strategy_dispatch_apply_core.rs` (guard en el
+    cierre de la estrategia Isolation)
+- status:
+  - `retained` (P0 soundness — wrong-answer/garbled: conjunto solución perdido; cazado por hunt
+    adversarial, scoping por subagente)
+- capture:
+  - investment_class: soundness (corrige valor erróneo; exenta de la restricción de fase)
+  - primary_dimension: north_star_soundness (inecuaciones polinómicas universales)
+  - secondary_dimension: reuse_value (reusa `factor` + la ruta product-sign existente)
+  - cell: `solve(x^4-5x^2+4<0) → (-2,-1)∪(1,2)` (antes ∅); `solve(x^3-x<0) → (-∞,-1)∪(0,1)`
+    (antes garbled `x=x^(1/3)`); `x^3-6x²+11x-6<0`, `x^3-2x²-x+2<0`, `x^5-5x³+4x<0` correctos.
+    Brute-force 10/10 vs sympy (sampleo 500 pts).
+  - behavior_change_expected: las inecuaciones de un polinomio univariado de grado≥3 REDUCIBLE
+    pasan de ∅/aislamiento-garbled al intervalo correcto. Intactos: cuadráticas (ruta numérica),
+    par-puro irreducible (`x^4-10 → (-10^(1/4),10^(1/4))`), ya-factorizadas, cúbicas irreducibles
+    (`x^3-2<0` ya funcionaba), ecuaciones. Huella NONE; workspace 12282/0.
+  - SOUNDNESS: las únicas estrategias degree-aware (Quadratic, RationalRoots) gatean `op==Eq`, así
+    que las INEcuaciones polinómicas caían a aislamiento de variable (mueve términos, saca raíz →
+    `x = x^(1/3)` con x en ambos lados). Fix: antes de aislar, si es inecuación de polinomio
+    univariado grado≥3 que FACTORIZA en producto, reescribir a `factor(p) OP 0` y re-aislar →
+    cae en la ruta product-sign (que ya resolvía las formas factorizadas). Factorizador EXACTO
+    (`BigRational`/`BigInt`), nunca f64. Guard anti-loop: declina si el diff CRUDO ya es `Mul`
+    (no expandir→factorizar→expandir); re-entrada vía `isolate_equation` (no `solve`, que
+    re-preparía/expandiría). Irreducibles declinan → residual honesto.
+- observed:
+  - localización por subagente de scoping: las dos estrategias degree-aware bailan en inecuaciones;
+    la ruta product-sign (`should_split_product_zero_inequality`) solo se alcanza desde el pipeline
+    de aislamiento MULTIPLICATIVO, así que un `Mul` factorizado funciona pero un `Add`/`Sub`
+    expandido no. El equation-solver ya halla todas las raíces; solo faltaba puentear vía factor.
+  - el guard se insertó en el CIERRE de la estrategia Isolation (último en el orden, tras Quadratic/
+    RationalRoots/CollectTerms), donde `context_mut` y `solve_equation`/`isolate_equation` están
+    disponibles — evitando un nuevo `SolveStrategyKind` (que rosca un closure por todo el dispatch).
+- retained learning:
+  - cuando una capacidad existe para una GRAFÍA (producto factorizado) pero no para su EQUIVALENTE
+    (polinomio expandido), el puente barato es normalizar la entrada (factorizar) hacia la grafía
+    que ya funciona, en vez de duplicar la lógica. El anti-loop clave: gatear sobre la forma CRUDA
+    (no la expandida) y re-entrar por el kernel de más bajo nivel (`isolate_equation`) que no
+    re-expande.
+  - residual (peldaño): cúbicas/quínticas IRREDUCIBLES sobre ℚ con raíz irracional (`x^3+x+1<0`)
+    siguen dando aislamiento garbled — el factorizador no las parte; necesitan aislamiento real de
+    raíces de grado≥3 (o punt honesto). El factorizador tampoco es completo sobre ℚ (deja factores
+    reducibles sin raíz racional en algunos grados altos).

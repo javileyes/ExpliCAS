@@ -420,6 +420,62 @@ pub fn is_inequality_relop(op: &RelOp) -> bool {
     matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq)
 }
 
+/// Route a single-variable polynomial INEQUALITY of degree >= 3 to its FACTORED form, so it flows
+/// through the existing product-sign path (`should_split_product_zero_inequality`) instead of the
+/// variable-isolation strategy, which mis-handles it: `solve(x^3-x<0)` produced a garbled
+/// `solve(x = x^(1/3))` and `solve(x^4-5x^2+4<0)` returned the empty set, while the equivalent
+/// factored inputs solve correctly.
+///
+/// Returns the factored equation `factor(lhs-rhs) OP 0`, or `None` when it does not apply:
+/// not an inequality; not univariate in `var`; degree < 3 (quadratics already solve numerically);
+/// the difference is ALREADY a product (the product path handles it — also the loop guard for our
+/// own factored re-entry); or the polynomial is irreducible / not improved by factoring (left to
+/// the existing path, e.g. `x^4-10` stays an exact `(-10^(1/4), 10^(1/4))`). EXACT: reuses the
+/// `BigRational`/`BigInt` polynomial factorer — never an `f64` keep/drop.
+pub fn try_factor_polynomial_inequality(
+    ctx: &mut Context,
+    eq: &cas_ast::Equation,
+    var: &str,
+) -> Option<cas_ast::Equation> {
+    use num_traits::Zero;
+    if !is_inequality_relop(&eq.op) {
+        return None;
+    }
+    let rhs_is_zero = matches!(ctx.get(eq.rhs), Expr::Number(n) if n.is_zero());
+    let diff_raw = if rhs_is_zero {
+        eq.lhs
+    } else {
+        ctx.add(Expr::Sub(eq.lhs, eq.rhs))
+    };
+    // Already a product (user-factored, or our own factored re-entry): the product-sign path
+    // handles it. Checking the RAW form — NOT the expanded one — is what prevents an
+    // expand -> factor -> expand loop.
+    if matches!(ctx.get(diff_raw), Expr::Mul(_, _)) {
+        return None;
+    }
+    let diff = cas_math::expand_ops::expand(ctx, diff_raw);
+    // Univariate in `var` only (a foreign variable would make the product inequality multivariate).
+    let vars = cas_ast::collect_variables(ctx, diff);
+    if vars.len() != 1 || !vars.contains(var) {
+        return None;
+    }
+    // Degree >= 3: quadratics already solve via the numeric quadratic path; leave them alone.
+    let poly = cas_math::polynomial::Polynomial::from_expr(ctx, diff, var).ok()?;
+    if poly.degree() < 3 {
+        return None;
+    }
+    let factored = cas_math::factor::factor(ctx, diff);
+    if !matches!(ctx.get(factored), Expr::Mul(_, _)) {
+        return None; // irreducible / not improved -> leave to the existing isolation path
+    }
+    let zero = ctx.num(0);
+    Some(cas_ast::Equation {
+        lhs: factored,
+        rhs: zero,
+        op: eq.op.clone(),
+    })
+}
+
 /// Flip inequality only when multiplying/dividing by a known negative term.
 pub fn apply_sign_flip(op: RelOp, known_negative: bool) -> RelOp {
     if known_negative {
@@ -433,6 +489,44 @@ pub fn apply_sign_flip(op: RelOp, known_negative: bool) -> RelOp {
 mod tests {
     use super::*;
     use cas_ast::{BoundType, Expr, Interval};
+
+    #[test]
+    fn factor_polynomial_inequality_applies_only_to_reducible_higher_degree() {
+        use cas_parser::parse;
+        let ineq = |ctx: &mut Context, lhs_src: &str, op: RelOp| -> cas_ast::Equation {
+            let lhs = parse(lhs_src, ctx).expect("parse lhs");
+            let rhs = ctx.num(0);
+            cas_ast::Equation { lhs, rhs, op }
+        };
+        // Reducible degree >= 3 inequality -> factored to a product (Mul), so the product-sign
+        // path can handle it.
+        {
+            let mut ctx = Context::new();
+            let eq = ineq(&mut ctx, "x^3 - x", RelOp::Lt);
+            let out = try_factor_polynomial_inequality(&mut ctx, &eq, "x")
+                .expect("x^3-x<0 should factor");
+            assert!(
+                matches!(ctx.get(out.lhs), Expr::Mul(_, _)),
+                "factored lhs is a product"
+            );
+            assert_eq!(out.op, RelOp::Lt);
+        }
+        // Declines: degree 2 (numeric quadratic path), irreducible quartic, already-product,
+        // and an EQUATION (not an inequality).
+        for (src, op) in [
+            ("x^2 - 3*x + 2", RelOp::Lt),     // degree 2
+            ("x^4 - 10", RelOp::Lt),          // irreducible over Q
+            ("(x-1)*(x-2)*(x-3)", RelOp::Lt), // already a product
+            ("x^3 - x", RelOp::Eq),           // equation, not inequality
+        ] {
+            let mut ctx = Context::new();
+            let eq = ineq(&mut ctx, src, op.clone());
+            assert!(
+                try_factor_polynomial_inequality(&mut ctx, &eq, "x").is_none(),
+                "{src} ({op:?}) must decline"
+            );
+        }
+    }
 
     #[test]
     fn test_is_simple_reciprocal() {

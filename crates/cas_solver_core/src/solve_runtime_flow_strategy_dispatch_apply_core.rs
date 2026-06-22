@@ -204,6 +204,18 @@ where
             )
         },
         |state| {
+            // P0: a single-variable polynomial INEQUALITY of degree >= 3 is solved by FACTORING
+            // and re-isolating (routing it to the product-sign path), instead of mis-isolating it
+            // (`solve(x^3-x<0)` -> garbled, `solve(x^4-5x^2+4<0)` -> empty). Re-enter via
+            // `isolate_equation` (not the full solve, which would re-expand the product and loop);
+            // the factored form is a `Mul`, so the helper declines on re-entry.
+            if let Some(factored_eq) = crate::isolation_utils::try_factor_polynomial_inequality(
+                context_mut(state),
+                equation,
+                var,
+            ) {
+                return Some((isolate_equation.borrow_mut())(state, &factored_eq, var));
+            }
             apply_isolation_strategy_with_default_kernels_and_state(
                 state,
                 equation,
