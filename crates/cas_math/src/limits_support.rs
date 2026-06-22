@@ -4016,7 +4016,7 @@ fn try_limit_rules_at_finite(
         Expr::Sub(lhs, rhs) => {
             let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
             let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
-            Some(finite_sub_result(ctx, lhs_limit, rhs_limit))
+            finite_sub_result(ctx, lhs_limit, rhs_limit)
         }
         Expr::Mul(lhs, rhs) => {
             let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
@@ -5619,22 +5619,37 @@ fn finite_add_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
     ctx.add(Expr::Add(lhs, rhs))
 }
 
-fn finite_sub_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
+fn finite_sub_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
+    // (±inf) - (±inf) of the SAME sign is INDETERMINATE, not 0: the `lhs == rhs` shortcut below
+    // would otherwise collapse two equal interned `Constant(Infinity)` values to 0 (so
+    // `lim 1/sin^2 x - 1/x^2` returned 0 instead of 1/3). Decline so the limit stays an honest
+    // residual rather than a wrong value — mirroring the `0 * infinity` guard in
+    // `finite_mul_result`, and matching how the engine already refuses `ln(x) - ln(x)` as inf - inf
+    // (a genuine `f - f = 0` with f -> inf, like `1/x^2 - 1/x^2`, also declines). Opposite-sign
+    // infinities (`+inf - (-inf) = +inf`) and `inf - finite` are DETERMINATE and fall through.
+    if let (Some(lhs_sign), Some(rhs_sign)) = (
+        limit_value_infinite_sign(ctx, lhs),
+        limit_value_infinite_sign(ctx, rhs),
+    ) {
+        if lhs_sign == rhs_sign {
+            return None;
+        }
+    }
     if lhs == rhs {
-        return ctx.num(0);
+        return Some(ctx.num(0));
     }
     if let (Some(lhs_value), Some(rhs_value)) =
         (numeric_limit_value(ctx, lhs), numeric_limit_value(ctx, rhs))
     {
-        return finite_numeric_expr(ctx, lhs_value - rhs_value);
+        return Some(finite_numeric_expr(ctx, lhs_value - rhs_value));
     }
     if finite_limit_is_numeric_zero(ctx, rhs) {
-        return lhs;
+        return Some(lhs);
     }
     if finite_limit_is_numeric_zero(ctx, lhs) {
-        return negate_limit_result(ctx, rhs);
+        return Some(negate_limit_result(ctx, rhs));
     }
-    ctx.add(Expr::Sub(lhs, rhs))
+    Some(ctx.add(Expr::Sub(lhs, rhs)))
 }
 
 fn finite_mul_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
@@ -10151,6 +10166,46 @@ mod tests {
 
     fn parse_expr(ctx: &mut Context, s: &str) -> ExprId {
         parse(s, ctx).expect("parse failed")
+    }
+
+    #[test]
+    fn finite_sub_result_declines_same_sign_infinity_difference() {
+        // (+inf) - (+inf) is INDETERMINATE: must NOT collapse to 0 (the `lhs == rhs` shortcut on
+        // equal interned infinities was the `lim 1/sin^2 x - 1/x^2 = 0` wrong-answer).
+        let mut ctx = Context::new();
+        let pos_inf = ctx.add(Expr::Constant(Constant::Infinity));
+        assert_eq!(
+            finite_sub_result(&mut ctx, pos_inf, pos_inf),
+            None,
+            "(+inf) - (+inf) must decline, not return 0"
+        );
+        // -inf - -inf also indeterminate.
+        let inf_a = ctx.add(Expr::Constant(Constant::Infinity));
+        let neg_inf = ctx.add(Expr::Neg(inf_a));
+        let inf_b = ctx.add(Expr::Constant(Constant::Infinity));
+        let neg_inf_b = ctx.add(Expr::Neg(inf_b));
+        assert_eq!(
+            finite_sub_result(&mut ctx, neg_inf, neg_inf_b),
+            None,
+            "(-inf) - (-inf) must decline"
+        );
+        // DETERMINATE cases must still resolve (not decline):
+        //   +inf - (-inf) = +inf, +inf - finite = +inf, finite - finite = value.
+        assert!(
+            finite_sub_result(&mut ctx, pos_inf, neg_inf).is_some(),
+            "(+inf) - (-inf) is determinate (+inf), must resolve"
+        );
+        let five = ctx.num(5);
+        assert!(
+            finite_sub_result(&mut ctx, pos_inf, five).is_some(),
+            "(+inf) - 5 is determinate, must resolve"
+        );
+        let seven = ctx.num(7);
+        let three = ctx.num(3);
+        let diff = finite_sub_result(&mut ctx, seven, three).expect("7 - 3 resolves");
+        assert!(
+            matches!(ctx.get(diff), Expr::Number(n) if *n == num_rational::BigRational::from_integer(4.into()))
+        );
     }
 
     fn display_expr(ctx: &Context, expr: ExprId) -> String {

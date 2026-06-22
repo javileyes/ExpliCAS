@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 293 (newest first)
+Active entries: 294 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -129,6 +129,7 @@ Active entries: 293 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_evaluate_log... | P0 soundness: log(b, 0) ignoraba la base (signo erróneo para 0<b<1, base 1)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values`: comparación e... | P0 soundness: endpoints surd de inecuaciones sin ordenar por valor (solve(x²<3) daba ∅)
 - 2026-06-22 | `retained` | `crates/cas_math/src/poly_gcd_structural.rs` (`expr_key_hash` rama `Add`; `ad... | P0 soundness: clave AC del gcd estructural ignoraba el signo (gcd(x²+x,x²-x) = x²+x)
+- 2026-06-22 | `retained` | `crates/cas_math/src/limits_support.rs` (`finite_sub_result` → `Option`, guar... | P0 soundness: límite ∞−∞ del mismo signo colapsaba a 0 (lim 1/sin²x − 1/x² = 0)
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12416,3 +12417,44 @@ Active entries: 293 (newest first)
     ser consistentes en el tratamiento del signo.
   - residual (peldaño): los grupos B (inecuación de grado 4 expandida → ∅) y D (límite ∞−∞ → 0)
     del mismo hunt siguen abiertos.
+
+## 2026-06-22 - P0 soundness: límite ∞−∞ del mismo signo colapsaba a 0 (lim 1/sin²x − 1/x² = 0)
+- area:
+  - `crates/cas_math/src/limits_support.rs` (`finite_sub_result` → `Option`, guard ∞−∞ mismo signo;
+    call-site en `try_limit_rules_at_finite`)
+- status:
+  - `retained` (P0 soundness — wrong-answer: forma indeterminada ∞−∞ devuelta como 0; cazado por
+    hunt adversarial, localizado por subagente de scoping)
+- capture:
+  - investment_class: soundness (corrige valor erróneo; exenta de la restricción de fase)
+  - primary_dimension: north_star_soundness (límites en punto finito con polos)
+  - secondary_dimension: reuse_value (espeja el guard `0·∞` ya existente en `finite_mul_result`)
+  - cell: `lim 1/sin²x − 1/x²` (x→0): de `0` (FALSO; real 1/3) a residual honesto; igual
+    `csc²x − 1/x²`, `1/x² − 1/(x²+x³)` (real divergente), `1/x² − 1/x²`. DETERMINISTAS intactos:
+    `1/x² − 5 → ∞`, `5 − 1/x² → −∞`, `1/x² − x → ∞`, `sin(x)/x − cos(x) → 0`, `x²−x|_3 → 6`,
+    `(1−cos x)/x² → 1/2`. La forma combinada `(x²−sin²x)/(x²sin²x) → 1/3` sigue correcta.
+  - behavior_change_expected: `∞−∞` del MISMO signo en punto finito pasa de `0` (o residual feo) a
+    residual honesto; `∞−finito` y `∞−∞` de signo OPUESTO siguen resolviendo a ±∞. Huella NONE;
+    workspace 12282/0.
+  - SOUNDNESS: `∞−∞` es indeterminado. El atajo `lhs == rhs ⇒ 0` colapsaba dos `Constant(Infinity)`
+    INTERNADOS iguales (ambos sub-límites → +∞) a 0. Guard: declina solo si AMBOS operandos son
+    infinitos y del MISMO signo (`limit_value_infinite_sign`) — consistente con el rechazo
+    existente de `ln(x)−ln(x)` como ∞−∞. Wrong-answer → residual honesto (resultado de soundness
+    explícitamente aceptado).
+- observed:
+  - localización por subagente de scoping (lectura + eprintln efímero + revert): el atajo estructural
+    `lhs == rhs ⇒ 0` en `finite_sub_result` mordía porque `mk_infinity` interna `Constant(Infinity)`,
+    así que `lim(1/sin²x)` y `lim(1/x²)` devuelven el MISMO ExprId. `1/tan²x−1/x²` y `1/x−1/sin(x)`
+    quedaban residuales porque su operando no resuelve (el `?` corta).
+  - mi primer guard (declinar si CUALQUIER operando es infinito) regresó `1/x²−5` (determinado +∞)
+    a residual; lo estreché a "ambos infinitos del MISMO signo" — solo el verdadero ∞−∞.
+- retained learning:
+  - un atajo `lhs == rhs ⇒ 0` es inseguro cuando los valores pueden ser INFINITOS internados: dos
+    `+∞` iguales NO restan 0 (∞−∞ indeterminado). Cualquier combinador aditivo/sustractivo de
+    límites debe gatear los infinitos ANTES del atajo estructural. Al estrechar un guard de
+    indeterminación, distinguir ∞−∞-mismo-signo (indeterminado) de ∞−finito / signo-opuesto
+    (determinado) para no regresar resultados válidos a residual.
+  - residual (peldaño de ALTO valor): entregar el VALOR correcto (`1/sin²x−1/x² = 1/3`) — la forma
+    combinada `(x²−sin²x)/(x²sin²x)` YA evalúa a 1/3; falta rutear la resta de polos por la
+    fracción común (o expansión de Laurent) antes de la recursión operando-a-operando. Grupo B del
+    hunt (inecuación polinómica grado≥3 expandida → ∅/aislamiento garbled) sigue abierto.
