@@ -19753,7 +19753,7 @@ fn notable_limit_name(
         if let Some(point) = point {
             if after_value.is_some()
                 && limit_single_var_name(ctx, num).is_some()
-                && limit_polynomial_denominator_vanishes_at(ctx, den, point)
+                && limit_denominator_vanishes_at(ctx, den, point)
             {
                 let var = limit_single_var_name(ctx, before).unwrap_or_else(|| "x".to_string());
                 return Some(format!(
@@ -19870,18 +19870,45 @@ fn limit_square_of_var(ctx: &Context, den: ExprId) -> Option<ExprId> {
         .then_some(base)
 }
 
-/// `den` is a single-variable polynomial that vanishes at the limit `point` (evaluated exactly).
-/// Such a denominator tends to 0 at the point, so — paired with a finite result — it certifies a
-/// genuine `0/0` indeterminate form there (`x³` at 0, `x−1` and `(x−1)²` at 1, …). The point must
-/// be a rational constant for the exact polynomial evaluation.
-fn limit_polynomial_denominator_vanishes_at(ctx: &Context, den: ExprId, point: ExprId) -> bool {
-    let Some(p) = as_rational_const(ctx, point, 8) else {
-        return false;
-    };
-    let Some(var) = limit_single_var_name(ctx, den) else {
-        return false;
-    };
-    Polynomial::from_expr(ctx, den, &var).is_ok_and(|poly| poly.eval(&p).is_zero())
+/// `den` provably tends to 0 as the variable approaches the limit `point`, certifying — paired with
+/// a finite result — a genuine `0/0` indeterminate form there. Three sound, structural ways (the
+/// last two recurse on the inner expression, so `sin(x)³`, `tan(x²)`, … are covered):
+///
+/// (1) a single-variable polynomial that vanishes at `point` (evaluated EXACTLY at the rational
+/// point): `x³` at 0, `x−1` and `(x−1)²` at 1.
+///
+/// (2) `f(g)` where `f` is a zero-at-the-origin first-order function (sin/tan/sinh/tanh/arcsin/
+/// arctan/…, all `f(0)=0`) and `g` itself tends to 0 at the point, so `f(g) → f(0) = 0`: `sin(x)`,
+/// `tan(x)` at 0.
+///
+/// (3) `d^k` for an integer `k ≥ 1` whose base `d` tends to 0 at the point: `sin(x)³` at 0.
+fn limit_denominator_vanishes_at(ctx: &Context, den: ExprId, point: ExprId) -> bool {
+    // (1) polynomial vanishing exactly at the (rational) point.
+    if let Some(p) = as_rational_const(ctx, point, 8) {
+        if let Some(var) = limit_single_var_name(ctx, den) {
+            if Polynomial::from_expr(ctx, den, &var).is_ok_and(|poly| poly.eval(&p).is_zero()) {
+                return true;
+            }
+        }
+    }
+    // (2) f(g) with f(0)=0 and g → 0 at the point.
+    if let Some((arg, builtin)) = limit_unary_builtin(ctx, den) {
+        if first_order_equivalent_name(builtin).is_some()
+            && limit_denominator_vanishes_at(ctx, arg, point)
+        {
+            return true;
+        }
+    }
+    // (3) d^k with integer k ≥ 1 and d → 0 at the point.
+    if let Some((base, exponent)) = as_pow(ctx, den) {
+        if as_rational_const(ctx, exponent, 4)
+            .is_some_and(|k| k.is_integer() && k >= BigRational::one())
+            && limit_denominator_vanishes_at(ctx, base, point)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn limit_is_one_plus(ctx: &Context, arg: ExprId, u: ExprId) -> bool {
@@ -21809,6 +21836,28 @@ mod limit_notable_tests {
                 titles[0]
             );
         }
+    }
+
+    #[test]
+    fn names_generic_zero_over_zero_with_trig_denominator() {
+        // The denominator is a zero-at-the-origin function (or a power of one) of an argument that
+        // vanishes at 0, so it tends to 0 there — a genuine 0/0. (sympy: 0, 0, 0, 1/6.)
+        for (before, after) in [
+            ("(cos(x)-1)/sin(x)", "0"),
+            ("(1-cos(x))/tan(x)", "0"),
+            ("x^2/sin(x)", "0"),
+            ("(x-sin(x))/sin(x)^3", "1/6"),
+        ] {
+            let titles = substep_titles_finite_at_point(before, after, "0");
+            assert_eq!(titles.len(), 1, "{before} should narrate a 0/0 technique");
+            assert!(
+                titles[0].contains("0/0") && titles[0].contains("x=0"),
+                "{before}: expected the 0/0 narration at x=0 in `{}`",
+                titles[0]
+            );
+        }
+        // cos does NOT vanish at 0, so 1/cos(x) (which is 1, not 0/0) must decline.
+        assert!(substep_titles_finite_at_point("1/cos(x)", "1", "0").is_empty());
     }
 
     #[test]

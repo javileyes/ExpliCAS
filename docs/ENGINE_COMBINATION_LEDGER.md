@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 304 (newest first)
+Active entries: 305 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -140,6 +140,7 @@ Active entries: 304 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/step_model.rs` (`StepMeta.limit_point`: nuevo campo) | G2: narrar la indeterminación 0/0 en x=0 como L'Hôpital/Taylor
 - 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2: generalizar la narración 0/0 al punto desplazado (denominador polinómico)
 - 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/visible_rule_names.rs` (mapa `visible_rule_... | Presentación: traducir nombres de regla en inglés a español en la narración
+- 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`limit_polynomia... | G2: narrar el 0/0 con denominador trigonométrico/hiperbólico que se anula en el punto
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12885,3 +12886,45 @@ Active entries: 304 (newest first)
   - peldaño: pueden quedar nombres en inglés en reglas menos frecuentes no cubiertas por el sondeo;
     el default del mapa los deja pasar (visible al usuario) — un barrido exhaustivo de los `name()` de
     todas las reglas vs las claves del mapa los cazaría.
+
+## 2026-06-22 - G2: narrar el 0/0 con denominador trigonométrico/hiperbólico que se anula en el punto
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`limit_polynomial_denominator_vanishes_at`
+    → `limit_denominator_vanishes_at`, ahora recursivo: polinomio ∪ `f(g)` con `f(0)=0` ∪ `d^k`)
+- status:
+  - `retained` (capacidad educativa — peldaño (5c) del sub-ciclo G2 0/0; generaliza el chequeo de
+    denominador de polinómico a trig/hiperbólico que se anula en el punto; resultado intacto)
+- capture:
+  - investment_class: educativo (narración) con oráculo de soundness estructural
+  - primary_dimension: north_star_educational (límites)
+  - secondary_dimension: reuse_value (reutiliza `limit_unary_builtin` + `first_order_equivalent_name`
+    + el punto cableado del ciclo 1)
+  - cell: `(cos x−1)/sin x → 0`, `(1−cos x)/tan x → 0`, `x²/sin x → 0`, `(x−sin x)/sin x³ → 1/6`,
+    `(eˣ−1)/sin x → 1` — ahora narran "Indeterminación 0/0 en x=0: L'Hôpital o Taylor"; antes nada.
+  - behavior_change_expected: el chequeo de "el denominador se anula en el punto" pasa de SOLO
+    polinomios a también: `f(g)` con `f∈{sin,tan,sinh,tanh,arcsin,arctan,...}` (todas `f(0)=0`) y `g`
+    que tiende a 0 en el punto (recursivo), y `d^k` (k entero ≥1) con base `d` que tiende a 0. Resultado
+    intacto; huella guardrail+pressure 0 deltas; smoke de límites verde.
+  - SOUNDNESS: `f(g) → f(0) = 0` cuando `g → 0` (f continua con f(0)=0); `d^k → 0` cuando `d → 0`. El
+    `g → 0`/`d → 0` se certifica recursivamente (base polinómica evaluada exacta en el punto, o de
+    nuevo `f(·)`/`d^k`). Como antes, den→0 + resultado finito ⟹ num→0 ⟹ 0/0. Falsos positivos
+    refutados: `1/cos(x)` en 0 (cos no se anula → declina), `(x+1)/sin(x)` en 0 (resultado ∞, no finito
+    → declina), `cos(x)/sin(x)` en π/2 (punto irracional → declina). Verificado vs sympy (0,0,0,1/6,1).
+  - scoping: extensión directa del oráculo del ciclo 2; verificación adversarial manual (refutación +
+    ground-truth sympy).
+- observed:
+  - `cos`/`cosh` NO están en el conjunto `first_order_equivalent_name` (su valor en 0 es 1, no 0), así
+    que un denominador `cos(g)` correctamente NO certifica 0/0 — la lista de funciones reusada ya era
+    exactamente la de "se anula en 0".
+- retained learning:
+  - el predicado "el denominador tiende a 0 en el punto" se compone recursivamente sobre la estructura
+    (polinomio que evalúa 0; función-que-se-anula-en-0 de un argumento que tiende a 0; potencia de algo
+    que tiende a 0) — cada paso es una implicación local exacta, sin necesidad de evaluar
+    numéricamente el denominador entero. Reusar el conjunto de funciones "equivalente de primer orden"
+    (ya con f(0)=0) evita re-derivar qué funciones se anulan.
+  - peldaño: (a) DERIVACIÓN L'Hôpital paso a paso; (b) punto IRRACIONAL (`tan x/sin x` en π) — el
+    argumento se anula en un cero transcendente que `as_rational_const` no captura. Y el WART de
+    simplificación de mayor valor pendiente: `x·eᵃ/eᵇ` NO combina los exponenciales (solo el caso puro
+    `eᵃ/eᵇ` lo hace), lo que produce blobs feos en derivadas altas de `e^(−x²)` (`diff(e^(−x²),x,5)`
+    con `ln(e)`, `x^(2−1)`, `e^(4x²)^(2−1)` sin plegar) — candidato de simplificación del próximo ciclo.
