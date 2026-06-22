@@ -933,7 +933,7 @@ fn step_wire_path_latex_renders_human_subtractive_products_for_factor_example() 
         .expect("expected distributive step");
     let factor_step = steps
         .iter()
-        .find(|step| step.rule == "Factor Polynomial")
+        .find(|step| step.rule == "Factorizar el polinomio")
         .expect("expected factor polynomial step");
 
     let first_after_latex = first_distribute.after_latex.as_str();
@@ -963,7 +963,7 @@ fn step_wire_sophie_germain_after_text_and_latex_stay_human() {
 
     let step = steps
         .iter()
-        .find(|step| step.rule == "Factor Polynomial")
+        .find(|step| step.rule == "Factorizar el polinomio")
         .expect("expected factor step");
 
     assert!(

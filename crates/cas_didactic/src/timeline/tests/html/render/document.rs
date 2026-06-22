@@ -25,5 +25,5 @@ fn test_html_generation() {
     assert!(html.contains("<!DOCTYPE html"));
     assert!(html.contains("timeline"));
     assert!(html.contains("CAS Simplification"));
-    assert!(html.contains("Combine Constants"));
+    assert!(html.contains("Combinar las constantes"));
 }

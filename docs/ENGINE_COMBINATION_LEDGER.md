@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 303 (newest first)
+Active entries: 304 (newest first)
 
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
@@ -139,6 +139,7 @@ Active entries: 303 (newest first)
 - 2026-06-22 | `retained` | `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixMultiplyRule::apply_simpl... | P0 soundness: multiplicación de matrices no-cuadradas producía un broadcast malformado
 - 2026-06-22 | `retained` | `crates/cas_solver_core/src/step_model.rs` (`StepMeta.limit_point`: nuevo campo) | G2: narrar la indeterminación 0/0 en x=0 como L'Hôpital/Taylor
 - 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | G2: generalizar la narración 0/0 al punto desplazado (denominador polinómico)
+- 2026-06-22 | `retained` | `crates/cas_didactic/src/didactic/visible_rule_names.rs` (mapa `visible_rule_... | Presentación: traducir nombres de regla en inglés a español en la narración
 - 2026-06-21 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` `resolve_var_eliminated_residu... | Retained soundness fix: parametric var-eliminated relation -> honest conditional
 - 2026-06-21 | `retained` | `crates/cas_math/src/const_eval.rs` (`try_eval_floor_ceil_round`); | Retained completeness: floor/ceil/round const-fold of rational constants
 - 2026-06-21 | `retained` | `crates/cas_math/src/arithmetic_cancel_support.rs` (`rewrite_unsoundly_drops_... | Retained completeness: value-domain-aware non-finite backstop unblocks complex i-folding
@@ -12838,3 +12839,49 @@ Active entries: 303 (newest first)
   - peldaño restante: (a) DERIVACIÓN L'Hôpital paso a paso; punto con den NO-polinómico (`tan x/sin x`
     en π — el cero del den es transcendente); y la dominancia EXPONENCIAL ya estaba narrada (no era
     peldaño real).
+
+## 2026-06-22 - Presentación: traducir nombres de regla en inglés a español en la narración
+
+- area:
+  - `crates/cas_didactic/src/didactic/visible_rule_names.rs` (mapa `visible_rule_name`: 10 entradas
+    nuevas)
+  - `crates/cas_didactic/tests/step_wire_tests.rs`, `crates/cas_didactic/src/timeline/tests/html/...`
+    (asserts de display actualizados de inglés a español)
+- status:
+  - `retained` (presentación/educativo — peldaño del item P3 "Presentación: ~10 nombres de regla en
+    inglés dentro de narración española"; sin cambio de comportamiento ni de nombres internos)
+- capture:
+  - investment_class: presentación (localización de la narración; el north star es "serio Y educativo")
+  - primary_dimension: north_star_educational (consistencia del idioma en los pasos)
+  - secondary_dimension: reuse_value (el chokepoint de traducción `visible_rule_name` YA existía con
+    ~150 entradas; solo faltaban estas 10)
+  - cell: `expand(...)` → "Evaluar la operación solicitada" (antes "Evaluate Meta Functions");
+    `x⁵/x³` → "Cancelar potencias de la misma base"; `factor(...)` → "Factorizar el polinomio";
+    `x⁰`/`x¹` → "Simplificar una potencia con exponente 0 o 1"; `(2x+4)/2` → "Repartir el denominador
+    entre los sumandos"; `x⁻²` → "Reescribir un exponente negativo"; `log(8,2)` → "Calcular el
+    logaritmo"; `x^½·x^½` → "Sumar exponentes de la misma base"; `2x/4` → "Combinar las constantes";
+    `sqrt(x⁴)` (Abs Of Even Power) → "Quitar el valor absoluto de una potencia par".
+  - behavior_change_expected: solo el campo de DISPLAY (`step.rule` en el payload / HTML) cambia de
+    inglés a español para estas 10 reglas; el `rule_name` INTERNO (usado por detección de ciclos,
+    profiling, blocklists, `is_always_keep`, dispatch de substeps) queda intacto. Resultado y pasos
+    idénticos. Huella guardrail+pressure 0 deltas; smokes de límites e integrales verdes.
+  - SOUNDNESS: traducción puramente de presentación; no toca matemática ni la lógica que matchea
+    `rule_name`. Las 10 traducciones se verificaron contra la SEMÁNTICA real de cada regla (probadas
+    por su efecto en el CLI), no adivinadas.
+  - scoping: el CLI usa `cas_didactic::collect_step_payloads` → `visible_rule_name`; el wire de
+    `cas_solver` y el HTML del timeline pasan por el mismo mapa. Los asserts de fixture sobre el campo
+    de DISPLAY (`step.rule`, `html.contains`) se actualizaron (3); los que matchean el `rule_name`
+    INTERNO o son negativos (`!contains`) no se ven afectados.
+- observed:
+  - el mapa `visible_rule_name` (chokepoint de localización con ~150 entradas) ya traducía casi todo;
+    las 10 que faltaban caían al default `_ => rule_name` (inglés). El arreglo correcto es AÑADIR al
+    mapa existente, NO renombrar el `name()` interno (que está acoplado a detección de ciclos,
+    `starts_with("Distribute Division Into Sum")`, etc.).
+- retained learning:
+  - para localizar/renombrar texto de cara al usuario, traducir en el chokepoint de DISPLAY, nunca el
+    identificador interno: el nombre interno de la regla es una CLAVE (matcheada por la detección de
+    ciclos, el dispatch de substeps, los allowlists), no una etiqueta. Separar "clave estable" de
+    "etiqueta presentable" evita romper lógica al pulir la presentación.
+  - peldaño: pueden quedar nombres en inglés en reglas menos frecuentes no cubiertas por el sondeo;
+    el default del mapa los deja pasar (visible al usuario) — un barrido exhaustivo de los `name()` de
+    todas las reglas vs las claves del mapa los cazaría.
