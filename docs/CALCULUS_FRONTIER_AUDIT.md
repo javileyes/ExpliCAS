@@ -1022,6 +1022,11 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   MULTIPLICADOS sobre una SUMA (`e^(−6x²)·(...e^(5x²)...)`) — necesitan DISTRIBUIR antes de
   combinar; y los artefactos `ln(e)`/`x^0`/`x^(2-1)` en substeps (que en el RESULTADO ya se
   pliegan).)*
+  *(parcial 2026-06-22 b5b65f11: la misma combinación GENERALIZADA a base positiva — `2^a/2^b →
+  2^(a-b)`, `x·2^a/2^b → x·2^(a-b)`, `3^x/3^y → 3^(x-y)` (antes ninguno combinaba, solo `e`). Dos
+  gates de soundness: base `e` o numérico>0 (incondicional), y para base numérica al menos un
+  exponente SIMBÓLICO (deja los radicales `2^(1/2)=√2` a las reglas de raíz). Base simbólica /
+  negativa / distinta declinan.)*
 
 ### Fuera del norte actual (clase I — no son ciclos)
 
