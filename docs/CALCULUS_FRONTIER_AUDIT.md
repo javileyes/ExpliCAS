@@ -248,7 +248,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   base es a su vez una potencia debe parentizarse. (Relacionado con el frente #6/#7 del hunt; el otro
   síntoma —`(x²)^(1/3) → x^(2/3)`— NO es bug: es correcto bajo la semántica de potencia REAL del engine,
   ver abajo.)
-  *(graduado 2026-06-24 PENDIENTE: el formateador de TEXTO solo parentizaba la base de una potencia si
+  *(graduado 2026-06-24 1b17bcf02: el formateador de TEXTO solo parentizaba la base de una potencia si
   `base_prec < op_prec`; `Pow` y el operador `^` comparten precedencia (3), así que una base-potencia (`x^2`)
   no se parentizaba → `x^2^(1/2)`. Fix de una línea: `base_prec <= op_prec` (parentiza la base de igual
   precedencia; `Pow` es el único nodo de precedencia 3). Verificado con fuzzer round-trip (texto re-evaluado
