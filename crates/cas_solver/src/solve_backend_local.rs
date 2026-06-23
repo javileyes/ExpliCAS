@@ -571,6 +571,21 @@ impl SolveBackend for LocalSolveBackend {
         {
             return Ok((SolutionSet::Empty, Vec::new()));
         }
+        // Sum-of-absolute-values inequalities (`|x| + |x-1| < 5`, etc.) are
+        // piecewise-linear: the isolate-one-abs strategy below loses the other
+        // terms and wrongly returns "No solution" (or a malformed residual).
+        // Solve them exactly here, before any isolation routing. Returns None for
+        // anything that is not a genuine sum (≥2 abs of linear) inequality, so
+        // single-abs and all other shapes fall through unchanged.
+        if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_inequality(
+            &mut simplifier.context,
+            eq.lhs,
+            eq.rhs,
+            eq.op.clone(),
+            var,
+        ) {
+            return Ok((set, Vec::new()));
+        }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
         let conds = ctx.required_conditions();
         let set = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);

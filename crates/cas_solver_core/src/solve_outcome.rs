@@ -6,8 +6,8 @@ use crate::log_domain::{
 };
 use crate::solution_set::{isolated_var_solution, open_positive_domain};
 use cas_ast::{
-    BuiltinFn, Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, RelOp,
-    SolutionSet, SolveResult,
+    BoundType, BuiltinFn, Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId,
+    Interval, RelOp, SolutionSet, SolveResult,
 };
 
 /// Classification of a variable-free equation residual `diff = lhs - rhs`.
@@ -260,6 +260,270 @@ fn solve_linear_arg_vs_zero(
     let isolated_op = if a.is_positive() { op } else { flip_relop(op) };
     let bound_expr = num_expr_from_rational(ctx, &bound);
     Some(isolated_var_solution(ctx, bound_expr, isolated_op))
+}
+
+/// One linear absolute-value term `coeff·|m·x + b|` of a sum-of-abs inequality.
+/// `breakpoint = -b/m` is the exact rational where the inner argument vanishes.
+struct AbsLinearTerm {
+    coeff: num_rational::BigRational,
+    m: num_rational::BigRational,
+    b: num_rational::BigRational,
+    breakpoint: num_rational::BigRational,
+}
+
+/// Decompose `expr` (in `var`) into `Σ coeffᵢ·|mᵢ·x + bᵢ| + (rem_slope·x + rem_const)`.
+///
+/// Every absolute-value argument must be LINEAR in `var` (degree 1); the non-abs
+/// remainder must be affine (degree ≤ 1). Returns `None` for any other shape so
+/// callers fall through to the existing strategies. All coefficients are exact
+/// `BigRational`.
+fn decompose_sum_of_abs(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(
+    Vec<AbsLinearTerm>,
+    num_rational::BigRational,
+    num_rational::BigRational,
+)> {
+    use cas_math::polynomial::Polynomial;
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+
+    // Flatten the additive structure into signed terms.
+    fn collect(ctx: &Context, expr: ExprId, sign: i8, out: &mut Vec<(i8, ExprId)>) {
+        match ctx.get(expr) {
+            Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
+                collect(ctx, l, sign, out);
+                collect(ctx, r, sign, out);
+            }
+            Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
+                collect(ctx, l, sign, out);
+                collect(ctx, r, -sign, out);
+            }
+            Expr::Neg(inner) => {
+                let inner = *inner;
+                collect(ctx, inner, -sign, out);
+            }
+            _ => out.push((sign, expr)),
+        }
+    }
+    let mut terms: Vec<(i8, ExprId)> = Vec::new();
+    collect(&*ctx, expr, 1, &mut terms);
+
+    let mut abs_terms: Vec<AbsLinearTerm> = Vec::new();
+    let mut rem_slope = BigRational::zero();
+    let mut rem_const = BigRational::zero();
+
+    for (sign, term) in terms {
+        let sign_r = if sign >= 0 {
+            BigRational::one()
+        } else {
+            -BigRational::one()
+        };
+        if let Some((k, inner)) = extract_scaled_abs(&*ctx, term) {
+            // Absolute-value term: inner argument must be linear in `var`.
+            let poly = Polynomial::from_expr(&*ctx, inner, var).ok()?;
+            if poly.degree() != 1 {
+                return None;
+            }
+            let m = poly.coeffs.get(1).cloned()?;
+            if m.is_zero() {
+                return None;
+            }
+            let b = poly
+                .coeffs
+                .first()
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+            let breakpoint = -b.clone() / m.clone();
+            abs_terms.push(AbsLinearTerm {
+                coeff: sign_r * k,
+                m,
+                b,
+                breakpoint,
+            });
+        } else {
+            // Non-abs term: must be affine (degree ≤ 1) in `var`.
+            let poly = Polynomial::from_expr(&*ctx, term, var).ok()?;
+            if poly.degree() > 1 {
+                return None;
+            }
+            if let Some(c1) = poly.coeffs.get(1) {
+                rem_slope += sign_r.clone() * c1.clone();
+            }
+            if let Some(c0) = poly.coeffs.first() {
+                rem_const += sign_r * c0.clone();
+            }
+        }
+    }
+
+    Some((abs_terms, rem_slope, rem_const))
+}
+
+/// Solve an inequality whose two sides form a SUM of absolute values by the
+/// exact piecewise/breakpoint method: `lhs {op} rhs` is recast as
+/// `lhs - rhs {op} 0`, which must decompose into `Σ kᵢ·|x − aᵢ| (+ affine) {op} c`.
+///
+/// On each interval between consecutive breakpoints the whole LHS is linear, so
+/// each `|mᵢ·x + bᵢ|` resolves to `±(mᵢ·x + bᵢ)`; the linear inequality is solved
+/// exactly there, intersected with the interval, and unioned across segments.
+///
+/// Returns `None` (leaving the existing single-abs / linear paths untouched) for
+/// fewer than two absolute-value terms, a non-linear inner argument, a non-affine
+/// remainder, or a non-inequality operator. All arithmetic is exact `BigRational`
+/// — never f64.
+pub fn try_solve_sum_of_abs_inequality(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+) -> Option<SolutionSet> {
+    use crate::solution_set::{intersect_solution_sets, neg_inf, pos_inf, union_solution_sets};
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    // Only inequalities; equations keep their existing handling.
+    if !matches!(op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+
+    // Recast `lhs {op} rhs` as `lhs - rhs {op} 0` and decompose the LHS.
+    let full = ctx.add(Expr::Sub(lhs, rhs));
+    let (abs_terms, rem_slope, rem_const) = decompose_sum_of_abs(ctx, full, var)?;
+
+    // A single abs term is the existing path's job; only take over genuine sums.
+    if abs_terms.len() < 2 {
+        return None;
+    }
+
+    // Distinct, sorted breakpoints (exact rationals).
+    let mut breakpoints: Vec<BigRational> =
+        abs_terms.iter().map(|t| t.breakpoint.clone()).collect();
+    breakpoints.sort();
+    breakpoints.dedup();
+    let n = breakpoints.len();
+
+    let one = BigRational::one();
+    let two = BigRational::from_integer(2.into());
+    let mut solution = SolutionSet::Empty;
+
+    // Segments: (-inf, a0] , [a0,a1], ... , [a_{n-1}, +inf). Breakpoints use
+    // CLOSED bounds: at a breakpoint every |·| is 0, so both adjacent segments'
+    // linear forms agree there, and `merge_intervals` dedups the shared endpoint.
+    for seg_idx in 0..=n {
+        let (segment, test): (Interval, BigRational) = if seg_idx == 0 {
+            let a0 = breakpoints[0].clone();
+            let hi = num_expr_from_rational(ctx, &a0);
+            (
+                Interval {
+                    min: neg_inf(ctx),
+                    min_type: BoundType::Open,
+                    max: hi,
+                    max_type: BoundType::Closed,
+                },
+                a0 - one.clone(),
+            )
+        } else if seg_idx == n {
+            let an = breakpoints[n - 1].clone();
+            let lo = num_expr_from_rational(ctx, &an);
+            (
+                Interval {
+                    min: lo,
+                    min_type: BoundType::Closed,
+                    max: pos_inf(ctx),
+                    max_type: BoundType::Open,
+                },
+                an + one.clone(),
+            )
+        } else {
+            let al = breakpoints[seg_idx - 1].clone();
+            let ar = breakpoints[seg_idx].clone();
+            let lo = num_expr_from_rational(ctx, &al);
+            let hi = num_expr_from_rational(ctx, &ar);
+            let mid = (al.clone() + ar.clone()) / two.clone();
+            (
+                Interval {
+                    min: lo,
+                    min_type: BoundType::Closed,
+                    max: hi,
+                    max_type: BoundType::Closed,
+                },
+                mid,
+            )
+        };
+
+        // Substitute each |mᵢ·x + bᵢ| → sign·(mᵢ·x + bᵢ) using its sign at the
+        // interior test point (never a breakpoint, so the argument is nonzero).
+        let mut slope = rem_slope.clone();
+        let mut constant = rem_const.clone();
+        for t in &abs_terms {
+            let val = t.m.clone() * test.clone() + t.b.clone();
+            let s = if val.is_positive() {
+                one.clone()
+            } else {
+                -one.clone()
+            };
+            slope += t.coeff.clone() * s.clone() * t.m.clone();
+            constant += t.coeff.clone() * s * t.b.clone();
+        }
+
+        // Solve `slope·x + constant {op} 0` exactly over the whole line.
+        let linear_sol = if slope.is_zero() {
+            let holds = match op {
+                RelOp::Lt => constant.is_negative(),
+                RelOp::Leq => !constant.is_positive(),
+                RelOp::Gt => constant.is_positive(),
+                RelOp::Geq => !constant.is_negative(),
+                _ => return None,
+            };
+            if holds {
+                SolutionSet::AllReals
+            } else {
+                SolutionSet::Empty
+            }
+        } else {
+            let bound = -constant.clone() / slope.clone();
+            let iso_op = if slope.is_positive() {
+                op.clone()
+            } else {
+                flip_relop(op.clone())
+            };
+            let bound_expr = num_expr_from_rational(ctx, &bound);
+            isolated_var_solution(ctx, bound_expr, iso_op)
+        };
+
+        let seg_sol = intersect_solution_sets(ctx, SolutionSet::Continuous(segment), linear_sol);
+        // A boundary-point intersection (e.g. `(-inf, 0] ∩ [0, +inf) = {0}`)
+        // comes back as `Discrete`, which `union_solution_sets` cannot merge with
+        // the adjacent interval. Re-express each point as a degenerate closed
+        // interval `[p, p]` so `merge_intervals` folds it into the neighbour.
+        let seg_sol = match seg_sol {
+            SolutionSet::Discrete(points) => {
+                let intervals: Vec<Interval> = points
+                    .into_iter()
+                    .map(|p| Interval {
+                        min: p,
+                        min_type: BoundType::Closed,
+                        max: p,
+                        max_type: BoundType::Closed,
+                    })
+                    .collect();
+                match intervals.len() {
+                    0 => SolutionSet::Empty,
+                    1 => SolutionSet::Continuous(intervals.into_iter().next().unwrap()),
+                    _ => SolutionSet::Union(intervals),
+                }
+            }
+            other => other,
+        };
+        solution = union_solution_sets(ctx, solution, seg_sol);
+    }
+
+    Some(solution)
 }
 
 /// Recover `|f(x)| = ±f(x)` equations that reorient to `x = α·|arg| + β`.

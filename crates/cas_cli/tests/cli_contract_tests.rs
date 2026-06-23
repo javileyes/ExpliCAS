@@ -718,6 +718,57 @@ fn test_eval_cosh_cube_difference_does_not_collapse_to_zero() {
 }
 
 #[test]
+fn test_eval_sum_of_absolute_values_inequality_solves_piecewise() {
+    // A SUM of absolute values is piecewise-linear, so the inequality has a real
+    // interval solution. The old "isolate one abs and split cases" strategy lost
+    // the other terms and wrongly returned "No solution" (or a malformed
+    // residual for `>`/`>=`). The piecewise/breakpoint solver returns the exact
+    // union of intervals. Ground truth cross-checked against sympy.
+    for (input, expected) in [
+        ("abs(x) + abs(x-1) < 5", "(-2, 3)"),
+        ("abs(x) + abs(x-1) <= 3", "[-1, 2]"),
+        // |x|+|x-1| = 1 on all of [0,1], so `<= 1` is the whole closed interval,
+        // not just its endpoints (a discrete-vs-interval merge bug guard).
+        ("abs(x) + abs(x-1) <= 1", "[0, 1]"),
+        ("abs(x-2) + abs(x+2) < 6", "(-3, 3)"),
+        ("abs(x) + abs(x+1) < 4", "(-5/2, 3/2)"),
+        ("2*abs(x) + abs(x-3) < 8", "(-5/3, 11/3)"),
+        // Rational breakpoints (slope 2): bps at -1/2, 1/2.
+        ("abs(2*x-1) + abs(2*x+1) < 4", "(-1, 1)"),
+        // `>` was previously malformed; now a union of two open rays.
+        ("abs(x) + abs(x-1) > 5", "(-infinity, -2) U (3, infinity)"),
+        ("abs(x) + abs(x-1) >= 1", "All real numbers"),
+        // Three terms.
+        ("abs(x) + abs(x-1) + abs(x-2) < 4", "(-1/3, 7/3)"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+
+    // Genuinely-empty sums (min of |x|+|x-1| is 1) must still report No solution,
+    // and single-abs / non-abs inequalities must be unchanged by the new path.
+    for (input, expected) in [
+        ("abs(x) + abs(x-1) < 1", "No solution"),
+        ("abs(x-2) + abs(x+2) < 3", "No solution"),
+        ("abs(x) < 5", "(-5, 5)"),
+        ("abs(x-3) >= 2", "(-infinity, 1] U [5, infinity)"),
+        ("x^2 - 4 < 0", "(-2, 2)"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_shifted_log_tan_sqrt_diff_finishes_without_depth_overflow() {
     let cases = [
         (

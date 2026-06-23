@@ -206,6 +206,25 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   paso de ángulo-triple se funde en la normalización); la variante con passthrough conserva los 2. Peldaño:
   restaurar el paso explícito de ángulo-triple en la narrativa `derive` desnuda — lógica del motor `derive`,
   follow-up separado.)*
+
+- [x] **(S) Inecuaciones de SUMA de valores absolutos devolvían "No solution"**: `|x|+|x-1| < 5`
+  devolvía "No solution" cuando la solución es `(-2, 3)`; igual `<= 3` → "No solution" (real `[-1,2]`),
+  y la forma `>` dejaba un residual malformado. El abs SIMPLE (`|x| < 5 → (-5,5)`) sí funcionaba,
+  ocultando el defecto en las SUMAS. Afirmar conjunto vacío cuando hay un intervalo es wrong-answer.
+  (P0 soundness en `solve` de inecuaciones; hallado por el hunt ultracode #4.)
+  *(graduado FECHA COMMIT: el solver usaba *aislar-un-abs-y-dividir-casos*; para una suma pierde los demás
+  términos y la intersección de ramas incompletas colapsa a vacío. Nuevo solver EXACTO por breakpoints
+  (`try_solve_sum_of_abs_inequality`): recast `lhs-rhs {op} 0`, descomponer en `Σ kᵢ·|mᵢ·x+bᵢ| + afín`
+  (inner lineal), breakpoints `aᵢ=-bᵢ/mᵢ` (BigRational), en cada tramo entre breakpoints el LHS es lineal
+  (signo de cada `|·|` por punto de prueba interior) → resolver `M·x+B {op} 0` exacto → intersecar tramo →
+  unir. Sin supuesto de convexidad (correcto con coeficientes negativos). Cableado robusto en
+  `solve_with_ctx_and_options` (nivel superior, antes del enrutado de aislamiento), gateado a inecuaciones
+  con ≥2 términos abs (single-abs / ecuaciones / no-abs intactos). Verificado: oráculo independiente
+  Fraction-based, 600 casos aleatorios, 0 fallos; + sympy (coeficientes, bps racionales, no convexos, 3
+  términos, los 4 operadores, bordes abiertos/cerrados, vacíos genuinos). Workspace 12312/0; guardrail+
+  pressure sin deltas de estado (solo no-determinismo preexistente de smokes diff/integrate, ajeno al
+  solver). Peldaño: ECUACIONES de suma de abs (`|x|+|x-1|=3`) siguen dando residual — misma técnica
+  piecewise, follow-up; y pasos didácticos del solver piecewise.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

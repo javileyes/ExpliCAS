@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 311 (newest first)
+Active entries: 312 (newest first)
 
+- 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13234,3 +13235,63 @@ Active entries: 311 (newest first)
   - peldaño (educativo, follow-up): restaurar el paso explícito de ángulo-triple en la narrativa `derive`
     del caso desnudo (checkpoint en `cosh(3x)−cosh(x)` antes de normalizar) — es lógica del motor `derive`,
     separada del fix de soundness. Luego seguir con defectos #4 (inecuaciones abs-sum), #5–#8 del hunt.
+
+## 2026-06-24 - P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
+
+- area:
+  - `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequality` + `decompose_sum_of_abs`)
+  - `crates/cas_solver/src/solve_backend_local.rs` (`solve_with_ctx_and_options`: pre-check de nivel superior)
+- status:
+  - `retained` (P0 soundness — wrong-answer; hallado por el hunt adversarial multiagente ultracode #4;
+    verificado con oráculo independiente Fraction-based (600 casos) y sympy; exento del orden de fase)
+- capture:
+  - investment_class: capacidad-soundness (nuevo procedimiento de decisión: inecuación lineal por tramos)
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: reuse_value (reusa `extract_scaled_abs`, `Polynomial::from_expr`,
+    `isolated_var_solution`, `intersect/union_solution_sets`, `merge_intervals`, builders de `Interval`)
+  - cell: `|x|+|x-1| < 5` → `(-2, 3)` (antes "No solution"); `<= 3` → `[-1, 2]`; `<= 1` → `[0, 1]`;
+    `> 5` → `(-∞,-2) ∪ (3,∞)` (antes residual malformado); `< 1` → "No solution" (correcto, mín=1);
+    coeficientes `2|x|+|x-3|<8` → `(-5/3, 11/3)`; bps racionales `|2x-1|+|2x+1|<4` → `(-1,1)`;
+    no convexos `3|x-1|-|x| < 4` → `(-1/2, 7/2)`; 3 términos `|x|+|x-1|+|x-2|<4` → `(-1/3, 7/3)`.
+  - behavior_change_expected: una inecuación cuyo `lhs - rhs` es `Σ kᵢ·|mᵢ·x+bᵢ| + (afín)` con ≥2 términos
+    abs se resuelve exactamente por tramos. Single-abs, ecuaciones abs, y no-abs quedan intactos (gate).
+  - SOUNDNESS: el solver de inecuaciones usaba *aislar-un-abs-y-dividir-casos*; para una SUMA pierde los
+    otros términos abs y la intersección de ramas incompletas colapsa a `SolutionSet::Empty` ("No solution")
+    o, en `>`/`>=`, deja un residual malformado. Nuevo método EXACTO por breakpoints: recast `lhs-rhs {op} 0`;
+    descomponer en términos `kᵢ·|mᵢ·x+bᵢ|` (inner LINEAL, grado 1) + resto afín; breakpoints `aᵢ=-bᵢ/mᵢ`
+    (BigRational, ordenados, dedup); en cada tramo entre breakpoints consecutivos cada `|·|` resuelve a su
+    signo en un punto de prueba INTERIOR (nunca un breakpoint), linealizando el LHS a `M·x+B`; resolver
+    `M·x+B {op} 0` exacto (con M=0 → AllReals/Empty según el signo de B), intersecar con el tramo, unir.
+    Tramos con bordes CERRADOS en los breakpoints (allí cada `|·|=0`, así ambos tramos adyacentes coinciden;
+    `merge_intervals` deduplica el punto compartido). Intersecciones de un solo punto en los bordes vuelven
+    como `Discrete`, que `union_solution_sets` NO funde con un `Continuous` → se reexpresan como intervalo
+    cerrado degenerado `[p,p]` antes de unir (de ahí `|x|+|x-1|<=1` da `[0,1]`, no `{0,1}`). TODO BigRational,
+    nunca f64.
+  - scoping: hunt ultracode #4 → wrong-answer. Workflow de comprensión (6 agentes paralelos, Explore) mapeó
+    el subsistema de solve de inecuaciones (entrada/dispatch, ruta single-abs que sí funciona,
+    representación SolutionSet/Interval, emisión de pasos, extracción de abs/lineal, solver lineal + punto de
+    cableado). PRIMER hook (en el handler single-abs) resultó FRÁGIL: el fuzzer mostró que solo se alcanza
+    cuando el handler aditivo aísla un abs; muchas formas (slope≠1, coeficientes, `>=`/`>`, 3-4 términos,
+    resto lineal) enrutan distinto → garbage. Hook ROBUSTO final: `solve_with_ctx_and_options` (nivel
+    superior, antes de toda la maquinaria de aislamiento), con `(lhs, rhs, op)` completos. Verificación
+    adversarial: fuzzer Python con oráculo independiente por `fractions` (membership exacta en breakpoints
+    ±1/7, ±1/3, midpoints, lejanos) — 600 casos, 0 fallos. Huella: workspace 12312/0; guardrail+pressure sin
+    deltas de estado (los 2 deltas estructurales son el no-determinismo preexistente de los smokes
+    diff/integrate — counters escalares idénticos; mi cambio es solo del solver, no toca cálculo).
+- observed:
+  - un fuzzer con oráculo INDEPENDIENTE (otro lenguaje, otra implementación) caza lo que los tests verdes no
+    ven: aquí reveló que el primer hook era insuficiente (fragilidad del enrutado), no un error matemático.
+  - "isolar-y-dividir-casos" es correcto para UN abs pero estructuralmente incapaz para sumas: la
+    intersección de ramas que han perdido términos siempre puede colapsar a vacío. La forma correcta para
+    `Σ|·|` es piecewise por breakpoints (sin supuesto de convexidad — funciona con coeficientes negativos).
+  - elegir el punto de cableado correcto importa tanto como la matemática: un hook profundo dependía del
+    enrutado; el hook de nivel superior con la ecuación completa es robusto a CÓMO se enruta.
+- retained learning:
+  - patrón general para familias piecewise-lineales (`Σ|afín|`, y candidato para `max/min`, parte entera):
+    breakpoints exactos → signo por tramo en punto interior → linealizar → resolver → intersecar tramo →
+    unir; bordes cerrados en breakpoints + reexpresar puntos `Discrete` como `[p,p]` para que `merge_intervals`
+    los funda.
+  - peldaño: (a) las ECUACIONES de suma de abs (`|x|+|x-1| = 3`) siguen dando residual — misma técnica
+    piecewise (resolver la ecuación lineal por tramo, recolectar puntos), follow-up; (b) pasos didácticos del
+    solver piecewise (ahora devuelve la solución sin narrar los tramos); (c) seguir con defectos #5
+    (endpoints de inecuación radical), #6/#7 (potencia-de-potencia |x|), #8 (arcsec+arccsc).
