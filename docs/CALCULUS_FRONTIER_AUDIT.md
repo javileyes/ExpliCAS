@@ -263,7 +263,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (`arcsec`/`arccsc` exigen `|x|≥1`). Internamente se reduce a `arccos(2)+arcsin(2)`, y la identidad
   `arcsin(x)+arccos(x)=π/2` se disparaba sin verificar `x∈[-1,1]`, pese a que `arcsin(2)`/`arccos(2)` no
   existen en ℝ. (P0 soundness en `eval` de inversas trig; hallado por el hunt ultracode #8.)
-  *(graduado 2026-06-24 PENDIENTE8: `try_plan_inverse_trig_sum_pair_expr` reconocía la pareja
+  *(graduado 2026-06-24 7856578b9: `try_plan_inverse_trig_sum_pair_expr` reconocía la pareja
   complementaria `arcsin(arg)+arccos(arg)` (y la forma `arcsec/arccsc` que se reescribe a ella) por
   IGUALDAD de argumentos y colapsaba a `π/2` sin gatear el dominio. Fix: dentro de la rama `args_equal`,
   `if is_number_outside_unit_interval(ctx, arg_i) { return None; }` — un argumento concreto provablemente
