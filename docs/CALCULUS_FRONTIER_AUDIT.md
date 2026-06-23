@@ -231,7 +231,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   existe en ℝ. Igual `sqrt(2x-1) ≤ 3` → `(-∞, 5]` (real `[1/2, 5]`); `sqrt(x²-4) < 3` daba un solo intervalo
   sin el split del dominio `|x|≥2`. El radical con variable PELADA (`√x < 2 → [0,4)`) sí aplicaba el
   dominio, ocultando el fallo. (P0 soundness en `solve` de inecuaciones; hallado por el hunt ultracode #5.)
-  *(graduado 2026-06-24 PENDIENTE: `intersect_inequality_with_function_domain` gateaba en `arg_is_var` y
+  *(graduado 2026-06-24 6668d00a5: `intersect_inequality_with_function_domain` gateaba en `arg_is_var` y
   devolvía el set SIN tocar para argumentos compuestos → la inversión solo restringía `g(x)` contra el
   umbral y dejaba la región `g(x) < 0`. Fix: calcular el dominio como la solución de `arg ≥ 0` (even root) /
   `arg > 0` (log) resolviéndola para la variable (recursión acotada: el arg ya es no-radical), e intersecar.
