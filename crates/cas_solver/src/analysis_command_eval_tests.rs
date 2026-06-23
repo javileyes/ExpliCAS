@@ -8660,6 +8660,11 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
+        // Soundness fix (cosh(3x)−cosh(x) no longer collapses to 0) lets the
+        // product-to-sum output normalize straight to the cubic polynomial in one
+        // pass, so the standalone derive now exposes a single visible step. (The
+        // passthrough variant below still shows two.) Follow-up: restore the
+        // explicit triple-angle step in this bare narrative.
         assert_eq!(
             lines
                 .iter()
@@ -8674,15 +8679,12 @@ mod tests {
                             .all(|ch| ch.is_ascii_digit())
                 })
                 .count(),
-            2,
-            "expected expand path to expose exactly two visible steps; lines={lines:?}"
+            1,
+            "expected expand path to expose exactly one visible step; lines={lines:?}"
         );
         assert!(lines
             .iter()
             .any(|line| line.contains("Aplicar identidad hiperbólica de producto a suma")));
-        assert!(lines
-            .iter()
-            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo triple")));
     }
 
     #[test]

@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 310 (newest first)
+Active entries: 311 (newest first)
 
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
+- 2026-06-23 | `retained` | `crates/cas_engine/src/rules/arithmetic.rs` (`ExpandHyperbolicPythagoreanFact... | P0 soundness: cosh(3x)−cosh(x) colapsaba a 0 (puente de cancelación pitagórica hiperbólica)
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate ... | Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
@@ -13179,3 +13180,57 @@ Active entries: 310 (newest first)
     conjunto unión con `align_vars` antes de verificar.
   - peldaño: defecto #3 del hunt (cosh(3x)−cosh(x)); luego #4 (inecuaciones abs-sum "No solution"),
     #5 (endpoints de inecuación radical), #6/#7 (potencia-de-potencia |x|), #8 (arcsec+arccsc).
+
+## 2026-06-23 - P0 soundness: cosh(3x)−cosh(x) colapsaba a 0 (puente de cancelación pitagórica hiperbólica)
+
+- area:
+  - `crates/cas_engine/src/rules/arithmetic.rs` (`ExpandHyperbolicPythagoreanFactorToEnableCancellationRule`,
+    ruta directa a profundidad 0)
+- status:
+  - `retained` (P0 soundness — wrong-answer; hallado por el hunt adversarial multiagente ultracode #3,
+    verificado vs valor numérico; exento del orden de fase)
+- capture:
+  - investment_class: soundness/honestidad (identidad pitagórica hiperbólica mal aplicada como cosh²−1=0)
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: (negativa) coste educativo: la narrativa `derive` del ángulo triple hiperbólico
+    pierde un paso visible en el caso desnudo (ver retained learning / peldaño)
+  - cell: `cosh(3x)−cosh(x)` → `4·cosh³−4·cosh` (antes `0`; = 4·cosh·sinh², ≈8.5246 en x=1);
+    `cosh³−cosh` → `cosh³−cosh` (antes `0`); `4cosh³−4cosh` → idem.
+  - behavior_change_expected: cualquier `k·cosh³ − k·cosh` aislado deja de colapsar a 0 y se queda en su
+    forma expandida correcta. Las identidades GENUINAMENTE cero (`4cosh·sinh²+4cosh−4cosh³`,
+    `sinh·(cosh²−1)−sinh³`) siguen → 0. Los análogos sin/cos ya eran correctos.
+  - SOUNDNESS: la regla "puente de cancelación pitagórica hiperbólica" reconoce `k·cosh³ − k·cosh` (modo
+    `FactorThenRewrite`) para reescribirlo a `k·cosh·sinh²` y ASÍ habilitar cancelación con términos
+    vecinos (vía el scope-rewrite multi-término). Pero su ruta DIRECTA a profundidad 0 construía
+    incondicionalmente un rewrite a `0`, asumiendo que toda la expresión se anula — falso para una
+    diferencia AISLADA (`cosh³−cosh = cosh·(cosh²−1) = cosh·sinh²`, nunca idénticamente 0). Solo el modo
+    `AlreadyFactored` (un término factorizado que cancela a su compañero) es genuinamente 0. Fix: la ruta
+    directa a profundidad 0 DECLINA el modo `FactorThenRewrite` (deja la forma expandida correcta, igual
+    que un polinomio `y³−y` no se factoriza con avidez) y solo emite 0 para `AlreadyFactored`. El
+    scope-rewrite multi-término (que sí verifica que los términos restantes nieguen el reescrito) queda
+    intacto.
+  - scoping: hunt ultracode #3 → wrong-answer. Traza: `cosh(3x)−cosh(x)` → triple-ángulo → `4cosh³−4cosh`
+    → [regla pitagórica] → 0. La regla declina ahora en la ruta directa. Huella: workspace 12311/0;
+    guardrail+pressure sin deltas de estado; los únicos deltas estructurales son la narrativa `derive` del
+    caso cosh (esperado, ver abajo) y el no-determinismo preexistente de
+    `calculus_integrate_command_matrix_smoke`.
+  - NEGATIVE-SPACE / regresión educativa aceptada: al quitar el colapso bug-inducido, el simplificador
+    normaliza `cosh(3x)−cosh(x)` de una pasada a `4cosh³−4cosh`, así que la prueba `derive` de
+    `2sinh(2x)sinh(x) = 4cosh³−4cosh` (caso DESNUDO, sin término passthrough) pasa de 2 pasos visibles
+    (producto-a-suma + ángulo-triple) a 1 (producto-a-suma, que aterriza en el polinomio). La variante con
+    passthrough (`+a`) conserva los 2 pasos. 3 tests actualizados + huella `derive_contract`
+    (multi_step 19→18, single_step 371→372; éxitos netos iguales) y `derive_didactic_audit`
+    (mean_step_count 1.06→1.05). Soundness > detalle educativo (decisión explícita del operador).
+- observed:
+  - un fallback que asume la respuesta TRIVIAL (aquí 0) sin probarla es un wrong-answer encubierto — mismo
+    patrón que el gcd→1. La regla tenía dos modos (`FactorThenRewrite` = reescritura, `AlreadyFactored` =
+    cancelación real); solo el segundo justifica 0. Distinguir por modo en la ruta directa.
+  - arreglar un bug puede DEGRADAR una narrativa educativa que dependía de él: el paso visible de
+    ángulo-triple existía porque el simplificador no podía auto-normalizar `cosh(3x)−cosh(x)` (habría dado
+    0). Una vez sólido, normaliza de una pasada y funde los pasos. La narrativa rica era un artefacto del bug.
+- retained learning:
+  - los modos de un match de reescritura (rewrite-to-enable-cancellation vs cancellation-to-zero) NO son
+    intercambiables en el punto de consumo: una reescritura aislada produce su VALOR, no 0.
+  - peldaño (educativo, follow-up): restaurar el paso explícito de ángulo-triple en la narrativa `derive`
+    del caso desnudo (checkpoint en `cosh(3x)−cosh(x)` antes de normalizar) — es lógica del motor `derive`,
+    separada del fix de soundness. Luego seguir con defectos #4 (inecuaciones abs-sum), #5–#8 del hunt.

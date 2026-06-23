@@ -1923,7 +1923,7 @@ fn eval_binomial_expansion_cancel_shifted_quotient_collapses_to_one() {
 }
 
 #[test]
-fn derive_hyperbolic_product_to_sum_polynomial_uses_two_expand_steps() {
+fn derive_hyperbolic_product_to_sum_polynomial_expands_to_polynomial_form() {
     let (output, _code) = run_cli(&[
         "eval",
         "derive 2*sinh(2*x)*sinh(x), 4*cosh(x)^3-4*cosh(x)",
@@ -1934,12 +1934,18 @@ fn derive_hyperbolic_product_to_sum_polynomial_uses_two_expand_steps() {
     ]);
     let wire = parse_wire(&output);
 
+    // Proves 2·sinh(2x)·sinh(x) = 4·cosh³(x) − 4·cosh(x) (both = 4·cosh·sinh²).
+    // This previously took two visible steps (product-to-sum → cosh(3x)−cosh(x),
+    // then triple-angle) because the intermediate cosh(3x)−cosh(x) was a forced
+    // checkpoint: simplifying it further hit the bug that collapsed it to 0. Once
+    // that wrong-answer is fixed, the intermediate simplifies cleanly in one
+    // pass, so the expansion now lands on the polynomial form in a single step.
     assert_eq!(wire["strategy"], "expand");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
+    assert_eq!(steps.len(), 1);
     assert_rule_eq(&steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
-    assert_rule_eq(&steps[1]["rule"], "Hyperbolic Triple-Angle Identity");
+    assert_eq!(wire["result"], "4·cosh(x)^3 - 4·cosh(x)");
 }
 
 #[test]

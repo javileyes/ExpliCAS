@@ -7,8 +7,8 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 ## Summary
 
 - Derived cases audited: `472`
-- Mean top-level step count: `1.06`
-- Total web substeps: `485`
+- Mean top-level step count: `1.05`
+- Total web substeps: `484`
 
 ## Flag Summary
 
@@ -21,7 +21,7 @@ No audit flags emitted.
 | --- | ---: | ---: | ---: | ---: |
 | `collect` | 6 | 0 | 0 | 0 |
 | `conditional_factor` | 6 | 0 | 0 | 12 |
-| `expand` | 34 | 0 | 0 | 47 |
+| `expand` | 34 | 0 | 0 | 46 |
 | `factor` | 17 | 0 | 0 | 21 |
 | `finite_aggregate` | 17 | 0 | 0 | 34 |
 | `finite_telescoping` | 9 | 0 | 0 | 21 |
@@ -204,7 +204,7 @@ No audit flags emitted.
 | `expand_hyperbolic_cosh_difference_to_product_exact` | `expand` | 1 | 1 | none |
 | `expand_hyperbolic_cosh_sum` | `expand` | 1 | 1 | none |
 | `expand_hyperbolic_cosh_sum_to_product_exact` | `expand` | 1 | 1 | none |
-| `expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial` | `expand` | 2 | 2 | none |
+| `expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial` | `expand` | 1 | 1 | none |
 | `expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough` | `expand` | 2 | 2 | none |
 | `expand_hyperbolic_product_to_sum_to_sinh_cubic_polynomial` | `expand` | 1 | 1 | none |
 | `expand_hyperbolic_sinh_difference` | `expand` | 1 | 1 | none |
@@ -5606,8 +5606,8 @@ Result: 2 * cosh((x + y) / 2) * cosh((x - y) / 2)
 - Source: `2*sinh(2*x)*sinh(x)`
 - Target: `4*cosh(x)^3-4*cosh(x)`
 - Result: `4 * cosh(x)^3 - 4 * cosh(x)`
-- Web step count: `2`
-- Web substep count: `2`
+- Web step count: `1`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -5617,13 +5617,9 @@ Parsed: 2 * sinh(x) * sinh(2 * x)
 Target: 4 * cosh(x)^3 - 4 * cosh(x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Apply a hyperbolic product-to-sum or sum-to-product identity  [Aplicar identidad hiperbólica de producto a suma]
+1. Expand 2·sinh(u)·sinh(v) as cosh(u + v) - cosh(u - v)  [Aplicar identidad hiperbólica de producto a suma]
    Before: 2 * sinh(x) * sinh(2 * x)
-   Cambio local: 2 * sinh(x) * sinh(2 * x) -> cosh(3 * x) - cosh(x)
-   After: cosh(3 * x) - cosh(x)
-2. Combine cosh(u) ± cosh(3u) using the hyperbolic triple-angle identity  [Aplicar identidad hiperbólica de ángulo triple]
-   Before: cosh(3 * x) - cosh(x)
-   Cambio local: cosh(3 * x) - cosh(x) -> 4 * cosh(x)^(3) - 4 * cosh(x)
+   Cambio local: 2 * sinh(x) * sinh(2 * x) -> 4 * cosh(x)^(3) - 4 * cosh(x)
    After: 4 * cosh(x)^3 - 4 * cosh(x)
 Result: 4 * cosh(x)^(3) - 4 * cosh(x)
 ```
@@ -5632,14 +5628,9 @@ Result: 4 * cosh(x)^(3) - 4 * cosh(x)
 
 1. `Aplicar identidad hiperbólica de producto a suma`
    - before: `2 · sinh(x) · sinh(2 · x)`
-   - after: `cosh(3 · x) - cosh(x)`
-   - substeps:
-     1. `Usar 2·sinh(A)·sinh(B) = cosh(A+B) - cosh(A-B)`
-2. `Aplicar identidad hiperbólica de ángulo triple`
-   - before: `cosh(3 · x) - cosh(x)`
    - after: `4 · cosh(x)^3 - 4 · cosh(x)`
    - substeps:
-     1. `Usar cosh(3·x) = 4·cosh(x)^3 - 3·cosh(x)`
+     1. `Usar 2·sinh(A)·sinh(B) = cosh(A+B) - cosh(A-B)`
 
 ## expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough (expand)
 

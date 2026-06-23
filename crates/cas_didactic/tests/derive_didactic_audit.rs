@@ -3989,16 +3989,17 @@ fn derive_didactic_hyperbolic_direct_tanh_triple_angle_stays_direct_without_redu
 
 #[test]
 fn derive_didactic_hyperbolic_triple_angle_explains_combined_cosh_steps() {
-    for case_id in [
-        "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial",
+    // The passthrough variant keeps the discrete triple-angle step (the extra
+    // `+a` term blocks the one-pass normalization). The bare variant no longer
+    // surfaces it: the soundness fix (cosh(3x)−cosh(x) no longer collapses to 0)
+    // lets the product-to-sum output normalize straight to the cubic polynomial
+    // in a single step. Follow-up: restore the explicit triple-angle step in the
+    // bare derive narrative so this educational identity stays visible there too.
+    assert_case_step_titles(
         "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough",
-    ] {
-        assert_case_step_titles(
-            case_id,
-            "Aplicar identidad hiperbólica de ángulo triple",
-            &["Usar cosh(3·x) = 4·cosh(x)^3 - 3·cosh(x)"],
-        );
-    }
+        "Aplicar identidad hiperbólica de ángulo triple",
+        &["Usar cosh(3·x) = 4·cosh(x)^3 - 3·cosh(x)"],
+    );
 }
 
 #[test]

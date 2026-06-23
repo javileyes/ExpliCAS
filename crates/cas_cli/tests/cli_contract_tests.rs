@@ -666,6 +666,58 @@ fn test_eval_matrix_commutator_does_not_collapse_to_zero() {
 }
 
 #[test]
+fn test_eval_cosh_cube_difference_does_not_collapse_to_zero() {
+    // cosh³(x) − cosh(x) = cosh(x)·(cosh²(x) − 1) = cosh(x)·sinh²(x), which is
+    // NOT identically 0. The "Hyperbolic Pythagorean Identity Cancellation
+    // Bridge" rule recognised the FactorThenRewrite pattern and, at the root,
+    // unconditionally collapsed it to 0 (a wrong-answer, e.g. cosh(3x)−cosh(x)
+    // → 0). The fix declines that standalone case, leaving the correct expanded
+    // form (just as a plain polynomial y³−y is left unfactored). (The sin/cos
+    // analogues already worked.)
+    for (input, expected) in [
+        ("cosh(x)^3 - cosh(x)", "cosh(x)^3 - cosh(x)"),
+        ("4*cosh(x)^3 - 4*cosh(x)", "4·cosh(x)^3 - 4·cosh(x)"),
+        // cosh(3x) expands (triple angle) to 4cosh³−3cosh; the difference is
+        // 4cosh³−4cosh = 4cosh·sinh², never 0.
+        ("cosh(3*x) - cosh(x)", "4·cosh(x)^3 - 4·cosh(x)"),
+    ] {
+        for mode in ["off", "on"] {
+            let output = cli()
+                .args(["eval", input, "--format", "json", "--steps", mode])
+                .output()
+                .expect("Failed to run CLI");
+            assert!(output.status.success(), "{input} (steps={mode})");
+            let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+            let result = wire["result"].as_str();
+            assert_ne!(
+                result,
+                Some("0"),
+                "{input} (steps={mode}): hyperbolic cube difference must not collapse to 0"
+            );
+            assert_eq!(result, Some(expected), "{input} (steps={mode})");
+        }
+    }
+
+    // The genuinely-zero hyperbolic Pythagorean identities must still collapse:
+    // 4cosh·sinh² + 4cosh − 4cosh³ = 4cosh(sinh² + 1 − cosh²) = 0.
+    for input in [
+        "4*cosh(x)*sinh(x)^2 + 4*cosh(x) - 4*cosh(x)^3",
+        "sinh(2*x+1)*(cosh(2*x+1)^2 - 1) - sinh(2*x+1)^3",
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(
+            wire["result"].as_str(),
+            Some("0"),
+            "{input}: genuine hyperbolic Pythagorean zero identity must still collapse"
+        );
+    }
+}
+
+#[test]
 fn test_eval_shifted_log_tan_sqrt_diff_finishes_without_depth_overflow() {
     let cases = [
         (

@@ -186,6 +186,26 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   el mismo código; integración no llama esa ruta de gcd). Peldaño: implementar un PRS subresultante exacto
   determinista evitaría depender del modp+verificación; n>2 variables y casos fuera de presupuesto del
   modp quedan como residuales.)*
+
+- [x] **(S) `cosh(3x) − cosh(x)` colapsaba a `0`**: devolvía `0` cuando el valor real es
+  `4·cosh³(x) − 4·cosh(x) = 4·cosh(x)·sinh²(x)` (≈8.5246 en x=1). Igual `cosh³(x) − cosh(x)` → `0`
+  (= `cosh·sinh²`). Los análogos circulares (`cos(3x)−cos(x)`, `sin³−sin`) ya eran correctos, ocultando
+  el defecto hiperbólico. (P0 soundness en simplificación no-cálculo; hallado por el hunt ultracode #3.)
+  *(graduado 2026-06-23 PENDIENTE: la regla "puente de cancelación pitagórica hiperbólica"
+  (`ExpandHyperbolicPythagoreanFactorToEnableCancellationRule`) reconoce `k·cosh³ − k·cosh` (modo
+  `FactorThenRewrite`) para reescribirlo a `k·cosh·sinh²` y habilitar cancelación con términos vecinos —
+  pero su ruta DIRECTA a profundidad 0 construía incondicionalmente un rewrite a `0`, asumiendo que toda
+  la expresión se anula. Falso para una diferencia AISLADA (`cosh³−cosh = cosh·(cosh²−1) = cosh·sinh²`,
+  nunca idénticamente 0). Fix: la ruta directa DECLINA el modo `FactorThenRewrite` (deja la forma expandida
+  correcta, igual que `y³−y` no se factoriza con avidez); solo `AlreadyFactored` (término factorizado que
+  cancela a su compañero, p.ej. `sinh·(cosh²−1)−sinh³`) sigue → 0. El scope-rewrite multi-término (que
+  verifica negación de los términos restantes) queda intacto: las identidades genuinamente cero siguen
+  colapsando. Verificado numéricamente + identidades cero preservadas. Huella workspace 12311/0;
+  guardrail+pressure sin deltas de estado. **Coste educativo aceptado** (decisión del operador, soundness >
+  detalle): la prueba `derive` desnuda de `2sinh(2x)sinh(x)=4cosh³−4cosh` pasa de 2 pasos visibles a 1 (el
+  paso de ángulo-triple se funde en la normalización); la variante con passthrough conserva los 2. Peldaño:
+  restaurar el paso explícito de ángulo-triple en la narrativa `derive` desnuda — lógica del motor `derive`,
+  follow-up separado.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

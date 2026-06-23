@@ -14493,11 +14493,26 @@ define_rule!(
             if let Some(rewrite_match) =
                 try_rewrite_hyperbolic_pythagorean_factor_for_cancellation(ctx, expr)
             {
-                return Some(build_hyperbolic_pythagorean_factor_root_zero_rewrite(
-                    ctx,
-                    expr,
-                    rewrite_match,
-                ));
+                // Only `AlreadyFactored` — one factored term cancelling its
+                // companion (`sinh·(cosh²−1) − sinh³`) — genuinely collapses to 0.
+                //
+                // `FactorThenRewrite` at the root is a STANDALONE difference
+                // `k·cosh³ − k·cosh`, which equals `k·cosh·(cosh²−1) = k·cosh·sinh²`
+                // and is NEVER identically 0. Collapsing it to 0 was a wrong-answer
+                // (`cosh(3x) − cosh(x)` → 0). Decline instead of forcing 0: the
+                // correct expanded form `k·cosh³ − k·cosh` is left as-is (just like a
+                // plain polynomial `y³ − y` is not eagerly factored), so the value is
+                // right and multi-term cancellations still flow through the scope
+                // rewrite above.
+                if let HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored { .. } =
+                    rewrite_match.mode
+                {
+                    return Some(build_hyperbolic_pythagorean_factor_root_zero_rewrite(
+                        ctx,
+                        expr,
+                        rewrite_match,
+                    ));
+                }
             }
         }
 
