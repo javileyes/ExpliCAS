@@ -8137,7 +8137,7 @@ mod tests {
         let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
         let text = rendered(&ctx, out);
 
-        assert!(text.contains("sqrt(1 - 1 / (x^2 + 1)^2^2)"), "{text}");
+        assert!(text.contains("sqrt(1 - 1 / ((x^2 + 1)^2)^2)"), "{text}");
         assert!(
             !text.contains("+") || !text.contains("x^3"),
             "unexpected quotient-rule expansion in {text}"
@@ -8315,7 +8315,7 @@ mod tests {
     fn differentiates_atanh_with_open_unit_interval_witness() {
         let cases = [
             ("atanh(x)", "sqrt(1 - x^2)^(-2)"),
-            ("atanh(x^2)", "(x^(2 - 1) * 2)/(sqrt(1 - x^2^2)^2)"),
+            ("atanh(x^2)", "(x^(2 - 1) * 2)/(sqrt(1 - (x^2)^2)^2)"),
         ];
 
         for (input, expected) in cases {
@@ -8544,7 +8544,7 @@ mod tests {
         let text = rendered(&ctx, out);
 
         assert!(text.contains("2 * x"), "{text}");
-        assert!(text.contains("sqrt(1 - x^2^2)"), "{text}");
+        assert!(text.contains("sqrt(1 - (x^2)^2)"), "{text}");
         assert!(!text.contains("diff("), "{text}");
     }
 
@@ -8556,7 +8556,7 @@ mod tests {
         let text = rendered(&ctx, out);
 
         assert!(text.contains("2 * x"), "{text}");
-        assert!(text.contains("x^2^2 + 1"), "{text}");
+        assert!(text.contains("(x^2)^2 + 1"), "{text}");
         assert!(!text.contains("diff("), "{text}");
     }
 

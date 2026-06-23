@@ -2126,7 +2126,7 @@ Result: e^(x - y)
 ### CLI
 
 ```text
-Parsed: e^x^3
+Parsed: (e^x)^3
 Target: e^(3 * x)
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
@@ -4931,7 +4931,7 @@ Result: x^(8) - a^(8)
 
 - Source: `exp(3*x)`
 - Target: `exp(x)^3`
-- Result: `e^x^3`
+- Result: `(e^x)^3`
 - Web step count: `1`
 - Web substep count: `1`
 - Flags: none
@@ -4940,13 +4940,13 @@ Result: x^(8) - a^(8)
 
 ```text
 Parsed: e^(3 * x)
-Target: e^x^3
+Target: (e^x)^3
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
 1. Expand exp(n·u) as exp(u)^n  [Expandir potencia exponencial]
    Before: e^(3 * x)
    Cambio local: e^(3 * x) -> e^(x)^(3)
-   After: e^x^3
+   After: (e^x)^3
 Result: e^(x)^(3)
 ```
 
@@ -13229,7 +13229,7 @@ Result: x
 ### CLI
 
 ```text
-Parsed: ln(e^x^2)
+Parsed: ln((e^x)^2)
 Target: 2 * x
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):

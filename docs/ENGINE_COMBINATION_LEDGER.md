@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 313 (newest first)
+Active entries: 314 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
+- 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13340,3 +13341,53 @@ Active entries: 313 (newest first)
   - peldaño: el límite inferior surd (`-√13`) renderiza como `-13·13^(-1/2)` (estilo preexistente del path
     de cotas surd) — cosmético, no soundness; pulido aparte. Seguir con defectos #6/#7 (potencia-de-potencia
     |x|), #8 (arcsec+arccsc).
+
+## 2026-06-24 - P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
+
+- area:
+  - `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una potencia)
+- status:
+  - `retained` (P0 soundness — el texto de salida re-parsea a una expresión DISTINTA; relacionado con el
+    frente #6/#7 del hunt ultracode "potencia-de-potencia |x|")
+- capture:
+  - investment_class: soundness/honestidad (la representación textual debe ser inequívoca / round-trip-safe)
+  - primary_dimension: north_star_soundness
+  - cell: `(4·x²)^(1/2)` → texto `2·x^2^(1/2)` (antes) que re-parsea como `2·x^(2^(1/2)) = 2·x^√2`
+    (¡distinto!); ahora `2·(x^2)^(1/2)` que re-parsea correctamente (→ `2·|x|`). Igual
+    `((u²+1)^(1/2))^2`, `(x^2)^2`, `(sin(u)^2)^2`.
+  - SOUNDNESS: `^` es ASOCIATIVO POR LA DERECHA, así que `x^a^b` parsea como `x^(a^b)`. El formateador de
+    texto solo ponía paréntesis a la base de una potencia si `base_prec < op_prec`; como `Pow` y el operador
+    `^` tienen la MISMA precedencia (3), una base que es a su vez una potencia (`x^2`) NO se parentizaba →
+    `x^2^(1/2)`, que re-parsea como `x^(2^(1/2))`. Fix de una línea: `base_prec <= op_prec` (parentiza la base
+    de precedencia igual). Como `Pow` es el único nodo de precedencia 3, esto añade paréntesis EXACTAMENTE a
+    las bases-potencia. El LaTeX ya era correcto (usa llaves `{{x}^{2}}^{...}`); solo el texto fallaba.
+  - NO-bug (importante, para no "re-arreglar"): las transformaciones de VALOR de potencia-de-potencia con
+    denominador impar (`(x²)^(1/3) → x^(2/3)`, `(x⁴)^(2/3) → x^(8/3)`) son CORRECTAS bajo la semántica de
+    potencia REAL del engine: `(-8)^(2/3) → 4`, `(-8)^(1/3) → -2`, y `(-3)^(2/3) - |−3|^(2/3) → 0`
+    confirman que `x^(p/q)` (q impar) es la raíz REAL = `|x|^(p/q)` (no la rama principal compleja). Un
+    oráculo sympy/mpmath con rama compleja las marca como wrong-answer — FALSO POSITIVO. (El denominador PAR
+    sí lleva abs: `(x²)^(1/4) → |x|^(1/2)`, correcto.) Se REVIRTIÓ un intento de "fix" de valor; el engine
+    ya era sólido.
+  - scoping: investigación con verificación adversarial: fuzzer Python round-trip (texto re-evaluado vía el
+    propio engine) + consistencia del engine consigo mismo en bases negativas. El fuzzer inicial con oráculo
+    sympy dio 19-54 "wrong values" — TODOS falsos positivos (rama compleja vs real, o sub-simplificación
+    `9^(1/4)=√3`, o `0·X`). El único defecto real era el rendering. 10 tests actualizaban el rendering viejo
+    AMBIGUO (`(u²+1)^(1/2)^2`, `x^2^2`) al correcto parentizado — enshrinaban el bug. Workspace 12314/0;
+    formatter 125/0; guardrail+pressure sin deltas de estado.
+- observed:
+  - un oráculo de verificación debe usar la MISMA convención semántica que el sistema bajo prueba: sympy/
+    mpmath usan la rama principal compleja para `x^(p/q)`; el engine usa la raíz real. Comparar entre
+    convenciones produce falsos positivos masivos. Verificar la auto-consistencia del engine (¿`expr` y su
+    forma simplificada coinciden numéricamente bajo LA semántica del engine?) es el chequeo correcto.
+  - asociatividad + igualdad de precedencia: el operador derecho-asociativo necesita paréntesis en su
+    operando IZQUIERDO cuando tiene IGUAL precedencia (`a^b^c` ≠ `(a^b)^c`). El `<` debía ser `<=`.
+  - los tests pueden enshrinar un rendering con bug: 10 esperaban la forma ambigua. Al corregir el
+    formateador, actualizar los contratos a la forma correcta (no es regresión).
+- retained learning:
+  - representación textual = contrato de round-trip: `eval(render(e))` debe ser `e`. Una potencia anidada
+    sin paréntesis viola esto bajo asociatividad por la derecha.
+  - antes de "arreglar" un valor que un oráculo externo marca, confirma que el oráculo comparte la
+    convención de dominio (real vs complejo) del engine. Aquí la convención de potencia REAL del engine es
+    sólida y auto-consistente; el "fix" habría sido innecesario y disruptivo.
+  - peldaño: sub-simplificaciones residuales (`(4x²)^(1/2)` no llega a `2|x|` en una pasada; `9^(1/4)` no
+    reduce a `√3`) — idempotencia/fixpoint, follow-up de calidad. Seguir con defecto #8 (arcsec+arccsc).

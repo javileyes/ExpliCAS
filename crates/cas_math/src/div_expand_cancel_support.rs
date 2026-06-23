@@ -1092,7 +1092,7 @@ mod tests {
             },
         )
         .expect("rewrite");
-        assert_eq!(render_expr(&ctx, rewrite.rewritten), "(x^2 + 1)^(1/2)^2");
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "((x^2 + 1)^(1/2))^2");
     }
 
     #[test]
@@ -1259,7 +1259,7 @@ mod tests {
         let plan = prepare_opaque_shared_substitution(&mut ctx, num, den, &shared);
         let quotient = parse("__opq0^2", &mut ctx).expect("parse quotient");
         let restored = substitute_back_opaque_temps(&mut ctx, quotient, &plan.temp_vars);
-        assert_eq!(render_expr(&ctx, restored), "(x^2 + 1)^(1/2)^2");
+        assert_eq!(render_expr(&ctx, restored), "((x^2 + 1)^(1/2))^2");
     }
 
     #[test]
@@ -1297,7 +1297,7 @@ mod tests {
             },
         )
         .expect("rewrite");
-        assert_eq!(render_expr(&ctx, rewrite.rewritten), "(x^2 + 1)^(1/2)^2");
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "((x^2 + 1)^(1/2))^2");
     }
 
     #[test]
@@ -1338,7 +1338,7 @@ mod tests {
         .expect("rewrite");
         assert_eq!(
             render_expr(&ctx, rewrite.rewritten),
-            "(u^2 + 1)^(1/2)^2 + (u^2 + 1)^(1/2) + 1"
+            "((u^2 + 1)^(1/2))^2 + (u^2 + 1)^(1/2) + 1"
         );
     }
 
@@ -1359,7 +1359,7 @@ mod tests {
         .expect("rewrite");
         assert_eq!(
             render_expr(&ctx, rewrite.rewritten),
-            "(u^2 + 1)^(1/2)^2 + (u^2 + 1)^(1/2) + 1"
+            "((u^2 + 1)^(1/2))^2 + (u^2 + 1)^(1/2) + 1"
         );
     }
 }

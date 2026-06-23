@@ -241,6 +241,23 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   cuadrático con split, ln, rango). Workspace 12313/0; guardrail+pressure sin deltas de estado (solo
   no-determinismo preexistente de smokes diff/integrate). Peldaño cosmético: la cota inferior surd `-√13`
   renderiza como `-13·13^(-1/2)` (estilo preexistente del path de cotas surd) — no soundness.)*
+
+- [x] **(S) El TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)**:
+  `(4·x²)^(1/2)` mostraba el texto `2·x^2^(1/2)`, que re-parsea como `2·x^(2^(1/2)) = 2·x^√2` — una
+  expresión DISTINTA (el LaTeX sí era correcto). Como `^` es asociativo por la derecha, una potencia cuya
+  base es a su vez una potencia debe parentizarse. (Relacionado con el frente #6/#7 del hunt; el otro
+  síntoma —`(x²)^(1/3) → x^(2/3)`— NO es bug: es correcto bajo la semántica de potencia REAL del engine,
+  ver abajo.)
+  *(graduado 2026-06-24 PENDIENTE: el formateador de TEXTO solo parentizaba la base de una potencia si
+  `base_prec < op_prec`; `Pow` y el operador `^` comparten precedencia (3), así que una base-potencia (`x^2`)
+  no se parentizaba → `x^2^(1/2)`. Fix de una línea: `base_prec <= op_prec` (parentiza la base de igual
+  precedencia; `Pow` es el único nodo de precedencia 3). Verificado con fuzzer round-trip (texto re-evaluado
+  vía el engine) y consistencia del engine en bases negativas; 10 tests que enshrinaban el rendering ambiguo
+  (`(u²+1)^(1/2)^2`, `x^2^2`) actualizados al correcto. Workspace 12314/0; formatter 125/0; huella sin
+  deltas de estado. **NO-bug documentado**: `(x²)^(1/3) → x^(2/3)` es CORRECTO — el engine usa potencia
+  REAL (`(-8)^(2/3)=4`, `(-3)^(2/3)-|−3|^(2/3)=0`, denominador par sí lleva abs `(x²)^(1/4)→|x|^(1/2)`); un
+  oráculo sympy/mpmath de rama compleja lo marca como wrong-answer pero es FALSO POSITIVO. Peldaño:
+  sub-simplificación residual (`(4x²)^(1/2)` no llega a `2|x|` en una pasada) — idempotencia, follow-up.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

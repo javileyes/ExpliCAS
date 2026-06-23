@@ -817,6 +817,55 @@ fn test_eval_radical_inequality_keeps_argument_domain() {
 }
 
 #[test]
+fn test_eval_nested_power_text_is_parenthesized_and_round_trips() {
+    // `^` is right-associative, so a surviving nested power must be parenthesized
+    // in the TEXT output. `(4*x^2)^(1/2)` simplifies to `2·(x^2)^(1/2)` but was
+    // rendered `2·x^2^(1/2)`, which re-parses as `2·x^(2^(1/2)) = 2·x^√2` — a
+    // different, wrong expression. The fix wraps the power base in parentheses so
+    // the text round-trips to the same value.
+    let output = cli()
+        .args(["eval", "(4*x^2)^(1/2)", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+    let result = wire["result"].as_str().expect("result string");
+    assert!(
+        result.contains("(x^2)"),
+        "nested power base must be parenthesized, got {result:?}"
+    );
+
+    // Round-trip: feed the rendered text back in; it must evaluate to the true
+    // value `2·|x|`, not the mis-parsed `2·x^√2`.
+    let reparse = cli()
+        .args(["eval", &result.replace('·', "*"), "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire2: Value = serde_json::from_slice(&reparse.stdout).expect("Invalid wire output");
+    assert_eq!(
+        wire2["result"].as_str(),
+        Some("2·|x|"),
+        "rendered nested-power text must round-trip to 2·|x|, got {:?}",
+        wire2["result"]
+    );
+
+    // Other clean power renderings are unchanged.
+    for (input, expected) in [
+        ("x^2", "x^2"),
+        ("(x+1)^2", "(x + 1)^2"),
+        ("x^2*y^3", "x^2·y^3"),
+        ("(x^2)^(1/2)", "|x|"),
+        ("x^2^3", "x^8"),
+    ] {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let w: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        assert_eq!(w["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_shifted_log_tan_sqrt_diff_finishes_without_depth_overflow() {
     let cases = [
         (

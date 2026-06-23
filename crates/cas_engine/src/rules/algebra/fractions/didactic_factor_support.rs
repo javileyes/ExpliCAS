@@ -658,7 +658,7 @@ mod tests {
                     id: plan.cancelled_result
                 }
             ),
-            "1 + sin(u)^2 + sin(u)^2^2"
+            "1 + sin(u)^2 + (sin(u)^2)^2"
         );
     }
 
