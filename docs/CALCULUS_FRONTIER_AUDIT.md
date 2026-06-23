@@ -45,6 +45,21 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 
 ### P0 — soundness y confianza (antes que capacidad)
 
+- [x] **(S) `diff` soltaba la condición de dominio de un factor recíproco-trig que se cancela**:
+  `diff(tan(x)·cos(x), x)` devolvía `cos(x)` SIN condición (válida solo donde `cos(x)≠0`, ya que
+  `tan(x)·cos(x)` es indefinida en `cos(x)=0`); igual `diff(sec x·cos x)→0`, `diff(cot x·sin x)→−sin(x)`,
+  `diff(sin x·cot x)`, `diff(csc x·sin x)`. El motor era CONSISTENTE en casos paralelos
+  (`diff(tan x·cot x)→0` con `[cos≠0,sin≠0]`, `diff((x²−1)/(x−1))` con `[x≠1]`, `diff(x/x)` con `[x≠0]`):
+  solo la familia trig-que-cancela lo soltaba. (P0 soundness en `diff`; exento del orden de fase.)
+  *(graduado 2026-06-23 eeced5d5c: hallado por el HUNT ADVERSARIAL MULTIAGENTE (ultracode) y verificado
+  por 2 lentes vs sympy/mpmath. Causa raíz: las `required_conditions` se derivan de la estructura del
+  RESULTADO, así que un factor restrictor que se cancela (`tan·cos → sin`) pierde su condición;
+  `infer_implicit_domain` tampoco modela los dominios de tan/cot/sec/csc (es de solo-lectura). Fix en la
+  rama `diff` de `eval_simplify`: recorre el diferando y re-adjunta `tan`/`sec`→`cos≠0`,
+  `cot`/`csc`→`sin≠0` (con `&mut ctx` para construir el `cos`/`sin`), dedup; gateado a `diff` (plain eval
+  intacto); funciones solas/sumas no duplican; argumentos constantes no aportan. Form-only: el valor de la
+  derivada no cambia. 5 fixtures actualizados (mejoras legítimas), huella 0 deltas, smokes verdes, test
+  nuevo. Peldaño: análogos sqrt/log que se cancelan — re-adjuntar el dominio COMPLETO del diferando.)*
 - [x] **(F) Inecuaciones polinómicas de grado≥3 expandidas**: `solve(x^4-5x^2+4<0)` devolvía ∅
   (real `(-2,-1)∪(1,2)`) y `solve(x^3-x<0)` un aislamiento garbled `solve(x=x^(1/3))`; las formas
   factorizadas equivalentes sí resolvían. Las estrategias degree-aware (Quadratic, RationalRoots)
