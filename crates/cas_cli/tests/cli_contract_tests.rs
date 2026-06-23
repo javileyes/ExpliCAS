@@ -866,6 +866,69 @@ fn test_eval_nested_power_text_is_parenthesized_and_round_trips() {
 }
 
 #[test]
+fn test_eval_complementary_inverse_trig_respects_domain() {
+    // `arcsin(x) + arccos(x) = π/2` (and the `arcsec + arccsc` form that reduces
+    // to it) holds only where both terms are real, i.e. on `[-1, 1]` for
+    // arcsin/arccos. For a concrete argument provably OUTSIDE that interval both
+    // terms are undefined, so the identity must NOT collapse the sum to π/2.
+    // Previously `arccos(2) + arcsin(2)` and `arcsec(1/2) + arccsc(1/2)` returned
+    // π/2 — a wrong answer.
+    for input in [
+        "arccos(2) + arcsin(2)",
+        "arcsin(2) + arccos(2)",
+        "arccos(3) + arcsin(3)",
+        "arcsec(1/2) + arccsc(1/2)",
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_ne!(
+            wire["result"].as_str(),
+            Some("1/2·pi"),
+            "{input}: out-of-domain inverse-trig sum must not collapse to π/2"
+        );
+    }
+
+    // Valid arguments still apply the identity: symbolic (with the domain
+    // condition), in-interval constants, and the `|x| >= 1` arcsec/arccsc form.
+    for input in [
+        "arccos(x) + arcsin(x)",
+        "arccos(1/2) + arcsin(1/2)",
+        "arccos(1) + arcsin(1)",
+        "arccos(-1) + arcsin(-1)",
+        "arcsec(2) + arccsc(2)",
+        "arcsec(x) + arccsc(x)",
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(
+            wire["result"].as_str(),
+            Some("1/2·pi"),
+            "{input}: valid complementary inverse-trig sum must give π/2"
+        );
+    }
+
+    // The symbolic arcsin/arccos form carries its `-1 ≤ x ≤ 1` domain condition.
+    let output = cli()
+        .args(["eval", "arccos(x) + arcsin(x)", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+    let displays = wire["required_display"]
+        .as_array()
+        .expect("required_display");
+    assert!(
+        displays.iter().any(|v| v.as_str() == Some("-1 ≤ x ≤ 1")),
+        "arccos(x)+arcsin(x) must carry the -1 ≤ x ≤ 1 condition, got {displays:?}"
+    );
+}
+
+#[test]
 fn test_eval_shifted_log_tan_sqrt_diff_finishes_without_depth_overflow() {
     let cases = [
         (

@@ -758,6 +758,14 @@ pub fn try_plan_inverse_trig_sum_pair_expr(
                         || compare_expr(ctx, arg_i, arg_j) == std::cmp::Ordering::Equal;
 
                     if args_equal {
+                        // `arcsin`/`arccos` are real only on `[-1, 1]`. A concrete
+                        // argument provably OUTSIDE the unit interval makes BOTH
+                        // terms undefined, so `arcsin(x) + arccos(x) = π/2` must NOT
+                        // collapse `arccos(2) + arcsin(2)` (nor the
+                        // `arcsec(1/2) + arccsc(1/2)` form it reduces to) to π/2.
+                        if is_number_outside_unit_interval(ctx, arg_i) {
+                            return None;
+                        }
                         let is_i_arcsin = matches!(
                             ctx.builtin_of(*name_i),
                             Some(BuiltinFn::Arcsin | BuiltinFn::Asin)

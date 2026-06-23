@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 314 (newest first)
+Active entries: 315 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
+- 2026-06-24 | `retained` | `crates/cas_math/src/inverse_trig_composition_support.rs` (gate de dominio en... | P0 soundness: identidad complementaria arcsin+arccos colapsaba fuera de dominio (hunt #8, último)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13391,3 +13392,42 @@ Active entries: 314 (newest first)
     sólida y auto-consistente; el "fix" habría sido innecesario y disruptivo.
   - peldaño: sub-simplificaciones residuales (`(4x²)^(1/2)` no llega a `2|x|` en una pasada; `9^(1/4)` no
     reduce a `√3`) — idempotencia/fixpoint, follow-up de calidad. Seguir con defecto #8 (arcsec+arccsc).
+
+## 2026-06-24 - P0 soundness: identidad complementaria arcsin+arccos colapsaba fuera de dominio (hunt #8, último)
+
+- area:
+  - `crates/cas_math/src/inverse_trig_composition_support.rs` (gate de dominio en la pareja complementaria)
+- status:
+  - `retained` (P0 soundness — wrong-answer; cierra el frente #8 y con él los 8 defectos del hunt ultracode)
+- capture:
+  - investment_class: soundness/honestidad (identidad notable que NO es válida fuera del dominio común)
+  - primary_dimension: north_star_soundness
+  - cell: `arcsec(1/2)+arccsc(1/2)` → `π/2` (ANTES, wrong) vs residual honesto `arcsin(2)+arccos(2)` (AHORA).
+    Para `|x|<1` AMBOS `arcsec(x)`/`arccsc(x)` son indefinidos en ℝ (dominio `|x|≥1`); el engine los reescribe
+    a `arccos(1/x)+arcsin(1/x)` = `arccos(2)+arcsin(2)`, y la identidad `arcsin(t)+arccos(t)=π/2` se disparaba
+    por IGUALDAD de argumento sin verificar `t∈[-1,1]`, colapsando una suma de dos términos NO existentes.
+  - SOUNDNESS: la identidad `arcsin(t)+arccos(t)=π/2` solo vale donde AMBOS lados existen, i.e. `t∈[-1,1]`.
+    `try_plan_inverse_trig_sum_pair_expr` reconocía la pareja por igualdad de argumentos pero no gateaba el
+    dominio. Fix mínimo en la rama `args_equal`: `if is_number_outside_unit_interval(ctx, arg_i) { return None; }`
+    (helper ya existente, compara `n > 1 || n < -1` exacto sobre el literal). Un argumento concreto provablemente
+    fuera de `[-1,1]` ⇒ no colapsar ⇒ residual honesto. La forma `add` (`try_plan_inverse_trig_sum_add_expr`)
+    delega en la `pair`, así que queda cubierta sin tocarla.
+  - scoping: aislado el wrong-answer concreto (`arcsec(1/2)+arccsc(1/2)→π/2`) a la regla complementaria
+    disparándose con `arg=2`; confirmado que NINGÚN test enshrinaba el bug; verificado contra los casos válidos
+    (`arccos(1/2)+arcsin(1/2)`, `arccos(±1)+arcsin(±1)`, `arcsec(2)+arccsc(2)`, simbólico `arccos(x)+arcsin(x)`
+    con `-1≤x≤1`). Test de regresión `test_eval_complementary_inverse_trig_respects_domain`. Workspace 12315/0;
+    clippy/fmt limpios; guardrail+pressure sin deltas de estado.
+- observed:
+  - una identidad notable es un contrato condicionado al dominio: reconocerla por forma sintáctica (igualdad de
+    argumentos) sin gatear el dominio común de ambos términos produce wrong-answers cuando el argumento cae
+    fuera. El gate debe vivir EN el reconocedor de la identidad, no aguas abajo.
+  - reescrituras multi-paso (`arcsec→arccos(1/x)`) pueden empujar un argumento legal del símbolo externo
+    (`|x|≥1`) a uno ilegal del interno (`|1/x|≤1`) — el dominio de honestidad se evalúa sobre la forma POST
+    reescritura, donde el reconocedor lo ve.
+- retained learning:
+  - antes de colapsar `f(t)+g(t)` por una identidad, verifica que `t` está en el dominio común de `f` y `g`;
+    un literal fuera de rango ⇒ residual honesto, nunca el valor de la identidad.
+  - peldaño (b): el simbólico `arcsec(x)+arccsc(x)→π/2` NO arrastra `|x|≥1` en required_display (la forma
+    `arccos(1/x)+arcsin(1/x)` sí mantiene `x≤-1 or x≥1`) — hueco de propagación de condición a través de la
+    reescritura arcsec→arccos. NO es wrong-answer (el valor es correcto donde arcsec existe); es honestidad de
+    condición, follow-up. Con #8 cerrado, los 8 defectos del hunt ultracode quedan resueltos.

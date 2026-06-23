@@ -258,6 +258,24 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   REAL (`(-8)^(2/3)=4`, `(-3)^(2/3)-|−3|^(2/3)=0`, denominador par sí lleva abs `(x²)^(1/4)→|x|^(1/2)`); un
   oráculo sympy/mpmath de rama compleja lo marca como wrong-answer pero es FALSO POSITIVO. Peldaño:
   sub-simplificación residual (`(4x²)^(1/2)` no llega a `2|x|` en una pasada) — idempotencia, follow-up.)*
+- [x] **(S) La identidad complementaria arcsin+arccos colapsaba con argumento fuera de dominio**:
+  `arcsec(1/2)+arccsc(1/2)` devolvía `π/2`, pero para `|x|<1` AMBOS términos son indefinidos en ℝ
+  (`arcsec`/`arccsc` exigen `|x|≥1`). Internamente se reduce a `arccos(2)+arcsin(2)`, y la identidad
+  `arcsin(x)+arccos(x)=π/2` se disparaba sin verificar `x∈[-1,1]`, pese a que `arcsin(2)`/`arccos(2)` no
+  existen en ℝ. (P0 soundness en `eval` de inversas trig; hallado por el hunt ultracode #8.)
+  *(graduado 2026-06-24 PENDIENTE8: `try_plan_inverse_trig_sum_pair_expr` reconocía la pareja
+  complementaria `arcsin(arg)+arccos(arg)` (y la forma `arcsec/arccsc` que se reescribe a ella) por
+  IGUALDAD de argumentos y colapsaba a `π/2` sin gatear el dominio. Fix: dentro de la rama `args_equal`,
+  `if is_number_outside_unit_interval(ctx, arg_i) { return None; }` — un argumento concreto provablemente
+  FUERA de `[-1,1]` deja la suma como residual honesto (`arcsin(2)+arccos(2)`), no la colapsa. Casos válidos
+  intactos: `arccos(1/2)+arcsin(1/2)→π/2`, `arccos(±1)+arcsin(±1)→π/2`, `arcsec(2)+arccsc(2)→π/2`,
+  simbólico `arccos(x)+arcsin(x)→π/2` con `-1≤x≤1`. Test de regresión
+  `test_eval_complementary_inverse_trig_respects_domain`. Workspace 12315/0; clippy/fmt limpios;
+  guardrail+pressure sin deltas de estado. **Peldaño (b)**: el simbólico `arcsec(x)+arccsc(x)→π/2` NO
+  arrastra la condición `|x|≥1` (required_display vacío), mientras que la forma `arccos(1/x)+arcsin(1/x)`
+  sí mantiene `x≤-1 or x≥1`: hueco de propagación de condición a través de la reescritura multi-paso
+  arcsec→arccos — follow-up de honestidad, NO wrong-answer (el valor `π/2` es correcto donde `arcsec`
+  existe).)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).
