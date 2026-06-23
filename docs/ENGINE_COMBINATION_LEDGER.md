@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 312 (newest first)
+Active entries: 313 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
+- 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13295,3 +13296,47 @@ Active entries: 312 (newest first)
     piecewise (resolver la ecuación lineal por tramo, recolectar puntos), follow-up; (b) pasos didácticos del
     solver piecewise (ahora devuelve la solución sin narrar los tramos); (c) seguir con defectos #5
     (endpoints de inecuación radical), #6/#7 (potencia-de-potencia |x|), #8 (arcsec+arccsc).
+
+## 2026-06-24 - P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_function_domain`)
+- status:
+  - `retained` (P0 soundness — wrong-answer / condición de dominio perdida; hallado por el hunt ultracode #5;
+    verificado con oráculo independiente Fraction-based (500 casos) y sympy; exento del orden de fase)
+- capture:
+  - investment_class: soundness/honestidad (la solución incluía puntos donde el radicando es negativo)
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: reuse_value (reusa el propio solver: resuelve `arg ≥ 0` recursivamente +
+    `intersect_solution_sets`; `detect_monotonic_lhs` ya extraía el argumento compuesto)
+  - cell: `√(x-1) < 3` → `[1, 10)` (antes `(-∞, 10)`); `√(2x-1) ≤ 3` → `[1/2, 5]` (antes `(-∞, 5]`);
+    `√(x²-4) < 3` → `(-√13,-2] ∪ [2,√13)` (antes un solo intervalo sin el split de `|x|≥2`);
+    `ln(x-1) < 0` → `(1, 2)`; `√(x+3) ≤ 0` → `{-3}`. `√x<2 → [0,4)` (var pelada) intacto.
+  - behavior_change_expected: `√(g(x)) {<,≤} c` con `g` compuesto deja de soltar el dominio `g(x) ≥ 0`
+    (`> 0` para `ln`). Argumento = variable pelada (fast-path `[0,∞)`/`(0,∞)`), `>`/`≥` (el bound ya implica
+    el dominio), corrección de rango (`√ < c≤0` → ∅), y todo lo no-radical quedan intactos.
+  - SOUNDNESS: `intersect_inequality_with_function_domain` gateaba en `arg_is_var` y devolvía el set SIN
+    TOCAR para argumentos compuestos → la inversión solo restringía `g(x)` contra el umbral pero dejaba la
+    región `g(x) < 0` (donde `√` no existe en ℝ). Fix: calcular el dominio como la solución de la inecuación
+    `arg ≥ 0` (even root) / `arg > 0` (log) resolviéndola para la variable, e intersecar. El argumento ya
+    es NO-radical (lo peló `detect_monotonic_lhs`), así que la recursión es acotada (profundidad ≤1, sin
+    re-entrada a esta función). Si el dominio no se reduce a un set de intervalos limpio → fallback al set
+    sin tocar (honesto, no peor que antes). TODO exacto (BigRational vía el propio solver).
+  - scoping: hunt ultracode #5 → wrong-answer. El abs SIMPLE con variable pelada (`√x<2`) sí aplicaba el
+    dominio (fast-path), ocultando el fallo en argumentos compuestos. Verificación adversarial: fuzzer
+    Python con oráculo independiente (membership: radicando<0 ⟹ fuera de solución; si no, comparar
+    `(c1·√rad)²` vs `c²` exacto) — 500 casos (afines, 4 ops, coeficientes, slopes, incl. `≤0` discretos),
+    0 fallos; + sympy (afín, cuadrático con split, ln, rango). Workspace 12313/0; guardrail+pressure sin
+    deltas de estado (solo no-determinismo preexistente de smokes diff/integrate, ajeno al solver).
+- observed:
+  - un gate "solo el caso simple" (aquí `arg_is_var`) que para el resto devuelve el resultado SIN APLICAR la
+    corrección es un wrong-answer encubierto: el caso simple correcto enmascara el general roto. Generalizar
+    la corrección (resolver el dominio real) en vez de gatearla.
+  - el dominio de `√(g)`/`ln(g)` es una INECUACIÓN (`g≥0`/`g>0`) que el propio solver resuelve — reusar el
+    solver recursivamente (acotado) es más simple y general que casos hard-coded por forma de `g`.
+- retained learning:
+  - una función monótona con argumento NO trivial hereda el dominio de su argumento: la corrección de
+    dominio debe resolver `dominio(arg)` para la variable, no asumir el medio-eje del caso variable-pelada.
+  - peldaño: el límite inferior surd (`-√13`) renderiza como `-13·13^(-1/2)` (estilo preexistente del path
+    de cotas surd) — cosmético, no soundness; pulido aparte. Seguir con defectos #6/#7 (potencia-de-potencia
+    |x|), #8 (arcsec+arccsc).

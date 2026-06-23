@@ -508,19 +508,21 @@ fn intersect_inequality_with_function_domain(
     let Some((kind, arg)) = detect_monotonic_lhs(&simplifier.context, eq.lhs) else {
         return set;
     };
-    // Only the BARE solve variable as argument; a compound argument stays residual.
+
+    // Argument domain over ℝ: even root → `{arg ≥ 0}`, ln/log → `{arg > 0}`.
+    // For the BARE solve variable this is the half-line `[0,∞)` / `(0,∞)`. For a
+    // COMPOUND argument (`√(x-1)`, `√(2x-1)`, `√(x²-4)`) the out-of-domain region
+    // was previously KEPT (the inversion only constrained `arg` against the
+    // threshold), so `√(x-1) < 3` wrongly returned `(-∞, 10)` instead of `[1, 10)`
+    // — a wrong answer including points where the radicand is negative. Solve the
+    // domain inequality `arg {≥,>} 0` for the variable so that region is excluded.
     let arg_is_var = matches!(simplifier.context.get(arg), Expr::Variable(s)
         if simplifier.context.sym_name(*s) == var);
-    if !arg_is_var {
-        return set;
-    }
-
-    // Argument-domain over ℝ: even root → [0, ∞) (closed at 0); ln/log → (0, ∞).
-    let domain_min_type = match kind {
-        MonotonicFn::EvenRoot => BoundType::Closed,
-        MonotonicFn::Log => BoundType::Open,
-    };
-    let domain = {
+    let domain = if arg_is_var {
+        let domain_min_type = match kind {
+            MonotonicFn::EvenRoot => BoundType::Closed,
+            MonotonicFn::Log => BoundType::Open,
+        };
         let ctx = &mut simplifier.context;
         let zero = ctx.num(0);
         let inf = pos_inf(ctx);
@@ -530,6 +532,31 @@ fn intersect_inequality_with_function_domain(
             max: inf,
             max_type: BoundType::Open,
         })
+    } else {
+        let domain_op = match kind {
+            MonotonicFn::EvenRoot => RelOp::Geq,
+            MonotonicFn::Log => RelOp::Gt,
+        };
+        let zero = simplifier.context.num(0);
+        let domain_eq = Equation {
+            lhs: arg,
+            rhs: zero,
+            op: domain_op,
+        };
+        // `arg` is non-radical here (the radical/log was peeled by
+        // `detect_monotonic_lhs`), so this recursion is bounded. Bail to the
+        // unchanged set only when the domain cannot be reduced to a clean
+        // interval set (an honest no-worse-than-before fallback).
+        match crate::solver_entrypoints_solve::solve(&domain_eq, var, simplifier) {
+            Ok((
+                d @ (SolutionSet::Continuous(_)
+                | SolutionSet::Union(_)
+                | SolutionSet::Empty
+                | SolutionSet::AllReals),
+                _,
+            )) => d,
+            _ => return set,
+        }
     };
 
     // Even-root RANGE correction (`√ ≥ 0`): inverting squares the threshold `c`,

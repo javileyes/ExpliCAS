@@ -225,6 +225,22 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   pressure sin deltas de estado (solo no-determinismo preexistente de smokes diff/integrate, ajeno al
   solver). Peldaño: ECUACIONES de suma de abs (`|x|+|x-1|=3`) siguen dando residual — misma técnica
   piecewise, follow-up; y pasos didácticos del solver piecewise.)*
+
+- [x] **(S) Inecuación radical con argumento compuesto soltaba el dominio**: `sqrt(x-1) < 3` devolvía
+  `(-∞, 10)` cuando la solución es `[1, 10)` — incluyendo puntos donde el radicando `x-1 < 0` y `√` no
+  existe en ℝ. Igual `sqrt(2x-1) ≤ 3` → `(-∞, 5]` (real `[1/2, 5]`); `sqrt(x²-4) < 3` daba un solo intervalo
+  sin el split del dominio `|x|≥2`. El radical con variable PELADA (`√x < 2 → [0,4)`) sí aplicaba el
+  dominio, ocultando el fallo. (P0 soundness en `solve` de inecuaciones; hallado por el hunt ultracode #5.)
+  *(graduado 2026-06-24 PENDIENTE: `intersect_inequality_with_function_domain` gateaba en `arg_is_var` y
+  devolvía el set SIN tocar para argumentos compuestos → la inversión solo restringía `g(x)` contra el
+  umbral y dejaba la región `g(x) < 0`. Fix: calcular el dominio como la solución de `arg ≥ 0` (even root) /
+  `arg > 0` (log) resolviéndola para la variable (recursión acotada: el arg ya es no-radical), e intersecar.
+  Variable pelada (fast-path), `>`/`≥` (el bound implica el dominio), corrección de rango (`√<c≤0` → ∅), y
+  no-radical intactos; fallback honesto si el dominio no reduce. Verificado: oráculo independiente
+  Fraction-based 500 casos (afines, 4 ops, coeficientes, `≤0` discretos), 0 fallos; + sympy (afín,
+  cuadrático con split, ln, rango). Workspace 12313/0; guardrail+pressure sin deltas de estado (solo
+  no-determinismo preexistente de smokes diff/integrate). Peldaño cosmético: la cota inferior surd `-√13`
+  renderiza como `-13·13^(-1/2)` (estilo preexistente del path de cotas surd) — no soundness.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

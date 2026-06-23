@@ -769,6 +769,54 @@ fn test_eval_sum_of_absolute_values_inequality_solves_piecewise() {
 }
 
 #[test]
+fn test_eval_radical_inequality_keeps_argument_domain() {
+    // `sqrt(g(x)) {<,<=} c` requires g(x) >= 0, but for a COMPOUND argument the
+    // engine dropped that domain, returning e.g. `sqrt(x-1) < 3 → (-inf, 10)`
+    // (which wrongly includes points where the radicand is negative) instead of
+    // `[1, 10)`. The fix intersects with the solved argument domain `g(x) >= 0`
+    // (`g(x) > 0` for ln). Ground truth cross-checked against sympy.
+    for (input, expected) in [
+        ("sqrt(x-1) < 3", "[1, 10)"),
+        ("sqrt(2*x-1) <= 3", "[1/2, 5]"),
+        // Bare-variable argument unchanged.
+        ("sqrt(x) < 2", "[0, 4)"),
+        ("sqrt(x) >= 2", "[4, infinity)"),
+        // `>` / `>=` already implied the domain via the bound; still correct.
+        ("sqrt(x-1) > 2", "(5, infinity)"),
+        ("sqrt(x+2) > 1", "(-1, infinity)"),
+        // Range correction (sqrt ≥ 0): a negative upper threshold is impossible.
+        ("sqrt(x-1) < -1", "No solution"),
+        // sqrt(g) <= 0 forces g = 0: a single point in the domain.
+        ("sqrt(x+3) <= 0", "{ -3 }"),
+        // ln argument domain is g(x) > 0 (open).
+        ("ln(x-1) < 0", "(1, 2)"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+
+    // Quadratic radicand: the domain `x²-4 >= 0` splits the solution into two
+    // intervals (the lone interval before the fix dropped the |x|>=2 domain).
+    // The `-√13` lower bound renders via the existing surd-bound style; assert
+    // the structural domain split rather than the exact surd spelling.
+    let output = cli()
+        .args(["eval", "sqrt(x^2-4) < 3", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+    let result = wire["result"].as_str().expect("result string");
+    assert!(
+        result.contains("-2]") && result.contains("[2,") && result.contains(" U "),
+        "sqrt(x^2-4) < 3 must split on the x²-4>=0 domain, got {result:?}"
+    );
+}
+
+#[test]
 fn test_eval_shifted_log_tan_sqrt_diff_finishes_without_depth_overflow() {
     let cases = [
         (
