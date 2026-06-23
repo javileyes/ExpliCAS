@@ -171,7 +171,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   El gcd con factor común monomial-extraíble (`gcd(x²+xy, xy+y²)` → `x+y`) sí funcionaba, ocultando el
   defecto. Afirmar coprimalidad sin probarla es un wrong-answer. (P0 soundness en comando no-cálculo;
   hallado por el hunt adversarial multiagente ultracode #2, verificado vs sympy.)
-  *(graduado FECHA COMMIT: bare `gcd` → `select_poly_gcd_mode` = Structural → `gcd_exact` (capas exactas
+  *(graduado 2026-06-23 84e1c6ef5: bare `gcd` → `select_poly_gcd_mode` = Structural → `gcd_exact` (capas exactas
   Layer 1/2/2.5) cae a un fallback trivial "return 1" cuando sus heurísticas multivariables FALLAN en
   encontrar el factor — devolviendo `1` tanto para coprimos como para fallos. Fix: en el modo Structural
   de `compute_poly_gcd_unified_with`, cuando las capas exactas devuelven `1`, consultar el Zippel modp
