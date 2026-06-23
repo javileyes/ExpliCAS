@@ -165,6 +165,27 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   estructurales (solo timing + `filtered_out`); tests de contrato nuevos en ambos modos de pasos.
   Peldaño: la exponenciación de matrices (`M^2`) y `M^2 − N^2` quedan SIN evaluar — under-answer
   honesto preexistente, no regresión.)*
+
+- [x] **(S) gcd multivariable devolvía `1` (coprimalidad falsa)**: `gcd(x²−y², x²+2xy+y²)` devolvía
+  `1` cuando el gcd real es `x+y`; igual `gcd((x+y)², (x+y)(x−y))` → `1` y `gcd(x³−y³, x²−y²)` → `1`.
+  El gcd con factor común monomial-extraíble (`gcd(x²+xy, xy+y²)` → `x+y`) sí funcionaba, ocultando el
+  defecto. Afirmar coprimalidad sin probarla es un wrong-answer. (P0 soundness en comando no-cálculo;
+  hallado por el hunt adversarial multiagente ultracode #2, verificado vs sympy.)
+  *(graduado FECHA COMMIT: bare `gcd` → `select_poly_gcd_mode` = Structural → `gcd_exact` (capas exactas
+  Layer 1/2/2.5) cae a un fallback trivial "return 1" cuando sus heurísticas multivariables FALLAN en
+  encontrar el factor — devolviendo `1` tanto para coprimos como para fallos. Fix: en el modo Structural
+  de `compute_poly_gcd_unified_with`, cuando las capas exactas devuelven `1`, consultar el Zippel modp
+  (completo para estos casos) y aceptar su candidato SOLO tras verificación por división exacta
+  (`MultiPoly::div_exact`) de que divide ambas entradas — el modp de un primo es probabilístico, la
+  verificación lo vuelve sólido (nunca un factor espurio). `None` → se mantiene `1` (coprimos genuinos).
+  Gateado a `goal != CancelFraction`: cancelar un factor de una fracción puede soltar una condición de
+  polo removible, así que la cancelación de fracciones queda conservadora (preserva el bloqueo de modp
+  existente). Verificado vs sympy (factor lineal, multiplicidad `(x+y)²`, productos, coprimos, signo);
+  gcd entero/univariable intactos. Huella workspace 12310/0; guardrail+pressure sin deltas estructurales
+  (el delta de `calculus_integrate_command_matrix_smoke` es no-determinismo preexistente, reproducible con
+  el mismo código; integración no llama esa ruta de gcd). Peldaño: implementar un PRS subresultante exacto
+  determinista evitaría depender del modp+verificación; n>2 variables y casos fuera de presupuesto del
+  modp quedan como residuales.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

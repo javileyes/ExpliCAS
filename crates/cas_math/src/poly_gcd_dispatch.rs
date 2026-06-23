@@ -3,13 +3,68 @@
 //! This module centralizes mode selection (`structural/exact/modp/auto`) and
 //! soundness gates based on solve goals.
 
-use crate::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
+use crate::gcd_exact::{gcd_exact, normalize_multipoly, GcdExactBudget, GcdExactLayer};
 use crate::gcd_zippel_modp::ZippelPreset;
+use crate::multipoly::{multipoly_from_expr, PolyBudget};
 use crate::poly_gcd_mode::{GcdGoal, GcdMode};
 use crate::poly_gcd_structural::poly_gcd_structural;
 use crate::poly_modp_conv::{compute_gcd_modp_expr_with_options, DEFAULT_PRIME};
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::One;
+
+/// Verified modular-GCD fallback for genuinely multivariate inputs.
+///
+/// The exact Layer 1/2/2.5 pipeline (`gcd_exact`) returns `1` not only for
+/// coprime inputs but ALSO when its heuristic seeds simply miss an existing
+/// common factor — e.g. `gcd(x²−y², x²+2xy+y²)` returned `1` instead of `x+y`,
+/// a soundness wrong-answer (falsely claiming coprimality). The Zippel modular
+/// GCD is complete for these cases, but single-prime and therefore
+/// probabilistic, so its candidate is accepted ONLY after EXACT polynomial
+/// division confirms it divides BOTH inputs — guaranteeing we never return a
+/// spurious factor. Returns `None` (caller keeps `1`) when the candidate is
+/// constant or fails verification, so genuinely coprime inputs still resolve to
+/// `1`.
+fn try_verified_modp_multivar_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
+    let candidate = compute_gcd_modp_expr_with_options(
+        ctx,
+        a,
+        b,
+        DEFAULT_PRIME,
+        None,
+        Some(ZippelPreset::Aggressive),
+    )
+    .ok()?;
+
+    let budget = PolyBudget::default();
+    let pg = multipoly_from_expr(ctx, candidate, &budget).ok()?;
+    if pg.is_constant() {
+        return None;
+    }
+    let pa = multipoly_from_expr(ctx, a, &budget).ok()?;
+    let pb = multipoly_from_expr(ctx, b, &budget).ok()?;
+
+    // `div_exact` requires identical variable sets, so align all three to the
+    // shared (union) variable set before verifying exact divisibility.
+    let mut vars: Vec<String> = pa
+        .vars
+        .iter()
+        .chain(pb.vars.iter())
+        .chain(pg.vars.iter())
+        .cloned()
+        .collect();
+    vars.sort();
+    vars.dedup();
+    let pa = pa.align_vars(&vars);
+    let pb = pb.align_vars(&vars);
+    let pg_aligned = pg.align_vars(&vars);
+
+    // EXACT verification: the candidate must divide both inputs with no
+    // remainder. This is what makes the probabilistic modular GCD sound.
+    pa.div_exact(&pg_aligned)?;
+    pb.div_exact(&pg_aligned)?;
+
+    Some(normalize_multipoly(ctx, &pg))
+}
 
 /// Classification of runtime pre-evaluation action for one GCD argument.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,7 +189,20 @@ where
                 } else {
                     let eval_a = pre_evaluate(ctx, a);
                     let eval_b = pre_evaluate(ctx, b);
-                    gcd_exact(ctx, eval_a, eval_b, &GcdExactBudget::default()).gcd
+                    let exact = gcd_exact(ctx, eval_a, eval_b, &GcdExactBudget::default()).gcd;
+                    // The exact layers return `1` both for coprime inputs and when
+                    // their multivariate heuristics miss an existing common factor
+                    // (`gcd(x²−y², x²+2xy+y²)` → `1` instead of `x+y`). For the user
+                    // gcd — but NOT fraction cancellation, which stays conservative so
+                    // it never drops a removable-pole domain condition — confirm with a
+                    // verified modular GCD before trusting that `1` means coprime.
+                    if matches!(ctx.get(exact), Expr::Number(n) if n.is_one())
+                        && goal != GcdGoal::CancelFraction
+                    {
+                        try_verified_modp_multivar_gcd(ctx, eval_a, eval_b).unwrap_or(exact)
+                    } else {
+                        exact
+                    }
                 }
             } else {
                 gcd
@@ -266,6 +334,7 @@ mod tests {
     use crate::poly_gcd_mode::{GcdGoal, GcdMode};
     use cas_ast::{BuiltinFn, Expr};
     use cas_parser::parse;
+    use num_traits::One;
 
     #[test]
     fn structural_mode_finds_common_factor() {
@@ -323,6 +392,70 @@ mod tests {
             );
             assert_eq!(rendered, expect, "gcd({lhs}, {rhs})");
         }
+    }
+
+    #[test]
+    fn structural_mode_recovers_multivariate_gcd_via_verified_modp() {
+        // The exact Layer 1/2/2.5 pipeline misses these genuine bivariate common
+        // factors and returned `1` (a soundness wrong-answer: false coprimality).
+        // The verified modular GCD recovers them, and exact-division verification
+        // keeps coprime inputs at `1`.
+        for (lhs, rhs, expect) in [
+            ("x^2-y^2", "x^2+2*x*y+y^2", "x + y"), // (x-y)(x+y) vs (x+y)^2  → x+y
+            ("(x+y)^2", "(x+y)*(x-y)", "x + y"),
+            ("x+y", "x-y", "1"),     // genuinely coprime
+            ("x^2+1", "x*y+1", "1"), // genuinely coprime, bivariate
+            ("x*y", "y", "y"),       // monomial factor (Layer 1 path) still works
+        ] {
+            let mut ctx = cas_ast::Context::new();
+            let a = parse(lhs, &mut ctx).expect("parse a");
+            let b = parse(rhs, &mut ctx).expect("parse b");
+            let (gcd, _desc) = compute_poly_gcd_unified_with(
+                &mut ctx,
+                a,
+                b,
+                GcdGoal::UserPolyGcd,
+                GcdMode::Structural,
+                None,
+                None,
+                |_ctx, id| id,
+                |_ctx, id| format!("{id:?}"),
+            );
+            let rendered = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: gcd
+                }
+            );
+            assert_eq!(rendered, expect, "gcd({lhs}, {rhs})");
+        }
+    }
+
+    #[test]
+    fn cancel_fraction_goal_does_not_use_modp_multivar_fallback() {
+        // Fraction cancellation must stay conservative: a verified modular GCD is
+        // sound for the gcd VALUE, but cancelling a polynomial factor from a
+        // fraction can drop a removable-pole domain condition, so this goal keeps
+        // the exact-only behaviour (`1` here) rather than recovering `x+y`.
+        let mut ctx = cas_ast::Context::new();
+        let a = parse("x^2-y^2", &mut ctx).expect("parse a");
+        let b = parse("x^2+2*x*y+y^2", &mut ctx).expect("parse b");
+        let (gcd, _desc) = compute_poly_gcd_unified_with(
+            &mut ctx,
+            a,
+            b,
+            GcdGoal::CancelFraction,
+            GcdMode::Structural,
+            None,
+            None,
+            |_ctx, id| id,
+            |_ctx, id| format!("{id:?}"),
+        );
+        assert!(
+            matches!(ctx.get(gcd), Expr::Number(n) if n.is_one()),
+            "CancelFraction must not use the modp multivariate fallback"
+        );
     }
 
     #[test]

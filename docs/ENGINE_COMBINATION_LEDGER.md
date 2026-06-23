@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 309 (newest first)
+Active entries: 310 (newest first)
 
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
+- 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate ... | Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
@@ -13125,3 +13126,56 @@ Active entries: 309 (newest first)
   - peldaño: la exponenciación de matrices (`M^2`) sigue SIN evaluar (under-answer honesto preexistente) y
     `M^2 − N^2` queda simbólico (no se factoriza mal). El siguiente frente de soundness es defecto #2 del
     hunt (gcd multivariable); luego #3 (cosh(3x)−cosh(x)), #4 (inecuaciones abs-sum), #5–#8.
+
+## 2026-06-23 - P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
+
+- area:
+  - `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, modo Structural:
+    fallback `try_verified_modp_multivar_gcd`)
+  - `crates/cas_math/src/gcd_exact.rs` (`normalize_multipoly` ahora `pub(crate)`)
+- status:
+  - `retained` (P0 soundness — wrong-answer; hallado por el hunt adversarial multiagente ultracode #2,
+    verificado vs sympy; exento del orden de fase)
+- capture:
+  - investment_class: soundness/honestidad (gcd que afirma coprimalidad sin probarla)
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: reuse_value (reusa el Zippel modp completo ya existente + `MultiPoly::div_exact`
+    como verificador; no reimplementa un GCD multivariable)
+  - cell: `gcd(x²−y², x²+2xy+y²)` → `x+y` (antes `1`); `gcd((x+y)², (x+y)(x−y))` → `x+y`;
+    `gcd(x³−y³, x²−y²)` → `x−y` (signo); multiplicidad `gcd((x+y)³,(x+y)²)` → `(x+y)²`.
+  - behavior_change_expected: pares multivariables con factor común no monomial que las capas exactas
+    Layer 1/2/2.5 no detectan dejan de devolver `1` y devuelven el gcd real. Coprimos genuinos siguen `1`
+    (`gcd(x+y, x−y)`, `gcd(x²+1, x·y+1)`); gcd entero y univariable intactos; cancelación de fracciones
+    (CancelFraction) NO usa el fallback (conservadora).
+  - SOUNDNESS: `gcd_exact` devolvía `1` tanto para coprimos como cuando sus heurísticas multivariables
+    FALLABAN en encontrar un factor existente → afirmaba coprimalidad sin probarla (wrong-answer). El
+    Zippel modp es completo para estos casos pero de un solo primo (probabilístico), así que su candidato
+    se acepta SOLO tras verificación por DIVISIÓN EXACTA (`MultiPoly::div_exact`) de que divide ambas
+    entradas — nunca devuelve un factor espurio. Si el candidato es constante o no verifica → `None` y se
+    mantiene `1` (coprimos genuinos resuelven a `1`). El fallback se GATEA a `goal != CancelFraction`: un
+    gcd verificado es sólido para el VALOR, pero cancelar un factor polinómico de una fracción puede soltar
+    una condición de dominio de polo removible (la razón por la que modp ya estaba bloqueado en
+    CancelFraction) — esa decisión se preserva.
+  - scoping: hunt ultracode #2 → wrong-answer confirmado vs sympy. Localización: bare `gcd` →
+    `select_poly_gcd_mode` = Structural → `gcd_exact` cae al fallback trivial "return 1" cuando Layer
+    1/2/2.5 fallan. El modp Zippel (`gcd(..., modp)`) YA daba el resultado correcto, solo no se consultaba
+    en el camino exacto. Huella: workspace 12310/0; guardrail+pressure sin deltas estructurales (el único
+    delta de `calculus_integrate_command_matrix_smoke` es NO-determinismo preexistente — dos corridas con
+    el MISMO código lo reproducen; integración no llama `compute_poly_gcd_unified_with`).
+- observed:
+  - un gcd que devuelve `1` por FALLO de la heurística (no por coprimalidad probada) es un wrong-answer
+    silencioso: el usuario lee "coprimos" cuando comparten factor. Las capas heurísticas incompletas deben
+    delegar en un algoritmo completo, no caer a `1`.
+  - un algoritmo probabilístico (modp de un primo) se vuelve SÓLIDO envolviéndolo en verificación exacta:
+    `div_exact` confirma que el candidato divide ambos → es un divisor común verdadero, sin importar la
+    suerte del primo. Patrón general: "probabilístico + verificación exacta = sólido".
+  - los dos consumidores de `compute_poly_gcd_unified_with` (comando `gcd`, función `poly_gcd`) usan
+    `UserPolyGcd`; la integración NO lo llama → el fix no puede regresionar cálculo (verificado).
+- retained learning:
+  - cuando una cascada de capas "exactas" termina en un fallback que devuelve la respuesta TRIVIAL (1, ∅,
+    o el input sin tocar), pregúntate si ese trivial es PROBADO o asumido. Si es asumido, es un
+    wrong-answer/under-answer encubierto. Aquí: añadir un algoritmo completo (Zippel) + verificación exacta.
+  - `MultiPoly::div_exact` requiere `vars` idénticos: alinear las tres polinomiales (a, b, candidato) al
+    conjunto unión con `align_vars` antes de verificar.
+  - peldaño: defecto #3 del hunt (cosh(3x)−cosh(x)); luego #4 (inecuaciones abs-sum "No solution"),
+    #5 (endpoints de inecuación radical), #6/#7 (potencia-de-potencia |x|), #8 (arcsec+arccsc).

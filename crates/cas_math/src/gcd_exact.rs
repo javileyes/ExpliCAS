@@ -262,7 +262,7 @@ pub fn gcd_exact(
 }
 
 /// Normalize a MultiPoly: primitive part + positive leading coefficient
-fn normalize_multipoly(ctx: &mut Context, poly: &MultiPoly) -> ExprId {
+pub(crate) fn normalize_multipoly(ctx: &mut Context, poly: &MultiPoly) -> ExprId {
     if poly.is_zero() {
         return ctx.num(0);
     }
