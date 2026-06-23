@@ -191,7 +191,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `4·cosh³(x) − 4·cosh(x) = 4·cosh(x)·sinh²(x)` (≈8.5246 en x=1). Igual `cosh³(x) − cosh(x)` → `0`
   (= `cosh·sinh²`). Los análogos circulares (`cos(3x)−cos(x)`, `sin³−sin`) ya eran correctos, ocultando
   el defecto hiperbólico. (P0 soundness en simplificación no-cálculo; hallado por el hunt ultracode #3.)
-  *(graduado 2026-06-23 PENDIENTE: la regla "puente de cancelación pitagórica hiperbólica"
+  *(graduado 2026-06-23 504776a17: la regla "puente de cancelación pitagórica hiperbólica"
   (`ExpandHyperbolicPythagoreanFactorToEnableCancellationRule`) reconoce `k·cosh³ − k·cosh` (modo
   `FactorThenRewrite`) para reescribirlo a `k·cosh·sinh²` y habilitar cancelación con términos vecinos —
   pero su ruta DIRECTA a profundidad 0 construía incondicionalmente un rewrite a `0`, asumiendo que toda
