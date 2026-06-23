@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 308 (newest first)
+Active entries: 309 (newest first)
 
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
+- 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate ... | Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
@@ -13067,3 +13068,60 @@ Active entries: 308 (newest first)
   - peldaño: análogos con `sqrt`/`log` que se cancelan al derivar (`diff(sqrt(x)²)` y similares) podrían
     perder `x≥0`/`x>0` por la misma razón; el hunt confirmó la familia trig, no estos. Extensión natural:
     re-adjuntar el dominio COMPLETO del diferando (no solo recíproco-trig) — pendiente de análisis de huella.
+
+## 2026-06-23 - P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
+
+- area:
+  - `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try_standard_exact_zero_equivalence_shortcut`)
+  - `crates/cas_engine/src/rules/arithmetic.rs` (predicado `term_has_matrix_product_factor`;
+    `exprs_equal_up_to_mul_factor_order_and_sign`; `exprs_match_for_cancellation`(`_leaf`))
+- status:
+  - `retained` (P0 soundness — wrong-answer; hallado por el hunt adversarial multiagente ultracode,
+    confirmado 2/2 lentes y verificado vs sympy; exento del orden de fase)
+- capture:
+  - investment_class: soundness/honestidad (álgebra no conmutativa: `A·B ≠ B·A` para matrices)
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: reuse_value (un único predicado `term_has_matrix_product_factor` consumido por
+    los cuatro puntos de gateo; reusa la maquinaria de evaluación de matrices del pipeline normal)
+  - cell: `[[1,2],[3,4]]·[[5,6],[7,8]] − [[5,6],[7,8]]·[[1,2],[3,4]]` → `[[-4,-12],[12,4]]` (antes `0`);
+    nilpotentes `[E12,E21] → [[1,0],[0,-1]]`; `B·A − A·B → [[4,12],[-12,-4]]`; 3x3 verificado.
+  - behavior_change_expected: el conmutador (y cualquier `A·B − B·A` de literales matriciales) deja de
+    colapsar a 0 y evalúa al valor real. Cancelaciones GENUINAS intactas: `A·B − A·B → 0`, `M − M → 0`,
+    escalares `x·y − y·x → 0`, `2·M − M·2 → 0` (el escalar conmuta), `det(M)·x − x·det(M) → 0`.
+  - SOUNDNESS: la capa de root-shortcuts del orquestador es un fast-path para anillos CONMUTATIVOS
+    (escalares/polinomios/trig); varios de sus matchers exact-zero / equivalent-pair comparan productos
+    como multiconjuntos de factores ordenables (`exprs_equal_up_to_mul_factor_order_and_sign` ordena los
+    factores; `pairwise_matches` prueba ambos emparejamientos), tratando `A·B` y `B·A` como iguales. El
+    defecto SOLO aparecía con `--steps off`: el segundo bloque de shortcuts está gateado por
+    `!has_step_listener()`, así que con pasos activos la regla de multiplicación de matrices se aplicaba
+    primero y daba el valor correcto (la divergencia steps on/off fue la pista decisiva).
+  - scoping: hunt adversarial ultracode (15 frentes) → defecto #1 confirmado 2/2 vs sympy. Localización
+    iterativa por backtrace: el colapso venía de MÚLTIPLES capas redundantes (root-shortcut `try_standard_
+    common_scale_known_pair_shortcut` vía macro Y vía llamada inline; regla de bucle principal
+    `try_build_direct_core_equivalence_rewrite`; el segundo bloque `!has_step_listener`). Fix de capas con
+    un único predicado en lugar de whack-a-mole por matcher.
+  - behavior_change_expected (regresión nula): huella guardrail+pressure sin deltas estructurales
+    (state/passed/failed idénticos; solo timing y `filtered_out` +2 por tests añadidos).
+- observed:
+  - un único bug de soundness puede estar respaldado por 4+ rutas redundantes en un motor muy optimizado
+    (dos bloques de shortcuts, llamadas macro e inline, reglas del bucle principal). Gatear matcher-por-
+    matcher es interminable; el chokepoint correcto es la ENTRADA de la capa de fast-path.
+  - la divergencia entre `--steps on` y `--steps off` (mismo input, distinto resultado) delata un fast-path
+    sin escucha de pasos: con pasos, las reglas se aplican en orden y la evaluación verdadera gana; sin
+    pasos, una normalización agresiva conmutativa colapsa antes.
+  - travesías completas del árbol de expresión deben ser bounds-safe: `exprs_match_for_cancellation` recibe
+    ExprId centinela (`ln_base_sentinel`, índice 0x1FFFFFFF fuera de arena) en la ruta de logaritmos;
+    `compare_expr` no hacía panic porque corta antes de alcanzarlo, pero una travesía exhaustiva sí. Usar
+    `ctx.nodes.get(idx)` (no `ctx.get`) y saltar los OOB.
+- retained learning:
+  - la conmutatividad de la multiplicación está HORNEADA en las heurísticas de cancelación/orden (ordenar
+    factores, multiconjuntos, "diferencia de cuadrados"). Para operandos NO conmutativos (matrices) cualquier
+    reordenamiento de factores es unsound. Regla general: un fast-path de anillo conmutativo debe DECLINAR
+    ante operandos no conmutativos y delegar en la evaluación verdadera, no intentar gatear cada matcher.
+  - predicado reutilizable `term_has_matrix_product_factor` (matriz literal como factor de `Mul`/`Div`/`Pow`):
+    NO marca matrices en posición puramente aditiva (`A+B`) ni dentro de args de función (`det(M)`), para no
+    desactivar el reordenamiento aditivo conmutativo (que SÍ es válido para matrices) ni la cancelación
+    escalar legítima.
+  - peldaño: la exponenciación de matrices (`M^2`) sigue SIN evaluar (under-answer honesto preexistente) y
+    `M^2 − N^2` queda simbólico (no se factoriza mal). El siguiente frente de soundness es defecto #2 del
+    hunt (gcd multivariable); luego #3 (cosh(3x)−cosh(x)), #4 (inecuaciones abs-sum), #5–#8.

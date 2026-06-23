@@ -13403,6 +13403,17 @@ fn try_standard_exact_zero_equivalence_shortcut(
         return None;
     }
 
+    // Matrix multiplication is non-commutative, but these exact-zero routes treat
+    // products as commutative factor multisets (e.g. `pairwise_matches` accepts
+    // both factor pairings). That would collapse the commutator `A·B − B·A` to 0
+    // even though it is generally nonzero. Decline the whole exact-zero collapse
+    // whenever a matrix participates as a product factor so matrix differences
+    // evaluate to their true value; genuine identities (`A·B − A·B`) still
+    // collapse through the order-preserving matchers downstream.
+    if crate::rules::arithmetic::term_has_matrix_product_factor(ctx, expr) {
+        return None;
+    }
+
     if matches_direct_log_square_product_split_zero_identity_root(ctx, expr)
         || matches_direct_ln_abs_product_split_zero_identity_root(ctx, expr)
     {
@@ -27142,6 +27153,16 @@ impl Orchestrator {
             return result;
         }
 
+        // Matrix multiplication is non-commutative, but the root-shortcut layer
+        // below is a scalar/trig/polynomial fast path: several of its exact-zero
+        // and equivalent-pair matchers compare products as commutative factor
+        // multisets, which collapses the commutator `A·B − B·A` to 0 even though
+        // it is generally nonzero. Skip the entire shortcut layer whenever a
+        // matrix participates as a product factor and let the normal pipeline
+        // evaluate the expression to its true matrix value.
+        let root_shortcut_matrix_guard =
+            crate::rules::arithmetic::term_has_matrix_product_factor(&simplifier.context, expr);
+
         macro_rules! return_profiled_root_shortcut {
             ($name:literal, $call:expr) => {
                 if self.time_budget_exceeded() {
@@ -27221,10 +27242,12 @@ impl Orchestrator {
             };
         }
 
-        if matches!(
-            self.options.shared.context_mode,
-            crate::options::ContextMode::Standard | crate::options::ContextMode::Auto
-        ) {
+        if !root_shortcut_matrix_guard
+            && matches!(
+                self.options.shared.context_mode,
+                crate::options::ContextMode::Standard | crate::options::ContextMode::Auto
+            )
+        {
             let add_root = matches!(simplifier.context.get(expr), Expr::Add(_, _));
             let sub_root = matches!(simplifier.context.get(expr), Expr::Sub(_, _));
             let div_root = matches!(simplifier.context.get(expr), Expr::Div(_, _));
@@ -28605,10 +28628,12 @@ impl Orchestrator {
             }
         }
 
-        if matches!(
-            self.options.shared.context_mode,
-            crate::options::ContextMode::Standard | crate::options::ContextMode::Auto
-        ) && !simplifier.has_step_listener()
+        if !root_shortcut_matrix_guard
+            && matches!(
+                self.options.shared.context_mode,
+                crate::options::ContextMode::Standard | crate::options::ContextMode::Auto
+            )
+            && !simplifier.has_step_listener()
         {
             let mut shortcut_steps = Vec::new();
             let allow_definability_shortcuts = allow_definability_root_shortcuts(&self.options);

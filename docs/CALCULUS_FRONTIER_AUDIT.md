@@ -139,6 +139,32 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `filtered_out` +7 (tests añadidos), passed/failed idénticos. Peldaño: `M·M` no-cuadrada se colecta
   a `M^2` sin evaluar y los productos que exceden los caps quedan sin evaluar — ambos residuales
   honestos.)*
+
+- [x] **(S) Conmutador de matrices `A·B − B·A` colapsaba a `0`**: `[[1,2],[3,4]]·[[5,6],[7,8]] −
+  [[5,6],[7,8]]·[[1,2],[3,4]]` devolvía `0` cuando el valor real es `[[-4,-12],[12,4]]` (la
+  multiplicación de matrices NO es conmutativa). El defecto solo aparecía con `--steps off` (la ruta
+  rápida sin escucha de pasos); con `--steps on/compact` la regla de multiplicación de matrices se
+  aplicaba primero y daba el valor correcto, ocultando el bug. (P0 soundness en comando no-cálculo —
+  wrong-answer; exento del orden de fase. Hallado por el hunt adversarial multiagente ultracode,
+  confirmado 2/2 lentes y verificado vs sympy.)
+  *(graduado FECHA COMMIT: la capa de root-shortcuts del orquestador (`try_standard_*` exact-zero /
+  equivalent-pair) y los matchers de cancelación aditiva (`exprs_equal_up_to_mul_factor_order_and_sign`,
+  `pairwise_matches`) comparan productos como MULTICONJUNTOS de factores conmutativos → `A·B` y `B·A`
+  se tratan como iguales y se cancelan. Fix en capas con un único predicado `term_has_matrix_product_factor`
+  (una matriz literal como factor de un `Mul`/`Div`/`Pow`): (1) los dos bloques de root-shortcuts
+  (`if matches!(context_mode, Standard|Auto)`, uno gateado por `!has_step_listener()` — de ahí la
+  divergencia steps on/off) se saltan enteros si hay producto matricial → el pipeline normal evalúa al
+  valor real; (2) `try_standard_exact_zero_equivalence_shortcut` declina; (3)
+  `exprs_equal_up_to_mul_factor_order_and_sign` NO ordena factores cuando hay una matriz (compara
+  posicionalmente); (4) `exprs_match_for_cancellation`(`_leaf`) restringen a igualdad estructural
+  order-preserving (`compare_expr`). El predicado es bounds-safe (salta ExprId centinela como
+  `ln_base_sentinel`, que hacía panic en `Context::get` desde la travesía completa del árbol).
+  Cancelaciones genuinas preservadas: `A·B − A·B → 0`, `M − M → 0`, escalares `x·y − y·x → 0`,
+  `2·M − M·2 → 0` (el escalar SÍ conmuta), `det(M)·x − x·det(M) → 0` (la matriz solo está dentro del
+  arg de la función). Verificado vs sympy (2x2, nilpotentes, 3x3); huella guardrail+pressure sin deltas
+  estructurales (solo timing + `filtered_out`); tests de contrato nuevos en ambos modos de pasos.
+  Peldaño: la exponenciación de matrices (`M^2`) y `M^2 − N^2` quedan SIN evaluar — under-answer
+  honesto preexistente, no regresión.)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

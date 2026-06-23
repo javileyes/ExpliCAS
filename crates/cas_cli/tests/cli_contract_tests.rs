@@ -602,6 +602,70 @@ fn test_diff_cancelling_reciprocal_trig_product_keeps_domain_condition() {
 }
 
 #[test]
+fn test_eval_matrix_commutator_does_not_collapse_to_zero() {
+    // Matrix multiplication is non-commutative, so the commutator A·B − B·A is
+    // generally nonzero. The engine's exact-zero / equivalent-pair root shortcuts
+    // and the additive cancellation matchers compare products as commutative
+    // factor multisets, which previously collapsed A·B − B·A to 0 (a wrong
+    // answer). The bug only surfaced in the steps-off fast path (the steps-on
+    // path evaluates the products first), so BOTH modes are checked here.
+    let cases = [
+        (
+            "[[1,2],[3,4]]*[[5,6],[7,8]] - [[5,6],[7,8]]*[[1,2],[3,4]]",
+            "[[-4, -12], [12, 4]]",
+        ),
+        (
+            // Nilpotent generators: [E12, E21] = E11 − E22.
+            "[[0,1],[0,0]]*[[0,0],[1,0]] - [[0,0],[1,0]]*[[0,1],[0,0]]",
+            "[[1, 0], [0, -1]]",
+        ),
+        (
+            "[[5,6],[7,8]]*[[1,2],[3,4]] - [[1,2],[3,4]]*[[5,6],[7,8]]",
+            "[[4, 12], [-12, -4]]",
+        ),
+    ];
+    for (input, expected) in cases {
+        for mode in ["off", "on"] {
+            let output = cli()
+                .args(["eval", input, "--format", "json", "--steps", mode])
+                .output()
+                .expect("Failed to run CLI");
+            assert!(output.status.success(), "{input} (steps={mode})");
+            let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+            assert_eq!(
+                wire["result"].as_str(),
+                Some(expected),
+                "{input} (steps={mode}): matrix commutator must not collapse to 0"
+            );
+        }
+    }
+
+    // A genuinely identical product difference A·B − A·B is still the zero matrix
+    // / 0 (order-preserving structural equality is sound), and the scalar
+    // commutator x·y − y·x stays 0 (scalar multiplication IS commutative).
+    for (input, expected) in [
+        (
+            "[[1,2],[3,4]]*[[5,6],[7,8]] - [[1,2],[3,4]]*[[5,6],[7,8]]",
+            "0",
+        ),
+        ("x*y - y*x", "0"),
+    ] {
+        for mode in ["off", "on"] {
+            let output = cli()
+                .args(["eval", input, "--format", "json", "--steps", mode])
+                .output()
+                .expect("Failed to run CLI");
+            let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+            assert_eq!(
+                wire["result"].as_str(),
+                Some(expected),
+                "{input} (steps={mode}): genuine cancellation must still hold"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_eval_shifted_log_tan_sqrt_diff_finishes_without_depth_overflow() {
     let cases = [
         (

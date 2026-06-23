@@ -1441,8 +1441,19 @@ fn exprs_equal_up_to_mul_factor_order_and_sign(
         return false;
     }
 
-    lhs_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
-    rhs_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    // Matrix multiplication is non-commutative, so two products are equal only
+    // when their factors line up in the SAME order: `A·B` and `B·A` are
+    // generally different. Sorting the factor lists (the commutative-ring
+    // assumption) would wrongly collapse the commutator `A·B − B·A` to 0.
+    // When any factor is a matrix, keep the factors in evaluation order.
+    let has_matrix_factor = lhs_factors
+        .iter()
+        .chain(rhs_factors.iter())
+        .any(|factor| matches!(ctx.get(*factor), Expr::Matrix { .. }));
+    if !has_matrix_factor {
+        lhs_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+        rhs_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    }
 
     lhs_factors
         .iter()
@@ -2840,11 +2851,83 @@ fn rebuild_subtractive_expr(
     }
 }
 
+/// Returns true if `root` contains a matrix literal that participates as a
+/// factor in a multiplication, division, or power — i.e. a non-commutative
+/// matrix product. Matrix literals that appear only as additive terms
+/// (`A + B`) or as standalone values do NOT count, so the commutative
+/// add-reordering matchers below stay enabled for matrix sums.
+///
+/// Matrix multiplication is non-commutative (`A·B ≠ B·A` in general), so any
+/// matcher that reorders multiplicative factors (the sorted factor compare,
+/// `normalize_core`, `exprs_equivalent`) is UNSOUND when a term is a matrix
+/// product: it would treat `A·B` and `B·A` as equal and cancel the commutator
+/// `A·B − B·A` to 0. When this predicate holds we restrict cancellation to the
+/// order-preserving `compare_expr`, which still cancels genuinely identical
+/// products (`A·B − A·B → 0`) while leaving `A·B − B·A` to evaluate to the
+/// true commutator.
+pub(crate) fn term_has_matrix_product_factor(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+) -> bool {
+    // `in_product` marks subtrees reached through a multiplicative factor
+    // position (Mul/Div operand, or the base of a power).
+    let mut stack = vec![(root, false)];
+    while let Some((expr, in_product)) = stack.pop() {
+        // Some callers compare expressions carrying non-arena sentinel ExprIds
+        // (e.g. `ln_base_sentinel()`), whose index is out of bounds. Skip them:
+        // a sentinel can never be a matrix literal, and dereferencing it panics.
+        let Some(node) = ctx.nodes.get(expr.index()) else {
+            continue;
+        };
+        match node {
+            Expr::Matrix { data, .. } => {
+                if in_product {
+                    return true;
+                }
+                // Matrix entries are independent scalar expressions.
+                for &entry in data.iter() {
+                    stack.push((entry, false));
+                }
+            }
+            Expr::Mul(lhs, rhs) | Expr::Div(lhs, rhs) => {
+                stack.push((*lhs, true));
+                stack.push((*rhs, true));
+            }
+            Expr::Pow(base, exponent) => {
+                // A power is a repeated product (`M^n = M·M·…`), so a matrix base
+                // is a non-commutative product factor even at the root (e.g. the
+                // difference-of-squares factoring `M^2 − N^2 = (M−N)(M+N)` is
+                // unsound when `M·N ≠ N·M`). The exponent is a scalar position.
+                stack.push((*base, true));
+                stack.push((*exponent, false));
+            }
+            Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => {
+                stack.push((*lhs, false));
+                stack.push((*rhs, false));
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push((*inner, in_product)),
+            Expr::Function(_, args) => {
+                for &arg in args.iter() {
+                    stack.push((arg, false));
+                }
+            }
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
 fn exprs_match_for_cancellation(
     ctx: &mut cas_ast::Context,
     lhs: cas_ast::ExprId,
     rhs: cas_ast::ExprId,
 ) -> bool {
+    if term_has_matrix_product_factor(ctx, lhs) || term_has_matrix_product_factor(ctx, rhs) {
+        // Non-commutative matrix product present: only order-preserving
+        // structural equality is sound (see `term_has_matrix_product_factor`).
+        return compare_expr(ctx, lhs, rhs) == Ordering::Equal;
+    }
     if compare_expr(ctx, lhs, rhs) == Ordering::Equal
         || cas_math::expr_domain::exprs_equivalent(ctx, lhs, rhs)
         || exprs_equal_up_to_add_term_order(ctx, lhs, rhs)
@@ -2883,6 +2966,11 @@ fn exprs_match_for_cancellation_leaf(
     lhs: cas_ast::ExprId,
     rhs: cas_ast::ExprId,
 ) -> bool {
+    if term_has_matrix_product_factor(ctx, lhs) || term_has_matrix_product_factor(ctx, rhs) {
+        // Non-commutative matrix product present: only order-preserving
+        // structural equality is sound (see `term_has_matrix_product_factor`).
+        return compare_expr(ctx, lhs, rhs) == Ordering::Equal;
+    }
     if compare_expr(ctx, lhs, rhs) == Ordering::Equal
         || cas_math::expr_domain::exprs_equivalent(ctx, lhs, rhs)
         || exprs_equal_up_to_add_term_order(ctx, lhs, rhs)
@@ -30374,7 +30462,7 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
 mod tests {
     use super::{
         canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order,
-        extract_scaled_double_sine_product_for_cancellation,
+        extract_scaled_double_sine_product_for_cancellation, term_has_matrix_product_factor,
         try_build_direct_sum_diff_cubes_quotient_equivalence_rewrite,
         try_rewrite_hyperbolic_angle_sum_diff_for_cancellation,
         CollapseExactOneShiftedQuotientRule, CollapseExactZeroCommonScaledDifferenceRule,
@@ -30404,6 +30492,47 @@ mod tests {
             expected,
             actual
         );
+    }
+
+    #[test]
+    fn term_has_matrix_product_factor_flags_only_matrix_products() {
+        // A matrix literal used as a factor of a multiplication is a
+        // non-commutative product: the cancellation/reorder machinery must not
+        // treat such a term as a commutative-ring element.
+        let flagged = [
+            "[[1,2],[3,4]]*[[5,6],[7,8]]",
+            "[[1,2],[3,4]]*[[5,6],[7,8]] - [[5,6],[7,8]]*[[1,2],[3,4]]",
+            "2*[[1,2],[3,4]]", // scalar·matrix still has a matrix factor
+            "[[1,2],[3,4]]^2", // matrix power expands to repeated products
+            "x*([[1,0],[0,1]]*[[1,2],[3,4]])",
+        ];
+        for input in flagged {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).unwrap_or_else(|err| panic!("parse {input}: {err}"));
+            assert!(
+                term_has_matrix_product_factor(&ctx, expr),
+                "{input}: expected matrix product factor to be flagged"
+            );
+        }
+
+        // Matrices that appear only as additive terms or only inside a function
+        // argument are NOT non-commutative products, so they stay unflagged
+        // (commutative add-reordering and scalar matchers remain enabled).
+        let unflagged = [
+            "[[1,2],[3,4]] - [[1,2],[3,4]]", // matrices in a difference, not a product
+            "[[1,2],[3,4]] + [[5,6],[7,8]]",
+            "det([[1,2],[3,4]])*x", // matrix only inside det(...) argument
+            "x*y - y*x",            // no matrices at all
+            "(x+1)*(x-1)",
+        ];
+        for input in unflagged {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).unwrap_or_else(|err| panic!("parse {input}: {err}"));
+            assert!(
+                !term_has_matrix_product_factor(&ctx, expr),
+                "{input}: expected NO matrix product factor"
+            );
+        }
     }
 
     #[test]
