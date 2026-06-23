@@ -544,7 +544,61 @@ fn test_eval_plain_log_tan_sqrt_diff_uses_sqrt_in_scaled_trig_argument() {
         .map(|value| value.as_str().expect("required_display string"))
         .collect::<Vec<_>>();
     required_display.sort_unstable();
-    assert_eq!(required_display, ["tan(sqrt(x)) > 0", "x > 0"]);
+    // `cos(sqrt(x)) ≠ 0` is now listed explicitly (tan(sqrt(x)) requires it), matching the sibling
+    // `diff(ln(tan(sqrt(x))+1))` case below — the derivative is only valid where the original
+    // tan-containing function is defined, even though `cos≠0` is implied by `tan(sqrt(x)) > 0`.
+    assert_eq!(
+        required_display,
+        ["cos(sqrt(x)) \u{2260} 0", "tan(sqrt(x)) > 0", "x > 0"]
+    );
+}
+
+#[test]
+fn test_diff_cancelling_reciprocal_trig_product_keeps_domain_condition() {
+    // A reciprocal-trig factor (tan/sec → cos≠0, cot/csc → sin≠0) that CANCELS away in a product
+    // must still impose its domain condition on the derivative: the original function is undefined
+    // where the cancelled factor blew up, so the derivative does not exist there either. Before the
+    // fix these returned the derivative with NO condition (e.g. diff(tan(x)*cos(x)) → cos(x) on all
+    // of ℝ, though tan(x)·cos(x) is undefined at cos(x)=0).
+    for (input, expected) in [
+        ("diff(sec(x)*cos(x), x)", "cos(x) \u{2260} 0"),
+        ("diff(tan(x)*cos(x), x)", "cos(x) \u{2260} 0"),
+        ("diff(cot(x)*sin(x), x)", "sin(x) \u{2260} 0"),
+        ("diff(sin(x)*cot(x), x)", "sin(x) \u{2260} 0"),
+        ("diff(csc(x)*sin(x), x)", "sin(x) \u{2260} 0"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        let displays = wire["required_display"]
+            .as_array()
+            .expect("required_display array");
+        assert!(
+            displays.iter().any(|v| v.as_str() == Some(expected)),
+            "{input}: expected required condition `{expected}`, got {displays:?}"
+        );
+    }
+
+    // Already-conditioned single function must NOT gain a duplicate: diff(tan(x)) carries exactly
+    // one cos(x) ≠ 0 (from the 1/cos² result), and the differand re-attachment dedupes against it.
+    let output = cli()
+        .args(["eval", "diff(tan(x), x)", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+    let cos_conditions = wire["required_display"]
+        .as_array()
+        .expect("required_display array")
+        .iter()
+        .filter(|v| v.as_str() == Some("cos(x) \u{2260} 0"))
+        .count();
+    assert_eq!(
+        cos_conditions, 1,
+        "diff(tan(x)) must not duplicate cos(x) ≠ 0"
+    );
 }
 
 #[test]

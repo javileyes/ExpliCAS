@@ -2648,6 +2648,56 @@ fn direct_calculus_residual_step_local(
     Some(step)
 }
 
+/// Collect the `cos(arg) ≠ 0` / `sin(arg) ≠ 0` domain conditions that reciprocal-trig functions
+/// (`tan`, `sec` → `cos`; `cot`, `csc` → `sin`) impose anywhere in `expr`. `infer_implicit_domain`
+/// cannot supply these — it is read-only and these conditions reference a `cos`/`sin` subexpression
+/// that does not occur in the input — so they must be built here with mutable context access. Only
+/// non-numeric arguments contribute (a constant like `tan(2)` carries no symbolic restriction).
+fn reciprocal_trig_domain_conditions(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    use cas_ast::{BuiltinFn, Expr};
+    let mut conditions = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut stack = vec![expr];
+    while let Some(e) = stack.pop() {
+        if !seen.insert(e) {
+            continue;
+        }
+        match ctx.get(e).clone() {
+            Expr::Function(fn_id, args) if args.len() == 1 => {
+                let arg = args[0];
+                let restrict_base = match ctx.builtin_of(fn_id) {
+                    Some(BuiltinFn::Tan) | Some(BuiltinFn::Sec) => Some(BuiltinFn::Cos),
+                    Some(BuiltinFn::Cot) | Some(BuiltinFn::Csc) => Some(BuiltinFn::Sin),
+                    _ => None,
+                };
+                if let Some(base_fn) = restrict_base {
+                    if !matches!(ctx.get(arg), Expr::Number(_)) {
+                        let base = ctx.call_builtin(base_fn, vec![arg]);
+                        conditions.push(crate::ImplicitCondition::NonZero(base));
+                    }
+                }
+                stack.push(arg);
+            }
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(a);
+                stack.push(b);
+            }
+            Expr::Neg(inner) => stack.push(inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            _ => {}
+        }
+    }
+    conditions
+}
+
 fn presimplified_calculus_residual_step_local(
     ctx: &mut cas_ast::Context,
     source: ExprId,
@@ -5384,13 +5434,37 @@ impl Engine {
         }
         self.simplifier
             .extend_blocked_hints(ctx_simplifier.take_blocked_hints());
-        let rewrite_required = ctx_simplifier.take_required_conditions();
+        let mut rewrite_required = ctx_simplifier.take_required_conditions();
         let restored_step_listener = ctx_simplifier.replace_step_listener(None);
         self.simplifier.context = ctx_simplifier.context;
         self.simplifier.set_step_listener(restored_step_listener);
 
         {
             use crate::{classify_assumptions_in_place, infer_implicit_domain, DomainContext};
+
+            // SOUNDNESS: a derivative is only valid on the DIFFERAND's domain. When differentiation
+            // simplifies away a domain-restricting reciprocal-trig factor — e.g. `tan(x)·cos(x)`
+            // cancels to `sin(x)`, whose derivative `cos(x)` is defined everywhere — the restriction
+            // the original function imposed (here `cos(x) ≠ 0`, since `tan` is undefined where
+            // `cos(x)=0`) is silently dropped, because the collected conditions come from the RESULT's
+            // structure. Single functions and sums (`diff(tan(x))`, `diff(tan(x)+x)`) keep the
+            // condition because the restricting factor survives. `infer_implicit_domain` cannot supply
+            // it (it is read-only and the condition references a constructed `cos`/`sin`), so we walk
+            // the differand and re-attach the `tan`/`sec` → `cos≠0`, `cot`/`csc` → `sin≠0` conditions.
+            // Scoped to `diff` (and deduped) so plain evaluation and already-conditioned cases are
+            // unchanged.
+            if let Some(call) = crate::symbolic_calculus_call_support::try_extract_diff_call(
+                &self.simplifier.context,
+                resolved,
+            ) {
+                let target = call.target;
+                for cond in reciprocal_trig_domain_conditions(&mut self.simplifier.context, target)
+                {
+                    if !rewrite_required.contains(&cond) {
+                        rewrite_required.push(cond);
+                    }
+                }
+            }
 
             let input_domain = infer_implicit_domain(
                 &self.simplifier.context,

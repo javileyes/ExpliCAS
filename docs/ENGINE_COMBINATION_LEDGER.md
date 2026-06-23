@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 307 (newest first)
+Active entries: 308 (newest first)
 
+- 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-22 | `retained` | `crates/cas_math/src/root_forms.rs` (`provable_sign_vs_zero_const_radicand`, | P0 soundness: raíz extraña fuera de dominio con radicando transcendente (solve(ln+ln=cte))
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: paso ... | Colección de la suma por linealidad en forma polinómica canónica (Σ(4k−2)=2n²)
 - 2026-06-22 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_polynomial_sum`: gate ... | Generalizar la colección de sumatorios a cotas escaladas/afines (Σ_{1}^{2n}(2k+1)=4n²+4n)
@@ -13019,3 +13020,50 @@ Active entries: 307 (newest first)
   - peldaño: bases numéricas con TODOS los exponentes numéricos no-evaluables (`2^(1/2)/2^(1/3)`) se
     dejan a las reglas de raíz a propósito; y la base simbólica con asunción `x>0` (modo Assume)
     seguiría declinando — extensible si se enhebra `ValueDomain`.
+
+## 2026-06-23 - P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
+
+- area:
+  - `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `diff`: re-adjunta el dominio
+    del DIFERANDO; helper nuevo `reciprocal_trig_domain_conditions`)
+- status:
+  - `retained` (P0 soundness — condición de dominio perdida; hallado por el hunt adversarial multiagente
+    ultracode y verificado de forma independiente; exento del orden de fase)
+- capture:
+  - investment_class: soundness/honestidad (derivada válida solo en el dominio del diferando)
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: reuse_value (reusa `try_extract_diff_call`; un solo punto en la cola de
+    `eval_simplify`)
+  - cell: `diff(sec x·cos x) → 0` ahora con `cos(x)≠0` (antes sin condición); igual `diff(tan x·cos x) →
+    cos(x)` con `cos(x)≠0`, `diff(cot x·sin x) → -sin(x)` con `sin(x)≠0`, `diff(sin x·cot x)`, `diff(csc x·sin x)`.
+  - behavior_change_expected: cuando un factor recíproco-trig (`tan`/`sec`→`cos≠0`, `cot`/`csc`→`sin≠0`)
+    se CANCELA en un producto al diferenciar (`tan x·cos x → sin x`, derivada `cos x` definida en todo ℝ),
+    su restricción de dominio se perdía porque las condiciones se derivan de la estructura del RESULTADO.
+    Ahora la ruta de `diff` recorre el diferando y re-adjunta esas condiciones (dedup). Resultado calculado
+    intacto; valor numérico de la derivada idéntico.
+  - SOUNDNESS: la derivada solo es válida en el dominio del diferando; el motor ya era CONSISTENTE en
+    casos paralelos (`diff(tan x·cot x)→0` con `[cos≠0,sin≠0]`, `diff((x²-1)/(x-1))→1` con `[x≠1]`,
+    `diff(x/x)` con `[x≠0]`) — solo la familia trig-que-cancela lo soltaba (inconsistencia interna). Funciones
+    solas y sumas (`diff(tan x)`, `diff(tan x+x)`) ya la conservan (el factor sobrevive en el resultado) y NO
+    se duplican (dedup). Argumentos constantes (`tan(2)`) no aportan condición. Plain eval intacto (gateado a
+    `diff`). `infer_implicit_domain` NO puede suministrarlo (es de solo-lectura y la condición referencia un
+    `cos`/`sin` construido), por eso se construye con `&mut ctx`.
+  - scoping: hunt adversarial ultracode (15 frentes, olas anti-ráfaga; solo `derivatives` completó por
+    529 overload del servidor, los otros 14 caídos) → 1 defecto confirmado por 2 lentes vs sympy/mpmath;
+    reproducido y localizado localmente (los pasos muestran `cos·sin/cos → sin` por "Combinar fracciones"
+    soltando `cos≠0`). Huella: 5 fixtures actualizados (4 en diff_step_contract, 1 en cli_contract), todos
+    mejoras legítimas (condición correcta antes ausente, o reorden del mismo conjunto); guardrail+pressure
+    0 deltas; smokes diff/integrate verdes; test de contrato nuevo.
+- observed:
+  - el dominio se recolecta de la estructura del RESULTADO (denominadores, etc.), así que un factor
+    restrictor que se cancela desaparece junto con su condición. `infer_implicit_domain` tampoco modela los
+    dominios de `tan`/`cot`/`sec`/`csc` (no construye el `cos`/`sin` recíproco), por eso ni el diferando ni
+    el resultado los aportaban: había que añadirlos explícitamente.
+- retained learning:
+  - una derivada hereda el dominio del DIFERANDO: si una simplificación previa a derivar elimina un factor
+    con dominio restringido (tan, sqrt, log, 1/·), su condición debe re-adjuntarse al resultado — derivar y
+    simplificar reduce el dominio, nunca lo amplía. Recolectar condiciones SOLO de la estructura del
+    resultado es insuficiente cuando el restrictor se cancela.
+  - peldaño: análogos con `sqrt`/`log` que se cancelan al derivar (`diff(sqrt(x)²)` y similares) podrían
+    perder `x≥0`/`x>0` por la misma razón; el hunt confirmó la familia trig, no estos. Extensión natural:
+    re-adjuntar el dominio COMPLETO del diferando (no solo recíproco-trig) — pendiente de análisis de huella.
