@@ -147,7 +147,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   aplicaba primero y daba el valor correcto, ocultando el bug. (P0 soundness en comando no-cálculo —
   wrong-answer; exento del orden de fase. Hallado por el hunt adversarial multiagente ultracode,
   confirmado 2/2 lentes y verificado vs sympy.)
-  *(graduado FECHA COMMIT: la capa de root-shortcuts del orquestador (`try_standard_*` exact-zero /
+  *(graduado 2026-06-23 a5c13a907: la capa de root-shortcuts del orquestador (`try_standard_*` exact-zero /
   equivalent-pair) y los matchers de cancelación aditiva (`exprs_equal_up_to_mul_factor_order_and_sign`,
   `pairwise_matches`) comparan productos como MULTICONJUNTOS de factores conmutativos → `A·B` y `B·A`
   se tratan como iguales y se cancelan. Fix en capas con un único predicado `term_has_matrix_product_factor`
