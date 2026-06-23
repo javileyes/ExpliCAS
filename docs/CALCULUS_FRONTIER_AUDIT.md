@@ -212,7 +212,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   y la forma `>` dejaba un residual malformado. El abs SIMPLE (`|x| < 5 → (-5,5)`) sí funcionaba,
   ocultando el defecto en las SUMAS. Afirmar conjunto vacío cuando hay un intervalo es wrong-answer.
   (P0 soundness en `solve` de inecuaciones; hallado por el hunt ultracode #4.)
-  *(graduado FECHA COMMIT: el solver usaba *aislar-un-abs-y-dividir-casos*; para una suma pierde los demás
+  *(graduado 2026-06-24 038fc9c79: el solver usaba *aislar-un-abs-y-dividir-casos*; para una suma pierde los demás
   términos y la intersección de ramas incompletas colapsa a vacío. Nuevo solver EXACTO por breakpoints
   (`try_solve_sum_of_abs_inequality`): recast `lhs-rhs {op} 0`, descomponer en `Σ kᵢ·|mᵢ·x+bᵢ| + afín`
   (inner lineal), breakpoints `aᵢ=-bᵢ/mᵢ` (BigRational), en cada tramo entre breakpoints el LHS es lineal
