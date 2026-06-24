@@ -859,6 +859,40 @@ fn test_eval_rational_power_polynomial_equation_solves_by_substitution() {
 }
 
 #[test]
+fn test_eval_log_polynomial_equation_solves_by_substitution() {
+    // Equations that are a polynomial of degree >= 2 in ln(x) used to leak a
+    // malformed `Solve: solve(x - e^(...))` residual and drop every root. They are
+    // now solved by the u = ln(x) substitution, back-substituting ln(x) = u_root
+    // (= e^(u_root), the existing path with the ln domain). Cross-checked against
+    // an independent oracle over 250 random ln-polynomials (0 mismatches).
+    for (input, expected) in [
+        ("ln(x)^2 - ln(x) - 2 = 0", "{ 1 / e, e^2 }"),
+        ("ln(x)^2 - 3*ln(x) + 2 = 0", "{ e, e^2 }"),
+        ("ln(x)^2 = ln(x)", "{ 1, e }"),
+        ("ln(x)^2 - 1 = 0", "{ 1 / e, e }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+
+    // Single-log equations are unchanged (degree-1, handled directly).
+    for (input, expected) in [("ln(x) = 2", "{ e^2 }"), ("ln(x) - 1 = 0", "{ e }")] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_radical_inequality_keeps_argument_domain() {
     // `sqrt(g(x)) {<,<=} c` requires g(x) >= 0, but for a COMPOUND argument the
     // engine dropped that domain, returning e.g. `sqrt(x-1) < 3 → (-inf, 10)`

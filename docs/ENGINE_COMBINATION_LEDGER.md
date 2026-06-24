@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 328 (newest first)
+Active entries: 329 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -133,6 +133,7 @@ Active entries: 328 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC7): la dominancia en ∞ muestra la indeterminación ∞/∞ antes de concluir
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | Educativo (G2 SC8, CIERRE): residual de límite sugiere límites laterales (sin afirmar DNE) — gatekeeper G2 completo
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | P0 soundness (hunt Cluster A1): ecuaciones polinómicas en x^(1/q) se resuelven por sustitución (antes fugaban y perdían raíces)
+- 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log`... | P0 soundness (hunt Cluster A2): ecuaciones polinómicas en ln(x) se resuelven por sustitución
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13983,3 +13984,36 @@ Active entries: 328 (newest first)
     recursivamente deja que el solver existente aplique el dominio del átomo (raíz par/impar) — no re-derivar.
     Peldaños del Cluster A: A2 = polinomio en ln(x) (`ln(x)²-ln(x)-2`), A3 = suma de dos radicales distintos
     (`√(x+3)+√x=3`, método de aislar-y-elevar, no sustitución de un átomo). Siguen fugando; mismos commits.
+
+## 2026-06-24 - P0 soundness (hunt Cluster A2): ecuaciones polinómicas en ln(x) se resuelven por sustitución
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log` + `find_log_atom_containing_var`;
+    core compartido `solve_polynomial_in_atom` extraído de A1; hook tras A1)
+- status:
+  - `retained` (segundo fix del hunt; reusa el core de A1)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `ln(x)²-ln(x)-2=0` ANTES fugaba `Solve: solve(x - e^((ln(x)+2)^(1/2)) = 0, x) = 0` (ambas raíces
+    perdidas); AHORA `{1/e, e²}`. Igual `ln(x)²-3ln(x)+2 → {e,e²}`, `ln(x)²=ln(x) → {1,e}`, `ln(x)²-1 → {1/e,e}`.
+  - MECANISMO: polinomio de grado ≥2 en el átomo `ln(x)`. EXTRAÍDO de A1 el core `solve_polynomial_in_atom`
+    (gate grado≥2, resuelve el u-polinomio, retro-sustituye `g(x)=u_root` recursivamente, une) — A1 y A2 lo
+    comparten. A2: simplifica lhs-rhs, halla el átomo `ln(arg)` con x (find_log_atom_containing_var),
+    sustituye átomo→u con `substitute_expr_by_id`, verifica que NO queda x (si quedan dos átomos log distintos,
+    declina), y delega al core con back_sub_atom=ln(arg). La retro-sustitución `ln(x)=u_root` la cierra el
+    solver recursivo ya verificado (`ln(x)=2→{e²}`, `ln(x)=-1→{1/e}`), aplicando el dominio del log (x>0).
+  - SOUNDNESS: gate grado≥2 evita recursión (la retro-sub `ln(x)=c` es grado-1, declina). Verificación
+    adversarial: oráculo independiente que genera polinomios en ln(x) (grado 2-3, raíces racionales) y compara
+    {e^r} numéricamente — 250 casos, 0 mismatches, 0 skipped.
+  - validación: workspace 12327/0; clippy/fmt limpios; huella sin deltas. Test
+    `test_eval_log_polynomial_equation_solves_by_substitution` (+ regresión single-log).
+- observed:
+  - el core "polinomio en un átomo invertible g(x)" se generaliza limpio: A1 (átomo x^(1/q), back-sub potencia)
+    y A2 (átomo ln(x), back-sub log) comparten todo salvo la detección del átomo y su construcción del
+    u-polinomio (rebuild de potencias vs `substitute_expr_by_id` literal).
+- retained learning:
+  - una vez extraído el core de sustitución-de-átomo, cada nuevo tipo de átomo es solo (detección + cómo se
+    sustituye); la retro-sustitución y el dominio los hereda del solver recursivo. Cluster A: A1 ✅, A2 ✅;
+    queda A3 (suma de dos radicales distintos, `√(x+3)+√x=3` — NO es polinomio en un átomo, requiere
+    aislar-y-elevar). Luego Cluster B (inecuaciones radicales) y C (integral definida).

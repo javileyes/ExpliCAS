@@ -267,6 +267,12 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   adversarial: oráculo `fractions` independiente, 300 casos (q∈{2,3,4,5}, grado 2-3), 0 mismatches. Workspace
   12326/0; huella sin deltas. Peldaños del Cluster A: A2 (polinomio en ln(x)) y A3 (suma de dos radicales
   distintos) siguen fugando.)*
+  *(peldaño A2 graduado 2026-06-24 PENDIENTEA2: `ln(x)²-ln(x)-2=0` etc. fugaban `Solve: solve(x - e^(…)) = 0`;
+  ahora `{1/e, e²}`, `ln²=ln → {1,e}`, `ln²-3ln+2 → {e,e²}`. Extraído de A1 el core compartido
+  `solve_polynomial_in_atom`; nuevo `try_solve_polynomial_in_log` halla el átomo `ln(arg)` con x, lo sustituye
+  por u (`substitute_expr_by_id`), verifica que no queda x, y delega al core con back-sub `ln(x)=u_root`
+  (cerrada por el solver recursivo con dominio x>0). Oráculo independiente 250 casos, 0 mismatches. Workspace
+  12327/0; huella sin deltas. Queda A3 (suma de dos radicales distintos).)*
 
 - [x] **(S) Inecuación radical con argumento compuesto soltaba el dominio**: `sqrt(x-1) < 3` devolvía
   `(-∞, 10)` cuando la solución es `[1, 10)` — incluyendo puntos donde el radicando `x-1 < 0` y `√` no

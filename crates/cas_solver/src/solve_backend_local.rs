@@ -714,6 +714,55 @@ fn rebuild_x_powers_as_u(
     }
 }
 
+/// Shared core for "equation is a polynomial in an invertible atom `g(x)`": given
+/// the equation already rewritten as `u_expr = 0` in the fresh variable `u_var`
+/// (the atom replaced by `u`), require degree ≥ 2 in `u`, solve for `u`, then
+/// back-substitute `g(x) = u_root` recursively for each root, letting the existing
+/// solver apply the atom's own domain (even root drops negatives; `ln` stays
+/// positive; etc.). Returns `None` if `u_expr` is not a degree-≥2 polynomial in
+/// `u` or the `u`-equation is not discretely solvable.
+///
+/// The degree-≥2 gate is both correctness (a degree-1 `u`-equation is a single
+/// `g(x) = c`, solved directly) and a recursion guard: the back-substitution is
+/// itself a single `g(x) = u_root`, which must NOT re-enter this path.
+fn solve_polynomial_in_atom(
+    simplifier: &mut Simplifier,
+    u_expr: ExprId,
+    u_var: &str,
+    var: &str,
+    back_sub_atom: ExprId,
+) -> Option<SolutionSet> {
+    use cas_math::polynomial::Polynomial;
+    let u_poly = Polynomial::from_expr(&simplifier.context, u_expr, u_var).ok()?;
+    if u_poly.degree() < 2 {
+        return None;
+    }
+    let zero = simplifier.context.num(0);
+    let u_eq = Equation {
+        lhs: u_expr,
+        rhs: zero,
+        op: cas_ast::RelOp::Eq,
+    };
+    let (u_solution, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
+    let u_roots = match u_solution {
+        SolutionSet::Discrete(roots) => roots,
+        SolutionSet::Empty => return Some(SolutionSet::Empty),
+        _ => return None, // non-discrete / unsolved u-polynomial: leave to the existing path
+    };
+    let mut solution = SolutionSet::Empty;
+    for u_root in u_roots {
+        let back_eq = Equation {
+            lhs: back_sub_atom,
+            rhs: u_root,
+            op: cas_ast::RelOp::Eq,
+        };
+        let (xs, _) = crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
+        solution =
+            cas_solver_core::solution_set::union_solution_sets(&simplifier.context, solution, xs);
+    }
+    Some(solution)
+}
+
 /// Solve an EQUATION that is a polynomial of degree ≥ 2 in `x^(1/q)` for some
 /// integer `q ≥ 2`: `x` appears only as positive rational powers with common
 /// denominator `q` (e.g. `x - 3·√x + 2 = 0`, a quadratic in `√x`, or
@@ -728,7 +777,6 @@ fn try_solve_rational_power_polynomial(
     eq: &Equation,
     var: &str,
 ) -> Option<SolutionSet> {
-    use cas_math::polynomial::Polynomial;
     use num_bigint::BigInt;
     use num_integer::Integer;
     use num_rational::BigRational;
@@ -753,46 +801,69 @@ fn try_solve_rational_power_polynomial(
     let u_var = "__rps_u";
     let u_expr = rebuild_x_powers_as_u(&mut simplifier.context, expr, var, u_var, &q_big);
 
-    // Must be a genuine polynomial in u of degree ≥ 2. Degree 1 is a single
-    // x-power equation already solved directly — and matching it would recurse
-    // forever through the back-substitution `x^(1/q) = u_root`.
-    let u_poly = Polynomial::from_expr(&simplifier.context, u_expr, u_var).ok()?;
-    if u_poly.degree() < 2 {
-        return None;
-    }
-
-    let zero = simplifier.context.num(0);
-    let u_eq = Equation {
-        lhs: u_expr,
-        rhs: zero,
-        op: cas_ast::RelOp::Eq,
-    };
-    let (u_solution, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
-    let u_roots = match u_solution {
-        SolutionSet::Discrete(roots) => roots,
-        SolutionSet::Empty => return Some(SolutionSet::Empty),
-        _ => return None, // non-discrete / unsolved u-polynomial: leave to the existing path
-    };
-
-    // Back-substitute `x^(1/q) = u_root`; the recursive solve enforces the
-    // real-root domain (even q drops negative roots) and yields the x values.
+    // Back-substitution atom is `x^(1/q)`; `solve_polynomial_in_atom` enforces the
+    // degree-≥2 gate, solves for u, and back-substitutes with the real-root domain.
     let recip_q = simplifier
         .context
         .add(Expr::Number(BigRational::new(BigInt::one(), q_big)));
     let x = simplifier.context.var(var);
     let atom = simplifier.context.add(Expr::Pow(x, recip_q));
-    let mut solution = SolutionSet::Empty;
-    for u_root in u_roots {
-        let back_eq = Equation {
-            lhs: atom,
-            rhs: u_root,
-            op: cas_ast::RelOp::Eq,
-        };
-        let (xs, _) = crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
-        solution =
-            cas_solver_core::solution_set::union_solution_sets(&simplifier.context, solution, xs);
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+}
+
+/// Solve an EQUATION that is a polynomial of degree ≥ 2 in `ln(g)` for a single
+/// log atom `ln(g)` whose argument contains the variable (e.g.
+/// `ln(x)^2 - ln(x) - 2 = 0`, a quadratic in `ln(x)`). Substitute `u = ln(g)`,
+/// solve the polynomial in `u`, then back-substitute `ln(g) = u_root` — the
+/// recursive solver finishes each as `g = e^(u_root)` with the `ln` domain
+/// (`g > 0`). Without this, the isolation path reorients to `x = e^(√(…))` and
+/// leaks a malformed `solve(...)` residual while dropping every root.
+fn try_solve_polynomial_in_log(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    if eq.op != cas_ast::RelOp::Eq {
+        return None;
     }
-    Some(solution)
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (expr, _) = simplifier.simplify(diff);
+
+    // Find a `ln(arg)` subexpression whose argument contains the variable. If the
+    // single substitution does not remove every `x`, the post-check below declines.
+    let atom = find_log_atom_containing_var(&simplifier.context, expr, var)?;
+    let u_var = "__lns_u";
+    let u = simplifier.context.var(u_var);
+    let u_expr = substitute_expr_by_id(&mut simplifier.context, expr, atom, u);
+    if expr_contains_named_var(&simplifier.context, u_expr, var) {
+        return None; // a second, distinct log atom (or x elsewhere) remains
+    }
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+}
+
+/// Return a `ln(arg)` subexpression of `expr` whose argument contains `var`
+/// (the substitution atom for [`try_solve_polynomial_in_log`]), or None.
+fn find_log_atom_containing_var(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    use cas_ast::BuiltinFn;
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1
+            && ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+            && expr_contains_named_var(ctx, args[0], var)
+        {
+            return Some(expr);
+        }
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            find_log_atom_containing_var(ctx, l, var)
+                .or_else(|| find_log_atom_containing_var(ctx, r, var))
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => find_log_atom_containing_var(ctx, inner, var),
+        Expr::Function(_, args) => args
+            .iter()
+            .find_map(|&a| find_log_atom_containing_var(ctx, a, var)),
+        _ => None,
+    }
 }
 
 /// Local backend facade selected as the active backend.
@@ -832,6 +903,12 @@ impl SolveBackend for LocalSolveBackend {
         // reorients to `x = f(x)` and leaks a malformed `solve(...)` residual while
         // dropping every root. Solve them by `u = x^(1/q)` substitution here first.
         if let Some(set) = try_solve_rational_power_polynomial(simplifier, eq, var) {
+            return Ok((set, Vec::new()));
+        }
+        // Equations that are a polynomial of degree ≥ 2 in `ln(x)`
+        // (`ln(x)^2 - ln(x) - 2 = 0`, …) leak the same way; solve them by the
+        // `u = ln(x)` substitution.
+        if let Some(set) = try_solve_polynomial_in_log(simplifier, eq, var) {
             return Ok((set, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
