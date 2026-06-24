@@ -345,7 +345,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `√(-x²)<x+1 → "No solution"` (real `{0}`); (D) `√(x-2)≥0·x-4 → [18,∞)` y `√(4-x²)<5 → "All real numbers"`
   (reales `[2,∞)`, `[-2,2]`); (frontera) `√(x²-4)≤(1/2)x+5 → Solve:…` fuga. (P1 wrong-answers en `solve` de
   inecuaciones; soundness.)
-  *(graduado 2026-06-25 PENDIENTE: (A) g² se construye EXPANDIDO `Polynomial::from_expr(g).mul.to_expr` —
+  *(graduado 2026-06-25 0b19bdf44: (A) g² se construye EXPANDIDO `Polynomial::from_expr(g).mul.to_expr` —
   `Pow(g,2)` sobre el RHS factorizado perdía el factor racional al cuadrado; (B) `f_nonneg` pasa por
   `discrete_to_intervals` — `f≥0`={punto} para radicando definido-negativo colapsaba a ∅; (D)
   `solve_g_sign_condition` evalúa el signo de la constante en vez de `solve(const,x)` (que da error); (frontera)
