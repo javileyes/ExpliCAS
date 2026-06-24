@@ -164,7 +164,9 @@ fn flip_relop(op: RelOp) -> RelOp {
 }
 
 /// If `expr` is `alpha·|arg|` for a non-zero rational `alpha`, return `(alpha, arg)`.
-/// Pure read; handles `|arg|`, `-|arg|`, and `k·|arg|`.
+/// Pure read; handles `|arg|`, `-|arg|`, `k·|arg|`, and `(k·|arg|)/n` (constant
+/// denominator). The division form arises when an equation like `2x + |x-1| = 3`
+/// reorients to `x = (3 - |x-1|)/2 = 3/2 - |x-1|/2`.
 fn extract_scaled_abs(ctx: &Context, expr: ExprId) -> Option<(num_rational::BigRational, ExprId)> {
     use cas_math::numeric_eval::as_rational_const;
     use num_traits::Zero;
@@ -195,6 +197,15 @@ fn extract_scaled_abs(ctx: &Context, expr: ExprId) -> Option<(num_rational::BigR
                 return Some((k * a, arg));
             }
             None
+        }
+        Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
+            let k = as_rational_const(ctx, den)?;
+            if k.is_zero() {
+                return None;
+            }
+            let (a, arg) = extract_scaled_abs(ctx, num)?;
+            Some((a / k, arg))
         }
         _ => None,
     }
@@ -290,39 +301,71 @@ fn decompose_sum_of_abs(
     use num_rational::BigRational;
     use num_traits::{One, Zero};
 
-    // Flatten the additive structure into signed terms.
-    fn collect(ctx: &Context, expr: ExprId, sign: i8, out: &mut Vec<(i8, ExprId)>) {
+    // Flatten the additive structure into scaled terms, distributing constant
+    // factors over the sum. Carrying a rational `scale` (not just a sign) lets a
+    // term like `(|x| + |x-1|)/2` or the reoriented `x = 3/2 - |x-1|/2` expose its
+    // absolute-value pieces instead of hiding them inside a `Mul`/`Div` by a
+    // constant.
+    fn collect(
+        ctx: &Context,
+        expr: ExprId,
+        scale: BigRational,
+        out: &mut Vec<(BigRational, ExprId)>,
+    ) {
+        use cas_math::numeric_eval::as_rational_const;
+        use num_traits::Zero;
         match ctx.get(expr) {
             Expr::Add(l, r) => {
                 let (l, r) = (*l, *r);
-                collect(ctx, l, sign, out);
-                collect(ctx, r, sign, out);
+                collect(ctx, l, scale.clone(), out);
+                collect(ctx, r, scale, out);
             }
             Expr::Sub(l, r) => {
                 let (l, r) = (*l, *r);
-                collect(ctx, l, sign, out);
-                collect(ctx, r, -sign, out);
+                collect(ctx, l, scale.clone(), out);
+                collect(ctx, r, -scale, out);
             }
             Expr::Neg(inner) => {
                 let inner = *inner;
-                collect(ctx, inner, -sign, out);
+                collect(ctx, inner, -scale, out);
             }
-            _ => out.push((sign, expr)),
+            Expr::Mul(l, r) => {
+                let (l, r) = (*l, *r);
+                if let Some(k) = as_rational_const(ctx, l) {
+                    if !k.is_zero() {
+                        collect(ctx, r, scale * k, out);
+                        return;
+                    }
+                }
+                if let Some(k) = as_rational_const(ctx, r) {
+                    if !k.is_zero() {
+                        collect(ctx, l, scale * k, out);
+                        return;
+                    }
+                }
+                out.push((scale, expr));
+            }
+            Expr::Div(l, r) => {
+                let (l, r) = (*l, *r);
+                if let Some(k) = as_rational_const(ctx, r) {
+                    if !k.is_zero() {
+                        collect(ctx, l, scale / k, out);
+                        return;
+                    }
+                }
+                out.push((scale, expr));
+            }
+            _ => out.push((scale, expr)),
         }
     }
-    let mut terms: Vec<(i8, ExprId)> = Vec::new();
-    collect(&*ctx, expr, 1, &mut terms);
+    let mut terms: Vec<(BigRational, ExprId)> = Vec::new();
+    collect(&*ctx, expr, BigRational::one(), &mut terms);
 
     let mut abs_terms: Vec<AbsLinearTerm> = Vec::new();
     let mut rem_slope = BigRational::zero();
     let mut rem_const = BigRational::zero();
 
-    for (sign, term) in terms {
-        let sign_r = if sign >= 0 {
-            BigRational::one()
-        } else {
-            -BigRational::one()
-        };
+    for (scale, term) in terms {
         if let Some((k, inner)) = extract_scaled_abs(&*ctx, term) {
             // Absolute-value term: inner argument must be linear in `var`.
             let poly = Polynomial::from_expr(&*ctx, inner, var).ok()?;
@@ -340,7 +383,7 @@ fn decompose_sum_of_abs(
                 .unwrap_or_else(BigRational::zero);
             let breakpoint = -b.clone() / m.clone();
             abs_terms.push(AbsLinearTerm {
-                coeff: sign_r * k,
+                coeff: scale * k,
                 m,
                 b,
                 breakpoint,
@@ -352,10 +395,10 @@ fn decompose_sum_of_abs(
                 return None;
             }
             if let Some(c1) = poly.coeffs.get(1) {
-                rem_slope += sign_r.clone() * c1.clone();
+                rem_slope += scale.clone() * c1.clone();
             }
             if let Some(c0) = poly.coeffs.first() {
-                rem_const += sign_r * c0.clone();
+                rem_const += scale * c0.clone();
             }
         }
     }
@@ -386,10 +429,6 @@ pub fn try_solve_sum_of_abs_relation(
     op: RelOp,
     var: &str,
 ) -> Option<SolutionSet> {
-    use crate::solution_set::{intersect_solution_sets, neg_inf, pos_inf, union_solution_sets};
-    use num_rational::BigRational;
-    use num_traits::{One, Signed, Zero};
-
     // Inequalities and equations; `≠` keeps its existing handling.
     if !matches!(
         op,
@@ -402,10 +441,31 @@ pub fn try_solve_sum_of_abs_relation(
     let full = ctx.add(Expr::Sub(lhs, rhs));
     let (abs_terms, rem_slope, rem_const) = decompose_sum_of_abs(ctx, full, var)?;
 
-    // A single abs term is the existing path's job; only take over genuine sums.
+    // A single abs term is the existing single-abs path's job; only take over
+    // genuine sums here. (A reoriented `var = α·|arg| + β` single-abs equation
+    // that the single-abs path leaks is recovered via
+    // `try_single_abs_affine_equation`, which shares the segment core below.)
     if abs_terms.len() < 2 {
         return None;
     }
+
+    solve_decomposed_abs_relation(ctx, &abs_terms, &rem_slope, &rem_const, op)
+}
+
+/// Solve `Σ coeffᵢ·|mᵢ·x + bᵢ| + (rem_slope·x + rem_const) {op} 0` over ℝ by the
+/// exact piecewise/breakpoint method, given the already-decomposed pieces. Shared
+/// by the top-level sum solver (≥2 abs terms) and the single-abs equation recovery
+/// (exactly one abs term). All arithmetic is exact `BigRational` — never f64.
+fn solve_decomposed_abs_relation(
+    ctx: &mut Context,
+    abs_terms: &[AbsLinearTerm],
+    rem_slope: &num_rational::BigRational,
+    rem_const: &num_rational::BigRational,
+    op: RelOp,
+) -> Option<SolutionSet> {
+    use crate::solution_set::{intersect_solution_sets, neg_inf, pos_inf, union_solution_sets};
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
 
     // Distinct, sorted breakpoints (exact rationals).
     let mut breakpoints: Vec<BigRational> =
@@ -467,7 +527,7 @@ pub fn try_solve_sum_of_abs_relation(
         // interior test point (never a breakpoint, so the argument is nonzero).
         let mut slope = rem_slope.clone();
         let mut constant = rem_const.clone();
-        for t in &abs_terms {
+        for t in abs_terms {
             let val = t.m.clone() * test.clone() + t.b.clone();
             let s = if val.is_positive() {
                 one.clone()
@@ -607,6 +667,33 @@ fn try_abs_self_equation(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<So
         return None;
     };
     solve_linear_arg_vs_zero(ctx, arg, arg_op, var)
+}
+
+/// Recover a reoriented single-abs equation `var = α·|arg| + β` (with `arg`
+/// linear in `var`) that the structural `|f| = ±f` recognizer above cannot
+/// finish — e.g. `x = 3 - |x - 1|`, the isolated form of `x + |x-1| = 3`, which
+/// otherwise leaks a nested-`solve` residual.
+///
+/// The equation `var - (α·|arg| + β) = 0` is itself piecewise-linear with a
+/// single breakpoint, so it is solved by the SAME exact segment core as the
+/// sum-of-abs solver (`solve_decomposed_abs_relation`), which already handles the
+/// degenerate-slope branches (a flat piece equal to the target yields a ray,
+/// e.g. `x = |x|` → `[0, ∞)`). Gated to EXACTLY one absolute-value term: zero is
+/// a plain linear equation owned elsewhere, and two or more is the top-level
+/// sum solver's job.
+fn try_single_abs_affine_equation(
+    ctx: &mut Context,
+    rhs: ExprId,
+    var: &str,
+) -> Option<SolutionSet> {
+    // Equation `var = rhs`  ⟺  `var - rhs = 0`.
+    let var_expr = ctx.var(var);
+    let full = ctx.add(Expr::Sub(var_expr, rhs));
+    let (abs_terms, rem_slope, rem_const) = decompose_sum_of_abs(ctx, full, var)?;
+    if abs_terms.len() != 1 {
+        return None;
+    }
+    solve_decomposed_abs_relation(ctx, &abs_terms, &rem_slope, &rem_const, RelOp::Eq)
 }
 
 /// Recover `var = N/D` (variable isolated on the left but still present on the
@@ -750,7 +837,9 @@ fn solve_rational_quadratic(
 /// `|f| = ±f` self-equations (Cluster J) and `var = N/D(var)` rational
 /// equations (Cluster A).
 fn try_recover_isolated_eq(ctx: &mut Context, rhs: ExprId, var: &str) -> Option<SolutionSet> {
-    try_abs_self_equation(ctx, rhs, var).or_else(|| try_cross_multiply_rational(ctx, rhs, var))
+    try_abs_self_equation(ctx, rhs, var)
+        .or_else(|| try_single_abs_affine_equation(ctx, rhs, var))
+        .or_else(|| try_cross_multiply_rational(ctx, rhs, var))
 }
 
 /// Resolve the final outcome for `x op rhs` once the variable is syntactically

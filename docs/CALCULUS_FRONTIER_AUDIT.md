@@ -236,6 +236,22 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   independiente `fractions` 400 sumas aleatorias, 0 mismatches. Workspace 12316/0; huella sin deltas. Sigue
   pendiente: pasos didácticos del solver piecewise y valor absoluto ANIDADO.)*
 
+- [x] **(S) Ecuación de UN abs reorientada a `var = c − |arg|` fugaba residual malformado**: `x + |x-1| = 3`
+  y `|x-1| = 3 - x` devolvían `Solve: solve(x - (3 - |x-1|) = 0, x) = 0` (sintaxis interna filtrada con
+  ok=true) en vez de `{2}`; el valor absoluto ANIDADO `|x + |x-1|| = 3` igual (correcto `{2}`); coef≠1 y sumas
+  divididas (`2x - |x| = 1`, `(|x|+|x-1|)/2 = 1`) también fugaban. (P0 honestidad en `solve`; hallado al sondear
+  el peldaño de abs anidado de #4.)
+  *(graduado 2026-06-24 PENDIENTESA: cuando una ecuación de un abs se reorienta a `var = α·|arg| + β`,
+  `try_abs_self_equation` solo reconocía el caso estructural `|f|=±f` y fugaba el resto. Es piecewise-lineal con
+  un breakpoint → se resuelve con el MISMO core exacto del solver de sumas: extraído `solve_decomposed_abs_relation`
+  (loop por segmentos ya verificado con 400 casos) y compartido; nuevo `try_single_abs_affine_equation` descompone
+  `var - rhs`, exige 1 término abs y delega al core, cableado como fallback tras `try_abs_self_equation` (preserva
+  su huella). Además `decompose_sum_of_abs.collect` ahora lleva un `scale` racional y DISTRIBUYE factores
+  constantes `Mul(const,·)`/`Div(·,const)`, exponiendo los abs ocultos tras `(…)/2` — arregla también el
+  top-level `(|x|+|x-1|)/2=1`. Sin convexidad: `x=|x| → [0,∞)`. Verificación adversarial: 2 oráculos `fractions`
+  (sumas 400/0, un-abso=afín 296/0). Workspace 12317/0; huella sin deltas. Peldaño de presentación: la ruta
+  `|f|=f` rinde medio-rectas como "All real numbers if x≥0" en vez de `[0,∞)`.)*
+
 - [x] **(S) Inecuación radical con argumento compuesto soltaba el dominio**: `sqrt(x-1) < 3` devolvía
   `(-∞, 10)` cuando la solución es `[1, 10)` — incluyendo puntos donde el radicando `x-1 < 0` y `√` no
   existe en ℝ. Igual `sqrt(2x-1) ≤ 3` → `(-∞, 5]` (real `[1/2, 5]`); `sqrt(x²-4) < 3` daba un solo intervalo

@@ -1002,6 +1002,47 @@ fn test_eval_complementary_inverse_trig_respects_domain() {
 }
 
 #[test]
+fn test_eval_single_abs_affine_equation_recovers_instead_of_leaking() {
+    // A single-abs equation that reorients to `var = α·|arg| + β` (the variable
+    // ends up on the abs side, e.g. an effective negative slope) used to leak a
+    // malformed nested-`solve` residual. It is piecewise-linear with one
+    // breakpoint, so the shared exact segment core solves it. The decompose step
+    // distributes a constant factor over the sum, so divided/scaled forms
+    // (`2x + |x-1| = 3`, `(|x|+|x-1|)/2 = 1`) are handled too. Cross-checked
+    // against an independent exact (fractions) oracle (0 mismatches).
+    for (input, expected) in [
+        // Reoriented `var = c - |arg|` (the previously-leaking shape).
+        ("x + abs(x-1) = 3", "{ 2 }"),
+        ("abs(x-1) = 3 - x", "{ 2 }"),
+        ("x + abs(x-1) = 5", "{ 3 }"),
+        ("abs(x-2) = 4 - x", "{ 3 }"),
+        // Nested absolute value: the outer split feeds the single-abs solver.
+        ("abs(x + abs(x-1)) = 3", "{ 2 }"),
+        // Coefficient ≠ 1 on the variable / on the abs: the reorientation divides
+        // by the leading coefficient, which the decompose step now distributes.
+        ("2*x - abs(x) = 1", "{ 1 }"),
+        ("2*x + 2*abs(x-2) + 1 = 6", "{ 9/4 }"),
+        // Divided sum (top-level, ≥2 abs terms under a constant denominator).
+        ("(abs(x) + abs(x-1))/2 = 1", "{ -1/2, 3/2 }"),
+        // Degenerate-slope branch yields a ray, not a point.
+        ("x = abs(x)", "[0, infinity)"),
+        ("x - abs(x-2) = 0", "{ 1 }"),
+        // Working single-abs cases are unchanged (positive-slope RHS path).
+        ("abs(x-1) = x + 1", "{ 0 }"),
+        ("abs(2*x-1) = x", "{ 1, 1/3 }"),
+        ("abs(x) = 2*x - 3", "{ 3 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_shifted_log_tan_sqrt_diff_finishes_without_depth_overflow() {
     let cases = [
         (

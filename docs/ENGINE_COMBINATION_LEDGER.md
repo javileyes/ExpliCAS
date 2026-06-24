@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 317 (newest first)
+Active entries: 318 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -122,6 +122,7 @@ Active entries: 317 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_math/src/inverse_trig_composition_support.rs` (gate de dominio en... | P0 soundness: identidad complementaria arcsin+arccos colapsaba fuera de dominio (hunt #8, último)
 - 2026-06-24 | `retained` | `crates/cas_engine/src/eval/diagnostics.rs` (`push_intrinsic_function_require... | P0 honestidad: arcsec(x)+arccsc(x)→π/2 perdía la condición de dominio |x|≥1 (peldaño (b) de #8)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: ecuaciones de suma de abs daban residual/respuesta incorrecta (peldaño de #4)
+- 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_single_abs_affine_equation`, | P0 honestidad: ecuaciones de un abs reorientadas (var = c - |arg|) fugaban residual malformado
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13525,3 +13526,48 @@ Active entries: 317 (newest first)
     parseo de signos en el oráculo, no del engine (los puntos coincidían literalmente). Cf. la lección del hunt
     #6/#7 (oráculo con convención de dominio equivocada). Próximo peldaño: pasos didácticos del solver piecewise
     (inecuaciones Y ecuaciones) — narrar breakpoints/segmentos/signos; y ecuaciones con valor absoluto anidado.
+
+## 2026-06-24 - P0 honestidad: ecuaciones de un abs reorientadas (var = c - |arg|) fugaban residual malformado
+
+- area:
+  - `crates/cas_solver_core/src/solve_outcome.rs` (`try_single_abs_affine_equation`,
+    `solve_decomposed_abs_relation` extraído, `decompose_sum_of_abs` distribuye factores constantes,
+    `extract_scaled_abs` admite `|arg|/n`); wiring en `try_recover_isolated_eq`
+- status:
+  - `retained` (P0 honestidad — fuga de sintaxis interna `Solve: solve(...) = 0`; cierra abs anidado y la
+    familia de un solo abs reorientada)
+- capture:
+  - investment_class: soundness/honestidad (reusar el solver piecewise ya verificado para una familia hermana)
+  - primary_dimension: north_star_soundness
+  - cell: `x+|x-1|=3` y `|x-1|=3-x` daban `Solve: solve(x - (3 - |x-1|) = 0, x) = 0` (residual basura);
+    el ANIDADO `|x+|x-1||=3` igual. AHORA `{2}`. Coef≠1 / sumas divididas: `2x-|x|=1 → {1}`,
+    `2x+2|x-2|+1=6 → {9/4}`, `(|x|+|x-1|)/2=1 → {-1/2,3/2}` (antes todas fugaban).
+  - MECANISMO: cuando una ecuación de un abs se reorienta a `var = α·|arg| + β` (el var queda del lado del abs,
+    p.ej. pendiente efectiva negativa), `try_abs_self_equation` solo reconocía el caso ESTRUCTURAL `|f|=±f` y
+    devolvía None → fuga del residual aislado. La ecuación `var - (α|arg|+β)=0` es piecewise-lineal con UN
+    breakpoint, así que se resuelve con el MISMO core exacto del solver de sumas. Cambios: (1) extraído
+    `solve_decomposed_abs_relation` (el loop por segmentos, ya verificado con 400 casos) para compartirlo;
+    (2) `try_single_abs_affine_equation` descompone `var - rhs`, exige EXACTAMENTE 1 término abs (0 = lineal
+    de otro dueño, ≥2 = el solver top-level) y delega al core; cableado como fallback DESPUÉS de
+    `try_abs_self_equation` (preserva su salida/huella) y antes del rational; (3) `decompose_sum_of_abs.collect`
+    ahora lleva un `scale` RACIONAL (no solo signo) y DISTRIBUYE factores constantes `Mul(const,·)`/`Div(·,const)`
+    sobre la suma, exponiendo los abs ocultos tras `(…)/2` o `½·(…)` — esto arregla también el caso top-level
+    `(|x|+|x-1|)/2=1` y los de coeficiente ≠1 cuya reorientación divide por el coeficiente líder.
+  - verificación adversarial: 2 oráculos `fractions` independientes — sumas (400 casos, 0 mismatches, confirma
+    que la generalización de decompose NO regresó el top-level) y un-abso=afín (296 casos, 0 mismatches; los 4
+    no-parseados restantes son medio-rectas correctas renderizadas como "All real numbers if x≥0" por la ruta
+    `|f|=f` preexistente, ni fuga ni wrong-answer). Sin convexidad: `x=|x| → [0,∞)`.
+- observed:
+  - extraer el core ya verificado de un solver y reusarlo para el operador/forma hermana es más seguro que
+    re-derivar el case-split con sus bordes (denominador degenerado → rayo). El leak persistía solo porque la
+    forma reorientada no estaba enrutada al core.
+  - un recolector aditivo que solo lleva SIGNO no ve los abs escondidos tras un factor constante distribuible;
+    llevar un `scale` racional y distribuir `Mul`/`Div` por constante los expone — y de paso generaliza el
+    solver a formas divididas sin código nuevo aguas abajo.
+- retained learning:
+  - cuando una familia tiene un solver exacto verificado, el trabajo de extender a formas hermanas es sobre
+    todo ROUTING (descomponer a la forma canónica + delegar) y NORMALIZAR la entrada (distribuir constantes),
+    no matemática nueva. Mantén el reconocedor estructural previo primero para no mover su huella.
+  - próximo peldaño (presentación, no soundness): la ruta `|f|=f` rinde medio-rectas como
+    "All real numbers if x≥0" en vez de `[0, ∞)`; reordenar al core daría el intervalo limpio pero cambiaría
+    su huella — pulido aparte. Y pasos didácticos del solver piecewise (inecuaciones, ecuaciones, un-abso).
