@@ -19596,6 +19596,11 @@ fn nested_trig_log_factor_arg(ctx: &Context, expr: ExprId) -> Option<(ExprId, Ex
 const LIMIT_FACTOR_CANCEL_TITLE: &str =
     "Factorizar numerador y denominador y cancelar el factor común antes de evaluar";
 
+/// Title of the direct-substitution (continuity) technique, shared between the
+/// one-line recognizer and the deepened builder.
+const LIMIT_DIRECT_SUBSTITUTION_TITLE: &str =
+    "Sustitución directa: el límite de un polinomio es su valor en el punto (continuidad)";
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
@@ -19865,12 +19870,21 @@ fn notable_limit_name(
         }
     }
 
-    // Continuous polynomial: the limit is the value at the point (direct substitution).
+    // Continuous polynomial: the limit is the value at the point (direct
+    // substitution). A polynomial is an atomic, single-step evaluation — there is
+    // no intermediate worth showing (the substituted-but-unevaluated arithmetic
+    // form, e.g. `2² + 3·2 + 1`, only renders messily through the canonical
+    // formatter, which reorders terms and folds `(-2)·(-1)` to `1·2`), so we keep
+    // ONE substep but name the specific point when it is known.
     if after_value.is_some() && as_div(ctx, before).is_none() && limit_is_polynomial(ctx, before) {
-        return Some(
-            "Sustitución directa: el límite de un polinomio es su valor en el punto (continuidad)"
-                .to_string(),
-        );
+        if let Some(point) = point {
+            let var = limit_single_var_name(ctx, before).unwrap_or_else(|| "x".to_string());
+            return Some(format!(
+                "Sustitución directa: el polinomio es continuo, así que el límite es su valor en {var} = {}",
+                display_expr(ctx, point)
+            ));
+        }
+        return Some(LIMIT_DIRECT_SUBSTITUTION_TITLE.to_string());
     }
 
     // Squeeze theorem: (power of u) · (bounded sin/cos of a reciprocal in u) → 0.
@@ -21948,6 +21962,24 @@ mod limit_notable_tests {
         let flat = substep_titles_for_rule("Evaluar límite finito", "(x^2-1)/(x-1)", "2");
         assert_eq!(flat.len(), 1);
         assert!(flat[0].contains("cancelar el factor común"));
+    }
+
+    #[test]
+    fn direct_substitution_names_the_specific_point() {
+        // Direct substitution is atomic (one substep); with the point known it
+        // names the specific evaluation point rather than a generic "en el punto".
+        let titles = substep_titles_finite_at_point("x^2+3*x+1", "11", "2");
+        assert_eq!(titles.len(), 1, "{titles:?}");
+        assert!(titles[0].contains("Sustitución directa"), "{titles:?}");
+        assert!(titles[0].contains("x = 2"), "names the point: {titles:?}");
+        // A negative point renders cleanly in the title.
+        let titles_neg = substep_titles_finite_at_point("x^3-2*x", "1", "-1");
+        assert_eq!(titles_neg.len(), 1, "{titles_neg:?}");
+        assert!(titles_neg[0].contains("x = -1"), "{titles_neg:?}");
+        // Without a known point the generic continuity title is preserved.
+        let flat = substep_titles_for_rule("Evaluar límite finito", "x^2+1", "5");
+        assert_eq!(flat.len(), 1);
+        assert!(flat[0].contains("Sustitución directa"), "{flat:?}");
     }
 
     #[test]

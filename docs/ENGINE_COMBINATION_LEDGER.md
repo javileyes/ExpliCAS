@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 320 (newest first)
+Active entries: 321 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -125,6 +125,7 @@ Active entries: 320 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_single_abs_affine_equation`, | P0 honestidad: ecuaciones de un abs reorientadas (var = c - |arg|) fugaban residual malformado
 - 2026-06-24 | `retained` | `docs/LIMIT_NARRATIVE_GATEKEEPER_ROADMAP.md` (nuevo); arquitectura en | Scoping (clase A): gatekeeper G2 narrativa educativa de límites → secuencia de sub-ciclos
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | Educativo (G2 SC1): narrativa factor-y-cancela de límites muestra el trabajo + infra multi-substep
+- 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | Educativo (G2 SC2): sustitución directa de límites nombra el punto concreto
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13654,3 +13655,41 @@ Active entries: 320 (newest first)
   - para un gatekeeper de narrativa, profundizar UNA técnica por sub-ciclo con dispatch keyado-en-título +
     fallback al nombre único es retenible y aislado: cada técnica futura (sustitución directa, notables,
     L'Hôpital, sándwich, dominancia) añade su builder sin tocar las demás. Siguiente: SC2 sustitución directa.
+
+## 2026-06-24 - Educativo (G2 SC2): sustitución directa de límites nombra el punto concreto
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_name`, rama de
+    sustitución directa; const `LIMIT_DIRECT_SUBSTITUTION_TITLE` para el fallback sin punto)
+- status:
+  - `retained` (segundo sub-ciclo de G2; mejora pequeña pero limpia y correcta para todo input)
+- capture:
+  - investment_class: educational (narrativa de límites)
+  - primary_dimension: north_star_educational
+  - cell: `x²+3x+1` en 2 ANTES "Sustitución directa: el límite de un polinomio es su valor en el punto
+    (continuidad)" (genérico); AHORA "Sustitución directa: el polinomio es continuo, así que el límite es su
+    valor en x = 2" (nombra el punto concreto). before/after siguen siendo polinomio → valor.
+  - HALLAZGO CLAVE (decisión de diseño): la sustitución directa es una operación ATÓMICA — no hay paso
+    intermedio que mostrar. Se intentó la forma sustituida-sin-evaluar (`2²+3·2+1`) vía
+    `substitute_expr_by_id` en scratch, pero el formateador CANÓNICO la renderiza mal: reordena términos
+    (`2² + 1 + 2·3`) y, peor, normaliza signos plegando `(-2)·(-1)` a `1·2` (en `x³−2x` en −1 →
+    `(-1)³ + 1·2`), confuso para un estudiante. Para una narrativa de CALIDAD se descartó el intermedio
+    mangleado y se dejó UN substep que nombra el punto. Limpio para todo punto (incluido negativo, que sale
+    bien en el título).
+  - el dispatch multi-substep (de SC1) NO se usa aquí: una técnica atómica solo mejora su título (con el punto,
+    disponible en `notable_limit_name` vía el parámetro `point`); sin punto conocido cae al título genérico
+    (const `LIMIT_DIRECT_SUBSTITUTION_TITLE`).
+  - validación: workspace 12319/0; clippy/fmt limpios; huella guardrail+pressure idéntica (el texto de substeps
+    no lo rastrea el scorecard). Test `direct_substitution_names_the_specific_point` (con punto: nombra x=2 / x=−1;
+    sin punto: título genérico); el viejo `names_continuity_and_factor_cancel_methods` sigue verde (sin punto).
+- observed:
+  - NO toda técnica de la narrativa de límites se beneficia de multi-substep: las atómicas (sustitución
+    directa) solo necesitan un substep claro que nombre el punto. Forzar un intermedio puede introducir
+    artefactos de rendering peores que la versión simple.
+  - el formateador canónico reordena y plega signos (`(-2)·(-1)→1·2`), así que mostrar aritmética
+    sin-evaluar como paso intermedio NO es de calidad sin un render en orden-fuente; peldaño del formateador,
+    no de este ciclo.
+- retained learning:
+  - distingue técnicas ATÓMICAS (sustitución directa) de las de VARIOS PASOS (factor-y-cancela, L'Hôpital):
+    las primeras se narran mejor con un substep concreto, no con un multi-step forzado. Aplica al diseñar
+    SC3+ — los notables y L'Hôpital sí tienen estructura multi-paso genuina y limpia. Siguiente: SC3 notables.

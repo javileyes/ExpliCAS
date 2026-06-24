@@ -88,7 +88,7 @@ every technique except the one deepened in the cycle.
 | # | technique | scope / reuse | notes |
 |---|---|---|---|
 | ~~**SC1**~~ ✅ | **Factor-and-cancel** `(x²−1)/(x−1)→2` | + infra (multi-substep dispatch). Reuse `limit_share_polynomial_factor` + `Polynomial` gcd/factor. Substeps: factor → cancel common → substitute. | **DONE 2026-06-24** `generate_limit_factor_cancel_substeps`: factor → cancel → substitute, each carrying before/after; dispatch keyed on `LIMIT_FACTOR_CANCEL_TITLE` with single-name fallback when no limit point. Established the per-technique-builder pattern for SC2–SC8. |
-| **SC2** | **Direct substitution (continuity)** | reuse `limit_is_polynomial` + point eval. Substeps: state continuity → substitute → evaluate. | Trivial; cements the pattern. |
+| ~~**SC2**~~ ✅ | **Direct substitution (continuity)** | reuse `limit_is_polynomial` + point eval. | **DONE 2026-06-24**: direct substitution is ATOMIC — the substituted-but-unevaluated form (`2²+3·2+1`) renders messily through the canonical formatter (reorders terms; folds `(-2)·(-1)` to `1·2`), so quality-wise we keep ONE substep but name the concrete point ("…su valor en x = 2"). **Learning: not every technique wants multi-step; atomic ops get a clear single substep.** (Source-order rendering of unevaluated arithmetic is a formatter peldaño.) |
 | **SC3** | **Notable limits (first-order)** sin/tan/arcsin/…/u, `(e^u−1)/u`, `ln(1+u)/u` | identify `u` + indeterminate form → cite standard limit → apply. | The signature educational content; may split scaled/cross forms off. |
 | **SC4** | **Notable limits (second-order & e)** `(1−cos u)/u²=1/2`, `(1+u)^(1/u)=e`, `(1+1/x)^x=e` | same pattern; the `e` forms at infinity. | Pairs naturally with SC3. |
 | **SC5** | **L'Hôpital / Taylor iteration** `(x−sin x)/x³→1/6` | reuse `differentiate_symbolic_expr`; RE-derive the iteration post-hoc, each pair still 0/0 (exact), final substitution = `after`. | Marquee technique; meatiest — may be 2 cycles (polynomial 0/0 then transcendental). |
@@ -98,11 +98,18 @@ every technique except the one deepened in the cycle.
 
 ## Entry
 
-SC1 (factor-and-cancel + infra) is **done** — it established the per-technique
-builder pattern (dispatch keyed on the recognized technique title, single-name
-fallback, `ctx.clone()` scratch for reconstruction). **Next: SC2** (direct
-substitution / continuity), which simply adds a `generate_limit_direct_substitution_substeps`
-builder behind the same dispatch. Each sub-cycle is retainable on its own, green
-before commit, and updates only its needles in `limit_notable_tests`. If a future
-cycle has no retainable sub-step ready, fall back to a P1 win rather than landing
-a half-built narration (skill guardrail for class-L gatekeepers).
+SC1 (factor-and-cancel + infra) and SC2 (direct substitution) are **done**. SC1
+established the per-technique builder pattern (dispatch keyed on the recognized
+technique title, single-name fallback, `ctx.clone()` scratch for reconstruction);
+SC2 established that **atomic** techniques get a clear single substep (naming the
+point), not a forced multi-step — and that the canonical formatter mangles
+unevaluated arithmetic intermediates (reorder + sign-fold), so only reconstruct
+intermediates the formatter renders well (factored/cancelled forms do; flat
+substituted arithmetic does not).
+
+**Next: SC3** (notable limits, first-order) — genuine clean multi-step: identify
+`u` and the indeterminate form → cite the standard limit → apply. Each sub-cycle
+is retainable on its own, green before commit, and updates only its needles in
+`limit_notable_tests`. If a future cycle has no retainable sub-step ready, fall
+back to a P1 win rather than landing a half-built narration (skill guardrail for
+class-L gatekeepers).
