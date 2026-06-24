@@ -330,8 +330,9 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   signos de término + comparación de magnitudes `q²m`vs`s²n`; luego, si `p` y `X` tienen signo opuesto,
   `sign(p²−X²)` con `X²=(q²m+s²n)+2qs√(mn)` vía `sign_of_linear_surd` decide cuál domina. Todo `BigRational`,
   sin f64. `compare_quadratic_surds` enruta el caso de radicando distinto ahí; gate de `try_solve_radical_inequality`
-  relajado a radicando grado ≤ 2 (cúbico+ puede tener raíces no-surd-cuadráticas que `as_surd_value` no modela →
-  declina). Verificado: test de grilla exhaustiva >5000 casos vs f64; oráculo de pertenencia 599 casos
+  relajado a radicando `f` grado ≤ 2 Y RHS `g` AFÍN (grado ≤ 1) — `f−g²` tiene grado `max(deg f, 2·deg g) ≤ 2`,
+  así sus raíces son surds cuadráticos exactos; un `g` cuadrático+ (`√(9-x²)<x²` ⇒ `9-x²<x⁴`) da raíces cuárticas
+  no-surd-cuadráticas y declina (cerrado en el follow-up del gate, tras cazar `√(9-x²)<x² → [-3,0)∪(0,3]` falso). Verificado: test de grilla exhaustiva >5000 casos vs f64; oráculo de pertenencia 599 casos
   cuadráticos in-scope + 350 lineales, 0 mismatches; tests de casos a mano (`√6`vs`√2−1`, `√8`=`2√2`).
   Workspace failed:0; clippy/fmt; huella guardrail+pressure 0 deltas (ningún lane dependía del mis-orden).
   Tests `compare_values_orders_distinct_radicand_surds`, `sign_of_sum_two_surds_matches_float_over_grid`.

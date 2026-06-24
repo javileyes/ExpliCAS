@@ -916,6 +916,17 @@ fn try_solve_radical_inequality(
         (r, flip_inequality(op))
     };
 
+    // SOUNDNESS GATE: the RHS `g` must be AFFINE (degree ≤ 1). The `f ≶ g²` branch
+    // is solved as `f − g²`, whose degree is `max(deg f, 2·deg g)`; with `deg f ≤ 2`
+    // and `deg g ≤ 1` it stays ≤ 2, so its roots are quadratic surds that
+    // `compare_values` orders exactly. A quadratic-or-higher `g` makes `g²` quartic+
+    // (e.g. `√(9-x²) < x²` ⇒ `9-x² < x⁴`), whose roots are NOT quadratic surds —
+    // `as_surd_value` returns `None` and the intersection mis-orders them. Decline.
+    match Polynomial::from_expr(&simplifier.context, g, var) {
+        Ok(p) if p.degree() <= 1 => {}
+        _ => return None,
+    }
+
     let zero = simplifier.context.num(0);
     let two = simplifier.context.num(2);
     let g2 = simplifier.context.add(Expr::Pow(g, two));
