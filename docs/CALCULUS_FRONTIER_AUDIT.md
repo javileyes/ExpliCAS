@@ -325,7 +325,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   el extremo de dominio (`√6`) contra el de restricción (`√2−1`), así que `√(9-x²)>x-1`, `√(-x²+6)<x+2`, etc.
   declinaban o soltaban una restricción (`(-2,√6]` en vez de `(√2−1,√6]`). (P0 wrong-answer/under-answer en
   `solve` + ordenación de intervalos en TODO el engine; 5º caso del Cluster B del hunt.)
-  *(graduado 2026-06-24 PENDIENTE: nuevo `sign_of_sum_two_surds(p,q,m,s,n)` en `cas_solver_core/solution_set.rs`
+  *(graduado 2026-06-24 fcf3328ec: nuevo `sign_of_sum_two_surds(p,q,m,s,n)` en `cas_solver_core/solution_set.rs`
   — signo EXACTO de `p + q√m + s√n` (radicandos distintos) por doble cuadratura anidada: `sign(X=q√m+s√n)` por
   signos de término + comparación de magnitudes `q²m`vs`s²n`; luego, si `p` y `X` tienen signo opuesto,
   `sign(p²−X²)` con `X²=(q²m+s²n)+2qs√(mn)` vía `sign_of_linear_surd` decide cuál domina. Todo `BigRational`,
