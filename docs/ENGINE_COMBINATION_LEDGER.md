@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 332 (newest first)
+Active entries: 333 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -137,6 +137,7 @@ Active entries: 332 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sum_of_two_radical... | P0 soundness (hunt Cluster A3, CIERRA Cluster A): suma de dos radicales = constante se resuelve y verifica
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality` + | P0 soundness (hunt Cluster B): inecuación radical con RHS no-constante se parte por el signo de g (antes elevaba al cuadrado a ciegas y daba wrong-answers)
 - 2026-06-24 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` | P0 soundness (hunt Cluster C): integral definida de √(x²-a²) en intervalo negativo declina en vez de devolver acosh complejo
+- 2026-06-24 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`exponent_keeps_base_posi... | P1 soundness (hunt Cluster D): ln(x^(p/q)) con q impar y p par usa (p/q)ln|x| (dominio x≠0), no (p/q)ln(x) (x>0)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -14167,3 +14168,44 @@ Active entries: 332 (newest first)
     `½(x√(x²-a²) - a²·ln|x+√(x²-a²)|)` (válida en |x|≥a); también cubre la impropia `[-∞,-a]` y los `c` no
     cuadrado-perfecto (hoy residuales). Siguiente cluster del hunt: D (ln(x^(p/q)) con q impar estrecha el
     dominio a x>0 en vez de x≠0), E (diff de 2asin+2acos pierde -1<x<1), F (ops simbólicas de matrices).
+
+## 2026-06-24 - P1 soundness (hunt Cluster D): ln(x^(p/q)) con q impar y p par usa (p/q)ln|x| (dominio x≠0), no (p/q)ln(x) (x>0)
+
+- area:
+  - `crates/cas_math/src/logarithm_inverse_support.rs` (`exponent_keeps_base_positive` +
+    `try_rewrite_evaluate_log_expr`)
+- status:
+  - `retained` (sexto fix del hunt; Cluster D)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `ln(x^(2/3))` ANTES `2/3·ln(x)` (dominio x>0), AHORA `2/3·ln(|x|)` (dominio x≠0). Igual `4/3`, `2/5`,
+    `4/5`, `6/5`, `-2/3`. `diff(ln(x^(2/3)))` = `2/(3x)` consistente.
+  - MECANISMO: bajo la semántica de potencia REAL del engine, `x^(p/q) > 0` para TODO x≠0 ⟺ (p/q reducido) q
+    IMPAR y p PAR (`(-8)^(2/3)=4`: q impar mantiene `x^(1/q)` sign-preserving, p par lo eleva a positivo). En
+    ese caso `ln(x^(p/q)) = (p/q)·ln|x|` sobre x≠0. Helper `exponent_keeps_base_positive`;
+    `try_rewrite_evaluate_log_expr` emite `(p/q)·log(b,|x|)` directamente (con `assume_positive_base: None`),
+    salvo el entero par que delega a `LogEvenPowerWithChainedAbsRule` (que ya tiene la maquinaria |x|=x).
+  - SORPRESA DE ARQUITECTURA: el primer intento (extender el gate de `try_plan_log_even_power_abs_expr` +
+    deferir en evaluate_log) dejaba `ln(x^(2/3))` SIN expandir — porque `LogEvenPowerWithChainedAbsRule` /
+    `LogAbsPowerRule` solo sacan exponentes ENTEROS del log; el path fraccionario es exclusivo de
+    `try_rewrite_evaluate_log_expr`. La forma sin expandir era SOUND (dominio x≠0) pero no la ideal; emitir el
+    abs DIRECTAMENTE en evaluate_log da `(p/q)ln|x|`. Lección: localizar qué rule REALMENTE produce la salida
+    (sondear con probes que aíslan el rewrite) antes de extender el gate de otra.
+  - SOUNDNESS: clasificación exacta por paridad de numerador/denominador (BigInt, sin f64); numerador impar
+    (x>0) y q par (x≥0) intactos. Oráculo independiente 116 casos: forma (ln|x| ⟺ q impar ∧ p par) +
+    definición numérica en x=-8 (real ⟺ forma abs), 0 defects.
+  - validación: workspace failed:0; clippy `--all-targets`/fmt; huella guardrail (16) + pressure (3) 0 deltas.
+    Test `test_eval_ln_of_even_numerator_power_uses_abs`.
+- observed:
+  - la regla de dominio de `ln(x^k)` depende de la PARIDAD del numerador Y denominador del exponente bajo
+    semántica de potencia real, no solo de "entero par": el fraccionario de numerador par (`2/3`, `4/5`) vive
+    en x≠0 igual que el entero par. Cualquier rewrite `ln(x^k)→k·ln(x)` debe gatear el abs por esa regla.
+  - cuando una salida no cambia tras editar un gate, NO es el rule que la produce: aislar el productor real
+    con probes (aquí `ln(|x|^(2/3))` sin expandir reveló que solo enteros se sacan del log) en vez de asumir.
+- retained learning:
+  - patrón sound para logaritmos de potencias: `ln(x^k) = k·ln|x|` sii `x^k>0 ∀x≠0` (q impar ∧ p par, incl.
+    enteros pares), `k·ln(x)` en otro caso (q par → x≥0; p impar → signo de x). El helper
+    `exponent_keeps_base_positive` centraliza la regla de paridad reutilizable. Siguiente cluster del hunt: E
+    (diff de 2asin(x)+2acos(x) → 0 pierde la condición -1<x<1), F (ops simbólicas de matrices fabrican
+    resultados concretos: inv([[a,b],[c,d]])·I, escalar·inv(no-cuadrada)).

@@ -1004,6 +1004,38 @@ fn test_eval_radical_inequality_case_splits_on_rhs_sign() {
 }
 
 #[test]
+fn test_eval_ln_of_even_numerator_power_uses_abs() {
+    // `ln(x^(p/q))` with q ODD and p EVEN is real for EVERY x != 0 (under the
+    // engine's real power semantics `(-8)^(2/3) = 4`), so it expands to
+    // `(p/q)·ln|x|` over the domain x != 0. The engine used to emit `(p/q)·ln(x)`,
+    // which wrongly NARROWS the domain to x > 0 (dropping the x < 0 branch).
+    for (input, expected) in [
+        ("ln(x^(2/3))", "2/3·ln(|x|)"),
+        ("ln(x^(4/3))", "4/3·ln(|x|)"),
+        ("ln(x^(2/5))", "2/5·ln(|x|)"),
+        ("ln(x^(-2/3))", "-2/3·ln(|x|)"),
+        ("ln(x^(6/3))", "2·ln(|x|)"), // reduces to the even integer 2
+        // Even INTEGER already used |x|; unchanged.
+        ("ln(x^2)", "2·ln(|x|)"),
+        // ODD numerator keeps the sign of x -> domain x > 0, bare ln(x).
+        ("ln(x^(1/3))", "1/3·ln(x)"),
+        ("ln(x^(5/3))", "5/3·ln(x)"),
+        ("ln(x^3)", "3·ln(x)"),
+        // q EVEN forces x >= 0 already -> bare ln(x).
+        ("ln(x^(1/2))", "1/2·ln(x)"),
+        ("ln(x^(3/2))", "3/2·ln(x)"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_nested_power_text_is_parenthesized_and_round_trips() {
     // `^` is right-associative, so a surviving nested power must be parenthesized
     // in the TEXT output. `(4*x^2)^(1/2)` simplifies to `2·(x^2)^(1/2)` but was

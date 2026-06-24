@@ -337,6 +337,25 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   REAL (`(-8)^(2/3)=4`, `(-3)^(2/3)-|−3|^(2/3)=0`, denominador par sí lleva abs `(x²)^(1/4)→|x|^(1/2)`); un
   oráculo sympy/mpmath de rama compleja lo marca como wrong-answer pero es FALSO POSITIVO. Peldaño:
   sub-simplificación residual (`(4x²)^(1/2)` no llega a `2|x|` en una pasada) — idempotencia, follow-up.)*
+
+- [x] **(S) `ln(x^(p/q))` con q impar y p PAR estrechaba el dominio a x>0 en vez de x≠0**:
+  `ln(x^(2/3))` daba `2/3·ln(x)` (dominio x>0), pero `x^(2/3) = (x^(1/3))² > 0` para TODO x≠0 bajo la
+  semántica de potencia REAL del engine (`(-8)^(2/3)=4`), así que la forma correcta es `2/3·ln(|x|)` (dominio
+  x≠0). Igual `4/3`, `2/5`, `4/5`, `6/5`, `-2/3`. El entero par ya usaba `ln|x|` (`ln(x²)→2ln|x|`), pero el
+  FRACCIONARIO de numerador par caía a la rama sin abs. Afirmar dominio x>0 cuando la función vive en x≠0 es
+  un wrong-answer de dominio. (P1 soundness en simplificación de logaritmos; hallado por el hunt adversarial
+  multiagente ultracode, Cluster D.)
+  *(graduado 2026-06-24 PENDIENTE: helper compartido `exponent_keeps_base_positive` (en
+  `logarithm_inverse_support.rs`): `x^(p/q) > 0` ∀x≠0 ⟺ (p/q en forma reducida) q IMPAR y p PAR — q impar
+  mantiene `x^(1/q)` real y sign-preserving para x<0, p par eleva al cuadrado esa rama negativa a positiva
+  (los enteros pares son el caso q=1). `try_rewrite_evaluate_log_expr` ahora, para ese caso, emite
+  `(p/q)·log(b, |x|)` DIRECTAMENTE (con `assume_positive_base: None` — `|x|>0` para x≠0, sin asunción de
+  positividad), salvo el entero par que delega a `LogEvenPowerWithChainedAbsRule`. Resultado: `ln(x^(2/3)) →
+  2/3·ln(|x|)`, `diff` consistente `2/(3x)`. Sin cambio para numerador impar (`x^(1/3)→⅓ln(x)`, dominio x>0),
+  q par (`x^(1/2)→½ln(x)`, x≥0), enteros impares. Verificado: oráculo independiente 116 casos (forma vs regla
+  q-impar-p-par + definición numérica en x<0), 0 defects. Workspace failed:0; clippy/fmt; huella
+  guardrail+pressure 0 deltas. Test `test_eval_ln_of_even_numerator_power_uses_abs`.)*
+
 - [x] **(S) La identidad complementaria arcsin+arccos colapsaba con argumento fuera de dominio**:
   `arcsec(1/2)+arccsc(1/2)` devolvía `π/2`, pero para `|x|<1` AMBOS términos son indefinidos en ℝ
   (`arcsec`/`arccsc` exigen `|x|≥1`). Internamente se reduce a `arccos(2)+arcsin(2)`, y la identidad

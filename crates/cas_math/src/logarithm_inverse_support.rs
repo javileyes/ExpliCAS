@@ -262,6 +262,22 @@ pub fn eval_log_rational_full(
     ratio
 }
 
+/// Whether `x^exp > 0` for EVERY real `x != 0` under the engine's REAL power
+/// semantics. Writing `exp = p/q` in lowest terms (`q > 0`), that holds iff `q` is
+/// ODD and `p` is EVEN: an odd `q` keeps `x^(1/q)` real and sign-preserving for
+/// `x < 0`, and an even `p` squares that negative branch positive (e.g.
+/// `(-8)^(2/3) = 4`). Even integers are the `q = 1` case. When it holds,
+/// `ln(x^exp) = exp·ln|x|` on the full domain `x != 0` (not just `x > 0`); an odd
+/// `p` keeps the sign of `x` (domain `x > 0`, no abs) and an even `q` already
+/// forces `x >= 0`.
+pub(crate) fn exponent_keeps_base_positive(exp: &num_rational::BigRational) -> bool {
+    let two: num_bigint::BigInt = 2.into();
+    let zero: num_bigint::BigInt = 0.into();
+    let p = exp.numer();
+    let q = exp.denom();
+    p != &zero && q % &two != zero && p % &two == zero
+}
+
 /// Rewrite/evaluate simple logarithm identities:
 /// - `log(b, 1) -> 0`, `log(b, 0) -> -infinity`, `log(b, neg) -> undefined`
 /// - numeric ratio evaluation when both base/arg are compatible integer powers
@@ -425,16 +441,30 @@ pub fn try_rewrite_evaluate_log_expr(
         return None;
     }
 
-    let is_even_integer = match ctx.get(p_exp) {
-        Expr::Number(n) if n.is_integer() => {
-            let int_val = n.to_integer();
-            let two: num_bigint::BigInt = 2.into();
-            (&int_val % &two) == 0.into() && int_val != 0.into()
+    // When `x^y > 0` for every `x != 0` (y = p/q in lowest terms, q odd, p even),
+    // `log(b, x^y) = y·log(b, |x|)` holds on the FULL domain `x != 0`. Emitting the
+    // bare `y·log(b, x)` would wrongly narrow the domain to `x > 0` (e.g.
+    // `ln(x^(2/3))` is real for x = -8: `(-8)^(2/3) = 4`).
+    let exp_rational = crate::numeric_eval::as_rational_const(ctx, p_exp);
+    if let Some(n) = &exp_rational {
+        if exponent_keeps_base_positive(n) {
+            // Even INTEGER: defer to LogEvenPowerWithChainedAbsRule, which emits
+            // `n·log(b, |x|)` with the `|x| = x` positivity-policy machinery.
+            if n.is_integer() {
+                return None;
+            }
+            // Non-integer (q odd, p even): emit the abs form directly — the even-power
+            // rule only pulls out integer exponents, so nothing else would.
+            let abs_base = ctx.call_builtin(BuiltinFn::Abs, vec![p_base]);
+            let log_inner = make_log_expr(ctx, base, abs_base);
+            let rewritten = smart_mul(ctx, p_exp, log_inner);
+            return Some(EvaluateLogRewrite {
+                rewritten,
+                desc: "log(b, x^(p/q)) = (p/q)·log(b, |x|) (q odd, p even)".to_string(),
+                // |x| > 0 for x != 0, so no positivity assumption on x is needed.
+                assume_positive_base: None,
+            });
         }
-        _ => false,
-    };
-    if is_even_integer {
-        return None;
     }
 
     let log_inner = make_log_expr(ctx, base, p_base);
@@ -1395,6 +1425,13 @@ pub fn try_plan_log_even_power_abs_expr(
         return None;
     }
 
+    // `ln(x^k) = k·ln|x|` (domain x ≠ 0) exactly when x^k > 0 for EVERY x ≠ 0.
+    // Under the engine's REAL power semantics that holds iff, writing k = p/q in
+    // lowest terms (q > 0), q is ODD and p is EVEN: an odd q keeps x^(1/q) real and
+    // sign-preserving for x < 0, and an even p squares that negative branch into a
+    // positive value (e.g. (-8)^(2/3) = 4). Even integers are the q = 1 case. An odd
+    // p keeps the sign of x (domain x > 0, NO abs — `ln(x^3) = 3·ln(x)`), and an even
+    // q already forces x ≥ 0 (no negative branch to rescue — `ln(x^(1/2)) = ½·ln(x)`).
     let is_even_integer = match ctx.get(exponent) {
         Expr::Number(n) if n.is_integer() => {
             let int_val = n.to_integer();
