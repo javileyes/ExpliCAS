@@ -1,5 +1,5 @@
 use super::super::focused_rule_substeps::{
-    generate_focused_rule_substeps, generate_limit_substeps,
+    generate_focused_rule_substeps, generate_limit_residual_substeps, generate_limit_substeps,
 };
 use super::super::gcd_factorization::generate_gcd_factorization_substeps;
 use super::super::generic_rule_substeps::generate_generic_rule_substeps;
@@ -52,6 +52,12 @@ pub(super) fn extend_step_specific_substeps(
 
     if step.rule_name.starts_with("Evaluar límite") {
         sub_steps.extend(generate_limit_substeps(ctx, step));
+    }
+
+    // A finite-point limit the safe policy keeps unresolved: narrate the honest
+    // investigation method (one-sided limits), never a non-existence claim.
+    if step.rule_name == "Conservar límite residual" {
+        sub_steps.extend(generate_limit_residual_substeps(ctx, step));
     }
 
     if sub_steps.is_empty() {

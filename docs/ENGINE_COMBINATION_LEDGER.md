@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 326 (newest first)
+Active entries: 327 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -131,6 +131,7 @@ Active entries: 326 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC5): L'Hôpital iterado muestra cada derivada hasta que el denominador no se anula
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC6): el teorema del sándwich muestra el acotamiento |uᵏ·osc| ≤ |uᵏ| → 0
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC7): la dominancia en ∞ muestra la indeterminación ∞/∞ antes de concluir
+- 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | Educativo (G2 SC8, CIERRE): residual de límite sugiere límites laterales (sin afirmar DNE) — gatekeeper G2 completo
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13890,3 +13891,50 @@ Active entries: 326 (newest first)
     correcta: la dominancia "denominador mayor grado" aplica tanto a ∞/∞ como a 1/∞; solo la primera es ∞/∞.
     Gatea por la precondición exacta (ambos → ∞) y declina con fallback. Próximo: SC8 (unilateral/DNE: rama de
     dispatch nueva para "Conservar límite residual", el último peldaño de G2).
+
+## 2026-06-24 - Educativo (G2 SC8, CIERRE): residual de límite sugiere límites laterales (sin afirmar DNE) — gatekeeper G2 completo
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_residual_substeps`);
+    `crates/cas_didactic/src/didactic/enrichment_pipeline/rule_dispatch.rs` (rama nueva para "Conservar
+    límite residual")
+- status:
+  - `retained` (octavo y ÚLTIMO sub-ciclo de G2; cierra el gatekeeper de narrativa educativa de límites)
+- capture:
+  - investment_class: educational (narrativa de límites) + soundness/honestidad (residual ≠ DNE probado)
+  - primary_dimension: north_star_educational
+  - cell: `1/x` en 0 (residual) ANTES sin narración (la rama de dispatch solo casaba "Evaluar límite"); AHORA
+    un substep con pista honesta: "La política segura no decide este límite. Para investigarlo, calcula los
+    límites laterales en x = 0 (izquierda y derecha): si coinciden, ese es el valor; si difieren, no existe."
+  - HALLAZGO DE SOUNDNESS (verificación adversarial por probes): el residual de punto finito es un UNDER-ANSWER
+    CONSERVADOR, NO una prueba de no-existencia. El motor declina TODOS los límites de punto finito no
+    resueltos igual, mezclando casos de DNE genuino (`1/x` en 0: izq −∞, der +∞) con límites que SÍ EXISTEN
+    (`1/|x|` en 0 = +∞; el motor lo declina pero el límite es +∞). Confirmado: `1/(x²+1)` en 0 → 1 (resuelto),
+    `1/|x|` en 0 → residual aunque vale +∞. Por tanto narrar "no existe el límite" sería UNSOUND (afirmar
+    conocimiento que el motor no tiene; viola el contrato de honestidad del residual). SC8 narra solo el MÉTODO
+    correcto (límites laterales lo deciden), sound para todos los casos; el resultado SIGUE siendo residual.
+  - DISEÑO: rama de dispatch nueva `rule_name == "Conservar límite residual"` (entre la de "Evaluar límite" y
+    el fallback genérico). Gateado a residuales de PUNTO FINITO (`meta.limit_point` presente; los de
+    infinito/unilateral no llevan punto y no reciben pista). El narrador NO tiene acceso a la RAZÓN del
+    residual (vive en un canal DomainWarning separado, no en el Step), así que la pista es general (no fabrica
+    una razón ni asume forma 0/0). Workflow de scoping de 3 agentes (1 ok, 2 caídos por API 529) confirmó la
+    estructura del Step y el dispatch; huella verificada a mano (contract/smoke fijan el rule_name y
+    steps_count==1, no los substeps; los helpers de step_payloads son de nivel-Step, no suprimen substeps).
+  - validación: workspace 12325/0; clippy/fmt limpios; huella idéntica (incluido el smoke de límites, que fija
+    el rule_name "Conservar límite residual", intacto). Test `residual_limit_suggests_one_sided_limits_without_
+    claiming_dne` fija la pista condicional (si coinciden/si difieren) y el decline sin punto finito.
+- observed:
+  - un residual conservador NO es una prueba; narrar su "porqué" como un hecho (DNE) es unsound. La narración
+    honesta de un under-answer es el MÉTODO para resolverlo (general, condicional), nunca el resultado.
+  - el mismo síntoma del motor (residual de punto finito) cubre DNE y límites existentes-pero-no-decididos;
+    distinguirlos es una mejora de CAPACIDAD del motor de VALOR (calcular laterales y decidir), separada de la
+    narrativa — peldaño de Fase 1, no de este gatekeeper.
+- retained learning:
+  - GATEKEEPER G2 COMPLETO (SC1–SC8): la narrativa educativa de límites pasó de "nombrar la técnica" a
+    "mostrar el trabajo" por TIPO: factor-cancela (factoriza→cancela→sustituye), sustitución directa (atómica,
+    nombra el punto), notables 0/0 y 1^∞ (muestra la indeterminación→aplica), L'Hôpital iterado (deriva hasta
+    determinar), sándwich (acota |uᵏ·osc|≤|uᵏ|→0), dominancia ∞/∞ (verifica ambos→∞), y residual (pista honesta
+    de laterales). Patrones reutilizables: reconstrucción post-hoc + scratch; oráculo `after`/conteo exacto;
+    marcadores literales de indeterminación; dispatch keyado-en-técnica con fallback; y NUNCA afirmar más de lo
+    que el motor probó. Peldaño de CAPACIDAD (no narrativa): el motor de valor podría decidir más límites de
+    punto finito (laterales→DNE/±∞/valor), lo que volvería narrable el resultado real del residual.

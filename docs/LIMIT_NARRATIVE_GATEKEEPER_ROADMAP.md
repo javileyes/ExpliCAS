@@ -94,7 +94,22 @@ every technique except the one deepened in the cycle.
 | ~~**SC5**~~ ✅ | **L'Hôpital / Taylor iteration** `(x−sin x)/x³→1/6` | reuse `differentiate_symbolic_expr`; RE-derive the iteration post-hoc, each pair still 0/0 (exact), final substitution = `after`. | **DONE 2026-06-24** `generate_limit_lhopital_iteration`: step count = exact root multiplicity of the POLYNOMIAL denominator; differentiate num/den each step and **simplify** (the differentiator emits unfolded `3·x^(3-1)`, `e^x·ln(e)`); final value is the engine oracle, never re-derived. Transcendental denominator declines to the one line. `(x−sin x)/x³ → (1−cos x)/(3x²) → sin(x)/(6x) → cos(x)/6 → 1/6`. |
 | ~~**SC6**~~ ✅ | **Squeeze (sándwich)** `x·sin(1/x)→0` | reuse `limit_is_squeeze_product`. Show bounding `|uᵏ·osc| ≤ |uᵏ| → 0`. | **DONE 2026-06-24** `generate_limit_squeeze_substeps`: bound the oscillator (`|sin/cos| ≤ 1`) so `|uᵏ·osc| ≤ |uᵏ|`, then `|uᵏ| → 0`. Inequality goes in the title; `|uᵏ|` is the intermediate before/after. |
 | ~~**SC7**~~ ✅ | **Dominance at ∞** (ln≪pot≪exp; rational degree) | prepend the ∞/∞ indeterminate form, then the dominance conclusion. | **DONE 2026-06-24** `generate_limit_dominance_substeps`: prepend ∞/∞ ONLY for genuine ∞/∞ quotients — growth-class (always) or rational with both sides degree ≥ 1; `1/x` (1/∞) and bare polynomials decline. Sound gate verifies BOTH sides → ∞ (same technique covers 1/∞). |
-| **SC8** | **One-sided & DNE residual** `1/x`@0 | NEW dispatch branch (rule_dispatch.rs:53 only matches `Evaluar límite`). Narrate left vs right → two-sided DNE. | Higher-risk (new branch); last. |
+| ~~**SC8**~~ ✅ | **Finite-point residual** `1/x`@0 | NEW dispatch branch for `Conservar límite residual`. **Honest method-hint** (compute one-sided limits), NOT a DNE claim. | **DONE 2026-06-24** `generate_limit_residual_substeps`. **SOUNDNESS: the residual is a conservative under-answer, not proven DNE** — the engine declines DNE cases (`1/x`@0) and existent-but-undecided cases (`1/\|x\|`@0 = +∞) the same way, so claiming DNE would be unsound. Narrates the conditional method (one-sided limits decide it); result stays residual. Gated to finite-point (`limit_point` set). |
+
+## Status: gatekeeper G2 COMPLETE (SC1–SC8)
+
+The limit educational narrative now **shows the work** by indeterminate-form
+type / technique, not just naming it. Reusable patterns established: post-hoc
+reconstruction in a `ctx.clone()` scratch; the engine result / an exact invariant
+(root multiplicity) as the oracle; literal indeterminate-form markers (`0/0`,
+`1^∞`, `∞/∞`); technique-keyed dispatch with single-line fallback; inequalities
+in the title with the bound as the intermediate; and **never asserting more than
+the engine proved** (SC8 narrates the method, not a non-existence claim).
+
+**Follow-up is CAPABILITY, not narration:** the value engine could decide more
+finite-point limits (compute one-sided → DNE / ±∞ / value) instead of declining
+them; once it does, the residual's real outcome becomes narratable. That is a
+Fase-1 capability item, separate from this narration gatekeeper.
 
 ## Entry
 
@@ -118,17 +133,14 @@ multiplicity), show each simplified intermediate, and anchor the final value in
 the engine oracle (never re-derive from a transcendental form); gate to the
 sub-class where the count is exact and decline with a fallback elsewhere.
 
-SC6 (squeeze) and SC7 (dominance) are **done**. SC7 added the lesson that when
-prepending an indeterminate form you must verify its real PRECONDITION (both
-sides → ∞ for ∞/∞), not just that the technique matches — the same dominance
-technique covers `1/∞`, which is not ∞/∞.
+All eight sub-cycles (SC1–SC8) are **done** — the gatekeeper is complete (see the
+Status section above). SC7 added the lesson that when prepending an indeterminate
+form you must verify its real PRECONDITION (both sides → ∞ for ∞/∞), not just
+that the technique matches. SC8 added the lesson that a conservative residual is
+NOT a proof — narrate the method (one-sided limits decide it), never a
+non-existence claim the engine did not establish.
 
-**Next: SC8** (one-sided / DNE) — the last sub-cycle: add a new dispatch branch
-for `Conservar límite residual` (which currently gets no narrator, since it does
-not match the `Evaluar límite` prefix in rule_dispatch.rs), narrating why a
-two-sided limit does not exist (e.g. `1/x` at 0: left → −∞, right → +∞). This is
-higher-risk (a new dispatch branch and a residual-step narrator). Each sub-cycle
-is retainable on its own, green before commit, and updates only its needles in
-`limit_notable_tests`. If a future cycle has no retainable sub-step ready, fall
-back to a P1 win rather than landing a half-built narration (skill guardrail for
-class-L gatekeepers).
+The only remaining limit work is CAPABILITY, not narration: extend the value
+engine to decide more finite-point limits (one-sided → DNE / ±∞ / value) instead
+of declining them. That is a Fase-1 capability item, tracked separately from this
+narration gatekeeper.

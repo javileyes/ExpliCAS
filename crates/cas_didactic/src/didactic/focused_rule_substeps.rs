@@ -19669,6 +19669,38 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     )]
 }
 
+/// Narrate a "Conservar límite residual" step (a finite-point limit the safe
+/// policy does not decide) with an HONEST method hint: compute the one-sided
+/// limits to investigate.
+///
+/// SOUNDNESS: the residual is a CONSERVATIVE under-answer, not a proof of
+/// non-existence — the engine declines every undecided finite-point limit the
+/// same way, lumping together genuine DNE cases (`1/x` at 0: left −∞, right +∞)
+/// and limits that actually EXIST (`1/|x|` at 0 = +∞). So we must NOT claim the
+/// limit does not exist; we only state the correct general METHOD (one-sided
+/// limits decide it), which is sound for every case. Gated to finite-point
+/// residuals (`limit_point` set); infinity / one-sided residuals get nothing.
+pub(crate) fn generate_limit_residual_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let Some(point) = step.meta.as_ref().and_then(|m| m.limit_point) else {
+        return Vec::new();
+    };
+    let var = limit_single_var_name(ctx, step.before).unwrap_or_else(|| "x".to_string());
+    let point_disp = display_expr(ctx, point);
+    let limit_disp = display_expr(ctx, step.after);
+    let limit_latex = latex_expr(ctx, step.after);
+    vec![SubStep::new(
+        format!(
+            "La política segura no decide este límite. Para investigarlo, calcula los límites \
+             laterales en {var} = {point_disp} (por la izquierda y por la derecha): si coinciden, \
+             ese es el valor del límite; si difieren, el límite no existe"
+        ),
+        limit_disp.clone(),
+        limit_disp,
+    )
+    .with_before_latex(limit_latex.clone())
+    .with_after_latex(limit_latex)]
+}
+
 /// Deepen factor-and-cancel into the explicit chain
 /// `num/den → (g·cofn)/(g·cofd) → cofn/cofd → value`: extract the monic common
 /// polynomial factor `g = gcd(num, den)`, show it pulled out of both sides, cancel
@@ -22149,7 +22181,7 @@ fn difference_like_terms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)
 
 #[cfg(test)]
 mod limit_notable_tests {
-    use super::generate_limit_substeps;
+    use super::{generate_limit_residual_substeps, generate_limit_substeps};
     use crate::runtime::Step;
     use cas_ast::Context;
     use cas_parser::parse;
@@ -22452,6 +22484,39 @@ mod limit_notable_tests {
         // A bare polynomial is not a quotient.
         let poly = substep_titles_at_infinity("x^2+1", "infinity");
         assert_eq!(poly.len(), 1, "{poly:?}");
+    }
+
+    #[test]
+    fn residual_limit_suggests_one_sided_limits_without_claiming_dne() {
+        // A finite-point limit the safe policy keeps unresolved gets an HONEST
+        // method hint (compute one-sided limits), never a non-existence claim —
+        // the residual lumps together genuine DNE and existent-but-undecided cases.
+        let mut ctx = Context::new();
+        let before = parse("1/x", &mut ctx).expect("parse");
+        let point = parse("0", &mut ctx).expect("parse");
+        let mut step = Step::new_compact("desc", "Conservar límite residual", before, before);
+        step.meta_mut().limit_point = Some(point);
+        let subs = generate_limit_residual_substeps(&ctx, &step);
+        assert_eq!(
+            subs.len(),
+            1,
+            "{:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+        let title = &subs[0].description;
+        assert!(title.contains("límites laterales"), "{title}");
+        assert!(title.contains("x = 0"), "{title}");
+        // SOUNDNESS: the statement is a CONDITIONAL method (si coinciden … / si
+        // difieren …), not an unconditional DNE claim.
+        assert!(title.contains("si coinciden"), "{title}");
+        assert!(title.contains("si difieren"), "{title}");
+
+        // An infinity / one-sided residual carries no finite limit_point → no hint.
+        let step2 = Step::new_compact("desc", "Conservar límite residual", before, before);
+        assert!(
+            generate_limit_residual_substeps(&ctx, &step2).is_empty(),
+            "no hint without a finite point"
+        );
     }
 
     #[test]
