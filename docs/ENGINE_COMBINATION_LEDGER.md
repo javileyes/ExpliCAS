@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 333 (newest first)
+Active entries: 334 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -138,6 +138,7 @@ Active entries: 333 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality` + | P0 soundness (hunt Cluster B): inecuación radical con RHS no-constante se parte por el signo de g (antes elevaba al cuadrado a ciegas y daba wrong-answers)
 - 2026-06-24 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` | P0 soundness (hunt Cluster C): integral definida de √(x²-a²) en intervalo negativo declina en vez de devolver acosh complejo
 - 2026-06-24 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`exponent_keeps_base_posi... | P1 soundness (hunt Cluster D): ln(x^(p/q)) con q impar y p par usa (p/q)ln|x| (dominio x≠0), no (p/q)ln(x) (x>0)
+- 2026-06-24 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`sign_of_sum_two_surds` + enrut... | P0 soundness (cierra Cluster B): comparador exacto de surds de radicando distinto en compare_values desbloquea inecuaciones radicales cuadráticas
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -14209,3 +14210,47 @@ Active entries: 333 (newest first)
     `exponent_keeps_base_positive` centraliza la regla de paridad reutilizable. Siguiente cluster del hunt: E
     (diff de 2asin(x)+2acos(x) → 0 pierde la condición -1<x<1), F (ops simbólicas de matrices fabrican
     resultados concretos: inv([[a,b],[c,d]])·I, escalar·inv(no-cuadrada)).
+
+## 2026-06-24 - P0 soundness (cierra Cluster B): comparador exacto de surds de radicando distinto en compare_values desbloquea inecuaciones radicales cuadráticas
+
+- area:
+  - `crates/cas_solver_core/src/solution_set.rs` (`sign_of_sum_two_surds` + enrutado en
+    `compare_quadratic_surds`); `crates/cas_solver/src/solve_backend_local.rs` (gate de
+    `try_solve_radical_inequality` relajado a radicando grado ≤ 2)
+- status:
+  - `retained` (cierra el 5º wrong-answer del Cluster B + win general de ordenación de intervalos)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: arquitectura (mejora un primitivo compartido: ordenación exacta de surds)
+  - cell: `√(9-x²)>x-1` ANTES declinaba (gate lineal), AHORA `[-3, (1+√17)/2)`; `√(-x²+6)<x+2` ANTES soltaba
+    `(-2,√6]`, AHORA `(√2−1,√6]`; `√(-x²+5)<x → (√(5/2),√5]`; `√(-x²+7)>x+1 → [-√7,(-1+√13)/2)`.
+  - MECANISMO: `compare_quadratic_surds` devolvía `None` para `A+B√m` vs `C+D√n` con `m≠n` (ambos surd≠0) → el
+    fallback estructural los mis-ordenaba. Nuevo `sign_of_sum_two_surds(p,q,m,s,n)` = signo exacto de
+    `p+q√m+s√n` por doble cuadratura anidada: (1) `sign(X=q√m+s√n)` por signo de cada término y, en conflicto,
+    `q²m` vs `s²n`; (2) si `p` y `X` tienen signo opuesto, `sign(p²−X²)` con `X²=(q²m+s²n)+2qs√(mn)` vía
+    `sign_of_linear_surd`. Todo `BigRational` exacto. El gate del case-split radical se relaja de grado ≤ 1 a
+    ≤ 2 (cúbico+ puede tener raíces no-surd-cuadráticas que `as_surd_value` no modela → declina).
+  - SOUNDNESS: dos verificadores independientes — (1) test de grilla determinista >5000 casos de
+    `sign_of_sum_two_surds` vs evaluación f64 (donde f64 es decisivo); (2) oráculo de pertenencia
+    Fraction-exacto, 599 casos cuadráticos in-scope (g variable, radicando cuadrático propio) + 350 lineales,
+    0 mismatches. Casos a mano (`√6`vs`√2−1`, equal-value `√8`=`2√2`).
+  - validación: workspace failed:0; clippy `--all-targets`/fmt; huella guardrail (16) + pressure (3) 0 deltas
+    (la mejora de ordenación NO movió ningún lane — ningún fixture dependía del mis-orden). Tests
+    `compare_values_orders_distinct_radicand_surds`, `sign_of_sum_two_surds_matches_float_over_grid`.
+- observed:
+  - el signo exacto de una suma de DOS surds de radicando distinto se reduce a dos cuadraturas anidadas, cada
+    una un `sign_of_linear_surd` (rational-vs-single-surd) — patrón reutilizable para cualquier comparación
+    algebraica de grado 2 sin caer a f64.
+  - el gate correcto de un procedimiento que compone un primitivo no es "qué entrada acepto" sino "hasta dónde
+    es EXACTO el primitivo": al volver `compare_values` exacto para surds de radicando distinto, el gate del
+    case-split sube de lineal a cuadrático sin perder soundness — el mismo principio que cerró el gate lineal.
+  - mejorar un primitivo compartido (`compare_values`) con huella 0 confirma que el mis-orden previo era
+    latente (nunca capturado por un lane) — pero sí producía wrong-answers en la frontera de inecuaciones
+    radicales cuadráticas que el case-split expuso.
+- retained learning:
+  - `compare_values` ahora ordena exactamente cualquier par de surds cuadráticos (radicando igual O distinto);
+    cualquier ciclo futuro que ordene extremos de intervalo surd hereda la corrección. Peldaño abierto del
+    Cluster B: g CONSTANTE (`√(-x²+2)<-3` → "All real numbers" falso) declina porque `solve(const,x)` da
+    error — hueco PRE-EXISTENTE del path #5 (constante negativa/dominio vacío), arreglable evaluando el signo
+    de la constante con `as_rational_const` en vez de `solve`. Ciclo aparte.

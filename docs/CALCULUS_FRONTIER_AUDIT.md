@@ -315,11 +315,28 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   radicando LINEAL (`f≥0` racional-acotado ⇒ toda comparación de extremos es racional-vs-surd, que
   `compare_values` ordena exacto). Verificado: oráculo de pertenencia independiente, 350 casos random
   (lineales, 4 ops), 0 mismatches. Workspace failed:0; clippy/fmt; huella guardrail+pressure 0 deltas. Test
-  `test_eval_radical_inequality_case_splits_on_rhs_sign`. Peldaño: radicando CUADRÁTICO (p.ej. `√(9-x²)>x-1`,
-  5º caso del cluster) declina al path existente — `f≥0` queda surd-acotado y la intersección necesita ordenar
-  dos surds de radicando DISTINTO (dominio `√6` vs restricción `√2−1`); `compare_quadratic_surds` devuelve
-  `None` ahí. Un comparador surd de radicandos distintos en `compare_values` es el siguiente ciclo de
-  soundness y desbloquea el case-split cuadrático.)*
+  `test_eval_radical_inequality_case_splits_on_rhs_sign`. **Peldaño CERRADO 2026-06-24 (ver abajo, comparador
+  surd de radicandos distintos)**: el radicando CUADRÁTICO (`√(9-x²)>x-1`, 5º caso, etc.) ahora se resuelve —
+  el gate se relajó a grado ≤ 2 una vez que `compare_quadratic_surds` ordena surds de radicando distinto.)*
+
+- [x] **(S) `compare_values` mis-ordenaba dos surds de radicando DISTINTO → fuga de restricciones e inecuaciones radicales cuadráticas (cierra Cluster B al 100%)**:
+  `compare_quadratic_surds` devolvía `None` para `A+B√m` vs `C+D√n` con `m≠n` y ambos coeficientes surd
+  no-cero (el fallback estructural los mis-ordenaba). La intersección del case-split radical necesitaba ordenar
+  el extremo de dominio (`√6`) contra el de restricción (`√2−1`), así que `√(9-x²)>x-1`, `√(-x²+6)<x+2`, etc.
+  declinaban o soltaban una restricción (`(-2,√6]` en vez de `(√2−1,√6]`). (P0 wrong-answer/under-answer en
+  `solve` + ordenación de intervalos en TODO el engine; 5º caso del Cluster B del hunt.)
+  *(graduado 2026-06-24 PENDIENTE: nuevo `sign_of_sum_two_surds(p,q,m,s,n)` en `cas_solver_core/solution_set.rs`
+  — signo EXACTO de `p + q√m + s√n` (radicandos distintos) por doble cuadratura anidada: `sign(X=q√m+s√n)` por
+  signos de término + comparación de magnitudes `q²m`vs`s²n`; luego, si `p` y `X` tienen signo opuesto,
+  `sign(p²−X²)` con `X²=(q²m+s²n)+2qs√(mn)` vía `sign_of_linear_surd` decide cuál domina. Todo `BigRational`,
+  sin f64. `compare_quadratic_surds` enruta el caso de radicando distinto ahí; gate de `try_solve_radical_inequality`
+  relajado a radicando grado ≤ 2 (cúbico+ puede tener raíces no-surd-cuadráticas que `as_surd_value` no modela →
+  declina). Verificado: test de grilla exhaustiva >5000 casos vs f64; oráculo de pertenencia 599 casos
+  cuadráticos in-scope + 350 lineales, 0 mismatches; tests de casos a mano (`√6`vs`√2−1`, `√8`=`2√2`).
+  Workspace failed:0; clippy/fmt; huella guardrail+pressure 0 deltas (ningún lane dependía del mis-orden).
+  Tests `compare_values_orders_distinct_radicand_surds`, `sign_of_sum_two_surds_matches_float_over_grid`.
+  Peldaño abierto del cluster: g CONSTANTE (`√(-x²+2)<-3`) sigue declinando porque `solve(const,x)` da error —
+  hueco PRE-EXISTENTE del path #5 (constante negativa / dominio vacío), no del comparador; ciclo aparte.)*
 
 - [x] **(S) El TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)**:
   `(4·x²)^(1/2)` mostraba el texto `2·x^2^(1/2)`, que re-parsea como `2·x^(2^(1/2)) = 2·x^√2` — una

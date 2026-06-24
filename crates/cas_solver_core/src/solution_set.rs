@@ -113,14 +113,78 @@ fn sign_of_linear_surd(p: &BigRational, q: &BigRational, n: &BigRational) -> Ord
     }
 }
 
-/// Compare two quadratic-surd values `a`, `b` by VALUE via the exact sign of `a − b`. `None` when
-/// either is not a single real quadratic surd, or when the two carry DISTINCT radicands with both
-/// surd parts non-zero (the two roots of one quadratic always share a radicand, the common case).
+/// Exact sign of `p + q·√m + s·√n` (`m, n ≥ 0` rational, all coefficients rational), allowing
+/// DISTINCT radicands `m ≠ n`. Two nested squarings, each comparing a rational against a single
+/// quadratic surd via [`sign_of_linear_surd`] — fully exact (no f64).
+fn sign_of_sum_two_surds(
+    p: &BigRational,
+    q: &BigRational,
+    m: &BigRational,
+    s: &BigRational,
+    n: &BigRational,
+) -> Ordering {
+    let zero = BigRational::zero();
+    // sign(X) where X = q·√m + s·√n: each term's sign, breaking a sign conflict by comparing the
+    // squared magnitudes `q²m` vs `s²n` (both ≥ 0, so the comparison is on rationals).
+    let q_term_zero = q.is_zero() || m.is_zero();
+    let s_term_zero = s.is_zero() || n.is_zero();
+    let sq = if q_term_zero {
+        Ordering::Equal
+    } else {
+        q.cmp(&zero)
+    };
+    let ss = if s_term_zero {
+        Ordering::Equal
+    } else {
+        s.cmp(&zero)
+    };
+    let q_sq_m = q * q * m;
+    let s_sq_n = s * s * n;
+    let sign_x = match (sq, ss) {
+        (Ordering::Equal, _) => ss, // q·√m term is zero ⇒ sign(s·√n)
+        (_, Ordering::Equal) => sq, // s·√n term is zero ⇒ sign(q·√m)
+        _ if sq == ss => sq,        // same sign ⇒ that sign
+        // Opposite signs ⇒ the larger magnitude wins: |q√m| vs |s√n| ⟺ q²m vs s²n.
+        _ => match q_sq_m.cmp(&s_sq_n) {
+            Ordering::Greater => sq,
+            Ordering::Less => ss,
+            Ordering::Equal => Ordering::Equal,
+        },
+    };
+
+    let sign_p = p.cmp(&zero);
+    if sign_p == Ordering::Equal {
+        return sign_x;
+    }
+    if sign_x == Ordering::Equal {
+        return sign_p;
+    }
+    if sign_p == sign_x {
+        return sign_p;
+    }
+    // p and X have OPPOSITE signs ⇒ sign(p + X) is the sign of the larger magnitude. Compare
+    // `p²` vs `X² = (q²m + s²n) + 2qs·√(mn)` exactly: sign(p² − X²) decides which wins.
+    let p_sq = p * p;
+    let rational_part = &p_sq - &q_sq_m - &s_sq_n;
+    let two = BigRational::new(2.into(), 1.into());
+    let surd_coeff = -(two * q * s);
+    let mn = m * n;
+    match sign_of_linear_surd(&rational_part, &surd_coeff, &mn) {
+        Ordering::Greater => sign_p, // |p| > |X|
+        Ordering::Less => sign_x,    // |X| > |p|
+        Ordering::Equal => Ordering::Equal,
+    }
+}
+
+/// Compare two quadratic-surd values `a`, `b` by VALUE via the exact sign of `a − b`. `None` only
+/// when either is not a single real quadratic surd. DISTINCT radicands with both surd parts
+/// non-zero (e.g. domain bound `√6` against constraint `√2 − 1`) are ordered exactly via
+/// [`sign_of_sum_two_surds`].
 fn compare_quadratic_surds(ctx: &Context, a: ExprId, b: ExprId) -> Option<Ordering> {
     let (aa, ab, an) = as_surd_value(ctx, a)?;
     let (ba, bb, bn) = as_surd_value(ctx, b)?;
-    // a − b = (aa − ba) + ab·√an − bb·√bn. Combine the surd parts only when they share a radicand
-    // (or one side has no surd part).
+    // a − b = (aa − ba) + ab·√an − bb·√bn. Combine the surd parts when they share a radicand (or one
+    // side has no surd part); otherwise take the exact two-surd sign.
     let p = aa - ba;
     let (q, n) = if ab.is_zero() {
         (-bb, bn)
@@ -129,7 +193,8 @@ fn compare_quadratic_surds(ctx: &Context, a: ExprId, b: ExprId) -> Option<Orderi
     } else if an == bn {
         (ab - bb, an)
     } else {
-        return None;
+        let neg_bb = -bb;
+        return Some(sign_of_sum_two_surds(&p, &ab, &an, &neg_bb, &bn));
     };
     Some(sign_of_linear_surd(&p, &q, &n))
 }
@@ -609,6 +674,75 @@ mod tests {
                 "compare_values({a_src}, {b_src})"
             );
         }
+    }
+
+    #[test]
+    fn compare_values_orders_distinct_radicand_surds() {
+        use cas_parser::parse;
+        // Two surds with DIFFERENT radicands and both surd parts non-zero — the case the
+        // structural fallback used to mis-order (silently dropping radical-inequality
+        // constraints). `√6 ≈ 2.449`, `√2 − 1 ≈ 0.414`, `√7 ≈ 2.646`, `(√13 − 1)/2 ≈ 1.303`.
+        let cases: [(&str, &str, Ordering); 6] = [
+            ("sqrt(6)", "sqrt(2) - 1", Ordering::Greater),
+            ("sqrt(2) - 1", "sqrt(6)", Ordering::Less),
+            ("sqrt(7)", "1/2*(sqrt(13) - 1)", Ordering::Greater),
+            ("1/2*(sqrt(13) - 1)", "sqrt(7)", Ordering::Less),
+            // Equal value via distinct radicands: √8 = 2·√2.
+            ("sqrt(8)", "2*sqrt(2)", Ordering::Equal),
+            ("sqrt(3) + sqrt(2)", "sqrt(2) + sqrt(3)", Ordering::Equal),
+        ];
+        for (a_src, b_src, want) in cases {
+            let mut ctx = Context::new();
+            let a = parse(a_src, &mut ctx).expect("parse a");
+            let b = parse(b_src, &mut ctx).expect("parse b");
+            assert_eq!(
+                compare_values(&ctx, a, b),
+                want,
+                "compare_values({a_src}, {b_src})"
+            );
+        }
+    }
+
+    #[test]
+    fn sign_of_sum_two_surds_matches_float_over_grid() {
+        // Exhaustive deterministic grid: sign(p + q·√m + s·√n) for distinct radicands must
+        // agree with the f64 evaluation wherever the latter is decisively non-zero. This pins
+        // the exact nested-squaring arithmetic against an independent (floating) oracle.
+        let r = |num: i64, den: i64| BigRational::new(num.into(), den.into());
+        let coeffs = [-5i64, -3, -2, -1, 1, 2, 3, 4];
+        let rads = [0i64, 2, 3, 5, 6, 7, 8, 11, 13];
+        let mut checked = 0u64;
+        for &pn in &coeffs {
+            for &pd in &[1i64, 2, 3] {
+                for &q in &coeffs {
+                    for &s in &coeffs {
+                        for &m in &rads {
+                            for &n in &rads {
+                                let (pp, qq, mm, ss, nn) =
+                                    (r(pn, pd), r(q, 1), r(m, 1), r(s, 1), r(n, 1));
+                                let got = sign_of_sum_two_surds(&pp, &qq, &mm, &ss, &nn);
+                                let val = (pn as f64) / (pd as f64)
+                                    + (q as f64) * (m as f64).sqrt()
+                                    + (s as f64) * (n as f64).sqrt();
+                                let want = if val > 1e-9 {
+                                    Ordering::Greater
+                                } else if val < -1e-9 {
+                                    Ordering::Less
+                                } else {
+                                    continue; // too close to 0 for f64 to adjudicate
+                                };
+                                assert_eq!(
+                                    got, want,
+                                    "sign({pn}/{pd} + {q}·√{m} + {s}·√{n}) = {val}"
+                                );
+                                checked += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(checked > 5000, "expected a broad grid, checked {checked}");
     }
 
     fn make_interval(

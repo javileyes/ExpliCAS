@@ -885,17 +885,15 @@ fn try_solve_radical_inequality(
     if expr_contains_sqrt(&simplifier.context, f) {
         return None;
     }
-    // SOUNDNESS GATE: require a LINEAR radicand. With `f` linear, the domain
-    // `f ≥ 0` is rational-bounded, so every endpoint comparison in the case-split
-    // intersections is rational-vs-surd — which `compare_values` orders exactly.
-    // A quadratic (or higher) radicand makes `f ≥ 0` itself surd-bounded, so the
-    // intersection needs to order two DISTINCT-radicand surds (e.g. domain `√6`
-    // against constraint `√2−1`); `compare_quadratic_surds` returns `None` there
-    // and the structural fallback mis-orders them, silently dropping a constraint
-    // (`√(-x²+6) < x+2` would leak `(-2, √6]` instead of `(√2−1, √6]`). Decline
-    // those to the existing path until a distinct-radicand surd comparator lands.
+    // SOUNDNESS GATE: require a polynomial radicand of degree ≤ 2. A linear or
+    // quadratic `f` has rational or quadratic-surd domain endpoints (`f ≥ 0`), and
+    // every endpoint comparison in the case-split intersections is then between
+    // quadratic surds — which `compare_values` now orders EXACTLY (including two
+    // DISTINCT radicands, e.g. domain `√6` against constraint `√2−1`). A cubic or
+    // higher radicand can have non-quadratic-surd roots that `as_surd_value` does
+    // not model, so the intersection could mis-order them; decline those.
     match Polynomial::from_expr(&simplifier.context, f, var) {
-        Ok(p) if p.degree() <= 1 => {}
+        Ok(p) if p.degree() <= 2 => {}
         _ => return None,
     }
     let mut r = simplifier.context.num(0);
