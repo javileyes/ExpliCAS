@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 336 (newest first)
+Active entries: 337 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
+- 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14348,3 +14349,42 @@ Active entries: 336 (newest first)
     ARQUITECTÓNICO: los renderers paralelos de `SolutionSet` (eval A vs wire B vs didáctico) siguen duplicados
     en las ramas `Residual` y los helpers de intervalo/condicional — consolidar en un único renderer canónico
     (clase A) eliminaría futuros drifts; y la etiqueta de preset `standard`/`cli` podría unificarse.
+
+## 2026-06-25 - P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
+
+- area:
+  - `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`,
+    `try_rewrite_matrix_reciprocal_expr`, guard en `try_eval_scalar_matrix_mul_expr`);
+    `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixReciprocalRule`)
+- status:
+  - `retained` (cierra Cluster F del hunt; soundness exento de fase — matrices)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `[[1,2,3],[4,5,6]]^(-1)` ANTES `1/[[1,2,3],[4,5,6]]` (2×3 no tiene inversa), AHORA residual
+    `inverse([[1,2,3],[4,5,6]])`; `[[a,b],[c,d]]^(-1)·I` ANTES basura difundida, AHORA residual
+    `inverse([[a,b],[c,d]])·I`; `[[1,2],[3,4]]^(-1)` → inversa exacta; `M·M^(-1)=I`.
+  - MECANISMO (2 facetas): (1) `Pow(M,-1)`/`Div(c,M)` caían a la aritmética escalar (`x^(-1)→1/x`) →
+    `1/[[…]]`. Nuevo `MatrixReciprocalRule` (prioridad 20) los enruta a `inverse(M)` / `c·inverse(M)`,
+    reusando la función inversa ya sound. (2) `try_eval_scalar_matrix_mul_expr` detectaba matriz por
+    LITERAL (`Matrix::from_expr`), así que una matriz-valuada NO-literal (`inverse(M)` simbólica) pasaba como
+    "escalar" y se difundía. Nuevo `is_matrix_valued` (literal + funciones que devuelven matriz + combinaciones
+    estructurales) hace declinar el broadcast → residual honesto. Una `inverse(numérica)` evalúa a literal antes
+    y va por matmul; solo la simbólica queda residual.
+  - SOUNDNESS: reusa `Matrix::inverse` (ya verificada: no-cuadrada→None→residual, singular→undefined,
+    numérica→exacta, simbólica→residual). Verificado: round-trips `M·M^(-1)=M^(-1)·M=I` (2×2,3×3), diagonal,
+    1×1, `c/M`, `x/M` (distribuye sobre inversa numérica); ops ordinarias intactas (`3·M`, `M·N`, `det`,
+    `[[a,b],[c,d]]·I`, `M^2` sin evaluar). 0 fabricaciones.
+  - validación: workspace failed:0; clippy `--all-targets`/fmt; huella guardrail (16) + pressure (3) 0 deltas.
+    Test `test_eval_matrix_inverse_routes_and_no_scalar_broadcast`.
+- observed:
+  - la detección de "esto es una matriz" por LITERAL (`Matrix::from_expr`) es insuficiente cuando una operación
+    devuelve una matriz pero no ha reducido a literal (`inverse(M)` simbólica): hace falta un predicado de
+    TIPO-VALOR (`is_matrix_valued`) que reconozca también funciones matriz-valuadas y combinaciones, o el rule
+    escalar difunde el operando matricial como escalar. Patrón reutilizable para cualquier op mixta escalar/no-escalar.
+  - enrutar al primitivo ya-sound (`inverse(...)`) en vez de reimplementar es lo correcto: `Pow(M,-1)→inverse(M)`
+    hereda gratis numérica/no-cuadrada/singular/simbólica.
+- retained learning:
+  - patrón sound para ops de matriz que comparten sintaxis con escalares (`^(-1)`, `/`): enrutar al primitivo
+    matricial y gatear el broadcast escalar con un predicado de tipo-valor. Peldaño: potencia de matriz POSITIVA
+    `M^n` (n≥2) sin evaluar (residual honesto, capacidad futura); `M/N` matriz/matriz residual.

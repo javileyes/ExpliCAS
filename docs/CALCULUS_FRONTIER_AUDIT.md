@@ -404,18 +404,22 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   entrada y la recolección de condiciones de la derivada. P1 honestidad; requiere generalizar el mecanismo de
   `ln`/`sqrt` a las funciones de dominio acotado a través de la cancelación. Ciclo propio.)*
 
-- [ ] **(S) Operaciones de matriz simbólica fabrican resultados concretos sin sentido (Cluster F del hunt)**:
+- [x] **(S) Operaciones de matriz simbólica fabrican resultados concretos sin sentido (Cluster F del hunt)**:
   `[[1,2,3],[4,5,6]]^(-1)` → `1/[[1,2,3],[4,5,6]]` (una 2×3 NO tiene inversa); `[[a,b],[c,d]]^(-1)·I` →
   `[[1/[[a,b],[c,d]], 0],[0, 1/[[a,b],[c,d]]]]` (basura). DOS facetas: (1) `matrix^(-1)`/`1/matrix` cae a la
-  aritmética escalar (`x^(-1)→1/x`) en vez de la inversa — el rule de inversa solo cubre la FUNCIÓN
-  `inverse(...)`, que SÍ es sound (numérica→inversa exacta, no-cuadrada→residual, singular→undefined,
-  simbólica→residual); (2) `ScalarMatrixRule` trata una expresión MATRIZ-VALUADA (`inverse([[a,b],[c,d]])`,
-  `1/matrix`) como ESCALAR y la difunde sobre las celdas. `det`/`*`/`transpose` numéricos son correctos.
-  *(SONDEADO 2026-06-24, NO arreglado. Soundness exento de fase (matrices incluidas). Fix de 2 partes:
-  (1) rule `Pow(matrix,-1) → inverse(matrix)` y `Div(c, matrix) → c·inverse(matrix)` reusando la función
-  sound; (2) detector `is_matrix_valued(expr)` (literal matriz, `inverse`/`transpose`/`adjugate`,
-  `Pow(matrix,_)`, `Div(_,matrix)`) que haga DECLINAR a `ScalarMatrixRule` cuando el "escalar" es
-  matriz-valuado, dejando residual honesto. Ciclo propio en el subsistema de matrices.)*
+  aritmética escalar (`x^(-1)→1/x`) en vez de la inversa; (2) `ScalarMatrixRule` trata una expresión
+  MATRIZ-VALUADA (`inverse([[a,b],[c,d]])`) como ESCALAR y la difunde sobre las celdas. (P1 soundness en
+  ops de matriz; hallado por el hunt ultracode, soundness exento de fase.)
+  *(graduado 2026-06-25 PENDIENTE: (1) nuevo `MatrixReciprocalRule` (prioridad 20, target POW|DIV) vía
+  `try_rewrite_matrix_reciprocal_expr`: `Pow(M,-1) → inverse(M)`, `Div(c,M) → c·inverse(M)`, reusando la
+  función `inverse(...)` ya sound (numérica→inversa exacta, no-cuadrada/simbólica→residual, singular→undefined);
+  (2) `is_matrix_valued(expr)` (literal, `inverse`/`transpose`/`adjugate`, y combinaciones estructurales) hace
+  DECLINAR a `try_eval_scalar_matrix_mul_expr` cuando el operando "escalar" es matriz-valuado → residual honesto
+  `inverse(M)·I` en vez de basura. `M·M^(-1)=I`, `1/M`, `c/M`, 1×1, 3×3, singular, no-cuadrada verificados;
+  ops ordinarias intactas (`3·M`, `M·N`, `det`, `M^2` sin evaluar). Workspace failed:0; clippy/fmt; huella 0
+  deltas. Test `test_eval_matrix_inverse_routes_and_no_scalar_broadcast`. Peldaño: potencia de matriz POSITIVA
+  `M^n` (n≥2) queda sin evaluar (residual honesto, no wrong-answer) — capacidad futura; y `M/N` (matriz/matriz)
+  residual.)*
 
 - [x] **(S) La identidad complementaria arcsin+arccos colapsaba con argumento fuera de dominio**:
   `arcsec(1/2)+arccsc(1/2)` devolvía `π/2`, pero para `|x|<1` AMBOS términos son indefinidos en ℝ

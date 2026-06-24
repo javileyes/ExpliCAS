@@ -1071,6 +1071,43 @@ fn test_eval_ln_of_even_numerator_power_uses_abs() {
 }
 
 #[test]
+fn test_eval_matrix_inverse_routes_and_no_scalar_broadcast() {
+    // `M^(-1)` / `c/M` used to fall to scalar arithmetic and fabricate `1/[[…]]`
+    // (a non-square matrix has NO inverse; a symbolic one is not elementwise 1/entry).
+    // They now route to the matrix inverse, and `ScalarMatrixRule` no longer broadcasts
+    // a matrix-valued operand (e.g. `inverse(M)`) as if it were a scalar.
+    for (input, expected) in [
+        // Numeric square: the actual inverse.
+        ("[[1,2],[3,4]]^(-1)", "[[-2, 1], [3/2, -1/2]]"),
+        ("1/[[1,2],[3,4]]", "[[-2, 1], [3/2, -1/2]]"),
+        ("2/[[1,2],[3,4]]", "[[-4, 2], [3, -1]]"),
+        // Round-trip M·M^(-1) = I.
+        ("[[1,2],[3,4]] * [[1,2],[3,4]]^(-1)", "[[1, 0], [0, 1]]"),
+        // Symbolic / non-square: honest residual (NOT `1/[[…]]`).
+        ("[[a,b],[c,d]]^(-1)", "inverse([[a, b], [c, d]])"),
+        ("[[1,2,3],[4,5,6]]^(-1)", "inverse([[1, 2, 3], [4, 5, 6]])"),
+        // Singular: undefined (no inverse exists).
+        ("[[1,2],[2,4]]^(-1)", "undefined"),
+        // Facet 2: a symbolic inverse times a matrix stays a residual, not a broadcast.
+        (
+            "[[a,b],[c,d]]^(-1) * [[1,0],[0,1]]",
+            "inverse([[a, b], [c, d]])·[[1, 0], [0, 1]]",
+        ),
+        // Ordinary scalar·matrix and matrix·matrix are unaffected.
+        ("3 * [[1,2],[3,4]]", "[[3, 6], [9, 12]]"),
+        ("[[1,2],[3,4]] * [[5,6],[7,8]]", "[[19, 22], [43, 50]]"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_nested_power_text_is_parenthesized_and_round_trips() {
     // `^` is right-associative, so a surviving nested power must be parenthesized
     // in the TEXT output. `(4*x^2)^(1/2)` simplifies to `2·(x^2)^(1/2)` but was

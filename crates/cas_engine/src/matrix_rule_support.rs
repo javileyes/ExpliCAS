@@ -192,6 +192,59 @@ pub fn try_eval_matrix_mul_expr(ctx: &mut Context, expr: ExprId) -> Option<Matri
     })
 }
 
+/// Whether `expr` evaluates to a MATRIX — a literal, a matrix-returning function call
+/// (`inverse`/`transpose`/`adjugate`), or a structural combination of such. Used to keep
+/// scalar-matrix multiplication from broadcasting a matrix-valued operand as if it were a scalar.
+pub fn is_matrix_valued(ctx: &Context, expr: ExprId) -> bool {
+    if Matrix::from_expr(ctx, expr).is_some() {
+        return true;
+    }
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            args.len() == 1
+                && matches!(
+                    ctx.sym_name(*fn_id),
+                    "inverse" | "inv" | "transpose" | "T" | "adjugate" | "adj"
+                )
+                && is_matrix_valued(ctx, args[0])
+        }
+        Expr::Neg(inner) => is_matrix_valued(ctx, *inner),
+        Expr::Pow(base, _) => is_matrix_valued(ctx, *base),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            is_matrix_valued(ctx, *l) || is_matrix_valued(ctx, *r)
+        }
+        _ => false,
+    }
+}
+
+/// Route `M^(-1)` and `c / M` (matrix `M`) to the matrix INVERSE instead of letting scalar
+/// arithmetic fabricate `1/[[…]]`: `M^(-1) → inverse(M)`, `c / M → c · inverse(M)`. The
+/// `inverse(…)` call is evaluated soundly downstream (numeric → inverse matrix, singular →
+/// undefined, non-square / symbolic → honest residual).
+pub fn try_rewrite_matrix_reciprocal_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            Matrix::from_expr(ctx, base)?;
+            // Only the inverse power `-1`; general matrix powers are out of scope here.
+            let exp_val = cas_math::numeric_eval::as_rational_const(ctx, exp)?;
+            if exp_val != num_rational::BigRational::from_integer((-1).into()) {
+                return None;
+            }
+            Some(ctx.call("inverse", vec![base]))
+        }
+        Expr::Div(num, den) => {
+            // `c / M`: a scalar numerator over a matrix denominator. `M / N` (matrix over matrix)
+            // is not scalar division and is left alone.
+            if Matrix::from_expr(ctx, den).is_none() || is_matrix_valued(ctx, num) {
+                return None;
+            }
+            let inv = ctx.call("inverse", vec![den]);
+            Some(ctx.add(Expr::Mul(num, inv)))
+        }
+        _ => None,
+    }
+}
+
 pub fn try_eval_scalar_matrix_mul_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -211,6 +264,17 @@ pub fn try_eval_scalar_matrix_mul_expr(
     let left_is_matrix = Matrix::from_expr(ctx, left).is_some();
     let right_is_matrix = Matrix::from_expr(ctx, right).is_some();
     if left_is_matrix && right_is_matrix {
+        return None;
+    }
+    // The would-be SCALAR operand must be a genuine scalar, not a MATRIX-VALUED expression that
+    // simply has not reduced to a literal yet (e.g. `inverse(M)` for a symbolic `M`). Broadcasting
+    // such an operand over the other matrix fabricates a matrix-of-matrices
+    // (`inverse([[a,b],[c,d]]) * I` → `[[inverse(M), 0], [0, inverse(M)]]`). Decline so it stays an
+    // honest residual; a numeric `inverse(...)` evaluates to a literal first and goes via matmul.
+    if right_is_matrix && is_matrix_valued(ctx, left) {
+        return None;
+    }
+    if left_is_matrix && is_matrix_valued(ctx, right) {
         return None;
     }
 

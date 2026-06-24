@@ -1,7 +1,7 @@
 use crate::matrix_rule_support::{
     try_eval_matrix_add_expr, try_eval_matrix_mul_expr, try_eval_matrix_sub_expr,
     try_eval_scalar_matrix_mul_expr, try_rewrite_matrix_function_rule_expr,
-    try_rewrite_transpose_product_identity_expr,
+    try_rewrite_matrix_reciprocal_expr, try_rewrite_transpose_product_identity_expr,
 };
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, ExprId};
@@ -145,7 +145,33 @@ impl SimpleRule for TransposeProductRule {
     }
 }
 
+/// MatrixReciprocalRule: `M^(-1)` and `c / M` route to the matrix inverse instead of falling to
+/// scalar arithmetic, which fabricated `1/[[…]]` (a non-square matrix has NO inverse, and a
+/// symbolic one is not elementwise `1/entry`).
+pub struct MatrixReciprocalRule;
+
+impl SimpleRule for MatrixReciprocalRule {
+    fn name(&self) -> &'static str {
+        "Matrix Reciprocal/Inverse"
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW | crate::target_kind::TargetKindSet::DIV)
+    }
+
+    fn priority(&self) -> i32 {
+        // Beat the scalar reciprocal/power rules so `M^(-1)` / `c/M` never fabricate `1/[[…]]`.
+        20
+    }
+
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+        let rewritten = try_rewrite_matrix_reciprocal_expr(ctx, expr)?;
+        Some(Rewrite::new(rewritten).desc("M^(-1) = inverse(M); c/M = c·inverse(M)"))
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(MatrixReciprocalRule));
     simplifier.add_rule(Box::new(MatrixAddRule));
     simplifier.add_rule(Box::new(MatrixSubRule));
     // IMPORTANT: MatrixMultiplyRule MUST come before ScalarMatrixRule
