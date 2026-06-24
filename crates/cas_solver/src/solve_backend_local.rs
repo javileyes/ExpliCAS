@@ -839,6 +839,72 @@ fn collapse_degenerate_intervals(ctx: &Context, set: SolutionSet) -> SolutionSet
     SolutionSet::Discrete(intervals.iter().map(|i| i.min).collect())
 }
 
+/// Keep the roots `r` of `f = g²` for which `g(r) ≥ 0` — the genuine boundary `√f = g` points
+/// (`√f = |g| = g` requires `g ≥ 0`). `g` is affine and each root a quadratic surd, so `g(r)` is a
+/// quadratic surd whose sign `compare_values` decides exactly. Non-`Discrete` root sets (no isolated
+/// roots, or the degenerate `f ≡ g²` case which only arises for perfect-square radicands the hook
+/// never reaches) contribute no boundary points.
+fn keep_roots_with_g_nonneg(
+    simplifier: &mut Simplifier,
+    var: &str,
+    roots: SolutionSet,
+    g: ExprId,
+) -> SolutionSet {
+    use cas_solver_core::solution_set::compare_values;
+    let points = match roots {
+        SolutionSet::Discrete(p) => p,
+        _ => return SolutionSet::Empty,
+    };
+    let var_expr = simplifier.context.var(var);
+    let zero = simplifier.context.num(0);
+    let kept: Vec<ExprId> = points
+        .into_iter()
+        .filter(|&r| {
+            let g_at_r = substitute_expr_by_id(&mut simplifier.context, g, var_expr, r);
+            let (g_at_r, _) = simplifier.simplify(g_at_r);
+            compare_values(&simplifier.context, g_at_r, zero) != std::cmp::Ordering::Less
+        })
+        .collect();
+    if kept.is_empty() {
+        SolutionSet::Empty
+    } else {
+        SolutionSet::Discrete(kept)
+    }
+}
+
+/// Solve a SIGN condition on `g` (`g > 0`, `g ≥ 0`, or `g < 0`, per `op` ∈ {Gt, Geq, Lt}).
+/// When `g` is a rational CONSTANT the recursive solver errors (`solve(-4 < 0, x)` →
+/// "variable not found"), so resolve it directly from the constant's sign: `AllReals` when the
+/// relation holds, `Empty` otherwise. Non-constant `g` delegates to the recursive solver.
+fn solve_g_sign_condition(
+    simplifier: &mut Simplifier,
+    var: &str,
+    g: ExprId,
+    op: cas_ast::RelOp,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    if let Some(c) = as_rational_const(&simplifier.context, g) {
+        let zero = BigRational::zero();
+        let holds = match op {
+            RelOp::Gt => c > zero,
+            RelOp::Geq => c >= zero,
+            RelOp::Lt => c < zero,
+            _ => return None,
+        };
+        return Some(if holds {
+            SolutionSet::AllReals
+        } else {
+            SolutionSet::Empty
+        });
+    }
+    let zero = simplifier.context.num(0);
+    solve_relation_set(simplifier, var, g, zero, op)
+}
+
 /// Solve `lhs {op} rhs` recursively and return just the solution set.
 fn solve_relation_set(
     simplifier: &mut Simplifier,
@@ -928,12 +994,20 @@ fn try_solve_radical_inequality(
     }
 
     let zero = simplifier.context.num(0);
-    let two = simplifier.context.num(2);
-    let g2 = simplifier.context.add(Expr::Pow(g, two));
-    let half = simplifier.context.rational(1, 2);
-    let sqrt_f = simplifier.context.add(Expr::Pow(f, half));
-
-    let f_nonneg = solve_relation_set(simplifier, var, f, zero, RelOp::Geq)?;
+    // Build g² as an EXPANDED polynomial (not `Pow(g, 2)`): the simplifier keeps a
+    // sloped affine RHS in factored form (`(1/2)x+5` ⇒ `1/2·(x+10)`), and squaring
+    // that as `Pow(·, 2)` makes the downstream `f − g²` polynomial extraction drop
+    // the squared outer rational factor — `√(x²-4) < (1/2)x+5` then wrongly leaked
+    // `No solution`. The expanded form `1/4·x² + 5·x + 25` extracts cleanly.
+    let g2 = {
+        let g_poly = Polynomial::from_expr(&simplifier.context, g, var).ok()?;
+        let g2_poly = g_poly.mul(&g_poly);
+        g2_poly.to_expr(&mut simplifier.context)
+    };
+    // `f ≥ 0` can be a single POINT for a negative-definite radicand (`-x²` ⇒ {0});
+    // present it as a degenerate interval so the case-split intersections keep it (a
+    // bare `Discrete` operand collapses to ∅ in `intersect_solution_sets`).
+    let f_nonneg = discrete_to_intervals(solve_relation_set(simplifier, var, f, zero, RelOp::Geq)?);
 
     // Solve by the case split. The non-strict (≤,≥) branches use CLOSED
     // sub-inequalities — these naturally close finite endpoints at the boundary
@@ -945,7 +1019,12 @@ fn try_solve_radical_inequality(
     // gap — that only bites when a closed point meets an open endpoint.)
     let closed_with_boundary =
         |simplifier: &mut Simplifier, core: SolutionSet| -> Option<SolutionSet> {
-            let boundary = solve_relation_set(simplifier, var, sqrt_f, g, RelOp::Eq)?;
+            // Boundary `√f = g` ⟺ `f = g² ∧ g ≥ 0` (`f = g² ≥ 0` is automatic). Solve
+            // the POLYNOMIAL equation `f = g²` and keep roots with `g ≥ 0`: this avoids
+            // the single-radical EQUATION solver, which leaks a residual on a fractional
+            // RHS (`√(x²+4) = (1/3)x+2`), and reuses the already-expanded `g²`.
+            let roots = solve_relation_set(simplifier, var, f, g2, RelOp::Eq)?;
+            let boundary = keep_roots_with_g_nonneg(simplifier, var, roots, g);
             let boundary = discrete_to_intervals(boundary);
             let merged = union_solution_sets(&simplifier.context, boundary, core);
             Some(collapse_degenerate_intervals(&simplifier.context, merged))
@@ -954,21 +1033,21 @@ fn try_solve_radical_inequality(
     let result = match eff_op {
         RelOp::Lt => {
             // f ≥ 0 ∧ g > 0 ∧ f < g²  (strict: open branches, no boundary point)
-            let g_pos = solve_relation_set(simplifier, var, g, zero, RelOp::Gt)?;
+            let g_pos = solve_g_sign_condition(simplifier, var, g, RelOp::Gt)?;
             let f_lt = solve_relation_set(simplifier, var, f, g2, RelOp::Lt)?;
             let i = intersect_solution_sets(&simplifier.context, f_nonneg, g_pos);
             intersect_solution_sets(&simplifier.context, i, f_lt)
         }
         RelOp::Gt => {
             // f ≥ 0 ∧ (g < 0 ∨ f > g²)  (strict)
-            let g_neg = solve_relation_set(simplifier, var, g, zero, RelOp::Lt)?;
+            let g_neg = solve_g_sign_condition(simplifier, var, g, RelOp::Lt)?;
             let f_gt = solve_relation_set(simplifier, var, f, g2, RelOp::Gt)?;
             let u = union_solution_sets(&simplifier.context, g_neg, f_gt);
             intersect_solution_sets(&simplifier.context, f_nonneg, u)
         }
         RelOp::Leq => {
             // f ≥ 0 ∧ g ≥ 0 ∧ f ≤ g²  (closed) ∪ detached `√f = g` points
-            let g_nonneg = solve_relation_set(simplifier, var, g, zero, RelOp::Geq)?;
+            let g_nonneg = solve_g_sign_condition(simplifier, var, g, RelOp::Geq)?;
             let f_le = solve_relation_set(simplifier, var, f, g2, RelOp::Leq)?;
             let i = intersect_solution_sets(&simplifier.context, f_nonneg, g_nonneg);
             let core = intersect_solution_sets(&simplifier.context, i, f_le);
@@ -976,7 +1055,7 @@ fn try_solve_radical_inequality(
         }
         RelOp::Geq => {
             // f ≥ 0 ∧ (g < 0 ∨ f ≥ g²)  (closed) ∪ detached `√f = g` points
-            let g_neg = solve_relation_set(simplifier, var, g, zero, RelOp::Lt)?;
+            let g_neg = solve_g_sign_condition(simplifier, var, g, RelOp::Lt)?;
             let f_ge = solve_relation_set(simplifier, var, f, g2, RelOp::Geq)?;
             let u = union_solution_sets(&simplifier.context, g_neg, f_ge);
             let core = intersect_solution_sets(&simplifier.context, f_nonneg, u);

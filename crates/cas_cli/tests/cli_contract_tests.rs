@@ -1004,6 +1004,41 @@ fn test_eval_radical_inequality_case_splits_on_rhs_sign() {
 }
 
 #[test]
+fn test_eval_radical_inequality_fractional_constant_and_degenerate() {
+    // Hardening cases an adversarial workflow surfaced (all previously wrong):
+    for (input, expected) in [
+        // FRACTIONAL RHS slope: g² must be built EXPANDED, not Pow(g,2) (the factored
+        // form dropped the squared outer rational factor → wrong "No solution").
+        ("sqrt(x) < x/2 - 3", "(2·(sqrt(7) + 4), infinity)"),
+        ("sqrt(4*x+2) >= (1/2)*x - 6", "[-1/2, 2·(sqrt(66) + 10)]"),
+        // Fractional RHS in a NON-STRICT branch: the boundary `√f = g` is now solved as
+        // the polynomial `f = g² ∧ g >= 0` (the radical-equation solver leaks on
+        // fractional g). The `[2, ...]` endpoint stays CLOSED.
+        (
+            "sqrt(x^2-4) <= (1/2)*x+5",
+            "[2/3·(5 - 4·sqrt(7)), -2] U [2, 2/3·(4·sqrt(7) + 5)]",
+        ),
+        // Boundary touch with fractional g: `√(9-x²) = (1/3)x-1` at x=3 (`√0=0`).
+        ("sqrt(-x^2+9) <= (1/3)*x-1", "{ 3 }"),
+        // CONSTANT g: `solve(const, x)` errors, so the sign is taken from the constant.
+        ("sqrt(4-x^2) < 5", "[-2, 2]"),
+        ("sqrt(x-2) >= 0*x - 4", "[2, infinity)"),
+        // DEGENERATE radicand: `-x²` has domain {0}; the single-point `f >= 0` must
+        // survive the case-split intersections (a bare Discrete operand collapsed to ∅).
+        ("sqrt(-x^2) < x+1", "{ 0 }"),
+        ("sqrt(-(x-1)^2) < x", "{ 1 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_ln_of_even_numerator_power_uses_abs() {
     // `ln(x^(p/q))` with q ODD and p EVEN is real for EVERY x != 0 (under the
     // engine's real power semantics `(-8)^(2/3) = 4`), so it expands to

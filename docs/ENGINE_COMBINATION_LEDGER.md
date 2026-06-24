@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 334 (newest first)
+Active entries: 335 (newest first)
 
+- 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14254,3 +14255,55 @@ Active entries: 334 (newest first)
     Cluster B: g CONSTANTE (`√(-x²+2)<-3` → "All real numbers" falso) declina porque `solve(const,x)` da
     error — hueco PRE-EXISTENTE del path #5 (constante negativa/dominio vacío), arreglable evaluando el signo
     de la constante con `as_rational_const` en vez de `solve`. Ciclo aparte.
+
+## 2026-06-25 - P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality` + nuevos helpers
+    `solve_g_sign_condition`, `keep_roots_with_g_nonneg`)
+- status:
+  - `retained` (cierra 4 familias de wrong-answer del hook, halladas por el workflow adversarial ultracode)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: 4 familias, todas ANTES wrong/leak, AHORA correctas:
+    (A) pendiente fraccionaria del RHS: `√(x²-4)<(1/2)x+5` ANTES "No solution", AHORA
+        `(2/3·(5-4√7),-2]∪[2,2/3·(4√7+5))`; (B) radicando degenerado: `√(-x²)<x+1` ANTES "No solution",
+        AHORA `{0}`; (D) g constante: `√(x-2)≥0·x-4` ANTES `[18,∞)`, AHORA `[2,∞)`; `√(4-x²)<5` ANTES "All real
+        numbers", AHORA `[-2,2]`; (frontera) `√(x²-4)≤(1/2)x+5` ANTES fuga `Solve:`, AHORA cerrado en `[2,...]`.
+  - MECANISMO (4 causas raíz, todas pre-existentes del hook original d009dcbb5, expuestas por el workflow):
+    (A) `g²=Pow(g,2)` se construía SIN expandir; el simplificador deja el RHS afín con pendiente en forma
+        factorizada (`(1/2)x+5 ⇒ 1/2·(x+10)`) y al elevarlo al cuadrado como `Pow(·,2)` la extracción de
+        polinomio de `f−g²` aguas abajo PERDÍA el factor racional externo al cuadrado → fuga "No solution".
+        Fix: construir g² como POLINOMIO EXPANDIDO (`Polynomial::from_expr(g).mul(self).to_expr`).
+    (B) para un radicando definido-negativo (`-x²`), `f≥0` es un solo PUNTO, representado `SolutionSet::Discrete`,
+        y un operando `Discrete` colapsa a ∅ en `intersect_solution_sets` → se perdía el punto. Fix: pasar
+        `f_nonneg` por `discrete_to_intervals` (intervalo degenerado que la intersección sí conserva).
+    (D) g CONSTANTE pasa el gate afín (grado 0 ≤ 1) pero `solve(const {op} 0, x)` da error → el hook fugaba o
+        declinaba mal. Fix: `solve_g_sign_condition` evalúa el signo de la constante (AllReals/Empty) en vez de
+        delegar al solver.
+    (frontera) la rama no-estricta (≤,≥) recuperaba la frontera con `solve(√f=g)`, pero el solver de radical
+        ÚNICO FUGA un residual con RHS fraccionario (`√(x²+4)=(1/3)x+2` → `Solve: solve(x-(...)^(1/2)=0)`). Fix:
+        `√f=g ⟺ f=g² ∧ g≥0` — resolver la ecuación POLINÓMICA `f=g²` (sin radical, sin fuga, reusa el g²
+        expandido) y filtrar las raíces por `g(r)≥0` con `keep_roots_with_g_nonneg` (compara `g(r)` vs 0 con el
+        comparador surd exacto recién hecho).
+  - SOUNDNESS: oráculo de pertenencia exhaustivo (fractions, f lineal/cuadrático, g afín con coef
+    fraccionarios/constantes, radicandos degenerados, 1200 casos) 0 mismatches; + 350 lineales + 599
+    cuadráticos in-scope (regresión) 0 mismatches; + los 9/10 inputs confirmados por el workflow corregidos.
+  - validación: workspace failed:0; clippy `--all-targets`/fmt; huella guardrail (16) + pressure (3) 0 deltas.
+    Test `test_eval_radical_inequality_fractional_constant_and_degenerate`.
+- observed:
+  - el VERIFICADOR ADVERSARIAL MULTIAGENTE caza familias que el oráculo del ciclo NO testea: el oráculo original
+    usaba coeficientes ENTEROS y g con variable, así que NO veía (A) pendiente fraccionaria, (D) g constante,
+    ni (B) dominio degenerado. La lección operativa: el oráculo de un ciclo prueba lo que el autor imaginó; el
+    barrido adversarial prueba lo que no. Ambos son necesarios.
+  - reusar un solver compartido exige darle la forma CANÓNICA EXACTA que espera (g² expandido, ecuación
+    polinómica en vez de radical) — patrón confirmado por 3ª vez (A3 radicales, este hook). Cuando el solver
+    reusado fuga, a veces la respuesta no es "canonicaliza la entrada" sino "no uses ese solver": la frontera
+    `√f=g` se resuelve mejor como `f=g²∧g≥0` (polinómico) que delegando al solver de radical único.
+- retained learning:
+  - el hook de inecuación radical (lineal+cuadrático f, afín g, todas las paridades de coeficiente) es ahora
+    sound y verificado adversarialmente. Peldaño: radicando CUADRADO PERFECTO (`√(x²-6x+9)=|x-3|`) se simplifica
+    a `|x-3|` ANTES del hook (sin nodo sqrt) → el hook declina y el path de ABS da `√(x²-6x+9)>x-3 → "All real
+    numbers if x-3≥0"` (wrong, real `(-∞,3)`). Es un bug PRE-EXISTENTE del path de inecuación con abs, no del
+    hook radical; ciclo aparte. También g constante negativa en el path #5 antiguo (cuando el hook declina).

@@ -336,8 +336,27 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   cuadráticos in-scope + 350 lineales, 0 mismatches; tests de casos a mano (`√6`vs`√2−1`, `√8`=`2√2`).
   Workspace failed:0; clippy/fmt; huella guardrail+pressure 0 deltas (ningún lane dependía del mis-orden).
   Tests `compare_values_orders_distinct_radicand_surds`, `sign_of_sum_two_surds_matches_float_over_grid`.
-  Peldaño abierto del cluster: g CONSTANTE (`√(-x²+2)<-3`) sigue declinando porque `solve(const,x)` da error —
-  hueco PRE-EXISTENTE del path #5 (constante negativa / dominio vacío), no del comparador; ciclo aparte.)*
+  Peldaño cerrado por el hardening de abajo (g constante, pendiente fraccionaria, dominio degenerado).)*
+
+- [x] **(S) Hardening del hook de inecuación radical: 4 familias de wrong-answer (pendiente fraccionaria, g constante, dominio degenerado, fuga de frontera)**:
+  el barrido ADVERSARIAL MULTIAGENTE (ultracode) — tras certificar el comparador surd EXACTO (204k casos
+  mpmath+sympy, 0 mismatches) — cazó 4 familias pre-existentes del hook (d009dcbb5) que el oráculo del ciclo
+  (coef enteros, g con variable) no testeaba: (A) `√(x²-4)<(1/2)x+5 → "No solution"` (real no-vacío); (B)
+  `√(-x²)<x+1 → "No solution"` (real `{0}`); (D) `√(x-2)≥0·x-4 → [18,∞)` y `√(4-x²)<5 → "All real numbers"`
+  (reales `[2,∞)`, `[-2,2]`); (frontera) `√(x²-4)≤(1/2)x+5 → Solve:…` fuga. (P1 wrong-answers en `solve` de
+  inecuaciones; soundness.)
+  *(graduado 2026-06-25 PENDIENTE: (A) g² se construye EXPANDIDO `Polynomial::from_expr(g).mul.to_expr` —
+  `Pow(g,2)` sobre el RHS factorizado perdía el factor racional al cuadrado; (B) `f_nonneg` pasa por
+  `discrete_to_intervals` — `f≥0`={punto} para radicando definido-negativo colapsaba a ∅; (D)
+  `solve_g_sign_condition` evalúa el signo de la constante en vez de `solve(const,x)` (que da error); (frontera)
+  `√f=g ⟺ f=g²∧g≥0` resuelto como ecuación POLINÓMICA `f=g²` filtrando raíces por `g(r)≥0`
+  (`keep_roots_with_g_nonneg`, comparador surd) — el solver de radical único FUGA con RHS fraccionario.
+  Oráculo exhaustivo 1200 casos (f lin/cuad, g afín fraccionario/constante, degenerados) + 350 lin + 599 cuad
+  in-scope, 0 mismatches; 9/10 inputs del workflow corregidos. Workspace failed:0; clippy/fmt; huella 0 deltas.
+  Test `test_eval_radical_inequality_fractional_constant_and_degenerate`. Peldaño: radicando CUADRADO PERFECTO
+  `√(x²-6x+9)=|x-3|` se simplifica a `|x-3|` antes del hook → declina, y el path de inecuación con ABS da
+  `√(x²-6x+9)>x-3 → "All real numbers if x-3≥0"` (wrong, real `(-∞,3)`) — bug PRE-EXISTENTE del path de abs,
+  ciclo aparte.)*
 
 - [x] **(S) El TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)**:
   `(4·x²)^(1/2)` mostraba el texto `2·x^2^(1/2)`, que re-parsea como `2·x^(2^(1/2)) = 2·x^√2` — una
