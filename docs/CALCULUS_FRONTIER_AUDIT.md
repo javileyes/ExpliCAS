@@ -298,6 +298,29 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   no-determinismo preexistente de smokes diff/integrate). Peldaño cosmético: la cota inferior surd `-√13`
   renderiza como `-13·13^(-1/2)` (estilo preexistente del path de cotas surd) — no soundness.)*
 
+- [x] **(S) Inecuación radical con RHS NO-constante elevaba al cuadrado sin partir por el signo de g**:
+  `sqrt(x) < x-2` devolvía `[0,1) ∪ (4,∞)` (real `(4,∞)`: la rama `[0,1)` falla `g = x-2 > 0`);
+  `sqrt(x-2) > 4-x` devolvía `(3,6)` (real `(3,∞)`: para `x>4`, `4-x<0 < √` ya satisface `>`); igual
+  `sqrt(x+1) > x-1`, `sqrt(x) < x+1`. Elevar `√f {op} g` al cuadrado a ciegas pierde las ramas del signo de
+  `g`. (P0 wrong-answer en `solve` de inecuaciones; hallado por el hunt adversarial multiagente ultracode,
+  Cluster B — 5 wrong-answers.)
+  *(graduado 2026-06-24 PENDIENTE: nuevo hook `try_solve_radical_inequality` (tras A3, antes de `solve_inner`)
+  que aísla `s·√f + r {op} 0 ⇒ √f {eff_op} g` y aplica el case-split correcto —
+  `√f<g ⟺ f≥0 ∧ g>0 ∧ f<g²`; `√f≤g ⟺ f≥0 ∧ g≥0 ∧ f≤g²`; `√f>g ⟺ f≥0 ∧ (g<0 ∨ f>g²)`;
+  `√f≥g ⟺ f≥0 ∧ (g<0 ∨ f≥g²)`— cada rama una inecuación polinómica que el solver existente resuelve
+  recursivamente, combinadas por intersect/union. Los puntos de toque no-estrictos `√f=g` (p.ej.
+  `√(x+3) ≤ -x-3 → {-3}` donde `√0=0=-x-3`) que la intersección descarta como solape degenerado se recuperan
+  unionando `solve(√f=g)` (la rama no-estricta usa sub-inecuaciones CERRADAS → cierra los extremos finitos
+  naturalmente, sin tropezar con el hueco de `merge_intervals` que no extiende el `min`). GATE DE SOUNDNESS:
+  radicando LINEAL (`f≥0` racional-acotado ⇒ toda comparación de extremos es racional-vs-surd, que
+  `compare_values` ordena exacto). Verificado: oráculo de pertenencia independiente, 350 casos random
+  (lineales, 4 ops), 0 mismatches. Workspace failed:0; clippy/fmt; huella guardrail+pressure 0 deltas. Test
+  `test_eval_radical_inequality_case_splits_on_rhs_sign`. Peldaño: radicando CUADRÁTICO (p.ej. `√(9-x²)>x-1`,
+  5º caso del cluster) declina al path existente — `f≥0` queda surd-acotado y la intersección necesita ordenar
+  dos surds de radicando DISTINTO (dominio `√6` vs restricción `√2−1`); `compare_quadratic_surds` devuelve
+  `None` ahí. Un comparador surd de radicandos distintos en `compare_values` es el siguiente ciclo de
+  soundness y desbloquea el case-split cuadrático.)*
+
 - [x] **(S) El TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)**:
   `(4·x²)^(1/2)` mostraba el texto `2·x^2^(1/2)`, que re-parsea como `2·x^(2^(1/2)) = 2·x^√2` — una
   expresión DISTINTA (el LaTeX sí era correcto). Como `^` es asociativo por la derecha, una potencia cuya

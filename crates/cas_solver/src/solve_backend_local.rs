@@ -714,6 +714,270 @@ fn rebuild_x_powers_as_u(
     }
 }
 
+/// True if `expr` contains any square-root term `Pow(_, 1/2)`.
+fn expr_contains_sqrt(ctx: &Context, expr: ExprId) -> bool {
+    if as_sqrt_radicand(ctx, expr).is_some() {
+        return true;
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            expr_contains_sqrt(ctx, l) || expr_contains_sqrt(ctx, r)
+        }
+        Expr::Neg(i) | Expr::Hold(i) => expr_contains_sqrt(ctx, i),
+        Expr::Function(_, args) => args.iter().any(|&a| expr_contains_sqrt(ctx, a)),
+        _ => false,
+    }
+}
+
+/// Flip a strict/non-strict inequality operator (for multiplying by −1).
+fn flip_inequality(op: cas_ast::RelOp) -> cas_ast::RelOp {
+    use cas_ast::RelOp;
+    match op {
+        RelOp::Lt => RelOp::Gt,
+        RelOp::Gt => RelOp::Lt,
+        RelOp::Leq => RelOp::Geq,
+        RelOp::Geq => RelOp::Leq,
+        other => other,
+    }
+}
+
+/// Split `d` into a single square-root term `±√f` (radicand containing `var`) and
+/// the remaining signed terms. Returns `(sign, f, rest_terms)` or None when there
+/// is not exactly one such radical.
+/// A signed additive term `(sign, expr)` in a decomposition.
+type SignedTerm = (i8, ExprId);
+/// `(radical_sign, radicand, remaining_signed_terms)` from [`collect_radical_split`].
+type RadicalSplit = (i8, ExprId, Vec<SignedTerm>);
+
+fn collect_radical_split(ctx: &Context, d: ExprId, var: &str) -> Option<RadicalSplit> {
+    fn walk(
+        ctx: &Context,
+        e: ExprId,
+        sign: i8,
+        var: &str,
+        rad: &mut Option<(i8, ExprId)>,
+        rest: &mut Vec<(i8, ExprId)>,
+    ) -> bool {
+        match ctx.get(e) {
+            Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
+                walk(ctx, l, sign, var, rad, rest) && walk(ctx, r, sign, var, rad, rest)
+            }
+            Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
+                walk(ctx, l, sign, var, rad, rest) && walk(ctx, r, -sign, var, rad, rest)
+            }
+            Expr::Neg(inner) => {
+                let inner = *inner;
+                walk(ctx, inner, -sign, var, rad, rest)
+            }
+            _ => {
+                if let Some(radicand) = as_sqrt_radicand(ctx, e) {
+                    if expr_contains_named_var(ctx, radicand, var) {
+                        if rad.is_some() {
+                            return false; // a second radical
+                        }
+                        *rad = Some((sign, radicand));
+                        return true;
+                    }
+                }
+                rest.push((sign, e));
+                true
+            }
+        }
+    }
+    let mut rad = None;
+    let mut rest = Vec::new();
+    if !walk(ctx, d, 1, var, &mut rad, &mut rest) {
+        return None;
+    }
+    let (s, f) = rad?;
+    Some((s, f, rest))
+}
+
+/// Convert a `Discrete` solution set to degenerate closed intervals `[p, p]` so
+/// `union_solution_sets` (which merges interval LISTS) keeps the points instead
+/// of dropping them as a non-interval operand. Other variants pass through.
+fn discrete_to_intervals(set: SolutionSet) -> SolutionSet {
+    use cas_ast::domain::Interval;
+    match set {
+        SolutionSet::Discrete(points) => {
+            let intervals: Vec<Interval> =
+                points.into_iter().map(|p| Interval::closed(p, p)).collect();
+            match intervals.len() {
+                0 => SolutionSet::Empty,
+                1 => SolutionSet::Continuous(intervals.into_iter().next().unwrap()),
+                _ => SolutionSet::Union(intervals),
+            }
+        }
+        other => other,
+    }
+}
+
+/// If every interval of `set` is a degenerate point `[p, p]`, present it as a
+/// `Discrete` set (`{p, …}`) — the engine's idiom for finite point sets — rather
+/// than `[p, p] U …`. A mixed point/interval result (e.g. `{-2} ∪ [0, ∞)`) has no
+/// `Discrete` representation and is left as-is.
+fn collapse_degenerate_intervals(ctx: &Context, set: SolutionSet) -> SolutionSet {
+    use cas_ast::domain::BoundType;
+    use cas_solver_core::solution_set::compare_values;
+    use std::cmp::Ordering;
+    let intervals: &[cas_ast::domain::Interval] = match &set {
+        SolutionSet::Continuous(i) => std::slice::from_ref(i),
+        SolutionSet::Union(u) => u.as_slice(),
+        _ => return set,
+    };
+    if intervals.is_empty()
+        || !intervals.iter().all(|i| {
+            i.min_type == BoundType::Closed
+                && i.max_type == BoundType::Closed
+                && compare_values(ctx, i.min, i.max) == Ordering::Equal
+        })
+    {
+        return set;
+    }
+    SolutionSet::Discrete(intervals.iter().map(|i| i.min).collect())
+}
+
+/// Solve `lhs {op} rhs` recursively and return just the solution set.
+fn solve_relation_set(
+    simplifier: &mut Simplifier,
+    var: &str,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: cas_ast::RelOp,
+) -> Option<SolutionSet> {
+    let eq = Equation { lhs, rhs, op };
+    crate::solver_entrypoints_solve::solve(&eq, var, simplifier)
+        .ok()
+        .map(|(s, _)| s)
+}
+
+/// Solve a radical INEQUALITY `√f {op} g` (a single square root vs a sqrt-free
+/// side) by the correct case split — NOT by squaring blindly, which loses the
+/// RHS-sign branches and gives wrong answers (`√x < x-2 → [0,1) ∪ (4,∞)` instead
+/// of `(4,∞)`; `√(x-2) > 4-x → (3,6)` instead of `(3,∞)`):
+///   √f < g   ⟺  f ≥ 0 ∧ g > 0 ∧ f < g²
+///   √f ≤ g   ⟺  f ≥ 0 ∧ g ≥ 0 ∧ f ≤ g²
+///   √f > g   ⟺  f ≥ 0 ∧ (g < 0 ∨ f > g²)
+///   √f ≥ g   ⟺  f ≥ 0 ∧ (g < 0 ∨ f ≥ g²)
+/// Each branch is a polynomial inequality the existing solver handles. Subsumes
+/// the radicand-domain handling of `intersect_inequality_with_function_domain`.
+fn try_solve_radical_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+
+    let op = eq.op.clone();
+    if !matches!(op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (d, _) = simplifier.simplify(diff);
+
+    let (s, f, rest) = collect_radical_split(&simplifier.context, d, var)?;
+    // The radicand and the remainder must be sqrt-free (no nested / second radical
+    // or a coefficiented radical hiding in `rest`).
+    if expr_contains_sqrt(&simplifier.context, f) {
+        return None;
+    }
+    // SOUNDNESS GATE: require a LINEAR radicand. With `f` linear, the domain
+    // `f ≥ 0` is rational-bounded, so every endpoint comparison in the case-split
+    // intersections is rational-vs-surd — which `compare_values` orders exactly.
+    // A quadratic (or higher) radicand makes `f ≥ 0` itself surd-bounded, so the
+    // intersection needs to order two DISTINCT-radicand surds (e.g. domain `√6`
+    // against constraint `√2−1`); `compare_quadratic_surds` returns `None` there
+    // and the structural fallback mis-orders them, silently dropping a constraint
+    // (`√(-x²+6) < x+2` would leak `(-2, √6]` instead of `(√2−1, √6]`). Decline
+    // those to the existing path until a distinct-radicand surd comparator lands.
+    match Polynomial::from_expr(&simplifier.context, f, var) {
+        Ok(p) if p.degree() <= 1 => {}
+        _ => return None,
+    }
+    let mut r = simplifier.context.num(0);
+    for (sg, term) in rest {
+        r = if sg >= 0 {
+            simplifier.context.add(Expr::Add(r, term))
+        } else {
+            simplifier.context.add(Expr::Sub(r, term))
+        };
+    }
+    if expr_contains_sqrt(&simplifier.context, r) {
+        return None;
+    }
+
+    // `s·√f + r {op} 0`  ⇒  `√f {eff_op} g`.
+    let (g, eff_op) = if s >= 0 {
+        let neg_r = simplifier.context.add(Expr::Neg(r));
+        (neg_r, op)
+    } else {
+        (r, flip_inequality(op))
+    };
+
+    let zero = simplifier.context.num(0);
+    let two = simplifier.context.num(2);
+    let g2 = simplifier.context.add(Expr::Pow(g, two));
+    let half = simplifier.context.rational(1, 2);
+    let sqrt_f = simplifier.context.add(Expr::Pow(f, half));
+
+    let f_nonneg = solve_relation_set(simplifier, var, f, zero, RelOp::Geq)?;
+
+    // Solve by the case split. The non-strict (≤,≥) branches use CLOSED
+    // sub-inequalities — these naturally close finite endpoints at the boundary
+    // `√f = g`. The only ones that escape are *detached* touch points (e.g.
+    // `√(x+3) ≤ -x-3` is exactly `{-3}` where `√0 = 0 = -x-3`), which the interval
+    // intersection silently drops as a degenerate overlap; we recover those by
+    // unioning `solve(√f = g)`. (The closed result has no finite OPEN endpoint, so
+    // adding the boundary can never hit the `merge_intervals` min-not-extended
+    // gap — that only bites when a closed point meets an open endpoint.)
+    let closed_with_boundary =
+        |simplifier: &mut Simplifier, core: SolutionSet| -> Option<SolutionSet> {
+            let boundary = solve_relation_set(simplifier, var, sqrt_f, g, RelOp::Eq)?;
+            let boundary = discrete_to_intervals(boundary);
+            let merged = union_solution_sets(&simplifier.context, boundary, core);
+            Some(collapse_degenerate_intervals(&simplifier.context, merged))
+        };
+
+    let result = match eff_op {
+        RelOp::Lt => {
+            // f ≥ 0 ∧ g > 0 ∧ f < g²  (strict: open branches, no boundary point)
+            let g_pos = solve_relation_set(simplifier, var, g, zero, RelOp::Gt)?;
+            let f_lt = solve_relation_set(simplifier, var, f, g2, RelOp::Lt)?;
+            let i = intersect_solution_sets(&simplifier.context, f_nonneg, g_pos);
+            intersect_solution_sets(&simplifier.context, i, f_lt)
+        }
+        RelOp::Gt => {
+            // f ≥ 0 ∧ (g < 0 ∨ f > g²)  (strict)
+            let g_neg = solve_relation_set(simplifier, var, g, zero, RelOp::Lt)?;
+            let f_gt = solve_relation_set(simplifier, var, f, g2, RelOp::Gt)?;
+            let u = union_solution_sets(&simplifier.context, g_neg, f_gt);
+            intersect_solution_sets(&simplifier.context, f_nonneg, u)
+        }
+        RelOp::Leq => {
+            // f ≥ 0 ∧ g ≥ 0 ∧ f ≤ g²  (closed) ∪ detached `√f = g` points
+            let g_nonneg = solve_relation_set(simplifier, var, g, zero, RelOp::Geq)?;
+            let f_le = solve_relation_set(simplifier, var, f, g2, RelOp::Leq)?;
+            let i = intersect_solution_sets(&simplifier.context, f_nonneg, g_nonneg);
+            let core = intersect_solution_sets(&simplifier.context, i, f_le);
+            closed_with_boundary(simplifier, core)?
+        }
+        RelOp::Geq => {
+            // f ≥ 0 ∧ (g < 0 ∨ f ≥ g²)  (closed) ∪ detached `√f = g` points
+            let g_neg = solve_relation_set(simplifier, var, g, zero, RelOp::Lt)?;
+            let f_ge = solve_relation_set(simplifier, var, f, g2, RelOp::Geq)?;
+            let u = union_solution_sets(&simplifier.context, g_neg, f_ge);
+            let core = intersect_solution_sets(&simplifier.context, f_nonneg, u);
+            closed_with_boundary(simplifier, core)?
+        }
+        _ => return None,
+    };
+    Some(result)
+}
+
 /// If `expr` is `Pow(radicand, 1/2)` (a square root), return the radicand.
 fn as_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     use cas_math::numeric_eval::as_rational_const;
@@ -1106,6 +1370,12 @@ impl SolveBackend for LocalSolveBackend {
         // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks
         // the same isolation residual; reduce by squaring and verify exactly.
         if let Some(set) = try_solve_sum_of_two_radicals_equation(simplifier, eq, var) {
+            return Ok((set, Vec::new()));
+        }
+        // Radical INEQUALITIES `√f {<,≤,>,≥} g`: solve by the correct case split,
+        // not by squaring blindly (which loses the RHS-sign branches and gives
+        // wrong answers like `√x < x-2 → [0,1) ∪ (4,∞)`).
+        if let Some(set) = try_solve_radical_inequality(simplifier, eq, var) {
             return Ok((set, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;

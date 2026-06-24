@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 330 (newest first)
+Active entries: 331 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -135,6 +135,7 @@ Active entries: 330 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | P0 soundness (hunt Cluster A1): ecuaciones polinómicas en x^(1/q) se resuelven por sustitución (antes fugaban y perdían raíces)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log`... | P0 soundness (hunt Cluster A2): ecuaciones polinómicas en ln(x) se resuelven por sustitución
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sum_of_two_radical... | P0 soundness (hunt Cluster A3, CIERRA Cluster A): suma de dos radicales = constante se resuelve y verifica
+- 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality` + | P0 soundness (hunt Cluster B): inecuación radical con RHS no-constante se parte por el signo de g (antes elevaba al cuadrado a ciegas y daba wrong-answers)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -14060,3 +14061,60 @@ Active entries: 330 (newest first)
     fugaban residual malformado del hunt quedan resueltas, cada una verificada adversarialmente (300/250/300
     casos, 0 mismatches). Peldaño: A3 a candidatos surd (declina hoy). Siguiente cluster del hunt: B
     (inecuaciones radicales, 5 wrong-answers P0) y C (integral definida √(x²-a²) en intervalo negativo).
+
+## 2026-06-24 - P0 soundness (hunt Cluster B): inecuación radical con RHS no-constante se parte por el signo de g (antes elevaba al cuadrado a ciegas y daba wrong-answers)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality` +
+    `collect_radical_split`, `solve_relation_set`, `discrete_to_intervals`, `collapse_degenerate_intervals`,
+    `flip_inequality`, `expr_contains_sqrt`; hook tras A3, antes de `solve_inner`)
+- status:
+  - `retained` (cuarto fix del hunt; abre el Cluster B — 5 wrong-answers P0 de inecuación radical)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `√x < x-2` ANTES `[0,1) ∪ (4,∞)`, AHORA `(4,∞)`; `√(x-2) > 4-x` ANTES `(3,6)`, AHORA `(3,∞)`;
+    `√(x+1) > x-1 → [-1,3)`; `√x < x+1 → [0,∞)`. Puntos de toque: `√(x+3) ≤ -x-3 → {-3}`,
+    `√(2x+4) ≤ x+2 → {-2} ∪ [0,∞)`, `√(2x+4) ≤ 2x-2 → [5/2,∞)`.
+  - MECANISMO: elevar `√f {op} g` al cuadrado a ciegas pierde las ramas del signo de `g`. El hook aísla
+    `s·√f + r {op} 0` (un solo radical con variable + resto sqrt-free) ⇒ `√f {eff_op} g` (con `eff_op`
+    invertido si `s<0`) y aplica el case-split correcto:
+    `√f<g ⟺ f≥0 ∧ g>0 ∧ f<g²`; `√f≤g ⟺ f≥0 ∧ g≥0 ∧ f≤g²`;
+    `√f>g ⟺ f≥0 ∧ (g<0 ∨ f>g²)`; `√f≥g ⟺ f≥0 ∧ (g<0 ∨ f≥g²)`. Cada rama es una inecuación polinómica que
+    el solver recursivo resuelve; se combinan por intersect/union.
+  - DOS sorpresas de soundness (cazadas por el oráculo, NO por los probes ni los tests unitarios):
+    (1) los puntos de toque no-estrictos `√f=g` (`√(x+3) ≤ -x-3 → {-3}` donde `√0=0=-x-3`) son soluciones
+    AISLADAS que `intersect_solution_sets` descarta como solape degenerado (Continuous∩Union tira los
+    Discrete) → la rama no-estricta usa sub-inecuaciones CERRADAS (cierran los extremos finitos de forma
+    natural) y además se unionan los puntos de `solve(√f=g)` para recuperar los DESTACADOS. Clave:
+    `merge_intervals` solo extiende el `max`, nunca el `min`, así que un punto cerrado `[a,a]` unido a `(a,∞)`
+    PIERDE el min cerrado en empates — por eso se parte del resultado cerrado (sin extremo abierto finito) en
+    vez de strict∪boundary.
+    (2) un radicando CUADRÁTICO hace `f≥0` surd-acotado, y la intersección necesita ordenar dos surds de
+    radicando DISTINTO (dominio `√6` vs restricción `√2−1`); `compare_quadratic_surds` devuelve `None` ahí y
+    el fallback estructural los mis-ordena, soltando una restricción (`√(-x²+6) < x+2` fugaba `(-2,√6]` en vez
+    de `(√2−1,√6]`). GATE DE SOUNDNESS: radicando LINEAL (`f≥0` racional-acotado ⇒ comparaciones
+    racional-vs-surd, exactas). Cuadrático declina al path existente (status quo, sin regresión nueva).
+  - SOUNDNESS: case-split exacto; gate a radicando lineal verificado; constante-`g` declina (`solve(const,x)`
+    da error → `?` → None → path existente, que ya maneja `√f ≤ const>0` por #5). Oráculo de pertenencia
+    independiente (Fraction, 4 ops, 350 casos lineales random), 0 mismatches; ronda cuadrática expone solo
+    declines (pre-existentes) y el gate los excluye.
+  - validación: workspace failed:0; clippy `--all-targets`/fmt limpios; huella guardrail (16) + pressure (3)
+    0 deltas de estado/passed/failed. Test `test_eval_radical_inequality_case_splits_on_rhs_sign`.
+- observed:
+  - en un case-split de inecuación, los PUNTOS DE TOQUE (igualdad `√f=g`) son soluciones de medida cero que la
+    maquinaria de intervalos descarta silenciosamente: hay que recuperarlos explícitamente (vía la ecuación de
+    frontera) y partir del resultado CERRADO, porque `merge_intervals` no re-cierra un min abierto.
+  - el gate correcto de un procedimiento que compone sub-solvers no es "qué entrada acepto" sino "dónde es
+    EXACTA la maquinaria que reuso": aquí `compare_values` es exacto en racional-vs-surd pero no en
+    surd-vs-surd de radicandos distintos → gate a radicando lineal, no a "cualquier polinomio".
+  - el oráculo de pertenencia (muestreo racional exacto de la condición real vs el set del engine) cazó AMBOS
+    defectos que probes manuales y tests verdes no veían — la verificación adversarial es obligatoria para
+    procedimientos de decisión, confirmado de nuevo.
+- retained learning:
+  - patrón sound para inecuaciones radicales: case-split por signo de RHS + recuperación de puntos de toque +
+    gate al régimen donde el comparador de extremos es exacto. Peldaño que desbloquea el case-split cuadrático
+    (y el 5º wrong-answer del cluster, `√(9-x²)>x-1`): un comparador surd de radicandos DISTINTOS en
+    `compare_values`/`compare_quadratic_surds` (sign exacto de `p + q√m + s√n` por cuadratura anidada) — es un
+    ciclo de soundness propio (toca cas_solver_core compartido, requiere su propia huella). Siguiente cluster
+    del hunt: C (integral definida `√(x²-a²)` en intervalo negativo usa rama acosh equivocada).
