@@ -454,6 +454,28 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   Verificado adversarialmente 3 rondas, 0 unsound, 0 regresiones. Quedan: capacidad
   removible `sin(t)/t→sin(x)/x` y unos pocos convergentes-pero-no-probables (`tan(t)/t`)
   conservadoramente undefined — ambos esperan un certificado de convergencia real.)*
+
+- [x] **(S) Integral definida de `√(x²-a²)` en intervalo NEGATIVO daba un valor NO-REAL**:
+  `integrate(sqrt(x^2-1), x, -3, -2)` devolvía `1/2·acosh(-3) + 3·√2 - √3 - 1/2·acosh(-2)` — `acosh` solo
+  es real para arg≥1, así que `acosh(-3)`/`acosh(-2)` son COMPLEJOS; la integral es finita y real (≈2.2877).
+  Igual `integrate(sqrt(x^2-4), x, -5, -3)`. La antiderivada `½(x·√(x²-1) - acosh(x))` tiene dominio real
+  más ESTRECHO (x≥1) que el integrando (|x|≥1), y el FTC sustituía los bornes a ciegas. El caso recíproco
+  `1/√(x²-1)` ya declinaba honestamente en el negativo; el de `√` no. (P0 wrong-answer en integral definida;
+  hallado por el hunt adversarial multiagente ultracode, Cluster C — 2 wrong-answers.)
+  *(graduado 2026-06-24 PENDIENTE: nueva certificación `antiderivative_acosh_domain_certificate` (en
+  `definite_integration.rs`, combinada con `certify_interval` + `integrand_risks_certified` antes de la
+  sustitución FTC): recolecta los `acosh(arg)` de la antiderivada y exige `arg ≥ 1` sobre el intervalo vía
+  `positive_on_interval(arg-1)`; un toque de borde (`arg=1`, `acosh(1)=0` real) certifica, cualquier otra cosa
+  (probado `<1`, o no-demostrable) → `Unknown` → DECLINA. Clave de honestidad: se mapea a `Unknown`
+  (residual), NUNCA a `Undefined` — la integral NO diverge, solo nuestra antiderivada acosh es inaplicable en
+  esa rama. Wrong-answer → residual honesto. El positivo (`[2,3]`, `[3,5]`) sigue evaluando; el toque `[1,2]`
+  sigue; sin acosh (`x·√(x²-1)`, `x²`) intacto; los `c` no-cuadrado-perfecto (`√(x²-2)`) YA declinaban (sin
+  regresión). Verificado: oráculo de soundness independiente (scipy.quad, 180 casos, exige resultado REAL y
+  correcto o decline), 0 defects. Workspace failed:0; clippy/fmt; huella guardrail+pressure 0 deltas. Test
+  `acosh_antiderivative_declines_outside_its_real_domain`. Peldaño: EVALUAR la rama negativa con la
+  antiderivada log real `½(x√(x²-a²) - a²·ln|x+√(x²-a²)|)` (válida en |x|≥a) en vez de declinar — capacidad,
+  no soundness; también la rama impropia `[-∞,-a]` y los `c` no-cuadrado-perfecto siguen como residual.)*
+
 - [x] **(A) Cuelgue del simplificador**: `diff(sin(x)^3*cos(x)^2, x)`
   timeout >30s con `depth_overflow depth=51 phase=Core`; mismo patrón
   da 12s en `diff((x^2*sin(x))/(x+1), x)` y

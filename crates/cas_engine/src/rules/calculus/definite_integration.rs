@@ -987,7 +987,7 @@ pub(super) fn definite_integration_rewrite(
         antiderivative = unwrapped;
     }
 
-    match combine_certificates(
+    let conditions_and_integrand = combine_certificates(
         certify_interval(
             ctx,
             &conditions,
@@ -998,6 +998,18 @@ pub(super) fn definite_integration_rewrite(
         integrand_risks_certified(
             ctx,
             call.target,
+            &call.var_name,
+            &interval_low,
+            &interval_high,
+        ),
+    );
+    // The antiderivative may introduce an `acosh` whose real domain is narrower
+    // than the integrand's; refuse to substitute a bound where it would be complex.
+    match combine_certificates(
+        conditions_and_integrand,
+        antiderivative_acosh_domain_certificate(
+            ctx,
+            antiderivative,
             &call.var_name,
             &interval_low,
             &interval_high,
@@ -1530,6 +1542,61 @@ fn combine_certificates(
         }
         (Certified, Certified) => Certified,
     }
+}
+
+/// Collect the arguments of every `acosh(·)` subterm of `expr`.
+fn collect_acosh_args(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            collect_acosh_args(ctx, l, out);
+            collect_acosh_args(ctx, r, out);
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => collect_acosh_args(ctx, inner, out),
+        Expr::Function(fn_id, args) => {
+            if args.len() == 1 && ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Acosh) {
+                out.push(args[0]);
+            }
+            for arg in args {
+                collect_acosh_args(ctx, arg, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The antiderivative the FTC step substitutes may carry an `acosh` term whose
+/// real domain (`arg >= 1`) is NARROWER than the integrand's, so a bound outside
+/// that domain yields a NON-REAL boundary value: `integrate(sqrt(x^2-1), x, -3, -2)`
+/// has the antiderivative `(x*sqrt(x^2-1) - acosh(x))/2` and used to report
+/// `1/2*acosh(-3) + ...` — `acosh(-3)` is complex. The integral itself is finite
+/// (≈ 2.2877), so this is NOT a divergence; we DECLINE (Unknown -> residual), never
+/// claim Undefined. (`integrate(sqrt(x^2-1), x, 2, 3)` keeps evaluating, and the
+/// `arg = 1` endpoint touch in `[1, 2]` certifies because `acosh(1) = 0` is real.)
+fn antiderivative_acosh_domain_certificate(
+    ctx: &mut Context,
+    antiderivative: ExprId,
+    var_name: &str,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
+) -> IntervalCertificate {
+    let mut acosh_args = Vec::new();
+    collect_acosh_args(ctx, antiderivative, &mut acosh_args);
+    let mut outcome = IntervalCertificate::Certified;
+    for arg in acosh_args {
+        let one = ctx.num(1);
+        let slack = ctx.add(Expr::Sub(arg, one));
+        // acosh is real exactly where `arg - 1 >= 0`; an endpoint touch (`arg = 1`)
+        // is still real (`acosh(1) = 0`). Anything else (proven `< 1`, or
+        // unprovable) means our acosh antiderivative is inapplicable -> decline.
+        let cert = match positive_on_interval(ctx, slack, var_name, interval_low, interval_high) {
+            IntervalCertificate::Certified | IntervalCertificate::BoundaryTouch { .. } => {
+                IntervalCertificate::Certified
+            }
+            _ => IntervalCertificate::Unknown,
+        };
+        outcome = combine_certificates(outcome, cert);
+    }
+    outcome
 }
 
 /// SELF-CONTAINED risk scan of the integrand: the condition collectors
@@ -2206,6 +2273,25 @@ mod tests {
         assert!(eval_definite("integrate(x^2, x, 0, 1)").is_some());
         // Orientation is automatic: F(upper) - F(lower) with original bounds.
         assert!(eval_definite("integrate(x, x, 1, 0)").is_some());
+    }
+
+    #[test]
+    fn acosh_antiderivative_declines_outside_its_real_domain() {
+        // `integrate(sqrt(x^2-1), x)` = (x*sqrt(x^2-1) - acosh(x))/2; `acosh` is
+        // real only for arg >= 1. Over a NEGATIVE interval the FTC step used to
+        // substitute `acosh(-3)` / `acosh(-2)` (complex) and report a non-real
+        // answer. The integral is finite (~2.2877), so we DECLINE (honest
+        // residual), never claim divergence.
+        assert!(eval_definite("integrate(sqrt(x^2-1), x, -3, -2)").is_none());
+        assert!(eval_definite("integrate(sqrt(x^2-4), x, -5, -3)").is_none());
+        // Positive interval: `acosh` argument stays >= 1, so it still evaluates.
+        assert!(eval_definite("integrate(sqrt(x^2-1), x, 2, 3)").is_some());
+        assert!(eval_definite("integrate(sqrt(x^2-4), x, 3, 5)").is_some());
+        // Left endpoint touches the domain edge (`acosh(1) = 0` is real): keep.
+        assert!(eval_definite("integrate(sqrt(x^2-1), x, 1, 2)").is_some());
+        // No acosh in the antiderivative -> unaffected.
+        assert!(eval_definite("integrate(x*sqrt(x^2-1), x, -3, -2)").is_some());
+        assert!(eval_definite("integrate(x^2, x, 0, 2)").is_some());
     }
 
     #[test]

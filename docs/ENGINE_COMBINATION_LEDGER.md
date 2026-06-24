@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 331 (newest first)
+Active entries: 332 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -136,6 +136,7 @@ Active entries: 331 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log`... | P0 soundness (hunt Cluster A2): ecuaciones polinómicas en ln(x) se resuelven por sustitución
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sum_of_two_radical... | P0 soundness (hunt Cluster A3, CIERRA Cluster A): suma de dos radicales = constante se resuelve y verifica
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality` + | P0 soundness (hunt Cluster B): inecuación radical con RHS no-constante se parte por el signo de g (antes elevaba al cuadrado a ciegas y daba wrong-answers)
+- 2026-06-24 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` | P0 soundness (hunt Cluster C): integral definida de √(x²-a²) en intervalo negativo declina en vez de devolver acosh complejo
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -14118,3 +14119,51 @@ Active entries: 331 (newest first)
     `compare_values`/`compare_quadratic_surds` (sign exacto de `p + q√m + s√n` por cuadratura anidada) — es un
     ciclo de soundness propio (toca cas_solver_core compartido, requiere su propia huella). Siguiente cluster
     del hunt: C (integral definida `√(x²-a²)` en intervalo negativo usa rama acosh equivocada).
+
+## 2026-06-24 - P0 soundness (hunt Cluster C): integral definida de √(x²-a²) en intervalo negativo declina en vez de devolver acosh complejo
+
+- area:
+  - `crates/cas_engine/src/rules/calculus/definite_integration.rs`
+    (`antiderivative_acosh_domain_certificate` + `collect_acosh_args`; combinado en la certificación FTC)
+- status:
+  - `retained` (quinto fix del hunt; abre el Cluster C — 2 wrong-answers P0 de integral definida)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `integrate(sqrt(x^2-1), x, -3, -2)` ANTES `1/2·acosh(-3) + 3√2 - √3 - 1/2·acosh(-2)` (acosh de
+    negativo = COMPLEJO), AHORA declina al residual `integrate((x^2-1)^(1/2), x, -3, -2)`. Igual
+    `integrate(sqrt(x^2-4), x, -5, -3)`. El positivo `[2,3]`, `[3,5]` y el toque `[1,2]` siguen evaluando.
+  - MECANISMO: la antiderivada `½(x·√(x²-1) - acosh(x))` tiene dominio real (x≥1) más ESTRECHO que el
+    integrando (|x|≥1); el FTC sustituía bornes a ciegas. Nueva certificación: recolecta los `acosh(arg)` de la
+    antiderivada y exige `arg ≥ 1` sobre el intervalo (`positive_on_interval(arg-1)`); toque de borde `arg=1`
+    (`acosh(1)=0`) certifica, lo demás → `Unknown`. Se combina con `certify_interval` (condiciones) +
+    `integrand_risks_certified` (riesgos del integrando) ANTES de sustituir.
+  - CLAVE DE HONESTIDAD: el out-of-domain se mapea a `Unknown` (→ residual), NUNCA a `Undefined` — la integral
+    es finita y real (≈2.2877), no diverge; solo nuestra antiderivada acosh es inaplicable en esa rama.
+    Confundir "no sé expresarla" con "diverge" sería un nuevo wrong-answer.
+  - SCOPE/REGRESIÓN: el recíproco `1/√(x²-1)` ya declinaba en el negativo (consistencia); los `c` no
+    cuadrado-perfecto (`√(x²-2)`, arg `x/√c` con coef irracional) YA declinaban antes (confirmado por
+    stash+rebuild del HEAD pre-fix) → sin regresión. El positivo y el toque de borde intactos; integrandos sin
+    acosh (`x·√(x²-1)` → `(x²-1)^(3/2)/3`) intactos.
+  - SOUNDNESS: oráculo independiente (scipy.quad como verdad numérica, 180 casos random de `√(x²-c)` en ramas
+    positiva/negativa/toque/straddle): si el engine devuelve forma cerrada DEBE ser REAL y igual a la integral
+    verdadera; declinar es under-answer honesto aceptable. 40 evaluados correctos, 140 declinados, 0 defects
+    (0 no-reales, 0 valores incorrectos, 0 straddles evaluados).
+  - validación: workspace failed:0; clippy `--all-targets`/fmt; huella guardrail (16) + pressure (3) 0 deltas.
+    Test `acosh_antiderivative_declines_outside_its_real_domain`.
+- observed:
+  - una antiderivada puede tener dominio real MÁS ESTRECHO que su integrando (acosh: x≥1 vs |x|≥1); el FTC
+    debe certificar que la antiderivada es REAL en todo el intervalo, no solo que el integrando lo es. La
+    certificación de riesgos del integrando NO basta — hay que escanear también la antiderivada.
+  - distinguir "antiderivada inaplicable" (→ residual honesto) de "integral divergente" (→ undefined) es una
+    decisión de honestidad de primer orden: el mismo síntoma (borne fuera de dominio) tiene dos causas con
+    salidas opuestas. Mapear out-of-domain-no-divergente a `Unknown`, no a `Undefined`.
+  - el oráculo numérico (scipy.quad) que exige "forma cerrada ⇒ real Y correcta, o declina" es el verificador
+    adecuado para fixes de integral definida: caza tanto los no-reales como los valores incorrectos.
+- retained learning:
+  - patrón sound para FTC: certificar el dominio real de la ANTIDERIVADA sobre el intervalo (no solo el
+    integrando), declinando (no "diverge") donde la forma cerrada elegida no es real. Peldaño que sube de
+    honesto a universal: EVALUAR la rama negativa con la antiderivada log real
+    `½(x√(x²-a²) - a²·ln|x+√(x²-a²)|)` (válida en |x|≥a); también cubre la impropia `[-∞,-a]` y los `c` no
+    cuadrado-perfecto (hoy residuales). Siguiente cluster del hunt: D (ln(x^(p/q)) con q impar estrecha el
+    dominio a x>0 en vez de x≠0), E (diff de 2asin+2acos pierde -1<x<1), F (ops simbólicas de matrices).
