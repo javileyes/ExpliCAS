@@ -92,7 +92,7 @@ every technique except the one deepened in the cycle.
 | ~~**SC3**~~ ✅ | **Notable limits — ALL 0/0 quotient forms** (sin/tan/…/u, `(e^u−1)/u`, `ln(1+u)/u`, scaled/cross/reciprocal, **and `(1−cos u)/u²`**) | show 0/0 → apply standard limit. | **DONE 2026-06-24** `generate_limit_notable_zero_over_zero_substeps`: prepend a "sustitución directa da 0/0" substep, then the notable. **Split revised to indeterminate-form TYPE** (cleaner than first/second order): one dispatch (`notable prefix && !ends_with("= e")`) covers every 0/0 quotient notable incl. the second-order `(1−cos u)/u²`. Sound: all are 0/0; `= e` (1^∞) excluded. |
 | ~~**SC4**~~ ✅ | **Notable limits — `1^∞` (`= e`) forms** `(1+u)^(1/u)=e`, `(1+1/x)^x=e` | show it is `1^∞` (base→1, exponent→∞), then cite the definition of `e`. | **DONE 2026-06-24** `generate_limit_e_form_substeps`: prepend "indeterminación 1^∞", then the notable. Complementary dispatch to SC3 (`notable prefix && ends_with("= e")`, covers finite u→0 and x→∞). Literal `1^∞` marker. Completes the type-based split (0/0 = SC3, 1^∞ = SC4). |
 | ~~**SC5**~~ ✅ | **L'Hôpital / Taylor iteration** `(x−sin x)/x³→1/6` | reuse `differentiate_symbolic_expr`; RE-derive the iteration post-hoc, each pair still 0/0 (exact), final substitution = `after`. | **DONE 2026-06-24** `generate_limit_lhopital_iteration`: step count = exact root multiplicity of the POLYNOMIAL denominator; differentiate num/den each step and **simplify** (the differentiator emits unfolded `3·x^(3-1)`, `e^x·ln(e)`); final value is the engine oracle, never re-derived. Transcendental denominator declines to the one line. `(x−sin x)/x³ → (1−cos x)/(3x²) → sin(x)/(6x) → cos(x)/6 → 1/6`. |
-| **SC6** | **Squeeze (sándwich)** `x·sin(1/x)→0` | reuse `limit_is_squeeze_product`. Show bounding `−|xᵏ| ≤ … ≤ |xᵏ| → 0`. | |
+| ~~**SC6**~~ ✅ | **Squeeze (sándwich)** `x·sin(1/x)→0` | reuse `limit_is_squeeze_product`. Show bounding `|uᵏ·osc| ≤ |uᵏ| → 0`. | **DONE 2026-06-24** `generate_limit_squeeze_substeps`: bound the oscillator (`|sin/cos| ≤ 1`) so `|uᵏ·osc| ≤ |uᵏ|`, then `|uᵏ| → 0`. Inequality goes in the title; `|uᵏ|` is the intermediate before/after. |
 | **SC7** | **Dominance at ∞** (ln≪pot≪exp; rational degree) | deepen the 6 `limit_infinity_dominance` strings with the leading-term comparison. | |
 | **SC8** | **One-sided & DNE residual** `1/x`@0 | NEW dispatch branch (rule_dispatch.rs:53 only matches `Evaluar límite`). Narrate left vs right → two-sided DNE. | Higher-risk (new branch); last. |
 
@@ -118,11 +118,14 @@ multiplicity), show each simplified intermediate, and anchor the final value in
 the engine oracle (never re-derive from a transcendental form); gate to the
 sub-class where the count is exact and decline with a fallback elsewhere.
 
-**Next: SC6** (squeeze / sándwich `x·sin(1/x) → 0`) — show the bounding
-`−|xᵏ| ≤ … ≤ |xᵏ| → 0`; and **SC7** (dominance at ∞, ln≪pot≪exp) — show the
-leading-term comparison. Both are simpler than SC5. SC8 (one-sided / DNE) adds a
-new dispatch branch for `Conservar límite residual`. Each sub-cycle is retainable
-on its own, green before commit, and updates only its needles in
-`limit_notable_tests`. If a future cycle has no retainable sub-step ready, fall
-back to a P1 win rather than landing a half-built narration (skill guardrail for
-class-L gatekeepers).
+SC6 (squeeze) is **done** — it established narrating an inequality technique by
+putting the inequality in the title and using the relevant bound (`|uᵏ|`) as the
+intermediate before/after.
+
+**Next: SC7** (dominance at ∞, ln≪pot≪exp) — show the leading-term comparison;
+and **SC8** (one-sided / DNE) — add a new dispatch branch for `Conservar límite
+residual` (which currently gets no narrator), narrating why a two-sided limit
+does not exist (left vs right). Each sub-cycle is retainable on its own, green
+before commit, and updates only its needles in `limit_notable_tests`. If a future
+cycle has no retainable sub-step ready, fall back to a P1 win rather than landing
+a half-built narration (skill guardrail for class-L gatekeepers).

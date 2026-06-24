@@ -19609,6 +19609,11 @@ const LIMIT_NOTABLE_PREFIX: &str = "Aplicar el límite notable: ";
 /// dispatch the iterated-L'Hôpital deepening.
 const LIMIT_LHOPITAL_DESC_PREFIX: &str = "Indeterminación 0/0 en";
 
+/// Title of the squeeze-theorem technique, shared between the recognizer and the
+/// deepened bounding builder.
+const LIMIT_SQUEEZE_TITLE: &str =
+    "Aplicar el teorema del sándwich: factor acotado × infinitésimo → 0";
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
@@ -19642,6 +19647,11 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     }
     if description.starts_with(LIMIT_LHOPITAL_DESC_PREFIX) {
         return generate_limit_lhopital_substeps(ctx, step, point, description);
+    }
+    if description == LIMIT_SQUEEZE_TITLE {
+        if let Some(substeps) = generate_limit_squeeze_substeps(ctx, step) {
+            return substeps;
+        }
     }
     vec![SubStep::new(
         description,
@@ -19875,6 +19885,50 @@ fn generate_limit_lhopital_iteration(
     Some(substeps)
 }
 
+/// Extract the `(power, oscillator)` factors of a squeeze product
+/// `u^k · sin/cos(…/u)`, in whichever order they appear.
+fn limit_squeeze_parts(ctx: &Context, before: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Mul(left, right) = ctx.get(before) else {
+        return None;
+    };
+    let (left, right) = (*left, *right);
+    [(left, right), (right, left)]
+        .into_iter()
+        .find_map(|(power, bounded)| {
+            limit_power_of_var(ctx, power)
+                .filter(|u| limit_is_bounded_reciprocal_oscillator(ctx, bounded, *u))
+                .map(|_| (power, bounded))
+        })
+}
+
+/// Deepen the squeeze theorem into the bounding argument: the oscillator is bounded
+/// (`|sin/cos| ≤ 1`), so `|uᵏ · osc| ≤ |uᵏ|`, and `|uᵏ| → 0`, hence the product → 0.
+fn generate_limit_squeeze_substeps(ctx: &Context, step: &Step) -> Option<Vec<SubStep>> {
+    let (power, osc) = limit_squeeze_parts(ctx, step.before)?;
+    let mut scratch = ctx.clone();
+    let abs_id = scratch.builtin_id(BuiltinFn::Abs);
+    let abs_power = scratch.add(Expr::Function(abs_id, vec![power]));
+    let osc_disp = display_expr(ctx, osc);
+    let before_disp = display_expr(ctx, step.before);
+    let abs_disp = display_expr(&scratch, abs_power);
+    Some(vec![
+        SubStep::new(
+            format!("Acota el factor oscilante: |{osc_disp}| ≤ 1, luego |{before_disp}| ≤ {abs_disp}"),
+            before_disp,
+            abs_disp.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, step.before))
+        .with_after_latex(latex_expr(&scratch, abs_power)),
+        SubStep::new(
+            format!("El infinitésimo {abs_disp} → 0, así que por el teorema del sándwich el límite es 0"),
+            abs_disp,
+            display_expr(ctx, step.after),
+        )
+        .with_before_latex(latex_expr(&scratch, abs_power))
+        .with_after_latex(latex_expr(ctx, step.after)),
+    ])
+}
+
 /// Deepen a `1^∞` notable (`(1+1/x)^x → e`, `(1+u)^(1/u) → e`) into two substeps:
 /// show that the base tends to 1 and the exponent to ±∞ (the indeterminate form
 /// `1^∞`, so you cannot just take `1^∞ = 1`), then cite the definition of `e`.
@@ -20072,9 +20126,7 @@ fn notable_limit_name(
 
     // Squeeze theorem: (power of u) · (bounded sin/cos of a reciprocal in u) → 0.
     if after_value.as_ref() == Some(&BigRational::zero()) && limit_is_squeeze_product(ctx, before) {
-        return Some(
-            "Aplicar el teorema del sándwich: factor acotado × infinitésimo → 0".to_string(),
-        );
+        return Some(LIMIT_SQUEEZE_TITLE.to_string());
     }
 
     // (1 + u)^(1/u) → e.
@@ -22488,15 +22540,48 @@ mod limit_notable_tests {
         }
         // The 1^∞ `= e` form is NOT 0/0 (it gets the 1^∞ narrative instead, see
         // `notable_one_to_infinity_shows_indeterminate_form_first`), and the
-        // squeeze theorem is a single substep — neither claims 0/0.
+        // squeeze theorem (see `squeeze_shows_the_bounding_argument`) — neither
+        // claims 0/0.
         let e_form = substep_titles("(1+x)^(1/x)", "e");
         assert!(
             !e_form.iter().any(|t| t.contains("indeterminación 0/0")),
             "{e_form:?}"
         );
         let squeeze = substep_titles("x*sin(1/x)", "0");
-        assert_eq!(squeeze.len(), 1, "{squeeze:?}");
-        assert!(squeeze[0].contains("teorema del sándwich"), "{squeeze:?}");
+        assert!(
+            !squeeze.iter().any(|t| t.contains("indeterminación 0/0")),
+            "{squeeze:?}"
+        );
+        assert!(
+            squeeze.iter().any(|t| t.contains("teorema del sándwich")),
+            "{squeeze:?}"
+        );
+    }
+
+    #[test]
+    fn squeeze_shows_the_bounding_argument() {
+        // The squeeze theorem is narrated as two substeps: bound the oscillator
+        // (`|sin/cos| ≤ 1` ⇒ `|uᵏ·osc| ≤ |uᵏ|`), then `|uᵏ| → 0`.
+        let subs = substeps_finite_at_point("x*sin(1/x)", "0", "0");
+        assert_eq!(
+            subs.len(),
+            2,
+            "{:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+        assert!(subs[0].description.contains("Acota el factor oscilante"));
+        assert!(subs[0].description.contains("|sin(1 / x)| ≤ 1"));
+        assert_eq!(subs[0].before_expr, "x * sin(1 / x)");
+        assert_eq!(subs[0].after_expr, "|x|");
+        assert!(subs[1].description.contains("teorema del sándwich"));
+        assert_eq!(subs[1].before_expr, "|x|");
+        assert_eq!(subs[1].after_expr, "0");
+
+        // A higher power bounds by `|xᵏ|`.
+        let subs2 = substeps_finite_at_point("x^2*cos(1/x)", "0", "0");
+        assert_eq!(subs2.len(), 2);
+        assert_eq!(subs2[0].after_expr, "|x^2|");
+        assert_eq!(subs2[1].after_expr, "0");
     }
 
     #[test]

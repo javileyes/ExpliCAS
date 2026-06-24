@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 324 (newest first)
+Active entries: 325 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -129,6 +129,7 @@ Active entries: 324 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC3): los límites notables 0/0 muestran la indeterminación antes de aplicar
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC4): los límites notables 1^∞ (= e) muestran la indeterminación antes de aplicar
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC5): L'Hôpital iterado muestra cada derivada hasta que el denominador no se anula
+- 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC6): el teorema del sándwich muestra el acotamiento |uᵏ·osc| ≤ |uᵏ| → 0
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13819,3 +13820,37 @@ Active entries: 324 (newest first)
     donde el conteo es exacto (denominador polinómico) y declina con fallback en el resto. Próximo: SC6
     (sándwich: mostrar el acotamiento −|xᵏ| ≤ … ≤ |xᵏ|) y SC7 (dominancia ∞), más simples; SC8 (unilateral/DNE,
     rama nueva).
+
+## 2026-06-24 - Educativo (G2 SC6): el teorema del sándwich muestra el acotamiento |uᵏ·osc| ≤ |uᵏ| → 0
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`generate_limit_squeeze_substeps` + `limit_squeeze_parts`; const `LIMIT_SQUEEZE_TITLE`)
+- status:
+  - `retained` (sexto sub-ciclo de G2)
+- capture:
+  - investment_class: educational (narrativa de límites)
+  - primary_dimension: north_star_educational
+  - cell: `x·sin(1/x) → 0` ANTES un substep "...factor acotado × infinitésimo → 0"; AHORA dos: [1] "Acota el
+    factor oscilante: |sin(1/x)| ≤ 1, luego |x·sin(1/x)| ≤ |x|" (`x·sin(1/x) → |x|`), [2] "El infinitésimo
+    |x| → 0, así que por el teorema del sándwich el límite es 0" (`|x| → 0`). Igual `x²·cos(1/x)` con `|x²|`,
+    `x³·sin(1/x)` con `|x³|`.
+  - DISEÑO: extrae los factores (potencia uᵏ, oscilador) con `limit_squeeze_parts`, construye `|uᵏ|` en
+    scratch (`Function(Abs, [power])`), y muestra el acotamiento como cota superior. Dispatch keyado en
+    `LIMIT_SQUEEZE_TITLE`. El título lleva la desigualdad (`|sin(1/x)| ≤ 1, luego |…| ≤ |uᵏ|`); el before/after
+    refuerza `producto → |uᵏ| → 0` (encaja en el modelo before/after de un solo expr, evitando renderizar una
+    desigualdad de dos lados como expresión).
+  - SOUNDNESS: `|sin/cos| ≤ 1` ⇒ `|uᵏ·osc| ≤ |uᵏ|` (cota válida siempre); `|uᵏ| → 0` en 0 para k≥1; el
+    resultado es 0 (oráculo). El builder solo dispara cuando el reconocedor de sándwich disparó (gate sound).
+  - validación: workspace 12323/0; clippy/fmt limpios; huella idéntica. Tests: el bloque squeeze de
+    `notable_zero_over_zero_shows_indeterminate_form_first` actualizado (no afirma 0/0; "teorema del sándwich"
+    en algún substep); nuevo `squeeze_shows_the_bounding_argument` fija la cadena de 2 substeps + el bound
+    `|x|`/`|x²|`. `names_the_standard_notable_limits` (con `.any()`) sigue verde (el sándwich es titles[1]).
+- observed:
+  - una técnica cuya esencia es una DESIGUALDAD (sándwich) encaja en el modelo before/after = un-expr poniendo
+    la desigualdad en el TÍTULO y usando la cota superior |uᵏ| como "after" intermedio; evita construir/render
+    una desigualdad de dos lados como expresión.
+- retained learning:
+  - para narrar una cota/desigualdad, pon la desigualdad en el título y usa la cota relevante (aquí |uᵏ|) como
+    expresión intermedia del before/after; barato y claro. Próximo: SC7 (dominancia ∞: comparación de términos
+    líderes) y SC8 (unilateral/DNE: rama de dispatch nueva para "Conservar límite residual").
