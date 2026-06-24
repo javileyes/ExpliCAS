@@ -598,13 +598,13 @@ impl SolveBackend for LocalSolveBackend {
         {
             return Ok((SolutionSet::Empty, Vec::new()));
         }
-        // Sum-of-absolute-values inequalities (`|x| + |x-1| < 5`, etc.) are
-        // piecewise-linear: the isolate-one-abs strategy below loses the other
-        // terms and wrongly returns "No solution" (or a malformed residual).
+        // Sum-of-absolute-values relations (`|x| + |x-1| < 5`, `|x| + |x-1| = 3`,
+        // etc.) are piecewise-linear: the isolate-one-abs strategy below loses the
+        // other terms and wrongly returns "No solution" (or a malformed residual).
         // Solve them exactly here, before any isolation routing. Returns None for
-        // anything that is not a genuine sum (≥2 abs of linear) inequality, so
+        // anything that is not a genuine sum (≥2 abs of linear) relation, so
         // single-abs and all other shapes fall through unchanged.
-        if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_inequality(
+        if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_relation(
             &mut simplifier.context,
             eq.lhs,
             eq.rhs,

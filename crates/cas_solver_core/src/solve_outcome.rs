@@ -363,19 +363,23 @@ fn decompose_sum_of_abs(
     Some((abs_terms, rem_slope, rem_const))
 }
 
-/// Solve an inequality whose two sides form a SUM of absolute values by the
-/// exact piecewise/breakpoint method: `lhs {op} rhs` is recast as
-/// `lhs - rhs {op} 0`, which must decompose into `Σ kᵢ·|x − aᵢ| (+ affine) {op} c`.
+/// Solve a relation (inequality OR equation) whose two sides form a SUM of
+/// absolute values by the exact piecewise/breakpoint method: `lhs {op} rhs` is
+/// recast as `lhs - rhs {op} 0`, which must decompose into
+/// `Σ kᵢ·|x − aᵢ| (+ affine) {op} c`.
 ///
 /// On each interval between consecutive breakpoints the whole LHS is linear, so
-/// each `|mᵢ·x + bᵢ|` resolves to `±(mᵢ·x + bᵢ)`; the linear inequality is solved
+/// each `|mᵢ·x + bᵢ|` resolves to `±(mᵢ·x + bᵢ)`; the linear relation is solved
 /// exactly there, intersected with the interval, and unioned across segments.
+/// For an EQUATION a segment where the LHS is constant contributes the whole
+/// segment when that constant equals the target (the flat-minimum case, e.g.
+/// `|x| + |x-1| = 1 → [0, 1]`), and a segment where the LHS is strictly linear
+/// contributes its single crossing point when it lands inside the segment.
 ///
 /// Returns `None` (leaving the existing single-abs / linear paths untouched) for
 /// fewer than two absolute-value terms, a non-linear inner argument, a non-affine
-/// remainder, or a non-inequality operator. All arithmetic is exact `BigRational`
-/// — never f64.
-pub fn try_solve_sum_of_abs_inequality(
+/// remainder, or a `≠` operator. All arithmetic is exact `BigRational` — never f64.
+pub fn try_solve_sum_of_abs_relation(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
@@ -386,8 +390,11 @@ pub fn try_solve_sum_of_abs_inequality(
     use num_rational::BigRational;
     use num_traits::{One, Signed, Zero};
 
-    // Only inequalities; equations keep their existing handling.
-    if !matches!(op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+    // Inequalities and equations; `≠` keeps its existing handling.
+    if !matches!(
+        op,
+        RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq | RelOp::Eq
+    ) {
         return None;
     }
 
@@ -473,11 +480,14 @@ pub fn try_solve_sum_of_abs_inequality(
 
         // Solve `slope·x + constant {op} 0` exactly over the whole line.
         let linear_sol = if slope.is_zero() {
+            // Constant segment: the relation either holds everywhere on it or
+            // nowhere. For `=` it holds exactly when the constant is zero.
             let holds = match op {
                 RelOp::Lt => constant.is_negative(),
                 RelOp::Leq => !constant.is_positive(),
                 RelOp::Gt => constant.is_positive(),
                 RelOp::Geq => !constant.is_negative(),
+                RelOp::Eq => constant.is_zero(),
                 _ => return None,
             };
             if holds {
@@ -485,6 +495,19 @@ pub fn try_solve_sum_of_abs_inequality(
             } else {
                 SolutionSet::Empty
             }
+        } else if op == RelOp::Eq {
+            // Single crossing `x = -constant/slope`. Represent it as a degenerate
+            // closed interval `[p, p]` so it intersects the segment through the
+            // `Continuous ∩ Continuous` path — `intersect_solution_sets` does not
+            // handle `Continuous ∩ Discrete` (it would fall to its empty catch-all).
+            let bound = -constant.clone() / slope.clone();
+            let bound_expr = num_expr_from_rational(ctx, &bound);
+            SolutionSet::Continuous(Interval {
+                min: bound_expr,
+                min_type: BoundType::Closed,
+                max: bound_expr,
+                max_type: BoundType::Closed,
+            })
         } else {
             let bound = -constant.clone() / slope.clone();
             let iso_op = if slope.is_positive() {
@@ -523,7 +546,36 @@ pub fn try_solve_sum_of_abs_inequality(
         solution = union_solution_sets(ctx, solution, seg_sol);
     }
 
+    // An equation's isolated crossings arrive as degenerate closed intervals
+    // `[p, p]`. Collapse a result that is ENTIRELY such points back to `Discrete`
+    // so it renders as `{ p, … }` instead of `[p, p] ∪ …`; a genuine interval
+    // (flat-minimum case) is left as `Continuous`/`Union`.
+    if op == RelOp::Eq {
+        solution = collapse_degenerate_intervals_to_discrete(ctx, solution);
+    }
+
     Some(solution)
+}
+
+/// Collapse a solution made up entirely of degenerate closed intervals `[p, p]`
+/// into a `Discrete` point set. Mixed results (a real interval alongside points)
+/// are left untouched — the degenerate intervals there stay correct, just less
+/// pretty, which only arises for non-convex signed-coefficient sums.
+fn collapse_degenerate_intervals_to_discrete(ctx: &Context, sol: SolutionSet) -> SolutionSet {
+    fn is_degenerate_closed(ctx: &Context, i: &Interval) -> bool {
+        i.min_type == BoundType::Closed
+            && i.max_type == BoundType::Closed
+            && crate::solution_set::compare_values(ctx, i.min, i.max) == std::cmp::Ordering::Equal
+    }
+    match sol {
+        SolutionSet::Continuous(i) if is_degenerate_closed(ctx, &i) => {
+            SolutionSet::Discrete(vec![i.min])
+        }
+        SolutionSet::Union(intervals) if intervals.iter().all(|i| is_degenerate_closed(ctx, i)) => {
+            SolutionSet::Discrete(intervals.into_iter().map(|i| i.min).collect())
+        }
+        other => other,
+    }
 }
 
 /// Recover `|f(x)| = ±f(x)` equations that reorient to `x = α·|arg| + β`.

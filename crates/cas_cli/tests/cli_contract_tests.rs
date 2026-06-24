@@ -769,6 +769,47 @@ fn test_eval_sum_of_absolute_values_inequality_solves_piecewise() {
 }
 
 #[test]
+fn test_eval_sum_of_absolute_values_equation_solves_piecewise() {
+    // The same piecewise/breakpoint solver handles EQUATIONS. The old
+    // isolate-one-abs strategy leaked a malformed nested-`solve` residual (and
+    // for the flat-minimum case wrongly returned a half-line). On each segment a
+    // strictly-linear piece contributes its single crossing; a constant piece
+    // equal to the target contributes the whole segment. Cross-checked against an
+    // independent exact (fractions) oracle over 400 random sums (0 mismatches).
+    for (input, expected) in [
+        // Above the minimum (1): two isolated crossings.
+        ("abs(x) + abs(x-1) = 3", "{ -1, 2 }"),
+        ("abs(x) + abs(x-1) = 2", "{ -1/2, 3/2 }"),
+        ("abs(x-2) + abs(x+2) = 8", "{ -4, 4 }"),
+        ("abs(x) + abs(x-1) + abs(x-2) = 4", "{ -1/3, 7/3 }"),
+        ("2*abs(x) + abs(x-3) = 6", "{ -1, 3 }"),
+        // At the flat minimum: the whole closed segment is the solution set.
+        ("abs(x) + abs(x-1) = 1", "[0, 1]"),
+        ("abs(x+1) + abs(x-1) = 2", "[-1, 1]"),
+        // Below the minimum: empty.
+        ("abs(x) + abs(x-1) = 1/2", "No solution"),
+        // Non-convex signed coefficients: a flat piece yields a ray, and a single
+        // crossing yields a point (convexity is NOT assumed by the solver).
+        ("abs(x) - abs(x-1) = 0", "{ 1/2 }"),
+        ("abs(x) - abs(x-1) = -1", "(-infinity, 0]"),
+        ("abs(x) - abs(x-1) = 1", "[1, infinity)"),
+        // Affine remainder term folded into the per-segment line.
+        ("abs(x) + abs(x-1) + x = 3", "{ -2, 4/3 }"),
+        // Single-abs equations are untouched (still the existing path).
+        ("abs(x) = 3", "{ 3, -3 }"),
+        ("abs(2*x-1) = 5", "{ 3, -2 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_radical_inequality_keeps_argument_domain() {
     // `sqrt(g(x)) {<,<=} c` requires g(x) >= 0, but for a COMPOUND argument the
     // engine dropped that domain, returning e.g. `sqrt(x-1) < 3 → (-inf, 10)`

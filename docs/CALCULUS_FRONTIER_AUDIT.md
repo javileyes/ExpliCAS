@@ -225,6 +225,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   pressure sin deltas de estado (solo no-determinismo preexistente de smokes diff/integrate, ajeno al
   solver). Peldaño: ECUACIONES de suma de abs (`|x|+|x-1|=3`) siguen dando residual — misma técnica
   piecewise, follow-up; y pasos didácticos del solver piecewise.)*
+  *(peldaño ECUACIONES graduado 2026-06-24 PENDIENTEEQ: el solver `try_solve_sum_of_abs_inequality` se gateaba
+  solo a inecuaciones; las ecuaciones caían al viejo aislar-un-abs y daban residual basura
+  (`|x|+|x-1|=3`) o un WRONG-ANSWER (`|x|+|x-1|=1 → (-∞,1]`, real `[0,1]`). Generalizado a `Eq` (renombrado a
+  `try_solve_sum_of_abs_relation`): por segmento, pendiente 0 ⇒ se cumple sii la constante es 0 (segmento entero,
+  mínimo plano); pendiente ≠0 ⇒ cruce único `x=-c/m` como intervalo cerrado degenerado `[p,p]` (intersect no
+  maneja Continuous∩Discrete), colapsado a `Discrete` al final solo si todo son puntos. Sin supuesto de
+  convexidad: coef con signo dan rayos (`|x|-|x-1|=-1 → (-∞,0]`) y remanente afín funciona (`|x|+|x-1|+x=3 →
+  {-2,4/3}`). Resultados: `{-1,2}`, `[0,1]`, `No solution`, `{-1/3,7/3}`. Verificación adversarial: oráculo
+  independiente `fractions` 400 sumas aleatorias, 0 mismatches. Workspace 12316/0; huella sin deltas. Sigue
+  pendiente: pasos didácticos del solver piecewise y valor absoluto ANIDADO.)*
 
 - [x] **(S) Inecuación radical con argumento compuesto soltaba el dominio**: `sqrt(x-1) < 3` devolvía
   `(-∞, 10)` cuando la solución es `[1, 10)` — incluyendo puntos donde el radicando `x-1 < 0` y `√` no

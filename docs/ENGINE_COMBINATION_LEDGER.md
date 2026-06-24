@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 316 (newest first)
+Active entries: 317 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
 - 2026-06-24 | `retained` | `crates/cas_math/src/inverse_trig_composition_support.rs` (gate de dominio en... | P0 soundness: identidad complementaria arcsin+arccos colapsaba fuera de dominio (hunt #8, último)
 - 2026-06-24 | `retained` | `crates/cas_engine/src/eval/diagnostics.rs` (`push_intrinsic_function_require... | P0 honestidad: arcsec(x)+arccsc(x)→π/2 perdía la condición de dominio |x|≥1 (peldaño (b) de #8)
+- 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: ecuaciones de suma de abs daban residual/respuesta incorrecta (peldaño de #4)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13478,3 +13479,49 @@ Active entries: 316 (newest first)
   - emite la condición en la MISMA forma estructural que el camino equivalente ya soportado para heredar su
     display (afín, desplazado, recíproco) sin duplicar lógica. Próximo peldaño: barrer otros recolectores de
     condición por funciones value-dependent sin arm (acoth, recíprocas hiperbólicas) — sweep de honestidad.
+
+## 2026-06-24 - P0 soundness: ecuaciones de suma de abs daban residual/respuesta incorrecta (peldaño de #4)
+
+- area:
+  - `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequality` → `…_relation`,
+    generalizado a ecuaciones); call-site en `crates/cas_solver/src/solve_backend_local.rs`
+- status:
+  - `retained` (P0 soundness — wrong-answer + residual malformado; gradúa el peldaño de ecuaciones de #4)
+- capture:
+  - investment_class: soundness/honestidad (familia que ya tenía el solver piecewise para inecuaciones)
+  - primary_dimension: north_star_soundness
+  - cell: `|x|+|x-1|=3` daba residual basura `Solve: solve(x-(3-|x-1|)=0,...)`; `|x|+|x-1|=1` daba el
+    WRONG-ANSWER `(-∞,1]` (correcto `[0,1]`); `|x|+|x-1|=1/2` daba basura (correcto ∅). AHORA:
+    `{-1,2}`, `[0,1]`, `No solution` respectivamente.
+  - MECANISMO: #4 (commit 038fc9c79) construyó el solver exacto por breakpoints `try_solve_sum_of_abs_inequality`
+    pero lo gateó SOLO a inecuaciones; las ecuaciones caían al viejo aislar-un-abs-y-recurrir, que pierde los
+    demás términos. Generalización mínima (la maquinaria de segmentos es idéntica): (1) admitir `RelOp::Eq` en
+    el gate; (2) por segmento, con pendiente CERO la ecuación se cumple sii la constante es 0 → AllReals∩segmento
+    = el segmento entero (caso mínimo plano, p.ej. `|x|+|x-1|=1 → [0,1]`); con pendiente ≠0 el cruce único
+    `x=-c/m` se representa como intervalo cerrado DEGENERADO `[p,p]` —no `Discrete`— para intersecar por la vía
+    `Continuous∩Continuous` (intersect_solution_sets NO maneja `Continuous∩Discrete`: caería a su catch-all
+    vacío y perdería el punto); (3) normalización final: un resultado compuesto SOLO de degenerados `[p,p]`
+    colapsa a `Discrete` para renderizar `{ p, … }`, dejando intervalos genuinos como Continuous/Union.
+    Renombrada a `try_solve_sum_of_abs_relation` (ya no solo inecuaciones).
+  - SIN supuesto de convexidad: coeficientes con signo (`|x|-|x-1|=-1 → (-∞,0]`, un RAYO) y término afín
+    remanente (`|x|+|x-1|+x=3 → {-2,4/3}`) salen correctos por la maquinaria general por segmento.
+  - verificación adversarial (lente soundness): oráculo independiente Python `fractions` que re-implementa el
+    solver piecewise y compara por MEMBRESÍA en breakpoints, puntos solución, bordes de intervalo y rejilla
+    racional; 400 sumas aleatorias (2–4 términos, coef ±, pendiente interna m=2, remanente afín, varios RHS) →
+    0 mismatches. (Un bug del PARSER del oráculo —`-?` regex tragaba el signo de fracciones negativas— produjo
+    78 falsos positivos; corregido el parser, 0 reales. Lección: el oráculo se valida a sí mismo primero.)
+- observed:
+  - cuando un solver exacto ya existe para una familia (inecuaciones piecewise), extenderlo al operador hermano
+    (ecuaciones) suele ser un cambio mínimo en el SOLVE por segmento, no un solver nuevo; el residual/wrong-answer
+    persistía solo porque el gate excluía `Eq`.
+  - `intersect_solution_sets` no cubre `Continuous∩Discrete` (catch-all vacío): para inyectar un PUNTO en una
+    intersección con un intervalo, represéntalo como intervalo cerrado degenerado `[p,p]` y deja que la vía
+    `Continuous∩Continuous` lo resuelva; normaliza a `Discrete` al final solo para presentación.
+- retained learning:
+  - el conjunto solución de `Σ kᵢ|·| {op} c` con coeficientes con SIGNO no es convexo: puede ser puntos,
+    intervalos, rayos o mezclas; la representación robusta es unión de intervalos (con degenerados para puntos),
+    colapsada a `Discrete` solo cuando es íntegramente puntos. No asumir convexidad evita perder rayos.
+  - un oráculo de verificación se valida ANTES de creer sus hallazgos: aquí 78 "mismatches" eran un bug de
+    parseo de signos en el oráculo, no del engine (los puntos coincidían literalmente). Cf. la lección del hunt
+    #6/#7 (oráculo con convención de dominio equivocada). Próximo peldaño: pasos didácticos del solver piecewise
+    (inecuaciones Y ecuaciones) — narrar breakpoints/segmentos/signos; y ecuaciones con valor absoluto anidado.
