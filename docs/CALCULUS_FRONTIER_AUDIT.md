@@ -462,7 +462,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   más ESTRECHO (x≥1) que el integrando (|x|≥1), y el FTC sustituía los bornes a ciegas. El caso recíproco
   `1/√(x²-1)` ya declinaba honestamente en el negativo; el de `√` no. (P0 wrong-answer en integral definida;
   hallado por el hunt adversarial multiagente ultracode, Cluster C — 2 wrong-answers.)
-  *(graduado 2026-06-24 PENDIENTE: nueva certificación `antiderivative_acosh_domain_certificate` (en
+  *(graduado 2026-06-24 2c4a59f2c: nueva certificación `antiderivative_acosh_domain_certificate` (en
   `definite_integration.rs`, combinada con `certify_interval` + `integrand_risks_certified` antes de la
   sustitución FTC): recolecta los `acosh(arg)` de la antiderivada y exige `arg ≥ 1` sobre el intervalo vía
   `positive_on_interval(arg-1)`; un toque de borde (`arg=1`, `acosh(1)=0` real) certifica, cualquier otra cosa
