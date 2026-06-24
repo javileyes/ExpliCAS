@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 318 (newest first)
+Active entries: 319 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -123,6 +123,7 @@ Active entries: 318 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_engine/src/eval/diagnostics.rs` (`push_intrinsic_function_require... | P0 honestidad: arcsec(x)+arccsc(x)→π/2 perdía la condición de dominio |x|≥1 (peldaño (b) de #8)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: ecuaciones de suma de abs daban residual/respuesta incorrecta (peldaño de #4)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_single_abs_affine_equation`, | P0 honestidad: ecuaciones de un abs reorientadas (var = c - |arg|) fugaban residual malformado
+- 2026-06-24 | `retained` | `docs/LIMIT_NARRATIVE_GATEKEEPER_ROADMAP.md` (nuevo); arquitectura en | Scoping (clase A): gatekeeper G2 narrativa educativa de límites → secuencia de sub-ciclos
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13571,3 +13572,43 @@ Active entries: 318 (newest first)
   - próximo peldaño (presentación, no soundness): la ruta `|f|=f` rinde medio-rectas como
     "All real numbers if x≥0" en vez de `[0, ∞)`; reordenar al core daría el intervalo limpio pero cambiaría
     su huella — pulido aparte. Y pasos didácticos del solver piecewise (inecuaciones, ecuaciones, un-abso).
+
+## 2026-06-24 - Scoping (clase A): gatekeeper G2 narrativa educativa de límites → secuencia de sub-ciclos
+
+- area:
+  - `docs/LIMIT_NARRATIVE_GATEKEEPER_ROADMAP.md` (nuevo); arquitectura en
+    `cas_math/src/limits_support.rs`, `cas_engine/src/eval/actions.rs`,
+    `cas_didactic/src/didactic/focused_rule_substeps.rs`
+- status:
+  - `retained` (scoping de gatekeeper clase L — el output retenible es el plan de sub-ciclos, no código)
+- capture:
+  - investment_class: scoping/architecture (entrada de un gatekeeper como SECUENCIA acotada y retenible)
+  - primary_dimension: north_star_educational (mitad educativa del north star, límites a ~0% narrado)
+  - hypothesis: la narrativa de límites se profundiza por RECONSTRUCCIÓN post-hoc en la capa didáctica
+    (como hacen los narradores de integración por partes / fracciones parciales), NO enhebrando un trace
+    fuera del motor de valor — evita un cambio cross-crate grande en `LimitEvalOutcome` + ~40 firmas
+    `apply_finite_*_rule`, y mantiene cada sub-ciclo acotado a `cas_didactic`.
+  - hallazgos (workflow de 3 agentes + corroboración directa):
+    1. arquitectura 3 capas: valor (limits_support, descarta todo el trabajo intermedio) → engine (steps
+       vacío, 1 Step con 4 rule_names) → didáctico (`generate_limit_substeps` emite UN SubStep con el NOMBRE
+       de la técnica vía `notable_limit_name -> Option<String>`, oráculo = `after`).
+    2. el `Vec<SubStep>` ya existe; deepening = builders por técnica que devuelven varios SubSteps, con
+       fallback al single-name actual (cambio estructural mínimo, behavior-preserving por técnica).
+    3. HUELLA por técnica concentrada en UN módulo in-file (`focused_rule_substeps.rs:21752-22097`); ni
+       scorecard ni CLI contract ni smoke fijan el texto de substeps (solo los 4 rule_names top-level y
+       `steps_count==1`, que NO cambia porque los substeps van DENTRO del Step). Cada sub-ciclo actualiza
+       solo sus needles + los `len()==1` de su técnica.
+    4. invariantes de soundness a preservar: oráculo `after` exacto (declines pinneados `sin(x)/x→2`),
+       L'Hôpital exige `limit_point` + denominador que se anula (exacto), residual/DNE sin narrador (prefijo).
+  - secuencia: SC1 factor-y-cancela (+infra, más barato y frecuente) → SC2 sustitución directa → SC3/SC4
+    notables (1er y 2º orden + e) → SC5 L'Hôpital/Taylor iterado (estrella, reusa `differentiate_symbolic_expr`)
+    → SC6 sándwich → SC7 dominancia ∞ → SC8 unilateral/DNE (rama de dispatch nueva, último). ~7-9 sub-ciclos.
+- observed:
+  - el patrón establecido en este engine para narrativas multi-paso es RECONSTRUCCIÓN post-hoc en la capa
+    didáctica, no trace-threading desde el motor; un gatekeeper educativo debe seguirlo para que cada paso sea
+    barato y acotado a una crate. El `after` como oráculo contiene el riesgo "la narración re-derivada puede
+    discrepar de la regla que corrió el motor".
+- retained learning:
+  - antes de entrar un gatekeeper clase L, localiza dónde el output retenible ya tiene estructura (aquí
+    `Vec<SubStep>`) para evitar un ciclo de infraestructura; y verifica qué fija la huella (aquí un solo módulo
+    in-file) para que cada sub-ciclo sea barato de retener. Siguiente: ejecutar SC1 (factor-y-cancela + infra).
