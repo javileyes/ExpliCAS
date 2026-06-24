@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 321 (newest first)
+Active entries: 322 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -126,6 +126,7 @@ Active entries: 321 (newest first)
 - 2026-06-24 | `retained` | `docs/LIMIT_NARRATIVE_GATEKEEPER_ROADMAP.md` (nuevo); arquitectura en | Scoping (clase A): gatekeeper G2 narrativa educativa de límites → secuencia de sub-ciclos
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | Educativo (G2 SC1): narrativa factor-y-cancela de límites muestra el trabajo + infra multi-substep
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | Educativo (G2 SC2): sustitución directa de límites nombra el punto concreto
+- 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC3): los límites notables 0/0 muestran la indeterminación antes de aplicar
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13693,3 +13694,45 @@ Active entries: 321 (newest first)
   - distingue técnicas ATÓMICAS (sustitución directa) de las de VARIOS PASOS (factor-y-cancela, L'Hôpital):
     las primeras se narran mejor con un substep concreto, no con un multi-step forzado. Aplica al diseñar
     SC3+ — los notables y L'Hôpital sí tienen estructura multi-paso genuina y limpia. Siguiente: SC3 notables.
+
+## 2026-06-24 - Educativo (G2 SC3): los límites notables 0/0 muestran la indeterminación antes de aplicar
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`generate_limit_notable_zero_over_zero_substeps`; const `LIMIT_NOTABLE_PREFIX`; dispatch en
+    `generate_limit_substeps`)
+- status:
+  - `retained` (tercer sub-ciclo de G2; primer multi-paso genuino de los notables)
+- capture:
+  - investment_class: educational (narrativa de límites — "signature content")
+  - primary_dimension: north_star_educational
+  - cell: `sin(x)/x → 1` ANTES un substep "Aplicar el límite notable: lím(u→0) sin(u)/u = 1"; AHORA dos:
+    [1] "La sustitución directa da la indeterminación 0/0" (sin(x)/x → 0/0), [2] el notable (sin(x)/x → 1).
+    Igual sin(3x)/x→3, (eˣ−1)/x→1, ln(1+x)/x→1, x/sin(x)→1, formas cruzadas/escaladas/recíprocas y la de
+    segundo orden (1−cos x)/x²→1/2. El de tipo 1^∞ `(1+1/x)^x = e` y el sándwich `x·sin(1/x)` quedan en UN
+    substep (NO son 0/0; no se les pone la afirmación 0/0).
+  - DISEÑO: split por TIPO de indeterminación (más principled que primer/segundo orden del scoping): SC3 cubre
+    TODOS los notables-cociente 0/0 (incluida (1−cos u)/u², que también es 0/0); SC4 queda para las 1^∞ (= e).
+    Dispatch: `!at_infinity && description.starts_with(LIMIT_NOTABLE_PREFIX) && !description.ends_with("= e")`.
+    `notable_limit_name` sigue siendo el oráculo de técnica (devuelve el título del notable); el builder
+    antepone el substep 0/0 y conserva el título como segundo substep. Sin scratch (la forma 0/0 son strings
+    literales "0 / 0" / `\frac{0}{0}`), evitando construir `Div(0,0)`.
+  - SOUNDNESS: todos los notables-cociente finitos son 0/0 en su punto (numerador y denominador → 0); las
+    1^∞ (= e) se excluyen explícitamente, así que la afirmación 0/0 nunca es falsa. El sándwich tiene otro
+    prefijo ("teorema del sándwich"), no se ve afectado.
+  - validación: workspace 12320/0; clippy/fmt limpios; huella idéntica (substeps van dentro del Step). Huella
+    de tests: `names_the_standard_notable_limits` ahora comprueba "el notable aparece en ALGÚN substep"
+    (`.any()`, robusto al número de substeps); nuevo `notable_zero_over_zero_shows_indeterminate_form_first`
+    fija la cadena de 2 substeps para los 0/0 y que e-form/sándwich quedan en 1; `generic_zero_over_zero_does_
+    not_shadow_specific_notables` actualizado (el notable es el 2º substep).
+- observed:
+  - clasificar por TIPO de indeterminación (0/0 vs 1^∞ vs producto-acotado) da un dispatch uniforme y sound:
+    una condición (prefijo notable + no "= e") cubre toda la familia 0/0, en vez de enumerar formas. Mejor
+    decomposición que "primer/segundo orden".
+  - mostrar la indeterminación (0/0) ANTES de aplicar el resultado conocido es el núcleo pedagógico de los
+    límites notables: el estudiante ve por qué no puede sustituir y entonces invoca el límite estándar.
+- retained learning:
+  - para narrar técnicas que resuelven una indeterminación, antepón un substep que MUESTRE la indeterminación
+    (sustitución directa → 0/0) y luego el método; es uniforme por tipo de indeterminación y barato (strings
+    literales, sin construir expresiones). Próximo: SC4 (1^∞ `= e`: mostrar que es 1^∞ y citar la definición
+    de e) y/o SC5 (L'Hôpital iterado, el multi-paso más rico).

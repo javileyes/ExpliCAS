@@ -19601,6 +19601,10 @@ const LIMIT_FACTOR_CANCEL_TITLE: &str =
 const LIMIT_DIRECT_SUBSTITUTION_TITLE: &str =
     "Sustitución directa: el límite de un polinomio es su valor en el punto (continuidad)";
 
+/// Prefix every "notable limit" technique title shares, used both to format the
+/// titles and to dispatch the 0/0 deepening.
+const LIMIT_NOTABLE_PREFIX: &str = "Aplicar el límite notable: ";
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
@@ -19616,6 +19620,16 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         if let Some(substeps) = generate_limit_factor_cancel_substeps(ctx, step, point) {
             return substeps;
         }
+    }
+    // Every FINITE notable-limit quotient (sin u/u, (e^u−1)/u, ln(1+u)/u, the
+    // scaled/cross/reciprocal forms, (1−cos u)/u²) is a 0/0 indeterminate form;
+    // show that direct substitution gives 0/0 before applying the standard limit.
+    // The `… = e` forms are 1^∞, not 0/0, and are excluded.
+    if !at_infinity
+        && description.starts_with(LIMIT_NOTABLE_PREFIX)
+        && !description.ends_with("= e")
+    {
+        return generate_limit_notable_zero_over_zero_substeps(ctx, step, description);
     }
     vec![SubStep::new(
         description,
@@ -19712,6 +19726,32 @@ fn generate_limit_factor_cancel_substeps(
     ])
 }
 
+/// Deepen a 0/0 quotient notable limit into two substeps: first show that direct
+/// substitution gives the indeterminate form 0/0 (so you cannot just plug in),
+/// then apply the standard limit. Used for every FINITE notable-prefixed quotient
+/// (`sin u/u`, `(e^u−1)/u`, `ln(1+u)/u`, the scaled/cross/reciprocal forms,
+/// `(1−cos u)/u²`); the 1^∞ `… = e` forms are excluded by the caller.
+fn generate_limit_notable_zero_over_zero_substeps(
+    ctx: &Context,
+    step: &Step,
+    description: String,
+) -> Vec<SubStep> {
+    let before_disp = display_expr(ctx, step.before);
+    let before_latex = latex_expr(ctx, step.before);
+    vec![
+        SubStep::new(
+            "La sustitución directa da la indeterminación 0/0",
+            before_disp.clone(),
+            "0 / 0",
+        )
+        .with_before_latex(before_latex.clone())
+        .with_after_latex(r"\frac{0}{0}"),
+        SubStep::new(description, before_disp, display_expr(ctx, step.after))
+            .with_before_latex(before_latex)
+            .with_after_latex(latex_expr(ctx, step.after)),
+    ]
+}
+
 /// Full didactic description of the standard ("notable") limit / theorem / method a `before/after`
 /// limit step realises, matching the structural form of `before` AND requiring `after` to be the
 /// matching value (the result acts as the soundness oracle — a structural match with the wrong
@@ -19735,7 +19775,7 @@ fn notable_limit_name(
         return limit_infinity_dominance(ctx, before, after);
     }
 
-    let prefix = "Aplicar el límite notable: ";
+    let prefix = LIMIT_NOTABLE_PREFIX;
     let after_value = as_rational_const(ctx, after, 8);
     let after_is = |target: BigRational| after_value.as_ref() == Some(&target);
 
@@ -22065,12 +22105,15 @@ mod limit_notable_tests {
 
     #[test]
     fn generic_zero_over_zero_does_not_shadow_specific_notables() {
-        // The specific notables / factor-cancel must still win at the origin (they return earlier).
+        // The specific notables / factor-cancel must still win at the origin (they
+        // return earlier). They are now narrated as 0/0 → apply, so the notable is
+        // the SECOND substep, not a generic L'Hôpital fallback.
         let sin = substep_titles_finite_at_point("sin(x)/x", "1", "0");
-        assert!(sin.len() == 1 && sin[0].contains("sin(u)/u = 1"), "{sin:?}");
+        assert!(sin.len() == 2 && sin[1].contains("sin(u)/u = 1"), "{sin:?}");
+        assert!(sin[0].contains("indeterminación 0/0"), "{sin:?}");
         let cos = substep_titles_finite_at_point("(1-cos(x))/x^2", "1/2", "0");
         assert!(
-            cos.len() == 1 && cos[0].contains("(1 − cos(u))/u² = 1/2"),
+            cos.len() == 2 && cos[1].contains("(1 − cos(u))/u² = 1/2"),
             "{cos:?}"
         );
     }
@@ -22222,14 +22265,46 @@ mod limit_notable_tests {
             ("x/(exp(x)-1)", "1", "u/(e^u − 1) = 1"),
             ("x/arcsin(x)", "1", "u/arcsin(u) = 1"),
         ] {
+            // The technique is recognized (it appears in SOME substep). A 0/0
+            // quotient notable is now narrated as two substeps (0/0 → apply), while
+            // the squeeze and the 1^∞ `= e` forms stay a single substep — checked
+            // precisely in `notable_zero_over_zero_shows_indeterminate_form_first`.
             let titles = substep_titles(before, after);
-            assert_eq!(titles.len(), 1, "{before} should name one notable limit");
             assert!(
-                titles[0].contains(needle),
-                "{before}: expected `{needle}` in `{}`",
-                titles[0]
+                titles.iter().any(|t| t.contains(needle)),
+                "{before}: expected `{needle}` in `{titles:?}`"
             );
         }
+    }
+
+    #[test]
+    fn notable_zero_over_zero_shows_indeterminate_form_first() {
+        // A 0/0 quotient notable is narrated as two substeps: show that direct
+        // substitution gives 0/0, then apply the standard limit.
+        for (before, after, needle) in [
+            ("sin(x)/x", "1", "sin(u)/u = 1"),
+            ("sin(3*x)/x", "3", "sin(3·u)/u = 3"),
+            ("(exp(x)-1)/x", "1", "(e^u − 1)/u = 1"),
+            ("ln(1+x)/x", "1", "ln(1+u)/u = 1"),
+            ("x/sin(x)", "1", "u/sin(u) = 1"),
+            ("(1-cos(x))/x^2", "1/2", "(1 − cos(u))/u² = 1/2"),
+        ] {
+            let titles = substep_titles(before, after);
+            assert_eq!(titles.len(), 2, "{before}: {titles:?}");
+            assert!(
+                titles[0].contains("indeterminación 0/0"),
+                "{before}: {titles:?}"
+            );
+            assert!(titles[1].contains(needle), "{before}: {titles:?}");
+        }
+        // The 1^∞ `= e` form and the squeeze theorem are NOT 0/0 — single substep,
+        // no 0/0 claim.
+        let e_form = substep_titles("(1+x)^(1/x)", "e");
+        assert_eq!(e_form.len(), 1, "{e_form:?}");
+        assert!(e_form[0].contains("(1 + u)^(1/u) = e"), "{e_form:?}");
+        let squeeze = substep_titles("x*sin(1/x)", "0");
+        assert_eq!(squeeze.len(), 1, "{squeeze:?}");
+        assert!(squeeze[0].contains("teorema del sándwich"), "{squeeze:?}");
     }
 
     #[test]
