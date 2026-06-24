@@ -410,7 +410,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   aritmética escalar (`x^(-1)→1/x`) en vez de la inversa; (2) `ScalarMatrixRule` trata una expresión
   MATRIZ-VALUADA (`inverse([[a,b],[c,d]])`) como ESCALAR y la difunde sobre las celdas. (P1 soundness en
   ops de matriz; hallado por el hunt ultracode, soundness exento de fase.)
-  *(graduado 2026-06-25 PENDIENTE: (1) nuevo `MatrixReciprocalRule` (prioridad 20, target POW|DIV) vía
+  *(graduado 2026-06-25 ac2b74342: (1) nuevo `MatrixReciprocalRule` (prioridad 20, target POW|DIV) vía
   `try_rewrite_matrix_reciprocal_expr`: `Pow(M,-1) → inverse(M)`, `Div(c,M) → c·inverse(M)`, reusando la
   función `inverse(...)` ya sound (numérica→inversa exacta, no-cuadrada/simbólica→residual, singular→undefined);
   (2) `is_matrix_valued(expr)` (literal, `inverse`/`transpose`/`adjugate`, y combinaciones estructurales) hace
