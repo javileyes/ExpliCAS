@@ -304,7 +304,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `sqrt(x+1) > x-1`, `sqrt(x) < x+1`. Elevar `√f {op} g` al cuadrado a ciegas pierde las ramas del signo de
   `g`. (P0 wrong-answer en `solve` de inecuaciones; hallado por el hunt adversarial multiagente ultracode,
   Cluster B — 5 wrong-answers.)
-  *(graduado 2026-06-24 PENDIENTE: nuevo hook `try_solve_radical_inequality` (tras A3, antes de `solve_inner`)
+  *(graduado 2026-06-24 d009dcbb5: nuevo hook `try_solve_radical_inequality` (tras A3, antes de `solve_inner`)
   que aísla `s·√f + r {op} 0 ⇒ √f {eff_op} g` y aplica el case-split correcto —
   `√f<g ⟺ f≥0 ∧ g>0 ∧ f<g²`; `√f≤g ⟺ f≥0 ∧ g≥0 ∧ f≤g²`; `√f>g ⟺ f≥0 ∧ (g<0 ∨ f>g²)`;
   `√f≥g ⟺ f≥0 ∧ (g<0 ∨ f≥g²)`— cada rama una inecuación polinómica que el solver existente resuelve
