@@ -275,7 +275,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   arrastra la condición `|x|≥1` (required_display vacío), mientras que la forma `arccos(1/x)+arcsin(1/x)`
   sí mantiene `x≤-1 or x≥1`: hueco de propagación de condición a través de la reescritura multi-paso
   arcsec→arccos — follow-up de honestidad, NO wrong-answer (el valor `π/2` es correcto donde `arcsec`
-  existe).)*
+  existe). **RESUELTO 2026-06-24 PENDIENTEB**: `push_intrinsic_function_requires` (diagnostics.rs) —el
+  escaneo que emite las condiciones de dominio inverse-trig recorriendo la expresión— no tenía arm para
+  Arcsec/Asec/Arccsc/Acsc; el individual `arcsec(x)→arccos(1/x)` sobrevive porque el arccos queda en el OUTPUT,
+  pero la SUMA colapsa a `π/2` sin inverse-trig que anclar → condición vacía. Fix: arm nuevo que construye el
+  recíproco `1/arg` y reusa `inverse_unit_interval_intrinsic_requirement` → `NonNegative(1-(1/arg)²)`, idéntico
+  a lo que emite la reescritura; ahora `arcsec(x)+arccsc(x)→π/2` arrastra `x ≤ -1 or x ≥ 1`, y afín/desplazado
+  salen gratis (`arcsec(2x)`→`x ≤ -1/2 or x ≥ 1/2`, `arcsec(x+1)`→`x ≤ -2 or x ≥ 0`). Gate `!inside_calculus_call`
+  preserva `diff(arcsec(...))` vacío; dedup colapsa el duplicado del individual. Test de regresión ampliado;
+  workspace 12315/0; huella sin deltas. Peldaño: barrer otros recolectores por value-dependent sin arm
+  (recíprocas hiperbólicas).)*
 - [x] **(F) Raíz extraña fuera de dominio con radicando transcendente**: `solve(ln(x)+ln(x-3)=1)`
   devolvía también la raíz extraña `(3−√(9+4e))/2 ≈ −0.73`, que viola el dominio `x>3` que el
   propio solver deriva (el filtro de raíces extrañas declinaba en radicando NO racional `9+4e`).

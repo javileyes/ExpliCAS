@@ -926,6 +926,38 @@ fn test_eval_complementary_inverse_trig_respects_domain() {
         displays.iter().any(|v| v.as_str() == Some("-1 ≤ x ≤ 1")),
         "arccos(x)+arcsin(x) must carry the -1 ≤ x ≤ 1 condition, got {displays:?}"
     );
+
+    // The symbolic arcsec/arccsc form collapses to π/2 too, but `arcsec`/`arccsc`
+    // are real only for `|arg| ≥ 1`, so the sum MUST carry the exterior-interval
+    // condition (it is `x ≤ -1 or x ≥ 1` for the bare variable, and scales with an
+    // affine argument). Previously the condition was dropped: the collapse to π/2
+    // removed the `arccos(1/x)` witness before the per-function domain was attached.
+    for (input, expected_condition) in [
+        ("arcsec(x) + arccsc(x)", "x ≤ -1 or x ≥ 1"),
+        ("arccsc(x) + arcsec(x)", "x ≤ -1 or x ≥ 1"),
+        ("arcsec(2*x) + arccsc(2*x)", "x ≤ -1/2 or x ≥ 1/2"),
+        ("arcsec(x + 1) + arccsc(x + 1)", "x ≤ -2 or x ≥ 0"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(
+            wire["result"].as_str(),
+            Some("1/2·pi"),
+            "{input}: in-domain arcsec/arccsc sum must give π/2"
+        );
+        let displays = wire["required_display"]
+            .as_array()
+            .expect("required_display");
+        assert!(
+            displays
+                .iter()
+                .any(|v| v.as_str() == Some(expected_condition)),
+            "{input} must carry the {expected_condition:?} domain condition, got {displays:?}"
+        );
+    }
 }
 
 #[test]

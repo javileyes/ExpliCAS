@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 315 (newest first)
+Active entries: 316 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
 - 2026-06-24 | `retained` | `crates/cas_math/src/inverse_trig_composition_support.rs` (gate de dominio en... | P0 soundness: identidad complementaria arcsin+arccos colapsaba fuera de dominio (hunt #8, último)
+- 2026-06-24 | `retained` | `crates/cas_engine/src/eval/diagnostics.rs` (`push_intrinsic_function_require... | P0 honestidad: arcsec(x)+arccsc(x)→π/2 perdía la condición de dominio |x|≥1 (peldaño (b) de #8)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13431,3 +13432,49 @@ Active entries: 315 (newest first)
     `arccos(1/x)+arcsin(1/x)` sí mantiene `x≤-1 or x≥1`) — hueco de propagación de condición a través de la
     reescritura arcsec→arccos. NO es wrong-answer (el valor es correcto donde arcsec existe); es honestidad de
     condición, follow-up. Con #8 cerrado, los 8 defectos del hunt ultracode quedan resueltos.
+    **(Resuelto en el ciclo siguiente, ver abajo.)**
+
+## 2026-06-24 - P0 honestidad: arcsec(x)+arccsc(x)→π/2 perdía la condición de dominio |x|≥1 (peldaño (b) de #8)
+
+- area:
+  - `crates/cas_engine/src/eval/diagnostics.rs` (`push_intrinsic_function_requires`: arm arcsec/arccsc)
+- status:
+  - `retained` (P0 honestidad de condición — el resultado π/2 es correcto pero omitía un contrato de dominio)
+- capture:
+  - investment_class: soundness/honestidad (completitud de condiciones de dominio en una identidad notable)
+  - primary_dimension: north_star_soundness
+  - cell: `arcsec(x)+arccsc(x)` → `π/2` con required_display VACÍO (ANTES) vs `x ≤ -1 or x ≥ 1` (AHORA). Las
+    formas afines escalan solas: `arcsec(2x)+arccsc(2x)` → `x ≤ -1/2 or x ≥ 1/2`; `arcsec(x+1)+arccsc(x+1)`
+    → `x ≤ -2 or x ≥ 0`. El individual `arcsec(x)` ya daba `x ≤ -1 or x ≥ 1` (sin duplicar tras el fix).
+  - MECANISMO (verificado con workflow de 3 agentes + lectura directa): la condición de dominio inverse-trig
+    NO la emiten ni la regla de suma ni la reescritura arcsec→arccos(1/x); la produce un escaneo aparte,
+    `push_intrinsic_function_requires` (diagnostics.rs:405), que recorre la expresión y, al ver `arccos/arcsin`,
+    construye `NonNegative(1-arg²)` (display `display_unit_interval_nonnegative` reconoce la forma recíproca
+    `1-(1/x)²` y renderiza `x≤-1 or x≥1`). El escaneo tenía arms para Arcsin/Asin/Arccos/Acos/Atanh pero
+    NINGUNO para Arcsec/Asec/Arccsc/Acsc. El individual `arcsec(x)` sobrevive porque su OUTPUT es `arccos(1/x)`
+    (el arm de arccos dispara sobre la salida); pero la SUMA colapsa a `π/2` sin inverse-trig en la salida, así
+    que el escaneo no encuentra nada que anclar → condición vacía.
+  - FIX: añadir el arm Arcsec/Asec/Arccsc/Acsc que construye el recíproco `1/arg` y reusa el helper existente
+    `inverse_unit_interval_intrinsic_requirement(ctx, 1/arg, Closed)` → `NonNegative(1-(1/arg)²)`, IDÉNTICO a
+    lo que emite la reescritura arcsec→arccos(1/x). Reusa la maquinaria de display tal cual (afín/desplazado
+    salen gratis vía `display_affine_exterior_interval`). El gate `!inside_calculus_call` preserva el contrato
+    `diff(arcsec(...))` con required_display vacío; el dedup colapsa la condición duplicada del individual.
+  - scoping: workflow de 3 agentes (ruta del par arcsec, maquinaria de condición, tests/call-sites) confirmó
+    que NINGÚN test enshrinaba la condición vacía y que `x ≤ -1 or x ≥ 1` es el string canónico ya emitido por
+    el individual. Test de regresión ampliado en `test_eval_complementary_inverse_trig_respects_domain` (bare,
+    orden inverso, afín 2x, desplazado x+1). Workspace 12315/0; clippy/fmt limpios; guardrail+pressure sin
+    deltas de estado.
+- observed:
+  - una condición de dominio que se emite escaneando el OUTPUT se pierde cuando una identidad colapsa los
+    términos que la portaban (arccos(1/x) desaparece al volverse π/2). El escaneo debe correr también sobre la
+    forma de ENTRADA y cubrir TODAS las funciones cuyo dominio importa, no solo las que sobreviven al colapso.
+  - reusar la representación canónica existente (`1-(1/x)²` recíproco, no `x²-1`) hace que la capa de display
+    —incluido el caso afín/desplazado— funcione sin código nuevo: alinear la nueva condición con la que ya
+    produce el camino equivalente evita un segundo formateador y garantiza consistencia.
+- retained learning:
+  - los recolectores de condiciones de dominio deben enumerar el conjunto COMPLETO de funciones value-dependent
+    (aquí faltaban arcsec/arccsc/asec/acsc junto a arcsin/arccos/atanh); un arm faltante es un hueco de
+    honestidad silencioso que solo aflora cuando el término se simplifica y deja de estar en la salida.
+  - emite la condición en la MISMA forma estructural que el camino equivalente ya soportado para heredar su
+    display (afín, desplazado, recíproco) sin duplicar lógica. Próximo peldaño: barrer otros recolectores de
+    condición por funciones value-dependent sin arm (acoth, recíprocas hiperbólicas) — sweep de honestidad.

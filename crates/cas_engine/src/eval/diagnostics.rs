@@ -438,6 +438,26 @@ fn push_intrinsic_function_requires(
                             args[0],
                             UnitIntervalBoundary::Closed,
                         )),
+                        // `arcsec`/`arccsc` are real only for `|arg| ≥ 1`, i.e. the
+                        // reciprocal `1/arg` lies in `[-1, 1]`. Emit the SAME condition
+                        // the `arcsec(x) → arccos(1/x)` rewrite carries (`1 - (1/arg)² ≥ 0`)
+                        // so the exterior-interval display (`x ≤ -1 or x ≥ 1`) survives even
+                        // when the complementary sum `arcsec(x) + arccsc(x)` collapses to
+                        // `π/2` and the `arccos(1/x)` witness is gone from the output.
+                        Some(
+                            cas_ast::BuiltinFn::Arcsec
+                            | cas_ast::BuiltinFn::Asec
+                            | cas_ast::BuiltinFn::Arccsc
+                            | cas_ast::BuiltinFn::Acsc,
+                        ) => {
+                            let one = ctx.num(1);
+                            let reciprocal = ctx.add(cas_ast::Expr::Div(one, args[0]));
+                            Some(inverse_unit_interval_intrinsic_requirement(
+                                ctx,
+                                reciprocal,
+                                UnitIntervalBoundary::Closed,
+                            ))
+                        }
                         Some(cas_ast::BuiltinFn::Atanh) => {
                             Some(inverse_unit_interval_intrinsic_requirement(
                                 ctx,
