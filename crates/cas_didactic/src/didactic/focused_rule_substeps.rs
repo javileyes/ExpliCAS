@@ -19590,6 +19590,12 @@ fn nested_trig_log_factor_arg(ctx: &Context, expr: ExprId) -> Option<(ExprId, Ex
 /// `sin(x)/x = 1` is computed but the rule is never named). Sound by the result check:
 /// the substep is emitted ONLY when the result equals the notable value, so
 /// `limit(sin(x)/x, x, 5) = sin(5)/5` is correctly NOT narrated as `sin(u)/u → 1`.
+/// Title of the factor-and-cancel technique, shared between the one-line
+/// recognizer (`notable_limit_name`) and the deepened multi-substep builder so
+/// the two never drift.
+const LIMIT_FACTOR_CANCEL_TITLE: &str =
+    "Factorizar numerador y denominador y cancelar el factor común antes de evaluar";
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
@@ -19597,11 +19603,108 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     else {
         return Vec::new();
     };
+    // Deepened narratives that SHOW the work (factor → cancel → substitute, …).
+    // `notable_limit_name` stays the single technique oracle; each deepening is
+    // keyed on the recognized technique, and a builder that declines falls back to
+    // the one-line technique-name substep below.
+    if description == LIMIT_FACTOR_CANCEL_TITLE {
+        if let Some(substeps) = generate_limit_factor_cancel_substeps(ctx, step, point) {
+            return substeps;
+        }
+    }
     vec![SubStep::new(
         description,
         display_expr(ctx, step.before),
         display_expr(ctx, step.after),
     )]
+}
+
+/// Deepen factor-and-cancel into the explicit chain
+/// `num/den → (g·cofn)/(g·cofd) → cofn/cofd → value`: extract the monic common
+/// polynomial factor `g = gcd(num, den)`, show it pulled out of both sides, cancel
+/// it, then substitute the limit point. Returns `None` (caller falls back to the
+/// one-line name) unless `before` is a rational with a genuine shared factor and
+/// the limit point is known.
+fn generate_limit_factor_cancel_substeps(
+    ctx: &Context,
+    step: &Step,
+    point: Option<ExprId>,
+) -> Option<Vec<SubStep>> {
+    use num_traits::{One, Zero};
+    let point = point?;
+    let (num, den) = as_div(ctx, step.before)?;
+    let var = limit_single_var_name(ctx, num).or_else(|| limit_single_var_name(ctx, den))?;
+    let num_poly = Polynomial::from_expr(ctx, num, &var).ok()?;
+    let den_poly = Polynomial::from_expr(ctx, den, &var).ok()?;
+    let g = num_poly.gcd(&den_poly);
+    if g.degree() < 1 {
+        return None;
+    }
+    // gcd returns an arbitrary rational scale; renormalize to monic so the pulled
+    // factor reads naturally (`x - 1`, not `2·x - 2`).
+    let lead = g.leading_coeff();
+    if lead.is_zero() {
+        return None;
+    }
+    let g = g.div_scalar(&lead);
+    let (cofn, rn) = num_poly.div_rem(&g).ok()?;
+    let (cofd, rd) = den_poly.div_rem(&g).ok()?;
+    if !rn.is_zero() || !rd.is_zero() {
+        return None;
+    }
+    let num_cofactor_is_one = cofn.degree() == 0 && cofn.leading_coeff().is_one();
+    let den_cofactor_is_one = cofd.degree() == 0 && cofd.leading_coeff().is_one();
+
+    let mut scratch = ctx.clone();
+    let g_expr = g.to_expr(&mut scratch);
+    let cofn_expr = cofn.to_expr(&mut scratch);
+    let cofd_expr = cofd.to_expr(&mut scratch);
+
+    // Factored sides: pull `g` out of each; a cofactor of 1 is not displayed.
+    let factored_num = if num_cofactor_is_one {
+        g_expr
+    } else {
+        scratch.add(Expr::Mul(g_expr, cofn_expr))
+    };
+    let factored_den = if den_cofactor_is_one {
+        g_expr
+    } else {
+        scratch.add(Expr::Mul(g_expr, cofd_expr))
+    };
+    let factored = scratch.add(Expr::Div(factored_num, factored_den));
+    // Cancelled form: cofn / cofd (just cofn when the denominator cancels away).
+    let cancelled = if den_cofactor_is_one {
+        cofn_expr
+    } else {
+        scratch.add(Expr::Div(cofn_expr, cofd_expr))
+    };
+
+    let g_disp = display_expr(&scratch, g_expr);
+    let point_disp = display_expr(ctx, point);
+
+    Some(vec![
+        SubStep::new(
+            "Factoriza numerador y denominador",
+            display_expr(ctx, step.before),
+            display_expr(&scratch, factored),
+        )
+        .with_before_latex(latex_expr(ctx, step.before))
+        .with_after_latex(latex_expr(&scratch, factored)),
+        SubStep::new(
+            format!("Cancela el factor común ({g_disp})"),
+            display_expr(&scratch, factored),
+            display_expr(&scratch, cancelled),
+        )
+        .with_before_latex(latex_expr(&scratch, factored))
+        .with_after_latex(latex_expr(&scratch, cancelled)),
+        SubStep::new(
+            format!("Sustituye {var} = {point_disp} en la expresión simplificada"),
+            display_expr(&scratch, cancelled),
+            display_expr(ctx, step.after),
+        )
+        .with_before_latex(latex_expr(&scratch, cancelled))
+        .with_after_latex(latex_expr(ctx, step.after)),
+    ])
 }
 
 /// Full didactic description of the standard ("notable") limit / theorem / method a `before/after`
@@ -19734,10 +19837,7 @@ fn notable_limit_name(
         // factor-and-cancel — `(x²−1)/(x−1) = x+1`. The cancellation is a valid algebraic
         // step at ANY point (no "0/0" claim, which would need the limit point).
         if after_value.is_some() && limit_share_polynomial_factor(ctx, num, den) {
-            return Some(
-                "Factorizar numerador y denominador y cancelar el factor común antes de evaluar"
-                    .to_string(),
-            );
+            return Some(LIMIT_FACTOR_CANCEL_TITLE.to_string());
         }
         // Generic 0/0 at the limit point, not captured by a specific notable above. SOUNDNESS: the
         // denominator is a polynomial that vanishes AT THE LIMIT POINT (evaluated exactly), so it
@@ -21789,6 +21889,65 @@ mod limit_notable_tests {
             .into_iter()
             .map(|s| s.description)
             .collect()
+    }
+
+    fn substeps_finite_at_point(
+        before_src: &str,
+        after_src: &str,
+        point_src: &str,
+    ) -> Vec<super::SubStep> {
+        let mut ctx = Context::new();
+        let before = parse(before_src, &mut ctx).expect("parse before");
+        let after = parse(after_src, &mut ctx).expect("parse after");
+        let point = parse(point_src, &mut ctx).expect("parse point");
+        let mut step = Step::new_compact("desc", "Evaluar límite finito", before, after);
+        step.meta_mut().limit_point = Some(point);
+        generate_limit_substeps(&ctx, &step)
+    }
+
+    #[test]
+    fn factor_cancel_deepens_into_factor_cancel_substitute_chain() {
+        // With the limit point known (as the engine always sets for a finite
+        // limit), factor-and-cancel SHOWS the work: factor → cancel → substitute,
+        // each substep carrying its before/after expression.
+        let subs = substeps_finite_at_point("(x^2-1)/(x-1)", "2", "1");
+        let titles: Vec<&str> = subs.iter().map(|s| s.description.as_str()).collect();
+        assert_eq!(
+            titles.len(),
+            3,
+            "factor-cancel should show three substeps: {titles:?}"
+        );
+        assert!(titles[0].contains("Factoriza"), "{titles:?}");
+        assert!(titles[1].contains("Cancela el factor común"), "{titles:?}");
+        assert!(
+            titles[1].contains("x - 1"),
+            "cancel names the factor: {titles:?}"
+        );
+        assert!(titles[2].contains("Sustituye"), "{titles:?}");
+        // The work is visible in the before/after expressions.
+        assert_eq!(subs[0].before_expr, "(x^2 - 1) / (x - 1)");
+        assert_eq!(subs[0].after_expr, "(x - 1) * (x + 1) / (x - 1)");
+        assert_eq!(subs[1].after_expr, "x + 1");
+        assert_eq!(subs[2].before_expr, "x + 1");
+        assert_eq!(subs[2].after_expr, "2");
+
+        // A residual denominator survives the cancellation.
+        let subs2 = substeps_finite_at_point("(x^2-3*x+2)/(x^2-4)", "1/4", "2");
+        assert_eq!(subs2.len(), 3);
+        assert_eq!(subs2[1].after_expr, "(x - 1) / (x + 2)");
+        assert_eq!(subs2[2].after_expr, "1 / 4");
+
+        // Numerator IS the common factor: cofactor 1 is not printed, leaving 1/den.
+        let subs3 = substeps_finite_at_point("(x-1)/(x^2-1)", "1/2", "1");
+        assert_eq!(subs3.len(), 3);
+        assert_eq!(subs3[1].after_expr, "1 / (x + 1)");
+        assert_eq!(subs3[2].after_expr, "1 / 2");
+
+        // Without a known point the deepened builder declines and the one-line
+        // technique name is preserved (graceful fallback).
+        let flat = substep_titles_for_rule("Evaluar límite finito", "(x^2-1)/(x-1)", "2");
+        assert_eq!(flat.len(), 1);
+        assert!(flat[0].contains("cancelar el factor común"));
     }
 
     #[test]

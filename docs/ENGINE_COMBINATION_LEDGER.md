@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 319 (newest first)
+Active entries: 320 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -124,6 +124,7 @@ Active entries: 319 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: ecuaciones de suma de abs daban residual/respuesta incorrecta (peldaño de #4)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_single_abs_affine_equation`, | P0 honestidad: ecuaciones de un abs reorientadas (var = c - |arg|) fugaban residual malformado
 - 2026-06-24 | `retained` | `docs/LIMIT_NARRATIVE_GATEKEEPER_ROADMAP.md` (nuevo); arquitectura en | Scoping (clase A): gatekeeper G2 narrativa educativa de límites → secuencia de sub-ciclos
+- 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | Educativo (G2 SC1): narrativa factor-y-cancela de límites muestra el trabajo + infra multi-substep
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13612,3 +13613,44 @@ Active entries: 319 (newest first)
   - antes de entrar un gatekeeper clase L, localiza dónde el output retenible ya tiene estructura (aquí
     `Vec<SubStep>`) para evitar un ciclo de infraestructura; y verifica qué fija la huella (aquí un solo módulo
     in-file) para que cada sub-ciclo sea barato de retener. Siguiente: ejecutar SC1 (factor-y-cancela + infra).
+
+## 2026-06-24 - Educativo (G2 SC1): narrativa factor-y-cancela de límites muestra el trabajo + infra multi-substep
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_substeps` dispatch a
+    builders por técnica; `generate_limit_factor_cancel_substeps`; const `LIMIT_FACTOR_CANCEL_TITLE`)
+- status:
+  - `retained` (primer sub-ciclo del gatekeeper G2; behavior-preserving salvo la técnica profundizada)
+- capture:
+  - investment_class: educational (mitad educativa del north star; profundiza narrativa de límites)
+  - primary_dimension: north_star_educational
+  - cell: `(x²−1)/(x−1) → 2` ANTES un substep que nombra la técnica ("Factorizar… y cancelar…") con detail
+    vacío; AHORA tres substeps que MUESTRAN el trabajo: Factoriza `((x−1)(x+1))/(x−1)` → Cancela el factor
+    común (x−1) `x+1` → Sustituye x=1 `2`. Igual `(x²−3x+2)/(x²−4) → ((x−2)(x−1))/((x−2)(x+2)) → (x−1)/(x+2)
+    → 1/4`, `(x³−1)/(x−1) → … → x²+x+1 → 3`, y el caso cofactor-1 `(x−1)/(x²−1) → 1/(x+1) → 1/2`.
+  - DISEÑO (según el scoping, doc LIMIT_NARRATIVE_GATEKEEPER_ROADMAP): deepening por RECONSTRUCCIÓN post-hoc
+    en la capa didáctica (como integración por partes / fracciones parciales), NO trace-threading desde el
+    motor de valor. `notable_limit_name` sigue siendo el oráculo de técnica (devuelve el título); el dispatch
+    se keyea en ese título (const compartida `LIMIT_FACTOR_CANCEL_TITLE`) y, si el builder declina, cae al
+    substep único de nombre (fallback gracioso). El builder usa `let mut scratch = ctx.clone()` para construir
+    las formas factorizada/cancelada (g = gcd monico, cofactores por `div_rem`, `to_expr` en scratch),
+    renderizadas con display/latex. El `Vec<SubStep>` ya existía → sin ciclo de infraestructura.
+  - SOUNDNESS: el resultado del motor (`step.after`) es el oráculo del último substep (sustitución), no se
+    re-evalúa. gcd renormalizado mónico (cf. nota de gcd con escala racional). Sin punto conocido el builder
+    declina → fallback. Workspace 12318/0; clippy/fmt limpios; huella guardrail+pressure idéntica (el texto de
+    substeps NO lo rastrea el scorecard, solo los 4 rule_names top-level y steps_count==1, que no cambian
+    porque los substeps van DENTRO del Step).
+  - HUELLA: el wording por técnica se fija solo en el módulo in-file `limit_notable_tests`; el test viejo
+    `names_continuity_and_factor_cancel_methods` (sin punto) sigue verde vía fallback; añadido
+    `factor_cancel_deepens_into_factor_cancel_substitute_chain` (con punto) que fija la cadena de 3 substeps
+    + sus before/after, incluido el caso cofactor-1.
+- observed:
+  - el patrón de deepening por reconstrucción post-hoc + `ctx.clone()` scratch (de los narradores de
+    integración) se traslada directo a límites; keyear el dispatch en el título que ya decide la técnica evita
+    duplicar la lógica de selección y mantiene un único oráculo.
+  - los substeps van DENTRO del único Step de límite, así que profundizar la narrativa NO mueve `steps_count`
+    ni la huella del scorecard — la huella educativa vive en un módulo de tests in-file, barata de actualizar.
+- retained learning:
+  - para un gatekeeper de narrativa, profundizar UNA técnica por sub-ciclo con dispatch keyado-en-título +
+    fallback al nombre único es retenible y aislado: cada técnica futura (sustitución directa, notables,
+    L'Hôpital, sándwich, dominancia) añade su builder sin tocar las demás. Siguiente: SC2 sustitución directa.
