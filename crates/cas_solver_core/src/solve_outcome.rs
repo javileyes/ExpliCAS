@@ -441,11 +441,13 @@ pub fn try_solve_sum_of_abs_relation(
     let full = ctx.add(Expr::Sub(lhs, rhs));
     let (abs_terms, rem_slope, rem_const) = decompose_sum_of_abs(ctx, full, var)?;
 
-    // A single abs term is the existing single-abs path's job; only take over
-    // genuine sums here. (A reoriented `var = α·|arg| + β` single-abs equation
-    // that the single-abs path leaks is recovered via
-    // `try_single_abs_affine_equation`, which shares the segment core below.)
-    if abs_terms.len() < 2 {
+    // Single-abs EQUATIONS stay the single-abs path's job (a reoriented
+    // `var = α·|arg| + β` is recovered by `try_single_abs_affine_equation`, which shares
+    // the segment core below). But single-abs INEQUALITIES must use the segment method
+    // here: the legacy isolate-one-abs path solves the boundary EQUATION and returns the
+    // root instead of the interval (`|x| > x+1` → `{-1/2}`, not `(-∞, -1/2)`; `|x| < x`
+    // → `{0}`, not `No solution`). Take over every abs inequality, and genuine abs sums.
+    if abs_terms.is_empty() || (abs_terms.len() == 1 && op == RelOp::Eq) {
         return None;
     }
 

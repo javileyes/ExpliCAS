@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 337 (newest first)
+Active entries: 338 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
+- 2026-06-25 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (gate de `try_solve_sum_of_abs_... | P1 soundness: inecuación de UN solo valor absoluto vs RHS afín usa el método de segmentos (antes devolvía el punto frontera)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14388,3 +14389,36 @@ Active entries: 337 (newest first)
   - patrón sound para ops de matriz que comparten sintaxis con escalares (`^(-1)`, `/`): enrutar al primitivo
     matricial y gatear el broadcast escalar con un predicado de tipo-valor. Peldaño: potencia de matriz POSITIVA
     `M^n` (n≥2) sin evaluar (residual honesto, capacidad futura); `M/N` matriz/matriz residual.
+
+## 2026-06-25 - P1 soundness: inecuación de UN solo valor absoluto vs RHS afín usa el método de segmentos (antes devolvía el punto frontera)
+
+- area:
+  - `crates/cas_solver_core/src/solve_outcome.rs` (gate de `try_solve_sum_of_abs_relation`)
+- status:
+  - `retained` (fix de soundness de inecuaciones con un abs)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `|x| > x+1` ANTES `{-1/2}` (la raíz de `|x|=x+1`), AHORA `(-∞,-1/2)`; `|x| < x` ANTES `{0}`, AHORA
+    `No solution`; `|x-1| ≤ x-1` ANTES `{1}`, AHORA `[1,∞)`; `|x| ≥ x` ANTES "All reals if x≥0", AHORA
+    "All real numbers". Sigue cerrado: `√(x²-6x+9)=|x-3|` vs afín (path distinto, peldaño).
+  - MECANISMO: `try_solve_sum_of_abs_relation` (hook temprano antes del routing de aislamiento) DECLINABA con
+    `abs_terms.len() < 2`, dejando el caso de UN abs al path legacy de "aislar-un-abs", que resuelve la
+    ECUACIÓN frontera `|f|=g` y devuelve la raíz en vez del intervalo. `solve_decomposed_abs_relation` (método
+    exacto de segmentos por breakpoints, BigRational) YA maneja 1+ términos abs correctamente. Fix: cambiar el
+    gate a `abs_terms.is_empty() || (len==1 && op==Eq)` — las ECUACIONES de un abs siguen en
+    `try_single_abs_affine_equation`, pero las INECUACIONES de un abs usan el método de segmentos aquí.
+  - SOUNDNESS: oráculo de pertenencia independiente (fractions, `c·|m·x+b| {<,≤,>,≥} (p·x+q)`, 300 casos),
+    0 mismatches. Regresión: abs vs constante, suma de abs, ecuación de un abs intactos.
+  - validación: workspace failed:0; clippy/fmt; huella guardrail (16) + pressure (3) 0 deltas. Test
+    `test_eval_single_abs_inequality_uses_segment_method`.
+- observed:
+  - una inecuación `|f| {op} g` NO es la ecuación `|f|=g`: el path de aislamiento que resuelve la frontera y
+    devuelve la raíz es correcto para `=` pero un wrong-answer para `<,≤,>,≥`. El método de segmentos
+    (case-split por signo del argumento, exacto) es el sound para AMBOS; el gate solo debía excluir la ecuación
+    de un abs (que tiene su propio recuperador), no toda inecuación de un abs.
+- retained learning:
+  - el método de breakpoints/segmentos de `solve_decomposed_abs_relation` es el resolvedor sound para cualquier
+    `Σ|·| + afín {op} 0` con ≥1 término abs; reutilizarlo para el caso de un abs cierra el wrong-answer.
+    Peldaño: `√(cuadrado perfecto) {op} afín` (`√(x²-6x+9)>x-3 → "All real numbers if x-3≥0"`) toma un path de
+    presentación condicional distinto, no el hook de abs ni el radical — ciclo aparte.

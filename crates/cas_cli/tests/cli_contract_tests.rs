@@ -1071,6 +1071,38 @@ fn test_eval_ln_of_even_numerator_power_uses_abs() {
 }
 
 #[test]
+fn test_eval_single_abs_inequality_uses_segment_method() {
+    // A SINGLE `|f| {op} g` with an affine (non-constant) RHS used to fall to the
+    // isolate-one-abs path, which solves the boundary EQUATION and returns the root
+    // (`|x| > x+1 → {-1/2}`) or "No solution" instead of the interval. Route single-abs
+    // INEQUALITIES through the exact piecewise/segment method (single-abs equations and
+    // sum-of-abs are unchanged). Verified by a membership oracle over 300 cases.
+    for (input, expected) in [
+        ("abs(x) > x", "(-infinity, 0)"),
+        ("abs(x) >= x", "All real numbers"),
+        ("abs(x) < x", "No solution"),
+        ("abs(x-3) > x-3", "(-infinity, 3)"),
+        ("abs(x-1) <= x-1", "[1, infinity)"),
+        ("abs(x) > x+1", "(-infinity, -1/2)"),
+        ("abs(x) < x+1", "(-1/2, infinity)"),
+        ("abs(2*x) <= x+3", "[-1, 3]"),
+        ("abs(x-2) > 2*x", "(-infinity, 2/3)"),
+        // Unchanged: abs vs constant, sum-of-abs, single-abs equation.
+        ("abs(x) > 2", "(-infinity, -2) U (2, infinity)"),
+        ("abs(x)+abs(x-1) < 3", "(-1, 2)"),
+        ("abs(x) = x+1", "{ -1/2 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_matrix_inverse_routes_and_no_scalar_broadcast() {
     // `M^(-1)` / `c/M` used to fall to scalar arithmetic and fabricate `1/[[…]]`
     // (a non-square matrix has NO inverse; a symbolic one is not elementwise 1/entry).
