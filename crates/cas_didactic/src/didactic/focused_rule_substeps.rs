@@ -19605,6 +19605,10 @@ const LIMIT_DIRECT_SUBSTITUTION_TITLE: &str =
 /// titles and to dispatch the 0/0 deepening.
 const LIMIT_NOTABLE_PREFIX: &str = "Aplicar el límite notable: ";
 
+/// Prefix the generic 0/0 (L'Hôpital / Taylor) technique title shares, used to
+/// dispatch the iterated-L'Hôpital deepening.
+const LIMIT_LHOPITAL_DESC_PREFIX: &str = "Indeterminación 0/0 en";
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
@@ -19635,6 +19639,9 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     // form (base → 1, exponent → ±∞); show that before citing the definition of e.
     if description.starts_with(LIMIT_NOTABLE_PREFIX) && description.ends_with("= e") {
         return generate_limit_e_form_substeps(ctx, step, description);
+    }
+    if description.starts_with(LIMIT_LHOPITAL_DESC_PREFIX) {
+        return generate_limit_lhopital_substeps(ctx, step, point, description);
     }
     vec![SubStep::new(
         description,
@@ -19755,6 +19762,117 @@ fn generate_limit_notable_zero_over_zero_substeps(
             .with_before_latex(before_latex)
             .with_after_latex(latex_expr(ctx, step.after)),
     ]
+}
+
+/// Deepen the generic 0/0 (L'Hôpital) narration into the explicit iteration, or
+/// fall back to the one-line technique name when it cannot be reconstructed
+/// soundly (transcendental denominator, irrational point, etc.).
+fn generate_limit_lhopital_substeps(
+    ctx: &Context,
+    step: &Step,
+    point: Option<ExprId>,
+    description: String,
+) -> Vec<SubStep> {
+    generate_limit_lhopital_iteration(ctx, step, point).unwrap_or_else(|| {
+        vec![SubStep::new(
+            description,
+            display_expr(ctx, step.before),
+            display_expr(ctx, step.after),
+        )]
+    })
+}
+
+/// Reconstruct the L'Hôpital iteration: while the denominator vanishes at the
+/// point, differentiate numerator and denominator (the limit is preserved by
+/// L'Hôpital), then substitute once the denominator no longer vanishes.
+///
+/// SOUNDNESS: gated to a POLYNOMIAL denominator, so the number of steps is the
+/// EXACT multiplicity of the root (computed via `Polynomial::derivative`/`eval`
+/// over `BigRational`). Each intermediate `numᵏ/denᵏ` (k < m) is provably 0/0:
+/// the polynomial denominator vanishes there, and a finite result forces the
+/// numerator to vanish too (the same argument the one-line narration uses, and
+/// L'Hôpital preserves the limit at every level). The final value is the engine's
+/// result (`step.after`, the oracle) — never re-derived from the transcendental
+/// numerator. A transcendental denominator (`sin x`, …) is not a polynomial here
+/// and declines to the one-line name.
+fn generate_limit_lhopital_iteration(
+    ctx: &Context,
+    step: &Step,
+    point: Option<ExprId>,
+) -> Option<Vec<SubStep>> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    use num_traits::{One, Zero};
+    let point = point?;
+    let p = as_rational_const(ctx, point, 8)?;
+    let (num, den) = as_div(ctx, step.before)?;
+    let var = limit_single_var_name(ctx, step.before)?;
+    let den_poly = Polynomial::from_expr(ctx, den, &var).ok()?;
+    // Steps needed = multiplicity of `p` as a root of the polynomial denominator.
+    let mut d = den_poly.clone();
+    let mut steps_needed = 0usize;
+    while d.eval(&p).is_zero() {
+        steps_needed += 1;
+        if steps_needed > 8 {
+            return None; // unrealistically high order; keep the narrative bounded
+        }
+        d = d.derivative();
+    }
+    if steps_needed == 0 {
+        return None;
+    }
+
+    let point_disp = display_expr(ctx, point);
+    let mut scratch = ctx.clone();
+    let mut substeps: Vec<SubStep> = Vec::new();
+    let mut cur_num = num;
+    let mut cur_den = den;
+    let mut cur_disp = display_expr(ctx, step.before);
+    let mut cur_latex = latex_expr(ctx, step.before);
+    for k in 0..steps_needed {
+        // The symbolic differentiator emits UNFOLDED arithmetic (`3·x^(3-1)`,
+        // `e^x·ln(e)`); simplify numerator and denominator independently so each
+        // step reads cleanly (`3·x²`, `e^x`). Simplifying between steps also keeps
+        // the next derivative clean.
+        let raw_num = differentiate_symbolic_expr(&mut scratch, cur_num, &var)?;
+        let raw_den = differentiate_symbolic_expr(&mut scratch, cur_den, &var)?;
+        let next_num = simplify_expr_in_context(&mut scratch, raw_num);
+        let next_den = simplify_expr_in_context(&mut scratch, raw_den);
+        // `num'/1` reads as just `num'` (the derivative of a linear factor).
+        let next_den_is_one = matches!(scratch.get(next_den), Expr::Number(n) if n.is_one());
+        let next_form = if next_den_is_one {
+            next_num
+        } else {
+            scratch.add(Expr::Div(next_num, next_den))
+        };
+        let next_disp = display_expr(&scratch, next_form);
+        let next_latex = latex_expr(&scratch, next_form);
+        let title = if k == 0 {
+            format!(
+                "Indeterminación 0/0 en {var} = {point_disp}: aplica L'Hôpital (deriva numerador y denominador)"
+            )
+        } else {
+            "Sigue siendo 0/0: aplica L'Hôpital otra vez".to_string()
+        };
+        substeps.push(
+            SubStep::new(title, cur_disp.clone(), next_disp.clone())
+                .with_before_latex(cur_latex.clone())
+                .with_after_latex(next_latex.clone()),
+        );
+        cur_num = next_num;
+        cur_den = next_den;
+        cur_disp = next_disp;
+        cur_latex = next_latex;
+    }
+    substeps.push(
+        SubStep::new(
+            format!("El denominador ya no se anula; sustituye {var} = {point_disp}"),
+            cur_disp,
+            display_expr(ctx, step.after),
+        )
+        .with_before_latex(cur_latex)
+        .with_after_latex(latex_expr(ctx, step.after)),
+    );
+    Some(substeps)
 }
 
 /// Deepen a `1^∞` notable (`(1+1/x)^x → e`, `(1+u)^(1/u) → e`) into two substeps:
@@ -19927,7 +20045,7 @@ fn notable_limit_name(
             {
                 let var = limit_single_var_name(ctx, before).unwrap_or_else(|| "x".to_string());
                 return Some(format!(
-                    "Indeterminación 0/0 en {var}={}: aplica la regla de L'Hôpital (deriva \
+                    "{LIMIT_LHOPITAL_DESC_PREFIX} {var}={}: aplica la regla de L'Hôpital (deriva \
                      numerador y denominador) o el desarrollo de Taylor",
                     display_expr(ctx, point)
                 ));
@@ -22059,16 +22177,59 @@ mod limit_notable_tests {
             ("(tan(x)-x)/x^3", "1/3"),
             ("(sin(x)-x)/x^3", "-1/6"),
         ] {
+            // A polynomial denominator → the L'Hôpital iteration is reconstructed
+            // (≥ 2 substeps): differentiate until the denominator no longer
+            // vanishes, then substitute.
             let titles = substep_titles_finite_at_point(before, after, "0");
-            assert_eq!(titles.len(), 1, "{before} should narrate a 0/0 technique");
+            assert!(
+                titles.len() >= 2,
+                "{before}: iteration expected: {titles:?}"
+            );
             assert!(
                 titles[0].contains("0/0")
                     && titles[0].contains("Hôpital")
-                    && titles[0].contains("x=0"),
-                "{before}: expected the 0/0 L'Hôpital/Taylor narration at x=0 in `{}`",
-                titles[0]
+                    && titles[0].contains("x = 0"),
+                "{before}: {titles:?}"
+            );
+            assert!(
+                titles.last().unwrap().contains("sustituye"),
+                "{before}: ends with substitution: {titles:?}"
             );
         }
+    }
+
+    #[test]
+    fn lhopital_iteration_differentiates_until_determinate() {
+        // `(x − sin x)/x³ → 1/6` needs three L'Hôpital steps (the denominator x³
+        // has a triple root at 0), then a substitution — four substeps that show
+        // each differentiated form, ending at the engine's result.
+        let subs = substeps_finite_at_point("(x-sin(x))/x^3", "1/6", "0");
+        let titles: Vec<&str> = subs.iter().map(|s| s.description.as_str()).collect();
+        assert_eq!(subs.len(), 4, "{titles:?}");
+        assert!(titles[0].contains("L'Hôpital"), "{titles:?}");
+        assert!(titles[1].contains("Sigue siendo 0/0"), "{titles:?}");
+        assert!(titles[2].contains("Sigue siendo 0/0"), "{titles:?}");
+        assert!(titles[3].contains("sustituye"), "{titles:?}");
+        assert_eq!(subs[0].before_expr, "(x - sin(x)) / x^3");
+        assert_eq!(subs[0].after_expr, "(1 - cos(x)) / (3 * x^2)");
+        assert_eq!(subs[1].after_expr, "sin(x) / (6 * x)");
+        assert_eq!(subs[2].after_expr, "cos(x) / 6");
+        assert_eq!(subs[3].after_expr, "1 / 6");
+
+        // `ln(x)/(x−1)` needs a single step (simple root); `num'/1` prints as `1/x`.
+        let one = substeps_finite_at_point("ln(x)/(x-1)", "1", "1");
+        assert_eq!(one.len(), 2, "{one:?}");
+        assert_eq!(one[0].after_expr, "1 / x");
+        assert_eq!(one[1].after_expr, "1");
+
+        // A transcendental denominator cannot give an exact step count, so the
+        // iteration declines to the one-line L'Hôpital/Taylor name.
+        let trig = substep_titles_finite_at_point("x^2/sin(x)", "0", "0");
+        assert_eq!(trig.len(), 1, "{trig:?}");
+        assert!(
+            trig[0].contains("L'Hôpital") || trig[0].contains("Taylor"),
+            "{trig:?}"
+        );
     }
 
     #[test]
@@ -22081,15 +22242,17 @@ mod limit_notable_tests {
             ("(sin(x-1)-(x-1))/(x-1)^3", "-1/6"),
         ] {
             let titles = substep_titles_finite_at_point(before, after, "1");
-            assert_eq!(
-                titles.len(),
-                1,
-                "{before} should narrate a 0/0 technique at 1"
+            assert!(
+                titles.len() >= 2,
+                "{before}: iteration expected: {titles:?}"
             );
             assert!(
-                titles[0].contains("0/0") && titles[0].contains("x=1"),
-                "{before}: expected 0/0 narration at x=1 in `{}`",
-                titles[0]
+                titles[0].contains("0/0") && titles[0].contains("x = 1"),
+                "{before}: {titles:?}"
+            );
+            assert!(
+                titles.last().unwrap().contains("sustituye"),
+                "{before}: {titles:?}"
             );
         }
     }

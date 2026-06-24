@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 323 (newest first)
+Active entries: 324 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -128,6 +128,7 @@ Active entries: 323 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | Educativo (G2 SC2): sustitución directa de límites nombra el punto concreto
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC3): los límites notables 0/0 muestran la indeterminación antes de aplicar
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC4): los límites notables 1^∞ (= e) muestran la indeterminación antes de aplicar
+- 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC5): L'Hôpital iterado muestra cada derivada hasta que el denominador no se anula
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13771,3 +13772,50 @@ Active entries: 323 (newest first)
     cada uno con un dispatch mutuamente excluyente sobre el título que ya decide la técnica. Próximo: SC5
     (L'Hôpital iterado — el multi-paso más rico: derivar num/den hasta que sea determinado, mostrando cada par;
     requiere reconstrucción en scratch con `differentiate_symbolic_expr`, no solo strings).
+
+## 2026-06-24 - Educativo (G2 SC5): L'Hôpital iterado muestra cada derivada hasta que el denominador no se anula
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`generate_limit_lhopital_substeps` + `generate_limit_lhopital_iteration`; const `LIMIT_LHOPITAL_DESC_PREFIX`)
+- status:
+  - `retained` (quinto sub-ciclo de G2; el multi-paso más rico — la técnica estrella)
+- capture:
+  - investment_class: educational (narrativa de límites)
+  - primary_dimension: north_star_educational
+  - cell: `(x−sin x)/x³ → 1/6` ANTES una línea que nombra L'Hôpital; AHORA la iteración completa:
+    `(x−sinx)/x³ → (1−cosx)/(3x²) → sin(x)/(6x) → cos(x)/6 → 1/6` (4 substeps). Igual `(eˣ−1−x)/x² → (eˣ−1)/(2x)
+    → eˣ/2 → 1/2`, `ln(x)/(x−1) → 1/x → 1`, `(1−cos(x−1))/(x−1)² → sin(x−1)/(2x−2) → cos(x−1)/2 → 1/2`,
+    `(tan x−x)/x³ → 1/3` (3 pasos, derivadas de tan más densas pero correctas).
+  - DISEÑO: reconstrucción post-hoc en `ctx.clone()` scratch. Nº de pasos = MULTIPLICIDAD del punto como raíz
+    del denominador POLINÓMICO (exacta, vía `Polynomial::derivative`/`eval` sobre BigRational). Por paso:
+    `differentiate_symbolic_expr` numerador y denominador, y SIMPLIFICAR cada uno (el diferenciador emite
+    aritmética sin plegar: `3·x^(3-1)`, `eˣ·ln(e)`; `simplify_expr_in_context` los limpia a `3x²`, `eˣ`).
+    Simplificar ENTRE pasos mantiene limpia la siguiente derivada. `num'/1` se imprime como `num'`. Dispatch
+    keyado en el prefijo `LIMIT_LHOPITAL_DESC_PREFIX` (compartido con el reconocedor); fallback a la línea
+    única si declina.
+  - SOUNDNESS: gateado a denominador POLINÓMICO ⇒ el nº de pasos es la multiplicidad exacta. Cada intermedio
+    `numᵏ/denᵏ` (k<m) es provablemente 0/0: el denominador polinómico se anula ahí (verificado exacto) y un
+    resultado finito fuerza al numerador a anularse también (mismo argumento que la línea única; L'Hôpital
+    preserva el límite en cada nivel). El valor FINAL es el resultado del motor (`step.after`, el oráculo), NO
+    se re-deriva del numerador transcendente. Denominador transcendente (`sin x`) NO es polinomio aquí ⇒
+    declina a la línea única (test lo fija). Cap de 8 pasos. Si el diferenciador devuelve None ⇒ declina.
+  - validación: workspace 12322/0; clippy/fmt limpios; huella idéntica (substeps dentro del Step). Tests:
+    `names_generic_zero_over_zero_at_origin`/`_at_shifted_point` actualizados a la iteración (≥2 substeps,
+    primero 0/0+Hôpital, último "sustituye"); nuevo `lhopital_iteration_differentiates_until_determinate` fija
+    la cadena exacta de `(x−sinx)/x³` (4 substeps, formas intermedias), el caso de 1 paso `ln(x)/(x−1)`, y el
+    decline transcendente; el de denominador trig sigue en 1 substep vía fallback.
+- observed:
+  - el diferenciador simbólico emite aritmética SIN plegar (exponentes `3-1`, `ln(e)`); para narrativa hay que
+    SIMPLIFICAR cada forma (reusando el simplificador del engine vía `simplify_expr_in_context`), y simplificar
+    entre pasos para que la cadena de derivadas no acumule basura.
+  - reconstruir un PROCEDIMIENTO iterado (L'Hôpital) es sound si el nº de iteraciones se deriva de una
+    cantidad EXACTA (multiplicidad polinómica) y el valor final es el oráculo del motor — nunca re-derivar el
+    valor de una forma transcendente. La parte transcendente (numerador) solo se DERIVA y MUESTRA, su anulación
+    se infiere por el argumento de límite finito, no se evalúa.
+- retained learning:
+  - para narrar una iteración: deriva el CONTEO de una invariante exacta (aquí multiplicidad de raíz), muestra
+    cada forma intermedia simplificada, y ancla el valor final en el oráculo del motor. Gatea a la sub-clase
+    donde el conteo es exacto (denominador polinómico) y declina con fallback en el resto. Próximo: SC6
+    (sándwich: mostrar el acotamiento −|xᵏ| ≤ … ≤ |xᵏ|) y SC7 (dominancia ∞), más simples; SC8 (unilateral/DNE,
+    rama nueva).
