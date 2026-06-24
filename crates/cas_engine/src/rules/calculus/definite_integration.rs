@@ -715,17 +715,22 @@ fn parity_in_var(ctx: &Context, expr: ExprId, var_name: &str) -> Option<VarParit
                 let exp_parity = parity_in_var(ctx, *exp, var_name)?;
                 return (exp_parity == VarParity::Even).then_some(VarParity::Even);
             }
-            // Otherwise the base carries the variable: an x-free integer
-            // exponent carries the base's parity by the exponent's parity.
+            // Otherwise the base carries the variable.
+            let base_parity = parity_in_var(ctx, *base, var_name)?;
+            if base_parity == VarParity::Even {
+                // An even base is even for ANY x-free exponent — integer or not
+                // (`√(x²-1)`, `(x²+1)^(3/2)`): `base(-x) = base(x)` ⇒ `base^p(-x) = base^p(x)`.
+                return Some(VarParity::Even);
+            }
+            // Odd base: parity carries only through an x-free INTEGER exponent.
             let exponent = as_rational_const(ctx, *exp)?;
             if !exponent.is_integer() {
                 return None;
             }
-            let base_parity = parity_in_var(ctx, *base, var_name)?;
-            Some(match base_parity {
-                VarParity::Even => VarParity::Even,
-                VarParity::Odd if exponent.to_integer().is_even() => VarParity::Even,
-                VarParity::Odd => VarParity::Odd,
+            Some(if exponent.to_integer().is_even() {
+                VarParity::Even
+            } else {
+                VarParity::Odd
             })
         }
         Expr::Function(fn_id, args) if args.len() == 1 => {
@@ -875,6 +880,29 @@ pub(super) fn definite_integration_rewrite(
         if lower == upper {
             let zero = ctx.num(0);
             return Some(Rewrite::new(zero).desc("integrate(f, x, a, a) = 0"));
+        }
+        // An EVEN integrand over a strictly-NEGATIVE interval reflects to the positive
+        // branch: `f(-x) = f(x)` ⇒ `∫_a^b f = ∫_{-b}^{-a} f`. This moves the integral to
+        // where a real antiderivative that only covers `x ≥ a` applies — e.g.
+        // `integrate(√(x²-1), x, -3, -2) = integrate(√(x²-1), x, 2, 3)` (the antiderivative
+        // uses `acosh`, real only for `arg ≥ 1`, so the negative branch otherwise declines).
+        let strictly_negative = |e: &Endpoint| {
+            e.pi_multiple.is_zero() && e.e_multiple.is_zero() && e.rational.is_negative()
+        };
+        if strictly_negative(lower)
+            && strictly_negative(upper)
+            && parity_in_var(ctx, call.target, &call.var_name) == Some(VarParity::Even)
+        {
+            let reflected = DefiniteIntegralCall {
+                target: call.target,
+                var_expr: call.var_expr,
+                var_name: call.var_name.clone(),
+                lower: ctx.add(Expr::Neg(call.upper)),
+                upper: ctx.add(Expr::Neg(call.lower)),
+            };
+            if let Some(rewrite) = definite_integration_rewrite(ctx, &reflected) {
+                return Some(rewrite);
+            }
         }
     }
 
@@ -2276,21 +2304,31 @@ mod tests {
     }
 
     #[test]
-    fn acosh_antiderivative_declines_outside_its_real_domain() {
-        // `integrate(sqrt(x^2-1), x)` = (x*sqrt(x^2-1) - acosh(x))/2; `acosh` is
-        // real only for arg >= 1. Over a NEGATIVE interval the FTC step used to
-        // substitute `acosh(-3)` / `acosh(-2)` (complex) and report a non-real
-        // answer. The integral is finite (~2.2877), so we DECLINE (honest
-        // residual), never claim divergence.
-        assert!(eval_definite("integrate(sqrt(x^2-1), x, -3, -2)").is_none());
-        assert!(eval_definite("integrate(sqrt(x^2-4), x, -5, -3)").is_none());
-        // Positive interval: `acosh` argument stays >= 1, so it still evaluates.
+    fn even_integrand_over_negative_interval_reflects_to_positive() {
+        // `integrate(sqrt(x^2-1), x)` = (x*sqrt(x^2-1) - acosh(x))/2; `acosh` is real
+        // only for arg >= 1, so the FTC on a NEGATIVE interval would substitute
+        // `acosh(-3)` (complex). Since the integrand is EVEN, the interval reflects to
+        // the positive branch (`∫_{-3}^{-2} = ∫_2^3`) where the antiderivative is real,
+        // so it EVALUATES (to the same value as the positive interval), not declines.
+        // (The acosh-domain certificate remains as a safety net for any acosh that
+        // reaches a negative bound without reflection applying.)
+        assert_eq!(
+            eval_definite("integrate(sqrt(x^2-1), x, -3, -2)"),
+            eval_definite("integrate(sqrt(x^2-1), x, 2, 3)"),
+        );
+        assert_eq!(
+            eval_definite("integrate(sqrt(x^2-4), x, -5, -3)"),
+            eval_definite("integrate(sqrt(x^2-4), x, 3, 5)"),
+        );
+        assert!(eval_definite("integrate(sqrt(x^2-1), x, -3, -2)").is_some());
+        // Positive interval and the boundary touch (`acosh(1) = 0`) still evaluate.
         assert!(eval_definite("integrate(sqrt(x^2-1), x, 2, 3)").is_some());
-        assert!(eval_definite("integrate(sqrt(x^2-4), x, 3, 5)").is_some());
-        // Left endpoint touches the domain edge (`acosh(1) = 0` is real): keep.
         assert!(eval_definite("integrate(sqrt(x^2-1), x, 1, 2)").is_some());
-        // No acosh in the antiderivative -> unaffected.
-        assert!(eval_definite("integrate(x*sqrt(x^2-1), x, -3, -2)").is_some());
+        // Even polynomial over a negative interval: same value via reflection.
+        assert_eq!(
+            eval_definite("integrate(x^2, x, -3, -2)"),
+            eval_definite("integrate(x^2, x, 2, 3)"),
+        );
         assert!(eval_definite("integrate(x^2, x, 0, 2)").is_some());
     }
 

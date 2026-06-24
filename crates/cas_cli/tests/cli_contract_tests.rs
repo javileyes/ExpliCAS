@@ -1071,6 +1071,40 @@ fn test_eval_ln_of_even_numerator_power_uses_abs() {
 }
 
 #[test]
+fn test_eval_even_integrand_negative_interval_reflects() {
+    // An EVEN integrand over a strictly-negative interval reflects to the positive
+    // branch (`∫_{-3}^{-2} f = ∫_2^3 f`). `√(x²-1)`'s antiderivative uses `acosh` (real
+    // only for arg >= 1), so the negative branch used to decline; it now evaluates to
+    // the SAME closed form as the reflected positive interval.
+    for (neg, pos) in [
+        (
+            "integrate(sqrt(x^2-1), x, -3, -2)",
+            "integrate(sqrt(x^2-1), x, 2, 3)",
+        ),
+        (
+            "integrate(sqrt(x^2-4), x, -5, -3)",
+            "integrate(sqrt(x^2-4), x, 3, 5)",
+        ),
+        (
+            "integrate(1/sqrt(x^2-1), x, -3, -2)",
+            "integrate(1/sqrt(x^2-1), x, 2, 3)",
+        ),
+    ] {
+        let run = |e: &str| -> String {
+            let out = cli()
+                .args(["eval", e, "--format", "json"])
+                .output()
+                .expect("run");
+            let w: Value = serde_json::from_slice(&out.stdout).expect("json");
+            w["result"].as_str().unwrap_or("").to_string()
+        };
+        let r = run(neg);
+        assert_eq!(r, run(pos), "{neg}");
+        assert!(!r.contains("integrate("), "{neg} should evaluate, got {r}");
+    }
+}
+
+#[test]
 fn test_eval_sqrt_of_perfect_square_inequality_is_abs() {
     // `√(perfect square) {op} affine` is `|·| {op} affine`: `√(x²-6x+9) = |x-3|`. The
     // solve path used to keep the raw radical and emit a wrong conditional

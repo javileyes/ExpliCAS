@@ -556,9 +556,9 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   sigue; sin acosh (`x·√(x²-1)`, `x²`) intacto; los `c` no-cuadrado-perfecto (`√(x²-2)`) YA declinaban (sin
   regresión). Verificado: oráculo de soundness independiente (scipy.quad, 180 casos, exige resultado REAL y
   correcto o decline), 0 defects. Workspace failed:0; clippy/fmt; huella guardrail+pressure 0 deltas. Test
-  `acosh_antiderivative_declines_outside_its_real_domain`. Peldaño: EVALUAR la rama negativa con la
-  antiderivada log real `½(x√(x²-a²) - a²·ln|x+√(x²-a²)|)` (válida en |x|≥a) en vez de declinar — capacidad,
-  no soundness; también la rama impropia `[-∞,-a]` y los `c` no-cuadrado-perfecto siguen como residual.)*
+  `even_integrand_over_negative_interval_reflects_to_positive`. **Peldaño graduado 2026-06-25 (ver abajo):**
+  la rama negativa ahora EVALÚA por REFLEXIÓN de simetría par (`∫_a^b f = ∫_{-b}^{-a} f` para `f` par),
+  no por la antiderivada log — más simple y general. (Sigue residual: rama impropia `[-∞,-a]`.)*
 
 - [x] **(A) Cuelgue del simplificador**: `diff(sin(x)^3*cos(x)^2, x)`
   timeout >30s con `depth_overflow depth=51 phase=Core`; mismo patrón

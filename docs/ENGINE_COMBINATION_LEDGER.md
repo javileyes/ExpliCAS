@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 339 (newest first)
+Active entries: 340 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
 - 2026-06-25 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (gate de `try_solve_sum_of_abs_... | P1 soundness: inecuación de UN solo valor absoluto vs RHS afín usa el método de segmentos (antes devolvía el punto frontera)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (hook de abs: simplificar lhs/... | P1 soundness: √(cuadrado perfecto) {op} afín se reconoce como inecuación de |·| (antes devolvía un conditional erróneo)
+- 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`parity_in_va... | Capacidad (cierra peldaño Cluster C): integral definida de integrando PAR en intervalo negativo evalúa por reflexión de simetría
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14455,3 +14456,43 @@ Active entries: 339 (newest first)
   - `√(g²) {op} afín` ≡ `|g| {op} afín`: simplificar antes del clasificador de abs lo enruta al método de
     segmentos sound, cerrando toda la familia (incluida la que el ciclo 3 dejó como peldaño). Patrón general:
     normalizar la entrada de un clasificador-por-forma.
+
+## 2026-06-25 - Capacidad (cierra peldaño Cluster C): integral definida de integrando PAR en intervalo negativo evalúa por reflexión de simetría
+
+- area:
+  - `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`parity_in_var` reconoce base par^cualquiera;
+    reflexión par-negativa en `definite_integration_rewrite`)
+- status:
+  - `retained` (capacidad: residual honesto → valor correcto; cierra el peldaño del ciclo C)
+- capture:
+  - investment_class: capability (frente cálculo/integración del north-star)
+  - primary_dimension: universal_integration_coverage
+  - cell: `integrate(sqrt(x^2-1), x, -3, -2)` ANTES declinaba (residual honesto, por el certificado acosh), AHORA
+    `½acosh(2)+3√2-√3-½acosh(3)` (≈2.2877, idéntico a `[2,3]`); `integrate(sqrt(x^2-4), x, -5, -3)` y
+    `integrate(1/sqrt(x^2-1), x, -3, -2)` igual.
+  - MECANISMO: un integrando PAR sobre un intervalo estrictamente NEGATIVO refleja a la rama positiva
+    `∫_a^b f = ∫_{-b}^{-a} f` (por `f(-x)=f(x)`), donde la antiderivada real que solo cubre `x≥a` (acosh para
+    √(x²-a²)) sí aplica. Reflexión temprana en `definite_integration_rewrite` (recursión sobre el intervalo
+    reflejado, sin riesgo de bucle: el reflejado es positivo). Requirió arreglar `parity_in_var`: su rama `Pow`
+    exigía exponente ENTERO, así que `√(x²-1)=(x²-1)^(1/2)` no se reconocía como par; un BASE par elevada a
+    CUALQUIER exponente (entero o no) es par (`base(-x)=base(x) ⇒ base^p(-x)=base^p(x)`).
+  - SOUNDNESS: la identidad de reflexión preserva el valor EXACTAMENTE (par); verificado vs scipy.quad
+    (√(x²-1)[-3,-2]=2.2877, 1/√(x²-1)[-3,-2]=0.4458) y que `eval_definite(neg)==eval_definite(reflejado)`. El
+    certificado acosh del ciclo C queda como red de seguridad (para acosh que llegue a un borne negativo sin
+    reflexión). Regresión: polinomio par negativo (mismo valor), simetría impar (∫_{-1}^1 x³=0), rama positiva,
+    ordinarios intactos.
+  - validación: workspace failed:0; clippy `--all-targets`/fmt; huella guardrail (16) + pressure (3) 0 deltas.
+    Tests `even_integrand_over_negative_interval_reflects_to_positive`,
+    `test_eval_even_integrand_negative_interval_reflects`.
+- observed:
+  - la simetría PAR es la herramienta más simple y general para la rama negativa: en vez de generar/usar una
+    antiderivada log alternativa (lo que el peldaño proponía), reflejar el intervalo reusa toda la maquinaria
+    de la rama positiva. Antes hizo falta corregir el detector de paridad (base-par^no-entero es par) — un
+    detector incompleto bloqueaba la optimización correcta.
+  - la honestidad del ciclo previo (declinar acosh-de-negativo) NO se desperdició: dejó el caso como residual
+    correcto-pero-incompleto, y este ciclo lo sube a valor exacto sin reintroducir el wrong-answer (el
+    certificado sigue de red).
+- retained learning:
+  - patrón: integrando par + intervalo negativo → reflejar a positivo (reusa antiderivada de rama positiva).
+    El detector de paridad debe tratar base-par^cualquier-exponente como par. Peldaño: rama impropia
+    `[-∞,-a]` sigue residual.
