@@ -345,7 +345,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   FRACCIONARIO de numerador par caía a la rama sin abs. Afirmar dominio x>0 cuando la función vive en x≠0 es
   un wrong-answer de dominio. (P1 soundness en simplificación de logaritmos; hallado por el hunt adversarial
   multiagente ultracode, Cluster D.)
-  *(graduado 2026-06-24 PENDIENTE: helper compartido `exponent_keeps_base_positive` (en
+  *(graduado 2026-06-24 b5eed12c8: helper compartido `exponent_keeps_base_positive` (en
   `logarithm_inverse_support.rs`): `x^(p/q) > 0` ∀x≠0 ⟺ (p/q en forma reducida) q IMPAR y p PAR — q impar
   mantiene `x^(1/q)` real y sign-preserving para x<0, p par eleva al cuadrado esa rama negativa a positiva
   (los enteros pares son el caso q=1). `try_rewrite_evaluate_log_expr` ahora, para ese caso, emite
