@@ -356,6 +356,30 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   q-impar-p-par + definición numérica en x<0), 0 defects. Workspace failed:0; clippy/fmt; huella
   guardrail+pressure 0 deltas. Test `test_eval_ln_of_even_numerator_power_uses_abs`.)*
 
+- [ ] **(S) La derivada de una suma que CANCELA pierde la condición de dominio (Cluster E del hunt)**:
+  `diff(2·arcsin(x)+2·arccos(x), x)` → `0` SIN la condición `-1<x<1` (la derivada vale 0 solo donde ambas
+  funciones son derivables; fuera de `(-1,1)` no existe). Las derivadas individuales SÍ la llevan
+  (`diff(arcsin(x))→1/√(1-x²)` con `-1<x<1`), pero al cancelar `2/√(1-x²)-2/√(1-x²)→0` se descarta.
+  *(SONDEADO 2026-06-24, NO arreglado — es un hueco PROFUNDO de propagación de condiciones, no específico de
+  arcsin: a NIVEL EXPRESIÓN el dominio se rastrea bien para todas (`arcsin(x)-arcsin(x)` conserva `-1≤x≤1`,
+  `ln(x)-ln(x)` conserva `x>0`), pero a través de `diff`+cancelación SOLO sobreviven `ln`/`sqrt`;
+  `arcsin`/`arccos`/`acosh`/`arcsec` las pierden TODAS — inconsistencia entre el rastreo de dominio de la
+  entrada y la recolección de condiciones de la derivada. P1 honestidad; requiere generalizar el mecanismo de
+  `ln`/`sqrt` a las funciones de dominio acotado a través de la cancelación. Ciclo propio.)*
+
+- [ ] **(S) Operaciones de matriz simbólica fabrican resultados concretos sin sentido (Cluster F del hunt)**:
+  `[[1,2,3],[4,5,6]]^(-1)` → `1/[[1,2,3],[4,5,6]]` (una 2×3 NO tiene inversa); `[[a,b],[c,d]]^(-1)·I` →
+  `[[1/[[a,b],[c,d]], 0],[0, 1/[[a,b],[c,d]]]]` (basura). DOS facetas: (1) `matrix^(-1)`/`1/matrix` cae a la
+  aritmética escalar (`x^(-1)→1/x`) en vez de la inversa — el rule de inversa solo cubre la FUNCIÓN
+  `inverse(...)`, que SÍ es sound (numérica→inversa exacta, no-cuadrada→residual, singular→undefined,
+  simbólica→residual); (2) `ScalarMatrixRule` trata una expresión MATRIZ-VALUADA (`inverse([[a,b],[c,d]])`,
+  `1/matrix`) como ESCALAR y la difunde sobre las celdas. `det`/`*`/`transpose` numéricos son correctos.
+  *(SONDEADO 2026-06-24, NO arreglado. Soundness exento de fase (matrices incluidas). Fix de 2 partes:
+  (1) rule `Pow(matrix,-1) → inverse(matrix)` y `Div(c, matrix) → c·inverse(matrix)` reusando la función
+  sound; (2) detector `is_matrix_valued(expr)` (literal matriz, `inverse`/`transpose`/`adjugate`,
+  `Pow(matrix,_)`, `Div(_,matrix)`) que haga DECLINAR a `ScalarMatrixRule` cuando el "escalar" es
+  matriz-valuado, dejando residual honesto. Ciclo propio en el subsistema de matrices.)*
+
 - [x] **(S) La identidad complementaria arcsin+arccos colapsaba con argumento fuera de dominio**:
   `arcsec(1/2)+arccsc(1/2)` devolvía `π/2`, pero para `|x|<1` AMBOS términos son indefinidos en ℝ
   (`arcsec`/`arccsc` exigen `|x|≥1`). Internamente se reduce a `arccos(2)+arcsin(2)`, y la identidad
