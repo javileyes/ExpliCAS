@@ -59,8 +59,8 @@ fn solve_and_format(eq_str: &str, var: &str, budget: usize, mode: DomainMode) ->
 /// Format solution set in a deterministic way for snapshots
 fn format_solution_set(ctx: &cas_ast::Context, set: &SolutionSet) -> String {
     match set {
-        SolutionSet::Empty => "Empty Set".to_string(),
-        SolutionSet::AllReals => "All Real Numbers".to_string(),
+        SolutionSet::Empty => "No solution".to_string(),
+        SolutionSet::AllReals => "All real numbers".to_string(),
         SolutionSet::Discrete(exprs) => {
             let s: Vec<String> = exprs
                 .iter()

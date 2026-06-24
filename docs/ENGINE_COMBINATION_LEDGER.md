@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 335 (newest first)
+Active entries: 336 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
+- 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14307,3 +14308,43 @@ Active entries: 335 (newest first)
     a `|x-3|` ANTES del hook (sin nodo sqrt) → el hook declina y el path de ABS da `√(x²-6x+9)>x-3 → "All real
     numbers if x-3≥0"` (wrong, real `(-∞,3)`). Es un bug PRE-EXISTENTE del path de inecuación con abs, no del
     hook radical; ciclo aparte. También g constante negativa en el path #5 antiguo (cuando el hook declina).
+
+## 2026-06-25 - Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
+
+- area:
+  - `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI),
+    `crates/cas_didactic/src/timeline/solve_result_display/display.rs` (narrativa didáctica),
+    `crates/cas_solver/tests/repl_snapshots.rs` + snapshot (helper de test)
+- status:
+  - `retained` (fix de consistencia/honestidad de presentación entre puntos de entrada)
+- capture:
+  - investment_class: soundness/honestidad (misma matemática mostrada distinta = inconsistencia)
+  - primary_dimension: north_star_soundness (consistencia de salida)
+  - cell: `solve(x²+1=0)` → CLI `eval --format json` decía `No solution`, la ruta wire `envelope` decía
+    `Empty Set`; `solve(x²≥0)` → `All real numbers` vs `All Real Numbers` (mayúsculas). AHORA ambas rutas
+    coinciden en `No solution` / `All real numbers`.
+  - AUDITORÍA DE FONDO (motivada por la pregunta del usuario "¿varía el cálculo según CLI vs web?"): NO. Hay
+    UN solo núcleo — `EvalCommandConfig` es un ALIAS de `cas_api_models::EvalSessionRunConfig`; el CLI `eval`
+    llama `evaluate_eval_command_with_session` y la web/FFI (`eval_str_to_wire`/`envelope`) llama
+    `evaluate_prepared_stateless_request`; ambos son envoltorios finos sobre el MISMO `cas_engine` Simplifier +
+    `cas_solver`/`cas_math`. Diferencial de 79 expresiones (mis fixes + cálculo general + simplificación):
+    78 idénticas; las únicas diferencias eran de RENDERIZADO (las de arriba), 0 de matemática. Mis fixes de
+    soundness recientes son invariantes a la config (verificado en generic/strict/assume × real/complex).
+  - MECANISMO: había CUATRO renderers de `SolutionSet` con cadenas drifted (eval A, wire B, didáctico, helper
+    de test). Alineé las hojas `Empty`/`AllReals` de B + didáctico + helper a la convención dominante de A
+    (`No solution`/`All real numbers`, usada por 16 archivos y los contract tests).
+  - HALLAZGO de presupuesto (documentado, no es bug): el CLI `eval` REPORTA preset `standard` y la ruta wire
+    reporta `cli`, pero NO existe `Budget::preset_standard` — ambos resuelven a `Budget::preset_cli()`. Es solo
+    una etiqueta distinta, MISMOS límites; por eso el diferencial no vio divergencia ni en cómputos pesados.
+  - validación: workspace failed:0; clippy/fmt; huella guardrail+pressure 0 deltas; diferencial CLI↔wire 0/79.
+- observed:
+  - cuando dos puntos de entrada comparten núcleo pero tienen FORMATTERS duplicados, las cadenas hoja derivan
+    (Empty Set vs No solution, mayúsculas de AllReals) aunque la matemática sea idéntica. La pregunta "¿varía
+    el engine?" se responde con un DIFERENCIAL automático entre rutas, no leyendo código: aísla matemática (0
+    deltas) de presentación (las hojas drifted).
+- retained learning:
+  - el engine es entry-point-agnóstico (un núcleo, dos envoltorios); la única variación real es la CONFIG
+    (domain/value_domain/budget), entrada explícita, con defaults iguales (generic/real). Peldaño
+    ARQUITECTÓNICO: los renderers paralelos de `SolutionSet` (eval A vs wire B vs didáctico) siguen duplicados
+    en las ramas `Residual` y los helpers de intervalo/condicional — consolidar en un único renderer canónico
+    (clase A) eliminaría futuros drifts; y la etiqueta de preset `standard`/`cli` podría unificarse.

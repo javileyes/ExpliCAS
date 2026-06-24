@@ -4,8 +4,8 @@ use cas_formatter::DisplayExpr;
 
 pub(super) fn display_solution_set(context: &Context, solution_set: &SolutionSet) -> String {
     match solution_set {
-        SolutionSet::Empty => "Empty Set".to_string(),
-        SolutionSet::AllReals => "All Real Numbers".to_string(),
+        SolutionSet::Empty => "No solution".to_string(),
+        SolutionSet::AllReals => "All real numbers".to_string(),
         SolutionSet::Discrete(exprs) => {
             discrete::display_discrete_solution_set(context, exprs, display_expr)
         }
