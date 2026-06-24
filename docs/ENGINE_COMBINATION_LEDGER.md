@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 338 (newest first)
+Active entries: 339 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
 - 2026-06-25 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (gate de `try_solve_sum_of_abs_... | P1 soundness: inecuación de UN solo valor absoluto vs RHS afín usa el método de segmentos (antes devolvía el punto frontera)
+- 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (hook de abs: simplificar lhs/... | P1 soundness: √(cuadrado perfecto) {op} afín se reconoce como inecuación de |·| (antes devolvía un conditional erróneo)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14422,3 +14423,35 @@ Active entries: 338 (newest first)
     `Σ|·| + afín {op} 0` con ≥1 término abs; reutilizarlo para el caso de un abs cierra el wrong-answer.
     Peldaño: `√(cuadrado perfecto) {op} afín` (`√(x²-6x+9)>x-3 → "All real numbers if x-3≥0"`) toma un path de
     presentación condicional distinto, no el hook de abs ni el radical — ciclo aparte.
+
+## 2026-06-25 - P1 soundness: √(cuadrado perfecto) {op} afín se reconoce como inecuación de |·| (antes devolvía un conditional erróneo)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (hook de abs: simplificar lhs/rhs antes de decomponer)
+- status:
+  - `retained` (cierra el peldaño del ciclo 3; misma familia de soundness de abs)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `√(x²-6x+9) > x-3` ANTES "All real numbers if x-3≥0" (falso; en x≥3 `|x-3|=x-3` NO es `>`), AHORA
+    `(-∞,3)`; `√(x²) < x` ANTES `{0}`, AHORA `No solution`; `√(x²) ≥ x` AHORA "All real numbers";
+    `√((x-1)²) ≤ x` AHORA `[1/2,∞)`.
+  - MECANISMO: en EVAL `√(x²-6x+9)` simplifica a `|x-3|`, pero en SOLVE el hook de abs operaba sobre el `lhs`
+    CRUDO (`√((x-3)²)`) → `decompose_sum_of_abs` no veía abs → declinaba; el hook radical simplifica pero luego
+    no encuentra sqrt → declina; y caía al path viejo que emitía el conditional erróneo. Fix: simplificar
+    `eq.lhs`/`eq.rhs` ANTES de `try_solve_sum_of_abs_relation` — `√(cuadrado) → |·|` se reconoce y entra al
+    método de segmentos (ya sound tras el ciclo 3). Solo afecta la entrada del hook de abs (los demás hooks
+    siguen con `eq` original); para no-abs el hook declina igual.
+  - SOUNDNESS: oráculo de abs 300 casos 0 mismatches (sin regresión); las 8 formas √(cuadrado) verificadas a
+    mano contra la verdad. Inecuaciones radicales (`√(9-x²)>x-1`), suma de abs, ecuación de abs intactas.
+  - validación: workspace failed:0; clippy/fmt; huella guardrail (16) + pressure (3) 0 deltas. Test
+    `test_eval_sqrt_of_perfect_square_inequality_is_abs`.
+- observed:
+  - los hooks que deciden por la FORMA sintáctica de `eq.lhs` deben recibir la forma SIMPLIFICADA cuando una
+    simplificación canónica (`√(g²)→|g|`) cambia la clase del problema; si no, el mismo problema matemático
+    toma rutas distintas según cómo se escribió (radical vs abs) y diverge. Simplificar la entrada del
+    clasificador unifica las formas equivalentes.
+- retained learning:
+  - `√(g²) {op} afín` ≡ `|g| {op} afín`: simplificar antes del clasificador de abs lo enruta al método de
+    segmentos sound, cerrando toda la familia (incluida la que el ciclo 3 dejó como peldaño). Patrón general:
+    normalizar la entrada de un clasificador-por-forma.

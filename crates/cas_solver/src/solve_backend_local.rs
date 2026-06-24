@@ -1427,16 +1427,18 @@ impl SolveBackend for LocalSolveBackend {
         {
             return Ok((SolutionSet::Empty, Vec::new()));
         }
-        // Sum-of-absolute-values relations (`|x| + |x-1| < 5`, `|x| + |x-1| = 3`,
-        // etc.) are piecewise-linear: the isolate-one-abs strategy below loses the
-        // other terms and wrongly returns "No solution" (or a malformed residual).
-        // Solve them exactly here, before any isolation routing. Returns None for
-        // anything that is not a genuine sum (≥2 abs of linear) relation, so
-        // single-abs and all other shapes fall through unchanged.
+        // Absolute-value relations (`|x| + |x-1| < 5`, `|x| > x+1`, etc.) are
+        // piecewise-linear: the isolate-one-abs strategy below loses terms or returns
+        // the boundary point. Solve them exactly here, before any isolation routing.
+        // Simplify the two sides first so a `√(perfect square)` collapses to its `|·|`
+        // form (`√(x²-6x+9) → |x-3|`) and is recognized as an abs relation. Returns None
+        // for anything that is not an abs relation, so other shapes fall through.
+        let (abs_lhs, _) = simplifier.simplify(eq.lhs);
+        let (abs_rhs, _) = simplifier.simplify(eq.rhs);
         if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_relation(
             &mut simplifier.context,
-            eq.lhs,
-            eq.rhs,
+            abs_lhs,
+            abs_rhs,
             eq.op.clone(),
             var,
         ) {

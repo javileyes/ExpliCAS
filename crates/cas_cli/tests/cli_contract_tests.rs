@@ -1071,6 +1071,32 @@ fn test_eval_ln_of_even_numerator_power_uses_abs() {
 }
 
 #[test]
+fn test_eval_sqrt_of_perfect_square_inequality_is_abs() {
+    // `√(perfect square) {op} affine` is `|·| {op} affine`: `√(x²-6x+9) = |x-3|`. The
+    // solve path used to keep the raw radical and emit a wrong conditional
+    // (`√(x²-6x+9) > x-3 → "All real numbers if x-3 >= 0"`). Simplifying the sides before
+    // the abs hook collapses `√(square) → |·|` so the exact segment method applies.
+    for (input, expected) in [
+        ("sqrt(x^2-6*x+9) > x-3", "(-infinity, 3)"),
+        ("sqrt(x^2-6*x+9) <= x-3", "[3, infinity)"),
+        ("sqrt((x-3)^2) > x-3", "(-infinity, 3)"),
+        ("sqrt(x^2) > x", "(-infinity, 0)"),
+        ("sqrt(x^2) >= x", "All real numbers"),
+        ("sqrt(x^2) < x", "No solution"),
+        ("sqrt((x-1)^2) <= x", "[1/2, infinity)"),
+        ("sqrt((x-2)^2) < x", "(1, infinity)"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_single_abs_inequality_uses_segment_method() {
     // A SINGLE `|f| {op} g` with an affine (non-constant) RHS used to fall to the
     // isolate-one-abs path, which solves the boundary EQUATION and returns the root
