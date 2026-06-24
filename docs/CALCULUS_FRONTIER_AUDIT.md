@@ -275,7 +275,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   arrastra la condición `|x|≥1` (required_display vacío), mientras que la forma `arccos(1/x)+arcsin(1/x)`
   sí mantiene `x≤-1 or x≥1`: hueco de propagación de condición a través de la reescritura multi-paso
   arcsec→arccos — follow-up de honestidad, NO wrong-answer (el valor `π/2` es correcto donde `arcsec`
-  existe). **RESUELTO 2026-06-24 PENDIENTEB**: `push_intrinsic_function_requires` (diagnostics.rs) —el
+  existe). **RESUELTO 2026-06-24 9e82cbb13**: `push_intrinsic_function_requires` (diagnostics.rs) —el
   escaneo que emite las condiciones de dominio inverse-trig recorriendo la expresión— no tenía arm para
   Arcsec/Asec/Arccsc/Acsc; el individual `arcsec(x)→arccos(1/x)` sobrevive porque el arccos queda en el OUTPUT,
   pero la SUMA colapsa a `π/2` sin inverse-trig que anclar → condición vacía. Fix: arm nuevo que construye el
