@@ -252,6 +252,22 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (sumas 400/0, un-abso=afín 296/0). Workspace 12317/0; huella sin deltas. Peldaño de presentación: la ruta
   `|f|=f` rinde medio-rectas como "All real numbers if x≥0" en vez de `[0,∞)`.)*
 
+- [x] **(S) Ecuaciones polinómicas en x^(1/q) fugaban residual malformado y perdían todas las raíces**:
+  `solve(x-3·√x+2=0)` devolvía `ok=true` con `result="Solve: solve(x - (3·x^(1/2) - 2) = 0, x) = 0"`
+  (sintaxis interna del solver fugada, ambas raíces {1,4} soltadas); igual `x^(2/3)-x^(1/3)-2` (→{-1,8}),
+  `x-5√x+6` (→{4,9}), `x+√x-6` (→{4}). Son cuadráticas-en-disfraz (polinomio de grado ≥2 en u=x^(1/q)).
+  (P0 wrong-answer/leak en `solve`; hallado por el hunt adversarial ultracode de 12 frentes, Cluster A1.)
+  *(graduado 2026-06-24 PENDIENTEA1: la estrategia de Substitution solo cubría EXPONENCIALES (e^x, a^x); para
+  potencias racionales la ruta de Isolation reorientaba a `x=f(x)` y `try_recover_isolated_eq` no la cerraba →
+  fuga. Nuevo hook top-level `try_solve_rational_power_polynomial` (antes del routing): simplifica lhs-rhs
+  (√x→x^(1/2)), exige que x aparezca solo como potencias racionales positivas, q=lcm de denominadores,
+  reconstruye el polinomio en u (x^e→u^(q·e)), exige grado ≥2 en u (grado 1 recursaría infinito en la
+  retro-sub), resuelve en u recursivamente, y retro-sustituye `x^(1/q)=u_root` recursivamente — el solver
+  recursivo aplica el dominio de raíz real (q par descarta u_root<0; q impar la conserva). Verificación
+  adversarial: oráculo `fractions` independiente, 300 casos (q∈{2,3,4,5}, grado 2-3), 0 mismatches. Workspace
+  12326/0; huella sin deltas. Peldaños del Cluster A: A2 (polinomio en ln(x)) y A3 (suma de dos radicales
+  distintos) siguen fugando.)*
+
 - [x] **(S) Inecuación radical con argumento compuesto soltaba el dominio**: `sqrt(x-1) < 3` devolvía
   `(-∞, 10)` cuando la solución es `[1, 10)` — incluyendo puntos donde el radicando `x-1 < 0` y `√` no
   existe en ℝ. Igual `sqrt(2x-1) ≤ 3` → `(-∞, 5]` (real `[1/2, 5]`); `sqrt(x²-4) < 3` daba un solo intervalo

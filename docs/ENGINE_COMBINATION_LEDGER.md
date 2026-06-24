@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 327 (newest first)
+Active entries: 328 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -132,6 +132,7 @@ Active entries: 327 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC6): el teorema del sándwich muestra el acotamiento |uᵏ·osc| ≤ |uᵏ| → 0
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC7): la dominancia en ∞ muestra la indeterminación ∞/∞ antes de concluir
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | Educativo (G2 SC8, CIERRE): residual de límite sugiere límites laterales (sin afirmar DNE) — gatekeeper G2 completo
+- 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | P0 soundness (hunt Cluster A1): ecuaciones polinómicas en x^(1/q) se resuelven por sustitución (antes fugaban y perdían raíces)
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13938,3 +13939,47 @@ Active entries: 327 (newest first)
     marcadores literales de indeterminación; dispatch keyado-en-técnica con fallback; y NUNCA afirmar más de lo
     que el motor probó. Peldaño de CAPACIDAD (no narrativa): el motor de valor podría decidir más límites de
     punto finito (laterales→DNE/±∞/valor), lo que volvería narrable el resultado real del residual.
+
+## 2026-06-24 - P0 soundness (hunt Cluster A1): ecuaciones polinómicas en x^(1/q) se resuelven por sustitución (antes fugaban y perdían raíces)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_polynomial` + helpers
+    `collect_x_power_exponents`, `rebuild_x_powers_as_u`; hook en `solve_with_ctx_and_options`);
+    `crates/cas_solver/Cargo.toml` (num-bigint/num-integer a [dependencies])
+- status:
+  - `retained` (P0 wrong-answer/leak hallado por el hunt adversarial ultracode de 12 frentes)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `solve(x-3·√x+2=0)` ANTES `ok=true` con `result="Solve: solve(x - (3·x^(1/2) - 2) = 0, x) = 0"`
+    (sintaxis interna fugada, ambas raíces {1,4} perdidas); AHORA `{1,4}`. Igual `x^(2/3)-x^(1/3)-2 → {-1,8}`,
+    `x-5√x+6 → {4,9}`, `x+√x-6 → {4}`, `x^(2/3)+x^(1/3)-6 → {-27,8}`.
+  - MECANISMO: estas ecuaciones son polinomios de grado ≥2 en u=x^(1/q). La estrategia de Substitution del
+    solver solo cubría EXPONENCIALES (e^x, a^x); para potencias racionales la ruta de Isolation reorientaba a
+    `x = f(x)` y `try_recover_isolated_eq` no la cerraba → fuga del residual `Solve: solve(...) = 0` bajo
+    ok=true, soltando todas las raíces. Fix: hook top-level (antes del routing general) que (1) simplifica
+    lhs-rhs (normaliza √x→x^(1/2)); (2) recolecta los exponentes de x exigiendo que x aparezca SOLO como
+    potencias racionales positivas (rechaza x en funciones, denominadores, otras variables); (3) q = lcm de los
+    denominadores; (4) reconstruye el polinomio en u sustituyendo x^e → u^(q·e); (5) exige grado ≥2 en u
+    (grado 1 = una sola potencia, ya resuelta, y casarla recursaría infinito en la retro-sustitución); (6)
+    resuelve el polinomio en u recursivamente; (7) retro-sustituye `x^(1/q)=u_root` recursivamente, que aplica
+    el DOMINIO de raíz real correcto (q par descarta u_root<0; q impar la conserva).
+  - SOUNDNESS: el dominio de retro-sustitución lo decide el solver recursivo, ya verificado: `solve(√x=-1)`→∅,
+    `solve(x^(1/3)=-1)`→{-1}. Gate grado≥2 + q≥2 impide recursión infinita (la retro-sub es grado-1 en u). Sin
+    convexidad ni f64. Verificación adversarial: oráculo independiente `fractions` que genera polinomios en
+    x^(1/q) (q∈{2,3,4,5}, grado 2-3, raíces racionales) y compara con el conjunto real exacto (u_root → x=u^q
+    con filtro de paridad) — 300 casos, 0 mismatches, 0 skipped.
+  - validación: workspace 12326/0; clippy/fmt limpios; guardrail+pressure sin deltas de estado. Test
+    `test_eval_rational_power_polynomial_equation_solves_by_substitution` (casos + regresión de polinomios/
+    exponenciales/potencia-única/surd).
+- observed:
+  - la estrategia de Substitution estaba especializada a exponenciales; la sustitución general "polinomio en un
+    átomo g(x)" no existía. Un hook top-level que reusa el solver recursivo para el sub-polinomio Y la
+    retro-sustitución es de bajo riesgo (aislado) y hereda el dominio correcto sin re-implementarlo.
+  - el gate grado≥2 es a la vez correctitud (es nuestro caso) y seguridad de recursión (la retro-sub `x^(1/q)=c`
+    es grado-1 y no re-entra).
+- retained learning:
+  - para una ecuación "polinomio en un átomo invertible g(x)", sustituir + resolver + retro-sustituir
+    recursivamente deja que el solver existente aplique el dominio del átomo (raíz par/impar) — no re-derivar.
+    Peldaños del Cluster A: A2 = polinomio en ln(x) (`ln(x)²-ln(x)-2`), A3 = suma de dos radicales distintos
+    (`√(x+3)+√x=3`, método de aislar-y-elevar, no sustitución de un átomo). Siguen fugando; mismos commits.

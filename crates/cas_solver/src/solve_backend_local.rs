@@ -581,6 +581,220 @@ fn intersect_inequality_with_function_domain(
     intersect_solution_sets(&simplifier.context, set, domain)
 }
 
+/// True if `expr` contains the variable named `var`.
+fn expr_contains_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    cas_ast::collect_variables(ctx, expr)
+        .iter()
+        .any(|s| s == var)
+}
+
+/// Collect the rational exponents of every `x`-power in `expr` (bare `x` is
+/// exponent 1), returning `false` if `x` ever appears in a DISALLOWED position:
+/// inside a function, as the base of a non-rational/non-positive power, in a
+/// denominator, mixed with another variable, or as a compound base. Constants and
+/// `x`-free coefficients are fine. The collected exponents are only used to derive
+/// the common denominator `q`; the rebuild handles the actual algebra.
+fn collect_x_power_exponents(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    out: &mut Vec<num_rational::BigRational>,
+) -> bool {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_traits::{One, Signed};
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Constant(_) => true,
+        Expr::Variable(s) => {
+            if ctx.sym_name(*s) == var {
+                out.push(num_rational::BigRational::one());
+                true
+            } else {
+                false // a different variable — not a univariate x-power polynomial
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_x_power_exponents(ctx, l, var, out)
+                && collect_x_power_exponents(ctx, r, var, out)
+        }
+        Expr::Neg(inner) => {
+            let inner = *inner;
+            collect_x_power_exponents(ctx, inner, var, out)
+        }
+        Expr::Div(l, r) => {
+            let (l, r) = (*l, *r);
+            // `x` in a denominator would be a negative power (Laurent); out of scope.
+            if expr_contains_named_var(ctx, r, var) {
+                return false;
+            }
+            collect_x_power_exponents(ctx, l, var, out)
+        }
+        Expr::Pow(base, exp) => {
+            let (base, exp) = (*base, *exp);
+            let base_is_x = matches!(ctx.get(base), Expr::Variable(s) if ctx.sym_name(*s) == var);
+            if base_is_x {
+                let Some(e) = as_rational_const(ctx, exp) else {
+                    return false; // x^(non-constant) e.g. x^x
+                };
+                if !e.is_positive() {
+                    return false; // require a positive rational power
+                }
+                out.push(e);
+                return true;
+            }
+            // Any other power: allowed only if entirely free of `x`.
+            !expr_contains_named_var(ctx, base, var) && !expr_contains_named_var(ctx, exp, var)
+        }
+        // Functions (ln(x), sin(x), …), matrices, etc.: allowed only if `x`-free.
+        _ => !expr_contains_named_var(ctx, expr, var),
+    }
+}
+
+/// Rebuild `expr` with each `x`-power `x^e` replaced by `u^(q·e)` (bare `x` by
+/// `u^q`) in the fresh variable `u_var`. Precondition (validated by
+/// [`collect_x_power_exponents`]): every `q·e` is a positive integer, so the
+/// result is a polynomial in `u`. `x`-free subtrees are returned unchanged.
+fn rebuild_x_powers_as_u(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    u_var: &str,
+    q: &num_bigint::BigInt,
+) -> ExprId {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    if !expr_contains_named_var(ctx, expr, var) {
+        return expr;
+    }
+    match ctx.get(expr).clone() {
+        Expr::Variable(_) => {
+            // Contains x and is a bare variable ⇒ it is x. x → u^q.
+            let u = ctx.var(u_var);
+            let qn = ctx.add(Expr::Number(BigRational::from(q.clone())));
+            ctx.add(Expr::Pow(u, qn))
+        }
+        Expr::Pow(base, exp) => {
+            let base_is_x = matches!(ctx.get(base), Expr::Variable(s) if ctx.sym_name(*s) == var);
+            if base_is_x {
+                let e = as_rational_const(ctx, exp).expect("validated rational x-exponent");
+                let qe = BigRational::from(q.clone()) * e; // positive integer value
+                let u = ctx.var(u_var);
+                let en = ctx.add(Expr::Number(qe));
+                return ctx.add(Expr::Pow(u, en));
+            }
+            let nb = rebuild_x_powers_as_u(ctx, base, var, u_var, q);
+            let ne = rebuild_x_powers_as_u(ctx, exp, var, u_var, q);
+            ctx.add(Expr::Pow(nb, ne))
+        }
+        Expr::Add(l, r) => {
+            let nl = rebuild_x_powers_as_u(ctx, l, var, u_var, q);
+            let nr = rebuild_x_powers_as_u(ctx, r, var, u_var, q);
+            ctx.add(Expr::Add(nl, nr))
+        }
+        Expr::Sub(l, r) => {
+            let nl = rebuild_x_powers_as_u(ctx, l, var, u_var, q);
+            let nr = rebuild_x_powers_as_u(ctx, r, var, u_var, q);
+            ctx.add(Expr::Sub(nl, nr))
+        }
+        Expr::Mul(l, r) => {
+            let nl = rebuild_x_powers_as_u(ctx, l, var, u_var, q);
+            let nr = rebuild_x_powers_as_u(ctx, r, var, u_var, q);
+            ctx.add(Expr::Mul(nl, nr))
+        }
+        Expr::Div(l, r) => {
+            let nl = rebuild_x_powers_as_u(ctx, l, var, u_var, q);
+            let nr = rebuild_x_powers_as_u(ctx, r, var, u_var, q);
+            ctx.add(Expr::Div(nl, nr))
+        }
+        Expr::Neg(inner) => {
+            let ni = rebuild_x_powers_as_u(ctx, inner, var, u_var, q);
+            ctx.add(Expr::Neg(ni))
+        }
+        _ => expr,
+    }
+}
+
+/// Solve an EQUATION that is a polynomial of degree ≥ 2 in `x^(1/q)` for some
+/// integer `q ≥ 2`: `x` appears only as positive rational powers with common
+/// denominator `q` (e.g. `x - 3·√x + 2 = 0`, a quadratic in `√x`, or
+/// `x^(2/3) - x^(1/3) - 2 = 0`, a quadratic in `x^(1/3)`). Substitute `u = x^(1/q)`,
+/// solve the polynomial in `u`, then back-substitute `x^(1/q) = u_root` — the
+/// recursive solver finishes each with the correct real-root domain (even `q`
+/// drops negative `u_root`, odd `q` keeps it). Without this, the isolation path
+/// reorients to `x = f(x)` and leaks a malformed `solve(...)` residual while
+/// dropping every root.
+fn try_solve_rational_power_polynomial(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_math::polynomial::Polynomial;
+    use num_bigint::BigInt;
+    use num_integer::Integer;
+    use num_rational::BigRational;
+    use num_traits::One;
+
+    if eq.op != cas_ast::RelOp::Eq {
+        return None;
+    }
+    // Simplify the difference so radicals canonicalize to `x^(p/q)` powers.
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (expr, _) = simplifier.simplify(diff);
+
+    let mut exps: Vec<BigRational> = Vec::new();
+    if !collect_x_power_exponents(&simplifier.context, expr, var, &mut exps) || exps.is_empty() {
+        return None;
+    }
+    let q_big = exps.iter().fold(BigInt::one(), |acc, e| acc.lcm(e.denom()));
+    if q_big <= BigInt::one() {
+        return None; // q == 1: a plain polynomial in x, owned by the normal path
+    }
+
+    let u_var = "__rps_u";
+    let u_expr = rebuild_x_powers_as_u(&mut simplifier.context, expr, var, u_var, &q_big);
+
+    // Must be a genuine polynomial in u of degree ≥ 2. Degree 1 is a single
+    // x-power equation already solved directly — and matching it would recurse
+    // forever through the back-substitution `x^(1/q) = u_root`.
+    let u_poly = Polynomial::from_expr(&simplifier.context, u_expr, u_var).ok()?;
+    if u_poly.degree() < 2 {
+        return None;
+    }
+
+    let zero = simplifier.context.num(0);
+    let u_eq = Equation {
+        lhs: u_expr,
+        rhs: zero,
+        op: cas_ast::RelOp::Eq,
+    };
+    let (u_solution, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
+    let u_roots = match u_solution {
+        SolutionSet::Discrete(roots) => roots,
+        SolutionSet::Empty => return Some(SolutionSet::Empty),
+        _ => return None, // non-discrete / unsolved u-polynomial: leave to the existing path
+    };
+
+    // Back-substitute `x^(1/q) = u_root`; the recursive solve enforces the
+    // real-root domain (even q drops negative roots) and yields the x values.
+    let recip_q = simplifier
+        .context
+        .add(Expr::Number(BigRational::new(BigInt::one(), q_big)));
+    let x = simplifier.context.var(var);
+    let atom = simplifier.context.add(Expr::Pow(x, recip_q));
+    let mut solution = SolutionSet::Empty;
+    for u_root in u_roots {
+        let back_eq = Equation {
+            lhs: atom,
+            rhs: u_root,
+            op: cas_ast::RelOp::Eq,
+        };
+        let (xs, _) = crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
+        solution =
+            cas_solver_core::solution_set::union_solution_sets(&simplifier.context, solution, xs);
+    }
+    Some(solution)
+}
+
 /// Local backend facade selected as the active backend.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LocalSolveBackend;
@@ -611,6 +825,13 @@ impl SolveBackend for LocalSolveBackend {
             eq.op.clone(),
             var,
         ) {
+            return Ok((set, Vec::new()));
+        }
+        // Equations that are a polynomial of degree ≥ 2 in `x^(1/q)` (`x - 3·√x + 2`,
+        // `x^(2/3) - x^(1/3) - 2`, …) are quadratics-in-disguise: the isolation path
+        // reorients to `x = f(x)` and leaks a malformed `solve(...)` residual while
+        // dropping every root. Solve them by `u = x^(1/q)` substitution here first.
+        if let Some(set) = try_solve_rational_power_polynomial(simplifier, eq, var) {
             return Ok((set, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;

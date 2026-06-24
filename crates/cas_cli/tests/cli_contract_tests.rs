@@ -810,6 +810,55 @@ fn test_eval_sum_of_absolute_values_equation_solves_piecewise() {
 }
 
 #[test]
+fn test_eval_rational_power_polynomial_equation_solves_by_substitution() {
+    // Equations that are a polynomial of degree >= 2 in x^(1/q) (a
+    // quadratic-in-disguise) used to leak a malformed internal `Solve: solve(...)`
+    // residual under ok=true and drop every root. They are now solved by the
+    // u = x^(1/q) substitution, with the correct real-root domain on
+    // back-substitution: even q drops negative u-roots, odd q keeps them.
+    // Cross-checked against an independent exact (fractions) oracle over 300
+    // random cases (0 mismatches).
+    for (input, expected) in [
+        // Quadratic in sqrt(x): even root, both u-roots non-negative.
+        ("x - 3*sqrt(x) + 2 = 0", "{ 1, 4 }"),
+        ("x - 5*sqrt(x) + 6 = 0", "{ 4, 9 }"),
+        // A negative u-root is dropped by the even-root domain (sqrt(x) = -3 has no
+        // real solution), leaving only the valid root.
+        ("x + sqrt(x) - 6 = 0", "{ 4 }"),
+        // Quadratic in x^(1/3): the ODD root keeps the negative u-root (x^(1/3) = -1).
+        ("x^(2/3) - x^(1/3) - 2 = 0", "{ -1, 8 }"),
+        ("x^(2/3) + x^(1/3) - 6 = 0", "{ -27, 8 }"),
+        // sqrt(x)^2 normalizes to x; still a quadratic in sqrt(x).
+        ("sqrt(x)^2 - 3*sqrt(x) + 2 = 0", "{ 1, 4 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+
+    // Must NOT disturb the existing paths: plain polynomials, exponential
+    // substitution, single-power equations, and surd-root quadratics are unchanged.
+    for (input, expected) in [
+        ("x^4 - 5*x^2 + 4 = 0", "{ -2, -1, 1, 2 }"),
+        ("e^(2*x) - 3*e^x + 2 = 0", "{ ln(2), 0 }"),
+        ("sqrt(x) = 2", "{ 4 }"),
+        ("x^2 - 5*x + 6 = 0", "{ 2, 3 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_radical_inequality_keeps_argument_domain() {
     // `sqrt(g(x)) {<,<=} c` requires g(x) >= 0, but for a COMPOUND argument the
     // engine dropped that domain, returning e.g. `sqrt(x-1) < 3 → (-inf, 10)`
