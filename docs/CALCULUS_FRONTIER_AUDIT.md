@@ -267,7 +267,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   adversarial: oráculo `fractions` independiente, 300 casos (q∈{2,3,4,5}, grado 2-3), 0 mismatches. Workspace
   12326/0; huella sin deltas. Peldaños del Cluster A: A2 (polinomio en ln(x)) y A3 (suma de dos radicales
   distintos) siguen fugando.)*
-  *(peldaño A2 graduado 2026-06-24 PENDIENTEA2: `ln(x)²-ln(x)-2=0` etc. fugaban `Solve: solve(x - e^(…)) = 0`;
+  *(peldaño A2 graduado 2026-06-24 95a0947ce: `ln(x)²-ln(x)-2=0` etc. fugaban `Solve: solve(x - e^(…)) = 0`;
   ahora `{1/e, e²}`, `ln²=ln → {1,e}`, `ln²-3ln+2 → {e,e²}`. Extraído de A1 el core compartido
   `solve_polynomial_in_atom`; nuevo `try_solve_polynomial_in_log` halla el átomo `ln(arg)` con x, lo sustituye
   por u (`substitute_expr_by_id`), verifica que no queda x, y delega al core con back-sub `ln(x)=u_root`
