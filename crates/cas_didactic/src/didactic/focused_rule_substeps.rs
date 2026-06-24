@@ -19614,6 +19614,10 @@ const LIMIT_LHOPITAL_DESC_PREFIX: &str = "Indeterminación 0/0 en";
 const LIMIT_SQUEEZE_TITLE: &str =
     "Aplicar el teorema del sándwich: factor acotado × infinitésimo → 0";
 
+/// Prefix every infinity-dominance technique title shares, used to dispatch the
+/// ∞/∞ deepening.
+const LIMIT_DOMINANCE_PREFIX: &str = "Dominancia:";
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
@@ -19650,6 +19654,11 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     }
     if description == LIMIT_SQUEEZE_TITLE {
         if let Some(substeps) = generate_limit_squeeze_substeps(ctx, step) {
+            return substeps;
+        }
+    }
+    if description.starts_with(LIMIT_DOMINANCE_PREFIX) {
+        if let Some(substeps) = generate_limit_dominance_substeps(ctx, step, &description) {
             return substeps;
         }
     }
@@ -19925,6 +19934,47 @@ fn generate_limit_squeeze_substeps(ctx: &Context, step: &Step) -> Option<Vec<Sub
             display_expr(ctx, step.after),
         )
         .with_before_latex(latex_expr(&scratch, abs_power))
+        .with_after_latex(latex_expr(ctx, step.after)),
+    ])
+}
+
+/// Deepen an infinity-dominance quotient into the ∞/∞ form, then the dominance
+/// conclusion — but only when the quotient is GENUINELY ∞/∞: the growth-class
+/// cases (ln ≪ power ≪ exp) always are, and a rational quotient is iff both
+/// numerator and denominator are polynomials of degree ≥ 1 (so `1/x`, a `1/∞`,
+/// declines, as do the bare-polynomial and product-decay cases that are not
+/// quotients).
+fn generate_limit_dominance_substeps(
+    ctx: &Context,
+    step: &Step,
+    description: &str,
+) -> Option<Vec<SubStep>> {
+    let (num, den) = as_div(ctx, step.before)?;
+    let var = limit_single_var_name(ctx, step.before)?;
+    let poly_unbounded =
+        |e: ExprId| Polynomial::from_expr(ctx, e, &var).is_ok_and(|p| p.degree() >= 1);
+    // Growth-class titles carry the hierarchy phrase; both sides tend to ∞ there.
+    let is_inf_over_inf =
+        description.contains("jerarquía ln") || (poly_unbounded(num) && poly_unbounded(den));
+    if !is_inf_over_inf {
+        return None;
+    }
+    let before_disp = display_expr(ctx, step.before);
+    let before_latex = latex_expr(ctx, step.before);
+    Some(vec![
+        SubStep::new(
+            "Numerador y denominador → ∞: indeterminación ∞/∞",
+            before_disp.clone(),
+            "∞/∞",
+        )
+        .with_before_latex(before_latex.clone())
+        .with_after_latex(r"\frac{\infty}{\infty}"),
+        SubStep::new(
+            description.to_string(),
+            before_disp,
+            display_expr(ctx, step.after),
+        )
+        .with_before_latex(before_latex)
         .with_after_latex(latex_expr(ctx, step.after)),
     ])
 }
@@ -22367,14 +22417,41 @@ mod limit_notable_tests {
             ("(x^3+1)/(x^2+1)", "infinity", "numerador tiene mayor grado"),
             ("x^2+1", "infinity", "polinomio de grado ≥ 1"),
         ] {
+            // A genuine ∞/∞ quotient is narrated as two substeps (∞/∞ → dominance);
+            // a bare polynomial stays a single substep. Either way the dominance
+            // method appears in SOME substep (see
+            // `dominance_quotient_shows_infinity_over_infinity` for the chain).
             let titles = substep_titles_at_infinity(before, after);
-            assert_eq!(titles.len(), 1, "{before} should name one dominance method");
             assert!(
-                titles[0].contains(needle),
-                "{before}: expected `{needle}` in `{}`",
-                titles[0]
+                titles.iter().any(|t| t.contains(needle)),
+                "{before}: expected `{needle}` in `{titles:?}`"
             );
         }
+    }
+
+    #[test]
+    fn dominance_quotient_shows_infinity_over_infinity() {
+        // A genuine ∞/∞ quotient (growth-class or both-polynomial) prepends the
+        // indeterminate form; a `1/∞` (constant numerator) and a bare polynomial
+        // do NOT (they are not ∞/∞).
+        for (before, after, needle) in [
+            ("ln(x)/x", "0", "el logaritmo crece más despacio"),
+            ("exp(x)/x^3", "infinity", "la exponencial crece más rápido"),
+            ("(2*x^2+1)/(x^2+3)", "2", "coeficientes líderes"),
+            ("(x^2+1)/(x^3+x)", "0", "denominador tiene mayor grado"),
+        ] {
+            let titles = substep_titles_at_infinity(before, after);
+            assert_eq!(titles.len(), 2, "{before}: {titles:?}");
+            assert!(titles[0].contains("∞/∞"), "{before}: {titles:?}");
+            assert!(titles[1].contains(needle), "{before}: {titles:?}");
+        }
+        // `1/x` is `1/∞`, not `∞/∞` — single substep, no ∞/∞ claim.
+        let recip = substep_titles_at_infinity("1/x", "0");
+        assert_eq!(recip.len(), 1, "{recip:?}");
+        assert!(!recip[0].contains("∞/∞"), "{recip:?}");
+        // A bare polynomial is not a quotient.
+        let poly = substep_titles_at_infinity("x^2+1", "infinity");
+        assert_eq!(poly.len(), 1, "{poly:?}");
     }
 
     #[test]
@@ -22431,12 +22508,12 @@ mod limit_notable_tests {
                 "el logaritmo crece más despacio que la exponencial",
             ),
         ] {
+            // Growth-class quotients are genuine ∞/∞, so they get a two-substep
+            // narrative; the dominance method appears in SOME substep.
             let titles = substep_titles_at_infinity(before, after);
-            assert_eq!(titles.len(), 1, "{before} should name one dominance method");
             assert!(
-                titles[0].contains(needle),
-                "{before}: expected `{needle}` in `{}`",
-                titles[0]
+                titles.iter().any(|t| t.contains(needle)),
+                "{before}: expected `{needle}` in `{titles:?}`"
             );
         }
         // Outside the hierarchy (bounded sin) or a wrong/structure-mismatched result must decline.

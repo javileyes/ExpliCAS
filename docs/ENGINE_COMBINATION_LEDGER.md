@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 325 (newest first)
+Active entries: 326 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -130,6 +130,7 @@ Active entries: 325 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC4): los límites notables 1^∞ (= e) muestran la indeterminación antes de aplicar
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC5): L'Hôpital iterado muestra cada derivada hasta que el denominador no se anula
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC6): el teorema del sándwich muestra el acotamiento |uᵏ·osc| ≤ |uᵏ| → 0
+- 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC7): la dominancia en ∞ muestra la indeterminación ∞/∞ antes de concluir
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13854,3 +13855,38 @@ Active entries: 325 (newest first)
   - para narrar una cota/desigualdad, pon la desigualdad en el título y usa la cota relevante (aquí |uᵏ|) como
     expresión intermedia del before/after; barato y claro. Próximo: SC7 (dominancia ∞: comparación de términos
     líderes) y SC8 (unilateral/DNE: rama de dispatch nueva para "Conservar límite residual").
+
+## 2026-06-24 - Educativo (G2 SC7): la dominancia en ∞ muestra la indeterminación ∞/∞ antes de concluir
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`generate_limit_dominance_substeps`; const `LIMIT_DOMINANCE_PREFIX`)
+- status:
+  - `retained` (séptimo sub-ciclo de G2)
+- capture:
+  - investment_class: educational (narrativa de límites)
+  - primary_dimension: north_star_educational
+  - cell: `ln(x)/x → 0` ANTES un substep "Dominancia: el logaritmo crece más despacio…"; AHORA dos:
+    [1] "Numerador y denominador → ∞: indeterminación ∞/∞" (`ln(x)/x → ∞/∞`), [2] la conclusión de dominancia
+    (`ln(x)/x → 0`). Igual `exp(x)/x³ → ∞`, racionales `(x²+1)/(x³+x) → 0`, `(2x²+1)/(x²+3) → 2`.
+  - DISEÑO: mismo patrón "muestra la indeterminación → método" de SC3/SC4, pero SOLO cuando el cociente es
+    GENUINAMENTE ∞/∞. Gate sound: growth-class (título con "jerarquía ln") siempre lo es; racional lo es sii
+    numerador Y denominador son polinomios de grado ≥1. Así `1/x` (= 1/∞, numerador constante) DECLINA y se
+    queda en una línea; el polinomio pelado (no cociente) y la decadencia de producto (Mul, no Div) también.
+    Marcador `∞/∞` literal (`\frac{\infty}{\infty}`). Dispatch keyado en `LIMIT_DOMINANCE_PREFIX`.
+  - SOUNDNESS: la afirmación ∞/∞ requiere AMBOS lados → ∞. Verificado: growth-class (ln, potencia, exp todos
+    → ∞) o racional con ambos grados ≥1. `1/x` se rechaza correctamente (numerador 1 → 1, no ∞). El resultado
+    (0/∞/finito) es el oráculo del motor.
+  - validación: workspace 12324/0; clippy/fmt limpios; huella idéntica. Tests: `names_infinity_dominance_methods`
+    y `names_growth_class_dominance_at_infinity` con `.any()` (robusto al nº de substeps); nuevo
+    `dominance_quotient_shows_infinity_over_infinity` fija la cadena ∞/∞ y los declines de `1/x` y polinomio
+    pelado; el bloque de decadencia de producto sigue en 1 substep.
+- observed:
+  - el patrón "muestra la indeterminación → método" se reusa para una TERCERA indeterminación (∞/∞), pero el
+    gate de soundness es más sutil que en 0/0 / 1^∞: hay que VERIFICAR que ambos lados → ∞ (no basta el prefijo
+    de la técnica), porque la misma técnica ("denominador mayor grado") cubre `1/x` (1/∞) que NO es ∞/∞.
+- retained learning:
+  - al prefijar una indeterminación, verifica la PRECONDICIÓN real de esa forma, no solo que la técnica sea la
+    correcta: la dominancia "denominador mayor grado" aplica tanto a ∞/∞ como a 1/∞; solo la primera es ∞/∞.
+    Gatea por la precondición exacta (ambos → ∞) y declina con fallback. Próximo: SC8 (unilateral/DNE: rama de
+    dispatch nueva para "Conservar límite residual", el último peldaño de G2).
