@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 329 (newest first)
+Active entries: 330 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -134,6 +134,7 @@ Active entries: 329 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | Educativo (G2 SC8, CIERRE): residual de límite sugiere límites laterales (sin afirmar DNE) — gatekeeper G2 completo
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | P0 soundness (hunt Cluster A1): ecuaciones polinómicas en x^(1/q) se resuelven por sustitución (antes fugaban y perdían raíces)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log`... | P0 soundness (hunt Cluster A2): ecuaciones polinómicas en ln(x) se resuelven por sustitución
+- 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sum_of_two_radical... | P0 soundness (hunt Cluster A3, CIERRA Cluster A): suma de dos radicales = constante se resuelve y verifica
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -14017,3 +14018,45 @@ Active entries: 329 (newest first)
     sustituye); la retro-sustitución y el dominio los hereda del solver recursivo. Cluster A: A1 ✅, A2 ✅;
     queda A3 (suma de dos radicales distintos, `√(x+3)+√x=3` — NO es polinomio en un átomo, requiere
     aislar-y-elevar). Luego Cluster B (inecuaciones radicales) y C (integral definida).
+
+## 2026-06-24 - P0 soundness (hunt Cluster A3, CIERRA Cluster A): suma de dos radicales = constante se resuelve y verifica
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sum_of_two_radicals_equation` +
+    `collect_two_sqrt_and_const`, `as_sqrt_radicand`, `perfect_rational_sqrt`; hook tras A2)
+- status:
+  - `retained` (tercer fix del hunt; cierra el Cluster A — ecuaciones que fugaban residual)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `√(x+3)+√x=3` ANTES fugaba `Solve: solve(x - (3 - (x+3)^(1/2))^(1/(1/2)) = 0, x) = 0`; AHORA `{1}`.
+    Igual `√(x+1)+√x=1 → {0}`, `√(x+5)+√x=5 → {4}`, `√(x-1)+√(x+4)=5 → {5}`, simétricos
+    `√(x+1)+√(x-1)=3 → {85/36}`, `√(x-2)+√(x+2)=5 → {641/100}`, y sin solución `√x+√(x+8)=2`, `√(x+1)+√x=0`.
+  - MECANISMO: NO es polinomio en un átomo (dos radicales distintos). Reducción por elevar al cuadrado una vez:
+    `√f+√g=c ⟺ √(fg)=(c²-f-g)/2` (radical único, que el solver existente sí maneja). Detecta exactamente dos
+    términos √(radicando) de coeficiente +1 + constante racional c (si c<0 → ∅, una suma de raíces no es
+    negativa). Recursivamente resuelve la reducida, y VERIFICA cada candidato EXACTO contra la original:
+    f(r)≥0, g(r)≥0 y √f(r)+√g(r)=c (ambos radicandos cuadrados racionales perfectos que suman c) — descarta las
+    raíces extrañas que introducen el elevado al cuadrado y la rama espuria f,g<0 de la reducida.
+  - DOS sorpresas de robustez (cazadas por el oráculo, no por los probes): (1) el solver de radical único
+    DECLINA `√((x+1)(x-1))=…` (producto sin expandir) pero resuelve `√(x²-1)=…` → construyo el radicando con
+    `Polynomial::mul(...).to_expr` (forma expandida canónica); (2) declina la RHS `1/2·(9-2x)` (factorizada) pero
+    resuelve `9/2-x` (distribuida) → paso la RHS reducida por round-trip `Polynomial::from_expr→to_expr` para
+    forzar la forma afín canónica. Sin ambas, 11/300 fugaban.
+  - SOUNDNESS: verificación exacta con `fractions`/perfect-square; scope a candidatos RACIONALES (un candidato
+    surd declina → fallback, no riesgo de raíz extraña no verificada). Oráculo independiente 300 casos
+    `√(x+a)+√(x+b)=c`, 0 mismatches, 0 skipped (incluye simétricos, c=0 vacíos, y raíces racionales no triviales).
+  - validación: workspace 12328/0; clippy/fmt limpios; huella sin deltas. Test
+    `test_eval_sum_of_two_radicals_equation_solves_and_verifies`.
+- observed:
+  - reducción-por-cuadrado + VERIFICACIÓN EXACTA contra la original es el patrón sound para radicales múltiples:
+    el cuadrado introduce extrañas (y la reducida admite ramas f,g<0 espurias), así que verificar f≥0∧g≥0 (vía
+    radicandos cuadrados perfectos sumando c) es obligatorio, no opcional.
+  - al pasar sub-ecuaciones al solver recursivo, dárselas en forma CANÓNICA (radicando expandido, RHS afín
+    distribuida) — el solver de radical único declina formas factorizadas/producto equivalentes. Lección
+    general: normalizar lo que se pasa a un solver reusado.
+- retained learning:
+  - CLUSTER A COMPLETO (A1 potencias racionales, A2 ln, A3 suma de radicales): las tres clases de ecuación que
+    fugaban residual malformado del hunt quedan resueltas, cada una verificada adversarialmente (300/250/300
+    casos, 0 mismatches). Peldaño: A3 a candidatos surd (declina hoy). Siguiente cluster del hunt: B
+    (inecuaciones radicales, 5 wrong-answers P0) y C (integral definida √(x²-a²) en intervalo negativo).

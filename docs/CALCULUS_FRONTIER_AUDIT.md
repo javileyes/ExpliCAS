@@ -273,6 +273,14 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   por u (`substitute_expr_by_id`), verifica que no queda x, y delega al core con back-sub `ln(x)=u_root`
   (cerrada por el solver recursivo con dominio x>0). Oráculo independiente 250 casos, 0 mismatches. Workspace
   12327/0; huella sin deltas. Queda A3 (suma de dos radicales distintos).)*
+  *(peldaño A3 graduado 2026-06-24 PENDIENTEA3 — CIERRA Cluster A: `√(x+3)+√x=3` etc. fugaban; ahora `{1}`,
+  `√(x+1)+√x=1 → {0}`, simétricos `√(x+1)+√(x-1)=3 → {85/36}`, sin solución `√x+√(x+8)=2`. Reducción por elevar
+  al cuadrado `√f+√g=c ⟺ √(fg)=(c²-f-g)/2`, resuelve la reducida recursivamente, y VERIFICA cada candidato
+  exacto contra la original (f,g≥0 y √f+√g=c vía cuadrados racionales perfectos) — descarta extrañas. Dos
+  normalizaciones clave para el solver de radical único reusado: radicando expandido (`Polynomial::mul.to_expr`,
+  no `√((x+1)(x-1))`) y RHS afín distribuida (round-trip `Polynomial`, no `1/2·(9-2x)`). Scope a candidatos
+  racionales (surd declina). Oráculo independiente 300 casos, 0 mismatches. Workspace 12328/0; huella sin
+  deltas. Peldaño: candidatos surd.)*
 
 - [x] **(S) Inecuación radical con argumento compuesto soltaba el dominio**: `sqrt(x-1) < 3` devolvía
   `(-∞, 10)` cuando la solución es `[1, 10)` — incluyendo puntos donde el radicando `x-1 < 0` y `√` no

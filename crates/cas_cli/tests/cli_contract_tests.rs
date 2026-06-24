@@ -893,6 +893,37 @@ fn test_eval_log_polynomial_equation_solves_by_substitution() {
 }
 
 #[test]
+fn test_eval_sum_of_two_radicals_equation_solves_and_verifies() {
+    // `√f + √g = c` used to leak `Solve: solve(x - (c - √g)^(1/(1/2)) = 0, x) = 0`
+    // and drop the root. It is now reduced by squaring to the single radical
+    // `√(f·g) = (c² - f - g)/2`, solved, and each candidate VERIFIED exactly
+    // against the original (both radicands perfect rational squares summing to c),
+    // dropping extraneous roots. Cross-checked against an independent oracle over
+    // 300 random cases (0 mismatches).
+    for (input, expected) in [
+        ("sqrt(x+3) + sqrt(x) = 3", "{ 1 }"),
+        ("sqrt(x+1) + sqrt(x) = 1", "{ 0 }"),
+        ("sqrt(x+5) + sqrt(x) = 5", "{ 4 }"),
+        ("sqrt(x-1) + sqrt(x+4) = 5", "{ 5 }"),
+        // Symmetric radicands (difference of squares under the reduction).
+        ("sqrt(x+1) + sqrt(x-1) = 3", "{ 85/36 }"),
+        ("sqrt(x-2) + sqrt(x+2) = 5", "{ 641/100 }"),
+        // No real solution: the single candidate is extraneous (or the minimum of
+        // the LHS exceeds c) — verification drops it.
+        ("sqrt(x) + sqrt(x+8) = 2", "No solution"),
+        ("sqrt(x+1) + sqrt(x) = 0", "No solution"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_radical_inequality_keeps_argument_domain() {
     // `sqrt(g(x)) {<,<=} c` requires g(x) >= 0, but for a COMPOUND argument the
     // engine dropped that domain, returning e.g. `sqrt(x-1) < 3 → (-inf, 10)`

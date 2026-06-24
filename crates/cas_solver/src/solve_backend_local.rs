@@ -714,6 +714,198 @@ fn rebuild_x_powers_as_u(
     }
 }
 
+/// If `expr` is `Pow(radicand, 1/2)` (a square root), return the radicand.
+fn as_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        let (base, exp) = (*base, *exp);
+        if as_rational_const(ctx, exp)? == BigRational::new(1.into(), 2.into()) {
+            return Some(base);
+        }
+    }
+    None
+}
+
+/// Flatten `expr` into exactly two unit-coefficient square-root radicands (each
+/// containing `var`) plus a rational constant remainder: `√f + √g + d`. Returns
+/// `(f, g, d)` or None for any other shape (a radical with a coefficient or a
+/// minus sign, a third radical, a bare `x` outside a radical, a non-rational
+/// constant).
+fn collect_two_sqrt_and_const(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId, num_rational::BigRational)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    fn walk(
+        ctx: &Context,
+        expr: ExprId,
+        sign: i8,
+        var: &str,
+        rads: &mut Vec<ExprId>,
+        constant: &mut BigRational,
+    ) -> bool {
+        match ctx.get(expr) {
+            Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
+                walk(ctx, l, sign, var, rads, constant) && walk(ctx, r, sign, var, rads, constant)
+            }
+            Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
+                walk(ctx, l, sign, var, rads, constant) && walk(ctx, r, -sign, var, rads, constant)
+            }
+            Expr::Neg(inner) => {
+                let inner = *inner;
+                walk(ctx, inner, -sign, var, rads, constant)
+            }
+            _ => {
+                if let Some(radicand) = as_sqrt_radicand(ctx, expr) {
+                    // A radical must be +1·√(radicand) with the variable inside.
+                    if sign == 1 && expr_contains_named_var(ctx, radicand, var) {
+                        rads.push(radicand);
+                        return true;
+                    }
+                    return false;
+                }
+                if expr_contains_named_var(ctx, expr, var) {
+                    return false; // a bare `x` (or other x-term) outside a radical
+                }
+                match as_rational_const(ctx, expr) {
+                    Some(q) => {
+                        if sign >= 0 {
+                            *constant += q;
+                        } else {
+                            *constant -= q;
+                        }
+                        true
+                    }
+                    None => false, // non-rational constant (π, e, …)
+                }
+            }
+        }
+    }
+
+    let mut rads: Vec<ExprId> = Vec::new();
+    let mut constant = BigRational::zero();
+    if !walk(ctx, expr, 1, var, &mut rads, &mut constant) || rads.len() != 2 {
+        return None;
+    }
+    Some((rads[0], rads[1], constant))
+}
+
+/// Exact rational square root: returns `√q` when `q ≥ 0` and both numerator and
+/// denominator are perfect squares, else None (so `√q` is irrational).
+fn perfect_rational_sqrt(q: &num_rational::BigRational) -> Option<num_rational::BigRational> {
+    use num_rational::BigRational;
+    use num_traits::Signed;
+    if q.is_negative() {
+        return None;
+    }
+    let (n, d) = (q.numer(), q.denom());
+    let sn = n.sqrt();
+    let sd = d.sqrt();
+    if &(sn.clone() * &sn) == n && &(sd.clone() * &sd) == d {
+        Some(BigRational::new(sn, sd))
+    } else {
+        None
+    }
+}
+
+/// Solve an EQUATION that is a sum of two square roots equal to a constant,
+/// `√f + √g = c` (e.g. `√(x+3) + √x = 3`). Reduce by squaring once to the single
+/// radical `√(f·g) = (c² − f − g)/2`, solve that recursively, then keep only the
+/// candidates that EXACTLY satisfy the original — `f(r) ≥ 0`, `g(r) ≥ 0`, and
+/// `√f(r) + √g(r) = c` (both radicands perfect rational squares summing to `c`) —
+/// which drops the extraneous roots that squaring and the spurious `f,g < 0`
+/// branch of the reduced equation introduce. Without this, the isolation path
+/// leaks `Solve: solve(x − (c − √g)^(1/(1/2)) = 0, x) = 0` and drops the root.
+///
+/// Scoped to RATIONAL candidates: a non-rational candidate (surd root) declines
+/// (falls back to the existing path) rather than risk an unverified extraneous
+/// root — surd-root sums of radicals remain a follow-up.
+fn try_solve_sum_of_two_radicals_equation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use num_rational::BigRational;
+    use num_traits::Signed;
+
+    if eq.op != cas_ast::RelOp::Eq {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (expr, _) = simplifier.simplify(diff);
+
+    let (f, g, constant) = collect_two_sqrt_and_const(&simplifier.context, expr, var)?;
+    // `√f + √g + constant = 0`  ⇒  `√f + √g = c` with `c = −constant`.
+    let c = -constant;
+    if c.is_negative() {
+        return Some(SolutionSet::Empty); // a sum of square roots is never negative
+    }
+
+    // Radicands must be polynomials (to evaluate the verification exactly).
+    let f_poly = Polynomial::from_expr(&simplifier.context, f, var).ok()?;
+    let g_poly = Polynomial::from_expr(&simplifier.context, g, var).ok()?;
+
+    // Reduced single-radical equation: √(f·g) = (c² − f − g)/2. Build the
+    // radicand as the EXPANDED polynomial product (the single-radical solver
+    // declines an un-expanded `√((x+1)(x-1))` but handles `√(x²-1)`).
+    let fg = f_poly.mul(&g_poly).to_expr(&mut simplifier.context);
+    let half = simplifier
+        .context
+        .add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let sqrt_fg = simplifier.context.add(Expr::Pow(fg, half));
+    let c2 = simplifier.context.add(Expr::Number(c.clone() * &c));
+    let c2_minus_f = simplifier.context.add(Expr::Sub(c2, f));
+    let c2_minus_f_minus_g = simplifier.context.add(Expr::Sub(c2_minus_f, g));
+    let two = simplifier.context.num(2);
+    let reduced_rhs_raw = simplifier.context.add(Expr::Div(c2_minus_f_minus_g, two));
+    // Distribute the `/2` to the canonical polynomial form (`(9 - 2·x)/2 → 9/2 - x`)
+    // via a Polynomial round-trip; the single-radical solver declines the
+    // un-distributed `Div(poly, 2)` / `½·(…)` form but handles the affine form.
+    let reduced_rhs = match Polynomial::from_expr(&simplifier.context, reduced_rhs_raw, var) {
+        Ok(p) => p.to_expr(&mut simplifier.context),
+        Err(_) => reduced_rhs_raw,
+    };
+    let reduced_eq = Equation {
+        lhs: sqrt_fg,
+        rhs: reduced_rhs,
+        op: cas_ast::RelOp::Eq,
+    };
+    let (reduced_sol, _) =
+        crate::solver_entrypoints_solve::solve(&reduced_eq, var, simplifier).ok()?;
+    let candidates = match reduced_sol {
+        SolutionSet::Discrete(roots) => roots,
+        SolutionSet::Empty => return Some(SolutionSet::Empty),
+        _ => return None,
+    };
+
+    // Keep candidates that exactly satisfy the ORIGINAL equation.
+    let mut kept: Vec<ExprId> = Vec::new();
+    for r in candidates {
+        let rr = as_rational_const(&simplifier.context, r)?; // non-rational ⇒ decline (scope)
+        let fr = f_poly.eval(&rr);
+        let gr = g_poly.eval(&rr);
+        if let (Some(sf), Some(sg)) = (perfect_rational_sqrt(&fr), perfect_rational_sqrt(&gr)) {
+            if sf + sg == c {
+                kept.push(r);
+            }
+        }
+    }
+    if kept.is_empty() {
+        Some(SolutionSet::Empty)
+    } else {
+        Some(SolutionSet::Discrete(kept))
+    }
+}
+
 /// Shared core for "equation is a polynomial in an invertible atom `g(x)`": given
 /// the equation already rewritten as `u_expr = 0` in the fresh variable `u_var`
 /// (the atom replaced by `u`), require degree ≥ 2 in `u`, solve for `u`, then
@@ -909,6 +1101,11 @@ impl SolveBackend for LocalSolveBackend {
         // (`ln(x)^2 - ln(x) - 2 = 0`, …) leak the same way; solve them by the
         // `u = ln(x)` substitution.
         if let Some(set) = try_solve_polynomial_in_log(simplifier, eq, var) {
+            return Ok((set, Vec::new()));
+        }
+        // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks
+        // the same isolation residual; reduce by squaring and verify exactly.
+        if let Some(set) = try_solve_sum_of_two_radicals_equation(simplifier, eq, var) {
             return Ok((set, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
