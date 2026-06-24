@@ -241,7 +241,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   ok=true) en vez de `{2}`; el valor absoluto ANIDADO `|x + |x-1|| = 3` igual (correcto `{2}`); coef≠1 y sumas
   divididas (`2x - |x| = 1`, `(|x|+|x-1|)/2 = 1`) también fugaban. (P0 honestidad en `solve`; hallado al sondear
   el peldaño de abs anidado de #4.)
-  *(graduado 2026-06-24 PENDIENTESA: cuando una ecuación de un abs se reorienta a `var = α·|arg| + β`,
+  *(graduado 2026-06-24 e144dbb2d: cuando una ecuación de un abs se reorienta a `var = α·|arg| + β`,
   `try_abs_self_equation` solo reconocía el caso estructural `|f|=±f` y fugaba el resto. Es piecewise-lineal con
   un breakpoint → se resuelve con el MISMO core exacto del solver de sumas: extraído `solve_decomposed_abs_relation`
   (loop por segmentos ya verificado con 400 casos) y compartido; nuevo `try_single_abs_affine_equation` descompone
