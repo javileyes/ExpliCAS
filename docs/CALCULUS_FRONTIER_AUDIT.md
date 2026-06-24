@@ -225,7 +225,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   pressure sin deltas de estado (solo no-determinismo preexistente de smokes diff/integrate, ajeno al
   solver). Peldaño: ECUACIONES de suma de abs (`|x|+|x-1|=3`) siguen dando residual — misma técnica
   piecewise, follow-up; y pasos didácticos del solver piecewise.)*
-  *(peldaño ECUACIONES graduado 2026-06-24 PENDIENTEEQ: el solver `try_solve_sum_of_abs_inequality` se gateaba
+  *(peldaño ECUACIONES graduado 2026-06-24 baf9fbb52: el solver `try_solve_sum_of_abs_inequality` se gateaba
   solo a inecuaciones; las ecuaciones caían al viejo aislar-un-abs y daban residual basura
   (`|x|+|x-1|=3`) o un WRONG-ANSWER (`|x|+|x-1|=1 → (-∞,1]`, real `[0,1]`). Generalizado a `Eq` (renombrado a
   `try_solve_sum_of_abs_relation`): por segmento, pendiente 0 ⇒ se cumple sii la constante es 0 (segmento entero,
