@@ -257,7 +257,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   (sintaxis interna del solver fugada, ambas raíces {1,4} soltadas); igual `x^(2/3)-x^(1/3)-2` (→{-1,8}),
   `x-5√x+6` (→{4,9}), `x+√x-6` (→{4}). Son cuadráticas-en-disfraz (polinomio de grado ≥2 en u=x^(1/q)).
   (P0 wrong-answer/leak en `solve`; hallado por el hunt adversarial ultracode de 12 frentes, Cluster A1.)
-  *(graduado 2026-06-24 PENDIENTEA1: la estrategia de Substitution solo cubría EXPONENCIALES (e^x, a^x); para
+  *(graduado 2026-06-24 d5695b7ed: la estrategia de Substitution solo cubría EXPONENCIALES (e^x, a^x); para
   potencias racionales la ruta de Isolation reorientaba a `x=f(x)` y `try_recover_isolated_eq` no la cerraba →
   fuga. Nuevo hook top-level `try_solve_rational_power_polynomial` (antes del routing): simplifica lhs-rhs
   (√x→x^(1/2)), exige que x aparezca solo como potencias racionales positivas, q=lcm de denominadores,
