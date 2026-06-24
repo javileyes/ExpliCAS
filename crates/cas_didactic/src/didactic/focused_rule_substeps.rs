@@ -19631,6 +19631,11 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     {
         return generate_limit_notable_zero_over_zero_substeps(ctx, step, description);
     }
+    // The `… = e` notables (`(1+1/x)^x`, `(1+u)^(1/u)`) are the 1^∞ indeterminate
+    // form (base → 1, exponent → ±∞); show that before citing the definition of e.
+    if description.starts_with(LIMIT_NOTABLE_PREFIX) && description.ends_with("= e") {
+        return generate_limit_e_form_substeps(ctx, step, description);
+    }
     vec![SubStep::new(
         description,
         display_expr(ctx, step.before),
@@ -19746,6 +19751,26 @@ fn generate_limit_notable_zero_over_zero_substeps(
         )
         .with_before_latex(before_latex.clone())
         .with_after_latex(r"\frac{0}{0}"),
+        SubStep::new(description, before_disp, display_expr(ctx, step.after))
+            .with_before_latex(before_latex)
+            .with_after_latex(latex_expr(ctx, step.after)),
+    ]
+}
+
+/// Deepen a `1^∞` notable (`(1+1/x)^x → e`, `(1+u)^(1/u) → e`) into two substeps:
+/// show that the base tends to 1 and the exponent to ±∞ (the indeterminate form
+/// `1^∞`, so you cannot just take `1^∞ = 1`), then cite the definition of `e`.
+fn generate_limit_e_form_substeps(ctx: &Context, step: &Step, description: String) -> Vec<SubStep> {
+    let before_disp = display_expr(ctx, step.before);
+    let before_latex = latex_expr(ctx, step.before);
+    vec![
+        SubStep::new(
+            "La base tiende a 1 y el exponente a ∞: indeterminación 1^∞",
+            before_disp.clone(),
+            "1^∞",
+        )
+        .with_before_latex(before_latex.clone())
+        .with_after_latex(r"1^{\infty}"),
         SubStep::new(description, before_disp, display_expr(ctx, step.after))
             .with_before_latex(before_latex)
             .with_after_latex(latex_expr(ctx, step.after)),
@@ -22139,14 +22164,15 @@ mod limit_notable_tests {
 
     #[test]
     fn names_the_e_limit_at_infinity() {
-        // The infinity-side notable: the definition of e.
+        // The infinity-side notable: the definition of e. Narrated as the 1^∞
+        // indeterminate form first, then the standard limit.
         for before in ["(1+1/x)^x", "(1+1/n)^n"] {
             let titles = substep_titles_at_infinity(before, "e");
-            assert_eq!(titles.len(), 1, "{before} should name the e limit");
+            assert_eq!(titles.len(), 2, "{before}: {titles:?}");
+            assert!(titles[0].contains("1^∞"), "{before}: {titles:?}");
             assert!(
-                titles[0].contains("(1 + 1/x)^x = e"),
-                "{before}: expected the e notable in `{}`",
-                titles[0]
+                titles[1].contains("(1 + 1/x)^x = e"),
+                "{before}: expected the e notable in `{titles:?}`"
             );
         }
         // Wrong structure → wrong value: (1+2/x)^x → e² and (1+1/x)^(2x) → e² must decline (both
@@ -22297,14 +22323,33 @@ mod limit_notable_tests {
             );
             assert!(titles[1].contains(needle), "{before}: {titles:?}");
         }
-        // The 1^∞ `= e` form and the squeeze theorem are NOT 0/0 — single substep,
-        // no 0/0 claim.
+        // The 1^∞ `= e` form is NOT 0/0 (it gets the 1^∞ narrative instead, see
+        // `notable_one_to_infinity_shows_indeterminate_form_first`), and the
+        // squeeze theorem is a single substep — neither claims 0/0.
         let e_form = substep_titles("(1+x)^(1/x)", "e");
-        assert_eq!(e_form.len(), 1, "{e_form:?}");
-        assert!(e_form[0].contains("(1 + u)^(1/u) = e"), "{e_form:?}");
+        assert!(
+            !e_form.iter().any(|t| t.contains("indeterminación 0/0")),
+            "{e_form:?}"
+        );
         let squeeze = substep_titles("x*sin(1/x)", "0");
         assert_eq!(squeeze.len(), 1, "{squeeze:?}");
         assert!(squeeze[0].contains("teorema del sándwich"), "{squeeze:?}");
+    }
+
+    #[test]
+    fn notable_one_to_infinity_shows_indeterminate_form_first() {
+        // The `(1+u)^(1/u)` / `(1+1/x)^x → e` notables are 1^∞ (not 0/0): narrate
+        // the indeterminate form, then cite the definition of e.
+        let finite = substep_titles("(1+x)^(1/x)", "e");
+        assert_eq!(finite.len(), 2, "{finite:?}");
+        assert!(finite[0].contains("1^∞"), "{finite:?}");
+        assert!(!finite[0].contains("0/0"), "must not claim 0/0: {finite:?}");
+        assert!(finite[1].contains("(1 + u)^(1/u) = e"), "{finite:?}");
+
+        let at_inf = substep_titles_at_infinity("(1+1/x)^x", "e");
+        assert_eq!(at_inf.len(), 2, "{at_inf:?}");
+        assert!(at_inf[0].contains("1^∞"), "{at_inf:?}");
+        assert!(at_inf[1].contains("(1 + 1/x)^x = e"), "{at_inf:?}");
     }
 
     #[test]

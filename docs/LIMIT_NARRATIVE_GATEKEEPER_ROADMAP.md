@@ -90,7 +90,7 @@ every technique except the one deepened in the cycle.
 | ~~**SC1**~~ ✅ | **Factor-and-cancel** `(x²−1)/(x−1)→2` | + infra (multi-substep dispatch). Reuse `limit_share_polynomial_factor` + `Polynomial` gcd/factor. Substeps: factor → cancel common → substitute. | **DONE 2026-06-24** `generate_limit_factor_cancel_substeps`: factor → cancel → substitute, each carrying before/after; dispatch keyed on `LIMIT_FACTOR_CANCEL_TITLE` with single-name fallback when no limit point. Established the per-technique-builder pattern for SC2–SC8. |
 | ~~**SC2**~~ ✅ | **Direct substitution (continuity)** | reuse `limit_is_polynomial` + point eval. | **DONE 2026-06-24**: direct substitution is ATOMIC — the substituted-but-unevaluated form (`2²+3·2+1`) renders messily through the canonical formatter (reorders terms; folds `(-2)·(-1)` to `1·2`), so quality-wise we keep ONE substep but name the concrete point ("…su valor en x = 2"). **Learning: not every technique wants multi-step; atomic ops get a clear single substep.** (Source-order rendering of unevaluated arithmetic is a formatter peldaño.) |
 | ~~**SC3**~~ ✅ | **Notable limits — ALL 0/0 quotient forms** (sin/tan/…/u, `(e^u−1)/u`, `ln(1+u)/u`, scaled/cross/reciprocal, **and `(1−cos u)/u²`**) | show 0/0 → apply standard limit. | **DONE 2026-06-24** `generate_limit_notable_zero_over_zero_substeps`: prepend a "sustitución directa da 0/0" substep, then the notable. **Split revised to indeterminate-form TYPE** (cleaner than first/second order): one dispatch (`notable prefix && !ends_with("= e")`) covers every 0/0 quotient notable incl. the second-order `(1−cos u)/u²`. Sound: all are 0/0; `= e` (1^∞) excluded. |
-| **SC4** | **Notable limits — `1^∞` (`= e`) forms** `(1+u)^(1/u)=e`, `(1+1/x)^x=e` | show it is `1^∞` (base→1, exponent→∞), then cite the definition of `e`. | Now a clean type-based split: SC4 = the 1^∞ forms only (SC3 took all 0/0). |
+| ~~**SC4**~~ ✅ | **Notable limits — `1^∞` (`= e`) forms** `(1+u)^(1/u)=e`, `(1+1/x)^x=e` | show it is `1^∞` (base→1, exponent→∞), then cite the definition of `e`. | **DONE 2026-06-24** `generate_limit_e_form_substeps`: prepend "indeterminación 1^∞", then the notable. Complementary dispatch to SC3 (`notable prefix && ends_with("= e")`, covers finite u→0 and x→∞). Literal `1^∞` marker. Completes the type-based split (0/0 = SC3, 1^∞ = SC4). |
 | **SC5** | **L'Hôpital / Taylor iteration** `(x−sin x)/x³→1/6` | reuse `differentiate_symbolic_expr`; RE-derive the iteration post-hoc, each pair still 0/0 (exact), final substitution = `after`. | Marquee technique; meatiest — may be 2 cycles (polynomial 0/0 then transcendental). |
 | **SC6** | **Squeeze (sándwich)** `x·sin(1/x)→0` | reuse `limit_is_squeeze_product`. Show bounding `−|xᵏ| ≤ … ≤ |xᵏ| → 0`. | |
 | **SC7** | **Dominance at ∞** (ln≪pot≪exp; rational degree) | deepen the 6 `limit_infinity_dominance` strings with the leading-term comparison. | |
@@ -107,16 +107,19 @@ unevaluated arithmetic intermediates (reorder + sign-fold), so only reconstruct
 intermediates the formatter renders well (factored/cancelled forms do; flat
 substituted arithmetic does not).
 
-SC3 is **done** — it deepened every 0/0 quotient notable into "show 0/0 → apply"
-and established the principle of **splitting by indeterminate-form type** (0/0,
-1^∞, bounded×infinitesimal, dominance), with a "show the indeterminate form
-first, then the method" shape and literal-string intermediates (no expression
-building needed for the 0/0 marker).
+SC3 and SC4 are **done** — together they cover the notable limits, split by
+indeterminate-form type: 0/0 (SC3) and 1^∞ (SC4), each with the "show the
+indeterminate form first, then the method" shape and literal-string markers
+(`0/0`, `1^∞`) so no expression building is needed.
 
-**Next: SC4** (the `1^∞` `= e` forms) — show the form is `1^∞` then cite the
-definition of `e`; and/or **SC5** (L'Hôpital iterated — the richest multi-step:
-differentiate num/den until determinate, showing each pair). Each sub-cycle is
-retainable on its own, green before commit, and updates only its needles in
-`limit_notable_tests`. If a future cycle has no retainable sub-step ready, fall
-back to a P1 win rather than landing a half-built narration (skill guardrail for
-class-L gatekeepers).
+**Next: SC5** (L'Hôpital / Taylor iterated — the richest multi-step): for the
+generic 0/0 forms (`(x−sin x)/x³ → 1/6`) currently narrated by one line naming
+L'Hôpital, show the iteration — differentiate numerator and denominator,
+re-check 0/0, repeat, then substitute. This one needs reconstruction in a
+`ctx.clone()` scratch with `differentiate_symbolic_expr` (not just literal
+strings), and the exact 0/0 re-check at each step must stay sound. Then SC6
+(squeeze) and SC7 (dominance) deepen their reasoning, and SC8 (one-sided/DNE)
+adds a residual branch. Each sub-cycle is retainable on its own, green before
+commit, and updates only its needles in `limit_notable_tests`. If a future cycle
+has no retainable sub-step ready, fall back to a P1 win rather than landing a
+half-built narration (skill guardrail for class-L gatekeepers).

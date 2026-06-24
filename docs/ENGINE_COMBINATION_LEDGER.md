@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 322 (newest first)
+Active entries: 323 (newest first)
 
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
@@ -127,6 +127,7 @@ Active entries: 322 (newest first)
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_limit_... | Educativo (G2 SC1): narrativa factor-y-cancela de límites muestra el trabajo + infra multi-substep
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (`notable_limit_n... | Educativo (G2 SC2): sustitución directa de límites nombra el punto concreto
 - 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC3): los límites notables 0/0 muestran la indeterminación antes de aplicar
+- 2026-06-24 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` | Educativo (G2 SC4): los límites notables 1^∞ (= e) muestran la indeterminación antes de aplicar
 - 2026-06-23 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` (`eval_simplify`, ruta de `di... | P0 soundness: diff suelta la condición de dominio de un factor recíproco-trig que se cancela
 - 2026-06-23 | `retained` | `crates/cas_engine/src/orchestrator.rs` (dos bloques de root-shortcuts + `try... | P0 soundness: conmutador de matrices A·B − B·A colapsaba a 0 (multiplicación no conmutativa)
 - 2026-06-23 | `retained` | `crates/cas_math/src/poly_gcd_dispatch.rs` (`compute_poly_gcd_unified_with`, ... | P0 soundness: gcd multivariable devolvía 1 (coprimalidad falsa) por capas exactas incompletas
@@ -13736,3 +13737,37 @@ Active entries: 322 (newest first)
     (sustitución directa → 0/0) y luego el método; es uniforme por tipo de indeterminación y barato (strings
     literales, sin construir expresiones). Próximo: SC4 (1^∞ `= e`: mostrar que es 1^∞ y citar la definición
     de e) y/o SC5 (L'Hôpital iterado, el multi-paso más rico).
+
+## 2026-06-24 - Educativo (G2 SC4): los límites notables 1^∞ (= e) muestran la indeterminación antes de aplicar
+
+- area:
+  - `crates/cas_didactic/src/didactic/focused_rule_substeps.rs`
+    (`generate_limit_e_form_substeps`; dispatch en `generate_limit_substeps`)
+- status:
+  - `retained` (cuarto sub-ciclo de G2; completa la narrativa por TIPO de indeterminación de los notables)
+- capture:
+  - investment_class: educational (narrativa de límites)
+  - primary_dimension: north_star_educational
+  - cell: `(1+1/x)^x → e` y `(1+x)^(1/x) → e` ANTES un substep que cita el notable; AHORA dos: [1] "La base
+    tiende a 1 y el exponente a ∞: indeterminación 1^∞" (expr → 1^∞), [2] el notable (expr → e).
+  - DISEÑO: reusa el patrón de SC3 "muestra la indeterminación, luego el método", pero para 1^∞. Dispatch
+    complementario al de SC3: `description.starts_with(LIMIT_NOTABLE_PREFIX) && description.ends_with("= e")`
+    (cubre la forma finita u→0 y la de infinito x→∞). Marcador `1^∞` como strings literales ("1^∞" /
+    `1^{\infty}`), sin construir expresiones. Junto con SC3 (0/0) la familia de notables queda partida por
+    TIPO de indeterminación: 0/0 (SC3) vs 1^∞ (SC4); el sándwich (acotado×infinitésimo) y la dominancia tienen
+    sus propios prefijos.
+  - SOUNDNESS: ambas formas son genuinamente 1^∞ (base 1+· → 1, exponente → ±∞); el oráculo `after` = e ya las
+    distingue de otras. No se afirma 0/0 (SC3 las excluye con `!ends_with("= e")`), ni 1^∞ a formas 0/0.
+  - validación: workspace 12321/0; clippy/fmt limpios; huella idéntica. Tests: `names_the_e_limit_at_infinity`
+    actualizado a 2 substeps (1^∞ + notable); nuevo `notable_one_to_infinity_shows_indeterminate_form_first`
+    (finita + infinito, fija 1^∞ y que NO afirma 0/0); el bloque e-form de `notable_zero_over_zero_shows_
+    indeterminate_form_first` actualizado a "no afirma 0/0".
+- observed:
+  - una vez establecido el patrón "muestra la indeterminación → aplica el método" (SC3), añadir otro TIPO de
+    indeterminación (1^∞) es un builder pequeño + un dispatch complementario; el split por tipo se escala
+    limpio. Marcadores literales (`0/0`, `1^∞`) evitan construir y renderizar expresiones degeneradas.
+- retained learning:
+  - clasificar las técnicas de límite por TIPO de indeterminación da builders pequeños, ortogonales y sound,
+    cada uno con un dispatch mutuamente excluyente sobre el título que ya decide la técnica. Próximo: SC5
+    (L'Hôpital iterado — el multi-paso más rico: derivar num/den hasta que sea determinado, mostrando cada par;
+    requiere reconstrucción en scratch con `differentiate_symbolic_expr`, no solo strings).
