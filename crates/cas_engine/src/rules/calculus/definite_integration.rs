@@ -76,6 +76,15 @@ impl Endpoint {
         }
     }
 
+    /// The exact rational value when this endpoint carries no `pi`/`e` part.
+    fn as_pure_rational(&self) -> Option<&BigRational> {
+        if self.pi_multiple.is_zero() && self.e_multiple.is_zero() {
+            Some(&self.rational)
+        } else {
+            None
+        }
+    }
+
     fn enclosure(&self) -> (BigRational, BigRational) {
         let signed = |multiple: &BigRational, (low, high): (BigRational, BigRational)| {
             if *multiple >= BigRational::from_integer(0.into()) {
@@ -2211,6 +2220,49 @@ fn trig_nonzero_on_interval(
     Some(IntervalCertificate::Certified)
 }
 
+/// Decide whether the real roots of an irreducible-over-ℚ quadratic `a·x² + b·x + c` (discriminant
+/// ≥ 0, so the roots are IRRATIONAL) avoid the closed interval — without ever computing the surds.
+/// `g` is evaluated only at the rational endpoints and the vertex `-b/(2a)`: a sign change between
+/// the endpoints means exactly one root strictly inside (a pole → divergent); equal endpoint signs
+/// with the vertex strictly inside and `g(vertex)` of the opposite sign means BOTH roots are inside;
+/// otherwise the interval is root-free. Returns `Unknown` if either endpoint carries a `pi`/`e` part
+/// (the surd-vs-irrational comparison is then out of scope). All arithmetic is exact `BigRational`.
+fn quadratic_real_roots_clear_of_interval(
+    a: &BigRational,
+    b: &BigRational,
+    c: &BigRational,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
+) -> IntervalCertificate {
+    let (Some(lo), Some(hi)) = (
+        interval_low.as_pure_rational(),
+        interval_high.as_pure_rational(),
+    ) else {
+        return IntervalCertificate::Unknown;
+    };
+    let g = |x: &BigRational| -> BigRational { (a * x + b) * x + c };
+    let g_lo = g(lo);
+    let g_hi = g(hi);
+    // The roots are irrational, so `g` at a rational point is never zero. A defensive zero (a root
+    // that is in fact rational) means a root sits on the interval — decline rather than miscertify.
+    if g_lo.is_zero() || g_hi.is_zero() {
+        return IntervalCertificate::Unknown;
+    }
+    if g_lo.is_positive() != g_hi.is_positive() {
+        return IntervalCertificate::Undefined; // one root strictly inside
+    }
+    let two_a = BigRational::from_integer(2.into()) * a;
+    let vertex = -b / &two_a;
+    if &vertex > lo && &vertex < hi {
+        let g_vertex = g(&vertex);
+        // Equal endpoint signs but an interior dip past zero ⟹ both roots inside.
+        if g_vertex.is_zero() || g_vertex.is_positive() != g_lo.is_positive() {
+            return IntervalCertificate::Undefined;
+        }
+    }
+    IntervalCertificate::Certified
+}
+
 fn nonzero_on_interval(
     ctx: &mut Context,
     expr: ExprId,
@@ -2289,13 +2341,28 @@ fn nonzero_on_interval(
                         outcome = combine_certificates(outcome, cert);
                     }
                     2 => {
-                        let a = factor.coeffs[2].clone();
-                        let b = factor.coeffs[1].clone();
-                        let c = factor.coeffs[0].clone();
-                        let discriminant = &b * &b - BigRational::from_integer(4.into()) * &a * &c;
+                        let a = &factor.coeffs[2];
+                        let b = &factor.coeffs[1];
+                        let c = &factor.coeffs[0];
+                        let discriminant = b * b - BigRational::from_integer(4.into()) * a * c;
                         if !discriminant.is_negative() {
-                            // Irrational real roots could lie anywhere in the interval.
-                            return IntervalCertificate::Unknown;
+                            // Irreducible-over-ℚ quadratic with real (irrational) roots: locate
+                            // them by EXACT rational sign analysis at the endpoints and vertex.
+                            match quadratic_real_roots_clear_of_interval(
+                                a,
+                                b,
+                                c,
+                                interval_low,
+                                interval_high,
+                            ) {
+                                IntervalCertificate::Undefined => {
+                                    return IntervalCertificate::Undefined
+                                }
+                                IntervalCertificate::Unknown => {
+                                    return IntervalCertificate::Unknown
+                                }
+                                other => outcome = combine_certificates(outcome, other),
+                            }
                         }
                     }
                     _ => return IntervalCertificate::Unknown,
@@ -2363,9 +2430,28 @@ mod tests {
                 "{src} has an interior pole"
             );
         }
-        // Irrational roots (`x²−2 → ±√2`) are not located by rational factoring, so the
-        // certificate conservatively declines (honest residual, not a wrong value).
-        assert!(eval_definite("integrate(1/(x^2-2), x, 2, 3)").is_none());
+        // Irrational roots (`x²−2 → ±√2`, golden `x²−x−1 → φ`) are located by exact rational sign
+        // analysis at the endpoints/vertex, so a pole-free interval now EVALUATES…
+        for src in [
+            "integrate(1/(x^2-2), x, 2, 3)",
+            "integrate(1/(x^2-3), x, 2, 3)",
+            "integrate(1/(x^2-x-1), x, 2, 3)",
+            "integrate(x/(x^2-2), x, 2, 3)",
+        ] {
+            assert!(eval_definite(src).is_some(), "{src} should evaluate");
+        }
+        // …and an interval straddling an irrational pole stays divergent (√2 ∈ (1,2), φ ∈ (1,2)).
+        for src in [
+            "integrate(1/(x^2-2), x, 1, 2)",
+            "integrate(1/(x^2-3), x, 1, 2)",
+            "integrate(1/(x^2-x-1), x, 1, 2)",
+        ] {
+            assert_eq!(
+                eval_definite(src).as_deref(),
+                Some("undefined"),
+                "{src} straddles an irrational pole"
+            );
+        }
     }
 
     #[test]

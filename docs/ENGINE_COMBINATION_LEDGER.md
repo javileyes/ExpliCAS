@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 344 (newest first)
+Active entries: 345 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -126,6 +126,7 @@ Active entries: 344 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_constant_... | P0 soundness: `N/D {op} c` general por split-de-signo verificado (cubre cúbicas/cuárticas/signo-variable; cierra el peldaño del ciclo previo)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo splitter `split_rationa... | P0 soundness: forma recíproco-potencia `x^(-n) {op} c` rutea al hook verificado (antes daba el lado invertido)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | G1 (capacidad): integral DEFINIDA de racional con denominador EXPANDIDO de raíces reales (antes residual; la forma factorizada sí evaluaba)
+- 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | G1 (capacidad): integral DEFINIDA de racional con denominador cuadrático de raíces IRRACIONALES (cierra el peldaño del ciclo previo, SIN computar el surd)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14691,3 +14692,44 @@ Active entries: 344 (newest first)
     raíces reales. Peldaño: denominadores con raíces IRRACIONALES (`x²-2` en `[2,3]`, polos en ±√2 fuera del
     intervalo) — necesitan comparar la raíz surd-cuadrática contra los bornes (reusar el comparador exacto
     racional-vs-surd del ciclo de inecuaciones, ahora en otro archivo).
+
+## 2026-06-25 - G1 (capacidad): integral DEFINIDA de racional con denominador cuadrático de raíces IRRACIONALES (cierra el peldaño del ciclo previo, SIN computar el surd)
+
+- area:
+  - `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_interval` rama cuadrática
+    residual; nuevo `quadratic_real_roots_clear_of_interval`; `Endpoint::as_pure_rational`)
+- status:
+  - `retained` (segundo sub-paso de G1; cierra el peldaño irracional del ciclo c06e5358f)
+- capture:
+  - investment_class: capability (north-star Fase 1, gatekeeper G1)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `integrate(1/(x²-2), x, 2, 3)` → residual (raíces ±√2 irracionales, el certificado se rendía);
+    igual `1/(x²-3)`, `1/(x²-x-1)` (golden), `x/(x²-2)`. AHORA evalúan exactos (verificado numéricamente:
+    `1/(x²-2)[2,3]=0.26128`, `1/(x²+x-1)[-27/4,-19/4]=0.0792188426` vs FTC exacta a 9 dígitos). Oráculo (2
+    semillas, 300 casos, cuadráticos irreducibles disc>0 no-cuadrado, mitad con polo dentro mitad sin): **0
+    wrong** (el único "WRONG" del barrido fue un fallo del parser del oráculo con `phi`, verificado correcto).
+  - MECANISMO (la idea clave): ubicar una raíz IRRACIONAL en un intervalo NO requiere computar el surd — basta
+    ANÁLISIS DE SIGNO RACIONAL. Para el cuadrático residual `g(x)=ax²+bx+c` (disc≥0, sin raíces racionales tras
+    `factor_rational_roots`): evaluar `g` en los bornes racionales `lo`,`hi` y en el vértice `-b/(2a)`. Cambio
+    de signo entre `g(lo)` y `g(hi)` ⟹ exactamente una raíz DENTRO (polo → `Undefined`); mismo signo en ambos
+    + vértice estrictamente dentro + `g(vértice)` de signo OPUESTO ⟹ AMBAS raíces dentro (polo); en otro caso
+    el intervalo está libre de raíces (`Certified`). Las raíces irracionales nunca coinciden con un borne
+    racional, así que no hay caso frontera. `Unknown` si algún borne lleva parte `π`/`e` (fuera de alcance).
+  - SOUNDNESS (exacta, BigRational, cero surd): polo irracional DENTRO → `undefined` (verificado √2∈(1,2),
+    √3∈(1,2), golden φ∈(1,2)); intervalo libre de polo → valor FTC exacto. La verificación numérica del oráculo
+    (integración numérica vs salida del motor) casa a 1e-2 en todos los casos pole-free.
+  - validación: workspace failed:0 (12341); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3) 0
+    deltas; test `expanded_real_root_denominator_certifies_like_its_factored_form` extendido (irracional evalúa
+    + polo-irracional-dentro `undefined`).
+- observed:
+  - para decidir si una raíz IRRACIONAL de un polinomio cae en un intervalo racional, el análisis de signo en
+    puntos racionales (bornes + vértice) es exacto y EVITA por completo construir/comparar el surd. Patrón
+    general reutilizable: «¿tiene `p(x)` un cero en `[lo,hi]`?» se responde con signos de `p` en racionales
+    (Bolzano + monotonía por tramos), no con las raíces.
+  - el ciclo previo dejó el caso racional; este reusó la MISMA estructura (`factor_rational_roots` + ubicar por
+    factor) añadiendo solo la rama del residual cuadrático irreducible — incremento pequeño, huella idéntica.
+- retained learning:
+  - patrón: localizar ceros de un polinomio en un intervalo vía signo en puntos racionales (Bolzano/vértice),
+    no vía las raíces; exacto y barato incluso para raíces irracionales. Peldaño que queda: residual de grado
+    ≥3 sin raíces racionales (`(x²-2)(x²-3)` ya factoriza en dos cuadráticos, pero un cuártico irreducible no),
+    e impropias de racional con antiderivada LOG (límite-en-∞ de `ln|p/q|`, hoy declinan incluso factorizadas).
