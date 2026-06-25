@@ -347,8 +347,73 @@ pub fn contains_unbounded_factor(ctx: &Context, id: ExprId) -> bool {
             contains_unbounded_factor(ctx, *base)
                 && matches!(ctx.get(*exp), Expr::Number(n) if n.is_positive())
         }
+        // A sum/difference is non-finite only when it is DEFINITELY `±∞`: at least one infinite term
+        // with a KNOWN sign and no opposite-sign infinity (`∞ + 1`, `∞ + ∞`, `2∞ + 2∞` are `∞`; `∞ − ∞`
+        // is indeterminate, NOT `∞`). Sign-awareness is required to avoid mis-folding `∞ − ∞`.
+        Expr::Add(_, _) | Expr::Sub(_, _) => additive_definitely_infinite(ctx, id),
         _ => false,
     }
+}
+
+fn flip_inf_sign(s: InfSign) -> InfSign {
+    match s {
+        InfSign::Pos => InfSign::Neg,
+        InfSign::Neg => InfSign::Pos,
+    }
+}
+
+/// The sign of a term that is DEFINITELY `±∞` (else `None`): `∞`, `−∞`, and `c·∞` / `∞·c` for a
+/// nonzero finite literal `c` (recursively). A symbolic-coefficient infinity (`x·∞`) has unknown
+/// sign and returns `None`.
+fn infinite_term_sign(ctx: &Context, id: ExprId) -> Option<InfSign> {
+    match ctx.get(id) {
+        Expr::Constant(Constant::Infinity) => Some(InfSign::Pos),
+        Expr::Neg(inner) => infinite_term_sign(ctx, *inner).map(flip_inf_sign),
+        Expr::Mul(a, b) => {
+            let (a, b) = (*a, *b);
+            let signed = |inf_id: ExprId, lit_id: ExprId| -> Option<InfSign> {
+                let s = infinite_term_sign(ctx, inf_id)?;
+                if is_finite_literal(ctx, lit_id) && !is_zero_expr(ctx, lit_id) {
+                    Some(if is_negative_literal(ctx, lit_id) {
+                        flip_inf_sign(s)
+                    } else {
+                        s
+                    })
+                } else {
+                    None
+                }
+            };
+            signed(a, b).or_else(|| signed(b, a))
+        }
+        _ => None,
+    }
+}
+
+/// Whether an `Add`/`Sub` expression is DEFINITELY `±∞`. Flattens signed terms; a sum is `±∞` iff it
+/// has at least one known-sign infinite term, all infinite terms share that sign, and no term is an
+/// unknown-sign infinity (which could cancel it to an indeterminate). Finite terms (numbers,
+/// variables, …) cannot cancel an `∞`, so they are ignored.
+fn additive_definitely_infinite(ctx: &Context, expr: ExprId) -> bool {
+    let mut terms = Vec::new();
+    collect_add_terms_with_sign(ctx, expr, true, &mut terms);
+    let mut sum_sign: Option<InfSign> = None;
+    let mut has_infinite = false;
+    for (term, positive) in terms {
+        if let Some(s) = infinite_term_sign(ctx, term) {
+            let eff = if positive { s } else { flip_inf_sign(s) };
+            has_infinite = true;
+            match sum_sign {
+                None => sum_sign = Some(eff),
+                Some(prev) if prev != eff => return false, // `+∞` and `−∞` -> indeterminate
+                _ => {}
+            }
+        } else if contains_unbounded_factor(ctx, term) {
+            // An infinite term whose sign we cannot pin down (`x·∞`, `(−∞)·x`): the sum is undecidable.
+            return false;
+        }
+        // else: a finite term — it cannot cancel an `∞`, so it does not affect the sum's infiniteness.
+    }
+    has_infinite
 }
 
 /// Plan the indeterminate form `±∞ / ±∞ -> Undefined` (including finite-scaled infinities like

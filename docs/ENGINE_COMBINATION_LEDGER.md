@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 354 (newest first)
+Active entries: 355 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
+- 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound/consistencia: `(∞±finito)/(∞±finito) -> undefined` (aditivo; cierra peldaño C)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15150,3 +15151,44 @@ Active entries: 354 (newest first)
   - patrón: si una forma `∞`-derivada se deja sin plegar en su forma canónica (`∞^2`, `c·∞`), el predicado de
     no-finitud que protege la cancelación debe reconocer esa forma. Exponente literal positivo es certero;
     simbólico/negativo NO (finitud desconocida o finita). Próximo: `∞±∞` (peldaño C) y `finito^∞`.
+
+## 2026-06-26 - P0 unsound/consistencia: `(∞±finito)/(∞±finito) -> undefined` (aditivo; cierra peldaño C)
+
+- area:
+  - `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo `Add`/`Sub` vía
+    `additive_definitely_infinite` + `infinite_term_sign`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (casos aditivos en ambos tests inf-div)
+- status:
+  - `retained` (cierra peldaño C; quedan residuales menores — ver abajo)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: cli_web_consistency
+  - cell: ANTES `(inf+1)/(inf+1) -> 1` (ambos), `(inf+inf)/(inf+inf) -> 1` plain / `undefined` steps,
+    `(2*inf+2*inf)/(inf+inf) -> 2` plain, `(inf+x)/(inf+x) -> 1` (ambos). AHORA todos `undefined`.
+  - MECANISMO: `∞ + finito = ∞`, pero el engine deja `inf+1` SIN absorber en plain (`1 + infinity`), así que
+    la cancelación de `Add` idénticos daba `1`. Fix: `contains_unbounded_factor` reconoce un `Add`/`Sub`
+    DEFINITIVAMENTE `±∞` (`additive_definitely_infinite`): aplana términos con signo, exige ≥1 término infinito
+    de signo CONOCIDO, todos los infinitos del mismo signo, y ningún infinito de signo desconocido (que podría
+    cancelar a indeterminado). `infinite_term_sign` da el signo de `∞`, `−∞`, `c·∞` (literal `c`). El fold
+    `∞/∞ -> undefined` (recursivo) hace el resto.
+  - SOUNDNESS — sign-aware OBLIGATORIO para no over-foldear: `∞ − ∞` (signos mixtos) -> NO se clasifica como
+    `∞` (es indeterminado; lo foldea la regla de absorción a `undefined`). Un término finito NO puede cancelar
+    un `∞`, así que se ignora (incluso `1/0`: `∞ + undefined = undefined`, y `undefined/undefined = undefined`,
+    el cociente sigue siendo `undefined`). Un infinito de signo desconocido (`x·∞`, `(−∞)·x`) -> BAIL.
+    Verificado SIN over-fold: `inf-inf -> undefined`, `inf+x-inf` (símbolico intacto), `(inf+1)/2 -> infinity`,
+    `(x+1)/(x+1) -> 1`, `((-inf)+5)/((-inf)+5) -> undefined`.
+  - validación: workspace failed:0 (12348); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; tests aditivos.
+  - RESIDUALES (honestos): `inf+1 -> "1 + infinity"` plain vs `infinity` steps (divergencia de ABSORCIÓN,
+    NORMALIZATION no wrong-answer — el plain no absorbe `finito+∞`); `(inf+x-inf)/(inf+x-inf) -> 1` y
+    `(inf*x+1)/(inf*x+1) -> 1` (infinito de signo desconocido/mixto; ambos modos; contrived).
+- observed:
+  - clasificar una SUMA como no-finita exige análisis de SIGNO (no basta "contiene un término ∞"): `∞ − ∞` y
+    `∞ + x·∞` son indeterminados, no `∞`. La regla: ≥1 infinito de signo conocido, todos iguales, ninguno de
+    signo desconocido; los finitos no cancelan ∞ y se ignoran.
+- retained learning:
+  - patrón: para Mul/Pow basta "contiene factor ∞" (un producto con ∞ es no-finito, y no-finito/no-finito =
+    undefined). Para Add/Sub hay que ser sign-aware porque `∞−∞` cancela a indeterminado. Próximo peldaño de
+    consistencia ∞: la ABSORCIÓN `finito+∞ -> ∞` no corre en plain (`inf+1` diverge) — mismo patrón regla-vs-
+    no-op del modo plain que ya resolvimos para `∞/∞`.

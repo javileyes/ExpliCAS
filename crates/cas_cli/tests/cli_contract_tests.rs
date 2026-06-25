@@ -1191,6 +1191,12 @@ fn test_eval_infinity_over_infinity_is_undefined() {
         ("(2*inf^2)/(inf^2)", "undefined"),
         ("(inf^2*x)/(inf^2*y)", "undefined"),
         ("sqrt(inf)/sqrt(inf)", "undefined"),
+        // Additive: `∞ + finite = ∞`, so `(∞+1)/(∞+1)` is `∞/∞`, NOT `1`. `∞ − ∞` stays indeterminate.
+        ("(inf+1)/(inf+1)", "undefined"),
+        ("(inf+inf)/(inf+inf)", "undefined"),
+        ("(2*inf+2*inf)/(inf+inf)", "undefined"),
+        ("(inf+x)/(inf+x)", "undefined"),
+        ("((-inf)+5)/((-inf)+5)", "undefined"),
         // Finite divisions are unaffected.
         ("1/inf", "0"),
         ("2/inf", "0"),
@@ -1236,6 +1242,10 @@ fn test_eval_infinity_quotient_plain_matches_steps() {
         "2*((2*inf)/(5*inf))",
         "1+(2*inf)/(3*inf)",
         "abs((2*inf)/(5*inf))",
+        // Additive ∞ in the quotient (was `1`/`2` plain vs `undefined` steps).
+        "(inf+inf)/(inf+inf)",
+        "(2*inf+2*inf)/(inf+inf)",
+        "(inf+1)/(inf+1)",
     ] {
         let plain = cli()
             .args(["eval", input, "--format", "json"])
