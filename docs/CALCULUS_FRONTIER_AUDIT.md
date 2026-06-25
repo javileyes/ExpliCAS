@@ -1514,9 +1514,11 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   PELDAÑOS: (A) [x] **∞/∞ ANIDADO** GRADUADO *(2026-06-26 ab45f3e89: `fold_inf_div_inf_recursive` recorre el
   árbol bottom-up, foldea cada sub-`∞/∞` y propaga el `undefined` replicando las reglas del engine →
   `((2*inf)/(5*inf))^2`, `sqrt(...)`, `1+(2*inf)/(3*inf)`, `abs(...)`, etc. = `undefined` en AMBOS modos)*.
-  (B) [ ] **base-potencia ∞** (`inf^2/inf^2`→`1` AMBOS modos, preexistente — el predicado no recursa en `Pow`).
+  (B) [x] **base-potencia ∞** GRADUADO *(2026-06-26 PENDIENTE_B: `contains_unbounded_factor` reconoce
+  `Pow(∞, p)` con `p` literal positivo como no-finito → `inf^2/inf^2`, `inf^3/inf^2`, `sqrt(inf)/sqrt(inf)`,
+  etc. = `undefined`; `∞^0=1`/`∞^(-1)=0`/`∞^x` intactos)*.
   (C) [ ] **aditivo** (`(inf+1)/(inf+1)`→`1`, `(inf+inf)/(inf+inf)`→`1`, preexistente — `∞±∞` no se reconoce
-  como no-finito antes de la cancelación).)*
+  como no-finito antes de la cancelación). Y exponente simbólico `inf^x/inf^x`→`1`; base finita `2^inf/2^inf`.)*
 - [ ] **Cociente gaussiano con `i` real (`i/i`→`i/i` plain vs `1` steps):** PELDAÑO ABIERTO, preexistente
   (no introducido por el fix; el atajo sigue casando los cocientes con `i` por diseño en RealOnly). Divergencia
   de dominio-complejo / fuera-de-dominio; menor severidad. Auditar si el atajo debe plegar o `--steps` debe

@@ -339,6 +339,14 @@ pub fn contains_unbounded_factor(ctx: &Context, id: ExprId) -> bool {
         Expr::Constant(Constant::Infinity) => true,
         Expr::Neg(inner) => contains_unbounded_factor(ctx, *inner),
         Expr::Mul(a, b) => contains_unbounded_factor(ctx, *a) || contains_unbounded_factor(ctx, *b),
+        // `∞^p` with a POSITIVE LITERAL exponent is `∞` (e.g. `∞^2`, `√∞ = ∞^(1/2)`), so a quotient
+        // of two such is `∞/∞`, indeterminate (`∞^2/∞^2` is NOT `1`, `∞^3/∞^2` is NOT `∞`). A symbolic
+        // exponent (`∞^x`) is left out: its finiteness is unknown (`∞^0 = 1`, `∞^(-1) = 0`), so it is
+        // not DEFINITELY unbounded. Non-positive literal exponents (`∞^0 = 1`, `∞^(-1) = 0`) are finite.
+        Expr::Pow(base, exp) => {
+            contains_unbounded_factor(ctx, *base)
+                && matches!(ctx.get(*exp), Expr::Number(n) if n.is_positive())
+        }
         _ => false,
     }
 }

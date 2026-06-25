@@ -1184,6 +1184,13 @@ fn test_eval_infinity_over_infinity_is_undefined() {
         // Multi-factor products: the shared finite cofactor does not make it finite.
         ("(2*inf*sin(x))/(5*inf*sin(x))", "undefined"),
         ("(inf*sin(x))/(inf*cos(x))", "undefined"),
+        // `∞^p` with a positive literal exponent is `∞`: `∞^2/∞^2` is NOT `1`, `∞^3/∞^2` is NOT `∞`.
+        ("inf^2/inf^2", "undefined"),
+        ("(inf^3)/(inf^2)", "undefined"),
+        ("(inf^2)/(inf^3)", "undefined"),
+        ("(2*inf^2)/(inf^2)", "undefined"),
+        ("(inf^2*x)/(inf^2*y)", "undefined"),
+        ("sqrt(inf)/sqrt(inf)", "undefined"),
         // Finite divisions are unaffected.
         ("1/inf", "0"),
         ("2/inf", "0"),
@@ -1192,6 +1199,9 @@ fn test_eval_infinity_over_infinity_is_undefined() {
         ("inf-inf", "undefined"),
         ("0*inf", "undefined"),
         ("x/x", "1"),
+        // Non-positive / symbolic exponents stay finite or unevaluated (NOT folded).
+        ("inf^0", "1"),
+        ("inf^(-1)", "0"),
     ] {
         let output = cli()
             .args(["eval", input, "--format", "json"])

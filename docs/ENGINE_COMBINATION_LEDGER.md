@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 353 (newest first)
+Active entries: 354 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
+- 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15114,3 +15115,38 @@ Active entries: 353 (newest first)
     (bottom-up) y propagar el valor saneado replicando las reglas del motor, no sólo en la raíz. Cero-alocación
     si no hay marcador (devuelve ids idénticos). Próximo: extender el detector `contains_unbounded_factor` a
     `Pow(∞, p>0)` (peldaño B) y reconocer `∞±∞` mismo-signo como no-finito (peldaño C).
+
+## 2026-06-26 - P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
+
+- area:
+  - `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo `Pow`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_infinity_over_infinity_is_undefined` + casos Pow)
+- status:
+  - `retained` (cierra peldaño B; queda C)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES (AMBOS modos, no era divergencia sino wrong-answer doble) `inf^2/inf^2 -> 1`,
+    `inf^3/inf^2 -> infinity`, `inf^2/inf^3 -> 0`, `(2*inf^2)/(inf^2) -> 2`, `(inf^2*x)/(inf^2*y) -> x/y`,
+    `sqrt(inf)/sqrt(inf) -> 1`. AHORA todos `undefined`.
+  - MECANISMO: `∞^p` con exponente literal POSITIVO es `∞` (el engine lo deja como `infinity^2`, no lo pliega),
+    así que la cancelación same-base lo trataba como factor cancelable (`infinity^3/infinity^2 -> infinity^1`).
+    Fix: `contains_unbounded_factor` reconoce `Pow(base, p)` como no-finito cuando `base` es no-finito y `p`
+    es un `Number` positivo. El fold `∞/∞ -> undefined` (recursivo, ciclo previo) ya hace el resto.
+  - SOUNDNESS: exponente literal positivo => `∞^p = ∞` con certeza, luego `∞^p/∞^q = ∞/∞ = undefined`.
+    Exponente NO-positivo o simbólico se EXCLUYE: `∞^0 = 1`, `∞^(-1) = 0` (finitos, intactos), `∞^x` con `x`
+    simbólico tiene finitud desconocida (queda peldaño: `inf^x/inf^x -> 1` sigue, requiere análisis de signo).
+    `sqrt(inf) = ∞^(1/2)`, `p=1/2>0`, también `∞`. Verificado: `inf^2`, `inf^0`, `inf^(-1)`, `x^2/x^2`,
+    `inf^x/inf^x` INTACTOS.
+  - validación: workspace failed:0 (12348); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; tests Pow-base en `test_eval_infinity_over_infinity_is_undefined`.
+  - PELDAÑOS: (C) aditivo `(inf+1)/(inf+1) -> 1`, `(inf+inf)/(inf+inf) -> 1`; exponente simbólico
+    `inf^x/inf^x -> 1`; base finita `2^inf/2^inf -> 1` (finito^∞).
+- observed:
+  - el engine deja `∞^p` SIN plegar a `∞` (lo muestra `infinity^p`), así que una regla de cancelación
+    same-base lo trata como base cancelable y fabrica un finito; el detector de no-finito debe reconocer
+    `∞^(literal>0)` como `∞` para que el fold indeterminado lo capture.
+- retained learning:
+  - patrón: si una forma `∞`-derivada se deja sin plegar en su forma canónica (`∞^2`, `c·∞`), el predicado de
+    no-finitud que protege la cancelación debe reconocer esa forma. Exponente literal positivo es certero;
+    simbólico/negativo NO (finitud desconocida o finita). Próximo: `∞±∞` (peldaño C) y `finito^∞`.
