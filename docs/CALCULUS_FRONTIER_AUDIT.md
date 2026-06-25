@@ -1483,7 +1483,32 @@ REFUTADOS por la verificación (formas equivalentes), no defectos.
   *(graduado PARCIAL 2026-06-25 eed9c5407: nueva `InfDivInfRule` (`is_infinite_valued` reconoce `±∞`
   y `c·∞`) registrada con las formas indeterminadas → 3/4 defectos cerrados; el veto compartido
   `root_shortcut_result_is_unsound` cubre ambas macros de root-shortcut. D36 simétrico queda peldaño — ver
-  ledger; ADEMÁS descubierta una divergencia plain-vs-`--steps` que es un riesgo de consistencia a auditar.)*
+  ledger; ADEMÁS descubierta una divergencia plain-vs-`--steps` que es un riesgo de consistencia — ver §DIV-PARITY.)*
+
+### DIV-PARITY — P0 unsound/consistencia: `eval X` (plain) y `eval X --steps` divergen en el MISMO input
+Hallazgo de la revisión multiagente (ultracode): el resultado de una evaluación NO debe depender de si se
+piden pasos. Barrido de ~11.000 sondas → ~99 divergencias en 9/10 categorías. Causa raíz (verificada por
+instrumentación directa, NO la que apuntó el agente sintetizador): el atajo `is_real_domain_complex_noop_root`
+(`crates/cas_engine/src/orchestrator.rs`), gateado a `!has_step_listener()` (= modo plain), trata como
+"complex noop" cualquier `Div(Number,Number)` porque `is_exact_gaussian_noop_component` acepta un `Number`
+real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en plain, mientras `--steps`
+(con listener) corre el pipeline completo y lo pliega.
+- [x] **División por cero aceptada como valor válido (lo más grave):** `1/0`→`"1 / 0"` con `ok:true` en plain
+  vs `undefined` en `--steps`. Igual `0/0`, `2/0`, `100/0`, `5/0`. **WRONG-ANSWER dependiente de modo.**
+- [x] **Cocientes numéricos sin plegar:** `6/3`→`"6 / 3"`, `10/4`→`"10 / 4"`, `144/12`, `8/4`… vs `2`, `5/2`, `12`.
+- [x] **Racional canónico sin plegar (cosmético):** `7/2`→`"7 / 2"` vs `"7/2"` (Number plegado).
+  *(graduado 2026-06-25 PENDIENTE: `is_real_domain_complex_noop_root` exige ahora un `i` real en el `Div`
+  (nuevo `gaussian_noop_component_has_imaginary_unit`); los cocientes pure-real caen al pipeline y se pliegan
+  en AMBOS modos. `2/2`→`1` (incondicional, denominador literal no-nulo) también converge; el test
+  `cli_domain_strict_numeric_*` enshrinaba el bug y se corrigió. Tests `cli_contract_tests::test_eval_numeric_quotient_plain_matches_steps`.)*
+- [ ] **∞/∞ escalado (`(2*inf)/(5*inf)`→`2/5` plain vs `undefined` steps):** PELDAÑO ABIERTO, mecanismo
+  DISTINTO (la regla de ratio de coeficientes de Core, no el atajo complex-noop). = D36. Fix Opción 3:
+  la cancelación `a·X/(b·X)→a/b` debe exigir `X` finito y no-nulo (cierra también el caso invertido donde
+  `--steps` es quien yerra: `(x*inf)/(2*x*inf)`→`1`).
+- [ ] **Cociente gaussiano con `i` real (`i/i`→`i/i` plain vs `1` steps):** PELDAÑO ABIERTO, preexistente
+  (no introducido por el fix; el atajo sigue casando los cocientes con `i` por diseño en RealOnly). Divergencia
+  de dominio-complejo / fuera-de-dominio; menor severidad. Auditar si el atajo debe plegar o `--steps` debe
+  abstenerse en RealOnly.
 
 ### R3 — P1 lost-domain: inecuación NO estricta pierde el cero aislado de factor de mult. par — 10 defectos, 1 fix
 El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque que caen fuera del intervalo dominante.

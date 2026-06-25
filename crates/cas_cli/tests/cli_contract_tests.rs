@@ -1250,6 +1250,60 @@ fn test_eval_common_scale_zero_collapse_requires_exact_zero() {
 }
 
 #[test]
+fn test_eval_numeric_quotient_plain_matches_steps() {
+    // A top-level pure-real `Number/Number` quotient must evaluate IDENTICALLY whether or not
+    // steps are requested. A RealOnly "complex noop" root shortcut (`is_real_domain_complex_noop_root`)
+    // accepted any bare `Number` as a Gaussian component, so a real `Number/Number` matched and was
+    // returned UNEVALUATED in the plain (no-step-listener) path while `--steps` ran the full pipeline.
+    // The result then depended on whether steps were asked for — a consistency/soundness defect. Worst
+    // case: `1/0` reported `"1 / 0"` with `ok:true` (a division by zero accepted as a valid value)
+    // in plain mode but `undefined` with `--steps`. The shortcut now requires an actual imaginary unit
+    // `i`, so real quotients fold through the pipeline in both modes.
+    for (input, expected) in [
+        // Division by zero is undefined — never a valid finite value, in either mode.
+        ("1/0", "undefined"),
+        ("0/0", "undefined"),
+        ("2/0", "undefined"),
+        ("100/0", "undefined"),
+        // Exact integer quotients fold.
+        ("6/3", "2"),
+        ("8/4", "2"),
+        ("144/12", "12"),
+        ("5/1", "5"),
+        ("0/7", "0"),
+        // Reducible/irreducible rationals fold to lowest terms.
+        ("10/4", "5/2"),
+        ("9/6", "3/2"),
+        ("7/2", "7/2"),
+    ] {
+        let plain = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(plain.status.success(), "plain {input}");
+        let plain_wire: Value = serde_json::from_slice(&plain.stdout).expect("Invalid wire output");
+
+        let steps = cli()
+            .args(["eval", input, "--format", "json", "--steps", "on"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(steps.status.success(), "steps {input}");
+        let steps_wire: Value = serde_json::from_slice(&steps.stdout).expect("Invalid wire output");
+
+        assert_eq!(
+            plain_wire["result"].as_str(),
+            Some(expected),
+            "plain {input}"
+        );
+        assert_eq!(
+            plain_wire["result"].as_str(),
+            steps_wire["result"].as_str(),
+            "plain vs --steps divergence for {input}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_rational_constant_inequality_sign_split() {
     // `N/D {op} c` with a polynomial denominator. With `P = N − c·D`, solve `P {op} 0`
     // where `D > 0` and `P {flip op} 0` where `D < 0` (poles excluded), then verify the

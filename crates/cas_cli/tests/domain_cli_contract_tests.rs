@@ -198,16 +198,20 @@ fn cli_domain_assume_emits_warning() {
 }
 
 #[test]
-fn cli_domain_strict_numeric_preserves_fraction_in_auto_eval() {
-    // Strict auto-eval keeps the fraction shape; solver-specific solve simplification is separate.
+fn cli_domain_strict_numeric_fraction_folds_unconditionally() {
+    // A pure-numeric `2/2` is `1` UNCONDITIONALLY — the literal denominator `2` is a known nonzero
+    // constant, so no domain assumption is involved (unlike `x/x -> 1`, which strict mode refuses
+    // because it needs `x != 0`). `--steps` already folds `2/2 -> 1`; plain mode used to leave it as
+    // `2/2` via the over-broad RealOnly complex-noop root shortcut, a plain-vs-steps divergence. Both
+    // modes now fold it, and a pure numeric fraction still emits no domain conditions.
     let (output, _code) = run_cli(&["eval", "2/2", "--format", "json", "--domain", "strict"]);
     let wire = parse_wire(&output);
 
     assert_eq!(wire["ok"], true);
     let result = wire["result"].as_str().unwrap_or("");
-    assert!(
-        result == "2 / 2" || result == "2/2",
-        "Strict auto-eval should preserve 2/2, got: {}",
+    assert_eq!(
+        result, "1",
+        "Strict auto-eval should fold the unconditional 2/2 to 1, got: {}",
         result
     );
     assert!(

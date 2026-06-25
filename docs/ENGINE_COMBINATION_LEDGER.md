@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 350 (newest first)
+Active entries: 351 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -132,6 +132,7 @@ Active entries: 350 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/orchestrator.rs` (macro `return_root_shortcut_pair!`; ... | P0 wrong-value: "collapse to 0" exige cero EXACTO (resta de fracciones colapsaba mal a 0)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/exponents/simplification.rs` (`IdentityPowerRule... | P0 wrong-value: `M^0` es la matriz IDENTIDAD, no el escalar 1 (5 defectos, 1 fix)
 - 2026-06-25 | `retained` | `crates/cas_math/src/infinity_support.rs` (`is_infinite_valued`, `try_rewrite... | P0 unsound: `∞/∞ -> undefined` (3 de 4 defectos; el simétrico escalado queda peldaño)
+- 2026-06-25 | `retained` | `crates/cas_engine/src/orchestrator.rs` (`is_real_domain_complex_noop_root` +... | P0 unsound/consistencia: paridad plain-vs-`--steps` para cocientes numéricos reales (div-por-cero `ok:true`)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14953,3 +14954,60 @@ Active entries: 350 (newest first)
     infinito debe cubrir `c·∞`. Peldaño D36: localizar la ruta fast-eval del modo plain que reduce
     `(c1·∞)/(c2·∞)` (divergente con `--steps`), y un veto/guarda allí. Sospecha: una optimización del default
     del CLI que `--steps` desactiva — instrumentar el entry de eval por defecto.
+
+## 2026-06-25 - P0 unsound/consistencia: paridad plain-vs-`--steps` para cocientes numéricos reales (div-por-cero `ok:true`)
+
+- area:
+  - `crates/cas_engine/src/orchestrator.rs` (`is_real_domain_complex_noop_root` + nuevo
+    `gaussian_noop_component_has_imaginary_unit`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_numeric_quotient_plain_matches_steps`)
+  - `crates/cas_cli/tests/domain_cli_contract_tests.rs` (`cli_domain_strict_numeric_fraction_folds_unconditionally`,
+    antes `..._preserves_fraction_in_auto_eval` — enshrinaba el bug)
+- status:
+  - `retained` (cierra §DIV-PARITY del audit para los cocientes pure-real; ∞/∞ [=D36] y el gaussiano-con-`i`
+    quedan peldaños)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: cli_web_consistency
+  - cell: ANTES, en el modo PLAIN (sin `--steps`), `1/0 -> "1 / 0"` con `ok:true`, `0/0 -> "0 / 0"`,
+    `6/3 -> "6 / 3"`, `7/2 -> "7 / 2"`, `2/2 -> "2 / 2"` — el cociente numérico se devolvía SIN evaluar;
+    `--steps on/compact` ya daban `undefined`, `2`, `7/2`, `1`. AHORA AMBOS modos coinciden:
+    `1/0`/`0/0`/`2/0`/`100/0`/`5/0 -> undefined`, `6/3 -> 2`, `10/4 -> 5/2`, `7/2 -> 7/2`, `2/2 -> 1`.
+  - MECANISMO (verificado por INSTRUMENTACIÓN directa, no por el agente sintetizador que apuntó —
+    erróneamente— a `is_terminal_after_core`): el atajo `is_real_domain_complex_noop_root`, gateado a
+    `!has_step_listener()` (= modo plain; `--steps` adjunta un `EngineEventCollector` como listener y por eso
+    salta el atajo y corre el pipeline completo), trata como "complex noop" cualquier `Div(Number,Number)`
+    porque `is_exact_gaussian_noop_component` acepta un `Number` real desnudo como componente gaussiano →
+    devuelve el cociente intacto. Fix: el brazo `Div` exige ahora que num o den contengan REALMENTE la unidad
+    imaginaria `i` (`gaussian_noop_component_has_imaginary_unit`); un `Number/Number` real cae al pipeline y se
+    pliega. La rama `Pow` (`i^n`) ya exigía `i` y no cambia.
+  - SOUNDNESS: el cambio solo NARROW-ea el match del atajo (añade un requisito), nunca pliega algo que el
+    pipeline no plegara; el pipeline ya plegaba estos cocientes en `--steps`. Plegado exacto (BigRational), sin
+    f64. `2/2 -> 1` es INCONDICIONAL (denominador literal no-nulo): distinto de `x/x -> 1`, que sí necesita
+    `x != 0` y sigue sin plegarse en `--domain strict` (intacto). Los cocientes gaussianos CON `i` siguen
+    casando el atajo y se devuelven intactos en plain — comportamiento byte-idéntico al previo (sin regresión).
+  - PELDAÑOS ABIERTOS: (1) ∞/∞ escalado [D36] — mecanismo DISTINTO (la regla de ratio de coeficientes de Core),
+    no este atajo; fix Opción 3 = la cancelación `a·X/(b·X)->a/b` debe exigir `X` finito y no-nulo, lo que
+    cierra también el caso invertido donde es `--steps` quien yerra (`(x*inf)/(2*x*inf) -> 1`). (2) Cociente
+    gaussiano con `i` (`i/i` plain `i/i` vs steps `1`) — preexistente, dominio-complejo, menor severidad.
+  - validación: workspace failed:0 (12347); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3) 0
+    deltas; tests `test_eval_numeric_quotient_plain_matches_steps` (12 casos plain==steps) y
+    `cli_domain_strict_numeric_fraction_folds_unconditionally`.
+- observed:
+  - un atajo de rendimiento gateado por la presencia del LISTENER de pasos (`!has_step_listener()`) hace que el
+    RESULTADO dependa de si se piden pasos — el riesgo CLI-vs-web del inicio de la sesión, materializado: la web
+    (eval sin recolección de pasos) recorre la rama plain y obtenía la respuesta incorrecta.
+  - un predicado de dominio (`is_exact_gaussian_noop_component`) que acepta el caso degenerado (un real ES un
+    gaussiano de parte imaginaria 0) SOBRE-empareja: el "noop complejo" debe exigir un `i` real, o un real puro
+    se cuela y se queda sin evaluar.
+  - LECCIÓN de proceso: el `root_cause` de un agente sintetizador es una HIPÓTESIS — la instrumentación directa
+    (eprintln en los puntos de retorno + bisección por gates) refutó la atribución a `is_terminal_after_core`
+    (el fast-path del pipeline ni se alcanza: el atajo retorna antes de Core) y localizó el verdadero atajo.
+- retained learning:
+  - patrón: cualquier atajo de evaluación gateado por `!has_step_listener()`/`!collect_steps` DEBE producir el
+    MISMO valor que el pipeline completo; si no, es una divergencia plain-vs-steps (= riesgo CLI-vs-web). Un
+    predicado "noop en dominio real" sobre estructuras complejas debe exigir la presencia REAL del marcador de
+    dominio (`i`), no aceptarlo por el caso degenerado del `Number`. Para depurar divergencias de modo:
+    instrumentar los puntos de retorno y bisecar por los gates `has_step_listener`/`collect_steps`, no confiar
+    en la atribución de un agente.

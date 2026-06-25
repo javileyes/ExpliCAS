@@ -25889,15 +25889,45 @@ fn is_exact_gaussian_noop_component(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// Whether a Gaussian-noop component actually carries the imaginary unit `i`.
+/// A bare real `Number` (or a sum/product of reals) returns `false`: it is a
+/// genuinely real quantity, not a complex one.
+fn gaussian_noop_component_has_imaginary_unit(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Constant(cas_ast::Constant::I) => true,
+        Expr::Number(_) => false,
+        Expr::Neg(inner) => gaussian_noop_component_has_imaginary_unit(ctx, *inner),
+        Expr::Mul(left, right)
+        | Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Div(left, right) => {
+            gaussian_noop_component_has_imaginary_unit(ctx, *left)
+                || gaussian_noop_component_has_imaginary_unit(ctx, *right)
+        }
+        _ => false,
+    }
+}
+
 fn is_real_domain_complex_noop_root(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::I))
                 && matches!(ctx.get(*exp), Expr::Number(n) if n.is_integer())
         }
+        // SOUNDNESS/CONSISTENCY: only a quotient that genuinely involves the
+        // imaginary unit `i` is a "complex noop" to be returned unchanged in the
+        // RealOnly fast path. `is_exact_gaussian_noop_component` accepts a bare
+        // real `Number`, so without the `i` requirement a pure-real `Number/Number`
+        // (`6/3`, `7/2`, and critically `1/0`) matched here and was returned
+        // UNEVALUATED in plain mode — diverging from `--steps` (which folds them to
+        // `2`, `7/2`, `undefined`) and, for `1/0`, reporting a division by zero as a
+        // valid result with `ok:true`. Require an actual `i` so real quotients fall
+        // through to the folding pipeline.
         Expr::Div(num, den) => {
             is_exact_gaussian_noop_component(ctx, *num)
                 && is_exact_gaussian_noop_component(ctx, *den)
+                && (gaussian_noop_component_has_imaginary_unit(ctx, *num)
+                    || gaussian_noop_component_has_imaginary_unit(ctx, *den))
         }
         _ => false,
     }
