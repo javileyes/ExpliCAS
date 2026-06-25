@@ -1545,7 +1545,7 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
 - [x] `solve((x-3)^2/(x-1)<=0,x)` → `(-∞,1)` (falta `{3}`).
 - [x] `solve((x+3)^2*(x-1)*(x-5)<=0,x)` → `[1,5]` (falta `{-3}`).
   Control sano: `solve((x-3)^2<=0,x)→{3}`, y las variantes estrictas excluyen el punto bien.
-  *(graduado 2026-06-26 PENDIENTE_R3: `union_non_strict_inequality_roots` envuelve el método del backend;
+  *(graduado 2026-06-26 26d95a805: `union_non_strict_inequality_roots` envuelve el método del backend;
   para `Leq|Geq` re-resuelve la ecuación `lhs=rhs` (excluye polos, filtra extrañas) y une sus raíces discretas
   → los 10 incluyen el punto. Estricto intacto; polos NO añadidos. Test
   `cli_contract_tests::test_eval_nonstrict_inequality_includes_isolated_roots`. Residual preexistente: el

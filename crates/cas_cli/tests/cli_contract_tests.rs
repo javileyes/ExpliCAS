@@ -1396,9 +1396,15 @@ fn test_eval_nonstrict_inequality_includes_isolated_roots() {
         ("solve((x-2)^2*(x+1)<=0, x)", "(-infinity, -1] U [2, 2]"),
         ("solve((x+1)^2*(x-3)^3>=0, x)", "[-1, -1] U [3, infinity)"),
         ("solve(x^2/(x-1)>=0, x)", "[0, 0] U (1, infinity)"),
-        ("solve(x^2*(x^2-4)>=0, x)", "(-infinity, -2] U [0, 0] U [2, infinity)"),
+        (
+            "solve(x^2*(x^2-4)>=0, x)",
+            "(-infinity, -2] U [0, 0] U [2, infinity)",
+        ),
         ("solve(x^3*(x-2)^2<=0, x)", "(-infinity, 0] U [2, 2]"),
-        ("solve((x-1)*(x-2)^2*(x-3)>=0, x)", "(-infinity, 1] U [2, 2] U [3, infinity)"),
+        (
+            "solve((x-1)*(x-2)^2*(x-3)>=0, x)",
+            "(-infinity, 1] U [2, 2] U [3, infinity)",
+        ),
         ("solve((x-1)^4*(x+1)<=0, x)", "(-infinity, -1] U [1, 1]"),
         ("solve(x^2/((x-1)*(x-2))<=0, x)", "[0, 0] U (1, 2)"),
         ("solve((x-3)^2/(x-1)<=0, x)", "(-infinity, 1) U [3, 3]"),
