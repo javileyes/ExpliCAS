@@ -964,6 +964,97 @@ fn solve_poly_sign(
     solve_relation_set(simplifier, var, expr, zero, op)
 }
 
+/// Split a rational `lhs` into numerator/denominator POLYNOMIALS in `var` WITHOUT cancelling shared
+/// factors. Walks `Div`/`Mul`/`Neg`/`Pow(_, k)`: a `Pow(base, k)` with a negative rational `k`
+/// contributes `base^|k|` to the opposite side (so `x^(-2)` → denominator `x²`, `c·x^(-3)` →
+/// `c / x³`). Returns `None` if any leaf factor is not a polynomial in `var` (a fractional power
+/// `x^(1/2)`, a transcendental, …) so such inputs decline cleanly. Not cancelling keeps any removable
+/// pole in `den`, which the caller's verification depends on.
+fn split_rational_inequality_lhs(
+    ctx: &mut Context,
+    lhs: ExprId,
+    var: &str,
+) -> Option<(
+    cas_math::polynomial::Polynomial,
+    cas_math::polynomial::Polynomial,
+)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use num_traits::Zero;
+
+    // Collect numerator/denominator factor expressions; `invert` flips which side a factor lands on.
+    fn collect(
+        ctx: &mut Context,
+        e: ExprId,
+        invert: bool,
+        num: &mut Vec<ExprId>,
+        den: &mut Vec<ExprId>,
+    ) {
+        match ctx.get(e).clone() {
+            Expr::Div(n, d) => {
+                collect(ctx, n, invert, num, den);
+                collect(ctx, d, !invert, num, den);
+            }
+            Expr::Mul(l, r) => {
+                collect(ctx, l, invert, num, den);
+                collect(ctx, r, invert, num, den);
+            }
+            Expr::Neg(inner) => {
+                let m1 = ctx.num(-1);
+                if invert {
+                    den.push(m1);
+                } else {
+                    num.push(m1);
+                }
+                collect(ctx, inner, invert, num, den);
+            }
+            Expr::Pow(base, exp) => {
+                if let Some(k) = as_rational_const(ctx, exp) {
+                    if k < num_rational::BigRational::zero() {
+                        // base^(−k) on the opposite side.
+                        let mag = ctx.add(Expr::Number(-k));
+                        let pos = ctx.add(Expr::Pow(base, mag));
+                        if invert {
+                            num.push(pos);
+                        } else {
+                            den.push(pos);
+                        }
+                        return;
+                    }
+                }
+                if invert {
+                    den.push(e);
+                } else {
+                    num.push(e);
+                }
+            }
+            _ => {
+                if invert {
+                    den.push(e);
+                } else {
+                    num.push(e);
+                }
+            }
+        }
+    }
+
+    let mut num_factors = Vec::new();
+    let mut den_factors = Vec::new();
+    collect(ctx, lhs, false, &mut num_factors, &mut den_factors);
+
+    let product = |ctx: &mut Context, factors: &[ExprId]| -> Option<Polynomial> {
+        let one = ctx.num(1);
+        let mut acc = one;
+        for &f in factors {
+            acc = ctx.add(Expr::Mul(acc, f));
+        }
+        Polynomial::from_expr(ctx, acc, var).ok()
+    };
+    let num_poly = product(ctx, &num_factors)?;
+    let den_poly = product(ctx, &den_factors)?;
+    Some((num_poly, den_poly))
+}
+
 /// Solve `N / D {op} c` with a polynomial denominator `D` (degree ≥ 1) and a var-free RHS `c`. With
 /// `P = N − c·D`, the relation is `P/D {op} 0`: `P {op} 0` on the region `D > 0` and `P {flip op} 0`
 /// on `D < 0` (poles `D = 0` excluded by the strict sign regions). This keeps every sub-solve to
@@ -983,19 +1074,14 @@ fn try_solve_rational_constant_inequality(
     if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
         return None;
     }
-    // Use the ORIGINAL `num / den` — never `simplify`d — so a removable factor shared by `num` and
-    // `den` (`x/(x³−x)`) is NOT cancelled. The cancellation would drop the pole at the shared root
-    // from `den`, and the verification below (which evaluates `den`) would then miss that the point
-    // is outside the domain (`x/(x³−x) ≤ 0` is `(-1,0)∪(0,1)`, not `(-1,1)`).
-    let (num, den) = match simplifier.context.get(eq.lhs) {
-        Expr::Div(n, d) => (*n, *d),
-        _ => return None,
-    };
-    let den_poly = Polynomial::from_expr(&simplifier.context, den, var).ok()?;
+    // Split the ORIGINAL `lhs` into numerator/denominator polynomials WITHOUT cancelling shared
+    // factors (`x/(x³−x)` keeps `den = x³−x` and its pole at 0; `simplify` would cancel `x` and drop
+    // the pole, which the verification — evaluating `den` — relies on). The splitter also folds the
+    // reciprocal-power form `x^(-n)` / `c·x^(-n)` into `num/den` so `x^(-2) > 4` routes here too.
+    let (num_poly, den_poly) = split_rational_inequality_lhs(&mut simplifier.context, eq.lhs, var)?;
     if den_poly.degree() < 1 {
         return None; // a constant denominator is the ordinary path's job
     }
-    let num_poly = Polynomial::from_expr(&simplifier.context, num, var).ok()?;
     let c = as_rational_const(&simplifier.context, eq.rhs)?;
 
     let c_den = Polynomial::new(
@@ -1016,9 +1102,10 @@ fn try_solve_rational_constant_inequality(
     }
 
     // `P/D {op} 0`: keep `op` where `D > 0`, flip it where `D < 0`; `D = 0` excluded.
+    let den_expr = den_poly.to_expr(&mut simplifier.context);
     let zero = simplifier.context.num(0);
-    let d_pos = solve_relation_set(simplifier, var, den, zero, RelOp::Gt)?;
-    let d_neg = solve_relation_set(simplifier, var, den, zero, RelOp::Lt)?;
+    let d_pos = solve_relation_set(simplifier, var, den_expr, zero, RelOp::Gt)?;
+    let d_neg = solve_relation_set(simplifier, var, den_expr, zero, RelOp::Lt)?;
     let p_same = solve_poly_sign(simplifier, var, &p_poly, eq.op.clone())?;
     let p_flip = solve_poly_sign(simplifier, var, &p_poly, flip_inequality(eq.op.clone()))?;
     let part_pos = intersect_solution_sets(&simplifier.context, p_same, d_pos);

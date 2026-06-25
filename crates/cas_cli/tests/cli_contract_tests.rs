@@ -1200,6 +1200,13 @@ fn test_eval_rational_constant_inequality_sign_split() {
         // Numerator and denominator share a factor: the removable pole at 0 stays
         // excluded (NOT cancelled — `x/(x³−x) ≤ 0` is `(-1,0)∪(0,1)`, not `(-1,1)`).
         ("x/(x^3-x) <= 0", "(-1, 0) U (0, 1)"),
+        // Reciprocal-power form `x^(-n) {op} c`: the splitter folds it to `c/x^n`, so it
+        // routes through the same verified path (was a flipped/inverted wrong answer).
+        ("x^(-2) > 4", "(-1/2, 0) U (0, 1/2)"),
+        ("x^(-2) < 4", "(-infinity, -1/2) U (1/2, infinity)"),
+        ("x^(-3) < 8", "(-infinity, 0) U (1/2, infinity)"),
+        ("x^(-4) < 16", "(-infinity, -1/2) U (1/2, infinity)"),
+        ("2*x^(-3) >= 2", "(0, 1]"),
     ] {
         let output = cli()
             .args(["eval", input, "--format", "json"])

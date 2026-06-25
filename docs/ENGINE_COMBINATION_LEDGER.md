@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 342 (newest first)
+Active entries: 343 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -124,6 +124,7 @@ Active entries: 342 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`parity_in_va... | Capacidad (cierra peldaño Cluster C): integral definida de integrando PAR en intervalo negativo evalúa por reflexión de simetría
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_positive_denominat... | P1 soundness: inecuación N/D {op} c con denominador POSITIVO-DEFINIDO no voltea (antes daba el lado equivocado)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_constant_... | P0 soundness: `N/D {op} c` general por split-de-signo verificado (cubre cúbicas/cuárticas/signo-variable; cierra el peldaño del ciclo previo)
+- 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo splitter `split_rationa... | P0 soundness: forma recíproco-potencia `x^(-n) {op} c` rutea al hook verificado (antes daba el lado invertido)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14605,3 +14606,44 @@ Active entries: 342 (newest first)
     ±4^(1/4)`, `2/x³>-1 → −2^(1/3)`) — necesitan ordenación de intervalos surd-aware (raíces cúbicas/cuárticas)
     en `intersect/union_solution_sets`; hoy declinan a su (pre-existente, no-empeorado) fallback. También sigue
     abierta la potencia negativa `x^(-q)` cuando NO es `Div(N, poly)` (`1/√x<2`, `x^(-1/2)`).
+
+## 2026-06-25 - P0 soundness: forma recíproco-potencia `x^(-n) {op} c` rutea al hook verificado (antes daba el lado invertido)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (nuevo splitter `split_rational_inequality_lhs`;
+    `try_solve_rational_constant_inequality` ahora lo usa en vez del match `Div`-only)
+- status:
+  - `retained` (extiende el hook verificado del ciclo previo a denominadores escritos como potencia negativa)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES wrong-answers: `x^(-2)>4 → (-∞,-1/2)∪(1/2,∞)` (COMPLEMENTO invertido; real
+    `(-1/2,0)∪(0,1/2)`); `x^(-3)<8 → (-∞,1/2)` (real `(-∞,0)∪(1/2,∞)`); `x^(-2)<4`, `x^(-4)<16`,
+    `2·x^(-3)≥2` todos mal. AHORA correctos. Barrido adversarial (`coef·x^(-n) {op} c`, n=1-4, 2 semillas,
+    400 casos): committed WRONG 144/136 → mine 49/43, **0 regresiones correct→WRONG, 0 emisiones nuevas de
+    wrong**, ~104 ganancias/semilla.
+  - MECANISMO: la lhs `x^(-2)` se SIMPLIFICA a `1/x²` al mostrarse, pero su forma ORIGINAL (que el hook usa,
+    para no cancelar polos removibles) es `Pow(x,-2)`, que el match `Div`-only no reconocía → declinaba al
+    fallback malo. Nuevo splitter `split_rational_inequality_lhs`: camina `Div`/`Mul`/`Neg`/`Pow(_, k)`
+    recolectando factores de numerador/denominador SIN cancelar; un `Pow(base, k)` con `k` racional negativo
+    aporta `base^|k|` al lado opuesto. Así `x^(-2) → den x²`, `c·x^(-n) → c/x^n`, y `x/(x³-x)` sigue con su
+    polo (no se cancela). Devuelve `None` si algún factor hoja no es polinómico (`x^(1/2)` → declina limpio).
+  - SOUNDNESS: el splitter solo regrupa factores (preserva el VALOR exacto), así que la verificación numérica
+    del ciclo previo (muestreo racional + comparación exacta racional-vs-surd) sigue siendo el certificado: si
+    el splitter produjera num/den equivocados, la verificación cazaría el mismatch y declinaría. El barrido
+    confirma 0 wrong nuevos. Las formas con denom polinómico de grado 0 (`x²>4`) declinan por `den.degree()<1`.
+  - validación: workspace failed:0 (12340); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3) 0
+    deltas; filas nuevas en `test_eval_rational_constant_inequality_sign_split` (`x^(-2)`, `x^(-3)`, `x^(-4)`,
+    `2·x^(-3)`).
+- observed:
+  - el mismo wrong-answer puede llegar por VARIAS grafías sintácticas (`1/x²` Div vs `x^(-2)` Pow); cerrar
+    una familia exige normalizar las grafías a la forma que el hook reconoce. Un splitter que regrupa factores
+    SIN cancelar es la normalización correcta: alimenta el hook y conserva el invariante de polo-removible.
+  - apoyarse en el certificado numérico del ciclo previo abarató ESTE: al extender la extracción de entrada no
+    hubo que re-derivar soundness — la verificación ya gateaba cualquier candidato. Un buen certificado paga
+    dividendos en los ciclos siguientes que amplían el dominio de entrada.
+- retained learning:
+  - patrón: para cerrar una familia de wrong-answer por completo, enumera sus GRAFÍAS (`Div`, `Pow` negativo,
+    `Mul` con factor recíproco) y normalízalas a la forma canónica del hook con un splitter sin-cancelación;
+    deja que el certificado numérico existente cubra la soundness. Peldaño: `x^(-1/2)`/`1/√x` (potencia
+    FRACCIONARIA, den no polinómico) sigue declinando — es el caso radical, otro hook.
