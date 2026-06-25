@@ -929,42 +929,48 @@ fn solve_relation_set(
 ///   √f ≥ g   ⟺  f ≥ 0 ∧ (g < 0 ∨ f ≥ g²)
 /// Each branch is a polynomial inequality the existing solver handles. Subsumes
 /// the radicand-domain handling of `intersect_inequality_with_function_domain`.
-/// If `den` is a positive-SEMIDEFINITE quadratic `a·x² + b·x + c` (`a > 0`, discriminant
-/// `b² − 4ac ≤ 0`) it is `> 0` everywhere except, when the discriminant is 0, at its double
-/// root. Returns `Some(Some(root))` for that double-root (pole) case, `Some(None)` when
-/// strictly positive (no real root), and `None` otherwise (sign-changing or not a quadratic).
-fn positive_semidefinite_quadratic_pole(
-    den: &cas_math::polynomial::Polynomial,
-) -> Option<Option<num_rational::BigRational>> {
+/// Solve the polynomial sign relation `poly {op} 0`, handling a CONSTANT polynomial directly (the
+/// recursive solver mishandles a constant relation in `x`).
+fn solve_poly_sign(
+    simplifier: &mut Simplifier,
+    var: &str,
+    poly: &cas_math::polynomial::Polynomial,
+    op: cas_ast::RelOp,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
     use num_rational::BigRational;
-    use num_traits::{Signed, Zero};
-    if den.degree() != 2 {
-        return None;
+    if poly.is_zero() || poly.degree() == 0 {
+        let k = poly
+            .coeffs
+            .first()
+            .cloned()
+            .unwrap_or_else(|| BigRational::from_integer(0.into()));
+        let zero = BigRational::from_integer(0.into());
+        let holds = match op {
+            RelOp::Lt => k < zero,
+            RelOp::Leq => k <= zero,
+            RelOp::Gt => k > zero,
+            RelOp::Geq => k >= zero,
+            _ => return None,
+        };
+        return Some(if holds {
+            SolutionSet::AllReals
+        } else {
+            SolutionSet::Empty
+        });
     }
-    let coeff = |i: usize| den.coeffs.get(i).cloned().unwrap_or_else(BigRational::zero);
-    let (a, b, c) = (coeff(2), coeff(1), coeff(0));
-    if !a.is_positive() {
-        return None;
-    }
-    let four = BigRational::from_integer(4.into());
-    let disc = &b * &b - &four * &a * &c;
-    if disc.is_positive() {
-        return None; // two distinct real roots ⇒ D changes sign
-    }
-    if disc.is_zero() {
-        let two = BigRational::from_integer(2.into());
-        Some(Some(-b / (two * a)))
-    } else {
-        Some(None)
-    }
+    let expr = poly.to_expr(&mut simplifier.context);
+    let zero = simplifier.context.num(0);
+    solve_relation_set(simplifier, var, expr, zero, op)
 }
 
-/// Solve `N / D {op} c` where `D` is a positive-(semi)definite quadratic, so `D > 0` on its
-/// domain and the inequality does NOT flip: `N/D {op} c ⟺ N − c·D {op} 0` (a polynomial
-/// inequality), with the pole `D = 0` excluded. The general division-sign-split path
-/// mishandles a positive-definite denominator and returns the flipped side
-/// (`1/(x²+1) < 1/2 → (-1, 1)` instead of `(-∞,-1) ∪ (1,∞)`).
-fn try_solve_positive_denominator_inequality(
+/// Solve `N / D {op} c` with a polynomial denominator `D` (degree ≥ 1) and a var-free RHS `c`. With
+/// `P = N − c·D`, the relation is `P/D {op} 0`: `P {op} 0` on the region `D > 0` and `P {flip op} 0`
+/// on `D < 0` (poles `D = 0` excluded by the strict sign regions). This keeps every sub-solve to
+/// `deg(P)`/`deg(D)` (≤ 4) — multiplying out to `(N−c·D)·D {op} 0` would push the polynomial degree
+/// past the inequality solver's reliable range. A simpler shortcut otherwise reciprocates both sides
+/// WITHOUT flipping (`1/(x²+1) < 1/2 → (-1,1)`, `1/x³ < 8 → (-∞,1/2)`, both wrong).
+fn try_solve_rational_constant_inequality(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
@@ -972,64 +978,218 @@ fn try_solve_positive_denominator_inequality(
     use cas_ast::RelOp;
     use cas_math::numeric_eval::as_rational_const;
     use cas_math::polynomial::Polynomial;
-    use cas_solver_core::solution_set::intersect_solution_sets;
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
 
     if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
         return None;
     }
-    let (lhs, _) = simplifier.simplify(eq.lhs);
-    let (num, den) = match simplifier.context.get(lhs) {
+    // Use the ORIGINAL `num / den` — never `simplify`d — so a removable factor shared by `num` and
+    // `den` (`x/(x³−x)`) is NOT cancelled. The cancellation would drop the pole at the shared root
+    // from `den`, and the verification below (which evaluates `den`) would then miss that the point
+    // is outside the domain (`x/(x³−x) ≤ 0` is `(-1,0)∪(0,1)`, not `(-1,1)`).
+    let (num, den) = match simplifier.context.get(eq.lhs) {
         Expr::Div(n, d) => (*n, *d),
         _ => return None,
     };
     let den_poly = Polynomial::from_expr(&simplifier.context, den, var).ok()?;
-    let pole = positive_semidefinite_quadratic_pole(&den_poly)?;
+    if den_poly.degree() < 1 {
+        return None; // a constant denominator is the ordinary path's job
+    }
     let num_poly = Polynomial::from_expr(&simplifier.context, num, var).ok()?;
-    // The RHS must be a var-free constant `c`.
     let c = as_rational_const(&simplifier.context, eq.rhs)?;
 
-    // target = N − c·D (exact polynomial). `D > 0` ⇒ keep `op` (no flip).
     let c_den = Polynomial::new(
         den_poly.coeffs.iter().map(|k| k * &c).collect(),
         var.to_string(),
     );
-    let target = num_poly.sub(&c_den);
-    let sol = if target.degree() == 0 || target.is_zero() {
-        // A CONSTANT target `k {op} 0` holds everywhere or nowhere — the recursive solver
-        // mishandles a constant relation in `x`, so decide it directly.
-        use num_rational::BigRational;
-        let k = target
-            .coeffs
-            .first()
-            .cloned()
-            .unwrap_or_else(|| BigRational::from_integer(0.into()));
-        let zero_r = BigRational::from_integer(0.into());
-        let holds = match eq.op {
-            RelOp::Lt => k < zero_r,
-            RelOp::Leq => k <= zero_r,
-            RelOp::Gt => k > zero_r,
-            RelOp::Geq => k >= zero_r,
-            _ => return None,
-        };
-        if holds {
-            SolutionSet::AllReals
-        } else {
-            SolutionSet::Empty
-        }
-    } else {
-        let target_expr = target.to_expr(&mut simplifier.context);
-        let zero = simplifier.context.num(0);
-        solve_relation_set(simplifier, var, target_expr, zero, eq.op.clone())?
-    };
-
-    // Exclude the pole `D = 0` (the double root) from the domain.
-    if let Some(root) = pole {
-        let var_expr = simplifier.context.var(var);
-        let root_expr = simplifier.context.add(Expr::Number(root));
-        let punctured = solve_relation_set(simplifier, var, var_expr, root_expr, RelOp::Neq)?;
-        return Some(intersect_solution_sets(&simplifier.context, sol, punctured));
+    let p_poly = num_poly.sub(&c_den); // P = N − c·D
+                                       // `P ≡ 0` means `N/D = c` identically (off the poles) — a constant relation, not a genuine
+                                       // inequality. Leave it to the dedicated removable-pole path, which renders the guarded
+                                       // `R∖{poles}` Conditional (`(2x−4)/(x−2) ≥ 2`).
+    if p_poly.is_zero() {
+        return None;
     }
-    Some(sol)
+    // The inequality solver is unreliable past degree 4 (it mis-solves `x⁵ > 1/32`); decline
+    // higher-degree pieces rather than risk a wrong answer.
+    if p_poly.degree() > 4 || den_poly.degree() > 4 {
+        return None;
+    }
+
+    // `P/D {op} 0`: keep `op` where `D > 0`, flip it where `D < 0`; `D = 0` excluded.
+    let zero = simplifier.context.num(0);
+    let d_pos = solve_relation_set(simplifier, var, den, zero, RelOp::Gt)?;
+    let d_neg = solve_relation_set(simplifier, var, den, zero, RelOp::Lt)?;
+    let p_same = solve_poly_sign(simplifier, var, &p_poly, eq.op.clone())?;
+    let p_flip = solve_poly_sign(simplifier, var, &p_poly, flip_inequality(eq.op.clone()))?;
+    let part_pos = intersect_solution_sets(&simplifier.context, p_same, d_pos);
+    let part_neg = intersect_solution_sets(&simplifier.context, p_flip, d_neg);
+    let candidate = union_solution_sets(&simplifier.context, part_pos, part_neg);
+
+    // SOUNDNESS GATE. The sign-split is exact, but the interval algebra (intersection/union) is not
+    // fully reliable: it mis-orders cube/fourth-root bounds, drops isolated points, and can fill a
+    // punctured union. So never trust the candidate structurally — verify it numerically. Its
+    // membership must match the truth of `N(r)/D(r) {op} c` at every rational sample `r` (a pole
+    // `D(r) = 0` puts `r` outside the domain). Membership is decided EXACTLY for rational and
+    // quadratic-surd (`A + B·√n`, incl. `φ`) bounds; a higher-surd bound the check cannot order makes
+    // verification fail, so the case declines and keeps its prior behaviour instead of gaining a
+    // fresh wrong answer.
+    if rational_inequality_candidate_verifies(
+        &simplifier.context,
+        &candidate,
+        &num_poly,
+        &den_poly,
+        &c,
+        eq.op.clone(),
+    ) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+/// Exact ordering of a rational `r` against the quadratic surd `a + b·√n` (`n ≥ 0`). Squares the
+/// comparison `r − a {?} b·√n` with sign tracking so no float ever enters a keep/drop decision.
+fn cmp_rational_to_quadratic_surd(
+    r: &num_rational::BigRational,
+    a: &num_rational::BigRational,
+    b: &num_rational::BigRational,
+    n: &num_rational::BigRational,
+) -> std::cmp::Ordering {
+    use num_traits::Zero;
+    use std::cmp::Ordering;
+    let zero = num_rational::BigRational::zero();
+    let diff = r - a; // compare diff {?} b·√n
+    if b.is_zero() || n.is_zero() {
+        return diff.cmp(&zero);
+    }
+    // Reduce to a positive coefficient: for b < 0, `diff {?} b·√n  ⟺  reverse(−diff {?} −b·√n)`.
+    let (d, bb, reversed) = if *b < zero {
+        (-&diff, -b, true)
+    } else {
+        (diff.clone(), b.clone(), false)
+    };
+    // bb·√n ≥ 0: if d < 0 it is strictly smaller; otherwise compare the squares exactly.
+    let ord = if d < zero {
+        Ordering::Less
+    } else {
+        (&d * &d).cmp(&(&bb * &bb * n))
+    };
+    if reversed {
+        ord.reverse()
+    } else {
+        ord
+    }
+}
+
+/// Numerically verify a `N/D {op} c` candidate. Returns `true` iff candidate membership matches the
+/// truth of `N(r)/D(r) {op} c` at every rational sample `r` (a pole `D(r) = 0` makes the relation
+/// false — `r` is outside the domain). Returns `false` if any bound is not rational or a quadratic
+/// surd the membership test can order exactly, or if any sample disagrees.
+fn rational_inequality_candidate_verifies(
+    ctx: &Context,
+    candidate: &SolutionSet,
+    num_poly: &cas_math::polynomial::Polynomial,
+    den_poly: &cas_math::polynomial::Polynomial,
+    c: &num_rational::BigRational,
+    op: cas_ast::RelOp,
+) -> bool {
+    use cas_ast::{BoundType, Constant, Interval, RelOp};
+    use cas_math::root_forms::as_linear_surd;
+    use cas_solver_core::solution_set::{is_infinity, is_neg_infinity};
+    use num_rational::BigRational;
+    use num_traits::Zero;
+    use std::cmp::Ordering;
+
+    // The quadratic-surd form `a + b·√n` of a bound (the golden ratio `φ = ½ + ½·√5` is emitted as
+    // the bare `Φ`/`−Φ` constant, which `as_linear_surd` leaves unfolded). `None` => not orderable.
+    fn bound_surd(ctx: &Context, e: ExprId) -> Option<(BigRational, BigRational, BigRational)> {
+        if let Some(t) = as_linear_surd(ctx, e) {
+            return Some(t);
+        }
+        let half = BigRational::new(1.into(), 2.into());
+        let five = BigRational::from_integer(5.into());
+        match ctx.get(e) {
+            Expr::Constant(Constant::Phi) => Some((half.clone(), half, five)),
+            Expr::Neg(inner) if matches!(ctx.get(*inner), Expr::Constant(Constant::Phi)) => {
+                Some((-half.clone(), -half, five))
+            }
+            _ => None,
+        }
+    }
+    // `r {?} bound`, exact. `None` if the bound is a higher surd we cannot order.
+    fn cmp_to_bound(ctx: &Context, r: &BigRational, e: ExprId) -> Option<Ordering> {
+        let (a, b, n) = bound_surd(ctx, e)?;
+        Some(cmp_rational_to_quadratic_surd(r, &a, &b, &n))
+    }
+    fn interval_member(ctx: &Context, iv: &Interval, r: &BigRational) -> Option<bool> {
+        let lo_ok = if is_neg_infinity(ctx, iv.min) {
+            true
+        } else {
+            match cmp_to_bound(ctx, r, iv.min)? {
+                Ordering::Greater => true,
+                Ordering::Equal => iv.min_type == BoundType::Closed,
+                Ordering::Less => false,
+            }
+        };
+        let hi_ok = if is_infinity(ctx, iv.max) {
+            true
+        } else {
+            match cmp_to_bound(ctx, r, iv.max)? {
+                Ordering::Less => true,
+                Ordering::Equal => iv.max_type == BoundType::Closed,
+                Ordering::Greater => false,
+            }
+        };
+        Some(lo_ok && hi_ok)
+    }
+    fn member(ctx: &Context, set: &SolutionSet, r: &BigRational) -> Option<bool> {
+        match set {
+            SolutionSet::Empty => Some(false),
+            SolutionSet::AllReals => Some(true),
+            SolutionSet::Discrete(pts) => {
+                let mut hit = false;
+                for p in pts {
+                    if cmp_to_bound(ctx, r, *p)? == Ordering::Equal {
+                        hit = true;
+                    }
+                }
+                Some(hit)
+            }
+            SolutionSet::Continuous(iv) => interval_member(ctx, iv, r),
+            SolutionSet::Union(ivs) => {
+                let mut hit = false;
+                for iv in ivs {
+                    if interval_member(ctx, iv, r)? {
+                        hit = true;
+                    }
+                }
+                Some(hit)
+            }
+            _ => None, // Residual/Conditional: cannot verify → decline
+        }
+    }
+
+    for k in -90i64..=90 {
+        let r = BigRational::new(k.into(), 6.into());
+        let d = den_poly.eval(&r);
+        let truth = if d.is_zero() {
+            false
+        } else {
+            let v = num_poly.eval(&r) / d;
+            match op {
+                RelOp::Lt => v < *c,
+                RelOp::Leq => v <= *c,
+                RelOp::Gt => v > *c,
+                RelOp::Geq => v >= *c,
+                _ => return false,
+            }
+        };
+        match member(ctx, candidate, &r) {
+            Some(m) if m == truth => {}
+            _ => return false,
+        }
+    }
+    true
 }
 
 fn try_solve_radical_inequality(
@@ -1571,10 +1731,12 @@ impl SolveBackend for LocalSolveBackend {
         if let Some(set) = try_solve_radical_inequality(simplifier, eq, var) {
             return Ok((set, Vec::new()));
         }
-        // `N / D {op} c` with a POSITIVE-DEFINITE denominator `D` (e.g. `1/(x²+1) < 1/2`):
-        // `D > 0` so the inequality does NOT flip. The general division-sign-split path
-        // mishandles a positive-definite denominator and returns the flipped side.
-        if let Some(set) = try_solve_positive_denominator_inequality(simplifier, eq, var) {
+        // `N / D {op} c` with a polynomial denominator (e.g. `1/(x²+1) < 1/2`, `1/x³ < 8`,
+        // `5/x² > 1/4`): with `P = N − c·D`, solve `P {op} 0` where `D > 0` and `P {flip op} 0`
+        // where `D < 0`, then NUMERICALLY verify the candidate before returning it (the general
+        // division-sign-split path otherwise reciprocates without flipping, e.g. `1/x³ < 8 →
+        // (-∞,1/2)`, wrong).
+        if let Some(set) = try_solve_rational_constant_inequality(simplifier, eq, var) {
             return Ok((set, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
@@ -1595,6 +1757,56 @@ mod tests {
     };
     use cas_ast::{Context, Expr};
     use cas_solver_core::domain_condition::ImplicitCondition;
+
+    #[test]
+    fn cmp_rational_to_quadratic_surd_is_exact() {
+        use num_rational::BigRational;
+        use std::cmp::Ordering;
+        let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
+        // φ = ½ + ½·√5 ≈ 1.618 — the worst case for a float gate near the boundary.
+        let (a, b, n) = (r(1, 2), r(1, 2), BigRational::from_integer(5.into()));
+        assert_eq!(
+            super::cmp_rational_to_quadratic_surd(&r(8, 5), &a, &b, &n),
+            Ordering::Less // 1.6 < φ
+        );
+        assert_eq!(
+            super::cmp_rational_to_quadratic_surd(&r(13, 8), &a, &b, &n),
+            Ordering::Greater // 1.625 > φ
+        );
+        // 2√5 ≈ 4.472 (a = 0, b = 2, n = 5): exact ordering of nearby rationals.
+        let (a0, b2) = (
+            BigRational::from_integer(0.into()),
+            BigRational::from_integer(2.into()),
+        );
+        assert_eq!(
+            super::cmp_rational_to_quadratic_surd(&r(9, 2), &a0, &b2, &n),
+            Ordering::Greater // 4.5 > 2√5
+        );
+        assert_eq!(
+            super::cmp_rational_to_quadratic_surd(&r(4, 1), &a0, &b2, &n),
+            Ordering::Less // 4 < 2√5
+        );
+        // Negative coefficient `1 − √2` ≈ −0.414 (a = 1, b = −1, n = 2): sign handled.
+        let (a1, bn1, n2) = (
+            BigRational::from_integer(1.into()),
+            BigRational::from_integer((-1).into()),
+            BigRational::from_integer(2.into()),
+        );
+        assert_eq!(
+            super::cmp_rational_to_quadratic_surd(&r(-1, 2), &a1, &bn1, &n2),
+            Ordering::Less // −0.5 < 1 − √2
+        );
+        assert_eq!(
+            super::cmp_rational_to_quadratic_surd(&r(-2, 5), &a1, &bn1, &n2),
+            Ordering::Greater // −0.4 > 1 − √2
+        );
+        // Degenerate (b = 0): a plain rational comparison.
+        let z = BigRational::from_integer(0.into());
+        assert_eq!(
+            super::cmp_rational_to_quadratic_surd(&r(3, 1), &r(3, 1), &z, &z),
+            Ordering::Equal
+        );
+    }
 
     #[test]
     fn monotonic_inequality_intersects_argument_domain() {

@@ -1163,25 +1163,43 @@ fn test_eval_single_abs_inequality_uses_segment_method() {
 }
 
 #[test]
-fn test_eval_positive_definite_denominator_inequality() {
-    // `N/D {op} c` with a POSITIVE-DEFINITE denominator `D` (D > 0 everywhere it is
-    // defined) must NOT flip the inequality. The general division-sign-split path
-    // mishandled it and returned the flipped side (`1/(x²+1) < 1/2 → (-1,1)` instead
-    // of the complement). Solve `N - c·D {op} 0` directly, excluding the pole.
+fn test_eval_rational_constant_inequality_sign_split() {
+    // `N/D {op} c` with a polynomial denominator. With `P = N − c·D`, solve `P {op} 0`
+    // where `D > 0` and `P {flip op} 0` where `D < 0` (poles excluded), then verify the
+    // candidate numerically before returning. The general division path otherwise
+    // reciprocates without flipping (`1/(x²+1) < 1/2 → (-1,1)`, `1/x³ < 8 → (-∞,1/2)`,
+    // both wrong). Only verified candidates are emitted; an unorderable higher-surd
+    // answer (`1/x⁴ > 1/4 → ±4^(1/4)`) declines to its prior behaviour rather than risk
+    // a fresh wrong answer (next step: surd-aware interval ordering).
     for (input, expected) in [
+        // Positive-definite quadratic denominators (D > 0 everywhere).
         ("1/(x^2+1) < 1/2", "(-infinity, -1) U (1, infinity)"),
         ("2/(x^2+1) < 1", "(-infinity, -1) U (1, infinity)"),
         ("1/(x^2+1) > 2", "No solution"),
         ("5/(x^2+4) <= 1", "(-infinity, -1] U [1, infinity)"),
-        ("1/x^2 < 4", "(-infinity, -1/2) U (1/2, infinity)"),
-        ("1/x^2 > 4", "(-1/2, 0) U (0, 1/2)"), // pole at 0 excluded
-        ("1/(x-1)^2 < 4", "(-infinity, 1/2) U (3/2, infinity)"),
         ("1/(x^2+1) < 0", "No solution"), // constant target, never holds
         ("1/(x^2+1) >= 0", "All real numbers"),
+        // Even-power poles at 0 (D ≥ 0, vanishing at 0): the pole is excluded.
+        ("1/x^2 < 4", "(-infinity, -1/2) U (1/2, infinity)"),
+        ("1/x^2 > 4", "(-1/2, 0) U (0, 1/2)"),
         ("1/x^2 > 0", "(-infinity, 0) U (0, infinity)"),
-        // Linear denominator (sign-varying) is unchanged — handled by the sign split.
+        ("1/(x-1)^2 < 4", "(-infinity, 1/2) U (3/2, infinity)"),
+        // Sign-varying denominators (linear, odd powers): the sign split flips on D < 0.
         ("1/(x+3) < 1/2", "(-infinity, -3) U (-1, infinity)"),
         ("1/x < 4", "(-infinity, 0) U (1/4, infinity)"),
+        ("1/x^3 < 8", "(-infinity, 0) U (1/2, infinity)"),
+        ("1/x^4 < 16", "(-infinity, -1/2) U (1/2, infinity)"),
+        ("1/x^3 >= -1", "(-infinity, -1] U (0, infinity)"),
+        ("2/x^4 >= 2", "[-1, 0) U (0, 1]"),
+        // Quadratic-surd / golden-ratio endpoints, compared exactly during verification.
+        ("5/x^2 > 1/4", "(-10·5^(-1/2), 0) U (0, 10·5^(-1/2))"),
+        (
+            "(1+x)/x^2 <= 1",
+            "(-infinity, 1/2·(1 - sqrt(5))] U [phi, infinity)",
+        ),
+        // Numerator and denominator share a factor: the removable pole at 0 stays
+        // excluded (NOT cancelled — `x/(x³−x) ≤ 0` is `(-1,0)∪(0,1)`, not `(-1,1)`).
+        ("x/(x^3-x) <= 0", "(-1, 0) U (0, 1)"),
     ] {
         let output = cli()
             .args(["eval", input, "--format", "json"])

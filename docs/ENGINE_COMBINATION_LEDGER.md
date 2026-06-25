@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 341 (newest first)
+Active entries: 342 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -123,6 +123,7 @@ Active entries: 341 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (hook de abs: simplificar lhs/... | P1 soundness: √(cuadrado perfecto) {op} afín se reconoce como inecuación de |·| (antes devolvía un conditional erróneo)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`parity_in_va... | Capacidad (cierra peldaño Cluster C): integral definida de integrando PAR en intervalo negativo evalúa por reflexión de simetría
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_positive_denominat... | P1 soundness: inecuación N/D {op} c con denominador POSITIVO-DEFINIDO no voltea (antes daba el lado equivocado)
+- 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_constant_... | P0 soundness: `N/D {op} c` general por split-de-signo verificado (cubre cúbicas/cuárticas/signo-variable; cierra el peldaño del ciclo previo)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14537,3 +14538,70 @@ Active entries: 341 (newest first)
     `N − c·D {op} 0` excluyendo el polo. Peldaño abierto: potencia negativa `x^(-q) {op} c` (`1/√x < 2`,
     `x^(-1/2)`) sigue por un path distinto (no es `Div(N, poly)`), y denom positivo-definido de grado ≥ 4 —
     extensiones futuras del mismo principio.
+
+## 2026-06-25 - P0 soundness: `N/D {op} c` general por split-de-signo verificado (cubre cúbicas/cuárticas/signo-variable; cierra el peldaño del ciclo previo)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_constant_inequality` reescrito;
+    helpers `solve_poly_sign`, `cmp_rational_to_quadratic_surd`, `rational_inequality_candidate_verifies`;
+    REEMPLAZA `try_solve_positive_denominator_inequality` + `positive_semidefinite_quadratic_pole` del commit
+    22b55ea39)
+- status:
+  - `retained` (generaliza el hook del ciclo previo de "cuadrático positivo-definido" a CUALQUIER denominador
+    polinómico de grado ≤4, sin introducir ni un solo wrong-answer nuevo)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES (commit 22b55ea39) eran wrong-answers vía recíproca-sin-voltear: `1/x³<8 → (-∞,1/2)`
+    (real `(-∞,0)∪(1/2,∞)`); `1/x⁴<16 → (-∞,1/2)`; `2/x⁴≥2 → ...`; `5/x²>1/4 → (-∞,-2√5)∪(2√5,∞)` (lado
+    INVERTIDO; real `(-2√5,0)∪(0,2√5)`); `x/(x³-x)≤0 → (-1,1)` (el factor común `x` se cancelaba y se PERDÍA
+    el polo en 0; real `(-1,0)∪(0,1)`). AHORA todos correctos. Barrido adversarial aleatorio (4 semillas,
+    ~700 casos c/u, denoms grado 1-4 incl. golden `x²-x-1`, `x³-x`, cuárticas): 0 regresiones
+    correct→WRONG, **0 emisiones nuevas de wrong-answer** desde el hook, 106-140 ganancias WRONG→correct por
+    semilla (committed WRONG ~170 → ~60).
+  - MECANISMO: con `P = N − c·D`, la relación `P/D {op} 0` se resuelve por SPLIT DE SIGNO del denominador —
+    `P {op} 0` donde `D>0`, `P {flip op} 0` donde `D<0`, uniendo e interseccionando con `solve(D≷0)`. Esto
+    mantiene cada sub-solve en grado `deg(P)`/`deg(D)` (≤4): multiplicar a `(N−c·D)·D {op} 0` (forma producto)
+    empuja el grado al doble y el solver de inecuaciones polinómicas falla allí (probado: la forma producto
+    daba 132/342 mismatches; el split, 26).
+  - SOUNDNESS (la clave): el split es exacto PERO el álgebra de intervalos (intersección/unión) NO es fiable —
+    mal-ordena bordes surd de orden ≥3 (`4^(1/4)`, `2^(1/3)`), pierde puntos aislados (`{0}` en
+    `x²/(x²-x-1)≥0`) y rellena uniones perforadas (`(-1,0)∪(0,1) → (-1,1)`). Por eso NUNCA se confía en el
+    candidato: se VERIFICA numéricamente. Su pertenencia debe casar con la verdad de `N(r)/D(r) {op} c` en
+    cada muestra racional `r` (≈181 puntos; el polo `D(r)=0` deja `r` FUERA del dominio → relación falsa). La
+    pertenencia se decide EXACTAMENTE para bordes racionales y surd CUADRÁTICOS (`a+b√n`, incl. `φ`) vía
+    `cmp_rational_to_quadratic_surd` (cuadra la comparación `r−a {?} b√n` con tracking de signo, BigRational,
+    cero f64). Un borde surd de orden superior que no se puede ordenar hace FALLAR la verificación → el caso
+    DECLINA y conserva su comportamiento previo (no gana un wrong-answer fresco).
+  - DOS huecos de soundness cazados durante el desarrollo (y por qué la verificación es obligatoria): (1)
+    `simplifier.simplify(lhs)` CANCELA factores comunes (`x/(x³-x)→1/(x²-1)`), soltando el polo removible; fix:
+    extraer `num/den` del lhs ORIGINAL sin simplificar. (2) confiar en candidatos con borde surd "porque
+    `compare_values` los ordena" emitía la unión/intersección buggy sin verificar (perdía `{0}`); fix: SIEMPRE
+    muestrear, con comparación exacta racional-vs-surd-cuadrático. `P≡0` (relación constante `N/D=c`) DECLINA
+    para que el path dedicado de polo-removible rinda el `R∖{polos}` Conditional (test
+    `canceled_fraction_true_relation_excludes_pole`).
+  - validación: workspace failed:0 (12340); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3) 0
+    deltas; test `test_eval_rational_constant_inequality_sign_split` (denoms cuadrático pos-def, polos
+    pares, lineal/impar signo-variable, cúbica/cuártica, surd-cuadrático/golden, factor compartido) +
+    unit `cmp_rational_to_quadratic_surd_is_exact`.
+- observed:
+  - cuando un procedimiento es matemáticamente exacto pero descansa sobre un álgebra de representación NO
+    fiable (intervalos con bordes surd), la forma sound de retenerlo es un CERTIFICADO numérico exacto que
+    gatea la emisión: muestreo racional denso + comparación exacta racional-vs-surd. El certificado convierte
+    "puede emitir basura" en "emite-o-declina", sin tener que arreglar el álgebra subyacente este ciclo.
+  - el barrido adversarial con DIFF contra committed (no solo "¿es correcto?") fue decisivo: distinguió
+    ganancia (WRONG→correct) de regresión (correct→WRONG) de emisión-nueva (WRONG con output ≠ committed). Sin
+    el diff, la versión con verificación-solo-racional parecía "mejor" (menos mismatches que la forma producto)
+    cuando en realidad REGRESÍA (declinaba casos surd-cuadrático que committed acertaba, cayendo al fallback
+    malo). La métrica correcta no es el conteo global de wrong, sino "cero correct→WRONG ∧ cero WRONG-nuevo".
+  - `as_linear_surd` NO despliega el golden ratio `φ` (lo deja como constante `Φ`): cualquier clasificador de
+    "borde ordenable" debe añadir `Φ`/`−Φ` explícitamente o pierde respuestas correctas (`(1+x)/x²≤1`).
+- retained learning:
+  - patrón sound general para `N/D {op} c` (denom polinómico grado ≤4): split de signo del denominador (no la
+    forma producto, que duplica grado), bordes `P`/`D` exactos, y CERTIFICAR el candidato por muestreo racional
+    con comparación exacta racional-vs-surd-cuadrático antes de emitir. Extraer `num/den` SIN simplificar para
+    conservar polos removibles. `P≡0` cae al path de polo-removible.
+  - peldaño abierto (lo que el certificado DECLINA, ~60 casos/700): bordes surd de orden ≥3 (`1/x⁴>1/4 →
+    ±4^(1/4)`, `2/x³>-1 → −2^(1/3)`) — necesitan ordenación de intervalos surd-aware (raíces cúbicas/cuárticas)
+    en `intersect/union_solution_sets`; hoy declinan a su (pre-existente, no-empeorado) fallback. También sigue
+    abierta la potencia negativa `x^(-q)` cuando NO es `Div(N, poly)` (`1/√x<2`, `x^(-1/2)`).
