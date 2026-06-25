@@ -273,7 +273,7 @@ Steps:
 1. Llevar a denominador común
    Before: a/d + b/d + 1
    After: b/d + (a + d)/d
-2.
+2. Sumar fracciones
    Before: b/d + (a + d)/d
    [Simplificación de fracción compleja]
       [Llevar a denominador común]

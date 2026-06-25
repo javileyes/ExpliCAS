@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 347 (newest first)
+Active entries: 348 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -129,6 +129,7 @@ Active entries: 347 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | G1 (capacidad): integral DEFINIDA de racional con denominador cuadrático de raíces IRRACIONALES (cierra el peldaño del ciclo previo, SIN computar el surd)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`abs_linear_d... | capacidad: integral DEFINIDA de |polinomio| partida en sus raíces reales (antes solo |lineal|)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` | capacidad: integral DEFINIDA de |racional| SIGNO-DEFINIDO (quita el abs y delega)
+- 2026-06-25 | `retained` | `crates/cas_engine/src/orchestrator.rs` (macro `return_root_shortcut_pair!`; ... | P0 wrong-value: "collapse to 0" exige cero EXACTO (resta de fracciones colapsaba mal a 0)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14821,3 +14822,52 @@ Active entries: 347 (newest first)
     dentro) y delega el integrando sin abs al motor existente. Peldaño: `g` signo-definido NO racional
     (`|eˣ−2|` donde el cero `ln2` cae fuera) — necesita certificar el signo de un transcendente; y `|g|` con
     un cero/polo EXACTAMENTE en un borde (removible para la integral) que hoy declina por el toque de frontera.
+
+## 2026-06-25 - P0 wrong-value: "collapse to 0" exige cero EXACTO (resta de fracciones colapsaba mal a 0)
+
+- area:
+  - `crates/cas_engine/src/orchestrator.rs` (macro `return_root_shortcut_pair!`; chokepoint de
+    root-shortcuts); `crates/cas_engine/src/rules/arithmetic.rs` (`eval_exact_rational`,
+    `common_scaled_difference_has_exact_nonzero_witness`; guarda en
+    `try_build_exact_zero_common_scaled_difference_rewrite`)
+- status:
+  - `retained` (cierra el defecto R7 del audit multiagente: 3 wrong-answers, D4-D6)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES `1/(x²-1) - 1/(x-1)` → `0` (VALOR CONSTANTE INCORRECTO; real `-x/(x²-1)`, en x=2 da -2/3);
+    `1/(2²-1)-1/(2-1)` → `0` (debía -2/3); contaminaba `solve`: `solve(1/(x²-1)=1/(x-1),x)` →
+    "All real numbers" (real `{0}`), `solve((x+2)/(x²-1)=(x+2)/(x-1),x)` → "All reals" (real `{-2,0}`).
+    AHORA todos correctos. Oráculo (2 semillas, 600 restas de fracciones `nᵢ/dᵢ ± nⱼ/dⱼ`): 0 wrong.
+  - MECANISMO: una familia de ~11 shortcuts del orquestador colapsa una diferencia a `0` cuando un
+    MATCHER ESTRUCTURAL cree ver una cancelación «común-escalada» / «par de productos equivalentes».
+    El matcher tenía un falso positivo para `1/(x²-1) - 1/(x-1)` (lo leyó como `c·A - c·A`). En vez de
+    cazar cada matcher, se añadió un CERTIFICADO EXACTO en el ÚNICO chokepoint por donde TODOS los
+    root-shortcuts devuelven su resultado (la macro `return_root_shortcut_pair!`): si el shortcut
+    colapsa a `0` PERO la expresión evalúa EXACTO a un valor NO-cero en un punto racional genérico, se
+    descarta el shortcut y sigue la simplificación honesta. El testigo sustituye cada variable libre por
+    racionales genéricos (7/2, 11/3, …) y evalúa con `eval_exact_rational` (BigRational, maneja potencias
+    ENTERAS — `as_rational_const` NO maneja `Pow`, por eso falló el primer intento). Transcendentales →
+    `None` → no se puede refutar → no se bloquea (las identidades trig/hiperbólicas siguen colapsando).
+  - SOUNDNESS (exacta, BigRational, cero f64): el certificado solo VETA colapsos a 0; nunca fuerza uno.
+    Un valor exacto no-cero prueba que la expresión NO es idénticamente cero. Ceros genuinos
+    (`2x/(x-1)-2x/(x-1)`, `(x-1)(x+1)-(x²-1)`, `csc²-cot²=1`, `(a+b)²-a²-2ab-b²`) siguen colapsando.
+  - validación: workspace failed:0 (12343); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3)
+    0 deltas; test `test_eval_common_scale_zero_collapse_requires_exact_zero` (3 wrong-answers + 4 ceros
+    genuinos que deben sobrevivir).
+- observed:
+  - cuando una familia de N shortcuts comparte un riesgo (colapsar a 0 por matching estructural), el
+    arreglo sound y mínimo es un CERTIFICADO en el chokepoint común (aquí la macro de retorno de
+    root-shortcuts), no parchear los N matchers. Un certificado exacto que solo VETA es seguro: nunca
+    introduce un wrong-answer, solo elimina los falsos colapsos.
+  - `as_rational_const` (cas_math) NO evalúa `Expr::Pow` — devuelve None para `(7/2)^2`. Para un
+    certificado numérico exacto sobre racionales hace falta un evaluador propio que cubra potencias
+    enteras (`eval_exact_rational`). Lección reutilizable para futuros certificados.
+  - el bug atravesaba ~11 productores del mismo step name; localizarlos uno a uno (rule → 3 shortcuts →
+    dispatcher) fue whack-a-mole hasta encontrar el chokepoint de la macro. Buscar el chokepoint PRIMERO
+    ahorra ciclos.
+- retained learning:
+  - patrón sound para reglas «colapsar a 0»: NUNCA colapsar por matching estructural sin CERTIFICAR el
+    cero (evaluación exacta racional en punto genérico). Ponlo en el chokepoint común de la familia.
+    Generaliza el patrón del ciclo de inecuaciones (certificar antes de emitir). Peldaño: el mismo
+    certificado podría extenderse a otras familias de colapso-a-0 si aparecen falsos positivos.

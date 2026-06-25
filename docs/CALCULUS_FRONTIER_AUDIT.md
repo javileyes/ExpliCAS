@@ -1438,14 +1438,20 @@ simplify-powers-roots-logs, factor-gcd. Los 6 candidatos de integración indefin
 REFUTADOS por la verificación (formas equivalentes), no defectos.
 
 ### R7 — P0 wrong-value: simplificación NO sound de diferencia de fracciones → identidad falsa
-- [ ] `1/(x^2-1) - 1/(x-1)` → `0` (VALOR CONSTANTE INCORRECTO; real `-x/(x²-1)`, en x=2 da −2/3, no 0).
+- [x] `1/(x^2-1) - 1/(x-1)` → `0` (VALOR CONSTANTE INCORRECTO; real `-x/(x²-1)`, en x=2 da −2/3, no 0).
   Contamina `solve`: `solve(1/(x^2-1)-1/(x-1)=0,x)` → `All real numbers if x²-1≠0 and x-1≠0` (real `{0}`).
-- [ ] `solve(1/(x^2-1)=1/(x-1),x)` → `All real numbers if …` (real `{0}`): cruza-multiplica y declara
+- [x] `solve(1/(x^2-1)=1/(x-1),x)` → `All real numbers if …` (real `{0}`): cruza-multiplica y declara
   identidad el residuo `x+1=1`.
-- [ ] `solve((x+2)/(x^2-1)=(x+2)/(x-1),x)` → `All real numbers if …` (real `{-2, 0}`): cancela
+- [x] `solve((x+2)/(x^2-1)=(x+2)/(x-1),x)` → `All real numbers if …` (real `{-2, 0}`): cancela
   `(x+2)/(x-1)` y pierde el factor `1/(x+1)`.
   *Hipótesis raíz:* simplificación de resta de fracciones que colapsa el numerador a 0; detección de
   identidad tras cancelación cruzada. Mirar el camino lineal/identidad y el cruce-multiplicación.
+  *(graduado 2026-06-25 PENDIENTE_R7_HASH: la raíz NO era el camino lineal sino una familia de ~11
+  shortcuts del orquestador que colapsan una diferencia a 0 por matching estructural. Fix sound en el
+  chokepoint único — la macro `return_root_shortcut_pair!`: un shortcut que colapsa a 0 se VETA si la
+  expresión evalúa exacto a un valor no-cero en un punto racional genérico (`eval_exact_rational`,
+  BigRational, maneja potencias enteras que `as_rational_const` no). Los 3 defectos cerrados; ceros
+  genuinos e identidades trig siguen colapsando.)*
 
 ### R1 — P0 wrong-value: `M^0` colapsa al escalar `1` (sin guarda de base-matriz) — 5 defectos, 1 fix
 - [ ] `[[1,2],[3,4]]^0 + [[1,2],[3,4]]` → `[[1,2],[3,4]] + 1` (real `[[2,2],[3,5]]`).

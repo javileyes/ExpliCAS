@@ -27215,20 +27215,36 @@ impl Orchestrator {
                     );
                 }
                 if let Some((result, shortcut_steps)) = $call {
-                    if self.time_budget_exceeded() {
-                        return self.finish_timed_out_pipeline(
-                            simplifier,
+                    // SOUNDNESS GATE: a root shortcut that collapses to `0` must never fire on an
+                    // expression whose exact value at a generic rational point is NON-zero (a
+                    // mis-detected cancellation such as `1/(x²-1) - 1/(x-1) = -x/(x²-1)`). Skip it so
+                    // the honest simplification runs instead.
+                    let collapses_to_zero = {
+                        let zero = simplifier.context.num(0);
+                        cas_ast::ordering::compare_expr(&simplifier.context, result, zero)
+                            == std::cmp::Ordering::Equal
+                    };
+                    if !collapses_to_zero
+                        || !crate::rules::arithmetic::common_scaled_difference_has_exact_nonzero_witness(
+                            &mut simplifier.context,
+                            expr,
+                        )
+                    {
+                        if self.time_budget_exceeded() {
+                            return self.finish_timed_out_pipeline(
+                                simplifier,
+                                result,
+                                shortcut_steps,
+                                crate::phase::PipelineStats::default(),
+                                None,
+                            );
+                        }
+                        return (
                             result,
                             shortcut_steps,
                             crate::phase::PipelineStats::default(),
-                            None,
                         );
                     }
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
                 }
                 if self.time_budget_exceeded() {
                     return self.finish_timed_out_pipeline(

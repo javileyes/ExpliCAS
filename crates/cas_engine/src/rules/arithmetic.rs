@@ -16702,6 +16702,106 @@ pub(crate) fn classify_exact_zero_common_scale_route_profile_family(
     None
 }
 
+/// EXACT soundness witness for the "collapse to 0" routes: if `expr` is a rational/algebraic form
+/// whose value at a generic rational assignment of its free variables is provably NON-ZERO, then it
+/// is NOT identically zero and must never be collapsed to `0`. Returns `true` on such a witness.
+/// Transcendental sub-terms (`sin`, `exp`, surds …) make `as_rational_const` return `None`, so those
+/// routes keep their existing behaviour — this guard only ever VETOES a wrong collapse, never forces
+/// one. Catches e.g. `1/(x²−1) − 1/(x−1)` (value −2/3 at x=2), which a pattern matcher mistook for a
+/// common-scale cancellation.
+/// Exact rational evaluation of a constant expression, including INTEGER powers (which
+/// `as_rational_const` declines). `None` for any transcendental/non-rational sub-term, a division by
+/// zero, or a non-integer / oversized exponent.
+fn eval_exact_rational(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    depth: usize,
+) -> Option<num_rational::BigRational> {
+    use num_traits::{One, Zero};
+    if depth == 0 {
+        return None;
+    }
+    match ctx.get(expr) {
+        cas_ast::Expr::Number(n) => Some(n.clone()),
+        cas_ast::Expr::Neg(inner) => Some(-eval_exact_rational(ctx, *inner, depth - 1)?),
+        cas_ast::Expr::Add(l, r) => Some(
+            eval_exact_rational(ctx, *l, depth - 1)? + eval_exact_rational(ctx, *r, depth - 1)?,
+        ),
+        cas_ast::Expr::Sub(l, r) => Some(
+            eval_exact_rational(ctx, *l, depth - 1)? - eval_exact_rational(ctx, *r, depth - 1)?,
+        ),
+        cas_ast::Expr::Mul(l, r) => Some(
+            eval_exact_rational(ctx, *l, depth - 1)? * eval_exact_rational(ctx, *r, depth - 1)?,
+        ),
+        cas_ast::Expr::Div(l, r) => {
+            let d = eval_exact_rational(ctx, *r, depth - 1)?;
+            if d.is_zero() {
+                return None;
+            }
+            Some(eval_exact_rational(ctx, *l, depth - 1)? / d)
+        }
+        cas_ast::Expr::Pow(base, exponent) => {
+            let exp = eval_exact_rational(ctx, *exponent, depth - 1)?;
+            if !exp.is_integer() {
+                return None;
+            }
+            let e = exp.to_integer().to_i64()?;
+            if e.unsigned_abs() > 64 {
+                return None; // avoid blow-up
+            }
+            let b = eval_exact_rational(ctx, *base, depth - 1)?;
+            if e == 0 {
+                return Some(num_rational::BigRational::one());
+            }
+            let factor = if e < 0 {
+                if b.is_zero() {
+                    return None;
+                }
+                num_rational::BigRational::one() / b
+            } else {
+                b
+            };
+            let mut acc = num_rational::BigRational::one();
+            for _ in 0..e.unsigned_abs() {
+                acc *= &factor;
+            }
+            Some(acc)
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn common_scaled_difference_has_exact_nonzero_witness(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    use num_traits::Zero;
+
+    let var_names: Vec<String> = cas_ast::traversal::collect_variables(ctx, expr)
+        .into_iter()
+        .collect();
+    // Generic rationals that avoid the small-integer poles typical of these denominators.
+    let samples: [(i64, i64); 5] = [(7, 2), (11, 3), (13, 5), (17, 4), (23, 6)];
+    for round in 0..samples.len() {
+        let mut substituted = expr;
+        for (i, name) in var_names.iter().enumerate() {
+            let var_node = ctx.var(name);
+            let (n, d) = samples[(round + i) % samples.len()];
+            let value = num_rational::BigRational::new((n + i as i64).into(), d.into());
+            let value_node = ctx.add(cas_ast::Expr::Number(value));
+            substituted =
+                cas_ast::traversal::substitute_expr_by_id(ctx, substituted, var_node, value_node);
+        }
+        if let Some(value) = eval_exact_rational(ctx, substituted, 64) {
+            if !value.is_zero() {
+                return true; // exact non-zero value → the difference is NOT identically zero
+            }
+        }
+        // `None` (transcendental, or a pole at this sample) cannot disprove zero — try the next.
+    }
+    false
+}
+
 pub(crate) fn try_build_exact_zero_common_scaled_difference_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -16710,6 +16810,11 @@ pub(crate) fn try_build_exact_zero_common_scaled_difference_rewrite(
     // itself: `inf - inf`, `(1/0) - (1/0)` and `undefined - undefined` are
     // indeterminate, not zero. Decline so the difference stays symbolic.
     if additive_term_is_nonfinite_or_undefined(ctx, expr) {
+        return None;
+    }
+    // SOUNDNESS GATE: never collapse to 0 a rational expression that exactly evaluates to a non-zero
+    // value at a generic point (`1/(x²−1) − 1/(x−1)` is `−x/(x²−1)`, not 0).
+    if common_scaled_difference_has_exact_nonzero_witness(ctx, expr) {
         return None;
     }
 

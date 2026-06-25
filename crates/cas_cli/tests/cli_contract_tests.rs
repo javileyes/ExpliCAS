@@ -1163,6 +1163,35 @@ fn test_eval_single_abs_inequality_uses_segment_method() {
 }
 
 #[test]
+fn test_eval_common_scale_zero_collapse_requires_exact_zero() {
+    // A "collapse to 0" shortcut mistook `1/(x²−1) − 1/(x−1)` (= −x/(x²−1)) for a common-scale
+    // cancellation and folded it to 0 — a wrong CONSTANT that then poisoned `solve` into a false
+    // "All real numbers". A root shortcut may now only collapse to 0 when the expression exactly
+    // vanishes at a generic rational point.
+    for (input, expected) in [
+        ("1/(x^2-1) - 1/(x-1)", "-x / (x^2 - 1)"),
+        ("1/(x-1) - 1/(x^2-1)", "x / (x^2 - 1)"),
+        ("1/(2^2-1) - 1/(2-1)", "-2/3"),
+        ("solve(1/(x^2-1)=1/(x-1), x)", "{ 0 }"),
+        ("solve(1/(x^2-1)-1/(x-1)=0, x)", "{ 0 }"),
+        ("solve((x+2)/(x^2-1)=(x+2)/(x-1), x)", "{ -2, 0 }"),
+        // Genuine zero differences must STILL collapse (the guard only vetoes non-zero witnesses).
+        ("2*x/(x-1) - 2*x/(x-1)", "0"),
+        ("(x-1)*(x+1) - (x^2-1)", "0"),
+        ("csc(x)^2 - cot(x)^2", "1"),
+        ("(a+b)^2 - a^2 - 2*a*b - b^2", "0"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_rational_constant_inequality_sign_split() {
     // `N/D {op} c` with a polynomial denominator. With `P = N − c·D`, solve `P {op} 0`
     // where `D > 0` and `P {flip op} 0` where `D < 0` (poles excluded), then verify the
