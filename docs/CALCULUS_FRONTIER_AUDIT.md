@@ -1480,7 +1480,7 @@ REFUTADOS por la verificación (formas equivalentes), no defectos.
   un lado finito; con AMBOS infinitos cae a `CancelCommonFactorsRule`
   (`crates/cas_engine/src/rules/algebra/fractions/cancel_rules_factor.rs:521`). Fix: regla `inf/inf →
   Undefined` antes de la cancelación (análoga a `0*inf`/`inf-inf`, que SÍ dan undefined).
-  *(graduado PARCIAL 2026-06-25 PENDIENTE_R2_HASH: nueva `InfDivInfRule` (`is_infinite_valued` reconoce `±∞`
+  *(graduado PARCIAL 2026-06-25 eed9c5407: nueva `InfDivInfRule` (`is_infinite_valued` reconoce `±∞`
   y `c·∞`) registrada con las formas indeterminadas → 3/4 defectos cerrados; el veto compartido
   `root_shortcut_result_is_unsound` cubre ambas macros de root-shortcut. D36 simétrico queda peldaño — ver
   ledger; ADEMÁS descubierta una divergencia plain-vs-`--steps` que es un riesgo de consistencia a auditar.)*
