@@ -1532,21 +1532,24 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   plain no se re-pliega a `Number(2/5)` (mismo valor, forma no canónica). Análogo a §DIV-PARITY de cocientes
   numéricos pero por una ruta de cancelación distinta; menor severidad (NORMALIZATION, no wrong-answer).
 
-### R3 — P1 lost-domain: inecuación NO estricta pierde el cero aislado de factor de mult. par — 10 defectos, 1 fix
+### R3 — P1 lost-domain: inecuación NO estricta pierde el cero aislado de factor de mult. par — 10 defectos, 1 fix [GRADUADO]
 El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque que caen fuera del intervalo dominante.
-- [ ] `solve((x-2)^2*(x+1)<=0,x)` → `(-∞,-1]` (falta `{2}`).
-- [ ] `solve((x+1)^2*(x-3)^3>=0,x)` → `[3,∞)` (falta `{-1}`).
-- [ ] `solve(x^2/(x-1)>=0,x)` → `(1,∞)` (falta `{0}`).
-- [ ] `solve(x^2*(x^2-4)>=0,x)` → `(-∞,-2]∪[2,∞)` (falta `{0}`).
-- [ ] `solve(x^3*(x-2)^2<=0,x)` → `(-∞,0]` (falta `{2}`).
-- [ ] `solve((x-1)*(x-2)^2*(x-3)>=0,x)` → `(-∞,1]∪[3,∞)` (falta `{2}`).
-- [ ] `solve((x-1)^4*(x+1)<=0,x)` → `(-∞,-1]` (falta `{1}`).
-- [ ] `solve(x^2/((x-1)*(x-2))<=0,x)` → `(1,2)` (falta `{0}`).
-- [ ] `solve((x-3)^2/(x-1)<=0,x)` → `(-∞,1)` (falta `{3}`).
-- [ ] `solve((x+3)^2*(x-1)*(x-5)<=0,x)` → `[1,5]` (falta `{-3}`).
+- [x] `solve((x-2)^2*(x+1)<=0,x)` → `(-∞,-1]` (falta `{2}`).
+- [x] `solve((x+1)^2*(x-3)^3>=0,x)` → `[3,∞)` (falta `{-1}`).
+- [x] `solve(x^2/(x-1)>=0,x)` → `(1,∞)` (falta `{0}`).
+- [x] `solve(x^2*(x^2-4)>=0,x)` → `(-∞,-2]∪[2,∞)` (falta `{0}`).
+- [x] `solve(x^3*(x-2)^2<=0,x)` → `(-∞,0]` (falta `{2}`).
+- [x] `solve((x-1)*(x-2)^2*(x-3)>=0,x)` → `(-∞,1]∪[3,∞)` (falta `{2}`).
+- [x] `solve((x-1)^4*(x+1)<=0,x)` → `(-∞,-1]` (falta `{1}`).
+- [x] `solve(x^2/((x-1)*(x-2))<=0,x)` → `(1,2)` (falta `{0}`).
+- [x] `solve((x-3)^2/(x-1)<=0,x)` → `(-∞,1)` (falta `{3}`).
+- [x] `solve((x+3)^2*(x-1)*(x-5)<=0,x)` → `[1,5]` (falta `{-3}`).
   Control sano: `solve((x-3)^2<=0,x)→{3}`, y las variantes estrictas excluyen el punto bien.
-  *Hipótesis raíz:* análisis de signos de inecuaciones no estrictas en
-  `crates/cas_solver/src/solve_backend_local.rs`; paso que reincorpora los ceros de igualdad.
+  *(graduado 2026-06-26 PENDIENTE_R3: `union_non_strict_inequality_roots` envuelve el método del backend;
+  para `Leq|Geq` re-resuelve la ecuación `lhs=rhs` (excluye polos, filtra extrañas) y une sus raíces discretas
+  → los 10 incluyen el punto. Estricto intacto; polos NO añadidos. Test
+  `cli_contract_tests::test_eval_nonstrict_inequality_includes_isolated_roots`. Residual preexistente: el
+  dominio de `ln`/`sqrt` no se intersecta (`ln(x)*(x-2)^2<=0 -> (-inf,1]`).)*
 
 ### R4 — P1 lost-domain: `abs(cuadrático)` no estricto pierde la frontera de igualdad — 4 defectos
 - [ ] `solve(abs(x^2-2)<=0,x)` → `No solution` (real `{±√2}`; `solve(abs(x^2-2)=0,x)→{±√2}` ✓).

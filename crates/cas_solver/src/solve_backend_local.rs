@@ -1772,68 +1772,135 @@ impl SolveBackend for LocalSolveBackend {
         opts: CoreSolverOptions,
         ctx: &SolveCtx,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        if equation_is_nonzero_const_over_polynomial(simplifier, eq)
-            || equation_has_identically_zero_denominator(simplifier, eq)
-        {
-            return Ok((SolutionSet::Empty, Vec::new()));
-        }
-        // Absolute-value relations (`|x| + |x-1| < 5`, `|x| > x+1`, etc.) are
-        // piecewise-linear: the isolate-one-abs strategy below loses terms or returns
-        // the boundary point. Solve them exactly here, before any isolation routing.
-        // Simplify the two sides first so a `√(perfect square)` collapses to its `|·|`
-        // form (`√(x²-6x+9) → |x-3|`) and is recognized as an abs relation. Returns None
-        // for anything that is not an abs relation, so other shapes fall through.
-        let (abs_lhs, _) = simplifier.simplify(eq.lhs);
-        let (abs_rhs, _) = simplifier.simplify(eq.rhs);
-        if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_relation(
-            &mut simplifier.context,
-            abs_lhs,
-            abs_rhs,
-            eq.op.clone(),
-            var,
-        ) {
-            return Ok((set, Vec::new()));
-        }
-        // Equations that are a polynomial of degree ≥ 2 in `x^(1/q)` (`x - 3·√x + 2`,
-        // `x^(2/3) - x^(1/3) - 2`, …) are quadratics-in-disguise: the isolation path
-        // reorients to `x = f(x)` and leaks a malformed `solve(...)` residual while
-        // dropping every root. Solve them by `u = x^(1/q)` substitution here first.
-        if let Some(set) = try_solve_rational_power_polynomial(simplifier, eq, var) {
-            return Ok((set, Vec::new()));
-        }
-        // Equations that are a polynomial of degree ≥ 2 in `ln(x)`
-        // (`ln(x)^2 - ln(x) - 2 = 0`, …) leak the same way; solve them by the
-        // `u = ln(x)` substitution.
-        if let Some(set) = try_solve_polynomial_in_log(simplifier, eq, var) {
-            return Ok((set, Vec::new()));
-        }
-        // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks
-        // the same isolation residual; reduce by squaring and verify exactly.
-        if let Some(set) = try_solve_sum_of_two_radicals_equation(simplifier, eq, var) {
-            return Ok((set, Vec::new()));
-        }
-        // Radical INEQUALITIES `√f {<,≤,>,≥} g`: solve by the correct case split,
-        // not by squaring blindly (which loses the RHS-sign branches and gives
-        // wrong answers like `√x < x-2 → [0,1) ∪ (4,∞)`).
-        if let Some(set) = try_solve_radical_inequality(simplifier, eq, var) {
-            return Ok((set, Vec::new()));
-        }
-        // `N / D {op} c` with a polynomial denominator (e.g. `1/(x²+1) < 1/2`, `1/x³ < 8`,
-        // `5/x² > 1/4`): with `P = N − c·D`, solve `P {op} 0` where `D > 0` and `P {flip op} 0`
-        // where `D < 0`, then NUMERICALLY verify the candidate before returning it (the general
-        // division-sign-split path otherwise reciprocates without flipping, e.g. `1/x³ < 8 →
-        // (-∞,1/2)`, wrong).
-        if let Some(set) = try_solve_rational_constant_inequality(simplifier, eq, var) {
-            return Ok((set, Vec::new()));
-        }
-        let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
-        let conds = ctx.required_conditions();
-        let set = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);
-        // Fold the monotonic-function argument-domain into an inequality result
-        // (`sqrt(x)<2 → [0,4)`), which the inversion drops; no-op for equations.
-        let set = intersect_inequality_with_function_domain(simplifier, eq, var, set);
+        let (set, steps) = solve_local_core(eq, var, simplifier, opts, ctx)?;
+        // For a NON-STRICT inequality (`f ≤ 0` / `f ≥ 0`) EVERY real root of `f = lhs − rhs` is a
+        // solution (`0` satisfies `≤ 0` and `≥ 0`), but the interval sign-analysis drops isolated
+        // roots of even-multiplicity factors (`(x−2)²(x+1) ≤ 0` keeps `(−∞,−1]` but loses `{2}`;
+        // `x²/(x−1) ≥ 0` keeps `(1,∞)` but loses `{0}`). Union those roots back in — they exclude
+        // poles by construction (a pole is not a root of `f = 0`) and are domain-filtered.
+        let set = union_non_strict_inequality_roots(eq, var, simplifier, opts, ctx, set);
         Ok((set, steps))
     }
+}
+
+fn solve_local_core(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    if equation_is_nonzero_const_over_polynomial(simplifier, eq)
+        || equation_has_identically_zero_denominator(simplifier, eq)
+    {
+        return Ok((SolutionSet::Empty, Vec::new()));
+    }
+    // Absolute-value relations (`|x| + |x-1| < 5`, `|x| > x+1`, etc.) are
+    // piecewise-linear: the isolate-one-abs strategy below loses terms or returns
+    // the boundary point. Solve them exactly here, before any isolation routing.
+    // Simplify the two sides first so a `√(perfect square)` collapses to its `|·|`
+    // form (`√(x²-6x+9) → |x-3|`) and is recognized as an abs relation. Returns None
+    // for anything that is not an abs relation, so other shapes fall through.
+    let (abs_lhs, _) = simplifier.simplify(eq.lhs);
+    let (abs_rhs, _) = simplifier.simplify(eq.rhs);
+    if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_relation(
+        &mut simplifier.context,
+        abs_lhs,
+        abs_rhs,
+        eq.op.clone(),
+        var,
+    ) {
+        return Ok((set, Vec::new()));
+    }
+    // Equations that are a polynomial of degree ≥ 2 in `x^(1/q)` (`x - 3·√x + 2`,
+    // `x^(2/3) - x^(1/3) - 2`, …) are quadratics-in-disguise: the isolation path
+    // reorients to `x = f(x)` and leaks a malformed `solve(...)` residual while
+    // dropping every root. Solve them by `u = x^(1/q)` substitution here first.
+    if let Some(set) = try_solve_rational_power_polynomial(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // Equations that are a polynomial of degree ≥ 2 in `ln(x)`
+    // (`ln(x)^2 - ln(x) - 2 = 0`, …) leak the same way; solve them by the
+    // `u = ln(x)` substitution.
+    if let Some(set) = try_solve_polynomial_in_log(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks
+    // the same isolation residual; reduce by squaring and verify exactly.
+    if let Some(set) = try_solve_sum_of_two_radicals_equation(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // Radical INEQUALITIES `√f {<,≤,>,≥} g`: solve by the correct case split,
+    // not by squaring blindly (which loses the RHS-sign branches and gives
+    // wrong answers like `√x < x-2 → [0,1) ∪ (4,∞)`).
+    if let Some(set) = try_solve_radical_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `N / D {op} c` with a polynomial denominator (e.g. `1/(x²+1) < 1/2`, `1/x³ < 8`,
+    // `5/x² > 1/4`): with `P = N − c·D`, solve `P {op} 0` where `D > 0` and `P {flip op} 0`
+    // where `D < 0`, then NUMERICALLY verify the candidate before returning it (the general
+    // division-sign-split path otherwise reciprocates without flipping, e.g. `1/x³ < 8 →
+    // (-∞,1/2)`, wrong).
+    if let Some(set) = try_solve_rational_constant_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
+    let conds = ctx.required_conditions();
+    let set = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);
+    // Fold the monotonic-function argument-domain into an inequality result
+    // (`sqrt(x)<2 → [0,4)`), which the inversion drops; no-op for equations.
+    let set = intersect_inequality_with_function_domain(simplifier, eq, var, set);
+    Ok((set, steps))
+}
+
+/// Union the dropped boundary roots of a NON-STRICT inequality back into its interval solution.
+///
+/// For `f ≤ 0` / `f ≥ 0` every real, in-domain root of `f = lhs − rhs` is a solution (the value `0`
+/// satisfies both), but the interval sign-analysis only emits the sign-CHANGE regions and silently
+/// drops the isolated roots of even-multiplicity factors that fall outside them. We re-solve the
+/// EQUATION `lhs = rhs` (which already excludes poles and filters extraneous/non-finite roots via the
+/// same `filter_real_solutions` pass) and union its discrete roots, as degenerate `[p, p]` intervals,
+/// into the result. Strict inequalities (`<` / `>`) are left untouched — `0` does NOT satisfy them.
+fn union_non_strict_inequality_roots(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+    set: SolutionSet,
+) -> SolutionSet {
+    use cas_ast::RelOp;
+    use cas_solver_core::solution_set::union_solution_sets;
+
+    // Non-strict only: a root of `f` satisfies `f ≤ 0` and `f ≥ 0`, but NOT `f < 0` / `f > 0`.
+    if !matches!(eq.op, RelOp::Leq | RelOp::Geq) {
+        return set;
+    }
+    // `AllReals` already contains every root; `Residual`/`Conditional` cannot be cleanly augmented.
+    if !matches!(
+        set,
+        SolutionSet::Continuous(_)
+            | SolutionSet::Union(_)
+            | SolutionSet::Discrete(_)
+            | SolutionSet::Empty
+    ) {
+        return set;
+    }
+
+    let eq_roots = Equation {
+        lhs: eq.lhs,
+        rhs: eq.rhs,
+        op: RelOp::Eq,
+    };
+    let Ok((roots, _)) = solve_local_core(&eq_roots, var, simplifier, opts, ctx) else {
+        return set;
+    };
+    // Only genuine discrete roots can be unioned in; anything else means no isolated point to add.
+    if !matches!(roots, SolutionSet::Discrete(_)) {
+        return set;
+    }
+    let roots_intervals = discrete_to_intervals(roots);
+    union_solution_sets(&simplifier.context, set, roots_intervals)
 }
 
 #[cfg(test)]

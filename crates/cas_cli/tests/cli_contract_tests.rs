@@ -1386,6 +1386,44 @@ fn test_eval_numeric_quotient_plain_matches_steps() {
 }
 
 #[test]
+fn test_eval_nonstrict_inequality_includes_isolated_roots() {
+    // For a NON-STRICT inequality `f ≤ 0` / `f ≥ 0`, every real in-domain root of `f` is a solution
+    // (the value `0` satisfies the relation), but the interval sign-analysis emits only the
+    // sign-CHANGE regions and drops the isolated roots of even-multiplicity factors that fall
+    // outside them. Those roots are now unioned back in (as degenerate `[p, p]` intervals or a
+    // `{p}` discrete set), with poles excluded by construction.
+    for (input, expected) in [
+        ("solve((x-2)^2*(x+1)<=0, x)", "(-infinity, -1] U [2, 2]"),
+        ("solve((x+1)^2*(x-3)^3>=0, x)", "[-1, -1] U [3, infinity)"),
+        ("solve(x^2/(x-1)>=0, x)", "[0, 0] U (1, infinity)"),
+        ("solve(x^2*(x^2-4)>=0, x)", "(-infinity, -2] U [0, 0] U [2, infinity)"),
+        ("solve(x^3*(x-2)^2<=0, x)", "(-infinity, 0] U [2, 2]"),
+        ("solve((x-1)*(x-2)^2*(x-3)>=0, x)", "(-infinity, 1] U [2, 2] U [3, infinity)"),
+        ("solve((x-1)^4*(x+1)<=0, x)", "(-infinity, -1] U [1, 1]"),
+        ("solve(x^2/((x-1)*(x-2))<=0, x)", "[0, 0] U (1, 2)"),
+        ("solve((x-3)^2/(x-1)<=0, x)", "(-infinity, 1) U [3, 3]"),
+        ("solve((x+3)^2*(x-1)*(x-5)<=0, x)", "[-3, -3] U [1, 5]"),
+        // Pure touch point -> a single discrete solution.
+        ("solve((x-2)^2<=0, x)", "{ 2 }"),
+        ("solve(-(x-2)^2>=0, x)", "{ 2 }"),
+        // STRICT controls: `0` does NOT satisfy `<`/`>`, so NO isolated root is added.
+        ("solve((x-2)^2*(x+1)<0, x)", "(-infinity, -1)"),
+        ("solve(x^2/(x-1)>0, x)", "(1, infinity)"),
+        // Squares are everywhere-nonnegative; a pole is never a solution.
+        ("solve((x-2)^4>=0, x)", "All real numbers"),
+        ("solve(1/(x-2)^2<=0, x)", "No solution"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_rational_constant_inequality_sign_split() {
     // `N/D {op} c` with a polynomial denominator. With `P = N − c·D`, solve `P {op} 0`
     // where `D > 0` and `P {flip op} 0` where `D < 0` (poles excluded), then verify the

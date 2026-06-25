@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 355 (newest first)
+Active entries: 356 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound/consistencia: `(∞±finito)/(∞±finito) -> undefined` (aditivo; cierra peldaño C)
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_with_ctx_and_options` ... | P1 lost-domain: inecuación NO estricta recupera el cero aislado (R3; 10 defectos)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15192,3 +15193,49 @@ Active entries: 355 (newest first)
     undefined). Para Add/Sub hay que ser sign-aware porque `∞−∞` cancela a indeterminado. Próximo peldaño de
     consistencia ∞: la ABSORCIÓN `finito+∞ -> ∞` no corre en plain (`inf+1` diverge) — mismo patrón regla-vs-
     no-op del modo plain que ya resolvimos para `∞/∞`.
+
+## 2026-06-26 - P1 lost-domain: inecuación NO estricta recupera el cero aislado (R3; 10 defectos)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`solve_with_ctx_and_options` envuelve el cuerpo
+    extraído `solve_local_core`; nuevo `union_non_strict_inequality_roots`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_nonstrict_inequality_includes_isolated_roots`)
+- status:
+  - `retained` (cierra R3 entero: los 10 defectos)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES `(x-2)^2*(x+1)<=0 -> (-inf,-1]` (falta {2}), `x^2/(x-1)>=0 -> (1,inf)` (falta {0}),
+    `x^2*(x^2-4)>=0` (falta {0}), etc. — 10 casos. AHORA cada uno incluye el punto: `(-inf,-1] U [2,2]`,
+    `[0,0] U (1,inf)`, etc.
+  - MECANISMO: para `f <= 0` / `f >= 0` TODO cero real en-dominio de `f` es solución (`0` satisface `<=` y
+    `>=`), pero el análisis de signos sólo emite las regiones de CAMBIO de signo y descarta los ceros aislados
+    de factores de multiplicidad PAR que caen fuera. Verificado por workflow de mapeo: dos rutas distintas
+    convergen (la racional `try_solve_rational_constant_inequality` retorna en :1827; la polinómica via
+    `solve_inner` -> `finalize_product_zero_inequality_solution_set`), así que un parche por-ruta exigiría 2
+    ediciones en 2 crates. Fix UNIFICADO: extraer el cuerpo a `solve_local_core` y envolver el método del trait
+    para post-procesar TODA ruta — re-resolver la ECUACIÓN `lhs=rhs` (que ya excluye polos y filtra por
+    `filter_real_solutions`) y unir sus raíces discretas (vía `discrete_to_intervals`+`union_solution_sets`).
+  - SOUNDNESS: gateado a `Leq|Geq` (NO estricto) — para `Lt|Gt` el `0` NO satisface, no se añade nada
+    (control `(x-2)^2*(x+1)<0 -> (-inf,-1)` intacto). Las raíces vienen del solver de ecuaciones, que excluye
+    POLOS (`x^2/(x-1)=0 -> {0}`, no `{1}`) y filtra extrañas/no-finitas — no se añade ningún punto fuera de
+    dominio ni espurio (verificado: `1/(x-2)^2<=0 -> No solution`, NO añade el polo `{2}`). `AllReals`/
+    `Residual`/`Conditional` se devuelven sin tocar. Sin f64 para decisiones (las raíces ya están filtradas).
+  - validación: workspace failed:0 (12348, ningún fixture de inecuación roto); clippy `--all-targets`/fmt;
+    huella guardrail(16)+pressure(3) 0 deltas; engine-fast verde; barrido adversarial (dominio sqrt/ln,
+    transcendental, anidado, polos, estricto, AllReals/Empty) limpio.
+  - RESIDUALES (preexistentes, NO introducidos): `ln(x)*(x-2)^2<=0 -> (-inf,1]` (el solver de inecuaciones no
+    restringe al dominio `x>0` de `ln` — debería ser `(0,1]`; el fix añade correctamente `{2}` en-dominio);
+    `sqrt(x)*(x-4)<=0` deja residual; `sin(x)^2*(x-1)<=0` pierde los toques transcendentales `{kπ>1}` (el
+    solver no enumera infinitas raíces como Discrete). Cosmético: los puntos en resultado MIXTO renderizan
+    `[p,p]` en vez de `{p}` (un resultado de un solo punto sí da `{p}`).
+- observed:
+  - cuando dos rutas de solución convergen en una función de backend, el punto de post-proceso ÚNICO (envolver
+    el método, no parchear cada ruta) cubre ambas con la mínima superficie y sin tocar combinadores frágiles.
+  - re-resolver la ECUACIÓN para obtener las raíces reutiliza todo el filtrado (polos, extrañas, dominio) — más
+    robusto que recomputar raíces a mano.
+- retained learning:
+  - patrón: una inecuación NO estricta = (solución estricta) ∪ (ceros de `f` en-dominio). Si el motor sólo
+    emite regiones de cambio de signo, unir las raíces de `f=0` (vía el solver de ecuaciones, que ya excluye
+    polos) recupera los ceros aislados de multiplicidad par. Gatear SIEMPRE a `Leq|Geq`. Próximo: restringir la
+    inecuación al dominio de funciones (`ln`,`sqrt`) — `ln(x)*...<=0` no debe incluir `x<=0`.
