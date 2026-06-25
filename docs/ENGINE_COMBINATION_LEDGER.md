@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 343 (newest first)
+Active entries: 344 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -125,6 +125,7 @@ Active entries: 343 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_positive_denominat... | P1 soundness: inecuación N/D {op} c con denominador POSITIVO-DEFINIDO no voltea (antes daba el lado equivocado)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_constant_... | P0 soundness: `N/D {op} c` general por split-de-signo verificado (cubre cúbicas/cuárticas/signo-variable; cierra el peldaño del ciclo previo)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo splitter `split_rationa... | P0 soundness: forma recíproco-potencia `x^(-n) {op} c` rutea al hook verificado (antes daba el lado invertido)
+- 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | G1 (capacidad): integral DEFINIDA de racional con denominador EXPANDIDO de raíces reales (antes residual; la forma factorizada sí evaluaba)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14647,3 +14648,46 @@ Active entries: 343 (newest first)
     `Mul` con factor recíproco) y normalízalas a la forma canónica del hook con un splitter sin-cancelación;
     deja que el certificado numérico existente cubra la soundness. Peldaño: `x^(-1/2)`/`1/√x` (potencia
     FRACCIONARIA, den no polinómico) sigue declinando — es el caso radical, otro hook.
+
+## 2026-06-25 - G1 (capacidad): integral DEFINIDA de racional con denominador EXPANDIDO de raíces reales (antes residual; la forma factorizada sí evaluaba)
+
+- area:
+  - `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_interval`, rama grado ≥2)
+- status:
+  - `retained` (sub-paso del gatekeeper G1 «integración racional universal»; un-answer → valor exacto, sin
+    tocar soundness)
+- capture:
+  - investment_class: capability (north-star Fase 1, gatekeeper G1)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `integrate(1/(x²-1), x, 2, 3)` → residual, pero la forma factorizada `1/((x-1)(x+2))` SÍ
+    evaluaba; igual `1/(x²+x-2)`, `1/(x²-5x+6)`, `x/(x²-1)`, `1/(x²+x)`, `1/(x³-x)`. AHORA todos evalúan
+    exactos (`1/(x²-1)[2,3]=½ln(3/2)`, `1/(x³-x)[2,3]=5/2·ln2−3/2·ln3`). Oráculo definido (2 semillas, 400
+    casos, denom = producto de raíces racionales distintas EXPANDIDO, intervalos sin polo): **0 wrong, 0
+    residual**, todos casan integración numérica a 1e-3.
+  - MECANISMO: la antiderivada (log/arctan) es IDÉNTICA para ambas grafías — el cuello era la CERTIFICACIÓN.
+    `nonzero_on_interval` certificaba `D≠0` factor-a-factor: para `Mul((x-1),(x+2))` recursa y certifica
+    cada lineal, pero para el cuadrático EXPANDIDO `x²+x-2` (un `Add`) caía en la rama grado-2 que devolvía
+    `Unknown` salvo discriminante NEGATIVO (irreducible). Fix: generalizar la rama a grado ≥2 factorizando las
+    raíces RACIONALES (`poly.factor_rational_roots()`, igual que `positive_on_interval`) y ubicando cada raíz:
+    DENTRO del intervalo → polo → `Undefined` (divergente); en el borde → `BoundaryTouch`; fuera → ok. El
+    residual sin raíces racionales certifica solo si NO tiene raíces reales (cuadrático irreducible disc<0 o
+    constante); si no, `Unknown`. Esto cubre además cúbicas/cuárticas con raíces racionales.
+  - SOUNDNESS (exacta, BigRational): polo DENTRO → `undefined` (verificado `1/(x²-1)[-2,2]`, `1/(x³-x)[-2,2]`,
+    etc.); raíces IRRACIONALES (`x²-2 → ±√2`) → residual conservador (no se ubican por factorización racional;
+    honesto, no wrong). Borde-toque (polo en el extremo) sigue declinando sin fabricar finito.
+  - validación: workspace failed:0 (12341); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3) 0
+    deltas; test `expanded_real_root_denominator_certifies_like_its_factored_form` (evalúa + polos-dentro
+    `undefined` + irracional residual).
+- observed:
+  - un mismo integrando con antiderivada elemental evaluaba o no según la GRAFÍA del denominador (factorizado
+    vs expandido) porque el CERTIFICADO de no-polo razonaba factor-a-factor y se rendía ante un polinomio
+    expandido. Un certificado de dominio debe factorizar el polinomio (raíces racionales exactas) antes de
+    decidir, no descansar en que la entrada venga ya factorizada.
+  - reusar la maquinaria existente (`factor_rational_roots`, `root_position`, `combine_certificates` — ya
+    usados por `positive_on_interval`) hizo el fix pequeño y de bajo riesgo: la huella quedó idéntica.
+- retained learning:
+  - patrón para certificados de dominio sobre intervalos: factoriza raíces racionales y ubica cada una
+    (dentro=polo, borde=touch, fuera=ok); el residual sin raíces racionales solo certifica si prueba NO tener
+    raíces reales. Peldaño: denominadores con raíces IRRACIONALES (`x²-2` en `[2,3]`, polos en ±√2 fuera del
+    intervalo) — necesitan comparar la raíz surd-cuadrática contra los bornes (reusar el comparador exacto
+    racional-vs-surd del ciclo de inecuaciones, ahora en otro archivo).

@@ -2258,18 +2258,51 @@ fn nonzero_on_interval(
                 None => IntervalCertificate::Unknown,
             }
         }
-        2 => {
-            let a = poly.coeffs[2].clone();
-            let b = poly.coeffs[1].clone();
-            let c = poly.coeffs[0].clone();
-            let discriminant = &b * &b - BigRational::from_integer(4.into()) * &a * &c;
-            if discriminant.is_negative() {
-                IntervalCertificate::Certified
-            } else {
-                IntervalCertificate::Unknown
+        _ => {
+            // Degree ≥ 2: factor out the rational roots and locate each relative to the
+            // interval, exactly as `positive_on_interval` does. A rational root strictly inside
+            // is a pole (divergent → Undefined); a boundary root is a touch; outside is clear.
+            // The leftover (no rational roots) certifies only when it has NO real roots — an
+            // irreducible quadratic (negative discriminant) or a constant; anything else
+            // (irrational real roots that could sit inside) stays Unknown. This lifts the prior
+            // blanket Unknown so an EXPANDED real-root denominator (`x²−1`, `x²+x−2`, `x³−x`)
+            // certifies just like its factored spelling `(x−1)(x+1)`.
+            let mut outcome = IntervalCertificate::Certified;
+            for factor in &poly.factor_rational_roots() {
+                match factor.degree() {
+                    0 => {}
+                    1 => {
+                        let root = -&factor.coeffs[0] / &factor.coeffs[1];
+                        let cert = match root_position(interval_low, interval_high, &root) {
+                            Some(RootPosition::Inside) => return IntervalCertificate::Undefined,
+                            Some(RootPosition::Outside) => IntervalCertificate::Certified,
+                            Some(RootPosition::AtLower) => IntervalCertificate::BoundaryTouch {
+                                lower: true,
+                                upper: false,
+                            },
+                            Some(RootPosition::AtUpper) => IntervalCertificate::BoundaryTouch {
+                                lower: false,
+                                upper: true,
+                            },
+                            None => return IntervalCertificate::Unknown,
+                        };
+                        outcome = combine_certificates(outcome, cert);
+                    }
+                    2 => {
+                        let a = factor.coeffs[2].clone();
+                        let b = factor.coeffs[1].clone();
+                        let c = factor.coeffs[0].clone();
+                        let discriminant = &b * &b - BigRational::from_integer(4.into()) * &a * &c;
+                        if !discriminant.is_negative() {
+                            // Irrational real roots could lie anywhere in the interval.
+                            return IntervalCertificate::Unknown;
+                        }
+                    }
+                    _ => return IntervalCertificate::Unknown,
+                }
             }
+            outcome
         }
-        _ => IntervalCertificate::Unknown,
     }
 }
 
@@ -2301,6 +2334,38 @@ mod tests {
         assert!(eval_definite("integrate(x^2, x, 0, 1)").is_some());
         // Orientation is automatic: F(upper) - F(lower) with original bounds.
         assert!(eval_definite("integrate(x, x, 1, 0)").is_some());
+    }
+
+    #[test]
+    fn expanded_real_root_denominator_certifies_like_its_factored_form() {
+        // An EXPANDED denominator with rational roots (`x²−1`, `x²+x−2`, `x³−x`) is
+        // certified by factoring out the rational roots and locating each — it must now
+        // evaluate exactly like its factored spelling `(x−1)(x+1)`, not stay residual.
+        for src in [
+            "integrate(1/(x^2-1), x, 2, 3)",
+            "integrate(1/(x^2+x-2), x, 2, 4)",
+            "integrate(1/(x^2-5*x+6), x, 4, 5)",
+            "integrate(x/(x^2-1), x, 2, 3)",
+            "integrate(1/(x^3-x), x, 2, 3)",
+        ] {
+            assert!(eval_definite(src).is_some(), "{src} should evaluate");
+        }
+        // SOUNDNESS: a rational root strictly inside the interval is a pole → divergent
+        // → `undefined`, never a fabricated finite value.
+        for src in [
+            "integrate(1/(x^2-1), x, -2, 2)",  // pole at ±1 inside
+            "integrate(1/(x^2+x-2), x, 0, 3)", // pole at 1 inside
+            "integrate(1/(x^3-x), x, -2, 2)",  // poles at -1,0,1 inside
+        ] {
+            assert_eq!(
+                eval_definite(src).as_deref(),
+                Some("undefined"),
+                "{src} has an interior pole"
+            );
+        }
+        // Irrational roots (`x²−2 → ±√2`) are not located by rational factoring, so the
+        // certificate conservatively declines (honest residual, not a wrong value).
+        assert!(eval_definite("integrate(1/(x^2-2), x, 2, 3)").is_none());
     }
 
     #[test]
