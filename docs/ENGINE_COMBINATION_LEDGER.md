@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 345 (newest first)
+Active entries: 346 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -127,6 +127,7 @@ Active entries: 345 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo splitter `split_rationa... | P0 soundness: forma recíproco-potencia `x^(-n) {op} c` rutea al hook verificado (antes daba el lado invertido)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | G1 (capacidad): integral DEFINIDA de racional con denominador EXPANDIDO de raíces reales (antes residual; la forma factorizada sí evaluaba)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | G1 (capacidad): integral DEFINIDA de racional con denominador cuadrático de raíces IRRACIONALES (cierra el peldaño del ciclo previo, SIN computar el surd)
+- 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`abs_linear_d... | capacidad: integral DEFINIDA de |polinomio| partida en sus raíces reales (antes solo |lineal|)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14733,3 +14734,48 @@ Active entries: 345 (newest first)
     no vía las raíces; exacto y barato incluso para raíces irracionales. Peldaño que queda: residual de grado
     ≥3 sin raíces racionales (`(x²-2)(x²-3)` ya factoriza en dos cuadráticos, pero un cuártico irreducible no),
     e impropias de racional con antiderivada LOG (límite-en-∞ de `ln|p/q|`, hoy declinan incluso factorizadas).
+
+## 2026-06-25 - capacidad: integral DEFINIDA de |polinomio| partida en sus raíces reales (antes solo |lineal|)
+
+- area:
+  - `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`abs_linear_definite_integral_rewrite`
+    generalizado a `abs_polynomial_definite_integral_rewrite`; reusa `quadratic_real_roots_clear_of_interval`
+    del ciclo previo)
+- status:
+  - `retained` (extiende la integración de valor absoluto de grado 1 a grado arbitrario, en la frontera de
+    presentación definida)
+- capture:
+  - investment_class: capability (north-star Fase 1, integral definida elemental)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `integrate(|x²-1|, x, 0, 2)` → residual (solo `|lineal|` evaluaba); igual `|x²-4|`,
+    `|x²-3x+2|`, `|x³-x|`. AHORA exactos: `|x²-1|[0,2]=2`, `|x²-4|[0,3]=23/3`, `|x³-x|[-2,2]=5`,
+    `|x²-2|[3,4]=31/3` (raíces irracionales FUERA). Oráculo (3 semillas, 750 casos, |poli| grado 1-3 con
+    raíces racionales/irracionales e intervalos variados): **0 wrong**; los residuales son exactamente los
+    casos con raíz IRRACIONAL dentro (declinados a propósito).
+  - MECANISMO: `∫_a^b |g|` se parte en las raíces reales de `g` dentro de `(a,b)` (donde `g` cambia de signo);
+    en cada tramo `g` mantiene el signo, así que `∫|g| = |∫g| = |F(b')−F(a')|` con `F=∫g` (polinomio, exacto en
+    racionales). Se recogen las raíces RACIONALES (`factor_rational_roots`) como puntos de corte; partir de más
+    (raíces de multiplicidad par que no cambian signo) es INOCUO porque `|F(c)−F(a)|+|F(b)−F(c)| = |F(b)−F(a)|`
+    cuando `F` es monótona (sin cambio de signo). Un factor residual con raíces IRRACIONALES (cuadrático
+    disc≥0) se admite solo si AMBAS caen fuera de `[a,b]` (vía `quadratic_real_roots_clear_of_interval`, signo
+    racional, sin computar el surd); si hay una dentro, o el residual es de grado ≥3, DECLINA (un corte
+    irracional perdido sería un wrong-answer).
+  - SOUNDNESS: el truco `|F(b)−F(a)|` por tramo es robusto a multiplicidad y a cortes de más; lo único que
+    NO puede faltar es un cambio de signo, garantizado porque o bien la raíz es racional (cortada) o se prueba
+    que no hay raíz irracional dentro. Orientación invertida `[2,0]` → signo `−` (verificado `|x²-1|[2,0]=-2`).
+  - validación: workspace failed:0 (12342); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3) 0
+    deltas; tests `abs_polynomial_definite_integral_splits_at_real_roots` (evalúa + irracional-dentro declina)
+    y `abs_linear_definite_integral_scope` actualizado (`|x²-1|` ya no es residual).
+- observed:
+  - el truco antiderivada-de-diferencias-en-abs (`Σ|F(bᵢ₊₁)−F(bᵢ)|`) hace IRRELEVANTE la multiplicidad y
+    tolera cortes de más: basta cubrir un SUPERCONJUNTO de los cambios de signo. Eso convierte «¿dónde cambia
+    de signo `g`?» en «¿qué raíces hay en el intervalo?», y para las irracionales basta PROBAR que no hay
+    ninguna dentro (signo racional), sin localizarlas.
+  - reutilicé el helper del ciclo previo (`quadratic_real_roots_clear_of_interval`) tal cual: el certificado
+    «sin raíz en el intervalo» que construí para denominadores sirve igual para los puntos de corte de `|·|`.
+- retained learning:
+  - patrón para `∫|g|` (o cualquier integración por tramos de signo): parte en un superconjunto de los cambios
+    de signo (las raíces racionales) y usa `|ΔF|` por tramo (robusto a multiplicidad y cortes de más); admite
+    raíces irracionales solo si pruebas que no caen dentro. Peldaño: `|g|` con raíz IRRACIONAL dentro (corte en
+    `√2`) — necesitaría partir en el surd y un `F(surd)` simbólico; y `|trig|`/`|exp−c|` (argumento no
+    polinómico).

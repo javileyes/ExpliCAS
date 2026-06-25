@@ -815,12 +815,13 @@ fn odd_symmetric_definite_integral_rewrite(
 /// no antiderivative search. The integrand must be exactly `|linear|` (`x*|x|`
 /// and other products are left to the odd-symmetry / FTC owners). Resolves
 /// `integral|x| [-1,1] = 1`, `integral|x-1| [0,2] = 1`, `integral|2x-1| [0,1] = 1/2`.
-fn abs_linear_definite_integral_rewrite(
+fn abs_polynomial_definite_integral_rewrite(
     ctx: &mut Context,
     call: &DefiniteIntegralCall,
     lower_bound: &DefiniteBound,
     upper_bound: &DefiniteBound,
 ) -> Option<Rewrite> {
+    use num_traits::{One, Zero};
     let (DefiniteBound::Finite(low), DefiniteBound::Finite(high)) = (lower_bound, upper_bound)
     else {
         return None;
@@ -833,7 +834,7 @@ fn abs_linear_definite_integral_rewrite(
     let lo = pure_rational(low)?;
     let hi = pure_rational(high)?;
 
-    // The integrand must be exactly |g(x)| with g a nonzero-slope linear poly.
+    // The integrand must be exactly |g(x)| with g a polynomial in the variable.
     let Expr::Function(fn_id, args) = ctx.get(call.target).clone() else {
         return None;
     };
@@ -841,40 +842,78 @@ fn abs_linear_definite_integral_rewrite(
         return None;
     }
     let poly = Polynomial::from_expr(ctx, args[0], &call.var_name).ok()?;
-    if poly.degree() != 1 {
-        return None;
-    }
-    let slope = poly.coeffs.get(1)?.clone();
-    let intercept = poly.coeffs.first()?.clone();
-    if slope.is_zero() {
+    if poly.degree() < 1 {
         return None;
     }
 
-    let two = BigRational::from_integer(2.into());
+    // F(x) = ∫ g = Σ aᵢ·xⁱ⁺¹/(i+1) — exact at any rational point. On each interval between
+    // consecutive real roots of g, g keeps its sign, so ∫|g| = |∫g| = |F(b) − F(a)|.
     let antiderivative = |x: &BigRational| -> BigRational {
-        let x_sq = x * x;
-        &slope * &x_sq / &two + &intercept * x
+        let mut acc = BigRational::zero();
+        for (i, a) in poly.coeffs.iter().enumerate() {
+            if a.is_zero() {
+                continue;
+            }
+            let mut power = BigRational::one();
+            for _ in 0..=i {
+                power *= x;
+            }
+            acc += a * &power / BigRational::from_integer(((i + 1) as i64).into());
+        }
+        acc
     };
-    let root = -&intercept / &slope;
 
-    // Sort to a positive-orientation interval; restore the sign at the end.
+    // Sign-change points = real roots of g inside the interval. Collect the RATIONAL roots as
+    // split points; if any factor carries irrational real roots (a residual quadratic with
+    // discriminant ≥ 0, or any residual of degree ≥ 3), decline — splitting there would need an
+    // irrational breakpoint, and missing such a sign change would give a wrong value.
     let (left, right, sign) = if lo <= hi {
-        (lo.clone(), hi.clone(), BigRational::from_integer(1.into()))
+        (lo.clone(), hi.clone(), BigRational::one())
     } else {
-        (
-            hi.clone(),
-            lo.clone(),
-            BigRational::from_integer((-1).into()),
-        )
+        (hi.clone(), lo.clone(), -BigRational::one())
     };
-    let positive = if left < root && root < right {
-        (antiderivative(&root) - antiderivative(&left)).abs()
-            + (antiderivative(&right) - antiderivative(&root)).abs()
-    } else {
-        (antiderivative(&right) - antiderivative(&left)).abs()
-    };
-    let value = ctx.add(Expr::Number(sign * positive));
-    Some(Rewrite::new(value).desc("integral of |linear| split at its root"))
+    let mut breakpoints: Vec<BigRational> = Vec::new();
+    for factor in poly.factor_rational_roots() {
+        match factor.degree() {
+            0 => {}
+            1 => {
+                let root = -&factor.coeffs[0] / &factor.coeffs[1];
+                if left < root && root < right {
+                    breakpoints.push(root);
+                }
+            }
+            2 => {
+                let a = &factor.coeffs[2];
+                let b = &factor.coeffs[1];
+                let c = &factor.coeffs[0];
+                let discriminant = b * b - BigRational::from_integer(4.into()) * a * c;
+                if !discriminant.is_negative() {
+                    // Irrational real roots: fine ONLY if both lie outside the interval (no sign
+                    // change to split at). A root inside needs an irrational breakpoint — decline.
+                    let lo_e = Endpoint::from_rational(left.clone());
+                    let hi_e = Endpoint::from_rational(right.clone());
+                    match quadratic_real_roots_clear_of_interval(a, b, c, &lo_e, &hi_e) {
+                        IntervalCertificate::Certified => {}
+                        _ => return None,
+                    }
+                }
+            }
+            _ => return None,
+        }
+    }
+    breakpoints.sort();
+
+    // Sum |F(bᵢ₊₁) − F(bᵢ)| over the pieces [left, b₁], …, [bₖ, right].
+    let mut cut = vec![left];
+    cut.extend(breakpoints);
+    cut.push(right);
+    let mut total = BigRational::zero();
+    for piece in cut.windows(2) {
+        total += (antiderivative(&piece[1]) - antiderivative(&piece[0])).abs();
+    }
+
+    let value = ctx.add(Expr::Number(sign * total));
+    Some(Rewrite::new(value).desc("integral of |polynomial| split at its real roots"))
 }
 
 pub(super) fn definite_integration_rewrite(
@@ -934,12 +973,12 @@ pub(super) fn definite_integration_rewrite(
         return Some(rewrite);
     }
 
-    // |linear| has no single elementary antiderivative, so split it at the root
-    // before the FTC attempt (the absolute value is continuous, no certificate
-    // needed); a product like x*|x| is not a bare |linear| and is left to the
-    // odd-symmetry / FTC owners.
+    // |polynomial| has no single elementary antiderivative across a sign change, so split it at
+    // the real roots before the FTC attempt (the absolute value is continuous, no certificate
+    // needed); a product like x*|x| is not a bare |polynomial| and is left to the odd-symmetry /
+    // FTC owners. Irrational breakpoints are out of scope and decline.
     if let Some(rewrite) =
-        abs_linear_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
+        abs_polynomial_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
     {
         return Some(rewrite);
     }
@@ -2499,15 +2538,32 @@ mod tests {
     }
 
     #[test]
+    fn abs_polynomial_definite_integral_splits_at_real_roots() {
+        // |g| over rational bounds, split at every real root of g inside the interval.
+        for (source, expected) in [
+            ("integrate(abs(x^2-1), x, 0, 2)", "2"),
+            ("integrate(abs(x^2-4), x, 0, 3)", "23/3"),
+            ("integrate(abs(x^2-3*x+2), x, 0, 3)", "11/6"),
+            ("integrate(abs(x^3-x), x, -2, 2)", "5"),
+            ("integrate(abs(x^2-1), x, 2, 0)", "-2"), // reversed orientation
+            // Irreducible quadratic with roots OUTSIDE the interval: no split, ∫|g| = |∫g|.
+            ("integrate(abs(x^2-2), x, 3, 4)", "31/3"),
+            ("integrate(abs(x^2-2), x, 0, 1)", "5/3"),
+        ] {
+            assert_eq!(eval_definite(source).as_deref(), Some(expected), "{source}");
+        }
+        // Irrational root INSIDE the interval (√2 ∈ (0,2)) needs an irrational breakpoint —
+        // out of scope, declines honestly rather than mis-splitting.
+        assert!(eval_definite("integrate(abs(x^2-2), x, 0, 2)").is_none());
+    }
+
+    #[test]
     fn abs_linear_definite_integral_scope() {
-        // A product resolves by odd symmetry (-> 0). A quadratic-inner abs stays
-        // residual: its antiderivative is piecewise across the roots, out of scope
-        // for the affine abs antiderivative.
+        // A product resolves by odd symmetry (-> 0): `x*|x|` is not a bare `|polynomial|`.
         assert_eq!(
             eval_definite("integrate(abs(x)*x, x, -1, 1)").as_deref(),
             Some("0")
         );
-        assert!(eval_definite("integrate(abs(x^2-1), x, 0, 2)").is_none());
         // A bare |linear| with a symbolic bound now resolves via the affine abs
         // antiderivative x|x|/2 and the FTC. This low-level helper returns the raw
         // F(pi) - F(0) substitution; the full eval pipeline folds it to pi^2/2
