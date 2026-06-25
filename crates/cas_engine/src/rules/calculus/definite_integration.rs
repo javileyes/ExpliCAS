@@ -916,6 +916,82 @@ fn abs_polynomial_definite_integral_rewrite(
     Some(Rewrite::new(value).desc("integral of |polynomial| split at its real roots"))
 }
 
+/// `∫_a^b |N/D|` where the rational `N/D` is SIGN-DEFINITE on `[a,b]` — `N` has no root and `D` no
+/// pole inside, so the sign never flips. Certify that (reusing `nonzero_on_interval`), read the sign
+/// at the rational midpoint, strip the absolute value (negating for a negative integrand), and
+/// delegate to the ordinary definite machinery. The non-rational-argument and the sign-changing
+/// cases are out of scope and decline.
+fn abs_sign_definite_rational_definite_integral_rewrite(
+    ctx: &mut Context,
+    call: &DefiniteIntegralCall,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> Option<Rewrite> {
+    use num_traits::Zero;
+    let (DefiniteBound::Finite(low), DefiniteBound::Finite(high)) = (lower_bound, upper_bound)
+    else {
+        return None;
+    };
+    let lo = low.as_pure_rational()?;
+    let hi = high.as_pure_rational()?;
+    if lo == hi {
+        return None;
+    }
+
+    // Integrand must be exactly `|g|` with `g = N/D` a genuine rational (non-constant denominator).
+    let Expr::Function(fn_id, args) = ctx.get(call.target).clone() else {
+        return None;
+    };
+    if args.len() != 1 || ctx.builtin_of(fn_id) != Some(cas_ast::BuiltinFn::Abs) {
+        return None;
+    }
+    let inner = args[0];
+    let Expr::Div(num, den) = ctx.get(inner).clone() else {
+        return None;
+    };
+    let num_poly = Polynomial::from_expr(ctx, num, &call.var_name).ok()?;
+    let den_poly = Polynomial::from_expr(ctx, den, &call.var_name).ok()?;
+    if den_poly.degree() < 1 {
+        return None;
+    }
+
+    // Sign-definite ⟺ neither N nor D vanishes anywhere on the closed interval.
+    if !matches!(
+        nonzero_on_interval(ctx, num, &call.var_name, low, high),
+        IntervalCertificate::Certified
+    ) || !matches!(
+        nonzero_on_interval(ctx, den, &call.var_name, low, high),
+        IntervalCertificate::Certified
+    ) {
+        return None;
+    }
+
+    // Read the (constant) sign at the rational midpoint.
+    let mid = (lo + hi) / BigRational::from_integer(2.into());
+    let den_mid = den_poly.eval(&mid);
+    if den_mid.is_zero() {
+        return None;
+    }
+    let g_mid = num_poly.eval(&mid) / den_mid;
+    if g_mid.is_zero() {
+        return None;
+    }
+
+    let stripped = if g_mid > BigRational::zero() {
+        inner
+    } else {
+        ctx.add(Expr::Neg(inner))
+    };
+    let stripped_call = DefiniteIntegralCall {
+        target: stripped,
+        var_expr: call.var_expr,
+        var_name: call.var_name.clone(),
+        lower: call.lower,
+        upper: call.upper,
+    };
+    definite_integration_rewrite(ctx, &stripped_call)
+}
+
 pub(super) fn definite_integration_rewrite(
     ctx: &mut Context,
     call: &DefiniteIntegralCall,
@@ -979,6 +1055,15 @@ pub(super) fn definite_integration_rewrite(
     // FTC owners. Irrational breakpoints are out of scope and decline.
     if let Some(rewrite) =
         abs_polynomial_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
+    {
+        return Some(rewrite);
+    }
+
+    // |N/D| where the rational `N/D` keeps ONE sign across the whole interval (no root of `N`, no
+    // pole of `D`): the absolute value is redundant, so strip it (negating when `N/D < 0`) and reuse
+    // the ordinary rational machinery — `integrate(|1/x|, x, 1, 2) = ln(2)`.
+    if let Some(rewrite) =
+        abs_sign_definite_rational_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
     {
         return Some(rewrite);
     }
@@ -2490,6 +2575,30 @@ mod tests {
                 Some("undefined"),
                 "{src} straddles an irrational pole"
             );
+        }
+    }
+
+    #[test]
+    fn abs_of_sign_definite_rational_strips_the_absolute_value() {
+        // |N/D| with no root of N and no pole of D inside the interval is sign-definite, so the
+        // absolute value drops (negating when the integrand is negative) and the ordinary rational
+        // machinery evaluates it. (The low-level helper returns the raw FTC substitution, e.g.
+        // `ln(|2|) − ln(|1|)`; the full pipeline folds it — the CLI surfaces `ln(2)`.)
+        for src in [
+            "integrate(abs(1/x), x, 1, 2)",
+            "integrate(abs(1/x), x, -2, -1)", // 1/x < 0 here → −1/x
+            "integrate(abs(1/(x^2-1)), x, 2, 3)",
+            "integrate(abs((x^2-1)/x), x, 2, 3)",
+        ] {
+            assert!(eval_definite(src).is_some(), "{src} should evaluate");
+        }
+        // A sign change or a pole inside is out of scope — decline rather than mis-handle.
+        for src in [
+            "integrate(abs(1/x), x, -1, 2)",      // pole at 0 inside
+            "integrate(abs((x-1)/x), x, 0, 2)",   // numerator root 1 and pole 0 inside
+            "integrate(abs(1/(x^2-1)), x, 0, 3)", // poles ±1 inside
+        ] {
+            assert!(eval_definite(src).is_none(), "{src} should decline");
         }
     }
 

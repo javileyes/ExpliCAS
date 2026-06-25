@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 346 (newest first)
+Active entries: 347 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -128,6 +128,7 @@ Active entries: 346 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | G1 (capacidad): integral DEFINIDA de racional con denominador EXPANDIDO de raíces reales (antes residual; la forma factorizada sí evaluaba)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | G1 (capacidad): integral DEFINIDA de racional con denominador cuadrático de raíces IRRACIONALES (cierra el peldaño del ciclo previo, SIN computar el surd)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`abs_linear_d... | capacidad: integral DEFINIDA de |polinomio| partida en sus raíces reales (antes solo |lineal|)
+- 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` | capacidad: integral DEFINIDA de |racional| SIGNO-DEFINIDO (quita el abs y delega)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14779,3 +14780,44 @@ Active entries: 346 (newest first)
     raíces irracionales solo si pruebas que no caen dentro. Peldaño: `|g|` con raíz IRRACIONAL dentro (corte en
     `√2`) — necesitaría partir en el surd y un `F(surd)` simbólico; y `|trig|`/`|exp−c|` (argumento no
     polinómico).
+
+## 2026-06-25 - capacidad: integral DEFINIDA de |racional| SIGNO-DEFINIDO (quita el abs y delega)
+
+- area:
+  - `crates/cas_engine/src/rules/calculus/definite_integration.rs`
+    (`abs_sign_definite_rational_definite_integral_rewrite`; reusa `nonzero_on_interval` y
+    `Endpoint::as_pure_rational`)
+- status:
+  - `retained` (extiende la integración de `|·|` definida del caso polinómico al racional signo-definido)
+- capture:
+  - investment_class: capability (north-star Fase 1, integral definida elemental)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `integrate(|1/x|, x, 1, 2)` → residual; igual `|1/(x²-1)|[2,3]`, `|(x²-1)/x|[2,3]`,
+    `|1/x|[-2,-1]`. AHORA exactos (`|1/x|[1,2]=ln2`, `|1/x|[-2,-1]=ln2` (1/x<0→−1/x), `|1/(x²-1)|[2,3]=½ln(3/2)`,
+    `|(x²-1)/x|[2,3]=ln(2/3)+5/2`). Oráculo (3 semillas, 600 casos, `|N/D|` con raíces/polos variados,
+    comparación numérica de `∫|g|`): **0 wrong**; los residuales son casos con cambio de signo / polo dentro.
+  - MECANISMO: si `g=N/D` NO cambia de signo en `[a,b]` (ningún cero de `N`, ningún polo de `D` dentro), el
+    `|·|` es redundante. Se CERTIFICA eso con `nonzero_on_interval(N)` y `nonzero_on_interval(D)` (ambos
+    `Certified`), se lee el signo en el punto medio racional, se quita el abs (negando si `g<0`) y se DELEGA a
+    `definite_integration_rewrite` con el integrando ya sin abs — reusando toda la maquinaria racional. La
+    recursión termina (el abs desaparece). Un cambio de signo o polo dentro → no `Certified` → declina.
+  - SOUNDNESS: la certificación signo-definido es exacta (BigRational, reusa el certificador de no-cero del
+    ciclo 3-4). El simplificador cancela factores comunes ANTES (`(x+1)(x-1)/((x+3)(x+1))→(x-1)/(x+3)`) — para
+    INTEGRACIÓN eso es correcto (la singularidad removible es de medida cero, no altera el valor), a diferencia
+    de las inecuaciones donde el punto SÍ importa. Verificado: el oráculo casa todos los valores con `∫|g|`
+    numérico aun en casos de cancelación.
+  - validación: workspace failed:0 (12343); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3) 0
+    deltas; test `abs_of_sign_definite_rational_strips_the_absolute_value` (evalúa signo-definido + declina
+    cambio-de-signo/polo-dentro).
+- observed:
+  - «quita el abs y delega» es el patrón correcto cuando el integrando con `|·|` es signo-definido: en vez de
+    re-derivar la antiderivada, CERTIFICA la no-variación de signo y reusa el motor existente sobre el
+    integrando desnudo. Compone con cualquier mejora futura de integración racional sin tocar este código.
+  - para INTEGRALES, cancelar una singularidad removible es sound (medida cero); para INECUACIONES no (el punto
+    se excluye del dominio). El mismo `simplify` que era un riesgo en el ciclo 1 es inofensivo aquí — la
+    soundness depende de QUÉ comando consume el resultado.
+- retained learning:
+  - patrón: `∫|g|` con `g` signo-definido en el intervalo → certifica signo-definición (sin ceros/polos
+    dentro) y delega el integrando sin abs al motor existente. Peldaño: `g` signo-definido NO racional
+    (`|eˣ−2|` donde el cero `ln2` cae fuera) — necesita certificar el signo de un transcendente; y `|g|` con
+    un cero/polo EXACTAMENTE en un borde (removible para la integral) que hoy declina por el toque de frontera.
