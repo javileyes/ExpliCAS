@@ -1422,3 +1422,108 @@ verificadas + integración definida racional/valor-absoluto). Ordenados por valo
   soundness), pero la grafía es inconsistente; `2·2^(-1/2)` SÍ simplifica en aislamiento.
   Igual `solve(x²=8) → {±4·2^(-1/2)}`. Normalizar la salida del solver de raíces. Riesgo de
   snapshots.
+
+---
+
+## Defectos de soundness — auditoría adversarial multiagente (ultracode) 2026-06-25
+
+Barrido de 16 frentes, doble verificación por lente (recompute + trampa-de-falso-positivo),
+**37 defectos confirmados** y **reproducidos manualmente con el CLI** (commit base 8fcf8c661).
+Agrupados por CAUSA RAÍZ (~9 raíces → 37 defectos): arreglar las 3 primeras elimina 19.
+Las hipótesis de archivo/línea provienen de los verificadores — **confirmar leyendo/bisectando**
+antes de parchear ([[bisect-before-believing-regression-attribution]]).
+
+Frentes LIMPIOS (8/16): integración (indefinida/definida/impropia/abs-piecewise), diff, limits,
+simplify-powers-roots-logs, factor-gcd. Los 6 candidatos de integración indefinida fueron
+REFUTADOS por la verificación (formas equivalentes), no defectos.
+
+### R7 — P0 wrong-value: simplificación NO sound de diferencia de fracciones → identidad falsa
+- [ ] `1/(x^2-1) - 1/(x-1)` → `0` (VALOR CONSTANTE INCORRECTO; real `-x/(x²-1)`, en x=2 da −2/3, no 0).
+  Contamina `solve`: `solve(1/(x^2-1)-1/(x-1)=0,x)` → `All real numbers if x²-1≠0 and x-1≠0` (real `{0}`).
+- [ ] `solve(1/(x^2-1)=1/(x-1),x)` → `All real numbers if …` (real `{0}`): cruza-multiplica y declara
+  identidad el residuo `x+1=1`.
+- [ ] `solve((x+2)/(x^2-1)=(x+2)/(x-1),x)` → `All real numbers if …` (real `{-2, 0}`): cancela
+  `(x+2)/(x-1)` y pierde el factor `1/(x+1)`.
+  *Hipótesis raíz:* simplificación de resta de fracciones que colapsa el numerador a 0; detección de
+  identidad tras cancelación cruzada. Mirar el camino lineal/identidad y el cruce-multiplicación.
+
+### R1 — P0 wrong-value: `M^0` colapsa al escalar `1` (sin guarda de base-matriz) — 5 defectos, 1 fix
+- [ ] `[[1,2],[3,4]]^0 + [[1,2],[3,4]]` → `[[1,2],[3,4]] + 1` (real `[[2,2],[3,5]]`).
+- [ ] `[[1,2],[3,4]]^0 + 5` → `6` (real I+5, una matriz).
+- [ ] `3*[[1,2],[3,4]]^0` → `3` (real `[[3,0],[0,3]]`).
+- [ ] `trace([[1,2],[3,4]]^0)` → `trace(1)` (real `2`).
+- [ ] `[[1,2,3],[4,5,6]]^0` → `1` (real: undefined — matriz no cuadrada no tiene potencia cero).
+  *Hipótesis raíz:* `classify_power_identity_policy_pattern` (`crates/cas_math/src/power_identity_support.rs`
+  ~122-153) detecta `PowZero` por exponente literal 0 sin comprobar `Expr::Matrix` de base;
+  `IdentityPowerRule` (`crates/cas_engine/src/rules/exponents/simplification.rs` ~81-152) emite `ctx.num(1)`.
+  Fix: guarda base-matriz → I de la dimensión (cuadrada) o error (no cuadrada).
+
+### R2 — P0 unsound: no existe regla `inf/inf → undefined`; la cancelación `a/a→1` se cuela — 4 defectos, 1 fix
+- [ ] `inf/inf` → `1` (real undefined; el propio engine da `limit(x/x)=1`, `limit(2x/x)=2`, `limit(x^2/x)=inf`).
+- [ ] `(2*inf)/inf` → `1` (real undefined).
+- [ ] `(2*inf)/(5*inf)` → `2/5` (real undefined; cancela el `inf` y divide coeficientes).
+- [ ] `(-inf)/inf` → `-1` (real undefined).
+  *Hipótesis raíz:* en `crates/cas_math/src/infinity_support.rs` las guardas `is_finite_literal` exigen
+  un lado finito; con AMBOS infinitos cae a `CancelCommonFactorsRule`
+  (`crates/cas_engine/src/rules/algebra/fractions/cancel_rules_factor.rs:521`). Fix: regla `inf/inf →
+  Undefined` antes de la cancelación (análoga a `0*inf`/`inf-inf`, que SÍ dan undefined).
+
+### R3 — P1 lost-domain: inecuación NO estricta pierde el cero aislado de factor de mult. par — 10 defectos, 1 fix
+El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque que caen fuera del intervalo dominante.
+- [ ] `solve((x-2)^2*(x+1)<=0,x)` → `(-∞,-1]` (falta `{2}`).
+- [ ] `solve((x+1)^2*(x-3)^3>=0,x)` → `[3,∞)` (falta `{-1}`).
+- [ ] `solve(x^2/(x-1)>=0,x)` → `(1,∞)` (falta `{0}`).
+- [ ] `solve(x^2*(x^2-4)>=0,x)` → `(-∞,-2]∪[2,∞)` (falta `{0}`).
+- [ ] `solve(x^3*(x-2)^2<=0,x)` → `(-∞,0]` (falta `{2}`).
+- [ ] `solve((x-1)*(x-2)^2*(x-3)>=0,x)` → `(-∞,1]∪[3,∞)` (falta `{2}`).
+- [ ] `solve((x-1)^4*(x+1)<=0,x)` → `(-∞,-1]` (falta `{1}`).
+- [ ] `solve(x^2/((x-1)*(x-2))<=0,x)` → `(1,2)` (falta `{0}`).
+- [ ] `solve((x-3)^2/(x-1)<=0,x)` → `(-∞,1)` (falta `{3}`).
+- [ ] `solve((x+3)^2*(x-1)*(x-5)<=0,x)` → `[1,5]` (falta `{-3}`).
+  Control sano: `solve((x-3)^2<=0,x)→{3}`, y las variantes estrictas excluyen el punto bien.
+  *Hipótesis raíz:* análisis de signos de inecuaciones no estrictas en
+  `crates/cas_solver/src/solve_backend_local.rs`; paso que reincorpora los ceros de igualdad.
+
+### R4 — P1 lost-domain: `abs(cuadrático)` no estricto pierde la frontera de igualdad — 4 defectos
+- [ ] `solve(abs(x^2-2)<=0,x)` → `No solution` (real `{±√2}`; `solve(abs(x^2-2)=0,x)→{±√2}` ✓).
+- [ ] `solve(abs(x^2-1)<=0,x)` → `No solution` (real `{±1}`).
+- [ ] `solve(abs(x^2-2)>=2,x)` → `(-∞,-2]∪[2,∞)` (falta `{0}`: `|−2|=2≥2`, vértice).
+- [ ] `solve(abs(x^2-1)>=1,x)` → `(-∞,-√2]∪[√2,∞)` (falta `{0}`).
+  *Hipótesis raíz:* enrutamiento abs-relación en `solve_backend_local.rs` (~564-577); el caso no estricto
+  trata `≤0` como `<0` y el caso negativo del abs descarta el punto degenerado (vértice).
+
+### R5 — P1 lost-domain: `a^(2x)=k` toma la rama NEGATIVA de la raíz → conjunto vacío — 3 defectos
+- [ ] `solve(3^(2*x)=27,x)` → `{ log(3,-9·3^(-1/2)) } if -9·3^(-1/2)>0` = ∅ (real `{3/2}`; `9^x=27→{3/2}` ✓).
+- [ ] `solve(e^(2*x)=5,x)` → `{ ln(-5·5^(-1/2)) } if …>0` = ∅ (real `{ln(5)/2}`). Igual exp(2x)=10, 2^(2x)=8, etc.
+- [ ] `solve(2^(2*x)=2,x)` → ∅ (real `{1/2}`).
+  *Hipótesis raíz:* al deshacer `u²=k` con `u=base^x`, el solver elige la rama negativa y descarta la
+  positiva. Mirar la sustitución `u=a^x` y la elección de signo de la raíz.
+
+### R6 — P1 unsound: RHS no-real (`ln(-2)`, `sqrt(-1)`) no se rechaza en modo real → "todos los reales"/complejo — 3 defectos
+- [ ] `solve(ln(x)=ln(-2),x)` → `All real numbers if undefined = 0` (real ∅).
+- [ ] `solve(x=ln(-1),x)` → `All real numbers if undefined = 0` (real ∅).
+- [ ] `solve(ln(x)=sqrt(-1),x)` → `{ e^((-1)^(1/2)) }` = e^i complejo (real ∅, viola sus propias condiciones).
+  Control: `solve(x=sqrt(-4),x)`, `solve(2^x=-8,x)`, `solve(x^2=-1,x)` → `No solution` ✓.
+  *Hipótesis raíz:* el camino lineal recibe la constante `undefined` y construye `Conditional` con
+  `all_reals_case` guardado por `EqZero(undefined)` (`crates/cas_solver_core/src/linear_solution.rs` ~44-74);
+  falta guarda que rechace RHS no-real antes del fallback lineal. La inversión del log (`x=e^RHS`) no
+  verifica que el RHS sea real antes de exponenciar.
+
+### R8 — P2 lost-domain: factor cúbico irreducible abandonado en `solve` polinómico — 3 defectos
+- [ ] `solve(x^4+x^3+3*x=0,x)` → `{0}` (falta la raíz real ≈ -1.8637 de `x³+x²+3`).
+- [ ] `solve(x^4-4*x^3+6*x+4=0,x)` → `{2}` (falta ≈ 3.3652 de `x³-2x²-4x-2`).
+- [ ] `solve(x^5+2*x^4+x^3+3*x^2+3*x=0,x)` → `{-1,0}` (falta ≈ -1.8637).
+  Nota: `solve(x^3+x^2+3=0,x)` aislada devuelve residual honesto — el bug es que al pelar raíces
+  racionales del producto se DESCARTA el factor cúbico en vez de dejarlo residual.
+  *Hipótesis raíz:* el solver extrae raíces racionales y abandona factores de grado ≥3 sin raíces
+  racionales (debería resolver por radicales o devolver residual honesto, no recortar).
+
+### R9 — P0 wrong-value: sumatoria finita telescopiada A TRAVÉS de polos en rango — 2 defectos
+- [ ] `sum(1/((n-3)*(n-4)),n,1,10)` → `-10/21` (real undefined; polos en n=3,4 dentro; `sum(1/(n-3),…)→undefined` ✓).
+- [ ] `sum(1/((n-3)*(n-7)),n,1,10)` → `-359/840` (real undefined; polos en n=3,7 dentro).
+  *Hipótesis raíz:* el camino telescópico/digamma aplica la fórmula cerrada sin verificar que ningún
+  índice entero del rango anule el denominador del sumando.
+
+### Orden de arreglo recomendado (por ROI y severidad)
+R7 (P0 wrong-value en simplify) → R1 (5 def/1 fix) → R2 (4 def/1 fix) → R3 (10 def/1 fix) → R9 → R5 → R6 → R4 → R8.
+Los 3 primeros de mayor ROI (R1+R2+R3) eliminan 19 defectos con 3 cambios localizados.
