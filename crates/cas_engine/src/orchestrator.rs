@@ -26338,6 +26338,35 @@ impl Orchestrator {
         let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
         self.pattern_marks_expr = None;
 
+        // SOUNDNESS / CONSISTENCY: fold `∞/∞` — any quotient of two infinite-factor-bearing
+        // expressions (`(2·∞)/(5·∞)`, `(x·∞)/(2·x·∞)`, `(2·∞·sin x)/(5·∞·sin x)`) — to `undefined`
+        // HERE, before any common-factor / scalar-multiple cancellation shortcut or Core rule can
+        // mis-cancel the `∞` factor and fabricate a finite value (`2/5`, `1`, `tan x`). Several
+        // distinct cancellation primitives (plain-mode root shortcuts AND per-node Core rules) race
+        // the Core `InfDivInfRule`; in plain mode (no step listener) a cancellation wins, so the
+        // result used to depend on whether steps were collected. This single early fold runs in both
+        // modes, making them agree on the only correct answer: `∞/∞` is indeterminate.
+        if let Some(plan) =
+            cas_math::infinity_support::try_rewrite_inf_div_inf_expr(&mut simplifier.context, expr)
+        {
+            let undefined = plan.rewritten;
+            let shortcut_steps = if collect_steps {
+                vec![build_root_shortcut_compact_step(
+                    expr,
+                    undefined,
+                    "∞ / ∞ is indeterminate",
+                    "Indeterminate Infinity Quotient",
+                )]
+            } else {
+                Vec::new()
+            };
+            return (
+                undefined,
+                shortcut_steps,
+                crate::phase::PipelineStats::default(),
+            );
+        }
+
         if let Some(zero) =
             try_div_add_common_factor_residual_root_zero(&mut simplifier.context, expr)
         {

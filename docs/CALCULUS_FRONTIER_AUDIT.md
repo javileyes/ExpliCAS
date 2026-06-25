@@ -1471,10 +1471,13 @@ REFUTADOS por la verificación (formas equivalentes), no defectos.
 ### R2 — P0 unsound: no existe regla `inf/inf → undefined`; la cancelación `a/a→1` se cuela — 4 defectos, 1 fix
 - [x] `inf/inf` → `1` (real undefined; el propio engine da `limit(x/x)=1`, `limit(2x/x)=2`, `limit(x^2/x)=inf`).
 - [x] `(2*inf)/inf` → `1` (real undefined).
-- [ ] `(2*inf)/(5*inf)` → `2/5` (real undefined; cancela el `inf` y divide coeficientes). **PELDAÑO ABIERTO**:
-  el simétrico escalado persiste vía una ruta de aritmética-rápida del modo PLAIN del CLI (divergente con
-  `--steps on/compact`, que ya dan `undefined`); no pasa por las macros de root-shortcut ni por las reglas de
-  fracción guardadas. Requiere localizar el fast-eval del default del CLI.
+- [x] `(2*inf)/(5*inf)` → `2/5` (real undefined; cancela el `inf` y divide coeficientes).
+  *(graduado 2026-06-26 PENDIENTE: cierra D36 — ver §DIV-PARITY ∞/∞. Causa real (verificada por
+  instrumentación, NO la ruta fast-eval que se sospechaba): en modo PLAIN varias primitivas de cancelación
+  (atajo `try_exact_common_factor_mul_fraction_preorder` con sólo `NonZero(common)`; reglas de Core
+  `CancelIdenticalFractionRule`/same-base) ganan la carrera a `InfDivInfRule` ANTES de que la absorción
+  `c·∞→∞` ocurra; en STEPS la absorción va primero → `∞/∞`. Fix: fold temprano `∞/∞→undefined` en
+  `simplify_pipeline_inner` antes de cualquier cancelación, en AMBOS modos.)*
 - [x] `(-inf)/inf` → `-1` (real undefined). (También `inf/(2*inf)`, `(3*inf)/(-inf)` cerrados.)
   *Hipótesis raíz:* en `crates/cas_math/src/infinity_support.rs` las guardas `is_finite_literal` exigen
   un lado finito; con AMBOS infinitos cae a `CancelCommonFactorsRule`
@@ -1501,14 +1504,26 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   (nuevo `gaussian_noop_component_has_imaginary_unit`); los cocientes pure-real caen al pipeline y se pliegan
   en AMBOS modos. `2/2`→`1` (incondicional, denominador literal no-nulo) también converge; el test
   `cli_domain_strict_numeric_*` enshrinaba el bug y se corrigió. Tests `cli_contract_tests::test_eval_numeric_quotient_plain_matches_steps`.)*
-- [ ] **∞/∞ escalado (`(2*inf)/(5*inf)`→`2/5` plain vs `undefined` steps):** PELDAÑO ABIERTO, mecanismo
-  DISTINTO (la regla de ratio de coeficientes de Core, no el atajo complex-noop). = D36. Fix Opción 3:
-  la cancelación `a·X/(b·X)→a/b` debe exigir `X` finito y no-nulo (cierra también el caso invertido donde
-  `--steps` es quien yerra: `(x*inf)/(2*x*inf)`→`1`).
+- [x] **∞/∞ escalado/simbólico/multi-factor (`(2*inf)/(5*inf)`→`2/5`; `(x*inf)/(2*x*inf)`→`1` steps;
+  `(2*inf*sin x)/(5*inf*sin x)`→`2/5`/`1`):** TOP-LEVEL cerrado en AMBOS modos = `undefined`. = D36 (Opción 3).
+  *(graduado 2026-06-26 PENDIENTE: nuevo predicado `contains_unbounded_factor` (n-ario, reconoce `x·∞` y
+  productos multi-factor, no sólo `c·∞` como `is_infinite_valued`); `try_rewrite_inf_div_inf_expr` lo usa;
+  fold temprano en `simplify_pipeline_inner` (ambos modos) antes de toda cancelación. Verificado
+  adversarialmente (4 agentes, bisect vs pre-fix): sin over-folds, sin nuevas wrong-answers, huella idéntica.
+  Tests `cli_contract_tests::{test_eval_infinity_over_infinity_is_undefined,test_eval_infinity_quotient_plain_matches_steps}`.
+  PELDAÑOS que quedan: (A) **∞/∞ ANIDADO** — el fold sólo dispara en el `Div` de nivel superior; anidado
+  (`((2*inf)/(5*inf))^2`→`4/25` plain vs `undefined` steps) SIGUE divergente en plain (alta prioridad,
+  mismo mecanismo a profundidad; requiere fold recursivo o resolver el orden de reglas de Core en plain).
+  (B) **base-potencia ∞** (`inf^2/inf^2`→`1` AMBOS modos, preexistente — el predicado no recursa en `Pow`).
+  (C) **aditivo** (`(inf+1)/(inf+1)`→`1`, preexistente — regla "Collapse Shifted Quotient").)*
 - [ ] **Cociente gaussiano con `i` real (`i/i`→`i/i` plain vs `1` steps):** PELDAÑO ABIERTO, preexistente
   (no introducido por el fix; el atajo sigue casando los cocientes con `i` por diseño en RealOnly). Divergencia
   de dominio-complejo / fuera-de-dominio; menor severidad. Auditar si el atajo debe plegar o `--steps` debe
   abstenerse en RealOnly.
+- [ ] **Cociente simbólico cancelado sin plegar (`(2*x)/(5*x)`→`"2 / 5"` plain vs `"2/5"` steps):** PELDAÑO
+  ABIERTO, preexistente (NO introducido por los ciclos de ∞). La cancelación de `x` produce `Div(2,5)` y en
+  plain no se re-pliega a `Number(2/5)` (mismo valor, forma no canónica). Análogo a §DIV-PARITY de cocientes
+  numéricos pero por una ruta de cancelación distinta; menor severidad (NORMALIZATION, no wrong-answer).
 
 ### R3 — P1 lost-domain: inecuación NO estricta pierde el cero aislado de factor de mult. par — 10 defectos, 1 fix
 El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque que caen fuera del intervalo dominante.

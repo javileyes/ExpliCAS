@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 351 (newest first)
+Active entries: 352 (newest first)
 
+- 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15011,3 +15012,61 @@ Active entries: 351 (newest first)
     dominio (`i`), no aceptarlo por el caso degenerado del `Number`. Para depurar divergencias de modo:
     instrumentar los puntos de retorno y bisecar por los gates `has_step_listener`/`collect_steps`, no confiar
     en la atribución de un agente.
+
+## 2026-06-26 - P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
+
+- area:
+  - `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo; `try_rewrite_inf_div_inf_expr`
+    pasa a usarlo)
+  - `crates/cas_engine/src/orchestrator.rs` (`simplify_pipeline_inner`: fold temprano `∞/∞ -> undefined` antes
+    de toda cancelación, en ambos modos)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_infinity_over_infinity_is_undefined` extendido;
+    `test_eval_infinity_quotient_plain_matches_steps` nuevo)
+- status:
+  - `retained` (cierra D36 top-level; quedan peldaños A/B/C — ver abajo)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: cli_web_consistency
+  - cell: ANTES (default plain) `(2*inf)/(5*inf) -> 2/5`, `(2*inf)/(2*inf) -> 1`, `(x*inf)/(2*x*inf)` infra-
+    evaluado y en `--steps` `-> 1`, `(2*inf*sin x)/(5*inf*sin x) -> 2/5`/`1`, `(inf*sin x)/(inf*cos x) -> tan x`.
+    AHORA todos `undefined` en AMBOS modos. Hermanos correctos intactos: `1/inf->0`, `inf/2->infinity`,
+    `(inf*x)/(2)->infinity` (∞ en un solo lado, NO se pliega).
+  - MECANISMO (verificado por instrumentación + workflow de mapeo; la atribución del agente sintetizador a
+    `is_terminal_after_core` y la del primer workflow a `classify_factor_cancellation_action` eran AMBAS
+    incorrectas/incompletas): el bug NO tiene un único chokepoint. En PLAIN, varias primitivas de cancelación
+    distintas reducen el `∞/∞` ANTES de que `InfDivInfRule` (regla de Core) corra: el atajo
+    `try_exact_common_factor_mul_fraction_preorder` (gatea sólo `NonZero(common)` y `∞≠0`, cancela `∞`),
+    `CancelIdenticalFractionRule` (P/P->1), reglas same-base. En STEPS, la absorción `c·∞->∞` corre primero
+    (bottom-up con listener) dejando `∞/∞`, que `InfDivInfRule` pliega -> `undefined`. La diferencia de orden
+    plain-vs-steps es la divergencia. Fix: un fold temprano `∞/∞ -> undefined` en `simplify_pipeline_inner`,
+    antes de todo atajo/cancelación, en AMBOS modos -> resultado idéntico. `is_infinite_valued` (preciso:
+    `±∞`, `c·∞`) NO basta para `x·∞`/multi-factor; nuevo `contains_unbounded_factor` (n-ario, recursa sólo en
+    `Mul`/`Neg`, NO en `Div`/`Pow`/`Add`) reconoce cualquier factor `∞` multiplicativo.
+  - SOUNDNESS: `∞/∞` es indeterminado para TODO cofactor finito (`x·∞ / (2·x·∞)` es `∞/∞` si `x≠0` y
+    `undefined/undefined` si `x=0` — nunca `1/2`). La no-recursión en `Div`/`Pow`/`Add` evita over-folds:
+    `1/∞=0`, `∞^0=1`, `(∞+1)` no se marcan. Exige AMBOS lados con factor `∞`, así que `∞/finito` no se toca.
+    Verificación adversarial (4 agentes, bisect vs pre-fix `9d5d2a895`): SIN over-folds (ningún valor definido
+    -> undefined), SIN nuevas wrong-answers (no-∞ byte-idéntico), top-level cerrado en ambos modos.
+  - validación: workspace failed:0 (12347); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; tests inf-div (plain==steps + valores).
+  - PELDAÑOS ABIERTOS (honestos, mismo predicado/mecanismo, fuera de alcance top-level):
+    (A) **∞/∞ ANIDADO**: el fold sólo dispara en el `Div` raíz; `((2*inf)/(5*inf))^2 -> 4/25` plain vs
+    `undefined` steps SIGUE divergente (alta prioridad — wrong-answer en plain/web; requiere fold recursivo o
+    fijar el orden de reglas de Core en plain para que `InfDivInfRule` gane a la cancelación).
+    (B) **base-potencia ∞**: `inf^2/inf^2 -> 1` en AMBOS modos (preexistente; `contains_unbounded_factor` no
+    recursa en `Pow`).
+    (C) **aditivo**: `(inf+1)/(inf+1) -> 1` (preexistente; regla "Collapse Shifted Quotient").
+- observed:
+  - cuando un valor correcto exige que una regla X corra ANTES que una familia de reglas Y, y el orden depende
+    del modo (presencia de listener / collect_steps), guardar cada Y individualmente es whack-a-mole (R2 falló
+    así, 6 intentos): el patrón robusto es un FOLD TEMPRANO de la forma indeterminada en el punto de entrada
+    común a ambos modos, antes de que cualquier Y pueda correr.
+  - un predicado de detección debe separar PRECISIÓN (para disparar un rewrite: `is_infinite_valued`) de
+    COBERTURA conservadora (para vetar/foldear: `contains_unbounded_factor`); aquí coinciden en soundness porque
+    `∞/∞` es indeterminado para todo cofactor, así que la versión amplia también es correcta como trigger.
+- retained learning:
+  - patrón: forma indeterminada cuyo resultado depende del ORDEN de reglas (y el orden depende del modo) ->
+    foldear en el entry común a ambos modos, no guardar cada primitiva de cancelación. La detección de "no
+    finito" debe cubrir el factor `∞` multiplicativo n-ario (`x·∞`, `a·∞·b`), recursando sólo en `Mul`/`Neg`.
+    Próximo peldaño: ∞/∞ ANIDADO (fold recursivo) — el mismo bug a profundidad.

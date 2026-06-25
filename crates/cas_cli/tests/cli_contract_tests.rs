@@ -1166,13 +1166,24 @@ fn test_eval_single_abs_inequality_uses_segment_method() {
 fn test_eval_infinity_over_infinity_is_undefined() {
     // `∞/∞` is indeterminate; the generic `a/a -> 1` / `(a·X)/(b·X) -> a/b` cancellation used to
     // treat `∞` as a cancellable factor and fabricate a finite value. A dedicated rule now folds it
-    // to `undefined` (including finite-scaled forms and signs).
+    // to `undefined` (including finite-scaled, symbolic-scaled, and multi-factor forms and signs).
     for (input, expected) in [
         ("inf/inf", "undefined"),
         ("(2*inf)/inf", "undefined"),
         ("(-inf)/inf", "undefined"),
         ("inf/(2*inf)", "undefined"),
         ("(3*inf)/(-inf)", "undefined"),
+        // Finite-scaled `(c·∞)/(d·∞)` must NOT cancel `∞` to `c/d`.
+        ("(2*inf)/(5*inf)", "undefined"),
+        ("(2*inf)/(2*inf)", "undefined"),
+        ("(10*inf)/(4*inf)", "undefined"),
+        ("(-2*inf)/(-3*inf)", "undefined"),
+        // Symbolic-scaled `(x·∞)/(k·x·∞)` and identical `(x·∞)/(x·∞)` are still `∞/∞`, not `1`.
+        ("(x*inf)/(2*x*inf)", "undefined"),
+        ("(x*inf)/(x*inf)", "undefined"),
+        // Multi-factor products: the shared finite cofactor does not make it finite.
+        ("(2*inf*sin(x))/(5*inf*sin(x))", "undefined"),
+        ("(inf*sin(x))/(inf*cos(x))", "undefined"),
         // Finite divisions are unaffected.
         ("1/inf", "0"),
         ("2/inf", "0"),
@@ -1189,6 +1200,48 @@ fn test_eval_infinity_over_infinity_is_undefined() {
         assert!(output.status.success(), "{input}");
         let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
         assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
+fn test_eval_infinity_quotient_plain_matches_steps() {
+    // CONSISTENCY: an `∞/∞` quotient must evaluate identically whether or not steps are requested.
+    // Several cancellation primitives (plain-mode root shortcuts AND per-node Core rules) used to
+    // race the `∞/∞ -> undefined` fold; in the default (no-step-listener) path a cancellation won,
+    // so `(2·∞)/(5·∞)` returned `2/5` plain but `undefined` with `--steps`. The fold now runs up
+    // front in both modes.
+    for input in [
+        "(2*inf)/(5*inf)",
+        "(2*inf)/(2*inf)",
+        "(x*inf)/(2*x*inf)",
+        "(2*inf*sin(x))/(5*inf*sin(x))",
+        "(inf*sin(x))/(inf*cos(x))",
+        "inf/inf",
+    ] {
+        let plain = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(plain.status.success(), "plain {input}");
+        let plain_wire: Value = serde_json::from_slice(&plain.stdout).expect("Invalid wire output");
+
+        let steps = cli()
+            .args(["eval", input, "--format", "json", "--steps", "on"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(steps.status.success(), "steps {input}");
+        let steps_wire: Value = serde_json::from_slice(&steps.stdout).expect("Invalid wire output");
+
+        assert_eq!(
+            plain_wire["result"].as_str(),
+            Some("undefined"),
+            "plain {input}"
+        );
+        assert_eq!(
+            plain_wire["result"].as_str(),
+            steps_wire["result"].as_str(),
+            "plain vs --steps divergence for {input}"
+        );
     }
 }
 

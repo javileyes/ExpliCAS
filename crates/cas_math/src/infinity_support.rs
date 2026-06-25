@@ -324,9 +324,32 @@ pub fn is_infinite_valued(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
+/// Whether `id` carries the `∞` constant as a (possibly nested) MULTIPLICATIVE factor, making its
+/// value non-finite (`±∞`) or indeterminate (`0·∞`) regardless of the other, finite cofactors.
+///
+/// This is a GUARD predicate, deliberately broader than [`is_infinite_valued`] (which stays precise
+/// — only `±∞` and `c·∞` for a finite NONZERO literal `c` — because it drives the `→ Undefined`
+/// rewrite trigger). `contains_unbounded_factor` additionally flags `x·∞` (symbolic cofactor) and
+/// multi-factor products like `2·∞·sin(x)`, since a quotient of two such expressions is `∞/∞`,
+/// indeterminate, for every value of the cofactors (`x·∞ / (2·x·∞)` is `∞/∞` when `x≠0` and
+/// `undefined/undefined` when `x=0` — never `1/2`). It does NOT recurse into `Div`/`Pow`/`Add`, so a
+/// finite expression that merely mentions `∞` (`1/∞ = 0`, `∞+1`, `∞^0`) is correctly NOT flagged.
+pub fn contains_unbounded_factor(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Constant(Constant::Infinity) => true,
+        Expr::Neg(inner) => contains_unbounded_factor(ctx, *inner),
+        Expr::Mul(a, b) => contains_unbounded_factor(ctx, *a) || contains_unbounded_factor(ctx, *b),
+        _ => false,
+    }
+}
+
 /// Plan the indeterminate form `±∞ / ±∞ -> Undefined` (including finite-scaled infinities like
-/// `(2·∞)/(5·∞)`). Without this, the generic common-factor cancellation `(a·X)/(b·X) -> a/b` treats
-/// `∞` as a cancellable factor and fabricates a finite value (`∞/∞ -> 1`, `(2·∞)/(5·∞) -> 2/5`).
+/// `(2·∞)/(5·∞)`, symbolic-scaled `(x·∞)/(2·x·∞)`, and multi-factor `(2·∞·sin x)/(5·∞·sin x)`).
+/// Without this, the generic common-factor cancellation `(a·X)/(b·X) -> a/b` treats `∞` as a
+/// cancellable factor and fabricates a finite value (`∞/∞ -> 1`, `(2·∞)/(5·∞) -> 2/5`,
+/// `(x·∞)/(2·x·∞) -> 1`). Uses [`contains_unbounded_factor`] (not [`is_infinite_valued`]) so the
+/// symbolic and multi-factor shapes are covered: a quotient of two expressions that each carry an
+/// `∞` factor is `∞/∞`, indeterminate, regardless of the finite cofactors.
 pub fn try_rewrite_inf_div_inf_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -337,7 +360,7 @@ pub fn try_rewrite_inf_div_inf_expr(
         return None;
     };
 
-    if is_infinite_valued(ctx, num) && is_infinite_valued(ctx, den) {
+    if contains_unbounded_factor(ctx, num) && contains_unbounded_factor(ctx, den) {
         Some(InfinityRewritePlan {
             rewritten: mk_undefined(ctx),
             description: "∞ / ∞ is indeterminate".to_string(),
