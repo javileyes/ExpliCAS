@@ -1551,13 +1551,15 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   `cli_contract_tests::test_eval_nonstrict_inequality_includes_isolated_roots`. Residual preexistente: el
   dominio de `ln`/`sqrt` no se intersecta (`ln(x)*(x-2)^2<=0 -> (-inf,1]`).)*
 
-### R4 — P1 lost-domain: `abs(cuadrático)` no estricto pierde la frontera de igualdad — 4 defectos
-- [ ] `solve(abs(x^2-2)<=0,x)` → `No solution` (real `{±√2}`; `solve(abs(x^2-2)=0,x)→{±√2}` ✓).
-- [ ] `solve(abs(x^2-1)<=0,x)` → `No solution` (real `{±1}`).
-- [ ] `solve(abs(x^2-2)>=2,x)` → `(-∞,-2]∪[2,∞)` (falta `{0}`: `|−2|=2≥2`, vértice).
-- [ ] `solve(abs(x^2-1)>=1,x)` → `(-∞,-√2]∪[√2,∞)` (falta `{0}`).
-  *Hipótesis raíz:* enrutamiento abs-relación en `solve_backend_local.rs` (~564-577); el caso no estricto
-  trata `≤0` como `<0` y el caso negativo del abs descarta el punto degenerado (vértice).
+### R4 — P1 lost-domain: `abs(cuadrático)` no estricto pierde la frontera de igualdad — 4 defectos [GRADUADO]
+- [x] `solve(abs(x^2-2)<=0,x)` → `No solution` (real `{±√2}`; `solve(abs(x^2-2)=0,x)→{±√2}` ✓).
+- [x] `solve(abs(x^2-1)<=0,x)` → `No solution` (real `{±1}`).
+- [x] `solve(abs(x^2-2)>=2,x)` → `(-∞,-2]∪[2,∞)` (falta `{0}`: `|−2|=2≥2`, vértice).
+- [x] `solve(abs(x^2-1)>=1,x)` → `(-∞,-√2]∪[√2,∞)` (falta `{0}`).
+  *(graduado 2026-06-26 26d95a805 — cerrado por el fix de R3: `union_non_strict_inequality_roots` une las
+  raíces de `abs(q)=c` (`{±√2}`, `{0}` el vértice) al resultado de la inecuación no estricta. Verificado:
+  `abs(x^2-2)<=0 -> {±√2}`, `abs(x^2-2)>=2 -> (-∞,-2]∪[0,0]∪[2,∞)`. Cosmético: el equation-solver de abs no
+  dedup-a la raíz doble (`abs(x^2-2)=2 -> {2,-2,0,0}`); la unión SÍ dedup-a en la inecuación.)*
 
 ### R5 — P1 lost-domain: `a^(2x)=k` toma la rama NEGATIVA de la raíz → conjunto vacío — 3 defectos
 - [ ] `solve(3^(2*x)=27,x)` → `{ log(3,-9·3^(-1/2)) } if -9·3^(-1/2)>0` = ∅ (real `{3/2}`; `9^x=27→{3/2}` ✓).
