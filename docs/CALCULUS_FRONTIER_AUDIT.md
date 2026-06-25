@@ -1472,7 +1472,7 @@ REFUTADOS por la verificación (formas equivalentes), no defectos.
 - [x] `inf/inf` → `1` (real undefined; el propio engine da `limit(x/x)=1`, `limit(2x/x)=2`, `limit(x^2/x)=inf`).
 - [x] `(2*inf)/inf` → `1` (real undefined).
 - [x] `(2*inf)/(5*inf)` → `2/5` (real undefined; cancela el `inf` y divide coeficientes).
-  *(graduado 2026-06-26 PENDIENTE: cierra D36 — ver §DIV-PARITY ∞/∞. Causa real (verificada por
+  *(graduado 2026-06-26 836f46d3a: cierra D36 — ver §DIV-PARITY ∞/∞. Causa real (verificada por
   instrumentación, NO la ruta fast-eval que se sospechaba): en modo PLAIN varias primitivas de cancelación
   (atajo `try_exact_common_factor_mul_fraction_preorder` con sólo `NonZero(common)`; reglas de Core
   `CancelIdenticalFractionRule`/same-base) ganan la carrera a `InfDivInfRule` ANTES de que la absorción
@@ -1506,7 +1506,7 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   `cli_domain_strict_numeric_*` enshrinaba el bug y se corrigió. Tests `cli_contract_tests::test_eval_numeric_quotient_plain_matches_steps`.)*
 - [x] **∞/∞ escalado/simbólico/multi-factor (`(2*inf)/(5*inf)`→`2/5`; `(x*inf)/(2*x*inf)`→`1` steps;
   `(2*inf*sin x)/(5*inf*sin x)`→`2/5`/`1`):** TOP-LEVEL cerrado en AMBOS modos = `undefined`. = D36 (Opción 3).
-  *(graduado 2026-06-26 PENDIENTE: nuevo predicado `contains_unbounded_factor` (n-ario, reconoce `x·∞` y
+  *(graduado 2026-06-26 836f46d3a: nuevo predicado `contains_unbounded_factor` (n-ario, reconoce `x·∞` y
   productos multi-factor, no sólo `c·∞` como `is_infinite_valued`); `try_rewrite_inf_div_inf_expr` lo usa;
   fold temprano en `simplify_pipeline_inner` (ambos modos) antes de toda cancelación. Verificado
   adversarialmente (4 agentes, bisect vs pre-fix): sin over-folds, sin nuevas wrong-answers, huella idéntica.
