@@ -1497,7 +1497,7 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   vs `undefined` en `--steps`. Igual `0/0`, `2/0`, `100/0`, `5/0`. **WRONG-ANSWER dependiente de modo.**
 - [x] **Cocientes numéricos sin plegar:** `6/3`→`"6 / 3"`, `10/4`→`"10 / 4"`, `144/12`, `8/4`… vs `2`, `5/2`, `12`.
 - [x] **Racional canónico sin plegar (cosmético):** `7/2`→`"7 / 2"` vs `"7/2"` (Number plegado).
-  *(graduado 2026-06-25 PENDIENTE: `is_real_domain_complex_noop_root` exige ahora un `i` real en el `Div`
+  *(graduado 2026-06-25 44e77a35b: `is_real_domain_complex_noop_root` exige ahora un `i` real en el `Div`
   (nuevo `gaussian_noop_component_has_imaginary_unit`); los cocientes pure-real caen al pipeline y se pliegan
   en AMBOS modos. `2/2`→`1` (incondicional, denominador literal no-nulo) también converge; el test
   `cli_domain_strict_numeric_*` enshrinaba el bug y se corrigió. Tests `cli_contract_tests::test_eval_numeric_quotient_plain_matches_steps`.)*
