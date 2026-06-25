@@ -1514,7 +1514,7 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   PELDAÑOS: (A) [x] **∞/∞ ANIDADO** GRADUADO *(2026-06-26 ab45f3e89: `fold_inf_div_inf_recursive` recorre el
   árbol bottom-up, foldea cada sub-`∞/∞` y propaga el `undefined` replicando las reglas del engine →
   `((2*inf)/(5*inf))^2`, `sqrt(...)`, `1+(2*inf)/(3*inf)`, `abs(...)`, etc. = `undefined` en AMBOS modos)*.
-  (B) [x] **base-potencia ∞** GRADUADO *(2026-06-26 PENDIENTE_B: `contains_unbounded_factor` reconoce
+  (B) [x] **base-potencia ∞** GRADUADO *(2026-06-26 68c73eae7: `contains_unbounded_factor` reconoce
   `Pow(∞, p)` con `p` literal positivo como no-finito → `inf^2/inf^2`, `inf^3/inf^2`, `sqrt(inf)/sqrt(inf)`,
   etc. = `undefined`; `∞^0=1`/`∞^(-1)=0`/`∞^x` intactos)*.
   (C) [ ] **aditivo** (`(inf+1)/(inf+1)`→`1`, `(inf+inf)/(inf+inf)`→`1`, preexistente — `∞±∞` no se reconoce
