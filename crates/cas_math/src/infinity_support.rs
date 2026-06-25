@@ -370,6 +370,127 @@ pub fn try_rewrite_inf_div_inf_expr(
     }
 }
 
+fn is_undefined_const(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Constant(Constant::Undefined))
+}
+
+const INF_DIV_FOLD_MAX_DEPTH: usize = 64;
+
+/// Recursively fold every `∞/∞` sub-quotient to `undefined`, bottom-up, and propagate that
+/// `undefined` through the enclosing arithmetic exactly as the engine's undefined-propagation rules
+/// do (`+`, `-`, `*`, `/`, unary `-`, `^`, and function arguments). Returns the rewritten expression
+/// if anything folded, else `None`.
+///
+/// This is the recursive companion of [`try_rewrite_inf_div_inf_expr`] (which only inspects the root
+/// node). A NESTED `∞/∞` — `((2·∞)/(5·∞))^2`, `sqrt((2·∞)/(5·∞))`, `1 + (2·∞)/(3·∞)` — would otherwise
+/// be reduced to a finite value by a cancellation shortcut/rule running on the inner `Div` before the
+/// Core `InfDivInfRule`, diverging from `--steps`. Folding the whole tree up front makes both modes
+/// agree on `undefined`. Leaves and non-arithmetic carriers (`Hold`, `Matrix`) are preserved, and the
+/// pass allocates nothing when no `∞/∞` is present (it returns the same node ids unchanged).
+pub fn fold_inf_div_inf_recursive(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let mut changed = false;
+    let out = fold_inf_div_inf_rec(ctx, expr, 0, &mut changed);
+    changed.then_some(out)
+}
+
+fn fold_inf_div_inf_rec(
+    ctx: &mut Context,
+    expr: ExprId,
+    depth: usize,
+    changed: &mut bool,
+) -> ExprId {
+    if depth > INF_DIV_FOLD_MAX_DEPTH {
+        return expr;
+    }
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) => {
+            let n2 = fold_inf_div_inf_rec(ctx, num, depth + 1, changed);
+            let d2 = fold_inf_div_inf_rec(ctx, den, depth + 1, changed);
+            // `∞/∞` is indeterminate regardless of finite cofactors.
+            if contains_unbounded_factor(ctx, n2) && contains_unbounded_factor(ctx, d2) {
+                *changed = true;
+                return mk_undefined(ctx);
+            }
+            // `undefined / _` and `_ / undefined` are undefined (matches `div_undefined`).
+            if is_undefined_const(ctx, n2) || is_undefined_const(ctx, d2) {
+                *changed = true;
+                return mk_undefined(ctx);
+            }
+            if n2 == num && d2 == den {
+                expr
+            } else {
+                ctx.add(Expr::Div(n2, d2))
+            }
+        }
+        Expr::Add(a, b) => fold_bin(ctx, expr, a, b, depth, changed, Expr::Add),
+        Expr::Sub(a, b) => fold_bin(ctx, expr, a, b, depth, changed, Expr::Sub),
+        Expr::Mul(a, b) => fold_bin(ctx, expr, a, b, depth, changed, Expr::Mul),
+        Expr::Pow(a, b) => fold_bin(ctx, expr, a, b, depth, changed, Expr::Pow),
+        Expr::Neg(inner) => {
+            let i2 = fold_inf_div_inf_rec(ctx, inner, depth + 1, changed);
+            if is_undefined_const(ctx, i2) {
+                *changed = true;
+                return mk_undefined(ctx);
+            }
+            if i2 == inner {
+                expr
+            } else {
+                ctx.add(Expr::Neg(i2))
+            }
+        }
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::with_capacity(args.len());
+            let mut any_changed = false;
+            let mut any_undefined = false;
+            for arg in args {
+                let a2 = fold_inf_div_inf_rec(ctx, arg, depth + 1, changed);
+                any_changed |= a2 != arg;
+                any_undefined |= is_undefined_const(ctx, a2);
+                new_args.push(a2);
+            }
+            if any_undefined {
+                *changed = true;
+                return mk_undefined(ctx);
+            }
+            if any_changed {
+                ctx.add(Expr::Function(name, new_args))
+            } else {
+                expr
+            }
+        }
+        // Leaves and non-arithmetic carriers: `Hold` deliberately blocks evaluation, so do not
+        // propagate undefined through it; matrices and atoms have no `∞/∞` sub-quotient to fold.
+        Expr::Number(_)
+        | Expr::Variable(_)
+        | Expr::Constant(_)
+        | Expr::SessionRef(_)
+        | Expr::Hold(_)
+        | Expr::Matrix { .. } => expr,
+    }
+}
+
+fn fold_bin(
+    ctx: &mut Context,
+    expr: ExprId,
+    a: ExprId,
+    b: ExprId,
+    depth: usize,
+    changed: &mut bool,
+    build: fn(ExprId, ExprId) -> Expr,
+) -> ExprId {
+    let a2 = fold_inf_div_inf_rec(ctx, a, depth + 1, changed);
+    let b2 = fold_inf_div_inf_rec(ctx, b, depth + 1, changed);
+    if is_undefined_const(ctx, a2) || is_undefined_const(ctx, b2) {
+        *changed = true;
+        return mk_undefined(ctx);
+    }
+    if a2 == a && b2 == b {
+        expr
+    } else {
+        ctx.add(build(a2, b2))
+    }
+}
+
 /// Saturating / monotone functions evaluated at ±∞ on the extended
 /// real line. Handles both the function form `f(±∞)` and the
 /// exponential power form `e^(±∞)`:

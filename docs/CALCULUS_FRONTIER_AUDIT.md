@@ -1511,11 +1511,12 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   fold temprano en `simplify_pipeline_inner` (ambos modos) antes de toda cancelación. Verificado
   adversarialmente (4 agentes, bisect vs pre-fix): sin over-folds, sin nuevas wrong-answers, huella idéntica.
   Tests `cli_contract_tests::{test_eval_infinity_over_infinity_is_undefined,test_eval_infinity_quotient_plain_matches_steps}`.
-  PELDAÑOS que quedan: (A) **∞/∞ ANIDADO** — el fold sólo dispara en el `Div` de nivel superior; anidado
-  (`((2*inf)/(5*inf))^2`→`4/25` plain vs `undefined` steps) SIGUE divergente en plain (alta prioridad,
-  mismo mecanismo a profundidad; requiere fold recursivo o resolver el orden de reglas de Core en plain).
-  (B) **base-potencia ∞** (`inf^2/inf^2`→`1` AMBOS modos, preexistente — el predicado no recursa en `Pow`).
-  (C) **aditivo** (`(inf+1)/(inf+1)`→`1`, preexistente — regla "Collapse Shifted Quotient").)*
+  PELDAÑOS: (A) [x] **∞/∞ ANIDADO** GRADUADO *(2026-06-26 PENDIENTE_A: `fold_inf_div_inf_recursive` recorre el
+  árbol bottom-up, foldea cada sub-`∞/∞` y propaga el `undefined` replicando las reglas del engine →
+  `((2*inf)/(5*inf))^2`, `sqrt(...)`, `1+(2*inf)/(3*inf)`, `abs(...)`, etc. = `undefined` en AMBOS modos)*.
+  (B) [ ] **base-potencia ∞** (`inf^2/inf^2`→`1` AMBOS modos, preexistente — el predicado no recursa en `Pow`).
+  (C) [ ] **aditivo** (`(inf+1)/(inf+1)`→`1`, `(inf+inf)/(inf+inf)`→`1`, preexistente — `∞±∞` no se reconoce
+  como no-finito antes de la cancelación).)*
 - [ ] **Cociente gaussiano con `i` real (`i/i`→`i/i` plain vs `1` steps):** PELDAÑO ABIERTO, preexistente
   (no introducido por el fix; el atajo sigue casando los cocientes con `i` por diseño en RealOnly). Divergencia
   de dominio-complejo / fuera-de-dominio; menor severidad. Auditar si el atajo debe plegar o `--steps` debe

@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 352 (newest first)
+Active entries: 353 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
+- 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15070,3 +15071,46 @@ Active entries: 352 (newest first)
     foldear en el entry común a ambos modos, no guardar cada primitiva de cancelación. La detección de "no
     finito" debe cubrir el factor `∞` multiplicativo n-ario (`x·∞`, `a·∞·b`), recursando sólo en `Mul`/`Neg`.
     Próximo peldaño: ∞/∞ ANIDADO (fold recursivo) — el mismo bug a profundidad.
+
+## 2026-06-26 - P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
+
+- area:
+  - `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo)
+  - `crates/cas_engine/src/orchestrator.rs` (`simplify_pipeline_inner`: el fold temprano pasa de top-level a
+    recursivo)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_infinity_quotient_plain_matches_steps` + 7 casos
+    anidados)
+- status:
+  - `retained` (cierra peldaño A del ciclo `∞/∞` previo `836f46d3a`; B/C siguen abiertos)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - secondary_dimension: cli_web_consistency
+  - cell: ANTES (plain) `((2*inf)/(5*inf))^2 -> 4/25`, `sqrt((2*inf)/(5*inf)) -> sqrt(2/5)`,
+    `(2*inf)/(5*inf)*5 -> 2`, `1+(2*inf)/(3*inf)` sin evaluar, `abs(...) -> 2·|...|` — todos `undefined` en
+    `--steps`. AHORA `undefined` en AMBOS modos.
+  - MECANISMO: el fold temprano del ciclo previo sólo inspeccionaba el `Div` RAÍZ; un `∞/∞` ANIDADO escapaba
+    porque una cancelación corría sobre el `Div` interno antes que el fold. Fix: `fold_inf_div_inf_recursive`
+    recorre el árbol bottom-up, foldea CADA sub-`∞/∞` a `undefined` y PROPAGA ese `undefined` por la aritmética
+    envolvente (`+ - * / neg ^` y argumentos de función) EXACTAMENTE como las reglas de undefined del engine
+    (`add_undefined`/`mul_undefined`/`pow_undefined`/...). No propaga por `Hold` (bloquea evaluación) ni por
+    `Matrix`. El orchestrator retorna temprano sólo si el fold colapsa a `undefined` puro (todo caso de
+    divergencia); un fold parcial bloqueado por `Hold`/`Matrix` cae al pipeline normal.
+  - SOUNDNESS: `∞/∞` indeterminado para todo cofactor finito (igual que el ciclo previo). La propagación de
+    `undefined` REPLICA las reglas del engine (no inventa: lo que el engine ya hace en `--steps`), así que
+    plain converge a steps sin nuevos folds. Cero-alocación cuando no hay `∞` (devuelve los mismos ids).
+    Verificación adversarial (sondas de over-fold): `1/inf->0`, `inf^0->1`, `inf*0->undefined`, `(inf+1)/2->
+    infinity`, `(x*inf)/2`/`(x*inf)/x` (∞ un solo lado) INTACTOS; ningún valor definido -> undefined.
+  - validación: workspace failed:0 (12348); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; tests inf-div anidados (plain==steps).
+  - PELDAÑOS que siguen: (B) base-potencia `inf^2/inf^2 -> 1` (el predicado no recursa en `Pow`); (C) aditivo
+    `(inf+1)/(inf+1) -> 1` / `(inf+inf)/(inf+inf) -> 1`.
+- observed:
+  - cuando un fold de forma indeterminada en el entry sólo mira la raíz, las formas ANIDADAS escapan por la
+    misma carrera regla-vs-cancelación a profundidad: el fold debe ser RECURSIVO y co-propagar el `undefined`
+    replicando las reglas de propagación del engine, para que plain == steps a cualquier profundidad.
+- retained learning:
+  - patrón: un fold de saneamiento en el punto de entrada común a ambos modos debe aplicarse RECURSIVAMENTE
+    (bottom-up) y propagar el valor saneado replicando las reglas del motor, no sólo en la raíz. Cero-alocación
+    si no hay marcador (devuelve ids idénticos). Próximo: extender el detector `contains_unbounded_factor` a
+    `Pow(∞, p>0)` (peldaño B) y reconocer `∞±∞` mismo-signo como no-finito (peldaño C).

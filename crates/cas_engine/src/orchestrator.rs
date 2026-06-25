@@ -26344,27 +26344,35 @@ impl Orchestrator {
         // mis-cancel the `∞` factor and fabricate a finite value (`2/5`, `1`, `tan x`). Several
         // distinct cancellation primitives (plain-mode root shortcuts AND per-node Core rules) race
         // the Core `InfDivInfRule`; in plain mode (no step listener) a cancellation wins, so the
-        // result used to depend on whether steps were collected. This single early fold runs in both
-        // modes, making them agree on the only correct answer: `∞/∞` is indeterminate.
-        if let Some(plan) =
-            cas_math::infinity_support::try_rewrite_inf_div_inf_expr(&mut simplifier.context, expr)
+        // result used to depend on whether steps were collected. The fold is RECURSIVE so a NESTED
+        // `∞/∞` (`((2·∞)/(5·∞))^2`, `sqrt((2·∞)/(5·∞))`, `1 + (2·∞)/(3·∞)`) cannot escape via a
+        // cancellation on the inner `Div`; `undefined` is propagated through the enclosing arithmetic
+        // exactly as the engine's undefined-propagation rules do. Runs in both modes -> they agree.
+        if let Some(folded) =
+            cas_math::infinity_support::fold_inf_div_inf_recursive(&mut simplifier.context, expr)
         {
-            let undefined = plan.rewritten;
-            let shortcut_steps = if collect_steps {
-                vec![build_root_shortcut_compact_step(
-                    expr,
-                    undefined,
-                    "∞ / ∞ is indeterminate",
-                    "Indeterminate Infinity Quotient",
-                )]
-            } else {
-                Vec::new()
-            };
-            return (
-                undefined,
-                shortcut_steps,
-                crate::phase::PipelineStats::default(),
-            );
+            // Return early only when the fold fully collapses to `undefined` (every divergence case);
+            // a partial fold blocked by `Hold`/`Matrix` falls through to the normal pipeline.
+            if matches!(
+                simplifier.context.get(folded),
+                Expr::Constant(cas_ast::Constant::Undefined)
+            ) {
+                let shortcut_steps = if collect_steps {
+                    vec![build_root_shortcut_compact_step(
+                        expr,
+                        folded,
+                        "∞ / ∞ is indeterminate",
+                        "Indeterminate Infinity Quotient",
+                    )]
+                } else {
+                    Vec::new()
+                };
+                return (
+                    folded,
+                    shortcut_steps,
+                    crate::phase::PipelineStats::default(),
+                );
+            }
         }
 
         if let Some(zero) =

@@ -1217,6 +1217,15 @@ fn test_eval_infinity_quotient_plain_matches_steps() {
         "(2*inf*sin(x))/(5*inf*sin(x))",
         "(inf*sin(x))/(inf*cos(x))",
         "inf/inf",
+        // Nested `∞/∞`: the fold is recursive, so an enclosing power/root/log/product/sum cannot
+        // let the inner quotient escape via a cancellation that runs before the indeterminate fold.
+        "((2*inf)/(5*inf))^2",
+        "sqrt((2*inf)/(5*inf))",
+        "ln((2*inf)/(5*inf))",
+        "(2*inf)/(5*inf)*5",
+        "2*((2*inf)/(5*inf))",
+        "1+(2*inf)/(3*inf)",
+        "abs((2*inf)/(5*inf))",
     ] {
         let plain = cli()
             .args(["eval", input, "--format", "json"])
