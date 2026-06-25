@@ -1517,7 +1517,7 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   (B) [x] **base-potencia ∞** GRADUADO *(2026-06-26 68c73eae7: `contains_unbounded_factor` reconoce
   `Pow(∞, p)` con `p` literal positivo como no-finito → `inf^2/inf^2`, `inf^3/inf^2`, `sqrt(inf)/sqrt(inf)`,
   etc. = `undefined`; `∞^0=1`/`∞^(-1)=0`/`∞^x` intactos)*.
-  (C) [x] **aditivo** GRADUADO *(2026-06-26 PENDIENTE_C: `contains_unbounded_factor` reconoce un `Add`/`Sub`
+  (C) [x] **aditivo** GRADUADO *(2026-06-26 8b64b31fa: `contains_unbounded_factor` reconoce un `Add`/`Sub`
   DEFINITIVAMENTE `±∞` (sign-aware: `additive_definitely_infinite`+`infinite_term_sign`) → `(inf+1)/(inf+1)`,
   `(inf+inf)/(inf+inf)`, `(2*inf+2*inf)/(inf+inf)`, `(inf+x)/(inf+x)` = `undefined`; `∞−∞` y signo-desconocido
   NO se foldean)*.
