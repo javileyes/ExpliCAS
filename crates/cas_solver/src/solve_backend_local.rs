@@ -929,6 +929,109 @@ fn solve_relation_set(
 ///   √f ≥ g   ⟺  f ≥ 0 ∧ (g < 0 ∨ f ≥ g²)
 /// Each branch is a polynomial inequality the existing solver handles. Subsumes
 /// the radicand-domain handling of `intersect_inequality_with_function_domain`.
+/// If `den` is a positive-SEMIDEFINITE quadratic `a·x² + b·x + c` (`a > 0`, discriminant
+/// `b² − 4ac ≤ 0`) it is `> 0` everywhere except, when the discriminant is 0, at its double
+/// root. Returns `Some(Some(root))` for that double-root (pole) case, `Some(None)` when
+/// strictly positive (no real root), and `None` otherwise (sign-changing or not a quadratic).
+fn positive_semidefinite_quadratic_pole(
+    den: &cas_math::polynomial::Polynomial,
+) -> Option<Option<num_rational::BigRational>> {
+    use num_rational::BigRational;
+    use num_traits::{Signed, Zero};
+    if den.degree() != 2 {
+        return None;
+    }
+    let coeff = |i: usize| den.coeffs.get(i).cloned().unwrap_or_else(BigRational::zero);
+    let (a, b, c) = (coeff(2), coeff(1), coeff(0));
+    if !a.is_positive() {
+        return None;
+    }
+    let four = BigRational::from_integer(4.into());
+    let disc = &b * &b - &four * &a * &c;
+    if disc.is_positive() {
+        return None; // two distinct real roots ⇒ D changes sign
+    }
+    if disc.is_zero() {
+        let two = BigRational::from_integer(2.into());
+        Some(Some(-b / (two * a)))
+    } else {
+        Some(None)
+    }
+}
+
+/// Solve `N / D {op} c` where `D` is a positive-(semi)definite quadratic, so `D > 0` on its
+/// domain and the inequality does NOT flip: `N/D {op} c ⟺ N − c·D {op} 0` (a polynomial
+/// inequality), with the pole `D = 0` excluded. The general division-sign-split path
+/// mishandles a positive-definite denominator and returns the flipped side
+/// (`1/(x²+1) < 1/2 → (-1, 1)` instead of `(-∞,-1) ∪ (1,∞)`).
+fn try_solve_positive_denominator_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::solution_set::intersect_solution_sets;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let (lhs, _) = simplifier.simplify(eq.lhs);
+    let (num, den) = match simplifier.context.get(lhs) {
+        Expr::Div(n, d) => (*n, *d),
+        _ => return None,
+    };
+    let den_poly = Polynomial::from_expr(&simplifier.context, den, var).ok()?;
+    let pole = positive_semidefinite_quadratic_pole(&den_poly)?;
+    let num_poly = Polynomial::from_expr(&simplifier.context, num, var).ok()?;
+    // The RHS must be a var-free constant `c`.
+    let c = as_rational_const(&simplifier.context, eq.rhs)?;
+
+    // target = N − c·D (exact polynomial). `D > 0` ⇒ keep `op` (no flip).
+    let c_den = Polynomial::new(
+        den_poly.coeffs.iter().map(|k| k * &c).collect(),
+        var.to_string(),
+    );
+    let target = num_poly.sub(&c_den);
+    let sol = if target.degree() == 0 || target.is_zero() {
+        // A CONSTANT target `k {op} 0` holds everywhere or nowhere — the recursive solver
+        // mishandles a constant relation in `x`, so decide it directly.
+        use num_rational::BigRational;
+        let k = target
+            .coeffs
+            .first()
+            .cloned()
+            .unwrap_or_else(|| BigRational::from_integer(0.into()));
+        let zero_r = BigRational::from_integer(0.into());
+        let holds = match eq.op {
+            RelOp::Lt => k < zero_r,
+            RelOp::Leq => k <= zero_r,
+            RelOp::Gt => k > zero_r,
+            RelOp::Geq => k >= zero_r,
+            _ => return None,
+        };
+        if holds {
+            SolutionSet::AllReals
+        } else {
+            SolutionSet::Empty
+        }
+    } else {
+        let target_expr = target.to_expr(&mut simplifier.context);
+        let zero = simplifier.context.num(0);
+        solve_relation_set(simplifier, var, target_expr, zero, eq.op.clone())?
+    };
+
+    // Exclude the pole `D = 0` (the double root) from the domain.
+    if let Some(root) = pole {
+        let var_expr = simplifier.context.var(var);
+        let root_expr = simplifier.context.add(Expr::Number(root));
+        let punctured = solve_relation_set(simplifier, var, var_expr, root_expr, RelOp::Neq)?;
+        return Some(intersect_solution_sets(&simplifier.context, sol, punctured));
+    }
+    Some(sol)
+}
+
 fn try_solve_radical_inequality(
     simplifier: &mut Simplifier,
     eq: &Equation,
@@ -1466,6 +1569,12 @@ impl SolveBackend for LocalSolveBackend {
         // not by squaring blindly (which loses the RHS-sign branches and gives
         // wrong answers like `√x < x-2 → [0,1) ∪ (4,∞)`).
         if let Some(set) = try_solve_radical_inequality(simplifier, eq, var) {
+            return Ok((set, Vec::new()));
+        }
+        // `N / D {op} c` with a POSITIVE-DEFINITE denominator `D` (e.g. `1/(x²+1) < 1/2`):
+        // `D > 0` so the inequality does NOT flip. The general division-sign-split path
+        // mishandles a positive-definite denominator and returns the flipped side.
+        if let Some(set) = try_solve_positive_denominator_inequality(simplifier, eq, var) {
             return Ok((set, Vec::new()));
         }
         let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;

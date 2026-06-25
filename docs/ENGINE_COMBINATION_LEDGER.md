@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 340 (newest first)
+Active entries: 341 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -122,6 +122,7 @@ Active entries: 340 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (gate de `try_solve_sum_of_abs_... | P1 soundness: inecuación de UN solo valor absoluto vs RHS afín usa el método de segmentos (antes devolvía el punto frontera)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (hook de abs: simplificar lhs/... | P1 soundness: √(cuadrado perfecto) {op} afín se reconoce como inecuación de |·| (antes devolvía un conditional erróneo)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`parity_in_va... | Capacidad (cierra peldaño Cluster C): integral definida de integrando PAR en intervalo negativo evalúa por reflexión de simetría
+- 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_positive_denominat... | P1 soundness: inecuación N/D {op} c con denominador POSITIVO-DEFINIDO no voltea (antes daba el lado equivocado)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14496,3 +14497,43 @@ Active entries: 340 (newest first)
   - patrón: integrando par + intervalo negativo → reflejar a positivo (reusa antiderivada de rama positiva).
     El detector de paridad debe tratar base-par^cualquier-exponente como par. Peldaño: rama impropia
     `[-∞,-a]` sigue residual.
+
+## 2026-06-25 - P1 soundness: inecuación N/D {op} c con denominador POSITIVO-DEFINIDO no voltea (antes daba el lado equivocado)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_positive_denominator_inequality` +
+    `positive_semidefinite_quadratic_pole`; hook antes de `solve_inner`)
+- status:
+  - `retained` (cierra una familia sistemática de wrong-answers de inecuación racional)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: `1/(x²+1) < 1/2` ANTES `(-1,1)` (lado VOLTEADO), AHORA `(-∞,-1)∪(1,∞)`; `1/(x²+1) > 2` ANTES "All
+    real numbers", AHORA "No solution"; `1/x² < 4` ANTES `(-1/2,1/2)`, AHORA `(-∞,-1/2)∪(1/2,∞)`; `1/x² > 4`
+    AHORA `(-1/2,0)∪(0,1/2)` (polo en 0 excluido); `5/(x²+4) ≤ 1` AHORA `(-∞,-1]∪[1,∞)`.
+  - MECANISMO: el path general de split-por-signo-del-denominador es CORRECTO (verificado para denom LINEAL
+    como `1/(x+3)<1/2 → (-∞,-3)∪(-1,∞)`), pero un path más simple intercepta el caso de denom CUADRÁTICO y
+    devuelve el lado volteado (recíproca ambos lados sin voltear la desigualdad). Nuevo hook: si `D` es un
+    cuadrático POSITIVO-SEMIDEFINIDO (`a>0`, discriminante `b²-4ac ≤ 0`), entonces `D > 0` en su dominio, así
+    que `N/D {op} c ⟺ N − c·D {op} 0` SIN voltear; se resuelve la inecuación POLINÓMICA y se excluye el polo
+    `D=0` (la raíz doble cuando disc=0, vía `x ≠ root`). Caso constante (`N − c·D` de grado 0, p.ej. `c=0`):
+    se evalúa `k {op} 0` directamente (el solver recursivo da basura con una relación constante en `x`).
+  - SOUNDNESS: clasificación exacta de positivo-definido (BigInt discriminante, sin f64); el dominio excluye
+    el polo. Oráculo de pertenencia independiente (Fraction, `N/(cuadrático pos-def) {op} c`, 250 casos), 0
+    mismatches (45 skips son endpoints surd correctos que el oráculo float no parsea, p.ej.
+    `3/((x+1)²+1)>1 → (-√2-1,√2-1)`). Denom lineal y `1/x` intactos (van por el split correcto).
+  - validación: workspace failed:0; clippy `--all-targets`/fmt; huella guardrail (16) + pressure (3) 0 deltas.
+    Test `test_eval_positive_definite_denominator_inequality`.
+- observed:
+  - cuando una maquinaria correcta (el split-por-signo) coexiste con un atajo buggy que la intercepta, la
+    forma sound y verificable de cerrar el wrong-answer es un HOOK temprano que maneja exactamente el régimen
+    mal-atendido (denom positivo-definido) — análogo al hook de inecuación radical. No hace falta encontrar el
+    atajo buggy: basta ganarle con un caso exacto.
+  - reusar un sub-solver (aquí la inecuación polinómica `N−c·D {op} 0`) exige cubrir el caso CONSTANTE: una
+    relación constante en `x` (`1 < 0`) no es un polinomio resoluble y el solver recursivo la maneja mal —
+    evaluar el signo de la constante directamente.
+- retained learning:
+  - patrón sound para `N/D {op} c`: si `D > 0` provable (cuadrático pos-semidef), NO voltear y resolver
+    `N − c·D {op} 0` excluyendo el polo. Peldaño abierto: potencia negativa `x^(-q) {op} c` (`1/√x < 2`,
+    `x^(-1/2)`) sigue por un path distinto (no es `Div(N, poly)`), y denom positivo-definido de grado ≥ 4 —
+    extensiones futuras del mismo principio.

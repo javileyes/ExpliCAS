@@ -1163,6 +1163,37 @@ fn test_eval_single_abs_inequality_uses_segment_method() {
 }
 
 #[test]
+fn test_eval_positive_definite_denominator_inequality() {
+    // `N/D {op} c` with a POSITIVE-DEFINITE denominator `D` (D > 0 everywhere it is
+    // defined) must NOT flip the inequality. The general division-sign-split path
+    // mishandled it and returned the flipped side (`1/(x²+1) < 1/2 → (-1,1)` instead
+    // of the complement). Solve `N - c·D {op} 0` directly, excluding the pole.
+    for (input, expected) in [
+        ("1/(x^2+1) < 1/2", "(-infinity, -1) U (1, infinity)"),
+        ("2/(x^2+1) < 1", "(-infinity, -1) U (1, infinity)"),
+        ("1/(x^2+1) > 2", "No solution"),
+        ("5/(x^2+4) <= 1", "(-infinity, -1] U [1, infinity)"),
+        ("1/x^2 < 4", "(-infinity, -1/2) U (1/2, infinity)"),
+        ("1/x^2 > 4", "(-1/2, 0) U (0, 1/2)"), // pole at 0 excluded
+        ("1/(x-1)^2 < 4", "(-infinity, 1/2) U (3/2, infinity)"),
+        ("1/(x^2+1) < 0", "No solution"), // constant target, never holds
+        ("1/(x^2+1) >= 0", "All real numbers"),
+        ("1/x^2 > 0", "(-infinity, 0) U (0, infinity)"),
+        // Linear denominator (sign-varying) is unchanged — handled by the sign split.
+        ("1/(x+3) < 1/2", "(-infinity, -3) U (-1, infinity)"),
+        ("1/x < 4", "(-infinity, 0) U (1/4, infinity)"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_matrix_inverse_routes_and_no_scalar_broadcast() {
     // `M^(-1)` / `c/M` used to fall to scalar arithmetic and fabricate `1/[[…]]`
     // (a non-square matrix has NO inverse; a symbolic one is not elementwise 1/entry).
