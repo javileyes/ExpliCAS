@@ -1511,7 +1511,7 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   fold temprano en `simplify_pipeline_inner` (ambos modos) antes de toda cancelación. Verificado
   adversarialmente (4 agentes, bisect vs pre-fix): sin over-folds, sin nuevas wrong-answers, huella idéntica.
   Tests `cli_contract_tests::{test_eval_infinity_over_infinity_is_undefined,test_eval_infinity_quotient_plain_matches_steps}`.
-  PELDAÑOS: (A) [x] **∞/∞ ANIDADO** GRADUADO *(2026-06-26 PENDIENTE_A: `fold_inf_div_inf_recursive` recorre el
+  PELDAÑOS: (A) [x] **∞/∞ ANIDADO** GRADUADO *(2026-06-26 ab45f3e89: `fold_inf_div_inf_recursive` recorre el
   árbol bottom-up, foldea cada sub-`∞/∞` y propaga el `undefined` replicando las reglas del engine →
   `((2*inf)/(5*inf))^2`, `sqrt(...)`, `1+(2*inf)/(3*inf)`, `abs(...)`, etc. = `undefined` en AMBOS modos)*.
   (B) [ ] **base-potencia ∞** (`inf^2/inf^2`→`1` AMBOS modos, preexistente — el predicado no recursa en `Pow`).
