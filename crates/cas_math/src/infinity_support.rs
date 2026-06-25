@@ -307,6 +307,46 @@ pub fn try_rewrite_inf_div_finite_expr(
     })
 }
 
+/// True if `expr` evaluates to `±∞` — bare `±∞`, or a finite NON-ZERO scalar multiple of it
+/// (`2·∞`, `(-∞)`, `∞·5`, …). Used to recognise the indeterminate `∞/∞` regardless of finite scaling.
+pub fn is_infinite_valued(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Constant(Constant::Infinity) => true,
+        Expr::Neg(inner) => is_infinite_valued(ctx, *inner),
+        Expr::Mul(a, b) => {
+            let (a, b) = (*a, *b);
+            (is_infinite_valued(ctx, a) && is_finite_literal(ctx, b) && !is_zero_expr(ctx, b))
+                || (is_finite_literal(ctx, a)
+                    && !is_zero_expr(ctx, a)
+                    && is_infinite_valued(ctx, b))
+        }
+        _ => false,
+    }
+}
+
+/// Plan the indeterminate form `±∞ / ±∞ -> Undefined` (including finite-scaled infinities like
+/// `(2·∞)/(5·∞)`). Without this, the generic common-factor cancellation `(a·X)/(b·X) -> a/b` treats
+/// `∞` as a cancellable factor and fabricates a finite value (`∞/∞ -> 1`, `(2·∞)/(5·∞) -> 2/5`).
+pub fn try_rewrite_inf_div_inf_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<InfinityRewritePlan> {
+    let (num, den) = if let Expr::Div(num, den) = ctx.get(expr) {
+        (*num, *den)
+    } else {
+        return None;
+    };
+
+    if is_infinite_valued(ctx, num) && is_infinite_valued(ctx, den) {
+        Some(InfinityRewritePlan {
+            rewritten: mk_undefined(ctx),
+            description: "∞ / ∞ is indeterminate".to_string(),
+        })
+    } else {
+        None
+    }
+}
+
 /// Saturating / monotone functions evaluated at ±∞ on the extended
 /// real line. Handles both the function form `f(±∞)` and the
 /// exponential power form `e^(±∞)`:

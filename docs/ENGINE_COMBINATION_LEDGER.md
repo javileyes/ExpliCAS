@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 349 (newest first)
+Active entries: 350 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -131,6 +131,7 @@ Active entries: 349 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` | capacidad: integral DEFINIDA de |racional| SIGNO-DEFINIDO (quita el abs y delega)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/orchestrator.rs` (macro `return_root_shortcut_pair!`; ... | P0 wrong-value: "collapse to 0" exige cero EXACTO (resta de fracciones colapsaba mal a 0)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/exponents/simplification.rs` (`IdentityPowerRule... | P0 wrong-value: `M^0` es la matriz IDENTIDAD, no el escalar 1 (5 defectos, 1 fix)
+- 2026-06-25 | `retained` | `crates/cas_math/src/infinity_support.rs` (`is_infinite_valued`, `try_rewrite... | P0 unsound: `∞/∞ -> undefined` (3 de 4 defectos; el simétrico escalado queda peldaño)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14904,3 +14905,51 @@ Active entries: 349 (newest first)
   - patrón: las reglas escalares de simplificación de potencias (`x^0`, `x^1`, `1^x`, …) deben declinar o
     rerutear cuando la base es `Expr::Matrix`; `M^0=I`, no `1`. Peldaño relacionado: `M^n` (n≥2) sigue sin
     evaluar (residual honesto, capacidad futura).
+
+## 2026-06-25 - P0 unsound: `∞/∞ -> undefined` (3 de 4 defectos; el simétrico escalado queda peldaño)
+
+- area:
+  - `crates/cas_math/src/infinity_support.rs` (`is_infinite_valued`, `try_rewrite_inf_div_inf_expr`);
+    `crates/cas_engine/src/rules/infinity.rs` (`InfDivInfRule`, registrada con las formas indeterminadas);
+    `crates/cas_engine/src/orchestrator.rs` (`root_shortcut_result_is_unsound`: veto compartido en ambas
+    macros de dispatch de root-shortcuts)
+- status:
+  - `retained` (cierra D34/D35/D37 del audit; D36 simétrico escalado queda abierto)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES `inf/inf -> 1`, `(2·inf)/inf -> 1`, `(-inf)/inf -> -1`, `inf/(2·inf) -> 1`, `(3·inf)/(-inf) ->
+    -1` (la cancelación genérica `a/a->1` trataba `∞` como factor cancelable). AHORA todos `undefined`.
+    Hermanos correctos intactos: `1/inf->0`, `inf/2->infinity`, `inf-inf->undefined`, `0*inf->undefined`.
+  - MECANISMO: no existía regla `∞/∞`. Las dos reglas de división por infinito exigen un lado FINITO, así que
+    con ambos infinitos caían a la cancelación genérica. Fix: `is_infinite_valued` reconoce `±∞` y múltiplos
+    escalares finitos (`c·∞`); `InfDivInfRule` (registrada con las formas indeterminadas, antes que la
+    cancelación) devuelve `undefined` cuando num y den son infinite-valued. Además, las DOS macros de
+    dispatch de root-shortcuts (`return_root_shortcut_pair!` y `return_profiled_root_shortcut!`) comparten un
+    veto `root_shortcut_result_is_unsound` que descarta cualquier shortcut que (1) colapse a 0 algo con
+    testigo no-cero [R7] o (2) reduzca un `∞/∞` a algo distinto de `undefined`.
+  - SOUNDNESS: el veto solo descarta resultados unsound; nunca fuerza uno. `is_infinite_valued` exacto (sin
+    f64).
+  - PELDAÑO ABIERTO (D36): `(c1·∞)/(c2·∞) -> c1/c2` (`(2·inf)/(5·inf) -> 2/5`) PERSISTE. Un reductor de
+    coeficiente común en el modo plain del CLI (NO en `--steps on/compact`, que dan `undefined`) reduce
+    `Div(Mul(c1,∞),Mul(c2,∞)) -> Div(c1,c2)` por una ruta de aritmética-rápida que NO pasa por ninguna de las
+    macros de root-shortcut, ni por las reglas de fracción auditadas (`SimplifyFractionRule`,
+    `try_plan_fraction_gcd_rewrite`, `try_plan_structural_scalar_multiple_fraction_rewrite` — todas guardadas
+    sin efecto; el debug confirma que NO se alcanzan). Divergencia plain-vs-steps: el default del CLI activa
+    una optimización que `--steps` desactiva. Requiere localizar esa ruta de fast-eval (probablemente un
+    cache/preorder no instrumentado).
+  - validación: workspace failed:0 (12346); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3) 0
+    deltas; test `test_eval_infinity_over_infinity_is_undefined` (las 5 formas fijadas + hermanos).
+- observed:
+  - una operación indeterminada sin regla propia (`∞/∞`) la captura la cancelación genérica con un valor falso;
+    el patrón sound es una regla dedicada `-> undefined` registrada ANTES de la cancelación, con detección de
+    infinito que cubra los múltiplos escalares (`c·∞`), no solo el `∞` desnudo.
+  - DIVERGENCIA plain-vs-steps detectada (la preocupación inicial de la sesión CLI-vs-web): el modo por defecto
+    del CLI tiene una ruta de aritmética-rápida que `--steps` no ejecuta, y puede producir un resultado
+    DISTINTO (`2/5` vs `undefined`). Esto es en sí un riesgo de soundness/consistencia a investigar: el
+    resultado no debe depender de si se piden pasos.
+- retained learning:
+  - patrón: forma indeterminada -> regla dedicada `undefined` antes de la cancelación genérica; el detector de
+    infinito debe cubrir `c·∞`. Peldaño D36: localizar la ruta fast-eval del modo plain que reduce
+    `(c1·∞)/(c2·∞)` (divergente con `--steps`), y un veto/guarda allí. Sospecha: una optimización del default
+    del CLI que `--steps` desactiva — instrumentar el entry de eval por defecto.

@@ -1469,14 +1469,21 @@ REFUTADOS por la verificación (formas equivalentes), no defectos.
   `x^0→1`/`0^0→undefined` intactos. Los 5 defectos cerrados.)*
 
 ### R2 — P0 unsound: no existe regla `inf/inf → undefined`; la cancelación `a/a→1` se cuela — 4 defectos, 1 fix
-- [ ] `inf/inf` → `1` (real undefined; el propio engine da `limit(x/x)=1`, `limit(2x/x)=2`, `limit(x^2/x)=inf`).
-- [ ] `(2*inf)/inf` → `1` (real undefined).
-- [ ] `(2*inf)/(5*inf)` → `2/5` (real undefined; cancela el `inf` y divide coeficientes).
-- [ ] `(-inf)/inf` → `-1` (real undefined).
+- [x] `inf/inf` → `1` (real undefined; el propio engine da `limit(x/x)=1`, `limit(2x/x)=2`, `limit(x^2/x)=inf`).
+- [x] `(2*inf)/inf` → `1` (real undefined).
+- [ ] `(2*inf)/(5*inf)` → `2/5` (real undefined; cancela el `inf` y divide coeficientes). **PELDAÑO ABIERTO**:
+  el simétrico escalado persiste vía una ruta de aritmética-rápida del modo PLAIN del CLI (divergente con
+  `--steps on/compact`, que ya dan `undefined`); no pasa por las macros de root-shortcut ni por las reglas de
+  fracción guardadas. Requiere localizar el fast-eval del default del CLI.
+- [x] `(-inf)/inf` → `-1` (real undefined). (También `inf/(2*inf)`, `(3*inf)/(-inf)` cerrados.)
   *Hipótesis raíz:* en `crates/cas_math/src/infinity_support.rs` las guardas `is_finite_literal` exigen
   un lado finito; con AMBOS infinitos cae a `CancelCommonFactorsRule`
   (`crates/cas_engine/src/rules/algebra/fractions/cancel_rules_factor.rs:521`). Fix: regla `inf/inf →
   Undefined` antes de la cancelación (análoga a `0*inf`/`inf-inf`, que SÍ dan undefined).
+  *(graduado PARCIAL 2026-06-25 PENDIENTE_R2_HASH: nueva `InfDivInfRule` (`is_infinite_valued` reconoce `±∞`
+  y `c·∞`) registrada con las formas indeterminadas → 3/4 defectos cerrados; el veto compartido
+  `root_shortcut_result_is_unsound` cubre ambas macros de root-shortcut. D36 simétrico queda peldaño — ver
+  ledger; ADEMÁS descubierta una divergencia plain-vs-`--steps` que es un riesgo de consistencia a auditar.)*
 
 ### R3 — P1 lost-domain: inecuación NO estricta pierde el cero aislado de factor de mult. par — 10 defectos, 1 fix
 El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque que caen fuera del intervalo dominante.

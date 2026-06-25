@@ -1615,6 +1615,35 @@ fn build_root_shortcut_compact_step(
     step
 }
 
+/// SOUNDNESS veto shared by both root-shortcut dispatch macros: returns `true` when a shortcut
+/// `result` for `expr` is unsound and must be skipped so the honest rule pipeline runs instead.
+/// (1) A collapse to `0` of an expression with an EXACT non-zero value at a generic rational point
+/// (`1/(x²-1) - 1/(x-1)`). (2) An `∞/∞` quotient cancelled to anything other than `undefined`
+/// (`(2·∞)/(5·∞) -> 2/5`).
+fn root_shortcut_result_is_unsound(ctx: &mut Context, expr: ExprId, result: ExprId) -> bool {
+    let collapses_to_zero = {
+        let zero = ctx.num(0);
+        compare_expr(ctx, result, zero) == Ordering::Equal
+    };
+    if collapses_to_zero
+        && crate::rules::arithmetic::common_scaled_difference_has_exact_nonzero_witness(ctx, expr)
+    {
+        return true;
+    }
+    if let Expr::Div(num, den) = *ctx.get(expr) {
+        if cas_math::infinity_support::is_infinite_valued(ctx, num)
+            && cas_math::infinity_support::is_infinite_valued(ctx, den)
+            && !matches!(
+                ctx.get(result),
+                Expr::Constant(cas_ast::Constant::Undefined)
+            )
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn finish_root_shortcut_with_rewrite_meta(
     ctx: &Context,
     before: ExprId,
@@ -27176,20 +27205,24 @@ impl Orchestrator {
                 }
                 if let Some((result, shortcut_steps)) = run_profiled_root_shortcut($name, || $call)
                 {
-                    if self.time_budget_exceeded() {
-                        return self.finish_timed_out_pipeline(
-                            simplifier,
+                    // SOUNDNESS: skip a shortcut whose result is unsound (a non-zero collapse to 0, or
+                    // an `∞/∞` cancelled to a finite value) so the honest rule pipeline runs.
+                    if !root_shortcut_result_is_unsound(&mut simplifier.context, expr, result) {
+                        if self.time_budget_exceeded() {
+                            return self.finish_timed_out_pipeline(
+                                simplifier,
+                                result,
+                                shortcut_steps,
+                                crate::phase::PipelineStats::default(),
+                                None,
+                            );
+                        }
+                        return (
                             result,
                             shortcut_steps,
                             crate::phase::PipelineStats::default(),
-                            None,
                         );
                     }
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
                 }
                 if self.time_budget_exceeded() {
                     return self.finish_timed_out_pipeline(
@@ -27215,21 +27248,9 @@ impl Orchestrator {
                     );
                 }
                 if let Some((result, shortcut_steps)) = $call {
-                    // SOUNDNESS GATE: a root shortcut that collapses to `0` must never fire on an
-                    // expression whose exact value at a generic rational point is NON-zero (a
-                    // mis-detected cancellation such as `1/(x²-1) - 1/(x-1) = -x/(x²-1)`). Skip it so
-                    // the honest simplification runs instead.
-                    let collapses_to_zero = {
-                        let zero = simplifier.context.num(0);
-                        cas_ast::ordering::compare_expr(&simplifier.context, result, zero)
-                            == std::cmp::Ordering::Equal
-                    };
-                    if !collapses_to_zero
-                        || !crate::rules::arithmetic::common_scaled_difference_has_exact_nonzero_witness(
-                            &mut simplifier.context,
-                            expr,
-                        )
-                    {
+                    // SOUNDNESS: skip a shortcut whose result is unsound (a non-zero collapse to 0, or
+                    // an `∞/∞` cancelled to a finite value) so the honest rule pipeline runs.
+                    if !root_shortcut_result_is_unsound(&mut simplifier.context, expr, result) {
                         if self.time_budget_exceeded() {
                             return self.finish_timed_out_pipeline(
                                 simplifier,

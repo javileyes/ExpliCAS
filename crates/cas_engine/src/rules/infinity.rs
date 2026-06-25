@@ -14,8 +14,8 @@ use crate::rule::Rewrite;
 use cas_ast::{Constant, Context, Expr, ExprId};
 use cas_math::infinity_support::{
     mk_undefined, try_rewrite_add_infinity_absorption_expr, try_rewrite_div_by_infinity_expr,
-    try_rewrite_inf_div_finite_expr, try_rewrite_mul_finite_infinity_expr,
-    try_rewrite_mul_zero_infinity_expr,
+    try_rewrite_inf_div_finite_expr, try_rewrite_inf_div_inf_expr,
+    try_rewrite_mul_finite_infinity_expr, try_rewrite_mul_zero_infinity_expr,
 };
 
 // ============================================================
@@ -73,6 +73,14 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// - `-infinity / 2 → -infinity`
 pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let plan = try_rewrite_inf_div_finite_expr(ctx, expr)?;
+    Some(Rewrite::new(plan.rewritten).desc(plan.description))
+}
+
+/// Rule: Infinity divided by infinity is indeterminate.
+///
+/// `∞ / ∞ → Undefined` (including finite-scaled forms `(2·∞)/(5·∞)`, `(-∞)/∞`).
+pub fn inf_div_inf(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    let plan = try_rewrite_inf_div_inf_expr(ctx, expr)?;
     Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
 
@@ -265,6 +273,13 @@ define_rule!(
     |ctx, expr| { inf_div_finite(ctx, expr) }
 );
 
+define_rule!(
+    InfDivInfRule,
+    "Infinity Divided by Infinity Indeterminate",
+    Some(crate::target_kind::TargetKindSet::DIV),
+    |ctx, expr| { inf_div_inf(ctx, expr) }
+);
+
 /// Register infinity arithmetic rules with the simplifier.
 ///
 /// These rules should be registered early in the pipeline (with CORE rules)
@@ -276,6 +291,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(MulUndefinedRule));
     // Indeterminate forms first (highest priority)
     simplifier.add_rule(Box::new(MulZeroInfinityRule));
+    simplifier.add_rule(Box::new(InfDivInfRule));
     // Then absorption/computation rules
     simplifier.add_rule(Box::new(MulInfinityRule));
     simplifier.add_rule(Box::new(AddInfinityRule));

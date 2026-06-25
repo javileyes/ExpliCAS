@@ -1163,6 +1163,36 @@ fn test_eval_single_abs_inequality_uses_segment_method() {
 }
 
 #[test]
+fn test_eval_infinity_over_infinity_is_undefined() {
+    // `∞/∞` is indeterminate; the generic `a/a -> 1` / `(a·X)/(b·X) -> a/b` cancellation used to
+    // treat `∞` as a cancellable factor and fabricate a finite value. A dedicated rule now folds it
+    // to `undefined` (including finite-scaled forms and signs).
+    for (input, expected) in [
+        ("inf/inf", "undefined"),
+        ("(2*inf)/inf", "undefined"),
+        ("(-inf)/inf", "undefined"),
+        ("inf/(2*inf)", "undefined"),
+        ("(3*inf)/(-inf)", "undefined"),
+        // Finite divisions are unaffected.
+        ("1/inf", "0"),
+        ("2/inf", "0"),
+        ("inf/2", "infinity"),
+        ("inf/0", "undefined"),
+        ("inf-inf", "undefined"),
+        ("0*inf", "undefined"),
+        ("x/x", "1"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_matrix_power_zero_is_identity_not_scalar_one() {
     // `M^0` is the n×n IDENTITY matrix (the multiplicative identity of the matrix ring), NOT the
     // scalar `1`; a non-square matrix has no `M^0`. The scalar `x^0 -> 1` rule used to collapse a
