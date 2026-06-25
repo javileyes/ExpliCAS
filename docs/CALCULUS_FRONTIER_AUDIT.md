@@ -1463,7 +1463,7 @@ REFUTADOS por la verificación (formas equivalentes), no defectos.
   ~122-153) detecta `PowZero` por exponente literal 0 sin comprobar `Expr::Matrix` de base;
   `IdentityPowerRule` (`crates/cas_engine/src/rules/exponents/simplification.rs` ~81-152) emite `ctx.num(1)`.
   Fix: guarda base-matriz → I de la dimensión (cuadrada) o error (no cuadrada).
-  *(graduado 2026-06-25 PENDIENTE_R1_HASH: guarda de base-matriz en la rama `PowZero` de
+  *(graduado 2026-06-25 b47b44dd1: guarda de base-matriz en la rama `PowZero` de
   `IdentityPowerRule` — `Matrix::from_expr(base)` → identidad n×n (cuadrada) / `undefined` (no cuadrada)
   ANTES del camino escalar. `M^0=I` para toda matriz cuadrada incl. la cero y simbólicas; escalar
   `x^0→1`/`0^0→undefined` intactos. Los 5 defectos cerrados.)*
