@@ -1454,15 +1454,19 @@ REFUTADOS por la verificación (formas equivalentes), no defectos.
   genuinos e identidades trig siguen colapsando.)*
 
 ### R1 — P0 wrong-value: `M^0` colapsa al escalar `1` (sin guarda de base-matriz) — 5 defectos, 1 fix
-- [ ] `[[1,2],[3,4]]^0 + [[1,2],[3,4]]` → `[[1,2],[3,4]] + 1` (real `[[2,2],[3,5]]`).
-- [ ] `[[1,2],[3,4]]^0 + 5` → `6` (real I+5, una matriz).
-- [ ] `3*[[1,2],[3,4]]^0` → `3` (real `[[3,0],[0,3]]`).
-- [ ] `trace([[1,2],[3,4]]^0)` → `trace(1)` (real `2`).
-- [ ] `[[1,2,3],[4,5,6]]^0` → `1` (real: undefined — matriz no cuadrada no tiene potencia cero).
+- [x] `[[1,2],[3,4]]^0 + [[1,2],[3,4]]` → `[[1,2],[3,4]] + 1` (real `[[2,2],[3,5]]`).
+- [x] `[[1,2],[3,4]]^0 + 5` → `6` (real I+5, una matriz).
+- [x] `3*[[1,2],[3,4]]^0` → `3` (real `[[3,0],[0,3]]`).
+- [x] `trace([[1,2],[3,4]]^0)` → `trace(1)` (real `2`).
+- [x] `[[1,2,3],[4,5,6]]^0` → `1` (real: undefined — matriz no cuadrada no tiene potencia cero).
   *Hipótesis raíz:* `classify_power_identity_policy_pattern` (`crates/cas_math/src/power_identity_support.rs`
   ~122-153) detecta `PowZero` por exponente literal 0 sin comprobar `Expr::Matrix` de base;
   `IdentityPowerRule` (`crates/cas_engine/src/rules/exponents/simplification.rs` ~81-152) emite `ctx.num(1)`.
   Fix: guarda base-matriz → I de la dimensión (cuadrada) o error (no cuadrada).
+  *(graduado 2026-06-25 PENDIENTE_R1_HASH: guarda de base-matriz en la rama `PowZero` de
+  `IdentityPowerRule` — `Matrix::from_expr(base)` → identidad n×n (cuadrada) / `undefined` (no cuadrada)
+  ANTES del camino escalar. `M^0=I` para toda matriz cuadrada incl. la cero y simbólicas; escalar
+  `x^0→1`/`0^0→undefined` intactos. Los 5 defectos cerrados.)*
 
 ### R2 — P0 unsound: no existe regla `inf/inf → undefined`; la cancelación `a/a→1` se cuela — 4 defectos, 1 fix
 - [ ] `inf/inf` → `1` (real undefined; el propio engine da `limit(x/x)=1`, `limit(2x/x)=2`, `limit(x^2/x)=inf`).

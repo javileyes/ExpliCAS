@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 348 (newest first)
+Active entries: 349 (newest first)
 
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
@@ -130,6 +130,7 @@ Active entries: 348 (newest first)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`abs_linear_d... | capacidad: integral DEFINIDA de |polinomio| partida en sus raíces reales (antes solo |lineal|)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` | capacidad: integral DEFINIDA de |racional| SIGNO-DEFINIDO (quita el abs y delega)
 - 2026-06-25 | `retained` | `crates/cas_engine/src/orchestrator.rs` (macro `return_root_shortcut_pair!`; ... | P0 wrong-value: "collapse to 0" exige cero EXACTO (resta de fracciones colapsaba mal a 0)
+- 2026-06-25 | `retained` | `crates/cas_engine/src/rules/exponents/simplification.rs` (`IdentityPowerRule... | P0 wrong-value: `M^0` es la matriz IDENTIDAD, no el escalar 1 (5 defectos, 1 fix)
 - 2026-06-24 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (`try_solve_sum_of_abs_inequali... | P0 soundness: inecuaciones de SUMA de valores absolutos devolvían "No solution" (solver piecewise)
 - 2026-06-24 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_fu... | P0 soundness: inecuación radical con argumento compuesto soltaba el dominio (`√(x-1)<3` → `(-∞,10)`)
 - 2026-06-24 | `retained` | `crates/cas_formatter/src/display/expr.rs` (paréntesis de la base de una pote... | P0 soundness: el TEXTO de una potencia anidada se renderizaba sin paréntesis (round-trip incorrecto)
@@ -14871,3 +14872,35 @@ Active entries: 348 (newest first)
     cero (evaluación exacta racional en punto genérico). Ponlo en el chokepoint común de la familia.
     Generaliza el patrón del ciclo de inecuaciones (certificar antes de emitir). Peldaño: el mismo
     certificado podría extenderse a otras familias de colapso-a-0 si aparecen falsos positivos.
+
+## 2026-06-25 - P0 wrong-value: `M^0` es la matriz IDENTIDAD, no el escalar 1 (5 defectos, 1 fix)
+
+- area:
+  - `crates/cas_engine/src/rules/exponents/simplification.rs` (`IdentityPowerRule`, rama `PowZero`)
+- status:
+  - `retained` (cierra el defecto R1 del audit multiagente: D29-D33, 5 wrong-answers, 1 arreglo)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES `[[1,2],[3,4]]^0` → `1` (escalar), contaminando: `M^0+[[1,2],[3,4]]` → `[[1,2],[3,4]]+1`,
+    `M^0+5` → `6`, `3·M^0` → `3`, `trace(M^0)` → `trace(1)`, `[[1,2,3],[4,5,6]]^0` → `1`. AHORA:
+    `M^0` → `[[1,0],[0,1]]` (identidad n×n); `M^0+M` → `[[2,2],[3,5]]`; `3·M^0` → `[[3,0],[0,3]]`;
+    `trace(M^0)` → `2`; no cuadrada → `undefined`.
+  - MECANISMO: la regla escalar `x^0 → 1` (`IdentityPowerRule`) detectaba `PowZero` solo por el exponente
+    literal 0, SIN comprobar la base. Para una base matriz emitía `ctx.num(1)`. Fix: al entrar en la rama
+    `PowZero`, si `Matrix::from_expr(base)` casa, devolver la IDENTIDAD n×n (el neutro multiplicativo del
+    anillo de matrices) para cuadrada, o `undefined` para no cuadrada — ANTES del camino escalar.
+  - SOUNDNESS: `M^0 = I` es la convención estándar del anillo de matrices (incluso para la matriz cero y
+    matrices simbólicas `[[a,b],[c,d]]^0 = I`); una matriz no cuadrada no tiene `M^0`. El escalar `x^0 → 1`
+    y `0^0 → undefined` quedan intactos.
+  - validación: workspace failed:0 (12345); clippy `--all-targets`/fmt; huella guardrail (16)+pressure (3)
+    0 deltas; test `test_eval_matrix_power_zero_is_identity_not_scalar_one`.
+- observed:
+  - una regla escalar que no chequea el TIPO de la base (matriz vs escalar) colapsa una matriz a un escalar
+    — patrón de wrong-answer por tipado de potencia. Cualquier regla de identidad de potencias/operaciones
+    debe gatear por base-matriz antes de aplicar la semántica escalar. (Análogo: la guarda matriz que ya
+    existía en `try_standard_exact_zero_equivalence_shortcut` para conmutadores `A·B−B·A`.)
+- retained learning:
+  - patrón: las reglas escalares de simplificación de potencias (`x^0`, `x^1`, `1^x`, …) deben declinar o
+    rerutear cuando la base es `Expr::Matrix`; `M^0=I`, no `1`. Peldaño relacionado: `M^n` (n≥2) sigue sin
+    evaluar (residual honesto, capacidad futura).

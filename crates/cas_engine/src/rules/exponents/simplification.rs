@@ -99,6 +99,32 @@ define_rule!(
                     base,
                     base_is_literal_zero,
                 } => {
+                    // A MATRIX base: `M^0` is the n×n identity matrix (the multiplicative identity of
+                    // the matrix ring), NOT the scalar `1`; a non-square matrix has no `M^0`. The
+                    // scalar `x^0 -> 1` path below would otherwise collapse a matrix to `1`.
+                    if let Some(matrix) = cas_math::matrix::Matrix::from_expr(ctx, base) {
+                        if matrix.rows != matrix.cols {
+                            return Some(
+                                Rewrite::new(
+                                    ctx.add(Expr::Constant(cas_ast::Constant::Undefined)),
+                                )
+                                .desc("M^0 is undefined for a non-square matrix"),
+                            );
+                        }
+                        let n = matrix.rows;
+                        let one = ctx.num(1);
+                        let zero = ctx.num(0);
+                        let mut data = Vec::with_capacity(n * n);
+                        for r in 0..n {
+                            for c in 0..n {
+                                data.push(if r == c { one } else { zero });
+                            }
+                        }
+                        let identity = ctx
+                            .matrix(n, n, data)
+                            .unwrap_or_else(|_| ctx.add(Expr::Constant(cas_ast::Constant::Undefined)));
+                        return Some(Rewrite::new(identity).desc("M^0 -> I (identity matrix)"));
+                    }
                     // x^0 -> 1 REQUIRES x ≠ 0 (because 0^0 is undefined)
                     let domain_mode = parent_ctx.domain_mode();
                     let power_mode =

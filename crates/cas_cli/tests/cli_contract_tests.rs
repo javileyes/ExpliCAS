@@ -1163,6 +1163,34 @@ fn test_eval_single_abs_inequality_uses_segment_method() {
 }
 
 #[test]
+fn test_eval_matrix_power_zero_is_identity_not_scalar_one() {
+    // `M^0` is the n×n IDENTITY matrix (the multiplicative identity of the matrix ring), NOT the
+    // scalar `1`; a non-square matrix has no `M^0`. The scalar `x^0 -> 1` rule used to collapse a
+    // matrix base to `1`, fabricating nonsense (`M^0 + 5 -> 6`, `trace(M^0) -> trace(1)`).
+    for (input, expected) in [
+        ("[[1,2],[3,4]]^0", "[[1, 0], [0, 1]]"),
+        ("[[1,2],[3,4]]^0 + [[1,2],[3,4]]", "[[2, 2], [3, 5]]"),
+        ("3*[[1,2],[3,4]]^0", "[[3, 0], [0, 3]]"),
+        ("trace([[1,2],[3,4]]^0)", "2"),
+        ("[[a,b],[c,d]]^0", "[[1, 0], [0, 1]]"),
+        ("[[0,0],[0,0]]^0", "[[1, 0], [0, 1]]"), // ring identity even for the zero matrix
+        ("[[1,2,3],[4,5,6]]^0", "undefined"),    // non-square has no M^0
+        // Scalar `x^0` is unaffected.
+        ("5^0", "1"),
+        ("(x+1)^0", "1"),
+        ("0^0", "undefined"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_common_scale_zero_collapse_requires_exact_zero() {
     // A "collapse to 0" shortcut mistook `1/(x²−1) − 1/(x−1)` (= −x/(x²−1)) for a common-scale
     // cancellation and folded it to 0 — a wrong CONSTANT that then poisoned `solve` into a false
