@@ -1389,3 +1389,36 @@ Los residuales no-elementales correctos deben seguir residuales:
 `e^(-x^2)` (indefinida), `sin(x)/x`, `1/ln(x)`, `x^x`, `sin(1/x)` en 0
 (no existe), `diff(floor(x))`. Cualquier ciclo que los "resuelva" es
 un bug de soundness, no una mejora.
+
+---
+
+## Pendientes recomendados (tanda de 6 ciclos 2026-06-25)
+
+Peldaños abiertos que dejó la tanda 249bd8cf5 → 8fcf8c661 (inecuaciones racionales
+verificadas + integración definida racional/valor-absoluto). Ordenados por valor/coste:
+
+- [ ] **(F) Inecuación racional con bordes surd de orden ≥3** (`1/x⁴ > 1/4 → ±4^(1/4)`,
+  `2/x³ > -1 → −2^(1/3)`): hoy el hook verificado del ciclo 1 DECLINA estos (su certificador
+  solo ordena racionales y surds cuadráticos) y caen al fallback pre-existente, que da
+  wrong-answer. Necesita extender `compare_values` (cas_solver_core) a la ordenación exacta
+  de `q·p^(e)` (raíces k-ésimas) y enhebrar la misma comparación en el verificador del hook.
+  Es SOUNDNESS (los casos declinados quedan wrong vía fallback), ~60/700 casos. Riesgo medio
+  (cross-cutting compare_values/intersect/union); merece scoping workflow.
+- [ ] **(F) Impropia de racional con antiderivada LOG** (`∫_2^∞ 1/(x²−1) = ½ln 3`): hoy declina
+  incluso en forma factorizada `1/(x(x+1))`. La maquinaria de límite-en-∞ del FTC cubre arctan
+  y decaimiento racional, pero NO el límite de `ln|p/q|` (→ `ln|a/b|`). Necesita: test de
+  convergencia (deg den − deg num ≥ 2) + evaluación de `lim_{x→∞} ln|p(x)/q(x)|`.
+- [ ] **(F) Definida `1/(a²−x²)` fuera de `|x|<a`** (`1/(1−x²)` en `[2,3]`): la antiderivada
+  `atanh(x)` es real solo en `|x|<1`; el valor real fuera es `½ln|(1+x)/(1−x)|`. INTENTADO y
+  REVERTIDO en el ciclo 6 — la reescritura atanh→log se enredó con el envoltorio `Hold` y la
+  condición de dominio `1−x²>0` adjunta que la certificación rechaza en `[2,3]`. Requiere
+  reescribir antiderivada Y soltar la condición atanh-domain juntas, con cuidado del `Hold`.
+- [ ] **(F) `∫|g|` con `g` signo-definido NO racional** (`|eˣ−2|` con el cero `ln2` fuera del
+  intervalo): el ciclo 6 cubre `|N/D|` racional; falta certificar el signo de un transcendente.
+- [ ] **(F) `∫|g|` con cero/polo EXACTAMENTE en un borde** (removible para la integral): hoy
+  declina por el toque de frontera; el valor existe (singularidad de medida cero).
+- [ ] **(P3 cosmético) Asimetría de raíces en `solve` cuadrático**: `solve(x²=2) → {−2·2^(-1/2),
+  √2}` (raíz negativa sin simplificar mientras la positiva sí). El valor es CORRECTO (no es
+  soundness), pero la grafía es inconsistente; `2·2^(-1/2)` SÍ simplifica en aislamiento.
+  Igual `solve(x²=8) → {±4·2^(-1/2)}`. Normalizar la salida del solver de raíces. Riesgo de
+  snapshots.
