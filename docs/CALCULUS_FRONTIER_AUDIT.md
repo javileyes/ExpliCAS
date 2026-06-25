@@ -1446,7 +1446,7 @@ REFUTADOS por la verificación (formas equivalentes), no defectos.
   `(x+2)/(x-1)` y pierde el factor `1/(x+1)`.
   *Hipótesis raíz:* simplificación de resta de fracciones que colapsa el numerador a 0; detección de
   identidad tras cancelación cruzada. Mirar el camino lineal/identidad y el cruce-multiplicación.
-  *(graduado 2026-06-25 PENDIENTE_R7_HASH: la raíz NO era el camino lineal sino una familia de ~11
+  *(graduado 2026-06-25 c6261b63a: la raíz NO era el camino lineal sino una familia de ~11
   shortcuts del orquestador que colapsan una diferencia a 0 por matching estructural. Fix sound en el
   chokepoint único — la macro `return_root_shortcut_pair!`: un shortcut que colapsa a 0 se VETA si la
   expresión evalúa exacto a un valor no-cero en un punto racional genérico (`eval_exact_rational`,
