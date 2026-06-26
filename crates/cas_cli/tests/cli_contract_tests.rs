@@ -1617,6 +1617,46 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_irreducible_polynomial_inequality_sign_analysis() {
+    // An irreducible polynomial inequality was rewritten to `Equal(p, 0)`, dropping the operator and
+    // returning the equation's root SET — so `> 0` and `< 0` gave byte-identical output. Sign analysis
+    // over the (closed-form) real roots now yields the correct interval union, respecting the operator
+    // and using open endpoints for strict ops, closed for non-strict.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Δ>0 cubic (one real root): half-line, operator-sensitive, no longer a root set.
+    let gt = r("x^3+x+1>0");
+    let lt = r("x^3+x+1<0");
+    assert_ne!(gt, lt, "operator must matter (was the P0 defect)");
+    assert!(
+        gt.contains("infinity") && !gt.contains('{') && !gt.contains("Solve"),
+        "x^3+x+1>0 -> {gt}"
+    );
+    assert!(gt.starts_with('(') && gt.ends_with("infinity)"), "{gt}"); // (r, infinity)
+    assert!(lt.starts_with("(-infinity"), "{lt}"); // (-infinity, r)
+                                                   // Non-strict closes the endpoint at the root.
+    let geq = r("x^3+x+1>=0");
+    assert!(geq.starts_with('[') && geq.ends_with("infinity)"), "{geq}");
+    // Casus irreducibilis (three real roots): a two-piece interval union.
+    let casus = r("x^3-3*x+1>0");
+    assert!(
+        casus.contains(" U ") && casus.contains("infinity") && !casus.contains('{'),
+        "x^3-3x+1>0 -> {casus}"
+    );
+    assert_ne!(casus, r("x^3-3*x+1<0"), "operator must matter");
+    // Controls: factorable inequalities and the underlying equation are unchanged.
+    assert_eq!(r("x^2-1>0"), "(-infinity, -1) U (1, infinity)");
+    assert_eq!(r("x^2-1<0"), "(-1, 1)");
+    assert_eq!(r("x^3-2=0"), "{ 2^(1/3) }");
+}
+
+#[test]
 fn test_eval_symbolic_power_of_power_guards_base_sign() {
     // `(x^a)^b = x^(a·b)` holds for ALL real x only when both exponents are integers; with a
     // non-integer exponent it needs `x ≥ 0` (for x<0, `x^a` is not real and the fold drops the sign,

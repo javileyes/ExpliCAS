@@ -1917,7 +1917,162 @@ fn solve_local_core(
         }
         _ => set,
     };
+
+    // An IRREDUCIBLE polynomial inequality (`x³+x+1 > 0`, `x³-3x+1 > 0`) is rewritten to `Equal(p,0)`
+    // by the normal path, dropping the operator and returning the equation's root SET (so `> 0` and
+    // `< 0` give identical output). When the operator is an inequality and the result is a `Discrete`
+    // root set, recover the interval solution by sign analysis over those (now closed-form) real roots.
+    let set = if matches!(
+        eq.op,
+        cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
+    ) {
+        if let SolutionSet::Discrete(roots) = &set {
+            let roots = roots.clone();
+            try_polynomial_inequality_sign_analysis(simplifier, eq, var, &roots).unwrap_or(set)
+        } else {
+            set
+        }
+    } else {
+        set
+    };
     Ok((set, steps))
+}
+
+/// Solve an irreducible-polynomial INEQUALITY `p(x) {<,≤,>,≥} 0` by sign analysis over its already
+/// computed real roots. The roots (closed-form, e.g. Cardano radicals or trig forms) are sorted
+/// numerically; the polynomial's EXACT sign is sampled at a rational test point strictly inside each
+/// interval they cut the real line into; and the satisfying intervals are unioned (open endpoints for
+/// strict ops, closed for non-strict — the roots themselves satisfy `≤`/`≥`).
+///
+/// Returns `None` (falling back to the raw root set) unless the sign chart is fully consistent — the
+/// signs alternate across every (simple) root and the unbounded ends match the leading coefficient's
+/// end behaviour — so an incomplete or mis-ordered root set can never yield an unsound interval set.
+fn try_polynomial_inequality_sign_analysis(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+    roots: &[ExprId],
+) -> Option<SolutionSet> {
+    use cas_ast::{BoundType, Interval, RelOp};
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::solution_set::{neg_inf, pos_inf};
+    use num_rational::BigRational;
+    use num_traits::{FromPrimitive, Zero};
+    use std::cmp::Ordering;
+    use std::collections::HashMap;
+
+    if roots.is_empty() {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+    let poly = Polynomial::from_expr(&simplifier.context, diff, var).ok()?;
+    let degree = poly.degree();
+    if degree < 1 {
+        return None;
+    }
+    let leading = poly.coeffs.last()?;
+    if leading.is_zero() {
+        return None;
+    }
+    let sign_lead = if *leading > BigRational::zero() {
+        1
+    } else {
+        -1
+    };
+
+    // Numerically order the roots (for placement only; signs are evaluated exactly).
+    let mut ordered: Vec<(ExprId, f64)> = Vec::with_capacity(roots.len());
+    for &r in roots {
+        let v = cas_math::evaluator_f64::eval_f64(&simplifier.context, r, &HashMap::new())?;
+        if !v.is_finite() {
+            return None;
+        }
+        ordered.push((r, v));
+    }
+    ordered.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    // Distinct roots only (the sign chart below assumes simple roots).
+    for w in ordered.windows(2) {
+        if (w[0].1 - w[1].1).abs() < 1e-9 {
+            return None;
+        }
+    }
+    let k = ordered.len();
+
+    // Exact sign of `poly` at a rational test point strictly inside each interval.
+    let exact_sign = |q: &BigRational| -> i32 {
+        let v = poly.eval(q);
+        match v.cmp(&BigRational::zero()) {
+            Ordering::Greater => 1,
+            Ordering::Less => -1,
+            Ordering::Equal => 0,
+        }
+    };
+    let rat = |x: f64| BigRational::from_f64(x);
+    let mut signs: Vec<i32> = Vec::with_capacity(k + 1);
+    signs.push(exact_sign(&rat(ordered[0].1 - 1.0)?));
+    for i in 1..k {
+        let mid = (ordered[i - 1].1 + ordered[i].1) / 2.0;
+        signs.push(exact_sign(&rat(mid)?));
+    }
+    signs.push(exact_sign(&rat(ordered[k - 1].1 + 1.0)?));
+
+    // Consistency guards: no test point landed on a root, signs alternate across every simple root,
+    // and the unbounded ends match the leading-coefficient end behaviour. Any failure ⇒ the root set
+    // is incomplete/mis-ordered ⇒ bail to the raw set rather than emit an unsound interval union.
+    if signs.iter().any(|&s| s == 0) {
+        return None;
+    }
+    if signs.windows(2).any(|w| w[0] == w[1]) {
+        return None;
+    }
+    let end_right = sign_lead;
+    let end_left = if degree % 2 == 0 {
+        sign_lead
+    } else {
+        -sign_lead
+    };
+    if signs[k] != end_right || signs[0] != end_left {
+        return None;
+    }
+
+    // Build the satisfying interval union.
+    let want_positive = matches!(eq.op, RelOp::Gt | RelOp::Geq);
+    let strict = matches!(eq.op, RelOp::Lt | RelOp::Gt);
+    let ctx = &mut simplifier.context;
+    let mut intervals: Vec<Interval> = Vec::new();
+    for (j, &sign) in signs.iter().enumerate() {
+        if (sign > 0) != want_positive {
+            continue;
+        }
+        let min = if j == 0 {
+            neg_inf(ctx)
+        } else {
+            ordered[j - 1].0
+        };
+        let max = if j == k { pos_inf(ctx) } else { ordered[j].0 };
+        let min_type = if j == 0 || strict {
+            BoundType::Open
+        } else {
+            BoundType::Closed
+        };
+        let max_type = if j == k || strict {
+            BoundType::Open
+        } else {
+            BoundType::Closed
+        };
+        intervals.push(Interval {
+            min,
+            min_type,
+            max,
+            max_type,
+        });
+    }
+    Some(match intervals.len() {
+        0 => SolutionSet::Empty,
+        1 => SolutionSet::Continuous(intervals.into_iter().next()?),
+        _ => SolutionSet::Union(intervals),
+    })
 }
 
 /// Build the REAL roots of `a·x³ + b·x² + c·x + d` (`a ≠ 0`), exactly, by Cardano's method. Normalize

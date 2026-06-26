@@ -387,6 +387,28 @@ fn eval_function_checked(
     }
 }
 
+/// `base^exp` under the engine's REAL odd-root convention: a NEGATIVE base raised to a rational
+/// `p/q` with ODD denominator is the real `q`-th root `(-1)^p·|base|^exp` (e.g. `(-8)^(1/3) = -2`),
+/// not the `NaN` that `f64::powf` returns for any negative base with a fractional exponent. An even
+/// denominator (genuinely non-real) or an irrational exponent falls back to `powf` (NaN). This keeps
+/// the numeric evaluator consistent with the engine, whose `(-8)^(1/3)` simplifies to `-2`.
+fn pow_real(ctx: &Context, base: f64, exp_id: ExprId, exp: f64) -> f64 {
+    if base < 0.0 && exp.fract() != 0.0 {
+        if let Some(r) = crate::numeric_eval::as_rational_const(ctx, exp_id) {
+            use num_integer::Integer;
+            if r.denom().is_odd() {
+                let magnitude = (-base).powf(exp);
+                return if r.numer().is_odd() {
+                    -magnitude
+                } else {
+                    magnitude
+                };
+            }
+        }
+    }
+    base.powf(exp)
+}
+
 /// Internal eval_f64 with explicit depth limit.
 fn eval_f64_depth(
     ctx: &Context,
@@ -417,14 +439,11 @@ fn eval_f64_depth(
             eval_f64_depth(ctx, *l, var_map, depth - 1)?
                 / eval_f64_depth(ctx, *r, var_map, depth - 1)?,
         ),
-        Expr::Pow(b, e) => Some(
-            eval_f64_depth(ctx, *b, var_map, depth - 1)?.powf(eval_f64_depth(
-                ctx,
-                *e,
-                var_map,
-                depth - 1,
-            )?),
-        ),
+        Expr::Pow(b, e) => {
+            let base = eval_f64_depth(ctx, *b, var_map, depth - 1)?;
+            let exp = eval_f64_depth(ctx, *e, var_map, depth - 1)?;
+            Some(pow_real(ctx, base, *e, exp))
+        }
         Expr::Neg(e) => Some(-eval_f64_depth(ctx, *e, var_map, depth - 1)?),
         Expr::Function(fn_id, args) => {
             let arg_vals: Option<Vec<f64>> = args
