@@ -1447,9 +1447,6 @@ fn test_eval_irreducible_cubic_single_real_root_by_cardano() {
         ("solve(x^3-2=0, x)", "{ 2^(1/3) }"),
         ("solve(x^3+3*x^2+3*x+1=0, x)", "{ -1 }"),
         ("solve(x^3-3*x+2=0, x)", "{ -2, 1 }"),
-        // A casus-irreducibilis cubic FACTOR (Δ<0, three real roots) correctly DECLINES Cardano —
-        // only the rational root is reported; the cubic stays unsolved (cycle-3 territory).
-        ("solve(x^4-3*x^2+x=0, x)", "{ 0 }"),
     ] {
         let output = cli()
             .args(["eval", input, "--format", "json"])
@@ -1459,6 +1456,53 @@ fn test_eval_irreducible_cubic_single_real_root_by_cardano() {
         let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
         assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
     }
+}
+
+#[test]
+fn test_eval_casus_irreducibilis_cubic_three_real_roots() {
+    // The casus irreducibilis: an irreducible cubic with Δ < 0 has THREE distinct real roots that
+    // cannot be written with real radicals, so they are emitted in trigonometric form
+    // `2√(-p/3)·cos(φ/3 - 2πk/3) - B/3` (the engine collapses special arccos values to sin/cos
+    // ratios). Each root is numerically verified to satisfy its cubic in the dev probes
+    // (e.g. `x³-3x+1` → {1.532, 0.347, -1.879}, `x³-7x+7` → {1.692, 1.357, -3.049}).
+    let three_root_cases = [
+        "solve(x^3-3*x+1=0, x)",
+        "solve(x^3-7*x+7=0, x)",
+        "solve(x^3-3*x^2+1=0, x)",
+    ];
+    for input in three_root_cases {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        let result = wire["result"].as_str().unwrap_or("");
+        // Three real roots in a trig closed form: `{ a, b, c }`, no residual.
+        assert!(
+            result.starts_with("{ ")
+                && (result.contains("cos(") || result.contains("sin("))
+                && result.matches(", ").count() == 2
+                && !result.contains("Solve")
+                && !result.contains(" if "),
+            "{input} -> {result}"
+        );
+    }
+    // As a FACTOR of a higher-degree polynomial, the casus-irreducibilis cubic is now also solved:
+    // `x⁴-3x²+x = x·(x³-3x+1)` yields the rational root 0 plus the three trig roots (4 total).
+    let factor = cli()
+        .args(["eval", "solve(x^4-3*x^2+x=0, x)", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    assert!(factor.status.success());
+    let fwire: Value = serde_json::from_slice(&factor.stdout).expect("Invalid wire output");
+    let fresult = fwire["result"].as_str().unwrap_or("");
+    assert!(
+        fresult.starts_with("{ 0, ")
+            && (fresult.contains("cos(") || fresult.contains("sin("))
+            && fresult.matches(", ").count() == 3,
+        "factor casus -> {fresult}"
+    );
 }
 
 #[test]

@@ -1920,19 +1920,26 @@ fn solve_local_core(
     Ok((set, steps))
 }
 
-/// Build the single real root of `a·x³ + b·x² + c·x + d` (`a ≠ 0`) by Cardano's formula, valid in the
-/// SINGLE-real-root case (depressed-cubic discriminant `Δ = (q/2)² + (p/3)³ > 0`). Normalize to monic
-/// `x³ + Bx² + Cx + D`, depress via `x = t − B/3` to `t³ + p·t + q` (`p = C − B²/3`,
-/// `q = 2B³/27 − BC/3 + D`); the one real root is `x = ∛(−q/2 + √Δ) + ∛(−q/2 − √Δ) − B/3`. The cube
-/// root of the (negative) second radicand is the engine's REAL odd-root. Returns `None` if `a = 0`
-/// or `Δ ≤ 0` (multiple / three-real-root cases are handled elsewhere).
-fn build_cardano_real_root(
+/// Build the REAL roots of `a·x³ + b·x² + c·x + d` (`a ≠ 0`), exactly, by Cardano's method. Normalize
+/// to monic `x³ + Bx² + Cx + D`, depress via `x = t − B/3` to `t³ + p·t + q` (`p = C − B²/3`,
+/// `q = 2B³/27 − BC/3 + D`), and branch on the depressed-cubic discriminant `Δ = (q/2)² + (p/3)³`:
+///
+/// * `Δ > 0` — ONE real root `x = ∛(−q/2 + √Δ) + ∛(−q/2 − √Δ) − B/3`. The cube root of the (negative)
+///   second radicand is the engine's REAL odd-root.
+/// * `Δ < 0` — the *casus irreducibilis*: THREE distinct real roots that cannot be written with real
+///   radicals, so use the trigonometric form `x_k = 2√(−p/3)·cos(φ/3 − 2πk/3) − B/3` for `k = 0,1,2`,
+///   where `φ = arccos( (3q)/(2p)·√(−3/p) )`. `Δ < 0 ⇒ p < 0`, so `−p/3` and `−3/p` are positive and
+///   both square roots are real.
+///
+/// Returns `None` if `a = 0` or `Δ = 0` (a repeated root of an integer cubic is rational, hence already
+/// peeled by the caller's rational-root deflation, so this branch is unreachable in practice).
+fn build_cubic_real_roots(
     simplifier: &mut Simplifier,
     a: &num_rational::BigRational,
     b: &num_rational::BigRational,
     c: &num_rational::BigRational,
     d: &num_rational::BigRational,
-) -> Option<ExprId> {
+) -> Option<Vec<ExprId>> {
     use cas_solver_core::quadratic_formula::sqrt_expr;
     use num_rational::BigRational;
     use num_traits::Zero;
@@ -1950,31 +1957,77 @@ fn build_cardano_real_root(
     let q_half = &q / r(2);
     let p_third = &p / r(3);
     let delta = &q_half * &q_half + &p_third * &p_third * &p_third;
-    if delta <= BigRational::zero() {
-        return None;
-    }
-    let ctx = &mut simplifier.context;
+    let b_over_3_val = &big_b / r(3);
+
     let num = |ctx: &mut cas_ast::Context, v: BigRational| ctx.add(Expr::Number(v));
-    let delta_node = num(ctx, delta);
-    let sqrt_delta = sqrt_expr(ctx, delta_node);
-    let neg_q_half = num(ctx, -&q / r(2));
-    let radicand_plus = ctx.add(Expr::Add(neg_q_half, sqrt_delta));
-    let radicand_minus = ctx.add(Expr::Sub(neg_q_half, sqrt_delta));
-    let one_third = num(ctx, BigRational::new(1.into(), 3.into()));
-    let cbrt_plus = ctx.add(Expr::Pow(radicand_plus, one_third));
-    let cbrt_minus = ctx.add(Expr::Pow(radicand_minus, one_third));
-    let t = ctx.add(Expr::Add(cbrt_plus, cbrt_minus));
-    let b_over_3 = num(ctx, &big_b / r(3));
-    let root = ctx.add(Expr::Sub(t, b_over_3));
-    let (root, _) = simplifier.simplify(root);
-    Some(root)
+
+    if delta > BigRational::zero() {
+        // Single real root by radicals: ∛(−q/2 + √Δ) + ∛(−q/2 − √Δ) − B/3.
+        let ctx = &mut simplifier.context;
+        let delta_node = num(ctx, delta);
+        let sqrt_delta = sqrt_expr(ctx, delta_node);
+        let neg_q_half = num(ctx, -&q / r(2));
+        let radicand_plus = ctx.add(Expr::Add(neg_q_half, sqrt_delta));
+        let radicand_minus = ctx.add(Expr::Sub(neg_q_half, sqrt_delta));
+        let one_third = num(ctx, BigRational::new(1.into(), 3.into()));
+        let cbrt_plus = ctx.add(Expr::Pow(radicand_plus, one_third));
+        let cbrt_minus = ctx.add(Expr::Pow(radicand_minus, one_third));
+        let t = ctx.add(Expr::Add(cbrt_plus, cbrt_minus));
+        let b_over_3 = num(ctx, b_over_3_val);
+        let root = ctx.add(Expr::Sub(t, b_over_3));
+        let (root, _) = simplifier.simplify(root);
+        return Some(vec![root]);
+    }
+    if delta.is_zero() {
+        return None; // repeated root ⇒ rational ⇒ already peeled by the caller.
+    }
+
+    // Casus irreducibilis (Δ < 0 ⇒ p < 0): three real roots in trigonometric form.
+    // φ = arccos( (3q)/(2p) · √(−3/p) ),  x_k = 2√(−p/3)·cos(φ/3 − 2πk/3) − B/3.
+    // Build all three (unsimplified) inside one `ctx` borrow, then simplify after it ends.
+    let raw_roots: Vec<ExprId> = {
+        let ctx = &mut simplifier.context;
+        // m = 2·√(−p/3)
+        let neg_p_third = num(ctx, -&p / r(3));
+        let sqrt_neg_p_third = sqrt_expr(ctx, neg_p_third);
+        let two = num(ctx, r(2));
+        let m = ctx.add(Expr::Mul(two, sqrt_neg_p_third));
+        // φ = arccos( coeff · √(−3/p) ),  coeff = (3q)/(2p)
+        let coeff = num(ctx, &q * r(3) / (&p * r(2)));
+        let neg_three_over_p = num(ctx, -r(3) / &p);
+        let sqrt_neg_three_over_p = sqrt_expr(ctx, neg_three_over_p);
+        let arccos_arg = ctx.add(Expr::Mul(coeff, sqrt_neg_three_over_p));
+        let phi = ctx.call("arccos", vec![arccos_arg]);
+        let one_third = num(ctx, BigRational::new(1.into(), 3.into()));
+        let phi_third = ctx.add(Expr::Mul(one_third, phi));
+        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+        let b_over_3 = num(ctx, b_over_3_val);
+        let mut rs = Vec::with_capacity(3);
+        for k in 0..3i64 {
+            // angle = φ/3 − (2k/3)·π   (k = 0 collapses to φ/3 in the simplifier)
+            let shift_coeff = num(ctx, r(2 * k) / r(3));
+            let shift = ctx.add(Expr::Mul(shift_coeff, pi));
+            let angle = ctx.add(Expr::Sub(phi_third, shift));
+            let cos_k = ctx.call("cos", vec![angle]);
+            let scaled = ctx.add(Expr::Mul(m, cos_k));
+            rs.push(ctx.add(Expr::Sub(scaled, b_over_3)));
+        }
+        rs
+    };
+    Some(
+        raw_roots
+            .into_iter()
+            .map(|root| simplifier.simplify(root).0)
+            .collect(),
+    )
 }
 
 /// For a polynomial equation `p(x) = 0`, peel its rational roots and — if the deflated quotient is an
-/// irreducible cubic with a SINGLE real root (Cardano Δ > 0) — solve that cubic by radicals. Returns
-/// the complete real set `rational_roots ∪ {cubic radical root}`, or `None` when no degree-3 quotient
-/// with Δ > 0 remains. This closes BOTH the standalone irreducible cubic (`x³+x²+3 = 0`) and the
-/// higher-degree case where the cubic factor was dropped (`x⁴+x³+3x = x·(x³+x²+3)`).
+/// irreducible cubic — solve that cubic exactly (radical form for Δ > 0, trigonometric form for the
+/// Δ < 0 *casus irreducibilis*). Returns the complete real set `rational_roots ∪ {cubic real roots}`,
+/// or `None` when no degree-3 quotient remains (or it has Δ = 0). This closes BOTH the standalone
+/// irreducible cubic (`x³+x²+3 = 0`, `x³-3x+1 = 0`) and the higher-degree case where the cubic factor
+/// was dropped (`x⁴+x³+3x = x·(x³+x²+3)`).
 fn try_solve_polynomial_with_cubic_factor(
     simplifier: &mut Simplifier,
     eq: &Equation,
@@ -1995,7 +2048,7 @@ fn try_solve_polynomial_with_cubic_factor(
     if quotient.len() != 4 {
         return None;
     }
-    let cardano_root = build_cardano_real_root(
+    let cubic_roots = build_cubic_real_roots(
         simplifier,
         &quotient[3],
         &quotient[2],
@@ -2003,8 +2056,8 @@ fn try_solve_polynomial_with_cubic_factor(
         &quotient[0],
     )?;
     // `find_rational_roots` returns roots WITH multiplicity (`x²·(…)` yields `0` twice); the engine
-    // reports a DISTINCT-root set (`(x+1)³ → {-1}`), so dedup before emitting. The Cardano root is the
-    // real root of an irreducible cubic, hence irrational — it can never collide with a rational root.
+    // reports a DISTINCT-root set (`(x+1)³ → {-1}`), so dedup before emitting. The cubic roots are the
+    // roots of an IRREDUCIBLE cubic, hence irrational — they can never collide with a rational root.
     let mut distinct_rationals: Vec<num_rational::BigRational> = Vec::new();
     for root in &rational_roots {
         if !distinct_rationals.contains(root) {
@@ -2015,7 +2068,7 @@ fn try_solve_polynomial_with_cubic_factor(
         .iter()
         .map(|root| rational_to_expr(&mut simplifier.context, root))
         .collect();
-    roots.push(cardano_root);
+    roots.extend(cubic_roots);
     Some(SolutionSet::Discrete(roots))
 }
 
