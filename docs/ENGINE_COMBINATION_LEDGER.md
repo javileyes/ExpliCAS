@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 371 (newest first)
+Active entries: 372 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -136,6 +136,7 @@ Active entries: 371 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixShapeGuardRule`), | SOUNDNESS (Round-5 fix 1/N): gate de forma en operaciones de matrices
 - 2026-06-26 | `retained` | `crates/cas_solver/src/eval_output_finalize/build/output/build.rs` | SOUNDNESS (Round-5 fix 2/N): inline de condiciones de dominio en "All real numbers"
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/exponents/power_rules.rs` (`decide_multiply_expo... | SOUNDNESS (Round-5 fix 3/N): gate de signo en (x^a)^b -> x^(a·b) simbólico
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_polynomial_inequality_si... | SOUNDNESS (Round-5 fix 4/N): inecuaciones de polinomio irreducible por análisis de signo
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15786,3 +15787,34 @@ Active entries: 371 (newest first)
     exponente es simbólico (oculta un `a` par cuyo `x^a≥0` el pliegue ignora). El clasificador upstream ya
     separa los casos CONCRETOS inseguros; el fix gatea SOLO el caso simbólico, reutilizando el oráculo de la
     rama hermana, así la huella concreta (fixtures) no cambia.
+
+## 2026-06-26 - SOUNDNESS (Round-5 fix 4/N): inecuaciones de polinomio irreducible por análisis de signo
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_polynomial_inequality_sign_analysis`),
+  `crates/cas_math/src/evaluator_f64.rs` (`pow_real` — convención de raíz impar real en `eval_f64`)
+- status: `retained` (commit 55db6a296; cierra el cluster de inecuaciones del audit Round 5: P0×3 + P1 dumps;
+  el cuártico `x^4-x-1>0` queda como residual honesto — sus raíces no se computan aún [Ferrari])
+- capture:
+  - investment_class: soundness (operador DESCARTADO -> objeto de tipo incorrecto, `>` y `<` idénticos)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `x^3+x+1>0` se reescribía a `Equal(p,0)` y devolvía el SET de raíces (operador perdido);
+    `>0` y `<0` byte-idénticos. AHORA análisis de signo sobre las raíces de forma cerrada (Cardano/trig):
+    `x^3+x+1>0 -> (r,∞)`, `<0 -> (-∞,r)`, `>=0 -> [r,∞)`; `x^3-3x+1>0 -> (r1,r2) U (r3,∞)`.
+  - MECANISMO: tras el solver cúbico, si una inecuación volvió como `Discrete`, ordena las raíces
+    numéricamente y muestrea el signo EXACTO (racional) del polinomio en un punto de prueba estrictamente
+    interior a cada intervalo; une los intervalos que satisfacen el operador (abiertos para estricto, cerrados
+    para `≤`/`≥`). GUARDAS de consistencia: declina (cae al set crudo) salvo que los signos ALTERNEN en cada
+    raíz simple y los extremos no acotados casen con el comportamiento del coeficiente líder — así un set de
+    raíces incompleto/mal-ordenado NUNCA produce una unión de intervalos no sólida.
+  - SUB-FIX necesario: `eval_f64` hacía `f64::powf` pelado -> NaN para base negativa con exponente fraccionario,
+    así que no podía ordenar los radicandos de Cardano (`∛(negativo)`). `pow_real` devuelve la raíz q-ésima REAL
+    `(-1)^p·|base|^exp` para base negativa con `p/q` de denominador IMPAR (igual que `(-8)^(1/3) -> -2`),
+    cayendo a `powf` (NaN) para denominador par genuinamente no-real.
+  - validación: workspace 12403 passed (solo flake perf); clippy `-D warnings`; engine-fast (aislado);
+    huella guardrail(16)+pressure(3) 0 deltas. Muestreo numérico de todos los operadores + controles factorables.
+- retained learning:
+  - patrón: cuando una inecuación pierde el operador al enrutarse al solver de ecuaciones, el fix sound es
+    análisis de signo POST-solución sobre las raíces ya computadas (no re-implementar el solver). Las GUARDAS de
+    auto-consistencia (alternancia de signos + extremos vs coef. líder) convierten un set de raíces incompleto en
+    un fallback honesto en vez de una respuesta incorrecta. El evaluador numérico debe seguir la MISMA convención
+    de dominio (raíz impar real) que el motor simbólico, o las verificaciones numéricas fallan en silencio (NaN).
