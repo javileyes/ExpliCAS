@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 363 (newest first)
+Active entries: 364 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -128,6 +128,7 @@ Active entries: 363 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`drop_non_real_discrete_solut... | P1 unsound: rechaza soluciones NO-REALES en dominio real (cierra R6 def3 + brecha x=i)
 - 2026-06-26 | `retained` | `crates/cas_engine/src/orchestrator.rs` (`is_symbolic_atom` excluye `Infinity... | P2 consistencia: `finito + ∞ -> ∞` también en modo plain (divergencia de absorción)
 - 2026-06-26 | `retained` | `crates/cas_math/src/summation_support.rs` (reubica el doc-comment de `try_pl... | Limpieza: doc-comment huérfano (deuda clippy `-D warnings` de R9); residual `(2*x)/(5*x)` diferido
+- 2026-06-26 | `retained` | `crates/cas_engine/src/rules/algebra/mod.rs` (`try_exact_common_factor_mul_fr... | P2 consistencia: cancelación MULTI-factor reduce del todo (`(2xy)/(5xy)->2/5`)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15494,3 +15495,36 @@ Active entries: 363 (newest first)
 - retained learning:
   - higiene: al insertar una `fn` nueva antes de otra, anclar el `old_string` en la frontera doc/firma para no
     huérfanar el doc-comment existente. Correr SIEMPRE clippy con `-D warnings` en la cadena del ciclo.
+
+## 2026-06-26 - P2 consistencia: cancelación MULTI-factor reduce del todo (`(2xy)/(5xy)->2/5`)
+
+- area:
+  - `crates/cas_engine/src/rules/algebra/mod.rs` (`try_exact_common_factor_mul_fraction_preorder`: decline si
+    queda un factor común residual)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_multi_factor_cancellation_fully_reduces`)
+- status:
+  - `retained`
+- capture:
+  - investment_class: soundness/honestidad (consistencia plain-vs-steps)
+  - primary_dimension: cli_web_consistency
+  - cell: ANTES `(2*x*y)/(5*x*y) -> "2·x / (5·x)"` plain vs `2/5` steps (cancelación PARCIAL de UN solo factor),
+    igual `(x*y*z)/(u*y*z) -> "x·y/(u·y)"`. AHORA `2/5`, `x/u` en AMBOS modos.
+  - MECANISMO: el atajo de modo plain `try_exact_common_factor_mul_fraction_preorder` cancela exactamente UN
+    factor común (`exact_common_mul_factor` encuentra uno) y devuelve la forma parcialmente reducida. Fix: si
+    tras cancelar uno el cociente restante TODAVÍA comparte un factor común
+    (`exact_common_mul_factor(other_num, other_den).is_some()`), el atajo DECLINA -> el pipeline completo lo
+    reduce del todo (= el resultado de `--steps`).
+  - SOUNDNESS: declinar sólo enruta al pipeline completo (mismo valor, más reducido); no cambia ningún valor.
+    El caso de UN factor (`(x*y)/(u*y) -> x/u`, `(a*b)/b -> a`) sigue cancelando en el atajo. La optimización
+    DIDÁCTICA `step_wire_common_factor_cancel_stays_direct_…` (sobre `(2*x)/(4*x)`, un factor) INTACTA.
+  - validación: workspace failed:0 (12357); clippy `-D warnings` LIMPIO; fmt; huella guardrail(16)+pressure(3)
+    0 deltas; engine-fast verde; test multi-factor + test didáctico verde.
+  - RESIDUAL: `(2*x)/(5*x) -> "2 / 5"` (UN factor, cociente numérico sin plegar) sigue — plegarlo rompe la
+    optimización didáctica (ver ciclo `fb4cbeffe`). Cosmético, diferido.
+- observed:
+  - un atajo que cancela UN factor común deja formas multi-factor parcialmente reducidas, divergiendo del
+    pipeline completo; declinar cuando queda un factor común residual delega la reducción total sin tocar el
+    camino didáctico del caso de un factor.
+- retained learning:
+  - patrón: un atajo de cancelación de UN factor debe DECLINAR si el cociente resultante aún comparte factor
+    (delegar al pipeline completo) en vez de devolver una forma parcialmente reducida que diverge de `--steps`.

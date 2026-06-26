@@ -119,6 +119,13 @@ pub fn try_exact_common_factor_mul_fraction_preorder(
     use crate::{ImplicitCondition, Predicate};
 
     let (common, other_num, other_den) = exact_common_mul_factor(ctx, num, den)?;
+    // This shortcut cancels exactly ONE common factor. If the remaining quotient STILL shares a
+    // common factor (`(2·x·y)/(5·x·y)` cancels `y` but leaves `2·x / (5·x)`), declining lets the full
+    // cancellation pipeline reduce it completely — plain mode otherwise returned the partially
+    // cancelled form, diverging from `--steps` (which cancels all common factors).
+    if exact_common_mul_factor(ctx, other_num, other_den).is_some() {
+        return None;
+    }
     let common_decision = crate::oracle_allows_with_hint(
         ctx,
         domain_mode,

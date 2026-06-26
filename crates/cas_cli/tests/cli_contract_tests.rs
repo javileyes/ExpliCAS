@@ -1386,6 +1386,46 @@ fn test_eval_numeric_quotient_plain_matches_steps() {
 }
 
 #[test]
+fn test_eval_multi_factor_cancellation_fully_reduces() {
+    // `(2·x·y)/(5·x·y)` shares TWO common factors. The plain-mode one-factor shortcut cancelled only
+    // `y`, returning the partially-reduced `2·x / (5·x)` and diverging from `--steps` (which cancels
+    // all common factors to `2/5`). When a residual common factor remains the shortcut now declines,
+    // so the full pipeline reduces it completely.
+    for (input, expected) in [
+        ("(2*x*y)/(5*x*y)", "2/5"),
+        ("(x*y*z)/(u*y*z)", "x / u"),
+        ("(6*x*y)/(4*x*y)", "3/2"),
+        ("(a*b*c)/(d*b*c)", "a / d"),
+        // Single common factor is unaffected (still cancels in the shortcut).
+        ("(x*y)/(u*y)", "x / u"),
+        ("(a*b)/b", "a"),
+    ] {
+        let plain = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(plain.status.success(), "plain {input}");
+        let plain_wire: Value = serde_json::from_slice(&plain.stdout).expect("Invalid wire output");
+        let steps = cli()
+            .args(["eval", input, "--format", "json", "--steps", "on"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(steps.status.success(), "steps {input}");
+        let steps_wire: Value = serde_json::from_slice(&steps.stdout).expect("Invalid wire output");
+        assert_eq!(
+            plain_wire["result"].as_str(),
+            Some(expected),
+            "plain {input}"
+        );
+        assert_eq!(
+            plain_wire["result"].as_str(),
+            steps_wire["result"].as_str(),
+            "plain vs --steps divergence for {input}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_finite_plus_infinity_absorbs_in_both_modes() {
     // `finite + ∞ = ∞` (absorption). In plain mode `∞` was treated as a symbolic atom, so the
     // "symbolic atom + literal" shortcut returned `∞ + 1` UNEVALUATED — diverging from `--steps`,

@@ -1535,7 +1535,8 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   SÍ converge `(2*x)/(5*x)→2/5` y `(6*x)/(4*x)→3/2`, pero ROMPE una optimización DIDÁCTICA deliberada —
   `step_wire_common_factor_cancel_stays_direct_…` espera que `(2*x)/(4*x)` quede DIRECTO sin substeps; el
   plegado introduce substeps "Cancelar x"+"Reducir la fracción". Cosmético no merece la regresión didáctica;
-  diferido. También: `(2*x*y)/(5*x*y)→"2·x/(5·x)"` (cancelación PARCIAL de un solo factor común) es otro peldaño.)*
+  diferido. La cancelación PARCIAL multi-factor `(2*x*y)/(5*x*y)→"2·x/(5·x)"` SÍ se cerró 2026-06-26 PENDIENTE_MF:
+  el atajo DECLINA si queda factor común residual → el pipeline reduce del todo (`2/5`, `x/u`).)*
 
 ### R3 — P1 lost-domain: inecuación NO estricta pierde el cero aislado de factor de mult. par — 10 defectos, 1 fix [GRADUADO]
 El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque que caen fuera del intervalo dominante.
