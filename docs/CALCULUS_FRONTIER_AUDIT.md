@@ -1573,7 +1573,7 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
 - [x] `solve(x=ln(-1),x)` → `All real numbers if undefined = 0` (real ∅).
 - [ ] `solve(ln(x)=sqrt(-1),x)` → `{ e^((-1)^(1/2)) }` = e^i complejo (real ∅, viola sus propias condiciones).
   Control: `solve(x=sqrt(-4),x)`, `solve(2^x=-8,x)`, `solve(x^2=-1,x)` → `No solution` ✓.
-  *(2 de 3 graduado 2026-06-26 PENDIENTE_R6: `solve_local_core` cortocircuita a `No solution` cuando un lado
+  *(2 de 3 graduado 2026-06-26 5fdebc980: `solve_local_core` cortocircuita a `No solution` cuando un lado
   simplifica a `Constant::Undefined` (`ln(-2)`, `ln(-1)`, `1/0` en reales) → mata el `AllReals if undefined=0`.
   Test `cli_contract_tests::test_eval_equation_with_undefined_side_has_no_solution`. RESIDUAL (defecto 3):
   `solve(ln(x)=sqrt(-1))` → `e^i` — `sqrt(-1)=(-1)^(1/2)` NO es `undefined` sino simbólico no-real; la inversión
