@@ -1590,7 +1590,7 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
 ### R9 — P0 wrong-value: sumatoria finita telescopiada A TRAVÉS de polos en rango — 2 defectos [GRADUADO]
 - [x] `sum(1/((n-3)*(n-4)),n,1,10)` → `-10/21` (real undefined; polos en n=3,4 dentro; `sum(1/(n-3),…)→undefined` ✓).
 - [x] `sum(1/((n-3)*(n-7)),n,1,10)` → `-359/840` (real undefined; polos en n=3,7 dentro).
-  *(graduado 2026-06-26 PENDIENTE_R9: guarda de polo en `try_plan_finite_sum_evaluation` ANTES de los
+  *(graduado 2026-06-26 1a5175c62: guarda de polo en `try_plan_finite_sum_evaluation` ANTES de los
   builders de forma cerrada — `finite_sum_summand_has_pole_in_range` (exacto, `as_rational_const`) detecta un
   denominador que se anula en un entero del rango y enruta a `FiniteDirect` término-a-término, que pliega el
   `1/0` a `undefined`. Polo FUERA del rango no afecta (`…,n,5,10 -> 6/7`). Tests
