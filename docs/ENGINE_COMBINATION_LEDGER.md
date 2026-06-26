@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 376 (newest first)
+Active entries: 377 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -141,6 +141,7 @@ Active entries: 376 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_equality`) | SOUNDNESS (Round-5 fix 6/N): ecuaciones |arg|=c por split arg=±c
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/exponents/power_rules.rs` (`ComplexNegativeBaseR... | SOUNDNESS (Round-5 fix 7/N): rama principal de (-r)^(p/q) en modo complejo (último P0)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_qu... | CAPACIDAD (Round-5 fix 8/N): cuárticas reducibles por factorización en cuadráticas racionales
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_parametric_linear_degene... | SOUNDNESS (Round-5 fix 9/N): rama degenerada a=0 de ecuaciones lineales paramétricas
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15914,3 +15915,35 @@ Active entries: 376 (newest first)
     por divisores) da resultados surd LIMPIOS, a diferencia de Ferrari general (radicales anidados monstruosos).
     La parte irreducible se deja como residual honesto. Mismo patrón de gate POST-residual + verificación
     numérica que cúbico/bicuadrático/abs; reutiliza `find_rational_roots` y `sqrt_expr`.
+
+## 2026-06-26 - SOUNDNESS (Round-5 fix 9/N): rama degenerada a=0 de ecuaciones lineales paramétricas
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_parametric_linear_degenerate_branch`,
+  gate POST-residual al final de `solve_local_core`)
+- status: `retained` (commit a4b06c6a5; cierra el último P1 abierto del audit Round 5 que era arreglable
+  como fix acotado — `a*x=a` degenerate branch)
+- capture:
+  - investment_class: soundness (condición de dominio PERDIDA: guard `a≠0` + rama `a=0 ⇒ ℝ`)
+  - primary_dimension: north_star_capability (honestidad de condiciones de dominio, cualquier comando)
+  - cell: ANTES `solve(a*x=a, x) -> { 1 }` (todos los canales vacíos), soltando tanto el guard `a≠0` sobre
+    la raíz como el caso degenerado `a=0 ⇒ ℝ`; igual `2a·x=2a`, `a·x=2a`, `a²·x=a²`. La pista decisiva: el
+    compuesto ESTRUCTURALMENTE idéntico `(a-1)·x=a-1` YA emitía las dos ramas — el factor simbólico se
+    cancela limpio en la forma de parámetro atómico, así que el backend lineal colapsa directo a la
+    constante antes de la lógica de ramas. AHORA `{ 1 } if a != 0; All real numbers if a = 0`.
+  - MECANISMO: gate acotado al final de `solve_local_core`. Cuando el solve da una ÚNICA raíz NUMÉRICA,
+    recalcula el coeficiente lineal de `lhs−rhs` y, si es PARAMÉTRICO (ni un número no-cero, ni contiene
+    aún la variable de solve), reconstruye el split canónico de dos casos: `{root}` con `coef≠0`, ℝ con
+    `coef=0`. El scoping raíz-numérica + coef-paramétrico es lo que hace SOUND la rama `coef=0 ⇒ ℝ`: que
+    la raíz sea numérica es justo la señal de que el coeficiente se canceló, así que en `coef=0` la
+    ecuación degenera a `0=0`.
+  - controles intactos (verificados): `2x=4 -> {2}` (coef numérico), `a·x=b -> {b/a}` (raíz aún
+    paramétrica), `x²=4 -> {-2,2}` (no lineal), `(a-1)·x=a-1` (sin cambio).
+  - validación: workspace 12408 passed (solo flake perf `perf_tan_n10`); clippy `-D warnings --all-targets`;
+    rustfmt; engine-fast; huella guardrail+pressure ESTRUCTURALMENTE idéntica (sólo churn de runtime).
+- retained learning:
+  - patrón: una forma con parámetro ATÓMICO (`a·x=a`) puede cancelar un factor simbólico antes de que la
+    lógica de ramas corra, perdiendo condiciones que la forma COMPUESTA (`(a-1)·x=a-1`) sí emite. El gate
+    correctivo se ancla en el tell observable — raíz numérica + coeficiente paramétrico — que prueba que la
+    cancelación ocurrió, y eso mismo es lo que vuelve sound reconstruir la rama degenerada `coef=0 ⇒ ℝ`.
+    Mismo molde POST-residual (gate al final de `solve_local_core`, función `Option<SolutionSet>`) que
+    cúbico/bicuadrático/abs/cuártico/inecuaciones; reutiliza `linear_form` + `Conditional`/`ConditionPredicate`.
