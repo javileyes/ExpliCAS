@@ -5,7 +5,8 @@ use crate::matrix_rule_support::{
     try_rewrite_transpose_product_identity_expr,
 };
 use crate::rule::{Rewrite, SimpleRule};
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::matrix::Matrix;
 
 /// Rule that maps a shape-INCOMPATIBLE matrix operation to `undefined`.
 ///
@@ -159,7 +160,40 @@ impl SimpleRule for MatrixFunctionRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let rewrite = try_rewrite_matrix_function_rule_expr(ctx, expr)?;
-        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+        let base = Rewrite::new(rewrite.rewritten).desc(rewrite.desc);
+
+        // `charpoly`/`det` of a NUMERIC matrix expand to an UNFOLDED cofactor sum that
+        // transiently exceeds the anti-worsen node budget before the recursive pass folds
+        // it to a number / polynomial; with a tiny numeric input it is rejected, leaving a
+        // residual (`charpoly([[1,0,0],[0,2,0],[0,0,3]])`). Exempt bounded-size matrix
+        // functions — like MatrixMultiplyRule — so they commit.
+        //
+        // GATED TO ALL-NUMERIC operands on purpose: a SYMBOLIC `inverse([[a,b],[c,d]])`
+        // must stay an honest residual (its `1/(ad−bc)` formula is undefined when the
+        // determinant is zero, a condition the residual deliberately withholds). Symbolic
+        // `charpoly` already commits under the normal budget because its input is large, so
+        // it needs no exemption — only the small-numeric case does.
+        const MATRIX_FN_MAX_N: usize = 6;
+        let operand = if let Expr::Function(_, args) = ctx.get(expr) {
+            args.first().copied()
+        } else {
+            None
+        };
+        let within_caps = operand
+            .and_then(|arg| Matrix::from_expr(ctx, arg))
+            .is_some_and(|m| {
+                m.rows <= MATRIX_FN_MAX_N
+                    && m.cols <= MATRIX_FN_MAX_N
+                    && m.data
+                        .iter()
+                        .all(|&e| matches!(ctx.get(e), Expr::Number(_) | Expr::Constant(_)))
+            });
+
+        Some(if within_caps {
+            base.budget_exempt()
+        } else {
+            base
+        })
     }
 }
 

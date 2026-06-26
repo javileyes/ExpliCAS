@@ -87,9 +87,8 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "mod" | "choose" | "nCr" | "perm" | "nPr" => arity == 2,
         "gcd" | "lcm" => arity >= 2,
         // Matrix functions handled by the matrix rules.
-        "det" | "determinant" | "transpose" | "T" | "trace" | "tr" | "inverse" | "inv" | "rank" => {
-            arity == 1
-        }
+        "det" | "determinant" | "transpose" | "T" | "trace" | "tr" | "inverse" | "inv" | "rank"
+        | "charpoly" => arity == 1,
         // Matrix composition / symbolic helpers used by engine rewrites.
         "matmul" => arity == 2,
         "poly_gcd" | "pgcd" => arity >= 2,

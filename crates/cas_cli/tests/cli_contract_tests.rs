@@ -1617,6 +1617,41 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_matrix_charpoly() {
+    // `charpoly(A) = det(λI − A)` was unimplemented. It now returns the monic characteristic
+    // polynomial in `lambda`, for numeric and symbolic matrices, 2×2 and 3×3. (A bounded
+    // budget exemption lets the cofactor expansion of a small numeric matrix commit instead of
+    // being rejected by the anti-worsen node budget.)
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // [[2,1],[1,2]]: λ² − 4λ + 3 (eigenvalues 1, 3).
+    assert_eq!(r("charpoly([[2,1],[1,2]])"), "lambda^2 + 3 - 4·lambda");
+    // Diagonal 3×3 factors directly to (λ−1)(λ−2)(λ−3).
+    assert_eq!(
+        r("charpoly([[1,0,0],[0,2,0],[0,0,3]])"),
+        "(lambda - 3)·(lambda - 2)·(lambda - 1)"
+    );
+    // Tridiagonal: λ³ − 6λ² + 10λ − 4 (trace 6, det 4).
+    assert_eq!(
+        r("charpoly([[2,-1,0],[-1,2,-1],[0,-1,2]])"),
+        "lambda^3 + 10·lambda - 6·lambda^2 - 4"
+    );
+    // Symbolic 2×2: λ² − (a+d)λ + (ad − bc), kept in det form.
+    assert_eq!(
+        r("charpoly([[a,b],[c,d]])"),
+        "(lambda - a)·(lambda - d) - b·c"
+    );
+    // Non-square stays an honest residual.
+    assert_eq!(r("charpoly([[1,2,3]])"), "charpoly([1, 2, 3])");
+}
+
+#[test]
 fn test_eval_matrix_rank_exact() {
     // Matrix rank was recognized-but-unimplemented (returned an error). It now computes the
     // exact rank by Gaussian elimination over BigRational, for any shape, with an honest

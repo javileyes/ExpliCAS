@@ -225,6 +225,37 @@ impl Matrix {
         Some(ctx.num(rank as i64))
     }
 
+    /// Characteristic polynomial `det(λI − A)` in the variable `var` (monic,
+    /// degree n). Reuses the symbolic cofactor determinant, which auto-expands,
+    /// so `[[2,1],[1,2]]` yields `λ² − 4λ + 3`. Returns `None` for a non-square
+    /// matrix. Symbolic entries are fine — the determinant stays symbolic.
+    pub fn charpoly(&self, ctx: &mut Context, var: &str) -> Option<ExprId> {
+        if self.rows != self.cols {
+            return None;
+        }
+        let n = self.rows;
+        let lambda = ctx.var(var);
+        let mut data = Vec::with_capacity(n * n);
+        for i in 0..n {
+            for j in 0..n {
+                let entry = self.data[i * n + j];
+                // λI − A: diagonal λ − a_ii, off-diagonal −a_ij.
+                let cell = if i == j {
+                    ctx.add(Expr::Sub(lambda, entry))
+                } else {
+                    ctx.add(Expr::Neg(entry))
+                };
+                data.push(cell);
+            }
+        }
+        Matrix {
+            rows: n,
+            cols: n,
+            data,
+        }
+        .determinant(ctx)
+    }
+
     /// Compute determinant for 2×2 matrix
     /// det([[a, b], [c, d]]) = ad - bc
     fn det_2x2(&self, ctx: &mut Context) -> ExprId {
@@ -659,6 +690,27 @@ mod tests {
         assert_eq!(rank_of(&mut ctx, 2, 2, &[0, 0, 0, 0]), 0); // zero matrix
         assert_eq!(rank_of(&mut ctx, 2, 3, &[1, 2, 3, 2, 4, 6]), 1); // wide, dependent
         assert_eq!(rank_of(&mut ctx, 3, 2, &[1, 2, 3, 4, 5, 6]), 2); // tall, full column rank
+    }
+
+    #[test]
+    fn test_charpoly_shape_and_residual() {
+        let mut ctx = Context::new();
+        // Square 2×2 yields a determinant expression; non-square declines.
+        let square = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![ctx.num(2), ctx.num(1), ctx.num(1), ctx.num(2)],
+        };
+        assert!(square.charpoly(&mut ctx, "lambda").is_some());
+        let non_square = Matrix {
+            rows: 1,
+            cols: 3,
+            data: vec![ctx.num(1), ctx.num(2), ctx.num(3)],
+        };
+        assert!(
+            non_square.charpoly(&mut ctx, "lambda").is_none(),
+            "characteristic polynomial is only defined for square matrices"
+        );
     }
 
     #[test]
