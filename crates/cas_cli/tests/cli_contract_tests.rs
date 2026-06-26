@@ -1617,6 +1617,52 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_solve_all_reals_inlines_domain_condition() {
+    // An identity equation whose solution is all reals RESTRICTED by a domain condition must show
+    // that condition in the default text surface (`All real numbers if x > 0`), matching the in-set
+    // conditional convention (`1/x=1/x → "… if x != 0"`), not a dishonest bare `All real numbers`.
+    for (input, expected) in [
+        ("solve(ln(x^2)=2*ln(x), x)", "All real numbers if x > 0"),
+        ("solve(2*ln(x)=ln(x^2), x)", "All real numbers if x > 0"),
+        ("solve(e^(ln(x))=x, x)", "All real numbers if x > 0"),
+        ("solve(sqrt(x)^2=x, x)", "All real numbers if x ≥ 0"),
+        (
+            "solve(ln(x^2)=2*ln(abs(x)), x)",
+            "All real numbers if x ≠ 0",
+        ),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+        // The LaTeX surface uses the matching `\begin{cases}` conditional form.
+        assert!(
+            wire["result_latex"]
+                .as_str()
+                .unwrap_or("")
+                .contains("\\begin{cases}"),
+            "{input} latex"
+        );
+    }
+    // Controls: an in-set conditional is NOT double-rendered; an unconditional identity stays bare;
+    // a `simplify` result whose `required_display` is intentionally JSON-only keeps its bare text.
+    for (input, expected) in [
+        ("solve(1/x=1/x, x)", "All real numbers if x != 0"),
+        ("solve(0*x=0, x)", "All real numbers"),
+        ("sqrt(x)*sqrt(x)", "x"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_multi_factor_cancellation_fully_reduces() {
     // `(2·x·y)/(5·x·y)` shares TWO common factors. The plain-mode one-factor shortcut cancelled only
     // `y`, returning the partially-reduced `2·x / (5·x)` and diverging from `--steps` (which cancels
