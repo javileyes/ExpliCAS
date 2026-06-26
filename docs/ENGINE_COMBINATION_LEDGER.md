@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 383 (newest first)
+Active entries: 384 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rref`) | CAPACIDAD (álgebra lineal 4/4): forma escalonada reducida (RREF)
+- 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvectors`, `r... | CAPACIDAD (álgebra lineal, capstone): autovectores (autovalores racionales)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16099,3 +16100,25 @@ Active entries: 383 (newest first)
   - el cluster álgebra-lineal completo (rank/charpoly/eigenvalues/rref) en 4 ciclos cierra el agujero de amplitud
     más grande medido en la evaluación de universalidad. rank y rref comparten la eliminación gaussiana exacta;
     rref habilita el siguiente peldaño (autovectores = núcleo de A−λI vía rref de la matriz racional).
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal, capstone): autovectores (autovalores racionales)
+
+- area: `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvectors`, `rational_null_space`)
+- status: `retained` (commit pendiente↑). Capstone del núcleo eigen (charpoly→eigenvalues→eigenvectors).
+- capture:
+  - cell: ANTES no definida. AHORA por cada autovalor RACIONAL distinto λ, base del núcleo de A−λI por
+    Gauss-Jordan exacto sobre `BigRational`; filas = autovectores. Verificado por A·v=λ·v:
+    `[[2,1],[1,2]]→[[1,1],[-1,1]]`; defectuosa `[[1,1],[0,1]]→[1,0]` (mult. geométrica 1); `[[5,4,2],...]`
+    autoespacio 2-D para λ=1 + λ=10.
+  - autovalores racionales exactos: `find_rational_roots` pela grado≥3, el factor cuadrático deflactado se
+    resuelve aquí (racional sii discriminante es cuadrado perfecto vía `perfect_square_support::rational_sqrt`).
+    Surd/complejo/irreducible-alto ⇒ declina el cálculo ENTERO (surd RREF fuera de alcance).
+  - validación: workspace 12422 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - BUG de integración cazado: `find_rational_roots` SÓLO pela hasta grado 2 (`if degree<=2 break`), dejando
+    el cuadrático al llamador — eigenvalues lo resolvía con fórmula cuadrática, eigenvectors debía hacer el
+    test de cuadrado-perfecto del discriminante para decidir racionalidad. Reusar una API sin conocer su
+    contrato de parada introduce un fallo silencioso (declinaba TODO). Lección: verificar el contrato de
+    deflación, no asumir "remaining vacío = todo racional".
+  - 5 ciclos cierran el núcleo álgebra-lineal completo (rank, charpoly, eigenvalues, eigenvectors, rref) — el
+    mayor agujero de amplitud "CAS universal" de la evaluación.
