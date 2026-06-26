@@ -1617,6 +1617,46 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_parametric_linear_degenerate_branch() {
+    // A parametric linear equation whose coefficient cancels (`a·x = a`) dropped the `a ≠ 0` guard
+    // and the `a = 0 ⇒ ℝ` branch, returning a bare `{1}`. It now emits the full conditional, matching
+    // the structurally identical compound `(a-1)·x = a-1`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(a*x=a, x)"),
+        "{ 1 } if a != 0; All real numbers if a = 0"
+    );
+    assert_eq!(
+        r("solve(a*x=2*a, x)"),
+        "{ 2 } if a != 0; All real numbers if a = 0"
+    );
+    assert_eq!(
+        r("solve(b*x=b, x)"),
+        "{ 1 } if b != 0; All real numbers if b = 0"
+    );
+    assert_eq!(
+        r("solve(a*(x-1)=0, x)"),
+        "{ 1 } if a != 0; All real numbers if a = 0"
+    );
+    // Controls: a numeric-coefficient equation, a non-degenerate parametric solve (root still
+    // contains the parameter), the compound form, and a non-linear equation are all UNCHANGED.
+    assert_eq!(r("solve(2*x=4, x)"), "{ 2 }");
+    assert_eq!(r("solve(a*x=b, x)"), "{ b / a }");
+    assert_eq!(
+        r("solve((a-1)*x=a-1, x)"),
+        "{ 1 } if a - 1 != 0; All real numbers if a - 1 = 0"
+    );
+    assert_eq!(r("solve(x^2=4, x)"), "{ -2, 2 }");
+}
+
+#[test]
 fn test_eval_reducible_quartic_factor_roots() {
     // A polynomial whose deflated quartic factor splits into two rational quadratics dropped the
     // quadratic factor's roots: `x⁵-5x³+x²-5 = (x+1)(x²-5)(x²-x+1)` returned only `{-1}`, losing the

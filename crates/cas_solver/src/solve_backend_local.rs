@@ -1969,6 +1969,19 @@ fn solve_local_core(
     } else {
         set
     };
+
+    // A PARAMETRIC linear equation whose coefficient cancelled (`a·x = a → {1}`) dropped the `a ≠ 0`
+    // guard and the `a = 0 ⇒ ℝ` branch. Recover them when the result is a single numeric root.
+    let set = if let SolutionSet::Discrete(roots) = &set {
+        if roots.len() == 1 {
+            let root = roots[0];
+            try_parametric_linear_degenerate_branch(simplifier, eq, var, root).unwrap_or(set)
+        } else {
+            set
+        }
+    } else {
+        set
+    };
     Ok((set, steps))
 }
 
@@ -2432,6 +2445,60 @@ fn try_solve_abs_equality(
         return Some(SolutionSet::Empty);
     }
     Some(SolutionSet::Discrete(unique))
+}
+
+/// Recover the degenerate `coefficient = 0` branch of a PARAMETRIC linear equation whose solution is a
+/// constant. `a·x = a` (and `2a·x = 2a`, `a·x = 2a`, `a²·x = a²`) cancels the shared symbolic factor and
+/// returns a bare `{1}`/`{2}`, silently dropping the `a ≠ 0` guard and the `a = 0 ⇒ ℝ` case — whereas
+/// the structurally identical compound `(a-1)·x = a-1` correctly emits both. Re-applies the canonical
+/// `build_linear_solution_set` branch logic.
+///
+/// Scoped tightly so it never disturbs an ordinary solve: it fires ONLY when the result is a single
+/// NUMERIC root (so the coefficient genuinely cancelled) and the linear coefficient is NOT a non-zero
+/// number (i.e. it is parametric). `2x = 4 → {2}` (numeric coefficient) and `a·x = b → {b/a}`
+/// (non-numeric root) are both left untouched.
+fn try_parametric_linear_degenerate_branch(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+    root: ExprId,
+) -> Option<SolutionSet> {
+    use cas_ast::{Case, ConditionPredicate, ConditionSet};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use cas_solver_core::linear_form::linear_form;
+
+    if !matches!(eq.op, cas_ast::RelOp::Eq) {
+        return None;
+    }
+    // The solution must be a pure numeric constant — the tell that the coefficient cancelled.
+    as_rational_const(&simplifier.context, root)?;
+
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+    let lf = linear_form(&mut simplifier.context, diff, var)?;
+    let (coef, _) = simplifier.simplify(lf.coef);
+    // The coefficient must be PARAMETRIC: a numeric coefficient (non-zero ⇒ ordinary equation needing
+    // no branch; zero ⇒ not a linear solve in `var`) and a coefficient still containing the solve
+    // variable are both left to the normal path.
+    if as_rational_const(&simplifier.context, coef).is_some()
+        || contains_var(&simplifier.context, coef, var)
+    {
+        return None;
+    }
+    // The equation is `coef·x = coef·root` (the numeric `root` solves `coef·x + constant = 0`, so
+    // `constant = −coef·root`). Hence `root` is the unique solution when `coef ≠ 0`, and when
+    // `coef = 0` the equation degenerates to `0 = 0` ⇒ all reals. Emit that two-case split — the guard
+    // the bare `{root}` silently dropped.
+    let nonzero_case = Case::new(
+        ConditionSet::single(ConditionPredicate::NonZero(coef)),
+        SolutionSet::Discrete(vec![root]),
+    );
+    let zero_case = Case::new(
+        ConditionSet::single(ConditionPredicate::EqZero(coef)),
+        SolutionSet::AllReals,
+    );
+    Some(SolutionSet::Conditional(vec![nonzero_case, zero_case]))
 }
 
 /// Build the REAL roots of `a·x³ + b·x² + c·x + d` (`a ≠ 0`), exactly, by Cardano's method. Normalize
