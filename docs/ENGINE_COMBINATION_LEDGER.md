@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 375 (newest first)
+Active entries: 376 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -140,6 +140,7 @@ Active entries: 375 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_biquadratic`) | SOUNDNESS/CAPACIDAD (Round-5 fix 5/N): bicuadráticas con raíces surd por z = x²
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_equality`) | SOUNDNESS (Round-5 fix 6/N): ecuaciones |arg|=c por split arg=±c
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/exponents/power_rules.rs` (`ComplexNegativeBaseR... | SOUNDNESS (Round-5 fix 7/N): rama principal de (-r)^(p/q) en modo complejo (último P0)
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_qu... | CAPACIDAD (Round-5 fix 8/N): cuárticas reducibles por factorización en cuadráticas racionales
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15888,3 +15889,28 @@ Active entries: 375 (newest first)
     `exp(w·Log z)` da `r^w·(cos(πw)+i·sin(πw))` para base negativa. Una regla nueva de PRIORIDAD ALTA gateada por
     value_domain, que dispara antes del evaluador literal real, es el punto de inyección limpio (no se toca el
     evaluador real). Reutiliza la maquinaria trig (cos/sin/π) que el motor ya simplifica.
+
+## 2026-06-26 - CAPACIDAD (Round-5 fix 8/N): cuárticas reducibles por factorización en cuadráticas racionales
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_quartic_factor`,
+  `factor_monic_quartic_into_rational_quadratics`)
+- status: `retained` (commit 7d7b81b74; cierra el defecto de factor perdido del audit Round 5;
+  cuárticas IRREDUCIBLES como `x^4-x-1` declinan honestamente — Ferrari general fuera de alcance)
+- capture:
+  - investment_class: soundness (raíces reales PERDIDAS) + capacidad nueva (cuártica reducible)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `x^5-5x^3+x^2-5 = (x+1)(x²-5)(x²-x+1)` devolvía sólo `{-1}`, perdiendo `±√5` del factor `x²-5`.
+    AHORA `{-1, ±√5}`; `x^4+x^3-x-1 -> {-1,1}`; `x^4-3x^2-4 -> {-2,2}`; grado 6 `x^6-5x^4+x^3-5x -> {0,-1,±√5}`.
+  - MECANISMO: pela raíces racionales; si el cociente deflactado es una cuártica MÓNICA entera, la factoriza en
+    `(x²+px+q)(x²+rx+s)` con coeficientes ENTEROS (lema de Gauss -> los términos constantes son un par divisor
+    `q·s=e`, búsqueda acotada por divisores: `p=(d-qb)/(s-q)`, `r=b-p`, aceptado sólo si enteros y casan los
+    demás coeficientes). Resuelve cada cuadrática para sus raíces REALES `(-p±√(p²-4q))/2` y VERIFICA cada raíz
+    por sustitución numérica contra el polinomio original. Cuártica irreducible declina (residual honesto).
+  - BONUS: resultado `Discrete` -> las INECUACIONES cuárticas reducibles funcionan por la cadena de análisis de
+    signo del ciclo 4 (`x^4-3x^2-4>0 -> (-∞,-2) U (2,∞)`).
+  - validación: workspace 12407 passed (solo flake perf); clippy `-D warnings`; engine-fast; huella 0 deltas.
+- retained learning:
+  - patrón: para una cuártica REDUCIBLE sobre ℚ, factorizar en cuadráticas racionales (lema de Gauss + búsqueda
+    por divisores) da resultados surd LIMPIOS, a diferencia de Ferrari general (radicales anidados monstruosos).
+    La parte irreducible se deja como residual honesto. Mismo patrón de gate POST-residual + verificación
+    numérica que cúbico/bicuadrático/abs; reutiliza `find_rational_roots` y `sqrt_expr`.

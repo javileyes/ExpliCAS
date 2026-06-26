@@ -181,6 +181,8 @@ Fronts probed hard and confirmed clean (no wrong values, no spurious/missed root
 
 - **FIXED (commit ddf753b7a): complex principal-branch odd-root** (P0) — `(-1)^(1/3)` in complex mode is now `1/2 + (√3/2)i` (principal branch), not the real odd root `-1`. **All 8 Round-5 P0 defects are now fixed.**
 
+- **FIXED (commit 7d7b81b74): reducible-quartic lost-factor** (P1) — `x^5-5x^3+x^2-5 → {-1, ±√5}` by factoring the quartic quotient into rational quadratics; unlocks reducible-quartic inequalities. Irreducible quartics (`x^4-x-1`) stay honest residuals (general Ferrari deferred).
+
 ## 5. Prioritized Fix Order
 
 1. **Inequality operator-drop on irreducible polynomials (P0×3 + 2 P1 dumps).** Highest blast radius: silent wrong-kind result with `ok:true`, plus the dishonest `Solve: …=0` dumps. Fix the inequality path so the comparison operator is never rewritten to `Equal`; do sign analysis over the (closed-form) real roots and return interval unions. One fix retires `x^3+x+1>0/<0`, `x^3-3x+1>0/<0`, `sqrt(x-1)+sqrt(x-2)<3`, `x^4-x-1>0`.
