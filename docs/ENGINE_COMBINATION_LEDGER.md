@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 368 (newest first)
+Active entries: 369 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -133,6 +133,7 @@ Active entries: 368 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_cu... | GRADUADO R8: factor cúbico irreducible (Δ>0) recuperado por Cardano + factor-peeling
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`build_cubic_real_roots` — antes | CAPACIDAD: casus irreducibilis (cúbico Δ<0, tres raíces reales) por forma trigonométrica
 - 2026-06-26 | `retained` | `crates/cas_formatter/src/display/expr.rs` (`DisplayExpr` caso Pow) | SOUNDNESS (honestidad de display): base racional bajo potencia pierde paréntesis
+- 2026-06-26 | `retained` | `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixShapeGuardRule`), | SOUNDNESS (Round-5 fix 1/N): gate de forma en operaciones de matrices
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15711,3 +15712,29 @@ Active entries: 368 (newest first)
     a efectos de PARENTIZACIÓN bajo un operador más fuerte (`^`) NO es atómica. Centralizar "¿esta base necesita
     paréntesis?" evitaría replicar el bug en 5 renderers. La verificación adversarial de una capacidad nueva es
     un buen momento para cazar defectos de display latentes que la capacidad vuelve visibles.
+
+## 2026-06-26 - SOUNDNESS (Round-5 fix 1/N): gate de forma en operaciones de matrices
+
+- area: `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixShapeGuardRule`),
+  `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_shape_mismatch_undefined`)
+- status: `retained` (commit a4721e4c0; cierra el cluster matrix-shape del audit Round 5: P1×5 + P2)
+- capture:
+  - investment_class: soundness/honestidad (`ok:true` sobre una operación SIN valor)
+  - primary_dimension: north_star_capability
+  - cell: ANTES una op de matrices con formas incompatibles (`[[1,2],[3,4]]+[[1,2,3],[4,5,6]]`, `M·N` con
+    dims internas distintas, `M^2` no cuadrada, `matriz+escalar`) se DECLINABA (las reglas de eval devuelven
+    `None`) y la op malformada se devolvía echoed con `ok:true`; el simplificador incluso FABRICABA potencias
+    indefinidas (`M·M → M^2` no cuadrada). AHORA `undefined` (el mismo centinela honesto de `1/0` y la inversa
+    singular).
+  - MECANISMO: una regla guard de alta prioridad detecta las formas no conformes vía `Matrix::from_expr` +
+    comparación de `rows`/`cols` y emite `Constant::Undefined`. Bien formadas -> `None` (las reglas de eval
+    evalúan exacto). Matriz + operando SIMBÓLICO se deja intacto (el símbolo podría ligar a una matriz), nunca
+    se declara undefined prematuramente.
+  - validación: workspace 12400 passed (solo el flake ambiental perf_tan); clippy `-D warnings` limpio;
+    huella guardrail(16)+pressure(3) 0 deltas. Test `test_eval_matrix_shape_mismatch_is_undefined`;
+    contrato `matrix_multiply_dimension_mismatch_*` actualizado a `undefined`.
+- retained learning:
+  - patrón: cuando una regla de evaluación DECLINA (`None`) sobre una entrada estructuralmente SIN valor, esa
+    entrada queda como residual echoed con `ok:true` (deshonesto). El fix sound no es "evaluar" sino una guard
+    de PRECONDICIÓN que enruta lo no-conforme al centinela `undefined` existente — separa "no soportado todavía"
+    (residual honesto) de "no tiene valor" (undefined).
