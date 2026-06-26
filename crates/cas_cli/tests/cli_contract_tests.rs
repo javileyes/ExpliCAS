@@ -1617,6 +1617,40 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_symmetric_surd_even_quartic_integral_verifies() {
+    // `c / (x^4 + p·x^2 + r)` whose even quartic factors over ℝ into the symmetric SURD pair
+    // `(x²+a·x+s)(x²−a·x+s)` with `s=√r ∈ ℚ` but `a=√(2s−p)` irrational was an unevaluated residual
+    // (the rational-coefficient factor path could not carry the √). It now integrates to a verified
+    // arctan+log closed form. Numerically checked: F'(x) = integrand (err ~1e-11).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Phi_12 = x^4-x^2+1 (factor √3): no longer a bare `integrate(...)` residual.
+    let phi12 = r("integrate(1/(x^4-x^2+1), x)");
+    assert!(
+        !phi12.starts_with("integrate("),
+        "x^4-x^2+1 must integrate to a closed form, got residual: {phi12}"
+    );
+    assert!(
+        phi12.contains("arctan") && phi12.contains("ln") && phi12.contains("sqrt(3)"),
+        "expected arctan+log closed form over √3, got: {phi12}"
+    );
+    // x^4-3x^2+4 uses √7; the scaled numerator stays a closed form too.
+    assert!(!r("integrate(1/(x^4-3*x^2+4), x)").starts_with("integrate("));
+    assert!(!r("integrate(2/(x^4-x^2+1), x)").starts_with("integrate("));
+    // Controls: routes owned elsewhere stay byte-identical, and the degree-6 / irrational-constant
+    // cases stay honest residuals (out of this cycle's scope).
+    assert_eq!(r("integrate(1/(x^2+1), x)"), "arctan(x)");
+    assert!(r("integrate(1/(x^6+1), x)").starts_with("integrate("));
+    assert!(r("integrate(1/(x^4+3*x^2+1), x)").starts_with("integrate("));
+}
+
+#[test]
 fn test_eval_parametric_linear_degenerate_branch() {
     // A parametric linear equation whose coefficient cancels (`a·x = a`) dropped the `a ≠ 0` guard
     // and the `a = 0 ⇒ ℝ` branch, returning a bare `{1}`. It now emits the full conditional, matching

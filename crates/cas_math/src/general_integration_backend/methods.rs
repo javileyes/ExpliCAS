@@ -54,6 +54,24 @@ fn try_rational_reciprocal_affine_probe(
                 verify_antiderivative_by_differentiation(ctx, &mut candidate);
                 return AlgorithmicIntegrationProbeResult::Candidate(candidate);
             }
+            if let Some(antiderivative) =
+                symmetric_surd_even_quartic_antiderivative(ctx, integrand, variable)
+            {
+                // The two emitted quadratics are strictly positive (irreducible),
+                // so the antiderivative is unconditional.
+                let mut candidate = AlgorithmicIntegrationCandidate::unverified(
+                    integrand,
+                    variable,
+                    antiderivative,
+                    AlgorithmicIntegrationMethod::Rational,
+                );
+                if !probe_runner.try_verification_check() {
+                    candidate.mark_budget_exceeded();
+                    return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+                }
+                verify_antiderivative_by_differentiation(ctx, &mut candidate);
+                return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+            }
             return AlgorithmicIntegrationProbeResult::NoMatch(reason);
         }
     };
@@ -775,6 +793,128 @@ fn even_quartic_descent(
         return Some(());
     }
     None
+}
+
+/// Integrate `c / (x^4 + p*x^2 + r)` when the even quartic factors over the
+/// reals into the SYMMETRIC SURD pair `(x^2 + a*x + s)(x^2 - a*x + s)` with
+/// `s = sqrt(r)` rational but `a = sqrt(2*s - p)` IRRATIONAL — exactly the
+/// case `even_quartic_descent` declines, because `SquarefreeFactor` carries
+/// only rational coefficients (e.g. `1/(x^4 - x^2 + 1)` needs `a = sqrt(3)`,
+/// `1/(x^4 - 3*x^2 + 4)` needs `a = sqrt(7)`). With a constant numerator the
+/// integrand is even, so the partial fraction collapses to the closed form
+///   F = c*[ (1/(4*a*s))*(ln(x^2+a*x+s) - ln(x^2-a*x+s))
+///         + (1/(2*s*D))*(arctan((2x+a)/D) + arctan((2x-a)/D)) ],  D = sqrt(2s+p),
+/// which the downstream differentiation oracle verifies (so a bad surd match
+/// degrades to an honest residual, never a wrong answer).
+///
+/// Every keep/drop decision is EXACT `BigRational`: `r` a positive perfect
+/// square (so `s` is rational), `a^2 = 2s - p` a positive NON-square (a perfect
+/// square is owned by `even_quartic_descent`; excluding it keeps that lane
+/// byte-identical), and `a^2 - 4s < 0` so both quadratics are irreducible —
+/// which also forces `D^2 = 2s + p = 4s - a^2 > 0`, keeping the arctan real and
+/// the logs argument strictly positive (no `|.|` needed).
+pub(super) fn symmetric_surd_even_quartic_antiderivative(
+    ctx: &mut Context,
+    integrand: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    let (numerator_expr, denominator_expr) = match ctx.get(integrand) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    let denominator =
+        crate::polynomial::Polynomial::from_expr(ctx, denominator_expr, variable).ok()?;
+    if denominator.degree() != 4 {
+        return None;
+    }
+    let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
+    // Constant numerator only: the symmetric closed form relies on an even integrand.
+    if numerator.is_zero() || numerator.degree() != 0 {
+        return None;
+    }
+
+    // Normalize the denominator monic; fold its leading coefficient into the
+    // numerator constant so the match works over `x^4 + p*x^2 + r`.
+    let leading = denominator.leading_coeff();
+    let denominator = denominator.div_scalar(&leading);
+    if !denominator.coeffs[3].is_zero() || !denominator.coeffs[1].is_zero() {
+        return None;
+    }
+    let p = denominator.coeffs[2].clone();
+    let r = denominator.coeffs[0].clone();
+    let c = &numerator.coeffs[0] / &leading;
+    if c.is_zero() {
+        return None;
+    }
+
+    let two = BigRational::from_integer(2.into());
+    let four = BigRational::from_integer(4.into());
+    // s = sqrt(r) must be rational.
+    let s = rational_positive_square_root(&r)?;
+    // a^2 = 2s - p must be a positive NON-square (square => even_quartic_descent owns it).
+    let a_square = &two * &s - &p;
+    if !a_square.is_positive() || rational_positive_square_root(&a_square).is_some() {
+        return None;
+    }
+    // Both factors irreducible: a^2 - 4s < 0 (also forces D^2 = 2s + p > 0).
+    if &a_square - &four * &s >= BigRational::zero() {
+        return None;
+    }
+    let d_square = &two * &s + &p;
+
+    let a = build_numeric_radius_expr(ctx, &a_square);
+    let d = build_numeric_radius_expr(ctx, &d_square);
+    let s_expr = ctx.add(Expr::Number(s.clone()));
+    let variable_expr = ctx.var(variable);
+    let two_expr = ctx.add(Expr::Number(two.clone()));
+    let x_square = ctx.add(Expr::Pow(variable_expr, two_expr));
+    let ax = build_backend_product(ctx, a, variable_expr);
+
+    // q_plus = x^2 + a*x + s, q_minus = x^2 - a*x + s.
+    let q_plus = {
+        let head = build_backend_sum(ctx, x_square, ax);
+        build_backend_sum(ctx, head, s_expr)
+    };
+    let q_minus = {
+        let head = build_backend_difference(ctx, x_square, ax);
+        build_backend_sum(ctx, head, s_expr)
+    };
+
+    // Divide by a surd radius, skipping the no-op `/1` when it is a perfect square.
+    let divide_by_radius = |ctx: &mut Context, body: ExprId, radius: ExprId| -> ExprId {
+        if is_one(ctx, radius) {
+            body
+        } else {
+            ctx.add(Expr::Div(body, radius))
+        }
+    };
+
+    // Log part: (c/(4*s)) * (ln(q_plus) - ln(q_minus)) / a   (a is always irrational here).
+    let log_piece = {
+        let ln_plus = ctx.call_builtin(BuiltinFn::Ln, vec![q_plus]);
+        let ln_minus = ctx.call_builtin(BuiltinFn::Ln, vec![q_minus]);
+        let log_diff = build_backend_difference(ctx, ln_plus, ln_minus);
+        let scalar = ctx.add(Expr::Number(&c / (&four * &s)));
+        let scaled = build_backend_product(ctx, scalar, log_diff);
+        divide_by_radius(ctx, scaled, a)
+    };
+
+    // Arctan part: (c/(2*s)) * (arctan((2x+a)/D) + arctan((2x-a)/D)) / D.
+    let arctan_piece = {
+        let two_x = build_backend_product(ctx, two_expr, variable_expr);
+        let center_plus = build_backend_sum(ctx, two_x, a);
+        let center_minus = build_backend_difference(ctx, two_x, a);
+        let arg_plus = divide_by_radius(ctx, center_plus, d);
+        let arg_minus = divide_by_radius(ctx, center_minus, d);
+        let arctan_plus = ctx.call_builtin(BuiltinFn::Arctan, vec![arg_plus]);
+        let arctan_minus = ctx.call_builtin(BuiltinFn::Arctan, vec![arg_minus]);
+        let arctan_sum = build_backend_sum(ctx, arctan_plus, arctan_minus);
+        let scalar = ctx.add(Expr::Number(&c / (&two * &s)));
+        let scaled = build_backend_product(ctx, scalar, arctan_sum);
+        divide_by_radius(ctx, scaled, d)
+    };
+
+    Some(build_backend_sum(ctx, log_piece, arctan_piece))
 }
 
 fn push_quadratic_or_bail(

@@ -6119,3 +6119,48 @@ fn resolvent_cubic_rejects_irreducible_non_even_quartics() {
         "must reject Phi_5"
     );
 }
+
+#[test]
+fn symmetric_surd_even_quartic_splits_phi12_and_scaled_constants() {
+    let mut ctx = Context::new();
+    // Phi_12 = x^4-x^2+1 (factor sqrt(3)), a scaled numerator, and x^4-3x^2+4
+    // (factor sqrt(7), s = 2): the symmetric surd pair is the cyclotomic case
+    // even_quartic_descent declines because the linear coefficient is irrational.
+    for source in ["1/(x^4-x^2+1)", "2/(x^4-x^2+1)", "1/(x^4-3*x^2+4)"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert_eq!(
+            candidate.verification_status,
+            AlgorithmicIntegrationVerificationStatus::Verified,
+            "{source} must verify by differentiation"
+        );
+        assert!(
+            candidate.required_conditions.is_empty(),
+            "{source}: the irreducible quadratics are strictly positive, so no conditions"
+        );
+    }
+}
+
+#[test]
+fn symmetric_surd_even_quartic_rejects_out_of_scope_shapes() {
+    let mut ctx = Context::new();
+    let rejects = [
+        "1/(x^4+2*x^2+3)",   // r = 3 not a perfect square: s = sqrt(3) irrational
+        "1/(x^4+x^2+1)",     // a^2 = 1 is a perfect square: owned by even_quartic_descent
+        "(x+1)/(x^4-x^2+1)", // non-constant numerator: symmetric collapse does not apply
+        "1/(x^4+3*x^2+1)", // a^2 = 2 - 3 < 0: real factors carry irrational constants, not a surd linear term
+        "1/(x^2+1)",       // not a quartic denominator
+    ];
+    for source in rejects {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        assert!(
+            symmetric_surd_even_quartic_antiderivative(&mut ctx, integrand, "x").is_none(),
+            "must reject {source}"
+        );
+    }
+}
