@@ -1926,6 +1926,15 @@ fn solve_local_core(
         set
     };
 
+    // An absolute-value equation `|arg| = c` with a quadratic argument carrying a linear term
+    // (`|x²-2x| = 3`) leaks a circular residual from the recursive isolation. Split `arg = ±c` and
+    // solve each as a full equation instead.
+    let set = if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
+        try_solve_abs_equality(simplifier, eq, var).unwrap_or(set)
+    } else {
+        set
+    };
+
     // An IRREDUCIBLE polynomial inequality (`x³+x+1 > 0`, `x³-3x+1 > 0`) is rewritten to `Equal(p,0)`
     // by the normal path, dropping the operator and returning the equation's root SET (so `> 0` and
     // `< 0` give identical output). When the operator is an inequality and the result is a `Discrete`
@@ -2177,6 +2186,79 @@ fn try_solve_biquadratic(
         return Some(SolutionSet::Empty);
     }
     Some(SolutionSet::Discrete(roots))
+}
+
+/// Solve an absolute-value equation `|arg(x)| = c` for a NON-NEGATIVE constant `c` by the textbook
+/// split `arg = c  ∨  arg = -c`, solving each as a full equation and unioning the roots. The recursive
+/// isolation otherwise mishandles a quadratic argument with a linear term — `|x²-2x| = 3` isolates
+/// `x² = 2x+3` and emits the circular residual `solve(x − (2x+3)^(1/2) = 0)` instead of `{-1, 3}`,
+/// even though `solve(x²-2x = 3)` on its own returns `{-1, 3}`. Scoped to a constant RHS (`c < 0` ⇒
+/// no solution; `c = 0` ⇒ the single branch `arg = 0`); a non-constant RHS needs a `g ≥ 0` domain
+/// split and is left to the normal path. Roots are deduped by value.
+fn try_solve_abs_equality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+    use std::collections::HashMap;
+
+    if !matches!(eq.op, cas_ast::RelOp::Eq) {
+        return None;
+    }
+    // The left-hand side must be a unary `abs(arg)`.
+    let arg = match simplifier.context.get(eq.lhs) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && simplifier.context.sym_name(*fn_id) == "abs" =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+    // The right-hand side must be a constant.
+    let c = as_rational_const(&simplifier.context, eq.rhs)?;
+    if c < BigRational::zero() {
+        return Some(SolutionSet::Empty); // |arg| = negative ⇒ no real solution
+    }
+    let pos = solve_relation_set(simplifier, var, arg, eq.rhs, cas_ast::RelOp::Eq)?;
+    let branches = if c.is_zero() {
+        vec![pos]
+    } else {
+        let neg_c = simplifier.context.add(Expr::Neg(eq.rhs));
+        let neg = solve_relation_set(simplifier, var, arg, neg_c, cas_ast::RelOp::Eq)?;
+        vec![pos, neg]
+    };
+
+    // Collect the discrete roots from both branches; bail on any non-discrete sub-result.
+    let mut roots: Vec<ExprId> = Vec::new();
+    for branch in branches {
+        match branch {
+            SolutionSet::Discrete(rs) => roots.extend(rs),
+            SolutionSet::Empty => {}
+            _ => return None,
+        }
+    }
+    // Dedup by numeric value (the `arg = c` / `arg = -c` branches overlap only when `c = 0`).
+    let mut seen: Vec<f64> = Vec::new();
+    let mut unique: Vec<ExprId> = Vec::new();
+    for root in roots {
+        match cas_math::evaluator_f64::eval_f64(&simplifier.context, root, &HashMap::new()) {
+            Some(v) if v.is_finite() => {
+                if seen.iter().any(|&u| (u - v).abs() < 1e-9) {
+                    continue;
+                }
+                seen.push(v);
+            }
+            _ => {} // non-numeric root: keep it (cannot dedup, but do not drop)
+        }
+        unique.push(root);
+    }
+    if unique.is_empty() {
+        return Some(SolutionSet::Empty);
+    }
+    Some(SolutionSet::Discrete(unique))
 }
 
 /// Build the REAL roots of `a·x³ + b·x² + c·x + d` (`a ≠ 0`), exactly, by Cardano's method. Normalize

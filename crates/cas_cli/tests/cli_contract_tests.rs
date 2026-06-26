@@ -1617,6 +1617,37 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_abs_equation_quadratic_arg_split() {
+    // `|arg(x)| = c` (constant `c ≥ 0`) with a quadratic argument carrying a linear term leaked a
+    // circular residual `solve(x − (2x+3)^(1/2)=0)` from the recursive isolation, even though
+    // `solve(x²-2x = 3)` returns `{-1, 3}`. The `|arg|=c → arg=±c` split now solves it.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(abs(x^2-2*x)=3, x)"), "{ -1, 3 }");
+    assert_eq!(r("solve(abs(x^2-x)=2, x)"), "{ -1, 2 }");
+    assert_eq!(r("solve(abs(x^2-2*x)=0, x)"), "{ 0, 2 }"); // c = 0: single branch, no duplicate
+    assert_eq!(r("solve(abs(x^2-2*x)=-1, x)"), "No solution"); // c < 0
+                                                               // Both branches contribute: |x²-5x|=6 has four roots {-1, 2, 3, 6}.
+    let four = r("solve(abs(x^2-5*x)=6, x)");
+    assert!(
+        four.contains("-1")
+            && four.contains("6")
+            && four.matches(", ").count() == 3
+            && !four.contains("Solve"),
+        "|x^2-5x|=6 -> {four}"
+    );
+    // Cases the normal path already solved are unchanged.
+    assert_eq!(r("solve(abs(x^2+x)=2, x)"), "{ -2, 1 }");
+    assert_eq!(r("solve(abs(x-3)=2, x)"), "{ 5, 1 }");
+}
+
+#[test]
 fn test_eval_biquadratic_surd_roots() {
     // A biquadratic `a·x⁴ + b·x² + c` whose x-roots are surds leaked a circular residual
     // (`solve(x − (8x²−15)^(1/4)=0)`); the `z = x²` substitution now solves it. Roots verified
