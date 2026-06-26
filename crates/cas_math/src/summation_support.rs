@@ -395,19 +395,9 @@ fn classify_infinite_product(ctx: &mut Context, call: &FiniteAggregateCall) -> O
     None
 }
 
-/// Build the best available finite-sum evaluation plan for `sum(...)`.
-///
-/// Preference order:
-/// 1. Telescoping rational pattern.
-/// 2. Closed form for `sum(k, k, m, n)`.
-/// 3. Direct finite substitution when bounds are small integers.
-/// 4. Closed form for `sum(k^2, k, m, n)`.
-/// 5. Closed form for `sum(k^3, k, 1, n)`.
-/// 6. Closed form for `sum(c, k, 1, n)` when `c` is independent of `k`.
-/// 7. Closed form for `sum(a^k, k, m, n)` when `a` is an integer > 1.
-/// Whether `expr` contains a sub-expression that is exactly `_ / 0` (a vanishing denominator), i.e.
-/// a `Div` whose denominator evaluates to an exact rational `0`, or a `base^(negative)` with `base`
-/// exactly `0` (`= 1 / base^|exp|`). Read-only and exact (`as_rational_const`, no `f64`).
+/// Whether `expr` contains a sub-expression with a vanishing denominator: a `Div` whose denominator
+/// evaluates to an exact rational zero, or a negative power `base^(neg)` whose `base` is exactly
+/// zero. Read-only and exact (uses `as_rational_const`, never `f64`).
 fn expr_has_vanishing_denominator(ctx: &Context, expr: ExprId) -> bool {
     use crate::numeric_eval::as_rational_const;
     use num_traits::Zero;
@@ -457,6 +447,16 @@ fn finite_sum_summand_has_pole_in_range(
     false
 }
 
+/// Build the best available finite-sum evaluation plan for `sum(...)`.
+///
+/// Preference order:
+/// 1. Telescoping rational pattern.
+/// 2. Closed form for `sum(k, k, m, n)`.
+/// 3. Direct finite substitution when bounds are small integers.
+/// 4. Closed form for `sum(k^2, k, m, n)`.
+/// 5. Closed form for `sum(k^3, k, 1, n)`.
+/// 6. Closed form for `sum(c, k, 1, n)` when `c` is independent of `k`.
+/// 7. Closed form for `sum(a^k, k, m, n)` when `a` is an integer > 1.
 pub fn try_plan_finite_sum_evaluation(
     ctx: &mut Context,
     expr: ExprId,

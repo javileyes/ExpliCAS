@@ -1531,6 +1531,11 @@ real desnudo como componente gaussiano → devuelve el cociente SIN evaluar en p
   ABIERTO, preexistente (NO introducido por los ciclos de ∞). La cancelación de `x` produce `Div(2,5)` y en
   plain no se re-pliega a `Number(2/5)` (mismo valor, forma no canónica). Análogo a §DIV-PARITY de cocientes
   numéricos pero por una ruta de cancelación distinta; menor severidad (NORMALIZATION, no wrong-answer).
+  *(2026-06-26 INTENTADO y revertido: plegar el `Div(Number,Number)` en `try_exact_common_factor_mul_fraction_preorder`
+  SÍ converge `(2*x)/(5*x)→2/5` y `(6*x)/(4*x)→3/2`, pero ROMPE una optimización DIDÁCTICA deliberada —
+  `step_wire_common_factor_cancel_stays_direct_…` espera que `(2*x)/(4*x)` quede DIRECTO sin substeps; el
+  plegado introduce substeps "Cancelar x"+"Reducir la fracción". Cosmético no merece la regresión didáctica;
+  diferido. También: `(2*x*y)/(5*x*y)→"2·x/(5·x)"` (cancelación PARCIAL de un solo factor común) es otro peldaño.)*
 
 ### R3 — P1 lost-domain: inecuación NO estricta pierde el cero aislado de factor de mult. par — 10 defectos, 1 fix [GRADUADO]
 El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque que caen fuera del intervalo dominante.

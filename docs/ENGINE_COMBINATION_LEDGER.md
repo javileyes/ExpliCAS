@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 362 (newest first)
+Active entries: 363 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -127,6 +127,7 @@ Active entries: 362 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_ex... | P1 unsound: inecuación intersecta el DOMINIO de funciones-factor (ln/sqrt); R8 diferido
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`drop_non_real_discrete_solut... | P1 unsound: rechaza soluciones NO-REALES en dominio real (cierra R6 def3 + brecha x=i)
 - 2026-06-26 | `retained` | `crates/cas_engine/src/orchestrator.rs` (`is_symbolic_atom` excluye `Infinity... | P2 consistencia: `finito + ∞ -> ∞` también en modo plain (divergencia de absorción)
+- 2026-06-26 | `retained` | `crates/cas_math/src/summation_support.rs` (reubica el doc-comment de `try_pl... | Limpieza: doc-comment huérfano (deuda clippy `-D warnings` de R9); residual `(2*x)/(5*x)` diferido
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15464,3 +15465,32 @@ Active entries: 362 (newest first)
 - retained learning:
   - patrón: un predicado "átomo simbólico" para atajos que dejan formas sin plegar debe excluir `∞`/`undefined`
     (absorben/propagan, no permanecen simbólicos). Mismo patrón regla-vs-atajo del modo plain que `∞/∞`.
+
+## 2026-06-26 - Limpieza: doc-comment huérfano (deuda clippy `-D warnings` de R9); residual `(2*x)/(5*x)` diferido
+
+- area:
+  - `crates/cas_math/src/summation_support.rs` (reubica el doc-comment de `try_plan_finite_sum_evaluation`)
+- status:
+  - `retained` (limpieza de deuda; sin cambio funcional)
+- capture:
+  - investment_class: observability/higiene
+  - primary_dimension: ci_hygiene
+  - cell: el ciclo R9 (`1a5175c62`) insertó `expr_has_vanishing_denominator` ENTRE el doc-comment de
+    `try_plan_finite_sum_evaluation` (lista numerada 1–7) y su `pub fn`, dejando el doc HUÉRFANO sobre la nueva
+    función. Clippy `doc_lazy_continuation` lo marca (la lista numerada lazy-continúa en el texto nuevo). Pasó
+    sin detectar porque algunos ciclos corrieron `cargo clippy` SIN `-D warnings`. Fix: mover el doc-comment a
+    su `pub fn`. AHORA `cargo clippy --workspace --all-targets -- -D warnings` LIMPIO.
+  - validación: workspace failed:0 (12356); clippy `-D warnings` LIMPIO; fmt; cambio SÓLO de doc-comment ->
+    comportamiento inalterado (scorecards byte-idénticos, no regenerados); tests R9 verdes.
+  - RESIDUAL `(2*x)/(5*x)` (NORMALIZATION) INTENTADO y REVERTIDO: plegar el `Div(Number,Number)` de la
+    cancelación converge `(2*x)/(5*x)→2/5` pero ROMPE la optimización didáctica `step_wire_common_factor_cancel_
+    stays_direct_…` (introduce substeps de reducción donde se esperaba directo). Cosmético no merece la
+    regresión didáctica; diferido. `(2*x*y)/(5*x*y)→"2·x/(5·x)"` (cancelación parcial de un factor) = peldaño.
+- observed:
+  - insertar una función ANTES de otra cuyo `old_string` es sólo la firma (no el doc) deja el doc-comment de la
+    segunda huérfano sobre la primera; revisar la frontera doc/firma al insertar items.
+  - el gate de ciclo `clippy --all-targets -- -D warnings` es OBLIGATORIO; correrlo sin `-D warnings` deja pasar
+    deuda de lints (aquí `doc_lazy_continuation`).
+- retained learning:
+  - higiene: al insertar una `fn` nueva antes de otra, anclar el `old_string` en la frontera doc/firma para no
+    huérfanar el doc-comment existente. Correr SIEMPRE clippy con `-D warnings` en la cadena del ciclo.
