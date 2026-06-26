@@ -1897,87 +1897,126 @@ fn solve_local_core(
     // appearing as a FACTOR (not the bare LHS) still excludes its undefined region
     // (`ln(x)·(x−2)² ≤ 0` must be `(0,1]∪{2}`, NOT `(−∞,1]∪{2}` — `ln` is undefined for `x ≤ 0`).
     let set = intersect_inequality_with_expression_domain(simplifier, eq, var, set);
-    // An irreducible cubic (no rational root) otherwise leaks an honest `Residual` (sometimes wrapped
-    // in a degenerate `Conditional` guard from a self-referential isolation). When it has a SINGLE
-    // real root (Cardano discriminant Δ > 0), solve it exactly by radicals. Rational-root cubics
-    // already returned `Discrete`, and the cubic check inside `try_solve_cubic_by_cardano` declines a
-    // non-cubic, so a genuine conditional/parametric result is left untouched.
-    let set = if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
-        try_solve_cubic_by_cardano(simplifier, eq, var).unwrap_or(set)
-    } else {
-        set
+    // An irreducible cubic factor with a SINGLE real root (Cardano discriminant Δ > 0) is otherwise
+    // either leaked as an honest `Residual`/`Conditional` (standalone `x³+x²+3 = 0`) or silently
+    // dropped after its sibling rational roots are peeled (`x⁴+x³+3x → {0}` loses the root of
+    // `x³+x²+3`). `try_solve_polynomial_with_cubic_factor` returns the FULL real set — the peeled
+    // rational roots PLUS the cubic's radical root — which subsumes whatever the normal solve produced
+    // for such a `(rational linear factors)·(irreducible Δ>0 cubic)` polynomial. So REPLACE rather
+    // than union: unioning re-introduces the rational roots `complete` already carries (`{0, 0, …}`),
+    // and a cubic the normal path already solved cleanly (`x³-2 → {2^(1/3)}`) is reproduced identically
+    // by Cardano. Δ ≤ 0 cubics and non-cubic quotients decline, leaving any other result untouched.
+    let set = match try_solve_polynomial_with_cubic_factor(simplifier, eq, var) {
+        Some(complete)
+            if matches!(
+                set,
+                SolutionSet::Residual(_) | SolutionSet::Conditional(_) | SolutionSet::Discrete(_)
+            ) =>
+        {
+            complete
+        }
+        _ => set,
     };
     Ok((set, steps))
 }
 
-/// Solve a univariate cubic `a·x³ + b·x² + c·x + d = 0` by Cardano's formula, in the SINGLE-real-root
-/// case (depressed-cubic discriminant `Δ = (q/2)² + (p/3)³ > 0`). Normalize to `x³ + Bx² + Cx + D`,
-/// depress via `x = t − B/3` to `t³ + p·t + q` (`p = C − B²/3`, `q = 2B³/27 − BC/3 + D`); the one real
-/// root is `t = ∛(−q/2 + √Δ) + ∛(−q/2 − √Δ)`, so `x = t − B/3`. The cube root of the (negative) second
-/// radicand is the REAL cube root (the engine's real odd-root semantics). Returns `None` for a
-/// non-cubic, or when `Δ ≤ 0` (multiple / three-real-root cases handled elsewhere).
-fn try_solve_cubic_by_cardano(
+/// Build the single real root of `a·x³ + b·x² + c·x + d` (`a ≠ 0`) by Cardano's formula, valid in the
+/// SINGLE-real-root case (depressed-cubic discriminant `Δ = (q/2)² + (p/3)³ > 0`). Normalize to monic
+/// `x³ + Bx² + Cx + D`, depress via `x = t − B/3` to `t³ + p·t + q` (`p = C − B²/3`,
+/// `q = 2B³/27 − BC/3 + D`); the one real root is `x = ∛(−q/2 + √Δ) + ∛(−q/2 − √Δ) − B/3`. The cube
+/// root of the (negative) second radicand is the engine's REAL odd-root. Returns `None` if `a = 0`
+/// or `Δ ≤ 0` (multiple / three-real-root cases are handled elsewhere).
+fn build_cardano_real_root(
+    simplifier: &mut Simplifier,
+    a: &num_rational::BigRational,
+    b: &num_rational::BigRational,
+    c: &num_rational::BigRational,
+    d: &num_rational::BigRational,
+) -> Option<ExprId> {
+    use cas_solver_core::quadratic_formula::sqrt_expr;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+    let r = |n: i64| BigRational::from_integer(n.into());
+    if a.is_zero() {
+        return None;
+    }
+    let big_b = b / a;
+    let big_c = c / a;
+    let big_d = d / a;
+    let b2 = &big_b * &big_b;
+    let b3 = &b2 * &big_b;
+    let p = &big_c - &b2 / r(3);
+    let q = &b3 * r(2) / r(27) - &big_b * &big_c / r(3) + &big_d;
+    let q_half = &q / r(2);
+    let p_third = &p / r(3);
+    let delta = &q_half * &q_half + &p_third * &p_third * &p_third;
+    if delta <= BigRational::zero() {
+        return None;
+    }
+    let ctx = &mut simplifier.context;
+    let num = |ctx: &mut cas_ast::Context, v: BigRational| ctx.add(Expr::Number(v));
+    let delta_node = num(ctx, delta);
+    let sqrt_delta = sqrt_expr(ctx, delta_node);
+    let neg_q_half = num(ctx, -&q / r(2));
+    let radicand_plus = ctx.add(Expr::Add(neg_q_half, sqrt_delta));
+    let radicand_minus = ctx.add(Expr::Sub(neg_q_half, sqrt_delta));
+    let one_third = num(ctx, BigRational::new(1.into(), 3.into()));
+    let cbrt_plus = ctx.add(Expr::Pow(radicand_plus, one_third));
+    let cbrt_minus = ctx.add(Expr::Pow(radicand_minus, one_third));
+    let t = ctx.add(Expr::Add(cbrt_plus, cbrt_minus));
+    let b_over_3 = num(ctx, &big_b / r(3));
+    let root = ctx.add(Expr::Sub(t, b_over_3));
+    let (root, _) = simplifier.simplify(root);
+    Some(root)
+}
+
+/// For a polynomial equation `p(x) = 0`, peel its rational roots and — if the deflated quotient is an
+/// irreducible cubic with a SINGLE real root (Cardano Δ > 0) — solve that cubic by radicals. Returns
+/// the complete real set `rational_roots ∪ {cubic radical root}`, or `None` when no degree-3 quotient
+/// with Δ > 0 remains. This closes BOTH the standalone irreducible cubic (`x³+x²+3 = 0`) and the
+/// higher-degree case where the cubic factor was dropped (`x⁴+x³+3x = x·(x³+x²+3)`).
+fn try_solve_polynomial_with_cubic_factor(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
 ) -> Option<SolutionSet> {
     use cas_math::polynomial::Polynomial;
-    use cas_solver_core::quadratic_formula::sqrt_expr;
-    use num_rational::BigRational;
-    use num_traits::Zero;
+    use cas_solver_core::rational_roots::{find_rational_roots, rational_to_expr};
+    const MAX_CANDIDATES: usize = 256;
 
-    let r = |n: i64| BigRational::from_integer(n.into());
-    // Build and simplify `lhs − rhs`, then read it as a polynomial in `var`.
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
     let (diff, _) = simplifier.simplify(diff);
     let poly = Polynomial::from_expr(&simplifier.context, diff, var).ok()?;
-    if poly.degree() != 3 {
+    if poly.degree() < 3 {
         return None;
     }
-    let a = poly.coeffs[3].clone();
-    if a.is_zero() {
+    let (rational_roots, quotient) = find_rational_roots(poly.coeffs.clone(), MAX_CANDIDATES);
+    // The deflated quotient must be exactly a cubic (degree 3 -> 4 coefficients).
+    if quotient.len() != 4 {
         return None;
     }
-    let (b, c, d) = (
-        poly.coeffs[2].clone(),
-        poly.coeffs[1].clone(),
-        poly.coeffs[0].clone(),
-    );
-    // Normalize to monic, then depress.
-    let big_b = &b / &a;
-    let big_c = &c / &a;
-    let big_d = &d / &a;
-    let b2 = &big_b * &big_b;
-    let b3 = &b2 * &big_b;
-    let p = &big_c - &b2 / r(3);
-    let q = &b3 * r(2) / r(27) - &big_b * &big_c / r(3) + &big_d;
-    // Δ = (q/2)² + (p/3)³.
-    let q_half = &q / r(2);
-    let p_third = &p / r(3);
-    let delta = &q_half * &q_half + &p_third * &p_third * &p_third;
-    if delta <= BigRational::zero() {
-        return None; // multiple roots (Δ = 0) or three real roots (Δ < 0): not this case.
+    let cardano_root = build_cardano_real_root(
+        simplifier,
+        &quotient[3],
+        &quotient[2],
+        &quotient[1],
+        &quotient[0],
+    )?;
+    // `find_rational_roots` returns roots WITH multiplicity (`x²·(…)` yields `0` twice); the engine
+    // reports a DISTINCT-root set (`(x+1)³ → {-1}`), so dedup before emitting. The Cardano root is the
+    // real root of an irreducible cubic, hence irrational — it can never collide with a rational root.
+    let mut distinct_rationals: Vec<num_rational::BigRational> = Vec::new();
+    for root in &rational_roots {
+        if !distinct_rationals.contains(root) {
+            distinct_rationals.push(root.clone());
+        }
     }
-
-    let ctx = &mut simplifier.context;
-    let num = |ctx: &mut cas_ast::Context, v: BigRational| ctx.add(Expr::Number(v));
-    // √Δ
-    let delta_node = num(ctx, delta);
-    let sqrt_delta = sqrt_expr(ctx, delta_node);
-    // −q/2 ± √Δ  (build `−q/2` once and reuse for both radicands)
-    let neg_q_half = num(ctx, -&q / r(2));
-    let radicand_plus = ctx.add(Expr::Add(neg_q_half, sqrt_delta));
-    let radicand_minus = ctx.add(Expr::Sub(neg_q_half, sqrt_delta));
-    // ∛(·) = (·)^(1/3)
-    let one_third = num(ctx, BigRational::new(1.into(), 3.into()));
-    let cbrt_plus = ctx.add(Expr::Pow(radicand_plus, one_third));
-    let cbrt_minus = ctx.add(Expr::Pow(radicand_minus, one_third));
-    let t = ctx.add(Expr::Add(cbrt_plus, cbrt_minus));
-    // x = t − B/3
-    let b_over_3 = num(ctx, &big_b / r(3));
-    let root = ctx.add(Expr::Sub(t, b_over_3));
-    let (root, _) = simplifier.simplify(root);
-    Some(SolutionSet::Discrete(vec![root]))
+    let mut roots: Vec<ExprId> = distinct_rationals
+        .iter()
+        .map(|root| rational_to_expr(&mut simplifier.context, root))
+        .collect();
+    roots.push(cardano_root);
+    Some(SolutionSet::Discrete(roots))
 }
 
 /// Intersect an inequality interval result with the implicit REAL domain of the LHS expression.

@@ -1413,6 +1413,33 @@ fn test_eval_irreducible_cubic_single_real_root_by_cardano() {
             "{input} -> {result}"
         );
     }
+    // FACTOR case: a higher-degree polynomial `(rational factors)·(irreducible Δ>0 cubic)` peels its
+    // rational roots, then solves the leftover cubic by Cardano and unions — previously the cubic
+    // factor's real root was silently dropped (`x⁴+x³+3x → {0}` lost the root of `x³+x²+3`). The
+    // rational roots are reported as a DISTINCT set (the `x²` factor's double `0` collapses to one).
+    for input in [
+        "solve(x^4+x^3+3*x=0, x)",         // x·(x³+x²+3)
+        "solve(x^4-2*x^3-4*x^2-2*x=0, x)", // x·(x³-2x²-4x-2)
+        "solve(x^5+x^4+3*x^2=0, x)",       // x²·(x³+x²+3), double 0 deduped
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        let result = wire["result"].as_str().unwrap_or("");
+        // `{ 0, <cubic radical root> }`: rational root 0 plus the cubic's single real root, no residual,
+        // no duplicate `0`.
+        assert!(
+            result.starts_with("{ 0, ")
+                && result.contains("^(1/3)")
+                && !result.contains("0, 0")
+                && !result.contains("Solve")
+                && !result.contains(" if "),
+            "{input} -> {result}"
+        );
+    }
     // Rational-root and clean cubics are unaffected (NOT routed to Cardano).
     for (input, expected) in [
         ("solve(x^3-1=0, x)", "{ 1 }"),
@@ -1420,6 +1447,9 @@ fn test_eval_irreducible_cubic_single_real_root_by_cardano() {
         ("solve(x^3-2=0, x)", "{ 2^(1/3) }"),
         ("solve(x^3+3*x^2+3*x+1=0, x)", "{ -1 }"),
         ("solve(x^3-3*x+2=0, x)", "{ -2, 1 }"),
+        // A casus-irreducibilis cubic FACTOR (Δ<0, three real roots) correctly DECLINES Cardano —
+        // only the rational root is reported; the cubic stays unsolved (cycle-3 territory).
+        ("solve(x^4-3*x^2+x=0, x)", "{ 0 }"),
     ] {
         let output = cli()
             .args(["eval", input, "--format", "json"])
