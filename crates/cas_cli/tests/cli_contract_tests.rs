@@ -1506,6 +1506,65 @@ fn test_eval_casus_irreducibilis_cubic_three_real_roots() {
 }
 
 #[test]
+fn test_eval_fraction_base_power_is_parenthesized() {
+    // A non-integer rational base under a power must keep its parentheses: `(3/2)^(1/3)`, NOT
+    // `3/2^(1/3)` — the latter re-parses (under standard precedence, `^` binds tighter than `/`) as
+    // `3/(2^(1/3))`, a DIFFERENT, wrong value. This is most visible in Cardano radicals like
+    // `solve(10x³-4x²+18x-27=0)` whose real root is `1/15·((17161/2)^(1/3) + 2 - 262^(1/3))`.
+    for input in ["(3/2)^(1/3)", "(17161/2)^(1/3)", "(7/3)^(1/5)", "(2/3)^x"] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        let result = wire["result"].as_str().unwrap_or("");
+        // The result must be IDEMPOTENT: re-evaluating the printed form yields the same string. A
+        // dropped-paren form would re-parse differently, so this catches the precedence bug directly.
+        let reparse = cli()
+            .args(["eval", result, "--format", "json"])
+            .output()
+            .expect("Failed to re-run CLI");
+        let rwire: Value = serde_json::from_slice(&reparse.stdout).expect("Invalid wire output");
+        assert_eq!(
+            rwire["result"].as_str(),
+            Some(result),
+            "{input} -> {result} did not round-trip"
+        );
+        // And it must literally carry the parenthesized base (not the bare `n/m^...`).
+        assert!(
+            result.contains(")^") && !result.contains("/2^(") && !result.contains("/3^("),
+            "{input} -> {result}"
+        );
+    }
+    // Integer bases are NOT over-parenthesized.
+    for (input, expected) in [("2^(1/3)", "2^(1/3)"), ("262^(1/3)", "262^(1/3)")] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+    // The Cardano radical that exposed the bug now renders unambiguously.
+    let cardano = cli()
+        .args([
+            "eval",
+            "solve(10*x^3-4*x^2+18*x-27=0, x)",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+    let cwire: Value = serde_json::from_slice(&cardano.stdout).expect("Invalid wire output");
+    let cresult = cwire["result"].as_str().unwrap_or("");
+    assert!(
+        cresult.contains("(17161/2)^(1/3)"),
+        "cardano fraction radicand -> {cresult}"
+    );
+}
+
+#[test]
 fn test_eval_multi_factor_cancellation_fully_reduces() {
     // `(2·x·y)/(5·x·y)` shares TWO common factors. The plain-mode one-factor shortcut cancelled only
     // `y`, returning the partially-reduced `2·x / (5·x)` and diverging from `--steps` (which cancels

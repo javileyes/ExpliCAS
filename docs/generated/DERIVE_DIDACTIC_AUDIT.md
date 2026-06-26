@@ -5366,7 +5366,7 @@ Strategy: expand
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Expandir binomio]
    Before: (x + 1/2)^(2)
-   Cambio local: (x + 1/2)^(2) -> 1/2^(2) + x^(2) + 2 * x/2
+   Cambio local: (x + 1/2)^(2) -> (1/2)^(2) + x^(2) + 2 * x/2
    After: 1 / 4 + x^2 + x
 Result: 1 / 4 + x^(2) + x
 ```
@@ -15190,9 +15190,9 @@ Steps (Aggressive Mode):
    Before: x^(2) + 3 * x + 1
    Subpasos:
      1.1 Añadir y restar el cuadrado del semicoeficiente
-         x^2 + 3 * x + 1 -> 3/2^2 + x^2 + 3 * x + 1 - 3/2^2
+         x^2 + 3 * x + 1 -> (3/2)^2 + x^2 + 3 * x + 1 - 3/2^2
      1.2 Agrupar el trinomio como cuadrado perfecto
-         3/2^2 + x^2 + 3 * x + 1 - 3/2^2 -> (x + 3/2)^2 - 5/4
+         (3/2)^2 + x^2 + 3 * x + 1 - 3/2^2 -> (x + 3/2)^2 - 5/4
    Cambio local: x^(2) + 3 * x + 1 -> (3 / 2 + x)^(2) - 5 / 4
    After: (3 / 2 + x)^2 - 5 / 4
 Result: (3 / 2 + x)^(2) - 5 / 4

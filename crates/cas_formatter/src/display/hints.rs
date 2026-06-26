@@ -17,6 +17,23 @@ pub struct DisplayExprWithHints<'a> {
 }
 
 impl<'a> DisplayExprWithHints<'a> {
+    /// Render a display factor `base^exp`, parenthesizing a non-integer rational base so it keeps its
+    /// fraction grouping before the exponent (`(3/2)^2`, never `3/2^2` — which re-parses as `3/(2^2)`).
+    fn fmt_factor(&self, f: &mut fmt::Formatter<'_>, base: ExprId, exp: i32) -> fmt::Result {
+        let base_is_fraction = matches!(self.context.get(base), Expr::Number(n) if !n.is_integer());
+        if exp != 1 && base_is_fraction {
+            write!(f, "(")?;
+            self.fmt_internal(f, base)?;
+            write!(f, ")^{exp}")
+        } else {
+            self.fmt_internal(f, base)?;
+            if exp != 1 {
+                write!(f, "^{exp}")?;
+            }
+            Ok(())
+        }
+    }
+
     fn fmt_internal(&self, f: &mut fmt::Formatter<'_>, id: ExprId) -> fmt::Result {
         // Check for display hint first
         if let Some(hint) = self.hints.get(id) {
@@ -128,18 +145,12 @@ impl<'a> DisplayExprWithHints<'a> {
                             if i > 0 {
                                 write!(f, "{}", mul_symbol())?;
                             }
-                            self.fmt_internal(f, factor.base)?;
-                            if factor.exp != 1 {
-                                write!(f, "^{}", factor.exp)?;
-                            }
+                            self.fmt_factor(f, factor.base, factor.exp)?;
                         }
                         write!(f, ")")?;
                     } else {
                         let factor = &frac.num[0];
-                        self.fmt_internal(f, factor.base)?;
-                        if factor.exp != 1 {
-                            write!(f, "^{}", factor.exp)?;
-                        }
+                        self.fmt_factor(f, factor.base, factor.exp)?;
                     }
 
                     write!(f, "/")?;
@@ -151,10 +162,7 @@ impl<'a> DisplayExprWithHints<'a> {
                             if i > 0 {
                                 write!(f, "{}", mul_symbol())?;
                             }
-                            self.fmt_internal(f, factor.base)?;
-                            if factor.exp != 1 {
-                                write!(f, "^{}", factor.exp)?;
-                            }
+                            self.fmt_factor(f, factor.base, factor.exp)?;
                         }
                         return write!(f, ")");
                     } else {
@@ -250,12 +258,13 @@ impl<'a> DisplayExprWithHints<'a> {
                     }
                 }
 
-                // Add parentheses around base if it's a binary operation
+                // Add parentheses around base if it's a binary operation, or a non-integer rational
+                // literal (which renders as a fraction `p/q` and would otherwise lose its grouping).
                 let base_expr = self.context.get(*b);
                 let needs_parens = matches!(
                     base_expr,
                     Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
-                );
+                ) || matches!(base_expr, Expr::Number(n) if !n.is_integer());
                 if needs_parens {
                     write!(f, "(")?;
                 }

@@ -355,8 +355,12 @@ impl<'a> DisplayExprStyled<'a> {
         // Check if base is "negative" (Neg expr, negative number, or leading negative factor)
         // These need parentheses: (-1)² not -1², (-x)² not -x²
         let (base_is_negative, _, _) = check_negative(self.context, base);
+        // A non-integer rational base renders as a fraction `p/q`; since `^` binds tighter than `/`, it
+        // must be parenthesized (`(3/2)^2`, not `3/2^2`). `precedence` reports atom for a `Number`.
+        let base_is_fraction_number =
+            matches!(self.context.get(base), Expr::Number(n) if !n.is_integer());
 
-        if base_prec < 3 || base_is_negative {
+        if base_prec < 3 || base_is_negative || base_is_fraction_number {
             write!(f, "(")?;
             self.fmt_internal(f, base)?;
             write!(f, ")")?;

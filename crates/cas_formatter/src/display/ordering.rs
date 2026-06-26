@@ -311,13 +311,24 @@ pub(super) fn format_factors(
         }
 
         let base_prec = precedence(ctx, factor.base);
-        let needs_parens = base_prec < 2; // Mul precedence
+        // A non-integer rational base renders as a fraction `p/q` and MUST be parenthesized before an
+        // exponent (`(3/2)^2`, not `3/2^2` — which re-parses as `3/(2^2)`). `precedence` reports atom
+        // for a `Number`, so detect the fraction value explicitly, same as the `Pow` renderer.
+        let base_is_fraction_number =
+            matches!(ctx.get(factor.base), Expr::Number(n) if !n.is_integer());
+        let needs_parens = base_prec < 2 || (factor.exp != 1 && base_is_fraction_number);
 
         if let Expr::Number(n) = ctx.get(factor.base) {
             if n.is_negative() {
-                write!(f, "{}", -n.clone())?;
-                if factor.exp != 1 {
-                    write!(f, "^{}", factor.exp)?;
+                let magnitude = -n.clone();
+                // `|p/q|^e` needs the same parentheses as the positive case.
+                if factor.exp != 1 && !magnitude.is_integer() {
+                    write!(f, "({magnitude})^{}", factor.exp)?;
+                } else {
+                    write!(f, "{magnitude}")?;
+                    if factor.exp != 1 {
+                        write!(f, "^{}", factor.exp)?;
+                    }
                 }
                 continue;
             }

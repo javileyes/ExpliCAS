@@ -912,6 +912,12 @@ pub trait LaTeXRenderer {
             Expr::Number(n) if n.is_negative() => {
                 format!("({})", self.expr_to_latex(id, false))
             }
+            // A non-integer rational renders as `\frac{p}{q}`, unambiguous in rich LaTeX but de-LaTeXing
+            // to a bare `p/q`; parenthesize so the plain-text form stays `(p/q)^e`, never `p/q^e` (which
+            // re-parses as `p/(q^e)`).
+            Expr::Number(n) if !n.is_integer() => {
+                format!("({})", self.expr_to_latex(id, false))
+            }
             _ => self.expr_to_latex(id, false),
         }
     }
@@ -2300,6 +2306,11 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             }
             // Negative numbers also need parentheses: (-1)^2 not -1^2
             Expr::Number(n) if n.is_negative() => {
+                format!("({})", self.render_with_path(id, false, path))
+            }
+            // A non-integer rational de-LaTeXes to a bare `p/q`; parenthesize so the plain-text power
+            // stays `(p/q)^e`, never the misparsing `p/q^e`.
+            Expr::Number(n) if !n.is_integer() => {
                 format!("({})", self.render_with_path(id, false, path))
             }
             _ => self.render_with_path(id, false, path),

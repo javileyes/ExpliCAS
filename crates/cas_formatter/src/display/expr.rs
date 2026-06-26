@@ -418,11 +418,19 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 // These need parentheses: (-1)² not -1², (-x)² not -x²
                 let (base_is_negative, _, _) = check_negative(self.context, *b);
 
+                // A non-integer rational `Number` base renders as a fraction `p/q`. Because `^` binds
+                // tighter than `/`, it MUST be parenthesized: `(3/2)^(1/3)`, never `3/2^(1/3)` (which
+                // re-parses as `3/(2^(1/3))` — a different, wrong value). `precedence` reports atom for
+                // a `Number` (a `Div` *node* base is already wrapped via `base_prec`), so detect the
+                // fraction-valued literal explicitly.
+                let base_is_fraction_number =
+                    matches!(self.context.get(*b), Expr::Number(n) if !n.is_integer());
+
                 // `^` is RIGHT-associative, so a power whose base is itself a power
                 // (precedence == op_prec) must be parenthesized: `(x^2)^(1/2)`, not
                 // `x^2^(1/2)` (which re-parses as `x^(2^(1/2))` — a different, wrong
                 // expression). Use `<=` so the equal-precedence Pow base is wrapped.
-                if base_prec <= op_prec || base_is_negative {
+                if base_prec <= op_prec || base_is_negative || base_is_fraction_number {
                     write!(
                         f,
                         "({})",
