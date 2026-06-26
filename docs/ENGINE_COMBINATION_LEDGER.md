@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 380 (newest first)
+Active entries: 381 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
+- 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16042,3 +16043,23 @@ Active entries: 380 (newest first)
     `matrix_rule_support.rs`, y crucialmente (3) el registro en `is_known_eval_engine_function` (`cas_session_core/eval.rs`)
     — sin (3) el validador de funciones la rechaza ANTES de que las reglas del simplificador la vean ("función no definida").
     Patrón reutilizable para charpoly/eigenvalues/eigenvectors y para `apart`.
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal 2/4): polinomio característico
+
+- area: `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exención budget numérica)
+- status: `retained` (commit pendiente↑). `charpoly(A) = det(λI−A)` monic en `lambda`; 2×2/3×3 numérico y
+  simbólico; no-cuadrada declina.
+- capture:
+  - cell: ANTES `charpoly` no definida. AHORA reusa el determinante simbólico por cofactores (auto-expande):
+    `[[2,1],[1,2]]→λ²−4λ+3`, tridiagonal `[[2,-1,0],[-1,2,-1],[0,-1,2]]→λ³−6λ²+10λ−4`, simbólico `(λ−a)(λ−d)−bc`.
+  - MECANISMO + soundness: la expansión de cofactores de una matriz numérica PEQUEÑA excede transitoriamente
+    el budget anti-worsen antes de plegar al polinomio ⇒ rechazada a residual. `MatrixFunctionRule` ahora da
+    `budget_exempt()` acotado, GATEADO A operandos TODO-NUMÉRICOS. Ese gate es un requisito de SOUNDNESS que
+    cazó la suite: una exención sin gate también COMMITEABA `inverse([[a,b],[c,d]])` simbólica = `1/(ad−bc)·…`
+    SIN su condición `ad−bc≠0` — debe quedar residual honesto (undefined en matriz singular).
+  - validación: workspace 12418 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - una exención de budget para "evaluación definicional" (det/charpoly/multiply) debe gatearse al caso que la
+    necesita: TODO-NUMÉRICO. Si se aplica a operandos simbólicos, puede commitear una forma que el modo residual
+    retenía DELIBERADAMENTE por condición de dominio (inverso ⇒ det≠0). La huella del workspace lo cazó — los
+    tests de "residual honesto simbólico" son contratos de soundness, no de presentación.
