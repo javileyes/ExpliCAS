@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 378 (newest first)
+Active entries: 379 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -143,6 +143,7 @@ Active entries: 378 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_qu... | CAPACIDAD (Round-5 fix 8/N): cuárticas reducibles por factorización en cuadráticas racionales
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_parametric_linear_degene... | SOUNDNESS (Round-5 fix 9/N): rama degenerada a=0 de ecuaciones lineales paramétricas
 - 2026-06-26 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` | CAPACIDAD (gatekeeper integración racional, R1): cuártica par simétrica-surd
+- 2026-06-26 | `retained` | `crates/cas_engine/src/eval/simplify_action.rs` | SOUNDNESS (Cluster E del hunt): dominio perdido al cancelar derivada de bounded-inverse
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15991,3 +15992,33 @@ Active entries: 378 (newest first)
   - frontera de gatekeeper: antes de abrir una secuencia clase-L, VERIFICAR EN VIVO la premisa con el
     binario. Aquí ahorró abrir una narración de límites ya construida; el scout de arquitectura leyó
     una capa equivocada. Los scouts son hipótesis (cf. memoria: bisecar/probar antes de creer).
+
+## 2026-06-26 - SOUNDNESS (Cluster E del hunt): dominio perdido al cancelar derivada de bounded-inverse
+
+- area: `crates/cas_engine/src/eval/simplify_action.rs`
+  (`bounded_inverse_derivative_domain_conditions`, `diff_result_collapsed_to_constant`)
+- status: `retained` (commit 22ecf3ce0). Cierra el P1-soundness "Cluster E" del frontier audit.
+- capture:
+  - investment_class: soundness (condición de dominio PERDIDA en `diff`)
+  - primary_dimension: north_star_capability (honestidad de condiciones, exenta de fase)
+  - cell: ANTES `diff(2·arcsin(x)+2·arccos(x), x)` → `0` SIN `-1<x<1` (la derivada
+    `2/√(1-x²)−2/√(1-x²)` cancela a 0 y, como las condiciones se recogen de la ESTRUCTURA DEL RESULTADO,
+    el radical y su `1-x²>0` desaparecen con él). Igual `arcsin/arccos/arccosh/arcsec/arccsc/arctanh` al
+    cancelar. AHORA `0 si -1<x<1` (y `x>1`, `x<-1 ∨ x>1` por familia).
+  - MECANISMO: walker diff-scoped que recorre el DIFERANDO (no el resultado) y re-emite la condición de
+    derivada ABIERTA de cada bounded-inverse, espejo exacto del precedente `reciprocal_trig_domain_conditions`
+    (`tan/sec ⇒ cos≠0`). Gateado por `diff_result_collapsed_to_constant`: dispara SOLO si el resultado no
+    menciona la variable Y es finito (ni `undefined` ni `infinity`).
+  - validación: workspace 12413 passed (solo flake perf); clippy `-D warnings --all-targets`; rustfmt;
+    engine-fast; huella behavior-idéntica (único delta `filtered_out +1`, artefacto de añadir un unit test
+    a cas_engine). Tests `diff_cancelling_bounded_inverse_keeps_derivative_domain_condition` +
+    `test_eval_diff_cancelling_bounded_inverse_keeps_domain_condition`.
+- retained learning:
+  - patrón: cuando las condiciones de dominio se recogen de la ESTRUCTURA DEL RESULTADO, cualquier
+    cancelación que borre la sub-estructura portadora borra su condición. El arreglo correcto recorre la
+    ENTRADA (diferando), no el resultado. El precedente reciprocal-trig ya existía para `tan/sec`; este
+    ciclo lo generaliza a la familia bounded-inverse. La clave fue el GATE: un walker que dispara siempre
+    rompe 28 tests de presentación (los casos vivos compactan su condición `√(x²+1)²-1>0 ⇒ x≠0`); gatear en
+    "el resultado colapsó a constante en la variable Y es finito" aísla EXACTAMENTE el caso de cancelación
+    (constante) y deja intactos los vivos y el `undefined` de dominio vacío. Añadir una condición NECESARIA
+    siempre es sound; el riesgo es sobre-condicionar o pisar una presentación existente — el gate lo evita.

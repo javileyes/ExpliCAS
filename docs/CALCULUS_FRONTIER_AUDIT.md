@@ -393,7 +393,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   q-impar-p-par + definición numérica en x<0), 0 defects. Workspace failed:0; clippy/fmt; huella
   guardrail+pressure 0 deltas. Test `test_eval_ln_of_even_numerator_power_uses_abs`.)*
 
-- [ ] **(S) La derivada de una suma que CANCELA pierde la condición de dominio (Cluster E del hunt)**:
+- [x] **(S) La derivada de una suma que CANCELA pierde la condición de dominio (Cluster E del hunt)**:
   `diff(2·arcsin(x)+2·arccos(x), x)` → `0` SIN la condición `-1<x<1` (la derivada vale 0 solo donde ambas
   funciones son derivables; fuera de `(-1,1)` no existe). Las derivadas individuales SÍ la llevan
   (`diff(arcsin(x))→1/√(1-x²)` con `-1<x<1`), pero al cancelar `2/√(1-x²)-2/√(1-x²)→0` se descarta.
@@ -403,6 +403,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   `arcsin`/`arccos`/`acosh`/`arcsec` las pierden TODAS — inconsistencia entre el rastreo de dominio de la
   entrada y la recolección de condiciones de la derivada. P1 honestidad; requiere generalizar el mecanismo de
   `ln`/`sqrt` a las funciones de dominio acotado a través de la cancelación. Ciclo propio.)*
+  *(GRADUADO 22ecf3ce0 2026-06-26: walker diff-scoped `bounded_inverse_derivative_domain_conditions`
+  —espejo del precedente `reciprocal_trig_domain_conditions`— recorre el diferando y re-emite la condición
+  de dominio de la derivada ABIERTA de cada subtérmino bounded-inverse (`arcsin/arccos/arctanh ⇒ 1-u²>0`,
+  `arccosh ⇒ u-1>0`, `arcsec/arccsc ⇒ u²-1>0`). Gateado por `diff_result_collapsed_to_constant` (dispara
+  SOLO si la derivada cae a un valor sin la variable Y finito): `diff(2·arcsin+2·arccos)→0 si -1<x<1`,
+  `diff(arccosh-arccosh)→0 si x>1`, `diff(arcsec-arcsec)→0 si x<-1 ∨ x>1`. El gate preserva los casos vivos
+  (`diff(arcsec(√(x²+1)))=x/((x²+1)·|x|)` mantiene su `x≠0` compactado; `diff(arcsin((x+1)²+1))=undefined`
+  no gana condición imposible) y no duplica en el no-cancelante. Peldaño residual honesto: la cancelación
+  que DEJA un término dependiente de la variable (`diff(arcsin(x)-arcsin(x)+x²)=2x`) aún sub-reporta el
+  intervalo —necesita propagación per-término del dominio a través de la cancelación, ya pre-existente.)*
 
 - [x] **(S) Operaciones de matriz simbólica fabrican resultados concretos sin sentido (Cluster F del hunt)**:
   `[[1,2,3],[4,5,6]]^(-1)` → `1/[[1,2,3],[4,5,6]]` (una 2×3 NO tiene inversa); `[[a,b],[c,d]]^(-1)·I` →
