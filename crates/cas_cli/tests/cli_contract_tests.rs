@@ -1617,6 +1617,49 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_symbolic_power_of_power_guards_base_sign() {
+    // `(x^a)^b = x^(a·b)` holds for ALL real x only when both exponents are integers; with a
+    // non-integer exponent it needs `x ≥ 0` (for x<0, `x^a` is not real and the fold drops the sign,
+    // so `((-2)^a)^b ≠ (-2)^(a·b)`). The old unconditional fold was a wrong value. Now: integer and
+    // provably-non-negative bases still fold; a non-provably-non-negative or negative base declines
+    // in the default (generic) domain (honest unevaluated form), and `--domain assume` opts in.
+    for (input, expected) in [
+        ("(x^2)^3", "x^6"), // integer exponents: unconditional, valid for all x
+        ("(x^3)^2", "x^6"),
+        ("((-2)^3)^2", "64"), // integer exponents over a negative base: still exact
+        ("(2^a)^b", "2^(a·b)"), // provably-positive base: unconditional fold
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+    // Symbolic exponents over an unknown- or negative-sign base no longer fold to a wrong value in
+    // the default domain — they stay an honest unevaluated form.
+    for input in ["(x^a)^b", "((-2)^a)^b"] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(
+            wire["result"].as_str(),
+            Some(input),
+            "{input} should stay unevaluated"
+        );
+    }
+    // `--domain assume` opts into the analytic fold (the user accepts x ≥ 0).
+    let assumed = cli()
+        .args(["eval", "(x^a)^b", "--domain", "assume", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&assumed.stdout).expect("Invalid wire output");
+    assert_eq!(wire["result"].as_str(), Some("x^(a·b)"));
+}
+
+#[test]
 fn test_eval_solve_all_reals_inlines_domain_condition() {
     // An identity equation whose solution is all reals RESTRICTED by a domain condition must show
     // that condition in the default text surface (`All real numbers if x > 0`), matching the in-set

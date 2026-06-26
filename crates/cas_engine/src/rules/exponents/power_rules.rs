@@ -2,6 +2,7 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::Context;
+use cas_ast::Expr;
 use cas_ast::ExprId;
 
 fn format_power_eval_static_desc(
@@ -198,6 +199,62 @@ fn power_power_nonnegative_proof_with_witness(
     )
 }
 
+/// Split `(base^a)^b` into `(base, a, b)`.
+fn power_power_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId, ExprId)> {
+    if let Expr::Pow(inner, b) = ctx.get(expr) {
+        let (inner, b) = (*inner, *b);
+        if let Expr::Pow(base, a) = ctx.get(inner) {
+            return Some((*base, *a, b));
+        }
+    }
+    None
+}
+
+fn is_number_const(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(_))
+}
+
+/// Decide the `(x^a)^b → x^(a·b)` (`MultiplyExponents`) rewrite, threading the base's sign domain.
+///
+/// When both exponents are CONCRETE rationals the upstream classifier has already split off the
+/// sign-unsafe shapes (`(x^2)^(1/2) -> |x|` via the even-root branch), so what reaches here is
+/// sign-safe and folds unconditionally (`(x^2)^(1/3) -> x^(2/3)`, `(x^4)^(3/2) -> x^6`). The danger is
+/// a SYMBOLIC exponent: `(x^a)^b` can hide an even `a` whose `x^a >= 0` the fold would silently drop
+/// the sign of (`((-3)^2)^(1/2) = 3`, but folding to `(-3)^1 = -3`), and a negative base never
+/// satisfies the identity. So when either exponent is symbolic, gate the fold through the same domain
+/// oracle as the even-root branch: a provably-negative base (or strict mode) declines, an unknown-sign
+/// base folds only under a recorded non-negativity assumption (e.g. `--domain assume`), and a
+/// provably-non-negative base folds unconditionally.
+fn decide_multiply_exponents_rewrite(
+    ctx: &Context,
+    parent_ctx: &crate::parent_context::ParentContext,
+    expr: ExprId,
+    rewritten: ExprId,
+) -> Option<Rewrite> {
+    let unconditional = || Rewrite::new(rewritten).desc("Multiply exponents");
+    let Some((base, a, b)) = power_power_parts(ctx, expr) else {
+        return Some(unconditional());
+    };
+    if is_number_const(ctx, a) && is_number_const(ctx, b) {
+        return Some(unconditional());
+    }
+    let decision = crate::oracle_allows_with_hint(
+        ctx,
+        parent_ctx.domain_mode(),
+        parent_ctx.value_domain(),
+        &crate::Predicate::NonNegative(base),
+        "Power of a Power",
+    );
+    if !decision.allow {
+        return None;
+    }
+    let mut rewrite = unconditional();
+    if decision.assumption.is_some() {
+        rewrite = rewrite.assume(crate::AssumptionEvent::nonnegative(ctx, base));
+    }
+    Some(rewrite)
+}
+
 fn apply_power_power_even_root_action(
     ctx: &Context,
     parent_ctx: &crate::parent_context::ParentContext,
@@ -384,7 +441,7 @@ define_rule!(
             cas_math::root_power_canonical_support::PowerPowerPattern::MultiplyExponents {
                 rewritten,
             } => {
-                return Some(Rewrite::new(rewritten).desc("Multiply exponents"));
+                return decide_multiply_exponents_rewrite(ctx, parent_ctx, expr, rewritten);
             }
         }
     }
