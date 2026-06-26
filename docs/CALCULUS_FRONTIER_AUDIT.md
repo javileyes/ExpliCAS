@@ -1548,8 +1548,9 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   *(graduado 2026-06-26 26d95a805: `union_non_strict_inequality_roots` envuelve el método del backend;
   para `Leq|Geq` re-resuelve la ecuación `lhs=rhs` (excluye polos, filtra extrañas) y une sus raíces discretas
   → los 10 incluyen el punto. Estricto intacto; polos NO añadidos. Test
-  `cli_contract_tests::test_eval_nonstrict_inequality_includes_isolated_roots`. Residual preexistente: el
-  dominio de `ln`/`sqrt` no se intersecta (`ln(x)*(x-2)^2<=0 -> (-inf,1]`).)*
+  `cli_contract_tests::test_eval_nonstrict_inequality_includes_isolated_roots`. [Residual de dominio
+  `ln`/`sqrt` GRADUADO 2026-06-26 PENDIENTE_DOM: `intersect_inequality_with_expression_domain` intersecta el
+  resultado con el dominio implícito del LHS → `ln(x)*(x-2)^2<=0 -> (0,1]∪{2}`.])*
 
 ### R4 — P1 lost-domain: `abs(cuadrático)` no estricto pierde la frontera de igualdad — 4 defectos [GRADUADO]
 - [x] `solve(abs(x^2-2)<=0,x)` → `No solution` (real `{±√2}`; `solve(abs(x^2-2)=0,x)→{±√2}` ✓).
@@ -1591,6 +1592,10 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   racionales del producto se DESCARTA el factor cúbico en vez de dejarlo residual.
   *Hipótesis raíz:* el solver extrae raíces racionales y abandona factores de grado ≥3 sin raíces
   racionales (debería resolver por radicales o devolver residual honesto, no recortar).
+  *(DIFERIDO 2026-06-26: investigado. El cúbico aislado SÍ da `Residual(solve(x³+x²+3=0))` honesto, pero como
+  FACTOR el resultado completo sería `Discrete({0,-1}) ∪ Residual(cúbico)` y `SolutionSet` NO tiene variante
+  mixta Discrete+Residual. Cierre limpio requiere (a) solver cúbico por Cardano [capacidad grande] o (b)
+  extender `SolutionSet` a un set mixto. Fuera de un ciclo de residual; queda abierto.)*
 
 ### R9 — P0 wrong-value: sumatoria finita telescopiada A TRAVÉS de polos en rango — 2 defectos [GRADUADO]
 - [x] `sum(1/((n-3)*(n-4)),n,1,10)` → `-10/21` (real undefined; polos en n=3,4 dentro; `sum(1/(n-3),…)→undefined` ✓).

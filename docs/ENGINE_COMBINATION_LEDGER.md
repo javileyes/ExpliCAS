@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 359 (newest first)
+Active entries: 360 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -124,6 +124,7 @@ Active entries: 359 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_plan_finite_sum_evaluation`:... | P0 wrong-value: suma finita a través de polos -> undefined (R9; 2 defectos)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_local_core`: guarda de... | P1 unsound: relación con lado `undefined` -> No solution (R6 parcial; 2 de 3)
 - 2026-06-26 | `retained` | `crates/cas_solver_core/src/substitution.rs` (`aggregate_back_substitution_so... | P1 lost-domain: `a^(2x)=k` conserva la raíz POSITIVA (R5; 3 defectos)
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_ex... | P1 unsound: inecuación intersecta el DOMINIO de funciones-factor (ln/sqrt); R8 diferido
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15354,3 +15355,44 @@ Active entries: 359 (newest first)
     sobre una rama `Conditional`/`Residual` (aporte sólo condicional); únicamente un superconjunto (`AllReals`)
     las descarta. Próximo: simplificar `ln(c·a^p)/ln(a) -> p+log_a(c)` para que `3^(2x)=27` dé `{3/2}`; y
     extender `provable_sign_vs_zero` a `c·d^(p)` para probar el signo del surd racionalizado.
+
+## 2026-06-26 - P1 unsound: inecuación intersecta el DOMINIO de funciones-factor (ln/sqrt); R8 diferido
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_expression_domain` nuevo;
+    llamado tras `intersect_inequality_with_function_domain` en `solve_local_core`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_inequality_intersects_factor_function_domain`)
+- status:
+  - `retained` (cierra el residual de dominio ln/sqrt de R3/R4; R8 sigue ABIERTO — ver abajo)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES `solve(ln(x)*(x-2)^2<=0,x) -> (-inf,1] U [2,2]` (incluye `x<=0` donde `ln` es indefinido),
+    `solve(ln(x)*(x-2)>=0,x) -> (-inf,1] U [2,inf)`. AHORA `(0,1] U [2,2]`, `(0,1] U [2,inf)`.
+  - MECANISMO: `intersect_inequality_with_function_domain` sólo dispara con LHS = función monótona DESNUDA
+    (`ln(x)`, `sqrt(x)`); cuando la función es un FACTOR (`ln(x)·(x-2)^2`), su dominio de argumento (`x>0`) se
+    perdía y el resultado conservaba la región indefinida. Fix: `intersect_inequality_with_expression_domain`
+    intersecta el resultado de la inecuación con el dominio implícito de TODO el LHS
+    (`infer_implicit_domain`): cada `Positive(arg)`/`NonNegative(arg)`/`LowerBound(arg,c)` se resuelve como
+    `arg {>,>=} {0,c}` y se intersecta. `NonZero` (polos) ya se excluye por la ruta racional.
+  - SOUNDNESS: intersectar con el dominio donde la expresión está DEFINIDA es exacto y sólo PUEDE quitar puntos
+    fuera-de-dominio (nunca añade). Gateado a ops de inecuación + resultados de intervalo; si una condición de
+    dominio no reduce a intervalo limpio, se deja el set sin tocar. Sin ln/sqrt -> dominio vacío -> no-op.
+    Controles INTACTOS: `ln(x)<=0->(0,1]` (desnudo), `sqrt(x)>=2->[4,inf)`, `x^2-1>0`, `(x-1)*(x-3)<=0`,
+    `x^2*(x-1)>=0` (fix R3 intacto).
+  - validación: workspace failed:0 (12354); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; engine-fast verde; test de dominio-factor + controles.
+  - RESIDUAL: `solve(sqrt(x)*(x-4)<=0)` sigue devolviendo residual (el solve subyacente no produce intervalo,
+    así que la intersección no aplica) — preexistente, no de este fix.
+- R8 DIFERIDO (factor cúbico irreducible): `solve(x^4+x^3+3x=0) -> {0}` pierde la raíz real del cúbico
+  `x^3+x^2+3` (irreducible, sin forma cerrada elemental). El cúbico AISLADO ya da un `Residual` honesto, pero
+  como FACTOR el resultado tendría que ser `Discrete({0,-1}) ∪ Residual(cúbico)` y `SolutionSet` NO tiene
+  variante mixta Discrete+Residual. Cierre limpio requiere (a) un solver cúbico (Cardano, capacidad grande) o
+  (b) extender la representación a un set mixto. Fuera de un ciclo de residual.
+- observed:
+  - una restricción de dominio (`ln`,`sqrt`) sólo se intersectaba cuando la función era el LHS desnudo; como
+    FACTOR/subtérmino se perdía. La intersección con el dominio implícito del LHS completo es el patrón general.
+- retained learning:
+  - patrón: el resultado de una inecuación debe intersectarse con el dominio implícito de TODA la expresión
+    (no sólo del LHS desnudo): resolver cada condición de dominio (`arg>0` para ln, `arg>=0` para sqrt) y
+    intersectar. Sólo quita puntos fuera-de-dominio, nunca añade.

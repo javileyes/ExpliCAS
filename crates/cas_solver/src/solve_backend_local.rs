@@ -1863,7 +1863,67 @@ fn solve_local_core(
     // Fold the monotonic-function argument-domain into an inequality result
     // (`sqrt(x)<2 → [0,4)`), which the inversion drops; no-op for equations.
     let set = intersect_inequality_with_function_domain(simplifier, eq, var, set);
+    // Intersect with the implicit real domain of the WHOLE LHS, so a domain-restricted function
+    // appearing as a FACTOR (not the bare LHS) still excludes its undefined region
+    // (`ln(x)·(x−2)² ≤ 0` must be `(0,1]∪{2}`, NOT `(−∞,1]∪{2}` — `ln` is undefined for `x ≤ 0`).
+    let set = intersect_inequality_with_expression_domain(simplifier, eq, var, set);
     Ok((set, steps))
+}
+
+/// Intersect an inequality interval result with the implicit REAL domain of the LHS expression.
+///
+/// [`intersect_inequality_with_function_domain`] only fires for a BARE monotonic LHS
+/// (`√(x)`/`ln(x)`/`log(b,x)`); when such a function is a FACTOR or subterm
+/// (`ln(x)·(x−2)²`, `√x·(x−4)`), its argument-domain (`x > 0`, `x ≥ 0`) was dropped, so the result
+/// wrongly kept the region where the expression is UNDEFINED. This intersects the result with each
+/// `Positive`/`NonNegative`/`LowerBound` condition of `infer_implicit_domain(lhs)` (`NonZero` poles
+/// are already excluded elsewhere). EXACT and EQ-safe: inequality ops only, interval results only,
+/// and it falls back to the unchanged set whenever a domain condition cannot be reduced to a clean
+/// interval (an honest no-worse-than-before).
+fn intersect_inequality_with_expression_domain(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+    set: SolutionSet,
+) -> SolutionSet {
+    use cas_ast::RelOp;
+    use cas_solver_core::solution_set::intersect_solution_sets;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return set;
+    }
+    if !matches!(set, SolutionSet::Continuous(_) | SolutionSet::Union(_)) {
+        return set;
+    }
+    let domain =
+        cas_solver_core::domain_inference::infer_implicit_domain(&simplifier.context, eq.lhs, true);
+    let conds: Vec<ImplicitCondition> = domain.conditions().iter().cloned().collect();
+    let mut result = set;
+    for cond in conds {
+        let (arg, threshold, op) = match cond {
+            ImplicitCondition::Positive(arg) => (arg, None, RelOp::Gt),
+            ImplicitCondition::NonNegative(arg) => (arg, None, RelOp::Geq),
+            ImplicitCondition::LowerBound(arg, c) => (arg, Some(c), RelOp::Geq),
+            // `arg ≠ 0` (pole) is excluded by the rational-inequality path, not a half-line.
+            ImplicitCondition::NonZero(_) => continue,
+        };
+        let rhs = match threshold {
+            Some(c) => simplifier.context.add(Expr::Number(c)),
+            None => simplifier.context.num(0),
+        };
+        let domain_eq = Equation { lhs: arg, rhs, op };
+        if let Ok((
+            d @ (SolutionSet::Continuous(_)
+            | SolutionSet::Union(_)
+            | SolutionSet::Empty
+            | SolutionSet::AllReals),
+            _,
+        )) = crate::solver_entrypoints_solve::solve(&domain_eq, var, simplifier)
+        {
+            result = intersect_solution_sets(&simplifier.context, result, d);
+        }
+    }
+    result
 }
 
 /// Union the dropped boundary roots of a NON-STRICT inequality back into its interval solution.

@@ -1386,6 +1386,33 @@ fn test_eval_numeric_quotient_plain_matches_steps() {
 }
 
 #[test]
+fn test_eval_inequality_intersects_factor_function_domain() {
+    // A domain-restricted function (`ln`, `√`) appearing as a FACTOR (not the bare LHS) must still
+    // exclude its undefined region: `ln(x)·(x−2)² ≤ 0` is `(0,1]∪{2}`, NOT `(−∞,1]∪{2}` (`ln` is
+    // undefined for x ≤ 0). The inequality result is now intersected with the LHS's implicit domain.
+    for (input, expected) in [
+        ("solve(ln(x)*(x-2)^2<=0, x)", "(0, 1] U [2, 2]"),
+        ("solve(ln(x)*(x-2)>=0, x)", "(0, 1] U [2, infinity)"),
+        ("solve(ln(x)*(x-3)<=0, x)", "[1, 3]"),
+        // Bare-function controls (already correct) stay correct.
+        ("solve(ln(x)<=0, x)", "(0, 1]"),
+        ("solve(ln(x)>=0, x)", "[1, infinity)"),
+        ("solve(sqrt(x)>=2, x)", "[4, infinity)"),
+        // No domain restriction -> unchanged.
+        ("solve(x^2-1>0, x)", "(-infinity, -1) U (1, infinity)"),
+        ("solve((x-1)*(x-3)<=0, x)", "[1, 3]"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_even_power_exponential_keeps_positive_root() {
     // `a^(2x) = k` is solved as `(a^x)^2 = k -> a^x = ±√k`. The POSITIVE root gives the real solution
     // `x = log_a(√k)`; the NEGATIVE root `a^x = -√k` is unsatisfiable (a^x > 0). The back-substitution
