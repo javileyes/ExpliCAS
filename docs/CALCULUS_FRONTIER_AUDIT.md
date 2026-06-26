@@ -1549,7 +1549,7 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   para `Leq|Geq` re-resuelve la ecuación `lhs=rhs` (excluye polos, filtra extrañas) y une sus raíces discretas
   → los 10 incluyen el punto. Estricto intacto; polos NO añadidos. Test
   `cli_contract_tests::test_eval_nonstrict_inequality_includes_isolated_roots`. [Residual de dominio
-  `ln`/`sqrt` GRADUADO 2026-06-26 PENDIENTE_DOM: `intersect_inequality_with_expression_domain` intersecta el
+  `ln`/`sqrt` GRADUADO 2026-06-26 655fca17f: `intersect_inequality_with_expression_domain` intersecta el
   resultado con el dominio implícito del LHS → `ln(x)*(x-2)^2<=0 -> (0,1]∪{2}`.])*
 
 ### R4 — P1 lost-domain: `abs(cuadrático)` no estricto pierde la frontera de igualdad — 4 defectos [GRADUADO]
