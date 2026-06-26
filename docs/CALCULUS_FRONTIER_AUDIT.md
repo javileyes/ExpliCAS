@@ -1094,6 +1094,17 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   Diagnóstico corregido: NO faltaba un rationalizador de radicales, faltaba budget. Quedan
   residuales honestos los que requieren factor-over-ℝ: `1/(x⁴+1)` ya cubierto por la sustitución
   simétrica, pero `1/(x⁸−1)`, `1/(x⁶+1)`, `1/(x⁵−1)` (Φ5/√5), `1/(x⁴−4)` (√2) necesitan LRT.)*
+  *(Φ12 GRADUADO 21343d95d 2026-06-26: la familia cuártica par SIMÉTRICA-SURD
+  `c/(x⁴+p·x²+r)` con `s=√r∈ℚ` pero `a=√(2s−p)` IRRACIONAL —el caso que
+  `even_quartic_descent` declina porque `SquarefreeFactor` sólo lleva coeficientes
+  racionales— integra ahora a forma cerrada arctan+log verificada por diferenciación:
+  `1/(x⁴−x²+1)` (√3), `1/(x⁴−3x²+4)` (√7), `1/(x⁴−5x²+9)` (√11) y múltiplos escalares.
+  Probe nuevo `symmetric_surd_even_quartic_antiderivative` (gates exactos BigRational:
+  r cuadrado perfecto, 2s−p positivo NO-cuadrado, ambos factores irreducibles). Barrido
+  adversarial 468 integrandos: 0 violaciones de soundness. Peldaños restantes (siguen
+  necesitando LRT/extensión algebraica acoplada): `1/(x⁶+1)` (grado 6, factor x²+1 acoplado
+  a dos surd), numerador no constante sobre la cuártica par, y los `1/(x³−x−1)`/Φ5 con
+  raíz irracional individual.)*
   *(extensión `factor` even-poly 2026-06-21 bfd669727b629bdbba8340e380e493cc773cd3ae: `factor` parte
   también polinomios PARES REDUCIBLES de grado ≥6 vía t=x²:
   `factor(x⁶+1)→(x²+1)(x⁴-x²+1)`, `factor(x⁶+x⁴+x²+1)→(x²+1)(x⁴+1)`,

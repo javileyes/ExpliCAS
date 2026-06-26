@@ -123,9 +123,14 @@ Phase status (2026-06-10):
   symmetric descent closed x^4+4 and x^4+x^2+1 the same day; the resolvent-cubic
   descent closed non-even quartics 2026-06-11 (conservative
   denominator-nonzero condition pinned: expression-level positivity proving
-  for non-even products is an observe-only candidate); remaining: irreducible
-  denominators (e.g. Phi_5, Phi_12) that require irrational-coefficient
-  quadratics or Lazard-Rioboo-Trager)
+  for non-even products is an observe-only candidate); the symmetric-surd
+  even-quartic probe closed the Phi_12 family `c/(x^4+px^2+r)` with one
+  quadratic surd (s=sqrt(r) rational, a=sqrt(2s-p) irrational:
+  `1/(x^4-x^2+1)`, `1/(x^4-3x^2+4)`) 2026-06-26, differentiation-verified;
+  remaining: irreducible denominators needing a coupled algebraic extension /
+  Lazard-Rioboo-Trager (Phi_5 with sqrt(5), single irrational poles like
+  `1/(x^3-x-1)`, degree-6 `1/(x^6+1)`, non-constant numerators over the surd
+  quartic))
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
 - Phase 6: started 2026-06-11 (didactic elevation; first candidate Hermite positive
   quadratic)

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 377 (newest first)
+Active entries: 378 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -142,6 +142,7 @@ Active entries: 377 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/exponents/power_rules.rs` (`ComplexNegativeBaseR... | SOUNDNESS (Round-5 fix 7/N): rama principal de (-r)^(p/q) en modo complejo (último P0)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_qu... | CAPACIDAD (Round-5 fix 8/N): cuárticas reducibles por factorización en cuadráticas racionales
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_parametric_linear_degene... | SOUNDNESS (Round-5 fix 9/N): rama degenerada a=0 de ecuaciones lineales paramétricas
+- 2026-06-26 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` | CAPACIDAD (gatekeeper integración racional, R1): cuártica par simétrica-surd
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15947,3 +15948,46 @@ Active entries: 377 (newest first)
     cancelación ocurrió, y eso mismo es lo que vuelve sound reconstruir la rama degenerada `coef=0 ⇒ ℝ`.
     Mismo molde POST-residual (gate al final de `solve_local_core`, función `Option<SolutionSet>`) que
     cúbico/bicuadrático/abs/cuártico/inecuaciones; reutiliza `linear_form` + `Conditional`/`ConditionPredicate`.
+
+## 2026-06-26 - CAPACIDAD (gatekeeper integración racional, R1): cuártica par simétrica-surd
+
+- area: `crates/cas_math/src/general_integration_backend/methods.rs`
+  (`symmetric_surd_even_quartic_antiderivative`, probe nuevo en `try_rational_reciprocal_affine_probe`)
+- status: `retained` (commit 21343d95d). Primer sub-ciclo retenible del gatekeeper "integración
+  racional universal" tras el scoping; el resto del gatekeeper (cubos/Φ5 irreducibles, `1/(x^6+1)`,
+  numeradores no constantes) sigue necesitando el core de extensión algebraica (LRT), fuera de un ciclo.
+- capture:
+  - investment_class: north_star_capability (Fase-1, gatekeeper G1 integración racional)
+  - primary_dimension: north_star_capability
+  - hallazgo_scoping: el gatekeeper EDUCATIVO de límites (G2) resultó YA COMPLETO en vivo —narrativa
+    post-hoc en `cas_didactic` (Factoriza/Cancela/Sustituye, 8 técnicas) y polos pares finitos `→±∞`
+    ya implementados. La premisa "límites a ~0% educativo" estaba obsoleta (scout de arquitectura
+    malinterpretó `limits/engine.rs:37 steps=Vec::new()`; el scout de frontera, verificado en binario,
+    tenía razón). No se abre secuencia de narración de límites: no queda sub-ciclo barato ahí.
+  - cell: ANTES `c/(x⁴+p·x²+r)` con `s=√r∈ℚ` pero `a=√(2s−p)` IRRACIONAL devolvía `integrate(...)`
+    sin evaluar (Φ12 ciclotómico: `1/(x⁴−x²+1)` √3, `1/(x⁴−3x²+4)` √7). `even_quartic_descent` lo
+    declina porque `SquarefreeFactor` sólo lleva `BigRational`. AHORA forma cerrada arctan+log
+    verificada: numerador constante ⇒ integrando par ⇒ la fracción parcial colapsa a
+    `F = c·[(1/(4as))(ln q₊ − ln q₋) + (1/(2sD))(arctan((2x+a)/D)+arctan((2x−a)/D))]`, `D=√(2s+p)`.
+  - MECANISMO: probe `Rational` nuevo tras el path general-rational racional. Construye la forma con
+    `build_numeric_radius_expr` (racional si el radicando es cuadrado perfecto, si no `Sqrt`). Gates
+    EXACTOS BigRational: r cuadrado perfecto; a²=2s−p positivo NO-cuadrado (cuadrado ⇒ lo posee
+    `even_quartic_descent`, excluirlo deja esa lane byte-idéntica); a²−4s<0 (ambos factores
+    irreducibles ⇒ D²=2s+p>0, arctan real y logs de argumento estrictamente positivo, sin |·|).
+    El oráculo de diferenciación del backend verifica antes de devolver ⇒ surd mal casado degrada a
+    residual honesto, nunca respuesta incorrecta.
+  - validación: workspace 12411 passed (solo flake perf); clippy `-D warnings --all-targets`; rustfmt;
+    engine-fast; huella guardrail+pressure ESTRUCTURALMENTE IDÉNTICA. Barrido ADVERSARIAL: 468
+    integrandos (12×13 cuárticas pares × 3 escalares), verificación numérica F'≈integrando de TODA
+    salida no-residual → 0 violaciones de soundness; verificación independiente ~1e-11.
+- retained learning:
+  - patrón: cuando un descenso de factorización lleva sólo coeficientes racionales
+    (`SquarefreeFactor: BigRational`), la familia que necesita UN solo surd de grado 2 se cierra con un
+    probe PARALELO de forma cerrada (no extendiendo el struct racional, que cascadearía surds por toda
+    el álgebra lineal de fracciones parciales y rompería la huella). El numerador constante fuerza
+    simetría x→−x ⇒ la fracción parcial tiene forma fija ⇒ una plantilla, no un solver. El oráculo de
+    diferenciación convierte "¿es correcta mi álgebra de surds?" en green-or-residual: la red de
+    seguridad de soundness es estructural, no confianza en la derivación a mano.
+  - frontera de gatekeeper: antes de abrir una secuencia clase-L, VERIFICAR EN VIVO la premisa con el
+    binario. Aquí ahorró abrir una narración de límites ya construida; el scout de arquitectura leyó
+    una capa equivocada. Los scouts son hipótesis (cf. memoria: bisecar/probar antes de creer).
