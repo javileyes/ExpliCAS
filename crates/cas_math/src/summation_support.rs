@@ -405,6 +405,58 @@ fn classify_infinite_product(ctx: &mut Context, call: &FiniteAggregateCall) -> O
 /// 5. Closed form for `sum(k^3, k, 1, n)`.
 /// 6. Closed form for `sum(c, k, 1, n)` when `c` is independent of `k`.
 /// 7. Closed form for `sum(a^k, k, m, n)` when `a` is an integer > 1.
+/// Whether `expr` contains a sub-expression that is exactly `_ / 0` (a vanishing denominator), i.e.
+/// a `Div` whose denominator evaluates to an exact rational `0`, or a `base^(negative)` with `base`
+/// exactly `0` (`= 1 / base^|exp|`). Read-only and exact (`as_rational_const`, no `f64`).
+fn expr_has_vanishing_denominator(ctx: &Context, expr: ExprId) -> bool {
+    use crate::numeric_eval::as_rational_const;
+    use num_traits::Zero;
+    let is_exact_zero =
+        |id: ExprId| -> bool { as_rational_const(ctx, id).is_some_and(|q| q.is_zero()) };
+    match ctx.get(expr) {
+        Expr::Div(num, den) => {
+            is_exact_zero(*den)
+                || expr_has_vanishing_denominator(ctx, *num)
+                || expr_has_vanishing_denominator(ctx, *den)
+        }
+        Expr::Pow(base, exp) => {
+            let neg_exp = matches!(ctx.get(*exp), Expr::Number(n) if n.is_negative());
+            (neg_exp && is_exact_zero(*base))
+                || expr_has_vanishing_denominator(ctx, *base)
+                || expr_has_vanishing_denominator(ctx, *exp)
+        }
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) => {
+            expr_has_vanishing_denominator(ctx, *a) || expr_has_vanishing_denominator(ctx, *b)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_has_vanishing_denominator(ctx, *inner),
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| expr_has_vanishing_denominator(ctx, *arg)),
+        _ => false,
+    }
+}
+
+/// Whether the summand has a pole (vanishing denominator) at some integer in `[start, end]`. Each
+/// integer is substituted for the summation variable and the resulting term is checked for an exact
+/// `_ / 0`. Caller bounds the range so this enumeration stays cheap.
+fn finite_sum_summand_has_pole_in_range(
+    ctx: &mut Context,
+    term: ExprId,
+    var_expr: ExprId,
+    start: i64,
+    end: i64,
+) -> bool {
+    use cas_ast::substitute_expr_by_id;
+    for n in start..=end {
+        let n_expr = ctx.num(n);
+        let term_n = substitute_expr_by_id(ctx, term, var_expr, n_expr);
+        if expr_has_vanishing_denominator(ctx, term_n) {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn try_plan_finite_sum_evaluation(
     ctx: &mut Context,
     expr: ExprId,
@@ -422,6 +474,31 @@ pub fn try_plan_finite_sum_evaluation(
         crate::expr_extract::extract_i64_integer(ctx, call.end_expr),
     ) {
         if start > end {
+            let candidate =
+                build_finite_sum_substitution(ctx, call.term, call.var_expr, start, end);
+            return Some(SumEvaluationPlan {
+                call,
+                candidate,
+                kind: SumEvaluationKind::FiniteDirect { start, end },
+            });
+        }
+    }
+
+    // SOUNDNESS: a finite sum is UNDEFINED when the summand has a POLE (a denominator that
+    // vanishes) at any integer in the range — that term is `1/0`, undefined, and poisons the whole
+    // sum. The closed-form / telescoping builders below compute THROUGH such poles
+    // (`sum(1/((n-3)(n-4)),n,1,10)` telescopes to `-10/21`, but `n=3,4` are poles → `undefined`).
+    // Route a pole-bearing range to the term-by-term `FiniteDirect` path, which builds the explicit
+    // sum whose `1/0` term folds to `undefined` (exactly how the single-factor `sum(1/(n-3),…)`
+    // already resolves). Bounded by `max_span` so a huge range is not enumerated.
+    if let (Some(start), Some(end)) = (
+        crate::expr_extract::extract_i64_integer(ctx, call.start_expr),
+        crate::expr_extract::extract_i64_integer(ctx, call.end_expr),
+    ) {
+        if start <= end
+            && end.saturating_sub(start) <= max_span
+            && finite_sum_summand_has_pole_in_range(ctx, call.term, call.var_expr, start, end)
+        {
             let candidate =
                 build_finite_sum_substitution(ctx, call.term, call.var_expr, start, end);
             return Some(SumEvaluationPlan {

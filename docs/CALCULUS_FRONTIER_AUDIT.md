@@ -1587,11 +1587,15 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   *Hipótesis raíz:* el solver extrae raíces racionales y abandona factores de grado ≥3 sin raíces
   racionales (debería resolver por radicales o devolver residual honesto, no recortar).
 
-### R9 — P0 wrong-value: sumatoria finita telescopiada A TRAVÉS de polos en rango — 2 defectos
-- [ ] `sum(1/((n-3)*(n-4)),n,1,10)` → `-10/21` (real undefined; polos en n=3,4 dentro; `sum(1/(n-3),…)→undefined` ✓).
-- [ ] `sum(1/((n-3)*(n-7)),n,1,10)` → `-359/840` (real undefined; polos en n=3,7 dentro).
-  *Hipótesis raíz:* el camino telescópico/digamma aplica la fórmula cerrada sin verificar que ningún
-  índice entero del rango anule el denominador del sumando.
+### R9 — P0 wrong-value: sumatoria finita telescopiada A TRAVÉS de polos en rango — 2 defectos [GRADUADO]
+- [x] `sum(1/((n-3)*(n-4)),n,1,10)` → `-10/21` (real undefined; polos en n=3,4 dentro; `sum(1/(n-3),…)→undefined` ✓).
+- [x] `sum(1/((n-3)*(n-7)),n,1,10)` → `-359/840` (real undefined; polos en n=3,7 dentro).
+  *(graduado 2026-06-26 PENDIENTE_R9: guarda de polo en `try_plan_finite_sum_evaluation` ANTES de los
+  builders de forma cerrada — `finite_sum_summand_has_pole_in_range` (exacto, `as_rational_const`) detecta un
+  denominador que se anula en un entero del rango y enruta a `FiniteDirect` término-a-término, que pliega el
+  `1/0` a `undefined`. Polo FUERA del rango no afecta (`…,n,5,10 -> 6/7`). Tests
+  `sum_tests::{test_sum_through_pole_is_undefined,test_sum_pole_outside_range_keeps_closed_form}`.
+  Residual: rangos > `max_span` no se enumeran (raro).)*
 
 ### Orden de arreglo recomendado (por ROI y severidad)
 R7 (P0 wrong-value en simplify) → R1 (5 def/1 fix) → R2 (4 def/1 fix) → R3 (10 def/1 fix) → R9 → R5 → R6 → R4 → R8.

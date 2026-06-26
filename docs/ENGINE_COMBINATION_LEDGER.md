@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 356 (newest first)
+Active entries: 357 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound/consistencia: `(∞±finito)/(∞±finito) -> undefined` (aditivo; cierra peldaño C)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_with_ctx_and_options` ... | P1 lost-domain: inecuación NO estricta recupera el cero aislado (R3; 10 defectos)
+- 2026-06-26 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_plan_finite_sum_evaluation`:... | P0 wrong-value: suma finita a través de polos -> undefined (R9; 2 defectos)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15239,3 +15240,42 @@ Active entries: 356 (newest first)
     emite regiones de cambio de signo, unir las raíces de `f=0` (vía el solver de ecuaciones, que ya excluye
     polos) recupera los ceros aislados de multiplicidad par. Gatear SIEMPRE a `Leq|Geq`. Próximo: restringir la
     inecuación al dominio de funciones (`ln`,`sqrt`) — `ln(x)*...<=0` no debe incluir `x<=0`.
+
+## 2026-06-26 - P0 wrong-value: suma finita a través de polos -> undefined (R9; 2 defectos)
+
+- area:
+  - `crates/cas_math/src/summation_support.rs` (`try_plan_finite_sum_evaluation`: guarda de polo antes de
+    los builders de forma cerrada; `expr_has_vanishing_denominator`, `finite_sum_summand_has_pole_in_range`)
+  - `crates/cas_cli/tests/sum_tests.rs` (`test_sum_through_pole_is_undefined`,
+    `test_sum_pole_outside_range_keeps_closed_form`)
+- status:
+  - `retained` (cierra R9 entero)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES `sum(1/((n-3)*(n-4)),n,1,10) -> -10/21`, `sum(1/((n-3)*(n-7)),n,1,10) -> -359/840` (polos en
+    el rango → debe ser undefined). AHORA `undefined`. También `sum((n-3)/((n-3)*(n-4)),…)` (0/0) y
+    `sum(1/(n^2-9),…)` → undefined.
+  - MECANISMO: el sumando tiene un POLO (denominador cero) en un entero del rango → ese término es `1/0`,
+    undefined, y envenena la suma. Los builders de forma cerrada / telescópicos computan A TRAVÉS del polo
+    (telescopan `1/((n-3)(n-4))` a `-10/21`). El caso de un solo factor `sum(1/(n-3),…)` SÍ daba undefined
+    porque cae a la ruta `FiniteDirect` término-a-término (un término es `1/0` que se pliega a undefined). Fix:
+    guarda de polo ANTES de los builders telescópicos: si el sumando tiene denominador que se anula en algún
+    entero de `[start,end]`, enrutar a `FiniteDirect` (que ya detecta el `1/0`). `expr_has_vanishing_denominator`
+    es EXACTO (`as_rational_const`, sin f64): un `Div` con denominador rational-exacto `0`, o `base^(neg)` con
+    `base=0`. Acotado por `max_span` (no enumera rangos enormes).
+  - SOUNDNESS: exacto, sin f64. Un polo FUERA del rango NO bloquea la forma cerrada (`sum(1/((n-3)(n-4)),n,5,10)
+    -> 6/7`, polos 3,4 abajo; `sum(1/((2n-1)(2n+1)),…)` polos semienteros nunca alcanzados). Verificado: 8
+    formas cerradas sin polo en rango INTACTAS.
+  - validación: workspace failed:0 (12351); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; engine-fast verde; tests de polo dentro/fuera de rango.
+  - RESIDUAL: rangos enormes (> max_span) no se chequean término-a-término; un polo ahí escaparía (raro).
+    Mejora futura: raíces enteras del denominador en O(grado) en vez de enumerar el rango.
+- observed:
+  - un builder de forma cerrada (telescópico, Faulhaber, geométrico) asume implícitamente que el sumando está
+    DEFINIDO en todo el rango; si puede tener un polo, hay que chequearlo ANTES de aplicar la forma cerrada y
+    delegar al término-a-término, que ya propaga `1/0 -> undefined`.
+- retained learning:
+  - patrón: una forma cerrada de suma/producto presupone definición en todo el rango. Antes de aplicarla,
+    verificar polos (denominador exacto-cero en un entero del rango) y delegar a la evaluación término-a-término
+    que detecta el `1/0`. Chequeo EXACTO con `as_rational_const`, acotado por `max_span`.

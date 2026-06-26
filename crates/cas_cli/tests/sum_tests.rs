@@ -86,3 +86,32 @@ fn test_sum_telescoping_numeric() {
     let result = parse_and_simplify("sum(1/(k*(k+1)), k, 1, 10)");
     assert_eq!(result, "10/11");
 }
+
+#[test]
+fn test_sum_through_pole_is_undefined() {
+    // A finite sum whose summand has a POLE (zero denominator) at an integer in the range is
+    // UNDEFINED — that term is `1/0`. The telescoping / closed-form builders used to compute
+    // THROUGH the poles (`sum(1/((n-3)(n-4)),n,1,10)` telescopes to `-10/21`), which is wrong.
+    for input in [
+        "sum(1/((n-3)*(n-4)), n, 1, 10)",     // poles at n=3,4 in range
+        "sum(1/((n-3)*(n-7)), n, 1, 10)",     // poles at n=3,7 in range
+        "sum(1/(n-3), n, 1, 10)",             // single pole at n=3
+        "sum((n-3)/((n-3)*(n-4)), n, 1, 10)", // 0/0 at n=3
+        "sum(1/(n^2-9), n, 1, 10)",           // pole at n=3
+    ] {
+        assert_eq!(parse_and_simplify(input), "undefined", "{input}");
+    }
+}
+
+#[test]
+fn test_sum_pole_outside_range_keeps_closed_form() {
+    // A pole OUTSIDE the summation range must NOT block the closed form.
+    for (input, expected) in [
+        ("sum(1/((n-3)*(n-4)), n, 5, 10)", "6/7"), // poles 3,4 below the range
+        ("sum(1/((n+3)*(n+4)), n, 1, 10)", "5/28"), // poles -3,-4 below the range
+        ("sum(1/(n*(n+1)), n, 1, 10)", "10/11"),   // poles 0,-1 below the range
+        ("sum(1/((2*n-1)*(2*n+1)), n, 1, 50)", "50/101"), // half-integer poles, never hit
+    ] {
+        assert_eq!(parse_and_simplify(input), expected, "{input}");
+    }
+}
