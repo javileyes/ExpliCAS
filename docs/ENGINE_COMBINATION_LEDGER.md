@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 372 (newest first)
+Active entries: 373 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -137,6 +137,7 @@ Active entries: 372 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/eval_output_finalize/build/output/build.rs` | SOUNDNESS (Round-5 fix 2/N): inline de condiciones de dominio en "All real numbers"
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/exponents/power_rules.rs` (`decide_multiply_expo... | SOUNDNESS (Round-5 fix 3/N): gate de signo en (x^a)^b -> x^(a·b) simbólico
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_polynomial_inequality_si... | SOUNDNESS (Round-5 fix 4/N): inecuaciones de polinomio irreducible por análisis de signo
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_biquadratic`) | SOUNDNESS/CAPACIDAD (Round-5 fix 5/N): bicuadráticas con raíces surd por z = x²
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15818,3 +15819,26 @@ Active entries: 372 (newest first)
     auto-consistencia (alternancia de signos + extremos vs coef. líder) convierten un set de raíces incompleto en
     un fallback honesto en vez de una respuesta incorrecta. El evaluador numérico debe seguir la MISMA convención
     de dominio (raíz impar real) que el motor simbólico, o las verificaciones numéricas fallan en silencio (NaN).
+
+## 2026-06-26 - SOUNDNESS/CAPACIDAD (Round-5 fix 5/N): bicuadráticas con raíces surd por z = x²
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_biquadratic`)
+- status: `retained` (commit 681890d72; cierra la familia de quárticas bicuadradas con residual circular del
+  audit Round 5; la quártica general `x^4-x-1` sigue residual honesto — Ferrari diferido)
+- capture:
+  - investment_class: soundness (raíces reales PERDIDAS) + capacidad nueva (bicuadrática surd)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `x^4-8x^2+15=0` (raíces ±√3,±√5) filtraba `solve(x-(8x²-15)^(1/4)=0)` circular; el camino normal
+    sólo resolvía bicuadráticas de raíz RACIONAL. AHORA `{√5,-√5,√3,-√3}`; `x^4-2x^2-3 -> {±√3}` (z=-1 cae);
+    `x^4-10x^2+1 -> {√2±√3,...}` (el motor simplifica el radical anidado); z complejo/ambos negativos -> No solution.
+  - MECANISMO: tras el solver cúbico, detecta quártica sin términos impares, resuelve la cuadrática en z=x²
+    (`z=(-b±√(b²-4ac))/(2a)` exacto) y toma `x=±√z` por cada z real ≥0. CADA candidato se VERIFICA por
+    sustitución numérica (`|p(root)|<1e-9·scale`) y se deduplica -> una decisión z≥0 errónea o una raíz perdida
+    nunca emite un valor no sólido.
+  - BONUS: como el resultado ahora es `Discrete`, las INECUACIONES bicuadradas funcionan por la cadena de
+    análisis de signo del ciclo 4: `x^4-8x^2+15>0 -> (-∞,-√5) U (-√3,√3) U (√5,∞)`.
+  - validación: workspace 12404 passed (solo flake perf); clippy `-D warnings`; engine-fast; huella 0 deltas.
+- retained learning:
+  - patrón: una capacidad de forma cerrada que produce un `Discrete` desbloquea AUTOMÁTICAMENTE las inecuaciones
+    correspondientes vía el análisis de signo POST-solución (composición de fixes). La verificación numérica por
+    sustitución (drop-si-no-verifica) es la red de seguridad estándar para raíces construidas por radicales.

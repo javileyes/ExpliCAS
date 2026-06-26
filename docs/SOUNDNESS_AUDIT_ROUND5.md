@@ -175,6 +175,8 @@ Fronts probed hard and confirmed clean (no wrong values, no spurious/missed root
 
 - **FIXED (commit 55db6a296): irreducible-polynomial inequality cluster** (P0×3) — `x^3+x+1>0` / `x^3-3x+1>0` now do sign analysis over the closed-form roots (operator-sensitive interval unions) instead of dropping the operator and returning the root set. (Quartic `x^4-x-1>0` deferred — needs Ferrari roots.)
 
+- **FIXED (commit 681890d72): biquadratic surd-root family** (P1) — `x^4-8x^2+15=0` etc. now solved by the `z=x^2` substitution (`{±√3,±√5}`), unlocking biquadratic inequalities too. General quartics (`x^4-x-1`) still deferred (Ferrari).
+
 ## 5. Prioritized Fix Order
 
 1. **Inequality operator-drop on irreducible polynomials (P0×3 + 2 P1 dumps).** Highest blast radius: silent wrong-kind result with `ok:true`, plus the dishonest `Solve: …=0` dumps. Fix the inequality path so the comparison operator is never rewritten to `Equal`; do sign analysis over the (closed-form) real roots and return interval unions. One fix retires `x^3+x+1>0/<0`, `x^3-3x+1>0/<0`, `sqrt(x-1)+sqrt(x-2)<3`, `x^4-x-1>0`.
