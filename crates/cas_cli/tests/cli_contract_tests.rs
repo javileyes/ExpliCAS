@@ -1617,6 +1617,37 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_diff_cancelling_bounded_inverse_keeps_domain_condition() {
+    // `diff(2·arcsin(x)+2·arccos(x)) → 0` silently dropped the `-1<x<1` differentiability
+    // interval when the derivative cancelled (the condition vanished with the √(1-x²) radical).
+    // The differand is now walked for bounded-inverse subterms, re-emitting each one's OPEN
+    // derivative-domain condition even on cancellation.
+    let cond = |input: &str| -> Vec<String> {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["required_display"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    assert!(cond("diff(2*arcsin(x)+2*arccos(x), x)").contains(&"-1 < x < 1".to_string()));
+    assert!(cond("diff(arccosh(x)-arccosh(x), x)").contains(&"x > 1".to_string()));
+    assert!(cond("diff(arctanh(x)-arctanh(x), x)").contains(&"-1 < x < 1".to_string()));
+    // Non-cancelling stays exactly one condition (no duplicate from the new walker).
+    assert_eq!(cond("diff(arcsin(x), x)"), vec!["-1 < x < 1".to_string()]);
+    // All-real derivative domains gain no spurious condition; plain (non-diff) is untouched.
+    assert!(cond("diff(arctan(x)-arctan(x), x)").is_empty());
+    assert_eq!(cond("arcsin(x)-arcsin(x)"), vec!["-1 ≤ x ≤ 1".to_string()]);
+}
+
+#[test]
 fn test_eval_symmetric_surd_even_quartic_integral_verifies() {
     // `c / (x^4 + p·x^2 + r)` whose even quartic factors over ℝ into the symmetric SURD pair
     // `(x²+a·x+s)(x²−a·x+s)` with `s=√r ∈ ℚ` but `a=√(2s−p)` irrational was an unevaluated residual

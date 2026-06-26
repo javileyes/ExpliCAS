@@ -2698,6 +2698,104 @@ fn reciprocal_trig_domain_conditions(
     conditions
 }
 
+/// True when a differentiation RESULT has COLLAPSED to a constant in the
+/// differentiation variable AND is genuinely finite. Only then does
+/// [`bounded_inverse_derivative_domain_conditions`] re-supply the dropped
+/// interval: a result that still mentions the variable carries (and compacts)
+/// its own domain conditions through the surviving-derivative path — e.g.
+/// `diff(arcsec(√(x²+1))) = x/((x²+1)·|x|)`, whose only real condition is the
+/// compacted `x ≠ 0`, not a raw `√(x²+1)² − 1 > 0` — and an `undefined`/
+/// `infinity` result already encodes an empty / degenerate derivative domain
+/// that must not gain a (possibly impossible) positivity condition.
+fn diff_result_collapsed_to_constant(ctx: &cas_ast::Context, result: ExprId, var: &str) -> bool {
+    if cas_math::expr_predicates::contains_named_var(ctx, result, var) {
+        return false;
+    }
+    !matches!(
+        ctx.get(result),
+        cas_ast::Expr::Constant(cas_ast::Constant::Undefined | cas_ast::Constant::Infinity)
+    )
+}
+
+/// SOUNDNESS companion to [`reciprocal_trig_domain_conditions`] for the
+/// BOUNDED-INVERSE family. `d/dx` of `arcsin`/`arccos`/`arccosh`/`arcsec`/
+/// `arccsc`/`arctanh` is valid only on the function's OPEN differentiability
+/// interval, and the surviving-derivative path attaches that as a
+/// `Positive(radicand)` condition (`arcsin' = 1/√(1−u²) ⇒ 1−u² > 0`). When the
+/// derivative CANCELS — `2·arcsin(x) + 2·arccos(x) → π`, whose derivative
+/// `2/√(1−x²) − 2/√(1−x²) → 0` drops the radical entirely — that condition
+/// vanishes with the radical, so `diff(2·arcsin(x)+2·arccos(x))` silently
+/// returned a bare `0` (true only on `−1 < x < 1`). Gated on
+/// [`diff_result_collapsed_to_constant`] so it fires ONLY on that cancellation;
+/// when the radical survives, the existing (compacting) path owns the condition.
+fn bounded_inverse_derivative_domain_conditions(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    use cas_ast::{BuiltinFn, Expr};
+    let mut conditions = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut stack = vec![expr];
+    while let Some(e) = stack.pop() {
+        if !seen.insert(e) {
+            continue;
+        }
+        match ctx.get(e).clone() {
+            Expr::Function(fn_id, args) if args.len() == 1 => {
+                let arg = args[0];
+                if !matches!(ctx.get(arg), Expr::Number(_)) {
+                    let one = ctx.num(1);
+                    let radicand = match ctx.builtin_of(fn_id) {
+                        // arcsin'/arccos' = ±1/√(1−u²); arctanh' = 1/(1−u²): need 1 − u² > 0.
+                        Some(
+                            BuiltinFn::Asin
+                            | BuiltinFn::Arcsin
+                            | BuiltinFn::Acos
+                            | BuiltinFn::Arccos
+                            | BuiltinFn::Atanh,
+                        ) => {
+                            let two = ctx.num(2);
+                            let square = ctx.add(Expr::Pow(arg, two));
+                            Some(ctx.add(Expr::Sub(one, square)))
+                        }
+                        // arccosh' = 1/(√(u−1)·√(u+1)): need u − 1 > 0.
+                        Some(BuiltinFn::Acosh) => Some(ctx.add(Expr::Sub(arg, one))),
+                        // arcsec'/arccsc' = ±1/(|u|·√(u²−1)): need u² − 1 > 0.
+                        Some(
+                            BuiltinFn::Asec
+                            | BuiltinFn::Arcsec
+                            | BuiltinFn::Acsc
+                            | BuiltinFn::Arccsc,
+                        ) => {
+                            let two = ctx.num(2);
+                            let square = ctx.add(Expr::Pow(arg, two));
+                            Some(ctx.add(Expr::Sub(square, one)))
+                        }
+                        _ => None,
+                    };
+                    if let Some(radicand) = radicand {
+                        conditions.push(crate::ImplicitCondition::Positive(radicand));
+                    }
+                }
+                stack.push(arg);
+            }
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(a);
+                stack.push(b);
+            }
+            Expr::Neg(inner) => stack.push(inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            _ => {}
+        }
+    }
+    conditions
+}
+
 fn presimplified_calculus_residual_step_local(
     ctx: &mut cas_ast::Context,
     source: ExprId,
@@ -5464,6 +5562,17 @@ impl Engine {
                         rewrite_required.push(cond);
                     }
                 }
+                if diff_result_collapsed_to_constant(&self.simplifier.context, res, &call.var_name)
+                {
+                    for cond in bounded_inverse_derivative_domain_conditions(
+                        &mut self.simplifier.context,
+                        target,
+                    ) {
+                        if !rewrite_required.contains(&cond) {
+                            rewrite_required.push(cond);
+                        }
+                    }
+                }
             }
 
             let input_domain = infer_implicit_domain(
@@ -6107,6 +6216,70 @@ mod tests {
                 .any(|condition| condition == "2 - cot(x) ≠ 0"),
             "expected source-oriented shifted pole guard, got {required_display:?}"
         );
+    }
+
+    #[test]
+    fn diff_cancelling_bounded_inverse_keeps_derivative_domain_condition() {
+        // A derivative that CANCELS to a constant must still carry the bounded-inverse
+        // differentiability interval (the canonical Cluster-E soundness gap):
+        // `diff(2*arcsin(x)+2*arccos(x)) -> 0` is true only on `-1 < x < 1`. Each family
+        // re-emits its OPEN derivative-domain condition; arctan/arcsinh (all-real
+        // derivative domain) stay condition-free, and the non-cancelling case dedupes.
+        let cases: &[(&str, &str, Option<&str>)] = &[
+            ("diff(2*arcsin(x)+2*arccos(x), x)", "0", Some("-1 < x < 1")),
+            ("diff(arccosh(x)-arccosh(x), x)", "0", Some("x > 1")),
+            ("diff(arcsec(x)-arcsec(x), x)", "0", Some("x < -1 or x > 1")),
+            ("diff(arctanh(x)-arctanh(x), x)", "0", Some("-1 < x < 1")),
+            // All-real derivative domains: no spurious condition.
+            ("diff(arctan(x)-arctan(x), x)", "0", None),
+            ("diff(arcsinh(x)-arcsinh(x), x)", "0", None),
+        ];
+        for (expr_text, expected_result, expected_condition) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("{expr_text}: expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                *expected_result,
+                "{expr_text}: result"
+            );
+            let required_display = crate::render_conditions_normalized(
+                &mut engine.simplifier.context,
+                &output.required_conditions,
+            );
+            match expected_condition {
+                Some(cond) => {
+                    assert!(
+                        required_display.iter().any(|c| c == cond),
+                        "{expr_text}: expected condition {cond:?}, got {required_display:?}"
+                    );
+                }
+                None => assert!(
+                    required_display.is_empty(),
+                    "{expr_text}: expected no condition, got {required_display:?}"
+                ),
+            }
+        }
     }
 
     #[test]
