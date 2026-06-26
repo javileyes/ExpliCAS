@@ -1579,10 +1579,12 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   Control: `solve(x=sqrt(-4),x)`, `solve(2^x=-8,x)`, `solve(x^2=-1,x)` → `No solution` ✓.
   *(2 de 3 graduado 2026-06-26 5fdebc980: `solve_local_core` cortocircuita a `No solution` cuando un lado
   simplifica a `Constant::Undefined` (`ln(-2)`, `ln(-1)`, `1/0` en reales) → mata el `AllReals if undefined=0`.
-  Test `cli_contract_tests::test_eval_equation_with_undefined_side_has_no_solution`. RESIDUAL (defecto 3):
-  `solve(ln(x)=sqrt(-1))` → `e^i` — `sqrt(-1)=(-1)^(1/2)` NO es `undefined` sino simbólico no-real; la inversión
-  de `ln` (`x=e^RHS`) no propaga la realidad del RHS. El control directo `x=sqrt(-1)→No solution` SÍ rechaza.
-  Peldaño: propagar realidad del RHS a través de inversiones transcendentales.)*
+  Test `cli_contract_tests::test_eval_equation_with_undefined_side_has_no_solution`.
+  DEFECTO 3 GRADUADO 2026-06-26 cb03466ef: `drop_non_real_discrete_solutions` descarta en RealOnly las
+  soluciones discretas no-reales (`expr_contains_imaginary`: `i`, `√(neg)`, raíz PAR de un negativo
+  `(-1)^(1/2)`) tras resolver → `solve(ln(x)=sqrt(-1))`, `solve(x=i)`, `solve(x=e^(sqrt(-1)))` = `No solution`;
+  raíz IMPAR de negativo (`(-8)^(1/3)=-2`) se conserva. Modo complejo intacto. Test
+  `cli_contract_tests::test_eval_non_real_solution_rejected_in_real_domain`.)*
 
 ### R8 — P2 lost-domain: factor cúbico irreducible abandonado en `solve` polinómico — 3 defectos
 - [ ] `solve(x^4+x^3+3*x=0,x)` → `{0}` (falta la raíz real ≈ -1.8637 de `x³+x²+3`).
