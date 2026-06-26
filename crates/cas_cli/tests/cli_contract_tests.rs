@@ -1386,6 +1386,53 @@ fn test_eval_numeric_quotient_plain_matches_steps() {
 }
 
 #[test]
+fn test_eval_even_power_exponential_keeps_positive_root() {
+    // `a^(2x) = k` is solved as `(a^x)^2 = k -> a^x = ±√k`. The POSITIVE root gives the real solution
+    // `x = log_a(√k)`; the NEGATIVE root `a^x = -√k` is unsatisfiable (a^x > 0). The back-substitution
+    // aggregator used to let the negative root's guarded (false) conditional OVERWRITE the real
+    // solution, returning the empty `{…} if -√k > 0`. Discrete solutions now survive a sibling
+    // conditional branch.
+    // Cases with a clean closed form:
+    for (input, expected) in [
+        ("solve(2^(2*x)=2, x)", "{ 1/2 }"),
+        ("solve(e^(2*x)=5, x)", "{ 1/2·ln(5) }"),
+        // Unchanged controls (clean even powers / direct log / negative or zero RHS):
+        ("solve(3^(2*x)=9, x)", "{ 1 }"),
+        ("solve(3^(2*x)=81, x)", "{ 2 }"),
+        ("solve(3^(2*x)=16, x)", "{ ln(4) / ln(3) }"),
+        ("solve(e^(2*x)=-5, x)", "No solution"),
+        ("solve(3^(2*x)=0, x)", "No solution"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+    // Cases whose value is correct but not fully simplified (e.g. `3^(2x)=27` is `3/2`): assert they
+    // return a single real solution rather than the old empty `{…} if -√k > 0` conditional.
+    for input in [
+        "solve(3^(2*x)=27, x)",
+        "solve(2^(2*x)=8, x)",
+        "solve(5^(2*x)=125, x)",
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        let result = wire["result"].as_str().unwrap_or("");
+        assert!(
+            result.starts_with("{ ") && !result.contains("if") && !result.contains("No solution"),
+            "{input} -> {result}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_equation_with_undefined_side_has_no_solution() {
     // A relation with an `undefined` side has NO real solution — nothing equals/compares to
     // `undefined`. In RealOnly, `ln(-2)` / `ln(-1)` / `1/0` simplify to `undefined`, so these are

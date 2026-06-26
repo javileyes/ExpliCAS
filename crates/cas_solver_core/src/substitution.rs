@@ -421,6 +421,7 @@ pub fn aggregate_back_substitution_solutions<S>(
 ) -> Result<Vec<ExprId>, SolutionSet> {
     let mut final_solutions = Vec::new();
     let mut non_discrete_solution: Option<SolutionSet> = None;
+    let mut saw_all_reals = false;
 
     for (x_sol, mut x_steps) in solved {
         steps.append(&mut x_steps);
@@ -432,6 +433,10 @@ pub fn aggregate_back_substitution_solutions<S>(
                 // Valid branch elimination (e.g. base^x = 0 with positive base).
                 // Keep scanning other branches for actual solutions.
             }
+            SolutionSet::AllReals => {
+                // `AllReals` subsumes every other branch (including discrete ones), so it wins.
+                saw_all_reals = true;
+            }
             other => {
                 if non_discrete_solution.is_none() {
                     non_discrete_solution = Some(other);
@@ -440,6 +445,17 @@ pub fn aggregate_back_substitution_solutions<S>(
         }
     }
 
+    if saw_all_reals {
+        return Err(SolutionSet::AllReals);
+    }
+    // A guarded `Conditional`/`Residual` branch must NOT discard the DEFINITE discrete solutions of a
+    // sibling branch — it only *conditionally* contributes. Solving `a^(2x)=k` as `a^x = ±√k` yields a
+    // real `x = log_a(√k)` on the POSITIVE root and a guarded, unsatisfiable conditional
+    // (`a^x = −√k`, i.e. `{…} if −√k > 0`) on the NEGATIVE root; the real solution must survive instead
+    // of being overwritten by the (false-guarded) conditional. Discrete solutions thus take priority.
+    if !final_solutions.is_empty() {
+        return Ok(final_solutions);
+    }
     if let Some(solution_set) = non_discrete_solution {
         Err(solution_set)
     } else {

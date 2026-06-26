@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 358 (newest first)
+Active entries: 359 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -123,6 +123,7 @@ Active entries: 358 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_with_ctx_and_options` ... | P1 lost-domain: inecuación NO estricta recupera el cero aislado (R3; 10 defectos)
 - 2026-06-26 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_plan_finite_sum_evaluation`:... | P0 wrong-value: suma finita a través de polos -> undefined (R9; 2 defectos)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_local_core`: guarda de... | P1 unsound: relación con lado `undefined` -> No solution (R6 parcial; 2 de 3)
+- 2026-06-26 | `retained` | `crates/cas_solver_core/src/substitution.rs` (`aggregate_back_substitution_so... | P1 lost-domain: `a^(2x)=k` conserva la raíz POSITIVA (R5; 3 defectos)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15314,3 +15315,42 @@ Active entries: 358 (newest first)
   - patrón: antes de aislar, si un lado de la relación es `undefined` (p.ej. `ln(neg)`, `1/0` en reales) ->
     `No solution`. Reutilizar la simplificación ya hecha de ambos lados. Próximo peldaño R6: propagar la
     realidad del RHS a través de inversiones transcendentales (`ln(x)=sqrt(-1)` debe ser `No solution` en real).
+
+## 2026-06-26 - P1 lost-domain: `a^(2x)=k` conserva la raíz POSITIVA (R5; 3 defectos)
+
+- area:
+  - `crates/cas_solver_core/src/substitution.rs` (`aggregate_back_substitution_solutions`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_even_power_exponential_keeps_positive_root`)
+- status:
+  - `retained` (cierra R5; residual cosmético: forma log no simplificada a `3/2`)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES `solve(3^(2*x)=27,x) -> "{ log(3,-9·3^(-1/2)) } if -9·3^(-1/2) > 0"` = ∅ (real `{3/2}`),
+    igual `e^(2*x)=5`, `2^(2*x)=2`. AHORA devuelven la solución real (`{ln(9·3^(-1/2))/ln(3)}`=3/2,
+    `{1/2·ln(5)}`, `{1/2}`).
+  - MECANISMO: `a^(2x)=k` se resuelve como `(a^x)^2=k -> a^x=±√k`. La raíz POSITIVA da `x=log_a(√k)`
+    (Discrete real); la NEGATIVA `a^x=-√k` es insatisfacible (`a^x>0`). PERO `-√k` se renderiza
+    `-9·3^(-1/2)` (=-√27 racionalizado), forma que `provable_sign_vs_zero` (parser linear-surd `a+b√n`) NO
+    prueba negativa, así que esa rama queda como un `Conditional` guardado (`{…} if -√k>0`) en vez de `Empty`.
+    `aggregate_back_substitution_solutions` priorizaba el `Conditional` sobre las soluciones discretas,
+    DESCARTANDO `{3/2}`. Fix: el agregador conserva las soluciones DISCRETAS definidas frente a una rama
+    `Conditional`/`Residual` guardada (que sólo aporta condicionalmente, y aquí con guarda falsa); sólo
+    `AllReals` (que subsume) gana. Usado SÓLO por la estrategia de sustitución exponencial.
+  - SOUNDNESS: `AllReals` sigue ganando (subsume las discretas). Una rama `Empty` se sigue descartando. La rama
+    `Conditional` de `a^x=-√k` tiene guarda `-√k>0` FALSA (no aporta), así que conservar las discretas es
+    correcto. Controles INTACTOS: `3^(2*x)=9->{1}`, `3^(2*x)=81->{2}`, `3^x=27->{3}`, `2^x=-8->No solution`,
+    `e^(2*x)=-5->No solution`, `x^2=27->{±√27}` (ambas raíces reales).
+  - validación: workspace failed:0 (12353); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; engine-fast verde; test de raíz-positiva + controles.
+  - RESIDUAL cosmético: `3^(2*x)=27 -> {ln(9·3^(-1/2))/ln(3)}` (correcto, = 3/2) no se simplifica a `3/2` (la
+    forma `ln(c·a^p)/ln(a)` no colapsa). Valor correcto; sólo presentación.
+- observed:
+  - al agregar ramas de un caso ±, una rama no-discreta (`Conditional` guardado) NO debe sobrescribir las
+    soluciones DISCRETAS definidas de otra rama; sólo un conjunto que las SUBSUME (`AllReals`) debe ganar. La
+    raíz de un signo no probado (`-√27` como `-9·3^(-1/2)`) genera el guard falso que enmascaraba la solución.
+- retained learning:
+  - patrón: en una agregación de soluciones por ramas (±, casos), las DISCRETAS definidas tienen prioridad
+    sobre una rama `Conditional`/`Residual` (aporte sólo condicional); únicamente un superconjunto (`AllReals`)
+    las descarta. Próximo: simplificar `ln(c·a^p)/ln(a) -> p+log_a(c)` para que `3^(2x)=27` dé `{3/2}`; y
+    extender `provable_sign_vs_zero` a `c·d^(p)` para probar el signo del surd racionalizado.

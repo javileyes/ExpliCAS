@@ -1561,12 +1561,15 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   `abs(x^2-2)<=0 -> {±√2}`, `abs(x^2-2)>=2 -> (-∞,-2]∪[0,0]∪[2,∞)`. Cosmético: el equation-solver de abs no
   dedup-a la raíz doble (`abs(x^2-2)=2 -> {2,-2,0,0}`); la unión SÍ dedup-a en la inecuación.)*
 
-### R5 — P1 lost-domain: `a^(2x)=k` toma la rama NEGATIVA de la raíz → conjunto vacío — 3 defectos
-- [ ] `solve(3^(2*x)=27,x)` → `{ log(3,-9·3^(-1/2)) } if -9·3^(-1/2)>0` = ∅ (real `{3/2}`; `9^x=27→{3/2}` ✓).
-- [ ] `solve(e^(2*x)=5,x)` → `{ ln(-5·5^(-1/2)) } if …>0` = ∅ (real `{ln(5)/2}`). Igual exp(2x)=10, 2^(2x)=8, etc.
-- [ ] `solve(2^(2*x)=2,x)` → ∅ (real `{1/2}`).
-  *Hipótesis raíz:* al deshacer `u²=k` con `u=base^x`, el solver elige la rama negativa y descarta la
-  positiva. Mirar la sustitución `u=a^x` y la elección de signo de la raíz.
+### R5 — P1 lost-domain: `a^(2x)=k` toma la rama NEGATIVA de la raíz → conjunto vacío — 3 defectos [GRADUADO]
+- [x] `solve(3^(2*x)=27,x)` → `{ log(3,-9·3^(-1/2)) } if -9·3^(-1/2)>0` = ∅ (real `{3/2}`; `9^x=27→{3/2}` ✓).
+- [x] `solve(e^(2*x)=5,x)` → `{ ln(-5·5^(-1/2)) } if …>0` = ∅ (real `{ln(5)/2}`). Igual exp(2x)=10, 2^(2x)=8, etc.
+- [x] `solve(2^(2*x)=2,x)` → ∅ (real `{1/2}`).
+  *(graduado 2026-06-26 PENDIENTE_R5: `aggregate_back_substitution_solutions` conserva las soluciones
+  DISCRETAS definidas (raíz positiva `a^x=+√k` → `x=log_a(√k)`) frente a la rama `Conditional` guardada y
+  falsa de la raíz negativa (`a^x=-√k`, `-√k` como `-9·3^(-1/2)` no se prueba negativa). Sólo `AllReals`
+  subsume. Test `cli_contract_tests::test_eval_even_power_exponential_keeps_positive_root`. Residual cosmético:
+  `3^(2x)=27 -> {ln(9·3^(-1/2))/ln(3)}` correcto (=3/2) pero sin simplificar.)*
 
 ### R6 — P1 unsound: RHS no-real (`ln(-2)`, `sqrt(-1)`) no se rechaza en modo real → "todos los reales"/complejo — 3 defectos [2/3 GRADUADO]
 - [x] `solve(ln(x)=ln(-2),x)` → `All real numbers if undefined = 0` (real ∅).
