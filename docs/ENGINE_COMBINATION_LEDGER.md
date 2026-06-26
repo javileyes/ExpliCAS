@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 369 (newest first)
+Active entries: 370 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -134,6 +134,7 @@ Active entries: 369 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`build_cubic_real_roots` — antes | CAPACIDAD: casus irreducibilis (cúbico Δ<0, tres raíces reales) por forma trigonométrica
 - 2026-06-26 | `retained` | `crates/cas_formatter/src/display/expr.rs` (`DisplayExpr` caso Pow) | SOUNDNESS (honestidad de display): base racional bajo potencia pierde paréntesis
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixShapeGuardRule`), | SOUNDNESS (Round-5 fix 1/N): gate de forma en operaciones de matrices
+- 2026-06-26 | `retained` | `crates/cas_solver/src/eval_output_finalize/build/output/build.rs` | SOUNDNESS (Round-5 fix 2/N): inline de condiciones de dominio en "All real numbers"
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15738,3 +15739,26 @@ Active entries: 369 (newest first)
     entrada queda como residual echoed con `ok:true` (deshonesto). El fix sound no es "evaluar" sino una guard
     de PRECONDICIÓN que enruta lo no-conforme al centinela `undefined` existente — separa "no soportado todavía"
     (residual honesto) de "no tiene valor" (undefined).
+
+## 2026-06-26 - SOUNDNESS (Round-5 fix 2/N): inline de condiciones de dominio en "All real numbers"
+
+- area: `crates/cas_solver/src/eval_output_finalize/build/output/build.rs`
+  (`inline_all_reals_required_conditions`)
+- status: `retained` (commit 76a7b1062; cierra el cluster de texto-suelta-condición del audit Round 5)
+- capture:
+  - investment_class: soundness/honestidad (respuesta de TEXTO por defecto deshonesta)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `solve(ln(x^2)=2·ln(x))` imprimía `All real numbers` en texto (la condición `x>0` sólo en el
+    wire JSON), aunque la solución real es `ℝ ∩ {x>0}`; idem `2·ln(x)=ln(x^2)`, `ln(2·x)=ln(x)+ln(2)`,
+    `e^(ln(x))=x`, `sqrt(x)^2=x`, `ln(x^2)=2·ln(|x|)`. AHORA `All real numbers if x > 0` (texto y LaTeX cases),
+    igual que el convenio de un `Conditional` in-set (`1/x=1/x`).
+  - MECANISMO: en `build_eval_output` (donde el texto del resultado y `required_display` se encuentran), si el
+    resultado es EXACTAMENTE `All real numbers` y hay condiciones, se reescriben `result` y `result_latex` a la
+    forma "if <conds>" / `\begin{cases} ℝ & \text{if } … \end{cases}`. Scope por string exacto: no re-renderiza
+    un set ya condicional, no toca un identity incondicional (`0·x=0`), ni los MUCHOS resultados de `simplify`
+    cuyo `required_display` es JSON-only por diseño (`sqrt(x)·sqrt(x) → x`).
+  - validación: workspace 12401 passed (solo flake perf); clippy `-D warnings`; huella guardrail+pressure 0 deltas.
+- retained learning:
+  - patrón: cuando una condición de dominio vive en un canal lateral (`required_display`) que alimenta el JSON
+    pero no el texto, el texto por defecto MIENTE. El fix se hace donde ambos canales se encuentran (finalize),
+    NO con un append general (rompería el diseño JSON-only de simplify) sino SCOPED al caso exacto del defecto.
