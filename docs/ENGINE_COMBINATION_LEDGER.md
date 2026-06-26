@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 364 (newest first)
+Active entries: 365 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -129,6 +129,7 @@ Active entries: 364 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_engine/src/orchestrator.rs` (`is_symbolic_atom` excluye `Infinity... | P2 consistencia: `finito + ∞ -> ∞` también en modo plain (divergencia de absorción)
 - 2026-06-26 | `retained` | `crates/cas_math/src/summation_support.rs` (reubica el doc-comment de `try_pl... | Limpieza: doc-comment huérfano (deuda clippy `-D warnings` de R9); residual `(2*x)/(5*x)` diferido
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/algebra/mod.rs` (`try_exact_common_factor_mul_fr... | P2 consistencia: cancelación MULTI-factor reduce del todo (`(2xy)/(5xy)->2/5`)
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_cubic_by_cardano`;... | CAPACIDAD: solver cúbico por Cardano (caso Δ>0, una raíz real)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15528,3 +15529,44 @@ Active entries: 364 (newest first)
 - retained learning:
   - patrón: un atajo de cancelación de UN factor debe DECLINAR si el cociente resultante aún comparte factor
     (delegar al pipeline completo) en vez de devolver una forma parcialmente reducida que diverge de `--steps`.
+
+## 2026-06-26 - CAPACIDAD: solver cúbico por Cardano (caso Δ>0, una raíz real)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_cubic_by_cardano`; ruteado tras `solve_inner`
+    cuando el resultado es `Residual`/`Conditional`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_irreducible_cubic_single_real_root_by_cardano`)
+- status:
+  - `retained` (cierra los cúbicos IRREDUCIBLES standalone con UNA raíz real; R8-factor y casus irreducibilis
+    quedan ciclos 2-3)
+- capture:
+  - investment_class: capacidad nueva (Fase 1: real univariable elemental)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `solve(x^3+x^2+3=0,x)` -> `Residual`/`Conditional` honesto (sin forma cerrada);
+    `solve(x^3-2x^2-4x-2=0,x)`, `solve(x^3-x-1=0,x)` (número plástico) igual. AHORA la raíz real EXACTA por
+    radicales: `∛(-q/2+√Δ)+∛(-q/2-√Δ)-B/3`.
+  - MECANISMO: normalizar `ax³+bx²+cx+d` a mónico `x³+Bx²+Cx+D`; deprimir `x=t-B/3` a `t³+pt+q`
+    (`p=C-B²/3`, `q=2B³/27-BC/3+D`); discriminante `Δ=(q/2)²+(p/3)³` EXACTO (BigRational). Si `Δ>0` hay UNA
+    raíz real: `t=∛(-q/2+√Δ)+∛(-q/2-√Δ)`. La ∛ del segundo radicando (negativo) es la ∛ REAL (semántica de
+    potencias real impar del motor; el filtro no-real NO la descarta). Gateado a disparar SÓLO cuando
+    `solve_inner` devolvió `Residual`/`Conditional` (los cúbicos con raíz racional ya dan `Discrete`, no se
+    tocan) y `Polynomial::from_expr` da grado 3 con `Δ>0`. Reusa `quadratic_formula::sqrt_expr`.
+  - SOUNDNESS: Δ exacto (sin f64). Verificación ADVERSARIAL (4 agentes, sustitución numérica): CERO raíces
+    radicales incorrectas (10 re-derivadas, residual <4e-14; coef. líderes 2/3/5 y el shift B/3 correctos);
+    `Δ<0` (casus irreducibilis, 3 raíces reales) DECLINA -> residual honesto (NUNCA inventa una raíz);
+    cúbicos reducibles dan el conjunto completo; SIN regresión no-cúbica (lineal/cuadrática/cuártica/
+    transcendental/inecuación intactas).
+  - validación: workspace failed:0 (12358); clippy `-D warnings` LIMPIO; fmt; huella guardrail(16)+pressure(3)
+    0 deltas; engine-fast verde; test de cúbicos irreducibles + controles racionales.
+  - PELDAÑOS (ciclos 2-3): (a) casus irreducibilis `Δ<0` (3 raíces reales) vía forma trigonométrica
+    `2√(-p/3)·cos((1/3)arccos(...)-2πk/3)`; (b) integrar con factor-peeling (`x^4+x^3+3x=0` aún da sólo `{0}`,
+    pierde la raíz del factor cúbico); (c) `Δ=0` doble-raíz irracional irreducible (raro).
+- observed:
+  - la fórmula de Cardano por radicales reales (∛ de negativo = raíz real impar) da la raíz `Δ>0` EXACTA sin
+    f64; gatear el solver tras un `Residual`/`Conditional` evita pisar los cúbicos con raíz racional (que ya se
+    resuelven limpios) sin necesidad de un test de raíz racional propio.
+- retained learning:
+  - patrón: añadir una capacidad de solución de forma cerrada como ruta POST-`solve_inner` gateada por el tipo
+    de resultado (`Residual`/`Conditional` = "no resuelto") es más limpio que inyectarla en la maquinaria
+    genérica de estrategias; el discriminante EXACTO decide el caso, y el sub-caso no-soportado DECLINA
+    (residual honesto) en vez de inventar. Próximo: forma trig para `Δ<0` y el caso factor.

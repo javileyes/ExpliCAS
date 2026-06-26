@@ -1386,6 +1386,52 @@ fn test_eval_numeric_quotient_plain_matches_steps() {
 }
 
 #[test]
+fn test_eval_irreducible_cubic_single_real_root_by_cardano() {
+    // An irreducible cubic (no rational root) with a SINGLE real root (Cardano Δ > 0) is solved
+    // exactly by radicals instead of leaking a residual. The root is `∛(-q/2+√Δ) + ∛(-q/2-√Δ) - B/3`
+    // (real cube roots). These are numerically verified to satisfy the cubic in the dev probes
+    // (e.g. `x³+x²+3` → −1.8637, `x³-x-1` → the plastic number 1.3247).
+    for input in [
+        "solve(x^3+x^2+3=0, x)",
+        "solve(x^3-2*x^2-4*x-2=0, x)",
+        "solve(x^3+x-1=0, x)",
+        "solve(x^3-x-1=0, x)",
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        let result = wire["result"].as_str().unwrap_or("");
+        // A single discrete real root expressed by radicals: `{ … }`, not a residual `Solve:`/`if`.
+        assert!(
+            result.starts_with("{ ")
+                && result.contains("^(1/3)")
+                && !result.contains("Solve")
+                && !result.contains(" if "),
+            "{input} -> {result}"
+        );
+    }
+    // Rational-root and clean cubics are unaffected (NOT routed to Cardano).
+    for (input, expected) in [
+        ("solve(x^3-1=0, x)", "{ 1 }"),
+        ("solve(x^3-6*x^2+11*x-6=0, x)", "{ 1, 2, 3 }"),
+        ("solve(x^3-2=0, x)", "{ 2^(1/3) }"),
+        ("solve(x^3+3*x^2+3*x+1=0, x)", "{ -1 }"),
+        ("solve(x^3-3*x+2=0, x)", "{ -2, 1 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_multi_factor_cancellation_fully_reduces() {
     // `(2·x·y)/(5·x·y)` shares TWO common factors. The plain-mode one-factor shortcut cancelled only
     // `y`, returning the partially-reduced `2·x / (5·x)` and diverging from `--steps` (which cancels
