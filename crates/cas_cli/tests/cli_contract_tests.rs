@@ -1617,6 +1617,41 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_matrix_eigenvalues_real() {
+    // `eigenvalues(A)` was unimplemented. It now returns the REAL spectrum as the roots of the
+    // characteristic polynomial: rational roots peeled exactly, a deflated quadratic closed by the
+    // quadratic formula. A complex-conjugate pair (negative discriminant) declines to an honest
+    // residual — this is a real-domain engine. Cross-checked against numpy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Rational spectra.
+    assert_eq!(r("eigenvalues([[2,1],[1,2]])"), "[3, 1]");
+    assert_eq!(r("eigenvalues([[1,1],[0,1]])"), "[1, 1]"); // repeated eigenvalue
+    assert_eq!(r("eigenvalues([[5,4,2],[4,5,2],[2,2,2]])"), "[1, 10, 1]");
+    // Rational root peeled, then a surd quadratic factor: 2, 2 ± √2.
+    assert_eq!(
+        r("eigenvalues([[2,-1,0],[-1,2,-1],[0,-1,2]])"),
+        "[2, sqrt(2) + 2, 2 - sqrt(2)]"
+    );
+    // Complex spectrum (rotation) → honest residual in the real domain.
+    assert_eq!(
+        r("eigenvalues([[0,-1],[1,0]])"),
+        "eigenvalues([[0, -1], [1, 0]])"
+    );
+    // Symbolic / non-square → honest residual.
+    assert_eq!(
+        r("eigenvalues([[a,b],[c,d]])"),
+        "eigenvalues([[a, b], [c, d]])"
+    );
+}
+
+#[test]
 fn test_eval_matrix_charpoly() {
     // `charpoly(A) = det(λI − A)` was unimplemented. It now returns the monic characteristic
     // polynomial in `lambda`, for numeric and symbolic matrices, 2×2 and 3×3. (A bounded

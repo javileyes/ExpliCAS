@@ -107,6 +107,10 @@ pub enum MatrixFunctionEval {
         shape: MatrixShape,
         value: ExprId,
     },
+    Eigenvalues {
+        shape: MatrixShape,
+        value: ExprId,
+    },
     Inverse {
         shape: MatrixShape,
         /// `Some(inverse)` for an invertible matrix; `None` when the matrix is provably
@@ -144,6 +148,9 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
                 "charpoly({}×{} matrix) = det(λI − A)",
                 shape.rows, shape.cols
             )
+        }
+        MatrixFunctionEval::Eigenvalues { shape, .. } => {
+            format!("eigenvalues({}×{} matrix)", shape.rows, shape.cols)
         }
         MatrixFunctionEval::Inverse { shape, matrix } => {
             if matrix.is_some() {
@@ -380,6 +387,86 @@ pub fn try_eval_scalar_matrix_mul_expr(
     None
 }
 
+/// Eigenvalues of a NUMERIC square matrix: the roots of `charpoly(A)`, returned
+/// as a 1×n row of values. Reuses the exact rational-root finder and the
+/// quadratic formula (both `cas_solver_core`). Peels every rational eigenvalue
+/// exactly, then closes a degree-1 or degree-2 deflated factor; an irreducible
+/// factor of degree ≥ 3 (needing Cardano/Galois machinery) declines the WHOLE
+/// computation to an honest residual rather than reporting a partial spectrum.
+/// Symbolic matrices decline (the characteristic polynomial is not numeric).
+pub fn try_matrix_eigenvalues(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
+    use cas_solver_core::quadratic_formula::sqrt_expr;
+    use cas_solver_core::rational_roots::{find_rational_roots, rational_to_expr};
+    use num_rational::BigRational;
+
+    if matrix.rows != matrix.cols {
+        return None;
+    }
+    let var = "x";
+    let charpoly = matrix.charpoly(ctx, var)?;
+    let poly = cas_math::polynomial::Polynomial::from_expr(ctx, charpoly, var).ok()?;
+    if poly.degree() == 0 {
+        return None;
+    }
+
+    let (rational_roots, remaining) = find_rational_roots(poly.coeffs.clone(), 4096);
+    let mut eigenvalues: Vec<ExprId> = rational_roots
+        .iter()
+        .map(|r| rational_to_expr(ctx, r))
+        .collect();
+
+    match remaining.len().saturating_sub(1) {
+        0 => {}
+        1 => {
+            // c1·x + c0 = 0 ⇒ x = −c0/c1.
+            let root = -&remaining[0] / &remaining[1];
+            let root_expr = rational_to_expr(ctx, &root);
+            eigenvalues.push(root_expr);
+        }
+        2 => {
+            // c2·x² + c1·x + c0: x = (−c1 ± √(c1² − 4·c2·c0)) / (2·c2).
+            let c0 = remaining[0].clone();
+            let c1 = remaining[1].clone();
+            let c2 = remaining[2].clone();
+            let four = BigRational::from_integer(4.into());
+            let two = BigRational::from_integer(2.into());
+            let discriminant = &c1 * &c1 - &four * &c2 * &c0;
+            // Real-domain engine: a negative discriminant means this factor's eigenvalues are a
+            // complex-conjugate pair (no REAL eigenvalues). Decline the whole spectrum as an honest
+            // residual rather than emit non-real values outside the real-domain scope.
+            if num_traits::Signed::is_negative(&discriminant) {
+                return None;
+            }
+            let neg_c1 = rational_to_expr(ctx, &(-c1));
+            let two_c2 = rational_to_expr(ctx, &(&two * &c2));
+            let disc_expr = rational_to_expr(ctx, &discriminant);
+            let sqrt_disc = sqrt_expr(ctx, disc_expr);
+            let sum = ctx.add(Expr::Add(neg_c1, sqrt_disc));
+            let plus = ctx.add(Expr::Div(sum, two_c2));
+            let diff = ctx.add(Expr::Sub(neg_c1, sqrt_disc));
+            let minus = ctx.add(Expr::Div(diff, two_c2));
+            eigenvalues.push(plus);
+            eigenvalues.push(minus);
+        }
+        _ => return None,
+    }
+
+    if eigenvalues.is_empty() {
+        return None;
+    }
+    let count = eigenvalues.len();
+    Some(
+        ctx.matrix(1, count, eigenvalues.clone())
+            .unwrap_or_else(|_| {
+                ctx.add(Expr::Matrix {
+                    rows: 1,
+                    cols: count,
+                    data: eigenvalues,
+                })
+            }),
+    )
+}
+
 pub fn try_eval_matrix_function_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -418,6 +505,8 @@ pub fn try_eval_matrix_function_expr(
         "charpoly" => matrix
             .charpoly(ctx, "lambda")
             .map(|value| MatrixFunctionEval::CharPoly { shape, value }),
+        "eigenvalues" | "eigvals" | "eig" => try_matrix_eigenvalues(ctx, &matrix)
+            .map(|value| MatrixFunctionEval::Eigenvalues { shape, value }),
         "inverse" | "inv" => match matrix.inverse(ctx)? {
             MatrixInverseOutcome::Inverse(inv) => Some(MatrixFunctionEval::Inverse {
                 shape,
@@ -473,6 +562,14 @@ pub fn try_rewrite_matrix_function_rule_expr(
         }
         MatrixFunctionEval::CharPoly { shape, value } => {
             let desc = format_matrix_function_desc(&MatrixFunctionEval::CharPoly { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+        MatrixFunctionEval::Eigenvalues { shape, value } => {
+            let desc =
+                format_matrix_function_desc(&MatrixFunctionEval::Eigenvalues { shape, value });
             Some(MatrixFunctionRewrite {
                 rewritten: value,
                 desc,

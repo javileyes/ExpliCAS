@@ -79,6 +79,7 @@ const RESERVED_NAMES: &[&str] = &[
     "trace",
     "rank",
     "charpoly",
+    "eigenvalues",
     "inverse",
     "inv",
     "fact",
