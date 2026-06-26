@@ -1,10 +1,47 @@
 use crate::matrix_rule_support::{
     try_eval_matrix_add_expr, try_eval_matrix_mul_expr, try_eval_matrix_sub_expr,
-    try_eval_scalar_matrix_mul_expr, try_rewrite_matrix_function_rule_expr,
-    try_rewrite_matrix_reciprocal_expr, try_rewrite_transpose_product_identity_expr,
+    try_eval_scalar_matrix_mul_expr, try_matrix_shape_mismatch_undefined,
+    try_rewrite_matrix_function_rule_expr, try_rewrite_matrix_reciprocal_expr,
+    try_rewrite_transpose_product_identity_expr,
 };
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, ExprId};
+
+/// Rule that maps a shape-INCOMPATIBLE matrix operation to `undefined`.
+///
+/// `[[1,2],[3,4]] + [[1,2,3],[4,5,6]]`, `M·N` with mismatched inner dimensions, a non-square
+/// `M^2`, and `matrix ± scalar` have no value; without this guard the evaluation rules simply
+/// decline (returning `None`) and the malformed operation is echoed back as if it were a valid
+/// result with `ok:true`. Routing it to the engine's `undefined` sentinel makes the dishonesty
+/// explicit. Runs at high priority so it fires before the (declining) evaluation rules.
+pub struct MatrixShapeGuardRule;
+
+impl SimpleRule for MatrixShapeGuardRule {
+    fn name(&self) -> &'static str {
+        "Matrix Shape Guard"
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(
+            crate::target_kind::TargetKindSet::ADD
+                | crate::target_kind::TargetKindSet::SUB
+                | crate::target_kind::TargetKindSet::MUL
+                | crate::target_kind::TargetKindSet::POW,
+        )
+    }
+
+    fn priority(&self) -> i32 {
+        // Above the matrix evaluation rules and the reciprocal rule (20) so a malformed op
+        // becomes `undefined` before anything else inspects it. Well-formed ops return `None`
+        // here and fall through unchanged.
+        25
+    }
+
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+        let undefined = try_matrix_shape_mismatch_undefined(ctx, expr)?;
+        Some(Rewrite::new(undefined).desc("Incompatible matrix shapes ⇒ undefined"))
+    }
+}
 
 /// Rule to add two matrices
 pub struct MatrixAddRule;
@@ -171,6 +208,7 @@ impl SimpleRule for MatrixReciprocalRule {
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(MatrixShapeGuardRule));
     simplifier.add_rule(Box::new(MatrixReciprocalRule));
     simplifier.add_rule(Box::new(MatrixAddRule));
     simplifier.add_rule(Box::new(MatrixSubRule));

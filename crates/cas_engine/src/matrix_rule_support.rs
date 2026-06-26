@@ -192,6 +192,70 @@ pub fn try_eval_matrix_mul_expr(ctx: &mut Context, expr: ExprId) -> Option<Matri
     })
 }
 
+/// A literal scalar (number or numeric constant) — never a matrix. Used to recognise
+/// a matrix±scalar combination, which has no value (matrices and scalars do not add).
+/// A symbolic variable is deliberately NOT treated as a scalar here: it could later bind
+/// to a matrix, so `[[…]] + y` is left for downstream rules instead of declared undefined.
+fn is_concrete_scalar(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(_) | Expr::Constant(_))
+}
+
+/// Detect a matrix operation whose operand SHAPES do not conform and return the `undefined`
+/// sentinel. A non-conforming matrix op has no mathematical value, so leaving it as an echoed
+/// residual would dishonestly report success (`ok:true`) over a non-result. Covers:
+/// matrix `±` matrix of different dimensions, matrix `±` scalar (no broadcast), matrix `·`
+/// matrix with mismatched inner dimensions, and a NON-square matrix raised to an integer `≥ 2`
+/// (including the `M·M → M^2` form the engine manufactures). Returns `None` for well-formed
+/// matrix ops (handled by the evaluation rules) and for non-matrix expressions.
+pub fn try_matrix_shape_mismatch_undefined(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            match (Matrix::from_expr(ctx, left), Matrix::from_expr(ctx, right)) {
+                // Two matrices: add/sub is defined only for identical dimensions.
+                (Some(m1), Some(m2)) => {
+                    if m1.rows != m2.rows || m1.cols != m2.cols {
+                        return Some(ctx.add(Expr::Constant(Constant::Undefined)));
+                    }
+                    None
+                }
+                // Matrix ± concrete scalar: no broadcasting convention ⇒ undefined.
+                (Some(_), None) if is_concrete_scalar(ctx, right) => {
+                    Some(ctx.add(Expr::Constant(Constant::Undefined)))
+                }
+                (None, Some(_)) if is_concrete_scalar(ctx, left) => {
+                    Some(ctx.add(Expr::Constant(Constant::Undefined)))
+                }
+                _ => None,
+            }
+        }
+        // Matrix · matrix is defined only when inner dimensions agree (l.cols == r.rows).
+        // Scalar · matrix is valid and handled elsewhere, so only guard two literal matrices.
+        Expr::Mul(left, right) => {
+            if let (Some(m1), Some(m2)) =
+                (Matrix::from_expr(ctx, left), Matrix::from_expr(ctx, right))
+            {
+                if m1.cols != m2.rows {
+                    return Some(ctx.add(Expr::Constant(Constant::Undefined)));
+                }
+            }
+            None
+        }
+        // A matrix power is defined only for a SQUARE base. A non-square base raised to an
+        // integer `≥ 2` (repeated self-multiplication) has no value.
+        Expr::Pow(base, exp) => {
+            let m = Matrix::from_expr(ctx, base)?;
+            if m.rows != m.cols {
+                let e = cas_math::numeric_eval::as_rational_const(ctx, exp)?;
+                if e.is_integer() && e >= num_rational::BigRational::from_integer(2.into()) {
+                    return Some(ctx.add(Expr::Constant(Constant::Undefined)));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 /// Whether `expr` evaluates to a MATRIX — a literal, a matrix-returning function call
 /// (`inverse`/`transpose`/`adjugate`), or a structural combination of such. Used to keep
 /// scalar-matrix multiplication from broadcasting a matrix-valued operand as if it were a scalar.

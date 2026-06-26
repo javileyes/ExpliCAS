@@ -1565,6 +1565,58 @@ fn test_eval_fraction_base_power_is_parenthesized() {
 }
 
 #[test]
+fn test_eval_matrix_shape_mismatch_is_undefined() {
+    // A shape-incompatible matrix operation has no value, so it must return the `undefined` sentinel
+    // (like `1/0` or a singular inverse), never echo the malformed operation back as a valid result.
+    // Previously these returned the operation unchanged with `ok:true`.
+    for input in [
+        "[[1,2],[3,4]] + [[1,2,3],[4,5,6]]", // add, different dims
+        "[[1,2],[3,4]] - [[1,2,3]]",         // sub, different dims
+        "[[1,2],[3,4]] * [[1,2,3]]",         // mul, inner dims 2 != 1
+        "[[1,2,3],[4,5,6]]^2",               // non-square power
+        "[[1,2,3]] + 5",                     // matrix + scalar (no broadcast)
+        "([[1,2],[3,4]] + [[1,2,3],[4,5,6]]) * [[1,2],[3,4]]", // distributed mismatch propagates
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some("undefined"), "{input}");
+    }
+    // Compatible matrix operations are unaffected (must still compute exactly).
+    for (input, expected) in [
+        ("[[1,2],[3,4]] + [[5,6],[7,8]]", "[[6, 8], [10, 12]]"),
+        (
+            "[[1,2],[3,4]] * [[1,2,3],[4,5,6]]",
+            "[[9, 12, 15], [19, 26, 33]]",
+        ),
+        ("3 * [[1,2],[3,4]]", "[[3, 6], [9, 12]]"),
+        ("det([[1,2],[3,4]])", "-2"),
+        ("[[1,2,3]] + [[4,5,6]]", "[5, 7, 9]"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+    // A matrix plus a SYMBOLIC operand is left untouched (the symbol may later bind to a matrix),
+    // never prematurely declared `undefined`.
+    let out = cli()
+        .args(["eval", "[[1,2,3]] + y", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    assert_ne!(
+        wire["result"].as_str(),
+        Some("undefined"),
+        "matrix + symbolic must not be undefined"
+    );
+}
+
+#[test]
 fn test_eval_multi_factor_cancellation_fully_reduces() {
     // `(2·x·y)/(5·x·y)` shares TWO common factors. The plain-mode one-factor shortcut cancelled only
     // `y`, returning the partially-reduced `2·x / (5·x)` and diverging from `--steps` (which cancels

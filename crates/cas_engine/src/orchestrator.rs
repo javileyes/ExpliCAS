@@ -29860,13 +29860,14 @@ mod tests {
         );
     }
 
-    // A dimension-mismatched product must stay an honest unevaluated residual, never a
-    // fabricated finite matrix-of-matrices from the scalar-broadcast misfire.
+    // A dimension-mismatched product has NO value (inner dimensions 3 ≠ 2), so the shape guard
+    // routes it to the `undefined` sentinel — never a fabricated finite matrix-of-matrices from the
+    // scalar-broadcast misfire, and no longer a dishonest echoed residual reported with `ok:true`.
     #[test]
-    fn matrix_multiply_dimension_mismatch_stays_residual() {
+    fn matrix_multiply_dimension_mismatch_is_undefined() {
         assert_eq!(
             simplify_render("[[1,2,3],[4,5,6]] * [[1,2],[3,4]]"),
-            "[[1, 2, 3], [4, 5, 6]] * [[1, 2], [3, 4]]"
+            "undefined"
         );
     }
 
