@@ -173,6 +173,58 @@ impl Matrix {
         Some(sum)
     }
 
+    /// Exact rank of a NUMERIC matrix by Gaussian elimination over `BigRational`
+    /// (works for any shape — rank is not restricted to square matrices). Returns
+    /// `None` (⇒ honest residual) when any entry is not a rational constant, since
+    /// the rank of a symbolic/parametrized matrix is not a single number. Every
+    /// pivot test is EXACT rational arithmetic — never f64 — so a near-zero pivot
+    /// can never be misjudged nonzero.
+    pub fn rank(&self, ctx: &mut Context) -> Option<ExprId> {
+        use num_rational::BigRational;
+        use num_traits::Zero;
+
+        let mut m: Vec<Vec<BigRational>> = Vec::with_capacity(self.rows);
+        for i in 0..self.rows {
+            let mut row = Vec::with_capacity(self.cols);
+            for j in 0..self.cols {
+                row.push(crate::numeric_eval::as_rational_const(
+                    ctx,
+                    self.data[i * self.cols + j],
+                )?);
+            }
+            m.push(row);
+        }
+
+        let mut rank = 0usize;
+        let mut pivot_col = 0usize;
+        let mut row = 0usize;
+        while row < self.rows && pivot_col < self.cols {
+            let pivot = (row..self.rows).find(|&i| !m[i][pivot_col].is_zero());
+            match pivot {
+                None => pivot_col += 1,
+                Some(p) => {
+                    m.swap(row, p);
+                    let pivot_val = m[row][pivot_col].clone();
+                    let pivot_row = m[row].clone();
+                    for target in m.iter_mut().skip(row + 1) {
+                        if !target[pivot_col].is_zero() {
+                            let factor = &target[pivot_col] / &pivot_val;
+                            for (entry, pivot_entry) in
+                                target.iter_mut().zip(&pivot_row).skip(pivot_col)
+                            {
+                                *entry -= &factor * pivot_entry;
+                            }
+                        }
+                    }
+                    rank += 1;
+                    row += 1;
+                    pivot_col += 1;
+                }
+            }
+        }
+        Some(ctx.num(rank as i64))
+    }
+
     /// Compute determinant for 2×2 matrix
     /// det([[a, b], [c, d]]) = ad - bc
     fn det_2x2(&self, ctx: &mut Context) -> ExprId {
@@ -585,6 +637,43 @@ mod tests {
         // The result is an expression tree, would need simplification to verify = -2
         // For now just check it returns something
         assert!(matches!(ctx.get(det), Expr::Sub(_, _)));
+    }
+
+    #[test]
+    fn test_rank_exact_numeric() {
+        let mut ctx = Context::new();
+        let rank_of = |ctx: &mut Context, rows: usize, cols: usize, vals: &[i64]| -> i64 {
+            let data = vals.iter().map(|&v| ctx.num(v)).collect();
+            let m = Matrix { rows, cols, data };
+            let value = m.rank(ctx).expect("numeric rank");
+            crate::numeric_eval::as_rational_const(ctx, value)
+                .expect("rank is a number")
+                .to_integer()
+                .try_into()
+                .unwrap()
+        };
+        assert_eq!(rank_of(&mut ctx, 2, 2, &[1, 2, 2, 4]), 1); // dependent rows
+        assert_eq!(rank_of(&mut ctx, 2, 2, &[1, 2, 3, 4]), 2); // full
+        assert_eq!(rank_of(&mut ctx, 3, 3, &[1, 2, 3, 4, 5, 6, 7, 8, 9]), 2);
+        assert_eq!(rank_of(&mut ctx, 3, 3, &[1, 0, 0, 0, 1, 0, 0, 0, 1]), 3); // identity
+        assert_eq!(rank_of(&mut ctx, 2, 2, &[0, 0, 0, 0]), 0); // zero matrix
+        assert_eq!(rank_of(&mut ctx, 2, 3, &[1, 2, 3, 2, 4, 6]), 1); // wide, dependent
+        assert_eq!(rank_of(&mut ctx, 3, 2, &[1, 2, 3, 4, 5, 6]), 2); // tall, full column rank
+    }
+
+    #[test]
+    fn test_rank_symbolic_entry_is_residual() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let m = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![a, ctx.num(2), ctx.num(3), ctx.num(4)],
+        };
+        assert!(
+            m.rank(&mut ctx).is_none(),
+            "symbolic rank must decline (honest residual), not guess a number"
+        );
     }
 
     // Build an n×n matrix from a row-major list of integers.

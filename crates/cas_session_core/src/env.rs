@@ -76,6 +76,8 @@ const RESERVED_NAMES: &[&str] = &[
     "mod",
     "det",
     "transpose",
+    "trace",
+    "rank",
     "inverse",
     "inv",
     "fact",

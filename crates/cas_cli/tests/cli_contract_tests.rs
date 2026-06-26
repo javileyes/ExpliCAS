@@ -1617,6 +1617,32 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_matrix_rank_exact() {
+    // Matrix rank was recognized-but-unimplemented (returned an error). It now computes the
+    // exact rank by Gaussian elimination over BigRational, for any shape, with an honest
+    // residual for symbolic entries.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("rank([[1,2],[2,4]])"), "1");
+    assert_eq!(r("rank([[1,2],[3,4]])"), "2");
+    assert_eq!(r("rank([[1,2,3],[4,5,6],[7,8,9]])"), "2");
+    assert_eq!(r("rank([[1,0,0],[0,1,0],[0,0,1]])"), "3");
+    assert_eq!(r("rank([[0,0],[0,0]])"), "0");
+    assert_eq!(r("rank([[1,2,3],[2,4,6]])"), "1"); // 2x3, rank 1
+                                                   // Symbolic entry stays an honest residual (no fabricated number).
+    assert_eq!(r("rank([[a,2],[3,4]])"), "rank([[a, 2], [3, 4]])");
+    // Controls: the sibling matrix functions are unchanged.
+    assert_eq!(r("det([[1,2],[3,4]])"), "-2");
+    assert_eq!(r("trace([[1,2],[3,4]])"), "5");
+}
+
+#[test]
 fn test_eval_diff_cancelling_bounded_inverse_keeps_domain_condition() {
     // `diff(2·arcsin(x)+2·arccos(x)) → 0` silently dropped the `-1<x<1` differentiability
     // interval when the derivative cancelled (the condition vanished with the √(1-x²) radical).

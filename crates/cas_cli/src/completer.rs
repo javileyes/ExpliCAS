@@ -33,6 +33,7 @@ impl CasHelper {
                 "det".to_string(),
                 "transpose".to_string(),
                 "trace".to_string(),
+                "rank".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),

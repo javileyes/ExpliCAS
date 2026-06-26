@@ -99,6 +99,10 @@ pub enum MatrixFunctionEval {
         shape: MatrixShape,
         value: ExprId,
     },
+    Rank {
+        shape: MatrixShape,
+        value: ExprId,
+    },
     Inverse {
         shape: MatrixShape,
         /// `Some(inverse)` for an invertible matrix; `None` when the matrix is provably
@@ -127,6 +131,9 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
         }
         MatrixFunctionEval::Trace { shape, .. } => {
             format!("trace({}×{} matrix)", shape.rows, shape.cols)
+        }
+        MatrixFunctionEval::Rank { shape, .. } => {
+            format!("rank({}×{} matrix)", shape.rows, shape.cols)
         }
         MatrixFunctionEval::Inverse { shape, matrix } => {
             if matrix.is_some() {
@@ -395,6 +402,9 @@ pub fn try_eval_matrix_function_expr(
         "trace" | "tr" => matrix
             .trace(ctx)
             .map(|value| MatrixFunctionEval::Trace { shape, value }),
+        "rank" => matrix
+            .rank(ctx)
+            .map(|value| MatrixFunctionEval::Rank { shape, value }),
         "inverse" | "inv" => match matrix.inverse(ctx)? {
             MatrixInverseOutcome::Inverse(inv) => Some(MatrixFunctionEval::Inverse {
                 shape,
@@ -436,6 +446,13 @@ pub fn try_rewrite_matrix_function_rule_expr(
         }
         MatrixFunctionEval::Trace { shape, value } => {
             let desc = format_matrix_function_desc(&MatrixFunctionEval::Trace { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+        MatrixFunctionEval::Rank { shape, value } => {
+            let desc = format_matrix_function_desc(&MatrixFunctionEval::Rank { shape, value });
             Some(MatrixFunctionRewrite {
                 rewritten: value,
                 desc,
