@@ -367,7 +367,18 @@ fn is_terminal_after_core(ctx: &Context, expr: ExprId) -> bool {
 }
 
 fn is_symbolic_atom(ctx: &Context, expr: ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Variable(_) | Expr::Constant(_))
+    match ctx.get(expr) {
+        Expr::Variable(_) => true,
+        // `∞` and `undefined` are NOT finite symbolic atoms: they ABSORB / PROPAGATE rather than stay
+        // in a symbolic binomial. Treating `∞` as an atom let the plain-mode "symbolic atom + literal"
+        // shortcut return `∞ + 1` unevaluated (diverging from `--steps`, which absorbs it to `∞`).
+        // The genuine finite constants (`π`, `e`, `i`) are still atoms (`π + 1` stays `π + 1`).
+        Expr::Constant(c) => !matches!(
+            c,
+            cas_ast::Constant::Infinity | cas_ast::Constant::Undefined
+        ),
+        _ => false,
+    }
 }
 
 fn is_plain_symbolic_binomial_after_core(ctx: &Context, expr: ExprId) -> bool {

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 361 (newest first)
+Active entries: 362 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -126,6 +126,7 @@ Active entries: 361 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver_core/src/substitution.rs` (`aggregate_back_substitution_so... | P1 lost-domain: `a^(2x)=k` conserva la raíz POSITIVA (R5; 3 defectos)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_ex... | P1 unsound: inecuación intersecta el DOMINIO de funciones-factor (ln/sqrt); R8 diferido
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`drop_non_real_discrete_solut... | P1 unsound: rechaza soluciones NO-REALES en dominio real (cierra R6 def3 + brecha x=i)
+- 2026-06-26 | `retained` | `crates/cas_engine/src/orchestrator.rs` (`is_symbolic_atom` excluye `Infinity... | P2 consistencia: `finito + ∞ -> ∞` también en modo plain (divergencia de absorción)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15434,3 +15435,32 @@ Active entries: 361 (newest first)
   - patrón: en RealOnly, filtrar las soluciones discretas no-reales (`expr_contains_imaginary`: `i`,
     `√(neg)`, raíz PAR de negativo) tras resolver; las raíces IMPARES de negativos son reales. Gatear a
     RealOnly para no romper el modo complejo.
+
+## 2026-06-26 - P2 consistencia: `finito + ∞ -> ∞` también en modo plain (divergencia de absorción)
+
+- area:
+  - `crates/cas_engine/src/orchestrator.rs` (`is_symbolic_atom` excluye `Infinity`/`Undefined`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_finite_plus_infinity_absorbs_in_both_modes`)
+- status:
+  - `retained`
+- capture:
+  - investment_class: soundness/honestidad (consistencia CLI-vs-web)
+  - primary_dimension: cli_web_consistency
+  - cell: ANTES `inf+1 -> "1 + infinity"` plain vs `infinity` steps (igual `1+inf`, `inf+5`). AHORA `infinity`
+    en AMBOS modos. `inf-1`, `inf+1/2`, `2+inf+3` ya convergían.
+  - MECANISMO: `is_symbolic_atom` casaba CUALQUIER `Constant`, incluido `Infinity`. El atajo de modo plain
+    `is_symbolic_atom_plus_nonzero_literal_root` (que deja `x+1` sin plegar) trataba `inf+1` como "átomo
+    simbólico + literal" y lo devolvía SIN evaluar, divergiendo de `--steps` (que absorbe vía
+    `add_infinity_absorption`). Fix: `is_symbolic_atom` excluye `Infinity`/`Undefined` (no son átomos finitos:
+    absorben/propagan), así `inf+1` cae al pipeline de absorción. `π`/`e`/`i` SIGUEN siendo átomos.
+  - SOUNDNESS: `∞`/`undefined` no son átomos simbólicos finitos; quitarlos del atajo enruta al pipeline normal
+    (absorción/propagación), que da el valor correcto. Controles INTACTOS: `x+1`, `pi+1->1+pi`, `e+2->2+e`,
+    `x/x->1`, `(x+1)/(x+1)->1`, `undefined+1->undefined`. `inf+x` (simbólico) sin cambiar.
+  - validación: workspace failed:0 (12356); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; engine-fast verde; test de absorción plain==steps + controles.
+- observed:
+  - tratar `∞`/`undefined` como "átomo simbólico" hace que los atajos de forma-simbólica del modo plain los
+    dejen sin evaluar, divergiendo de `--steps`. Un átomo simbólico debe ser FINITO (variable, `π`, `e`, `i`).
+- retained learning:
+  - patrón: un predicado "átomo simbólico" para atajos que dejan formas sin plegar debe excluir `∞`/`undefined`
+    (absorben/propagan, no permanecen simbólicos). Mismo patrón regla-vs-atajo del modo plain que `∞/∞`.

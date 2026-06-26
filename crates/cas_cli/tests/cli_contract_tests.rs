@@ -1386,6 +1386,50 @@ fn test_eval_numeric_quotient_plain_matches_steps() {
 }
 
 #[test]
+fn test_eval_finite_plus_infinity_absorbs_in_both_modes() {
+    // `finite + ∞ = ∞` (absorption). In plain mode `∞` was treated as a symbolic atom, so the
+    // "symbolic atom + literal" shortcut returned `∞ + 1` UNEVALUATED — diverging from `--steps`,
+    // which absorbs it. `∞`/`undefined` are no longer symbolic atoms; finite constants (`π`,`e`,`i`)
+    // still are.
+    for (input, expected) in [
+        ("inf+1", "infinity"),
+        ("1+inf", "infinity"),
+        ("inf+5", "infinity"),
+        ("inf-1", "infinity"),
+        ("2+inf+3", "infinity"),
+        ("(-inf)+3", "-infinity"),
+        // Finite atoms stay symbolic; undefined still propagates.
+        ("pi+1", "1 + pi"),
+        ("e+2", "2 + e"),
+        ("undefined+1", "undefined"),
+        ("inf+x", "x + infinity"),
+    ] {
+        let plain = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(plain.status.success(), "plain {input}");
+        let plain_wire: Value = serde_json::from_slice(&plain.stdout).expect("Invalid wire output");
+        let steps = cli()
+            .args(["eval", input, "--format", "json", "--steps", "on"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(steps.status.success(), "steps {input}");
+        let steps_wire: Value = serde_json::from_slice(&steps.stdout).expect("Invalid wire output");
+        assert_eq!(
+            plain_wire["result"].as_str(),
+            Some(expected),
+            "plain {input}"
+        );
+        assert_eq!(
+            plain_wire["result"].as_str(),
+            steps_wire["result"].as_str(),
+            "plain vs --steps divergence for {input}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_non_real_solution_rejected_in_real_domain() {
     // In the RealOnly domain, a provably NON-REAL solution (the imaginary unit `i`, `√(negative)`,
     // an even root of a negative `(-1)^(1/2)`, or anything carrying them) has no real solution. The
