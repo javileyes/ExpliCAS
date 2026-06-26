@@ -1386,6 +1386,45 @@ fn test_eval_numeric_quotient_plain_matches_steps() {
 }
 
 #[test]
+fn test_eval_equation_with_undefined_side_has_no_solution() {
+    // A relation with an `undefined` side has NO real solution — nothing equals/compares to
+    // `undefined`. In RealOnly, `ln(-2)` / `ln(-1)` / `1/0` simplify to `undefined`, so these are
+    // unsatisfiable. The isolation path used to emit a degenerate `All real numbers if undefined = 0`
+    // conditional (its guard is never true).
+    for input in [
+        "solve(ln(x)=ln(-2), x)",
+        "solve(x=ln(-1), x)",
+        "solve(x=ln(-2), x)",
+        "solve(ln(x)=undefined, x)",
+        "solve(x+1=undefined, x)",
+        "solve(x=1/0, x)",
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some("No solution"), "{input}");
+    }
+    // Controls: a defined (possibly non-real-rejected) RHS is unaffected.
+    for (input, expected) in [
+        ("solve(ln(x)=ln(2), x)", "{ 2 }"),
+        ("solve(x=sqrt(-4), x)", "No solution"),
+        ("solve(ln(x)=2, x)", "{ e^2 }"),
+        ("solve(x^2=4, x)", "{ -2, 2 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_nonstrict_inequality_includes_isolated_roots() {
     // For a NON-STRICT inequality `f ≤ 0` / `f ≥ 0`, every real in-domain root of `f` is a solution
     // (the value `0` satisfies the relation), but the interval sign-analysis emits only the

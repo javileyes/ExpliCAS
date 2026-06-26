@@ -1803,6 +1803,19 @@ fn solve_local_core(
     // for anything that is not an abs relation, so other shapes fall through.
     let (abs_lhs, _) = simplifier.simplify(eq.lhs);
     let (abs_rhs, _) = simplifier.simplify(eq.rhs);
+    // SOUNDNESS: a relation with an `undefined` side has NO real solution — nothing equals or compares
+    // to `undefined`. In RealOnly, `ln(-2)`, `ln(-1)` simplify to `undefined`, so `ln(x) = ln(-2)` and
+    // `x = ln(-1)` are unsatisfiable. Without this the isolation path emits a degenerate
+    // `AllReals if undefined = 0` conditional (the guard `undefined = 0` is never true).
+    if matches!(
+        simplifier.context.get(abs_lhs),
+        Expr::Constant(Constant::Undefined)
+    ) || matches!(
+        simplifier.context.get(abs_rhs),
+        Expr::Constant(Constant::Undefined)
+    ) {
+        return Ok((SolutionSet::Empty, Vec::new()));
+    }
     if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_relation(
         &mut simplifier.context,
         abs_lhs,

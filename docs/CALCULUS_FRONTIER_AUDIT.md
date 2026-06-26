@@ -1568,15 +1568,17 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   *Hipótesis raíz:* al deshacer `u²=k` con `u=base^x`, el solver elige la rama negativa y descarta la
   positiva. Mirar la sustitución `u=a^x` y la elección de signo de la raíz.
 
-### R6 — P1 unsound: RHS no-real (`ln(-2)`, `sqrt(-1)`) no se rechaza en modo real → "todos los reales"/complejo — 3 defectos
-- [ ] `solve(ln(x)=ln(-2),x)` → `All real numbers if undefined = 0` (real ∅).
-- [ ] `solve(x=ln(-1),x)` → `All real numbers if undefined = 0` (real ∅).
+### R6 — P1 unsound: RHS no-real (`ln(-2)`, `sqrt(-1)`) no se rechaza en modo real → "todos los reales"/complejo — 3 defectos [2/3 GRADUADO]
+- [x] `solve(ln(x)=ln(-2),x)` → `All real numbers if undefined = 0` (real ∅).
+- [x] `solve(x=ln(-1),x)` → `All real numbers if undefined = 0` (real ∅).
 - [ ] `solve(ln(x)=sqrt(-1),x)` → `{ e^((-1)^(1/2)) }` = e^i complejo (real ∅, viola sus propias condiciones).
   Control: `solve(x=sqrt(-4),x)`, `solve(2^x=-8,x)`, `solve(x^2=-1,x)` → `No solution` ✓.
-  *Hipótesis raíz:* el camino lineal recibe la constante `undefined` y construye `Conditional` con
-  `all_reals_case` guardado por `EqZero(undefined)` (`crates/cas_solver_core/src/linear_solution.rs` ~44-74);
-  falta guarda que rechace RHS no-real antes del fallback lineal. La inversión del log (`x=e^RHS`) no
-  verifica que el RHS sea real antes de exponenciar.
+  *(2 de 3 graduado 2026-06-26 PENDIENTE_R6: `solve_local_core` cortocircuita a `No solution` cuando un lado
+  simplifica a `Constant::Undefined` (`ln(-2)`, `ln(-1)`, `1/0` en reales) → mata el `AllReals if undefined=0`.
+  Test `cli_contract_tests::test_eval_equation_with_undefined_side_has_no_solution`. RESIDUAL (defecto 3):
+  `solve(ln(x)=sqrt(-1))` → `e^i` — `sqrt(-1)=(-1)^(1/2)` NO es `undefined` sino simbólico no-real; la inversión
+  de `ln` (`x=e^RHS`) no propaga la realidad del RHS. El control directo `x=sqrt(-1)→No solution` SÍ rechaza.
+  Peldaño: propagar realidad del RHS a través de inversiones transcendentales.)*
 
 ### R8 — P2 lost-domain: factor cúbico irreducible abandonado en `solve` polinómico — 3 defectos
 - [ ] `solve(x^4+x^3+3*x=0,x)` → `{0}` (falta la raíz real ≈ -1.8637 de `x³+x²+3`).

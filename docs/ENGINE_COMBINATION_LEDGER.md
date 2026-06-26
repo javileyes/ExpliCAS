@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 357 (newest first)
+Active entries: 358 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -122,6 +122,7 @@ Active entries: 357 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound/consistencia: `(∞±finito)/(∞±finito) -> undefined` (aditivo; cierra peldaño C)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_with_ctx_and_options` ... | P1 lost-domain: inecuación NO estricta recupera el cero aislado (R3; 10 defectos)
 - 2026-06-26 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_plan_finite_sum_evaluation`:... | P0 wrong-value: suma finita a través de polos -> undefined (R9; 2 defectos)
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_local_core`: guarda de... | P1 unsound: relación con lado `undefined` -> No solution (R6 parcial; 2 de 3)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15279,3 +15280,37 @@ Active entries: 357 (newest first)
   - patrón: una forma cerrada de suma/producto presupone definición en todo el rango. Antes de aplicarla,
     verificar polos (denominador exacto-cero en un entero del rango) y delegar a la evaluación término-a-término
     que detecta el `1/0`. Chequeo EXACTO con `as_rational_const`, acotado por `max_span`.
+
+## 2026-06-26 - P1 unsound: relación con lado `undefined` -> No solution (R6 parcial; 2 de 3)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`solve_local_core`: guarda de lado-undefined tras
+    simplificar ambos lados)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_equation_with_undefined_side_has_no_solution`)
+- status:
+  - `retained` (cierra 2 de 3 defectos R6; el de `sqrt(-1)` no-real queda residual)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES `solve(ln(x)=ln(-2),x) -> "All real numbers if undefined = 0"`, `solve(x=ln(-1),x)` igual,
+    `solve(x=undefined,x)` igual. AHORA `No solution`. Bonus: `solve(x=1/0,x) -> No solution`.
+  - MECANISMO: en RealOnly `ln(-2)`, `ln(-1)`, `1/0` simplifican a `undefined`. La ruta de aislamiento, al ver
+    un lado `undefined`, emitía un Conditional degenerado `AllReals if undefined = 0` (cuya guarda `undefined=0`
+    nunca es cierta) en vez de reconocer que NADA iguala/compara a `undefined`. Fix: tras simplificar ambos
+    lados (reusando `abs_lhs`/`abs_rhs`), si alguno es `Constant::Undefined` -> `SolutionSet::Empty`.
+  - SOUNDNESS: una relación con un operando `undefined` es insatisfacible para CUALQUIER op (no se puede
+    igualar/comparar con `undefined`). Controles INTACTOS: `ln(x)=ln(2)->{2}`, `x=sqrt(-4)->No solution`,
+    `2^x=-8->No solution`, `x^2=4->{-2,2}` (RHS definidos, no se disparan).
+  - validación: workspace failed:0 (12352); clippy `--all-targets`/fmt; huella guardrail(16)+pressure(3) 0
+    deltas; engine-fast verde; test de lado-undefined + controles.
+  - RESIDUAL (defecto 3 de R6): `solve(ln(x)=sqrt(-1),x) -> {e^((-1)^(1/2))}` (e^i complejo). `sqrt(-1)` NO es
+    `undefined` (es `(-1)^(1/2)`, simbólico no-real); la inversión de `ln` produce `x=e^(sqrt(-1))` sin
+    re-chequear realidad. El control directo `x=sqrt(-1) -> No solution` SÍ rechaza; el bug es que la realidad
+    del RHS no se propaga a través de la inversión transcendental. Peldaño aparte (más difícil).
+- observed:
+  - un lado `undefined` en una relación NO debe enrutarse al solver de aislamiento (produce un Conditional
+    degenerado con guarda imposible); hay que cortocircuitar a `Empty` apenas se detecta, tras simplificar.
+- retained learning:
+  - patrón: antes de aislar, si un lado de la relación es `undefined` (p.ej. `ln(neg)`, `1/0` en reales) ->
+    `No solution`. Reutilizar la simplificación ya hecha de ambos lados. Próximo peldaño R6: propagar la
+    realidad del RHS a través de inversiones transcendentales (`ln(x)=sqrt(-1)` debe ser `No solution` en real).
