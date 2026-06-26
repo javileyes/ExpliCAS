@@ -1386,6 +1386,64 @@ fn test_eval_numeric_quotient_plain_matches_steps() {
 }
 
 #[test]
+fn test_eval_non_real_solution_rejected_in_real_domain() {
+    // In the RealOnly domain, a provably NON-REAL solution (the imaginary unit `i`, `√(negative)`,
+    // an even root of a negative `(-1)^(1/2)`, or anything carrying them) has no real solution. The
+    // `ln`/`exp` inversion did not re-check reality, so `solve(ln(x)=√(-1)) → {e^((-1)^(1/2))}` (= e^i)
+    // and `solve(x=i) → {i}` slipped through. An ODD root of a negative (`(-8)^(1/3) = -2`) is REAL.
+    for input in [
+        "solve(ln(x)=sqrt(-1), x)",
+        "solve(x=sqrt(-1), x)",
+        "solve(x=e^(sqrt(-1)), x)",
+        "solve(ln(x)=sqrt(-4), x)",
+        "solve(x=i, x)",
+        "solve(x=2*i, x)",
+        "solve(x=1+i, x)",
+        "solve(x^2=e^(sqrt(-1)), x)",
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some("No solution"), "{input}");
+    }
+    // REAL solutions (incl. odd roots of negatives) must survive.
+    for (input, expected) in [
+        ("solve(x=5, x)", "{ 5 }"),
+        ("solve(x^2=4, x)", "{ -2, 2 }"),
+        ("solve(x=(-8)^(1/3), x)", "{ -2 }"),
+        ("solve(x^3=-8, x)", "{ -2 }"),
+        ("solve(ln(x)=2, x)", "{ e^2 }"),
+        ("solve(x=sqrt(2), x)", "{ sqrt(2) }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+    // Complex domain keeps an imaginary solution.
+    let output = cli()
+        .args([
+            "eval",
+            "solve(x=i, x)",
+            "--format",
+            "json",
+            "--value-domain",
+            "complex",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+    assert!(output.status.success());
+    let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+    assert_eq!(wire["result"].as_str(), Some("{ i }"));
+}
+
+#[test]
 fn test_eval_inequality_intersects_factor_function_domain() {
     // A domain-restricted function (`ln`, `√`) appearing as a FACTOR (not the bare LHS) must still
     // exclude its undefined region: `ln(x)·(x−2)² ≤ 0` is `(0,1]∪{2}`, NOT `(−∞,1]∪{2}` (`ln` is

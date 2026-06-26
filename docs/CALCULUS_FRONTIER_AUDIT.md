@@ -1572,10 +1572,10 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   subsume. Test `cli_contract_tests::test_eval_even_power_exponential_keeps_positive_root`. Residual cosmético:
   `3^(2x)=27 -> {ln(9·3^(-1/2))/ln(3)}` correcto (=3/2) pero sin simplificar.)*
 
-### R6 — P1 unsound: RHS no-real (`ln(-2)`, `sqrt(-1)`) no se rechaza en modo real → "todos los reales"/complejo — 3 defectos [2/3 GRADUADO]
+### R6 — P1 unsound: RHS no-real (`ln(-2)`, `sqrt(-1)`) no se rechaza en modo real → "todos los reales"/complejo — 3 defectos [GRADUADO]
 - [x] `solve(ln(x)=ln(-2),x)` → `All real numbers if undefined = 0` (real ∅).
 - [x] `solve(x=ln(-1),x)` → `All real numbers if undefined = 0` (real ∅).
-- [ ] `solve(ln(x)=sqrt(-1),x)` → `{ e^((-1)^(1/2)) }` = e^i complejo (real ∅, viola sus propias condiciones).
+- [x] `solve(ln(x)=sqrt(-1),x)` → `{ e^((-1)^(1/2)) }` = e^i complejo (real ∅, viola sus propias condiciones).
   Control: `solve(x=sqrt(-4),x)`, `solve(2^x=-8,x)`, `solve(x^2=-1,x)` → `No solution` ✓.
   *(2 de 3 graduado 2026-06-26 5fdebc980: `solve_local_core` cortocircuita a `No solution` cuando un lado
   simplifica a `Constant::Undefined` (`ln(-2)`, `ln(-1)`, `1/0` en reales) → mata el `AllReals if undefined=0`.

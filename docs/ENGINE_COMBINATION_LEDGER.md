@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 360 (newest first)
+Active entries: 361 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -125,6 +125,7 @@ Active entries: 360 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_local_core`: guarda de... | P1 unsound: relación con lado `undefined` -> No solution (R6 parcial; 2 de 3)
 - 2026-06-26 | `retained` | `crates/cas_solver_core/src/substitution.rs` (`aggregate_back_substitution_so... | P1 lost-domain: `a^(2x)=k` conserva la raíz POSITIVA (R5; 3 defectos)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`intersect_inequality_with_ex... | P1 unsound: inecuación intersecta el DOMINIO de funciones-factor (ln/sqrt); R8 diferido
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`drop_non_real_discrete_solut... | P1 unsound: rechaza soluciones NO-REALES en dominio real (cierra R6 def3 + brecha x=i)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15396,3 +15397,40 @@ Active entries: 360 (newest first)
   - patrón: el resultado de una inecuación debe intersectarse con el dominio implícito de TODA la expresión
     (no sólo del LHS desnudo): resolver cada condición de dominio (`arg>0` para ln, `arg>=0` para sqrt) y
     intersectar. Sólo quita puntos fuera-de-dominio, nunca añade.
+
+## 2026-06-26 - P1 unsound: rechaza soluciones NO-REALES en dominio real (cierra R6 def3 + brecha x=i)
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`drop_non_real_discrete_solutions`; gateado a
+    `value_domain.is_real_only()` tras `filter_real_solutions`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_non_real_solution_rejected_in_real_domain`)
+- status:
+  - `retained` (cierra R6 entero: def3 + la brecha más amplia `x=i->{i}`)
+- capture:
+  - investment_class: soundness/honestidad
+  - primary_dimension: north_star_soundness
+  - cell: ANTES (RealOnly) `solve(ln(x)=sqrt(-1),x) -> {e^((-1)^(1/2))}` (= e^i complejo),
+    `solve(x=i,x) -> {i}`, `solve(x=e^(sqrt(-1)),x) -> {e^i}`, `solve(x=1+i,x) -> {1+i}`. AHORA `No solution`.
+  - MECANISMO: la inversión de `ln`/`exp` (`x=e^RHS`) NO re-chequea la realidad del resultado; sólo el path
+    directo rechazaba `sqrt(negativo)` por una regla específica (y ni eso para `i` o `e^(sqrt(-1))`). Fix:
+    tras `filter_real_solutions`, en RealOnly, descartar las soluciones DISCRETAS provablemente NO-REALES con
+    `cas_math::numeric_eval::expr_contains_imaginary` (la unidad `i`, `√(negativo)`, raíz PAR de un negativo
+    `(-1)^(1/2)`). Set discreto vacío -> `Empty`. Conjuntos no-discretos (intervalos/AllReals) son reales por
+    construcción y no se tocan.
+  - SOUNDNESS: usa la semántica de potencias REAL del motor — una raíz IMPAR de un negativo
+    (`(-8)^(1/3) = -2`) es REAL y NO se descarta (vía `is_even_root_exponent`, denominador par). Gateado a
+    RealOnly: en modo COMPLEJO las soluciones imaginarias se conservan (`solve(x=i) --value-domain complex ->
+    {i}`). Controles reales INTACTOS: `x=5`, `x^2=4`, `x=(-8)^(1/3)->{-2}`, `x^3=-8->{-2}`, `ln(x)=2->{e^2}`,
+    `x=sqrt(2)`.
+  - validación: workspace failed:0 (12355, ningún test enshrinaba imaginario-en-real); clippy `--all-targets`/
+    fmt; huella guardrail(16)+pressure(3) 0 deltas; engine-fast verde; test no-real + controles + complejo.
+  - RESIDUAL preexistente (no de este fix): el modo COMPLEJO no resuelve `x^2=-1 -> No solution` (debería ser
+    `{±i}`) — el solver complejo es limitado; fuera de alcance.
+- observed:
+  - la inversión transcendental (`ln`,`exp`) reintroduce constantes no-reales sin re-verificar el dominio; un
+    filtro de no-realidad sobre las soluciones DISCRETAS (con la semántica de potencias real: par=imaginario,
+    impar=real) es el saneamiento general, más amplio que el rechazo ad-hoc de `sqrt(negativo)`.
+- retained learning:
+  - patrón: en RealOnly, filtrar las soluciones discretas no-reales (`expr_contains_imaginary`: `i`,
+    `√(neg)`, raíz PAR de negativo) tras resolver; las raíces IMPARES de negativos son reales. Gatear a
+    RealOnly para no romper el modo complejo.

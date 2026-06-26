@@ -60,6 +60,26 @@ fn inv_trig_arg_provably_out_of_range(ctx: &Context, c: ExprId) -> bool {
 /// Such a value is never a real solution of an equation over ℝ — e.g.
 /// `solve(cos(x)=2, x)` must not report `{ arccos(2) }`, and `solve(sin(x)=√2, x)`
 /// must not report `{ arcsin(√2) }`.
+/// Drop discrete solutions that are PROVABLY non-real (the imaginary unit `i`, `√(negative)`, or an
+/// even root of a negative — `(-1)^(1/2)`), used only in the RealOnly domain. An odd root of a
+/// negative (`(-8)^(1/3) = -2`) is real and is kept. Non-discrete sets are real by construction.
+fn drop_non_real_discrete_solutions(ctx: &Context, set: SolutionSet) -> SolutionSet {
+    match set {
+        SolutionSet::Discrete(xs) => {
+            let kept: Vec<ExprId> = xs
+                .into_iter()
+                .filter(|&x| !cas_math::numeric_eval::expr_contains_imaginary(ctx, x))
+                .collect();
+            if kept.is_empty() {
+                SolutionSet::Empty
+            } else {
+                SolutionSet::Discrete(kept)
+            }
+        }
+        other => other,
+    }
+}
+
 fn solution_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
     use cas_ast::BuiltinFn;
     match ctx.get(expr) {
@@ -1860,6 +1880,16 @@ fn solve_local_core(
     let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
     let conds = ctx.required_conditions();
     let set = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);
+    // SOUNDNESS (RealOnly): drop a discrete solution that is provably NON-REAL — it carries the
+    // imaginary unit `i`, `√(negative)`, or an EVEN root of a negative (`(-1)^(1/2)`). The inversion
+    // of `ln`/`exp` does not re-check reality, so `solve(ln(x)=√(-1)) → {e^((-1)^(1/2))}` (= e^i) and
+    // `solve(x=i) → {i}` slipped through; in the reals they have no solution. ODD roots of negatives
+    // (`(-8)^(1/3) = -2`) stay REAL and are NOT dropped.
+    let set = if opts.value_domain.is_real_only() {
+        drop_non_real_discrete_solutions(&simplifier.context, set)
+    } else {
+        set
+    };
     // Fold the monotonic-function argument-domain into an inequality result
     // (`sqrt(x)<2 → [0,4)`), which the inversion drops; no-op for equations.
     let set = intersect_inequality_with_function_domain(simplifier, eq, var, set);
