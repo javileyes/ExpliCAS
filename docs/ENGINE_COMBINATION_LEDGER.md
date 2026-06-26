@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 374 (newest first)
+Active entries: 375 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -139,6 +139,7 @@ Active entries: 374 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_polynomial_inequality_si... | SOUNDNESS (Round-5 fix 4/N): inecuaciones de polinomio irreducible por análisis de signo
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_biquadratic`) | SOUNDNESS/CAPACIDAD (Round-5 fix 5/N): bicuadráticas con raíces surd por z = x²
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_equality`) | SOUNDNESS (Round-5 fix 6/N): ecuaciones |arg|=c por split arg=±c
+- 2026-06-26 | `retained` | `crates/cas_engine/src/rules/exponents/power_rules.rs` (`ComplexNegativeBaseR... | SOUNDNESS (Round-5 fix 7/N): rama principal de (-r)^(p/q) en modo complejo (último P0)
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15863,3 +15864,27 @@ Active entries: 374 (newest first)
   - patrón: cuando la isolación RECURSIVA de un envoltorio (abs, aquí) mal-resuelve el sub-problema, el fix es
     construir las sub-ECUACIONES explícitas y resolverlas con el solver completo (que ya funciona), no parchear
     la isolación. Mismo patrón de gate POST-residual + dedup numérica que cúbico/bicuadrático.
+
+## 2026-06-26 - SOUNDNESS (Round-5 fix 7/N): rama principal de (-r)^(p/q) en modo complejo (último P0)
+
+- area: `crates/cas_engine/src/rules/exponents/power_rules.rs` (`ComplexNegativeBaseRootRule`),
+  `crates/cas_engine/src/rules/exponents/mod.rs` (registro antes de `EvaluatePowerRule`)
+- status: `retained` (commit ddf753b7a; COMPLETA los 8/8 P0 del audit Round 5)
+- capture:
+  - investment_class: soundness (valor INCORRECTO en modo complejo opt-in)
+  - primary_dimension: north_star_capability
+  - cell: ANTES con `--value-domain complex`, base negativa con exponente p/q de denominador IMPAR devolvía la
+    raíz REAL impar en vez de la rama principal: `(-1)^(1/3) -> -1` (cúbica real) en vez de `1/2+(√3/2)i`; igual
+    `(-8)^(1/3) -> -2`, `(-1)^(2/3) -> 1`. La pista decisiva: el caso de denominador PAR ya era correcto
+    (`(-4)^(1/2) -> 2i`). AHORA la rama principal `(-r)^(p/q) = r^(p/q)·(cos(π·p/q)+i·sin(π·p/q))`.
+  - MECANISMO: regla nueva (prioridad 16, ANTES de EvaluatePowerRule) que para base numérica estrictamente
+    negativa con p/q de denominador IMPAR y SÓLO si value_domain==ComplexEnabled construye la forma trig
+    principal con cos/sin/π/i. Denominador par sigue con `sqrt(-n)->i·sqrt(n)`; base positiva y modo REAL
+    (convención de raíz impar real `(-8)^(1/3)->-2`) intactos.
+  - validación: workspace 12406 passed (solo flake perf); clippy `-D warnings`; engine-fast; huella 0 deltas.
+    Verificado contra numpy (valores principales).
+- retained learning:
+  - patrón: una convención de dominio (raíz impar REAL) no debe filtrarse al modo COMPLEJO; la rama principal
+    `exp(w·Log z)` da `r^w·(cos(πw)+i·sin(πw))` para base negativa. Una regla nueva de PRIORIDAD ALTA gateada por
+    value_domain, que dispara antes del evaluador literal real, es el punto de inyección limpio (no se toca el
+    evaluador real). Reutiliza la maquinaria trig (cos/sin/π) que el motor ya simplifica.
