@@ -1617,6 +1617,40 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_reducible_quartic_factor_roots() {
+    // A polynomial whose deflated quartic factor splits into two rational quadratics dropped the
+    // quadratic factor's roots: `x⁵-5x³+x²-5 = (x+1)(x²-5)(x²-x+1)` returned only `{-1}`, losing the
+    // `±√5` roots of `x²-5`. The quartic is now factored into quadratics and each is solved.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // The quintic recovers -1 plus the ±√5 surd roots (3 real roots, no residual).
+    let quintic = r("solve(x^5-5*x^3+x^2-5=0, x)");
+    assert!(
+        quintic.contains("-1")
+            && quintic.contains("sqrt(5)")
+            && quintic.matches(", ").count() == 2
+            && !quintic.contains("Solve"),
+        "x^5-5x^3+x^2-5 -> {quintic}"
+    );
+    // Standalone reducible quartics with only-rational or mixed real roots.
+    assert_eq!(r("solve(x^4+x^3-x-1=0, x)"), "{ -1, 1 }"); // (x²-1)(x²+x+1)
+    assert_eq!(r("solve(x^4-3*x^2-4=0, x)"), "{ -2, 2 }"); // (x²-4)(x²+1)
+                                                           // An IRREDUCIBLE quartic correctly declines (Ferrari deferred) — stays an honest residual.
+    assert!(r("solve(x^4-x-1=0, x)").contains("Solve"));
+    // The reducible-quartic INEQUALITY now works through the sign-analysis chain.
+    assert_eq!(r("x^4-3*x^2-4>0"), "(-infinity, -2) U (2, infinity)");
+    // Controls: biquadratics and lower-degree solves are unchanged.
+    assert_eq!(r("solve(x^4-5*x^2+4=0, x)"), "{ -2, -1, 1, 2 }");
+    assert_eq!(r("solve(x^3-2=0, x)"), "{ 2^(1/3) }");
+}
+
+#[test]
 fn test_eval_complex_negative_base_odd_root_principal_branch() {
     // In complex mode, a negative base under a rational `p/q` with ODD denominator is the PRINCIPAL
     // value `r^(p/q)·(cos(πp/q) + i·sin(πp/q))`, not the real odd root: `(-1)^(1/3) = 1/2 + (√3/2)i`,

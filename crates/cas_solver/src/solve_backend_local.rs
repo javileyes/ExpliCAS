@@ -1926,6 +1926,23 @@ fn solve_local_core(
         set
     };
 
+    // A polynomial whose deflated quartic factor splits into two rational quadratics
+    // (`x⁵-5x³+x²-5 = (x+1)(x²-5)(x²-x+1)` drops the `±√5` roots): peel the rational roots and solve
+    // the quadratic factors. Replaces a `Residual`/`Conditional`; augments a `Discrete` the normal
+    // path left incomplete (only the rational roots) when the quartic factor adds genuinely new roots.
+    let set = match try_solve_polynomial_with_quartic_factor(simplifier, eq, var) {
+        Some(complete) => match (&set, &complete) {
+            (SolutionSet::Residual(_) | SolutionSet::Conditional(_), _) => complete,
+            (SolutionSet::Discrete(current), SolutionSet::Discrete(c))
+                if c.len() > current.len() =>
+            {
+                complete
+            }
+            _ => set,
+        },
+        None => set,
+    };
+
     // An absolute-value equation `|arg| = c` with a quadratic argument carrying a linear term
     // (`|x²-2x| = 3`) leaks a circular residual from the recursive isolation. Split `arg = ±c` and
     // solve each as a full equation instead.
@@ -2174,6 +2191,162 @@ fn try_solve_biquadratic(
         let residual = af * xv.powi(4) + bf * xv * xv + cf;
         let scale = 1.0 + af.abs() * xv.powi(4).abs() + bf.abs() * xv * xv + cf.abs();
         if residual.abs() > 1e-9 * scale {
+            continue;
+        }
+        if seen.iter().any(|&v| (v - xv).abs() < 1e-9) {
+            continue;
+        }
+        seen.push(xv);
+        roots.push(root);
+    }
+    if roots.is_empty() {
+        return Some(SolutionSet::Empty);
+    }
+    Some(SolutionSet::Discrete(roots))
+}
+
+/// Factor a MONIC integer quartic `x⁴ + b·x³ + c·x² + d·x + e` into two monic integer quadratics
+/// `(x² + p·x + q)(x² + r·x + s)`, if it factors over ℚ. By Gauss's lemma a monic integer polynomial
+/// that factors over ℚ factors over ℤ, so the constant terms are an integer divisor pair `q·s = e`;
+/// for each, `p = (d − q·b)/(s − q)` and `r = b − p` are forced, and the factorization is accepted
+/// only when `p, r` are integers and the `x²`/`x³` coefficients match. Returns `None` for an
+/// irreducible quartic (e.g. `x⁴ − x − 1`) or coefficients outside `i64`.
+fn factor_monic_quartic_into_rational_quadratics(
+    b: i64,
+    c: i64,
+    d: i64,
+    e: i64,
+) -> Option<((i64, i64), (i64, i64))> {
+    if e == 0 {
+        return None; // x is a factor ⇒ a rational root the caller already peeled
+    }
+    let abs_e = e.unsigned_abs();
+    if abs_e > 1_000_000 {
+        return None; // keep the divisor enumeration bounded
+    }
+    for mag in 1..=abs_e {
+        if !abs_e.is_multiple_of(mag) {
+            continue;
+        }
+        for q in [mag as i64, -(mag as i64)] {
+            let s = e / q; // exact: q divides e
+            if s == q {
+                continue; // degenerate q = s handled by neither branch; skip
+            }
+            let numerator = d - q * b;
+            let denom = s - q;
+            if numerator % denom != 0 {
+                continue;
+            }
+            let p = numerator / denom;
+            let r = b - p;
+            if q + s + p * r == c && p + r == b {
+                return Some(((p, q), (r, s)));
+            }
+        }
+    }
+    None
+}
+
+/// Solve a polynomial whose deflated quotient (after peeling rational roots) is a degree-4 factor that
+/// splits into two rational quadratics — `x⁵-5x³+x²-5 = (x+1)(x²-5)(x²-x+1)` loses the `±√5` roots of
+/// `x²-5` because the higher-degree path drops the quartic factor. This peels the rational roots,
+/// factors the monic quartic quotient into `(x²+px+q)(x²+rx+s)`, solves each quadratic for its REAL
+/// roots `(−p ± √(p²−4q))/2`, and returns the complete real set `rational_roots ∪ {quadratic roots}`.
+/// Every root is verified by numeric back-substitution. An irreducible quartic quotient declines.
+fn try_solve_polynomial_with_quartic_factor(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::quadratic_formula::sqrt_expr;
+    use cas_solver_core::rational_roots::{find_rational_roots, rational_to_expr};
+    use num_rational::BigRational;
+    use num_traits::ToPrimitive;
+    use std::collections::HashMap;
+    const MAX_CANDIDATES: usize = 256;
+
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+    let poly = Polynomial::from_expr(&simplifier.context, diff, var).ok()?;
+    if poly.degree() < 4 {
+        return None;
+    }
+    let (rational_roots, quotient) = find_rational_roots(poly.coeffs.clone(), MAX_CANDIDATES);
+    // The deflated quotient must be a MONIC quartic with integer coefficients.
+    if quotient.len() != 5 {
+        return None;
+    }
+    let int_of = |r: &BigRational| -> Option<i64> {
+        if r.is_integer() {
+            r.to_i64()
+        } else {
+            None
+        }
+    };
+    if int_of(&quotient[4])? != 1 {
+        return None;
+    }
+    let e = int_of(&quotient[0])?;
+    let d = int_of(&quotient[1])?;
+    let c = int_of(&quotient[2])?;
+    let b = int_of(&quotient[3])?;
+    let ((p1, q1), (p2, q2)) = factor_monic_quartic_into_rational_quadratics(b, c, d, e)?;
+
+    // Solve each monic quadratic `x² + p·x + q` for its real roots `(−p ± √(p²−4q))/2`.
+    let mut raw_roots: Vec<ExprId> = Vec::new();
+    for (p, q) in [(p1, q1), (p2, q2)] {
+        let disc = p * p - 4 * q;
+        if disc < 0 {
+            continue; // complex roots ⇒ no real solution from this factor
+        }
+        let ctx = &mut simplifier.context;
+        let disc_node = ctx.add(Expr::Number(BigRational::from_integer(disc.into())));
+        let sqrt_disc = sqrt_expr(ctx, disc_node);
+        let neg_p = ctx.add(Expr::Number(BigRational::from_integer((-p).into())));
+        let two = ctx.num(2);
+        let plus = ctx.add(Expr::Add(neg_p, sqrt_disc));
+        let minus = ctx.add(Expr::Sub(neg_p, sqrt_disc));
+        raw_roots.push(ctx.add(Expr::Div(plus, two)));
+        raw_roots.push(ctx.add(Expr::Div(minus, two)));
+    }
+
+    // Distinct rational roots (with multiplicity from `find_rational_roots`).
+    let mut distinct_rationals: Vec<BigRational> = Vec::new();
+    for root in &rational_roots {
+        if !distinct_rationals.contains(root) {
+            distinct_rationals.push(root.clone());
+        }
+    }
+    let mut roots: Vec<ExprId> = distinct_rationals
+        .iter()
+        .map(|root| rational_to_expr(&mut simplifier.context, root))
+        .collect();
+
+    // Simplify and verify each quadratic root by numeric back-substitution; dedup by value.
+    let mut seen: Vec<f64> = roots
+        .iter()
+        .filter_map(|&r| cas_math::evaluator_f64::eval_f64(&simplifier.context, r, &HashMap::new()))
+        .collect();
+    for raw in raw_roots {
+        let (root, _) = simplifier.simplify(raw);
+        let xv = match cas_math::evaluator_f64::eval_f64(&simplifier.context, root, &HashMap::new())
+        {
+            Some(v) if v.is_finite() => v,
+            _ => continue,
+        };
+        // Verify against the ORIGINAL polynomial p(xv) ≈ 0.
+        let mut residual = 0.0f64;
+        let mut scale = 0.0f64;
+        for (i, coeff) in poly.coeffs.iter().enumerate() {
+            if let Some(cf) = coeff.to_f64() {
+                let term = cf * xv.powi(i as i32);
+                residual += term;
+                scale += term.abs();
+            }
+        }
+        if residual.abs() > 1e-9 * (1.0 + scale) {
             continue;
         }
         if seen.iter().any(|&v| (v - xv).abs() < 1e-9) {
