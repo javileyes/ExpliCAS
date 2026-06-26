@@ -1617,6 +1617,50 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_complex_negative_base_odd_root_principal_branch() {
+    // In complex mode, a negative base under a rational `p/q` with ODD denominator is the PRINCIPAL
+    // value `r^(p/q)·(cos(πp/q) + i·sin(πp/q))`, not the real odd root: `(-1)^(1/3) = 1/2 + (√3/2)i`,
+    // not `-1`. The real-odd-root literal value was leaking into complex mode (Round-5 audit, P0).
+    let cx = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    let re = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Complex principal branch: a non-real value with the correct real part, NOT the real odd root.
+    let r13 = cx("(-1)^(1/3)");
+    assert!(
+        r13.contains('i') && r13.contains("1/2") && r13 != "-1",
+        "(-1)^(1/3) complex -> {r13}"
+    );
+    assert!(cx("(-8)^(1/3)").contains('i') && cx("(-8)^(1/3)") != "-2");
+    assert!(cx("(-1)^(2/3)").contains('i') && cx("(-1)^(2/3)") != "1");
+    // Even-root complex (sqrt(-n) → i·sqrt(n)) and positive bases are unaffected.
+    assert_eq!(cx("(-4)^(1/2)"), "2·i");
+    assert_eq!(cx("8^(1/3)"), "2");
+    // REAL mode keeps the engine's real-odd-root convention.
+    assert_eq!(re("(-8)^(1/3)"), "-2");
+    assert_eq!(re("(-1)^(1/3)"), "-1");
+}
+
+#[test]
 fn test_eval_abs_equation_quadratic_arg_split() {
     // `|arg(x)| = c` (constant `c ≥ 0`) with a quadratic argument carrying a linear term leaked a
     // circular residual `solve(x − (2x+3)^(1/2)=0)` from the recursive isolation, even though

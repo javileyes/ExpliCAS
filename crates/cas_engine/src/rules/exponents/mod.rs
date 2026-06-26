@@ -3,8 +3,9 @@ mod rationalization;
 mod simplification;
 
 pub use power_rules::{
-    EvaluatePowerRule, NegativeExponentNormalizationRule, PowerPowerRule, ProductPowerRule,
-    ProductSameExponentRule, QuotientSameExponentRule, RootPowCancelRule,
+    ComplexNegativeBaseRootRule, EvaluatePowerRule, NegativeExponentNormalizationRule,
+    PowerPowerRule, ProductPowerRule, ProductSameExponentRule, QuotientSameExponentRule,
+    RootPowCancelRule,
 };
 pub use rationalization::{
     CubeRootDenRationalizeRule, PowPowCancelReciprocalRule, RationalizeLinearSqrtDenRule,
@@ -27,6 +28,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RootPowCancelRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(NegativeExponentNormalizationRule)); // x^(-n) → 1/x^n
+                                                                      // In complex mode, `(-r)^(p/q)` (odd q) is the principal branch, not the real odd root —
+                                                                      // must fire BEFORE EvaluatePowerRule, which would emit the real-odd-root literal value.
+    simplifier.add_rule(Box::new(ComplexNegativeBaseRootRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(ExpQuotientRule)); // V2.14.45: e^a/e^b → e^(a-b)
 

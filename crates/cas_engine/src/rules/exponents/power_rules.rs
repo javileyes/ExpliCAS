@@ -392,6 +392,71 @@ impl crate::rule::Rule for RootPowCancelRule {
     }
 }
 
+// ============================================================================
+// ComplexNegativeBaseRootRule: in COMPLEX mode, `(-r)^(p/q)` with ODD denominator `q` is the
+// PRINCIPAL value `r^(p/q)·(cos(π·p/q) + i·sin(π·p/q))`, NOT the real odd root. `(-1)^(1/3)` is
+// `1/2 + (√3/2)i`, not `-1`. (`EvaluatePowerRule` would otherwise leak the real-odd-root literal
+// value into complex mode; even denominators are handled by the `sqrt(-n) → i·sqrt(n)` rewrite.)
+// ============================================================================
+pub struct ComplexNegativeBaseRootRule;
+
+impl crate::rule::Rule for ComplexNegativeBaseRootRule {
+    fn name(&self) -> &str {
+        "Complex Negative Base Root"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::semantics::ValueDomain;
+        use num_integer::Integer;
+        use num_rational::BigRational;
+        use num_traits::Zero;
+
+        if parent_ctx.value_domain() != ValueDomain::ComplexEnabled {
+            return None;
+        }
+        let (base, exp) = match ctx.get(expr) {
+            Expr::Pow(b, e) => (*b, *e),
+            _ => return None,
+        };
+        let base_val = cas_math::numeric_eval::as_rational_const(ctx, base)?;
+        if base_val >= BigRational::zero() {
+            return None; // only a strictly-negative base
+        }
+        let exp_val = cas_math::numeric_eval::as_rational_const(ctx, exp)?;
+        if exp_val.is_integer() || exp_val.denom().is_even() {
+            return None; // integer or even-denominator (the latter handled by sqrt(-n) → i·sqrt(n))
+        }
+        // Principal value: (-r)^(p/q) = r^(p/q)·(cos(π·p/q) + i·sin(π·p/q)), with r = |base|.
+        let r_node = ctx.add(Expr::Number(-base_val));
+        let magnitude = ctx.add(Expr::Pow(r_node, exp));
+        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+        let angle = ctx.add(Expr::Mul(pi, exp));
+        let cos_a = ctx.call("cos", vec![angle]);
+        let sin_a = ctx.call("sin", vec![angle]);
+        let imaginary = ctx.add(Expr::Constant(cas_ast::Constant::I));
+        let i_sin = ctx.add(Expr::Mul(imaginary, sin_a));
+        let trig = ctx.add(Expr::Add(cos_a, i_sin));
+        let result = ctx.add(Expr::Mul(magnitude, trig));
+        Some(
+            crate::rule::Rewrite::new(result)
+                .desc("(-r)^(p/q) = r^(p/q)·(cos(πp/q) + i·sin(πp/q)) (principal branch)"),
+        )
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
+    }
+
+    fn priority(&self) -> i32 {
+        16 // fire before EvaluatePowerRule (which would emit the real odd root)
+    }
+}
+
 define_rule!(
     PowerPowerRule,
     "Power of a Power",
