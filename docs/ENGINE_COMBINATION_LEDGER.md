@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 381 (newest first)
+Active entries: 382 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
+- 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16063,3 +16064,23 @@ Active entries: 381 (newest first)
     necesita: TODO-NUMÉRICO. Si se aplica a operandos simbólicos, puede commitear una forma que el modo residual
     retenía DELIBERADAMENTE por condición de dominio (inverso ⇒ det≠0). La huella del workspace lo cazó — los
     tests de "residual honesto simbólico" son contratos de soundness, no de presentación.
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal 3/4): autovalores reales
+
+- area: `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`)
+- status: `retained` (commit pendiente↑). `eigenvalues(A)` = raíces de `charpoly(A)`, espectro REAL.
+- capture:
+  - cell: ANTES no definida. AHORA pela raíces racionales exactas (`find_rational_roots`) y cierra el factor
+    deflactado de grado 1/2 por fórmula cuadrática (`sqrt_expr`), surds incluidos: `[[2,1],[1,2]]→[3,1]`,
+    tridiagonal `→[2,2±√2]`, `[[5,4,2],[4,5,2],[2,2,2]]→[1,10,1]`. Verificado contra numpy.
+  - MECANISMO clave (arquitectura): el cálculo vive en cas_engine (no cas_math) porque necesita
+    `cas_solver_core::{rational_roots, quadratic_formula}`, y cas_engine YA depende de cas_solver_core.
+    Reusa `Matrix::charpoly` + `Polynomial::from_expr` (cas_math).
+  - honestidad real-domain: discriminante NEGATIVO (par conjugado complejo) ⇒ declina a residual (motor real,
+    no emite `±i`); factor irreducible grado ≥3 ⇒ declina el espectro ENTERO (no parcial). Simbólica/no-cuadrada
+    declinan.
+  - validación: workspace 12419 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - el cluster álgebra-lineal cruza fronteras de crate: charpoly numérico vive en cas_math, pero la RESOLUCIÓN
+    (raíces) necesita cas_solver_core ⇒ va en cas_engine. Reutilizar `find_rational_roots`+`sqrt_expr` evita
+    duplicar el solver. Real-domain ⇒ complejo/irreducible-alto = residual honesto, no respuesta parcial.
