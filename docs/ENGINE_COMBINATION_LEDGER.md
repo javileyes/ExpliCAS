@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 365 (newest first)
+Active entries: 366 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -130,6 +130,7 @@ Active entries: 365 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_math/src/summation_support.rs` (reubica el doc-comment de `try_pl... | Limpieza: doc-comment huérfano (deuda clippy `-D warnings` de R9); residual `(2*x)/(5*x)` diferido
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/algebra/mod.rs` (`try_exact_common_factor_mul_fr... | P2 consistencia: cancelación MULTI-factor reduce del todo (`(2xy)/(5xy)->2/5`)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_cubic_by_cardano`;... | CAPACIDAD: solver cúbico por Cardano (caso Δ>0, una raíz real)
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_cu... | GRADUADO R8: factor cúbico irreducible (Δ>0) recuperado por Cardano + factor-peeling
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15570,3 +15571,54 @@ Active entries: 365 (newest first)
     de resultado (`Residual`/`Conditional` = "no resuelto") es más limpio que inyectarla en la maquinaria
     genérica de estrategias; el discriminante EXACTO decide el caso, y el sub-caso no-soportado DECLINA
     (residual honesto) en vez de inventar. Próximo: forma trig para `Δ<0` y el caso factor.
+
+## 2026-06-26 - GRADUADO R8: factor cúbico irreducible (Δ>0) recuperado por Cardano + factor-peeling
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_cubic_factor`,
+    `build_cardano_real_root` extraído del hook de ciclo 1)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (casos FACTOR en
+    `test_eval_irreducible_cubic_single_real_root_by_cardano`)
+  - `docs/CALCULUS_FRONTIER_AUDIT.md` (R8 GRADUADO)
+- status:
+  - `retained` (commit 1d764345a; cierra los 3 defectos de R8; el cúbico standalone de ciclo 1 se generaliza
+    al caso FACTOR)
+- capture:
+  - investment_class: soundness/completeness (recupera raíces reales perdidas — lost-domain P2)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `solve(x^4+x^3+3x=0,x) -> {0}` PERDÍA la raíz real ≈-1.8637 del factor `x³+x²+3`;
+    `solve(x^4-4x^3+6x+4=0,x) -> {2}` y `solve(x^5+2x^4+x^3+3x^2+3x=0,x) -> {-1,0}` igual. AHORA
+    `{0, ∛(…)−1/3}`, `{2, ∛(…)+2/3}`, `{0, -1, ∛(…)−1/3}` — el set REAL completo.
+  - MECANISMO: el hook de ciclo 1 (cúbico standalone, gateado a `Residual`/`Conditional`) se reemplaza por
+    `try_solve_polynomial_with_cubic_factor`: (1) lee `p(x)=lhs−rhs` como `Polynomial`; (2) PELA las raíces
+    racionales con `rational_roots::find_rational_roots` (incl. `x=0` por multiplicidad), devolviendo
+    `(racionales, cociente)`; (3) si el cociente deflactado es EXACTAMENTE un cúbico (4 coefs) llama a
+    `build_cardano_real_root` (Δ>0 -> raíz radical real; Δ≤0 -> None); (4) devuelve el set REAL completo
+    `racionales_DISTINTAS ∪ {raíz cúbica}`. En el call-site: si el resultado normal era
+    `Residual`/`Conditional`/`Discrete` se REEMPLAZA por el set completo (NO union — `complete` ya carga las
+    racionales; unir duplicaría `{0,0,…}` y `union_solution_sets` NO deduplica).
+  - DEDUP: `find_rational_roots` devuelve raíces CON multiplicidad (`x²·(…)` da `0` dos veces); el motor reporta
+    un set de raíces DISTINTAS (`(x+1)³ → {-1}`), así que se deduplican las racionales por valor `BigRational`
+    antes de emitir. La raíz de Cardano es irracional (cúbico irreducible) — nunca colisiona con una racional.
+  - SOUNDNESS: Δ exacto (BigRational). Las 3 raíces cúbicas verificadas por sustitución numérica (P(r) < 7e-14).
+    Δ≤0 (casus irreducibilis como FACTOR, `x^4-3x^2+x → {0}`) DECLINA -> sólo la racional; el cúbico queda sin
+    resolver (honesto). El cúbico standalone y los racional-puros (`x³-2 → {2^(1/3)}`, `x³-6x²+11x-6 → {1,2,3}`,
+    `(x+1)³ → {-1}`) se reproducen idénticos (REEMPLAZO = mismo set).
+  - validación: clippy `-D warnings` LIMPIO; contract test (4 cúbicos standalone + 3 FACTOR + 6 controles
+    incl. casus-factor) verde; `cargo test --workspace --no-fail-fast` con el ÚNICO fallo
+    `perf_tan_n10_completes` (guard de tiempo de pared 2s) que TAMBIÉN falla en HEAD con stash (12.48s,
+    máquina compartida con load ~5-18) -> ambiental, NO regresión (probado byte-idéntico al revertir).
+  - PELDAÑOS (ciclo 3): casus irreducibilis Δ<0 (factor cúbico con TRES raíces reales) vía forma trig
+    `2√(-p/3)·cos((1/3)arccos(...)−2πk/3)`; factor cúbico tras pelar una CUÁDRICA irreducible (cociente grado>3,
+    no se invoca aún).
+- observed:
+  - reutilizar `find_rational_roots` (que ya pela racionales y devuelve el cociente) convierte el solver cúbico
+    standalone en uno de FACTOR sin maquinaria nueva: el cociente deflactado ES el factor cúbico a atacar con
+    Cardano. REEMPLAZAR (no unir) el set normal con el set completo evita el duplicado de raíces racionales,
+    porque `union_solution_sets` no deduplica.
+- retained learning:
+  - patrón: cuando un solver de forma cerrada existe para el caso AISLADO, generalizarlo al caso FACTOR es
+    "pelar las raíces racionales primero y aplicar el solver al cociente deflactado" — no requiere una variante
+    mixta de `SolutionSet`; el set REAL completo (racionales distintas ∪ raíces del factor) lo subsume.
+    Cuidado con multiplicidades de `find_rational_roots` (dedup por valor) y con que `union_solution_sets` NO
+    deduplica (preferir reemplazo cuando el lado nuevo ya es completo).

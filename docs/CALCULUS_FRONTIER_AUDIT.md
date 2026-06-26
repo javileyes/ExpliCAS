@@ -1592,18 +1592,23 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   raíz IMPAR de negativo (`(-8)^(1/3)=-2`) se conserva. Modo complejo intacto. Test
   `cli_contract_tests::test_eval_non_real_solution_rejected_in_real_domain`.)*
 
-### R8 — P2 lost-domain: factor cúbico irreducible abandonado en `solve` polinómico — 3 defectos
-- [ ] `solve(x^4+x^3+3*x=0,x)` → `{0}` (falta la raíz real ≈ -1.8637 de `x³+x²+3`).
-- [ ] `solve(x^4-4*x^3+6*x+4=0,x)` → `{2}` (falta ≈ 3.3652 de `x³-2x²-4x-2`).
-- [ ] `solve(x^5+2*x^4+x^3+3*x^2+3*x=0,x)` → `{-1,0}` (falta ≈ -1.8637).
+### R8 — P2 lost-domain: factor cúbico irreducible abandonado en `solve` polinómico — 3 defectos [GRADUADO]
+- [x] `solve(x^4+x^3+3*x=0,x)` → `{0, ∛(…)−1/3}` (recupera la raíz real ≈ -1.8637 de `x³+x²+3`).
+- [x] `solve(x^4-4*x^3+6*x+4=0,x)` → `{2, ∛(…)+2/3}` (recupera ≈ 3.3652 de `x³-2x²-4x-2`).
+- [x] `solve(x^5+2*x^4+x^3+3*x^2+3*x=0,x)` → `{0, -1, ∛(…)−1/3}` (recupera ≈ -1.8637).
   Nota: `solve(x^3+x^2+3=0,x)` aislada devuelve residual honesto — el bug es que al pelar raíces
   racionales del producto se DESCARTA el factor cúbico en vez de dejarlo residual.
   *Hipótesis raíz:* el solver extrae raíces racionales y abandona factores de grado ≥3 sin raíces
   racionales (debería resolver por radicales o devolver residual honesto, no recortar).
-  *(DIFERIDO 2026-06-26: investigado. El cúbico aislado SÍ da `Residual(solve(x³+x²+3=0))` honesto, pero como
-  FACTOR el resultado completo sería `Discrete({0,-1}) ∪ Residual(cúbico)` y `SolutionSet` NO tiene variante
-  mixta Discrete+Residual. Cierre limpio requiere (a) solver cúbico por Cardano [capacidad grande] o (b)
-  extender `SolutionSet` a un set mixto. Fuera de un ciclo de residual; queda abierto.)*
+  *(graduado 2026-06-26 1d764345a: cerrado por el solver cúbico de Cardano [opción (a)], no por
+  `SolutionSet` mixto. `try_solve_polynomial_with_cubic_factor` (solve_backend_local.rs) PELA las raíces
+  racionales con `find_rational_roots` y, si el cociente deflactado es un cúbico irreducible con UNA raíz real
+  (Δ = (q/2)²+(p/3)³ > 0), lo resuelve por radicales con `build_cardano_real_root` y devuelve el set REAL
+  completo `racionales ∪ {raíz cúbica}` (raíces racionales DISTINTAS — la multiplicidad `x²` colapsa). Las 3
+  raíces cúbicas verificadas numéricamente (P(r) < 7e-14). Peldaño restante: casus irreducibilis Δ<0 (factor
+  cúbico con TRES raíces reales, p.ej. `x^4-3x^2+x → {0}`) sigue DECLINANDO honestamente — necesita la forma
+  trigonométrica `2√(-p/3)·cos(...)`; y un factor cúbico tras pelar una CUÁDRICA irreducible (cociente grado>3)
+  no se invoca. Verificación adversarial del Δ>0 SOUND en el commit de ciclo 1.)*
 
 ### R9 — P0 wrong-value: sumatoria finita telescopiada A TRAVÉS de polos en rango — 2 defectos [GRADUADO]
 - [x] `sum(1/((n-3)*(n-4)),n,1,10)` → `-10/21` (real undefined; polos en n=3,4 dentro; `sum(1/(n-3),…)→undefined` ✓).
