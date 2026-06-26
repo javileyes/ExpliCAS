@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 366 (newest first)
+Active entries: 367 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -131,6 +131,7 @@ Active entries: 366 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/algebra/mod.rs` (`try_exact_common_factor_mul_fr... | P2 consistencia: cancelación MULTI-factor reduce del todo (`(2xy)/(5xy)->2/5`)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_cubic_by_cardano`;... | CAPACIDAD: solver cúbico por Cardano (caso Δ>0, una raíz real)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_cu... | GRADUADO R8: factor cúbico irreducible (Δ>0) recuperado por Cardano + factor-peeling
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`build_cubic_real_roots` — antes | CAPACIDAD: casus irreducibilis (cúbico Δ<0, tres raíces reales) por forma trigonométrica
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15622,3 +15623,45 @@ Active entries: 366 (newest first)
     mixta de `SolutionSet`; el set REAL completo (racionales distintas ∪ raíces del factor) lo subsume.
     Cuidado con multiplicidades de `find_rational_roots` (dedup por valor) y con que `union_solution_sets` NO
     deduplica (preferir reemplazo cuando el lado nuevo ya es completo).
+
+## 2026-06-26 - CAPACIDAD: casus irreducibilis (cúbico Δ<0, tres raíces reales) por forma trigonométrica
+
+- area:
+  - `crates/cas_solver/src/solve_backend_local.rs` (`build_cubic_real_roots` — antes
+    `build_cardano_real_root`, ahora despacha por signo de Δ y devuelve `Vec<ExprId>`)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_casus_irreducibilis_cubic_three_real_roots`)
+  - `docs/CALCULUS_FRONTIER_AUDIT.md` (R8 ampliado: casus cerrado)
+- status:
+  - `retained` (commit 5fcdcc197; completa el solver cúbico — Δ>0 radical [ciclos 1-2] + Δ<0 trig [este])
+- capture:
+  - investment_class: capacidad nueva (Fase 1: real univariable elemental — forma cerrada exacta)
+  - primary_dimension: north_star_capability
+  - cell: ANTES un cúbico irreducible con Δ = (q/2)²+(p/3)³ < 0 (TRES raíces reales, p.ej. `x³-3x+1`,
+    `x³-7x+7`) DECLINABA (residual honesto) porque no hay forma con radicales REALES (casus irreducibilis);
+    como factor (`x^4-3x^2+x`) sólo daba `{0}`. AHORA las tres raíces reales EXACTAS en forma trigonométrica.
+  - MECANISMO: la rama Δ<0 de `build_cubic_real_roots` emite
+    `x_k = 2√(-p/3)·cos(φ/3 - 2πk/3) - B/3`, k=0,1,2, con `φ = arccos((3q)/(2p)·√(-3/p))`. Δ<0 ⇒ p<0, así que
+    `-p/3` y `-3/p` son POSITIVOS y ambas raíces cuadradas son reales; `arccos`/`cos`/`π` se construyen con
+    `ctx.call("arccos"/"cos", …)` y `Constant::Pi`. El motor ya simplifica `cos∘arccos` y valores especiales de
+    arccos (p.ej. arccos(-1/2)=2π/3 colapsa a ratios de senos), dejando una forma cerrada limpia. El caller de
+    factor-peeling hace `extend` de las racionales DISTINTAS con la lista completa de raíces del cúbico, así que
+    un FACTOR Δ<0 devuelve `racionales ∪ {t0,t1,t2}`.
+  - DESPACHO por Δ: Δ>0 -> 1 raíz radical (ciclos 1-2); Δ<0 -> 3 raíces trig (este); Δ=0 -> None (raíz repetida
+    de un cúbico entero es RACIONAL, ya pelada por el deflactado de raíces racionales — inalcanzable en práctica).
+  - SOUNDNESS: Δ exacto (BigRational) decide la rama. Las 9 raíces (3 cúbicos × 3) verificadas por sustitución
+    numérica (|f(raíz)| < 4e-15) y suma = -B. Δ>0 y racionales INTACTOS. Reales (no se inventan complejas: las
+    tres raíces del casus SON reales).
+  - validación: clippy `-D warnings` LIMPIO; contract test (casus standalone + factor) verde;
+    `cargo test --workspace --no-fail-fast` 12398 passed, único fallo `perf_tan_n10_completes` (guard de tiempo
+    de pared 2s, ambiental — byte-idéntico en HEAD con stash); huella guardrail(16)+pressure(3) 0 deltas.
+  - PELDAÑOS: factor cúbico tras pelar una CUÁDRICA irreducible (cociente grado>3) no se invoca; cuárticas/
+    quínticas irreducibles (Ferrari / no-soluble) fuera de alcance.
+- observed:
+  - el motor YA tenía la maquinaria trig (simplifica cos∘arccos, valores especiales de arccos, π) — la forma
+    trigonométrica del casus irreducibilis sale limpia "gratis" reutilizándola; sólo hubo que construir la
+    expresión correcta. Despachar por el signo del Δ EXACTO unifica los tres casos del cúbico en una función.
+- retained learning:
+  - patrón: cuando un caso (Δ<0) no tiene forma cerrada en el dominio de radicales REALES pero SÍ en forma
+    trigonométrica, y el motor ya simplifica esas funciones, emitir la forma trig es preferible a declinar —
+    da la respuesta EXACTA y reutiliza el simplificador. Generalizar el retorno a `Vec` (no `Option<ExprId>`)
+    desde el principio habría evitado el refactor; un solver de raíces múltiples debe devolver lista.

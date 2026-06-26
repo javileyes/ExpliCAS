@@ -1605,10 +1605,12 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
   racionales con `find_rational_roots` y, si el cociente deflactado es un cúbico irreducible con UNA raíz real
   (Δ = (q/2)²+(p/3)³ > 0), lo resuelve por radicales con `build_cardano_real_root` y devuelve el set REAL
   completo `racionales ∪ {raíz cúbica}` (raíces racionales DISTINTAS — la multiplicidad `x²` colapsa). Las 3
-  raíces cúbicas verificadas numéricamente (P(r) < 7e-14). Peldaño restante: casus irreducibilis Δ<0 (factor
-  cúbico con TRES raíces reales, p.ej. `x^4-3x^2+x → {0}`) sigue DECLINANDO honestamente — necesita la forma
-  trigonométrica `2√(-p/3)·cos(...)`; y un factor cúbico tras pelar una CUÁDRICA irreducible (cociente grado>3)
-  no se invoca. Verificación adversarial del Δ>0 SOUND en el commit de ciclo 1.)*
+  raíces cúbicas verificadas numéricamente (P(r) < 7e-14). Verificación adversarial del Δ>0 SOUND en el commit
+  de ciclo 1. AMPLIADO 2026-06-26 5fcdcc197: el casus irreducibilis Δ<0 (cúbico con TRES raíces reales, standalone
+  Y como factor — `x^3-3x+1`, `x^3-7x+7`, `x^4-3x^2+x → {0,t0,t1,t2}`) ahora se resuelve por la forma
+  TRIGONOMÉTRICA `x_k = 2√(-p/3)·cos(φ/3 - 2πk/3) - B/3`, `φ = arccos((3q)/(2p)·√(-3/p))`, k=0,1,2 (las 9 raíces
+  verificadas |f| < 4e-15). Peldaño restante: un factor cúbico tras pelar una CUÁDRICA irreducible (cociente
+  grado>3) aún no se invoca.)*
 
 ### R9 — P0 wrong-value: sumatoria finita telescopiada A TRAVÉS de polos en rango — 2 defectos [GRADUADO]
 - [x] `sum(1/((n-3)*(n-4)),n,1,10)` → `-10/21` (real undefined; polos en n=3,4 dentro; `sum(1/(n-3),…)→undefined` ✓).
