@@ -225,6 +225,72 @@ impl Matrix {
         Some(ctx.num(rank as i64))
     }
 
+    /// Reduced row echelon form of a NUMERIC matrix by exact Gauss-Jordan
+    /// elimination over `BigRational` (any shape). Each pivot is normalized to 1
+    /// and its column is cleared in every other row. Returns `None` (⇒ honest
+    /// residual) when any entry is not a rational constant. All arithmetic is
+    /// exact — never f64 — so pivot detection is never misjudged.
+    pub fn rref(&self, ctx: &mut Context) -> Option<ExprId> {
+        use num_rational::BigRational;
+        use num_traits::Zero;
+
+        let mut m: Vec<Vec<BigRational>> = Vec::with_capacity(self.rows);
+        for i in 0..self.rows {
+            let mut row = Vec::with_capacity(self.cols);
+            for j in 0..self.cols {
+                row.push(crate::numeric_eval::as_rational_const(
+                    ctx,
+                    self.data[i * self.cols + j],
+                )?);
+            }
+            m.push(row);
+        }
+
+        let mut pivot_row = 0usize;
+        let mut pivot_col = 0usize;
+        while pivot_row < self.rows && pivot_col < self.cols {
+            match (pivot_row..self.rows).find(|&i| !m[i][pivot_col].is_zero()) {
+                None => pivot_col += 1,
+                Some(p) => {
+                    m.swap(pivot_row, p);
+                    // Normalize the pivot row so the pivot becomes 1.
+                    let pivot_val = m[pivot_row][pivot_col].clone();
+                    for entry in &mut m[pivot_row] {
+                        *entry = &*entry / &pivot_val;
+                    }
+                    // Clear the pivot column in every OTHER row (above and below).
+                    let pivot_row_values = m[pivot_row].clone();
+                    for (i, row) in m.iter_mut().enumerate() {
+                        if i != pivot_row && !row[pivot_col].is_zero() {
+                            let factor = row[pivot_col].clone();
+                            for (entry, pivot_entry) in row.iter_mut().zip(&pivot_row_values) {
+                                *entry -= &factor * pivot_entry;
+                            }
+                        }
+                    }
+                    pivot_row += 1;
+                    pivot_col += 1;
+                }
+            }
+        }
+
+        let data: Vec<ExprId> = m
+            .into_iter()
+            .flatten()
+            .map(|value| ctx.add(Expr::Number(value)))
+            .collect();
+        Some(
+            ctx.matrix(self.rows, self.cols, data.clone())
+                .unwrap_or_else(|_| {
+                    ctx.add(Expr::Matrix {
+                        rows: self.rows,
+                        cols: self.cols,
+                        data,
+                    })
+                }),
+        )
+    }
+
     /// Characteristic polynomial `det(λI − A)` in the variable `var` (monic,
     /// degree n). Reuses the symbolic cofactor determinant, which auto-expands,
     /// so `[[2,1],[1,2]]` yields `λ² − 4λ + 3`. Returns `None` for a non-square
@@ -690,6 +756,39 @@ mod tests {
         assert_eq!(rank_of(&mut ctx, 2, 2, &[0, 0, 0, 0]), 0); // zero matrix
         assert_eq!(rank_of(&mut ctx, 2, 3, &[1, 2, 3, 2, 4, 6]), 1); // wide, dependent
         assert_eq!(rank_of(&mut ctx, 3, 2, &[1, 2, 3, 4, 5, 6]), 2); // tall, full column rank
+    }
+
+    #[test]
+    fn test_rref_exact_and_residual() {
+        let mut ctx = Context::new();
+        // Full-rank 2×2 reduces to the identity.
+        let full = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![ctx.num(1), ctx.num(2), ctx.num(3), ctx.num(4)],
+        };
+        let identity = full.rref(&mut ctx).expect("numeric rref");
+        if let Expr::Matrix { rows, cols, data } = ctx.get(identity).clone() {
+            assert_eq!((rows, cols), (2, 2));
+            let nums: Vec<_> = data
+                .iter()
+                .map(|&e| crate::numeric_eval::as_rational_const(&ctx, e).unwrap())
+                .collect();
+            let expect = [1, 0, 0, 1];
+            for (got, want) in nums.iter().zip(expect) {
+                assert_eq!(*got, num_rational::BigRational::from_integer(want.into()));
+            }
+        } else {
+            panic!("rref must return a matrix");
+        }
+        // Symbolic entries decline (honest residual).
+        let a = ctx.var("a");
+        let symbolic = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![a, ctx.num(2), ctx.num(3), ctx.num(4)],
+        };
+        assert!(symbolic.rref(&mut ctx).is_none());
     }
 
     #[test]

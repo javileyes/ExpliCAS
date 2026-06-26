@@ -1617,6 +1617,29 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_matrix_rref() {
+    // Reduced row echelon form was unimplemented. It now computes the exact RREF by Gauss-Jordan
+    // over BigRational, with an honest residual for symbolic entries.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("rref([[1,2],[3,4]])"), "[[1, 0], [0, 1]]"); // full rank → identity
+    assert_eq!(r("rref([[1,2],[2,4]])"), "[[1, 2], [0, 0]]"); // rank 1
+    assert_eq!(
+        r("rref([[1,2,3],[4,5,6],[7,8,9]])"),
+        "[[1, 0, -1], [0, 1, 2], [0, 0, 0]]"
+    );
+    assert_eq!(r("rref([[2,4,6],[1,2,3]])"), "[[1, 2, 3], [0, 0, 0]]"); // pivot normalized
+    assert_eq!(r("rref([[0,1],[1,0]])"), "[[1, 0], [0, 1]]"); // pivot swap
+    assert_eq!(r("rref([[a,b],[c,d]])"), "rref([[a, b], [c, d]])"); // symbolic residual
+}
+
+#[test]
 fn test_eval_matrix_eigenvalues_real() {
     // `eigenvalues(A)` was unimplemented. It now returns the REAL spectrum as the roots of the
     // characteristic polynomial: rational roots peeled exactly, a deflated quadratic closed by the

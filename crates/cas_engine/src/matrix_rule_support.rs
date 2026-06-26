@@ -103,6 +103,10 @@ pub enum MatrixFunctionEval {
         shape: MatrixShape,
         value: ExprId,
     },
+    Rref {
+        shape: MatrixShape,
+        value: ExprId,
+    },
     CharPoly {
         shape: MatrixShape,
         value: ExprId,
@@ -142,6 +146,9 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
         }
         MatrixFunctionEval::Rank { shape, .. } => {
             format!("rank({}×{} matrix)", shape.rows, shape.cols)
+        }
+        MatrixFunctionEval::Rref { shape, .. } => {
+            format!("rref({}×{} matrix)", shape.rows, shape.cols)
         }
         MatrixFunctionEval::CharPoly { shape, .. } => {
             format!(
@@ -502,6 +509,9 @@ pub fn try_eval_matrix_function_expr(
         "rank" => matrix
             .rank(ctx)
             .map(|value| MatrixFunctionEval::Rank { shape, value }),
+        "rref" => matrix
+            .rref(ctx)
+            .map(|value| MatrixFunctionEval::Rref { shape, value }),
         "charpoly" => matrix
             .charpoly(ctx, "lambda")
             .map(|value| MatrixFunctionEval::CharPoly { shape, value }),
@@ -555,6 +565,13 @@ pub fn try_rewrite_matrix_function_rule_expr(
         }
         MatrixFunctionEval::Rank { shape, value } => {
             let desc = format_matrix_function_desc(&MatrixFunctionEval::Rank { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+        MatrixFunctionEval::Rref { shape, value } => {
+            let desc = format_matrix_function_desc(&MatrixFunctionEval::Rref { shape, value });
             Some(MatrixFunctionRewrite {
                 rewritten: value,
                 desc,
