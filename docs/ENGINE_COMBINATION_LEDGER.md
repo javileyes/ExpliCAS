@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 379 (newest first)
+Active entries: 380 (newest first)
 
+- 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16022,3 +16023,22 @@ Active entries: 379 (newest first)
     "el resultado colapsó a constante en la variable Y es finito" aísla EXACTAMENTE el caso de cancelación
     (constante) y deja intactos los vivos y el `undefined` de dominio vacío. Añadir una condición NECESARIA
     siempre es sound; el riesgo es sobre-condicionar o pisar una presentación existente — el gate lo evita.
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
+
+- area: `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_support.rs` + gate `eval.rs`
+- status: `retained` (commit 6ffabfa91). Primer ciclo del cluster álgebra-lineal (rango/charpoly/autovalores/autovectores)
+  hacia "CAS simbólico universal" — el agujero de amplitud más grande medido en la evaluación de universalidad.
+- capture:
+  - investment_class: north_star_capability (amplitud simbólica; soundness-first respetado: residual honesto)
+  - cell: ANTES `rank(M)` → función no definida. AHORA rango exacto por Gauss sobre `BigRational` para
+    cualquier forma; entradas simbólicas → residual honesto (el rango de una matriz parametrizada no es un número).
+  - MECANISMO: leer cada entrada con `numeric_eval::as_rational_const` (bail a None si simbólica), reducir
+    contando pivotes; toda decisión de pivote es aritmética racional EXACTA (nunca f64). Wiring idéntico al de
+    det/trace/inverse: variante `Rank`, brazo `"rank"` en el dispatch, registro en `is_known_eval_engine_function`.
+  - validación: workspace 12416 passed (solo flake perf); clippy `-D warnings --all-targets`; huella IDÉNTICA.
+- retained learning:
+  - una función-comando NUEVA necesita TRES puntos: (1) la lógica en `matrix.rs`, (2) la variante+dispatch en
+    `matrix_rule_support.rs`, y crucialmente (3) el registro en `is_known_eval_engine_function` (`cas_session_core/eval.rs`)
+    — sin (3) el validador de funciones la rechaza ANTES de que las reglas del simplificador la vean ("función no definida").
+    Patrón reutilizable para charpoly/eigenvalues/eigenvectors y para `apart`.
