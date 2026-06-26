@@ -171,6 +171,8 @@ Fronts probed hard and confirmed clean (no wrong values, no spurious/missed root
 
 - **FIXED (commit 76a7b1062): solve text condition-drop cluster** (P1×5 + P2) — a bare `All real numbers` solve result now inlines its `required_display` domain conditions (`… if x > 0`) in text and LaTeX.
 
+- **FIXED (commit 9b053d172): symbolic power-law cluster** (P0×3) — `(x^a)^b → x^(a·b)` now gates on the base sign for symbolic exponents (declines / `--domain assume`); concrete-exponent folds unchanged.
+
 ## 5. Prioritized Fix Order
 
 1. **Inequality operator-drop on irreducible polynomials (P0×3 + 2 P1 dumps).** Highest blast radius: silent wrong-kind result with `ok:true`, plus the dishonest `Solve: …=0` dumps. Fix the inequality path so the comparison operator is never rewritten to `Equal`; do sign analysis over the (closed-form) real roots and return interval unions. One fix retires `x^3+x+1>0/<0`, `x^3-3x+1>0/<0`, `sqrt(x-1)+sqrt(x-2)<3`, `x^4-x-1>0`.

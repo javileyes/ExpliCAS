@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 370 (newest first)
+Active entries: 371 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -135,6 +135,7 @@ Active entries: 370 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_formatter/src/display/expr.rs` (`DisplayExpr` caso Pow) | SOUNDNESS (honestidad de display): base racional bajo potencia pierde paréntesis
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/matrix_ops.rs` (`MatrixShapeGuardRule`), | SOUNDNESS (Round-5 fix 1/N): gate de forma en operaciones de matrices
 - 2026-06-26 | `retained` | `crates/cas_solver/src/eval_output_finalize/build/output/build.rs` | SOUNDNESS (Round-5 fix 2/N): inline de condiciones de dominio en "All real numbers"
+- 2026-06-26 | `retained` | `crates/cas_engine/src/rules/exponents/power_rules.rs` (`decide_multiply_expo... | SOUNDNESS (Round-5 fix 3/N): gate de signo en (x^a)^b -> x^(a·b) simbólico
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15762,3 +15763,26 @@ Active entries: 370 (newest first)
   - patrón: cuando una condición de dominio vive en un canal lateral (`required_display`) que alimenta el JSON
     pero no el texto, el texto por defecto MIENTE. El fix se hace donde ambos canales se encuentran (finalize),
     NO con un append general (rompería el diseño JSON-only de simplify) sino SCOPED al caso exacto del defecto.
+
+## 2026-06-26 - SOUNDNESS (Round-5 fix 3/N): gate de signo en (x^a)^b -> x^(a·b) simbólico
+
+- area: `crates/cas_engine/src/rules/exponents/power_rules.rs` (`decide_multiply_exponents_rewrite`)
+- status: `retained` (commit 9b053d172; cierra el cluster power-law del audit Round 5: P0×3)
+- capture:
+  - investment_class: soundness (valor INCORRECTO silencioso)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `(x^a)^b -> x^(a·b)` plegaba INCONDICIONAL aun con exponentes simbólicos: en x=-3,a=2,b=1/2
+    `((-3)^2)^(1/2)=3` pero el pliegue da `(-3)^1=-3`; `((-2)^a)^b -> (-2)^(a·b)` colapsaba base negativa.
+    AHORA: exponentes CONCRETOS pliegan (el clasificador ya peló las formas inseguras `(x^2)^(1/2)->|x|`);
+    exponente SIMBÓLICO se gatea por el oráculo de dominio sobre `NonNegative(base)` — base negativa/estricto
+    DECLINA (forma honesta sin evaluar + blocked hint `requires x ≥ 0`); base de signo desconocido pliega solo
+    con `--domain assume`; base positiva probada pliega incondicional (`(2^a)^b -> 2^(a·b)`).
+  - MECANISMO: distingue CONCRETO (ambos `Expr::Number`) de SIMBÓLICO; reutiliza `oracle_allows_with_hint`
+    con `Predicate::NonNegative(base)`, la MISMA maquinaria que la rama even-root ya usaba (no inventa).
+  - validación: workspace 12402 passed (solo flake perf); clippy `-D warnings`; huella guardrail(16)+pressure(3)
+    0 deltas (los fixtures usan exponentes concretos, que siguen plegando).
+- retained learning:
+  - patrón: una identidad algebraica `(x^a)^b=x^(a·b)` sólo es sound con condición de dominio cuando el
+    exponente es simbólico (oculta un `a` par cuyo `x^a≥0` el pliegue ignora). El clasificador upstream ya
+    separa los casos CONCRETOS inseguros; el fix gatea SOLO el caso simbólico, reutilizando el oráculo de la
+    rama hermana, así la huella concreta (fixtures) no cambia.
