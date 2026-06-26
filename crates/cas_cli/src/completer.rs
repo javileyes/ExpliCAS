@@ -37,6 +37,7 @@ impl CasHelper {
                 "charpoly".to_string(),
                 "eigenvalues".to_string(),
                 "rref".to_string(),
+                "eigenvectors".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),

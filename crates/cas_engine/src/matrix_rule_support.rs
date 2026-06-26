@@ -115,6 +115,10 @@ pub enum MatrixFunctionEval {
         shape: MatrixShape,
         value: ExprId,
     },
+    Eigenvectors {
+        shape: MatrixShape,
+        value: ExprId,
+    },
     Inverse {
         shape: MatrixShape,
         /// `Some(inverse)` for an invertible matrix; `None` when the matrix is provably
@@ -158,6 +162,9 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
         }
         MatrixFunctionEval::Eigenvalues { shape, .. } => {
             format!("eigenvalues({}×{} matrix)", shape.rows, shape.cols)
+        }
+        MatrixFunctionEval::Eigenvectors { shape, .. } => {
+            format!("eigenvectors({}×{} matrix)", shape.rows, shape.cols)
         }
         MatrixFunctionEval::Inverse { shape, matrix } => {
             if matrix.is_some() {
@@ -474,6 +481,147 @@ pub fn try_matrix_eigenvalues(ctx: &mut Context, matrix: &Matrix) -> Option<Expr
     )
 }
 
+/// Reduce a rational matrix to RREF in place and return its pivot columns.
+fn rational_rref_in_place(m: &mut [Vec<num_rational::BigRational>], cols: usize) -> Vec<usize> {
+    use num_traits::Zero;
+    let rows = m.len();
+    let mut pivots = Vec::new();
+    let (mut pr, mut pc) = (0usize, 0usize);
+    while pr < rows && pc < cols {
+        match (pr..rows).find(|&i| !m[i][pc].is_zero()) {
+            None => pc += 1,
+            Some(p) => {
+                m.swap(pr, p);
+                let pivot_val = m[pr][pc].clone();
+                for entry in &mut m[pr] {
+                    *entry = &*entry / &pivot_val;
+                }
+                let pivot_row = m[pr].clone();
+                for (i, row) in m.iter_mut().enumerate() {
+                    if i != pr && !row[pc].is_zero() {
+                        let factor = row[pc].clone();
+                        for (entry, pivot_entry) in row.iter_mut().zip(&pivot_row) {
+                            *entry -= &factor * pivot_entry;
+                        }
+                    }
+                }
+                pivots.push(pc);
+                pr += 1;
+                pc += 1;
+            }
+        }
+    }
+    pivots
+}
+
+/// Basis of the null space of a rational matrix, from its RREF: one vector per
+/// free column (free var = 1, pivot vars = −rref[row][free]).
+fn rational_null_space(
+    mut m: Vec<Vec<num_rational::BigRational>>,
+    cols: usize,
+) -> Vec<Vec<num_rational::BigRational>> {
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+    let pivots = rational_rref_in_place(&mut m, cols);
+    let pivot_cols: std::collections::HashSet<usize> = pivots.iter().copied().collect();
+    let mut basis = Vec::new();
+    for free in (0..cols).filter(|c| !pivot_cols.contains(c)) {
+        let mut v = vec![BigRational::zero(); cols];
+        v[free] = BigRational::one();
+        for (row, &pivot_col) in pivots.iter().enumerate() {
+            v[pivot_col] = -&m[row][free];
+        }
+        basis.push(v);
+    }
+    basis
+}
+
+/// Eigenvectors of a NUMERIC square matrix with ALL-RATIONAL eigenvalues: for
+/// each distinct rational eigenvalue λ, the null-space basis of `A − λI` (exact
+/// rational RREF). Output is a matrix whose ROWS are the eigenvectors. Declines
+/// (honest residual) when any entry is non-numeric, or any eigenvalue is
+/// irrational/complex — a surd eigenvalue would need a surd-coefficient RREF,
+/// out of this exact-rational scope.
+pub fn try_matrix_eigenvectors(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
+    use cas_solver_core::rational_roots::{find_rational_roots, rational_to_expr};
+    use num_rational::BigRational;
+
+    if matrix.rows != matrix.cols {
+        return None;
+    }
+    let n = matrix.rows;
+    // Read A as an exact rational matrix; bail on any symbolic entry.
+    let mut a: Vec<Vec<BigRational>> = Vec::with_capacity(n);
+    for i in 0..n {
+        let mut row = Vec::with_capacity(n);
+        for j in 0..n {
+            row.push(cas_math::numeric_eval::as_rational_const(
+                ctx,
+                matrix.data[i * n + j],
+            )?);
+        }
+        a.push(row);
+    }
+
+    let charpoly = matrix.charpoly(ctx, "x")?;
+    let poly = cas_math::polynomial::Polynomial::from_expr(ctx, charpoly, "x").ok()?;
+
+    // Gather ALL RATIONAL eigenvalues: `find_rational_roots` peels rational roots only down to a
+    // degree-≤2 factor (it stops at degree 2), so the deflated quadratic/linear remainder must be
+    // solved here. The quadratic's roots are rational iff its discriminant is a perfect square; an
+    // irrational or complex factor declines the whole computation (a surd eigenvalue would need a
+    // surd-coefficient RREF, out of this exact-rational scope).
+    let (mut rational_eigenvalues, remaining) = find_rational_roots(poly.coeffs.clone(), 4096);
+    match remaining.len().saturating_sub(1) {
+        0 => {}
+        1 => rational_eigenvalues.push(-&remaining[0] / &remaining[1]),
+        2 => {
+            let four = BigRational::from_integer(4.into());
+            let two = BigRational::from_integer(2.into());
+            let discriminant =
+                &remaining[1] * &remaining[1] - &four * &remaining[2] * &remaining[0];
+            let root = cas_math::perfect_square_support::rational_sqrt(&discriminant)?;
+            let two_c2 = &two * &remaining[2];
+            rational_eigenvalues.push((-&remaining[1] + &root) / &two_c2);
+            rational_eigenvalues.push((-&remaining[1] - &root) / &two_c2);
+        }
+        _ => return None,
+    }
+
+    let mut eigenvectors: Vec<Vec<BigRational>> = Vec::new();
+    let mut processed: Vec<BigRational> = Vec::new();
+    for lambda in &rational_eigenvalues {
+        if processed.contains(lambda) {
+            continue; // one eigenspace per distinct eigenvalue
+        }
+        processed.push(lambda.clone());
+        let mut shifted = a.clone();
+        for (i, row) in shifted.iter_mut().enumerate() {
+            row[i] -= lambda;
+        }
+        for basis_vector in rational_null_space(shifted, n) {
+            eigenvectors.push(basis_vector);
+        }
+    }
+
+    if eigenvectors.is_empty() {
+        return None;
+    }
+    let rows = eigenvectors.len();
+    let data: Vec<ExprId> = eigenvectors
+        .into_iter()
+        .flatten()
+        .map(|value| rational_to_expr(ctx, &value))
+        .collect();
+    Some(ctx.matrix(rows, n, data.clone()).unwrap_or_else(|_| {
+        ctx.add(Expr::Matrix {
+            rows,
+            cols: n,
+            data,
+        })
+    }))
+}
+
 pub fn try_eval_matrix_function_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -517,6 +665,8 @@ pub fn try_eval_matrix_function_expr(
             .map(|value| MatrixFunctionEval::CharPoly { shape, value }),
         "eigenvalues" | "eigvals" | "eig" => try_matrix_eigenvalues(ctx, &matrix)
             .map(|value| MatrixFunctionEval::Eigenvalues { shape, value }),
+        "eigenvectors" | "eigvecs" => try_matrix_eigenvectors(ctx, &matrix)
+            .map(|value| MatrixFunctionEval::Eigenvectors { shape, value }),
         "inverse" | "inv" => match matrix.inverse(ctx)? {
             MatrixInverseOutcome::Inverse(inv) => Some(MatrixFunctionEval::Inverse {
                 shape,
@@ -587,6 +737,14 @@ pub fn try_rewrite_matrix_function_rule_expr(
         MatrixFunctionEval::Eigenvalues { shape, value } => {
             let desc =
                 format_matrix_function_desc(&MatrixFunctionEval::Eigenvalues { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+        MatrixFunctionEval::Eigenvectors { shape, value } => {
+            let desc =
+                format_matrix_function_desc(&MatrixFunctionEval::Eigenvectors { shape, value });
             Some(MatrixFunctionRewrite {
                 rewritten: value,
                 desc,

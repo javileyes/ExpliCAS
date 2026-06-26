@@ -1617,6 +1617,44 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_matrix_eigenvectors_rational() {
+    // `eigenvectors(A)` (capstone of the linear-algebra core) returns, for each distinct RATIONAL
+    // eigenvalue, the null-space basis of A−λI by exact rational RREF — rows are the eigenvectors.
+    // Verified elsewhere by A·v = λ·v. A defective matrix yields fewer vectors (geometric
+    // multiplicity); surd / complex / symbolic spectra decline to honest residuals.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("eigenvectors([[2,1],[1,2]])"), "[[1, 1], [-1, 1]]");
+    assert_eq!(r("eigenvectors([[2,0],[0,3]])"), "[[0, 1], [1, 0]]");
+    // Defective matrix (Jordan block): repeated eigenvalue 1 with a SINGLE eigenvector.
+    assert_eq!(r("eigenvectors([[1,1],[0,1]])"), "[1, 0]");
+    // Repeated eigenvalue with a full 2-D eigenspace plus a simple one.
+    assert_eq!(
+        r("eigenvectors([[5,4,2],[4,5,2],[2,2,2]])"),
+        "[[-1, 1, 0], [-1/2, 0, 1], [2, 2, 1]]"
+    );
+    // Surd / complex / symbolic spectra → honest residual.
+    assert_eq!(
+        r("eigenvectors([[2,-1,0],[-1,2,-1],[0,-1,2]])"),
+        "eigenvectors([[2, -1, 0], [-1, 2, -1], [0, -1, 2]])"
+    );
+    assert_eq!(
+        r("eigenvectors([[0,-1],[1,0]])"),
+        "eigenvectors([[0, -1], [1, 0]])"
+    );
+    assert_eq!(
+        r("eigenvectors([[a,b],[c,d]])"),
+        "eigenvectors([[a, b], [c, d]])"
+    );
+}
+
+#[test]
 fn test_eval_matrix_rref() {
     // Reduced row echelon form was unimplemented. It now computes the exact RREF by Gauss-Jordan
     // over BigRational, with an honest residual for symbolic entries.

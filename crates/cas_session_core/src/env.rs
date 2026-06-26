@@ -81,6 +81,7 @@ const RESERVED_NAMES: &[&str] = &[
     "charpoly",
     "eigenvalues",
     "rref",
+    "eigenvectors",
     "inverse",
     "inv",
     "fact",
