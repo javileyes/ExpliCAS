@@ -1565,7 +1565,7 @@ El solver reescribe `≥0`/`≤0` como `=0` pero descarta los puntos de toque qu
 - [x] `solve(3^(2*x)=27,x)` → `{ log(3,-9·3^(-1/2)) } if -9·3^(-1/2)>0` = ∅ (real `{3/2}`; `9^x=27→{3/2}` ✓).
 - [x] `solve(e^(2*x)=5,x)` → `{ ln(-5·5^(-1/2)) } if …>0` = ∅ (real `{ln(5)/2}`). Igual exp(2x)=10, 2^(2x)=8, etc.
 - [x] `solve(2^(2*x)=2,x)` → ∅ (real `{1/2}`).
-  *(graduado 2026-06-26 PENDIENTE_R5: `aggregate_back_substitution_solutions` conserva las soluciones
+  *(graduado 2026-06-26 bdb4b1ca3: `aggregate_back_substitution_solutions` conserva las soluciones
   DISCRETAS definidas (raíz positiva `a^x=+√k` → `x=log_a(√k)`) frente a la rama `Conditional` guardada y
   falsa de la raíz negativa (`a^x=-√k`, `-√k` como `-9·3^(-1/2)` no se prueba negativa). Sólo `AllReals`
   subsume. Test `cli_contract_tests::test_eval_even_power_exponential_keeps_positive_root`. Residual cosmético:
