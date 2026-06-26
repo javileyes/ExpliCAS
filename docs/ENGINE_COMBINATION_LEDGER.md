@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 382 (newest first)
+Active entries: 383 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
+- 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rref`) | CAPACIDAD (álgebra lineal 4/4): forma escalonada reducida (RREF)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16084,3 +16085,17 @@ Active entries: 382 (newest first)
   - el cluster álgebra-lineal cruza fronteras de crate: charpoly numérico vive en cas_math, pero la RESOLUCIÓN
     (raíces) necesita cas_solver_core ⇒ va en cas_engine. Reutilizar `find_rational_roots`+`sqrt_expr` evita
     duplicar el solver. Real-domain ⇒ complejo/irreducible-alto = residual honesto, no respuesta parcial.
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal 4/4): forma escalonada reducida (RREF)
+
+- area: `crates/cas_math/src/matrix.rs` (`Matrix::rref`)
+- status: `retained` (commit pendiente↑). Cierra el núcleo de eliminación (rank comparte la maquinaria).
+- capture:
+  - cell: ANTES no definida. AHORA Gauss-Jordan exacto sobre `BigRational`, cualquier forma; pivote→1 y columna
+    limpiada en todas las demás filas: `[[1,2],[3,4]]→I`, `[[1,2,3],[4,5,6],[7,8,9]]→[[1,0,-1],[0,1,2],[0,0,0]]`.
+    Simbólica→residual; nº de filas no-nulas concuerda con rank.
+  - validación: workspace 12421 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - el cluster álgebra-lineal completo (rank/charpoly/eigenvalues/rref) en 4 ciclos cierra el agujero de amplitud
+    más grande medido en la evaluación de universalidad. rank y rref comparten la eliminación gaussiana exacta;
+    rref habilita el siguiente peldaño (autovectores = núcleo de A−λI vía rref de la matriz racional).
