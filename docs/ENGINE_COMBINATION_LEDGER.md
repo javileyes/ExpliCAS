@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 367 (newest first)
+Active entries: 368 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -132,6 +132,7 @@ Active entries: 367 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_cubic_by_cardano`;... | CAPACIDAD: solver cúbico por Cardano (caso Δ>0, una raíz real)
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_cu... | GRADUADO R8: factor cúbico irreducible (Δ>0) recuperado por Cardano + factor-peeling
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`build_cubic_real_roots` — antes | CAPACIDAD: casus irreducibilis (cúbico Δ<0, tres raíces reales) por forma trigonométrica
+- 2026-06-26 | `retained` | `crates/cas_formatter/src/display/expr.rs` (`DisplayExpr` caso Pow) | SOUNDNESS (honestidad de display): base racional bajo potencia pierde paréntesis
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15665,3 +15666,48 @@ Active entries: 367 (newest first)
     trigonométrica, y el motor ya simplifica esas funciones, emitir la forma trig es preferible a declinar —
     da la respuesta EXACTA y reutiliza el simplificador. Generalizar el retorno a `Vec` (no `Option<ExprId>`)
     desde el principio habría evitado el refactor; un solver de raíces múltiples debe devolver lista.
+
+## 2026-06-26 - SOUNDNESS (honestidad de display): base racional bajo potencia pierde paréntesis
+
+- area:
+  - `crates/cas_formatter/src/display/expr.rs` (`DisplayExpr` caso Pow)
+  - `crates/cas_formatter/src/display/ordering.rs` (`format_factors`)
+  - `crates/cas_formatter/src/latex_core.rs` (`expr_to_latex_base`, `render_base` de la variante path/highlight)
+  - `crates/cas_formatter/src/display/styled.rs` (`DisplayExprStyled::fmt_power`)
+  - `crates/cas_formatter/src/display/hints.rs` (`DisplayExprWithHints` Pow + factores)
+  - `crates/cas_cli/tests/cli_contract_tests.rs` (`test_eval_fraction_base_power_is_parenthesized`)
+- status:
+  - `retained` (commit bffdf3dd3; arregla la ambigüedad de display en todos los formateadores de RESULTADO)
+- capture:
+  - investment_class: soundness/honestidad (respuesta MOSTRADA incorrecta — re-parsea a otro valor)
+  - primary_dimension: north_star_capability (el motor es "serio Y educativo": la salida debe ser inequívoca)
+  - cell: ANTES `(3/2)^(1/3)` se imprimía `3/2^(1/3)`, que por precedencia estándar (`^` liga más que `/`)
+    re-parsea como `3/(2^(1/3))` -> VALOR DISTINTO (13620 vs 20.47). Invisible hasta el solver cúbico de
+    Cardano, cuyas raíces radicales llevan radicandos fraccionarios de rutina (`(17161/2)^(1/3)` en la raíz
+    real de `10x³-4x²+18x-27`). AHORA `(3/2)^(1/3)` (paréntesis preservados; round-trip idempotente).
+  - MECANISMO/ROOT CAUSE: una base que es `Div` NODO ya se parentizaba por su precedencia (2 <= 3), pero un
+    literal racional NO entero `Number(p/q)` reporta precedencia de ÁTOMO, así que se colaba en TODOS los
+    renderers de potencia/factor. Fix uniforme: parentizar una base `Number` no entera antes del exponente.
+    Hallado por VERIFICACIÓN ADVERSARIAL del ciclo 3 (un agente sustituyó la forma impresa y obtuvo residual
+    ~7e9; la forma LaTeX `\sqrt[3]{\frac{17161}{2}}` confirmó que el VALOR interno era correcto — sólo el
+    printer ASCII/Unicode caía).
+  - SOUNDNESS: el valor interno y el LaTeX rich siempre fueron correctos; el defecto era la AMBIGÜEDAD del
+    texto plano (un usuario copiando `3/2^(1/3)` calcula mal). No se sobre-parentiza: bases enteras, sqrt,
+    `3/2·x`, `2·x^(1/3)` intactas. Test de round-trip (re-evaluar la salida == salida).
+  - validación: workspace 12399 passed (único fallo el guard de pared `perf_tan_n10_completes`, ambiental);
+    clippy `-D warnings` limpio; engine-fast; huella guardrail(16)+pressure(3) 0 deltas.
+  - RESIDUAL: un SUBPASO intermedio resaltado (aggressive-mode completar-cuadrado) aún de-LaTeXea `… - 3/2^2`
+    sin paréntesis por una ruta LaTeX-highlight separada (interacción `render_as_power` ↔ `latex_to_plain_text`
+    en el término RESTADO/resaltado); es un intermedio didáctico transitorio (no un resultado), resuelto en la
+    línea siguiente a `(x + 3/2)^2 - 5/4`. Las líneas "Cambio local" y los términos no-resaltados SÍ se
+    arreglaron (`1/2^(2)` -> `(1/2)^(2)`).
+- observed:
+  - una verificación adversarial de OTRA capacidad (el cúbico) destapó un defecto de soundness PRE-EXISTENTE y
+    transversal (todos los formateadores) que ninguna huella veía, porque la nueva capacidad volvió común una
+    forma (radicando fraccionario) que antes era rara. La precedencia de `Number` como átomo es correcta para
+    suma/resta/producto (donde `/` no liga distinto) pero NO para ser base de `^`.
+- retained learning:
+  - patrón: cuando un literal "atómico" RENDERIZA con un operador interno (`p/q` lleva un `/`), su precedencia
+    a efectos de PARENTIZACIÓN bajo un operador más fuerte (`^`) NO es atómica. Centralizar "¿esta base necesita
+    paréntesis?" evitaría replicar el bug en 5 renderers. La verificación adversarial de una capacidad nueva es
+    un buen momento para cazar defectos de display latentes que la capacidad vuelve visibles.
