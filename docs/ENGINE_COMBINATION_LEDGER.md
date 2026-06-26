@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 373 (newest first)
+Active entries: 374 (newest first)
 
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
@@ -138,6 +138,7 @@ Active entries: 373 (newest first)
 - 2026-06-26 | `retained` | `crates/cas_engine/src/rules/exponents/power_rules.rs` (`decide_multiply_expo... | SOUNDNESS (Round-5 fix 3/N): gate de signo en (x^a)^b -> x^(a·b) simbólico
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_polynomial_inequality_si... | SOUNDNESS (Round-5 fix 4/N): inecuaciones de polinomio irreducible por análisis de signo
 - 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_biquadratic`) | SOUNDNESS/CAPACIDAD (Round-5 fix 5/N): bicuadráticas con raíces surd por z = x²
+- 2026-06-26 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_equality`) | SOUNDNESS (Round-5 fix 6/N): ecuaciones |arg|=c por split arg=±c
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_radical_inequality... | P1 soundness (hardening del hook de inecuación radical): g² expandido, g constante, dominio degenerado, frontera por f=g²∧g≥0
 - 2026-06-25 | `retained` | `crates/cas_solver/src/solution_display/render.rs` (ruta wire/REPL/FFI), | Consistencia CLI↔web: unificar el render de SolutionSet vacío/AllReals entre rutas + auditoría de divergencia de entrada
 - 2026-06-25 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`is_matrix_valued`, | P1 soundness (Cluster F): matrix^(-1) / c·M^-1 enrutan a la inversa; ScalarMatrixRule no difunde matriz-valuado
@@ -15842,3 +15843,23 @@ Active entries: 373 (newest first)
   - patrón: una capacidad de forma cerrada que produce un `Discrete` desbloquea AUTOMÁTICAMENTE las inecuaciones
     correspondientes vía el análisis de signo POST-solución (composición de fixes). La verificación numérica por
     sustitución (drop-si-no-verifica) es la red de seguridad estándar para raíces construidas por radicales.
+
+## 2026-06-26 - SOUNDNESS (Round-5 fix 6/N): ecuaciones |arg|=c por split arg=±c
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_equality`)
+- status: `retained` (commit 7da3d3f09; cierra la familia abs-con-argumento-cuadrático del audit Round 5)
+- capture:
+  - investment_class: soundness (raíces PERDIDAS — residual circular con `ok:true`)
+  - primary_dimension: north_star_capability
+  - cell: ANTES `solve(|x²-2x|=3)` filtraba `solve(x-(2x+3)^(1/2)=0)` y 0 raíces, aunque `solve(x²-2x=3)`
+    da `{-1,3}`: la isolación recursiva aislaba `x²=2x+3` y tomaba √ en vez de resolver la cuadrática.
+    AHORA `{-1,3}`; `|x²-5x|=6 -> {-1,2,3,6}`; `|x²-2x|=0 -> {0,2}` (una rama); `c<0 -> No solution`.
+  - MECANISMO: tras los gates cúbico/bicuadrático, si lhs=abs(arg) y rhs=constante c, resuelve `arg=c` y
+    `arg=-c` como ECUACIONES COMPLETAS (el solver normal las maneja bien — el bug estaba sólo en la isolación
+    recursiva del abs) y une las raíces, deduplicando por valor. c=0 usa una sola rama (sin duplicado). RHS no
+    constante (necesita split de dominio g≥0) se deja a la ruta normal.
+  - validación: workspace 12405 passed (solo flake perf); clippy `-D warnings`; engine-fast; huella 0 deltas.
+- retained learning:
+  - patrón: cuando la isolación RECURSIVA de un envoltorio (abs, aquí) mal-resuelve el sub-problema, el fix es
+    construir las sub-ECUACIONES explícitas y resolverlas con el solver completo (que ya funciona), no parchear
+    la isolación. Mismo patrón de gate POST-residual + dedup numérica que cúbico/bicuadrático.
