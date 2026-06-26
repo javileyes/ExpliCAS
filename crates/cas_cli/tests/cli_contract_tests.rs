@@ -1617,6 +1617,50 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_biquadratic_surd_roots() {
+    // A biquadratic `a·x⁴ + b·x² + c` whose x-roots are surds leaked a circular residual
+    // (`solve(x − (8x²−15)^(1/4)=0)`); the `z = x²` substitution now solves it. Roots verified
+    // numerically in the dev probes (|p(root)| < 1e-13).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Four surd roots {±√3, ±√5}.
+    let four = r("x^4-8*x^2+15=0");
+    assert!(
+        four.contains("sqrt(5)")
+            && four.contains("sqrt(3)")
+            && four.matches(", ").count() == 3
+            && !four.contains("Solve"),
+        "x^4-8x^2+15=0 -> {four}"
+    );
+    // Only the non-negative z root survives: {±√3} (z = -1 dropped).
+    let two = r("x^4-2*x^2-3=0");
+    assert!(
+        two.contains("sqrt(3)") && two.matches(", ").count() == 1 && !two.contains("Solve"),
+        "x^4-2x^2-3=0 -> {two}"
+    );
+    // No real roots when both z roots are negative or complex.
+    assert_eq!(r("x^4+x^2+1=0"), "No solution");
+    assert_eq!(r("x^4+3*x^2+2=0"), "No solution");
+    // Rational-root biquadratics and general (non-biquadratic) quartics are unchanged.
+    assert_eq!(r("x^4-5*x^2+4=0"), "{ -2, -1, 1, 2 }");
+    assert!(r("x^4-x-1=0").contains("Solve")); // general quartic stays a residual (Ferrari deferred)
+                                               // The biquadratic INEQUALITY is now operator-sensitive (biquad solver → Discrete → sign analysis).
+    let gt = r("x^4-8*x^2+15>0");
+    let lt = r("x^4-8*x^2+15<0");
+    assert_ne!(gt, lt, "operator must matter");
+    assert!(
+        gt.contains(" U ") && !gt.contains("Solve") && !gt.contains('{'),
+        "x^4-8x^2+15>0 -> {gt}"
+    );
+}
+
+#[test]
 fn test_eval_irreducible_polynomial_inequality_sign_analysis() {
     // An irreducible polynomial inequality was rewritten to `Equal(p, 0)`, dropping the operator and
     // returning the equation's root SET — so `> 0` and `< 0` gave byte-identical output. Sign analysis

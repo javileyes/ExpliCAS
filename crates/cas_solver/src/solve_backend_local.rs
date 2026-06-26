@@ -1918,6 +1918,14 @@ fn solve_local_core(
         _ => set,
     };
 
+    // A BIQUADRATIC `a·x⁴ + b·x² + c` whose `x`-roots are surds (`x⁴-8x²+15 → {±√3, ±√5}`) otherwise
+    // leaks a circular residual `solve(x − (8x²−15)^(1/4)=0)`. Solve it by the `z = x²` substitution.
+    let set = if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
+        try_solve_biquadratic(simplifier, eq, var).unwrap_or(set)
+    } else {
+        set
+    };
+
     // An IRREDUCIBLE polynomial inequality (`x³+x+1 > 0`, `x³-3x+1 > 0`) is rewritten to `Equal(p,0)`
     // by the normal path, dropping the operator and returning the equation's root SET (so `> 0` and
     // `< 0` give identical output). When the operator is an inequality and the result is a `Discrete`
@@ -2020,7 +2028,7 @@ fn try_polynomial_inequality_sign_analysis(
     // Consistency guards: no test point landed on a root, signs alternate across every simple root,
     // and the unbounded ends match the leading-coefficient end behaviour. Any failure ⇒ the root set
     // is incomplete/mis-ordered ⇒ bail to the raw set rather than emit an unsound interval union.
-    if signs.iter().any(|&s| s == 0) {
+    if signs.contains(&0) {
         return None;
     }
     if signs.windows(2).any(|w| w[0] == w[1]) {
@@ -2073,6 +2081,102 @@ fn try_polynomial_inequality_sign_analysis(
         1 => SolutionSet::Continuous(intervals.into_iter().next()?),
         _ => SolutionSet::Union(intervals),
     })
+}
+
+/// Solve a BIQUADRATIC equation `a·x⁴ + b·x² + c = 0` (no odd-degree terms) by the substitution
+/// `z = x²`: solve the quadratic `a·z² + b·z + c = 0`, then for each NON-NEGATIVE real `z` root take
+/// `x = ±√z`. The normal path only handles biquadratics whose `x`-roots are rational; when they are
+/// surds (`x⁴-8x²+15 → {±√3, ±√5}`, `x⁴-2x²-3 → {±√3}`) it leaks a circular residual. Every produced
+/// root is verified by numeric back-substitution, so a wrong `z ≥ 0` decision (or a missed root) can
+/// never emit an unsound value. Returns `None` for a non-biquadratic quartic or `Empty` when no real
+/// root exists (`z` roots both negative or complex).
+fn try_solve_biquadratic(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::quadratic_formula::sqrt_expr;
+    use num_rational::BigRational;
+    use num_traits::{ToPrimitive, Zero};
+    use std::collections::HashMap;
+
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+    let poly = Polynomial::from_expr(&simplifier.context, diff, var).ok()?;
+    if poly.degree() != 4 {
+        return None;
+    }
+    let a = poly.coeffs[4].clone();
+    let b = poly.coeffs[2].clone();
+    let c = poly.coeffs[0].clone();
+    // Biquadratic ⇒ the odd-degree coefficients vanish.
+    if a.is_zero() || !poly.coeffs[3].is_zero() || !poly.coeffs[1].is_zero() {
+        return None;
+    }
+
+    // Quadratic `a·z² + b·z + c` in `z = x²`: discriminant and its exact √.
+    let r = |n: i64| BigRational::from_integer(n.into());
+    let disc = &b * &b - &a * &c * r(4);
+    let (af, bf, cf) = (a.to_f64()?, b.to_f64()?, c.to_f64()?);
+    let disc_f = bf * bf - 4.0 * af * cf;
+    if disc_f < 0.0 {
+        // Complex z roots ⇒ no real x.
+        return Some(SolutionSet::Empty);
+    }
+
+    // Build the exact `z = (−b ± √disc)/(2a)`, then `x = ±√z` for each non-negative z root.
+    let ctx = &mut simplifier.context;
+    let num = |ctx: &mut cas_ast::Context, v: BigRational| ctx.add(Expr::Number(v));
+    let disc_node = num(ctx, disc);
+    let sqrt_disc = sqrt_expr(ctx, disc_node);
+    let neg_b = num(ctx, -&b);
+    let two_a = num(ctx, &a * r(2));
+    let mut raw_roots: Vec<ExprId> = Vec::new();
+    for s in [1.0f64, -1.0f64] {
+        let z_f = (-bf + s * disc_f.sqrt()) / (2.0 * af);
+        if z_f < -1e-12 {
+            continue; // z < 0 ⇒ x² = z has no real solution
+        }
+        let signed = if s > 0.0 {
+            sqrt_disc
+        } else {
+            ctx.add(Expr::Neg(sqrt_disc))
+        };
+        let z_numer = ctx.add(Expr::Add(neg_b, signed));
+        let z_expr = ctx.add(Expr::Div(z_numer, two_a));
+        let sqrt_z = sqrt_expr(ctx, z_expr);
+        let neg_sqrt_z = ctx.add(Expr::Neg(sqrt_z));
+        raw_roots.push(sqrt_z);
+        raw_roots.push(neg_sqrt_z);
+    }
+
+    // Simplify, verify each candidate by numeric back-substitution, and dedup by numeric value.
+    let mut roots: Vec<ExprId> = Vec::new();
+    let mut seen: Vec<f64> = Vec::new();
+    for raw in raw_roots {
+        let (root, _) = simplifier.simplify(raw);
+        let xv = match cas_math::evaluator_f64::eval_f64(&simplifier.context, root, &HashMap::new())
+        {
+            Some(v) if v.is_finite() => v,
+            _ => continue,
+        };
+        // p(xv) ≈ 0 (scaled by the coefficient magnitude).
+        let residual = af * xv.powi(4) + bf * xv * xv + cf;
+        let scale = 1.0 + af.abs() * xv.powi(4).abs() + bf.abs() * xv * xv + cf.abs();
+        if residual.abs() > 1e-9 * scale {
+            continue;
+        }
+        if seen.iter().any(|&v| (v - xv).abs() < 1e-9) {
+            continue;
+        }
+        seen.push(xv);
+        roots.push(root);
+    }
+    if roots.is_empty() {
+        return Some(SolutionSet::Empty);
+    }
+    Some(SolutionSet::Discrete(roots))
 }
 
 /// Build the REAL roots of `a·x³ + b·x² + c·x + d` (`a ≠ 0`), exactly, by Cardano's method. Normalize
