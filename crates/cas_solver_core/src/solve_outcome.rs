@@ -7074,6 +7074,18 @@ where
         residual_suffix,
         classify_log_solve,
     )?;
+    // `b^x {op} c` with a provably positive base and `c ≤ 0` classifies to EmptySet OP-AGNOSTICALLY
+    // (`classify_log_solve_by_proofs`). That is correct only for `=`/`<`/`≤` (`b^x > 0` is never ≤ 0).
+    // For `>`/`≥` the relation `b^x(>0) {>,≥} (c≤0)` is identically TRUE, so the truth is ℝ — recover it
+    // here (the one place that still holds the original relation). The product/sum cascade self-heals:
+    // `AllReals ∩ s = s`, so `x·e^x > 0 → (0,∞)`, `x²·e^x > 0 → ℝ∖{0}`.
+    let solutions = if matches!(solutions, SolutionSet::Empty)
+        && matches!(equation_after.op, RelOp::Gt | RelOp::Geq)
+    {
+        SolutionSet::AllReals
+    } else {
+        solutions
+    };
     Some((
         solutions,
         TermIsolationExecutionItem {

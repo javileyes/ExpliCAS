@@ -1973,6 +1973,34 @@ fn test_eval_arclength_curve() {
 }
 
 #[test]
+fn test_eval_exponential_positivity_inequality() {
+    // SOUNDNESS: `b^x {>,>=} c` with a positive base and c <= 0 is identically TRUE (b^x > 0 always),
+    // so the solution is ℝ — not the empty set the op-agnostic EmptySet classification produced. The
+    // product/sum cascade self-heals via AllReals ∩ s = s.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("e^x>0"), "All real numbers");
+    assert_eq!(r("e^x>=0"), "All real numbers");
+    assert_eq!(r("e^x>-1"), "All real numbers");
+    assert_eq!(r("2^x>0"), "All real numbers");
+    assert_eq!(r("(1/2)^x>0"), "All real numbers");
+    assert_eq!(r("x*e^x>0"), "(0, infinity)"); // sign(x·e^x) = sign(x)
+    assert_eq!(r("x^2*e^x>0"), "(-infinity, 0) U (0, infinity)"); // ℝ∖{0}
+                                                                  // Controls: `<`/`<=`/`=` against c <= 0 stay empty (b^x is never <0, ≤0, or =0); rhs > 0 solves normally.
+    assert_eq!(r("e^x<0"), "No solution");
+    assert_eq!(r("e^x<=0"), "No solution");
+    assert_eq!(r("e^x=0"), "No solution");
+    assert_eq!(r("e^x>5"), "(ln(5), infinity)");
+    assert_eq!(r("e^x-1>0"), "(0, infinity)");
+}
+
+#[test]
 fn test_eval_fractional_base_exponential_inequality_direction() {
     // SOUNDNESS: `a^x ≷ k` with 0 < a < 1 (decreasing) must FLIP the inequality direction when
     // isolating x through the logarithm. Previously the engine kept the direction, returning the
