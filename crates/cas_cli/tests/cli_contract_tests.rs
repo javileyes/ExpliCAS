@@ -1934,6 +1934,29 @@ fn test_eval_matrix_charpoly() {
 }
 
 #[test]
+fn test_eval_wronskian() {
+    // `wronskian([f₁,…,fₙ], x)` = det of the matrix of 0th…(n−1)th derivatives — the linear-
+    // independence test. Reuses symbolic differentiation + determinant. A bounded budget exemption
+    // lets the cofactor expansion commit.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("wronskian([sin(x),cos(x)], x)"), "-1");
+    assert_eq!(r("wronskian([1,x,x^2], x)"), "2");
+    assert_eq!(r("wronskian([1,x,x^2,x^3], x)"), "12"); // 0!·1!·2!·3!
+    assert_eq!(r("wronskian([e^x,e^(2*x)], x)"), "e^(3·x)");
+    assert_eq!(r("wronskian([x,x^2], x)"), "x^2");
+    // Linearly DEPENDENT functions ⇒ Wronskian 0 (the key application).
+    assert_eq!(r("wronskian([x,2*x], x)"), "0");
+    assert_eq!(r("wronskian([sin(x),2*sin(x)], x)"), "0");
+}
+
+#[test]
 fn test_eval_matrix_adjugate() {
     // `adjugate(A)` (alias `adj`) is the transpose of the cofactor matrix — a polynomial in the
     // entries, ALWAYS defined (no det≠0 condition), so it works symbolically too. Satisfies

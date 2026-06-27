@@ -136,6 +136,43 @@ define_rule!(
 );
 
 define_rule!(
+    WronskianRule,
+    "Wronskian Determinant",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    PhaseMask::CORE | PhaseMask::POST,
+    |ctx, expr| {
+        if !ctx.is_call_named(expr, "wronskian") {
+            return None;
+        }
+        let args = match ctx.get(expr) {
+            Expr::Function(_, args) => args.clone(),
+            _ => return None,
+        };
+        if args.len() != 2 {
+            return None;
+        }
+        let var = match ctx.get(args[1]) {
+            Expr::Variable(sym) => ctx.sym_name(*sym).to_string(),
+            _ => return None,
+        };
+        // Bound the function count so the determinant's cofactor expansion cannot blow up.
+        let count = cas_math::matrix::Matrix::from_expr(ctx, args[0]).map_or(0, |m| m.data.len());
+        if count == 0 || count > 6 {
+            return None;
+        }
+        let result = crate::matrix_rule_support::try_wronskian_expr(ctx, args[0], &var)?;
+        // The Wronskian is a determinant: its unfolded cofactor sum transiently exceeds the
+        // anti-worsen node budget before folding (e.g. the 3×3 `[1,x,x^2] → 2`), so exempt it like
+        // the matrix det/power rules.
+        Some(
+            Rewrite::new(result)
+                .desc("Wronskian determinant")
+                .budget_exempt(),
+        )
+    }
+);
+
+define_rule!(
     FactorDifferenceSquaresRule,
     "Factor Difference of Squares",
     |ctx, expr| {

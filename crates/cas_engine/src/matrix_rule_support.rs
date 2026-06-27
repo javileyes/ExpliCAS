@@ -751,6 +751,37 @@ pub fn try_matrix_nullspace(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId
     )
 }
 
+/// Wronskian `W(f₁,…,fₙ)(x) = det[ dⁱ/dxⁱ fⱼ ]` — the determinant of the matrix
+/// whose rows are the 0th…(n−1)th derivatives of the functions. `[sin(x), cos(x)]
+/// → −1`. Reuses symbolic differentiation and the (symbolic) determinant; a
+/// function that cannot be differentiated declines to a residual.
+pub fn try_wronskian_expr(ctx: &mut Context, list_expr: ExprId, var: &str) -> Option<ExprId> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+
+    let functions = Matrix::from_expr(ctx, list_expr)?;
+    let n = functions.data.len();
+    if n == 0 {
+        return None;
+    }
+    let mut data: Vec<ExprId> = Vec::with_capacity(n * n);
+    let mut current = functions.data.clone();
+    data.extend_from_slice(&current);
+    for _ in 1..n {
+        let mut next = Vec::with_capacity(n);
+        for &f in &current {
+            next.push(differentiate_symbolic_expr(ctx, f, var)?);
+        }
+        current = next;
+        data.extend_from_slice(&current);
+    }
+    Matrix {
+        rows: n,
+        cols: n,
+        data,
+    }
+    .determinant(ctx)
+}
+
 /// Binary (2-argument) matrix/vector operations: `dot`, `cross`, `linsolve`.
 /// Returns the result expression plus a description, or `None` to leave the call
 /// as an honest residual (mismatched shapes, a singular/inconsistent system, etc.).
