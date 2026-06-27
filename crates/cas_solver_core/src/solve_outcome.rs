@@ -9870,16 +9870,30 @@ pub fn plan_division_denominator_didactic(
     op: RelOp,
 ) -> DivisionDenominatorDidacticPlan {
     let multiplied_rhs = ctx.add(Expr::Mul(rhs, denominator));
+    // Isolating the (provably-positive) denominator from `num op rhs·den` FLIPS an inequality when
+    // `rhs > 0`: `num op rhs·den  ⟺  den FLIP(op) num/rhs` (this path assumes `den > 0`, so the
+    // multiply keeps the op, but moving `den` across the relation reverses it). Without the flip,
+    // `1/|x| > 2` wrongly became `|x| > 1/2` (the COMPLEMENT of the truth `|x| < 1/2`). For `rhs ≤ 0`,
+    // a non-constant `rhs`, or equality, the relation is unchanged.
+    let divide_op = if matches!(op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq)
+        && cas_math::numeric_eval::as_rational_const(ctx, rhs).is_some_and(|r| {
+            use num_traits::Signed;
+            r.is_positive()
+        }) {
+        flip_relop(op.clone())
+    } else {
+        op.clone()
+    };
     DivisionDenominatorDidacticPlan {
         multiply_equation: Equation {
             lhs: numerator,
             rhs: multiplied_rhs,
-            op: op.clone(),
+            op,
         },
         divide_equation: Equation {
             lhs: denominator,
             rhs: isolated_rhs,
-            op,
+            op: divide_op,
         },
         multiply_by: denominator,
         divide_by: rhs,

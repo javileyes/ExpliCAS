@@ -1973,6 +1973,51 @@ fn test_eval_arclength_curve() {
 }
 
 #[test]
+fn test_eval_reciprocal_positive_function_inequality_flips() {
+    // SOUNDNESS: `c/f(x) OP k` with a provably-positive function denominator (abs, …) and k > 0 must
+    // FLIP when isolating the denominator: `c/f > k ⟺ f < c/k`. Previously the engine kept the
+    // direction, returning the COMPLEMENT (`1/abs(x)>2 → (-∞,-1/2)∪(1/2,∞)`). The denominator pole is
+    // conveyed via the `x ≠ ...` required condition (so the interval ∩ condition is the true set).
+    let run = |input: &str| -> (String, Vec<String>) {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        let conds = wire["required_display"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        (wire["result"].as_str().unwrap_or("").to_string(), conds)
+    };
+    // 1/abs(x) > 2 ⟺ abs(x) < 1/2 ⟺ (-1/2, 1/2) minus the pole x=0.
+    assert_eq!(
+        run("solve(1/abs(x)>2, x)"),
+        ("(-1/2, 1/2)".into(), vec!["x ≠ 0".into()])
+    );
+    assert_eq!(
+        run("solve(2/abs(x)>1, x)"),
+        ("(-2, 2)".into(), vec!["x ≠ 0".into()])
+    );
+    assert_eq!(
+        run("solve(1/abs(x-1)>2, x)"),
+        ("(1/2, 3/2)".into(), vec!["x ≠ 1".into()])
+    );
+    // The `<` direction is unchanged (it was already the larger side): abs(x) > 1/2.
+    assert_eq!(
+        run("solve(1/abs(x)<2, x)").0,
+        "(-infinity, -1/2) U (1/2, infinity)"
+    );
+    // Controls: bare-variable reciprocal (sign-split path) and equality are unchanged.
+    assert_eq!(run("solve(1/x>2, x)").0, "(0, 1/2)");
+    assert_eq!(run("solve(1/x<2, x)").0, "(-infinity, 0) U (1/2, infinity)");
+}
+
+#[test]
 fn test_eval_periodic_trig_inequality_declines() {
     // SOUNDNESS: a periodic `sin`/`cos`/`tan` inequality has an infinite periodic-union solution the
     // engine cannot represent, so the monotonic inversion emitted a single wrong ray. It now declines
