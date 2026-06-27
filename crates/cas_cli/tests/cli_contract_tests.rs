@@ -1973,6 +1973,37 @@ fn test_eval_arclength_curve() {
 }
 
 #[test]
+fn test_eval_derangement_isperfect_harmonic() {
+    // derangement(n)/subfactorial (permutations with no fixed point), isperfect(n) (σ(n)=2n, 1/0 —
+    // the engine has no boolean), and harmonic(n) = Σ_{k=1}^n 1/k (exact rational). All BigInt/
+    // BigRational exact; isperfect reuses the same divisor-sum core as sigma.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("derangement(0)"), "1");
+    assert_eq!(r("derangement(1)"), "0");
+    assert_eq!(r("derangement(4)"), "9");
+    assert_eq!(r("derangement(5)"), "44");
+    assert_eq!(r("subfactorial(4)"), "9"); // alias
+    assert_eq!(r("derangement(-1)"), "derangement(-1)"); // honest residual
+    assert_eq!(r("isperfect(6)"), "1");
+    assert_eq!(r("isperfect(28)"), "1");
+    assert_eq!(r("isperfect(496)"), "1");
+    assert_eq!(r("isperfect(12)"), "0");
+    assert_eq!(r("isperfect(1)"), "0"); // 1 is not perfect (σ(1)=1)
+    assert_eq!(r("harmonic(1)"), "1");
+    assert_eq!(r("harmonic(4)"), "25/12");
+    assert_eq!(r("harmonic(5)"), "137/60");
+    // Control: sigma (which now shares the divisor-sum core) is unchanged.
+    assert_eq!(r("sigma(28)"), "56");
+}
+
+#[test]
 fn test_eval_limit_abs_finite_tail_at_infinity() {
     // `lim_{x→∞} |u(x)| = |L|` when the rational argument has a finite tail L — previously only the
     // divergent case (`abs → +∞`) was handled, so `|(x-1)/(x+1)|` stayed an unevaluated residual.

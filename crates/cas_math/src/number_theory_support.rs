@@ -185,6 +185,30 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
+        "derangement" | "subfactorial" if args.len() == 1 => {
+            let result = compute_derangement_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "derangement",
+                arg: args[0],
+                result,
+            })
+        }
+        "harmonic" if args.len() == 1 => {
+            let result = compute_harmonic_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "harmonic",
+                arg: args[0],
+                result,
+            })
+        }
+        "isperfect" | "is_perfect" if args.len() == 1 => {
+            let result = compute_isperfect_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "isperfect",
+                arg: args[0],
+                result,
+            })
+        }
         "numdivisors" | "tau" | "sigma0" if args.len() == 1 => {
             let result = compute_numdivisors_expr(ctx, args[0])?;
             Some(NumberTheorySimpleRewrite::Unary {
@@ -972,13 +996,11 @@ pub fn compute_numdivisors_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> 
 }
 
 /// Sum of positive divisors `σ(n) = ∏(1 + p + … + pᵉ)`. Declines for `n < 1`.
-pub fn compute_sigma_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
-    let val = extract_integer_bigint(ctx, n)?;
-    if val < BigInt::one() || !within_prime_search_cap(&val) {
-        return None;
-    }
+/// Sum of the positive divisors σ(n) as a `BigInt` (`n` factored within the prime cap),
+/// via the multiplicative formula `Π (1 + p + … + p^e)`. Shared by `sigma` and `isperfect`.
+fn divisor_sum_bigint(n: BigInt) -> BigInt {
     let mut sigma = BigInt::one();
-    for (prime, exp) in prime_factorization(val) {
+    for (prime, exp) in prime_factorization(n) {
         let mut term = BigInt::one();
         let mut power = BigInt::one();
         for _ in 0..exp {
@@ -987,7 +1009,72 @@ pub fn compute_sigma_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         }
         sigma *= term;
     }
-    Some(integer_result(ctx, sigma))
+    sigma
+}
+
+pub fn compute_sigma_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if val < BigInt::one() || !within_prime_search_cap(&val) {
+        return None;
+    }
+    Some(integer_result(ctx, divisor_sum_bigint(val)))
+}
+
+/// 1 if `n` is a perfect number (`σ(n) = 2n`, `n ≥ 1`), else 0. The engine has no
+/// boolean type, so the predicate is reported as `1`/`0` like `isprime`.
+pub fn compute_isperfect_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if val < BigInt::one() || !within_prime_search_cap(&val) {
+        return None;
+    }
+    let sigma = divisor_sum_bigint(val.clone());
+    let is_perfect = sigma == &val * 2;
+    Some(integer_result(
+        ctx,
+        if is_perfect {
+            BigInt::one()
+        } else {
+            BigInt::zero()
+        },
+    ))
+}
+
+/// `n`th derangement (subfactorial) `!n`: permutations of `n` elements with NO fixed
+/// point. Recurrence `!n = (n-1)·(!(n-1)+!(n-2))`, `!0=1`, `!1=0`. Declines for negative `n`.
+pub fn compute_derangement_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let idx = extract_integer_bigint(ctx, n)?;
+    if idx.is_negative() || idx > BigInt::from(COMBINATORIAL_INDEX_CAP) {
+        return None;
+    }
+    let steps = num_traits::ToPrimitive::to_u64(&idx)?;
+    if steps == 0 {
+        return Some(integer_result(ctx, BigInt::one()));
+    }
+    let (mut prev2, mut prev1) = (BigInt::one(), BigInt::zero()); // !0, !1
+    if steps == 1 {
+        return Some(integer_result(ctx, prev1));
+    }
+    let mut current = BigInt::zero();
+    for k in 2..=steps {
+        current = BigInt::from(k - 1) * (&prev1 + &prev2);
+        prev2 = prev1.clone();
+        prev1 = current.clone();
+    }
+    Some(integer_result(ctx, current))
+}
+
+/// `n`th harmonic number `Hₙ = Σ_{k=1}^n 1/k` as an exact rational. Declines for `n < 1`.
+pub fn compute_harmonic_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let idx = extract_integer_bigint(ctx, n)?;
+    if idx < BigInt::one() || idx > BigInt::from(100_000) {
+        return None;
+    }
+    let count = num_traits::ToPrimitive::to_u64(&idx)?;
+    let mut sum = BigRational::zero();
+    for k in 1..=count {
+        sum += BigRational::new(BigInt::one(), BigInt::from(k));
+    }
+    Some(ctx.add(Expr::Number(sum)))
 }
 
 /// Sorted list of the positive divisors of `n`, returned as a 1×k row matrix
