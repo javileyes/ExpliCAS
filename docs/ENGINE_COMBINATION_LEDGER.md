@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 398 (newest first)
+Active entries: 399 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -135,6 +135,7 @@ Active entries: 398 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_divisors_list/crt_expr) | CAPACIDAD (teoría de números): divisors (lista), crt
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_gcdext_expr) | CAPACIDAD (teoría de números): gcdext (Bézout)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_fibonacci/lucas/catal... | CAPACIDAD (combinatoria): fibonacci, lucas, catalan
+- 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_bernoulli/stirling_se... | CAPACIDAD (combinatoria): bernoulli, stirling1, stirling2
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16346,3 +16347,24 @@ Active entries: 398 (newest first)
     números sin maquinaria nueva — el patrón `NumberTheorySimpleRewrite::Unary{result}` ya cubre
     iteración pura. Cota `COMBINATORIAL_INDEX_CAP` (1e6) mantiene el bucle acotado; catalan usa una cota
     menor (1e5) porque su valor crece más rápido. La recurrencia entera evita factoriales gigantes.
+
+## 2026-06-27 - CAPACIDAD (combinatoria): bernoulli, stirling1, stirling2
+
+- area: `crates/cas_math/src/number_theory_support.rs` (compute_bernoulli/stirling_second/stirling_first_expr)
+- status: `retained` (commit pendiente↑). Amplía la familia combinatoria con números racionales y un path 2-arg.
+- capture:
+  - cell: ANTES no definidas. AHORA `bernoulli(0)=1`, `bernoulli(1)=-1/2`, `bernoulli(2)=1/6`,
+    `bernoulli(4)=-1/30`, `bernoulli(6)=1/42` (impares>1→0); `stirling2(4,2)=7`, `stirling2(5,3)=25`
+    (particiones en k bloques); `stirling1(4,2)=11`, `stirling1(5,2)=50` (sin signo: permutaciones con k
+    ciclos). k>n→0; índices negativos→residual honesto. Recurrencias exactas BigInt/BigRational.
+  - validación: workspace verde (solo flake perf); clippy; huella GUARD/PRESS estructuralmente IDÉNTICA
+    (counters state/passed/failed/total iguales; los deltas son SOLO latencia — confirmado regenerando el
+    scorecard dos veces con el MISMO binario: `stdout_bytes`/`cli_*_us`/arrays *_slowest_*/_hotspots
+    fluctúan ±1-2 entre dos corridas idénticas).
+- retained learning:
+  - bernoulli es la primera función-NT que devuelve un RACIONAL (no entero): `ctx.add(Expr::Number(BigRational))`
+    en vez de `integer_result`; la recurrencia `Σ C(m+1,k)Bₖ=0` da la convención B₁=-1/2 sin tabla. stirling1/2
+    son el primer par combinatorio 2-arg (Binary) — encajan junto a modinv/jacobi sin maquinaria nueva.
+  - VALIDACIÓN: las lanes `*_command_matrix_smoke` y `derive_didactic_audit` tienen métricas derivadas de
+    latencia (`stdout_bytes` incluye dígitos de timing, arrays ordenados por "slowest"/"hotspots") que NO son
+    deterministas run-to-run; la huella se juzga por counters + identidad de slots, no por esos campos.
