@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 414 (newest first)
+Active entries: 415 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -151,6 +151,7 @@ Active entries: 414 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (plan_division_denominator_dida... | SOUNDNESS P0 (audit 3 / bloque 0, B1): inecuación c/f(x) con denom. positiva no voltea
 - 2026-06-27 | `retained` | `crates/cas_cli/tests/cli_contract_tests.rs` (test_eval_trig_inequality_out_o... | INTEGRIDAD (lateral B2): aserto de control trig obsoleto dejaba el árbol rojo desde el ciclo 5
 - 2026-06-27 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (apart_decomposi... | SOUNDNESS P0 (audit 3 / bloque 0, B2): apart con raíz repetida pierde el tope de la escalera
+- 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (solve_exponential_substitution_... | SOUNDNESS P0 (audit 3 / bloque 0, B3): inecuación polinómica en e^x no back-sustituía x=ln(u)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16720,3 +16721,43 @@ Active entries: 414 (newest first)
     compartido para coeficientes indeterminados generaliza a multiplicidad sin maquinaria nueva.
   - peldaño restante: cuadráticas irreducibles REPETIDAS de grado>2 distintas que split_squarefree_factors no
     factoriza (cúbicas/quínticas irreducibles) → residual honesto, no escalera (acotado por el gate de completitud).
+
+## 2026-06-27 - SOUNDNESS P0 (audit 3 / bloque 0, B3): inecuación polinómica en e^x no back-sustituía x=ln(u)
+
+- area: `crates/cas_solver_core/src/substitution.rs` (solve_exponential_substitution_strategy_result_with_items_with_state + nuevo map_exponential_inequality_solution_to_x); reusa solution_set + solve_outcome::residual_solution_set.
+- status: `retained` (commits e99df2756 raíces racionales + f34b96bfe decline irracional). Cierra el bloque 0 (B1+B2+B3). Verificación adversarial 2-rondas.
+- capture:
+  - cell: ANTES `solve(e^(2x)-3e^x+2<0)`→`(1,2)` (el intervalo en u=e^x, sin back-sub). AHORA `(0, ln(2))`; `>0`→
+    `(-∞,0)∪(ln2,∞)`; `<=0`→`[0,ln2]`; `>=0`→`(-∞,0]∪[ln2,∞)`. base 2: `2^(2x)-3·2^x+2<=0`→`[0,1]`. Clamp u>0:
+    `e^(2x)+e^x-2<0`(raíz u=-2 descartada)→`(-∞,0)`; `e^(2x)+3e^x+2<0`→"No solution". IRRACIONAL: `e^(2x)-e^x-1<0`
+    ANTES leak u-space `(½(1-√5), phi)` AHORA residual honesto `Solve: solve(e^(2x)-e^x-1=0)`. Equation `=0`→`{ln2,0}` intacta.
+  - causa raíz: el rewrite preserva el operador → la inecuación se resuelve en u-space dando un INTERVALO, pero solo
+    la rama `Discrete` (ecuación) back-sustituía `e^x=u_root → x=ln(u_root)`. El intervalo caía al catch-all
+    `solution_set => solution_set` devuelto en u-space (el `<=` mezclaba {0,ln2} con el intervalo-u via
+    union_non_strict_inequality_roots).
+  - fix: nueva `map_exponential_inequality_solution_to_x` en la rama catch-all del state variant: (1) intersecta el
+    conjunto-u con `(0,∞)` (rango de e^x; open_positive_domain + intersect_solution_sets), (2) mapea cada extremo por
+    `x=ln(u)` RE-RESOLVIENDO `e^x=bound` (el mismo inversor de las raíces discretas); `0`→`-∞`, `+∞`→`+∞`, tipos
+    open/closed preservados, unión DIRECTA sin merge_intervals. `context_mut` enhebrado hasta el strategy. Gateado a
+    base>1 (e o numérico). Todo lo NO mapeable (raíz irracional cuyo signo/ln el oráculo racional no resuelve, base
+    fraccionaria 0<base<1, base simbólica) → `residual_solution_set` (residual honesto ok=true), capturando lhs/rhs
+    antes de consumir la ecuación. NO se deja escapar el u-space.
+  - validación: workspace verde; clippy --workspace; rustfmt; huella GUARD/PRESS IDÉNTICA; 14 asertos CLI (4 ops + base2
+    + clamp + empty + irracional residual + fraccionaria residual + controles ecuación); WORKFLOW ADVERSARIAL 2-rondas.
+- retained learning:
+  - LA VERIFICACIÓN ADVERSARIAL FUE DECISIVA: la ronda 1 cazó que las RAÍCES IRRACIONALES (e^(2x)-e^x-1<0) seguían
+    leak u-space (`get_number` solo casa racionales) → arreglado en f34b96bfe declinando a residual. Sin el workflow,
+    e99df2756 habría enviado una respuesta incorrecta en su propia familia. Lección: un fix con oráculo racional-exacto
+    es SOUND solo donde los extremos son racionales; fuera de eso DECLINA a residual, nunca dejes escapar la forma intermedia.
+  - sub-lema: `merge_intervals`/`compare_values` NO ordena extremos simbólicos log-ratio (`ln2/ln(1/2)`); para base>1 los
+    extremos son ln(k) (comparables) y se mapea limpio; fundir con union_solution_sets fundió DOS rayos disjuntos en ℝ
+    (cazado en implementación). Unión DIRECTA preserva la disjunción de la biyección.
+  - cierra el TEMA del bloque 0 (3/3): una RAMA reutiliza maquinaria de otra que NO es equivalente para su caso —
+    B1 ineq usa el path de ecuación denom-positivo sin flip; B2 apart usa la forma Ostrogradsky de integrate; B3 la rama
+    de inecuación olvida la back-sub que la de ecuación sí hace. [[completeness-audit-new-soundness-bugs]] B1+B2+B3 done.
+  - HALLAZGOS PRE-EXISTENTES adyacentes (NO de B3, bisect-confirmados a B2; SIGUIENTE CICLO): (1) **coeficiente==base**
+    `2^(2x)-2·2^x<0`→`{1}` (truth (-∞,1)), bases 2/3/4/10 e incluso `e^(2x)-e·e^x` — `c·base^x` se funde a `base^(x+1)`,
+    cuyo `Add`-en-exponente `substitute_expr_pattern` no casa → la sustitución falla y el fallback devuelve la raíz de la
+    ecuación, soltando el operador. Equation `=0`→{1} es correcta; solo la INECUACIÓN miente. Fix futuro: que
+    substitute_expr_pattern maneje `base^(x+k) → base^k·u`. (2) `e^x+1>0`→"No solution" / `2e^x+3>0`→condicional malformado
+    (ya en la lista abierta del 2º audit "additive/power-confusion", single-exponential).
