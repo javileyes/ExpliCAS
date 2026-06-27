@@ -1934,6 +1934,36 @@ fn test_eval_matrix_charpoly() {
 }
 
 #[test]
+fn test_eval_matrix_integer_power() {
+    // `M^n` for an integer exponent: `n=0 → I`, `n=1 → M`, `|n|≥2` for an all-numeric square matrix
+    // is repeated multiplication (negative ⇒ inverse powered), folding exactly. A bounded budget
+    // exemption lets the unfolded products commit. Cross-checked against numpy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("[[1,1],[0,1]]^3"), "[[1, 3], [0, 1]]");
+    assert_eq!(r("[[1,1],[1,0]]^5"), "[[8, 5], [5, 3]]"); // Fibonacci
+    assert_eq!(r("[[2,0],[0,3]]^2"), "[[4, 0], [0, 9]]");
+    assert_eq!(
+        r("[[1,2,0],[0,1,1],[0,0,1]]^4"),
+        "[[1, 8, 12], [0, 1, 4], [0, 0, 1]]"
+    );
+    assert_eq!(r("[[1,2],[3,4]]^0"), "[[1, 0], [0, 1]]"); // M^0 = I
+    assert_eq!(r("[[2,0],[0,2]]^(-2)"), "[[1/4, 0], [0, 1/4]]"); // negative power via inverse
+                                                                 // Controls: a singular base to a negative power is undefined; symbolic power / inverse stay
+                                                                 // honest residuals; a non-square base is undefined.
+    assert_eq!(r("[[1,2],[2,4]]^(-1)"), "undefined");
+    assert_eq!(r("[[a,b],[c,d]]^2"), "[[a, b], [c, d]]^2");
+    assert_eq!(r("[[a,b],[c,d]]^(-1)"), "inverse([[a, b], [c, d]])");
+    assert_eq!(r("[[1,2,3],[4,5,6]]^2"), "undefined");
+}
+
+#[test]
 fn test_eval_matrix_rank_exact() {
     // Matrix rank was recognized-but-unimplemented (returned an error). It now computes the
     // exact rank by Gaussian elimination over BigRational, for any shape, with an honest

@@ -254,7 +254,30 @@ impl SimpleRule for MatrixReciprocalRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         let rewritten = try_rewrite_matrix_reciprocal_expr(ctx, expr)?;
-        Some(Rewrite::new(rewritten).desc("M^(-1) = inverse(M); c/M = c·inverse(M)"))
+        let base = Rewrite::new(rewritten).desc("M^(-1) = inverse(M); Mⁿ; c/M = c·inverse(M)");
+
+        // A matrix power `Mⁿ` is repeated multiplication, whose unfolded entry sums transiently
+        // exceed the anti-worsen node budget before folding (like MatrixMultiplyRule). Exempt the
+        // bounded all-numeric power so `[[1,1],[0,1]]^3` commits instead of being rejected to a
+        // residual. Gated to a power of an all-numeric ≤6×6 base; the inverse/reciprocal forms keep
+        // the normal budget.
+        const MATRIX_POW_MAX_N: usize = 6;
+        let power_base = if let Expr::Pow(b, _) = ctx.get(expr) {
+            Some(*b)
+        } else {
+            None
+        };
+        let exempt = power_base
+            .and_then(|b| Matrix::from_expr(ctx, b))
+            .is_some_and(|m| {
+                m.rows <= MATRIX_POW_MAX_N
+                    && m.cols <= MATRIX_POW_MAX_N
+                    && m.data
+                        .iter()
+                        .all(|&e| matches!(ctx.get(e), Expr::Number(_) | Expr::Constant(_)))
+            });
+
+        Some(if exempt { base.budget_exempt() } else { base })
     }
 }
 

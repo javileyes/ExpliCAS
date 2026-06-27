@@ -337,16 +337,79 @@ pub fn is_matrix_valued(ctx: &Context, expr: ExprId) -> bool {
 /// arithmetic fabricate `1/[[…]]`: `M^(-1) → inverse(M)`, `c / M → c · inverse(M)`. The
 /// `inverse(…)` call is evaluated soundly downstream (numeric → inverse matrix, singular →
 /// undefined, non-square / symbolic → honest residual).
+/// Identity matrix `Iₙ` as a matrix expression.
+fn identity_matrix_expr(ctx: &mut Context, n: usize) -> ExprId {
+    let mut data = Vec::with_capacity(n * n);
+    for i in 0..n {
+        for j in 0..n {
+            data.push(if i == j { ctx.num(1) } else { ctx.num(0) });
+        }
+    }
+    ctx.matrix(n, n, data.clone()).unwrap_or_else(|_| {
+        ctx.add(Expr::Matrix {
+            rows: n,
+            cols: n,
+            data,
+        })
+    })
+}
+
+/// Integer matrix power `Mⁿ` of a SQUARE matrix. `n = 0 → I`, `n = 1 → M` (any
+/// entries); `|n| ≥ 2` is restricted to ALL-NUMERIC matrices, where the repeated
+/// product folds exactly and (for `n < 0`) the inverse is exact with a decidable
+/// `det ≠ 0` — a symbolic `Mⁿ` is left a residual rather than committing a form
+/// without its domain condition. A singular matrix to a negative power is
+/// `undefined`.
+fn try_matrix_power_expr(ctx: &mut Context, m: &Matrix, n: i64) -> Option<ExprId> {
+    const MATRIX_POWER_MAX_EXPONENT: u64 = 64;
+    if m.rows != m.cols {
+        return None;
+    }
+    if n == 0 {
+        return Some(identity_matrix_expr(ctx, m.rows));
+    }
+    if n == 1 {
+        return Some(m.to_expr(ctx));
+    }
+    let all_numeric = m
+        .data
+        .iter()
+        .all(|&e| matches!(ctx.get(e), Expr::Number(_) | Expr::Constant(_)));
+    if !all_numeric || n.unsigned_abs() > MATRIX_POWER_MAX_EXPONENT {
+        return None;
+    }
+    let (base, repetitions) = if n > 0 {
+        (m.clone(), n as usize)
+    } else {
+        match m.inverse(ctx)? {
+            MatrixInverseOutcome::Inverse(inverse) => (inverse, n.unsigned_abs() as usize),
+            MatrixInverseOutcome::Singular => {
+                return Some(ctx.add(Expr::Constant(Constant::Undefined)))
+            }
+        }
+    };
+    let mut result = base.clone();
+    for _ in 1..repetitions {
+        result = result.multiply(&base, ctx)?;
+    }
+    Some(result.to_expr(ctx))
+}
+
 pub fn try_rewrite_matrix_reciprocal_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr).clone() {
         Expr::Pow(base, exp) => {
-            Matrix::from_expr(ctx, base)?;
-            // Only the inverse power `-1`; general matrix powers are out of scope here.
+            let matrix = Matrix::from_expr(ctx, base)?;
             let exp_val = cas_math::numeric_eval::as_rational_const(ctx, exp)?;
-            if exp_val != num_rational::BigRational::from_integer((-1).into()) {
+            if !exp_val.is_integer() {
                 return None;
             }
-            Some(ctx.call("inverse", vec![base]))
+            // Preserve the inverse-CALL form for `-1`: its symbolic case must stay the
+            // `inverse(M)` residual (which withholds the `det ≠ 0` condition), not an echoed `M^(-1)`.
+            if exp_val == num_rational::BigRational::from_integer((-1).into()) {
+                return Some(ctx.call("inverse", vec![base]));
+            }
+            let n = num_traits::ToPrimitive::to_i64(&exp_val.to_integer())?;
+            try_matrix_power_expr(ctx, &matrix, n)
         }
         Expr::Div(num, den) => {
             // `c / M`: a scalar numerator over a matrix denominator. `M / N` (matrix over matrix)
