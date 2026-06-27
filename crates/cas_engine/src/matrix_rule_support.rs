@@ -119,6 +119,10 @@ pub enum MatrixFunctionEval {
         shape: MatrixShape,
         value: ExprId,
     },
+    Nullspace {
+        shape: MatrixShape,
+        value: ExprId,
+    },
     Inverse {
         shape: MatrixShape,
         /// `Some(inverse)` for an invertible matrix; `None` when the matrix is provably
@@ -165,6 +169,9 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
         }
         MatrixFunctionEval::Eigenvectors { shape, .. } => {
             format!("eigenvectors({}×{} matrix)", shape.rows, shape.cols)
+        }
+        MatrixFunctionEval::Nullspace { shape, .. } => {
+            format!("nullspace({}×{} matrix)", shape.rows, shape.cols)
         }
         MatrixFunctionEval::Inverse { shape, matrix } => {
             if matrix.is_some() {
@@ -622,6 +629,51 @@ pub fn try_matrix_eigenvectors(ctx: &mut Context, matrix: &Matrix) -> Option<Exp
     }))
 }
 
+/// Null space (kernel) of a NUMERIC matrix `A`: a basis of `{x : A·x = 0}` by exact
+/// rational RREF, returned as a matrix whose ROWS are the basis vectors. A trivial
+/// kernel (full column rank) is represented by the single zero vector. Declines
+/// (honest residual) on any symbolic entry.
+pub fn try_matrix_nullspace(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
+    use cas_solver_core::rational_roots::rational_to_expr;
+    use num_rational::BigRational;
+
+    let (rows, cols) = (matrix.rows, matrix.cols);
+    let mut a: Vec<Vec<BigRational>> = Vec::with_capacity(rows);
+    for i in 0..rows {
+        let mut row = Vec::with_capacity(cols);
+        for j in 0..cols {
+            row.push(cas_math::numeric_eval::as_rational_const(
+                ctx,
+                matrix.data[i * cols + j],
+            )?);
+        }
+        a.push(row);
+    }
+
+    let basis = rational_null_space(a, cols);
+    let (out_rows, data): (usize, Vec<ExprId>) = if basis.is_empty() {
+        (1, (0..cols).map(|_| ctx.num(0)).collect())
+    } else {
+        let out_rows = basis.len();
+        let data = basis
+            .into_iter()
+            .flatten()
+            .map(|value| rational_to_expr(ctx, &value))
+            .collect();
+        (out_rows, data)
+    };
+    Some(
+        ctx.matrix(out_rows, cols, data.clone())
+            .unwrap_or_else(|_| {
+                ctx.add(Expr::Matrix {
+                    rows: out_rows,
+                    cols,
+                    data,
+                })
+            }),
+    )
+}
+
 pub fn try_eval_matrix_function_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -667,6 +719,8 @@ pub fn try_eval_matrix_function_expr(
             .map(|value| MatrixFunctionEval::Eigenvalues { shape, value }),
         "eigenvectors" | "eigvecs" => try_matrix_eigenvectors(ctx, &matrix)
             .map(|value| MatrixFunctionEval::Eigenvectors { shape, value }),
+        "nullspace" | "null" | "kernel" => try_matrix_nullspace(ctx, &matrix)
+            .map(|value| MatrixFunctionEval::Nullspace { shape, value }),
         "inverse" | "inv" => match matrix.inverse(ctx)? {
             MatrixInverseOutcome::Inverse(inv) => Some(MatrixFunctionEval::Inverse {
                 shape,
@@ -745,6 +799,13 @@ pub fn try_rewrite_matrix_function_rule_expr(
         MatrixFunctionEval::Eigenvectors { shape, value } => {
             let desc =
                 format_matrix_function_desc(&MatrixFunctionEval::Eigenvectors { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+        MatrixFunctionEval::Nullspace { shape, value } => {
+            let desc = format_matrix_function_desc(&MatrixFunctionEval::Nullspace { shape, value });
             Some(MatrixFunctionRewrite {
                 rewritten: value,
                 desc,
