@@ -2293,6 +2293,35 @@ fn test_eval_exponential_coefficient_equals_base_inequality() {
 }
 
 #[test]
+fn test_eval_factorable_exponential_inequality() {
+    // SOUNDNESS (peldaño 1): a degree-2 exponential inequality collapsed to one side with NO constant
+    // term, `A·base^(2x) + B·base^x {op} 0`, factors out base^x > 0 to the single exponential
+    // `base^x {op} -B/A`. For base e the coefficient merges (`e·e^x = e^(x+1)`) so the substitution
+    // was blocked and the fallback leaked the equation root `{1}`; for a SYMBOLIC coefficient the
+    // polynomial-in-u inequality solver errored (ok=false). Both now reduce and solve. Truth vs sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // base e, coefficient == base: e^x in (0, e) <=> x < 1.
+    assert_eq!(r("e^(2*x)-e*e^x<0"), "(-infinity, 1)");
+    assert_eq!(r("e^(2*x)-e*e^x>0"), "(1, infinity)");
+    assert_eq!(r("e^(2*x)-e*e^x<=0"), "(-infinity, 1]");
+    assert_eq!(r("e^(2*x)-e*e^x>=0"), "[1, infinity)");
+    // SYMBOLIC coefficient pi (was a loud ok=false "symbolic coefficient" error): e^x < pi <=> x < ln(pi).
+    assert_eq!(r("e^(2*x)-pi*e^x<0"), "(-infinity, ln(pi))");
+    assert_eq!(r("e^(2*x)-pi*e^x>0"), "(ln(pi), infinity)");
+    assert_eq!(r("e^(2*x)-2*pi*e^x<0"), "(-infinity, ln(2·pi))");
+    // Controls: a constant term keeps the substitution path (B3), and the equation is unchanged.
+    assert_eq!(r("e^(2*x)-3*e^x+2<0"), "(0, ln(2))");
+    assert_eq!(r("e^(2*x)-e*e^x=0"), "{ 1 }");
+}
+
+#[test]
 fn test_eval_rational_sum_inequality_routing() {
     // SOUNDNESS regression: a rational-SUM inequality `x + c/x {op} k` (LHS an Add containing a
     // rational term) used to skip the reliable rational path and have its operator dropped, returning

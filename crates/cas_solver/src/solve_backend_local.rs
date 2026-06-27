@@ -2003,6 +2003,215 @@ fn try_decline_periodic_trig_inequality(
     ))
 }
 
+/// Flatten `expr` into a linear combination of the exponential atom `base^x`:
+/// accumulate the rational coefficient of every `base^x` (or `c*base^x`) term
+/// into `atom_coeff`, collect the signed constant terms (no `var`) into
+/// `const_terms`, and return `None` if any term is neither (a leftover
+/// `base^(-x)`/higher power, or other `var` structure) — i.e. the expression is
+/// not clean `A*base^x + B`.
+fn collect_linear_exponential_atom_terms(
+    ctx: &Context,
+    expr: ExprId,
+    atom: ExprId,
+    var: &str,
+    positive: bool,
+    atom_coeff: &mut num_rational::BigRational,
+    const_terms: &mut Vec<(bool, ExprId)>,
+) -> Option<()> {
+    use cas_ast::ordering::compare_expr;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::One;
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_linear_exponential_atom_terms(
+                ctx,
+                l,
+                atom,
+                var,
+                positive,
+                atom_coeff,
+                const_terms,
+            )?;
+            collect_linear_exponential_atom_terms(
+                ctx,
+                r,
+                atom,
+                var,
+                positive,
+                atom_coeff,
+                const_terms,
+            )
+        }
+        Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_linear_exponential_atom_terms(
+                ctx,
+                l,
+                atom,
+                var,
+                positive,
+                atom_coeff,
+                const_terms,
+            )?;
+            collect_linear_exponential_atom_terms(
+                ctx,
+                r,
+                atom,
+                var,
+                !positive,
+                atom_coeff,
+                const_terms,
+            )
+        }
+        Expr::Neg(inner) => {
+            let inner = *inner;
+            collect_linear_exponential_atom_terms(
+                ctx,
+                inner,
+                atom,
+                var,
+                !positive,
+                atom_coeff,
+                const_terms,
+            )
+        }
+        _ => {
+            if compare_expr(ctx, expr, atom) == std::cmp::Ordering::Equal {
+                if positive {
+                    *atom_coeff += num_rational::BigRational::one();
+                } else {
+                    *atom_coeff -= num_rational::BigRational::one();
+                }
+                return Some(());
+            }
+            let mul = if let Expr::Mul(l, r) = ctx.get(expr) {
+                Some((*l, *r))
+            } else {
+                None
+            };
+            if let Some((l, r)) = mul {
+                let coeff = if compare_expr(ctx, l, atom) == std::cmp::Ordering::Equal {
+                    cas_math::numeric_eval::as_rational_const(ctx, r)
+                } else if compare_expr(ctx, r, atom) == std::cmp::Ordering::Equal {
+                    cas_math::numeric_eval::as_rational_const(ctx, l)
+                } else {
+                    None
+                };
+                if let Some(coeff) = coeff {
+                    if positive {
+                        *atom_coeff += coeff;
+                    } else {
+                        *atom_coeff -= coeff;
+                    }
+                    return Some(());
+                }
+            }
+            if contains_var(ctx, expr, var) {
+                None
+            } else {
+                const_terms.push((positive, expr));
+                Some(())
+            }
+        }
+    }
+}
+
+/// A degree-2 exponential inequality collapsed onto one side,
+/// `A*base^(2x) + B*base^x {op} c` with NO `base^0` constant term (so `base^x`
+/// factors out cleanly), is — since `base^x > 0` — equivalent to the single
+/// exponential `base^x {op'} (-B/A)` (`op'` flips when `A < 0`). The single-side
+/// terminal answers that even for a SYMBOLIC threshold (`e`, `pi`), where the
+/// polynomial-in-u inequality solver rejects the symbolic coefficient. Fixes the
+/// silent `e^(2x) - e*e^x < 0 -> {1}` (truth `(-inf,1)`) and the loud
+/// `e^(2x) - pi*e^x < 0` "symbolic coefficient" error.
+fn try_solve_factorable_exponential_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Option<SolutionSet> {
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::{Signed, Zero};
+
+    if !matches!(
+        eq.op,
+        cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
+    ) {
+        return None;
+    }
+    // Only the collapsed form (RHS constant in var). This also prevents re-entry
+    // on the two-sided `base^x {op} threshold` this guard emits.
+    if contains_var(&simplifier.context, eq.rhs, var) {
+        return None;
+    }
+
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+
+    let zero = simplifier.context.num(0);
+    let atom = cas_solver_core::substitution::detect_exponential_substitution(
+        &mut simplifier.context,
+        diff,
+        zero,
+        var,
+        true,
+    )?;
+
+    // Reduce by the positive factor base^x: expand(diff / base^x). A clean
+    // factor-out (no `base^0` constant in the original) yields `A*base^x + B`;
+    // a leftover `base^(-x)` term makes `collect_*` decline, so the constant-term
+    // family is left to the substitution path.
+    let quotient = simplifier.context.add(Expr::Div(diff, atom));
+    let expanded = cas_math::expand_ops::expand(&mut simplifier.context, quotient);
+    let (reduced, _) = simplifier.simplify(expanded);
+
+    let mut atom_coeff = num_rational::BigRational::zero();
+    let mut const_terms: Vec<(bool, ExprId)> = Vec::new();
+    collect_linear_exponential_atom_terms(
+        &simplifier.context,
+        reduced,
+        atom,
+        var,
+        true,
+        &mut atom_coeff,
+        &mut const_terms,
+    )?;
+    if atom_coeff.is_zero() {
+        return None;
+    }
+
+    // threshold = -B / A, with B the signed sum of the constant terms.
+    let mut b_sum = simplifier.context.num(0);
+    for (positive, term) in const_terms {
+        b_sum = if positive {
+            simplifier.context.add(Expr::Add(b_sum, term))
+        } else {
+            simplifier.context.add(Expr::Sub(b_sum, term))
+        };
+    }
+    let neg_b = simplifier.context.add(Expr::Neg(b_sum));
+    let a_expr = simplifier.context.add(Expr::Number(atom_coeff.clone()));
+    let threshold = simplifier.context.add(Expr::Div(neg_b, a_expr));
+    let (threshold, _) = simplifier.simplify(threshold);
+
+    // Dividing the relation by A flips the operator when A < 0.
+    let op = if atom_coeff.is_positive() {
+        eq.op.clone()
+    } else {
+        flip_inequality(eq.op.clone())
+    };
+
+    let reduced_eq = Equation {
+        lhs: atom,
+        rhs: threshold,
+        op,
+    };
+    let (set, _) = solve_local_core(&reduced_eq, var, simplifier, opts, ctx).ok()?;
+    Some(set)
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -2086,6 +2295,13 @@ fn solve_local_core(
     // represent; decline to an honest residual instead of a wrong ray (out-of-range bare sin/cos are
     // excluded — they are answered ℝ/∅ by the trig-range guard after solve_inner).
     if let Some(set) = try_decline_periodic_trig_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A degree-2 exponential inequality collapsed to one side with no constant
+    // term (`e^(2x) - e*e^x < 0`) factors out `base^x > 0` to a single
+    // exponential, which the terminal solves even for a symbolic threshold —
+    // unlike the polynomial-in-u solver, which rejects the symbolic coefficient.
+    if let Some(set) = try_solve_factorable_exponential_inequality(eq, var, simplifier, opts, ctx) {
         return Ok((set, Vec::new()));
     }
     let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
