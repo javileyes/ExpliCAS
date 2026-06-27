@@ -1723,6 +1723,27 @@ fn test_eval_matrix_nullspace() {
 }
 
 #[test]
+fn test_eval_number_theory_modular() {
+    // Modular arithmetic: modinv (modular inverse via extended Euclid, residual when gcd≠1) and the
+    // Jacobi symbol (−1/0/1). Cross-checked against sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("modinv(3,7)"), "5"); // 3·5 = 15 ≡ 1 (mod 7)
+    assert_eq!(r("modinv(10,17)"), "12");
+    assert_eq!(r("modinv(2,4)"), "modinv(2, 4)"); // gcd(2,4)=2 ⇒ no inverse
+    assert_eq!(r("jacobi(2,7)"), "1"); // 2 is a QR mod 7
+    assert_eq!(r("jacobi(3,7)"), "-1");
+    assert_eq!(r("jacobi(2,15)"), "1");
+    assert_eq!(r("jacobi(6,9)"), "0"); // gcd(6,9) ≠ 1
+}
+
+#[test]
 fn test_eval_number_theory_divisor_functions() {
     // Divisor functions: τ/numdivisors (count), σ/sigma (sum), and iscomposite (1/0). All exact via
     // integer factorization. σ(6) = 12 = 2·6 confirms the perfect number.

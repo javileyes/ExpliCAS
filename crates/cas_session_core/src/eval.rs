@@ -88,6 +88,7 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         | "numdivisors" | "tau" | "sigma0" | "sigma" | "divisor_sum" | "iscomposite"
         | "is_composite" => arity == 1,
         "mod" | "choose" | "nCr" | "perm" | "nPr" => arity == 2,
+        "modinv" | "modular_inverse" | "jacobi" | "legendre" => arity == 2,
         "gcd" | "lcm" => arity >= 2,
         // Matrix functions handled by the matrix rules.
         "det" | "determinant" | "transpose" | "T" | "trace" | "tr" | "inverse" | "inv" | "rank"

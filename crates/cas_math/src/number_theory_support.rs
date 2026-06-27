@@ -203,6 +203,24 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
+        "modinv" | "modular_inverse" if args.len() == 2 => {
+            let result = compute_modinv_expr(ctx, args[0], args[1])?;
+            Some(NumberTheorySimpleRewrite::Binary {
+                name: "modinv",
+                lhs: args[0],
+                rhs: args[1],
+                result,
+            })
+        }
+        "jacobi" | "legendre" if args.len() == 2 => {
+            let result = compute_jacobi_expr(ctx, args[0], args[1])?;
+            Some(NumberTheorySimpleRewrite::Binary {
+                name: "jacobi",
+                lhs: args[0],
+                rhs: args[1],
+                result,
+            })
+        }
         _ => None,
     }
 }
@@ -576,6 +594,64 @@ pub fn compute_prevprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         candidate -= 1;
     }
     (candidate >= BigInt::from(2)).then(|| integer_result(ctx, candidate))
+}
+
+/// Extended Euclid: returns `(g, x, y)` with `a·x + b·y = g = gcd(a, b)`.
+fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
+    if b.is_zero() {
+        return (a.clone(), BigInt::one(), BigInt::zero());
+    }
+    let (g, x1, y1) = extended_gcd(b, &(a % b));
+    let y = x1 - (a / b) * &y1;
+    (g, y1, y)
+}
+
+/// Modular inverse `a⁻¹ mod n` in `[0, n)`, via extended Euclid. Declines when the
+/// inverse does not exist (`gcd(a, n) ≠ 1`) or the modulus is `≤ 1`.
+pub fn compute_modinv_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
+    let a = extract_integer_bigint(ctx, a)?;
+    let modulus = extract_integer_bigint(ctx, n)?;
+    if modulus <= BigInt::one() {
+        return None;
+    }
+    let a = ((a % &modulus) + &modulus) % &modulus;
+    let (g, x, _) = extended_gcd(&a, &modulus);
+    if !g.is_one() {
+        return None;
+    }
+    let inverse = ((x % &modulus) + &modulus) % &modulus;
+    Some(integer_result(ctx, inverse))
+}
+
+/// Jacobi symbol `(a / n)` for an ODD POSITIVE `n` — `−1`, `0`, or `1`. (For prime
+/// `n` this is the Legendre symbol.) Declines for even or non-positive `n`.
+pub fn compute_jacobi_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
+    let mut a = extract_integer_bigint(ctx, a)?;
+    let mut n = extract_integer_bigint(ctx, n)?;
+    if n <= BigInt::zero() || n.is_even() {
+        return None;
+    }
+    let eight = BigInt::from(8);
+    let four = BigInt::from(4);
+    let three = BigInt::from(3);
+    let five = BigInt::from(5);
+    a = ((a % &n) + &n) % &n;
+    let mut result: i64 = 1;
+    while !a.is_zero() {
+        while a.is_even() {
+            a /= 2;
+            let r = &n % &eight;
+            if r == three || r == five {
+                result = -result;
+            }
+        }
+        std::mem::swap(&mut a, &mut n);
+        if (&a % &four) == three && (&n % &four) == three {
+            result = -result;
+        }
+        a %= &n;
+    }
+    Some(ctx.num(if n.is_one() { result } else { 0 }))
 }
 
 /// Prime factorization of a positive integer as `(prime, exponent)` pairs.
