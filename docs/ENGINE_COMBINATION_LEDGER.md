@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 404 (newest first)
+Active entries: 405 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -141,6 +141,7 @@ Active entries: 404 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/rules/algebra/factoring.rs` (ArcLengthRule) — wrapper ... | CAPACIDAD (cálculo): arclength(f,x,a,b) = ∫√(1+(f')²)dx
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_derangement/isperfect... | CAPACIDAD (combinatoria/teoría de números): derangement, isperfect, harmonic
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (rational_function_of + split_... | SOUNDNESS P0: inecuación de suma racional `x + c/x {op} k` (15/16 casos auditados)
+- 2026-06-27 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (union_solution_sets) | SOUNDNESS P0: union_solution_sets descartaba `Discrete ∪ Continuous` (cierra el 16º caso)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16474,3 +16475,26 @@ Active entries: 404 (newest first)
     verifies` (sin tocar) respalda: nunca emite respuesta nueva incorrecta — peor caso, declina.
   - el residual `x+c/x <= k` (punto de tangencia positivo, pierde la rama negativa) NO es de esta ruta sino
     de `union_solution_sets` que descarta `Discrete ∪ Continuous` (ver [[rational-sum-inequality-collapses-to-equation]]) → ciclo siguiente.
+
+## 2026-06-27 - SOUNDNESS P0: union_solution_sets descartaba `Discrete ∪ Continuous` (cierra el 16º caso)
+
+- area: `crates/cas_solver_core/src/solution_set.rs` (union_solution_sets)
+- status: `retained` (commit pendiente↑). Cierra el 16º caso de inecuaciones del audit + un bug general.
+- capture:
+  - cell: ANTES `solve(x+1/x<=2)`→`[1,1]` (perdía la rama (-∞,0)) porque `union_solution_sets` con un
+    operando `Discrete` y otro `Continuous`/`Union` caía al catch-all `(s1,_)=>return s1` que DESCARTABA
+    silenciosamente el segundo conjunto. AHORA `solve(x+1/x<=2)`→`(-∞,0) ∪ [1,1]`, `x+4/x<=4`→`(-∞,0)∪[2,2]`.
+    Bug GENERAL (afectaba cualquier ruta que uniera un punto aislado con un intervalo).
+  - fix: arms nuevos `(Discrete,Continuous)`/`(Discrete,Union)` (+ simétricos) que elevan cada punto a un
+    intervalo degenerado `[p,p]` y los fusionan por `merge_intervals` (cierra extremos abiertos:
+    `{0}∪(0,5)=[0,5)`). Unit test añadido.
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA; fuzz de membresía 588 casos vs sympy
+    → 0 mismatches.
+- retained learning:
+  - los workarounds `discrete_to_intervals(roots)` en union_non_strict (y la completación de rama del
+    runtime para racionales) DEPENDEN de que el resultado intermedio sea un intervalo (Continuous), no
+    Discrete — por eso colapsar `[p,p]→{p}` a mitad de pipeline (en union_solution_sets, en union_non_strict,
+    o en el backend boundary) ROMPE `x+1/x<=2` (la rama (-∞,0) la añade una capa superior que opera sobre
+    intervalos). Consecuencia: un resultado de UN solo punto de tangencia se renderiza `[p,p]` en vez de `{p}`
+    (4 asserts de contrato actualizados — conjunto idéntico). Colapsar a Discrete es seguro SOLO en el
+    resultado final ya ensamblado; mid-pipeline alimenta el handling incompleto de Discrete en intersect.
