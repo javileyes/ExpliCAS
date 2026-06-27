@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 416 (newest first)
+Active entries: 417 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -153,6 +153,7 @@ Active entries: 416 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (apart_decomposi... | SOUNDNESS P0 (audit 3 / bloque 0, B2): apart con raíz repetida pierde el tope de la escalera
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (solve_exponential_substitution_... | SOUNDNESS P0 (audit 3 / bloque 0, B3): inecuación polinómica en e^x no back-sustituía x=ln(u)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (substitute_expr_pattern + nuevo... | SOUNDNESS P0 (sibling de B3): inecuación exponencial coeficiente==base devolvía {1}
+- 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (detect_exponential_substitution... | SOUNDNESS P0 (peldaño 2): inecuación single-exponencial aditiva e^x+1>0 daba "No solution"
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16794,3 +16795,31 @@ Active entries: 416 (newest first)
     const es entero — no "base^b plegable vía as_rational_const".
   - peldaño restante: base-e coeff==base (`e^(2x)-e·e^x<0`→`{1}`) necesita u-solver con coeficiente SIMBÓLICO
     (`u²-e·u<0`); y los items abiertos del 2º audit (`e^x+1>0`→"No solution", additive/power-confusion single-exp).
+
+## 2026-06-27 - SOUNDNESS P0 (peldaño 2): inecuación single-exponencial aditiva e^x+1>0 daba "No solution"
+
+- area: `crates/cas_solver_core/src/substitution.rs` (detect_exponential_substitution + plan_exponential_substitution_rewrite + colapso AllReals en map_exponential_inequality_solution_to_x)
+- status: `retained` (commit 3ca6ec6c8). Item abierto del 2º audit (additive/power-confusion single-exponential).
+- capture:
+  - cell: ANTES `e^x+1>0`→"No solution" (truth ℝ, e^x>0>-1); igual `e^x+5>2`, `3^x+1>0`, `e^x+1>=0`;
+    `2*e^x+3>0`→condicional malformado `(undefined, infinity) if -3/2>0`. AHORA todos→"All real numbers".
+    `e^x+1<0`→"No solution" (correcto, vacío). Verificado vs sympy.
+  - causa raíz: el gate de `detect_exponential_substitution` solo admitía relaciones con un término de grado
+    superior `base^(k·x)` (`found_complex`); un grado-1 PELADO `base^x` (`e^x+1`) se declinaba → isolación
+    genérica resolvía la ecuación borde `e^x+1=0` (sin raíz real) → vacío, SOLTANDO el operador. (Todos los
+    análogos grado≥2 `e^(2x)+1>0` ya eran correctos, probando que la maquinaria de sustitución estaba completa.)
+  - fix: admitir la familia single-exponencial pelada, GATEADO a ops de INECUACIÓN (las ecuaciones siguen el path
+    `Unwrap`, narración byte-idéntica). La relación sustituye u=base^x y el back-map de B3 clampa a u>0: `u+1>0`→
+    (-1,∞)→clamp(0,∞)→ℝ. DOS guardas de soundness: (1) un single-exponencial PURO `base^x <op> const` se deja al
+    terminal single-side dedicado (que resuelve positividad de base fraccionaria `(1/2)^x>0`→ℝ — sustituirlo lo
+    declinaría a residual); solo un LHS estructurado (`a·base^x+c`, grado≥2) sustituye. (2) imagen recta-completa
+    `(-∞,∞)` colapsa a AllReals canónico.
+  - validación: workspace verde; clippy --workspace; rustfmt; huella GUARD/PRESS IDÉNTICA; 8 asertos CLI (5 aditivos
+    + `<0` vacío + 2 controles de narración de ecuación).
+- retained learning:
+  - el regression cazado en implementación: admitir el caso pelado para inecuaciones ENRUTÓ los single-exponenciales
+    PUROS (`(1/2)^x>0`) hacia la sustitución, donde base fraccionaria declina a residual — perdiendo el "All reals"
+    correcto del terminal dedicado. La guarda "solo sustituye si hay estructura extra (lhs≠átomo)" preserva el routing
+    pre-existente de los puros. Lección: al ABRIR un gate de estrategia que corre ANTES de otra (Substitution pos 2 <
+    single-side), hay que excluir los casos que la otra ya resuelve mejor, o los pisas.
+  - peldaño restante: base-e coeff==base (`e^(2x)-e·e^x<0`→`{1}`) — peldaño 1, factor-out de base^x>0 (siguiente ciclo).
