@@ -1,6 +1,7 @@
 use crate::isolation_utils::contains_var;
 use cas_ast::{ordering::compare_expr, Context, Equation, Expr, ExprId, SolutionSet};
 use cas_math::build::mul2_raw;
+use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 
 /// Default temporary variable name used by exponential substitution strategy.
@@ -576,6 +577,205 @@ where
     })
 }
 
+/// `base^x` is strictly increasing — so its inverse `log_base` is too, and
+/// interval endpoints map order-preservingly — iff `base > 1`. Only `e` and a
+/// numeric base `> 1` qualify. A fractional base `0 < base < 1` is deliberately
+/// declined: its inverse is decreasing AND its endpoint images are `log` ratios
+/// (`ln(k)/ln(1/b)`) that downstream interval comparison cannot order (the
+/// non-strict union would mangle), so it stays an honest u-space residual — a
+/// separate step. A symbolic base, `base <= 0`, or `base == 1` is undecidable.
+fn exponential_substitution_base_is_increasing(ctx: &Context, substitution_expr: ExprId) -> bool {
+    let Expr::Pow(base, _) = ctx.get(substitution_expr) else {
+        return false;
+    };
+    let base = *base;
+    if matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E)) {
+        return true;
+    }
+    match crate::solution_set::get_number(ctx, base) {
+        Some(value) => value > num_rational::BigRational::one(),
+        None => false,
+    }
+}
+
+/// Map one `u`-bound of an exponential-substitution inequality interval to its
+/// `x`-image under the increasing inverse `x = log_base(u)` (base > 1). The
+/// bound has already been clamped to `u > 0`, so the open lower sentinel `0`
+/// maps to `-inf` and `+inf` to `+inf`; a finite positive bound inverts through
+/// the same equation back-solver the discrete roots use. Returns `None`
+/// (decline) for a symbolic or non-positive finite bound that should never
+/// survive the clamp.
+fn map_exponential_inequality_bound_to_x<T, E, S, FContextMut, FSolve>(
+    state: &mut T,
+    context_mut: &FContextMut,
+    substitution_expr: ExprId,
+    target_var: &str,
+    bound: ExprId,
+    is_lower: bool,
+    solve_equation: &mut FSolve,
+) -> Result<Option<ExprId>, E>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+{
+    enum BoundKind {
+        NegInfinity,
+        PosInfinity,
+        FinitePositive,
+        Decline,
+    }
+    let kind = {
+        let ctx = context_mut(state);
+        if crate::solution_set::is_infinity(ctx, bound) {
+            // u -> +inf maps to x -> +inf for an increasing base.
+            BoundKind::PosInfinity
+        } else if crate::solution_set::is_neg_infinity(ctx, bound) {
+            // Should not survive the (0, +inf) clamp.
+            BoundKind::Decline
+        } else if let Some(value) = crate::solution_set::get_number(ctx, bound) {
+            if value.is_zero() {
+                // The open lower sentinel after the (0, +inf) clamp:
+                // base^x -> 0 as x -> -inf (base > 1).
+                if is_lower {
+                    BoundKind::NegInfinity
+                } else {
+                    BoundKind::Decline
+                }
+            } else if value.is_positive() {
+                BoundKind::FinitePositive
+            } else {
+                BoundKind::Decline
+            }
+        } else {
+            BoundKind::Decline
+        }
+    };
+
+    Ok(match kind {
+        BoundKind::NegInfinity => Some(crate::solution_set::neg_inf(context_mut(state))),
+        BoundKind::PosInfinity => Some(crate::solution_set::pos_inf(context_mut(state))),
+        BoundKind::FinitePositive => {
+            // x = log_base(u_a) via the SAME back-solver the discrete roots use:
+            // re-solve base^x = u_a. base > 1 gives one increasing root, so the
+            // bound type carries over unchanged.
+            let equation = Equation {
+                lhs: substitution_expr,
+                rhs: bound,
+                op: cas_ast::RelOp::Eq,
+            };
+            let (solution, _) = solve_equation(state, &equation, target_var)?;
+            match solution {
+                SolutionSet::Discrete(values) if values.len() == 1 => Some(values[0]),
+                _ => None,
+            }
+        }
+        BoundKind::Decline => None,
+    })
+}
+
+/// Map a `u`-space solution of an exponential-substitution INEQUALITY back to
+/// `x`-space. The u-solve runs the original relational operator in `u = base^x`,
+/// so an inequality yields an interval/union in `u` rather than the discrete
+/// roots an equation yields, and the back-substitution arm that maps `u -> x`
+/// only fired for `Discrete`. Because `base^x` (base > 1) is a strictly
+/// increasing bijection onto `(0, +inf)`, the x-solution is recovered by
+///   1. intersecting the u-solution with `(0, +inf)` (the range of `base^x`),
+///   2. mapping every interval endpoint through `x = log_base(u)` (finite
+///      positive bound via the equation back-solver, lower sentinel `0 -> -inf`,
+///      `+inf -> +inf`), preserving open/closed bounds.
+///
+/// A base not provably `> 1` (fractional/symbolic — see
+/// [`exponential_substitution_base_is_increasing`]), a non-interval set
+/// (`Residual`/`Conditional`), or a bound that is not a positive number is
+/// returned unchanged so the caller keeps the honest u-space residual.
+#[allow(clippy::too_many_arguments)]
+fn map_exponential_inequality_solution_to_x<T, E, S, FContextMut, FSolve>(
+    state: &mut T,
+    context_mut: &FContextMut,
+    substitution_expr: ExprId,
+    target_var: &str,
+    u_solution: SolutionSet,
+    solve_equation: &mut FSolve,
+) -> Result<SolutionSet, E>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+{
+    if !exponential_substitution_base_is_increasing(context_mut(state), substitution_expr) {
+        return Ok(u_solution);
+    }
+
+    let interval_set = match u_solution {
+        // base^x covers (0, +inf): an inequality true for every u is true for
+        // every x; true for no u is true for no x.
+        SolutionSet::AllReals => return Ok(SolutionSet::AllReals),
+        SolutionSet::Empty => return Ok(SolutionSet::Empty),
+        SolutionSet::Continuous(_) | SolutionSet::Union(_) => u_solution,
+        // Discrete is handled by the equation arm; Residual/Conditional are left
+        // as the honest residual.
+        other => return Ok(other),
+    };
+    let original = interval_set.clone();
+
+    // 1. Clamp to the range of base^x: u must be > 0.
+    let positive = crate::solution_set::open_positive_domain(context_mut(state));
+    let clamped =
+        crate::solution_set::intersect_solution_sets(context_mut(state), interval_set, positive);
+    let clamped_intervals = match clamped {
+        SolutionSet::Continuous(interval) => vec![interval],
+        SolutionSet::Union(intervals) => intervals,
+        SolutionSet::Empty => return Ok(SolutionSet::Empty),
+        // The clamp can only shrink an interval set; anything else means we
+        // cannot soundly map it, so keep the honest u-space residual.
+        _ => return Ok(original),
+    };
+
+    // 2. Map each clamped interval's endpoints through the increasing
+    //    x = log_base(u), preserving open/closed bound types.
+    let mut mapped: Vec<cas_ast::Interval> = Vec::with_capacity(clamped_intervals.len());
+    for interval in clamped_intervals {
+        let min = match map_exponential_inequality_bound_to_x(
+            state,
+            context_mut,
+            substitution_expr,
+            target_var,
+            interval.min,
+            true,
+            solve_equation,
+        )? {
+            Some(expr) => expr,
+            None => return Ok(original),
+        };
+        let max = match map_exponential_inequality_bound_to_x(
+            state,
+            context_mut,
+            substitution_expr,
+            target_var,
+            interval.max,
+            false,
+            solve_equation,
+        )? {
+            Some(expr) => expr,
+            None => return Ok(original),
+        };
+        mapped.push(cas_ast::Interval {
+            min,
+            min_type: interval.min_type,
+            max,
+            max_type: interval.max_type,
+        });
+    }
+
+    // An increasing base preserves the clamped intervals' ascending order, so
+    // the images stay sorted and pairwise disjoint (a bijection): build the
+    // union directly, NOT via merge_intervals, which cannot order ln bounds.
+    Ok(match mapped.len() {
+        0 => SolutionSet::Empty,
+        1 => SolutionSet::Continuous(mapped.into_iter().next().expect("len checked")),
+        _ => SolutionSet::Union(mapped),
+    })
+}
+
 /// Stateful variant of
 /// [`solve_exponential_substitution_strategy_result_with_items_with`].
 ///
@@ -586,6 +786,7 @@ pub fn solve_exponential_substitution_strategy_result_with_items_with_state<
     T,
     E,
     S,
+    FContextMut,
     FRender,
     FSolve,
     FMap,
@@ -596,11 +797,13 @@ pub fn solve_exponential_substitution_strategy_result_with_items_with_state<
     target_var: &str,
     substitution_var: &str,
     include_didactic_items: bool,
+    context_mut: FContextMut,
     mut render_expr: FRender,
     mut solve_equation: FSolve,
     mut map_step: FMap,
 ) -> Result<(SolutionSet, Vec<S>), E>
 where
+    FContextMut: Fn(&mut T) -> &mut Context,
     FRender: FnMut(&mut T, ExprId) -> String,
     FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
     FMap: FnMut(String, Equation) -> S,
@@ -641,7 +844,17 @@ where
                 Err(solution_set) => solution_set,
             }
         }
-        solution_set => solution_set,
+        // An inequality solves to an interval/union IN u = base^x; back-substitute
+        // it to x = log_base(u) (clamped to u > 0) instead of leaking the u-space
+        // set. Non-mappable shapes pass through as the honest residual.
+        solution_set => map_exponential_inequality_solution_to_x(
+            state,
+            &context_mut,
+            solved_intro.substitution_expr,
+            target_var,
+            solution_set,
+            &mut solve_equation,
+        )?,
     };
 
     Ok((final_set, steps))
@@ -697,6 +910,7 @@ pub fn execute_exponential_substitution_strategy_result_pipeline_with_items_and_
     T,
     E,
     S,
+    FContextMut,
     FRender,
     FSolve,
     FMap,
@@ -707,11 +921,13 @@ pub fn execute_exponential_substitution_strategy_result_pipeline_with_items_and_
     target_var: &str,
     substitution_var: &str,
     include_didactic_items: bool,
+    context_mut: FContextMut,
     render_expr: FRender,
     solve_equation: FSolve,
     map_step: FMap,
 ) -> Option<Result<(SolutionSet, Vec<S>), E>>
 where
+    FContextMut: Fn(&mut T) -> &mut Context,
     FRender: FnMut(&mut T, ExprId) -> String,
     FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
     FMap: FnMut(String, Equation) -> S,
@@ -725,6 +941,7 @@ where
             target_var,
             substitution_var,
             include_didactic_items,
+            context_mut,
             render_expr,
             solve_equation,
             map_step,
@@ -773,6 +990,7 @@ where
         target_var,
         substitution_var,
         include_didactic_items,
+        context_mut,
         render_expr,
         solve_equation,
         map_step,
@@ -2053,6 +2271,8 @@ mod tests {
             "x",
             "u",
             true,
+            // Unused on the discrete (equation) path this test exercises.
+            |_state: &mut TestState| -> &mut Context { unreachable!() },
             |state, _expr| {
                 state.render_calls += 1;
                 "u".to_string()
@@ -2138,6 +2358,8 @@ mod tests {
                 "x",
                 "u",
                 true,
+                // Unused: `None` rewrite plan returns before any solving.
+                |_state: &mut TestState| -> &mut Context { unreachable!() },
                 |_state, _expr| "u".to_string(),
                 |state, _equation, _var| {
                     state.solve_calls += 1;

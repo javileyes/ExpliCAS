@@ -2198,6 +2198,39 @@ fn test_eval_fractional_base_exponential_inequality_direction() {
 }
 
 #[test]
+fn test_eval_exponential_polynomial_inequality_back_substitution() {
+    // SOUNDNESS (B3): a polynomial-in-`u = e^x` INEQUALITY was solved in u-space and the interval was
+    // returned WITHOUT back-substituting `x = ln(u)` (the equation path back-substituted, the
+    // inequality path forgot). `e^(2x)-3e^x+2<0` leaked the u-interval `(1, 2)` instead of `(0, ln 2)`.
+    // The fix clamps the u-solution to `u > 0` (range of e^x) and maps each endpoint through ln.
+    // Truth verified vs sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // u = e^x in (1, 2) ⟺ x in (0, ln 2). All four operators, base e.
+    assert_eq!(r("e^(2*x)-3*e^x+2<0"), "(0, ln(2))");
+    assert_eq!(r("e^(2*x)-3*e^x+2>0"), "(-infinity, 0) U (ln(2), infinity)");
+    assert_eq!(r("e^(2*x)-3*e^x+2<=0"), "[0, ln(2)]");
+    assert_eq!(
+        r("e^(2*x)-3*e^x+2>=0"),
+        "(-infinity, 0] U [ln(2), infinity)"
+    );
+    // A base > 1 other than e maps through log_base: 2^x in [1, 2] ⟺ x in [0, 1].
+    assert_eq!(r("2^(2*x)-3*2^x+2<=0"), "[0, 1]");
+    // u must be > 0: a root <= 0 is clamped away. u in (-2, 1) ⟺ (0, 1) ⟺ x < 0; u in (-2, -1) ⟺ empty.
+    assert_eq!(r("e^(2*x)+e^x-2<0"), "(-infinity, 0)");
+    assert_eq!(r("e^(2*x)+3*e^x+2<0"), "No solution");
+    // Controls: the equation path still back-substitutes; e^(2x) = -5 has no real solution.
+    assert_eq!(r("e^(2*x)-3*e^x+2=0"), "{ ln(2), 0 }");
+    assert_eq!(r("e^(2*x)=-5"), "No solution");
+}
+
+#[test]
 fn test_eval_rational_sum_inequality_routing() {
     // SOUNDNESS regression: a rational-SUM inequality `x + c/x {op} k` (LHS an Add containing a
     // rational term) used to skip the reliable rational path and have its operator dropped, returning
