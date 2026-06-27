@@ -1617,6 +1617,36 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_number_theory_primes_and_totient() {
+    // New number-theory functions: isprime (1/0, the engine has no boolean), nextprime, prevprime,
+    // and Euler's totient. All exact (BigInt trial division / factorization).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("isprime(7)"), "1");
+    assert_eq!(r("isprime(12)"), "0");
+    assert_eq!(r("isprime(1)"), "0");
+    assert_eq!(r("isprime(2)"), "1");
+    assert_eq!(r("nextprime(10)"), "11");
+    assert_eq!(r("nextprime(13)"), "17");
+    assert_eq!(r("prevprime(10)"), "7");
+    assert_eq!(r("prevprime(3)"), "2");
+    // No prime below 2 ⇒ honest residual.
+    assert_eq!(r("prevprime(2)"), "prevprime(2)");
+    assert_eq!(r("totient(12)"), "4");
+    assert_eq!(r("totient(7)"), "6"); // prime: φ(p) = p−1
+    assert_eq!(r("totient(36)"), "12");
+    // Controls: existing number-theory calls unchanged.
+    assert_eq!(r("gcd(48,36)"), "12");
+    assert_eq!(r("prime_factors(12)"), "2^2·3");
+}
+
+#[test]
 fn test_eval_limit_abs_finite_tail_at_infinity() {
     // `lim_{x→∞} |u(x)| = |L|` when the rational argument has a finite tail L — previously only the
     // divergent case (`abs → +∞`) was handled, so `|(x-1)/(x+1)|` stayed an unevaluated residual.

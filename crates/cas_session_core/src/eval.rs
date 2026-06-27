@@ -84,6 +84,9 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "taylor" | "series" => matches!(arity, 3 | 4),
         // Number-theory calls dispatched by engine/math support.
         "fact" | "factorial" | "prime_factors" | "factors" => arity == 1,
+        "isprime" | "is_prime" | "nextprime" | "prevprime" | "totient" | "phi" | "eulerphi" => {
+            arity == 1
+        }
         "mod" | "choose" | "nCr" | "perm" | "nPr" => arity == 2,
         "gcd" | "lcm" => arity >= 2,
         // Matrix functions handled by the matrix rules.

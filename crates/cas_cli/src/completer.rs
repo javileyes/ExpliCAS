@@ -73,6 +73,10 @@ impl CasHelper {
                 "lcm".to_string(),
                 "mod".to_string(),
                 "prime_factors".to_string(),
+                "isprime".to_string(),
+                "nextprime".to_string(),
+                "prevprime".to_string(),
+                "totient".to_string(),
                 "sum".to_string(),
                 "product".to_string(),
                 // Polynomial functions

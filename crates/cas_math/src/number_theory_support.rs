@@ -121,6 +121,38 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
+        "isprime" | "is_prime" if args.len() == 1 => {
+            let result = compute_isprime_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "isprime",
+                arg: args[0],
+                result,
+            })
+        }
+        "nextprime" if args.len() == 1 => {
+            let result = compute_nextprime_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "nextprime",
+                arg: args[0],
+                result,
+            })
+        }
+        "prevprime" if args.len() == 1 => {
+            let result = compute_prevprime_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "prevprime",
+                arg: args[0],
+                result,
+            })
+        }
+        "totient" | "phi" | "eulerphi" if args.len() == 1 => {
+            let result = compute_totient_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "totient",
+                arg: args[0],
+                result,
+            })
+        }
         "fact" | "factorial" if args.len() == 1 => {
             let result = compute_factorial_expr(ctx, args[0])?;
             Some(NumberTheorySimpleRewrite::Unary {
@@ -446,6 +478,105 @@ pub fn select_poly_gcd_mode(
 /// Extract exact integer value from expression.
 pub fn extract_integer_bigint(ctx: &Context, expr: ExprId) -> Option<BigInt> {
     crate::expr_extract::extract_integer_exact(ctx, expr)
+}
+
+/// Trial-division search/test stay fast below this bound; larger inputs decline
+/// to an honest residual rather than block on a slow loop.
+const NUMBER_THEORY_PRIME_SEARCH_CAP: i64 = 1_000_000_000_000;
+
+/// Exact primality by trial division (deterministic, no f64). `n < 2 ⇒ false`.
+fn is_prime_bigint(n: &BigInt) -> bool {
+    let two = BigInt::from(2);
+    if *n < two {
+        return false;
+    }
+    if *n == two {
+        return true;
+    }
+    if n.is_even() {
+        return false;
+    }
+    let mut d = BigInt::from(3);
+    while &d * &d <= *n {
+        if (n % &d).is_zero() {
+            return false;
+        }
+        d += 2;
+    }
+    true
+}
+
+fn within_prime_search_cap(n: &BigInt) -> bool {
+    n.abs() <= BigInt::from(NUMBER_THEORY_PRIME_SEARCH_CAP)
+}
+
+fn integer_result(ctx: &mut Context, value: BigInt) -> ExprId {
+    ctx.add(Expr::Number(BigRational::from_integer(value)))
+}
+
+/// `isprime(n)` → `1` if prime, `0` otherwise (the engine has no boolean type).
+pub fn compute_isprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if !within_prime_search_cap(&val) {
+        return None;
+    }
+    Some(ctx.num(if is_prime_bigint(&val) { 1 } else { 0 }))
+}
+
+/// Smallest prime strictly greater than `n`.
+pub fn compute_nextprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if !within_prime_search_cap(&val) {
+        return None;
+    }
+    let mut candidate = if val < BigInt::from(2) {
+        BigInt::from(2)
+    } else {
+        &val + 1
+    };
+    while !is_prime_bigint(&candidate) {
+        candidate += 1;
+    }
+    Some(integer_result(ctx, candidate))
+}
+
+/// Largest prime strictly less than `n` (declines when none exists, i.e. `n ≤ 2`).
+pub fn compute_prevprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if !within_prime_search_cap(&val) || val <= BigInt::from(2) {
+        return None;
+    }
+    let mut candidate = &val - 1;
+    let two = BigInt::from(2);
+    while candidate >= two && !is_prime_bigint(&candidate) {
+        candidate -= 1;
+    }
+    (candidate >= BigInt::from(2)).then(|| integer_result(ctx, candidate))
+}
+
+/// Euler's totient `φ(n) = n·∏(1 − 1/p)` over the distinct primes `p | n`, by exact
+/// integer factorization. Declines for `n < 1`.
+pub fn compute_totient_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if val < BigInt::one() || !within_prime_search_cap(&val) {
+        return None;
+    }
+    let mut result = val.clone();
+    let mut remaining = val;
+    let mut p = BigInt::from(2);
+    while &p * &p <= remaining {
+        if (&remaining % &p).is_zero() {
+            while (&remaining % &p).is_zero() {
+                remaining /= &p;
+            }
+            result = result / &p * (&p - 1);
+        }
+        p += 1;
+    }
+    if remaining > BigInt::one() {
+        result = result / &remaining * (&remaining - 1);
+    }
+    Some(integer_result(ctx, result))
 }
 
 /// Compute integer GCD expression when both inputs are exact integers.
