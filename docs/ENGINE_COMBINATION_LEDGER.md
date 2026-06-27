@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 405 (newest first)
+Active entries: 406 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -142,6 +142,7 @@ Active entries: 405 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_derangement/isperfect... | CAPACIDAD (combinatoria/teoría de números): derangement, isperfect, harmonic
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (rational_function_of + split_... | SOUNDNESS P0: inecuación de suma racional `x + c/x {op} k` (15/16 casos auditados)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (union_solution_sets) | SOUNDNESS P0: union_solution_sets descartaba `Discrete ∪ Continuous` (cierra el 16º caso)
+- 2026-06-27 | `retained` | `crates/cas_solver_core/src/domain_normalization.rs` (lower_bound_dominates_a... | SOUNDNESS (medium): condición de dominio contradictoria en `integrate(sqrt(x^2-a^2))`
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16498,3 +16499,31 @@ Active entries: 405 (newest first)
     intervalos). Consecuencia: un resultado de UN solo punto de tangencia se renderiza `[p,p]` en vez de `{p}`
     (4 asserts de contrato actualizados — conjunto idéntico). Colapsar a Discrete es seguro SOLO en el
     resultado final ya ensamblado; mid-pipeline alimenta el handling incompleto de Discrete en intersect.
+
+## 2026-06-27 - SOUNDNESS (medium): condición de dominio contradictoria en `integrate(sqrt(x^2-a^2))`
+
+- area: `crates/cas_solver_core/src/domain_normalization.rs` (lower_bound_dominates_acosh_radicand_nonnegative)
+- status: `retained` (commit pendiente↑). Cierra el 17º (último) bug del audit ultracode (medium).
+- capture:
+  - cell: ANTES `integrate(sqrt(x^2-1))` emitía DOS condiciones contradictorias: `["x ≤ -1 or x ≥ 1"`
+    (radicando NonNegative) `, "x ≥ 1"]` (LowerBound de acosh) — la primera sugería validez en x≤-1 donde
+    la primitiva acosh(x) es no-real. AHORA emite SOLO `["x ≥ 1"]` (honesto: la primitiva acosh es real y
+    F'=integrando en [1,∞) cerrado, porque el integrando vale 0 en x=1). Igual para `sqrt(x^2-4)→x≥2`,
+    `sqrt(4x^2-1)→x≥1/2`.
+  - fix (Opción B del scoping): nuevo dominador `lower_bound_dominates_acosh_radicand_nonnegative` (espejo
+    del análogo `Positive` ya existente) cableado en el brazo `(NonNegative, LowerBound)` de
+    apply_dominance_rules. Suprime la `NonNegative(x²-a²)` bilateral cuando la domina un `LowerBound(x≥a)`.
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA (ningún fixture capturaba el dual de
+    los casos bare); unit test; FTC en rama negativa intacto (definidas `integrate(sqrt(x^2-1),x,-3,-2)` ok).
+- retained learning:
+  - SCOPING quirúrgico > el plan: el plan sugería tocar también los COCIENTES (`x^2/sqrt(x^2-1)`) a `x≥1`,
+    pero eso sería UNSOUND — en el cociente el integrando tiene polo en x=a, así que F'=f solo vale en `x>a`
+    (abierto); forzar `x≥a` afirmaría la relación en el polo. Mi dominancia solo dispara para `NonNegative`
+    (radicando-numerador, x≥a cerrado correcto), NO para el `Positive` estricto del cociente. La verificación
+    empírica salvó de un fix unsound recomendado.
+  - Opción A (primitiva domain-complete `ln|x+√(x²-1)|`, que recuperaría la rama x≤-a) DIFERIDA: el
+    auto-verificador del backend usa igualdad estructural/polinómica, no `expand`, y la derivada de la ln-form
+    solo colapsa a 0 bajo `expand` → riesgo de rechazo; además el sitio acosh (línea 19730) lo comparte el
+    caso aceptado `1/sqrt(x^2-1)`. Peldaño futuro con su propio scoping del pase de normalización.
+  - Limitación conocida: gap IRRACIONAL (`sqrt(x^2-2)`, boundary √2) no se suprime (exact_positive_rational_
+    nth_root devuelve None); el dual resultante es verboso pero sound (intersecta a x≥√2). Fuera de alcance.
