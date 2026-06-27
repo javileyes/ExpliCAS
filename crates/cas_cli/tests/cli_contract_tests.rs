@@ -941,8 +941,8 @@ fn test_eval_radical_inequality_keeps_argument_domain() {
         ("sqrt(x+2) > 1", "(-1, infinity)"),
         // Range correction (sqrt ≥ 0): a negative upper threshold is impossible.
         ("sqrt(x-1) < -1", "No solution"),
-        // sqrt(g) <= 0 forces g = 0: a single point in the domain.
-        ("sqrt(x+3) <= 0", "{ -3 }"),
+        // sqrt(g) <= 0 forces g = 0: a single point in the domain (a degenerate interval `[p, p]`).
+        ("sqrt(x+3) <= 0", "[-3, -3]"),
         // ln argument domain is g(x) > 0 (open).
         ("ln(x-1) < 0", "(1, 2)"),
     ] {
@@ -986,8 +986,8 @@ fn test_eval_radical_inequality_case_splits_on_rhs_sign() {
         ("sqrt(x+1) > x-1", "[-1, 3)"),
         ("sqrt(x-2) > 4-x", "(3, infinity)"),
         // Non-strict touch point `√f = g = 0` is an isolated solution the squared
-        // intersection drops as a degenerate overlap; recovered via `solve(√f = g)`.
-        ("sqrt(x+3) <= -x-3", "{ -3 }"),
+        // intersection drops as a degenerate overlap; recovered via `solve(√f = g)` (rendered `[p, p]`).
+        ("sqrt(x+3) <= -x-3", "[-3, -3]"),
         // Detached point unioned with an interval: `√0 = 0 = -2+2` AND [0, ∞).
         ("sqrt(2*x+4) <= x+2", "[-2, -2] U [0, infinity)"),
         // Boundary at the open endpoint of a non-empty branch stays closed.
@@ -2003,6 +2003,12 @@ fn test_eval_rational_sum_inequality_routing() {
         r("solve(x + 1/x >= 3, x)"),
         "(0, 1/2·(3 - sqrt(5))] U [1/2·(sqrt(5) + 3), infinity)"
     );
+    // Non-strict touch-point cases: the solution is a half-line PLUS the isolated touch point, which
+    // requires unioning a Discrete point with a Continuous interval (previously the interval was
+    // silently dropped, collapsing the answer to the lone point `[p, p]`).
+    assert_eq!(r("solve(x + 1/x <= 2, x)"), "(-infinity, 0) U [1, 1]");
+    assert_eq!(r("solve(x + 4/x <= 4, x)"), "(-infinity, 0) U [2, 2]");
+    assert_eq!(r("solve(x + 9/x <= 6, x)"), "(-infinity, 0) U [3, 3]");
     // Controls: the single-fraction form and ordinary inequalities are unchanged.
     assert_eq!(r("solve((x^2+1)/x > 2, x)"), "(0, 1) U (1, infinity)");
     assert_eq!(r("solve(1/x < 1, x)"), "(-infinity, 0) U (1, infinity)");
@@ -2969,9 +2975,10 @@ fn test_eval_nonstrict_inequality_includes_isolated_roots() {
         ("solve(x^2/((x-1)*(x-2))<=0, x)", "[0, 0] U (1, 2)"),
         ("solve((x-3)^2/(x-1)<=0, x)", "(-infinity, 1) U [3, 3]"),
         ("solve((x+3)^2*(x-1)*(x-5)<=0, x)", "[-3, -3] U [1, 5]"),
-        // Pure touch point -> a single discrete solution.
-        ("solve((x-2)^2<=0, x)", "{ 2 }"),
-        ("solve(-(x-2)^2>=0, x)", "{ 2 }"),
+        // Pure touch point -> the single solution, rendered as a degenerate interval `[p, p]` (the
+        // root flows through the interval-union machinery once Discrete∪interval unions keep both sides).
+        ("solve((x-2)^2<=0, x)", "[2, 2]"),
+        ("solve(-(x-2)^2>=0, x)", "[2, 2]"),
         // STRICT controls: `0` does NOT satisfy `<`/`>`, so NO isolated root is added.
         ("solve((x-2)^2*(x+1)<0, x)", "(-infinity, -1)"),
         ("solve(x^2/(x-1)>0, x)", "(1, infinity)"),

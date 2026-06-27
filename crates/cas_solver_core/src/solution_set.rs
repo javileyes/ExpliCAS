@@ -535,6 +535,29 @@ pub fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> S
             d1.extend(d2);
             return SolutionSet::Discrete(d1);
         }
+        // A discrete set unioned with intervals: each isolated point becomes a degenerate closed
+        // interval `[p, p]`, then the shared `merge_intervals` tail keeps it as an isolated point
+        // unless it abuts an open endpoint (`{0} ∪ (0, 5) = [0, 5)`). Without these arms the old
+        // catch-all `(s1, _)` silently DROPPED the interval side, losing a real solution (e.g. the
+        // negative ray of a touch-point inequality `x + 1/x ≤ 2`, whose solution is `(−∞, 0) ∪ {1}`).
+        // A purely-point result therefore renders as a degenerate interval; callers that want the
+        // `{p}` form re-collapse the final result via `collapse_degenerate_intervals`.
+        (SolutionSet::Discrete(d), SolutionSet::Continuous(i))
+        | (SolutionSet::Continuous(i), SolutionSet::Discrete(d)) => {
+            let mut ivs: Vec<Interval> = d
+                .into_iter()
+                .map(|p| interval(p, BoundType::Closed, p, BoundType::Closed))
+                .collect();
+            ivs.push(i);
+            ivs
+        }
+        (SolutionSet::Discrete(d), SolutionSet::Union(mut u))
+        | (SolutionSet::Union(mut u), SolutionSet::Discrete(d)) => {
+            for p in d {
+                u.push(interval(p, BoundType::Closed, p, BoundType::Closed));
+            }
+            u
+        }
         (s1, _) => return s1,
     };
 
@@ -795,6 +818,43 @@ mod tests {
             assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 2.into());
         } else {
             panic!("Expected Continuous set, got {:?}", union);
+        }
+    }
+
+    #[test]
+    fn test_union_discrete_with_continuous_keeps_both() {
+        let mut ctx = Context::new();
+        // {5} ∪ (0, 2): both kept (the old catch-all dropped the interval, losing a real solution).
+        let point = SolutionSet::Discrete(vec![ctx.num(5)]);
+        let iv = SolutionSet::Continuous(make_interval(
+            &mut ctx,
+            0,
+            BoundType::Open,
+            2,
+            BoundType::Open,
+        ));
+        match union_solution_sets(&ctx, point, iv) {
+            SolutionSet::Union(ivs) => {
+                assert_eq!(ivs.len(), 2, "expected interval + isolated point")
+            }
+            other => panic!("expected Union, got {other:?}"),
+        }
+        // Symmetric order, and a touching point closes the open endpoint: (0, 5) ∪ {0} = [0, 5).
+        let iv2 = SolutionSet::Continuous(make_interval(
+            &mut ctx,
+            0,
+            BoundType::Open,
+            5,
+            BoundType::Open,
+        ));
+        let point0 = SolutionSet::Discrete(vec![ctx.num(0)]);
+        match union_solution_sets(&ctx, iv2, point0) {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 0.into());
+                assert_eq!(i.min_type, BoundType::Closed); // closed by the absorbed point
+                assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 5.into());
+            }
+            other => panic!("expected merged [0, 5), got {other:?}"),
         }
     }
 
