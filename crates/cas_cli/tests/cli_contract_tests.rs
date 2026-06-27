@@ -2208,6 +2208,16 @@ fn test_eval_fractional_base_exponential_inequality_direction() {
     assert_eq!(r("2^x>=8"), "[3, infinity)");
     assert_eq!(r("(1/2)^x=4"), "{ ln(4) / ln(1/2) }");
     assert_eq!(r("2^x=4"), "{ 2 }");
+    // SOUNDNESS: an ADDITIVE/scaled single exponential `a*base^x + c {op} k` is isolated to the pure
+    // `base^x {op'} (k-c)/a` and solved by the terminal for EVERY base — including a fractional base
+    // with a positive threshold (`(1/2)^x - 4 > 0 -> (1/2)^x > 4`) or a negative threshold
+    // (`(1/2)^x + 1 > 0 -> (1/2)^x > -1 -> all reals`). The substitution path would decline a
+    // fractional base to a residual, so the isolation runs first.
+    assert_eq!(r("(1/2)^x-4>0"), "(-infinity, ln(4) / ln(1/2))"); // x < -2
+    assert_eq!(r("(1/2)^x-1>0"), "(-infinity, 0)");
+    assert_eq!(r("(1/2)^x+1>0"), "All real numbers");
+    assert_eq!(r("(1/2)^x+1<0"), "No solution");
+    assert_eq!(r("(1/3)^x-1>0"), "(-infinity, 0)");
 }
 
 #[test]

@@ -2212,6 +2212,95 @@ fn try_solve_factorable_exponential_inequality(
     Some(set)
 }
 
+/// A single-exponential inequality `a*base^x + c {op} k` (linear in `base^x`,
+/// constant RHS) is isolated to the pure single exponential `base^x {op'} (k-c)/a`
+/// (op' flips when a < 0), which the single-side terminal answers for EVERY base
+/// and threshold — including a fractional base or a negative threshold
+/// (`(1/2)^x - 4 > 0 -> (1/2)^x > 4 -> (-inf,-2)`; `(1/2)^x + 1 > 0 ->
+/// (1/2)^x > -1 -> all reals`). Doing the isolation here (before the strategy
+/// substitution, which would decline a fractional base to a residual) keeps the
+/// additive family correct for all bases. A pure `base^x {op} k` (a==1, no
+/// constant) is left to the terminal directly, which also prevents re-entry.
+fn try_isolate_single_exponential_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Option<SolutionSet> {
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::{Signed, Zero};
+
+    if !matches!(
+        eq.op,
+        cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
+    ) {
+        return None;
+    }
+    if contains_var(&simplifier.context, eq.rhs, var) {
+        return None;
+    }
+
+    let zero = simplifier.context.num(0);
+    let atom = cas_solver_core::substitution::detect_exponential_substitution(
+        &mut simplifier.context,
+        eq.lhs,
+        zero,
+        var,
+        true,
+    )?;
+
+    // lhs must be linear in base^x: `a*base^x + c` (a rational != 0, c constant).
+    // A `base^(2x)` term makes the collect decline -> the degree-2 paths own it.
+    let mut atom_coeff = num_rational::BigRational::zero();
+    let mut const_terms: Vec<(bool, ExprId)> = Vec::new();
+    collect_linear_exponential_atom_terms(
+        &simplifier.context,
+        eq.lhs,
+        atom,
+        var,
+        true,
+        &mut atom_coeff,
+        &mut const_terms,
+    )?;
+    if atom_coeff.is_zero() {
+        return None;
+    }
+    // Already a pure single exponential `base^x {op} k`: leave it to the terminal
+    // (also prevents re-entry on the relation this guard emits).
+    if atom_coeff == num_rational::BigRational::from_integer(1.into()) && const_terms.is_empty() {
+        return None;
+    }
+
+    // threshold = (k - c) / a, with c the signed sum of the constant terms.
+    let mut c_sum = simplifier.context.num(0);
+    for (positive, term) in const_terms {
+        c_sum = if positive {
+            simplifier.context.add(Expr::Add(c_sum, term))
+        } else {
+            simplifier.context.add(Expr::Sub(c_sum, term))
+        };
+    }
+    let k_minus_c = simplifier.context.add(Expr::Sub(eq.rhs, c_sum));
+    let a_expr = simplifier.context.add(Expr::Number(atom_coeff.clone()));
+    let threshold = simplifier.context.add(Expr::Div(k_minus_c, a_expr));
+    let (threshold, _) = simplifier.simplify(threshold);
+
+    let op = if atom_coeff.is_positive() {
+        eq.op.clone()
+    } else {
+        flip_inequality(eq.op.clone())
+    };
+
+    let reduced_eq = Equation {
+        lhs: atom,
+        rhs: threshold,
+        op,
+    };
+    let (set, _) = solve_local_core(&reduced_eq, var, simplifier, opts, ctx).ok()?;
+    Some(set)
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -2295,6 +2384,12 @@ fn solve_local_core(
     // represent; decline to an honest residual instead of a wrong ray (out-of-range bare sin/cos are
     // excluded — they are answered ℝ/∅ by the trig-range guard after solve_inner).
     if let Some(set) = try_decline_periodic_trig_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A single-exponential inequality `a*base^x + c {op} k` is isolated to the
+    // pure `base^x {op'} (k-c)/a`, which the terminal answers for every base and
+    // threshold (the strategy substitution would decline a fractional base).
+    if let Some(set) = try_isolate_single_exponential_inequality(eq, var, simplifier, opts, ctx) {
         return Ok((set, Vec::new()));
     }
     // A degree-2 exponential inequality collapsed to one side with no constant
