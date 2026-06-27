@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 401 (newest first)
+Active entries: 402 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -138,6 +138,7 @@ Active entries: 401 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_bernoulli/stirling_se... | CAPACIDAD (combinatoria): bernoulli, stirling1, stirling2
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (matrix_proj/matrix_angle, en ... | CAPACIDAD (álgebra vectorial): proj, angle
 - 2026-06-27 | `retained` | `crates/cas_math/src/summation_support.rs` (try_convergent_p_series_sum, extr... | CAPACIDAD (series): p-series par convergente ζ(2m) = c·π^(2m)
+- 2026-06-27 | `retained` | `crates/cas_engine/src/rules/algebra/factoring.rs` (ArcLengthRule) — wrapper ... | CAPACIDAD (cálculo): arclength(f,x,a,b) = ∫√(1+(f')²)dx
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16410,3 +16411,21 @@ Active entries: 401 (newest first)
     1/k^p). La frontera de soundness es EXACTA y reusa la maquinaria de Bernoulli: `bernoulli_number` (extraída
     de compute_bernoulli_expr) alimenta `even_zeta_pi_coefficient`. SOLO p par tiene forma elemental — p impar
     DEBE permanecer residual (no es under-answer evitable, es que ζ(impar) no es expresable en π).
+
+## 2026-06-27 - CAPACIDAD (cálculo): arclength(f,x,a,b) = ∫√(1+(f')²)dx
+
+- area: `crates/cas_engine/src/rules/algebra/factoring.rs` (ArcLengthRule) — wrapper sobre diff+integrate
+- status: `retained` (commit pendiente↑). Comando geométrico de cálculo que reúsa todo el pipeline existente.
+- capture:
+  - cell: ANTES no definida. AHORA `arclength(2*x+1,x,0,3)→3·sqrt(5)`, `arclength(x,x,0,5)→5·sqrt(2)`,
+    `arclength(3,x,0,4)→4`, `arclength(x^2,x,0,1)→1/4·asinh(2)+1/2·sqrt(5)` (parábola),
+    `arclength(x^(3/2),x,0,1)→13/27·sqrt(13)-8/27`; alias `arc_length`. Integrandos no elementales
+    (catenaria √(sinh²+1), x³ √(1+9x⁴), elíptica sin) → integral residual HONESTA.
+  - validación: workspace verde (solo flake perf); clippy; huella GUARD/PRESS IDÉNTICA. Verificado
+    numéricamente (x^(3/2): 13/27·√13-8/27 ≈ 1.4396 = ∫₀¹√(1+9/4 x)dx).
+- retained learning:
+  - una capacidad de cálculo nueva puede ser un puro REWRITE sintáctico: `arclength(f,x,a,b)` →
+    `integrate(sqrt(1+diff(f,x)^2),x,a,b)` (f' vía `differentiate_symbolic_expr`, el resto vía `ctx.call`),
+    y el pipeline de integración hace el trabajo — sin maquinaria nueva, sin budget_exempt (el rewrite no
+    necesitó exención). El límite (catenaria residual) es del SIMPLIFICADOR (no aplica sinh²+1→cosh² bajo
+    raíz antes de integrar), no del wrapper — peldaño futuro: identidad pitagórica hiperbólica bajo sqrt.
