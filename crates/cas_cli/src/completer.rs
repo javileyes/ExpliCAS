@@ -83,6 +83,9 @@ impl CasHelper {
                 "sigma".to_string(),
                 "tau".to_string(),
                 "iscomposite".to_string(),
+                "fibonacci".to_string(),
+                "lucas".to_string(),
+                "catalan".to_string(),
                 "sum".to_string(),
                 "product".to_string(),
                 // Polynomial functions

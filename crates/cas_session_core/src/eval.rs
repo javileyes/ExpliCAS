@@ -86,7 +86,8 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "fact" | "factorial" | "prime_factors" | "factors" => arity == 1,
         "isprime" | "is_prime" | "nextprime" | "prevprime" | "totient" | "phi" | "eulerphi"
         | "numdivisors" | "tau" | "sigma0" | "sigma" | "divisor_sum" | "iscomposite"
-        | "is_composite" | "divisors" | "divisor_list" => arity == 1,
+        | "is_composite" | "divisors" | "divisor_list" | "fibonacci" | "fib" | "lucas"
+        | "catalan" => arity == 1,
         "mod" | "choose" | "nCr" | "perm" | "nPr" => arity == 2,
         "modinv" | "modular_inverse" | "jacobi" | "legendre" => arity == 2,
         "crt" | "chinese_remainder" => arity == 2,

@@ -1836,6 +1836,33 @@ fn test_eval_number_theory_primes_and_totient() {
 }
 
 #[test]
+fn test_eval_combinatorial_sequences() {
+    // Combinatorial integer sequences: Fibonacci (F₀=0, F₁=1), Lucas (L₀=2, L₁=1), and Catalan
+    // (Cₙ = (2n)!/((n+1)!·n!)), all computed by exact BigInt iteration. Negative indices decline
+    // to honest residuals (the closed forms here are defined for n ≥ 0).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("fibonacci(10)"), "55");
+    assert_eq!(r("fib(20)"), "6765");
+    assert_eq!(r("fibonacci(0)"), "0");
+    assert_eq!(r("fibonacci(1)"), "1");
+    assert_eq!(r("lucas(10)"), "123");
+    assert_eq!(r("lucas(0)"), "2");
+    assert_eq!(r("catalan(5)"), "42");
+    assert_eq!(r("catalan(0)"), "1");
+    assert_eq!(r("catalan(10)"), "16796");
+    // Negative index ⇒ honest residual.
+    assert_eq!(r("fibonacci(-1)"), "fibonacci(-1)");
+    assert_eq!(r("catalan(-2)"), "catalan(-2)");
+}
+
+#[test]
 fn test_eval_limit_abs_finite_tail_at_infinity() {
     // `lim_{x→∞} |u(x)| = |L|` when the rational argument has a finite tail L — previously only the
     // divergent case (`abs → +∞`) was handled, so `|(x-1)/(x+1)|` stayed an unevaluated residual.

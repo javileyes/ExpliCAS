@@ -153,6 +153,30 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
+        "fibonacci" | "fib" if args.len() == 1 => {
+            let result = compute_fibonacci_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "fibonacci",
+                arg: args[0],
+                result,
+            })
+        }
+        "lucas" if args.len() == 1 => {
+            let result = compute_lucas_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "lucas",
+                arg: args[0],
+                result,
+            })
+        }
+        "catalan" if args.len() == 1 => {
+            let result = compute_catalan_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "catalan",
+                arg: args[0],
+                result,
+            })
+        }
         "numdivisors" | "tau" | "sigma0" if args.len() == 1 => {
             let result = compute_numdivisors_expr(ctx, args[0])?;
             Some(NumberTheorySimpleRewrite::Unary {
@@ -620,6 +644,56 @@ pub fn compute_prevprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         candidate -= 1;
     }
     (candidate >= BigInt::from(2)).then(|| integer_result(ctx, candidate))
+}
+
+/// Cap on combinatorial-sequence indices: the value grows but the loop stays fast.
+const COMBINATORIAL_INDEX_CAP: i64 = 1_000_000;
+
+/// `n`th Fibonacci number (`F₀=0, F₁=1`), iteratively. Declines for negative `n`.
+pub fn compute_fibonacci_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let idx = extract_integer_bigint(ctx, n)?;
+    if idx.is_negative() || idx > BigInt::from(COMBINATORIAL_INDEX_CAP) {
+        return None;
+    }
+    let steps = num_traits::ToPrimitive::to_u64(&idx)?;
+    let (mut a, mut b) = (BigInt::zero(), BigInt::one());
+    for _ in 0..steps {
+        let next = &a + &b;
+        a = b;
+        b = next;
+    }
+    Some(integer_result(ctx, a))
+}
+
+/// `n`th Lucas number (`L₀=2, L₁=1`), iteratively. Declines for negative `n`.
+pub fn compute_lucas_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let idx = extract_integer_bigint(ctx, n)?;
+    if idx.is_negative() || idx > BigInt::from(COMBINATORIAL_INDEX_CAP) {
+        return None;
+    }
+    let steps = num_traits::ToPrimitive::to_u64(&idx)?;
+    let (mut a, mut b) = (BigInt::from(2), BigInt::one());
+    for _ in 0..steps {
+        let next = &a + &b;
+        a = b;
+        b = next;
+    }
+    Some(integer_result(ctx, a))
+}
+
+/// `n`th Catalan number `Cₙ = (2n)! / ((n+1)!·n!)`, via the exact integer
+/// recurrence `Cₖ₊₁ = Cₖ·2(2k+1)/(k+2)`. Declines for negative `n`.
+pub fn compute_catalan_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let idx = extract_integer_bigint(ctx, n)?;
+    if idx.is_negative() || idx > BigInt::from(100_000) {
+        return None;
+    }
+    let count = num_traits::ToPrimitive::to_u64(&idx)?;
+    let mut catalan = BigInt::one();
+    for k in 0..count {
+        catalan = &catalan * BigInt::from(2 * (2 * k + 1)) / BigInt::from(k + 2);
+    }
+    Some(integer_result(ctx, catalan))
 }
 
 /// Extended Euclid: returns `(g, x, y)` with `a·x + b·y = g = gcd(a, b)`.
