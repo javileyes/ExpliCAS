@@ -40,6 +40,7 @@ impl CasHelper {
                 "eigenvectors".to_string(),
                 "nullspace".to_string(),
                 "norm".to_string(),
+                "adjugate".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),

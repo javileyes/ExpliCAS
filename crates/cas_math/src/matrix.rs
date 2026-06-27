@@ -305,6 +305,70 @@ impl Matrix {
         )
     }
 
+    /// The submatrix with `remove_row` and `remove_col` deleted (its minor base).
+    fn minor_submatrix(&self, remove_row: usize, remove_col: usize) -> Matrix {
+        let n = self.cols;
+        let mut data = Vec::with_capacity((self.rows - 1) * (self.cols - 1));
+        for r in 0..self.rows {
+            if r == remove_row {
+                continue;
+            }
+            for c in 0..self.cols {
+                if c == remove_col {
+                    continue;
+                }
+                data.push(self.data[r * n + c]);
+            }
+        }
+        Matrix {
+            rows: self.rows - 1,
+            cols: self.cols - 1,
+            data,
+        }
+    }
+
+    /// Adjugate (classical adjoint) `adj(A)`: the transpose of the cofactor matrix,
+    /// `adj(A)[i][j] = (−1)^{i+j}·det(minor removing row j, col i)`. Unlike the
+    /// inverse it is a polynomial in the entries — ALWAYS defined (no `det ≠ 0`
+    /// condition) — so it works symbolically (`[[a,b],[c,d]] → [[d,-b],[-c,a]]`) as
+    /// well as numerically, and satisfies `A·adj(A) = det(A)·I`. Square only.
+    pub fn adjugate(&self, ctx: &mut Context) -> Option<ExprId> {
+        if self.rows != self.cols || self.rows == 0 {
+            return None;
+        }
+        let n = self.rows;
+        if n == 1 {
+            let one = ctx.num(1);
+            return Some(ctx.matrix(1, 1, vec![one]).unwrap_or_else(|_| {
+                ctx.add(Expr::Matrix {
+                    rows: 1,
+                    cols: 1,
+                    data: vec![one],
+                })
+            }));
+        }
+        let zero = ctx.num(0);
+        let mut data = vec![zero; n * n];
+        for i in 0..n {
+            for j in 0..n {
+                let minor_det = self.minor_submatrix(j, i).determinant(ctx)?;
+                let cofactor = if (i + j) % 2 == 0 {
+                    minor_det
+                } else {
+                    ctx.add(Expr::Neg(minor_det))
+                };
+                data[i * n + j] = cofactor;
+            }
+        }
+        Some(ctx.matrix(n, n, data.clone()).unwrap_or_else(|_| {
+            ctx.add(Expr::Matrix {
+                rows: n,
+                cols: n,
+                data,
+            })
+        }))
+    }
+
     /// Characteristic polynomial `det(λI − A)` in the variable `var` (monic,
     /// degree n). Reuses the symbolic cofactor determinant, which auto-expands,
     /// so `[[2,1],[1,2]]` yields `λ² − 4λ + 3`. Returns `None` for a non-square

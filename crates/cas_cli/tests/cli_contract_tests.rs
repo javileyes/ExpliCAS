@@ -1934,6 +1934,32 @@ fn test_eval_matrix_charpoly() {
 }
 
 #[test]
+fn test_eval_matrix_adjugate() {
+    // `adjugate(A)` (alias `adj`) is the transpose of the cofactor matrix — a polynomial in the
+    // entries, ALWAYS defined (no det≠0 condition), so it works symbolically too. Satisfies
+    // A·adj(A) = det(A)·I (verified separately).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("adjugate([[1,2],[3,4]])"), "[[4, -2], [-3, 1]]");
+    assert_eq!(r("adjugate([[a,b],[c,d]])"), "[[d, -b], [-c, a]]"); // symbolic
+    assert_eq!(
+        r("adjugate([[1,2,3],[0,1,4],[5,6,0]])"),
+        "[[-24, 18, 5], [20, -15, -4], [-5, 4, 1]]"
+    );
+    // A·adj(A) = det(A)·I.
+    assert_eq!(
+        r("[[1,2],[3,4]] * adjugate([[1,2],[3,4]])"),
+        "[[-2, 0], [0, -2]]"
+    );
+}
+
+#[test]
 fn test_eval_matrix_integer_power() {
     // `M^n` for an integer exponent: `n=0 → I`, `n=1 → M`, `|n|≥2` for an all-numeric square matrix
     // is repeated multiplication (negative ⇒ inverse powered), folding exactly. A bounded budget

@@ -127,6 +127,10 @@ pub enum MatrixFunctionEval {
         shape: MatrixShape,
         value: ExprId,
     },
+    Adjugate {
+        shape: MatrixShape,
+        value: ExprId,
+    },
     Inverse {
         shape: MatrixShape,
         /// `Some(inverse)` for an invertible matrix; `None` when the matrix is provably
@@ -179,6 +183,9 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
         }
         MatrixFunctionEval::Norm { shape, .. } => {
             format!("norm({}×{} matrix)", shape.rows, shape.cols)
+        }
+        MatrixFunctionEval::Adjugate { shape, .. } => {
+            format!("adjugate({}×{} matrix)", shape.rows, shape.cols)
         }
         MatrixFunctionEval::Inverse { shape, matrix } => {
             if matrix.is_some() {
@@ -906,6 +913,9 @@ pub fn try_eval_matrix_function_expr(
         "norm" => matrix
             .norm(ctx)
             .map(|value| MatrixFunctionEval::Norm { shape, value }),
+        "adjugate" | "adj" => matrix
+            .adjugate(ctx)
+            .map(|value| MatrixFunctionEval::Adjugate { shape, value }),
         "inverse" | "inv" => match matrix.inverse(ctx)? {
             MatrixInverseOutcome::Inverse(inv) => Some(MatrixFunctionEval::Inverse {
                 shape,
@@ -998,6 +1008,13 @@ pub fn try_rewrite_matrix_function_rule_expr(
         }
         MatrixFunctionEval::Norm { shape, value } => {
             let desc = format_matrix_function_desc(&MatrixFunctionEval::Norm { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+        MatrixFunctionEval::Adjugate { shape, value } => {
+            let desc = format_matrix_function_desc(&MatrixFunctionEval::Adjugate { shape, value });
             Some(MatrixFunctionRewrite {
                 rewritten: value,
                 desc,
