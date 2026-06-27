@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 407 (newest first)
+Active entries: 408 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -144,6 +144,7 @@ Active entries: 407 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (union_solution_sets) | SOUNDNESS P0: union_solution_sets descartaba `Discrete ∪ Continuous` (cierra el 16º caso)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/domain_normalization.rs` (lower_bound_dominates_a... | SOUNDNESS (medium): condición de dominio contradictoria en `integrate(sqrt(x^2-a^2))`
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (build_log_linear_equation + b... | SOUNDNESS P0 (audit 2, ciclo 1/5): exp base fraccionaria a^x ≷ k — flip de dirección
+- 2026-06-27 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (resolve_single_side_exponentia... | SOUNDNESS P0 (audit 2, ciclo 2/5): factor exponencial b^x estrictamente positivo
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16551,3 +16552,25 @@ Active entries: 407 (newest first)
     determinable (`ln(1/2)`): pre-compensar volteando en la construcción de la ecuación es el fix mínimo y
     sound, gateado por base racional exacta. Fuera de alcance (residuales conocidos): `(1/2)^x>-5` (always-
     positive, ciclo 2), `log(1/2,x)>3` (base-constante fraccionaria, distinto path).
+
+## 2026-06-27 - SOUNDNESS P0 (audit 2, ciclo 2/5): factor exponencial b^x estrictamente positivo
+
+- area: `crates/cas_solver_core/src/solve_outcome.rs` (resolve_single_side_exponential_terminal_with_item)
+- status: `retained` (commit pendiente↑). Segundo ciclo de la grieta de inecuaciones trascendentes.
+- capture:
+  - cell: ANTES `e^x>0`→"No solution", `x*e^x>0`→∅, `x^2*e^x>0`→∅. AHORA `e^x>0`/`e^x>=0`/`e^x>-1`/`2^x>0`/
+    `(1/2)^x>0`→ℝ; `x*e^x>0`→(0,∞); `x^2*e^x>0`→ℝ∖{0} (7 casos). Controles `e^x<0`/`e^x<=0`/`e^x=0`→∅,
+    `e^x>5`→(ln5,∞), `e^x-1>0`→(0,∞) intactos.
+  - causa raíz: `classify_log_solve_by_proofs` devuelve `EmptySet` cuando base>0 ∧ rhs≤0, IGNORANDO el
+    operador. Correcto para `=,<,<=` (b^x nunca es ≤0); para `>,>=` la relación `b^x(>0) {>,>=} (≤0)` es
+    idénticamente VERDADERA → ℝ.
+  - fix: en el terminal exponencial (único sitio que aún conserva la relación original), cuando
+    `solutions==Empty` ∧ `equation_after.op ∈ {Gt,Geq}`, devolver `AllReals`. La cascada producto/suma se
+    auto-cura: `AllReals ∩ s = s`.
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA; contrato CLI; vs sympy.
+- retained learning:
+  - corregir en el TERMINAL (que conserva la op) es más simple que en `classify_log_solve_by_proofs`
+    (compartido con ecuaciones donde AllReals sería erróneo). Fuera de alcance (residuales conocidos, mismo
+    bucket polinómico-en-u): aditivos `e^x+1>0`/`e^x+5>0`→∅, power-confusion `e^(2x)>0`→(-∞,0)∪(0,∞),
+    escalar `3*e^x>0`→condicional. Son un mecanismo distinto (normalización suma/producto a polinomio en
+    u=e^x), follow-up propio.
