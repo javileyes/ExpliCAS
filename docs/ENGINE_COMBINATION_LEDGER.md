@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 390 (newest first)
+Active entries: 391 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -127,6 +127,7 @@ Active entries: 390 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::norm`) | CAPACIDAD (vectores): norma euclídea/Frobenius norm(v)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_rewrite_matrix_binary_fun... | CAPACIDAD (álgebra lineal/vectores): dot, cross, linsolve (dispatch 2-arg)
 - 2026-06-27 | `retained` | `cas_math/.../methods.rs` (`apart_decomposition_expr`), `cas_engine/.../facto... | CAPACIDAD (álgebra): apart — fracciones parciales como operación
+- 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_numdivisors/sigma/isc... | CAPACIDAD (teoría de números): tau, sigma, iscomposite
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16225,3 +16226,16 @@ Active entries: 390 (newest first)
     descomposición sobre denominador común, DESHACIÉNDOLA. `Expr::Hold` (barrera de simplificación, transparente
     al display) protege el resultado. Patrón reutilizable para cualquier forma "inerte" que el simplificador
     quiera recombinar (factor no sufre porque no hay auto-expand; apart sí porque combinar-fracciones es agresivo).
+
+## 2026-06-27 - CAPACIDAD (teoría de números): tau, sigma, iscomposite
+
+- area: `crates/cas_math/src/number_theory_support.rs` (compute_numdivisors/sigma/iscomposite_expr)
+- status: `retained` (commit pendiente↑). Redondea la amplitud de teoría de números.
+- capture:
+  - cell: ANTES no definidas. AHORA exactas vía factorización entera: τ(12)=6, σ(12)=28, σ(6)=12 (número
+    perfecto), iscomposite(7)=0/iscomposite(12)=1. Tope 10^12 ⇒ residual honesto.
+  - validación: workspace 12429 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - helper `prime_factorization` reutilizable (τ, σ, totient comparten la factorización por tanteo). El path
+    de teoría de números devuelve NÚMEROS limpiamente; los predicados (iscomposite/isprime) usan 1/0 por falta
+    de tipo Bool — el peldaño sigue siendo un tipo booleano de primera clase.
