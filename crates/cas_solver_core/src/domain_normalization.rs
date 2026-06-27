@@ -5658,6 +5658,40 @@ fn positive_condition_dominates_acosh_radicand_nonnegative(
     }
 }
 
+/// `x ≥ a` (a `LowerBound`) implies the bilateral radicand condition `x² − a² ≥ 0` of an
+/// acosh-family antiderivative. When the antiderivative the engine actually emits is `acosh(arg)` —
+/// real only where `arg ≥ 1`, i.e. on the single branch the `LowerBound` already names — the bilateral
+/// `NonNegative(radicand)` is the LOOSER (and, for the emitted acosh primitive, spurious) half of the
+/// pair, so it is dominated and dropped. Mirrors [`positive_condition_dominates_acosh_radicand_nonnegative`]
+/// for the `LowerBound` side. Sound: `x ≥ a` genuinely implies `x² − a² ≥ 0`.
+fn lower_bound_dominates_acosh_radicand_nonnegative(
+    ctx: &mut Context,
+    lower_expr: ExprId,
+    lower: &BigRational,
+    nonnegative_expr: ExprId,
+) -> bool {
+    if lower.is_negative() {
+        return false;
+    }
+    let Some((polynomial_term, gap_value)) = acosh_radicand_gap_parts(ctx, nonnegative_expr) else {
+        return false;
+    };
+    condition_implies_acosh_log_argument_positive(
+        ctx,
+        &ImplicitCondition::LowerBound(lower_expr, lower.clone()),
+        polynomial_term,
+        &gap_value,
+    ) || {
+        let negated_polynomial_term = ctx.add(Expr::Neg(polynomial_term));
+        condition_implies_acosh_log_argument_positive(
+            ctx,
+            &ImplicitCondition::LowerBound(lower_expr, lower.clone()),
+            negated_polynomial_term,
+            &gap_value,
+        )
+    }
+}
+
 fn acosh_radicand_gap_parts(ctx: &mut Context, radicand: ExprId) -> Option<(ExprId, BigRational)> {
     let radicand = cas_ast::hold::unwrap_internal_hold(ctx, radicand);
     let vars = cas_ast::collect_variables(ctx, radicand);
@@ -6356,7 +6390,14 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     ImplicitCondition::NonNegative(nonnegative_expr),
                     ImplicitCondition::LowerBound(lower_expr, lower),
                 ) => {
-                    if !lower.is_negative() && exprs_equivalent(ctx, *nonnegative_expr, *lower_expr)
+                    if (!lower.is_negative()
+                        && exprs_equivalent(ctx, *nonnegative_expr, *lower_expr))
+                        || lower_bound_dominates_acosh_radicand_nonnegative(
+                            ctx,
+                            *lower_expr,
+                            lower,
+                            *nonnegative_expr,
+                        )
                     {
                         to_remove.push(i);
                         break;
@@ -10000,6 +10041,28 @@ mod tests {
         assert!(normalized
             .iter()
             .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(y)) }));
+    }
+
+    #[test]
+    fn lower_bound_dominates_acosh_sqrt_radicand_nonnegative() {
+        // `integrate(sqrt(x^2-1))` emits both the bilateral radicand condition NonNegative(x^2-1)
+        // (`x ≤ -1 or x ≥ 1`) and the acosh LowerBound `x ≥ 1`. For the acosh primitive the engine
+        // actually returns (real only on x ≥ 1) the bilateral is the looser half, so it is dropped,
+        // leaving the honest `x ≥ 1`. Sound: `x ≥ 1` genuinely implies `x^2 - 1 ≥ 0`.
+        let mut ctx = Context::new();
+        let radicand = parse("x^2 - 1", &mut ctx).expect("parse x^2-1");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let one = num_rational::BigRational::from_integer(1.into());
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonNegative(radicand),
+                ImplicitCondition::LowerBound(x, one.clone()),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::LowerBound(x, one)]);
     }
 
     #[test]
