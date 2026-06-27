@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 384 (newest first)
+Active entries: 385 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rref`) | CAPACIDAD (álgebra lineal 4/4): forma escalonada reducida (RREF)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvectors`, `r... | CAPACIDAD (álgebra lineal, capstone): autovectores (autovalores racionales)
+- 2026-06-27 | `retained` | `crates/cas_math/src/limits_support.rs` (`unary_abs_finite_rational_argument_... | CAPACIDAD (cálculo/límites): lim |u| y lim ln(|u|) en ∞ con cola finita
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16122,3 +16123,21 @@ Active entries: 384 (newest first)
     deflación, no asumir "remaining vacío = todo racional".
   - 5 ciclos cierran el núcleo álgebra-lineal completo (rank, charpoly, eigenvalues, eigenvectors, rref) — el
     mayor agujero de amplitud "CAS universal" de la evaluación.
+
+## 2026-06-27 - CAPACIDAD (cálculo/límites): lim |u| y lim ln(|u|) en ∞ con cola finita
+
+- area: `crates/cas_math/src/limits_support.rs` (`unary_abs_finite_rational_argument_limit_at_infinity`,
+  see-through `abs` en `unary_log_finite_rational_argument_limit_at_infinity`)
+- status: `retained` (commit pendiente↑). Cierra el hueco de límite que bloqueaba impropias racionales con
+  antiderivada log.
+- capture:
+  - cell: ANTES `lim_{x→∞} |u|` asumía `abs→+∞` (sólo válido si el argumento diverge) ⇒ `|(x-1)/(x+1)|`
+    (argumento→1 finito) quedaba residual. AHORA cola finita L ⇒ `|L|`; y la regla de ln ve a través del
+    `abs` ⇒ `lim ln(|u|)=ln(|L|)` compone: `ln(|(x-1)/(x+1)|)→0`, `ln(|(3x+1)/(x+1)|)→ln3`. Desbloquea
+    `∫₁^∞ 1/(x(x+1))=ln2`.
+  - validación: workspace 12423 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - el patrón "regla de cola finita por función elemental" (`unary_<fn>_finite_rational_argument_limit_at_infinity`)
+    tenía sqrt/log pero NO abs; la regla genérica `abs→+∞` es un sobre-disparo cuando el argumento converge.
+    Añadir la variante de abs + see-through del abs en la regla de log compone con el FTC. Peldaño honesto:
+    `1/(x²-1)` impropia aún declina por enrutado FTC-definido (raíces del denominador fuera del intervalo).
