@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 403 (newest first)
+Active entries: 404 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -140,6 +140,7 @@ Active entries: 403 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/summation_support.rs` (try_convergent_p_series_sum, extr... | CAPACIDAD (series): p-series par convergente ζ(2m) = c·π^(2m)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/rules/algebra/factoring.rs` (ArcLengthRule) — wrapper ... | CAPACIDAD (cálculo): arclength(f,x,a,b) = ∫√(1+(f')²)dx
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_derangement/isperfect... | CAPACIDAD (combinatoria/teoría de números): derangement, isperfect, harmonic
+- 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (rational_function_of + split_... | SOUNDNESS P0: inecuación de suma racional `x + c/x {op} k` (15/16 casos auditados)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16449,3 +16450,27 @@ Active entries: 403 (newest first)
     dos términos (como fibonacci/lucas); harmonic acumula BigRational (como bernoulli). Toda la familia
     combinatoria/NT (fib, lucas, catalan, bernoulli, stirling, derangement, isperfect, harmonic) vive en el
     mismo path 1-arg Unary sin maquinaria nueva.
+
+## 2026-06-27 - SOUNDNESS P0: inecuación de suma racional `x + c/x {op} k` (15/16 casos auditados)
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (rational_function_of + split_rational_inequality_lhs)
+- status: `retained` (commit pendiente↑). Cierra 15 de los 16 casos de inecuaciones del audit ultracode.
+- capture:
+  - cell: ANTES `solve(x+1/x>2)`→"No solution" (∅), `solve(x+4/x>=4)`→`[2,2]` — el operador se descartaba y
+    se resolvía la ecuación. AHORA `solve(x+1/x>2)`→`(0,1)∪(1,∞)`, `solve(x+4/x>=4)`→`(0,∞)`,
+    `solve(x+1/(x-1)>2)`→`(1,∞)`, etc. (15/16 del audit, verificado vs sympy).
+  - causa raíz: `split_rational_inequality_lhs` solo descomponía `Div`/`Mul`/`Neg`/`Pow`; un LHS `Add`
+    (`x+1/x`) caía a `_ =>` sin combinar → `Polynomial::from_expr` fallaba → declinaba → ruta genérica que
+    degrada la inecuación a ecuación (visible en input_latex como `=`).
+  - fix: nuevo `rational_function_of` recursivo combina `Add`/`Sub`/`Mul`/`Div`/`Neg`/`Pow` sobre
+    denominador común a `N/D` (producto de denominadores, NO lcm) y enruta por la ruta racional verificada.
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA; barrido adversarial de 432 inecuaciones
+    vs sympy → 428 correctas, las 4 restantes son TODAS el bug independiente de `union_solution_sets` (1b).
+- retained learning:
+  - multiplicar denominadores (en vez de lcm) es SOUND: solo sube la multiplicidad de polos existentes
+    (nunca introduce un polo nuevo, porque cada factor es un denominador real de la expresión), y el análisis
+    de signo `P/D {op} 0` es INVARIANTE al multiplicar `P` y `D` por el mismo factor `g` (los flips de signo
+    de `g` se cancelan entre numerador y denominador). La compuerta numérica `rational_inequality_candidate_
+    verifies` (sin tocar) respalda: nunca emite respuesta nueva incorrecta — peor caso, declina.
+  - el residual `x+c/x <= k` (punto de tangencia positivo, pierde la rama negativa) NO es de esta ruta sino
+    de `union_solution_sets` que descarta `Discrete ∪ Continuous` (ver [[rational-sum-inequality-collapses-to-equation]]) → ciclo siguiente.
