@@ -1892,6 +1892,36 @@ fn test_eval_bernoulli_and_stirling_numbers() {
 }
 
 #[test]
+fn test_eval_vector_projection_and_angle() {
+    // `proj(u,v)` = (⟨u,v⟩/⟨v,v⟩)·v (vector projection of u onto v, in v's shape) and
+    // `angle(u,v)` = arccos(⟨u,v⟩/(‖u‖‖v‖)). Both require numeric vectors; the engine folds
+    // arccos at the standard cosines, so nice vectors give clean closed forms. A zero direction
+    // / zero vector, or symbolic / irrational-entry operands, decline to honest residuals.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Projection (returned as a column in v's shape).
+    assert_eq!(r("proj([3,4],[1,0])"), "[[3], [0]]");
+    assert_eq!(r("proj([3,4],[1,1])"), "[[7/2], [7/2]]");
+    assert_eq!(r("proj([2,3,6],[1,2,2])"), "[[20/9], [40/9], [40/9]]");
+    // Zero direction ⇒ honest residual (projection undefined).
+    assert_eq!(r("proj([3,4],[0,0])"), "proj([[3], [4]], [[0], [0]])");
+    // Angle: standard cosines fold to exact multiples of π.
+    assert_eq!(r("angle([1,0],[0,1])"), "1/2·pi"); // perpendicular
+    assert_eq!(r("angle([1,0],[1,0])"), "0"); // parallel
+    assert_eq!(r("angle([1,0],[-1,0])"), "pi"); // antiparallel
+    assert_eq!(r("angle([1,0],[1,1])"), "1/4·pi");
+    assert_eq!(r("angle([3,4],[4,3])"), "arccos(24/25)"); // generic ⇒ exact arccos
+                                                          // Zero vector ⇒ honest residual.
+    assert_eq!(r("angle([0,0],[1,1])"), "angle([[0], [0]], [[1], [1]])");
+}
+
+#[test]
 fn test_eval_limit_abs_finite_tail_at_infinity() {
     // `lim_{x→∞} |u(x)| = |L|` when the rational argument has a finite tail L — previously only the
     // divergent case (`abs → +∞`) was handled, so `|(x-1)/(x+1)|` stayed an unevaluated residual.

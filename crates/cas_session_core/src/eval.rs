@@ -99,7 +99,7 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         | "charpoly" | "eigenvalues" | "eigvals" | "eig" | "eigenvectors" | "eigvecs" | "rref"
         | "nullspace" | "null" | "kernel" | "norm" | "adjugate" | "adj" => arity == 1,
         // Matrix composition / symbolic helpers used by engine rewrites.
-        "matmul" | "dot" | "cross" | "linsolve" => arity == 2,
+        "matmul" | "dot" | "cross" | "linsolve" | "proj" | "projection" | "angle" => arity == 2,
         "apart" | "partfrac" => matches!(arity, 1 | 2),
         "wronskian" => arity == 2,
         "poly_gcd" | "pgcd" => arity >= 2,

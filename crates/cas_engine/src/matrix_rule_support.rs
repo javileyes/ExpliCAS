@@ -806,9 +806,75 @@ pub fn try_rewrite_matrix_binary_function_expr(
             matrix_linsolve(ctx, &u, &v)?,
             "solve linear system A·x = b".to_string(),
         ),
+        "proj" | "projection" => (
+            matrix_proj(ctx, &u, &v)?,
+            "vector projection of u onto v".to_string(),
+        ),
+        "angle" => (
+            matrix_angle(ctx, &u, &v)?,
+            "angle between two vectors".to_string(),
+        ),
         _ => return None,
     };
     Some(MatrixFunctionRewrite { rewritten, desc })
+}
+
+/// Vector projection of `u` onto `v`: `proj_v(u) = (⟨u,v⟩/⟨v,v⟩)·v`, returned in
+/// `v`'s shape. The direction `v` must be a KNOWN non-zero numeric vector (so the
+/// `⟨v,v⟩≠0` divisor is a verified constant). A zero or symbolic direction declines
+/// to an honest residual; symbolic `u` also stays residual (the rule only commits
+/// the unfolded projection when both operands are numeric, per the anti-worsen gate).
+fn matrix_proj(ctx: &mut Context, u: &Matrix, v: &Matrix) -> Option<ExprId> {
+    use num_traits::Zero;
+    if u.data.is_empty() || u.data.len() != v.data.len() {
+        return None;
+    }
+    let dot_uv = matrix_dot(ctx, u, v)?;
+    let dot_vv = matrix_dot(ctx, v, v)?;
+    let divisor = cas_math::numeric_eval::as_rational_const(ctx, dot_vv)?;
+    if divisor.is_zero() {
+        return None;
+    }
+    let coeff = ctx.add(Expr::Div(dot_uv, dot_vv));
+    let data: Vec<ExprId> = v
+        .data
+        .iter()
+        .map(|&e| ctx.add(Expr::Mul(coeff, e)))
+        .collect();
+    Some(
+        ctx.matrix(v.rows, v.cols, data.clone())
+            .unwrap_or_else(|_| {
+                ctx.add(Expr::Matrix {
+                    rows: v.rows,
+                    cols: v.cols,
+                    data,
+                })
+            }),
+    )
+}
+
+/// Angle between two vectors: `arccos(⟨u,v⟩ / (‖u‖·‖v‖))` with
+/// `‖u‖·‖v‖ = sqrt(⟨u,u⟩·⟨v,v⟩)`. Both vectors must be KNOWN non-zero numeric
+/// vectors (the formula is undefined for a zero vector and the norm needs a real
+/// value); the engine folds `arccos` at the standard cosines (0→π/2, 1→0, ½→π/3,
+/// √2/2→π/4, √3/2→π/6). Symbolic / zero vectors decline.
+fn matrix_angle(ctx: &mut Context, u: &Matrix, v: &Matrix) -> Option<ExprId> {
+    use num_traits::Zero;
+    if u.data.is_empty() || u.data.len() != v.data.len() {
+        return None;
+    }
+    let dot_uv = matrix_dot(ctx, u, v)?;
+    let dot_uu = matrix_dot(ctx, u, u)?;
+    let dot_vv = matrix_dot(ctx, v, v)?;
+    let norm_u_sq = cas_math::numeric_eval::as_rational_const(ctx, dot_uu)?;
+    let norm_v_sq = cas_math::numeric_eval::as_rational_const(ctx, dot_vv)?;
+    if norm_u_sq.is_zero() || norm_v_sq.is_zero() {
+        return None;
+    }
+    let product = ctx.add(Expr::Mul(dot_uu, dot_vv));
+    let denom = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![product]);
+    let ratio = ctx.add(Expr::Div(dot_uv, denom));
+    Some(ctx.call_builtin(cas_ast::BuiltinFn::Arccos, vec![ratio]))
 }
 
 /// Dot product `Σ uᵢ·vᵢ` of two equal-length vectors (entries read row-major, so a
