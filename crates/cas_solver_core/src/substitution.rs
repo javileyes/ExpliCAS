@@ -802,7 +802,19 @@ where
     // union directly, NOT via merge_intervals, which cannot order ln bounds.
     Ok(match mapped.len() {
         0 => SolutionSet::Empty,
-        1 => SolutionSet::Continuous(mapped.into_iter().next().expect("len checked")),
+        1 => {
+            let interval = mapped.into_iter().next().expect("len checked");
+            // A full-line image (e.g. `e^x + 1 > 0` -> u in (0,inf) -> x in
+            // (-inf,+inf)) collapses to the canonical AllReals.
+            let ctx = context_mut(state);
+            if crate::solution_set::is_neg_infinity(ctx, interval.min)
+                && crate::solution_set::is_infinity(ctx, interval.max)
+            {
+                SolutionSet::AllReals
+            } else {
+                SolutionSet::Continuous(interval)
+            }
+        }
         _ => SolutionSet::Union(mapped),
     })
 }
@@ -1294,11 +1306,18 @@ fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str, out: &mut V
 ///
 /// Returns the base substitution term if the equation contains exponential
 /// terms where `var` appears only in exponents.
+/// `allow_bare_single_term` admits a relation whose only exponential is a bare
+/// `base^x` (no higher-degree `base^(k*x)` term), e.g. `e^x + 1`. This is gated
+/// to INEQUALITY callers: for an inequality the substitution + u>0 back-map is
+/// the path that answers `e^x + 1 > 0` correctly (-> all reals), whereas for an
+/// equation the bare case is owned by the simpler `Unwrap` strategy (rerouting
+/// it here would only change narration), so equations pass `false`.
 pub fn detect_exponential_substitution(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
     var: &str,
+    allow_bare_single_term: bool,
 ) -> Option<ExprId> {
     let mut terms = Vec::new();
     collect_exponential_terms(ctx, lhs, var, &mut terms);
@@ -1340,7 +1359,9 @@ pub fn detect_exponential_substitution(
         }
     }
 
-    if !found_complex {
+    // A relation with only a bare `base^x` (no `base^(k*x)`, k>1) is admitted
+    // only when the caller allows it (inequalities) — see the doc comment.
+    if !found_complex && (!allow_bare_single_term || base_term.is_none()) {
         return None;
     }
 
@@ -1567,7 +1588,33 @@ pub fn plan_exponential_substitution_rewrite(
     var: &str,
     substitution_symbol: &str,
 ) -> Option<ExponentialSubstitutionRewritePlan> {
-    let substitution_expr = detect_exponential_substitution(ctx, equation.lhs, equation.rhs, var)?;
+    // Admit the bare single-exponential family (`e^x + 1 > 0`) only for
+    // inequalities; equations keep the simpler `Unwrap` path (same answer,
+    // unchanged narration).
+    let allow_bare = matches!(
+        equation.op,
+        cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
+    );
+    let substitution_expr =
+        detect_exponential_substitution(ctx, equation.lhs, equation.rhs, var, allow_bare)?;
+
+    // A PURE single exponential (`base^x <op> const`, one side exactly the atom
+    // and the other constant) is owned by the dedicated single-side terminal,
+    // which answers fractional-base positivity correctly (`(1/2)^x > 0` -> all
+    // reals). Substituting it here would instead decline a fractional base to a
+    // residual. Only substitute the bare case when there is extra structure
+    // (`a*base^x + c`, the additive family this gate is for); degree >= 2 always
+    // has it, so this never blocks the existing polynomial-in-u path.
+    if allow_bare {
+        let lhs_is_atom = compare_expr(ctx, equation.lhs, substitution_expr) == Ordering::Equal;
+        let rhs_is_atom = compare_expr(ctx, equation.rhs, substitution_expr) == Ordering::Equal;
+        if (lhs_is_atom && !contains_var(ctx, equation.rhs, var))
+            || (rhs_is_atom && !contains_var(ctx, equation.lhs, var))
+        {
+            return None;
+        }
+    }
+
     let substitution_var = ctx.var(substitution_symbol);
     let rewritten_lhs =
         substitute_expr_pattern(ctx, equation.lhs, substitution_expr, substitution_var);
@@ -1638,7 +1685,7 @@ mod tests {
         let e_pow_2x = ctx.add(Expr::Pow(e, two_x));
         let sum = ctx.add(Expr::Add(e_pow_2x, e_pow_x));
         let one = ctx.num(1);
-        let sub = detect_exponential_substitution(&mut ctx, sum, one, "x")
+        let sub = detect_exponential_substitution(&mut ctx, sum, one, "x", false)
             .expect("must detect substitution base");
         assert_eq!(sub, e_pow_x);
     }
@@ -1654,7 +1701,7 @@ mod tests {
         let two_x = ctx.add(Expr::Mul(two, x));
         let a_pow_2x = ctx.add(Expr::Pow(a, two_x));
         let rhs = ctx.add(Expr::Mul(b, a_pow_x));
-        let sub = detect_exponential_substitution(&mut ctx, a_pow_2x, rhs, "x")
+        let sub = detect_exponential_substitution(&mut ctx, a_pow_2x, rhs, "x", false)
             .expect("must detect substitution for base independent of x");
         assert_eq!(sub, a_pow_x);
     }
@@ -1670,7 +1717,7 @@ mod tests {
         let lhs = ctx.add(Expr::Add(two_x, three_x));
         let one = ctx.num(1);
         assert!(
-            detect_exponential_substitution(&mut ctx, lhs, one, "x").is_none(),
+            detect_exponential_substitution(&mut ctx, lhs, one, "x", false).is_none(),
             "mixed bases should not trigger one-variable substitution"
         );
     }

@@ -2168,6 +2168,19 @@ fn test_eval_exponential_positivity_inequality() {
     assert_eq!(r("e^x=0"), "No solution");
     assert_eq!(r("e^x>5"), "(ln(5), infinity)");
     assert_eq!(r("e^x-1>0"), "(0, infinity)");
+    // SOUNDNESS: a bare additive single-exponential `a*base^x + c {op} k` was declined by the
+    // substitution gate (only `base^x` with no higher power) and fell to the boundary equation,
+    // returning "No solution" (or a malformed conditional) when the isolated threshold is negative —
+    // truth is all reals since base^x > 0. Now it substitutes u=base^x and the u>0 clamp answers it.
+    assert_eq!(r("e^x+1>0"), "All real numbers");
+    assert_eq!(r("e^x+5>2"), "All real numbers");
+    assert_eq!(r("3^x+1>0"), "All real numbers");
+    assert_eq!(r("e^x+1>=0"), "All real numbers");
+    assert_eq!(r("2*e^x+3>0"), "All real numbers");
+    assert_eq!(r("e^x+1<0"), "No solution"); // base^x = -1 has no solution, so < never holds
+                                             // Equation narration is unchanged (the bare gate is inequality-only).
+    assert_eq!(r("e^x=2"), "{ ln(2) }");
+    assert_eq!(r("e^x+1=0"), "No solution");
 }
 
 #[test]
