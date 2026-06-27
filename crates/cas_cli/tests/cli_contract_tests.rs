@@ -2332,6 +2332,41 @@ fn test_eval_factorable_exponential_inequality() {
 }
 
 #[test]
+fn test_eval_nonunit_exponent_exponential_inequality() {
+    // SOUNDNESS: a single exponential with a NON-UNIT integer exponent, `base^(k*x) {op} c`, could not
+    // be isolated by the unit-exponent terminal (`e^(2x)<2` -> residual, `e^(2x)<e` -> ok=false). Since
+    // `base^(k*x)` (base>1) is strictly increasing, recover the ray from the boundary EQUATION
+    // `base^(k*x)=c` (which solves) + monotonicity. This also closes the degree-3+ inequality: the
+    // factor-out cofactor `e^(2x)-e` of `e^(3x)-e*e^x<0` resolves here. Truth vs sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Non-unit single exponential, base e: e^(2x) {op} c <=> 2x {op} ln(c) <=> x {op} ln(c)/2.
+    assert_eq!(r("e^(2*x)<e"), "(-infinity, 1/2)");
+    assert_eq!(r("e^(2*x)>e"), "(1/2, infinity)");
+    assert_eq!(r("e^(2*x)<=e"), "(-infinity, 1/2]");
+    assert_eq!(r("e^(2*x)<2"), "(-infinity, 1/2·ln(2))");
+    // Non-positive threshold resolves by sign (base^(k*x) > 0 always); positivity stays correct.
+    assert_eq!(r("e^(2*x)<0"), "No solution");
+    assert_eq!(r("e^(2*x)>0"), "All real numbers");
+    assert_eq!(r("e^(2*x)>1"), "(0, infinity)");
+    // Degree-3 (and degree-4) collapsed: factor out e^x>0 to the non-unit cofactor.
+    assert_eq!(r("e^(3*x)-e*e^x<0"), "(-infinity, 1/2)"); // was the WRONG point {1/2}
+    assert_eq!(r("e^(3*x)-e*e^x>0"), "(1/2, infinity)");
+    assert_eq!(r("e^(3*x)-e*e^x<=0"), "(-infinity, 1/2]");
+    assert_eq!(r("e^(3*x)-pi*e^x<0"), "(-infinity, 1/2·ln(pi))");
+    assert_eq!(r("e^(4*x)-e*e^x<0"), "(-infinity, 1/3)");
+    // Controls: a degree-3 with RATIONAL roots stays on the substitution path; equations unchanged.
+    assert_eq!(r("e^(3*x)-e^x<0"), "(-infinity, 0)");
+    assert_eq!(r("e^(3*x)-e*e^x=0"), "{ 1/2 }");
+}
+
+#[test]
 fn test_eval_rational_sum_inequality_routing() {
     // SOUNDNESS regression: a rational-SUM inequality `x + c/x {op} k` (LHS an Add containing a
     // rational term) used to skip the reliable rational path and have its operator dropped, returning

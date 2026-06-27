@@ -2169,7 +2169,7 @@ fn try_solve_factorable_exponential_inequality(
 
     let mut atom_coeff = num_rational::BigRational::zero();
     let mut const_terms: Vec<(bool, ExprId)> = Vec::new();
-    collect_linear_exponential_atom_terms(
+    let collected = collect_linear_exponential_atom_terms(
         &simplifier.context,
         reduced,
         atom,
@@ -2177,7 +2177,28 @@ fn try_solve_factorable_exponential_inequality(
         true,
         &mut atom_coeff,
         &mut const_terms,
-    )?;
+    );
+    if collected.is_none() {
+        // The cofactor is not linear in base^x. If it is still a CLEAN polynomial
+        // in base^x (no `base^(-x)` term), the original had no `base^0` constant,
+        // so this is a degree-3+ factor-out (`e^(3x)-e*e^x` -> `e^(2x)-e`): since
+        // base^x > 0, re-solve `cofactor {op} 0` — the non-unit-exponent guard
+        // (which runs before this one) answers the single `base^(k*x)` cofactor.
+        // A leftover `base^(-x)` means a real constant term (e.g. B3
+        // `e^(2x)-3e^x+2`), which the substitution path owns -> decline.
+        if exponential_has_negative_rate(&simplifier.context, reduced, var) {
+            return None;
+        }
+        let zero_rhs = simplifier.context.num(0);
+        let reduced_eq = Equation {
+            lhs: reduced,
+            rhs: zero_rhs,
+            op: eq.op.clone(),
+        };
+        return solve_local_core(&reduced_eq, var, simplifier, opts, ctx)
+            .ok()
+            .map(|(set, _)| set);
+    }
     if atom_coeff.is_zero() {
         return None;
     }
@@ -2210,6 +2231,236 @@ fn try_solve_factorable_exponential_inequality(
     };
     let (set, _) = solve_local_core(&reduced_eq, var, simplifier, opts, ctx).ok()?;
     Some(set)
+}
+
+/// The coefficient of `var` in an AFFINE exponent: `Some(0)` for a constant,
+/// `Some(k)` for `k*var + b`; `None` if the exponent is not affine in `var`.
+fn exponent_linear_rate(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<num_rational::BigRational> {
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+    if !contains_var(ctx, expr, var) {
+        return Some(num_rational::BigRational::zero());
+    }
+    match ctx.get(expr).clone() {
+        Expr::Variable(s) if ctx.sym_name(s) == var => {
+            Some(num_rational::BigRational::from_integer(1.into()))
+        }
+        Expr::Mul(l, r) => {
+            if let Some(c) = cas_math::numeric_eval::as_rational_const(ctx, l) {
+                return exponent_linear_rate(ctx, r, var).map(|rate| c * rate);
+            }
+            if let Some(c) = cas_math::numeric_eval::as_rational_const(ctx, r) {
+                return exponent_linear_rate(ctx, l, var).map(|rate| rate * c);
+            }
+            None
+        }
+        Expr::Add(l, r) => {
+            Some(exponent_linear_rate(ctx, l, var)? + exponent_linear_rate(ctx, r, var)?)
+        }
+        Expr::Sub(l, r) => {
+            Some(exponent_linear_rate(ctx, l, var)? - exponent_linear_rate(ctx, r, var)?)
+        }
+        Expr::Neg(inner) => exponent_linear_rate(ctx, inner, var).map(|rate| -rate),
+        _ => None,
+    }
+}
+
+/// True if `expr` contains an exponential `base^(exponent)` (constant base, `var`
+/// in the exponent) whose exponent has a NEGATIVE `var`-rate (a `base^(-x)` term)
+/// or a non-affine exponent — i.e. not a clean non-negative-power polynomial in
+/// `base^x`.
+fn exponential_has_negative_rate(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Signed;
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exponent) => {
+            if !contains_var(ctx, base, var) && contains_var(ctx, exponent, var) {
+                match exponent_linear_rate(ctx, exponent, var) {
+                    Some(rate) if rate.is_negative() => return true,
+                    None => return true,
+                    _ => {}
+                }
+            }
+            exponential_has_negative_rate(ctx, base, var)
+                || exponential_has_negative_rate(ctx, exponent, var)
+        }
+        Expr::Div(l, r) => {
+            // A var-bearing DENOMINATOR is a negative power of an exponential
+            // (`5/e^x`, which `expand(diff/base^x)` produces when the original had
+            // a `base^0` constant). That is NOT a clean polynomial in base^x.
+            contains_var(ctx, r, var)
+                || exponential_has_negative_rate(ctx, l, var)
+                || exponential_has_negative_rate(ctx, r, var)
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            exponential_has_negative_rate(ctx, l, var) || exponential_has_negative_rate(ctx, r, var)
+        }
+        Expr::Neg(inner) => exponential_has_negative_rate(ctx, inner, var),
+        _ => false,
+    }
+}
+
+/// The first exponential leaf `base^(exponent)` (constant base, `var` in the
+/// exponent) found in `expr`.
+fn find_first_exponential(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    use cas_solver_core::isolation_utils::contains_var;
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exponent) => {
+            if !contains_var(ctx, base, var) && contains_var(ctx, exponent, var) {
+                return Some(expr);
+            }
+            find_first_exponential(ctx, base, var)
+                .or_else(|| find_first_exponential(ctx, exponent, var))
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            find_first_exponential(ctx, l, var).or_else(|| find_first_exponential(ctx, r, var))
+        }
+        Expr::Neg(inner) => find_first_exponential(ctx, inner, var),
+        _ => None,
+    }
+}
+
+/// A single exponential with a NON-UNIT integer exponent, `a*base^(k*x) + c {op} m`
+/// (k >= 2, base > 1, RHS constant). The unit-exponent terminal cannot isolate
+/// `base^(k*x)`, so isolate it to `base^(k*x) {op'} threshold` and, since
+/// `base^(k*x)` is strictly increasing, recover the monotone ray from the
+/// boundary EQUATION `base^(k*x) = threshold` (which the equation solver handles:
+/// `solve(e^(2x)=e) -> {1/2}`). This is what lets the degree-3 factor-out cofactor
+/// `e^(2x) - e < 0` resolve to `(-inf, 1/2)` — and never rewrites `base^(k*x)` to
+/// `(base^k)^x` (the simplifier renormalizes that back, re-entering forever).
+fn try_solve_nonunit_exponential_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Option<SolutionSet> {
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::{Signed, Zero};
+
+    if !matches!(
+        eq.op,
+        cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
+    ) {
+        return None;
+    }
+    // RHS constant in var (also blocks re-entry on the `base^x {op} c` shape the
+    // boundary equation routes through).
+    if contains_var(&simplifier.context, eq.rhs, var) {
+        return None;
+    }
+
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+
+    // The single exponential atom `base^(k*x)` — the REAL term, never the unit
+    // atom `detect_exponential_substitution` would synthesize.
+    let atom = find_first_exponential(&simplifier.context, diff, var)?;
+    let pattern = cas_solver_core::isolation_utils::match_exponential_var_in_exponent(
+        &simplifier.context,
+        atom,
+        var,
+    )?;
+    let base = pattern.base;
+    let rate = exponent_linear_rate(&simplifier.context, pattern.exponent, var)?;
+    let two = num_rational::BigRational::from_integer(2.into());
+    if !rate.is_integer() || rate < two {
+        return None;
+    }
+
+    // Isolate: the relation must be linear in `base^(k*x)` — `a*atom + c`. (A
+    // second distinct exponential makes this decline, leaving the two-exponential
+    // forms to the factor-out / substitution paths.)
+    let mut a = num_rational::BigRational::zero();
+    let mut const_terms: Vec<(bool, ExprId)> = Vec::new();
+    collect_linear_exponential_atom_terms(
+        &simplifier.context,
+        diff,
+        atom,
+        var,
+        true,
+        &mut a,
+        &mut const_terms,
+    )?;
+    if a.is_zero() {
+        return None;
+    }
+
+    // threshold = -c / a, with c the signed sum of the constants.
+    let mut c_sum = simplifier.context.num(0);
+    for (positive, term) in const_terms {
+        c_sum = if positive {
+            simplifier.context.add(Expr::Add(c_sum, term))
+        } else {
+            simplifier.context.add(Expr::Sub(c_sum, term))
+        };
+    }
+    let neg_c = simplifier.context.add(Expr::Neg(c_sum));
+    let a_expr = simplifier.context.add(Expr::Number(a.clone()));
+    let threshold = simplifier.context.add(Expr::Div(neg_c, a_expr));
+    let (threshold, _) = simplifier.simplify(threshold);
+
+    // Dividing the relation by `a` flips the operator when `a < 0`.
+    let op = if a.is_positive() {
+        eq.op.clone()
+    } else {
+        flip_inequality(eq.op.clone())
+    };
+
+    // SOUNDNESS: base must be provably > 1 (strictly increasing). EXACT: `e` and
+    // `pi` are the known mathematical constants > 1 (no f64); a numeric base is
+    // compared exactly. Anything else (fractional/symbolic) declines.
+    let one = num_rational::BigRational::from_integer(1.into());
+    let base_above_one = matches!(
+        simplifier.context.get(base),
+        Expr::Constant(cas_ast::Constant::E | cas_ast::Constant::Pi)
+    ) || cas_math::numeric_eval::as_rational_const(&simplifier.context, base)
+        .is_some_and(|value| value > one);
+    if !base_above_one {
+        return None;
+    }
+
+    // SOUNDNESS: threshold sign, EXACT. `base^(k*x) > 0` always, so a non-positive
+    // threshold resolves by sign with no boundary; a positive threshold goes to
+    // the boundary equation; a threshold of unknown sign declines. `e`/`pi` are
+    // known positive constants.
+    let threshold_is_e_or_pi = matches!(
+        simplifier.context.get(threshold),
+        Expr::Constant(cas_ast::Constant::E | cas_ast::Constant::Pi)
+    );
+    match cas_math::numeric_eval::as_rational_const(&simplifier.context, threshold) {
+        Some(t) if !t.is_positive() => {
+            return Some(match op {
+                cas_ast::RelOp::Gt | cas_ast::RelOp::Geq => SolutionSet::AllReals,
+                _ => SolutionSet::Empty,
+            });
+        }
+        Some(_) => {}
+        None if threshold_is_e_or_pi => {}
+        None => return None,
+    }
+
+    // Boundary x0 from the EQUATION `base^(k*x) = threshold` (Eq routes past the
+    // inequality guards to the equation solver), then the increasing-base ray.
+    let boundary_eq = Equation {
+        lhs: atom,
+        rhs: threshold,
+        op: cas_ast::RelOp::Eq,
+    };
+    let (set, _) = solve_local_core(&boundary_eq, var, simplifier, opts, ctx).ok()?;
+    let x0 = match set {
+        SolutionSet::Discrete(values) if values.len() == 1 => values[0],
+        _ => return None,
+    };
+    Some(cas_solver_core::solution_set::isolated_var_solution(
+        &mut simplifier.context,
+        x0,
+        op,
+    ))
 }
 
 /// A single-exponential inequality `a*base^x + c {op} k` (linear in `base^x`,
@@ -2390,6 +2641,13 @@ fn solve_local_core(
     // pure `base^x {op'} (k-c)/a`, which the terminal answers for every base and
     // threshold (the strategy substitution would decline a fractional base).
     if let Some(set) = try_isolate_single_exponential_inequality(eq, var, simplifier, opts, ctx) {
+        return Ok((set, Vec::new()));
+    }
+    // A single exponential with a non-unit integer exponent (`e^(2x) < e`, the
+    // factor-out cofactor of a degree-3 inequality) is isolated to
+    // `base^(k*x) {op} threshold` and answered from the boundary equation +
+    // monotone ray (no `(base^k)^x` rewrite — the simplifier renormalizes it).
+    if let Some(set) = try_solve_nonunit_exponential_inequality(eq, var, simplifier, opts, ctx) {
         return Ok((set, Vec::new()));
     }
     // A degree-2 exponential inequality collapsed to one side with no constant
