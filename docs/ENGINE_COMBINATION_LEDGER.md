@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 413 (newest first)
+Active entries: 414 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -150,6 +150,7 @@ Active entries: 413 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_decline_periodic_trig_ine... | SOUNDNESS P0 (audit 2, ciclo 5/5): inecuación trig periódica → residual honesto
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (plan_division_denominator_dida... | SOUNDNESS P0 (audit 3 / bloque 0, B1): inecuación c/f(x) con denom. positiva no voltea
 - 2026-06-27 | `retained` | `crates/cas_cli/tests/cli_contract_tests.rs` (test_eval_trig_inequality_out_o... | INTEGRIDAD (lateral B2): aserto de control trig obsoleto dejaba el árbol rojo desde el ciclo 5
+- 2026-06-27 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (apart_decomposi... | SOUNDNESS P0 (audit 3 / bloque 0, B2): apart con raíz repetida pierde el tope de la escalera
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16688,3 +16689,34 @@ Active entries: 413 (newest first)
     al cerrarlo, habría cazado esto 2 ciclos antes. Cuando un ciclo posterior cambia un comportamiento, hay que
     barrer TODOS los asertos del mismo dominio (aquí el control en otra función de test que el ciclo 5 no tocó),
     no solo el test directo del cambio.
+
+## 2026-06-27 - SOUNDNESS P0 (audit 3 / bloque 0, B2): apart con raíz repetida pierde el tope de la escalera
+
+- area: `crates/cas_math/src/general_integration_backend/methods.rs` (apart_decomposition_expr → nueva apart_classical_ladder_decomposition)
+- status: `retained` (commit f861c0ac5). Segundo bug del bloque 0 del audit de completitud (engine vs sympy).
+- capture:
+  - cell: ANTES `apart(1/((x-1)^2*(x+1)))`→`1/4/(x+1) - 1/2/(x-1) - 1/4/(x-1)` (NO equivalente al input: en
+    x=2 da -2/3 vs 1/3). AHORA `1/4/(x+1) + 1/2/(x-1)^2 - 1/4/(x-1)` (≡ input, verificado exacto en 5 puntos
+    con Fraction). `apart(1/(x-1)^2)`: `0/(x-1) - 1/(x-1)` → `1/(x-1)^2`; `apart((x+1)/(x-1)^2)`→`1/(x-1)+2/(x-1)^2`;
+    `apart(1/(x-1)^3)`→`1/(x-1)^3`. Controles squarefree (`1/(x^2-1)`, `1/(x^3-x)`, `1/((x-1)(x-2)(x-3))`,
+    `1/(x*(x^2+1))`) y residuales (`1/(x^3-x-1)`, `x^2+1`) byte-idénticos.
+  - causa raíz: apart_decomposition_expr reutilizaba la forma OSTROGRADSKY/Hermite (p/D1 + parte squarefree) —
+    la parte racional del INTEGRAL, correcta para `integrate` pero NO la PFD del INTEGRANDO. La raíz repetida
+    (x-r)^m colapsaba a un único 1/(x-r) + parte reducida en vez de la escalera A_k/(x-r)^k.
+  - fix: nueva apart_classical_ladder_decomposition por coeficientes indeterminados. Para cada factor distinto P
+    (lineal o cuadrático) con multiplicidad m (recuperada por división repetida, `polynomial_factor_multiplicity`),
+    añade columnas D/P^k (k=1..m) al sistema lineal y lo resuelve UNA vez con el solver racional EXACTO compartido
+    (solve_rational_linear_system). Emite A_k/(x-r)^k (lineal) y (B_k x+C_k)/q^k (cuadrático), saltando ceros. La
+    completitud se gatea con basis.len()==deg D (residual honesto si un factor no es lineal/cuadrático). El path
+    Ostrogradsky de INTEGRACIÓN (general_rational_*) intacto.
+  - validación: workspace verde; clippy; rustfmt; huella GUARD/PRESS estructuralmente IDÉNTICA (solo ruido de
+    timing/bytes); round-trip exacto (Fraction) + vs sympy; 5 asertos CLI nuevos.
+- retained learning:
+  - `apart` (PFD del integrando) e `integrate` (forma de Ostrogradsky de su integral) son descomposiciones
+    DISTINTAS: compartir el path de integración daba a apart una respuesta no-equivalente en raíces repetidas. El
+    verificador algebraico no lo cazó porque solo opera sobre la derivada en `integrate`, no sobre la identidad de
+    `apart`. Tema recurrente del bloque 0: una rama reutiliza maquinaria de otra que NO es semánticamente
+    equivalente para su caso (cf. B1 inecuación-vs-ecuación, B3 back-sub). Reutilizar el solver lineal racional
+    compartido para coeficientes indeterminados generaliza a multiplicidad sin maquinaria nueva.
+  - peldaño restante: cuadráticas irreducibles REPETIDAS de grado>2 distintas que split_squarefree_factors no
+    factoriza (cúbicas/quínticas irreducibles) → residual honesto, no escalera (acotado por el gate de completitud).
