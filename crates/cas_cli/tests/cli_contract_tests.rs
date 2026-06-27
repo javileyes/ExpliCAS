@@ -1973,6 +1973,43 @@ fn test_eval_arclength_curve() {
 }
 
 #[test]
+fn test_eval_rational_sum_inequality_routing() {
+    // SOUNDNESS regression: a rational-SUM inequality `x + c/x {op} k` (LHS an Add containing a
+    // rational term) used to skip the reliable rational path and have its operator dropped, returning
+    // the empty set (strict) or a degenerate point (non-strict). Now the LHS is combined into a single
+    // fraction N/D and routed through the verified rational path. Truth cross-checked vs sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(x + 1/x > 2, x)"), "(0, 1) U (1, infinity)");
+    assert_eq!(r("solve(x + 1/x < 2, x)"), "(-infinity, 0)");
+    assert_eq!(r("solve(x + 1/x >= 2, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x + 2/x > 3, x)"), "(0, 1) U (2, infinity)");
+    assert_eq!(r("solve(2*x + 1/x > 1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x + 4/x >= 4, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x - 2 + 1/x > 0, x)"), "(0, 1) U (1, infinity)");
+    assert_eq!(r("solve(x + 3 + 2/x > 0, x)"), "(-2, -1) U (0, infinity)");
+    assert_eq!(r("solve(3*x + 12/x > 12, x)"), "(0, 2) U (2, infinity)");
+    assert_eq!(r("solve(x + 9/x > 6, x)"), "(0, 3) U (3, infinity)");
+    assert_eq!(r("solve(x + 1/(x-1) > 2, x)"), "(1, infinity)");
+    assert_eq!(r("solve(2*x + 3/(x-1) > 5, x)"), "(1, infinity)");
+    // Surd bounds: x + 1/x >= 3  ⟹  (0, (3-√5)/2] ∪ [(3+√5)/2, ∞).
+    assert_eq!(
+        r("solve(x + 1/x >= 3, x)"),
+        "(0, 1/2·(3 - sqrt(5))] U [1/2·(sqrt(5) + 3), infinity)"
+    );
+    // Controls: the single-fraction form and ordinary inequalities are unchanged.
+    assert_eq!(r("solve((x^2+1)/x > 2, x)"), "(0, 1) U (1, infinity)");
+    assert_eq!(r("solve(1/x < 1, x)"), "(-infinity, 0) U (1, infinity)");
+    assert_eq!(r("solve(x^2 > 4, x)"), "(-infinity, -2) U (2, infinity)");
+}
+
+#[test]
 fn test_eval_derangement_isperfect_harmonic() {
     // derangement(n)/subfactorial (permutations with no fixed point), isperfect(n) (σ(n)=2n, 1/0 —
     // the engine has no boolean), and harmonic(n) = Σ_{k=1}^n 1/k (exact rational). All BigInt/

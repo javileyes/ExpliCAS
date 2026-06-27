@@ -984,12 +984,97 @@ fn solve_poly_sign(
     solve_relation_set(simplifier, var, expr, zero, op)
 }
 
+/// Express `e` as a ratio of polynomials `(num, den)` in `var`, combining sums/differences/products/
+/// quotients/integer-powers over a common denominator WITHOUT cancelling shared factors (so every
+/// genuine pole stays in `den`, which the caller's numeric verification relies on). The denominator is
+/// the PRODUCT of the sub-denominators, not their lcm — this only raises the MULTIPLICITY of existing
+/// poles (never introduces a new pole location, since each factor is a real denominator of `e`), and the
+/// caller's `P/D {op} 0` sign analysis is invariant under multiplying both `P` and `D` by the same
+/// factor, so the candidate stays exact. Returns `None` if any leaf is not a polynomial in `var` (a
+/// fractional power `x^(1/2)`, a transcendental, …) so such inputs decline cleanly.
+fn rational_function_of(
+    ctx: &mut Context,
+    e: ExprId,
+    var: &str,
+    depth: usize,
+) -> Option<(
+    cas_math::polynomial::Polynomial,
+    cas_math::polynomial::Polynomial,
+)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use num_traits::{One, ToPrimitive};
+
+    if depth > 48 {
+        return None;
+    }
+    let one = || Polynomial::new(vec![num_rational::BigRational::one()], var.to_string());
+
+    match ctx.get(e).clone() {
+        // (nl/dl) ± (nr/dr) = (nl·dr ± nr·dl) / (dl·dr) — the `Add` case is what lets a sum such as
+        // `x + 1/x` reach the reliable rational path (instead of declining and falling to a generic
+        // path that drops the inequality operator).
+        Expr::Add(l, r) => {
+            let (nl, dl) = rational_function_of(ctx, l, var, depth + 1)?;
+            let (nr, dr) = rational_function_of(ctx, r, var, depth + 1)?;
+            Some((nl.mul(&dr).add(&nr.mul(&dl)), dl.mul(&dr)))
+        }
+        Expr::Sub(l, r) => {
+            let (nl, dl) = rational_function_of(ctx, l, var, depth + 1)?;
+            let (nr, dr) = rational_function_of(ctx, r, var, depth + 1)?;
+            Some((nl.mul(&dr).sub(&nr.mul(&dl)), dl.mul(&dr)))
+        }
+        Expr::Mul(l, r) => {
+            let (nl, dl) = rational_function_of(ctx, l, var, depth + 1)?;
+            let (nr, dr) = rational_function_of(ctx, r, var, depth + 1)?;
+            Some((nl.mul(&nr), dl.mul(&dr)))
+        }
+        Expr::Div(l, r) => {
+            let (nl, dl) = rational_function_of(ctx, l, var, depth + 1)?;
+            let (nr, dr) = rational_function_of(ctx, r, var, depth + 1)?;
+            Some((nl.mul(&dr), dl.mul(&nr)))
+        }
+        Expr::Neg(inner) => {
+            let (n, d) = rational_function_of(ctx, inner, var, depth + 1)?;
+            let neg_one = Polynomial::new(vec![-num_rational::BigRational::one()], var.to_string());
+            Some((n.mul(&neg_one), d))
+        }
+        Expr::Pow(base, exp) => {
+            if let Some(k) = as_rational_const(ctx, exp) {
+                if k.is_integer() {
+                    let exponent = k.to_i64()?;
+                    let magnitude = exponent.unsigned_abs() as usize;
+                    if magnitude > 8 {
+                        return None; // bound degree growth
+                    }
+                    let (nb, db) = rational_function_of(ctx, base, var, depth + 1)?;
+                    let raise = |p: &Polynomial| {
+                        let mut acc = one();
+                        for _ in 0..magnitude {
+                            acc = acc.mul(p);
+                        }
+                        acc
+                    };
+                    let (np, dp) = (raise(&nb), raise(&db));
+                    // A negative exponent sends the base to the opposite side (`x^(-2)` → `1/x²`).
+                    return Some(if exponent < 0 { (dp, np) } else { (np, dp) });
+                }
+            }
+            // Non-integer / symbolic exponent: only sound if the whole power is itself a polynomial
+            // in `var` (it is not, for `x^(1/2)`), so this declines via `from_expr`.
+            let p = Polynomial::from_expr(ctx, e, var).ok()?;
+            Some((p, one()))
+        }
+        _ => {
+            let p = Polynomial::from_expr(ctx, e, var).ok()?;
+            Some((p, one()))
+        }
+    }
+}
+
 /// Split a rational `lhs` into numerator/denominator POLYNOMIALS in `var` WITHOUT cancelling shared
-/// factors. Walks `Div`/`Mul`/`Neg`/`Pow(_, k)`: a `Pow(base, k)` with a negative rational `k`
-/// contributes `base^|k|` to the opposite side (so `x^(-2)` → denominator `x²`, `c·x^(-3)` →
-/// `c / x³`). Returns `None` if any leaf factor is not a polynomial in `var` (a fractional power
-/// `x^(1/2)`, a transcendental, …) so such inputs decline cleanly. Not cancelling keeps any removable
-/// pole in `den`, which the caller's verification depends on.
+/// factors (see [`rational_function_of`]). Handles sums (`x + 1/x`), products, quotients, negations and
+/// integer powers; declines (returns `None`) for any non-polynomial leaf.
 fn split_rational_inequality_lhs(
     ctx: &mut Context,
     lhs: ExprId,
@@ -998,81 +1083,7 @@ fn split_rational_inequality_lhs(
     cas_math::polynomial::Polynomial,
     cas_math::polynomial::Polynomial,
 )> {
-    use cas_math::numeric_eval::as_rational_const;
-    use cas_math::polynomial::Polynomial;
-    use num_traits::Zero;
-
-    // Collect numerator/denominator factor expressions; `invert` flips which side a factor lands on.
-    fn collect(
-        ctx: &mut Context,
-        e: ExprId,
-        invert: bool,
-        num: &mut Vec<ExprId>,
-        den: &mut Vec<ExprId>,
-    ) {
-        match ctx.get(e).clone() {
-            Expr::Div(n, d) => {
-                collect(ctx, n, invert, num, den);
-                collect(ctx, d, !invert, num, den);
-            }
-            Expr::Mul(l, r) => {
-                collect(ctx, l, invert, num, den);
-                collect(ctx, r, invert, num, den);
-            }
-            Expr::Neg(inner) => {
-                let m1 = ctx.num(-1);
-                if invert {
-                    den.push(m1);
-                } else {
-                    num.push(m1);
-                }
-                collect(ctx, inner, invert, num, den);
-            }
-            Expr::Pow(base, exp) => {
-                if let Some(k) = as_rational_const(ctx, exp) {
-                    if k < num_rational::BigRational::zero() {
-                        // base^(−k) on the opposite side.
-                        let mag = ctx.add(Expr::Number(-k));
-                        let pos = ctx.add(Expr::Pow(base, mag));
-                        if invert {
-                            num.push(pos);
-                        } else {
-                            den.push(pos);
-                        }
-                        return;
-                    }
-                }
-                if invert {
-                    den.push(e);
-                } else {
-                    num.push(e);
-                }
-            }
-            _ => {
-                if invert {
-                    den.push(e);
-                } else {
-                    num.push(e);
-                }
-            }
-        }
-    }
-
-    let mut num_factors = Vec::new();
-    let mut den_factors = Vec::new();
-    collect(ctx, lhs, false, &mut num_factors, &mut den_factors);
-
-    let product = |ctx: &mut Context, factors: &[ExprId]| -> Option<Polynomial> {
-        let one = ctx.num(1);
-        let mut acc = one;
-        for &f in factors {
-            acc = ctx.add(Expr::Mul(acc, f));
-        }
-        Polynomial::from_expr(ctx, acc, var).ok()
-    };
-    let num_poly = product(ctx, &num_factors)?;
-    let den_poly = product(ctx, &den_factors)?;
-    Some((num_poly, den_poly))
+    rational_function_of(ctx, lhs, var, 0)
 }
 
 /// Solve `N / D {op} c` with a polynomial denominator `D` (degree ≥ 1) and a var-free RHS `c`. With
