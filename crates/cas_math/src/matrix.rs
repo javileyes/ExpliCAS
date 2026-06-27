@@ -225,6 +225,20 @@ impl Matrix {
         Some(ctx.num(rank as i64))
     }
 
+    /// Euclidean / Frobenius norm `√(Σ entryᵢ²)`. For a vector (n×1 or 1×n) this
+    /// is the usual length; for a matrix it is the Frobenius norm. Works
+    /// symbolically too — `norm([a,b]) = √(a²+b²)` — and the engine folds the
+    /// numeric case (`norm([3,4]) = 5`).
+    pub fn norm(&self, ctx: &mut Context) -> Option<ExprId> {
+        let two = ctx.num(2);
+        let mut sum_of_squares = ctx.num(0);
+        for &entry in &self.data {
+            let square = ctx.add(Expr::Pow(entry, two));
+            sum_of_squares = ctx.add(Expr::Add(sum_of_squares, square));
+        }
+        Some(ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![sum_of_squares]))
+    }
+
     /// Reduced row echelon form of a NUMERIC matrix by exact Gauss-Jordan
     /// elimination over `BigRational` (any shape). Each pivot is normalized to 1
     /// and its column is cleared in every other row. Returns `None` (⇒ honest

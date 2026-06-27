@@ -39,6 +39,7 @@ impl CasHelper {
                 "rref".to_string(),
                 "eigenvectors".to_string(),
                 "nullspace".to_string(),
+                "norm".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),

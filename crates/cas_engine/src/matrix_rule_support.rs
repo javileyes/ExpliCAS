@@ -123,6 +123,10 @@ pub enum MatrixFunctionEval {
         shape: MatrixShape,
         value: ExprId,
     },
+    Norm {
+        shape: MatrixShape,
+        value: ExprId,
+    },
     Inverse {
         shape: MatrixShape,
         /// `Some(inverse)` for an invertible matrix; `None` when the matrix is provably
@@ -172,6 +176,9 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
         }
         MatrixFunctionEval::Nullspace { shape, .. } => {
             format!("nullspace({}×{} matrix)", shape.rows, shape.cols)
+        }
+        MatrixFunctionEval::Norm { shape, .. } => {
+            format!("norm({}×{} matrix)", shape.rows, shape.cols)
         }
         MatrixFunctionEval::Inverse { shape, matrix } => {
             if matrix.is_some() {
@@ -721,6 +728,9 @@ pub fn try_eval_matrix_function_expr(
             .map(|value| MatrixFunctionEval::Eigenvectors { shape, value }),
         "nullspace" | "null" | "kernel" => try_matrix_nullspace(ctx, &matrix)
             .map(|value| MatrixFunctionEval::Nullspace { shape, value }),
+        "norm" => matrix
+            .norm(ctx)
+            .map(|value| MatrixFunctionEval::Norm { shape, value }),
         "inverse" | "inv" => match matrix.inverse(ctx)? {
             MatrixInverseOutcome::Inverse(inv) => Some(MatrixFunctionEval::Inverse {
                 shape,
@@ -806,6 +816,13 @@ pub fn try_rewrite_matrix_function_rule_expr(
         }
         MatrixFunctionEval::Nullspace { shape, value } => {
             let desc = format_matrix_function_desc(&MatrixFunctionEval::Nullspace { shape, value });
+            Some(MatrixFunctionRewrite {
+                rewritten: value,
+                desc,
+            })
+        }
+        MatrixFunctionEval::Norm { shape, value } => {
+            let desc = format_matrix_function_desc(&MatrixFunctionEval::Norm { shape, value });
             Some(MatrixFunctionRewrite {
                 rewritten: value,
                 desc,

@@ -1617,6 +1617,25 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_vector_norm() {
+    // `norm(v)` is the Euclidean / Frobenius norm √(Σ entryᵢ²). Numeric folds; symbolic stays exact.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("norm([3,4])"), "5");
+    assert_eq!(r("norm([1,2,2])"), "3");
+    assert_eq!(r("norm([1,1])"), "sqrt(2)");
+    assert_eq!(r("norm([3,-4])"), "5");
+    assert_eq!(r("norm([[3,4],[0,12]])"), "13"); // Frobenius norm of a matrix
+    assert_eq!(r("norm([a,b])"), "(a^2 + b^2)^(1/2)"); // symbolic
+}
+
+#[test]
 fn test_eval_matrix_nullspace() {
     // `nullspace(A)` (aliases `null`/`kernel`) returns a basis of {x : A·x = 0} by exact rational
     // RREF, rows = basis vectors. Verified elsewhere by A·v = 0. A trivial kernel is the zero vector;
