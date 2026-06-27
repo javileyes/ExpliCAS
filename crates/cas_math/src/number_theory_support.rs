@@ -177,6 +177,23 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
+        "divisors" | "divisor_list" if args.len() == 1 => {
+            let result = compute_divisors_list_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "divisors",
+                arg: args[0],
+                result,
+            })
+        }
+        "crt" | "chinese_remainder" if args.len() == 2 => {
+            let result = compute_crt_expr(ctx, args[0], args[1])?;
+            Some(NumberTheorySimpleRewrite::Binary {
+                name: "crt",
+                lhs: args[0],
+                rhs: args[1],
+                result,
+            })
+        }
         "fact" | "factorial" if args.len() == 1 => {
             let result = compute_factorial_expr(ctx, args[0])?;
             Some(NumberTheorySimpleRewrite::Unary {
@@ -714,6 +731,80 @@ pub fn compute_sigma_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         sigma *= term;
     }
     Some(integer_result(ctx, sigma))
+}
+
+/// Sorted list of the positive divisors of `n`, returned as a 1×k row matrix
+/// (`divisors(12) → [1, 2, 3, 4, 6, 12]`). Declines for `n < 1`.
+pub fn compute_divisors_list_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if val < BigInt::one() || !within_prime_search_cap(&val) {
+        return None;
+    }
+    let mut divisors = vec![BigInt::one()];
+    for (prime, exp) in prime_factorization(val) {
+        let mut extended = Vec::new();
+        let mut power = BigInt::one();
+        for _ in 0..=exp {
+            for d in &divisors {
+                extended.push(d * &power);
+            }
+            power *= &prime;
+        }
+        divisors = extended;
+    }
+    divisors.sort();
+    let count = divisors.len();
+    let data: Vec<ExprId> = divisors
+        .into_iter()
+        .map(|d| integer_result(ctx, d))
+        .collect();
+    Some(ctx.matrix(1, count, data.clone()).unwrap_or_else(|_| {
+        ctx.add(Expr::Matrix {
+            rows: 1,
+            cols: count,
+            data,
+        })
+    }))
+}
+
+/// Chinese Remainder Theorem: the smallest non-negative `x` with `x ≡ rᵢ (mod mᵢ)`
+/// for every pair, returned modulo `lcm(mᵢ)`. Handles non-coprime moduli, declining
+/// to a residual when the congruences are inconsistent. `crt([2,3],[3,5]) → 8`.
+pub fn compute_crt_expr(ctx: &mut Context, residues: ExprId, moduli: ExprId) -> Option<ExprId> {
+    let residues = crate::matrix::Matrix::from_expr(ctx, residues)?;
+    let moduli = crate::matrix::Matrix::from_expr(ctx, moduli)?;
+    if residues.data.is_empty() || residues.data.len() != moduli.data.len() {
+        return None;
+    }
+    let rs: Vec<BigInt> = residues
+        .data
+        .iter()
+        .map(|&e| extract_integer_bigint(ctx, e))
+        .collect::<Option<_>>()?;
+    let ms: Vec<BigInt> = moduli
+        .data
+        .iter()
+        .map(|&e| extract_integer_bigint(ctx, e))
+        .collect::<Option<_>>()?;
+    if ms.iter().any(|m| *m <= BigInt::zero()) {
+        return None;
+    }
+
+    let mut x = ((&rs[0] % &ms[0]) + &ms[0]) % &ms[0];
+    let mut modulus = ms[0].clone();
+    for i in 1..rs.len() {
+        let (g, p, _) = extended_gcd(&modulus, &ms[i]);
+        let diff = &rs[i] - &x;
+        if (&diff % &g) != BigInt::zero() {
+            return None; // inconsistent congruences
+        }
+        let n_over_g = &ms[i] / &g;
+        let lcm = &modulus / &g * &ms[i];
+        let t = (((&diff / &g) * &p) % &n_over_g + &n_over_g) % &n_over_g;
+        x = ((&x + &modulus * &t) % &lcm + &lcm) % &lcm;
+        modulus = lcm;
+    }
+    Some(integer_result(ctx, x))
 }
 
 /// `iscomposite(n)` → `1` when `n > 1` is composite, `0` otherwise (no boolean type).

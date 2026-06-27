@@ -1723,6 +1723,27 @@ fn test_eval_matrix_nullspace() {
 }
 
 #[test]
+fn test_eval_number_theory_divisors_and_crt() {
+    // `divisors(n)` lists the positive divisors (sorted), and `crt` solves a system of congruences
+    // (Chinese Remainder Theorem), declining on an inconsistent non-coprime system. sympy-checked.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("divisors(12)"), "[1, 2, 3, 4, 6, 12]");
+    assert_eq!(r("divisors(7)"), "[1, 7]");
+    assert_eq!(r("divisors(36)"), "[1, 2, 3, 4, 6, 9, 12, 18, 36]");
+    assert_eq!(r("crt([2,3],[3,5])"), "8"); // x≡2 (mod 3), x≡3 (mod 5)
+    assert_eq!(r("crt([1,2,3],[2,3,5])"), "23");
+    // Inconsistent congruences with non-coprime moduli ⇒ honest residual.
+    assert_eq!(r("crt([2,4],[3,6])"), "crt([[2], [4]], [[3], [6]])");
+}
+
+#[test]
 fn test_eval_number_theory_modular() {
     // Modular arithmetic: modinv (modular inverse via extended Euclid, residual when gcd≠1) and the
     // Jacobi symbol (−1/0/1). Cross-checked against sympy.
