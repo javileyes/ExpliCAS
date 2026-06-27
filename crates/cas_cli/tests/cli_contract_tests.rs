@@ -1744,6 +1744,24 @@ fn test_eval_number_theory_divisors_and_crt() {
 }
 
 #[test]
+fn test_eval_number_theory_gcdext() {
+    // `gcdext(a,b)` (aliases `bezout`/`xgcd`) returns [g, x, y] with a·x + b·y = g = gcd(a,b) — the
+    // Bézout coefficients from extended Euclid.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("gcdext(12,18)"), "[6, -1, 1]"); // 12·(-1) + 18·1 = 6
+    assert_eq!(r("gcdext(3,7)"), "[1, -2, 1]"); // 3·(-2) + 7·1 = 1
+    assert_eq!(r("gcdext(48,36)"), "[12, 1, -1]"); // 48·1 + 36·(-1) = 12
+    assert_eq!(r("gcdext(17,5)"), "[1, -2, 7]");
+}
+
+#[test]
 fn test_eval_number_theory_modular() {
     // Modular arithmetic: modinv (modular inverse via extended Euclid, residual when gcd≠1) and the
     // Jacobi symbol (−1/0/1). Cross-checked against sympy.

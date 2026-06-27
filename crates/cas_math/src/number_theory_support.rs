@@ -229,6 +229,15 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
+        "gcdext" | "bezout" | "xgcd" if args.len() == 2 => {
+            let result = compute_gcdext_expr(ctx, args[0], args[1])?;
+            Some(NumberTheorySimpleRewrite::Binary {
+                name: "gcdext",
+                lhs: args[0],
+                rhs: args[1],
+                result,
+            })
+        }
         "jacobi" | "legendre" if args.len() == 2 => {
             let result = compute_jacobi_expr(ctx, args[0], args[1])?;
             Some(NumberTheorySimpleRewrite::Binary {
@@ -621,6 +630,32 @@ fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
     let (g, x1, y1) = extended_gcd(b, &(a % b));
     let y = x1 - (a / b) * &y1;
     (g, y1, y)
+}
+
+/// Extended Euclid as a user operation: `gcdext(a, b) → [g, x, y]` with
+/// `a·x + b·y = g = gcd(a, b)`, the Bézout coefficients, as a row vector.
+pub fn compute_gcdext_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
+    let a = extract_integer_bigint(ctx, a)?;
+    let b = extract_integer_bigint(ctx, b)?;
+    let (mut g, mut x, mut y) = extended_gcd(&a, &b);
+    // Normalize to a non-negative gcd (negate the whole identity if needed).
+    if g.is_negative() {
+        g = -g;
+        x = -x;
+        y = -y;
+    }
+    let data = vec![
+        integer_result(ctx, g),
+        integer_result(ctx, x),
+        integer_result(ctx, y),
+    ];
+    Some(ctx.matrix(1, 3, data.clone()).unwrap_or_else(|_| {
+        ctx.add(Expr::Matrix {
+            rows: 1,
+            cols: 3,
+            data,
+        })
+    }))
 }
 
 /// Modular inverse `a⁻¹ mod n` in `[0, n)`, via extended Euclid. Declines when the
