@@ -79,6 +79,9 @@ impl CasHelper {
                 "nextprime".to_string(),
                 "prevprime".to_string(),
                 "totient".to_string(),
+                "sigma".to_string(),
+                "tau".to_string(),
+                "iscomposite".to_string(),
                 "sum".to_string(),
                 "product".to_string(),
                 // Polynomial functions

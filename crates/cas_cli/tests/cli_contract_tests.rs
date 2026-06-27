@@ -1723,6 +1723,29 @@ fn test_eval_matrix_nullspace() {
 }
 
 #[test]
+fn test_eval_number_theory_divisor_functions() {
+    // Divisor functions: τ/numdivisors (count), σ/sigma (sum), and iscomposite (1/0). All exact via
+    // integer factorization. σ(6) = 12 = 2·6 confirms the perfect number.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("tau(12)"), "6");
+    assert_eq!(r("numdivisors(12)"), "6");
+    assert_eq!(r("tau(7)"), "2"); // prime ⇒ 2 divisors
+    assert_eq!(r("sigma(12)"), "28");
+    assert_eq!(r("sigma(6)"), "12"); // perfect number: σ(n) = 2n
+    assert_eq!(r("sigma(7)"), "8"); // prime p ⇒ σ = p + 1
+    assert_eq!(r("iscomposite(12)"), "1");
+    assert_eq!(r("iscomposite(7)"), "0"); // prime
+    assert_eq!(r("iscomposite(1)"), "0"); // neither prime nor composite
+}
+
+#[test]
 fn test_eval_number_theory_primes_and_totient() {
     // New number-theory functions: isprime (1/0, the engine has no boolean), nextprime, prevprime,
     // and Euler's totient. All exact (BigInt trial division / factorization).

@@ -153,6 +153,30 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
+        "numdivisors" | "tau" | "sigma0" if args.len() == 1 => {
+            let result = compute_numdivisors_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "numdivisors",
+                arg: args[0],
+                result,
+            })
+        }
+        "sigma" | "divisor_sum" if args.len() == 1 => {
+            let result = compute_sigma_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "sigma",
+                arg: args[0],
+                result,
+            })
+        }
+        "iscomposite" | "is_composite" if args.len() == 1 => {
+            let result = compute_iscomposite_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "iscomposite",
+                arg: args[0],
+                result,
+            })
+        }
         "fact" | "factorial" if args.len() == 1 => {
             let result = compute_factorial_expr(ctx, args[0])?;
             Some(NumberTheorySimpleRewrite::Unary {
@@ -552,6 +576,78 @@ pub fn compute_prevprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         candidate -= 1;
     }
     (candidate >= BigInt::from(2)).then(|| integer_result(ctx, candidate))
+}
+
+/// Prime factorization of a positive integer as `(prime, exponent)` pairs.
+fn prime_factorization(mut n: BigInt) -> Vec<(BigInt, u32)> {
+    let mut factors = Vec::new();
+    let two = BigInt::from(2);
+    let mut count = 0u32;
+    while (&n % &two).is_zero() {
+        n /= &two;
+        count += 1;
+    }
+    if count > 0 {
+        factors.push((two, count));
+    }
+    let mut d = BigInt::from(3);
+    while &d * &d <= n {
+        let mut exp = 0u32;
+        while (&n % &d).is_zero() {
+            n /= &d;
+            exp += 1;
+        }
+        if exp > 0 {
+            factors.push((d.clone(), exp));
+        }
+        d += 2;
+    }
+    if n > BigInt::one() {
+        factors.push((n, 1));
+    }
+    factors
+}
+
+/// Number of positive divisors `τ(n) = ∏(eᵢ + 1)`. Declines for `n < 1`.
+pub fn compute_numdivisors_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if val < BigInt::one() || !within_prime_search_cap(&val) {
+        return None;
+    }
+    let mut tau = BigInt::one();
+    for (_, exp) in prime_factorization(val) {
+        tau *= BigInt::from(exp + 1);
+    }
+    Some(integer_result(ctx, tau))
+}
+
+/// Sum of positive divisors `σ(n) = ∏(1 + p + … + pᵉ)`. Declines for `n < 1`.
+pub fn compute_sigma_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if val < BigInt::one() || !within_prime_search_cap(&val) {
+        return None;
+    }
+    let mut sigma = BigInt::one();
+    for (prime, exp) in prime_factorization(val) {
+        let mut term = BigInt::one();
+        let mut power = BigInt::one();
+        for _ in 0..exp {
+            power *= &prime;
+            term += &power;
+        }
+        sigma *= term;
+    }
+    Some(integer_result(ctx, sigma))
+}
+
+/// `iscomposite(n)` → `1` when `n > 1` is composite, `0` otherwise (no boolean type).
+pub fn compute_iscomposite_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = extract_integer_bigint(ctx, n)?;
+    if !within_prime_search_cap(&val) {
+        return None;
+    }
+    let composite = val > BigInt::one() && !is_prime_bigint(&val);
+    Some(ctx.num(if composite { 1 } else { 0 }))
 }
 
 /// Euler's totient `φ(n) = n·∏(1 − 1/p)` over the distinct primes `p | n`, by exact
