@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 385 (newest first)
+Active entries: 386 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -122,6 +122,7 @@ Active entries: 385 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rref`) | CAPACIDAD (álgebra lineal 4/4): forma escalonada reducida (RREF)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvectors`, `r... | CAPACIDAD (álgebra lineal, capstone): autovectores (autovalores racionales)
 - 2026-06-27 | `retained` | `crates/cas_math/src/limits_support.rs` (`unary_abs_finite_rational_argument_... | CAPACIDAD (cálculo/límites): lim |u| y lim ln(|u|) en ∞ con cola finita
+- 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_isprime/nextprime/pre... | CAPACIDAD (teoría de números): isprime, nextprime, prevprime, totient
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16141,3 +16142,18 @@ Active entries: 385 (newest first)
     tenía sqrt/log pero NO abs; la regla genérica `abs→+∞` es un sobre-disparo cuando el argumento converge.
     Añadir la variante de abs + see-through del abs en la regla de log compone con el FTC. Peldaño honesto:
     `1/(x²-1)` impropia aún declina por enrutado FTC-definido (raíces del denominador fuera del intervalo).
+
+## 2026-06-27 - CAPACIDAD (teoría de números): isprime, nextprime, prevprime, totient
+
+- area: `crates/cas_math/src/number_theory_support.rs` (compute_isprime/nextprime/prevprime/totient_expr)
+- status: `retained` (commit pendiente↑). Diversifica la amplitud "CAS universal" tras el núcleo de álgebra lineal.
+- capture:
+  - cell: ANTES funciones no definidas. AHORA exactas sobre BigInt: `isprime(7)→1`, `isprime(12)→0`;
+    `nextprime(10)→11`, `prevprime(10)→7` (`prevprime(2)` declina, no hay primo bajo 2); `totient(36)→12`
+    (φ vía factorización). Tope 10^12 ⇒ residual honesto (la división por tanteo no bloquea).
+  - sin tipo booleano en el motor ⇒ `isprime` devuelve 1/0 (convención documentada).
+  - validación: workspace 12424 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - el path de teoría de números (`try_eval_simple_number_theory_call` + gate) es el punto limpio para
+    funciones aritméticas que devuelven NÚMEROS. La falta de tipo Bool obliga a 1/0 en predicados — peldaño:
+    un tipo booleano de primera clase desbloquearía isprime/iguales/relacionales con display `true/false`.
