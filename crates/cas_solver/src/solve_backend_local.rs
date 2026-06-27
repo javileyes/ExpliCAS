@@ -2324,6 +2324,35 @@ fn find_first_exponential(ctx: &Context, expr: ExprId, var: &str) -> Option<Expr
     }
 }
 
+/// Conservative EXACT proof that `expr` is strictly positive: `e`/`pi`, a
+/// positive number, any `positive^anything` (a real power of a positive base),
+/// and products/quotients of provably-positive parts. Used only to settle a
+/// threshold's sign, never f64.
+fn is_provably_positive(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::Signed;
+    match ctx.get(expr).clone() {
+        Expr::Constant(cas_ast::Constant::E | cas_ast::Constant::Pi) => true,
+        Expr::Pow(base, _) => is_provably_positive(ctx, base),
+        Expr::Mul(l, r) | Expr::Div(l, r) => {
+            is_provably_positive(ctx, l) && is_provably_positive(ctx, r)
+        }
+        _ => cas_math::numeric_eval::as_rational_const(ctx, expr).is_some_and(|v| v.is_positive()),
+    }
+}
+
+/// EXACT proof that a threshold is `<= 0`: a non-positive rational, or `-p` with
+/// `p` provably positive (e.g. `-e`, `-pi`).
+fn threshold_provably_nonpositive(ctx: &Context, threshold: ExprId) -> bool {
+    use num_traits::Signed;
+    if cas_math::numeric_eval::as_rational_const(ctx, threshold).is_some_and(|v| !v.is_positive()) {
+        return true;
+    }
+    match ctx.get(threshold).clone() {
+        Expr::Neg(inner) => is_provably_positive(ctx, inner),
+        _ => false,
+    }
+}
+
 /// A single exponential with a NON-UNIT integer exponent, `a*base^(k*x) + c {op} m`
 /// (k >= 2, base > 1, RHS constant). The unit-exponent terminal cannot isolate
 /// `base^(k*x)`, so isolate it to `base^(k*x) {op'} threshold` and, since
@@ -2424,43 +2453,44 @@ fn try_solve_nonunit_exponential_inequality(
         return None;
     }
 
-    // SOUNDNESS: threshold sign, EXACT. `base^(k*x) > 0` always, so a non-positive
-    // threshold resolves by sign with no boundary; a positive threshold goes to
-    // the boundary equation; a threshold of unknown sign declines. `e`/`pi` are
-    // known positive constants.
-    let threshold_is_e_or_pi = matches!(
-        simplifier.context.get(threshold),
-        Expr::Constant(cas_ast::Constant::E | cas_ast::Constant::Pi)
-    );
-    match cas_math::numeric_eval::as_rational_const(&simplifier.context, threshold) {
-        Some(t) if !t.is_positive() => {
-            return Some(match op {
-                cas_ast::RelOp::Gt | cas_ast::RelOp::Geq => SolutionSet::AllReals,
-                _ => SolutionSet::Empty,
-            });
-        }
-        Some(_) => {}
-        None if threshold_is_e_or_pi => {}
-        None => return None,
+    // A provably non-positive threshold resolves by sign with no boundary
+    // (`base^(k*x) > 0` always). This covers a symbolic-negative threshold like
+    // `-e` (the boundary equation `base^(k*x) = -e` cannot prove no-real-solution
+    // for a symbolic RHS, so it must be settled here): e.g. `e^(3x)+e*e^x < 0`
+    // -> cofactor `e^(2x)+e < 0` -> threshold `-e` <= 0 -> No solution.
+    if threshold_provably_nonpositive(&simplifier.context, threshold) {
+        return Some(match op {
+            cas_ast::RelOp::Gt | cas_ast::RelOp::Geq => SolutionSet::AllReals,
+            _ => SolutionSet::Empty,
+        });
     }
 
-    // Boundary x0 from the EQUATION `base^(k*x) = threshold` (Eq routes past the
-    // inequality guards to the equation solver), then the increasing-base ray.
+    // The boundary equation `base^(k*x) = threshold` decides the threshold sign
+    // for us (delegated to the working equation solver, so it handles ANY
+    // threshold — `2`, `e`, `e^2`, `sqrt(2)`, `2*e`, ...):
+    //   - threshold > 0  => one real root x0; the monotone (base>1) ray `x {op} x0`.
+    //   - threshold <= 0 => no real root (base^(k*x) > 0 always); resolve by sign.
+    //   - anything else  => decline (unknown-sign symbolic threshold).
     let boundary_eq = Equation {
         lhs: atom,
         rhs: threshold,
         op: cas_ast::RelOp::Eq,
     };
     let (set, _) = solve_local_core(&boundary_eq, var, simplifier, opts, ctx).ok()?;
-    let x0 = match set {
-        SolutionSet::Discrete(values) if values.len() == 1 => values[0],
-        _ => return None,
-    };
-    Some(cas_solver_core::solution_set::isolated_var_solution(
-        &mut simplifier.context,
-        x0,
-        op,
-    ))
+    match set {
+        SolutionSet::Discrete(values) if values.len() == 1 => {
+            Some(cas_solver_core::solution_set::isolated_var_solution(
+                &mut simplifier.context,
+                values[0],
+                op,
+            ))
+        }
+        SolutionSet::Empty => Some(match op {
+            cas_ast::RelOp::Gt | cas_ast::RelOp::Geq => SolutionSet::AllReals,
+            _ => SolutionSet::Empty,
+        }),
+        _ => None,
+    }
 }
 
 /// A single-exponential inequality `a*base^x + c {op} k` (linear in `base^x`,

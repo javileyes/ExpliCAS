@@ -2361,6 +2361,17 @@ fn test_eval_nonunit_exponent_exponential_inequality() {
     assert_eq!(r("e^(3*x)-e*e^x<=0"), "(-infinity, 1/2]");
     assert_eq!(r("e^(3*x)-pi*e^x<0"), "(-infinity, 1/2·ln(pi))");
     assert_eq!(r("e^(4*x)-e*e^x<0"), "(-infinity, 1/3)");
+    // SYMBOLIC-CONSTANT thresholds/coefficients beyond bare e/pi: the threshold sign is delegated to
+    // the boundary equation (Discrete root -> ray, Empty -> sign), so e^2, sqrt(2), 2*e all solve; a
+    // provably non-positive threshold (-e) resolves by sign.
+    assert_eq!(r("e^(2*x)<e^2"), "(-infinity, 1)");
+    assert_eq!(r("e^(2*x)>e^2"), "(1, infinity)");
+    assert_eq!(r("e^(2*x)<e^3"), "(-infinity, 3/2)");
+    assert_eq!(r("e^(3*x)-e^2*e^x>0"), "(1, infinity)"); // was the WRONG point {1}
+    assert_eq!(r("e^(3*x)-e^2*e^x<0"), "(-infinity, 1)");
+    assert_eq!(r("e^(3*x)+e*e^x<0"), "No solution"); // e^x(e^(2x)+e) > 0 always
+    assert_eq!(r("e^(3*x)+e*e^x>0"), "All real numbers");
+    assert_eq!(r("e^(3*x)+pi*e^x<0"), "No solution");
     // Controls: a degree-3 with RATIONAL roots stays on the substitution path; equations unchanged.
     assert_eq!(r("e^(3*x)-e^x<0"), "(-infinity, 0)");
     assert_eq!(r("e^(3*x)-e*e^x=0"), "{ 1/2 }");
