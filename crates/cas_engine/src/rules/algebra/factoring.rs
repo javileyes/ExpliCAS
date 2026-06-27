@@ -173,6 +173,44 @@ define_rule!(
 );
 
 define_rule!(
+    ArcLengthRule,
+    "Arc Length",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    PhaseMask::CORE | PhaseMask::POST,
+    |ctx, expr| {
+        if !(ctx.is_call_named(expr, "arclength") || ctx.is_call_named(expr, "arc_length")) {
+            return None;
+        }
+        let args = match ctx.get(expr) {
+            Expr::Function(_, args) => args.clone(),
+            _ => return None,
+        };
+        // arclength(f, x, a, b) = ∫ₐᵇ √(1 + (df/dx)²) dx.
+        if args.len() != 4 {
+            return None;
+        }
+        let (f, var_expr, lower, upper) = (args[0], args[1], args[2], args[3]);
+        let var = match ctx.get(var_expr) {
+            Expr::Variable(sym) => ctx.sym_name(*sym).to_string(),
+            _ => return None,
+        };
+        // f' by the same differentiation primitive the Wronskian uses; decline if it cannot
+        // differentiate (the residual arclength(...) stays honest).
+        let fprime =
+            cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(ctx, f, &var)?;
+        let two = ctx.num(2);
+        let fprime_sq = ctx.add(Expr::Pow(fprime, two));
+        let one = ctx.num(1);
+        let radicand = ctx.add(Expr::Add(one, fprime_sq));
+        let integrand = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![radicand]);
+        // Rewrite to the definite integral and let the integration engine evaluate it (a clean
+        // closed form when the integrand is elementary, an honest residual integral otherwise).
+        let result = ctx.call("integrate", vec![integrand, var_expr, lower, upper]);
+        Some(Rewrite::new(result).desc("Arc length L = ∫√(1+(f')²) dx"))
+    }
+);
+
+define_rule!(
     FactorDifferenceSquaresRule,
     "Factor Difference of Squares",
     |ctx, expr| {

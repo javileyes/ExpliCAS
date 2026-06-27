@@ -102,6 +102,7 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "matmul" | "dot" | "cross" | "linsolve" | "proj" | "projection" | "angle" => arity == 2,
         "apart" | "partfrac" => matches!(arity, 1 | 2),
         "wronskian" => arity == 2,
+        "arclength" | "arc_length" => arity == 4,
         "poly_gcd" | "pgcd" => arity >= 2,
         // Numeric evaluator helper that is intentionally exposed as a function call.
         "round" => arity == 1,

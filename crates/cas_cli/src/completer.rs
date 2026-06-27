@@ -22,6 +22,7 @@ impl CasHelper {
                 "equiv".to_string(),
                 "solve".to_string(),
                 "diff".to_string(),
+                "arclength".to_string(),
                 "factors".to_string(),
                 "fact".to_string(),
                 "choose".to_string(),

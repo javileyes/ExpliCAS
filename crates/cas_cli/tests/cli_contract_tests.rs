@@ -1947,6 +1947,32 @@ fn test_eval_convergent_p_series_even_zeta() {
 }
 
 #[test]
+fn test_eval_arclength_curve() {
+    // `arclength(f, x, a, b)` = ∫ₐᵇ √(1 + (df/dx)²) dx, rewritten to the definite integral and
+    // evaluated by the integration engine: a clean closed form when the integrand is elementary,
+    // an honest residual integral otherwise (catenary, elliptic, x³, …).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("arclength(2*x+1, x, 0, 3)"), "3·sqrt(5)"); // straight line
+    assert_eq!(r("arclength(x, x, 0, 5)"), "5·sqrt(2)"); // diagonal
+    assert_eq!(r("arclength(3, x, 0, 4)"), "4"); // flat line, length = b − a
+    assert_eq!(r("arclength(x^2, x, 0, 1)"), "1/4·asinh(2) + 1/2·sqrt(5)"); // parabola
+    assert_eq!(r("arclength(x^(3/2), x, 0, 1)"), "13/27·sqrt(13) - 8/27"); // power curve
+    assert_eq!(r("arc_length(x^2, x, 0, 1)"), "1/4·asinh(2) + 1/2·sqrt(5)"); // alias
+                                                                             // Honest residual integrals when the integrand is not elementary.
+    assert_eq!(
+        r("arclength(x^3, x, 0, 1)"),
+        "integrate((9·x^4 + 1)^(1/2), x, 0, 1)"
+    );
+}
+
+#[test]
 fn test_eval_limit_abs_finite_tail_at_infinity() {
     // `lim_{x→∞} |u(x)| = |L|` when the rational argument has a finite tail L — previously only the
     // divergent case (`abs → +∞`) was handled, so `|(x-1)/(x+1)|` stayed an unevaluated residual.

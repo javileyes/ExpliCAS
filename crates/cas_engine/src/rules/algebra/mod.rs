@@ -253,6 +253,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(ApartRule));
     simplifier.add_rule(Box::new(WronskianRule));
+    simplifier.add_rule(Box::new(ArcLengthRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
     simplifier.add_rule(Box::new(DivAddCommonFactorFromDenRule)); // Factor out common from Add in Div to enable cancel
     simplifier.add_rule(Box::new(DivDenFactorOutRule)); // Factor out common from Add denominator to enable cancel
