@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 388 (newest first)
+Active entries: 389 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -125,6 +125,7 @@ Active entries: 388 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_isprime/nextprime/pre... | CAPACIDAD (teoría de números): isprime, nextprime, prevprime, totient
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_nullspace`, reusa... | CAPACIDAD (álgebra lineal): espacio nulo nullspace(A)
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::norm`) | CAPACIDAD (vectores): norma euclídea/Frobenius norm(v)
+- 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_rewrite_matrix_binary_fun... | CAPACIDAD (álgebra lineal/vectores): dot, cross, linsolve (dispatch 2-arg)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16187,3 +16188,21 @@ Active entries: 388 (newest first)
   - función matriz 1-arg que devuelve ESCALAR (como det/trace/rank) es el patrón más limpio: lógica en
     matrix.rs + 3 puntos de wiring. Las 2-arg (dot/cross/linsolve) NO tienen dispatch (matmul como función no
     evalúa) — requieren construir el path binario.
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal/vectores): dot, cross, linsolve (dispatch 2-arg)
+
+- area: `crates/cas_engine/src/matrix_rule_support.rs` (try_rewrite_matrix_binary_function_expr,
+  matrix_dot/cross/linsolve), `rules/matrix_ops.rs` (path 2-arg en MatrixFunctionRule)
+- status: `retained` (commit pendiente↑). Construye el dispatch de funciones-matriz BINARIAS que faltaba.
+- capture:
+  - cell: ANTES `matmul`/`dot`/`cross`/`linsolve` como función NO evaluaban (sin path 2-arg). AHORA:
+    `dot([1,2,3],[4,5,6])=32` (simbólico `a·c+b·d`), `cross([2,3,4],[5,6,7])=[-3,6,-3]`,
+    `linsolve([[1,2,3],[0,1,4],[5,6,0]],[6,5,11])=[1,1,1]` (RREF aumentada; singular/inconsistente→residual).
+    Verificado contra numpy.
+  - MECANISMO: `MatrixFunctionRule` intenta 1-arg, luego 2-arg; misma exención de budget acotada todo-numérica.
+    linsolve reusa `rational_rref_in_place`.
+  - validación: workspace 12427 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - construir el dispatch 2-arg UNA vez desbloquea toda la familia binaria (dot/cross/linsolve y futuras).
+    linsolve via RREF de [A|b]: solución única sii hay n pivotes y ninguno cae en la columna aumentada b —
+    así singular (infinitas) e inconsistente (sin solución) declinan a residual honesto, no respuesta inventada.
