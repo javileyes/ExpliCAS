@@ -1973,6 +1973,32 @@ fn test_eval_arclength_curve() {
 }
 
 #[test]
+fn test_eval_trig_inequality_out_of_range() {
+    // SOUNDNESS: `sin(x)`/`cos(x)` ≷ c with c PROVABLY outside [-1, 1] is ℝ or ∅, not the finite ray
+    // (sometimes with a non-real `arcsin(c)` endpoint) the generic monotonic inversion produced.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("cos(x)<=1"), "All real numbers"); // cos ≤ 1 always
+    assert_eq!(r("cos(x)>1"), "No solution"); // cos > 1 never
+    assert_eq!(r("sin(x)>2"), "No solution"); // out of range, no non-real arcsin(2) endpoint
+    assert_eq!(r("cos(x)<-1"), "No solution");
+    assert_eq!(r("sin(x)<2"), "All real numbers");
+    assert_eq!(r("cos(x)>=-1"), "All real numbers"); // cos ≥ -1 always
+    assert_eq!(r("sin(x)>=2"), "No solution");
+    // Controls: in-range thresholds (periodic — owned by a later cycle's residual path) and
+    // equations are unchanged.
+    assert_eq!(r("sin(x)>1/2"), "(1/6·pi, infinity)");
+    assert_eq!(r("cos(x)=2"), "No solution");
+    assert_eq!(r("sin(x)=1/3"), "{ arcsin(1/3) }");
+}
+
+#[test]
 fn test_eval_exponential_positivity_inequality() {
     // SOUNDNESS: `b^x {>,>=} c` with a positive base and c <= 0 is identically TRUE (b^x > 0 always),
     // so the solution is ℝ — not the empty set the op-agnostic EmptySet classification produced. The

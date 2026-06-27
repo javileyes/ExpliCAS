@@ -20,38 +20,133 @@ use crate::solve_backend_contract::{CoreSolverOptions, SolveBackend};
 /// anything `as_linear_surd` cannot reduce yields `false`, so a valid root is NEVER
 /// dropped on an unproven bound (the boundary `|c| = 1`, `arcsin(±1) = ±π/2`, is
 /// kept). Never uses f64 — a float gate could drop a root at `c = √2`.
+/// Exact sign of the quadratic surd `a + b·√n` (`n ≥ 0`) versus zero. Never uses f64.
+fn linear_surd_sign(
+    a: &num_rational::BigRational,
+    b: &num_rational::BigRational,
+    n: &num_rational::BigRational,
+) -> std::cmp::Ordering {
+    use num_rational::BigRational;
+    use num_traits::{Signed, Zero};
+    let zero = BigRational::zero();
+    if b.is_zero() || n.is_zero() {
+        return a.cmp(&zero);
+    }
+    if a.is_zero() {
+        return b.cmp(&zero); // b·√n, with √n > 0
+    }
+    let (sa, sb) = (a.cmp(&zero), b.cmp(&zero));
+    if sa == sb {
+        return sa; // same sign -> that sign
+    }
+    // Opposite signs: sign(a + b·√n) = sign(b) · sign(b²·n − a²).
+    let inner = (b * b * n).cmp(&(a * a));
+    if b.is_negative() {
+        inner.reverse()
+    } else {
+        inner
+    }
+}
+
 fn inv_trig_arg_provably_out_of_range(ctx: &Context, c: ExprId) -> bool {
     use cas_math::root_forms::as_linear_surd;
     use num_rational::BigRational;
-    use num_traits::{Signed, Zero};
     use std::cmp::Ordering;
 
     let Some((a, b, n)) = as_linear_surd(ctx, c) else {
         return false;
     };
-    // Exact sign of `p + B·√n` versus zero (`n ≥ 0` from `as_linear_surd`).
-    let surd_sign = |p: BigRational| -> Ordering {
-        let zero = BigRational::zero();
-        if b.is_zero() || n.is_zero() {
-            return p.cmp(&zero);
-        }
-        if p.is_zero() {
-            return b.cmp(&zero); // B·√n, with √n > 0
-        }
-        let (sp, sb) = (p.cmp(&zero), b.cmp(&zero));
-        if sp == sb {
-            return sp; // same sign -> that sign
-        }
-        // Opposite signs: sign(p + B·√n) = sign(B) · sign(B²·n − p²).
-        let inner = (b.clone() * b.clone() * n.clone()).cmp(&(p.clone() * p.clone()));
-        if b.is_negative() {
-            inner.reverse()
-        } else {
-            inner
-        }
-    };
     let one = BigRational::from_integer(1.into());
-    surd_sign(a.clone() - one.clone()) == Ordering::Greater || surd_sign(a + one) == Ordering::Less
+    linear_surd_sign(&(a.clone() - one.clone()), &b, &n) == Ordering::Greater
+        || linear_surd_sign(&(a + one), &b, &n) == Ordering::Less
+}
+
+/// Position of a constant threshold `c` relative to the closed range `[-1, 1]` of `sin`/`cos`,
+/// decided EXACTLY over a single quadratic surd (`A + B·√n`, covering rationals and surds). `None`
+/// when `c ∈ (-1, 1)` or its position cannot be proven (transcendental / multi-surd) — those are
+/// periodic and left to the residual path.
+enum TrigThresholdRegion {
+    AboveRange,
+    BelowRange,
+    AtUpperBound,
+    AtLowerBound,
+}
+
+fn classify_trig_threshold(ctx: &Context, c: ExprId) -> Option<TrigThresholdRegion> {
+    use cas_math::root_forms::as_linear_surd;
+    use num_rational::BigRational;
+    use std::cmp::Ordering;
+    let (a, b, n) = as_linear_surd(ctx, c)?;
+    let one = BigRational::from_integer(1.into());
+    match linear_surd_sign(&(a.clone() - one.clone()), &b, &n) {
+        Ordering::Greater => return Some(TrigThresholdRegion::AboveRange),
+        Ordering::Equal => return Some(TrigThresholdRegion::AtUpperBound),
+        Ordering::Less => {}
+    }
+    match linear_surd_sign(&(a + one), &b, &n) {
+        Ordering::Less => Some(TrigThresholdRegion::BelowRange),
+        Ordering::Equal => Some(TrigThresholdRegion::AtLowerBound),
+        Ordering::Greater => None, // strictly inside (-1, 1): periodic, owned by the residual path
+    }
+}
+
+/// True when `lhs` is a bare `sin(var)` or `cos(var)` (a single builtin call over exactly the solve
+/// variable). `sin(2x)`, `2·sin(x)`, `tan(x)`, and compound arguments are rejected — they are not
+/// range-bounded by `[-1, 1]` over a bare variable and stay with the periodic residual path.
+fn bare_sin_or_cos_of_var(ctx: &Context, lhs: ExprId, var: &str) -> bool {
+    use cas_ast::BuiltinFn;
+    let Expr::Function(fn_id, args) = ctx.get(lhs) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(BuiltinFn::Sin | BuiltinFn::Cos)
+        )
+    {
+        return false;
+    }
+    matches!(ctx.get(args[0]), Expr::Variable(s) if ctx.sym_name(*s) == var)
+}
+
+/// Replace the result of a `sin(x)`/`cos(x)` inequality whose threshold is PROVABLY out of the
+/// `[-1, 1]` range with the exact `ℝ` / `∅` answer (the generic monotonic inversion otherwise emits a
+/// finite ray, sometimes with a non-real `arcsin(c)` endpoint). Only the unambiguous cases are
+/// decided: a strictly out-of-range `c`, or the closed boundary (`c = 1` with `≤`/`>`, `c = -1` with
+/// `≥`/`<`). The "touch" boundaries (`cos(x) < 1`, `cos(x) ≥ 1`, …) and `c ∈ (-1, 1)` exclude/include
+/// only the periodic extremal points, which `ℝ`/`∅` cannot express, so they are left unchanged for
+/// the residual path. Equations and non-bare-trig LHS are untouched.
+fn intersect_inequality_with_trig_range(
+    ctx: &Context,
+    eq: &Equation,
+    var: &str,
+    set: SolutionSet,
+) -> SolutionSet {
+    use cas_ast::RelOp;
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return set;
+    }
+    if !bare_sin_or_cos_of_var(ctx, eq.lhs, var) {
+        return set;
+    }
+    let Some(region) = classify_trig_threshold(ctx, eq.rhs) else {
+        return set;
+    };
+    match (region, eq.op.clone()) {
+        // c > 1: sin/cos < c always true; > c never.
+        (TrigThresholdRegion::AboveRange, RelOp::Lt | RelOp::Leq) => SolutionSet::AllReals,
+        (TrigThresholdRegion::AboveRange, RelOp::Gt | RelOp::Geq) => SolutionSet::Empty,
+        // c < -1: sin/cos > c always; < c never.
+        (TrigThresholdRegion::BelowRange, RelOp::Gt | RelOp::Geq) => SolutionSet::AllReals,
+        (TrigThresholdRegion::BelowRange, RelOp::Lt | RelOp::Leq) => SolutionSet::Empty,
+        // c = 1: `≤ 1` always true; `> 1` never. (`< 1` / `≥ 1` touch periodic points -> residual.)
+        (TrigThresholdRegion::AtUpperBound, RelOp::Leq) => SolutionSet::AllReals,
+        (TrigThresholdRegion::AtUpperBound, RelOp::Gt) => SolutionSet::Empty,
+        // c = -1: `≥ -1` always; `< -1` never. (`> -1` / `≤ -1` touch -> residual.)
+        (TrigThresholdRegion::AtLowerBound, RelOp::Geq) => SolutionSet::AllReals,
+        (TrigThresholdRegion::AtLowerBound, RelOp::Lt) => SolutionSet::Empty,
+        _ => set,
+    }
 }
 
 /// True when `expr` is not a real value: it contains a non-finite / undefined
@@ -1904,6 +1999,10 @@ fn solve_local_core(
     // Fold the monotonic-function argument-domain into an inequality result
     // (`sqrt(x)<2 → [0,4)`), which the inversion drops; no-op for equations.
     let set = intersect_inequality_with_function_domain(simplifier, eq, var, set);
+    // A `sin(x)`/`cos(x)` inequality with a threshold provably outside [-1, 1] is ℝ or ∅, not the
+    // finite ray (possibly with a non-real `arcsin(c)` endpoint) the generic inversion emits. In-range
+    // / touch-boundary cases are periodic and left to the residual path; no-op for equations.
+    let set = intersect_inequality_with_trig_range(&simplifier.context, eq, var, set);
     // Intersect with the implicit real domain of the WHOLE LHS, so a domain-restricted function
     // appearing as a FACTOR (not the bare LHS) still excludes its undefined region
     // (`ln(x)·(x−2)² ≤ 0` must be `(0,1]∪{2}`, NOT `(−∞,1]∪{2}` — `ln` is undefined for `x ≤ 0`).
@@ -2778,6 +2877,43 @@ mod tests {
     };
     use cas_ast::{Context, Expr};
     use cas_solver_core::domain_condition::ImplicitCondition;
+
+    #[test]
+    fn trig_threshold_classification_and_bare_detection() {
+        use super::{bare_sin_or_cos_of_var, classify_trig_threshold, TrigThresholdRegion};
+        use num_rational::BigRational;
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let sin_x = ctx.call("sin", vec![x]);
+        let cos_x = ctx.call("cos", vec![x]);
+        assert!(bare_sin_or_cos_of_var(&ctx, sin_x, "x"));
+        assert!(bare_sin_or_cos_of_var(&ctx, cos_x, "x"));
+        // Compound argument and non-sin/cos are rejected (owned by the periodic residual path).
+        let two = ctx.num(2);
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let sin_2x = ctx.call("sin", vec![two_x]);
+        assert!(!bare_sin_or_cos_of_var(&ctx, sin_2x, "x"));
+        let tan_x = ctx.call("tan", vec![x]);
+        assert!(!bare_sin_or_cos_of_var(&ctx, tan_x, "x"));
+        // Threshold regions vs the [-1, 1] range, decided exactly.
+        let c2 = ctx.num(2);
+        let c1 = ctx.num(1);
+        let cm1 = ctx.num(-1);
+        let chalf = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+        assert!(matches!(
+            classify_trig_threshold(&ctx, c2),
+            Some(TrigThresholdRegion::AboveRange)
+        ));
+        assert!(matches!(
+            classify_trig_threshold(&ctx, c1),
+            Some(TrigThresholdRegion::AtUpperBound)
+        ));
+        assert!(matches!(
+            classify_trig_threshold(&ctx, cm1),
+            Some(TrigThresholdRegion::AtLowerBound)
+        ));
+        assert!(classify_trig_threshold(&ctx, chalf).is_none()); // in range
+    }
 
     #[test]
     fn cmp_rational_to_quadratic_surd_is_exact() {
