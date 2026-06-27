@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 411 (newest first)
+Active entries: 412 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -148,6 +148,7 @@ Active entries: 411 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (intersect_inequality_with_tri... | SOUNDNESS P0 (audit 2, ciclo 3/5): inecuación trig fuera de rango sin/cos → ℝ/∅
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_decline_variable_base_log... | SOUNDNESS P0 (audit 2, ciclo 4/5): log base variable log(x,c)≷k → residual honesto
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_decline_periodic_trig_ine... | SOUNDNESS P0 (audit 2, ciclo 5/5): inecuación trig periódica → residual honesto
+- 2026-06-27 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (plan_division_denominator_dida... | SOUNDNESS P0 (audit 3 / bloque 0, B1): inecuación c/f(x) con denom. positiva no voltea
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16644,3 +16645,26 @@ Active entries: 411 (newest first)
     (ciclo 5, PRE-solve_inner) declina. El gate periódico DEBE excluir los casos que el guard de rango
     resuelve (bare sin/cos + threshold out-of-range), o los pisaría a residual antes de que solve_inner+rango
     corran. Detección por argumento-contiene-var evita declinar `sin(2)*x>0` (trig constante, lineal en x).
+
+## 2026-06-27 - SOUNDNESS P0 (audit 3 / bloque 0, B1): inecuación c/f(x) con denom. positiva no voltea
+
+- area: `crates/cas_solver_core/src/solve_outcome.rs` (plan_division_denominator_didactic)
+- status: `retained` (commit pendiente↑). Primer bug del bloque 0 del audit de completitud.
+- capture:
+  - cell: ANTES `solve(1/abs(x)>2)`→`(-∞,-1/2)∪(1/2,∞)` (el COMPLEMENTO, ok=true). AHORA `(-1/2,1/2)` con
+    condición `[x≠0]` ≡ `(-1/2,0)∪(0,1/2)`; `2/abs(x)>1`→`(-2,2)`+`[x≠0]`; `1/abs(x-1)>2`→`(1/2,3/2)`+
+    `[x≠1]`. Controles `1/x>2`→(0,1/2) (sign-split), `<` y ecuaciones intactos. Verificado vs sympy.
+  - causa raíz: al aislar el denominador (provably positivo) de `num op rhs·den`, la `divide_equation` se
+    construía como `den op num/rhs` MANTENIENDO el op. Pero `num op rhs·den ⟺ den FLIP(op) num/rhs` cuando
+    rhs>0 (mover den a través de la relación la invierte). El path bare-variable `1/x` usa el sign-split
+    (correcto); el fallback `plan_division_denominator` (denom no-bare provably positivo: abs/sqrt) no.
+  - fix: voltear el op de `divide_equation` con `flip_relop` cuando op es desigualdad Y rhs es racional
+    EXACTO positivo (`as_rational_const`, no f64); rhs≤0/simbólico/Eq sin cambio. El polo del denom lo
+    transmite la condición `[x≠0]` existente (convención intervalo+condición del engine).
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA; contrato CLI.
+- retained learning:
+  - el `--steps` fue decisivo: paso 1 `1>2|x|` correcto, paso 2 "Divide by 2"→`|x|>1/2` reveló el flip
+    perdido. Mismo tema recurrente "la rama de ecuación/positivo-denom olvida el flip". `solve(1 > 2*abs(x))`
+    directo SÍ era correcto — el bug estaba en el path de isolación del denominador, no en el solver de abs.
+    SEPARADO (follow-up): `1/sqrt(x)>2` = `x^(-1/2)>2` (potencia fraccionaria en base) tampoco voltea — otra
+    ruta (Pow isolation raise-to-negative-power).
