@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 409 (newest first)
+Active entries: 410 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -146,6 +146,7 @@ Active entries: 409 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (build_log_linear_equation + b... | SOUNDNESS P0 (audit 2, ciclo 1/5): exp base fraccionaria a^x ≷ k — flip de dirección
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (resolve_single_side_exponentia... | SOUNDNESS P0 (audit 2, ciclo 2/5): factor exponencial b^x estrictamente positivo
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (intersect_inequality_with_tri... | SOUNDNESS P0 (audit 2, ciclo 3/5): inecuación trig fuera de rango sin/cos → ℝ/∅
+- 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_decline_variable_base_log... | SOUNDNESS P0 (audit 2, ciclo 4/5): log base variable log(x,c)≷k → residual honesto
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16597,3 +16598,26 @@ Active entries: 409 (newest first)
     endpoint `arcsin(c)` no-real. La detección bare-sin/cos NO matchea `sin(2x)`/`2sin(x)`/`tan` (esos son del
     ciclo 5). El guard SOBREESCRIBE el `set` erróneo previo (rayo) con ℝ/∅ para lo decidible; lo no
     representable (huecos/puntos periódicos) se delega al residual del ciclo 5 — NO inventar ℝ/∅ ahí.
+
+## 2026-06-27 - SOUNDNESS P0 (audit 2, ciclo 4/5): log base variable log(x,c)≷k → residual honesto
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (try_decline_variable_base_log_inequality +
+  is_variable_base_log, interceptor antes de solve_inner)
+- status: `retained` (commit pendiente↑). Cuarto ciclo de la grieta de inecuaciones trascendentes.
+- capture:
+  - cell: ANTES `log(x,2)>3`→(2^(1/3),∞) [conjunto disjunto del correcto], `log(x,2)>0`→(undefined,∞)
+    [endpoint literal "undefined"]. AHORA todos los `log(x,c)≷k` (var en la BASE) → residual honesto
+    `Solve: solve(log(x,c)=k, x)` con ok=true. EQ intacto (`log(x,2)=3`→{2^(1/3)}); base constante intacto
+    (`log(2,x)>3`→(8,∞), `ln(x)<0`→(0,1)).
+  - causa raíz: `logₓ(c)=ln(c)/ln(x)` es NO monótona (decreciente en x>1, cambio de signo en x=1); la
+    isolación monótona emite un rayo erróneo. NO representable como intervalo simple sin case-split por
+    signo de ln(x) → declinar es la respuesta sound mínima.
+  - fix: interceptor en solve_local_core ANTES de solve_inner que detecta `log(base,arg)` con var en la
+    base y devuelve `residual_solution_set` (ok=true), la MISMA convención que `cos(x)+x>0`.
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA; contrato CLI.
+- retained learning:
+  - DECLINAR debe dar residual ok=true (vía `residual_solution_set` en el nivel solve_local_core), NO
+    `return None` profundo en log_isolation (que propaga a `ok=false` error duro — decline PEOR que
+    residual). El primer intento (gate en log_isolation.rs) dio ok=false; moverlo al interceptor pre-
+    solve_inner produce la convención correcta. El case-split correcto (logₓ por signo de ln(x)) queda como
+    follow-up opcional. Distinto de mecanismo D (base constante fraccionaria `log(1/2,x)>3`, otro path).
