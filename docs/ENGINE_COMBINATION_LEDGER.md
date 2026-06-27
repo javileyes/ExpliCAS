@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 408 (newest first)
+Active entries: 409 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -145,6 +145,7 @@ Active entries: 408 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/domain_normalization.rs` (lower_bound_dominates_a... | SOUNDNESS (medium): condición de dominio contradictoria en `integrate(sqrt(x^2-a^2))`
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (build_log_linear_equation + b... | SOUNDNESS P0 (audit 2, ciclo 1/5): exp base fraccionaria a^x ≷ k — flip de dirección
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (resolve_single_side_exponentia... | SOUNDNESS P0 (audit 2, ciclo 2/5): factor exponencial b^x estrictamente positivo
+- 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (intersect_inequality_with_tri... | SOUNDNESS P0 (audit 2, ciclo 3/5): inecuación trig fuera de rango sin/cos → ℝ/∅
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16574,3 +16575,25 @@ Active entries: 408 (newest first)
     bucket polinómico-en-u): aditivos `e^x+1>0`/`e^x+5>0`→∅, power-confusion `e^(2x)>0`→(-∞,0)∪(0,∞),
     escalar `3*e^x>0`→condicional. Son un mecanismo distinto (normalización suma/producto a polinomio en
     u=e^x), follow-up propio.
+
+## 2026-06-27 - SOUNDNESS P0 (audit 2, ciclo 3/5): inecuación trig fuera de rango sin/cos → ℝ/∅
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (intersect_inequality_with_trig_range +
+  classify_trig_threshold + linear_surd_sign extraído)
+- status: `retained` (commit pendiente↑). Tercer ciclo de la grieta de inecuaciones trascendentes.
+- capture:
+  - cell: ANTES `cos(x)<=1`→(-∞,0], `cos(x)>1`→(0,∞), `sin(x)>2`→(arcsin(2),∞) [endpoint NO real!],
+    `cos(x)<-1`→(-∞,π), `sin(x)<2`→(-∞,arcsin(2)). AHORA `cos(x)<=1`→ℝ, `cos(x)>1`→∅, `sin(x)>2`→∅,
+    `cos(x)<-1`→∅, `sin(x)<2`→ℝ; boundary `cos(x)>=-1`→ℝ, `sin(x)>=2`→∅. Controles intactos:
+    `sin(x)>1/2`→(π/6,∞) (in-range, ciclo 5), `tan(x)>2` (no bare), `cos(x)=2`→∅ (ecuación).
+  - fix: guard nuevo `intersect_inequality_with_trig_range` tras `intersect_inequality_with_function_domain`
+    (~L1906): detecta `sin/cos(var)` bare + umbral `c` clasificado EXACTO vs [-1,1]
+    (`classify_trig_threshold` sobre surd `A+B√n`, reusa `inv_trig_arg_provably_out_of_range` vía
+    `linear_surd_sign` extraído). Solo decide los casos inequívocos (fuera-de-rango estricto, o frontera
+    cerrada c=±1 con `≤`/`>` resp.); los "touch" periódicos y c∈(-1,1) se dejan intactos (ciclo 5 residual).
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA; unit test + contrato CLI; vs sympy.
+- retained learning:
+  - gate EXACTO sobre surd (`linear_surd_sign`, no f64) cubre racionales Y surds (`√2`, `√3/2`). NUNCA emitir
+    endpoint `arcsin(c)` no-real. La detección bare-sin/cos NO matchea `sin(2x)`/`2sin(x)`/`tan` (esos son del
+    ciclo 5). El guard SOBREESCRIBE el `set` erróneo previo (rayo) con ℝ/∅ para lo decidible; lo no
+    representable (huecos/puntos periódicos) se delega al residual del ciclo 5 — NO inventar ℝ/∅ ahí.
