@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 391 (newest first)
+Active entries: 392 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -128,6 +128,7 @@ Active entries: 391 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_rewrite_matrix_binary_fun... | CAPACIDAD (álgebra lineal/vectores): dot, cross, linsolve (dispatch 2-arg)
 - 2026-06-27 | `retained` | `cas_math/.../methods.rs` (`apart_decomposition_expr`), `cas_engine/.../facto... | CAPACIDAD (álgebra): apart — fracciones parciales como operación
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_numdivisors/sigma/isc... | CAPACIDAD (teoría de números): tau, sigma, iscomposite
+- 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_matrix_power_expr), `rule... | CAPACIDAD (álgebra lineal): potencia entera de matriz M^n
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16239,3 +16240,20 @@ Active entries: 391 (newest first)
   - helper `prime_factorization` reutilizable (τ, σ, totient comparten la factorización por tanteo). El path
     de teoría de números devuelve NÚMEROS limpiamente; los predicados (iscomposite/isprime) usan 1/0 por falta
     de tipo Bool — el peldaño sigue siendo un tipo booleano de primera clase.
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal): potencia entera de matriz M^n
+
+- area: `crates/cas_engine/src/matrix_rule_support.rs` (try_matrix_power_expr), `rules/matrix_ops.rs`
+- status: `retained` (commit pendiente↑).
+- capture:
+  - cell: ANTES `M^n` (n≥2) sin evaluar; solo `M^(-1)→inverse`. AHORA `n=0→I`, `n=1→M`, `|n|≥2` numérica =
+    producto repetido (negativa = inversa exacta a la potencia): `[[1,1],[1,0]]^5→[[8,5],[5,3]]` (Fibonacci),
+    `[[1,2,0],[0,1,1],[0,0,1]]^4→[[1,8,12],[0,1,4],[0,0,1]]`. Verificado numpy.
+  - soundness: `|n|≥2` gateado TODO-NUMÉRICO (simbólica residual: la inversa de potencia negativa no llevaría
+    `det≠0`); `M^(-1)` sigue ruteando a `inverse(M)`; singular^negativa=undefined; no-cuadrada^≥2=undefined.
+    Exención de budget acotada (como multiplicación) para que el producto desplegado commitee.
+  - validación: workspace 12430 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - el patrón "evaluación definicional desplegada excede el anti-worsen budget" se repite (det/charpoly/multiply/
+    power): exención acotada TODO-NUMÉRICA. La potencia negativa hereda la trampa de soundness de la inversa
+    simbólica → gatear numérico la evita.
