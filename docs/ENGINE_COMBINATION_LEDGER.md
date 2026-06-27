@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 418 (newest first)
+Active entries: 419 (newest first)
 
+- 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -16862,3 +16863,40 @@ Active entries: 418 (newest first)
   - peldaño restante (pre-existente, bisect-confirmado, NO regresión): grado-3-en-u `e^(3x)-c·e^x<0`→`{1/2}`
     (truth (-∞,1/2)) — la familia degree-3 suelta el operador igual; mi guard factor-out solo cubre grado-2
     (`diff/base^x` deja `base^(2x)`, el collect declina). Fix futuro: factor-out recursivo o reducción degree-n.
+
+## 2026-06-28 - SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential_inequality + recursión en try_solve_factorable_exponential_inequality + helpers exponent_linear_rate / exponential_has_negative_rate / find_first_exponential / is_provably_positive / threshold_provably_nonpositive)
+- status: `retained` (commits 5529f20b1 terminal no-unitario + factor-out recursivo, 42590e247 umbrales simbólicos). Ciclo propio del peldaño grado-3; scoping + verificación adversarial 2-rondas.
+- capture:
+  - cell: ANTES `e^(3x)-e·e^x<0`→`{1}` (punto borde, operador soltado); `e^(2x)<2`→residual, `e^(2x)<e`→ok=false.
+    AHORA `(-∞,1/2)` / `(-∞,ln2/2)` / `(-∞,1/2)`. base^(k·x) {op} c para TODO umbral (`2`,`e`,`e^2`,`sqrt2`,`2e`,`2pi`),
+    todas las bases (e/pi/numéricas), grado-3/4/n (`e^(4x)-e^3·e^x<0`→(-∞,1)), coeficiente simbólico
+    (`e^(3x)-pi·e^x<0`→(-∞,ln(pi)/2)), aditivo trascendente (`e^(3x)+e·e^x<0`→No solution). 92-case sympy sweep 0 mismatches.
+  - causa raíz: `detect_exponential_substitution` SINTETIZA un átomo UNITARIO `base^x` para un `base^(k·x)`, así que
+    los guards lineales-en-átomo declinan en el término `base^(2x)` y caen a solve_inner (residual / error de
+    coeficiente simbólico / raíz-borde como Discrete). El terminal single-side resuelve `base^x {op} c` pero no
+    `base^(k·x) {op} c`.
+  - fix: `try_solve_nonunit_exponential_inequality` (antes del factor-out): aísla el ÚNICO `base^(k·x)` (k≥2 entero,
+    base>1) a `base^(k·x) {op'} threshold`; como base^(k·x) es estrictamente creciente, recupera el rayo monótono de
+    la ECUACIÓN BORDE `base^(k·x)=threshold` (que el solver de ecuaciones SÍ resuelve) vía `isolated_var_solution`. El
+    signo del umbral lo DELEGA a la ecuación borde (Discrete→positivo→rayo, Empty→≤0→por signo), más un fast-path
+    `threshold_provably_nonpositive` para `-e`/`-pi` (la ecuación borde no prueba sin-solución-real para RHS simbólico
+    negativo). NUNCA reescribe `base^(k·x)→(base^k)^x` (el simplificador lo renormaliza → bucle infinito). Y el
+    factor-out RECURSA en la cofactor limpia (`e^(3x)-e·e^x → e^(2x)-e`), gateado por `exponential_has_negative_rate`
+    (que ahora también detecta `Div` por var, `5/e^x`) para que B3 (`e^(2x)-3e^x+2`, con `2/e^x` en la cofactor) NO recurse.
+  - validación: workspace verde; clippy --workspace; rustfmt; huella GUARD/PRESS IDÉNTICA; 22 asertos CLI nuevos;
+    WORKFLOW ADVERSARIAL 2-rondas (cazó 4 clases de bug de umbral/coef simbólico, todas arregladas + re-verificadas);
+    barrido sympy de 92 casos 0 mismatches 0 hangs.
+- retained learning:
+  - el "HANG en `e^x<√2`" que motivó este ciclo era AUTO-INFLIGIDO por mi intento previo revertido (la reescritura
+    `(base^k)^x` que el simplificador deshace → re-entrada infinita); el binario limpio NUNCA colgó. LECCIÓN: antes de
+    declarar un bug del engine "profundo", re-verifica en el binario LIMPIO (committed), no en el árbol con tu cambio roto.
+  - patrón clave del terminal no-unitario: DELEGAR el signo del umbral a la ecuación borde (que ya es robusta:
+    `solve(e^(2x)=e^2)→{1}`, `solve(e^(2x)=-1)→∅`) en vez de re-implementar pruebas de signo — robusto para CUALQUIER
+    umbral positivo (e^2, √2, 2e). Solo el negativo-simbólico (`-e`) necesita el `is_provably_positive` estructural
+    (e/pi/positivo^algo/productos), porque la ecuación borde no prueba ∅ para RHS simbólico negativo.
+  - el "HANG" de `-e^(2x)+2>0` en el barrido fue un artefacto de clap (CLI lee `-e` como flag); usa `eval --format json
+    -- "EXPR"`. El engine resuelve `2-e^(2x)>0`→(-∞,ln2/2). [[clean-git-status-not-green-tests]]
+  - peldaño cosmético restante: el residual honesto se muestra como `Solve: solve(... = 0, x) = 0` (el ` = 0` final
+    sobra); pre-existente desde B3 (f34b96bfe), afecta a todos los residuales. Defecto de presentación, no soundness.
