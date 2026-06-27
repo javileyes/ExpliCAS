@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 389 (newest first)
+Active entries: 390 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -126,6 +126,7 @@ Active entries: 389 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_nullspace`, reusa... | CAPACIDAD (álgebra lineal): espacio nulo nullspace(A)
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::norm`) | CAPACIDAD (vectores): norma euclídea/Frobenius norm(v)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_rewrite_matrix_binary_fun... | CAPACIDAD (álgebra lineal/vectores): dot, cross, linsolve (dispatch 2-arg)
+- 2026-06-27 | `retained` | `cas_math/.../methods.rs` (`apart_decomposition_expr`), `cas_engine/.../facto... | CAPACIDAD (álgebra): apart — fracciones parciales como operación
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16206,3 +16207,21 @@ Active entries: 389 (newest first)
   - construir el dispatch 2-arg UNA vez desbloquea toda la familia binaria (dot/cross/linsolve y futuras).
     linsolve via RREF de [A|b]: solución única sii hay n pivotes y ninguno cae en la columna aumentada b —
     así singular (infinitas) e inconsistente (sin solución) declinan a residual honesto, no respuesta inventada.
+
+## 2026-06-27 - CAPACIDAD (álgebra): apart — fracciones parciales como operación
+
+- area: `cas_math/.../methods.rs` (`apart_decomposition_expr`), `cas_engine/.../factoring.rs` (`ApartRule`)
+- status: `retained` (commit pendiente↑). Operación CAS clásica que faltaba.
+- capture:
+  - cell: ANTES `apart`/`partfrac` no definidas. AHORA descomposición exacta sobre ℚ reusando la maquinaria
+    del backend de integración (squarefree-split/Ostrogradsky/mixed-partial-fraction) vía nueva
+    `apart_decomposition_expr` con piso de grado 2 — SIN bajar el gate grado-3 del path de integración (su
+    lane de observabilidad queda byte-idéntica). `1/(x³-x)→1/2/(x-1)+1/2/(x+1)-1/x`. Variable inferida o nombrada.
+  - validación: workspace 12428 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - DOS sutilezas: (1) reusar la maquinaria de un backend SIN tocar sus gates compartidos = copiar la función
+    con un parámetro distinto (piso de grado), no bajar la constante compartida (rompería la huella del
+    integrador). (2) `apart` PELEA con el simplificador: las reglas de combinar-fracciones reagrupan la
+    descomposición sobre denominador común, DESHACIÉNDOLA. `Expr::Hold` (barrera de simplificación, transparente
+    al display) protege el resultado. Patrón reutilizable para cualquier forma "inerte" que el simplificador
+    quiera recombinar (factor no sufre porque no hay auto-expand; apart sí porque combinar-fracciones es agresivo).
