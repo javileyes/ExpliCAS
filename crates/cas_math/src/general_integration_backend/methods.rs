@@ -548,36 +548,193 @@ pub fn apart_decomposition_expr(
     let denominator = denominator.div_scalar(&leading);
     let numerator = numerator.div_scalar(&leading);
 
-    let (repeated_part, squarefree_part) = squarefree_split(&denominator)?;
-    let (rational_part, squarefree_numerator) = if repeated_part.degree() == 0 {
-        (None, numerator)
-    } else {
-        let (p, q) = ostrogradsky_reduce(&numerator, &repeated_part, &squarefree_part, variable)?;
-        let p_expr = p.to_expr(ctx);
-        let d1_expr = repeated_part.to_expr(ctx);
-        (Some(ctx.add(Expr::Div(p_expr, d1_expr))), q)
-    };
+    apart_classical_ladder_decomposition(ctx, &numerator, &denominator, variable)
+}
 
+/// Classical partial-fraction decomposition for the `apart` command.
+///
+/// For each distinct irreducible factor `P` of the monic denominator `D` with
+/// multiplicity `m`, emit the full tower
+///   `A_1/P + A_2/P^2 + ... + A_m/P^m`               (linear `P = x - r`)
+///   `(B_1 x + C_1)/P + ... + (B_m x + C_m)/P^m`     (irreducible quadratic `P`)
+/// solving every coefficient at once by undetermined coefficients
+/// (`sum_k column_k * coeff_k = numerator`, exact rational linear solve with the
+/// shared `solve_rational_linear_system`).
+///
+/// This is the decomposition of the INTEGRAND, *not* the Ostrogradsky/Hermite
+/// rational part of its integral. A repeated root `(x - r)^m` keeps its proper
+/// `1/(x - r)^k` tower instead of being collapsed to a single `1/(x - r)` plus a
+/// reduced rational part: the latter is correct for `integrate`, but a
+/// non-equivalent answer for `apart` (it drops e.g. the `1/(2(x-1)^2)` term of
+/// `1/((x-1)^2 (x+1))`). Squarefree denominators reduce to one column per factor,
+/// reproducing the previous behaviour exactly.
+fn apart_classical_ladder_decomposition(
+    ctx: &mut Context,
+    numerator: &crate::polynomial::Polynomial,
+    denominator: &crate::polynomial::Polynomial,
+    variable: &str,
+) -> Option<ExprId> {
+    let (_repeated_part, squarefree_part) = squarefree_split(denominator)?;
     let factors = split_squarefree_factors(&squarefree_part)?;
-    let terms = mixed_partial_fraction_terms(ctx, &squarefree_numerator, &factors, variable)?;
-
-    let variable_expr = ctx.var(variable);
-    let mut decomposition = rational_part.unwrap_or_else(|| ctx.num(0));
-    for (factor, term) in factors.iter().zip(&terms) {
-        let piece_numerator = match factor {
-            SquarefreeFactor::Linear { .. } => ctx.add(Expr::Number(term.alpha.clone())),
-            SquarefreeFactor::Quadratic { .. } => {
-                let alpha_expr = ctx.add(Expr::Number(term.alpha.clone()));
-                let linear = build_backend_product(ctx, alpha_expr, variable_expr);
-                let beta_expr = ctx.add(Expr::Number(term.beta.clone()));
-                build_backend_sum(ctx, linear, beta_expr)
-            }
-        };
-        let piece = ctx.add(Expr::Div(piece_numerator, term.factor_expr));
-        decomposition = build_backend_sum(ctx, decomposition, piece);
+    if factors.is_empty() {
+        return None;
     }
 
-    Some(decomposition)
+    let unknowns = denominator.degree();
+    if numerator.degree() >= unknowns {
+        return None;
+    }
+    let x_poly = crate::polynomial::Polynomial::new(
+        vec![BigRational::zero(), BigRational::one()],
+        variable.to_string(),
+    );
+
+    // For each distinct factor, record its monic polynomial and its multiplicity
+    // in D, and append the ladder basis columns D/P^k (one for a linear factor,
+    // an `x*` and a plain copy for a quadratic) in tower order. The solved
+    // coefficients are read back in this very order below.
+    let mut factor_polys: Vec<crate::polynomial::Polynomial> = Vec::with_capacity(factors.len());
+    let mut multiplicities: Vec<usize> = Vec::with_capacity(factors.len());
+    let mut basis: Vec<crate::polynomial::Polynomial> = Vec::new();
+    for factor in &factors {
+        let poly = squarefree_factor_poly(factor, variable);
+        let multiplicity = polynomial_factor_multiplicity(denominator, &poly)?;
+        let mut power = crate::polynomial::Polynomial::one(variable.to_string());
+        for _ in 1..=multiplicity {
+            power = power.mul(&poly);
+            let (cofactor, remainder) = denominator.div_rem(&power).ok()?;
+            if !remainder.is_zero() {
+                return None;
+            }
+            match factor {
+                SquarefreeFactor::Linear { .. } => basis.push(cofactor),
+                SquarefreeFactor::Quadratic { .. } => {
+                    basis.push(cofactor.mul(&x_poly));
+                    basis.push(cofactor);
+                }
+            }
+        }
+        factor_polys.push(poly);
+        multiplicities.push(multiplicity);
+    }
+
+    if basis.len() != unknowns {
+        return None;
+    }
+
+    let mut matrix = vec![vec![BigRational::zero(); unknowns]; unknowns];
+    let mut rhs = vec![BigRational::zero(); unknowns];
+    for row in 0..unknowns {
+        for (column, column_poly) in basis.iter().enumerate() {
+            matrix[row][column] = column_poly
+                .coeffs
+                .get(row)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+        }
+        rhs[row] = numerator
+            .coeffs
+            .get(row)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+    }
+    let solution = crate::symbolic_integration_support::solve_rational_linear_system(matrix, rhs)?;
+
+    // Emit terms in the same order the basis columns were built. Zero
+    // coefficients are dropped so e.g. `1/(x-1)^2` renders without a `0/(x-1)`.
+    let variable_expr = ctx.var(variable);
+    let mut decomposition: Option<ExprId> = None;
+    let mut column = 0usize;
+    for (factor, (poly, multiplicity)) in
+        factors.iter().zip(factor_polys.iter().zip(&multiplicities))
+    {
+        let factor_expr = poly.to_expr(ctx);
+        for power in 1..=*multiplicity {
+            let piece_numerator = match factor {
+                SquarefreeFactor::Linear { .. } => {
+                    let alpha = solution[column].clone();
+                    column += 1;
+                    if alpha.is_zero() {
+                        continue;
+                    }
+                    ctx.add(Expr::Number(alpha))
+                }
+                SquarefreeFactor::Quadratic { .. } => {
+                    let alpha = solution[column].clone();
+                    let beta = solution[column + 1].clone();
+                    column += 2;
+                    match (alpha.is_zero(), beta.is_zero()) {
+                        (true, true) => continue,
+                        (true, false) => ctx.add(Expr::Number(beta)),
+                        (false, true) => {
+                            let alpha_expr = ctx.add(Expr::Number(alpha));
+                            build_backend_product(ctx, alpha_expr, variable_expr)
+                        }
+                        (false, false) => {
+                            let alpha_expr = ctx.add(Expr::Number(alpha));
+                            let linear = build_backend_product(ctx, alpha_expr, variable_expr);
+                            let beta_expr = ctx.add(Expr::Number(beta));
+                            build_backend_sum(ctx, linear, beta_expr)
+                        }
+                    }
+                }
+            };
+            let denom_expr = if power == 1 {
+                factor_expr
+            } else {
+                let exponent = ctx.num(power as i64);
+                ctx.add(Expr::Pow(factor_expr, exponent))
+            };
+            let piece = ctx.add(Expr::Div(piece_numerator, denom_expr));
+            decomposition = Some(match decomposition {
+                None => piece,
+                Some(acc) => build_backend_sum(ctx, acc, piece),
+            });
+        }
+    }
+
+    decomposition
+}
+
+/// The monic polynomial of a squarefree factor: `x - r` (linear) or
+/// `x^2 + b x + c` (irreducible quadratic).
+fn squarefree_factor_poly(
+    factor: &SquarefreeFactor,
+    variable: &str,
+) -> crate::polynomial::Polynomial {
+    match factor {
+        SquarefreeFactor::Linear { root } => crate::polynomial::Polynomial::new(
+            vec![-root.clone(), BigRational::one()],
+            variable.to_string(),
+        ),
+        SquarefreeFactor::Quadratic {
+            linear_b,
+            constant_c,
+        } => crate::polynomial::Polynomial::new(
+            vec![constant_c.clone(), linear_b.clone(), BigRational::one()],
+            variable.to_string(),
+        ),
+    }
+}
+
+/// Multiplicity of the monic irreducible factor `P` in `D`: the largest `m`
+/// with `P^m | D`. Returns `None` if `P` does not divide `D` (a broken caller
+/// invariant), bounded by `deg D` so it can never loop unboundedly.
+fn polynomial_factor_multiplicity(
+    denominator: &crate::polynomial::Polynomial,
+    factor: &crate::polynomial::Polynomial,
+) -> Option<usize> {
+    let mut remaining = denominator.clone();
+    let mut multiplicity = 0usize;
+    while multiplicity <= denominator.degree() {
+        let (quotient, remainder) = remaining.div_rem(factor).ok()?;
+        if !remainder.is_zero() {
+            break;
+        }
+        remaining = quotient;
+        multiplicity += 1;
+    }
+    (multiplicity > 0).then_some(multiplicity)
 }
 
 /// D1 = gcd(D, D') (the repeated part), D2 = D/D1 (squarefree, carrying

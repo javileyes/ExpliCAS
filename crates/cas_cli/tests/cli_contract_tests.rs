@@ -1643,6 +1643,20 @@ fn test_eval_apart_partial_fractions() {
     // Not a rational fraction, or an irreducible high-degree denominator ⇒ honest residual.
     assert_eq!(r("apart(x^2+1)"), "apart(x^2 + 1)");
     assert_eq!(r("apart(1/(x^3-x-1))"), "apart(1 / (x^3 - x - 1))");
+    // Repeated roots get the full multiplicity ladder A_k/(x-r)^k, NOT the
+    // Ostrogradsky/Hermite integral form (which dropped the 1/(2(x-1)^2) term and
+    // returned a non-equivalent answer). Soundness regression guard for B2.
+    assert_eq!(
+        r("apart(1/((x-1)^2*(x+1)))"),
+        "1/4 / (x + 1) + 1/2 / (x - 1)^2 - 1/4 / (x - 1)"
+    );
+    assert_eq!(r("apart(1/((x-1)^2))"), "1 / (x - 1)^2");
+    assert_eq!(r("apart((x+1)/((x-1)^2))"), "1 / (x - 1) + 2 / (x - 1)^2");
+    assert_eq!(r("apart(1/((x-1)^3))"), "1 / (x - 1)^3");
+    assert_eq!(
+        r("apart(1/(x*(x-1)^2))"),
+        "1 / x + 1 / (x - 1)^2 - 1 / (x - 1)"
+    );
 }
 
 #[test]
