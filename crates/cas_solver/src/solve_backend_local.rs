@@ -1946,6 +1946,63 @@ fn try_decline_variable_base_log_inequality(
     ))
 }
 
+/// True when `e` contains a `sin`/`cos`/`tan` whose ARGUMENT involves `var` (anywhere in the tree).
+/// `sin(2)·x` (constant trig) is false; `sin(2x)`, `x − cos(x)` are true.
+fn contains_trig_of_var(ctx: &Context, e: ExprId, var: &str) -> bool {
+    use cas_ast::BuiltinFn;
+    match ctx.get(e) {
+        Expr::Function(fn_id, args) => {
+            let (fn_id, args) = (*fn_id, args.clone());
+            if matches!(
+                ctx.builtin_of(fn_id),
+                Some(BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)
+            ) && args
+                .iter()
+                .any(|&a| cas_ast::collect_variables(ctx, a).contains(var))
+            {
+                return true;
+            }
+            args.iter().any(|&a| contains_trig_of_var(ctx, a, var))
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            contains_trig_of_var(ctx, *l, var) || contains_trig_of_var(ctx, *r, var)
+        }
+        Expr::Neg(x) => contains_trig_of_var(ctx, *x, var),
+        _ => false,
+    }
+}
+
+/// Decline a PERIODIC trig inequality (`sin`/`cos`/`tan` of `var`) to an honest residual: its true
+/// solution is an infinite PERIODIC UNION which the `SolutionSet` enum cannot represent, so the
+/// monotonic inversion otherwise emits a single wrong ray. The bare `sin(x)`/`cos(x)` cases with a
+/// threshold PROVABLY outside `[-1, 1]` are EXCLUDED — they are answered exactly (`ℝ`/`∅`) by the
+/// trig-range guard after `solve_inner`, so they must not be pre-empted here. Equations are untouched
+/// (op gate).
+fn try_decline_periodic_trig_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let ctx = &simplifier.context;
+    if !contains_trig_of_var(ctx, eq.lhs, var) {
+        return None;
+    }
+    // A bare sin/cos with an out-of-range / boundary threshold is solved exactly downstream — leave it.
+    if bare_sin_or_cos_of_var(ctx, eq.lhs, var) && classify_trig_threshold(ctx, eq.rhs).is_some() {
+        return None;
+    }
+    Some(cas_solver_core::solve_outcome::residual_solution_set(
+        &mut simplifier.context,
+        eq.lhs,
+        eq.rhs,
+        var,
+    ))
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -2023,6 +2080,12 @@ fn solve_local_core(
     // `log(x, c) {op} k` (the variable is the BASE) is non-monotonic; decline to an honest residual
     // rather than letting the generic monotonic isolation emit a wrong ray.
     if let Some(set) = try_decline_variable_base_log_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A periodic `sin`/`cos`/`tan` inequality has a periodic-union solution the engine cannot
+    // represent; decline to an honest residual instead of a wrong ray (out-of-range bare sin/cos are
+    // excluded — they are answered ℝ/∅ by the trig-range guard after solve_inner).
+    if let Some(set) = try_decline_periodic_trig_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
@@ -2955,6 +3018,30 @@ mod tests {
             Some(TrigThresholdRegion::AtLowerBound)
         ));
         assert!(classify_trig_threshold(&ctx, chalf).is_none()); // in range
+    }
+
+    #[test]
+    fn contains_trig_of_var_detects_periodic_argument() {
+        use super::contains_trig_of_var;
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let sin_x = ctx.call("sin", vec![x]);
+        assert!(contains_trig_of_var(&ctx, sin_x, "x"));
+        // Nested in a sum / product still detected.
+        let one = ctx.num(1);
+        let x_plus_sin = ctx.add(Expr::Add(x, sin_x));
+        assert!(contains_trig_of_var(&ctx, x_plus_sin, "x"));
+        let two = ctx.num(2);
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let sin_2x = ctx.call("sin", vec![two_x]);
+        assert!(contains_trig_of_var(&ctx, sin_2x, "x")); // compound argument
+                                                          // Constant trig (`sin(2)·x`) does NOT contain the variable inside the trig argument.
+        let sin_2 = ctx.call("sin", vec![two]);
+        let sin2_times_x = ctx.add(Expr::Mul(sin_2, x));
+        assert!(!contains_trig_of_var(&ctx, sin2_times_x, "x"));
+        // A non-trig expression is false.
+        let lin = ctx.add(Expr::Add(x, one));
+        assert!(!contains_trig_of_var(&ctx, lin, "x"));
     }
 
     #[test]

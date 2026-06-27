@@ -1973,6 +1973,46 @@ fn test_eval_arclength_curve() {
 }
 
 #[test]
+fn test_eval_periodic_trig_inequality_declines() {
+    // SOUNDNESS: a periodic `sin`/`cos`/`tan` inequality has an infinite periodic-union solution the
+    // engine cannot represent, so the monotonic inversion emitted a single wrong ray. It now declines
+    // to an honest residual (ok=true). The bare out-of-range cases (ℝ/∅) and equations are unaffected.
+    let run = |input: &str| -> (bool, String) {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        (
+            wire["ok"].as_bool().unwrap_or(false),
+            wire["result"].as_str().unwrap_or("").to_string(),
+        )
+    };
+    for input in [
+        "sin(x)>0",
+        "cos(x)<0",
+        "sin(x)>1/2",
+        "tan(x)>1",
+        "sin(2*x)>0",
+        "cos(x)>=1/2",
+    ] {
+        let (ok, result) = run(input);
+        assert!(ok, "{input} should be ok=true residual, got {result:?}");
+        assert!(
+            result.contains("Solve"),
+            "{input} should be a residual, got {result:?}"
+        );
+    }
+    let plain = |input: &str| run(input).1;
+    // Out-of-range bare sin/cos are still answered exactly (not pre-empted by the residual decline).
+    assert_eq!(plain("cos(x)<=1"), "All real numbers");
+    assert_eq!(plain("sin(x)>2"), "No solution");
+    // Equations and constant-trig (variable is linear) still solve.
+    assert_eq!(plain("sin(x)=1/2"), "{ 1/6·pi }");
+    assert_eq!(plain("sin(2)*x>0"), "(0, infinity)");
+}
+
+#[test]
 fn test_eval_variable_base_log_inequality_declines() {
     // SOUNDNESS: `log(x, c) ≷ k` reads x as the BASE, so logₓ(c)=ln(c)/ln(x) is NON-monotonic
     // (decreasing on x>1, sign change at x=1). The engine's monotonic isolation emitted a wrong ray
