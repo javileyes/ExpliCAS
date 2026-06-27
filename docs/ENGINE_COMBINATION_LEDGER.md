@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 399 (newest first)
+Active entries: 400 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -136,6 +136,7 @@ Active entries: 399 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_gcdext_expr) | CAPACIDAD (teoría de números): gcdext (Bézout)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_fibonacci/lucas/catal... | CAPACIDAD (combinatoria): fibonacci, lucas, catalan
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_bernoulli/stirling_se... | CAPACIDAD (combinatoria): bernoulli, stirling1, stirling2
+- 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (matrix_proj/matrix_angle, en ... | CAPACIDAD (álgebra vectorial): proj, angle
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16368,3 +16369,23 @@ Active entries: 399 (newest first)
   - VALIDACIÓN: las lanes `*_command_matrix_smoke` y `derive_didactic_audit` tienen métricas derivadas de
     latencia (`stdout_bytes` incluye dígitos de timing, arrays ordenados por "slowest"/"hotspots") que NO son
     deterministas run-to-run; la huella se juzga por counters + identidad de slots, no por esos campos.
+
+## 2026-06-27 - CAPACIDAD (álgebra vectorial): proj, angle
+
+- area: `crates/cas_engine/src/matrix_rule_support.rs` (matrix_proj/matrix_angle, en el path binario 2-arg)
+- status: `retained` (commit pendiente↑). Completa las operaciones vectoriales geométricas junto a dot/cross.
+- capture:
+  - cell: ANTES no definidas. AHORA `proj([3,4],[1,1])→[7/2,7/2]` (proyección de u sobre v, en la forma de
+    v), `proj([2,3,6],[1,2,2])→(20/9)[1,2,2]`; `angle([1,0],[0,1])→π/2`, `angle([1,0],[1,1])→π/4`,
+    `angle([3,4],[4,3])→arccos(24/25)`. El engine pliega arccos en los cosenos estándar (0,½,√2/2,√3/2,1).
+    Dirección/vector cero, u/v simbólicos o de entradas irracionales → residual honesto.
+  - validación: workspace verde (solo flake perf); clippy; huella PRESS IDÉNTICA, GUARD counters idénticos
+    (el único leaf que difiere es `integrate_residual_public_phase_by_cause_family[4]`, un array TOP-N
+    ordenado por latencia — confirmado regenerando con el MISMO binario: los slots [2]/[3] se reordenan
+    entre dos corridas idénticas).
+- retained learning:
+  - el path binario (try_rewrite_matrix_binary_function_expr) SIEMPRE devuelve el rewrite; el gate
+    all-numeric solo decide `.budget_exempt()`. Por eso `proj([a,b],[1,0])` (u simbólico) se queda residual:
+    su forma SIN plegar excede el anti-worsen sin la exención, y la exención se reserva a operandos numéricos
+    (frontera de soundness compartida con la inversa simbólica). proj/angle gatean internamente el divisor
+    `⟨v,v⟩≠0`/`‖u‖‖v‖≠0` a constante numérica no-nula, así que el resultado numérico es incondicional.
