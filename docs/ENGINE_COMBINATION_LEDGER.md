@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 392 (newest first)
+Active entries: 393 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -129,6 +129,7 @@ Active entries: 392 (newest first)
 - 2026-06-27 | `retained` | `cas_math/.../methods.rs` (`apart_decomposition_expr`), `cas_engine/.../facto... | CAPACIDAD (álgebra): apart — fracciones parciales como operación
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_numdivisors/sigma/isc... | CAPACIDAD (teoría de números): tau, sigma, iscomposite
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_matrix_power_expr), `rule... | CAPACIDAD (álgebra lineal): potencia entera de matriz M^n
+- 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::adjugate`, `minor_submatrix`) | CAPACIDAD (álgebra lineal): adjugate(A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16257,3 +16258,17 @@ Active entries: 392 (newest first)
   - el patrón "evaluación definicional desplegada excede el anti-worsen budget" se repite (det/charpoly/multiply/
     power): exención acotada TODO-NUMÉRICA. La potencia negativa hereda la trampa de soundness de la inversa
     simbólica → gatear numérico la evita.
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal): adjugate(A)
+
+- area: `crates/cas_math/src/matrix.rs` (`Matrix::adjugate`, `minor_submatrix`)
+- status: `retained` (commit pendiente↑).
+- capture:
+  - cell: ANTES no definida. AHORA traspuesta de la matriz de cofactores, `adj[i][j]=(-1)^{i+j}·det(minor j,i)`.
+    Polinomio en las entradas ⇒ SIEMPRE definida (sin condición det≠0) ⇒ funciona SIMBÓLICA
+    (`[[a,b],[c,d]]→[[d,-b],[-c,a]]`) y numérica; cumple A·adj(A)=det(A)·I. Solo cuadrada.
+  - validación: workspace 12431 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - a diferencia de inverse (necesita det≠0 ⇒ simbólica residual), adjugate es polinómica ⇒ se puede commitear
+    simbólica sin condición. No todas las funciones-matriz comparten la misma política de dominio: distinguir
+    "polinómica siempre definida" (adj, det, charpoly) de "racional con condición" (inverse).
