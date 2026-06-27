@@ -684,16 +684,21 @@ where
 ///      positive bound via the equation back-solver, lower sentinel `0 -> -inf`,
 ///      `+inf -> +inf`), preserving open/closed bounds.
 ///
-/// A base not provably `> 1` (fractional/symbolic — see
-/// [`exponential_substitution_base_is_increasing`]), a non-interval set
-/// (`Residual`/`Conditional`), or a bound that is not a positive number is
-/// returned unchanged so the caller keeps the honest u-space residual.
+/// When the mapping cannot be done soundly — a base not provably `> 1`
+/// (fractional/symbolic — see [`exponential_substitution_base_is_increasing`]),
+/// or a bound that is not a *rational* positive number (an irrational root like
+/// `(1+sqrt 5)/2`, whose positivity/order the exact rational helpers cannot
+/// settle) — it declines to the honest residual `solve(lhs = rhs, var)` rather
+/// than leak the raw u-space set as a (wrong) x-answer. A non-interval
+/// `Residual`/`Conditional` u-solution is passed through unchanged.
 #[allow(clippy::too_many_arguments)]
 fn map_exponential_inequality_solution_to_x<T, E, S, FContextMut, FSolve>(
     state: &mut T,
     context_mut: &FContextMut,
     substitution_expr: ExprId,
     target_var: &str,
+    residual_lhs: ExprId,
+    residual_rhs: ExprId,
     u_solution: SolutionSet,
     solve_equation: &mut FSolve,
 ) -> Result<SolutionSet, E>
@@ -702,7 +707,12 @@ where
     FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
 {
     if !exponential_substitution_base_is_increasing(context_mut(state), substitution_expr) {
-        return Ok(u_solution);
+        return Ok(crate::solve_outcome::residual_solution_set(
+            context_mut(state),
+            residual_lhs,
+            residual_rhs,
+            target_var,
+        ));
     }
 
     let interval_set = match u_solution {
@@ -715,7 +725,6 @@ where
         // as the honest residual.
         other => return Ok(other),
     };
-    let original = interval_set.clone();
 
     // 1. Clamp to the range of base^x: u must be > 0.
     let positive = crate::solution_set::open_positive_domain(context_mut(state));
@@ -726,12 +735,20 @@ where
         SolutionSet::Union(intervals) => intervals,
         SolutionSet::Empty => return Ok(SolutionSet::Empty),
         // The clamp can only shrink an interval set; anything else means we
-        // cannot soundly map it, so keep the honest u-space residual.
-        _ => return Ok(original),
+        // cannot soundly map it, so decline to the honest residual.
+        _ => {
+            return Ok(crate::solve_outcome::residual_solution_set(
+                context_mut(state),
+                residual_lhs,
+                residual_rhs,
+                target_var,
+            ))
+        }
     };
 
     // 2. Map each clamped interval's endpoints through the increasing
-    //    x = log_base(u), preserving open/closed bound types.
+    //    x = log_base(u), preserving open/closed bound types. A bound the mapper
+    //    cannot settle (irrational/symbolic) declines the whole map to residual.
     let mut mapped: Vec<cas_ast::Interval> = Vec::with_capacity(clamped_intervals.len());
     for interval in clamped_intervals {
         let min = match map_exponential_inequality_bound_to_x(
@@ -744,7 +761,14 @@ where
             solve_equation,
         )? {
             Some(expr) => expr,
-            None => return Ok(original),
+            None => {
+                return Ok(crate::solve_outcome::residual_solution_set(
+                    context_mut(state),
+                    residual_lhs,
+                    residual_rhs,
+                    target_var,
+                ))
+            }
         };
         let max = match map_exponential_inequality_bound_to_x(
             state,
@@ -756,7 +780,14 @@ where
             solve_equation,
         )? {
             Some(expr) => expr,
-            None => return Ok(original),
+            None => {
+                return Ok(crate::solve_outcome::residual_solution_set(
+                    context_mut(state),
+                    residual_lhs,
+                    residual_rhs,
+                    target_var,
+                ))
+            }
         };
         mapped.push(cas_ast::Interval {
             min,
@@ -808,6 +839,11 @@ where
     FSolve: FnMut(&mut T, &Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
     FMap: FnMut(String, Equation) -> S,
 {
+    // Capture the original relation (`lhs op rhs`) before it is consumed, so a
+    // u-space inequality the mapping cannot soundly back-substitute can decline
+    // to the honest residual `solve(lhs = rhs, var)` rather than leak the u-set.
+    let residual_lhs = equation_before.lhs;
+    let residual_rhs = equation_before.rhs;
     let intro_execution =
         build_exponential_substitution_execution_with(equation_before, rewrite_plan, |id| {
             render_expr(state, id)
@@ -846,12 +882,14 @@ where
         }
         // An inequality solves to an interval/union IN u = base^x; back-substitute
         // it to x = log_base(u) (clamped to u > 0) instead of leaking the u-space
-        // set. Non-mappable shapes pass through as the honest residual.
+        // set. Shapes the mapping cannot soundly handle decline to the residual.
         solution_set => map_exponential_inequality_solution_to_x(
             state,
             &context_mut,
             solved_intro.substitution_expr,
             target_var,
+            residual_lhs,
+            residual_rhs,
             solution_set,
             &mut solve_equation,
         )?,
