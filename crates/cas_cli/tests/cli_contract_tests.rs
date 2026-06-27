@@ -1617,6 +1617,35 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_apart_partial_fractions() {
+    // `apart(p/q)` (alias `partfrac`) gives the partial-fraction decomposition, exact over Q. The
+    // result is `Hold`-protected so the fraction-combining rules don't pull it back over a common
+    // denominator. Single-variable is inferred; `apart(p/q, x)` names it. Proper fractions only.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("apart(1/(x^2-1))"), "1/2 / (x - 1) - 1/2 / (x + 1)");
+    assert_eq!(
+        r("apart(1/(x^3-x))"),
+        "1/2 / (x - 1) + 1/2 / (x + 1) - 1 / x"
+    );
+    assert_eq!(
+        r("apart(1/((x-1)*(x-2)*(x-3)))"),
+        "1/2 / (x - 3) + 1/2 / (x - 1) - 1 / (x - 2)"
+    );
+    assert_eq!(r("apart((x+3)/(x^2-x-2))"), "5/3 / (x - 2) - 2/3 / (x + 1)");
+    assert_eq!(r("apart(1/(x^2+x))"), "1 / x - 1 / (x + 1)");
+    // Not a rational fraction, or an irreducible high-degree denominator ⇒ honest residual.
+    assert_eq!(r("apart(x^2+1)"), "apart(x^2 + 1)");
+    assert_eq!(r("apart(1/(x^3-x-1))"), "apart(1 / (x^3 - x - 1))");
+}
+
+#[test]
 fn test_eval_binary_matrix_ops_dot_cross_linsolve() {
     // The 2-argument matrix/vector operations: dot product, cross product, and linear-system
     // solving. dot/cross fold numerically and stay exact symbolically; linsolve returns the UNIQUE

@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
+use cas_ast::Expr;
 use cas_math::factoring_support::{
     try_rewrite_automatic_factor_expr, try_rewrite_difference_of_squares_product_expr,
     try_rewrite_factor_common_integer_from_add_expr,
@@ -90,6 +91,47 @@ define_rule!(
     |ctx, expr| {
         let rewrite = try_rewrite_factor_function_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_factor_function_desc(rewrite.kind)))
+    }
+);
+
+define_rule!(
+    ApartRule,
+    "Partial Fraction Decomposition",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    PhaseMask::CORE | PhaseMask::POST,
+    |ctx, expr| {
+        if !(ctx.is_call_named(expr, "apart") || ctx.is_call_named(expr, "partfrac")) {
+            return None;
+        }
+        let args = match ctx.get(expr) {
+            Expr::Function(_, args) => args.clone(),
+            _ => return None,
+        };
+        // `apart(p/q)` infers the single variable; `apart(p/q, x)` names it explicitly.
+        let (target, var) = match args.as_slice() {
+            [target] => {
+                let vars = cas_ast::collect_variables(ctx, *target);
+                if vars.len() != 1 {
+                    return None;
+                }
+                (*target, vars.into_iter().next().unwrap())
+            }
+            [target, var_arg] => {
+                let sym = match ctx.get(*var_arg) {
+                    Expr::Variable(sym) => *sym,
+                    _ => return None,
+                };
+                (*target, ctx.sym_name(sym).to_string())
+            }
+            _ => return None,
+        };
+        let result =
+            cas_math::general_integration_backend::apart_decomposition_expr(ctx, target, &var)?;
+        // Protect the decomposition from the fraction-combining rules, which would otherwise pull
+        // the partial fractions back over a common denominator (undoing `apart`). `Hold` is a
+        // simplification barrier that is transparent for display.
+        let held = ctx.add(Expr::Hold(result));
+        Some(Rewrite::new(held).desc("Partial fraction decomposition"))
     }
 );
 
