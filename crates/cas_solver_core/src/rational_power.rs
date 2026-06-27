@@ -1,6 +1,6 @@
 use crate::isolation_utils::{
-    contains_var, is_numeric_one, is_positive_integer_expr, match_exponential_var_in_base,
-    match_exponential_var_in_exponent,
+    contains_var, flip_inequality, is_numeric_one, is_positive_integer_expr,
+    match_exponential_var_in_base, match_exponential_var_in_exponent,
 };
 use crate::log_domain::{
     classify_log_linear_rewrite_route, LogAssumption, LogLinearRewriteRoute, LogSolveDecision,
@@ -135,6 +135,15 @@ pub fn rewrite_variable_base_power_equation(
     Some((equation, exponent))
 }
 
+/// True iff `base` folds EXACTLY (no f64) to a rational `b` with `0 < b < 1`, i.e. `ln(base) < 0`,
+/// so an inequality isolated through `log(base, ·)` / division by `ln(base)` must flip direction.
+fn base_is_provably_fraction_below_one(ctx: &Context, base: ExprId) -> bool {
+    use num_traits::{One, Zero};
+    cas_math::numeric_eval::as_rational_const(ctx, base).is_some_and(|b| {
+        b > num_rational::BigRational::zero() && b < num_rational::BigRational::one()
+    })
+}
+
 /// Build the log-linear rewrite of `base^exponent = other`:
 /// `exponent * ln(base) = ln(other)`.
 ///
@@ -147,6 +156,19 @@ pub fn build_log_linear_equation(
     op: RelOp,
     is_lhs: bool,
 ) -> Equation {
+    // The rewrite `exponent·ln(base) op ln(other)` is solved downstream by dividing through by the
+    // SYMBOLIC coefficient `ln(base)`, which the linear solver treats as positive. When `0 < base < 1`
+    // the true coefficient `ln(base)` is NEGATIVE, so the relation must be flipped to compensate
+    // (otherwise `(1/2)^x>4` yields the reversed ray). Keyed on the EXACT rational base (no f64): only
+    // a provable `0 < base < 1` flips; `base ≥ 1`, symbolic, and irrational bases keep `op` (sound
+    // default — no flip without a proven sign of `ln(base)`). Eq/Neq pass through.
+    let op = if matches!(op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq)
+        && base_is_provably_fraction_below_one(ctx, base)
+    {
+        flip_inequality(op)
+    } else {
+        op
+    };
     let ln_base = ctx.call("ln", vec![base]);
     let lhs_linear = ctx.add(Expr::Mul(exponent, ln_base));
     let ln_other = ctx.call("ln", vec![other]);
@@ -291,6 +313,18 @@ pub fn build_exponent_log_isolation_equation(
     rhs: ExprId,
     op: RelOp,
 ) -> Equation {
+    // `log(base, ·)` is DECREASING when `0 < base < 1` (`ln(base) < 0`), so isolating the exponent
+    // out of an INEQUALITY must FLIP the relation's direction. Keyed on the EXACT rational base (no
+    // f64): only a provable `0 < base < 1` flips; `base > 1`, `base = 1`, and symbolic / irrational
+    // bases keep `op` unchanged (the sound default — without a proven sign of `ln(base)` we must not
+    // flip). Equality / inequation pass through untouched.
+    let op = if matches!(op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq)
+        && base_is_provably_fraction_below_one(ctx, base)
+    {
+        flip_inequality(op)
+    } else {
+        op
+    };
     let rhs_log = ctx.call("log", vec![base, rhs]);
     Equation {
         lhs: exponent,
@@ -627,5 +661,29 @@ mod tests {
         assert!(
             matches!(ctx.get(eq.rhs), Expr::Function(_, args) if args.len() == 2 && args[0] == b && args[1] == r)
         );
+    }
+
+    #[test]
+    fn log_linear_equation_flips_inequality_for_fractional_base() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let other = ctx.num(4);
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let two = ctx.num(2);
+        // 0 < base < 1: ln(base) < 0 ⇒ the relation flips (Gt → Lt).
+        let eq = build_log_linear_equation(&mut ctx, half, exponent, other, RelOp::Gt, true);
+        assert_eq!(eq.op, RelOp::Lt, "(1/2)^x > 4 must flip to Lt");
+        // base > 1: ln(base) > 0 ⇒ relation preserved.
+        let eq2 = build_log_linear_equation(&mut ctx, two, exponent, other, RelOp::Gt, true);
+        assert_eq!(eq2.op, RelOp::Gt, "2^x > 4 must keep Gt");
+        // Equality is never flipped.
+        let eq3 = build_log_linear_equation(&mut ctx, half, exponent, other, RelOp::Eq, true);
+        assert_eq!(eq3.op, RelOp::Eq);
+        // The fractional-base predicate is exact.
+        assert!(base_is_provably_fraction_below_one(&ctx, half));
+        assert!(!base_is_provably_fraction_below_one(&ctx, two));
     }
 }

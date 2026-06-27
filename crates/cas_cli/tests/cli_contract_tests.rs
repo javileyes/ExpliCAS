@@ -1973,6 +1973,33 @@ fn test_eval_arclength_curve() {
 }
 
 #[test]
+fn test_eval_fractional_base_exponential_inequality_direction() {
+    // SOUNDNESS: `a^x ≷ k` with 0 < a < 1 (decreasing) must FLIP the inequality direction when
+    // isolating x through the logarithm. Previously the engine kept the direction, returning the
+    // reversed (wrong) ray. The bound is exact; only the direction was wrong. Truth vs sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // (1/2)^x > 4 ⟺ x < -2  (ln(4)/ln(1/2) = -2).
+    assert_eq!(r("(1/2)^x>4"), "(-infinity, ln(4) / ln(1/2))");
+    assert_eq!(r("(1/2)^x<1/4"), "(ln(1/4) / ln(1/2), infinity)"); // x > 2
+    assert_eq!(r("(1/2)^x>=2"), "(-infinity, ln(2) / ln(1/2)]"); // x <= -1
+    assert_eq!(r("0.3^x<0.09"), "(ln(9/100) / ln(3/10), infinity)"); // x > 2
+    assert_eq!(r("(1/3)^x>1/9"), "(-infinity, ln(1/9) / ln(1/3))"); // x < 2
+                                                                    // Controls: base > 1 keeps direction; equations are never flipped.
+    assert_eq!(r("2^x>4"), "(2, infinity)");
+    assert_eq!(r("2^x<4"), "(-infinity, 2)");
+    assert_eq!(r("2^x>=8"), "[3, infinity)");
+    assert_eq!(r("(1/2)^x=4"), "{ ln(4) / ln(1/2) }");
+    assert_eq!(r("2^x=4"), "{ 2 }");
+}
+
+#[test]
 fn test_eval_rational_sum_inequality_routing() {
     // SOUNDNESS regression: a rational-SUM inequality `x + c/x {op} k` (LHS an Add containing a
     // rational term) used to skip the reliable rational path and have its operator dropped, returning
