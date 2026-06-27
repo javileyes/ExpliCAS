@@ -681,6 +681,118 @@ pub fn try_matrix_nullspace(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId
     )
 }
 
+/// Binary (2-argument) matrix/vector operations: `dot`, `cross`, `linsolve`.
+/// Returns the result expression plus a description, or `None` to leave the call
+/// as an honest residual (mismatched shapes, a singular/inconsistent system, etc.).
+pub fn try_rewrite_matrix_binary_function_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<MatrixFunctionRewrite> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let name = ctx.sym_name(*fn_id).to_string();
+    let args = args.clone();
+    if args.len() != 2 {
+        return None;
+    }
+    let u = Matrix::from_expr(ctx, args[0])?;
+    let v = Matrix::from_expr(ctx, args[1])?;
+    let (rewritten, desc) = match name.as_str() {
+        "dot" => (matrix_dot(ctx, &u, &v)?, "dot product".to_string()),
+        "cross" => (matrix_cross(ctx, &u, &v)?, "cross product".to_string()),
+        "linsolve" => (
+            matrix_linsolve(ctx, &u, &v)?,
+            "solve linear system A·x = b".to_string(),
+        ),
+        _ => return None,
+    };
+    Some(MatrixFunctionRewrite { rewritten, desc })
+}
+
+/// Dot product `Σ uᵢ·vᵢ` of two equal-length vectors (entries read row-major, so a
+/// column `[a,b]` and a row `[[a,b]]` both work). Folds numerically, stays exact
+/// symbolically. Returns `None` on a length mismatch.
+fn matrix_dot(ctx: &mut Context, u: &Matrix, v: &Matrix) -> Option<ExprId> {
+    if u.data.is_empty() || u.data.len() != v.data.len() {
+        return None;
+    }
+    let mut sum = ctx.num(0);
+    for (&a, &b) in u.data.iter().zip(&v.data) {
+        let product = ctx.add(Expr::Mul(a, b));
+        sum = ctx.add(Expr::Add(sum, product));
+    }
+    Some(sum)
+}
+
+/// Cross product of two 3-vectors, returned as a 3×1 column.
+fn matrix_cross(ctx: &mut Context, u: &Matrix, v: &Matrix) -> Option<ExprId> {
+    if u.data.len() != 3 || v.data.len() != 3 {
+        return None;
+    }
+    let (u1, u2, u3) = (u.data[0], u.data[1], u.data[2]);
+    let (v1, v2, v3) = (v.data[0], v.data[1], v.data[2]);
+    let component = |ctx: &mut Context, a, b, c, d| -> ExprId {
+        let ad = ctx.add(Expr::Mul(a, b));
+        let bc = ctx.add(Expr::Mul(c, d));
+        ctx.add(Expr::Sub(ad, bc))
+    };
+    let c1 = component(ctx, u2, v3, u3, v2);
+    let c2 = component(ctx, u3, v1, u1, v3);
+    let c3 = component(ctx, u1, v2, u2, v1);
+    let data = vec![c1, c2, c3];
+    Some(ctx.matrix(3, 1, data.clone()).unwrap_or_else(|_| {
+        ctx.add(Expr::Matrix {
+            rows: 3,
+            cols: 1,
+            data,
+        })
+    }))
+}
+
+/// Solve the NUMERIC square system `A·x = b` by exact rational RREF of the
+/// augmented matrix `[A|b]`. Returns the solution as an n×1 column ONLY when it is
+/// UNIQUE (A invertible); a singular or inconsistent system declines to an honest
+/// residual rather than guessing. Symbolic entries decline.
+fn matrix_linsolve(ctx: &mut Context, a: &Matrix, b: &Matrix) -> Option<ExprId> {
+    use cas_solver_core::rational_roots::rational_to_expr;
+    use num_rational::BigRational;
+
+    if a.rows != a.cols || a.rows == 0 || b.data.len() != a.rows {
+        return None;
+    }
+    let n = a.rows;
+    let mut augmented: Vec<Vec<BigRational>> = Vec::with_capacity(n);
+    for i in 0..n {
+        let mut row = Vec::with_capacity(n + 1);
+        for j in 0..n {
+            row.push(cas_math::numeric_eval::as_rational_const(
+                ctx,
+                a.data[i * n + j],
+            )?);
+        }
+        row.push(cas_math::numeric_eval::as_rational_const(ctx, b.data[i])?);
+        augmented.push(row);
+    }
+
+    let pivots = rational_rref_in_place(&mut augmented, n + 1);
+    // Unique iff there are n pivots and none lands in the augmented (b) column — i.e. A has full
+    // rank and the system is consistent. Otherwise the solution set is empty or infinite: decline.
+    if pivots.len() != n || pivots.contains(&n) {
+        return None;
+    }
+    let data: Vec<ExprId> = (0..n)
+        .map(|i| rational_to_expr(ctx, &augmented[i][n]))
+        .collect();
+    Some(ctx.matrix(n, 1, data.clone()).unwrap_or_else(|_| {
+        ctx.add(Expr::Matrix {
+            rows: n,
+            cols: 1,
+            data,
+        })
+    }))
+}
+
 pub fn try_eval_matrix_function_expr(
     ctx: &mut Context,
     expr: ExprId,

@@ -1,8 +1,8 @@
 use crate::matrix_rule_support::{
     try_eval_matrix_add_expr, try_eval_matrix_mul_expr, try_eval_matrix_sub_expr,
     try_eval_scalar_matrix_mul_expr, try_matrix_shape_mismatch_undefined,
-    try_rewrite_matrix_function_rule_expr, try_rewrite_matrix_reciprocal_expr,
-    try_rewrite_transpose_product_identity_expr,
+    try_rewrite_matrix_binary_function_expr, try_rewrite_matrix_function_rule_expr,
+    try_rewrite_matrix_reciprocal_expr, try_rewrite_transpose_product_identity_expr,
 };
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, Expr, ExprId};
@@ -159,9 +159,6 @@ impl SimpleRule for MatrixFunctionRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        let rewrite = try_rewrite_matrix_function_rule_expr(ctx, expr)?;
-        let base = Rewrite::new(rewrite.rewritten).desc(rewrite.desc);
-
         // `charpoly`/`det` of a NUMERIC matrix expand to an UNFOLDED cofactor sum that
         // transiently exceeds the anti-worsen node budget before the recursive pass folds
         // it to a number / polynomial; with a tiny numeric input it is rejected, leaving a
@@ -174,26 +171,46 @@ impl SimpleRule for MatrixFunctionRule {
         // `charpoly` already commits under the normal budget because its input is large, so
         // it needs no exemption — only the small-numeric case does.
         const MATRIX_FN_MAX_N: usize = 6;
-        let operand = if let Expr::Function(_, args) = ctx.get(expr) {
-            args.first().copied()
-        } else {
-            None
-        };
-        let within_caps = operand
-            .and_then(|arg| Matrix::from_expr(ctx, arg))
-            .is_some_and(|m| {
+        let bounded_all_numeric = |ctx: &Context, arg: ExprId| -> bool {
+            Matrix::from_expr(ctx, arg).is_some_and(|m| {
                 m.rows <= MATRIX_FN_MAX_N
                     && m.cols <= MATRIX_FN_MAX_N
                     && m.data
                         .iter()
                         .all(|&e| matches!(ctx.get(e), Expr::Number(_) | Expr::Constant(_)))
-            });
-
-        Some(if within_caps {
-            base.budget_exempt()
+            })
+        };
+        let operands: Vec<ExprId> = if let Expr::Function(_, args) = ctx.get(expr) {
+            args.clone()
         } else {
-            base
-        })
+            Vec::new()
+        };
+
+        if let Some(rewrite) = try_rewrite_matrix_function_rule_expr(ctx, expr) {
+            let base = Rewrite::new(rewrite.rewritten).desc(rewrite.desc);
+            let within_caps = operands
+                .first()
+                .is_some_and(|&arg| bounded_all_numeric(ctx, arg));
+            return Some(if within_caps {
+                base.budget_exempt()
+            } else {
+                base
+            });
+        }
+
+        // Binary (2-arg) matrix/vector operations: dot, cross, linsolve.
+        if let Some(rewrite) = try_rewrite_matrix_binary_function_expr(ctx, expr) {
+            let base = Rewrite::new(rewrite.rewritten).desc(rewrite.desc);
+            let within_caps =
+                operands.len() == 2 && operands.iter().all(|&arg| bounded_all_numeric(ctx, arg));
+            return Some(if within_caps {
+                base.budget_exempt()
+            } else {
+                base
+            });
+        }
+
+        None
     }
 }
 

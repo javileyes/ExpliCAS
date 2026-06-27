@@ -1617,6 +1617,44 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_binary_matrix_ops_dot_cross_linsolve() {
+    // The 2-argument matrix/vector operations: dot product, cross product, and linear-system
+    // solving. dot/cross fold numerically and stay exact symbolically; linsolve returns the UNIQUE
+    // solution by exact rational RREF of [A|b], declining (residual) on a singular or inconsistent
+    // system. Cross-checked against numpy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // dot
+    assert_eq!(r("dot([1,2,3],[4,5,6])"), "32");
+    assert_eq!(r("dot([a,b],[c,d])"), "a·c + b·d");
+    assert_eq!(r("dot([1,2],[3,4,5])"), "dot([[1], [2]], [[3], [4], [5]])"); // length mismatch
+                                                                             // cross
+    assert_eq!(r("cross([1,0,0],[0,1,0])"), "[[0], [0], [1]]");
+    assert_eq!(r("cross([2,3,4],[5,6,7])"), "[[-3], [6], [-3]]");
+    // linsolve
+    assert_eq!(r("linsolve([[1,1],[1,-1]], [3,1])"), "[[2], [1]]");
+    assert_eq!(
+        r("linsolve([[1,2,3],[0,1,4],[5,6,0]], [6,5,11])"),
+        "[[1], [1], [1]]"
+    );
+    // Singular and inconsistent systems decline to honest residuals.
+    assert_eq!(
+        r("linsolve([[1,2],[2,4]], [3,6])"),
+        "linsolve([[1, 2], [2, 4]], [[3], [6]])"
+    );
+    assert_eq!(
+        r("linsolve([[1,1],[1,1]], [1,2])"),
+        "linsolve([[1, 1], [1, 1]], [[1], [2]])"
+    );
+}
+
+#[test]
 fn test_eval_vector_norm() {
     // `norm(v)` is the Euclidean / Frobenius norm √(Σ entryᵢ²). Numeric folds; symbolic stays exact.
     let r = |input: &str| -> String {

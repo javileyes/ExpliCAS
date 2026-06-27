@@ -94,7 +94,7 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         | "charpoly" | "eigenvalues" | "eigvals" | "eig" | "eigenvectors" | "eigvecs" | "rref"
         | "nullspace" | "null" | "kernel" | "norm" => arity == 1,
         // Matrix composition / symbolic helpers used by engine rewrites.
-        "matmul" => arity == 2,
+        "matmul" | "dot" | "cross" | "linsolve" => arity == 2,
         "poly_gcd" | "pgcd" => arity >= 2,
         // Numeric evaluator helper that is intentionally exposed as a function call.
         "round" => arity == 1,
