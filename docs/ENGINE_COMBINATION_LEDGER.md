@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 397 (newest first)
+Active entries: 398 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -134,6 +134,7 @@ Active entries: 397 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (extended_gcd, compute_modinv/... | CAPACIDAD (teoría de números): modinv, jacobi
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_divisors_list/crt_expr) | CAPACIDAD (teoría de números): divisors (lista), crt
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_gcdext_expr) | CAPACIDAD (teoría de números): gcdext (Bézout)
+- 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_fibonacci/lucas/catal... | CAPACIDAD (combinatoria): fibonacci, lucas, catalan
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16329,3 +16330,19 @@ Active entries: 397 (newest first)
 - retained learning:
   - extraer `extended_gcd` como primitiva una vez (ciclo modinv) pagó tres veces: modinv, crt y ahora gcdext.
     gcdext devuelve la TUPLA (g,x,y) como fila — el mismo patrón de salida-lista que divisors/eigenvalues.
+
+## 2026-06-27 - CAPACIDAD (combinatoria): fibonacci, lucas, catalan
+
+- area: `crates/cas_math/src/number_theory_support.rs` (compute_fibonacci/lucas/catalan_expr)
+- status: `retained` (commit pendiente↑). Abre la familia de sucesiones combinatorias enteras.
+- capture:
+  - cell: ANTES no definidas (residual). AHORA `fibonacci(10)=55`, `fib(20)=6765`, `lucas(10)=123`,
+    `catalan(5)=42`, `catalan(10)=16796`; índices negativos→residual honesto. Iteración exacta BigInt
+    (catalan por la recurrencia entera `Cₖ₊₁=Cₖ·2(2k+1)/(k+2)`, división exacta); verificado contra sympy.
+  - validación: workspace 12436 passed (solo flake perf); clippy; huella GUARD/PRESS estructuralmente
+    IDÉNTICA (los deltas de PRESS en `simplify_zero_mixed` son solo latencia: passed/failed/total iguales).
+- retained learning:
+  - las sucesiones combinatorias unarias que devuelven un entero encajan en el path 1-arg de teoría de
+    números sin maquinaria nueva — el patrón `NumberTheorySimpleRewrite::Unary{result}` ya cubre
+    iteración pura. Cota `COMBINATORIAL_INDEX_CAP` (1e6) mantiene el bucle acotado; catalan usa una cota
+    menor (1e5) porque su valor crece más rápido. La recurrencia entera evita factoriales gigantes.
