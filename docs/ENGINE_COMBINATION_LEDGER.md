@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 394 (newest first)
+Active entries: 395 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -131,6 +131,7 @@ Active entries: 394 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_matrix_power_expr), `rule... | CAPACIDAD (álgebra lineal): potencia entera de matriz M^n
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::adjugate`, `minor_submatrix`) | CAPACIDAD (álgebra lineal): adjugate(A)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_wronskian_expr), `rules/a... | CAPACIDAD (cálculo): wronskian([f1..fn], x)
+- 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (extended_gcd, compute_modinv/... | CAPACIDAD (teoría de números): modinv, jacobi
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16288,3 +16289,15 @@ Active entries: 394 (newest first)
     de archivos Y exige caps (MAX_N/output/input). Una regla nueva con exención debe (a) tener su cap acotado,
     (b) añadir su archivo a la allowlist con el bound documentado. Lo cazó la suite — es un contrato de
     anti-abuso del budget, no presentación.
+
+## 2026-06-27 - CAPACIDAD (teoría de números): modinv, jacobi
+
+- area: `crates/cas_math/src/number_theory_support.rs` (extended_gcd, compute_modinv/jacobi_expr)
+- status: `retained` (commit pendiente↑). Aritmética modular.
+- capture:
+  - cell: ANTES no definidas. AHORA `modinv(3,7)=5` (Euclides extendido; `modinv(2,4)` residual si gcd≠1);
+    `jacobi(2,7)=1`, `jacobi(3,7)=-1`, `jacobi(6,9)=0`. Exactas BigInt; verificado contra sympy.
+  - validación: workspace 12433 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - `extended_gcd` (Bézout) es la primitiva reutilizable para modinv (y futuros gcdext/crt). El path 2-arg de
+    teoría de números (junto a mod/choose) acoge funciones binarias que devuelven un número limpiamente.
