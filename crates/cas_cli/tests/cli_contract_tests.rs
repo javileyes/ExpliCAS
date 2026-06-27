@@ -1973,6 +1973,50 @@ fn test_eval_arclength_curve() {
 }
 
 #[test]
+fn test_eval_variable_base_log_inequality_declines() {
+    // SOUNDNESS: `log(x, c) ≷ k` reads x as the BASE, so logₓ(c)=ln(c)/ln(x) is NON-monotonic
+    // (decreasing on x>1, sign change at x=1). The engine's monotonic isolation emitted a wrong ray
+    // (and an `undefined` endpoint for k=0). With no exact split representation it now declines to an
+    // honest residual (ok=true). Constant-base log and equations are unaffected.
+    let run = |input: &str| -> (bool, String) {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        (
+            wire["ok"].as_bool().unwrap_or(false),
+            wire["result"].as_str().unwrap_or("").to_string(),
+        )
+    };
+    // Variable-base log inequalities decline to a residual (ok=true), never a wrong ray / "undefined".
+    for input in [
+        "log(x,2)>3",
+        "log(x,4)>2",
+        "log(x,3)<1",
+        "log(x,1/2)>1",
+        "log(x,2)>0",
+    ] {
+        let (ok, result) = run(input);
+        assert!(
+            ok,
+            "{input} should be ok=true (honest residual), got {result:?}"
+        );
+        assert!(
+            result.contains("Solve") && !result.contains("undefined"),
+            "{input} should be a clean residual, got {result:?}"
+        );
+    }
+    let plain = |input: &str| run(input).1;
+    // EQ-safety: equations still solve.
+    assert_eq!(plain("log(x,2)=3"), "{ 2^(1/3) }");
+    // Constant-base log (monotonic) is unaffected.
+    assert_eq!(plain("log(2,x)>3"), "(8, infinity)");
+    assert_eq!(plain("log(2,x)<3"), "(0, 8)");
+    assert_eq!(plain("ln(x)<0"), "(0, 1)");
+}
+
+#[test]
 fn test_eval_trig_inequality_out_of_range() {
     // SOUNDNESS: `sin(x)`/`cos(x)` ≷ c with c PROVABLY outside [-1, 1] is ℝ or ∅, not the finite ray
     // (sometimes with a non-real `arcsin(c)` endpoint) the generic monotonic inversion produced.

@@ -1909,6 +1909,43 @@ impl SolveBackend for LocalSolveBackend {
     }
 }
 
+/// True when `lhs` is `log(base, arg)` with the solve VARIABLE in the BASE — i.e. `logₓ(c)`, which is
+/// non-monotonic in `x`. A constant-base `log(c, x)` (monotonic, solvable) returns false.
+fn is_variable_base_log(ctx: &Context, lhs: ExprId, var: &str) -> bool {
+    use cas_ast::BuiltinFn;
+    let Expr::Function(fn_id, args) = ctx.get(lhs) else {
+        return false;
+    };
+    args.len() == 2
+        && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Log))
+        && cas_ast::collect_variables(ctx, args[0]).contains(var)
+}
+
+/// Decline a `log(x, c) {op} k` inequality (the variable is the BASE) to an honest residual: `logₓ(c)
+/// = ln(c)/ln(x)` is non-monotonic (decreasing on `x > 1`, sign change at `x = 1`), so the engine's
+/// monotonic log isolation emits a WRONG ray (and a `1/0 → undefined` bound when `k = 0`). With no
+/// exact split representation, the sound outcome is a residual, not a fabricated interval. Equations
+/// and constant-base `log(c, x)` (monotonic, solvable) are untouched.
+fn try_decline_variable_base_log_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    if !is_variable_base_log(&simplifier.context, eq.lhs, var) {
+        return None;
+    }
+    Some(cas_solver_core::solve_outcome::residual_solution_set(
+        &mut simplifier.context,
+        eq.lhs,
+        eq.rhs,
+        var,
+    ))
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -1981,6 +2018,11 @@ fn solve_local_core(
     // division-sign-split path otherwise reciprocates without flipping, e.g. `1/x³ < 8 →
     // (-∞,1/2)`, wrong).
     if let Some(set) = try_solve_rational_constant_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `log(x, c) {op} k` (the variable is the BASE) is non-monotonic; decline to an honest residual
+    // rather than letting the generic monotonic isolation emit a wrong ray.
+    if let Some(set) = try_decline_variable_base_log_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
