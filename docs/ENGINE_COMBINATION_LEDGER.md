@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 406 (newest first)
+Active entries: 407 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -143,6 +143,7 @@ Active entries: 406 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (rational_function_of + split_... | SOUNDNESS P0: inecuación de suma racional `x + c/x {op} k` (15/16 casos auditados)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (union_solution_sets) | SOUNDNESS P0: union_solution_sets descartaba `Discrete ∪ Continuous` (cierra el 16º caso)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/domain_normalization.rs` (lower_bound_dominates_a... | SOUNDNESS (medium): condición de dominio contradictoria en `integrate(sqrt(x^2-a^2))`
+- 2026-06-27 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (build_log_linear_equation + b... | SOUNDNESS P0 (audit 2, ciclo 1/5): exp base fraccionaria a^x ≷ k — flip de dirección
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16527,3 +16528,26 @@ Active entries: 406 (newest first)
     caso aceptado `1/sqrt(x^2-1)`. Peldaño futuro con su propio scoping del pase de normalización.
   - Limitación conocida: gap IRRACIONAL (`sqrt(x^2-2)`, boundary √2) no se suprime (exact_positive_rational_
     nth_root devuelve None); el dual resultante es verboso pero sound (intersecta a x≥√2). Fuera de alcance.
+
+## 2026-06-27 - SOUNDNESS P0 (audit 2, ciclo 1/5): exp base fraccionaria a^x ≷ k — flip de dirección
+
+- area: `crates/cas_solver_core/src/rational_power.rs` (build_log_linear_equation + base_is_provably_fraction_below_one)
+- status: `retained` (commit pendiente↑). Primer ciclo de la grieta de inecuaciones trascendentes (audit 2).
+- capture:
+  - cell: ANTES `(1/2)^x>4`→`(ln(4)/ln(1/2), ∞)` = (-2,∞) — dirección invertida (verdad x<-2). AHORA
+    `(1/2)^x>4`→`(-∞, ln(4)/ln(1/2))`=(-∞,-2); `(1/2)^x<1/4`→(2,∞); `(1/2)^x>=2`→(-∞,-1]; `0.3^x<0.09`→(2,∞);
+    `(1/3)^x>1/9`→(-∞,2). Controles base>1 (`2^x>4`→(2,∞)) y ecuaciones (`(1/2)^x=4`→{-2}) intactos.
+  - causa raíz: `build_log_linear_equation` reescribe `base^x op rhs` → `x·ln(base) op ln(other)` y el solver
+    lineal aguas abajo divide por el coeficiente SIMBÓLICO `ln(base)` tratándolo como positivo. Para
+    0<base<1, `ln(base)<0`, así que el operador debe invertirse. (El builder didáctico
+    `build_exponent_log_isolation_equation` NO se alcanza en eval — el scout lo señaló mal; el sitio real es
+    `build_log_linear_equation`; apliqué el flip en ambos por consistencia de narración --steps.)
+  - fix: flip de `op` cuando `base_is_provably_fraction_below_one` (gate EXACTO `as_rational_const`∈(0,1), no
+    f64); base≥1/simbólica/irracional no voltea (default sound), Eq/Neq pasan.
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA; unit test + contrato CLI; vs sympy.
+- retained learning:
+  - el sitio que el scoping señala puede ser DIDÁCTICO (no alcanzado en eval). Debuggear con `eprintln` para
+    confirmar el path real antes de asumir. El solver lineal NO voltea por coeficientes simbólicos de signo
+    determinable (`ln(1/2)`): pre-compensar volteando en la construcción de la ecuación es el fix mínimo y
+    sound, gateado por base racional exacta. Fuera de alcance (residuales conocidos): `(1/2)^x>-5` (always-
+    positive, ciclo 2), `log(1/2,x)>3` (base-constante fraccionaria, distinto path).
