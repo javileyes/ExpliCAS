@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 412 (newest first)
+Active entries: 413 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -149,6 +149,7 @@ Active entries: 412 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_decline_variable_base_log... | SOUNDNESS P0 (audit 2, ciclo 4/5): log base variable log(x,c)≷k → residual honesto
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_decline_periodic_trig_ine... | SOUNDNESS P0 (audit 2, ciclo 5/5): inecuación trig periódica → residual honesto
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (plan_division_denominator_dida... | SOUNDNESS P0 (audit 3 / bloque 0, B1): inecuación c/f(x) con denom. positiva no voltea
+- 2026-06-27 | `retained` | `crates/cas_cli/tests/cli_contract_tests.rs` (test_eval_trig_inequality_out_o... | INTEGRIDAD (lateral B2): aserto de control trig obsoleto dejaba el árbol rojo desde el ciclo 5
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16668,3 +16669,22 @@ Active entries: 412 (newest first)
     directo SÍ era correcto — el bug estaba en el path de isolación del denominador, no en el solver de abs.
     SEPARADO (follow-up): `1/sqrt(x)>2` = `x^(-1/2)>2` (potencia fraccionaria en base) tampoco voltea — otra
     ruta (Pow isolation raise-to-negative-power).
+
+## 2026-06-27 - INTEGRIDAD (lateral B2): aserto de control trig obsoleto dejaba el árbol rojo desde el ciclo 5
+
+- area: `crates/cas_cli/tests/cli_contract_tests.rs` (test_eval_trig_inequality_out_of_range)
+- status: `retained` (commit ee4c029a2). Surgido por el green-before-commit del ciclo B2; no es cambio de engine.
+- capture:
+  - cell: el control `solve(sin(x)>1/2)` aseveraba el rayo `(1/6·pi, infinity)` (introducido en c9da874f6,
+    ciclo 3 del 2º audit). El commit 145ec7a09 (ciclo 5, decline periódico) cambió el binario al residual
+    honesto `Solve: solve(sin(x) = 1 / 2, x) = 0` pero NO actualizó este control. El test quedó FALLANDO desde
+    entonces; ni el green del ciclo 5 ni el de B1 lo cazaron (un `git status` limpio lo enmascaró).
+  - causa raíz: el rayo era además UNSOUND — sin(x)>1/2 es FALSO en x=π ∈ (π/6,∞). El residual periódico es la
+    respuesta honesta (SolutionSet no representa la unión periódica infinita).
+  - fix: actualizar el aserto + comentario al residual ya emitido por el binario. Sin cambio de engine.
+- retained learning:
+  - PRECONDICIÓN 0 del protocolo exige solo `git status` limpio, NO tests verdes: un árbol limpio puede estar
+    rojo. Correr `cargo test --workspace` (sin filtros que oculten líneas FAILED) al ARRANCAR un ciclo, no solo
+    al cerrarlo, habría cazado esto 2 ciclos antes. Cuando un ciclo posterior cambia un comportamiento, hay que
+    barrer TODOS los asertos del mismo dominio (aquí el control en otra función de test que el ciclo 5 no tocó),
+    no solo el test directo del cambio.
