@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 402 (newest first)
+Active entries: 403 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -139,6 +139,7 @@ Active entries: 402 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (matrix_proj/matrix_angle, en ... | CAPACIDAD (álgebra vectorial): proj, angle
 - 2026-06-27 | `retained` | `crates/cas_math/src/summation_support.rs` (try_convergent_p_series_sum, extr... | CAPACIDAD (series): p-series par convergente ζ(2m) = c·π^(2m)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/rules/algebra/factoring.rs` (ArcLengthRule) — wrapper ... | CAPACIDAD (cálculo): arclength(f,x,a,b) = ∫√(1+(f')²)dx
+- 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_derangement/isperfect... | CAPACIDAD (combinatoria/teoría de números): derangement, isperfect, harmonic
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16429,3 +16430,22 @@ Active entries: 402 (newest first)
     y el pipeline de integración hace el trabajo — sin maquinaria nueva, sin budget_exempt (el rewrite no
     necesitó exención). El límite (catenaria residual) es del SIMPLIFICADOR (no aplica sinh²+1→cosh² bajo
     raíz antes de integrar), no del wrapper — peldaño futuro: identidad pitagórica hiperbólica bajo sqrt.
+
+## 2026-06-27 - CAPACIDAD (combinatoria/teoría de números): derangement, isperfect, harmonic
+
+- area: `crates/cas_math/src/number_theory_support.rs` (compute_derangement/isperfect/harmonic_expr +
+  divisor_sum_bigint extraído de compute_sigma_expr)
+- status: `retained` (commit pendiente↑). Cierra la tanda redondeando la familia combinatoria/NT.
+- capture:
+  - cell: ANTES no definidas. AHORA `derangement(4)=9`, `derangement(5)=44` (subfactorial !n, alias
+    `subfactorial`); `isperfect(6/28/496/8128)=1`, `isperfect(12)=0`, `isperfect(1)=0` (σ(n)=2n, 1/0 sin
+    booleano); `harmonic(4)=25/12`, `harmonic(5)=137/60` (Σ1/k racional exacto). Negativos/n<1→residual.
+  - validación: workspace verde (solo flake perf); clippy; huella GUARD/PRESS IDÉNTICA; sigma byte-idéntico
+    tras extraer el core compartido (verificado `sigma(28)=56`).
+- retained learning:
+  - `divisor_sum_bigint` extraído de compute_sigma_expr es un refactor behavior-preserving que paga doble:
+    sigma e isperfect comparten el core multiplicativo Π(1+p+…+p^e). El patrón de salida-predicado 1/0 (de
+    isprime/iscomposite) se reusa para isperfect sin tipo booleano. derangement reusa la iteración entera de
+    dos términos (como fibonacci/lucas); harmonic acumula BigRational (como bernoulli). Toda la familia
+    combinatoria/NT (fib, lucas, catalan, bernoulli, stirling, derangement, isperfect, harmonic) vive en el
+    mismo path 1-arg Unary sin maquinaria nueva.
