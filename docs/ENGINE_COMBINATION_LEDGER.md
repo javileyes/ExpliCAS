@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 395 (newest first)
+Active entries: 396 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -132,6 +132,7 @@ Active entries: 395 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::adjugate`, `minor_submatrix`) | CAPACIDAD (álgebra lineal): adjugate(A)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (try_wronskian_expr), `rules/a... | CAPACIDAD (cálculo): wronskian([f1..fn], x)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (extended_gcd, compute_modinv/... | CAPACIDAD (teoría de números): modinv, jacobi
+- 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_divisors_list/crt_expr) | CAPACIDAD (teoría de números): divisors (lista), crt
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16301,3 +16302,17 @@ Active entries: 395 (newest first)
 - retained learning:
   - `extended_gcd` (Bézout) es la primitiva reutilizable para modinv (y futuros gcdext/crt). El path 2-arg de
     teoría de números (junto a mod/choose) acoge funciones binarias que devuelven un número limpiamente.
+
+## 2026-06-27 - CAPACIDAD (teoría de números): divisors (lista), crt
+
+- area: `crates/cas_math/src/number_theory_support.rs` (compute_divisors_list/crt_expr)
+- status: `retained` (commit pendiente↑).
+- capture:
+  - cell: ANTES no definidas. AHORA `divisors(36)→[1,2,3,4,6,9,12,18,36]` (lista ordenada, fila); `crt`
+    resuelve congruencias `crt([2,3],[3,5])→8`, `crt([1,2,3],[2,3,5])→23`, módulos no-coprimos e
+    inconsistentes→residual. Reusa factorización + Euclides extendido; verificado sympy.
+  - validación: workspace 12434 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - una función-NT puede devolver una LISTA (matriz fila) por el mismo `Unary{result}` (divisors); y crt lee
+    sus dos listas de argumentos vía `Matrix::from_expr`. La CRT incremental por pares con Euclides extendido
+    maneja módulos no-coprimos y detecta inconsistencia (declina) — exacto, sin respuesta inventada.
