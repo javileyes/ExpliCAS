@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 417 (newest first)
+Active entries: 418 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -154,6 +154,7 @@ Active entries: 417 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (solve_exponential_substitution_... | SOUNDNESS P0 (audit 3 / bloque 0, B3): inecuación polinómica en e^x no back-sustituía x=ln(u)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (substitute_expr_pattern + nuevo... | SOUNDNESS P0 (sibling de B3): inecuación exponencial coeficiente==base devolvía {1}
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (detect_exponential_substitution... | SOUNDNESS P0 (peldaño 2): inecuación single-exponencial aditiva e^x+1>0 daba "No solution"
+- 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_factorable_exponent... | SOUNDNESS P0 (peldaño 1): inecuación exponencial grado-2 colapsada coeff==base/simbólico daba {1}/ok=false
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16823,3 +16824,41 @@ Active entries: 417 (newest first)
     pre-existente de los puros. Lección: al ABRIR un gate de estrategia que corre ANTES de otra (Substitution pos 2 <
     single-side), hay que excluir los casos que la otra ya resuelve mejor, o los pisas.
   - peldaño restante: base-e coeff==base (`e^(2x)-e·e^x<0`→`{1}`) — peldaño 1, factor-out de base^x>0 (siguiente ciclo).
+
+## 2026-06-27 - SOUNDNESS P0 (peldaño 1): inecuación exponencial grado-2 colapsada coeff==base/simbólico daba {1}/ok=false
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (try_solve_factorable_exponential_inequality grado-2 + try_isolate_single_exponential_inequality grado-1, + helper collect_linear_exponential_atom_terms)
+- status: `retained` (commits 68a13a240 factor-out grado-2 + 58b00f226 isolation grado-1). Cierra peldaño 1; verificación adversarial 2-rondas.
+- capture:
+  - cell: ANTES `e^(2x)-e·e^x<0`→`{1}` (raíz de ecuación, operador soltado); `e^(2x)-pi·e^x<0`→ok=false ("symbolic
+    coefficient"). AHORA `(-∞,1)` / `(-∞,ln(pi))`; `>0`→`(1,∞)`/`(ln(pi),∞)`; `<=0`→`(-∞,1]`. Bases numéricas
+    coeff==base (`2^(2x)-2·2^x<0`) también `(-∞,1)`. Verificado vs sympy.
+  - causa raíz: cuando el coeficiente IGUALA la base e, `e·e^x=e^(x+1)` (merge), la sustitución-afín está gateada a
+    base numérica → declina; para coeficiente SIMBÓLICO el solver de inecuación polinómica-en-u rechaza el
+    coeficiente no-numérico → la estrategia declina y el fallback suelta el operador devolviendo la raíz de la ecuación.
+  - fix grado-2: `try_solve_factorable_exponential_inequality` ANTES de solve_inner — para `A·base^(2x)+B·base^x {op} 0`
+    (RHS sin var, SIN término constante para que base^x factorice limpio), divide por base^x>0
+    (`expand(diff/base^x)` = `A·base^x+B`), lee A (racional) y B (constante) con `collect_linear_exponential_atom_terms`,
+    y resuelve el single exponencial `base^x {op'} -B/A` (op' voltea si A<0). El terminal single-side resuelve umbral
+    SIMBÓLICO (`e^x<e`→(-∞,1), `e^x<pi`→(-∞,ln pi)) donde el solver polinómico-en-u se atraganta.
+  - REGRESIÓN cazada por la verificación adversarial: el fix de P2 (peldaño 2) enrutaba el single-exponencial aditivo
+    `a·base^x+c {op} k` a la SUSTITUCIÓN (back-map gateado a base creciente) → base fraccionaria declina a residual.
+    `(1/2)^x-4>0` ERA `(-∞,-2)` (pre-P2), pasó a residual. Bisect confirmó la regresión.
+  - fix grado-1: `try_isolate_single_exponential_inequality` ANTES de solve_inner — aísla `a·base^x+c {op} k` a
+    `base^x {op'} (k-c)/a` y lo pasa al terminal single-side, que resuelve TODA base y umbral: `(1/2)^x-4>0`→
+    `(1/2)^x>4`→(-∞,-2); `(1/2)^x+1>0`→`(1/2)^x>-1`→ℝ; `e^x+1>0`→ℝ. Corre antes que la sustitución, que declina
+    fraccionaria. Puro `base^x {op} k` (a==1, sin const) se deja al terminal (y evita re-entry); un término base^(2x)
+    hace que el collect decline (los paths grado-2 lo poseen).
+  - validación: workspace verde; clippy --workspace; rustfmt; huella GUARD/PRESS IDÉNTICA; 8+5 asertos CLI; WORKFLOW
+    ADVERSARIAL 2-rondas (P1 strict scope FULLY SOUND: 61 core + 25 edge probes match sympy; cazó la regresión fraccionaria).
+- retained learning:
+  - TERCER ejemplo seguido del valor de la verificación adversarial: el P1 strict scope salió impecable, pero cazó que
+    el fix de P2 había REGRESADO el single-exponencial aditivo fraccionario (sustitución declina fraccionaria). El
+    arreglo correcto fue AISLAR a la forma pura `base^x {op} threshold` y dejar que el terminal single-side (completo
+    para toda base/umbral) lo resuelva — en vez de la sustitución (incompleta para base fraccionaria). Lección general:
+    cuando un terminal dedicado YA es completo para una forma, REDUCE a esa forma en vez de re-derivar por otra ruta menos completa.
+  - el terminal single-side es COMPLETO para `base^x {op} c` (toda base creciente/decreciente, umbral +/-/0/simbólico);
+    la sustitución u=base^x con back-map NO (gateada a base creciente, declina fraccionaria). Preferir el terminal.
+  - peldaño restante (pre-existente, bisect-confirmado, NO regresión): grado-3-en-u `e^(3x)-c·e^x<0`→`{1/2}`
+    (truth (-∞,1/2)) — la familia degree-3 suelta el operador igual; mi guard factor-out solo cubre grado-2
+    (`diff/base^x` deja `base^(2x)`, el collect declina). Fix futuro: factor-out recursivo o reducción degree-n.
