@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 400 (newest first)
+Active entries: 401 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -137,6 +137,7 @@ Active entries: 400 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_fibonacci/lucas/catal... | CAPACIDAD (combinatoria): fibonacci, lucas, catalan
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_bernoulli/stirling_se... | CAPACIDAD (combinatoria): bernoulli, stirling1, stirling2
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (matrix_proj/matrix_angle, en ... | CAPACIDAD (álgebra vectorial): proj, angle
+- 2026-06-27 | `retained` | `crates/cas_math/src/summation_support.rs` (try_convergent_p_series_sum, extr... | CAPACIDAD (series): p-series par convergente ζ(2m) = c·π^(2m)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16389,3 +16390,23 @@ Active entries: 400 (newest first)
     su forma SIN plegar excede el anti-worsen sin la exención, y la exención se reserva a operandos numéricos
     (frontera de soundness compartida con la inversa simbólica). proj/angle gatean internamente el divisor
     `⟨v,v⟩≠0`/`‖u‖‖v‖≠0` a constante numérica no-nula, así que el resultado numérico es incondicional.
+
+## 2026-06-27 - CAPACIDAD (series): p-series par convergente ζ(2m) = c·π^(2m)
+
+- area: `crates/cas_math/src/summation_support.rs` (try_convergent_p_series_sum, extract_p_series_term) +
+  `crates/cas_math/src/number_theory_support.rs` (bernoulli_number, even_zeta_pi_coefficient)
+- status: `retained` (commit pendiente↑). Primer cierre de la familia p-series en el motor de sumatorios.
+- capture:
+  - cell: ANTES `sum(1/k^2,k,1,inf)` residual. AHORA `sum(1/k^2,k,1,inf)→1/6·pi^2`, `1/k^4→1/90·pi^4`,
+    `1/k^6→1/945·pi^6`, `1/k^8→1/9450·pi^8` (fórmula de Euler ζ(2m)=(-1)^(m+1)B_{2m}(2π)^(2m)/(2(2m)!));
+    `2/k^2→1/3·pi^2`, `k^(-2)→1/6·pi^2`. SOUNDNESS: p impar (ζ(3),ζ(5) — sin forma cerrada en π),
+    armónica p=1 (divergente), y cota inferior≠1 SE QUEDAN residuales honestos.
+  - validación: workspace verde (solo flake perf); clippy; huella GUARD/PRESS IDÉNTICA. Probe adversarial:
+    forma cerrada vs suma parcial concuerda (p≥4 a 1e-10; p=2 difiere por la cola de truncamiento 1/2e5);
+    coef. negativo `-1/k^2→-1/6·pi^2`; todos los casos a-declinar declinan.
+- retained learning:
+  - el motor de sumatorios infinitos enruta sum(.,inf) por geometric→aritmético-geométrico→[p-series]→
+    clasificador de divergencia; el nuevo handler se inserta ANTES del clasificador (que devolvía None para
+    1/k^p). La frontera de soundness es EXACTA y reusa la maquinaria de Bernoulli: `bernoulli_number` (extraída
+    de compute_bernoulli_expr) alimenta `even_zeta_pi_coefficient`. SOLO p par tiene forma elemental — p impar
+    DEBE permanecer residual (no es under-answer evitable, es que ζ(impar) no es expresable en π).
