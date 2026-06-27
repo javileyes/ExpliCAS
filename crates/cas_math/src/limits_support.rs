@@ -7841,7 +7841,22 @@ fn unary_log_finite_rational_argument_limit_at_infinity(
         return None;
     }
 
-    let value = rational_polynomial_argument_finite_tail_value(ctx, arg, var)?;
+    // See through an `abs` wrapper: `lim ln(|u|) = ln(|lim u|)`. This is what a rational
+    // antiderivative emits — `½·ln|(x-1)/(x+1)|` — so it must resolve at the infinite bound for
+    // the improper integral `∫₂^∞ 1/(x²-1)` to evaluate.
+    let (effective_arg, take_abs) = match ctx.get(arg).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 && ctx.is_builtin(fn_id, BuiltinFn::Abs) => {
+            (args[0], true)
+        }
+        _ => (arg, false),
+    };
+
+    let value = rational_polynomial_argument_finite_tail_value(ctx, effective_arg, var)?;
+    let value = if take_abs {
+        num_traits::Signed::abs(&value)
+    } else {
+        value
+    };
     if !value.is_positive() {
         return None;
     }
@@ -7867,6 +7882,26 @@ fn unary_sqrt_finite_rational_argument_limit_at_infinity(
 
     let value_expr = ctx.add(Expr::Number(value));
     finite_positive_domain_unary_result(ctx, BuiltinFn::Sqrt, value_expr)
+}
+
+/// `lim_{x→∞} |u(x)| = |L|` when the rational argument `u` has a finite tail value
+/// `L`. `|·|` is continuous, so the bare-infinity rule (`abs → +∞`, valid only
+/// when the argument diverges) must NOT fire here. This is what closes
+/// `lim ln(|(x-1)/(x+1)|) = ln(1) = 0` (the argument `(x-1)/(x+1) → 1`), and with
+/// it the improper integral `∫₂^∞ 1/(x²-1) = ½·ln 3`, whose antiderivative
+/// `½·ln|(x-1)/(x+1)|` is evaluated at the infinite bound through this limit.
+fn unary_abs_finite_rational_argument_limit_at_infinity(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    arg: ExprId,
+    var: ExprId,
+) -> Option<ExprId> {
+    if builtin != BuiltinFn::Abs {
+        return None;
+    }
+
+    let value = rational_polynomial_argument_finite_tail_value(ctx, arg, var)?;
+    Some(ctx.add(Expr::Number(num_traits::Signed::abs(&value))))
 }
 
 fn unary_sqrt_zero_tail_rational_argument_limit_at_infinity(
@@ -8001,6 +8036,11 @@ pub fn elementary_function_limit_at_infinity(
                         return Some(result);
                     }
                     if let Some(result) = unary_sqrt_finite_rational_argument_limit_at_infinity(
+                        ctx, builtin, *arg, var,
+                    ) {
+                        return Some(result);
+                    }
+                    if let Some(result) = unary_abs_finite_rational_argument_limit_at_infinity(
                         ctx, builtin, *arg, var,
                     ) {
                         return Some(result);

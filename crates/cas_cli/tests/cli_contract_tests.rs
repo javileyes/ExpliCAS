@@ -1617,6 +1617,33 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 }
 
 #[test]
+fn test_eval_limit_abs_finite_tail_at_infinity() {
+    // `lim_{x→∞} |u(x)| = |L|` when the rational argument has a finite tail L — previously only the
+    // divergent case (`abs → +∞`) was handled, so `|(x-1)/(x+1)|` stayed an unevaluated residual.
+    // Composing through `ln` (`lim ln(|u|) = ln(|L|)`) is what an improper rational integral with a
+    // log antiderivative needs at its infinite bound.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("limit(abs((x-1)/(x+1)), x, inf)"), "1");
+    assert_eq!(r("limit(abs((2*x+1)/(x-3)), x, inf)"), "2");
+    assert_eq!(r("limit(ln(abs((x-1)/(x+1))), x, inf)"), "0");
+    assert_eq!(r("limit(ln(abs((3*x+1)/(x+1))), x, inf)"), "ln(3)");
+    // Improper integral unlocked by the composition: ∫₁^∞ 1/(x(x+1)) = ln 2.
+    assert_eq!(r("integrate(1/(x*(x+1)), x, 1, inf)"), "-ln(1/2)");
+    // Controls: a divergent abs still → ∞, a finite-point abs is unchanged, plain ln/sqrt unaffected.
+    assert_eq!(r("limit(abs(x^2-x), x, inf)"), "infinity");
+    assert_eq!(r("limit(abs(x-3), x, 5)"), "2");
+    assert_eq!(r("limit(ln(x^2+1), x, inf)"), "infinity");
+    assert_eq!(r("limit(sqrt((x^2+1)/x^2), x, inf)"), "1");
+}
+
+#[test]
 fn test_eval_matrix_eigenvectors_rational() {
     // `eigenvectors(A)` (capstone of the linear-algebra core) returns, for each distinct RATIONAL
     // eigenvalue, the null-space basis of A−λI by exact rational RREF — rows are the eigenvectors.
