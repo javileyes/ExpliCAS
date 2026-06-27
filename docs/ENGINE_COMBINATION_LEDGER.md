@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 410 (newest first)
+Active entries: 411 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -147,6 +147,7 @@ Active entries: 410 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/solve_outcome.rs` (resolve_single_side_exponentia... | SOUNDNESS P0 (audit 2, ciclo 2/5): factor exponencial b^x estrictamente positivo
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (intersect_inequality_with_tri... | SOUNDNESS P0 (audit 2, ciclo 3/5): inecuación trig fuera de rango sin/cos → ℝ/∅
 - 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_decline_variable_base_log... | SOUNDNESS P0 (audit 2, ciclo 4/5): log base variable log(x,c)≷k → residual honesto
+- 2026-06-27 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_decline_periodic_trig_ine... | SOUNDNESS P0 (audit 2, ciclo 5/5): inecuación trig periódica → residual honesto
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16621,3 +16622,25 @@ Active entries: 410 (newest first)
     residual). El primer intento (gate en log_isolation.rs) dio ok=false; moverlo al interceptor pre-
     solve_inner produce la convención correcta. El case-split correcto (logₓ por signo de ln(x)) queda como
     follow-up opcional. Distinto de mecanismo D (base constante fraccionaria `log(1/2,x)>3`, otro path).
+
+## 2026-06-27 - SOUNDNESS P0 (audit 2, ciclo 5/5): inecuación trig periódica → residual honesto
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (try_decline_periodic_trig_inequality +
+  contains_trig_of_var, interceptor antes de solve_inner)
+- status: `retained` (commit pendiente↑). Cierra la grieta de inecuaciones trascendentes del 2º audit.
+- capture:
+  - cell: ANTES `sin(x)>0`→(0,∞), `cos(x)<0`→(-∞,π/2), `sin(x)>1/2`→(π/6,∞), `tan(x)>1`→(π/4,∞) [rayos
+    mentirosos]. AHORA todos → residual honesto `Solve: solve(sin(x)=0, x)` (ok=true), igual `sin(2x)>0`,
+    `cos(x)>=1/2`. EXCLUIDOS (ciclo 3 resuelve): bare sin/cos fuera de rango `cos(x)<=1`→ℝ, `sin(x)>2`→∅.
+    Controles: ecuaciones (`sin(x)=1/2`→{π/6}), trig constante (`sin(2)*x>0`→(0,∞)) intactos.
+  - causa raíz: la solución verdadera es una UNIÓN PERIÓDICA infinita que `SolutionSet` NO puede
+    representar (sin variante Periodic); la inversión monótona emite un rayo.
+  - fix: interceptor en solve_local_core ANTES de solve_inner que detecta `sin/cos/tan` con var en el
+    argumento (`contains_trig_of_var`, recursivo) y devuelve `residual_solution_set`. EXCLUYE los bare
+    sin/cos con umbral fuera-de-rango (`classify_trig_threshold` = Some) para no pisar al guard del ciclo 3.
+  - validación: workspace verde; clippy; huella GUARD/PRESS IDÉNTICA; unit test + contrato CLI.
+- retained learning:
+  - INTERACCIÓN ciclos 3↔5: el guard de rango (ciclo 3, POST-solve_inner) resuelve ℝ/∅; el gate periódico
+    (ciclo 5, PRE-solve_inner) declina. El gate periódico DEBE excluir los casos que el guard de rango
+    resuelve (bare sin/cos + threshold out-of-range), o los pisaría a residual antes de que solve_inner+rango
+    corran. Detección por argumento-contiene-var evita declinar `sin(2)*x>0` (trig constante, lineal en x).
