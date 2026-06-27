@@ -1922,6 +1922,31 @@ fn test_eval_vector_projection_and_angle() {
 }
 
 #[test]
+fn test_eval_convergent_p_series_even_zeta() {
+    // `sum(c/k^p, k, 1, inf)` with EVEN p has Euler's closed form c·ζ(2m) = c·(rational)·π^(2m).
+    // Odd p (ζ(3), ζ(5), …, no known closed form in π), the divergent harmonic series (p=1), and
+    // any lower bound ≠ 1 MUST stay honest residuals — solving them would be unsound.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("sum(1/k^2, k, 1, inf)"), "1/6·pi^2"); // ζ(2) = π²/6
+    assert_eq!(r("sum(1/k^4, k, 1, inf)"), "1/90·pi^4"); // ζ(4) = π⁴/90
+    assert_eq!(r("sum(1/k^6, k, 1, inf)"), "1/945·pi^6"); // ζ(6) = π⁶/945
+    assert_eq!(r("sum(1/k^8, k, 1, inf)"), "1/9450·pi^8"); // ζ(8) = π⁸/9450
+    assert_eq!(r("sum(2/k^2, k, 1, inf)"), "1/3·pi^2"); // 2·ζ(2) = π²/3
+    assert_eq!(r("sum(k^(-2), k, 1, inf)"), "1/6·pi^2"); // negative-power form
+                                                         // Honest residuals: no elementary closed form, or out of scope.
+    assert_eq!(r("sum(1/k^3, k, 1, inf)"), "sum(1 / k^3, k, 1, infinity)"); // Apéry, odd
+    assert_eq!(r("sum(1/k^5, k, 1, inf)"), "sum(1 / k^5, k, 1, infinity)"); // odd
+    assert_eq!(r("sum(1/k^2, k, 2, inf)"), "sum(1 / k^2, k, 2, infinity)"); // lower bound ≠ 1
+}
+
+#[test]
 fn test_eval_limit_abs_finite_tail_at_infinity() {
     // `lim_{x→∞} |u(x)| = |L|` when the rational argument has a finite tail L — previously only the
     // divergent case (`abs → +∞`) was handled, so `|(x-1)/(x+1)|` stayed an unevaluated residual.

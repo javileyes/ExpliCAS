@@ -366,6 +366,66 @@ fn try_convergent_infinite_arithmetic_geometric_sum(
     Some(ctx.add(Expr::Number(value)))
 }
 
+/// Extract `(coeff, p)` from a p-series term `coeff / k^p` (with `coeff` a rational
+/// constant and `p` a positive integer): matches `1/k^p` and `c/k^p` as `Div`, and
+/// `k^(-p)` as a `Pow` with negative exponent. Returns `None` for any other shape.
+fn extract_p_series_term(ctx: &Context, term: ExprId, var: &str) -> Option<(BigRational, i64)> {
+    match ctx.get(term) {
+        Expr::Pow(base, exp) => {
+            if !is_named_var(ctx, *base, var) {
+                return None;
+            }
+            let e = crate::expr_extract::extract_i64_integer(ctx, *exp)?;
+            if e < 0 {
+                Some((BigRational::one(), -e))
+            } else {
+                None
+            }
+        }
+        Expr::Div(num, den) => {
+            let coeff = as_rational_const(ctx, *num, 8)?;
+            let Expr::Pow(base, exp) = ctx.get(*den) else {
+                return None;
+            };
+            if !is_named_var(ctx, *base, var) {
+                return None;
+            }
+            let p = crate::expr_extract::extract_i64_integer(ctx, *exp)?;
+            if p > 0 {
+                Some((coeff, p))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Closed form of the convergent p-series `sum(c/k^p, k, 1, inf) = c·ζ(p)`. ONLY
+/// EVEN `p` has an elementary closed form `c·ζ(2m) = c·(rational)·π^(2m)` (Euler);
+/// odd `p` (ζ(3), ζ(5), … — no known closed form in π) and any lower bound ≠ 1
+/// decline to honest residuals. `p = 1` (the divergent harmonic series) also declines
+/// here and is left to the divergence classifier.
+fn try_convergent_p_series_sum(ctx: &mut Context, call: &FiniteAggregateCall) -> Option<ExprId> {
+    // ζ(s) = Σ_{k=1}^∞ 1/k^s starts at k = 1; other lower bounds need a finite-head
+    // correction that is out of scope here.
+    if crate::expr_extract::extract_i64_integer(ctx, call.start_expr)? != 1 {
+        return None;
+    }
+    let (coeff, p) = extract_p_series_term(ctx, call.term, &call.var_name)?;
+    if p < 2 || p % 2 != 0 {
+        return None;
+    }
+    let m = (p / 2) as u64;
+    let pi_coeff = crate::number_theory_support::even_zeta_pi_coefficient(m)?;
+    let total = coeff * pi_coeff; // rational coefficient of π^p
+    let coeff_expr = ctx.add(Expr::Number(total));
+    let pi = ctx.add(Expr::Constant(Constant::Pi));
+    let exponent = ctx.add(Expr::Number(BigRational::from_integer(p.into())));
+    let power = ctx.add(Expr::Pow(pi, exponent));
+    Some(ctx.add(Expr::Mul(coeff_expr, power)))
+}
+
 /// Classify a product `product(term, k, a, infinity)` whose upper bound is
 /// infinite. Returns the divergence value when provable, else `None`.
 fn classify_infinite_product(ctx: &mut Context, call: &FiniteAggregateCall) -> Option<ExprId> {
@@ -552,6 +612,13 @@ pub fn try_plan_finite_sum_evaluation(
             });
         }
         if let Some(candidate) = try_convergent_infinite_arithmetic_geometric_sum(ctx, &call) {
+            return Some(SumEvaluationPlan {
+                call,
+                candidate,
+                kind: SumEvaluationKind::ConvergentInfinite,
+            });
+        }
+        if let Some(candidate) = try_convergent_p_series_sum(ctx, &call) {
             return Some(SumEvaluationPlan {
                 call,
                 candidate,
@@ -2574,7 +2641,7 @@ mod tests {
     use super::{
         build_finite_product_substitution, build_finite_sum_substitution,
         detect_one_minus_reciprocal_power, detect_reciprocal_power, extract_linear_offset,
-        try_build_factorizable_product_for_one_minus_reciprocal_square,
+        extract_p_series_term, try_build_factorizable_product_for_one_minus_reciprocal_square,
         try_build_geometric_power_sum, try_build_polynomial_sum, try_build_product_of_constant,
         try_build_product_of_first_integers, try_build_product_of_powers,
         try_build_sum_of_constant, try_build_sum_of_cubes, try_build_sum_of_first_integers,
@@ -2660,6 +2727,55 @@ mod tests {
 
         assert_eq!(detect_reciprocal_power(&ctx, inv_k_sq, "k"), Some(2));
         assert_eq!(detect_reciprocal_power(&ctx, k_neg_two, "k"), Some(2));
+    }
+
+    #[test]
+    fn p_series_term_and_even_zeta_coefficient() {
+        let mut ctx = Context::new();
+        let k = ctx.var("k");
+        let two = ctx.num(2);
+        let k_sq = ctx.add(Expr::Pow(k, two));
+        let one = ctx.num(1);
+        let inv_k_sq = ctx.add(Expr::Div(one, k_sq)); // 1/k^2
+        let three = ctx.num(3);
+        let three_over_k_sq = ctx.add(Expr::Div(three, k_sq)); // 3/k^2
+        let neg_two = ctx.add(Expr::Neg(two));
+        let k_neg_two = ctx.add(Expr::Pow(k, neg_two)); // k^(-2)
+
+        assert_eq!(
+            extract_p_series_term(&ctx, inv_k_sq, "k"),
+            Some((BigRational::from_integer(1.into()), 2))
+        );
+        assert_eq!(
+            extract_p_series_term(&ctx, three_over_k_sq, "k"),
+            Some((BigRational::from_integer(3.into()), 2))
+        );
+        assert_eq!(
+            extract_p_series_term(&ctx, k_neg_two, "k"),
+            Some((BigRational::from_integer(1.into()), 2))
+        );
+        // A positive power (`k^2`) is not a p-series term.
+        assert_eq!(extract_p_series_term(&ctx, k_sq, "k"), None);
+
+        // Euler even-zeta coefficients: ζ(2)=π²/6, ζ(4)=π⁴/90, ζ(6)=π⁶/945, ζ(8)=π⁸/9450.
+        use crate::number_theory_support::even_zeta_pi_coefficient;
+        assert_eq!(
+            even_zeta_pi_coefficient(1),
+            Some(BigRational::new(1.into(), 6.into()))
+        );
+        assert_eq!(
+            even_zeta_pi_coefficient(2),
+            Some(BigRational::new(1.into(), 90.into()))
+        );
+        assert_eq!(
+            even_zeta_pi_coefficient(3),
+            Some(BigRational::new(1.into(), 945.into()))
+        );
+        assert_eq!(
+            even_zeta_pi_coefficient(4),
+            Some(BigRational::new(1.into(), 9450.into()))
+        );
+        assert_eq!(even_zeta_pi_coefficient(0), None);
     }
 
     #[test]

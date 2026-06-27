@@ -735,25 +735,53 @@ fn binomial_bigint(n: u64, k: u64) -> BigInt {
     result
 }
 
-/// `n`th Bernoulli number `Bₙ` (rational, `B₁ = −1/2` convention) via the
-/// recurrence `Σ_{k=0}^{m} C(m+1,k)·Bₖ = 0`. Declines for negative `n`.
+/// `n`th Bernoulli number `Bₙ` as an exact rational (`B₁ = −1/2` convention) via the
+/// recurrence `Σ_{k=0}^{m} C(m+1,k)·Bₖ = 0` (with `B₀ = 1`). Shared by `bernoulli(n)`
+/// and the even-zeta closed form.
+pub fn bernoulli_number(n: u64) -> BigRational {
+    let mut bernoulli: Vec<BigRational> = Vec::with_capacity((n + 1) as usize);
+    bernoulli.push(BigRational::one()); // B₀ = 1
+    for i in 1..=n {
+        let mut acc = BigRational::zero();
+        for k in 0..i {
+            acc += BigRational::from_integer(binomial_bigint(i + 1, k)) * &bernoulli[k as usize];
+        }
+        bernoulli.push(-acc / BigRational::from_integer(BigInt::from(i + 1)));
+    }
+    bernoulli[n as usize].clone()
+}
+
+/// Rational coefficient `c` with `ζ(2n) = c·π^(2n)`, from Euler's formula
+/// `ζ(2n) = (-1)^(n+1)·B_{2n}·(2π)^(2n) / (2·(2n)!)`. Always positive. `None` for `n = 0`.
+pub fn even_zeta_pi_coefficient(n: u64) -> Option<BigRational> {
+    if n == 0 {
+        return None;
+    }
+    let two_n = 2 * n;
+    let b = bernoulli_number(two_n);
+    let pow2: BigInt = (0..two_n).fold(BigInt::one(), |acc, _| acc * 2);
+    let mut factorial = BigInt::one();
+    for i in 1..=two_n {
+        factorial *= BigInt::from(i);
+    }
+    // c = (-1)^(n+1) · B_{2n} · 2^(2n) / (2·(2n)!); the (-1)^(n+1) sign cancels B_{2n}'s
+    // own alternation, leaving c positive.
+    let mut c = b * BigRational::from_integer(pow2)
+        / BigRational::from_integer(BigInt::from(2) * factorial);
+    if n.is_multiple_of(2) {
+        c = -c;
+    }
+    Some(c)
+}
+
+/// `n`th Bernoulli number `Bₙ` (rational, `B₁ = −1/2` convention). Declines for negative `n`.
 pub fn compute_bernoulli_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let idx = extract_integer_bigint(ctx, n)?;
     if idx.is_negative() || idx > BigInt::from(1000) {
         return None;
     }
     let m = num_traits::ToPrimitive::to_u64(&idx)?;
-    let mut bernoulli: Vec<BigRational> = Vec::with_capacity((m + 1) as usize);
-    bernoulli.push(BigRational::one()); // B₀ = 1
-    for i in 1..=m {
-        let mut acc = BigRational::zero();
-        for k in 0..i {
-            acc += BigRational::from_integer(binomial_bigint(i + 1, k)) * &bernoulli[k as usize];
-        }
-        let value = -acc / BigRational::from_integer(BigInt::from(i + 1));
-        bernoulli.push(value);
-    }
-    Some(ctx.add(Expr::Number(bernoulli[m as usize].clone())))
+    Some(ctx.add(Expr::Number(bernoulli_number(m))))
 }
 
 /// Stirling number of the second kind `S(n,k)`: ways to partition an `n`-set
