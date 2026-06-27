@@ -2120,9 +2120,10 @@ fn test_eval_trig_inequality_out_of_range() {
     assert_eq!(r("sin(x)<2"), "All real numbers");
     assert_eq!(r("cos(x)>=-1"), "All real numbers"); // cos ≥ -1 always
     assert_eq!(r("sin(x)>=2"), "No solution");
-    // Controls: in-range thresholds (periodic — owned by a later cycle's residual path) and
-    // equations are unchanged.
-    assert_eq!(r("sin(x)>1/2"), "(1/6·pi, infinity)");
+    // Controls: an in-range threshold is now the honest periodic residual (owned by the periodic
+    // decline of commit 145ec7a09 — the old `(1/6·pi, infinity)` ray was unsound: sin(x)>1/2 is
+    // false at x=pi, which lies in that ray). Equations are unchanged.
+    assert_eq!(r("sin(x)>1/2"), "Solve: solve(sin(x) = 1 / 2, x) = 0");
     assert_eq!(r("cos(x)=2"), "No solution");
     assert_eq!(r("sin(x)=1/3"), "{ arcsin(1/3) }");
 }
