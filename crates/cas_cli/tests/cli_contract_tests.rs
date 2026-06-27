@@ -1863,6 +1863,35 @@ fn test_eval_combinatorial_sequences() {
 }
 
 #[test]
+fn test_eval_bernoulli_and_stirling_numbers() {
+    // Bernoulli numbers Bₙ (rational, B₁=−1/2 convention) and Stirling numbers of the second
+    // (set partitions into k blocks) and first (unsigned: permutations with k cycles) kind. All
+    // exact (BigInt/BigRational recurrences). Negative / k>n cases give honest residuals or 0.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("bernoulli(0)"), "1");
+    assert_eq!(r("bernoulli(1)"), "-1/2");
+    assert_eq!(r("bernoulli(2)"), "1/6");
+    assert_eq!(r("bernoulli(3)"), "0"); // odd n>1 ⇒ 0
+    assert_eq!(r("bernoulli(4)"), "-1/30");
+    assert_eq!(r("bernoulli(6)"), "1/42");
+    assert_eq!(r("bernoulli(-1)"), "bernoulli(-1)"); // honest residual
+    assert_eq!(r("stirling2(4,2)"), "7");
+    assert_eq!(r("stirling2(5,3)"), "25");
+    assert_eq!(r("stirling2(0,0)"), "1");
+    assert_eq!(r("stirling2(2,5)"), "0"); // k>n ⇒ 0
+    assert_eq!(r("stirling1(4,2)"), "11"); // unsigned: permutations of 4 with 2 cycles
+    assert_eq!(r("stirling1(5,2)"), "50");
+    assert_eq!(r("stirling1(3,3)"), "1");
+}
+
+#[test]
 fn test_eval_limit_abs_finite_tail_at_infinity() {
     // `lim_{x→∞} |u(x)| = |L|` when the rational argument has a finite tail L — previously only the
     // divergent case (`abs → +∞`) was handled, so `|(x-1)/(x+1)|` stayed an unevaluated residual.

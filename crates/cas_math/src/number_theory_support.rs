@@ -177,6 +177,14 @@ pub fn try_eval_simple_number_theory_call(
                 result,
             })
         }
+        "bernoulli" if args.len() == 1 => {
+            let result = compute_bernoulli_expr(ctx, args[0])?;
+            Some(NumberTheorySimpleRewrite::Unary {
+                name: "bernoulli",
+                arg: args[0],
+                result,
+            })
+        }
         "numdivisors" | "tau" | "sigma0" if args.len() == 1 => {
             let result = compute_numdivisors_expr(ctx, args[0])?;
             Some(NumberTheorySimpleRewrite::Unary {
@@ -266,6 +274,24 @@ pub fn try_eval_simple_number_theory_call(
             let result = compute_jacobi_expr(ctx, args[0], args[1])?;
             Some(NumberTheorySimpleRewrite::Binary {
                 name: "jacobi",
+                lhs: args[0],
+                rhs: args[1],
+                result,
+            })
+        }
+        "stirling2" | "stirling_second" if args.len() == 2 => {
+            let result = compute_stirling_second_expr(ctx, args[0], args[1])?;
+            Some(NumberTheorySimpleRewrite::Binary {
+                name: "stirling2",
+                lhs: args[0],
+                rhs: args[1],
+                result,
+            })
+        }
+        "stirling1" | "stirling_first" if args.len() == 2 => {
+            let result = compute_stirling_first_expr(ctx, args[0], args[1])?;
+            Some(NumberTheorySimpleRewrite::Binary {
+                name: "stirling1",
                 lhs: args[0],
                 rhs: args[1],
                 result,
@@ -694,6 +720,100 @@ pub fn compute_catalan_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         catalan = &catalan * BigInt::from(2 * (2 * k + 1)) / BigInt::from(k + 2);
     }
     Some(integer_result(ctx, catalan))
+}
+
+/// Binomial coefficient `C(n, k)` as an exact `BigInt` (`n, k ≥ 0`).
+fn binomial_bigint(n: u64, k: u64) -> BigInt {
+    if k > n {
+        return BigInt::zero();
+    }
+    let k = k.min(n - k);
+    let mut result = BigInt::one();
+    for i in 0..k {
+        result = result * BigInt::from(n - i) / BigInt::from(i + 1);
+    }
+    result
+}
+
+/// `n`th Bernoulli number `Bₙ` (rational, `B₁ = −1/2` convention) via the
+/// recurrence `Σ_{k=0}^{m} C(m+1,k)·Bₖ = 0`. Declines for negative `n`.
+pub fn compute_bernoulli_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let idx = extract_integer_bigint(ctx, n)?;
+    if idx.is_negative() || idx > BigInt::from(1000) {
+        return None;
+    }
+    let m = num_traits::ToPrimitive::to_u64(&idx)?;
+    let mut bernoulli: Vec<BigRational> = Vec::with_capacity((m + 1) as usize);
+    bernoulli.push(BigRational::one()); // B₀ = 1
+    for i in 1..=m {
+        let mut acc = BigRational::zero();
+        for k in 0..i {
+            acc += BigRational::from_integer(binomial_bigint(i + 1, k)) * &bernoulli[k as usize];
+        }
+        let value = -acc / BigRational::from_integer(BigInt::from(i + 1));
+        bernoulli.push(value);
+    }
+    Some(ctx.add(Expr::Number(bernoulli[m as usize].clone())))
+}
+
+/// Stirling number of the second kind `S(n,k)`: ways to partition an `n`-set
+/// into `k` non-empty blocks. Recurrence `S(n,k)=k·S(n-1,k)+S(n-1,k-1)`.
+/// Declines for negative arguments.
+pub fn compute_stirling_second_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
+    let n_big = extract_integer_bigint(ctx, n)?;
+    let k_big = extract_integer_bigint(ctx, k)?;
+    if n_big.is_negative()
+        || k_big.is_negative()
+        || n_big > BigInt::from(1000)
+        || k_big > BigInt::from(1000)
+    {
+        return None;
+    }
+    let n = num_traits::ToPrimitive::to_u64(&n_big)?;
+    let k = num_traits::ToPrimitive::to_u64(&k_big)?;
+    if k > n {
+        return Some(integer_result(ctx, BigInt::zero()));
+    }
+    let mut row = vec![BigInt::zero(); (k + 1) as usize];
+    row[0] = BigInt::one(); // S(0,0)=1
+    for i in 1..=n {
+        let mut next = vec![BigInt::zero(); (k + 1) as usize];
+        for j in 1..=k.min(i) {
+            next[j as usize] = BigInt::from(j) * &row[j as usize] + &row[(j - 1) as usize];
+        }
+        row = next;
+    }
+    Some(integer_result(ctx, row[k as usize].clone()))
+}
+
+/// Unsigned Stirling number of the first kind `c(n,k)`: permutations of `n`
+/// elements with exactly `k` cycles. Recurrence `c(n,k)=c(n-1,k-1)+(n-1)·c(n-1,k)`.
+/// Declines for negative arguments.
+pub fn compute_stirling_first_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
+    let n_big = extract_integer_bigint(ctx, n)?;
+    let k_big = extract_integer_bigint(ctx, k)?;
+    if n_big.is_negative()
+        || k_big.is_negative()
+        || n_big > BigInt::from(1000)
+        || k_big > BigInt::from(1000)
+    {
+        return None;
+    }
+    let n = num_traits::ToPrimitive::to_u64(&n_big)?;
+    let k = num_traits::ToPrimitive::to_u64(&k_big)?;
+    if k > n {
+        return Some(integer_result(ctx, BigInt::zero()));
+    }
+    let mut row = vec![BigInt::zero(); (k + 1) as usize];
+    row[0] = BigInt::one(); // c(0,0)=1
+    for i in 1..=n {
+        let mut next = vec![BigInt::zero(); (k + 1) as usize];
+        for j in 1..=k.min(i) {
+            next[j as usize] = &row[(j - 1) as usize] + BigInt::from(i - 1) * &row[j as usize];
+        }
+        row = next;
+    }
+    Some(integer_result(ctx, row[k as usize].clone()))
 }
 
 /// Extended Euclid: returns `(g, x, y)` with `a·x + b·y = g = gcd(a, b)`.

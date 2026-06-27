@@ -86,6 +86,9 @@ impl CasHelper {
                 "fibonacci".to_string(),
                 "lucas".to_string(),
                 "catalan".to_string(),
+                "bernoulli".to_string(),
+                "stirling1".to_string(),
+                "stirling2".to_string(),
                 "sum".to_string(),
                 "product".to_string(),
                 // Polynomial functions
