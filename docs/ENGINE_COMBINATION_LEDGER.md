@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 415 (newest first)
+Active entries: 416 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -152,6 +152,7 @@ Active entries: 415 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_cli/tests/cli_contract_tests.rs` (test_eval_trig_inequality_out_o... | INTEGRIDAD (lateral B2): aserto de control trig obsoleto dejaba el árbol rojo desde el ciclo 5
 - 2026-06-27 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (apart_decomposi... | SOUNDNESS P0 (audit 3 / bloque 0, B2): apart con raíz repetida pierde el tope de la escalera
 - 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (solve_exponential_substitution_... | SOUNDNESS P0 (audit 3 / bloque 0, B3): inecuación polinómica en e^x no back-sustituía x=ln(u)
+- 2026-06-27 | `retained` | `crates/cas_solver_core/src/substitution.rs` (substitute_expr_pattern + nuevo... | SOUNDNESS P0 (sibling de B3): inecuación exponencial coeficiente==base devolvía {1}
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16761,3 +16762,35 @@ Active entries: 415 (newest first)
     ecuación, soltando el operador. Equation `=0`→{1} es correcta; solo la INECUACIÓN miente. Fix futuro: que
     substitute_expr_pattern maneje `base^(x+k) → base^k·u`. (2) `e^x+1>0`→"No solution" / `2e^x+3>0`→condicional malformado
     (ya en la lista abierta del 2º audit "additive/power-confusion", single-exponential).
+
+## 2026-06-27 - SOUNDNESS P0 (sibling de B3): inecuación exponencial coeficiente==base devolvía {1}
+
+- area: `crates/cas_solver_core/src/substitution.rs` (substitute_expr_pattern + nuevo affine_exponent_parts)
+- status: `retained` (commit 29f9e5867). Sibling P0 cazado por la verificación adversarial de B3 (bisect-confirmado pre-existente a B2).
+- capture:
+  - cell: ANTES `2^(2x)-2·2^x<0`→`{1}` (raíz de la ecuación, operador soltado). AHORA `(-∞,1)`; `>0`→`(1,∞)`;
+    `<=0`→`(-∞,1]`; `>=0`→`[1,∞)`. Bases 2/3/10 todas correctas. `2^(x+1)=8`→`{2}` (la sustitución afín también
+    sirve a la ecuación). Controles: `2^(2x)-2·2^x=0`→`{1}` (correcto, ecuación), `2^(2x)-4·2^x<0`→`(-∞,2)`
+    (coeff 4≠base 2, NO funde). Verificado vs sympy.
+  - causa raíz: cuando el coeficiente lineal IGUALA la base, el simplificador funde `c·base^x = base^(x+1)`
+    (`2·2^x → 2^(x+1)`, `e·e^x → e^(x+1)`). `substitute_expr_pattern` solo casaba exponente MULTIPLICATIVO
+    (`base^(k·x) → u^k`), así que el `Add`-en-exponente `base^(x+1)` sobrevivía → post-check rechaza la x → la
+    estrategia declina → el fallback devuelve la raíz de la ecuación SOLTANDO el operador.
+  - fix: enseñar a `substitute_expr_pattern` a reconocer un exponente AFÍN `a·te+b` y reescribir
+    `base^(a·te+b) → base^b·u^a` (helper `affine_exponent_parts`: un sumando es constante numérica, el otro `te` o
+    `num·te`). GATEADO a base NUMÉRICA con constante ENTERA, para que `base^b` sea racional exacto que la extracción
+    de polinomio-en-u pliega (`2^1→2`). Base simbólica (`e^(x+1)→e^1·u`, coeficiente no-racional que el u-solver
+    rechaza con ok=false) o constante fraccionaria → se deja a la recursión genérica (declina como antes, SIN
+    regresión ok=false). La back-sustitución del intervalo la hace el mapeo de B3.
+  - validación: workspace verde; clippy --workspace; rustfmt; huella GUARD/PRESS IDÉNTICA; 11 asertos CLI (4 ops +
+    bases 2/3/10 + ecuación + sustitución-afín-ecuación + control no-funde).
+- retained learning:
+  - SEGUNDO ejemplo seguido (tras B3) del valor de la verificación adversarial: cazó un sibling P0 que los tests
+    verdes no veían. El bisect (memoria [[bisect-before-believing-regression-attribution]]) confirmó pre-existente,
+    así que NO era regresión de B3 — pero estaba en la misma familia y se arregló como continuación natural.
+  - `as_rational_const` NO pliega `Pow(Number, Number)` (devolvió None para `2^1`); pero la extracción downstream
+    `Polynomial::from_expr` SÍ pliega `Number^entero`. La forma intermedia `base^b·u` es segura para base numérica
+    (se pliega) pero NO para base simbólica (`e^1·u` rompe el u-solver). El gate correcto: base es `Number` Y
+    const es entero — no "base^b plegable vía as_rational_const".
+  - peldaño restante: base-e coeff==base (`e^(2x)-e·e^x<0`→`{1}`) necesita u-solver con coeficiente SIMBÓLICO
+    (`u²-e·u<0`); y los items abiertos del 2º audit (`e^x+1>0`→"No solution", additive/power-confusion single-exp).
