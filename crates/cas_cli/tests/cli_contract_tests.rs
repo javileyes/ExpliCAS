@@ -2249,6 +2249,37 @@ fn test_eval_exponential_polynomial_inequality_back_substitution() {
 }
 
 #[test]
+fn test_eval_exponential_coefficient_equals_base_inequality() {
+    // SOUNDNESS: when the linear coefficient equals the base, the simplifier merges
+    // `c·base^x = base^(x+1)`, and the exponential substitution could not match the `Add`-in-exponent
+    // `base^(x+1)`. The strategy declined and the fallback returned the EQUATION root, dropping the
+    // operator: `2^(2x)-2·2^x<0` -> `{1}` instead of `(-inf, 1)`. Now `substitute_expr_pattern` maps the
+    // affine exponent `base^(x+1) -> base^1·u` (numeric base, integer constant), so the inequality solves
+    // and back-substitutes correctly. Truth vs sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // u = base^x in (0, base) <=> base^x < base <=> x < 1. All four operators, bases 2/3/10.
+    assert_eq!(r("2^(2*x)-2*2^x<0"), "(-infinity, 1)");
+    assert_eq!(r("2^(2*x)-2*2^x>0"), "(1, infinity)");
+    assert_eq!(r("2^(2*x)-2*2^x<=0"), "(-infinity, 1]");
+    assert_eq!(r("2^(2*x)-2*2^x>=0"), "[1, infinity)");
+    assert_eq!(r("3^(2*x)-3*3^x<0"), "(-infinity, 1)");
+    assert_eq!(r("10^(2*x)-10*10^x<0"), "(-infinity, 1)");
+    // The affine-exponent substitution also drives the equation form: 2^(x+1) = 8 <=> 2·u = 8 <=> x = 2.
+    assert_eq!(r("2^(2*x)-2*2^x=0"), "{ 1 }");
+    assert_eq!(r("2^(x+1)=8"), "{ 2 }");
+    // Controls: a coefficient that is NOT the base does not merge, so the inner base^x substitutes
+    // as before (2^(2x)-4·2^x stays a clean u^2-4u): boundary x=2, not 1.
+    assert_eq!(r("2^(2*x)-4*2^x<0"), "(-infinity, 2)");
+}
+
+#[test]
 fn test_eval_rational_sum_inequality_routing() {
     // SOUNDNESS regression: a rational-SUM inequality `x + c/x {op} k` (LHS an Add containing a
     // rational term) used to skip the reliable rational path and have its operator dropped, returning

@@ -1358,6 +1358,40 @@ pub fn detect_exponential_substitution(
 
 /// Substitute `target` by `replacement` in an expression tree, with
 /// special handling for exponential patterns: `e^(k*x) -> replacement^k`.
+/// For an exponent addend split `linear_candidate + const_candidate`, recognize
+/// the affine form `coeff*te + const`: `const_candidate` must be a numeric
+/// constant and `linear_candidate` must be the target exponent `te`
+/// (coefficient 1) or `num*te` (coefficient num). Returns `(const_expr,
+/// coeff_expr)` so the caller can rebuild `base^const * u^coeff`.
+fn affine_exponent_parts(
+    ctx: &mut Context,
+    linear_candidate: ExprId,
+    const_candidate: ExprId,
+    te: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    if !matches!(ctx.get(const_candidate), Expr::Number(_)) {
+        return None;
+    }
+    if compare_expr(ctx, linear_candidate, te) == Ordering::Equal {
+        let one = ctx.num(1);
+        return Some((const_candidate, one));
+    }
+    if let Expr::Mul(l, r) = ctx.get(linear_candidate) {
+        let (l, r) = (*l, *r);
+        let l_is_num = matches!(ctx.get(l), Expr::Number(_));
+        let r_is_num = matches!(ctx.get(r), Expr::Number(_));
+        let l_matches = compare_expr(ctx, l, te) == Ordering::Equal;
+        let r_matches = compare_expr(ctx, r, te) == Ordering::Equal;
+        if l_matches && r_is_num {
+            return Some((const_candidate, r));
+        }
+        if r_matches && l_is_num {
+            return Some((const_candidate, l));
+        }
+    }
+    None
+}
+
 pub fn substitute_expr_pattern(
     ctx: &mut Context,
     expr: ExprId,
@@ -1395,6 +1429,42 @@ pub fn substitute_expr_pattern(
                     if (l_matches && r_is_num) || (r_matches && l_is_num) {
                         let coeff = if l_matches { r } else { l };
                         return ctx.add(Expr::Pow(replacement, coeff));
+                    }
+                }
+
+                // Affine exponent `a*te + b` -> base^b * u^a. This is where the
+                // simplifier's `c*base^x = base^(x+1)` merge (the linear coefficient
+                // equals the base) lands: e.g. `2^(x+1)` -> `2^1 * u` = `2*u`.
+                // Without it the exponential survives the substitution, the strategy
+                // declines, and the fallback drops the operator (a wrong inequality
+                // answer like `2^(2x)-2*2^x<0 -> {1}`).
+                if let Expr::Add(p, q) = ctx.get(*e) {
+                    let (p, q) = (*p, *q);
+                    let affine = match affine_exponent_parts(ctx, p, q, te) {
+                        Some(parts) => Some(parts),
+                        None => affine_exponent_parts(ctx, q, p, te),
+                    };
+                    if let Some((const_expr, coeff_expr)) = affine {
+                        // Apply only for a NUMERIC base with an INTEGER constant, so
+                        // `base^const` is an exact rational the polynomial extraction
+                        // folds (`2^1 -> 2`). A symbolic base (`e^(x+1) -> e^1*u`) or a
+                        // fractional constant (`2^(x+1/2) -> sqrt(2)*u`) would leave a
+                        // non-rational coefficient the u-solver rejects, so leave those
+                        // to the generic recursion (the strategy then declines, as before).
+                        let base_is_number = matches!(ctx.get(*b), Expr::Number(_));
+                        let const_is_integer =
+                            cas_math::numeric_eval::as_rational_const(ctx, const_expr)
+                                .is_some_and(|value| value.is_integer());
+                        if base_is_number && const_is_integer {
+                            let base_part = ctx.add(Expr::Pow(*b, const_expr));
+                            let one = ctx.num(1);
+                            let u_part = if compare_expr(ctx, coeff_expr, one) == Ordering::Equal {
+                                replacement
+                            } else {
+                                ctx.add(Expr::Pow(replacement, coeff_expr))
+                            };
+                            return mul2_raw(ctx, base_part, u_part);
+                        }
                     }
                 }
             }
