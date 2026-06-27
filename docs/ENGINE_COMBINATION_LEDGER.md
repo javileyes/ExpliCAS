@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 386 (newest first)
+Active entries: 387 (newest first)
 
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
@@ -123,6 +123,7 @@ Active entries: 386 (newest first)
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvectors`, `r... | CAPACIDAD (álgebra lineal, capstone): autovectores (autovalores racionales)
 - 2026-06-27 | `retained` | `crates/cas_math/src/limits_support.rs` (`unary_abs_finite_rational_argument_... | CAPACIDAD (cálculo/límites): lim |u| y lim ln(|u|) en ∞ con cola finita
 - 2026-06-27 | `retained` | `crates/cas_math/src/number_theory_support.rs` (compute_isprime/nextprime/pre... | CAPACIDAD (teoría de números): isprime, nextprime, prevprime, totient
+- 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_nullspace`, reusa... | CAPACIDAD (álgebra lineal): espacio nulo nullspace(A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor` nuevo;... | P0 unsound/consistencia: `∞/∞ -> undefined` para escalado/simbólico/multi-factor (cierra D36)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`fold_inf_div_inf_recursive` nuevo) | P0 consistencia: `∞/∞` ANIDADO -> undefined (fold recursivo; cierra peldaño A)
 - 2026-06-26 | `retained` | `crates/cas_math/src/infinity_support.rs` (`contains_unbounded_factor`: brazo... | P0 unsound: `∞^p / ∞^q -> undefined` (base-potencia infinita; cierra peldaño B)
@@ -16157,3 +16158,18 @@ Active entries: 386 (newest first)
   - el path de teoría de números (`try_eval_simple_number_theory_call` + gate) es el punto limpio para
     funciones aritméticas que devuelven NÚMEROS. La falta de tipo Bool obliga a 1/0 en predicados — peldaño:
     un tipo booleano de primera clase desbloquearía isprime/iguales/relacionales con display `true/false`.
+
+## 2026-06-27 - CAPACIDAD (álgebra lineal): espacio nulo nullspace(A)
+
+- area: `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_nullspace`, reusa `rational_null_space`)
+- status: `retained` (commit pendiente↑). Completa "resolver A·x=0" del núcleo de álgebra lineal.
+- capture:
+  - cell: ANTES no definida. AHORA base de {x:A·x=0} por RREF racional exacta, filas=base; verificado A·v=0:
+    `[[1,2,3],[4,5,6],[7,8,9]]→[1,-2,1]`, `[[1,1,1]]→[[-1,1,0],[-1,0,1]]` (2-D). Núcleo trivial→vector cero;
+    simbólica→residual.
+  - reusa `rational_null_space` (de autovectores) — el RREF racional ya estaba; nullspace es A directamente.
+  - validación: workspace 12425 passed (solo flake perf); clippy; huella IDÉNTICA.
+- retained learning:
+  - el `rational_null_space` construido para autovectores (núcleo de A−λI) se reusa tal cual para nullspace
+    (núcleo de A) — extraer la primitiva una vez paga en el siguiente comando. Gate multi-línea de rustfmt:
+    el perl por ancla de una línea falla cuando rustfmt envuelve el match; editar el bloque real.
