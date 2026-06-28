@@ -4,7 +4,9 @@ use cas_api_models::{
 };
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::numeric_eval::as_rational_const;
 use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
+use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::collections::HashSet;
@@ -54,6 +56,7 @@ pub(crate) fn collect_output_required_conditions(
         let cond = *cond;
         if required_condition_wire_is_redundant(ctx, cond, &visible_conditions)
             || assumed_filter.covers_required_condition(ctx, cond)
+            || condition_is_tautological(ctx, cond)
         {
             continue;
         }
@@ -106,6 +109,104 @@ fn required_condition_wire_is_redundant(
     reciprocal_trig_log_argument_condition_is_redundant(ctx, *nonzero_expr, visible_conditions)
 }
 
+/// A required condition that is ALWAYS satisfied for every real value (vacuous) and must not be
+/// shown. Conservative: returns true only when provably always-true in the reals, so a genuine
+/// domain restriction is never dropped. Currently handles `e >= 0` where `e` is structurally
+/// non-negative; the definedness conditions of sqrt/log/etc. live on the ARGUMENT, not on a
+/// provably-non-negative expression, so they are untouched.
+fn condition_is_tautological(ctx: &Context, cond: &crate::ImplicitCondition) -> bool {
+    matches!(cond, crate::ImplicitCondition::NonNegative(e) if expr_is_provably_nonnegative(ctx, *e))
+}
+
+/// True when `e >= 0` holds for every real value where `e` is defined: `|·|`, even integer powers,
+/// principal even roots, non-negative constants, and the `|a| ± a` forms (incl. `sqrt(a^2) ± a`).
+fn expr_is_provably_nonnegative(ctx: &Context, e: ExprId) -> bool {
+    if abs_value_arg(ctx, e).is_some() {
+        return true;
+    }
+    match ctx.get(e) {
+        Expr::Number(n) => !n.is_negative(),
+        // A principal square root is >= 0 wherever it is defined.
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            true
+        }
+        Expr::Pow(_, exp) => pow_exponent_forces_nonnegative(ctx, *exp),
+        Expr::Add(l, r) => abs_plus_minus_same_arg(ctx, *l, *r),
+        // |a| - a  (l = |a|, r = a)
+        Expr::Sub(l, r) => matches!(abs_value_arg(ctx, *l), Some(a) if exprs_equal(ctx, a, *r)),
+        _ => false,
+    }
+}
+
+/// `Some(a)` if `e` equals `|a|`: either `abs(a)` or `sqrt(a^2) = (a^2)^(1/2)`.
+fn abs_value_arg(ctx: &Context, e: ExprId) -> Option<ExprId> {
+    match ctx.get(e) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        // sqrt(a^2) as the Sqrt builtin: sqrt(Pow(a, 2)) == |a|.
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            square_base(ctx, args[0])
+        }
+        // sqrt(a^2) as a half-power: (a^2)^(1/2) == |a|.
+        Expr::Pow(base, exp) => {
+            let half = as_rational_const(ctx, *exp)?;
+            (half == BigRational::new(BigInt::from(1), BigInt::from(2)))
+                .then(|| square_base(ctx, *base))
+                .flatten()
+        }
+        _ => None,
+    }
+}
+
+/// `Some(a)` if `e == a^2` (an explicit square).
+fn square_base(ctx: &Context, e: ExprId) -> Option<ExprId> {
+    let Expr::Pow(inner, inner_exp) = ctx.get(e) else {
+        return None;
+    };
+    let inner_pow = as_rational_const(ctx, *inner_exp)?;
+    (inner_pow == BigRational::from_integer(BigInt::from(2))).then_some(*inner)
+}
+
+/// `t^(a/b) >= 0` over the reals when `a` is even (even power) or `b` is even (principal even root).
+fn pow_exponent_forces_nonnegative(ctx: &Context, exp: ExprId) -> bool {
+    let Some(r) = as_rational_const(ctx, exp) else {
+        return false;
+    };
+    bigint_is_even(r.numer()) || bigint_is_even(r.denom())
+}
+
+/// `|a| + a`, `a + |a|`, `|a| + (-a)`, `(-a) + |a|` — all `>= 0`.
+fn abs_plus_minus_same_arg(ctx: &Context, l: ExprId, r: ExprId) -> bool {
+    for (abs_side, other) in [(l, r), (r, l)] {
+        if let Some(a) = abs_value_arg(ctx, abs_side) {
+            if exprs_equal(ctx, a, other) {
+                return true;
+            }
+            if let Expr::Neg(neg) = ctx.get(other) {
+                if exprs_equal(ctx, a, *neg) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    cas_ast::ordering::compare_expr(ctx, a, b) == std::cmp::Ordering::Equal
+}
+
+fn bigint_is_even(n: &BigInt) -> bool {
+    (n % BigInt::from(2)).is_zero()
+}
+
 pub(crate) fn collect_output_required_display(
     required_conditions: &[crate::ImplicitCondition],
     ctx: &mut Context,
@@ -126,7 +227,9 @@ pub(crate) fn collect_output_required_display(
     let mut displays = Vec::new();
     for cond in &visible_conditions {
         let cond = *cond;
-        if required_condition_is_redundant(ctx, cond, &visible_conditions) {
+        if required_condition_is_redundant(ctx, cond, &visible_conditions)
+            || condition_is_tautological(ctx, cond)
+        {
             continue;
         }
         for display in public_required_condition_displays(ctx, cond) {
@@ -1976,6 +2079,53 @@ fn normalize_alias_lookup_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_expr(src: &str) -> (Context, ExprId) {
+        let mut ctx = Context::new();
+        let id = cas_parser::parse(src, &mut ctx).expect("parse");
+        (ctx, id)
+    }
+
+    #[test]
+    fn provably_nonnegative_accepts_always_nonneg_forms() {
+        for src in [
+            "abs(x)",
+            "x^2",
+            "(x - 1)^2",
+            "x^(2/3)",       // even-numerator rational power
+            "x^(3/2)",       // even-root (principal) power
+            "sqrt(x)",       // principal root >= 0
+            "sqrt(x^2) + x", // |x| + x
+            "x + sqrt(x^2)",
+            "sqrt(x^2) - x", // |x| - x
+            "abs(x) + x",
+        ] {
+            let (ctx, e) = parse_expr(src);
+            assert!(
+                expr_is_provably_nonnegative(&ctx, e),
+                "expected provably nonnegative: {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn provably_nonnegative_rejects_genuine_restrictions() {
+        // These are NOT always >= 0 — dropping their condition would be a soundness bug.
+        for src in [
+            "x",             // sign of x
+            "x^3",           // odd power
+            "x^(1/3)",       // odd root
+            "x - sqrt(x^2)", // x - |x| <= 0, i.e. condition means x >= 0
+            "x - 1",
+            "-(x^2)",
+        ] {
+            let (ctx, e) = parse_expr(src);
+            assert!(
+                !expr_is_provably_nonnegative(&ctx, e),
+                "must NOT be treated as provably nonnegative: {src}"
+            );
+        }
+    }
 
     #[test]
     fn dedupe_required_displays_removes_opposite_shifted_sqrt_zero_set() {
