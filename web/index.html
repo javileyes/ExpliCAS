@@ -117,6 +117,49 @@
             background: rgba(239, 68, 68, 0.2);
         }
 
+        .lang-switch {
+            display: inline-flex;
+            align-items: stretch;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .lang-switch::before {
+            content: "🌐";
+            display: flex;
+            align-items: center;
+            padding: 0 8px 0 10px;
+            font-size: 0.85em;
+            opacity: 0.75;
+        }
+
+        .lang-option {
+            background: transparent;
+            border: 0;
+            color: var(--text-secondary);
+            padding: 8px 12px;
+            font-size: 0.85em;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .lang-option + .lang-option {
+            border-left: 1px solid var(--border);
+        }
+
+        .lang-option:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .lang-option.active {
+            background: var(--accent);
+            color: #fff;
+        }
+
         .container {
             max-width: 100%;
             margin: 0 auto;
@@ -1376,6 +1419,17 @@
             <p>Interactive Step-by-Step Math Simplifier</p>
         </div>
         <div class="header-buttons">
+            <div class="lang-switch" id="lang-switch" role="group"
+                aria-label="Step-by-step language" title="Language of the step-by-step explanation">
+                <button type="button" class="lang-option" data-lang="es" aria-pressed="false"
+                    title="Paso a paso en español">ES</button>
+                <button type="button" class="lang-option" data-lang="en" aria-pressed="false"
+                    title="Step-by-step in English">EN</button>
+            </div>
+            <select id="lang-mode-select" style="display:none" aria-hidden="true" tabindex="-1">
+                <option value="es" selected>es</option>
+                <option value="en">en</option>
+            </select>
             <button class="header-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
                 🌙 Dark
             </button>
@@ -1436,14 +1490,6 @@
                 <select class="mode-select" id="complex-mode-select">
                     <option value="off" selected>off</option>
                     <option value="on">on</option>
-                </select>
-            </label>
-            <label class="mode-control" for="lang-mode-select"
-                title="Step-by-step language">
-                <span class="mode-label">Lang</span>
-                <select class="mode-select" id="lang-mode-select">
-                    <option value="es" selected>es</option>
-                    <option value="en">en</option>
                 </select>
             </label>
             <input type="text" class="input-field" id="expression-input"
@@ -1569,6 +1615,26 @@
         langModeSelect.addEventListener('change', () => {
             sessionStorage.setItem(LANG_MODE_STORAGE_KEY, langModeSelect.value);
         });
+
+        // The prominent ES/EN segmented toggle in the header drives the hidden source-of-truth
+        // <select>, so persistence and the eval payload keep reading langModeSelect.value unchanged.
+        const langSwitch = document.getElementById('lang-switch');
+        function syncLangToggle() {
+            langSwitch.querySelectorAll('.lang-option').forEach((btn) => {
+                const isActive = btn.dataset.lang === langModeSelect.value;
+                btn.classList.toggle('active', isActive);
+                btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+        }
+        langSwitch.querySelectorAll('.lang-option').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (langModeSelect.value === btn.dataset.lang) return;
+                langModeSelect.value = btn.dataset.lang;
+                langModeSelect.dispatchEvent(new Event('change'));
+                syncLangToggle();
+            });
+        });
+        syncLangToggle();
 
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
