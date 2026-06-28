@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 420 (newest first)
+Active entries: 421 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
+- 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (fold_rational_value + expr_has_va... | SOUNDNESS P0 (Grupo C1-3, audit #4): sumatorio con polo en el rango devuelve un número falso
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -16948,3 +16949,39 @@ Active entries: 420 (newest first)
   - siguiente iteración recomendada: Grupo B del audit #4 — variante `Periodic`/`ImageSet` del `SolutionSet` para
     ecuaciones trig (`solve(sin(x)=0)`→`{0}` suelta `+kπ`); es el hueco de mayor leverage (desbloquea solve-eq+ineq+
     narrativa periódica). Luego Grupo C1-3 (gating de polo en sumatorios sobre TODAS las raíces del denominador).
+
+## 2026-06-28 - SOUNDNESS P0 (Grupo C1-3, audit #4): sumatorio con polo en el rango devuelve un número falso
+
+- area: `crates/cas_math/src/summation_support.rs` (fold_rational_value + expr_has_vanishing_denominator + gate de polo finito/infinito + kind UndefinedPole), render arms en `cas_engine/src/rules/calculus/summation.rs` + `cas_engine/src/rules/arithmetic.rs` + `cas_solver/src/derive_command.rs`
+- status: `retained` (commit 413338df5). Segundo ciclo del plan audit #4; cierra C1-3 (3 wrong-answers, un fix).
+- capture:
+  - cell: ANTES `sum(1/(n^2-1),n,-2,5)`→`-3/5`, `sum(1/(n^2-4),n,-2,5)`→`-199/280`, `sum(1/(n^2-1),n,-2,oo)`→`-5/12`
+    (todos FALSOS: el rango contiene un entero donde el denominador se anula → término `1/0` → el sumatorio es
+    `undefined`). AHORA `undefined` en los tres + toda variante (polo negativo, polo en el propio start, end infinito).
+    Sin regresión: rangos SIN polo conservan el valor exacto (`sum(1/(n^2-1),n,2,5)`→`17/30`, `…,2,oo`→`3/4`).
+  - causa raíz: el gate de polo finito YA existía pero NUNCA disparaba con denominador cuadrático — su test de
+    cero usaba `numeric_eval::as_rational_const`, que DECLINA todo `Pow` (línea 76-77), así que un `n^2-1`
+    sustituido jamás plegaba a 0 y solo se cazaban denominadores LINEALES (`n-1`). Y el gate solo corría con AMBOS
+    límites enteros, así que un end infinito lo saltaba y el telescopaje computaba a través del polo.
+  - fix: (1) `fold_rational_value` local — evaluador racional EXACTO que además pliega `base^exp` (base racional +
+    exponente entero acotado a 256, nunca f64); úsalo en el test de denominador-cero. Ahora detecta TODAS las raíces
+    enteras (incl. la negativa y el start). (2) Gate de polo INFINITO (kind `UndefinedPole`, candidate=`undefined`)
+    que escanea el prefijo finito `[start, start+max_span]` ANTES de los builders de telescopaje; un polo más allá
+    del prefijo queda residual honesto (no número fabricado).
+  - validación: workspace verde; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; test de contrato nuevo (finito/infinito, límites negativos, start-como-polo, +
+    regresiones sin-polo exactas).
+- retained learning:
+  - `numeric_eval::as_rational_const` NO pliega `Pow` (ni siquiera `1^2`): cualquier gate de "es exactamente cero"
+    sobre una expresión con potencias (denominadores polinómicos `n^k`, discriminantes) lo necesita y as_rational_const
+    NO sirve — usa un fold local que cubra Pow(racional, entero). Mismo patrón de fragilidad que [[soundness-gates-must-be-exact]].
+  - distinguir polo GENUINO de removible sale gratis aquí: el simplificador cancela `(n-1)/(n^2-1)→1/(n+1)` AGUAS
+    ARRIBA, así que el gate solo ve denominadores que se anulan con numerador ≠ 0 (polo real → undefined). No hay que
+    re-implementar la distinción 0/0 vs c/0 en el gate. (El removible cancelado da el valor "rellenado", consistente
+    con el comportamiento previo del engine.)
+  - un gate de soundness colocado DESPUÉS de los builders de telescopaje/closed-form llega tarde: el builder ya
+    devolvió el número falso. Colócalo ANTES de todo camino que pueda computar a través del defecto (el gate finito ya
+    estaba antes; el infinito había que subirlo por delante del telescopaje).
+  - siguiente iteración recomendada: Grupo C4 (norma de vector complejo `norm([3,4i])`→`(16i²+9)^(1/2)` en vez de `5`:
+    baja a `sqrt(Σcᵢ²)` sin conjugar → debe ser `sqrt(Σ|cᵢ|²)`), barato y aislado. Luego Grupo B (variante `Periodic`,
+    grande/arquitectónico, scoping primero) y C5 (diff fraction-fold: 1 valor erróneo + 2 hangs, ruta frágil).
