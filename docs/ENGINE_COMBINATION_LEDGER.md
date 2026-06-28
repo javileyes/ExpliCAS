@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 426 (newest first)
+Active entries: 427 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -124,6 +124,7 @@ Active entries: 426 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (positive_linear_coeff_of_var ... | SOUNDNESS/L (Grupo B cont., audit #4): Periodic para ecuación trig con argumento ESCALADO trig(a·x)=c
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (reducción squared-trig en try... | SOUNDNESS/L (Grupo B COMPLETO, audit #4): ecuación trig al cuadrado vía reducción de ángulo doble
 - 2026-06-28 | `retained` | `crates/cas_ast/src/domain.rs` (Periodic{bases:Vec,period}), `crates/cas_solv... | SOUNDNESS (audit #5): emitir AMBAS familias para ecuaciones trig de dos familias
+- 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (nonzero_on_un... | UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador cuadrático de raíces reales fuera del rango
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17141,3 +17142,37 @@ Active entries: 426 (newest first)
     paso natural y de huella nula para no-trig (Periodic no se produce en otro sitio).
   - siguiente: el frente trig EQUATIONS queda completo. Soundness real-domain: sin wrong-answers conocidos; resta C5
     (no-terminación honesta, no wrong-answer). Para "universalidad" se puede retomar la cola de capacidad (gatekeepers).
+
+## 2026-06-28 - UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador cuadrático de raíces reales fuera del rango
+
+- area: `crates/cas_engine/src/rules/calculus/definite_integration.rs` (nonzero_on_unbounded_interval, caso grado-2)
+- status: `retained` (commit 467a39448). Primer ciclo de universalidad tras la fase de soundness; gradúa el item (F) del audit "Impropia de racional con antiderivada LOG".
+- capture:
+  - cell: ANTES `∫_2^∞ 1/(x²-1)` → residual (declina). AHORA `½ln3`. Igual `∫_3^∞ 1/(x²-4)=¼ln5`,
+    `∫_1^∞ 1/((x+1)(x+2))=ln(3/2)`, `∫_4^∞ 1/(x²-9)=⅙ln7`. Soundness: divergente `∫_2^∞ x/(x²-1)→infinity`,
+    polo-en-rango `∫_0^∞ 1/(x²-1)→undefined`, `∫_{1/2}^∞→undefined`.
+  - causa raíz: el indefinido (`½ln|p/q|`) Y el límite-frontera (`lim ½ln|p/q|@∞=0`) YA funcionaban, pero la
+    certificación de convergencia `nonzero_on_unbounded_interval` devolvía `Unknown` para un factor cuadrático con
+    discriminante ≥ 0 (solo certificaba el caso sin-raíces-reales), ignorando que las raíces (±1) caen FUERA de [2,∞).
+  - fix: decidir el caso grado-2-con-raíces-reales EXACTO (sin surds) desde el vértice `-b/2a` y el signo de `q` en el
+    borde finito: en `[lo,∞)` nonzero ⟺ `lo>r₂ ⟺ q(lo)>0 ∧ lo>vértice`; simétrico en `(-∞,hi]`; raíz dentro ⇒
+    `Undefined` (polo ⇒ diverge). La certificación SOLO decide no-polo; la convergencia de COLA la sigue dando el
+    límite-frontera (cola lenta pero sin polo certifica y su límite reporta `±∞` honesto). Bordes π/e → `Unknown`
+    (conservador). Normaliza a>0; `BigRational` exacto.
+  - validación: workspace verde; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass; huella
+    GUARD/PRESS IDÉNTICA; test de contrato nuevo (wins + soundness divergente/polo + sin-cambio finito y sin-raíz-real).
+- retained learning:
+  - separar "no-polo" de "convergencia-de-cola": una certificación de integral impropia solo necesita probar que el
+    integrando es FINITO en el intervalo (sin polo); la convergencia/divergencia del valor la decide el límite-frontera
+    de la antiderivada (cola divergente → `lim F@∞=±∞` → reporta `±∞`). No mezclar ambas en la certificación simplifica
+    el fix y lo mantiene aditivo.
+  - certificación de cuadrático sobre un intervalo SIN surds: vértice racional `-b/2a` + signo de `q` en el borde
+    deciden la posición de las raíces exactamente (`lo>r₂ ⟺ q(lo)>0 ∧ lo>vértice`), evitando comparar surds.
+    [[soundness-gates-must-be-exact]] — BigRational, nunca f64.
+  - LECCIÓN del día (4 áreas compartidas tocadas, 3 revertidas): antes de "completar" un residual, verificar que NO es
+    política deliberada (tests + warnings); este SÍ era un gap genuino (audit lo lista como fix-target F, el indefinido
+    y el límite ya funcionaban). [[residuals-are-often-deliberate-policy]]. Validar SIEMPRE la suite completa.
+  - siguiente: el frente de integración racional sigue fuerte; peldaños abiertos (audit): factor-over-ℝ (denominadores
+    irreducibles-sobre-ℚ grado≥4/6 como x⁴-2, x⁶+1; algebraico, difícil), `∫|g|` transcendente, definida `1/(a²-x²)`
+    fuera de `|x|<a` (atanh→log, INTENTADO+REVERTIDO antes, enredo con Hold + domain-cond). Y la mitad educativa de
+    límites/integrales. Los límites finite-point son POLÍTICA deliberada (no tocar sin scoping).
