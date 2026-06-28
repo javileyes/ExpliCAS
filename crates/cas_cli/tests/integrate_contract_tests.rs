@@ -2363,7 +2363,7 @@ fn integrate_contract_single_inverse_by_parts_narrates_u_dv_du_v() {
         ),
         (
             "integrate(asinh(x), x)",
-            "\\text{asinh}(x)",
+            "\\operatorname{asinh}(x)",
             "{({x}^{2} + 1)}^{-\\frac{1}{2}}",
         ),
     ] {

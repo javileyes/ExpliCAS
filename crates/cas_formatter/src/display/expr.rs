@@ -561,6 +561,25 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                         }
                     );
                 }
+                // Relational statements render with their real operator (an inequality must show
+                // "a < b", not "a = b" and not the raw "Less(a, b)" constructor).
+                if let Some(op) = relational_builtin_op_plain(name) {
+                    if args.len() == 2 {
+                        return write!(
+                            f,
+                            "{} {} {}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: args[0]
+                            },
+                            op,
+                            DisplayExpr {
+                                context: self.context,
+                                id: args[1]
+                            }
+                        );
+                    }
+                }
                 // PlusMinus(a, b) is a synthetic display node from the quadratic-formula trace;
                 // render it as "a ± b" to mirror the LaTeX `a \pm b` (otherwise it leaks as the
                 // raw constructor "PlusMinus(a, b)" in solve step equation fields).
@@ -1843,5 +1862,18 @@ impl<'a> fmt::Display for RawDisplayExpr<'a> {
                 }
             ),
         }
+    }
+}
+
+/// Plain-text operator for a symbolic-comparison builtin (`Equal`/`Less`/…), or `None`.
+fn relational_builtin_op_plain(name: &str) -> Option<&'static str> {
+    match name {
+        "Equal" => Some("="),
+        "Less" => Some("<"),
+        "Greater" => Some(">"),
+        "LessEqual" => Some("<="),
+        "GreaterEqual" => Some(">="),
+        "NotEqual" => Some("!="),
+        _ => None,
     }
 }

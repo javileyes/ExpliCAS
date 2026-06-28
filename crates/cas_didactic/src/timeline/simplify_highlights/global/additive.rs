@@ -446,7 +446,8 @@ mod tests {
             );
 
         assert!(
-            latex.contains("\\color{red}{\\text{atanh}") && latex.contains("\\color{red}{\\ln(x)}"),
+            latex.contains("\\color{red}{\\operatorname{atanh}")
+                && latex.contains("\\color{red}{\\ln(x)}"),
             "expected exact-path render to keep both atanh and ln highlighted, got: {latex}"
         );
     }
@@ -524,7 +525,7 @@ mod tests {
                 &cas_formatter::StylePreferences::default(),
             );
         assert!(
-            rendered3.contains("\\color{red}{\\text{atanh}")
+            rendered3.contains("\\color{red}{\\operatorname{atanh}")
                 && rendered3.contains("\\color{red}{\\ln(x)}"),
             "expected runtime step 3 exact render to keep atanh and ln highlighted, got: {rendered3}"
         );

@@ -793,6 +793,25 @@ pub trait LaTeXRenderer {
             "sinh" | "cosh" | "tanh" => {
                 format!("\\{}({})", name, self.expr_to_latex(args[0], false))
             }
+            // Inverse hyperbolic and matrix functions: render as proper math operators
+            // (\operatorname) instead of leaking through the \text{name}(...) fallback.
+            "asinh" | "acosh" | "atanh" | "asech" | "acsch" | "acoth" if args.len() == 1 => {
+                format!(
+                    "\\operatorname{{{}}}({})",
+                    name,
+                    self.expr_to_latex(args[0], false)
+                )
+            }
+            "det" | "trace" | "transpose" | "inverse" | "adjugate" | "rref" | "charpoly"
+            | "eigenvalues" | "eigenvectors" | "rank" | "nullspace"
+                if args.len() == 1 =>
+            {
+                format!(
+                    "\\operatorname{{{}}}({})",
+                    name,
+                    self.expr_to_latex(args[0], false)
+                )
+            }
             "ln" => format!("\\ln({})", self.expr_to_latex(args[0], false)),
             "log" if args.len() == 1 => {
                 format!("\\log({})", self.expr_to_latex(args[0], false))
@@ -838,6 +857,14 @@ pub trait LaTeXRenderer {
                 format!("\\int {} \\, dx", expr)
             }
             // __eq__ is an internal equation representation - display as "lhs = rhs"
+            // Relational statements (Equal/Less/Greater/LessEqual/GreaterEqual/NotEqual) render
+            // with their actual operator so an inequality shows `a < b`, not `a = b`.
+            _ if relational_builtin_op_latex(name).is_some() && args.len() == 2 => {
+                let op = relational_builtin_op_latex(name).unwrap();
+                let lhs = self.expr_to_latex(args[0], false);
+                let rhs = self.expr_to_latex(args[1], false);
+                format!("{} {} {}", lhs, op, rhs)
+            }
             _ if crate::eq::is_eq_name(name) && args.len() == 2 => {
                 let lhs = self.expr_to_latex(args[0], false);
                 let rhs = self.expr_to_latex(args[1], false);
@@ -2359,6 +2386,25 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                     self.render_with_path(args[0], false, &self.child_path(path, 0))
                 )
             }
+            // Inverse hyperbolic + matrix functions: \operatorname instead of the \text{} fallback,
+            // matching expr_to_latex so the highlighted trace renders them consistently.
+            "asinh" | "acosh" | "atanh" | "asech" | "acsch" | "acoth" if args.len() == 1 => {
+                format!(
+                    "\\operatorname{{{}}}({})",
+                    name,
+                    self.render_with_path(args[0], false, &self.child_path(path, 0))
+                )
+            }
+            "det" | "trace" | "transpose" | "inverse" | "adjugate" | "rref" | "charpoly"
+            | "eigenvalues" | "eigenvectors" | "rank" | "nullspace"
+                if args.len() == 1 =>
+            {
+                format!(
+                    "\\operatorname{{{}}}({})",
+                    name,
+                    self.render_with_path(args[0], false, &self.child_path(path, 0))
+                )
+            }
             "ln" => format!(
                 "\\ln({})",
                 self.render_with_path(args[0], false, &self.child_path(path, 0))
@@ -2403,6 +2449,12 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                 format!("\\int {} \\, dx", expr)
             }
             // __eq__ is an internal equation representation - display as "lhs = rhs"
+            _ if relational_builtin_op_latex(name).is_some() && args.len() == 2 => {
+                let op = relational_builtin_op_latex(name).unwrap();
+                let lhs = self.render_with_path(args[0], false, &self.child_path(path, 0));
+                let rhs = self.render_with_path(args[1], false, &self.child_path(path, 1));
+                format!("{} {} {}", lhs, op, rhs)
+            }
             _ if crate::eq::is_eq_name(name) && args.len() == 2 => {
                 let lhs = self.render_with_path(args[0], false, &self.child_path(path, 0));
                 let rhs = self.render_with_path(args[1], false, &self.child_path(path, 1));
@@ -2455,4 +2507,18 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
 fn is_full_color_highlight(latex: &str, color: HighlightColor) -> bool {
     let prefix = format!("{{\\color{{{}}}{{", color.to_latex());
     latex.starts_with(&prefix) && latex.ends_with("}}")
+}
+
+/// LaTeX operator for a symbolic-comparison builtin (`Equal`/`Less`/…), or `None` if `name` is not
+/// a relational builtin. Lets relational statements render with their real operator.
+fn relational_builtin_op_latex(name: &str) -> Option<&'static str> {
+    match name {
+        "Equal" => Some("="),
+        "Less" => Some("<"),
+        "Greater" => Some(">"),
+        "LessEqual" => Some("\\leq"),
+        "GreaterEqual" => Some("\\geq"),
+        "NotEqual" => Some("\\neq"),
+        _ => None,
+    }
 }

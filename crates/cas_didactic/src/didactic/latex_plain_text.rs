@@ -52,6 +52,9 @@ pub fn latex_to_plain_text(s: &str) -> String {
     result = result.replace("\\cdot", " · ");
     result = result.replace("\\left", "");
     result = result.replace("\\right", "");
+    // Drop the \operatorname command but keep its `{name}` argument, which the brace strip below
+    // then unwraps (e.g. `\operatorname{asinh}(x)` -> `asinh(x)`, not `operatornameasinh(x)`).
+    result = result.replace("\\operatorname", "");
     result = result.replace('{', "");
     result = result.replace('}', "");
     result = humanize_even_literal_squares(&result);

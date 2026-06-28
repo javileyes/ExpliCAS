@@ -11,7 +11,7 @@ pub(super) fn build_statement_request(
         .map_err(|e| format!("Parse error: {e}"))?;
     match stmt {
         cas_parser::Statement::Equation(eq) => {
-            let parsed = ctx.call("Equal", vec![eq.lhs, eq.rhs]);
+            let parsed = ctx.call(eq.op.builtin_name(), vec![eq.lhs, eq.rhs]);
             let var = detect_solve_variable_for_eval_request(ctx, eq.lhs, eq.rhs);
             Ok(PreparedEvalRequest::Solve {
                 raw_input: raw_input.to_string(),

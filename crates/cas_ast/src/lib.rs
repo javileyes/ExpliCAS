@@ -46,6 +46,23 @@ pub enum RelOp {
     Geq, // >=
 }
 
+impl RelOp {
+    /// Name of the symbolic-comparison builtin that represents this relation when a relational
+    /// statement (`lhs op rhs`) is lowered to a single Expr for echoing/display. Keeping the
+    /// operator (instead of always using `Equal`) is what lets an inequality render as `a < b`
+    /// rather than `a = b`.
+    pub fn builtin_name(&self) -> &'static str {
+        match self {
+            RelOp::Eq => "Equal",
+            RelOp::Neq => "NotEqual",
+            RelOp::Lt => "Less",
+            RelOp::Gt => "Greater",
+            RelOp::Leq => "LessEqual",
+            RelOp::Geq => "GreaterEqual",
+        }
+    }
+}
+
 impl std::fmt::Display for RelOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

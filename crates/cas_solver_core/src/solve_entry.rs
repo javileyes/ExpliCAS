@@ -38,6 +38,33 @@ pub fn equation_from_expr_or_zero(ctx: &mut Context, expr: ExprId) -> Equation {
                 op: RelOp::Gt,
             }
         }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::LessEqual) && args.len() == 2 =>
+        {
+            Equation {
+                lhs: args[0],
+                rhs: args[1],
+                op: RelOp::Leq,
+            }
+        }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::GreaterEqual) && args.len() == 2 =>
+        {
+            Equation {
+                lhs: args[0],
+                rhs: args[1],
+                op: RelOp::Geq,
+            }
+        }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::NotEqual) && args.len() == 2 =>
+        {
+            Equation {
+                lhs: args[0],
+                rhs: args[1],
+                op: RelOp::Neq,
+            }
+        }
         _ => Equation {
             lhs: expr,
             rhs: ctx.num(0),

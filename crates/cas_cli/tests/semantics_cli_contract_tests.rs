@@ -3452,7 +3452,7 @@ fn eval_partitioned_zero_chunks_keep_step_highlights_localized_in_mixed_sum() {
         "expected step 2 before_latex to highlight exactly the trig reciprocal chunk, got: {step2_before}"
     );
     assert!(
-        !step2_before.contains("{\\color{red}{\\tan(x) + \\text{atanh}")
+        !step2_before.contains("{\\color{red}{\\tan(x) + \\operatorname{atanh}")
             && !step2_before.contains("{\\color{red}{\\sqrt"),
         "expected step 2 before_latex to avoid swallowing unrelated terms, got: {step2_before}"
     );
@@ -3461,7 +3461,7 @@ fn eval_partitioned_zero_chunks_keep_step_highlights_localized_in_mixed_sum() {
         .as_str()
         .expect("step3 before_latex");
     assert!(
-        step3_before.contains("{\\color{red}{\\text{atanh}")
+        step3_before.contains("{\\color{red}{\\operatorname{atanh}")
             && step3_before.contains("{\\color{red}{\\ln(x)}}"),
         "expected step 3 before_latex to highlight the full atanh-log chunk, got: {step3_before}"
     );

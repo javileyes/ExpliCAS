@@ -37,7 +37,7 @@ pub fn statement_to_expr_id(
     stmt: cas_parser::Statement,
 ) -> cas_ast::ExprId {
     match stmt {
-        cas_parser::Statement::Equation(eq) => ctx.call("Equal", vec![eq.lhs, eq.rhs]),
+        cas_parser::Statement::Equation(eq) => ctx.call(eq.op.builtin_name(), vec![eq.lhs, eq.rhs]),
         cas_parser::Statement::Expression(expr) => expr,
     }
 }
