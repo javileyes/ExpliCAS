@@ -4377,36 +4377,278 @@ fn generate_finite_summation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
 fn generate_number_theory_operation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    let Some((n, k)) = choose_integer_args(ctx, before) else {
-        return Vec::new();
-    };
-    let Some(value) = integer_value(ctx, after) else {
-        return Vec::new();
-    };
-    if n < 0 || k < 0 || k > n {
-        return Vec::new();
+
+    // choose()/nCr keeps its dedicated binomial-coefficient substeps.
+    if let Some((n, k)) = choose_integer_args(ctx, before) {
+        let Some(value) = integer_value(ctx, after) else {
+            return Vec::new();
+        };
+        if n < 0 || k < 0 || k > n {
+            return Vec::new();
+        }
+
+        let complement = n - k;
+        let quotient_plain = format!("{n}! / ({k}! · {complement}!)");
+        let quotient_latex = format!("\\frac{{{n}!}}{{{k}!\\cdot {complement}!}}");
+
+        return vec![
+            formula_substep(
+                format!("Usar C({n},{k}) = {n}! / ({k}! · {complement}!)"),
+                &binom_plain(n, k),
+                &quotient_plain,
+                &binom_latex(n, k),
+                &quotient_latex,
+            ),
+            formula_substep(
+                format!("Calcular {n}! / ({k}! · {complement}!) = {value}"),
+                &quotient_plain,
+                &value.to_string(),
+                &quotient_latex,
+                &latex_expr(ctx, after),
+            ),
+        ];
     }
 
-    let complement = n - k;
-    let quotient_plain = format!("{n}! / ({k}! · {complement}!)");
-    let quotient_latex = format!("\\frac{{{n}!}}{{{k}!\\cdot {complement}!}}");
+    // Other number-theory operations: explain HOW the result is reached with one concrete substep
+    // (generic Spanish title localized via the locale fallback; the math lines carry the specifics).
+    let Some((name, args)) = number_theory_integer_call(ctx, before) else {
+        return Vec::new();
+    };
+    match (name.as_str(), args.as_slice()) {
+        ("gcd", [a, b]) => number_theory_gcd_substeps(*a, *b),
+        ("lcm", [a, b]) => number_theory_lcm_substeps(*a, *b),
+        ("totient" | "eulerphi" | "phi", [n]) => number_theory_totient_substeps(*n),
+        ("divisors", [n]) => number_theory_divisors_substeps(*n),
+        ("sigma", [n]) => number_theory_sigma_substeps(*n),
+        ("fibonacci" | "fib", [n]) => number_theory_fibonacci_substeps(*n),
+        _ => Vec::new(),
+    }
+}
 
+/// Upper bound on inputs that get a number-theory substep: above this the explanation would be
+/// unreadable (and the trial loops slow), so we emit no substep and the result still stands.
+const NUMBER_THEORY_SUBSTEP_MAX: i64 = 100_000;
+
+/// `(name, integer_args)` for a number-theory call like `gcd(48, 36)` or `totient(12)`.
+fn number_theory_integer_call(ctx: &Context, expr: ExprId) -> Option<(String, Vec<i64>)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let name = ctx.sym_name(*fn_id).to_string();
+    let ints: Option<Vec<i64>> = args.iter().map(|&a| integer_value(ctx, a)).collect();
+    Some((name, ints?))
+}
+
+fn number_theory_substep_latex(s: &str) -> String {
+    s.replace(" · ", " \\cdot ")
+        .replace('·', "\\cdot ")
+        .replace(" → ", " \\to ")
+        .replace('→', "\\to ")
+        .replace("φ(", "\\varphi(")
+        .replace("σ(", "\\sigma(")
+}
+
+fn number_theory_substep(title: &'static str, before: String, after: String) -> SubStep {
+    let before_latex = number_theory_substep_latex(&before);
+    let after_latex = number_theory_substep_latex(&after);
+    formula_substep(title, &before, &after, &before_latex, &after_latex)
+}
+
+fn nt_gcd_value(mut a: i64, mut b: i64) -> i64 {
+    a = a.abs();
+    b = b.abs();
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn nt_prime_factors(mut n: i64) -> Vec<(i64, u32)> {
+    let mut factors = Vec::new();
+    n = n.abs();
+    let mut d = 2i64;
+    while d.saturating_mul(d) <= n {
+        if n % d == 0 {
+            let mut e = 0u32;
+            while n % d == 0 {
+                n /= d;
+                e += 1;
+            }
+            factors.push((d, e));
+        }
+        d += 1;
+    }
+    if n > 1 {
+        factors.push((n, 1));
+    }
+    factors
+}
+
+fn nt_factorization_string(factors: &[(i64, u32)]) -> String {
+    if factors.is_empty() {
+        return "1".to_string();
+    }
+    factors
+        .iter()
+        .map(|&(p, e)| {
+            if e == 1 {
+                p.to_string()
+            } else {
+                format!("{p}^{e}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+fn nt_divisors_list(n: i64) -> Vec<i64> {
+    let n = n.abs();
+    (1..=n).filter(|d| n % d == 0).collect()
+}
+
+fn number_theory_gcd_substeps(a: i64, b: i64) -> Vec<SubStep> {
+    if a.abs() > NUMBER_THEORY_SUBSTEP_MAX || b.abs() > NUMBER_THEORY_SUBSTEP_MAX {
+        return Vec::new();
+    }
+    let (mut x, mut y) = (a.abs(), b.abs());
+    let mut chain = vec![format!("gcd({x}, {y})")];
+    while y != 0 {
+        let r = x % y;
+        x = y;
+        y = r;
+        chain.push(format!("gcd({x}, {y})"));
+    }
+    if chain.len() < 2 {
+        return Vec::new();
+    }
+    let after = format!("{} = {x}", chain[1..].join(" = "));
+    vec![number_theory_substep(
+        "Aplicar el algoritmo de Euclides (restos sucesivos)",
+        chain[0].clone(),
+        after,
+    )]
+}
+
+fn number_theory_lcm_substeps(a: i64, b: i64) -> Vec<SubStep> {
+    if a.abs() > NUMBER_THEORY_SUBSTEP_MAX || b.abs() > NUMBER_THEORY_SUBSTEP_MAX {
+        return Vec::new();
+    }
+    let g = nt_gcd_value(a, b);
+    let Some(prod) = a.abs().checked_mul(b.abs()) else {
+        return Vec::new();
+    };
+    if g == 0 {
+        return Vec::new();
+    }
+    let l = prod / g;
+    let after = format!(
+        "({} · {}) / gcd({}, {}) = {prod} / {g} = {l}",
+        a.abs(),
+        b.abs(),
+        a.abs(),
+        b.abs()
+    );
+    vec![number_theory_substep(
+        "Usar lcm(a, b) = a · b / gcd(a, b)",
+        format!("lcm({a}, {b})"),
+        after,
+    )]
+}
+
+fn number_theory_totient_substeps(n: i64) -> Vec<SubStep> {
+    if !(1..=NUMBER_THEORY_SUBSTEP_MAX).contains(&n) {
+        return Vec::new();
+    }
+    let factors = nt_prime_factors(n);
+    if factors.is_empty() {
+        // totient(1) = 1; nothing to factor.
+        return Vec::new();
+    }
+    let phi: i64 = factors.iter().fold(n, |acc, &(p, _)| acc / p * (p - 1));
+    let terms: Vec<String> = factors
+        .iter()
+        .map(|&(p, _)| format!("(1 - 1/{p})"))
+        .collect();
     vec![
-        formula_substep(
-            format!("Usar C({n},{k}) = {n}! / ({k}! · {complement}!)"),
-            &binom_plain(n, k),
-            &quotient_plain,
-            &binom_latex(n, k),
-            &quotient_latex,
+        number_theory_substep(
+            "Factorizar n en potencias de primos",
+            format!("φ({n})"),
+            format!("{n} = {}", nt_factorization_string(&factors)),
         ),
-        formula_substep(
-            format!("Calcular {n}! / ({k}! · {complement}!) = {value}"),
-            &quotient_plain,
-            &value.to_string(),
-            &quotient_latex,
-            &latex_expr(ctx, after),
+        number_theory_substep(
+            "Aplicar la fórmula de Euler φ(n) = n · ∏(1 - 1/p)",
+            format!("φ({n})"),
+            format!("{n} · {} = {phi}", terms.join(" · ")),
         ),
     ]
+}
+
+fn number_theory_divisors_substeps(n: i64) -> Vec<SubStep> {
+    let n = n.abs();
+    if !(1..=NUMBER_THEORY_SUBSTEP_MAX).contains(&n) {
+        return Vec::new();
+    }
+    let factors = nt_prime_factors(n);
+    let divs = nt_divisors_list(n);
+    let divs_str = format!(
+        "[{}]",
+        divs.iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    vec![number_theory_substep(
+        "Combinar las potencias de los factores primos",
+        format!("{n} = {}", nt_factorization_string(&factors)),
+        divs_str,
+    )]
+}
+
+fn number_theory_sigma_substeps(n: i64) -> Vec<SubStep> {
+    let n = n.abs();
+    if !(1..=NUMBER_THEORY_SUBSTEP_MAX).contains(&n) {
+        return Vec::new();
+    }
+    let divs = nt_divisors_list(n);
+    let sum: i64 = divs.iter().sum();
+    let after = format!(
+        "{} = {sum}",
+        divs.iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join(" + ")
+    );
+    vec![number_theory_substep(
+        "Sumar todos los divisores",
+        format!("σ({n})"),
+        after,
+    )]
+}
+
+fn number_theory_fibonacci_substeps(n: i64) -> Vec<SubStep> {
+    // F(90) is the largest Fibonacci number that fits in i64.
+    if !(0..=90).contains(&n) {
+        return Vec::new();
+    }
+    let len = n as usize + 1;
+    let mut seq = vec![0i64, 1i64];
+    while seq.len() < len {
+        let next = seq[seq.len() - 1] + seq[seq.len() - 2];
+        seq.push(next);
+    }
+    let value = seq[n as usize];
+    let shown = seq[..len]
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    vec![number_theory_substep(
+        "Aplicar la recurrencia F(n) = F(n-1) + F(n-2)",
+        format!("F({n})"),
+        format!("{shown} → {value}"),
+    )]
 }
 
 fn generate_pascal_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -22258,6 +22500,65 @@ fn difference_like_terms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)
             _ => None,
         },
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod number_theory_substep_tests {
+    use super::{
+        number_theory_divisors_substeps, number_theory_fibonacci_substeps,
+        number_theory_gcd_substeps, number_theory_lcm_substeps, number_theory_sigma_substeps,
+        number_theory_totient_substeps,
+    };
+
+    #[test]
+    fn gcd_shows_euclidean_remainder_chain() {
+        let subs = number_theory_gcd_substeps(48, 36);
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].before_expr, "gcd(48, 36)");
+        assert_eq!(subs[0].after_expr, "gcd(36, 12) = gcd(12, 0) = 12");
+    }
+
+    #[test]
+    fn lcm_uses_product_over_gcd() {
+        let subs = number_theory_lcm_substeps(4, 6);
+        assert_eq!(subs[0].after_expr, "(4 · 6) / gcd(4, 6) = 24 / 2 = 12");
+    }
+
+    #[test]
+    fn totient_factorizes_then_applies_euler_formula() {
+        let subs = number_theory_totient_substeps(12);
+        assert_eq!(subs.len(), 2);
+        assert_eq!(subs[0].after_expr, "12 = 2^2 · 3");
+        assert_eq!(subs[1].after_expr, "12 · (1 - 1/2) · (1 - 1/3) = 4");
+    }
+
+    #[test]
+    fn divisors_factorizes_then_lists() {
+        let subs = number_theory_divisors_substeps(12);
+        assert_eq!(subs[0].before_expr, "12 = 2^2 · 3");
+        assert_eq!(subs[0].after_expr, "[1, 2, 3, 4, 6, 12]");
+    }
+
+    #[test]
+    fn sigma_sums_divisors() {
+        let subs = number_theory_sigma_substeps(12);
+        assert_eq!(subs[0].after_expr, "1 + 2 + 3 + 4 + 6 + 12 = 28");
+    }
+
+    #[test]
+    fn fibonacci_shows_sequence() {
+        let subs = number_theory_fibonacci_substeps(10);
+        assert_eq!(
+            subs[0].after_expr,
+            "0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55 → 55"
+        );
+    }
+
+    #[test]
+    fn out_of_range_inputs_emit_no_substep() {
+        assert!(number_theory_fibonacci_substeps(200).is_empty());
+        assert!(number_theory_totient_substeps(1).is_empty());
     }
 }
 

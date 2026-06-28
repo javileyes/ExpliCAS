@@ -401,6 +401,19 @@ pub(crate) fn description_en(es: &str) -> &str {
         "Usar integración por partes" => "Use integration by parts",
         "Usar integración por partes repetida" => "Use repeated integration by parts",
         "Usar regla de potencia para integrales" => "Use the power rule for integrals",
+        "Aplicar el algoritmo de Euclides (restos sucesivos)" => {
+            "Apply the Euclidean algorithm (successive remainders)"
+        }
+        "Usar lcm(a, b) = a · b / gcd(a, b)" => "Use lcm(a, b) = a · b / gcd(a, b)",
+        "Factorizar n en potencias de primos" => "Factor n into prime powers",
+        "Aplicar la fórmula de Euler φ(n) = n · ∏(1 - 1/p)" => {
+            "Apply Euler's totient formula φ(n) = n · ∏(1 - 1/p)"
+        }
+        "Combinar las potencias de los factores primos" => "Combine the powers of the prime factors",
+        "Sumar todos los divisores" => "Sum all divisors",
+        "Aplicar la recurrencia F(n) = F(n-1) + F(n-2)" => {
+            "Apply the Fibonacci recurrence F(n) = F(n-1) + F(n-2)"
+        }
         other => other,
     }
 }
