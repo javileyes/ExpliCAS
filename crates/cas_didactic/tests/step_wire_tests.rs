@@ -104,18 +104,19 @@ fn step_wire_on_mode_matches_deterministically() {
 #[test]
 fn step_wire_events_fallback_is_used_when_steps_are_missing() {
     let mut ctx = cas_ast::Context::new();
-    let x = ctx.var("x");
-    let zero = ctx.num(0);
-    let before = ctx.add(cas_ast::Expr::Add(x, zero));
+    // A genuine change (a + b -> a) so the fallback step survives the no-op filter.
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let sum = ctx.add(cas_ast::Expr::Add(a, b));
 
     let steps = cas_didactic::collect_step_payloads_with_events(
         &[],
         &[EngineEvent::RuleApplied {
             rule_name: "Additive Identity".to_string(),
-            before: x,
-            after: x,
-            global_before: Some(before),
-            global_after: Some(x),
+            before: sum,
+            after: a,
+            global_before: Some(sum),
+            global_after: Some(a),
             is_chained: false,
         }],
         &ctx,
@@ -123,8 +124,52 @@ fn step_wire_events_fallback_is_used_when_steps_are_missing() {
     );
 
     assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].index, 1);
     assert_eq!(steps[0].rule, "Additive Identity");
-    assert_eq!(steps[0].before, "x");
+    assert_eq!(steps[0].before, "a + b");
+    assert_eq!(steps[0].after, "a");
+}
+
+#[test]
+fn step_wire_events_fallback_drops_noop_steps() {
+    // The event/equiv fallback path now prunes steps whose displayed expression is unchanged
+    // (e.g. the canonicalization no-ops that flooded equiv outputs), and re-numbers the survivors.
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let zero = ctx.num(0);
+    let x_plus_zero = ctx.add(cas_ast::Expr::Add(x, zero)); // renders identically to `x`
+    let y = ctx.var("y");
+    let sum = ctx.add(cas_ast::Expr::Add(x, y));
+
+    let steps = cas_didactic::collect_step_payloads_with_events(
+        &[],
+        &[
+            // No-op: `x + 0` renders as `x`, so before == after -> dropped.
+            EngineEvent::RuleApplied {
+                rule_name: "Additive Identity".to_string(),
+                before: x,
+                after: x,
+                global_before: Some(x_plus_zero),
+                global_after: Some(x),
+                is_chained: false,
+            },
+            // Real change: `x + y` -> `x` survives and is renumbered to index 1.
+            EngineEvent::RuleApplied {
+                rule_name: "Additive Identity".to_string(),
+                before: sum,
+                after: x,
+                global_before: Some(sum),
+                global_after: Some(x),
+                is_chained: false,
+            },
+        ],
+        &ctx,
+        "on",
+    );
+
+    assert_eq!(steps.len(), 1, "the no-op step should be pruned");
+    assert_eq!(steps[0].index, 1, "survivors are renumbered with no gaps");
+    assert_eq!(steps[0].before, "x + y");
     assert_eq!(steps[0].after, "x");
 }
 
