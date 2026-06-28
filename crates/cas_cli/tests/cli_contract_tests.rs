@@ -2101,6 +2101,38 @@ fn test_eval_log_sum_limit_at_infinity_and_convergent_degree_n_improper_integral
 }
 
 #[test]
+fn test_eval_arctan_plus_log_boundary_limit_and_irreducible_quadratic_improper_integral() {
+    // A rational partial-fraction antiderivative with an irreducible quadratic factor mixes an
+    // `arctan` term with the logs. When the `arctan` sits BETWEEN the logs in the Add tree the
+    // additive fallback splits the logs individually into `+∞ − ∞` and stalls. `log_sum_limit_at_infinity`
+    // now absorbs the arctan terms (`arctan(q) → sign(lead q)·π/2`) alongside the log block, so the
+    // boundary limit resolves regardless of order and `∫_a^∞ 1/(x⁴−1)` computes.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // The mixed arctan+log boundary limit (arctan interleaved between the two logs) -> finite.
+    assert_eq!(
+        r("limit(1/4*ln(x-1)-1/2*arctan(x)-1/4*ln(x+1), x, infinity)"),
+        "-1/4·pi"
+    );
+    // ∫_2^∞ 1/(x⁴−1): denominator (x²−1)(x²+1) -> two linear logs + an arctan. Numerically ≈ 0.04283.
+    assert_eq!(
+        r("integrate(1/(x^4-1), x, 2, oo)"),
+        "1/4·(ln(3) + 2·arctan(2)) - 1/4·pi"
+    );
+    // Soundness preserved for the irreducible-quadratic family: pole in range -> divergent, ~1/x tail -> +∞.
+    assert_eq!(r("integrate(1/(x^4-1), x, 0, oo)"), "undefined"); // pole at x=1
+    assert_eq!(r("integrate(x^3/(x^4-1), x, 2, oo)"), "infinity"); // ~1/x tail
+                                                                   // Edge: a lone arctan and a pure arctan pair are left to the unary/additive rules (unchanged).
+    assert_eq!(r("limit(arctan(x), x, infinity)"), "pi / 2");
+}
+
+#[test]
 fn test_eval_summation_pole_in_range_is_undefined() {
     // A finite or infinite sum whose summand has a POLE (a `1/0` term) at an integer in the range is
     // UNDEFINED — the telescoping/closed-form builders otherwise compute THROUGH it. The pole

@@ -8138,30 +8138,38 @@ fn strip_single_abs(ctx: &Context, expr: ExprId) -> ExprId {
     expr
 }
 
-/// Accumulate `expr` (scaled by `sign`) into signed natural-log terms `(coeff, argument)`, where each
-/// leaf is a rational multiple of a bare `ln(P)` (the argument optionally wrapped in `abs`). Any leaf
-/// outside that shape declines the whole decomposition.
-fn collect_signed_log_terms(
+/// Accumulate `expr` (scaled by `sign`) into signed natural-log terms and signed arctangent terms,
+/// each recorded as `(coeff, argument)`. A log leaf is a rational multiple of a bare `ln(P)` (argument
+/// optionally under `abs`); an arctan leaf is a rational multiple of `arctan(Q)`/`atan(Q)`. Any leaf
+/// outside those two shapes declines the whole decomposition.
+fn collect_signed_log_and_arctan_terms(
     ctx: &Context,
     expr: ExprId,
     sign: &BigRational,
-    terms: &mut Vec<(BigRational, ExprId)>,
+    log_terms: &mut Vec<(BigRational, ExprId)>,
+    arctan_terms: &mut Vec<(BigRational, ExprId)>,
 ) -> Option<()> {
     match ctx.get(expr).clone() {
-        Expr::Neg(inner) => collect_signed_log_terms(ctx, inner, &(-sign.clone()), terms),
+        Expr::Neg(inner) => collect_signed_log_and_arctan_terms(
+            ctx,
+            inner,
+            &(-sign.clone()),
+            log_terms,
+            arctan_terms,
+        ),
         Expr::Add(a, b) => {
-            collect_signed_log_terms(ctx, a, sign, terms)?;
-            collect_signed_log_terms(ctx, b, sign, terms)
+            collect_signed_log_and_arctan_terms(ctx, a, sign, log_terms, arctan_terms)?;
+            collect_signed_log_and_arctan_terms(ctx, b, sign, log_terms, arctan_terms)
         }
         Expr::Sub(a, b) => {
-            collect_signed_log_terms(ctx, a, sign, terms)?;
-            collect_signed_log_terms(ctx, b, &(-sign.clone()), terms)
+            collect_signed_log_and_arctan_terms(ctx, a, sign, log_terms, arctan_terms)?;
+            collect_signed_log_and_arctan_terms(ctx, b, &(-sign.clone()), log_terms, arctan_terms)
         }
         Expr::Mul(a, b) => {
             if let Some(c) = constant_rational_value(ctx, a) {
-                collect_signed_log_terms(ctx, b, &(sign * &c), terms)
+                collect_signed_log_and_arctan_terms(ctx, b, &(sign * &c), log_terms, arctan_terms)
             } else if let Some(c) = constant_rational_value(ctx, b) {
-                collect_signed_log_terms(ctx, a, &(sign * &c), terms)
+                collect_signed_log_and_arctan_terms(ctx, a, &(sign * &c), log_terms, arctan_terms)
             } else {
                 None
             }
@@ -8171,44 +8179,58 @@ fn collect_signed_log_terms(
             if c.is_zero() {
                 return None;
             }
-            collect_signed_log_terms(ctx, a, &(sign / &c), terms)
+            collect_signed_log_and_arctan_terms(ctx, a, &(sign / &c), log_terms, arctan_terms)
         }
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Ln)) =>
-        {
-            terms.push((sign.clone(), strip_single_abs(ctx, args[0])));
-            Some(())
-        }
+        Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(fn_id) {
+            Some(BuiltinFn::Ln) => {
+                log_terms.push((sign.clone(), strip_single_abs(ctx, args[0])));
+                Some(())
+            }
+            Some(BuiltinFn::Arctan | BuiltinFn::Atan) => {
+                arctan_terms.push((sign.clone(), args[0]));
+                Some(())
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
 
-/// `lim_{x->+inf} Σ c_i · ln(p_i(x))` for polynomials `p_i` (optionally under `abs`) with POSITIVE
-/// leading coefficient. Since `ln(p_i) = (deg p_i)·ln x + ln(lead p_i) + o(1)`, the sum behaves like
-/// `s·ln x + Σ c_i·ln(lead p_i)` with `s = Σ c_i·deg p_i`: `s>0 -> +inf`, `s<0 -> -inf`, and `s=0`
-/// gives the finite `Σ c_i·ln(lead p_i)` (the `o(1)` ratio terms vanish). Generalises the two-term
-/// `log_difference_limit_at_infinity` to N terms, so an N-term partial-fraction log antiderivative
-/// resolves at the boundary (`½ln|x-1| + ½ln|x+1| - ln|x| -> 0`, unblocking `∫_a^∞ p/q` of degree n).
+/// `lim_{x->+inf} [Σ cᵢ·ln(pᵢ(x)) + Σ dⱼ·arctan(qⱼ(x))]` for polynomials `pᵢ` (optionally under `abs`)
+/// with POSITIVE leading coefficient and polynomials `qⱼ` of degree ≥1. The log block behaves like
+/// `s·ln x + Σ cᵢ·ln(lead pᵢ)` with `s = Σ cᵢ·deg pᵢ`, and each `arctan(qⱼ) -> sign(lead qⱼ)·π/2`. So
+/// `s>0 -> +inf`, `s<0 -> -inf` (a bounded arctan block cannot offset a divergent log), and `s=0`
+/// gives the finite `Σ cᵢ·ln(lead pᵢ) + (Σ dⱼ·sign(lead qⱼ))·π/2`. Generalises the two-term log
+/// difference to N terms AND absorbs the arctan terms of a rational partial-fraction antiderivative,
+/// so `∫_a^∞ p/q` with an irreducible quadratic factor resolves regardless of Add-tree order (the
+/// additive fallback splits the logs individually into `+inf - inf` and stalls).
 fn log_sum_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
     approach: InfSign,
 ) -> Option<ExprId> {
-    use num_traits::{Signed, Zero};
+    use num_traits::{One, Signed, Zero};
     if approach != InfSign::Pos {
         return None;
     }
-    let mut terms: Vec<(BigRational, ExprId)> = Vec::new();
-    collect_signed_log_terms(ctx, expr, &rational_one(), &mut terms)?;
-    // A single bare log (or none) is left to the dedicated unary rules; this resolves the multi-term
-    // `+inf - inf` combinations they cannot.
-    if terms.len() < 2 {
+    let mut log_terms: Vec<(BigRational, ExprId)> = Vec::new();
+    let mut arctan_terms: Vec<(BigRational, ExprId)> = Vec::new();
+    collect_signed_log_and_arctan_terms(
+        ctx,
+        expr,
+        &rational_one(),
+        &mut log_terms,
+        &mut arctan_terms,
+    )?;
+    // The log block is the core: at least two log terms (a lone log is ±inf, a pure arctan sum is
+    // bounded) are needed for the `+inf - inf` cancellation this rule resolves.
+    if log_terms.len() < 2 {
         return None;
     }
     let mut degree_sum = BigRational::zero();
     let mut leading_log_terms: Vec<(BigRational, BigRational)> = Vec::new();
-    for (coeff, arg) in &terms {
+    for (coeff, arg) in &log_terms {
         let growth = polynomial_growth_info(ctx, *arg, var)?;
         // Each argument must tend to +inf so its logarithm is eventually real and divergent.
         if !growth.leading_coeff.is_positive() {
@@ -8217,21 +8239,53 @@ fn log_sum_limit_at_infinity(
         degree_sum += coeff.clone() * BigRational::from_integer(growth.degree.into());
         leading_log_terms.push((coeff.clone(), growth.leading_coeff));
     }
+    // Each `arctan(q) -> sign(lead q)·π/2` (q must diverge: degree ≥ 1). Accumulate the π/2 coefficient.
+    let mut pi_half_coeff = BigRational::zero();
+    for (coeff, arg) in &arctan_terms {
+        let growth = polynomial_growth_info(ctx, *arg, var)?;
+        let side = if growth.leading_coeff.is_positive() {
+            BigRational::one()
+        } else {
+            -BigRational::one()
+        };
+        pi_half_coeff += coeff.clone() * side;
+    }
+    // A divergent log block dominates the bounded arctan block.
     if degree_sum.is_positive() {
         return Some(mk_infinity(ctx, InfSign::Pos));
     }
     if degree_sum.is_negative() {
         return Some(mk_infinity(ctx, InfSign::Neg));
     }
-    // The `ln x` terms cancel exactly; the limit is the finite `Σ c_i·ln(lead_i)`.
-    if log_combination_float(&leading_log_terms, &BigRational::zero()).abs() < 1e-12 {
-        return Some(ctx.num(0));
+    // s == 0: the finite `Σ cᵢ·ln(lead_i) + (Σ dⱼ·sign(lead qⱼ))·π/2`.
+    let log_is_zero = log_combination_float(&leading_log_terms, &BigRational::zero()).abs() < 1e-12;
+    let log_part = if log_is_zero {
+        None
+    } else {
+        Some(build_log_combination_expr(
+            ctx,
+            leading_log_terms,
+            BigRational::zero(),
+        ))
+    };
+    let pi_coeff = pi_half_coeff / BigRational::from_integer(2.into());
+    let pi_part = if pi_coeff.is_zero() {
+        None
+    } else {
+        let pi = ctx.add(Expr::Constant(Constant::Pi));
+        if pi_coeff.is_one() {
+            Some(pi)
+        } else {
+            let coeff_expr = ctx.add(Expr::Number(pi_coeff));
+            Some(ctx.add(Expr::Mul(coeff_expr, pi)))
+        }
+    };
+    match (log_part, pi_part) {
+        (None, None) => Some(ctx.num(0)),
+        (Some(l), None) => Some(l),
+        (None, Some(p)) => Some(p),
+        (Some(l), Some(p)) => Some(ctx.add(Expr::Add(l, p))),
     }
-    Some(build_log_combination_expr(
-        ctx,
-        leading_log_terms,
-        BigRational::zero(),
-    ))
 }
 
 /// `lim_{x->+inf} ln(sum c_i b_i^(s_i x)) / (slope x) = ln(max b_i^s_i) / slope`.
