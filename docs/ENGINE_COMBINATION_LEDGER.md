@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 421 (newest first)
+Active entries: 422 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
 - 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (fold_rational_value + expr_has_va... | SOUNDNESS P0 (Grupo C1-3, audit #4): sumatorio con polo en el rango devuelve un número falso
+- 2026-06-28 | `retained` | `crates/cas_math/src/matrix.rs` (Matrix::norm) | SOUNDNESS P0 (Grupo C4, audit #4): norma de vector complejo eleva al cuadrado el componente, no la magnitud
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -16985,3 +16986,30 @@ Active entries: 421 (newest first)
   - siguiente iteración recomendada: Grupo C4 (norma de vector complejo `norm([3,4i])`→`(16i²+9)^(1/2)` en vez de `5`:
     baja a `sqrt(Σcᵢ²)` sin conjugar → debe ser `sqrt(Σ|cᵢ|²)`), barato y aislado. Luego Grupo B (variante `Periodic`,
     grande/arquitectónico, scoping primero) y C5 (diff fraction-fold: 1 valor erróneo + 2 hangs, ruta frágil).
+
+## 2026-06-28 - SOUNDNESS P0 (Grupo C4, audit #4): norma de vector complejo eleva al cuadrado el componente, no la magnitud
+
+- area: `crates/cas_math/src/matrix.rs` (Matrix::norm)
+- status: `retained` (commit f04cb1095). Tercer ciclo del plan audit #4; cierra C4 (1 wrong-answer).
+- capture:
+  - cell: ANTES `norm([3,4i])`→`(16i²+9)^(1/2)`=`i·sqrt(7)` (truth `5`), `norm([1,i])`→`sqrt(1+i²)`=`0` (truth
+    `sqrt(2)`), `norm([2i])`→`2·|i|`, `norm([3i,4i])`→`5·|i|`. AHORA `5`, `sqrt(2)`, `2`, `5`, `norm([1+i,1])`→`sqrt(3)`.
+  - causa raíz: `Matrix::norm` construía `sqrt(Σ entryᵢ²)` — eleva al cuadrado el componente CRUDO. Para un componente
+    complejo `a+bi` eso da `(a+bi)²` (puede ser imaginario o negativo), no `|a+bi|²=a²+b²`. La norma euclídea eleva la
+    MAGNITUD.
+  - fix: por cada entrada, si `complex_support::extract_gaussian` la reconoce como gaussiana `a+bi` con `b≠0`, pliega a
+    la racional EXACTA `a²+b²`; si es real (imag=0 o no-gaussiana) conserva el `entry²` previo → reales y simbólicos
+    byte-idénticos (`norm([3,4])`→`5`, `norm([a,b])`→`(a²+b²)^(1/2)`).
+  - validación: workspace verde; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; `test_eval_vector_norm` extendido con los casos complejos.
+- retained learning:
+  - magnitud-al-cuadrado de un complejo: `|a+bi|² = a²+b²` (= `z·conj(z)`), NUNCA `(a+bi)²`. Cualquier longitud/norma/
+    producto-interno hermítico sobre entradas que puedan ser complejas debe conjugar; `extract_gaussian` da `(real,imag)`
+    racionales exactos para plegar sin f64.
+  - gatea por forma reconocida, no por modo: conservar el camino `entry²` para entradas reales/simbólicas mantiene la
+    huella byte-idéntica y limita el cambio a exactamente las entradas con `i` (las únicas afectadas).
+  - siguiente iteración recomendada: quedan 2 frentes del audit #4 — (B) variante `Periodic`/`ImageSet` del
+    `SolutionSet` para ecuaciones trig (`solve(sin(x)=0)`→`{0}` suelta `+kπ`; 6 bugs, GRANDE/arquitectónico → entra como
+    scoping workflow que produce sub-ciclos); (C5) diff fraction-fold (`diff((x/2+tan x)^3,x)` valor erróneo + 2 hangs
+    `diff((x/2+tan x)^2,x)`/`diff((sin x+cos x)/(sin x-cos x),x)`; ruta frágil, riesgo medio). Recomendado: C5 antes que
+    B (hard wrong-answer + hangs vs under-answer), o scope B si se prefiere el de mayor leverage.
