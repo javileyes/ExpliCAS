@@ -2043,6 +2043,32 @@ fn test_eval_improper_rational_integral_real_root_quadratic_denominator() {
 }
 
 #[test]
+fn test_eval_improper_rational_integral_degree_n_denominator_divergence() {
+    // The engine EXPANDS a denominator like `(x^2-1)(x^2-4)` into a single degree-4 polynomial, so the
+    // factor-by-factor `Mul` walk never sees the quadratics. `nonzero_on_unbounded_interval` now splits
+    // a degree-≥3 polynomial via its RATIONAL roots (`factor_rational_roots`) and certifies each factor,
+    // so a pole strictly inside `[a, ∞)` is detected (`undefined`) and a `~1/x` tail diverges
+    // (`infinity`) instead of a conservative residual. Removable singularities are pre-simplified by the
+    // engine, so the cert never fabricates a divergence for a hole.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // SOUNDNESS: a pole at a rational root strictly inside the (unbounded) range -> divergent.
+    assert_eq!(r("integrate(1/(x^3-x), x, 1/2, oo)"), "undefined"); // pole at x=1
+    assert_eq!(r("integrate(1/(x^4-1), x, 0, oo)"), "undefined"); // pole at x=1
+    assert_eq!(r("integrate(1/((x^2-1)*(x^2-4)), x, 0, oo)"), "undefined"); // poles at x=1,2
+                                                                            // SOUNDNESS: a `~1/x` tail of a degree-n integrand diverges to +∞ (no fabricated finite value).
+    assert_eq!(r("integrate(x^2/(x^3-x), x, 2, oo)"), "infinity");
+    // A removable singularity is simplified away first, so its hole is NOT read as a pole.
+    assert_eq!(r("integrate((x-1)/(x^3-x), x, 1/2, oo)"), "-ln(1/3)"); // = ln3, integrand 1/(x²+x)
+}
+
+#[test]
 fn test_eval_summation_pole_in_range_is_undefined() {
     // A finite or infinite sum whose summand has a POLE (a `1/0` term) at an integer in the range is
     // UNDEFINED — the telescoping/closed-form builders otherwise compute THROUGH it. The pole

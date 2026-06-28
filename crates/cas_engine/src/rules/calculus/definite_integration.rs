@@ -1509,6 +1509,21 @@ fn nonzero_on_unbounded_interval(
     let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
         return IntervalCertificate::Unknown;
     };
+    nonzero_poly_on_interval(&poly, lower_bound, upper_bound)
+}
+
+/// Whether the (engine-EXPANDED) denominator polynomial is provably nonzero across the interval.
+/// Degree 0/1/2 are decided EXACTLY from the coefficients and the bounds; a higher-degree polynomial
+/// is split via its RATIONAL roots (`factor_rational_roots`) and each factor checked, so
+/// `1/(x^3-x)`, `1/(x^4-1)`, `1/((x^2-1)(x^2-4))` (which the engine expands to a single polynomial)
+/// certify. A leftover factor of degree ≥3 with no rational root stays `Unknown` (its irrational real
+/// roots are not located). `combine_certificates` gives the product semantics: a provable interior
+/// root (`Undefined`) dominates, an undecided factor (`Unknown`) blocks certification.
+fn nonzero_poly_on_interval(
+    poly: &Polynomial,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> IntervalCertificate {
     match poly.degree() {
         0 => {
             if poly.coeffs.first().is_none_or(Zero::is_zero) {
@@ -1607,7 +1622,25 @@ fn nonzero_on_unbounded_interval(
                 _ => IntervalCertificate::Unknown,
             }
         }
-        _ => IntervalCertificate::Unknown,
+        // Degree ≥ 3: split off the RATIONAL-root factors and check each (linear/quadratic decided
+        // exactly; a leftover degree-≥3 factor with no rational root is `Unknown`). The product is
+        // nonzero iff every factor is, and a factor that vanishes inside makes the integral diverge.
+        _ => {
+            let factors = poly.factor_rational_roots();
+            if factors.len() <= 1 {
+                return IntervalCertificate::Unknown; // no rational root extracted: cannot decide
+            }
+            let mut outcome = IntervalCertificate::Certified;
+            for factor in &factors {
+                let certificate = if factor.degree() >= 3 {
+                    IntervalCertificate::Unknown
+                } else {
+                    nonzero_poly_on_interval(factor, lower_bound, upper_bound)
+                };
+                outcome = combine_certificates(outcome, certificate);
+            }
+            outcome
+        }
     }
 }
 
