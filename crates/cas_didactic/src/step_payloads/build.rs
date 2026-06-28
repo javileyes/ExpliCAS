@@ -52,6 +52,20 @@ fn inferred_step_rule(
         return Some("Expandir cambio de base".to_string());
     }
 
+    // Matrix operations carry no sub-steps, so name them from the `before` expression here (before
+    // the sub-step gate below): replace the generic "Operación con matrices" with the specific
+    // operation, and split the misleading combined "Potencia o inversa de la matriz".
+    if step.rule_name == "Matrix Functions" {
+        if let Some(name) = matrix_function_step_rule(context, before) {
+            return Some(name.to_string());
+        }
+    }
+    if step.rule_name == "Matrix Reciprocal/Inverse" {
+        if let Some(name) = matrix_power_or_inverse_step_rule(context, before) {
+            return Some(name.to_string());
+        }
+    }
+
     let first_title = enriched.sub_steps.first()?.description.as_str();
 
     if step.rule_name == "Simplify"
@@ -141,6 +155,47 @@ fn inferred_step_rule(
     }
 
     None
+}
+
+/// Specific Spanish name for a matrix-function step (`det`, `trace`, …). Returns `None` for any
+/// function we do not name explicitly, so it falls back to the generic "Operación con matrices".
+fn matrix_function_step_rule(ctx: &Context, before: ExprId) -> Option<&'static str> {
+    let Expr::Function(fn_id, _) = ctx.get(before) else {
+        return None;
+    };
+    Some(match ctx.sym_name(*fn_id) {
+        "det" | "determinant" => "Calcular el determinante de la matriz",
+        "trace" => "Calcular la traza de la matriz",
+        "transpose" => "Transponer la matriz",
+        "inverse" | "inv" => "Calcular la inversa de la matriz",
+        "charpoly" => "Calcular el polinomio característico",
+        "rref" => "Reducir la matriz a forma escalonada",
+        "eigenvalues" | "eigvals" => "Calcular los autovalores",
+        "eigenvectors" => "Calcular los autovectores",
+        "rank" => "Calcular el rango de la matriz",
+        "dot" => "Calcular el producto escalar",
+        "cross" => "Calcular el producto vectorial",
+        "linsolve" => "Resolver el sistema lineal",
+        _ => return None,
+    })
+}
+
+/// Disambiguate the combined matrix power/inverse rule by the actual exponent: a negative power is
+/// the inverse, a positive power is repeated multiplication, and `c / M` multiplies by the inverse.
+fn matrix_power_or_inverse_step_rule(ctx: &Context, before: ExprId) -> Option<&'static str> {
+    match ctx.get(before) {
+        Expr::Pow(_, exponent) => {
+            let negative = cas_math::numeric_eval::as_rational_const(ctx, *exponent)
+                .is_some_and(|value| num_traits::Signed::is_negative(&value));
+            Some(if negative {
+                "Calcular la inversa de la matriz"
+            } else {
+                "Elevar la matriz a una potencia"
+            })
+        }
+        Expr::Div(_, _) => Some("Multiplicar por la inversa de la matriz"),
+        _ => None,
+    }
 }
 
 fn general_log_base_and_arg(ctx: &Context, expr: ExprId) -> Option<(Option<ExprId>, ExprId)> {
@@ -234,4 +289,49 @@ fn log_change_of_base_chain_dfs(
     }
 
     false
+}
+
+#[cfg(test)]
+mod matrix_rule_name_tests {
+    use super::{matrix_function_step_rule, matrix_power_or_inverse_step_rule};
+    use cas_ast::{Context, ExprId};
+    use cas_parser::parse;
+
+    fn name_of(
+        src: &str,
+        namer: fn(&Context, ExprId) -> Option<&'static str>,
+    ) -> Option<&'static str> {
+        let mut ctx = Context::new();
+        let expr = parse(src, &mut ctx).expect("parse");
+        namer(&ctx, expr)
+    }
+
+    #[test]
+    fn matrix_functions_named_specifically() {
+        assert_eq!(
+            name_of("det([[1,2],[3,4]])", matrix_function_step_rule),
+            Some("Calcular el determinante de la matriz")
+        );
+        assert_eq!(
+            name_of("trace([[1,2],[3,4]])", matrix_function_step_rule),
+            Some("Calcular la traza de la matriz")
+        );
+        assert_eq!(
+            name_of("transpose([[1,2],[3,4]])", matrix_function_step_rule),
+            Some("Transponer la matriz")
+        );
+        assert_eq!(name_of("foo(x)", matrix_function_step_rule), None);
+    }
+
+    #[test]
+    fn matrix_power_split_from_inverse() {
+        assert_eq!(
+            name_of("([[1,1],[0,1]])^3", matrix_power_or_inverse_step_rule),
+            Some("Elevar la matriz a una potencia")
+        );
+        assert_eq!(
+            name_of("([[1,2],[3,4]])^(-1)", matrix_power_or_inverse_step_rule),
+            Some("Calcular la inversa de la matriz")
+        );
+    }
 }

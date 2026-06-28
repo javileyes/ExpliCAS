@@ -642,6 +642,20 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Multiplicar matrices" => "Multiply matrices",
         "Operación con matrices" => "Matrix operation",
         "Potencia o inversa de la matriz" => "Matrix power or inverse",
+        "Calcular el determinante de la matriz" => "Compute the matrix determinant",
+        "Calcular la traza de la matriz" => "Compute the matrix trace",
+        "Transponer la matriz" => "Transpose the matrix",
+        "Calcular la inversa de la matriz" => "Compute the matrix inverse",
+        "Calcular el polinomio característico" => "Compute the characteristic polynomial",
+        "Reducir la matriz a forma escalonada" => "Reduce the matrix to row echelon form",
+        "Calcular los autovalores" => "Compute the eigenvalues",
+        "Calcular los autovectores" => "Compute the eigenvectors",
+        "Calcular el rango de la matriz" => "Compute the matrix rank",
+        "Calcular el producto escalar" => "Compute the dot product",
+        "Calcular el producto vectorial" => "Compute the cross product",
+        "Resolver el sistema lineal" => "Solve the linear system",
+        "Elevar la matriz a una potencia" => "Raise the matrix to a power",
+        "Multiplicar por la inversa de la matriz" => "Multiply by the matrix inverse",
         "Presentar resultado de cálculo en forma compacta" => {
             "Present the calculus result in compact form"
         }
