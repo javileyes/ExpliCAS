@@ -64,8 +64,9 @@ fn generate_sum_difference_cubes_self_cancel_substeps(
         )
         .with_before_latex(numerator_latex)
         .with_after_latex(denominator_latex.clone()),
-        SubStep::new(
-            "Numerador y denominador quedan iguales, así que el cociente vale 1",
+        SubStep::keyed(
+            "rationalize.numerator_equals_denominator_quotient_one",
+            vec![],
             human_expr_from_latex(&quotient_latex),
             human_expr_from_latex("1"),
         )

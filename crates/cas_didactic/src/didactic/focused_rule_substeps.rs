@@ -1203,8 +1203,9 @@ fn generate_add_subtract_fractions_substeps(ctx: &Context, step: &Step) -> Vec<S
     let intermediate_latex = latex_expr(&work, intermediate);
     let after_latex = latex_expr(ctx, after);
 
-    let mut out = vec![SubStep::new(
-        "Llevar a denominador común",
+    let mut out = vec![SubStep::keyed(
+        "fraction.common_denominator",
+        vec![],
         display_expr(ctx, before),
         intermediate_display.clone(),
     )
@@ -1215,8 +1216,9 @@ fn generate_add_subtract_fractions_substeps(ctx: &Context, step: &Step) -> Vec<S
         && (intermediate_display != after_display || intermediate_latex != after_latex)
     {
         out.push(
-            SubStep::new(
-                "Simplificar el numerador y el denominador",
+            SubStep::keyed(
+                "fraction.simplify_numerator_and_denominator",
+                vec![],
                 intermediate_display,
                 after_display,
             )
@@ -1805,7 +1807,7 @@ fn vandermonde_pair_zero_substep(a: &str, b: &str, c: &str, left: &str, right: &
         (left, right) if left == b && right == c => {
             format!("{a}^3 · ({b} - {b}) + {b}^3 · ({b} - {a}) + {b}^3 · ({a} - {b})")
         }
-        _ => return SubStep::new("Comprobar anulación de factores", "", ""),
+        _ => return SubStep::keyed("polynomial.check_factor_vanishing", vec![], "", ""),
     };
     let before_latex = before.replace('·', "\\cdot");
     let title = format!("Si {left} = {right}, aparece el factor {left} - {right}");
@@ -2056,8 +2058,9 @@ fn generate_exact_additive_pair_cancel_substeps(ctx: &Context, step: &Step) -> V
     let mut work = ctx.clone();
     let pair = work.add(Expr::Sub(left, right));
     let zero = work.num(0);
-    vec![SubStep::new(
-        "Cancelar términos opuestos exactos",
+    vec![SubStep::keyed(
+        "polynomial.cancel_exact_opposite_terms",
+        vec![],
         human_expr(&work, pair),
         human_expr(&work, zero),
     )
@@ -3087,8 +3090,9 @@ fn build_odd_half_power_simplify_substeps(
 
     if let Some((replacement_before, replacement_after)) = replacement_pair {
         out.push(
-            SubStep::new(
-                "Reemplazar ese bloque en la expresión",
+            SubStep::keyed(
+                "polynomial.replace_block_in_expression",
+                vec![],
                 human_expr(ctx, replacement_before),
                 human_expr(ctx, replacement_after),
             )
@@ -9886,15 +9890,17 @@ fn generate_simplify_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec
             build_one_over_fraction_plus_minus_one_intermediates(&mut work, before)
         {
             return vec![
-                SubStep::new(
-                    "Llevar a denominador común dentro del denominador",
+                SubStep::keyed(
+                    "polynomial.common_denominator_within_denominator",
+                    vec![],
                     display_expr(&work, den_before),
                     display_expr(&work, den_after),
                 )
                 .with_before_latex(latex_expr(&work, den_before))
                 .with_after_latex(latex_expr(&work, den_after)),
-                SubStep::new(
-                    "Invertir la fracción del denominador",
+                SubStep::keyed(
+                    "polynomial.invert_denominator_fraction",
+                    vec![],
                     display_expr(&work, full_intermediate),
                     display_expr(ctx, after),
                 )
@@ -11189,8 +11195,9 @@ fn generate_cancel_reciprocal_exponents_substeps(ctx: &Context, step: &Step) -> 
     if let (Some(global_before), Some(global_after)) = (step.global_before, step.global_after) {
         if global_before != local_before || global_after != local_after {
             out.push(
-                SubStep::new(
-                    "Reemplazar ese bloque en la expresión",
+                SubStep::keyed(
+                    "polynomial.replace_block_in_expression",
+                    vec![],
                     display_expr(ctx, global_before),
                     display_expr(ctx, global_after),
                 )
@@ -11203,8 +11210,9 @@ fn generate_cancel_reciprocal_exponents_substeps(ctx: &Context, step: &Step) -> 
 
     if step.before != local_before || step.after != local_after {
         out.push(
-            SubStep::new(
-                "Reemplazar ese bloque en la expresión",
+            SubStep::keyed(
+                "polynomial.replace_block_in_expression",
+                vec![],
                 display_expr(ctx, step.before),
                 display_expr(ctx, step.after),
             )
@@ -11526,8 +11534,9 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
         };
 
         let mut out = vec![
-            SubStep::new(
-                "Factorizar el numerador como suma o diferencia de cubos",
+            SubStep::keyed(
+                "polynomial.factor_numerator_sum_or_difference_of_cubes",
+                vec![],
                 numerator_display,
                 factorized_numerator.clone(),
             )
@@ -11549,8 +11558,9 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
             direct_replacement_pair(step, before, after)
         {
             out.push(
-                SubStep::new(
-                    "Reemplazar ese bloque en la expresión",
+                SubStep::keyed(
+                    "polynomial.replace_block_in_expression",
+                    vec![],
                     display_expr(ctx, replacement_before),
                     display_expr(ctx, replacement_after),
                 )
@@ -11681,8 +11691,9 @@ fn generate_symbolic_differentiation_substeps(ctx: &Context, step: &Step) -> Vec
         differentiation_chain_inner_derivative(ctx, target, var_name)
     {
         substeps.push(
-            SubStep::new(
-                "Identificar u y du",
+            SubStep::keyed(
+                "usub.identify_u_du",
+                vec![],
                 format!("u = {}", display_expr(ctx, inner)),
                 format!("du = {} dx", derivative_display),
             )
@@ -12248,8 +12259,9 @@ fn generate_basic_polynomial_integration_substeps(ctx: &Context, step: &Step) ->
         let linearity_display = integral_sum_display(ctx, terms.as_slice(), var_name);
         let linearity_latex = integral_sum_latex(ctx, terms.as_slice(), var_name);
         substeps.push(
-            SubStep::new(
-                "Usar linealidad de la integral",
+            SubStep::keyed(
+                "integral.use_linearity",
+                vec![],
                 display_expr(ctx, args[0]),
                 linearity_display.clone(),
             )
@@ -12257,8 +12269,9 @@ fn generate_basic_polynomial_integration_substeps(ctx: &Context, step: &Step) ->
             .with_after_latex(linearity_latex.clone()),
         );
         substeps.push(
-            SubStep::new(
-                "Integrar cada término",
+            SubStep::keyed(
+                "integral.integrate_each_term",
+                vec![],
                 linearity_display,
                 display_expr(ctx, after),
             )
@@ -13577,15 +13590,17 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
     let difference_latex = format!("{} - {}", upper_latex, lower_latex);
 
     vec![
-        SubStep::new(
-            "Hallar la antiderivada",
+        SubStep::keyed(
+            "integral.find_antiderivative",
+            vec![],
             display_expr(ctx, integrand),
             display_expr(&scratch, antiderivative),
         )
         .with_before_latex(latex_expr(ctx, integrand))
         .with_after_latex(latex_expr(&scratch, antiderivative)),
-        SubStep::new(
-            "Evaluar la antiderivada en los límites",
+        SubStep::keyed(
+            "integral.evaluate_antiderivative_at_bounds",
+            vec![],
             display_expr(&scratch, antiderivative),
             difference_display,
         )
@@ -13675,8 +13690,9 @@ fn generate_general_rational_integration_substeps(ctx: &Context, step: &Step) ->
         .with_after_latex(latex_expr(&scratch, parts.factored_denominator)),
     );
     substeps.push(
-        SubStep::new(
-            "Descomponer en fracciones parciales",
+        SubStep::keyed(
+            "partial_fractions.decompose",
+            vec![],
             display_expr(&scratch, parts.factored_denominator),
             display_expr(&scratch, parts.decomposition),
         )
@@ -13684,8 +13700,9 @@ fn generate_general_rational_integration_substeps(ctx: &Context, step: &Step) ->
         .with_after_latex(latex_expr(&scratch, parts.decomposition)),
     );
     substeps.push(
-        SubStep::new(
-            "Integrar los términos simples",
+        SubStep::keyed(
+            "integral.integrate_simple_terms",
+            vec![],
             display_expr(&scratch, parts.decomposition),
             display_expr(ctx, result),
         )
@@ -13745,15 +13762,17 @@ fn generate_multi_quadratic_partial_fraction_integration_substeps(
     };
 
     vec![
-        SubStep::new(
-            "Descomponer en fracciones parciales",
+        SubStep::keyed(
+            "partial_fractions.decompose",
+            vec![],
             display_expr(ctx, args[0]),
             display_expr(&scratch, decomposition),
         )
         .with_before_latex(latex_expr(ctx, args[0]))
         .with_after_latex(latex_expr(&scratch, decomposition)),
-        SubStep::new(
-            "Integrar los términos simples",
+        SubStep::keyed(
+            "integral.integrate_simple_terms",
+            vec![],
             display_expr(&scratch, decomposition),
             display_expr(ctx, result),
         )
@@ -14026,8 +14045,9 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
 
     if nontrivial_affine_argument(ctx, arg, var_name) {
         substeps.push(
-            SubStep::new(
-                "Identificar el argumento afín",
+            SubStep::keyed(
+                "usub.identify_affine_argument",
+                vec![],
                 display_expr(ctx, arg),
                 display_expr(ctx, after),
             )
@@ -14038,8 +14058,9 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
 
     if has_symbolic_external_scale || rational_scale != BigRational::one() {
         substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
+            SubStep::keyed(
+                "usub.adjust_constant_factor",
+                vec![],
                 inverse_table_function_display(ctx, builtin, arg),
                 display_expr(ctx, after),
             )
@@ -14279,8 +14300,9 @@ fn generate_linear_elementary_table_integration_substeps(
         SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
             .with_before_latex(latex_expr(ctx, args[0]))
             .with_after_latex(latex_expr(ctx, after)),
-        SubStep::new(
-            "Identificar el argumento afín",
+        SubStep::keyed(
+            "usub.identify_affine_argument",
+            vec![],
             display_expr(ctx, arg),
             display_expr(ctx, after),
         )
@@ -14290,8 +14312,9 @@ fn generate_linear_elementary_table_integration_substeps(
 
     if !slope.is_one() {
         substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
+            SubStep::keyed(
+                "usub.adjust_constant_factor",
+                vec![],
                 affine_internal_derivative_display(ctx, arg, var_name, &slope),
                 display_expr(ctx, after),
             )
@@ -14397,8 +14420,9 @@ fn generate_linear_log_table_integration_substeps(ctx: &Context, step: &Step) ->
         )
         .with_before_latex(latex_expr(ctx, args[0]))
         .with_after_latex(latex_expr(ctx, after)),
-        SubStep::new(
-            "Identificar el denominador afín",
+        SubStep::keyed(
+            "usub.identify_affine_denominator",
+            vec![],
             display_expr(ctx, denominator),
             display_expr(ctx, after),
         )
@@ -14408,8 +14432,9 @@ fn generate_linear_log_table_integration_substeps(ctx: &Context, step: &Step) ->
 
     if !slope.is_one() {
         substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
+            SubStep::keyed(
+                "usub.adjust_constant_factor",
+                vec![],
                 affine_internal_derivative_display(ctx, denominator, var_name, &slope),
                 display_expr(ctx, after),
             )
@@ -14500,15 +14525,17 @@ fn generate_rational_linear_partial_fraction_integration_substeps(
     let decomposition_latex = latex_expr(&scratch, decomposition);
 
     vec![
-        SubStep::new(
-            "Descomponer en fracciones parciales",
+        SubStep::keyed(
+            "partial_fractions.decompose",
+            vec![],
             display_expr(ctx, args[0]),
             decomposition_display.clone(),
         )
         .with_before_latex(latex_expr(ctx, args[0]))
         .with_after_latex(decomposition_latex.clone()),
-        SubStep::new(
-            "Integrar los términos simples",
+        SubStep::keyed(
+            "integral.integrate_simple_terms",
+            vec![],
             decomposition_display,
             display_expr(ctx, after),
         )
@@ -14557,15 +14584,17 @@ fn generate_positive_quadratic_square_integration_substeps(
     let reduction_latex = latex_expr(&scratch, reduction);
 
     vec![
-        SubStep::new(
-            "Reducir el cuadrático positivo al cuadrado",
+        SubStep::keyed(
+            "integral.reduce_positive_quadratic_to_square",
+            vec![],
             display_expr(ctx, args[0]),
             reduction_display.clone(),
         )
         .with_before_latex(latex_expr(ctx, args[0]))
         .with_after_latex(reduction_latex.clone()),
-        SubStep::new(
-            "Integrar la parte arctan y la parte racional",
+        SubStep::keyed(
+            "integral.integrate_arctan_and_rational_parts",
+            vec![],
             reduction_display,
             display_expr(ctx, after),
         )
@@ -14621,8 +14650,9 @@ fn generate_positive_quadratic_cube_integration_substeps(
         )
         .with_before_latex(latex_expr(ctx, args[0]))
         .with_after_latex(reduction_latex.clone()),
-        SubStep::new(
-            "Integrar la parte arctan y la parte racional",
+        SubStep::keyed(
+            "integral.integrate_arctan_and_rational_parts",
+            vec![],
             reduction_display,
             display_expr(ctx, after),
         )
@@ -14712,8 +14742,9 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
     match table_match.trace {
         TrigLogTableTrace::AffineArgument => {
             substeps.push(
-                SubStep::new(
-                    "Identificar el argumento afín",
+                SubStep::keyed(
+                    "usub.identify_affine_argument",
+                    vec![],
                     display_expr(ctx, table_match.arg),
                     display_expr(ctx, after),
                 )
@@ -14728,8 +14759,9 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
             slope,
         } => {
             substeps.push(
-                SubStep::new(
-                    "Identificar el argumento afín",
+                SubStep::keyed(
+                    "usub.identify_affine_argument",
+                    vec![],
                     display_expr(ctx, table_match.arg),
                     display_expr(ctx, after),
                 )
@@ -14738,8 +14770,9 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
             );
             let scale = coefficient / slope.clone();
             substeps.push(
-                SubStep::new(
-                    "Ajustar el factor constante",
+                SubStep::keyed(
+                    "usub.adjust_constant_factor",
+                    vec![],
                     cofactor_display,
                     format!(
                         "{} · {}",
@@ -14766,8 +14799,9 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
                 symbolic_scale_latex,
             } = *trace;
             substeps.push(
-                SubStep::new(
-                    "Identificar u y du",
+                SubStep::keyed(
+                    "usub.identify_u_du",
+                    vec![],
                     format!("u = {}", display_expr(ctx, table_match.arg)),
                     format!("du = {} dx", derivative_display),
                 )
@@ -15680,8 +15714,9 @@ fn push_integration_constant_factor_adjustment_substep(
         adjustment.symbolic_scale_latex,
     ) {
         substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
+            SubStep::keyed(
+                "usub.adjust_constant_factor",
+                vec![],
                 adjustment.cofactor_display,
                 format!("{} · {}", scale_display, adjustment.derivative_display),
             )
@@ -15693,8 +15728,9 @@ fn push_integration_constant_factor_adjustment_substep(
         );
     } else if !adjustment.scale.is_one() {
         substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
+            SubStep::keyed(
+                "usub.adjust_constant_factor",
+                vec![],
                 adjustment.cofactor_display,
                 format!(
                     "{} · {}",
@@ -15752,8 +15788,9 @@ fn generate_hyperbolic_log_table_integration_substeps(ctx: &Context, step: &Step
                 .with_after_latex(latex_expr(ctx, after)),
         ];
     substeps.push(
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             format!("u = {}", display_expr(ctx, table_match.arg)),
             format!("du = {} dx", table_match.derivative_display),
         )
@@ -16138,8 +16175,9 @@ fn generate_hyperbolic_reciprocal_table_integration_substeps(
                 .with_after_latex(latex_expr(ctx, after)),
         ];
     substeps.push(
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             format!("u = {}", display_expr(ctx, table_match.arg)),
             format!("du = {} dx", table_match.derivative_display),
         )
@@ -16599,8 +16637,9 @@ fn generate_polynomial_derivative_table_integration_substeps(
                 .with_after_latex(latex_expr(ctx, after)),
         ];
     substeps.push(
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             format!("u = {}", display_expr(ctx, table_match.arg)),
             format!("du = {} dx", table_match.derivative_display),
         )
@@ -17039,8 +17078,9 @@ fn generate_log_power_product_table_integration_substeps(
                 .with_after_latex(latex_expr(ctx, after)),
         ];
     substeps.push(
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             display_expr(ctx, table_match.base),
             table_match.derivative_display.clone(),
         )
@@ -17049,8 +17089,9 @@ fn generate_log_power_product_table_integration_substeps(
     );
     if !table_match.scale.is_one() {
         substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
+            SubStep::keyed(
+                "usub.adjust_constant_factor",
+                vec![],
                 table_match.cofactor_display,
                 format!(
                     "{} · {}",
@@ -17215,8 +17256,9 @@ fn generate_polynomial_base_table_integration_substeps(ctx: &Context, step: &Ste
     .with_before_latex(latex_expr(ctx, args[0]))
     .with_after_latex(latex_expr(ctx, after))];
     substeps.push(
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             format!("u = {}", display_expr(ctx, table_match.base)),
             format!("du = {} dx", table_match.derivative_display),
         )
@@ -17225,8 +17267,9 @@ fn generate_polynomial_base_table_integration_substeps(ctx: &Context, step: &Ste
     );
     if !table_match.scale.is_one() {
         substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
+            SubStep::keyed(
+                "usub.adjust_constant_factor",
+                vec![],
                 table_match.cofactor_display,
                 format!(
                     "{} · {}",
@@ -17467,8 +17510,9 @@ fn generate_nested_inverse_polynomial_table_integration_substeps(
         SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
             .with_before_latex(latex_expr(ctx, args[0]))
             .with_after_latex(latex_expr(ctx, after)),
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             display_expr(ctx, table_match.arg),
             table_match.derivative_display,
         )
@@ -17596,8 +17640,9 @@ fn generate_arctan_sqrt_reciprocal_table_integration_substeps(
         )
         .with_before_latex(latex_expr(ctx, args[0]))
         .with_after_latex(latex_expr(ctx, after)),
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             format!("u = {}", display_expr(ctx, table_match.arg)),
             format!("du = {} dx", table_match.derivative_display),
         )
@@ -18008,8 +18053,9 @@ fn generate_trig_quotient_table_integration_substeps(ctx: &Context, step: &Step)
                 .with_after_latex(latex_expr(ctx, after)),
         ];
     substeps.push(
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             format!("u = {}", display_expr(ctx, table_match.arg)),
             format!("du = {} dx", table_match.derivative_display),
         )
@@ -18018,8 +18064,9 @@ fn generate_trig_quotient_table_integration_substeps(ctx: &Context, step: &Step)
     );
     if !table_match.scale.is_one() {
         substeps.push(
-            SubStep::new(
-                "Ajustar el factor constante",
+            SubStep::keyed(
+                "usub.adjust_constant_factor",
+                vec![],
                 table_match.cofactor_display,
                 format!(
                     "{} · {}",
@@ -18285,8 +18332,9 @@ fn generate_reciprocal_trig_derivative_product_integration_substeps(
                 .with_after_latex(latex_expr(ctx, after)),
         ];
     substeps.push(
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             format!("u = {}", display_expr(ctx, table_match.arg)),
             format!("du = {} dx", table_match.derivative_display),
         )
@@ -19475,8 +19523,9 @@ fn generate_integration_substitution_substeps(ctx: &Context, step: &Step) -> Vec
         return substeps;
     }
 
-    vec![SubStep::new(
-        "Usar sustitución",
+    vec![SubStep::keyed(
+        "usub.use_substitution",
+        vec![],
         display_expr(ctx, args[0]),
         display_expr(ctx, after),
     )
@@ -19505,8 +19554,9 @@ fn nested_trig_log_derivative_substitution_substeps(
         )
         .with_before_latex(latex_expr(ctx, integrand))
         .with_after_latex(latex_expr(ctx, after)),
-        SubStep::new(
-            "Identificar u y du",
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
             format!("u = {}", display_expr(ctx, plan.log_expr)),
             format!("du = {} dx", plan.derivative_display),
         )
@@ -19778,8 +19828,9 @@ fn generate_limit_factor_cancel_substeps(
     let point_disp = display_expr(ctx, point);
 
     Some(vec![
-        SubStep::new(
-            "Factoriza numerador y denominador",
+        SubStep::keyed(
+            "limit.factor_numerator_denominator",
+            vec![],
             display_expr(ctx, step.before),
             display_expr(&scratch, factored),
         )
@@ -19815,8 +19866,9 @@ fn generate_limit_notable_zero_over_zero_substeps(
     let before_disp = display_expr(ctx, step.before);
     let before_latex = latex_expr(ctx, step.before);
     vec![
-        SubStep::new(
-            "La sustitución directa da la indeterminación 0/0",
+        SubStep::keyed(
+            "limit.direct_substitution_0_0",
+            vec![],
             before_disp.clone(),
             "0 / 0",
         )
@@ -20007,8 +20059,9 @@ fn generate_limit_dominance_substeps(
     let before_disp = display_expr(ctx, step.before);
     let before_latex = latex_expr(ctx, step.before);
     Some(vec![
-        SubStep::new(
-            "Numerador y denominador → ∞: indeterminación ∞/∞",
+        SubStep::keyed(
+            "limit.numerator_denominator_inf_over_inf",
+            vec![],
             before_disp.clone(),
             "∞/∞",
         )
@@ -20031,8 +20084,9 @@ fn generate_limit_e_form_substeps(ctx: &Context, step: &Step, description: Strin
     let before_disp = display_expr(ctx, step.before);
     let before_latex = latex_expr(ctx, step.before);
     vec![
-        SubStep::new(
-            "La base tiende a 1 y el exponente a ∞: indeterminación 1^∞",
+        SubStep::keyed(
+            "limit.base_to_1_exponent_to_inf_1_pow_inf",
+            vec![],
             before_disp.clone(),
             "1^∞",
         )

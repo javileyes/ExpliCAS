@@ -25,15 +25,17 @@ pub(super) fn generate_cube_root_denominator_substeps(
     );
 
     vec![
-        SubStep::new(
-            "Multiplicar por el conjugado cúbico",
+        SubStep::keyed(
+            "rationalize.multiply_by_cube_conjugate",
+            vec![],
             human_expr_from_latex(&before_latex),
             human_expr_from_latex(&multiplied_latex),
         )
         .with_before_latex(before_latex)
         .with_after_latex(multiplied_latex.clone()),
-        SubStep::new(
-            "Aplicar suma de cubos en el denominador",
+        SubStep::keyed(
+            "rationalize.sum_of_cubes_denominator",
+            vec![],
             human_expr_from_latex(&multiplied_latex),
             human_expr_from_latex(&after_latex),
         )

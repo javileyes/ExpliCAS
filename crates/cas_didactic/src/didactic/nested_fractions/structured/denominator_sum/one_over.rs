@@ -16,8 +16,9 @@ pub(super) fn generate_one_over_sum_substeps(
         let intermediate_str = extract_combined_fraction_str(ctx, *den);
 
         sub_steps.push(
-            SubStep::new(
-                "Llevar a denominador común dentro del denominador",
+            SubStep::keyed(
+                "polynomial.common_denominator_within_denominator",
+                vec![],
                 display_expr(ctx, *den),
                 intermediate_str.clone(),
             )
@@ -27,8 +28,9 @@ pub(super) fn generate_one_over_sum_substeps(
 
         if let Some(full_intermediate) = build_one_over_intermediate_expr(ctx, *den) {
             sub_steps.push(
-                SubStep::new(
-                    "Invertir la fracción del denominador",
+                SubStep::keyed(
+                    "polynomial.invert_denominator_fraction",
+                    vec![],
                     full_intermediate.clone(),
                     display_expr(ctx, after_expr),
                 )

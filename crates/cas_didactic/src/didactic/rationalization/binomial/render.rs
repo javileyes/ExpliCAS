@@ -23,8 +23,9 @@ pub(super) fn build_binomial_conjugate_substep(
     denominator_latex: &str,
     conjugate: &str,
 ) -> SubStep {
-    SubStep::new(
-        "Cambiar el signo para formar el conjugado",
+    SubStep::keyed(
+        "rationalize.form_conjugate",
+        vec![],
         denominator_latex,
         conjugate,
     )
@@ -40,8 +41,9 @@ pub(super) fn build_binomial_multiply_both_sides_substep(
     let before_fraction = fraction_text(numerator_latex, denominator_latex);
     let after_numerator = multiply_factor_text(numerator_latex, conjugate);
     let after_denominator = multiply_factor_text(denominator_latex, conjugate);
-    SubStep::new(
-        "Multiplicar numerador y denominador por ese conjugado",
+    SubStep::keyed(
+        "rationalize.multiply_by_conjugate_both",
+        vec![],
         before_fraction,
         fraction_text(&after_numerator, &after_denominator),
     )
@@ -65,8 +67,9 @@ pub(super) fn build_binomial_product_substep(
     let after_den_latex = humanize_even_literal_square(after_den_latex);
     let before_numerator = multiply_factor_text(numerator_latex, conjugate);
     let before_denominator = multiply_factor_text(denominator_latex, conjugate);
-    SubStep::new(
-        "En el denominador aparece una diferencia de cuadrados",
+    SubStep::keyed(
+        "rationalize.denominator_difference_of_squares",
+        vec![],
         fraction_text(&before_numerator, &before_denominator),
         format!("({after_num_latex})/({after_den_latex})"),
     )

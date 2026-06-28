@@ -16,8 +16,9 @@ pub(super) fn generate_fraction_over_sum_substeps(
         let intermediate_str = extract_combined_fraction_str(ctx, *den);
 
         sub_steps.push(
-            SubStep::new(
-                "Llevar a denominador común dentro del denominador",
+            SubStep::keyed(
+                "polynomial.common_denominator_within_denominator",
+                vec![],
                 display_expr(ctx, *den),
                 intermediate_str.clone(),
             )
@@ -26,8 +27,9 @@ pub(super) fn generate_fraction_over_sum_substeps(
         );
 
         sub_steps.push(
-            SubStep::new(
-                "Dividir entre una fracción es multiplicar por su inversa",
+            SubStep::keyed(
+                "polynomial.divide_by_fraction_is_multiply_inverse",
+                vec![],
                 format!(
                     "\\frac{{{}}}{{{}}}",
                     nested_fraction_latex(ctx, hints, *num),

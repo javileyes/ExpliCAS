@@ -33,15 +33,17 @@ pub(super) fn generate_inner_fraction_substeps(
     );
 
     vec![
-        SubStep::new(
-            "Invertir la fracción del denominador",
+        SubStep::keyed(
+            "polynomial.invert_denominator_fraction",
+            vec![],
             display_expr(ctx, before_expr),
             intermediate_display.clone(),
         )
         .with_before_latex(latex_expr(ctx, before_expr))
         .with_after_latex(intermediate_latex.clone()),
-        SubStep::new(
-            "Simplificar el producto resultante",
+        SubStep::keyed(
+            "polynomial.simplify_resulting_product",
+            vec![],
             intermediate_display,
             display_expr(ctx, after_expr),
         )
