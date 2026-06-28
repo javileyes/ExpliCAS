@@ -2006,6 +2006,35 @@ fn test_eval_convergent_p_series_even_zeta() {
 }
 
 #[test]
+fn test_eval_summation_pole_in_range_is_undefined() {
+    // A finite or infinite sum whose summand has a POLE (a `1/0` term) at an integer in the range is
+    // UNDEFINED — the telescoping/closed-form builders otherwise compute THROUGH it. The pole
+    // detector folds `n^k` exactly (`as_rational_const` declines `Pow`, so a quadratic denominator's
+    // root went undetected); ALL roots are checked, incl. the NEGATIVE one and the start itself.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Poles inside the range -> undefined (finite and infinite upper bound).
+    assert_eq!(r("sum(1/(n^2-1), n, -2, 5)"), "undefined"); // poles at n=±1
+    assert_eq!(r("sum(1/(n^2-4), n, -2, 5)"), "undefined"); // poles at n=±2 (n=-2 is the start)
+    assert_eq!(r("sum(1/(n^2-1), n, -1, 5)"), "undefined"); // n=-1 start is itself a pole
+    assert_eq!(r("sum(1/(n^2-1), n, 1, 5)"), "undefined");
+    assert_eq!(r("sum(1/(n^2-1), n, -2, inf)"), "undefined"); // telescoped to -5/12 before
+    assert_eq!(r("sum(1/(n^2-4), n, -2, inf)"), "undefined");
+    // No pole in the range -> the exact value is unchanged.
+    assert_eq!(r("sum(1/(n^2-1), n, 2, 5)"), "17/30");
+    assert_eq!(r("sum(1/(n^2-1), n, -3, -2)"), "11/24");
+    assert_eq!(r("sum(1/(n^2-1), n, 2, inf)"), "3/4");
+    assert_eq!(r("sum(1/2^k, k, 0, inf)"), "2");
+    assert_eq!(r("sum(k, k, -2, 5)"), "12");
+}
+
+#[test]
 fn test_eval_arclength_curve() {
     // `arclength(f, x, a, b)` = ∫ₐᵇ √(1 + (df/dx)²) dx, rewritten to the definite integral and
     // evaluated by the integration engine: a clean closed form when the integrand is elementary,

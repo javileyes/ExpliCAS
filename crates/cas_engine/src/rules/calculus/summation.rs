@@ -134,6 +134,13 @@ where
             render_expr(call.start_expr),
             render_expr(call.end_expr)
         ),
+        SumEvaluationKind::UndefinedPole => format!(
+            "Undefined: a term of Σ({}, {}) from {} to {} divides by zero",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
     }
 }
 

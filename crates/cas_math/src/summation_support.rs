@@ -39,6 +39,9 @@ pub enum SumEvaluationKind {
     /// Convergent infinite series with a closed form (`sum(c·r^k, k, a, inf) =
     /// c·r^a/(1-r)` for a rational ratio `|r| < 1`).
     ConvergentInfinite,
+    /// The summand has a POLE (a `1/0` term) at an integer in the range, so the sum is
+    /// `undefined` regardless of convergence (`sum(1/(n^2-1), n, -2, ∞)`).
+    UndefinedPole,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -457,12 +460,61 @@ fn classify_infinite_product(ctx: &mut Context, call: &FiniteAggregateCall) -> O
 
 /// Whether `expr` contains a sub-expression with a vanishing denominator: a `Div` whose denominator
 /// evaluates to an exact rational zero, or a negative power `base^(neg)` whose `base` is exactly
-/// zero. Read-only and exact (uses `as_rational_const`, never `f64`).
+/// Exact rational value of `expr`, also folding `base^exp` for a rational base and an INTEGER
+/// exponent — which `numeric_eval::as_rational_const` declines, so a substituted `n^2-1` would
+/// otherwise never collapse to its literal value and the pole at `n=±1` went undetected. Read-only
+/// and exact (never `f64`); the exponent is bounded so a huge power is not materialized.
+fn fold_rational_value(
+    ctx: &Context,
+    expr: ExprId,
+    depth: usize,
+) -> Option<num_rational::BigRational> {
+    use num_traits::{ToPrimitive, Zero};
+    if depth == 0 {
+        return None;
+    }
+    let recur = |id: ExprId| fold_rational_value(ctx, id, depth - 1);
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Neg(inner) => Some(-recur(*inner)?),
+        Expr::Add(l, r) => Some(recur(*l)? + recur(*r)?),
+        Expr::Sub(l, r) => Some(recur(*l)? - recur(*r)?),
+        Expr::Mul(l, r) => Some(recur(*l)? * recur(*r)?),
+        Expr::Div(num, den) => {
+            let d = recur(*den)?;
+            if d.is_zero() {
+                None
+            } else {
+                Some(recur(*num)? / d)
+            }
+        }
+        Expr::Pow(base, exp) => {
+            let b = recur(*base)?;
+            let e = recur(*exp)?;
+            if !e.is_integer() {
+                return None;
+            }
+            let e = e.to_integer().to_i64()?;
+            if e.unsigned_abs() > 256 {
+                return None;
+            }
+            if e >= 0 {
+                Some(num_traits::pow::pow(b, e as usize))
+            } else if b.is_zero() {
+                None
+            } else {
+                Some(num_traits::pow::pow(b, (-e) as usize).recip())
+            }
+        }
+        _ => None,
+    }
+}
+
+/// zero. Read-only and exact (uses `fold_rational_value`, never `f64`).
 fn expr_has_vanishing_denominator(ctx: &Context, expr: ExprId) -> bool {
-    use crate::numeric_eval::as_rational_const;
     use num_traits::Zero;
     let is_exact_zero =
-        |id: ExprId| -> bool { as_rational_const(ctx, id).is_some_and(|q| q.is_zero()) };
+        |id: ExprId| -> bool { fold_rational_value(ctx, id, 64).is_some_and(|q| q.is_zero()) };
     match ctx.get(expr) {
         Expr::Div(num, den) => {
             is_exact_zero(*den)
@@ -566,6 +618,31 @@ pub fn try_plan_finite_sum_evaluation(
                 candidate,
                 kind: SumEvaluationKind::FiniteDirect { start, end },
             });
+        }
+    }
+
+    // SOUNDNESS (infinite upper bound): a `sum(..., n, a, ∞)` whose summand has a POLE at an integer
+    // in the range is UNDEFINED regardless of convergence — the telescoping/closed-form builders
+    // below otherwise compute THROUGH it (`sum(1/(n^2-1), n, -2, ∞)` -> `-5/12`, poles at `n=±1`).
+    // The finite gate above only fires when BOTH bounds are integers; scan the finite prefix
+    // `[start, start+max_span]` here, BEFORE the telescoping builders. Bounded, so a far pole beyond
+    // the prefix stays a residual rather than a fabricated value.
+    if is_positive_infinity(ctx, call.end_expr) {
+        if let Some(start) = crate::expr_extract::extract_i64_integer(ctx, call.start_expr) {
+            if finite_sum_summand_has_pole_in_range(
+                ctx,
+                call.term,
+                call.var_expr,
+                start,
+                start.saturating_add(max_span),
+            ) {
+                let candidate = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                return Some(SumEvaluationPlan {
+                    call,
+                    candidate,
+                    kind: SumEvaluationKind::UndefinedPole,
+                });
+            }
         }
     }
 

@@ -17699,6 +17699,7 @@ fn finite_sum_evaluation_description(kind: &SumEvaluationKind) -> &'static str {
         SumEvaluationKind::FiniteDirect { .. } => "Finite Sum",
         SumEvaluationKind::DivergentInfinite => "Divergent Infinite Series",
         SumEvaluationKind::ConvergentInfinite => "Convergent Geometric Series",
+        SumEvaluationKind::UndefinedPole => "Undefined (pole in range)",
     }
 }
 
@@ -24587,6 +24588,9 @@ fn classify_finite_series_vs_other_profile_pair(
                 }
                 SumEvaluationKind::ConvergentInfinite => {
                     "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_convergent_infinite"
+                }
+                SumEvaluationKind::UndefinedPole => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_undefined_pole"
                 }
             };
         }
