@@ -1439,6 +1439,11 @@ verificadas + integración definida racional/valor-absoluto). Ordenados por valo
   `∫_0^∞ 1/(x⁴-1)→undefined`, `∫_2^∞ x²/(x³-x)→infinity` (cola ~1/x); evitables pre-simplificadas (no falso polo).
   Falta el VALOR convergente grado-n (p.ej. `∫_2^∞ 1/(x³-x)`): su antiderivada es suma de 3+ logs y el límite-frontera
   `+∞−∞` el motor de límites aún no combina N≥3 términos → peldaño = generalizar `lim Σ cᵢ·ln(pᵢ)@±∞` en limits/engine.)*
+  *(valor convergente 2026-06-28 c4bb5bb6c: `log_sum_limit_at_infinity` generaliza el límite de 2 a N términos
+  (`s=Σ cᵢ·deg pᵢ`; s=0 → finito `Σ cᵢ·ln(lead pᵢ)`), así que `∫_2^∞ 1/(x³-x)=ln2−½ln3`, `∫_3^∞ 1/(x³-4x)=⅛ln(9/5)`,
+  `∫_3^∞ 1/((x²-1)(x²-4))=1/12·ln(5/4)` COMPUTAN (denom que factoriza sobre ℚ en lineales; verificado numéricamente).
+  Peldaño final: denom con factor cuadrático IRREDUCIBLE (`x⁴-1→x²+1`) ⇒ antiderivada arctan+logs; falta el
+  límite-frontera mixto `lim (C·arctan + Σ cᵢ·ln)@+∞`.)*
 - [ ] **(F) Definida `1/(a²−x²)` fuera de `|x|<a`** (`1/(1−x²)` en `[2,3]`): la antiderivada
   `atanh(x)` es real solo en `|x|<1`; el valor real fuera es `½ln|(1+x)/(1−x)|`. INTENTADO y
   REVERTIDO en el ciclo 6 — la reescritura atanh→log se enredó con el envoltorio `Hold` y la

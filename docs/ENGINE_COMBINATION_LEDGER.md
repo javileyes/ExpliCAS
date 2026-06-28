@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 428 (newest first)
+Active entries: 429 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -126,6 +126,7 @@ Active entries: 428 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_ast/src/domain.rs` (Periodic{bases:Vec,period}), `crates/cas_solv... | SOUNDNESS (audit #5): emitir AMBAS familias para ecuaciones trig de dos familias
 - 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (nonzero_on_un... | UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador cuadrático de raíces reales fuera del rango
 - 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_u... | UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador de grado-n (decisión de divergencia/polo)
+- 2026-06-28 | `retained` | `crates/cas_math/src/limits_support.rs` (`log_sum_limit_at_infinity` + `colle... | UNIVERSALIDAD (capacidad F): límite de suma de N logaritmos en +∞ → valor convergente de impropia racional grado-n
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17212,3 +17213,32 @@ Active entries: 428 (newest first)
   - siguiente peldaño: generalizar el límite `lim Σ cᵢ·ln(pᵢ(x)) @ ±∞` a N términos en `limits/engine.rs` (es
     `(Σ cᵢ·deg pᵢ)·∞` si ≠0, si =0 el finito `Σ cᵢ·ln(lead pᵢ)`); eso desbloquea el VALOR convergente grado-n. Es
     ruta AT-INFINITY (no la política deliberada de límites finite-point). [[residuals-are-often-deliberate-policy]].
+
+## 2026-06-28 - UNIVERSALIDAD (capacidad F): límite de suma de N logaritmos en +∞ → valor convergente de impropia racional grado-n
+
+- area: `crates/cas_math/src/limits_support.rs` (`log_sum_limit_at_infinity` + `collect_signed_log_terms` + `strip_single_abs`; dispatch en `eval_limit_at_infinity` tras `log_difference_limit_at_infinity`)
+- status: `retained` (commit c4bb5bb6c). Completa la mitad de VALOR convergente que f70846493 dejó abierta para denominadores que factorizan sobre ℚ en LINEALES.
+- capture:
+  - cell: el motor de límites solo combinaba DOS términos `ln p − ln q` en `+∞`; `½ln|x−1| + ½ln|x+1| − ln|x|` (≥3
+    términos) caía a `additive_limit_at_infinity` que ve `+∞ + ∞ − ∞` y declina. AHORA `∫_2^∞ 1/(x³−x)=ln2−½ln3`,
+    `∫_3^∞ 1/(x³−4x)=⅛ln(9/5)`, `∫_3^∞ 1/((x²−1)(x²−4))=1/12·ln(5/4)` (verificado numéricamente a ~10 dígitos).
+  - causa raíz: el límite-frontera de TODA antiderivada log de fracciones parciales con ≥3 piezas quedaba sin resolver;
+    la certificación grado-n (f70846493) ya decidía no-polo, pero el VALOR necesitaba este límite.
+  - fix: `log_sum_limit_at_infinity` descompone en términos `Σ cᵢ·ln(pᵢ(x))` (recorre Add/Sub/Neg, escala por `Mul`/`Div`
+    constante, y quita un `abs`), exige lead(pᵢ)>0 (⇒ `ln pᵢ→+∞`) y lee la asíntota del crecimiento polinómico:
+    `ln(pᵢ)=(deg pᵢ)·ln x + ln(lead pᵢ) + o(1)` ⇒ suma `~ s·ln x + Σ cᵢ·ln(lead pᵢ)` con `s=Σ cᵢ·deg pᵢ`. `s>0→+∞`,
+    `s<0→−∞`, `s=0→` el finito `Σ cᵢ·ln(lead pᵢ)` (el `o(1)` se anula EXACTO). Reusa `build_log_combination_expr`/
+    `log_combination_float`. Corre TRAS la regla de dos términos (no la toca) y ANTES del additive fallback. Solo `+∞`;
+    `−∞` (ln de argumento real puede ser indefinido) queda residual conservador.
+  - validación: workspace failed:0; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; test de contrato nuevo (límite N-términos s=0/s≠0 + valores convergentes + soundness).
+- retained learning:
+  - el patrón "leer la asíntota del LOG vía crecimiento polinómico" generaliza el caso de 2 términos a N sin tocar el
+    verificador algebraico: `lim Σ cᵢ·ln(pᵢ)@+∞` se decide con `s=Σ cᵢ·deg pᵢ` y, si s=0, el finito `Σ cᵢ·ln(lead pᵢ)`.
+    El `o(1)` de `ln(1+resto)` se anula exacto ⇒ no hay pérdida de soundness al plegar a la constante.
+  - separar certificación (no-polo) de valuación (límite-frontera) pagó: dos ciclos pequeños y aditivos
+    (cert grado-n + límite N-logs) entregaron el valor convergente completo sin tocar el backend de integración.
+  - es ruta AT-INFINITY: NO chocó con la política deliberada de límites finite-point [[residuals-are-often-deliberate-policy]].
+  - siguiente peldaño: denominador con factor cuadrático IRREDUCIBLE sobre ℚ (`x⁴−1 → x²+1`) ⇒ la antiderivada mezcla
+    arctan con logs; el límite-frontera `lim (C·arctan(x) + Σ cᵢ·ln(pᵢ)) @ +∞` necesita combinar el término arctan→π/2
+    con la suma de logs. Ese es el siguiente sub-ciclo para cerrar `∫_a^∞ p/q` racional general convergente.
