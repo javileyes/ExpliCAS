@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 423 (newest first)
+Active entries: 424 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
 - 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (fold_rational_value + expr_has_va... | SOUNDNESS P0 (Grupo C1-3, audit #4): sumatorio con polo en el rango devuelve un número falso
 - 2026-06-28 | `retained` | `crates/cas_math/src/matrix.rs` (Matrix::norm) | SOUNDNESS P0 (Grupo C4, audit #4): norma de vector complejo eleva al cuadrado el componente, no la magnitud
 - 2026-06-28 | `retained` | `crates/cas_ast/src/domain.rs` (variante `Periodic{base,period}`), `crates/ca... | SOUNDNESS/L (Grupo B parcial, audit #4): variante `Periodic` del SolutionSet + emisión en ecuaciones trig bare
+- 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (positive_linear_coeff_of_var ... | SOUNDNESS/L (Grupo B cont., audit #4): Periodic para ecuación trig con argumento ESCALADO trig(a·x)=c
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17055,3 +17056,28 @@ Active entries: 423 (newest first)
     simplificación del cociente plegado + hangs n=2,4) — issue PROFUNDO del simplificador (no de la fórmula de diff,
     que es correcta), alto riesgo de regresión, requiere esfuerzo dedicado con validación de huella extensa. NO meter
     en un ciclo apresurado.
+
+## 2026-06-28 - SOUNDNESS/L (Grupo B cont., audit #4): Periodic para ecuación trig con argumento ESCALADO trig(a·x)=c
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (positive_linear_coeff_of_var + extensión de try_solve_periodic_trig_equation)
+- status: `retained` (commit a06a6092b). Quinto ciclo del plan audit #4; cierra `cos(2x)=1` (5/6 del Grupo B) + toda la familia escalada.
+- capture:
+  - cell: ANTES `solve(cos(2x)=1)`→`{0}` (suelta `+kπ`). AHORA `{ k·pi : k ∈ ℤ }`. Además `sin(2x)=0`→`{ k·1/2·pi }`,
+    `tan(2x)=1`→`{ 1/8·pi + k·1/2·pi }`, `sin(x/2)=0`→`{ k·2·pi }`. Bare (a=1) sin cambio. Declina offset afín, a≤0,
+    y multiángulos que el simplificador pre-expande (`cos(3x)`→cúbico en cos x → residual honesto).
+  - causa raíz: el guard de Periodic (ciclo 4) solo detectaba `arg == var`; un `a·x` no casaba.
+  - fix: `positive_linear_coeff_of_var` extrae `a>0` de `a·x` (o `x`→1); resuelve la familia para `u=a·x` (base_u,
+    period_u) y mapea `x=u/a` dividiendo AMBOS por `a` (a>1 ENCOGE el período: cos(2x)=1 → período π). Para a=1 vuelve
+    a la familia bare.
+  - validación: workspace verde; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; asertos escalados en el test de contrato.
+- retained learning:
+  - el SIMPLIFICADOR pre-expande algunos multiángulos antes de que el guard vea el arg (`cos(3x)`→`4cos³x-3cosx`,
+    `cos(2x)` NO): el guard solo cubre lo que llega sin expandir. Limitación honesta (residual), no wrong-answer.
+  - mapeo de período por sustitución lineal `u=a·x`: la familia en x es base_u/a + k·(period_u/a). Dividir por a (no
+    multiplicar): a más grande ⇒ el trig oscila a×más rápido ⇒ período en x más PEQUEÑO.
+  - siguiente iteración recomendada: quedan 2/25 del audit #4 — (B-resto) `sin(x)^2=1` (reducción `sin²=c`→`sin=±√c` +
+    fusión de dos familias; + el general two-family `sin/cos=c` con Union-de-Periodic, no construido); y (C5) diff
+    fraction-fold (`(poly+tan)^n`: wrong n=3 por un `cos` perdido en la SIMPLIFICACIÓN del cociente plegado, hangs n=2,4)
+    — PROFUNDO del simplificador, alto riesgo de regresión, requiere ciclo dedicado con validación de huella extensa.
+    NO apresurar. Verificador adversarial confirmó que el plan inicial de C5 era unsound (split + más scoping).
