@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 427 (newest first)
+Active entries: 428 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -125,6 +125,7 @@ Active entries: 427 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (reducción squared-trig en try... | SOUNDNESS/L (Grupo B COMPLETO, audit #4): ecuación trig al cuadrado vía reducción de ángulo doble
 - 2026-06-28 | `retained` | `crates/cas_ast/src/domain.rs` (Periodic{bases:Vec,period}), `crates/cas_solv... | SOUNDNESS (audit #5): emitir AMBAS familias para ecuaciones trig de dos familias
 - 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (nonzero_on_un... | UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador cuadrático de raíces reales fuera del rango
+- 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_u... | UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador de grado-n (decisión de divergencia/polo)
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17176,3 +17177,38 @@ Active entries: 427 (newest first)
     irreducibles-sobre-ℚ grado≥4/6 como x⁴-2, x⁶+1; algebraico, difícil), `∫|g|` transcendente, definida `1/(a²-x²)`
     fuera de `|x|<a` (atanh→log, INTENTADO+REVERTIDO antes, enredo con Hold + domain-cond). Y la mitad educativa de
     límites/integrales. Los límites finite-point son POLÍTICA deliberada (no tocar sin scoping).
+
+## 2026-06-28 - UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador de grado-n (decisión de divergencia/polo)
+
+- area: `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_unbounded_interval` → nuevo recursivo `nonzero_poly_on_interval`, caso grado ≥3)
+- status: `retained` (commit f70846493). Extiende el ciclo grado-2 (467a39448) a denominadores de grado-n. Gradúa la mitad de DIVERGENCIA/POLO del item; la mitad de VALOR convergente queda como peldaño (límite suma-de-logs).
+- capture:
+  - cell: el engine EXPANDE `(x²-1)(x²-4)` a un único polinomio grado-4, así que el walk factor-a-factor de `Mul` en
+    `certify_denominator_factors` nunca ve las cuadráticas — entrega el polinomio entero a `nonzero_on_unbounded_interval`,
+    cuyo match solo decidía grado 0/1/2 y caía a `Unknown` para grado ≥3. ANTES `∫_{1/2}^∞ 1/(x³-x)`, `∫_0^∞ 1/(x⁴-1)`,
+    `∫_2^∞ x²/(x³-x)` → residual conservador. AHORA `undefined` (polo en rango), `undefined`, `infinity` (cola ~1/x).
+  - causa raíz: la rama polinómica no factorizaba; un polinomio grado-n con raíces racionales (todas sus raíces caen
+    en factores lineales/cuadráticos) quedaba sin decidir.
+  - fix: refactor a `nonzero_poly_on_interval` recursivo: conserva los deciders exactos grado-0/1/2 y, para grado ≥3,
+    parte el polinomio por sus raíces RACIONALES (`Polynomial::factor_rational_roots`) y certifica cada factor.
+    `combine_certificates` ya da la semántica de producto correcta: un factor que se anula DENTRO (`Undefined`) domina,
+    un factor indeciso (`Unknown`) bloquea la certificación. Un factor sobrante de grado ≥3 SIN raíz racional queda
+    `Unknown` (sus raíces irracionales no se localizan) ⇒ cambio puramente ADITIVO, nunca fabrica una divergencia.
+  - soundness: las singularidades EVITABLES se pre-simplifican (`(x-1)/(x³-x) → 1/(x²+x)`), así que la certificación
+    nunca lee un hueco como polo — verificado (`∫_{1/2}^∞ (x-1)/(x³-x) → ln3`, `∫_2^∞ (x²-1)/(x³-x) → infinity`).
+  - validación: workspace failed:0; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; test de contrato nuevo
+    `test_eval_improper_rational_integral_degree_n_denominator_divergence` (polo-en-rango ×3, cola divergente, evitable).
+- retained learning:
+  - el engine EXPANDE productos de denominador a un único polinomio; un certificador que recorre factores `Mul` debe
+    además FACTORIZAR el polinomio expandido (vía `factor_rational_roots`) o nunca verá las piezas. La recursión sobre
+    factores + `combine_certificates` (Undefined domina, Unknown bloquea) reutiliza la semántica de producto ya escrita.
+  - extensión grado-n por raíces RACIONALES es aditiva y segura: lo que no factoriza sobre ℚ queda `Unknown` (honesto),
+    no `Certified` — nunca convierte un under-answer en wrong-answer. [[soundness-gates-must-be-exact]].
+  - separar (otra vez) "no-polo" de "valor": esta certificación ahora decide divergencia/polo para grado-n, pero el
+    VALOR convergente (p.ej. `∫_2^∞ 1/(x³-x)`) sigue residual porque su antiderivada es una SUMA de 3+ logs cuyo límite
+    `+∞−∞` el motor de límites aún no combina (solo combina 2 términos: `lim ln(x-1)-ln(x)@∞=0` ✓, pero
+    `lim ln(x-1)+ln(x+1)-2ln(x)@∞` declina).
+  - siguiente peldaño: generalizar el límite `lim Σ cᵢ·ln(pᵢ(x)) @ ±∞` a N términos en `limits/engine.rs` (es
+    `(Σ cᵢ·deg pᵢ)·∞` si ≠0, si =0 el finito `Σ cᵢ·ln(lead pᵢ)`); eso desbloquea el VALOR convergente grado-n. Es
+    ruta AT-INFINITY (no la política deliberada de límites finite-point). [[residuals-are-often-deliberate-policy]].

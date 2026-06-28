@@ -1433,6 +1433,12 @@ verificadas + integración definida racional/valor-absoluto). Ordenados por valo
   convergencia de cola la da el límite-frontera. Cubre `∫_a^∞ p/q` con denom cuadrático de raíces reales fuera de
   rango; raíz dentro → `Undefined` (diverge). Peldaño restante: denom de grado ≥3 con factor cuadrático irreducible
   sobre ℚ pero con raíces reales necesita el caso grado-n.)*
+  *(grado-n extendido 2026-06-28 f70846493: `nonzero_on_unbounded_interval` ahora factoriza un polinomio grado ≥3 por
+  sus raíces RACIONALES (`factor_rational_roots`) y certifica cada factor — el engine EXPANDE `(x²-1)(x²-4)` a grado-4,
+  así que el walk de `Mul` no bastaba. Decide DIVERGENCIA/POLO grado-n: `∫_{1/2}^∞ 1/(x³-x)→undefined` (polo en 1),
+  `∫_0^∞ 1/(x⁴-1)→undefined`, `∫_2^∞ x²/(x³-x)→infinity` (cola ~1/x); evitables pre-simplificadas (no falso polo).
+  Falta el VALOR convergente grado-n (p.ej. `∫_2^∞ 1/(x³-x)`): su antiderivada es suma de 3+ logs y el límite-frontera
+  `+∞−∞` el motor de límites aún no combina N≥3 términos → peldaño = generalizar `lim Σ cᵢ·ln(pᵢ)@±∞` en limits/engine.)*
 - [ ] **(F) Definida `1/(a²−x²)` fuera de `|x|<a`** (`1/(1−x²)` en `[2,3]`): la antiderivada
   `atanh(x)` es real solo en `|x|<1`; el valor real fuera es `½ln|(1+x)/(1−x)|`. INTENTADO y
   REVERTIDO en el ciclo 6 — la reescritura atanh→log se enredó con el envoltorio `Hold` y la
