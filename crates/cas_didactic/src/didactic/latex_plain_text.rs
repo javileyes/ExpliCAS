@@ -8,6 +8,11 @@ pub fn latex_to_plain_text(s: &str) -> String {
 
     result = text::strip_text_wrappers(result);
 
+    // Convert LaTeX matrix environments to the engine's plain bracket form BEFORE the blind
+    // brace/backslash stripping below, which would otherwise mangle `\begin{bmatrix}` into
+    // `beginbmatrix` garbage in matrix/vector step before/after fields.
+    result = convert_matrix_environments(result);
+
     let mut iterations = 0;
     while result.contains("\\frac{") && iterations < 10 {
         iterations += 1;
@@ -52,6 +57,42 @@ pub fn latex_to_plain_text(s: &str) -> String {
     result = humanize_even_literal_squares(&result);
 
     result.replace("\\", "")
+}
+
+/// Rewrite `\begin{bmatrix}…\end{bmatrix}` (and `pmatrix`/`vmatrix`) into the engine's plain
+/// `[[a, b], [c, d]]` bracket form: rows split on `\\`, cells on `&`. Cell contents (e.g. `\frac`)
+/// are left intact so the later fraction/sqrt/power passes still humanize them.
+fn convert_matrix_environments(mut s: String) -> String {
+    for env in ["bmatrix", "pmatrix", "vmatrix"] {
+        let begin = format!("\\begin{{{env}}}");
+        let end = format!("\\end{{{env}}}");
+        while let Some(begin_at) = s.find(&begin) {
+            let inner_start = begin_at + begin.len();
+            let Some(rel_end) = s[inner_start..].find(&end) else {
+                break;
+            };
+            let inner = &s[inner_start..inner_start + rel_end];
+            let rows: Vec<String> = inner
+                .split("\\\\")
+                .map(|row| {
+                    let cells: Vec<String> =
+                        row.split('&').map(|cell| cell.trim().to_string()).collect();
+                    format!("[{}]", cells.join(", "))
+                })
+                .filter(|row| row != "[]")
+                .collect();
+            // A single row is a vector/list -> flat `[a, b, c]` (matching the engine's own result
+            // display, e.g. divisors); multiple rows stay nested `[[..], [..]]`.
+            let replacement = if rows.len() == 1 {
+                rows.into_iter().next().unwrap_or_else(|| "[]".to_string())
+            } else {
+                format!("[{}]", rows.join(", "))
+            };
+            let end_at = inner_start + rel_end + end.len();
+            s.replace_range(begin_at..end_at, &replacement);
+        }
+    }
+    s
 }
 
 fn strip_color_wrappers(input: &str) -> String {

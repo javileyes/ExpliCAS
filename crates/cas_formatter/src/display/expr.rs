@@ -561,6 +561,23 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                         }
                     );
                 }
+                // PlusMinus(a, b) is a synthetic display node from the quadratic-formula trace;
+                // render it as "a ± b" to mirror the LaTeX `a \pm b` (otherwise it leaks as the
+                // raw constructor "PlusMinus(a, b)" in solve step equation fields).
+                if name == "PlusMinus" && args.len() == 2 {
+                    return write!(
+                        f,
+                        "{} ± {}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[0]
+                        },
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[1]
+                        }
+                    );
+                }
                 if (name == "fact" || name == "factorial") && args.len() == 1 {
                     let needs_parens = matches!(
                         self.context.get(args[0]),

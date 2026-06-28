@@ -42,6 +42,23 @@ fn test_latex_to_plain_text_converts_frac_and_text() {
 }
 
 #[test]
+fn test_latex_to_plain_text_converts_matrix_environments() {
+    // Multi-row matrix -> nested brackets (no `beginbmatrix` garbage).
+    let matrix =
+        latex_to_plain_text(r"\begin{bmatrix} -2 & 1 \\ \frac{3}{2} & -\frac{1}{2} \end{bmatrix}");
+    assert_eq!(matrix, "[[-2, 1], [3/2, -1/2]]", "got {matrix}");
+    assert!(!matrix.contains("bmatrix"));
+
+    // Single-row vector/list -> flat brackets, matching the engine's own result display.
+    let vector = latex_to_plain_text(r"\begin{bmatrix} 1 & 2 & 3 & 4 & 6 & 12 \end{bmatrix}");
+    assert_eq!(vector, "[1, 2, 3, 4, 6, 12]", "got {vector}");
+
+    // Nested inside a function call (e.g. det(...)).
+    let det = latex_to_plain_text(r"\det(\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix})");
+    assert_eq!(det, "det([[1, 2], [3, 4]])", "got {det}");
+}
+
+#[test]
 fn test_cli_substep_render_prefers_explicit_latex_when_available() {
     let enriched = EnrichedStep {
         base_step: crate::runtime::Step::new_compact(
