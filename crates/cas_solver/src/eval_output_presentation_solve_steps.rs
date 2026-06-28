@@ -1,15 +1,19 @@
 mod equation;
+mod localization;
 
 use cas_api_models::{SolveStepWire, SolveSubStepWire};
 use cas_ast::Context;
+use cas_solver_core::eval_option_axes::Language;
 
 use self::equation::{relop_to_latex, render_equation_strings};
+use self::localization::localize_solve_description;
 
 pub(crate) fn collect_output_solve_steps(
     solve_steps: &[crate::SolveStep],
     prepended_primary_steps: &[crate::Step],
     ctx: &Context,
     steps_mode: &str,
+    language: Language,
 ) -> Vec<SolveStepWire> {
     if steps_mode != "on" {
         return vec![];
@@ -24,7 +28,8 @@ pub(crate) fn collect_output_solve_steps(
         return vec![];
     }
 
-    let prepended_substeps = collect_prepended_primary_substeps(prepended_primary_steps, ctx);
+    let prepended_substeps =
+        collect_prepended_primary_substeps(prepended_primary_steps, ctx, language);
 
     filtered
         .iter()
@@ -40,7 +45,7 @@ pub(crate) fn collect_output_solve_steps(
 
                     SolveSubStepWire {
                         index: String::new(),
-                        description: ss.description.clone(),
+                        description: localize_solve_description(&ss.description, language),
                         equation: rendered.equation,
                         lhs_latex: rendered.lhs_latex,
                         relop: relop_to_latex(&ss.equation_after.op),
@@ -61,7 +66,7 @@ pub(crate) fn collect_output_solve_steps(
 
             SolveStepWire {
                 index: i + 1,
-                description: step.description.clone(),
+                description: localize_solve_description(&step.description, language),
                 equation: rendered.equation,
                 lhs_latex: rendered.lhs_latex,
                 relop: relop_to_latex(&step.equation_after.op),
@@ -75,14 +80,19 @@ pub(crate) fn collect_output_solve_steps(
 fn collect_prepended_primary_substeps(
     primary_steps: &[crate::Step],
     ctx: &Context,
+    language: Language,
 ) -> Vec<SolveSubStepWire> {
     primary_steps
         .iter()
-        .filter_map(|step| primary_step_to_solve_substep(step, ctx))
+        .filter_map(|step| primary_step_to_solve_substep(step, ctx, language))
         .collect()
 }
 
-fn primary_step_to_solve_substep(step: &crate::Step, ctx: &Context) -> Option<SolveSubStepWire> {
+fn primary_step_to_solve_substep(
+    step: &crate::Step,
+    ctx: &Context,
+    language: Language,
+) -> Option<SolveSubStepWire> {
     let equation_after_id = step.global_after.or(Some(step.after))?;
     let (lhs, rhs) = cas_ast::eq::unwrap_eq(ctx, equation_after_id)?;
     let equation_after = cas_ast::Equation {
@@ -94,7 +104,7 @@ fn primary_step_to_solve_substep(step: &crate::Step, ctx: &Context) -> Option<So
 
     Some(SolveSubStepWire {
         index: String::new(),
-        description: step.description.to_string(),
+        description: localize_solve_description(&step.description, language),
         equation: rendered.equation,
         lhs_latex: rendered.lhs_latex,
         relop: relop_to_latex(&equation_after.op),
@@ -106,6 +116,7 @@ fn primary_step_to_solve_substep(step: &crate::Step, ctx: &Context) -> Option<So
 mod tests {
     use super::collect_output_solve_steps;
     use cas_ast::{eq::wrap_eq, Context, Equation, RelOp};
+    use cas_solver_core::eval_option_axes::Language;
     use cas_solver_core::step_types::SubStep;
 
     #[test]
@@ -150,7 +161,7 @@ mod tests {
             crate::ImportanceLevel::Medium,
         )]);
 
-        let wires = collect_output_solve_steps(&[solve_step], &[primary], &ctx, "on");
+        let wires = collect_output_solve_steps(&[solve_step], &[primary], &ctx, "on", Language::Es);
 
         assert_eq!(wires.len(), 1);
         assert_eq!(wires[0].substeps.len(), 2);
@@ -198,7 +209,7 @@ mod tests {
             crate::ImportanceLevel::High,
         );
 
-        let wires = collect_output_solve_steps(&[solve_step], &[primary], &ctx, "on");
+        let wires = collect_output_solve_steps(&[solve_step], &[primary], &ctx, "on", Language::Es);
 
         assert_eq!(wires.len(), 1);
         assert!(wires[0].substeps.is_empty());

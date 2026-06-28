@@ -28,6 +28,7 @@ fn log_power_requires_drop_redundant_power_guards() {
             inv_trig: EvalInvTrigPolicy::Strict,
             assume_scope: EvalAssumeScope::Real,
         },
+        cas_solver_core::eval_option_axes::Language::Es,
         |_steps, _events, _context, _steps_mode| Vec::new(),
     );
     let payload: serde_json::Value = serde_json::from_str(&json).expect("json");

@@ -1,6 +1,9 @@
 # Solve-step description i18n — catalog + implementation plan
 
-Status: SCOPED, not yet implemented. Cycle D of the didactic-quality round.
+Status: IMPLEMENTED. Cycle D of the didactic-quality round. The localizer lives in
+`crates/cas_solver/src/eval_output_presentation_solve_steps/localization.rs` (ordered-segment
+template matcher); `Language` is threaded from cas_cli through cas_session to
+`collect_output_solve_steps`. The table below is the source of the runtime entries.
 
 ## Problem
 

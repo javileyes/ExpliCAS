@@ -47,8 +47,12 @@ fn no_steps(
 fn seed_snapshot(path: &std::path::Path, domain: EvalDomainMode, count: usize) {
     for i in 0..count {
         let expr = format!("(2*x{i} + 2*y{i})/(4*x{i} + 4*y{i})");
-        let _ =
-            evaluate_eval_command_with_session(Some(path), eval_config(&expr, domain), no_steps);
+        let _ = evaluate_eval_command_with_session(
+            Some(path),
+            eval_config(&expr, domain),
+            cas_solver_core::eval_option_axes::Language::Es,
+            no_steps,
+        );
     }
 }
 

@@ -10,6 +10,7 @@ pub(crate) fn render(args: &EvalArgs) -> Result<CommandOutput, String> {
         cas_session::eval::evaluate_eval_command_with_session(
             args.session.as_deref(),
             super::eval::eval_command_config(&args.expr, args),
+            args.lang.to_language(),
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
     let mut output = CommandOutput::default();

@@ -71,6 +71,7 @@ fn consecutive_factorial_ratio_wire_uses_factorial_latex_and_nonnegative_require
             inv_trig: EvalInvTrigPolicy::Strict,
             assume_scope: EvalAssumeScope::Real,
         },
+        cas_solver_core::eval_option_axes::Language::Es,
         |_steps, _events, _context, _steps_mode| Vec::new(),
     );
     let payload: serde_json::Value = serde_json::from_str(&json).expect("json");

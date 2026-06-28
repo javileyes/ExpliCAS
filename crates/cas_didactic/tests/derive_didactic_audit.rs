@@ -616,6 +616,7 @@ fn audit_case(case: &DeriveCase) -> AuditArtifact {
     let json = evaluate_eval_command_pretty_with_session(
         None,
         derive_eval_config(&expr),
+        cas_solver_core::eval_option_axes::Language::Es,
         |steps, events, context, steps_mode| {
             collect_step_payloads_with_events(steps, events, context, steps_mode)
         },

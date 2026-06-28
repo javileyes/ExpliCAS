@@ -43,6 +43,7 @@ fn render_wire(args: &EvalArgs) -> CommandOutput {
         cas_session::eval::evaluate_eval_command_pretty_with_session(
             args.session.as_deref(),
             eval_command_config(&args.expr, args),
+            args.lang.to_language(),
             |steps, events, context, steps_mode| {
                 cas_didactic::collect_step_payloads_with_events_localized(
                     steps,

@@ -11,13 +11,15 @@ use cas_solver_core::engine_events::EngineEvent;
 pub fn evaluate_eval_command_pretty_with_session<F>(
     session_path: Option<&Path>,
     config: EvalCommandConfig<'_>,
+    language: cas_solver_core::eval_option_axes::Language,
     collect_steps: F,
 ) -> String
 where
     F: Fn(&[Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<cas_api_models::StepWire>,
 {
     let input = config.expr;
-    let (output, _, _) = evaluate_eval_command_with_session(session_path, config, collect_steps);
+    let (output, _, _) =
+        evaluate_eval_command_with_session(session_path, config, language, collect_steps);
     match output {
         Ok(payload) => payload.to_json_pretty(),
         Err(error) => {

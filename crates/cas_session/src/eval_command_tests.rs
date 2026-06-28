@@ -335,6 +335,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -366,6 +367,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -381,6 +383,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("equiv(x^2, x)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -406,6 +409,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("equiv((1+x)^5, x^5+5*x^4+10*x^3+10*x^2+5*x)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -427,6 +431,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("diff(atanh(sqrt(x^2+2)), x)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -459,6 +464,7 @@ mod tests {
                 domain: cas_api_models::EvalDomainMode::Strict,
                 ..standard_eval_config("x/x")
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -515,6 +521,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -555,6 +562,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -583,6 +591,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             config,
+            cas_solver_core::eval_option_axes::Language::Es,
             |steps, _events, context, _steps_mode| {
                 steps
                     .iter()
@@ -634,6 +643,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             config,
+            cas_solver_core::eval_option_axes::Language::Es,
             |steps, _events, context, _steps_mode| {
                 steps
                     .iter()
@@ -700,6 +710,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -718,6 +729,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(ln(x), x, -1)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -748,6 +760,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(ln(y), x, -1)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -770,6 +783,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(ln(x), x, -infinity)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -805,6 +819,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(ln(-x + 1), x, -infinity)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -819,6 +834,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(sqrt(x), x, -infinity)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -845,6 +861,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(ln(x + 1), x, -infinity)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -871,6 +888,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(sqrt(x - 2), x, -infinity)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -897,6 +915,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(ln(1 - x), x, infinity)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -923,6 +942,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("limit(sqrt(1 - x), x, infinity)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -949,6 +969,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("solve(Q = Q0 * 2^(-t/T), t)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -994,6 +1015,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             config,
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -1023,6 +1045,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("x^(1/2)*x^(2/3)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -1060,6 +1083,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             standard_eval_config("sqrt(x)*x^(2/3)"),
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -1095,6 +1119,7 @@ mod tests {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,
             config,
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 

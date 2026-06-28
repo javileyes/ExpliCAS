@@ -727,7 +727,12 @@ fn evaluate_case(case: &CorpusCase) -> Option<FailureRecord> {
         inv_trig: EvalInvTrigPolicy::Strict,
         assume_scope: EvalAssumeScope::Real,
     };
-    let (output, _, _) = evaluate_eval_command_with_session(None, config, |_, _, _, _| Vec::new());
+    let (output, _, _) = evaluate_eval_command_with_session(
+        None,
+        config,
+        cas_solver_core::eval_option_axes::Language::Es,
+        |_, _, _, _| Vec::new(),
+    );
 
     let (actual_result, ok, error_kind, error_message) = match output {
         Ok(output) => {

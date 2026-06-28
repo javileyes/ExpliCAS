@@ -44,6 +44,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         )
         .expect("eval");
@@ -121,6 +122,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         )
         .expect("eval succeeds");
@@ -157,6 +159,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |steps, _events, _context, _steps_mode| {
                 step_count.set(steps.len());
                 Vec::new()
@@ -198,6 +201,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         )
         .expect("eval");
@@ -293,6 +297,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
         assert!(first.0.is_ok(), "seed eval should succeed");
@@ -318,6 +323,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -351,6 +357,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
         assert!(first.0.is_ok(), "seed eval should succeed");
@@ -376,6 +383,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
 
@@ -421,6 +429,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
         let assignment = assigned.0.expect("assignment eval should succeed");
@@ -447,6 +456,7 @@ mod tests {
                 inv_trig: EvalInvTrigPolicy::Strict,
                 assume_scope: EvalAssumeScope::Real,
             },
+            cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
         );
         let output = applied.0.expect("followup eval should succeed");

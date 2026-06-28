@@ -9,6 +9,7 @@ mod finalize;
 pub(super) fn finalize_eval_run<F>(
     engine: &mut crate::Engine,
     config: EvalCommandRunConfig<'_>,
+    language: cas_solver_core::eval_option_axes::Language,
     collect_steps: F,
     prepared: PreparedEvalRun,
     total_us: u64,
@@ -21,6 +22,7 @@ where
         config.expr,
         config.steps_mode.as_str(),
         config.domain.as_str(),
+        language,
         &prepared,
         total_us,
         collect_steps,

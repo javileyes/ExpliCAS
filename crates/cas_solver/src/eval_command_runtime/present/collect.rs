@@ -26,11 +26,13 @@ pub(super) struct CollectedEvalArtifacts {
     pub(super) timings_us: TimingsWire,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn collect_eval_artifacts<F>(
     ctx: &mut cas_ast::Context,
     raw_input: &str,
     steps_mode: &str,
     domain_mode: &str,
+    language: cas_solver_core::eval_option_axes::Language,
     prepared: &PreparedEvalRun,
     total_us: u64,
     collect_steps: F,
@@ -84,6 +86,7 @@ where
         filtered_primary_steps.as_deref().unwrap_or(&[]),
         ctx,
         steps_mode,
+        language,
     );
     let assumptions_used = if domain_mode == "assume" {
         collect_output_assumptions_used(steps_raw)

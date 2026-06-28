@@ -28,6 +28,7 @@ fn fractional_symbolic_solve_prep_dedupes_scaled_nonzero_requires() {
             inv_trig: EvalInvTrigPolicy::Strict,
             assume_scope: EvalAssumeScope::Real,
         },
+        cas_solver_core::eval_option_axes::Language::Es,
         |_steps, _events, _context, _steps_mode| Vec::new(),
     );
     let payload: serde_json::Value = serde_json::from_str(&json).expect("json");

@@ -144,6 +144,7 @@ fn should_use_read_only_persisted_session(expr: &str, auto_store: bool) -> bool 
 pub fn evaluate_eval_command_with_session<F>(
     session_path: Option<&Path>,
     config: EvalCommandConfig<'_>,
+    language: cas_solver_core::eval_option_axes::Language,
     collect_steps: F,
 ) -> (EvalCommandResult, Option<String>, Option<String>)
 where
@@ -163,6 +164,7 @@ where
             &mut engine,
             &mut state,
             config,
+            language,
             |steps, events, ctx, mode| collect_steps(steps, events, ctx, mode),
         );
         return (output, None, None);
@@ -177,6 +179,7 @@ where
                     engine,
                     state,
                     config,
+                    language,
                     |steps, events, ctx, mode| collect_steps(steps, events, ctx, mode),
                 )
             },
@@ -191,6 +194,7 @@ where
                 engine,
                 state,
                 config,
+                language,
                 |steps, events, ctx, mode| collect_steps(steps, events, ctx, mode),
             )
         },

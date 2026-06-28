@@ -766,7 +766,12 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
 
 fn evaluate_case(case: &CorpusCase) -> CaseEvaluation {
     let config = mixed_zero_eval_command_config(&case.expression);
-    let (output, _, _) = evaluate_eval_command_with_session(None, config, |_, _, _, _| Vec::new());
+    let (output, _, _) = evaluate_eval_command_with_session(
+        None,
+        config,
+        cas_solver_core::eval_option_axes::Language::Es,
+        |_, _, _, _| Vec::new(),
+    );
 
     let (actual_result, ok, error_kind, error_message, timings) = match output {
         Ok(output) => {
@@ -825,7 +830,12 @@ fn evaluate_case(case: &CorpusCase) -> CaseEvaluation {
 
 fn warm_up_eval_path(expression: &str) {
     let config = mixed_zero_eval_command_config(expression);
-    let _ = evaluate_eval_command_with_session(None, config, |_, _, _, _| Vec::new());
+    let _ = evaluate_eval_command_with_session(
+        None,
+        config,
+        cas_solver_core::eval_option_axes::Language::Es,
+        |_, _, _, _| Vec::new(),
+    );
 }
 
 fn mixed_zero_eval_command_config<'a>(expression: &'a str) -> EvalCommandConfig<'a> {

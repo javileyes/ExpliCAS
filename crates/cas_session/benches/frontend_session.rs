@@ -83,6 +83,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                                 &mut engine,
                                 &mut state,
                                 config,
+                                cas_solver_core::eval_option_axes::Language::Es,
                                 no_steps,
                             )
                             .expect("in-memory eval failed"),
@@ -101,6 +102,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                     black_box(evaluate_eval_command_with_session(
                         None,
                         eval_config(input, false),
+                        cas_solver_core::eval_option_axes::Language::Es,
                         no_steps,
                     ))
                 })
@@ -115,6 +117,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                     black_box(evaluate_eval_command_pretty_with_session(
                         None,
                         eval_config(input, false),
+                        cas_solver_core::eval_option_axes::Language::Es,
                         no_steps,
                     ))
                 })
@@ -142,6 +145,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 let _ = evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 );
                 (tmp, session_path)
@@ -150,6 +154,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 black_box(evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 ))
             },
@@ -165,6 +170,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 let _ = evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 );
                 (tmp, session_path)
@@ -173,6 +179,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 black_box(evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("x + 1", false),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 ))
             },
@@ -188,6 +195,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 let _ = evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 );
                 (tmp, session_path)
@@ -196,6 +204,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 black_box(evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("#1", false),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 ))
             },
@@ -286,6 +295,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 let _ = evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 );
                 (tmp, session_path)
@@ -309,6 +319,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 let _ = evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 );
                 let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
@@ -331,6 +342,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                 let _ = evaluate_eval_command_with_session(
                     Some(&session_path),
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 );
                 let key = cas_session::cache::SimplifyCacheKey::from_domain_flag("generic");
@@ -345,6 +357,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                     &mut engine,
                     &mut state,
                     eval_config("#1", false),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 ))
             },
@@ -393,6 +406,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                     &mut engine,
                     &mut state,
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 )
                 .expect("seed eval failed");
@@ -417,6 +431,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                     &mut engine,
                     &mut state,
                     eval_config("x + 1", true),
+                    cas_solver_core::eval_option_axes::Language::Es,
                     no_steps,
                 )
                 .expect("seed eval failed");
@@ -446,6 +461,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                         &mut engine,
                         &mut state,
                         eval_config("x + 1", true),
+                        cas_solver_core::eval_option_axes::Language::Es,
                         no_steps,
                     )
                     .expect("seed eval failed");
@@ -457,6 +473,7 @@ fn bench_frontend_session(c: &mut Criterion) {
                         &mut engine,
                         &mut state,
                         eval_config("x + 2", true),
+                        cas_solver_core::eval_option_axes::Language::Es,
                         no_steps,
                     )
                     .expect("mutation eval failed");

@@ -27,6 +27,7 @@ pub fn evaluate_eval_with_session<S, F>(
     engine: &mut crate::Engine,
     session: &mut S,
     config: EvalCommandRunConfig<'_>,
+    language: cas_solver_core::eval_option_axes::Language,
     collect_steps: F,
 ) -> Result<EvalCommandOutput, String>
 where
@@ -38,6 +39,7 @@ where
     present::finalize_eval_run(
         engine,
         config,
+        language,
         collect_steps,
         prepared,
         total_start.elapsed().as_micros() as u64,
