@@ -1321,6 +1321,39 @@
             font-size: 0.8em;
             margin-left: 10px;
         }
+
+        /* Group section headers inside the examples list */
+        .examples-list li.examples-group-header {
+            background: transparent;
+            border-left: none;
+            border-radius: 0;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.35);
+            color: #3b82f6;
+            font-weight: 700;
+            font-size: 1.02em;
+            letter-spacing: 0.02em;
+            padding: 20px 2px 6px;
+            margin-bottom: 8px;
+            cursor: default;
+        }
+
+        .examples-list li.examples-group-header:first-child {
+            padding-top: 2px;
+        }
+
+        .examples-list li.examples-group-header:hover {
+            background: transparent;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .examples-group-count {
+            color: var(--text-secondary);
+            font-weight: 400;
+            font-size: 0.8em;
+            font-style: italic;
+            margin-left: 8px;
+        }
     </style>
 </head>
 
@@ -2774,12 +2807,27 @@
             if (examples.length === 0) {
                 list.innerHTML = '<li style="cursor: default;">No examples available</li>';
             } else {
-                list.innerHTML = examples.map((ex, i) => `
-                    <li onclick="copyExampleToInput(${i}, this)">
-                        <div class="example-expression">${escapeHtml(ex.expression)}</div>
-                        <div class="example-description">${escapeHtml(ex.description)}</div>
-                    </li>
-                `).join('');
+                // Group by the `group` field while preserving each example's ORIGINAL index so
+                // copyExampleToInput keeps working against the flat cachedExamples array.
+                const order = [];
+                const byGroup = new Map();
+                examples.forEach((ex, i) => {
+                    const g = (ex.group && ex.group.trim()) ? ex.group : 'Otros';
+                    if (!byGroup.has(g)) { byGroup.set(g, []); order.push(g); }
+                    byGroup.get(g).push({ ex, i });
+                });
+                list.innerHTML = order.map(g => {
+                    const items = byGroup.get(g);
+                    const header = `<li class="examples-group-header">${escapeHtml(g)}`
+                        + `<span class="examples-group-count">${items.length}</span></li>`;
+                    const rows = items.map(({ ex, i }) => `
+                        <li onclick="copyExampleToInput(${i}, this)">
+                            <div class="example-expression">${escapeHtml(ex.expression)}</div>
+                            <div class="example-description">${escapeHtml(ex.description)}</div>
+                        </li>
+                    `).join('');
+                    return header + rows;
+                }).join('');
             }
 
             overlay.classList.add('visible');

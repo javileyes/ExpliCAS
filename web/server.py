@@ -368,7 +368,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 for row in reader:
                     examples.append({
                         "expression": row.get('expression', ''),
-                        "description": row.get('description', '')
+                        "description": row.get('description', ''),
+                        "group": row.get('group', '')
                     })
             self.send_json({"ok": True, "examples": examples})
         except FileNotFoundError:
