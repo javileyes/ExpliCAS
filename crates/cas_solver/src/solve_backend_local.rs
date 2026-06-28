@@ -3083,40 +3083,57 @@ fn try_solve_periodic_trig_equation(
     let two = simplifier.context.num(2);
     let two_pi = simplifier.context.add(Expr::Mul(two, pi));
 
-    // Family for the bare argument `u = a·x`: `arc(c) + k·period_u`.
-    let (arc_name, period_u) = match func {
-        // tan(u)=c is a single family of period π for EVERY constant c.
-        BuiltinFn::Tan => ("arctan", pi),
-        // sin/cos collapse to a single family only for c ∈ {0, ±1}; other c are two families.
+    // Representative root(s) for the bare argument `u = a·x`, and the shared period.
+    let one = BigRational::one();
+    let (bases_u, period_u): (Vec<ExprId>, ExprId) = match func {
+        // tan(u)=c is a single family {arctan(c) + kπ} for EVERY constant c.
+        BuiltinFn::Tan => {
+            let at = simplifier.context.call("arctan", vec![c]);
+            (vec![simplifier.simplify(at).0], pi)
+        }
         BuiltinFn::Sin | BuiltinFn::Cos => {
             let cv = cas_math::numeric_eval::as_rational_const(&simplifier.context, c)?;
-            let period = if cv.is_zero() {
-                pi
-            } else if cv == BigRational::one() || cv == -BigRational::one() {
-                two_pi
+            let is_sin = matches!(func, BuiltinFn::Sin);
+            let arc = if is_sin { "arcsin" } else { "arccos" };
+            let arc_call = simplifier.context.call(arc, vec![c]);
+            let (r1, _) = simplifier.simplify(arc_call);
+            if cv.is_zero() {
+                // sin(u)=0 → {kπ}; cos(u)=0 → {π/2 + kπ}. The two roots are π apart → ONE family, period π.
+                (vec![r1], pi)
+            } else if cv == one || cv == -one.clone() {
+                // c = ±1: the two roots of the period coincide → ONE family, period 2π.
+                (vec![r1], two_pi)
+            } else if cv > -one.clone() && cv < one {
+                // 0 < |c| < 1: TWO families in [0, 2π), shared period 2π.
+                //   sin(u)=c → {arcsin(c) + 2kπ, π - arcsin(c) + 2kπ}
+                //   cos(u)=c → {arccos(c) + 2kπ, 2π - arccos(c) + 2kπ}
+                let second = if is_sin {
+                    simplifier.context.add(Expr::Sub(pi, r1))
+                } else {
+                    simplifier.context.add(Expr::Sub(two_pi, r1))
+                };
+                (vec![r1, simplifier.simplify(second).0], two_pi)
             } else {
+                // |c| > 1: no real solution; let the existing path report it.
                 return None;
-            };
-            let arc = if matches!(func, BuiltinFn::Sin) {
-                "arcsin"
-            } else {
-                "arccos"
-            };
-            (arc, period)
+            }
         }
         _ => return None,
     };
-    let arc_call = simplifier.context.call(arc_name, vec![c]);
-    let (base_u, _) = simplifier.simplify(arc_call);
 
-    // `u = a·x` ⇒ `x = u/a`, so divide both base and period by `a` (a > 1 SHRINKS the period:
+    // `u = a·x` ⇒ `x = u/a`: divide every base and the period by `a` (a > 1 SHRINKS the period:
     // `cos(2x)=1 → {kπ}`). For `a = 1` this folds back to the bare family.
     let a_expr = simplifier.context.add(Expr::Number(coeff));
-    let base_div = simplifier.context.add(Expr::Div(base_u, a_expr));
-    let (base, _) = simplifier.simplify(base_div);
+    let bases: Vec<ExprId> = bases_u
+        .into_iter()
+        .map(|b| {
+            let d = simplifier.context.add(Expr::Div(b, a_expr));
+            simplifier.simplify(d).0
+        })
+        .collect();
     let period_div = simplifier.context.add(Expr::Div(period_u, a_expr));
     let (period, _) = simplifier.simplify(period_div);
-    Some(SolutionSet::Periodic { base, period })
+    Some(SolutionSet::Periodic { bases, period })
 }
 
 fn solve_local_core(

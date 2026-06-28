@@ -148,8 +148,8 @@ fn format_solution_set(ctx: &cas_ast::Context, set: &SolutionSet) -> String {
             }
             lines.join("\n")
         }
-        SolutionSet::Periodic { base, period } => {
-            cas_formatter::display_periodic_family(ctx, *base, *period)
+        SolutionSet::Periodic { bases, period } => {
+            cas_formatter::display_periodic_family(ctx, bases, *period)
         }
     }
 }

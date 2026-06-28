@@ -2147,8 +2147,11 @@ fn test_eval_periodic_trig_inequality_declines() {
     // Out-of-range bare sin/cos are still answered exactly (not pre-empted by the residual decline).
     assert_eq!(plain("cos(x)<=1"), "All real numbers");
     assert_eq!(plain("sin(x)>2"), "No solution");
-    // Equations and constant-trig (variable is linear) still solve.
-    assert_eq!(plain("sin(x)=1/2"), "{ 1/6·pi }");
+    // Equations and constant-trig (variable is linear) still solve (two-family periodic set).
+    assert_eq!(
+        plain("sin(x)=1/2"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
     assert_eq!(plain("sin(2)*x>0"), "(0, infinity)");
 }
 
@@ -2184,13 +2187,32 @@ fn test_eval_periodic_trig_equation_emits_family() {
     assert_eq!(r("solve(cos(x)^2=1, x)"), "{ k·pi : k ∈ ℤ }");
     assert_eq!(r("solve(sin(x)^2=1/2, x)"), "{ 1/4·pi + k·1/2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(sin(2*x)^2=1, x)"), "{ 1/4·pi + k·1/2·pi : k ∈ ℤ }");
-    assert_eq!(r("solve(sin(x)^2=1/4, x)"), "{ 1/6·pi }"); // two families, declined
-                                                           // Period 2π families (c = ±1).
+    // sin(x)^2=1/4 -> cos(2x)=1/2 -> the TWO families {π/6+kπ, 5π/6+kπ}.
+    assert_eq!(
+        r("solve(sin(x)^2=1/4, x)"),
+        "{ 1/6·pi + k·pi, 5/6·pi + k·pi : k ∈ ℤ }"
+    );
+    // Period 2π families (c = ±1, the two roots coincide -> one family).
     assert_eq!(r("solve(sin(x)=1, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(cos(x)=1, x)"), "{ k·2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(cos(x)=-1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
-    // Two-family / non-bare / no-solution cases are NOT wrapped (unchanged behavior).
-    assert_eq!(r("solve(sin(x)=1/2, x)"), "{ 1/6·pi }"); // two families, declined
+    // Two-family `sin/cos=c` (0 < |c| < 1): BOTH principal roots, shared period 2π.
+    assert_eq!(
+        r("solve(sin(x)=1/2, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(cos(x)=1/2, x)"),
+        "{ 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x)=-1/2, x)"),
+        "{ -1/6·pi + k·2·pi, 7/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x)=1/3, x)"),
+        "{ arcsin(1/3) + k·2·pi, pi - arcsin(1/3) + k·2·pi : k ∈ ℤ }"
+    );
     assert_eq!(r("solve(sin(x)=2, x)"), "No solution"); // |c|>1
 }
 
@@ -2262,7 +2284,10 @@ fn test_eval_trig_inequality_out_of_range() {
     // false at x=pi, which lies in that ray). Equations are unchanged.
     assert_eq!(r("sin(x)>1/2"), "Solve: solve(sin(x) = 1 / 2, x) = 0");
     assert_eq!(r("cos(x)=2"), "No solution");
-    assert_eq!(r("sin(x)=1/3"), "{ arcsin(1/3) }");
+    assert_eq!(
+        r("sin(x)=1/3"),
+        "{ arcsin(1/3) + k·2·pi, pi - arcsin(1/3) + k·2·pi : k ∈ ℤ }"
+    );
 }
 
 #[test]

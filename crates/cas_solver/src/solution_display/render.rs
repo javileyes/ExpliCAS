@@ -21,8 +21,8 @@ pub fn display_solution_set(ctx: &Context, set: &SolutionSet) -> String {
         SolutionSet::Conditional(cases) => {
             conditional::display_conditional_solution_set(ctx, cases)
         }
-        SolutionSet::Periodic { base, period } => {
-            cas_formatter::display_periodic_family(ctx, *base, *period)
+        SolutionSet::Periodic { bases, period } => {
+            cas_formatter::display_periodic_family(ctx, bases, *period)
         }
     }
 }

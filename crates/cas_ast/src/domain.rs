@@ -365,12 +365,15 @@ pub enum SolutionSet {
     /// V2.0: Conditional/piecewise solutions.
     /// Each case represents "if conditions hold, then these solutions".
     Conditional(Vec<Case>),
-    /// A periodic family of solutions `base + k·period` for every integer `k`
-    /// (`sin(x)=0 → {k·π}`, `cos(x)=0 → {π/2 + k·π}`, `tan(x)=c → {arctan(c) + k·π}`).
-    /// `base` is a representative root; `period` is the (positive) fundamental period.
-    /// The infinite family that `Discrete` cannot represent and that the principal-root-only
-    /// trig equation path used to drop silently.
-    Periodic { base: ExprId, period: ExprId },
+    /// One or more periodic families of solutions `baseᵢ + k·period` over every integer `k`
+    /// (`sin(x)=0 → {k·π}`; `cos(x)=0 → {π/2 + k·π}`; `tan(x)=c → {arctan(c) + k·π}`;
+    /// `sin(x)=1/2 → {π/6 + 2kπ, 5π/6 + 2kπ}` — TWO bases). `bases` are the representative roots in
+    /// one period; `period` is the shared (positive) fundamental period. The infinite family that
+    /// `Discrete` cannot represent and that the principal-root-only trig equation path dropped.
+    Periodic {
+        bases: Vec<ExprId>,
+        period: ExprId,
+    },
 }
 
 impl SolutionSet {

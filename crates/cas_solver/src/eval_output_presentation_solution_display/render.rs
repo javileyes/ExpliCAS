@@ -46,8 +46,8 @@ pub(crate) fn format_output_solution_set(ctx: &Context, solution_set: &SolutionS
             );
             format!("Solve: {expr_str} = 0")
         }
-        SolutionSet::Periodic { base, period } => {
-            cas_formatter::display_periodic_family(ctx, *base, *period)
+        SolutionSet::Periodic { bases, period } => {
+            cas_formatter::display_periodic_family(ctx, bases, *period)
         }
     }
 }

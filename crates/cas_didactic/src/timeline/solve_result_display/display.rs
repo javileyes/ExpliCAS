@@ -19,8 +19,8 @@ pub(super) fn display_solution_set(context: &Context, solution_set: &SolutionSet
         SolutionSet::Conditional(cases) => {
             conditional::display_conditional_solution_set(context, cases, display_solution_set)
         }
-        SolutionSet::Periodic { base, period } => {
-            cas_formatter::display_periodic_family(context, *base, *period)
+        SolutionSet::Periodic { bases, period } => {
+            cas_formatter::display_periodic_family(context, bases, *period)
         }
     }
 }
