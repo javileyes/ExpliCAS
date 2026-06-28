@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 419 (newest first)
+Active entries: 420 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
+- 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -16900,3 +16901,50 @@ Active entries: 419 (newest first)
     -- "EXPR"`. El engine resuelve `2-e^(2x)>0`→(-∞,ln2/2). [[clean-git-status-not-green-tests]]
   - peldaño cosmético restante: el residual honesto se muestra como `Solve: solve(... = 0, x) = 0` (el ` = 0` final
     sobra); pre-existente desde B3 (f34b96bfe), afecta a todos los residuales. Defecto de presentación, no soundness.
+
+## 2026-06-28 - SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequality + try_solve_ln_square_inequality + solve_concrete_side/is_concrete_solution_set + el filtro de raíz-en-borde de union_non_strict_inequality_roots/point_is_closed_endpoint)
+- status: `retained` (commit c4094eb70). Primer ciclo del plan "arreglar los 25 wrong-answers del audit #4"; el Grupo A (mayor ROI) queda cerrado.
+- capture:
+  - cell: ANTES `solve(abs(x^2-2x)<1)`→"No solution" (operador soltado→ecuación borde); `abs(x^2-5x+6)<=2`→solo los
+    puntos borde; `solve(ln(x)^2>1)`→"All real numbers if x>0" (siempre-verdadero falso); `ln(x)^2<1`→"No solution";
+    `ln(x)^2<=1`→solo `[1/e,1/e]U[e,e]`. AHORA `(1-√2,1)U(1,1+√2)`, `[1,4]`, `(0,1/e)U(e,∞)`, `(1/e,e)`, `[1/e,e]`.
+    Cubre TODO operador (`<,≤,>,≥`), cualquier cuadrática-con-término-lineal (la simétrica `|x^2-k|` ya iba), todo
+    umbral `c` (incl. surd `e^√2`, c≤0), y `log(x)^2`/`2·ln(x)^2`.
+  - causa raíz: una `|g| {op} c` / `ln(x)^2 {op} c` es NO MONÓTONA; la ruta de aislamiento/split del abs y la de
+    isolación de log SUELTAN el operador y colapsan a la ecuación borde (puntos) o a un "AllReals sobre dominio". El
+    solver de inecuaciones POLINÓMICAS y el de UN solo `ln` SÍ son correctos — solo faltaba reducir a ellos.
+  - fix: dos guards antes de la ruta de split, ambos REDUCEN a sub-inecuaciones que el engine ya resuelve exacto:
+    `|g| {op} c` → para `c>0`: `<`⟺`g<c ∧ g>-c` (intersect), `>`⟺`g>c ∨ g<-c` (union); `c≤0` por signo (`|g|≥0`).
+    `ln(x)^2 {op} c` → `t=c/coeff`; para `t>0` con `u=ln(x)`: `u^2>t`⟺`u>√t ∨ u<-√t`, `u^2<t`⟺`-√t<u<√t`, y el
+    solver de un solo `ln` arrastra el dominio `x>0` vía `x=e^u`; `t≤0` por signo sobre `(0,∞)`. Ambos gateados a
+    sub-soluciones CONCRETAS (Residual/Conditional → declinan a residual honesto, p.ej. `g` trascendente).
+  - causa raíz SECUNDARIA (clave): `union_solution_sets`/`merge_intervals` ordenan extremos vía `compare_values`, que
+    SOLO sabe rationales + surds cuadráticos → para extremos con la constante `E` (`e^√t`, `1/e`) cae al `compare_expr`
+    ESTRUCTURAL y MAL-FUSIONA `(0,1/e)∪(e,∞)`→`(0,∞)`. Por eso el caso `ln^2` estricto construye la unión DIRECTA
+    (`Union(vec![iv_lower, iv_upper])`, disjuntos por construcción) en vez de pasar por la fusión. Y el NO estricto se
+    rompía aparte: `union_non_strict_inequality_roots` re-une las raíces borde `{1/e,e}` por el mismo helper bugueado.
+  - fix secundario: `union_non_strict_inequality_roots` ahora SALTA toda raíz que ya sea un extremo CERRADO del conjunto
+    (identidad EXACTA de ExprId, sin comparación de valor) — ya está en la solución, unirla es no-op. Las raíces que la
+    función existe para recuperar (puntos aislados INTERIORES de factores de multiplicidad par, p.ej. `{2}` en
+    `(x-2)^2(x+1)≤0`) NO son extremos cerrados → sobreviven y se unen igual. Cero riesgo de huella (solo descarta lo ya
+    presente).
+  - validación: workspace verde (failed:0); clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure
+    pass; huella GUARD/PRESS IDÉNTICA (estructural); test de contrato nuevo (18 asertos: abs-cuadrática todos los
+    operadores + ln^2 estricto/no-estricto/surd/bordes-c≤0 + 2 regresiones de raíz-aislada-superviviente).
+- retained learning:
+  - "reducir antes que re-derivar": cuando una forma no-monótona (`|g| op c`, `f(x)^2 op c`) tiene un solver EXACTO
+    para sus piezas monótonas, redúcela a esas piezas + intersect/union en vez de inventar un camino nuevo. El mismo
+    patrón cerró el abs-cuadrática y el `ln^2` con el MISMO esqueleto (dos sub-solves concretos + combinar).
+  - `compare_values` es exacto SOLO para rationales y surds cuadráticos; cualquier extremo con `E`/`Pi` (`e^√t`) cae al
+    orden ESTRUCTURAL y `merge_intervals` puede MAL-FUSIONAR intervalos disjuntos en uno (sobre-estima → unsound). Si
+    construyes un conjunto con extremos exponenciales/transcendentes, NO lo pases por `union_solution_sets`: arma el
+    `Union`/`Continuous` DIRECTO cuando ya sabes el orden por construcción. Peldaño futuro: hacer `compare_values`
+    consciente de `e^r` (comparar exponentes; `e^r>0`) cerraría esto de raíz para toda la familia log/exp.
+  - filtro de pertenencia barato y EXACTO: "¿la raíz `p` ya está en el conjunto?" se decide por identidad de ExprId con
+    un extremo CERRADO (hash-consing garantiza igualdad estructural→mismo ExprId), sin tocar `compare_values`. Útil
+    siempre que quieras evitar el merge bugueado para puntos que ya sabes presentes.
+  - siguiente iteración recomendada: Grupo B del audit #4 — variante `Periodic`/`ImageSet` del `SolutionSet` para
+    ecuaciones trig (`solve(sin(x)=0)`→`{0}` suelta `+kπ`); es el hueco de mayor leverage (desbloquea solve-eq+ineq+
+    narrativa periódica). Luego Grupo C1-3 (gating de polo en sumatorios sobre TODAS las raíces del denominador).
