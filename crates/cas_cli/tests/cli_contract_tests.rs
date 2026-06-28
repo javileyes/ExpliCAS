@@ -2069,6 +2069,38 @@ fn test_eval_improper_rational_integral_degree_n_denominator_divergence() {
 }
 
 #[test]
+fn test_eval_log_sum_limit_at_infinity_and_convergent_degree_n_improper_integral() {
+    // `lim_{x→∞} Σ cᵢ·ln(pᵢ(x))` with `Σ cᵢ·deg pᵢ = 0` is the finite `Σ cᵢ·ln(lead pᵢ)`, not the
+    // `+∞−∞` residual the limit engine left for N≥3 terms (it only combined a two-term `ln p − ln q`).
+    // `log_sum_limit_at_infinity` decides it from polynomial growth, which lets a partial-fraction log
+    // antiderivative of an `∫_a^∞ p/q` with a degree-n denominator that splits into LINEAR factors over
+    // ℚ resolve at the boundary. A leftover irreducible quadratic factor (an arctan term) still
+    // declines — the next peldaño.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // The N-term sum-of-logs limit (degree sum 0 -> finite; nonzero -> ±∞).
+    assert_eq!(r("limit(ln(x-1)+ln(x+1)-2*ln(x), x, infinity)"), "0");
+    assert_eq!(r("limit(1/2*ln(x-1)+1/2*ln(x+1)-ln(x), x, infinity)"), "0");
+    assert_eq!(r("limit(ln(2*x^2+1)-ln(x^2), x, infinity)"), "ln(2)");
+    assert_eq!(r("limit(3*ln(x)-ln(x^3), x, infinity)"), "0");
+    // Convergent improper integrals with a degree-n denominator factoring over ℚ into linears.
+    // ∫_2^∞ 1/(x³−x) = ln2 − ½ln3; ∫_3^∞ 1/(x³−4x) = ⅛ln(9/5).
+    assert_eq!(r("integrate(1/(x^3-x), x, 2, oo)"), "1/2·(2·ln(2) - ln(3))");
+    assert_eq!(
+        r("integrate(1/(x^3-4*x), x, 3, oo)"),
+        "1/8·(2·ln(3) - ln(5))"
+    );
+    // Soundness preserved: the single bare log still diverges, and the `−∞` side stays residual.
+    assert_eq!(r("limit(ln(x^2-1), x, infinity)"), "infinity");
+}
+
+#[test]
 fn test_eval_summation_pole_in_range_is_undefined() {
     // A finite or infinite sum whose summand has a POLE (a `1/0` term) at an integer in the range is
     // UNDEFINED — the telescoping/closed-form builders otherwise compute THROUGH it. The pole

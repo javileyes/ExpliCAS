@@ -8127,6 +8127,113 @@ fn bare_natural_log_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+/// Unwrap a single `abs(P)` wrapper, returning `P`; otherwise the expression unchanged. `ln|P|` and
+/// `ln(P)` share the same `+inf` tail once `P -> +inf`, so the log-sum rule strips the `abs` first.
+fn strip_single_abs(ctx: &Context, expr: ExprId) -> ExprId {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1 && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Abs)) {
+            return args[0];
+        }
+    }
+    expr
+}
+
+/// Accumulate `expr` (scaled by `sign`) into signed natural-log terms `(coeff, argument)`, where each
+/// leaf is a rational multiple of a bare `ln(P)` (the argument optionally wrapped in `abs`). Any leaf
+/// outside that shape declines the whole decomposition.
+fn collect_signed_log_terms(
+    ctx: &Context,
+    expr: ExprId,
+    sign: &BigRational,
+    terms: &mut Vec<(BigRational, ExprId)>,
+) -> Option<()> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => collect_signed_log_terms(ctx, inner, &(-sign.clone()), terms),
+        Expr::Add(a, b) => {
+            collect_signed_log_terms(ctx, a, sign, terms)?;
+            collect_signed_log_terms(ctx, b, sign, terms)
+        }
+        Expr::Sub(a, b) => {
+            collect_signed_log_terms(ctx, a, sign, terms)?;
+            collect_signed_log_terms(ctx, b, &(-sign.clone()), terms)
+        }
+        Expr::Mul(a, b) => {
+            if let Some(c) = constant_rational_value(ctx, a) {
+                collect_signed_log_terms(ctx, b, &(sign * &c), terms)
+            } else if let Some(c) = constant_rational_value(ctx, b) {
+                collect_signed_log_terms(ctx, a, &(sign * &c), terms)
+            } else {
+                None
+            }
+        }
+        Expr::Div(a, b) => {
+            let c = constant_rational_value(ctx, b)?;
+            if c.is_zero() {
+                return None;
+            }
+            collect_signed_log_terms(ctx, a, &(sign / &c), terms)
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Ln)) =>
+        {
+            terms.push((sign.clone(), strip_single_abs(ctx, args[0])));
+            Some(())
+        }
+        _ => None,
+    }
+}
+
+/// `lim_{x->+inf} Σ c_i · ln(p_i(x))` for polynomials `p_i` (optionally under `abs`) with POSITIVE
+/// leading coefficient. Since `ln(p_i) = (deg p_i)·ln x + ln(lead p_i) + o(1)`, the sum behaves like
+/// `s·ln x + Σ c_i·ln(lead p_i)` with `s = Σ c_i·deg p_i`: `s>0 -> +inf`, `s<0 -> -inf`, and `s=0`
+/// gives the finite `Σ c_i·ln(lead p_i)` (the `o(1)` ratio terms vanish). Generalises the two-term
+/// `log_difference_limit_at_infinity` to N terms, so an N-term partial-fraction log antiderivative
+/// resolves at the boundary (`½ln|x-1| + ½ln|x+1| - ln|x| -> 0`, unblocking `∫_a^∞ p/q` of degree n).
+fn log_sum_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use num_traits::{Signed, Zero};
+    if approach != InfSign::Pos {
+        return None;
+    }
+    let mut terms: Vec<(BigRational, ExprId)> = Vec::new();
+    collect_signed_log_terms(ctx, expr, &rational_one(), &mut terms)?;
+    // A single bare log (or none) is left to the dedicated unary rules; this resolves the multi-term
+    // `+inf - inf` combinations they cannot.
+    if terms.len() < 2 {
+        return None;
+    }
+    let mut degree_sum = BigRational::zero();
+    let mut leading_log_terms: Vec<(BigRational, BigRational)> = Vec::new();
+    for (coeff, arg) in &terms {
+        let growth = polynomial_growth_info(ctx, *arg, var)?;
+        // Each argument must tend to +inf so its logarithm is eventually real and divergent.
+        if !growth.leading_coeff.is_positive() {
+            return None;
+        }
+        degree_sum += coeff.clone() * BigRational::from_integer(growth.degree.into());
+        leading_log_terms.push((coeff.clone(), growth.leading_coeff));
+    }
+    if degree_sum.is_positive() {
+        return Some(mk_infinity(ctx, InfSign::Pos));
+    }
+    if degree_sum.is_negative() {
+        return Some(mk_infinity(ctx, InfSign::Neg));
+    }
+    // The `ln x` terms cancel exactly; the limit is the finite `Σ c_i·ln(lead_i)`.
+    if log_combination_float(&leading_log_terms, &BigRational::zero()).abs() < 1e-12 {
+        return Some(ctx.num(0));
+    }
+    Some(build_log_combination_expr(
+        ctx,
+        leading_log_terms,
+        BigRational::zero(),
+    ))
+}
+
 /// `lim_{x->+inf} ln(sum c_i b_i^(s_i x)) / (slope x) = ln(max b_i^s_i) / slope`.
 /// The dominant exponential sets the growth: with `B = max effective base`,
 /// `ln(sum) = ln(B^x (c_dom + o(1))) = x ln B + O(1)`, so the quotient tends to
@@ -9115,6 +9222,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = log_difference_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = log_sum_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = product_log_unit_argument_limit_at_infinity(ctx, expr, var, approach) {
