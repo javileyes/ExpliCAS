@@ -1425,10 +1425,14 @@ verificadas + integración definida racional/valor-absoluto). Ordenados por valo
   de `q·p^(e)` (raíces k-ésimas) y enhebrar la misma comparación en el verificador del hook.
   Es SOUNDNESS (los casos declinados quedan wrong vía fallback), ~60/700 casos. Riesgo medio
   (cross-cutting compare_values/intersect/union); merece scoping workflow.
-- [ ] **(F) Impropia de racional con antiderivada LOG** (`∫_2^∞ 1/(x²−1) = ½ln 3`): hoy declina
-  incluso en forma factorizada `1/(x(x+1))`. La maquinaria de límite-en-∞ del FTC cubre arctan
-  y decaimiento racional, pero NO el límite de `ln|p/q|` (→ `ln|a/b|`). Necesita: test de
-  convergencia (deg den − deg num ≥ 2) + evaluación de `lim_{x→∞} ln|p(x)/q(x)|`.
+- [x] **(F) Impropia de racional con antiderivada LOG** (`∫_2^∞ 1/(x²−1) = ½ln 3`)
+  *(graduado 2026-06-28 467a39448: el indefinido `½ln|p/q|` y el límite-frontera `lim@∞` YA funcionaban; el
+  bloqueo era `nonzero_on_unbounded_interval` que devolvía `Unknown` para un denominador cuadrático con
+  discriminante ≥0 ignorando que sus raíces caen FUERA del intervalo. Fix: decisión EXACTA grado-2 vía vértice
+  `-b/2a` + signo de `q` en el borde (`lo>r₂ ⟺ q(lo)>0 ∧ lo>vértice`); la certificación solo decide no-polo, la
+  convergencia de cola la da el límite-frontera. Cubre `∫_a^∞ p/q` con denom cuadrático de raíces reales fuera de
+  rango; raíz dentro → `Undefined` (diverge). Peldaño restante: denom de grado ≥3 con factor cuadrático irreducible
+  sobre ℚ pero con raíces reales necesita el caso grado-n.)*
 - [ ] **(F) Definida `1/(a²−x²)` fuera de `|x|<a`** (`1/(1−x²)` en `[2,3]`): la antiderivada
   `atanh(x)` es real solo en `|x|<1`; el valor real fuera es `½ln|(1+x)/(1−x)|`. INTENTADO y
   REVERTIDO en el ciclo 6 — la reescritura atanh→log se enredó con el envoltorio `Hold` y la
