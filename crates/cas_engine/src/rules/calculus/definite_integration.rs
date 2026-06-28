@@ -1545,14 +1545,66 @@ fn nonzero_on_unbounded_interval(
             }
         }
         2 => {
-            let a = poly.coeffs[2].clone();
-            let b = poly.coeffs[1].clone();
-            let c = poly.coeffs[0].clone();
-            let discriminant = &b * &b - BigRational::from_integer(4.into()) * &a * &c;
+            let a0 = poly.coeffs[2].clone();
+            let b0 = poly.coeffs[1].clone();
+            let c0 = poly.coeffs[0].clone();
+            let four = BigRational::from_integer(4.into());
+            let discriminant = &b0 * &b0 - &four * &a0 * &c0;
             if discriminant.is_negative() {
-                IntervalCertificate::Certified
+                // No real roots: the quadratic never vanishes anywhere.
+                return IntervalCertificate::Certified;
+            }
+            // Real roots r1 ≤ r2 exist. Normalize to a > 0 (`q` nonzero ⟺ `−q` nonzero), so
+            // `q < 0` strictly between the roots and `q > 0` outside `[r1, r2]`. The quadratic is
+            // nonzero on the interval iff the interval lies entirely OUTSIDE `[r1, r2]` — decided
+            // EXACTLY (no surds) from the vertex `x_v = −b/2a` and the sign of `q` at the finite
+            // endpoint (`lo > r2 ⟺ q(lo) > 0 ∧ lo > x_v`). The TAIL convergence is NOT decided here:
+            // a slowly-decaying but pole-free integrand still certifies and its boundary limit then
+            // reports the honest `±∞` divergence. `∫_2^∞ 1/(x²−1)`: roots ±1 ∉ [2,∞) → certified.
+            let (a, b, c) = if a0.is_negative() {
+                (-a0, -b0, -c0)
             } else {
-                IntervalCertificate::Unknown
+                (a0, b0, c0)
+            };
+            let two = BigRational::from_integer(2.into());
+            let vertex = -&b / (&two * &a);
+            let q_at = |x: &BigRational| &a * x * x + &b * x + &c;
+            match (lower_bound, upper_bound) {
+                // [lo, ∞): nonzero ⟺ lo > r2 ⟺ q(lo) > 0 ∧ lo > x_v.
+                (DefiniteBound::Finite(lo_ep), DefiniteBound::PosInfinity) => {
+                    let Some(lo) = lo_ep.as_pure_rational() else {
+                        return IntervalCertificate::Unknown;
+                    };
+                    let q_lo = q_at(lo);
+                    if q_lo.is_zero() {
+                        IntervalCertificate::Unknown // root exactly at the boundary: defer
+                    } else if q_lo.is_positive() && *lo > vertex {
+                        IntervalCertificate::Certified
+                    } else {
+                        IntervalCertificate::Undefined // a pole lies in [lo, ∞): diverges
+                    }
+                }
+                // (-∞, hi]: nonzero ⟺ hi < r1 ⟺ q(hi) > 0 ∧ hi < x_v.
+                (DefiniteBound::NegInfinity, DefiniteBound::Finite(hi_ep)) => {
+                    let Some(hi) = hi_ep.as_pure_rational() else {
+                        return IntervalCertificate::Unknown;
+                    };
+                    let q_hi = q_at(hi);
+                    if q_hi.is_zero() {
+                        IntervalCertificate::Unknown
+                    } else if q_hi.is_positive() && *hi < vertex {
+                        IntervalCertificate::Certified
+                    } else {
+                        IntervalCertificate::Undefined
+                    }
+                }
+                // (-∞, ∞) with real roots: poles are inside.
+                (DefiniteBound::NegInfinity, DefiniteBound::PosInfinity) => {
+                    IntervalCertificate::Undefined
+                }
+                // Symbolic bounds, or a finite-finite interval (handled by the proper-definite
+                // path): stay conservative.
+                _ => IntervalCertificate::Unknown,
             }
         }
         _ => IntervalCertificate::Unknown,

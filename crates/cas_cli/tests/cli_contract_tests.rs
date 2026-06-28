@@ -2013,6 +2013,36 @@ fn test_eval_convergent_p_series_even_zeta() {
 }
 
 #[test]
+fn test_eval_improper_rational_integral_real_root_quadratic_denominator() {
+    // An improper `∫_a^∞ p/q` with a `½·ln|p/q|` antiderivative and a quadratic denominator with
+    // REAL roots OUTSIDE [a, ∞) used to decline: `nonzero_on_unbounded_interval` returned `Unknown`
+    // for a degree-2 factor with non-negative discriminant (it only certified the no-real-root case).
+    // Now it decides EXACTLY from the vertex `−b/2a` and the sign of `q` at the bound (no surds). The
+    // boundary limit (already supported) supplies the value; tail divergence shows up as `±∞`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Convergent: roots ±1 / 0,1 / ±2 / −1,−2 all lie below the lower bound -> value computed.
+    assert_eq!(r("integrate(1/(x^2-1), x, 2, oo)"), "-1/2·ln(1/3)"); // = ½ln3
+    assert_eq!(r("integrate(2/(x^2-1), x, 2, oo)"), "-ln(1/3)"); // = ln3
+    assert_eq!(r("integrate(1/(x^2-x), x, 2, oo)"), "-ln(1/2)"); // = ln2
+    assert_eq!(r("integrate(1/(x^2+3*x+2), x, 1, oo)"), "-ln(2/3)"); // = ln(3/2)
+    assert_eq!(r("integrate(1/(x^2-9), x, 4, oo)"), "-1/6·ln(1/7)"); // = (1/6)ln7
+                                                                     // SOUNDNESS: tail-divergent and pole-in-range must NOT fabricate a finite value.
+    assert_eq!(r("integrate(x/(x^2-1), x, 2, oo)"), "infinity"); // diverges (~1/x tail)
+    assert_eq!(r("integrate(1/(x^2-1), x, 0, oo)"), "undefined"); // pole at x=1 ∈ [0,∞)
+    assert_eq!(r("integrate(1/(x^2-1), x, 1/2, oo)"), "undefined"); // pole at x=1 ∈ [1/2,∞)
+                                                                    // Unchanged: finite definite (already worked) and the no-real-root quadratic.
+    assert_eq!(r("integrate(1/(x^2-1), x, 2, 5)"), "1/2·ln(2)");
+    assert_eq!(r("integrate(1/(x^2+1), x, 0, oo)"), "1/2·pi");
+}
+
+#[test]
 fn test_eval_summation_pole_in_range_is_undefined() {
     // A finite or infinite sum whose summand has a POLE (a `1/0` term) at an integer in the range is
     // UNDEFINED — the telescoping/closed-form builders otherwise compute THROUGH it. The pole
