@@ -1416,60 +1416,66 @@
     <header>
         <div class="header-left">
             <h1>🧮 ExpliCAS</h1>
-            <p>Interactive Step-by-Step Math Simplifier</p>
+            <p data-i18n="header.tagline">Simplificador matemático interactivo paso a paso</p>
         </div>
         <div class="header-buttons">
             <div class="lang-switch" id="lang-switch" role="group"
-                aria-label="Step-by-step language" title="Language of the step-by-step explanation">
+                data-i18n-aria="lang_switch.aria_label" aria-label="Idioma"
+                data-i18n-title="lang_switch.title" title="Idioma de la interfaz y del paso a paso">
                 <button type="button" class="lang-option" data-lang="es" aria-pressed="false"
-                    title="Paso a paso en español">ES</button>
+                    data-i18n-title="lang_switch.es_option.title" title="Cambiar a español">ES</button>
                 <button type="button" class="lang-option" data-lang="en" aria-pressed="false"
-                    title="Step-by-step in English">EN</button>
+                    data-i18n-title="lang_switch.en_option.title" title="Cambiar a inglés">EN</button>
             </div>
             <select id="lang-mode-select" style="display:none" aria-hidden="true" tabindex="-1">
                 <option value="es" selected>es</option>
                 <option value="en">en</option>
             </select>
-            <button class="header-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
-                🌙 Dark
+            <button class="header-btn" id="theme-toggle" onclick="toggleTheme()"
+                data-i18n-title="header.theme_toggle.title" title="Cambiar tema">
+                🌙 Oscuro
             </button>
-            <button class="header-btn" onclick="exportSession()" title="Export session as JSON">
-                📤 Export
+            <button class="header-btn" onclick="exportSession()"
+                data-i18n="header.export.label" data-i18n-title="header.export.title" title="Exportar sesión como JSON">
+                📤 Exportar
             </button>
             <button class="header-btn" onclick="document.getElementById('import-file').click()"
-                title="Import session from JSON">
-                📥 Import
+                data-i18n="header.import.label" data-i18n-title="header.import.title" title="Importar sesión desde JSON">
+                📥 Importar
             </button>
             <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSession(event)">
             <button class="header-btn variables" id="variables-btn" onclick="showVariablesPanel()"
-                title="View assigned variables">
-                📦 Variables<span id="var-count-badge" class="var-count-badge" style="display: none;">0</span>
+                data-i18n-title="header.variables.title" title="Ver variables asignadas">
+                <span data-i18n="header.variables.label">📦 Variables</span><span id="var-count-badge" class="var-count-badge" style="display: none;">0</span>
             </button>
             <button class="header-btn functions" id="functions-btn" onclick="showFunctionsPanel()"
-                title="View defined functions">
-                𝑓 Functions<span id="fn-count-badge" class="fn-count-badge" style="display: none;">0</span>
+                data-i18n-title="header.functions.title" title="Ver funciones definidas">
+                <span data-i18n="header.functions.label">𝑓 Funciones</span><span id="fn-count-badge" class="fn-count-badge" style="display: none;">0</span>
             </button>
-            <button class="header-btn help" id="help-btn" onclick="showExamplesPanel()" title="Show examples">
-                ❓ Examples
+            <button class="header-btn help" id="help-btn" onclick="showExamplesPanel()"
+                data-i18n="header.examples.label" data-i18n-title="header.examples.title" title="Mostrar ejemplos">
+                ❓ Ejemplos
             </button>
-            <button class="header-btn danger" onclick="clearSession()" title="Clear session">
-                🗑️ Clear
+            <button class="header-btn danger" onclick="clearSession()"
+                data-i18n="header.clear.label" data-i18n-title="header.clear.title" title="Limpiar sesión">
+                🗑️ Limpiar
             </button>
         </div>
     </header>
 
     <div class="container" id="expressions">
         <div class="empty-state" id="empty-state">
-            <h2>Welcome to ExpliCAS!</h2>
-            <p>Enter a mathematical expression below to get started.</p>
-            <p style="margin-top: 15px;">Try: <code>expand((1+x)^3)</code> or <code>solve(x^2 - 4 = 0, x)</code></p>
+            <h2 data-i18n="welcome.title">¡Bienvenido a ExpliCAS!</h2>
+            <p data-i18n="welcome.subtitle">Introduce una expresión matemática abajo para empezar.</p>
+            <p style="margin-top: 15px;"><span data-i18n="welcome.try">Prueba: </span><code>expand((1+x)^3)</code><span data-i18n="welcome.try_or"> o </span><code>solve(x^2 - 4 = 0, x)</code></p>
         </div>
     </div>
 
     <div class="input-bar">
         <div class="input-wrapper">
-            <label class="mode-control" for="domain-mode-select" title="Domain mode">
-                <span class="mode-label">Mode</span>
+            <label class="mode-control" for="domain-mode-select"
+                data-i18n-title="input.domain_mode.title" title="Modo de dominio">
+                <span class="mode-label" data-i18n="input.domain_mode.label">Modo</span>
                 <select class="mode-select" id="domain-mode-select">
                     <option value="strict">strict</option>
                     <option value="generic" selected>generic</option>
@@ -1477,25 +1483,25 @@
                 </select>
             </label>
             <label class="mode-control" for="branch-mode-select"
-                title="Inverse trig branch policy: principal simplifies arctan(tan(x)) etc. assuming principal range">
-                <span class="mode-label">Branch</span>
+                data-i18n-title="input.branch_mode.title" title="Política de rama de trigonometría inversa: principal simplifica arctan(tan(x)), etc., asumiendo el rango principal">
+                <span class="mode-label" data-i18n="input.branch_mode.label">Rama</span>
                 <select class="mode-select" id="branch-mode-select">
                     <option value="strict" selected>strict</option>
                     <option value="principal">principal</option>
                 </select>
             </label>
             <label class="mode-control" for="complex-mode-select"
-                title="Complex arithmetic: on treats i as the imaginary unit (i^2 = -1, Gaussian products)">
-                <span class="mode-label">Complex</span>
+                data-i18n-title="input.complex_mode.title" title="Aritmética compleja: activado trata i como la unidad imaginaria (i^2 = -1, productos gaussianos)">
+                <span class="mode-label" data-i18n="input.complex_mode.label">Complejo</span>
                 <select class="mode-select" id="complex-mode-select">
                     <option value="off" selected>off</option>
                     <option value="on">on</option>
                 </select>
             </label>
             <input type="text" class="input-field" id="expression-input"
-                placeholder="Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
-            <button class="submit-btn" id="submit-btn" onclick="evaluateExpression()">
-                Evaluate
+                data-i18n-placeholder="input.expression.placeholder" placeholder="Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
+            <button class="submit-btn" id="submit-btn" onclick="evaluateExpression()" data-i18n="input.submit.label">
+                Evaluar
             </button>
         </div>
     </div>
@@ -1503,9 +1509,9 @@
     <!-- Variables Panel Overlay -->
     <div class="variables-panel-overlay" id="variables-panel-overlay" onclick="hideVariablesPanel(event)">
         <div class="variables-panel" onclick="event.stopPropagation()">
-            <h2>📦 Assigned Variables</h2>
+            <h2 data-i18n="variables_panel.title">📦 Variables asignadas</h2>
             <div id="variables-list-container">
-                <p class="no-variables">No variables assigned yet</p>
+                <p class="no-variables" data-i18n="variables_panel.empty">Aún no hay variables asignadas</p>
             </div>
         </div>
     </div>
@@ -1513,9 +1519,9 @@
     <!-- Functions Panel Overlay -->
     <div class="functions-panel-overlay" id="functions-panel-overlay" onclick="hideFunctionsPanel(event)">
         <div class="functions-panel" onclick="event.stopPropagation()">
-            <h2>𝑓 Defined Functions</h2>
+            <h2 data-i18n="functions_panel.title">𝑓 Funciones definidas</h2>
             <div id="functions-list-container">
-                <p class="no-functions">No functions defined yet</p>
+                <p class="no-functions" data-i18n="functions_panel.empty">Aún no hay funciones definidas</p>
             </div>
         </div>
     </div>
@@ -1523,9 +1529,9 @@
     <!-- Examples Panel Overlay (collapsed category list) -->
     <div class="examples-panel-overlay" id="examples-panel-overlay" onclick="hideExamplesPanel(event)">
         <div class="examples-panel" onclick="event.stopPropagation()">
-            <h2>❓ Examples — Elige una categoría</h2>
+            <h2 data-i18n="examples_panel.title">❓ Ejemplos — Elige una categoría</h2>
             <ul class="examples-list" id="examples-list">
-                <li>Loading examples...</li>
+                <li data-i18n="examples_panel.loading">Cargando ejemplos...</li>
             </ul>
         </div>
     </div>
@@ -1534,8 +1540,8 @@
     <div class="examples-panel-overlay examples-group-overlay" id="examples-group-overlay" onclick="hideGroupExamples(event)">
         <div class="examples-panel" onclick="event.stopPropagation()">
             <h2>
-                <button class="examples-back-btn" onclick="hideGroupExamples()" title="Volver a categorías">←</button>
-                <span id="examples-group-title">Ejemplos</span>
+                <button class="examples-back-btn" onclick="hideGroupExamples()" data-i18n-title="examples_group.back.title" title="Volver a categorías">←</button>
+                <span id="examples-group-title" data-i18n="examples_group.title">Ejemplos</span>
             </h2>
             <ul class="examples-list" id="examples-group-list"></ul>
         </div>
@@ -1571,6 +1577,192 @@
         const BRANCH_MODE_STORAGE_KEY = 'expliCAS_branch_mode';
         const COMPLEX_MODE_STORAGE_KEY = 'expliCAS_complex_arithmetic';
         const LANG_MODE_STORAGE_KEY = 'expliCAS_step_language';
+
+        // ===== Interface i18n (es/en) — one catalog, driven by the ES/EN language toggle =====
+        const I18N = {
+            "es": {
+                        "header.tagline": "Simplificador matemático interactivo paso a paso",
+                        "header.theme_toggle.title": "Cambiar tema",
+                        "header.theme_toggle.label": "🌙 Oscuro",
+                        "header.export.title": "Exportar sesión como JSON",
+                        "header.export.label": "📤 Exportar",
+                        "header.import.title": "Importar sesión desde JSON",
+                        "header.import.label": "📥 Importar",
+                        "header.variables.title": "Ver variables asignadas",
+                        "header.variables.label": "📦 Variables",
+                        "header.functions.title": "Ver funciones definidas",
+                        "header.functions.label": "𝑓 Funciones",
+                        "header.examples.title": "Mostrar ejemplos",
+                        "header.examples.label": "❓ Ejemplos",
+                        "header.clear.title": "Limpiar sesión",
+                        "header.clear.label": "🗑️ Limpiar",
+                        "lang_switch.aria_label": "Idioma",
+                        "lang_switch.title": "Idioma de la interfaz y del paso a paso",
+                        "lang_switch.es_option.title": "Cambiar a español",
+                        "lang_switch.en_option.title": "Cambiar a inglés",
+                        "welcome.title": "¡Bienvenido a ExpliCAS!",
+                        "welcome.subtitle": "Introduce una expresión matemática abajo para empezar.",
+                        "welcome.try": "Prueba: ",
+                        "welcome.try_or": " o ",
+                        "input.domain_mode.title": "Modo de dominio",
+                        "input.domain_mode.label": "Modo",
+                        "input.branch_mode.title": "Política de rama de trigonometría inversa: principal simplifica arctan(tan(x)), etc., asumiendo el rango principal",
+                        "input.branch_mode.label": "Rama",
+                        "input.complex_mode.title": "Aritmética compleja: activado trata i como la unidad imaginaria (i^2 = -1, productos gaussianos)",
+                        "input.complex_mode.label": "Complejo",
+                        "input.expression.placeholder": "Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))",
+                        "input.submit.label": "Evaluar",
+                        "variables_panel.title": "📦 Variables asignadas",
+                        "variables_panel.empty": "Aún no hay variables asignadas",
+                        "functions_panel.title": "𝑓 Funciones definidas",
+                        "functions_panel.empty": "Aún no hay funciones definidas",
+                        "examples_panel.title": "❓ Ejemplos — Elige una categoría",
+                        "examples_panel.loading": "Cargando ejemplos...",
+                        "examples_group.back.title": "Volver a categorías",
+                        "examples_group.title": "Ejemplos",
+                        "card.delete_function": "Eliminar función",
+                        "card.delete_variable": "Eliminar variable",
+                        "card.delete_expression": "Eliminar esta expresión",
+                        "card.dismiss_error": "Descartar error",
+                        "card.show_steps": "Mostrar {0} pasos",
+                        "card.hide_steps": "Ocultar {0} pasos",
+                        "card.show_solving_steps": "Mostrar {0} pasos de resolución",
+                        "card.hide_solving_steps": "Ocultar {0} pasos de resolución",
+                        "card.result": "✨ Resultado",
+                        "card.terms_count": "{0} términos",
+                        "card.large_polynomial": "Polinomio grande",
+                        "card.requires": "⚠️ Requiere",
+                        "card.error_prefix": "❌ Error: {0}",
+                        "substeps.show": "▶ Mostrar sub-pasos",
+                        "substeps.hide": "▼ Ocultar sub-pasos",
+                        "substeps.show_intermediate": "Mostrar {0} pasos intermedios",
+                        "steps.step_fallback": "Paso",
+                        "substeps.substep_fallback": "Sub-paso",
+                        "steps.some_count": "algunos",
+                        "solve.show_derivation": "Mostrar {0} pasos de derivación",
+                        "warnings.notice_label": "⚠️ Aviso",
+                        "assume.label": "ℹ️ Supuestos",
+                        "equiv.residual_label": "Residual",
+                        "theme.light": "☀️ Claro",
+                        "theme.dark": "🌙 Oscuro",
+                        "error.server_status": "Error del servidor: {0}",
+                        "error.server_not_running": "El servidor no está en marcha. Inícialo con: python web/server.py",
+                        "export.no_expressions": "No hay expresiones para exportar",
+                        "import.invalid_format": "Formato de cuaderno no válido",
+                        "import.replace_confirm": "¿Reemplazar la sesión actual?\n\nAceptar = Reemplazar todo (borra la sesión actual)\nCancelar = Añadir a la sesión actual",
+                        "import.success_alert": "Se importaron {0} expresiones",
+                        "import.success_and_variables": " y {0} variables",
+                        "import.success_next_eval": "\nLa próxima evaluación será #{0}",
+                        "import.error_alert": "Error al importar el cuaderno: ",
+                        "session.clear_confirm": "¿Borrar todas las expresiones y reiniciar la sesión?",
+                        "examples.default_group": "Otros",
+                        "examples.none_available": "No hay ejemplos disponibles",
+                        "examples.group_card_count": "{0} ejemplos ›"
+            },
+            "en": {
+                        "header.tagline": "Interactive Step-by-Step Math Simplifier",
+                        "header.theme_toggle.title": "Toggle theme",
+                        "header.theme_toggle.label": "🌙 Dark",
+                        "header.export.title": "Export session as JSON",
+                        "header.export.label": "📤 Export",
+                        "header.import.title": "Import session from JSON",
+                        "header.import.label": "📥 Import",
+                        "header.variables.title": "View assigned variables",
+                        "header.variables.label": "📦 Variables",
+                        "header.functions.title": "View defined functions",
+                        "header.functions.label": "𝑓 Functions",
+                        "header.examples.title": "Show examples",
+                        "header.examples.label": "❓ Examples",
+                        "header.clear.title": "Clear session",
+                        "header.clear.label": "🗑️ Clear",
+                        "lang_switch.aria_label": "Language",
+                        "lang_switch.title": "Interface and step-by-step language",
+                        "lang_switch.es_option.title": "Switch to Spanish",
+                        "lang_switch.en_option.title": "Switch to English",
+                        "welcome.title": "Welcome to ExpliCAS!",
+                        "welcome.subtitle": "Enter a mathematical expression below to get started.",
+                        "welcome.try": "Try: ",
+                        "welcome.try_or": " or ",
+                        "input.domain_mode.title": "Domain mode",
+                        "input.domain_mode.label": "Mode",
+                        "input.branch_mode.title": "Inverse trig branch policy: principal simplifies arctan(tan(x)) etc. assuming principal range",
+                        "input.branch_mode.label": "Branch",
+                        "input.complex_mode.title": "Complex arithmetic: on treats i as the imaginary unit (i^2 = -1, Gaussian products)",
+                        "input.complex_mode.label": "Complex",
+                        "input.expression.placeholder": "Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))",
+                        "input.submit.label": "Evaluate",
+                        "variables_panel.title": "📦 Assigned Variables",
+                        "variables_panel.empty": "No variables assigned yet",
+                        "functions_panel.title": "𝑓 Defined Functions",
+                        "functions_panel.empty": "No functions defined yet",
+                        "examples_panel.title": "❓ Examples — Choose a category",
+                        "examples_panel.loading": "Loading examples...",
+                        "examples_group.back.title": "Back to categories",
+                        "examples_group.title": "Examples",
+                        "card.delete_function": "Delete function",
+                        "card.delete_variable": "Delete variable",
+                        "card.delete_expression": "Delete this expression",
+                        "card.dismiss_error": "Dismiss error",
+                        "card.show_steps": "Show {0} steps",
+                        "card.hide_steps": "Hide {0} steps",
+                        "card.show_solving_steps": "Show {0} solving steps",
+                        "card.hide_solving_steps": "Hide {0} solving steps",
+                        "card.result": "✨ Result",
+                        "card.terms_count": "{0} terms",
+                        "card.large_polynomial": "Large polynomial",
+                        "card.requires": "⚠️ Requires",
+                        "card.error_prefix": "❌ Error: {0}",
+                        "substeps.show": "▶ Show sub-steps",
+                        "substeps.hide": "▼ Hide sub-steps",
+                        "substeps.show_intermediate": "Show {0} intermediate steps",
+                        "steps.step_fallback": "Step",
+                        "substeps.substep_fallback": "Sub-step",
+                        "steps.some_count": "some",
+                        "solve.show_derivation": "Show {0} derivation steps",
+                        "warnings.notice_label": "⚠️ Notice",
+                        "assume.label": "ℹ️ Assume",
+                        "equiv.residual_label": "Residual",
+                        "theme.light": "☀️ Light",
+                        "theme.dark": "🌙 Dark",
+                        "error.server_status": "Server error: {0}",
+                        "error.server_not_running": "Server not running. Start with: python web/server.py",
+                        "export.no_expressions": "No expressions to export",
+                        "import.invalid_format": "Invalid notebook format",
+                        "import.replace_confirm": "Replace current session?\n\nOK = Replace all (clear current session)\nCancel = Append to current session",
+                        "import.success_alert": "Imported {0} expressions",
+                        "import.success_and_variables": " and {0} variables",
+                        "import.success_next_eval": "\nNext evaluation will be #{0}",
+                        "import.error_alert": "Error importing notebook: ",
+                        "session.clear_confirm": "Clear all expressions and reset session?",
+                        "examples.default_group": "Other",
+                        "examples.none_available": "No examples available",
+                        "examples.group_card_count": "{0} examples ›"
+            }
+        };
+        let uiLang = 'es';
+        function t(key, ...args) {
+            const table = I18N[uiLang] || I18N.es;
+            let s = (table[key] != null) ? table[key] : ((I18N.es[key] != null) ? I18N.es[key] : key);
+            for (let i = 0; i < args.length; i++) s = s.split('{' + i + '}').join(args[i]);
+            return s;
+        }
+        function updateThemeButton() {
+            const btn = document.getElementById('theme-toggle');
+            if (!btn) return;
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            btn.innerHTML = isLight ? t('theme.light') : t('theme.dark');
+        }
+        function applyI18n(lang) {
+            uiLang = (lang === 'en') ? 'en' : 'es';
+            document.documentElement.lang = uiLang;
+            document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+            document.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
+            document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); });
+            document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+            updateThemeButton();
+        }
+
 
         // Input handling
         const input = document.getElementById('expression-input');
@@ -1614,6 +1806,7 @@
 
         langModeSelect.addEventListener('change', () => {
             sessionStorage.setItem(LANG_MODE_STORAGE_KEY, langModeSelect.value);
+            applyI18n(langModeSelect.value);
         });
 
         // The prominent ES/EN segmented toggle in the header drives the hidden source-of-truth
@@ -1635,6 +1828,7 @@
             });
         });
         syncLangToggle();
+        applyI18n(langModeSelect.value);
 
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -1673,7 +1867,7 @@
             } catch (error) {
                 addErrorCard(expr, error.message);
             } finally {
-                submitBtn.innerHTML = 'Evaluate';
+                submitBtn.innerHTML = t('input.submit.label');
                 submitBtn.disabled = false;
                 input.value = '';
                 input.focus();
@@ -1699,7 +1893,7 @@
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                    throw new Error(errorData.error || t('error.server_status', response.status));
                 }
 
                 const data = await response.json();
@@ -1737,7 +1931,7 @@
                 // If API is not available, check if it's a network error
                 if (error.name === 'TypeError' && error.message.includes('fetch')) {
                     // Server not running - show helpful message
-                    throw new Error('Server not running. Start with: python web/server.py');
+                    throw new Error(t('error.server_not_running'));
                 }
                 throw error;
             }
@@ -1773,7 +1967,7 @@
 
             return `
                 <div class="warning-section">
-                    <div class="warning-label">⚠️ Notice</div>
+                    <div class="warning-label">${t('warnings.notice_label')}</div>
                     <ul class="warning-list">
                         ${messages.map(message => `<li>${escapeHtml(message)}</li>`).join('')}
                     </ul>
@@ -1805,7 +1999,7 @@
 
             return `
                 <div class="assume-section">
-                    <div class="assume-label">ℹ️ Assume</div>
+                    <div class="assume-label">${t('assume.label')}</div>
                     <ul class="assume-list">
                         ${messages.map(message => `<li>${escapeHtml(message)}</li>`).join('')}
                     </ul>
@@ -1820,7 +2014,7 @@
 
             return `
                 <div class="equiv-diagnostic-section">
-                    <div class="equiv-diagnostic-label">Residual</div>
+                    <div class="equiv-diagnostic-label">${t('equiv.residual_label')}</div>
                     <div class="equiv-diagnostic-math" data-result="${escapeHtml(residual)}">
                         $${renderedResidual}$
                     </div>
@@ -1901,7 +2095,7 @@
                         </div>
                         <div class="expression-header-right">
                             <span class="expression-time">${timeMs}ms</span>
-                            <button class="delete-btn" onclick="deleteFunctionCard('${escapeHtml(fnName)}')" title="Delete function">🗑️</button>
+                            <button class="delete-btn" onclick="deleteFunctionCard('${escapeHtml(fnName)}')" title="${t('card.delete_function')}">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -1926,7 +2120,7 @@
                         </div>
                         <div class="expression-header-right">
                             <span class="expression-time">${timeMs}ms</span>
-                            <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(result.assignment)}')" title="Delete variable">🗑️</button>
+                            <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(result.assignment)}')" title="${t('card.delete_variable')}">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -1951,14 +2145,14 @@
                         </div>
                         <div class="expression-header-right">
                             <span class="expression-time">${timeMs}ms</span>
-                            <button class="delete-btn" onclick="deleteCard('${ref}')" title="Delete this expression">🗑️</button>
+                            <button class="delete-btn" onclick="deleteCard('${ref}')" title="${t('card.delete_expression')}">🗑️</button>
                         </div>
                     </div>
                     <div class="expression-body">
                         ${hasSteps ? `
                             <button class="steps-toggle" onclick="toggleSteps('${ref}')">
                                 <span class="arrow">▶</span>
-                                Show ${result.steps.length} steps
+                                ${t('card.show_steps', result.steps.length)}
                             </button>
                             <div class="steps-container" id="steps-${ref}">
                                 ${renderSteps(result.steps)}
@@ -1967,7 +2161,7 @@
                         ${result.solve_steps && result.solve_steps.length > 0 ? `
                             <button class="steps-toggle" onclick="toggleSolveSteps('${ref}')" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1)); border-color: #3b82f6;">
                                 <span class="arrow">▶</span>
-                                Show ${result.solve_steps.length} solving steps
+                                ${t('card.show_solving_steps', result.solve_steps.length)}
                             </button>
                             <div class="steps-container" id="solve-steps-${ref}">
                                 ${renderSolveSteps(result.solve_steps)}
@@ -1976,9 +2170,9 @@
                         
                         <div class="result-section">
                             <div class="result-label">
-                                ✨ Result
-                                ${result.stats && result.stats.term_count ? `<span class="poly-badge">${result.stats.term_count.toLocaleString()} terms</span>` : ''}
-                                ${isPolyResult && (!result.stats || !result.stats.term_count) ? `<span class="poly-badge">Large polynomial</span>` : ''}
+                                ${t('card.result')}
+                                ${result.stats && result.stats.term_count ? `<span class="poly-badge">${t('card.terms_count', result.stats.term_count.toLocaleString())}</span>` : ''}
+                                ${isPolyResult && (!result.stats || !result.stats.term_count) ? `<span class="poly-badge">${t('card.large_polynomial')}</span>` : ''}
                             </div>
                             <div class="result-math" data-latex="${escapeHtml(result.result_latex || result.result || '')}" data-result="${escapeHtml(result.result || '')}">
                                 ${isPolyResult
@@ -1990,7 +2184,7 @@
 
                         ${hasRequirements ? `
                             <div class="requires-section">
-                                <div class="requires-label">⚠️ Requires</div>
+                                <div class="requires-label">${t('card.requires')}</div>
                                 <ul class="requires-list">
                                     ${result.required_display.map(req => `<li>${escapeHtml(req)}</li>`).join('')}
                                 </ul>
@@ -2031,12 +2225,12 @@
                         <span class="expression-input">${escapeHtml(expr)}</span>
                     </div>
                     <div class="expression-header-right">
-                        <button class="delete-btn" onclick="deleteCard('${ref}')" title="Dismiss error">🗑️</button>
+                        <button class="delete-btn" onclick="deleteCard('${ref}')" title="${t('card.dismiss_error')}">🗑️</button>
                     </div>
                 </div>
                 <div class="expression-body">
                     <div class="error-message">
-                        ❌ Error: ${escapeHtml(errorMessage)}
+                        ${t('card.error_prefix', escapeHtml(errorMessage))}
                     </div>
                 </div>
             `;
@@ -2053,8 +2247,8 @@
                 toggle.classList.toggle('expanded');
                 const stepCount = container.querySelectorAll('.step-item').length;
                 toggle.innerHTML = container.classList.contains('visible')
-                    ? `<span class="arrow">▶</span> Hide ${stepCount} steps`
-                    : `<span class="arrow">▶</span> Show ${stepCount} steps`;
+                    ? `<span class="arrow">▶</span> ${t('card.hide_steps', stepCount)}`
+                    : `<span class="arrow">▶</span> ${t('card.show_steps', stepCount)}`;
             }
         }
 
@@ -2064,7 +2258,7 @@
             if (container && toggle) {
                 container.classList.toggle('visible');
                 const isVisible = container.classList.contains('visible');
-                toggle.textContent = isVisible ? '▼ Hide sub-steps' : '▶ Show sub-steps';
+                toggle.textContent = isVisible ? t('substeps.hide') : t('substeps.show');
             }
         }
 
@@ -2091,19 +2285,19 @@
                 return `
                     <div class="step-item">
                         <div class="rule-box">
-                            <div class="rule-name">${i + 1}. ${escapeHtml(step.rule || 'Step')}</div>
+                            <div class="rule-name">${i + 1}. ${escapeHtml(step.rule || t('steps.step_fallback'))}</div>
                             ${ruleLatex}
                         </div>
                         ${step.before ? `<div class="step-before">${beforeContent}</div>` : ''}
                         ${hasSubsteps ? `
                             <div class="substeps-section">
                                 <button class="substeps-toggle" id="substeps-toggle-${stepId}" onclick="toggleSubsteps('${stepId}')">
-                                    ▶ Show ${step.substeps.length} intermediate steps
+                                    ▶ ${t('substeps.show_intermediate', step.substeps.length)}
                                 </button>
                                 <div class="substeps-container" id="substeps-${stepId}">
                                     ${step.substeps.map((substep, j) => `
                                         <div class="substep-item">
-                                            <div class="step-rule">${i + 1}.${j + 1} ${escapeHtml(substep.title || 'Sub-step')}</div>
+                                            <div class="step-rule">${i + 1}.${j + 1} ${escapeHtml(substep.title || t('substeps.substep_fallback'))}</div>
                                             ${substep.before_latex && substep.after_latex
                         ? `<div class="substep-math">
                                                     <div class="substep-math-line">
@@ -2143,7 +2337,7 @@
                         </div>
                         ${hasSubsteps ? `
                             <button class="solve-substeps-toggle" id="solve-substeps-toggle-${stepId}" onclick="toggleSolveSubsteps('${stepId}')">
-                                ▶ Show ${step.substeps.length} derivation steps
+                                ▶ ${t('solve.show_derivation', step.substeps.length)}
                             </button>
                             <div class="solve-substeps-container" id="solve-substeps-${stepId}">
                                 ${step.substeps.map(ss => {
@@ -2173,11 +2367,11 @@
             if (container.classList.contains('visible')) {
                 container.classList.remove('visible');
                 arrow.style.transform = 'rotate(0deg)';
-                btn.innerHTML = `<span class="arrow">▶</span> Show ${stepCount} solving steps`;
+                btn.innerHTML = `<span class="arrow">▶</span> ${t('card.show_solving_steps', stepCount)}`;
             } else {
                 container.classList.add('visible');
                 arrow.style.transform = 'rotate(90deg)';
-                btn.innerHTML = `<span class="arrow">▶</span> Hide ${stepCount} solving steps`;
+                btn.innerHTML = `<span class="arrow">▶</span> ${t('card.hide_solving_steps', stepCount)}`;
                 MathJax.typesetPromise([container]);
             }
         }
@@ -2282,7 +2476,7 @@
             const varNames = Object.keys(sessionVariables);
 
             if (varNames.length === 0) {
-                container.innerHTML = '<p class="no-variables">No variables assigned yet</p>';
+                container.innerHTML = `<p class="no-variables">${t('variables_panel.empty')}</p>`;
             } else {
                 container.innerHTML = `
                     <ul class="variable-list">
@@ -2290,7 +2484,7 @@
                             <li>
                                 <span class="var-name">${escapeHtml(name)}</span>
                                 <span class="var-value" title="${escapeHtml(sessionVariables[name])}">${escapeHtml(sessionVariables[name])}</span>
-                                <button class="var-delete" onclick="deleteVariable('${escapeHtml(name)}')" title="Delete variable">🗑️</button>
+                                <button class="var-delete" onclick="deleteVariable('${escapeHtml(name)}')" title="${t('card.delete_variable')}">🗑️</button>
                             </li>
                         `).join('')}
                     </ul>
@@ -2362,7 +2556,7 @@
             const fnNames = Object.keys(sessionFunctions);
 
             if (fnNames.length === 0) {
-                container.innerHTML = '<p class="no-functions">No functions defined yet</p>';
+                container.innerHTML = `<p class="no-functions">${t('functions_panel.empty')}</p>`;
             } else {
                 container.innerHTML = `
                     <ul class="variable-list">
@@ -2374,7 +2568,7 @@
                             <li>
                                 <span class="fn-name">${escapeHtml(signature)}</span>
                                 <span class="var-value" title="${escapeHtml(display)}">${escapeHtml(display)}</span>
-                                <button class="var-delete" onclick="deleteFunction('${escapeHtml(name)}')" title="Delete function">🗑️</button>
+                                <button class="var-delete" onclick="deleteFunction('${escapeHtml(name)}')" title="${t('card.delete_function')}">🗑️</button>
                             </li>
                         `;
                 }).join('')}
@@ -2420,7 +2614,7 @@
             html.setAttribute('data-theme', newTheme === 'dark' ? '' : 'light');
 
             const btn = document.getElementById('theme-toggle');
-            btn.innerHTML = newTheme === 'light' ? '☀️ Light' : '🌙 Dark';
+            updateThemeButton();
             localStorage.setItem('explicas-theme', newTheme);
         }
 
@@ -2429,7 +2623,7 @@
             const saved = localStorage.getItem('explicas-theme');
             if (saved === 'light') {
                 document.documentElement.setAttribute('data-theme', 'light');
-                document.getElementById('theme-toggle').innerHTML = '☀️ Light';
+                updateThemeButton();
             }
         })();
 
@@ -2437,7 +2631,7 @@
         function exportSession() {
             const cards = document.querySelectorAll('.expression-card');
             if (cards.length === 0) {
-                alert('No expressions to export');
+                alert(t('export.no_expressions'));
                 return;
             }
 
@@ -2549,18 +2743,14 @@
                 const notebook = JSON.parse(text);
 
                 if (!notebook.version || !notebook.expressions) {
-                    throw new Error('Invalid notebook format');
+                    throw new Error(t('import.invalid_format'));
                 }
 
                 // Ask user whether to replace or append
                 const existingCards = document.querySelectorAll('.expression-card');
                 let replaceExisting = true;
                 if (existingCards.length > 0) {
-                    replaceExisting = confirm(
-                        'Replace current session?\n\n' +
-                        'OK = Replace all (clear current session)\n' +
-                        'Cancel = Append to current session'
-                    );
+                    replaceExisting = confirm(t('import.replace_confirm'));
                 }
 
                 if (replaceExisting) {
@@ -2625,14 +2815,14 @@
                     const hasStepsHtml = entry.steps_html && entry.steps_html.trim().length > 0;
                     const hasSteps = hasStepsArray || hasStepsHtml;
                     const stepsContent = hasStepsArray ? renderSteps(entry.steps) : (entry.steps_html || '');
-                    const stepsCount = hasStepsArray ? entry.steps.length : (hasStepsHtml ? 'some' : 0);
+                    const stepsCount = hasStepsArray ? entry.steps.length : (hasStepsHtml ? t('steps.some_count') : 0);
 
                     // Same for solve_steps
                     const hasSolveStepsArray = entry.solve_steps && entry.solve_steps.length > 0;
                     const hasSolveStepsHtml = entry.solve_steps_html && entry.solve_steps_html.trim().length > 0;
                     const hasSolveSteps = hasSolveStepsArray || hasSolveStepsHtml;
                     const solveStepsContent = hasSolveStepsArray ? renderSolveSteps(entry.solve_steps) : (entry.solve_steps_html || '');
-                    const solveStepsCount = hasSolveStepsArray ? entry.solve_steps.length : (hasSolveStepsHtml ? 'some' : 0);
+                    const solveStepsCount = hasSolveStepsArray ? entry.solve_steps.length : (hasSolveStepsHtml ? t('steps.some_count') : 0);
 
                     // Create card element with proper ID (matching addExpressionCard)
                     const card = document.createElement('div');
@@ -2660,7 +2850,7 @@
                                     <span class="expression-input">${escapeHtml(fnValue)}</span>
                                 </div>
                                 <div class="expression-header-right">
-                                    <button class="delete-btn" onclick="deleteFunctionCard('${escapeHtml(entry.function_name)}')" title="Delete function">🗑️</button>
+                                    <button class="delete-btn" onclick="deleteFunctionCard('${escapeHtml(entry.function_name)}')" title="${t('card.delete_function')}">🗑️</button>
                                 </div>
                             </div>
                         `;
@@ -2685,7 +2875,7 @@
                             }
                                 </div>
                                 <div class="expression-header-right">
-                                    <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(entry.assignment_name)}')" title="Delete variable">🗑️</button>
+                                    <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(entry.assignment_name)}')" title="${t('card.delete_variable')}">🗑️</button>
                                 </div>
                             </div>
                         `;
@@ -2709,14 +2899,14 @@
                             }
                                 </div>
                                 <div class="expression-header-right">
-                                    <button class="delete-btn" onclick="deleteCard('${refNum}')" title="Delete this expression">🗑️</button>
+                                    <button class="delete-btn" onclick="deleteCard('${refNum}')" title="${t('card.delete_expression')}">🗑️</button>
                                 </div>
                             </div>
                             <div class="expression-body">
                                 ${hasSteps ? `
                                     <button class="steps-toggle" onclick="toggleSteps('${refNum}')">
                                         <span class="arrow">▶</span>
-                                        Show ${stepsCount} steps
+                                        ${t('card.show_steps', stepsCount)}
                                     </button>
                                     <div class="steps-container" id="steps-${refNum}">
                                         ${stepsContent}
@@ -2725,7 +2915,7 @@
                                 ${hasSolveSteps ? `
                                     <button class="steps-toggle" onclick="toggleSolveSteps('${refNum}')" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1)); border-color: #3b82f6;">
                                         <span class="arrow">▶</span>
-                                        Show ${solveStepsCount} solving steps
+                                        ${t('card.show_solving_steps', solveStepsCount)}
                                     </button>
                                     <div class="steps-container" id="solve-steps-${refNum}">
                                         ${solveStepsContent}
@@ -2733,7 +2923,7 @@
                                 ` : ''}
                                 
                                 <div class="result-section">
-                                    <div class="result-label">✨ Result</div>
+                                    <div class="result-label">${t('card.result')}</div>
                                     <div class="result-math" data-latex="${escapeHtml(resultLatex)}" data-result="${escapeHtml(resultParseable)}">
                                         ${entry.error
                                 ? `<span class="error-message">${escapeHtml(entry.error)}</span>`
@@ -2745,7 +2935,7 @@
                                 </div>
                                 ${entry.required_display && entry.required_display.length > 0 ? `
                                     <div class="requires-section">
-                                        <div class="requires-label">⚠️ Requires</div>
+                                        <div class="requires-label">${t('card.requires')}</div>
                                         <ul class="requires-list">
                                             ${entry.required_display.map(req => `<li>${escapeHtml(req)}</li>`).join('')}
                                         </ul>
@@ -2838,20 +3028,20 @@
                     await MathJax.typesetPromise();
                 }
 
-                alert(`Imported ${notebook.expressions.length} expressions` +
+                alert(t('import.success_alert', notebook.expressions.length) +
                     (Object.keys(notebook.variables || {}).length > 0 ?
-                        ` and ${Object.keys(notebook.variables).length} variables` : '') +
-                    `\nNext evaluation will be #${expressionCount + 1}`);
+                        t('import.success_and_variables', Object.keys(notebook.variables).length) : '') +
+                    t('import.success_next_eval', expressionCount + 1));
 
             } catch (e) {
                 console.error('Import error:', e);
-                alert('Error importing notebook: ' + e.message);
+                alert(t('import.error_alert') + e.message);
             }
         }
 
         // Clear session
         async function clearSession() {
-            if (!confirm('Clear all expressions and reset session?')) return;
+            if (!confirm(t('session.clear_confirm'))) return;
 
             // Clear server session for this tab only
             try {
@@ -2876,9 +3066,9 @@
 
             const container = document.getElementById('expressions');
             container.innerHTML = '<div class="empty-state" id="empty-state">' +
-                '<h2>Welcome to ExpliCAS!</h2>' +
-                '<p>Enter a mathematical expression below to get started.</p>' +
-                '<p style="margin-top: 15px;">Try: <code>expand((1+x)^3)</code> or <code>solve(x^2 - 4 = 0, x)</code></p>' +
+                `<h2 data-i18n="welcome.title">${t('welcome.title')}</h2>` +
+                `<p data-i18n="welcome.subtitle">${t('welcome.subtitle')}</p>` +
+                `<p style="margin-top: 15px;"><span data-i18n="welcome.try">${t('welcome.try')}</span><code>expand((1+x)^3)</code><span data-i18n="welcome.try_or">${t('welcome.try_or')}</span><code>solve(x^2 - 4 = 0, x)</code></p>` +
                 '</div>';
 
             document.getElementById('expression-input').focus();
@@ -2913,7 +3103,7 @@
             const order = [];
             const byGroup = new Map();
             examples.forEach((ex, i) => {
-                const g = (ex.group && ex.group.trim()) ? ex.group : 'Otros';
+                const g = (ex.group && ex.group.trim()) ? ex.group : t('examples.default_group');
                 if (!byGroup.has(g)) { byGroup.set(g, []); order.push(g); }
                 byGroup.get(g).push({ ex, i });
             });
@@ -2927,14 +3117,14 @@
             const examples = await loadExamples();
 
             if (examples.length === 0) {
-                list.innerHTML = '<li style="cursor: default;">No examples available</li>';
+                list.innerHTML = `<li style="cursor: default;">${t('examples.none_available')}</li>`;
             } else {
                 cachedGroups = buildExampleGroups(examples);
                 // Collapsed view: one clickable card per category. Clicking opens the second modal.
                 list.innerHTML = cachedGroups.map((grp, gi) => `
                     <li class="examples-group-card" onclick="showGroupExamples(${gi})">
                         <span class="examples-group-card-name">${escapeHtml(grp.group)}</span>
-                        <span class="examples-group-card-count">${grp.items.length} ejemplos ›</span>
+                        <span class="examples-group-card-count">${t('examples.group_card_count', grp.items.length)}</span>
                     </li>
                 `).join('');
             }
