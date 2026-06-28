@@ -235,6 +235,22 @@ fn classify_infinite_sum(ctx: &mut Context, call: &FiniteAggregateCall) -> Optio
             }
         }
     }
+    // Inverse power `c/n^p` (c ≠ 0, 0 < p ≤ 1): a divergent p-series. Every term eventually shares the
+    // sign of c, so the sum is sign(c)·infinity (p > 1 converges and is resolved upstream by the
+    // ζ-series path; the harmonic boundary p = 1 and any 0 < p < 1 reach here). Guard the lower bound
+    // ≥ 1 so n = 0 — the sole pole of n^(-p) — is outside the range (n = 0 in range is an undefined
+    // pole, decided upstream).
+    if let Some((c, p)) = extract_inverse_power_term(ctx, call.term, &call.var_name) {
+        let start_at_least_one =
+            crate::expr_extract::extract_i64_integer(ctx, call.start_expr).is_some_and(|s| s >= 1);
+        if start_at_least_one && p <= BigRational::one() {
+            return Some(if c.is_negative() {
+                make_neg_infinity(ctx)
+            } else {
+                make_infinity(ctx)
+            });
+        }
+    }
     None
 }
 
@@ -402,6 +418,61 @@ fn extract_p_series_term(ctx: &Context, term: ExprId, var: &str) -> Option<(BigR
         }
         _ => None,
     }
+}
+
+/// `(c, e)` for a term structurally `c · n^e` (rational coefficient `c`, rational exponent `e` of the
+/// variable): a bare constant is `n^0`, the variable itself is `n^1`, `n^p` reads its exponent, and
+/// `Mul`/`Div`/`Neg` combine by multiplying coefficients and adding/subtracting exponents. Anything
+/// else (a second variable, a transcendental, an `Add`) declines.
+fn decompose_coeff_and_var_power(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(BigRational, BigRational)> {
+    if let Some(c) = as_rational_const(ctx, expr, 8) {
+        return Some((c, BigRational::zero()));
+    }
+    if is_named_var(ctx, expr, var) {
+        return Some((BigRational::one(), BigRational::one()));
+    }
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) if is_named_var(ctx, *base, var) => {
+            let e = as_rational_const(ctx, *exp, 8)?;
+            Some((BigRational::one(), e))
+        }
+        Expr::Neg(inner) => {
+            let (c, e) = decompose_coeff_and_var_power(ctx, *inner, var)?;
+            Some((-c, e))
+        }
+        Expr::Mul(a, b) => {
+            let (ca, ea) = decompose_coeff_and_var_power(ctx, *a, var)?;
+            let (cb, eb) = decompose_coeff_and_var_power(ctx, *b, var)?;
+            Some((ca * cb, ea + eb))
+        }
+        Expr::Div(a, b) => {
+            let (ca, ea) = decompose_coeff_and_var_power(ctx, *a, var)?;
+            let (cb, eb) = decompose_coeff_and_var_power(ctx, *b, var)?;
+            if cb.is_zero() {
+                return None;
+            }
+            Some((ca / cb, ea - eb))
+        }
+        _ => None,
+    }
+}
+
+/// `(c, p)` for a term structurally `c · n^(-p)` with a single negative power of the variable
+/// (`p > 0`, `c ≠ 0`), else `None`. Used to recognise a divergent `p`-series (`p ≤ 1`).
+fn extract_inverse_power_term(
+    ctx: &Context,
+    term: ExprId,
+    var: &str,
+) -> Option<(BigRational, BigRational)> {
+    let (c, e) = decompose_coeff_and_var_power(ctx, term, var)?;
+    if c.is_zero() || !e.is_negative() {
+        return None;
+    }
+    Some((c, -e))
 }
 
 /// Closed form of the convergent p-series `sum(c/k^p, k, 1, inf) = c·ζ(p)`. ONLY

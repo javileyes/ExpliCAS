@@ -2148,6 +2148,41 @@ fn test_eval_arctan_plus_log_boundary_limit_and_irreducible_quadratic_improper_i
 }
 
 #[test]
+fn test_eval_divergent_p_series_is_infinity() {
+    // A divergent p-series `Σ c/n^p` with `0 < p ≤ 1` (the harmonic series and slower) now reports its
+    // divergence as `±infinity` instead of a residual: every term eventually shares the sign of `c`.
+    // The ζ-convergent `p > 1` cases, alternating series, and a sum that includes the `n = 0` pole are
+    // unchanged.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Harmonic and slower (p ≤ 1) -> diverges with the sign of the coefficient.
+    assert_eq!(r("sum(1/n, n, 1, oo)"), "infinity");
+    assert_eq!(r("sum(2/n, n, 1, oo)"), "infinity");
+    assert_eq!(r("sum(1/(2*n), n, 1, oo)"), "infinity");
+    assert_eq!(r("sum(1/sqrt(n), n, 1, oo)"), "infinity"); // p = 1/2
+    assert_eq!(r("sum(-1/n, n, 1, oo)"), "-infinity");
+    assert_eq!(r("sum(1/n, n, 5, oo)"), "infinity"); // tail from any start ≥ 1 still diverges
+                                                     // MUST NOT regress: p > 1 converges (ζ), alternating is conditionally convergent, n = 0 is a pole.
+    assert_eq!(r("sum(1/n^2, n, 1, oo)"), "1/6·pi^2");
+    assert_eq!(
+        r("sum(1/n^(3/2), n, 1, oo)"),
+        "sum(1 / n^(3/2), n, 1, infinity)"
+    ); // ζ(3/2), no closed form
+    assert_eq!(r("sum(1/n^3, n, 1, oo)"), "sum(1 / n^3, n, 1, infinity)"); // ζ(3), deliberate residual
+    assert_eq!(
+        r("sum((-1)^n/n, n, 1, oo)"),
+        "sum((-1)^n / n, n, 1, infinity)"
+    ); // alternating
+    assert_eq!(r("sum(1/n, n, 0, oo)"), "undefined"); // n = 0 pole in range
+}
+
+#[test]
 fn test_eval_summation_pole_in_range_is_undefined() {
     // A finite or infinite sum whose summand has a POLE (a `1/0` term) at an integer in the range is
     // UNDEFINED — the telescoping/closed-form builders otherwise compute THROUGH it. The pole
