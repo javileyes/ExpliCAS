@@ -1326,14 +1326,11 @@ fn improper_integration_rewrite(
         IntervalCertificate::Unknown => return None,
     }
 
-    let mut antiderivative = antiderivative;
-    loop {
-        let unwrapped = cas_ast::hold::unwrap_hold(ctx, antiderivative);
-        if unwrapped == antiderivative {
-            break;
-        }
-        antiderivative = unwrapped;
-    }
+    // Strip ALL holds, not just a root one: a partial-fraction antiderivative can wrap a SUBTREE
+    // (`Add(__hold(−½·arctan x − ¼·ln(x²+1)), ½·ln|x−1|)`), and a surviving inner `__hold` blocks the
+    // boundary limit (the log/arctan term collector cannot see through it), residualizing a convergent
+    // improper integral whose value is otherwise computable.
+    let antiderivative = cas_ast::hold::strip_all_holds(ctx, antiderivative);
 
     let upper_value = boundary_value(ctx, antiderivative, call.var_expr, call.upper, upper_bound)?;
     let lower_value = boundary_value(ctx, antiderivative, call.var_expr, call.lower, lower_bound)?;

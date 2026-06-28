@@ -2128,7 +2128,22 @@ fn test_eval_arctan_plus_log_boundary_limit_and_irreducible_quadratic_improper_i
     // Soundness preserved for the irreducible-quadratic family: pole in range -> divergent, ~1/x tail -> +∞.
     assert_eq!(r("integrate(1/(x^4-1), x, 0, oo)"), "undefined"); // pole at x=1
     assert_eq!(r("integrate(x^3/(x^4-1), x, 2, oo)"), "infinity"); // ~1/x tail
-                                                                   // Edge: a lone arctan and a pure arctan pair are left to the unary/additive rules (unchanged).
+                                                                   // A PRE-FACTORED denominator with an irreducible quadratic factor: the antiderivative is
+                                                                   // `Add(__hold(−½·arctan x − ¼·ln(x²+1)), ½·ln|x−1|)`; the surviving inner `__hold` used to block
+                                                                   // the boundary limit. Stripping ALL holds first lets it fold. Numerically ≈ 0.170535673.
+    assert_eq!(
+        r("integrate(1/((x-1)*(x^2+1)), x, 2, oo)"),
+        "1/4·(ln(5) + 2·arctan(2)) - 1/4·pi"
+    );
+    // The expanded-equivalent denominator computes to the SAME value.
+    assert_eq!(
+        r("integrate(1/(x^3-x^2+x-1), x, 2, oo)"),
+        "1/4·(ln(5) + 2·arctan(2)) - 1/4·pi"
+    );
+    // Soundness preserved here too: pole at x=1 in range -> undefined; ~1/x tail -> +∞.
+    assert_eq!(r("integrate(1/((x-1)*(x^2+1)), x, 0, oo)"), "undefined");
+    assert_eq!(r("integrate(x^2/((x-1)*(x^2+1)), x, 2, oo)"), "infinity");
+    // Edge: a lone arctan and a pure arctan pair are left to the unary/additive rules (unchanged).
     assert_eq!(r("limit(arctan(x), x, infinity)"), "pi / 2");
 }
 
