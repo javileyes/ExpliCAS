@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 430 (newest first)
+Active entries: 431 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -128,6 +128,7 @@ Active entries: 430 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_u... | UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador de grado-n (decisión de divergencia/polo)
 - 2026-06-28 | `retained` | `crates/cas_math/src/limits_support.rs` (`log_sum_limit_at_infinity` + `colle... | UNIVERSALIDAD (capacidad F): límite de suma de N logaritmos en +∞ → valor convergente de impropia racional grado-n
 - 2026-06-28 | `retained` | `crates/cas_math/src/limits_support.rs` (`collect_signed_log_and_arctan_terms... | UNIVERSALIDAD (capacidad F): absorber arctan en el límite suma-de-logs → impropia racional con factor cuadrático irreducible (familia x⁴−1)
+- 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 wrong-answer): trig periódica con coeficiente/offset externo devolvía conjunto incompleto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17270,3 +17271,31 @@ Active entries: 430 (newest first)
     residualiza su valor IMPROPIO por una razón DISTINTA — el límite-frontera resuelve aislado (`→−¼π`) y la definida
     FINITA computa, así que el bloqueo está en la ruta de reescritura impropia / forma de antiderivada, no en el límite.
     Diagnóstico separado pendiente.
+
+## 2026-06-28 - SOUNDNESS (P0 wrong-answer): trig periódica con coeficiente/offset externo devolvía conjunto incompleto
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation` + nuevos `peel_affine_trig`/`accumulate_affine_trig`)
+- status: `retained` (commit a70bd8429). P0 detectado por el workflow de scouting (universality-frontier-scout) y verificado a mano. Soundness va PRIMERO (antes que cualquier capacidad).
+- capture:
+  - cell: `solve(2*sin(x)=1,x)` → `{ π/6 }` (ok=true, SIN warning) en vez de `{ π/6+2kπ, 5π/6+2kπ }`. Conjunto INCOMPLETO
+    presentado como completo. El control desnudo `solve(sin(x)=1/2,x)` SÍ daba la familia completa, probando que la
+    maquinaria periódica existe y funciona — el bug era de enrutado. ≥5 entradas (sin/cos/tan, coef y offset).
+  - causa raíz: `detect` solo casa una llamada trig DESNUDA (`Expr::Function`). Con coeficiente/offset el lado es
+    `Mul`/`Add` (`2*sin(x)`=`Mul(2,sin(x))`, `2*cos(x)+1`=`Add`), `detect`→None, la fn declina y la ecuación cae a la
+    ruta inverso-unaria que divide por el coeficiente y emite SOLO el valor principal.
+  - fix: `peel_affine_trig` descompone el lado-variable como `A·trig(a·x)+B` (A≠0 y B racionales, resto aditivo
+    var-free, UN solo término trig) y reduce la ecuación a `trig(a·x)=(C−B)/A`, re-resolviendo con el generador
+    `Periodic` existente (dos familias / c=±1 / argumento escalado). Guard: una trig desnuda (`call==expr`) no se pela
+    (la maneja `detect`) ⇒ no hay recursión infinita; dos términos trig o producto trig×trig declinan (sin cambio).
+  - validación: workspace failed:0; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; test de contrato nuevo (coef +/−, offset, arg escalado, c=±1 una familia, fuera de rango).
+- retained learning:
+  - un detector que exige una FORMA DESNUDA (función trig sola) deja sin cubrir el envoltorio afín (coef·f(x)+offset);
+    NORMALIZAR el envoltorio a la forma canónica ANTES del detector (peel→`trig=(C−B)/A`→recurse) reusa todo el
+    generador sin tocarlo. Patrón general para detectores de forma estricta.
+  - LECCIÓN [[audit5-false-positives-convention]] aplicada: un "wrong-answer presentado-como-completo" es P0 real (no un
+    residual honesto); verificado a mano antes de actuar (el scouting + verify adversarial coincidieron, pero hand-check igual).
+  - guard de recursión: una reducción que puede re-disparar la misma fn DEBE excluir el caso trivial (`call==expr`) o
+    cuelga. [[c5-diff-fold-rootcause]] (ciclos de reescritura).
+  - siguiente (hermano P0): trig CUADRADA con coeficiente externo (`solve(4*cos(x)^2=1,x)`→`{π/3,2/3π}` sin kπ) — el
+    cierre `squared` solo casa `Pow(trig,2)` desnudo, no `Mul(4,Pow)`; mismo archivo, cierre vecino.
