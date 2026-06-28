@@ -1444,6 +1444,12 @@ verificadas + integración definida racional/valor-absoluto). Ordenados por valo
   `∫_3^∞ 1/((x²-1)(x²-4))=1/12·ln(5/4)` COMPUTAN (denom que factoriza sobre ℚ en lineales; verificado numéricamente).
   Peldaño final: denom con factor cuadrático IRREDUCIBLE (`x⁴-1→x²+1`) ⇒ antiderivada arctan+logs; falta el
   límite-frontera mixto `lim (C·arctan + Σ cᵢ·ln)@+∞`.)*
+  *(arctan absorbido 2026-06-28 99e8f4064: `log_sum_limit_at_infinity` pliega hojas `arctan(Q)→sign(lead Q)·π/2`
+  junto al bloque log, así que el límite-frontera mixto resuelve sin importar el orden del árbol Add y
+  `∫_2^∞ 1/(x⁴-1)=¼(ln3+2arctan2)−¼π` COMPUTA (familia x⁴-1; verificado numéricamente; soundness polo/divergente
+  intacta). Peldaño restante DISTINTO: `∫_a^∞ 1/((x-1)(x²+1))` (denom pre-factorizado, log de arg cuadrático) aún
+  residualiza el valor IMPROPIO aunque el límite-frontera resuelve aislado y la definida finita computa — bloqueo en
+  la ruta de reescritura impropia, no en el límite.)*
 - [ ] **(F) Definida `1/(a²−x²)` fuera de `|x|<a`** (`1/(1−x²)` en `[2,3]`): la antiderivada
   `atanh(x)` es real solo en `|x|<1`; el valor real fuera es `½ln|(1+x)/(1−x)|`. INTENTADO y
   REVERTIDO en el ciclo 6 — la reescritura atanh→log se enredó con el envoltorio `Hold` y la

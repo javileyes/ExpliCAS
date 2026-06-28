@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 429 (newest first)
+Active entries: 430 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -127,6 +127,7 @@ Active entries: 429 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (nonzero_on_un... | UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador cuadrático de raíces reales fuera del rango
 - 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_u... | UNIVERSALIDAD (capacidad F): integral impropia de racional con denominador de grado-n (decisión de divergencia/polo)
 - 2026-06-28 | `retained` | `crates/cas_math/src/limits_support.rs` (`log_sum_limit_at_infinity` + `colle... | UNIVERSALIDAD (capacidad F): límite de suma de N logaritmos en +∞ → valor convergente de impropia racional grado-n
+- 2026-06-28 | `retained` | `crates/cas_math/src/limits_support.rs` (`collect_signed_log_and_arctan_terms... | UNIVERSALIDAD (capacidad F): absorber arctan en el límite suma-de-logs → impropia racional con factor cuadrático irreducible (familia x⁴−1)
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17242,3 +17243,30 @@ Active entries: 429 (newest first)
   - siguiente peldaño: denominador con factor cuadrático IRREDUCIBLE sobre ℚ (`x⁴−1 → x²+1`) ⇒ la antiderivada mezcla
     arctan con logs; el límite-frontera `lim (C·arctan(x) + Σ cᵢ·ln(pᵢ)) @ +∞` necesita combinar el término arctan→π/2
     con la suma de logs. Ese es el siguiente sub-ciclo para cerrar `∫_a^∞ p/q` racional general convergente.
+
+## 2026-06-28 - UNIVERSALIDAD (capacidad F): absorber arctan en el límite suma-de-logs → impropia racional con factor cuadrático irreducible (familia x⁴−1)
+
+- area: `crates/cas_math/src/limits_support.rs` (`collect_signed_log_and_arctan_terms` extiende `collect_signed_log_terms`; `log_sum_limit_at_infinity` pliega términos arctan)
+- status: `retained` (commit 99e8f4064). Cierra la familia `∫_a^∞ 1/(x⁴−1)` (denom con factor cuadrático irreducible que da antiderivada logs+arctan). Continúa c4bb5bb6c.
+- capture:
+  - cell: la antiderivada de `1/(x⁴−1)` es `¼ln|x−1| − ½arctan(x) − ¼ln|x+1|`; con el arctan ENTRE los logs en el
+    árbol Add, `additive_limit_at_infinity` parte los logs por separado (cada `→+∞`) y se atasca en `+∞−∞`.
+    `log_sum_limit_at_infinity` declinaba al ver el arctan. AHORA `∫_2^∞ 1/(x⁴−1)=¼(ln3+2·arctan2)−¼π` (≈0.04283
+    numérico), `∫_3^∞ 1/(x⁴−1)`, etc. computan.
+  - fix: el colector recoge también hojas `arctan(Q)`/`atan(Q)` (Q polinomio deg≥1); cada una aporta
+    `sign(lead Q)·π/2`. El bloque log sigue decidiendo divergencia por `s=Σ cᵢ·deg pᵢ` (`s>0→+∞`, `s<0→−∞`: un bloque
+    arctan ACOTADO no compensa un log divergente); si `s=0`, resultado = `Σ cᵢ·ln(lead pᵢ) + (Σ dⱼ·sign(lead qⱼ))·π/2`.
+    Sigue exigiendo ≥2 términos log como núcleo ⇒ arctan solo o suma pura de arctan quedan en las reglas unaria/additive
+    (sin cambio); donde additive ya resolvía un orden log+arctan, ahora da el MISMO valor.
+  - validación: workspace failed:0; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; test de contrato nuevo + edge (arctan solo, soundness polo/divergente de la familia).
+- retained learning:
+  - un término ACOTADO con límite conocido (arctan→±π/2) se absorbe en un combinador de límites divergentes leyendo su
+    límite por separado y sumándolo SOLO cuando el bloque divergente converge (s=0); si el bloque diverge, domina y el
+    acotado es irrelevante. Patrón reutilizable para otros sumandos acotados (p.ej. exp(−x)→0) en límites @∞.
+  - la SENSIBILIDAD AL ORDEN del árbol Add es un modo de fallo real de los combinadores additive: agrupar la familia
+    entera (logs+arctan) en UN handler la elimina; partir hoja-a-hoja deja `+∞−∞` espurio según asociatividad.
+  - peldaño restante: `∫_a^∞ 1/((x−1)(x²+1))` (denom pre-factorizado, log de argumento CUADRÁTICO `ln(x²+1)`) aún
+    residualiza su valor IMPROPIO por una razón DISTINTA — el límite-frontera resuelve aislado (`→−¼π`) y la definida
+    FINITA computa, así que el bloqueo está en la ruta de reescritura impropia / forma de antiderivada, no en el límite.
+    Diagnóstico separado pendiente.
