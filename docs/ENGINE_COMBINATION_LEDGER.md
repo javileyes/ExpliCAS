@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 422 (newest first)
+Active entries: 423 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
 - 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (fold_rational_value + expr_has_va... | SOUNDNESS P0 (Grupo C1-3, audit #4): sumatorio con polo en el rango devuelve un número falso
 - 2026-06-28 | `retained` | `crates/cas_math/src/matrix.rs` (Matrix::norm) | SOUNDNESS P0 (Grupo C4, audit #4): norma de vector complejo eleva al cuadrado el componente, no la magnitud
+- 2026-06-28 | `retained` | `crates/cas_ast/src/domain.rs` (variante `Periodic{base,period}`), `crates/ca... | SOUNDNESS/L (Grupo B parcial, audit #4): variante `Periodic` del SolutionSet + emisión en ecuaciones trig bare
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17013,3 +17014,44 @@ Active entries: 422 (newest first)
     scoping workflow que produce sub-ciclos); (C5) diff fraction-fold (`diff((x/2+tan x)^3,x)` valor erróneo + 2 hangs
     `diff((x/2+tan x)^2,x)`/`diff((sin x+cos x)/(sin x-cos x),x)`; ruta frágil, riesgo medio). Recomendado: C5 antes que
     B (hard wrong-answer + hangs vs under-answer), o scope B si se prefiere el de mayor leverage.
+
+## 2026-06-28 - SOUNDNESS/L (Grupo B parcial, audit #4): variante `Periodic` del SolutionSet + emisión en ecuaciones trig bare
+
+- area: `crates/cas_ast/src/domain.rs` (variante `Periodic{base,period}`), `crates/cas_formatter/src/periodic.rs` (display/latex compartidos) + lib.rs, `crates/cas_solver/src/solve_backend_local.rs` (try_solve_periodic_trig_equation), arms en cas_solver_core/verification.rs + las 3 capas display/latex de cas_solver + las 2 de cas_didactic + el helper de repl_snapshots
+- status: `retained` (commit 187855f0b). Cuarto ciclo del plan audit #4; cierra 4/6 del Grupo B (bare sin/cos/tan); el hueco de MAYOR leverage documentado (no había representación de familia periódica).
+- capture:
+  - cell: ANTES `solve(sin(x)=0)`→`{0}`, `cos(x)=0`→`{π/2}`, `tan(x)=1`→`{π/4}`, `tan(x)=0`→`{0}` (solo la raíz
+    principal, suelta `+kπ`, presentado como completo). AHORA `{ k·pi : k ∈ ℤ }`, `{ 1/2·pi + k·pi : k ∈ ℤ }`,
+    `{ 1/4·pi + k·pi : k ∈ ℤ }`, `{ k·pi : k ∈ ℤ }`. Además `tan(x)=c` COMPLETO para todo c (incl. simbólico:
+    `tan(x)=2`→`{ arctan(2) + k·pi }`), y `sin/cos=±1` (período 2π). DECLINA (sin cambio) c de dos familias
+    (`sin(x)=1/2`→`{1/6·pi}`), no-bare (`sin(2x)=0`), `sin(x)^2=1`, `cos(2x)=1`, |c|>1.
+  - causa raíz: el enum `SolutionSet` no tenía variante para una familia infinita `base+k·período`; la ruta de
+    inversa unaria reescribe `sin(x)=c → x=arcsin(c)` y resuelve solo la raíz principal → `Discrete([principal])`.
+  - fix: (1) variante `Periodic{base,period}` + rendering compartido en cas_formatter (`{ base + k·período : k ∈ ℤ }`
+    / LaTeX `\left\{ … : k \in \mathbb{Z} \right\}`), con arm SOUND en cada match exhaustivo (verificación →
+    not-checkable). (2) guard `try_solve_periodic_trig_equation` ANTES de la inversa: `tan(x)=c`→{arctan(c)+kπ}
+    (período π, todo c); `sin/cos(x)=c` colapsan a UNA familia solo para c∈{0,±1} (período π si 0, 2π si ±1); otros c
+    son DOS familias → declina. Solo para ECUACIÓN (op=Eq); inecuaciones siguen residual. arcsin/arccos/arctan pliegan
+    al valor exacto vía simplificador.
+  - validación: workspace verde; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; test de contrato (10 asertos: las 4 audit + tan simbólico + ±1 + declives) + unit
+    test de rendering en cas_formatter.
+- retained learning:
+  - añadir una variante a `SolutionSet` fuerza ~12-15 matches EXHAUSTIVOS (display×5, latex, verification, snapshot
+    test) — el compilador los lista uno a uno (E0004), incl. targets de TEST que `cargo build` no compila pero
+    `clippy --all-targets` SÍ (repl_snapshots se cazó solo en all-targets). `flatten`/`simplify_cases` tienen catch-all
+    (pass-through, seguros). `union`/`intersect` usan tuple-match con catch-all → MAL-manejarían Periodic, pero la ruta
+    de ecuación produce Periodic DIRECTAMENTE (nunca vía álgebra de conjuntos) y toman `&Context` (no pueden construir
+    Residual), así que se dejan como están y se documenta la limitación.
+  - representación mínima correcta: las 6 familias del audit son de UNA sola familia, así que `Periodic{base,period}`
+    único basta; dos-familias (`sin=1/2`) necesitarían Union-de-Periodic (no construido) → declinan honestamente en vez
+    de mentir. "reducir a lo representable y declinar el resto" > "representar todo a medias".
+  - inyectar como GUARD de alto nivel (como los de abs/ln²) en vez de enhebrar el período por la pipeline genérica de
+    inversa (que pierde la info tras reescribir a `x=arcsin(c)`): localizado, sin tocar el camino genérico, fácil de
+    gatear (op=Eq + trig-bare-de-var).
+  - siguiente iteración recomendada: peldaños restantes del audit #4 — (B-resto) `cos(2x)=1`/`sin(x)^2=1` (necesitan
+    manejar el arg `k·x` → período/k, y la reducción `sin²=c`→`sin=±√c`; + two-family `sin/cos=c` general con
+    Union-de-Periodic); y (C5) diff fraction-fold (`(poly+tan)^n`: valor erróneo n=3 por un `cos` perdido en la
+    simplificación del cociente plegado + hangs n=2,4) — issue PROFUNDO del simplificador (no de la fórmula de diff,
+    que es correcta), alto riesgo de regresión, requiere esfuerzo dedicado con validación de huella extensa. NO meter
+    en un ciclo apresurado.
