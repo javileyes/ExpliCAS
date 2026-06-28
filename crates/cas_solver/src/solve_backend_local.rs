@@ -2582,6 +2582,367 @@ fn try_isolate_single_exponential_inequality(
     Some(set)
 }
 
+/// The argument `g` of a bare `abs(g)`, else `None`.
+fn match_abs_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1 && ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) {
+            return Some(args[0]);
+        }
+    }
+    None
+}
+
+/// A concrete set the abs reduction can intersect/union; a `Residual`/`Conditional`
+/// (e.g. a transcendental `g`) is not, so the guard declines on it.
+fn is_concrete_solution_set(set: &SolutionSet) -> bool {
+    matches!(
+        set,
+        SolutionSet::Continuous(_)
+            | SolutionSet::Union(_)
+            | SolutionSet::Empty
+            | SolutionSet::AllReals
+            | SolutionSet::Discrete(_)
+    )
+}
+
+/// Solve `g {op} bound` and return the set only if it is concrete (so the abs
+/// reduction never combines a residual).
+fn solve_concrete_side(
+    g: ExprId,
+    bound: ExprId,
+    op: cas_ast::RelOp,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Option<SolutionSet> {
+    let side = Equation {
+        lhs: g,
+        rhs: bound,
+        op,
+    };
+    let (set, _) = solve_local_core(&side, var, simplifier, opts, ctx).ok()?;
+    if is_concrete_solution_set(&set) {
+        Some(set)
+    } else {
+        None
+    }
+}
+
+/// `|g(x)| {op} c` with a CONSTANT `c` is reduced to the polynomial inequalities on
+/// the two sides of the abs, which the engine already solves correctly — the abs
+/// *split* otherwise drops the operator and returns the boundary equation
+/// (`|x^2-2x| < 1` -> "No solution"; `<=` -> the boundary points only). For `c > 0`:
+///   `|g| < c`  <=>  `g < c` AND `g > -c`      `|g| > c`  <=>  `g > c` OR `g < -c`
+/// and the `c <= 0` degenerate cases resolve by sign (`|g| >= 0` always). Declines
+/// (-> the existing abs/isolation paths) for a sum of abs, a non-constant RHS, a
+/// symbolic `c`, or a `g` whose polynomial-inequality solve is not concrete.
+fn try_solve_abs_threshold_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::{Signed, Zero};
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let (lhs, _) = simplifier.simplify(eq.lhs);
+    let (rhs, _) = simplifier.simplify(eq.rhs);
+
+    // Normalize to `abs(g) {op} c`, flipping the operator if the abs is on the right.
+    let (g, op) = if let Some(g) = match_abs_argument(&simplifier.context, lhs) {
+        if contains_var(&simplifier.context, rhs, var) {
+            return None;
+        }
+        (g, eq.op.clone())
+    } else if let Some(g) = match_abs_argument(&simplifier.context, rhs) {
+        if contains_var(&simplifier.context, lhs, var) {
+            return None;
+        }
+        (g, flip_inequality(eq.op.clone()))
+    } else {
+        return None;
+    };
+    if !contains_var(&simplifier.context, g, var) {
+        return None;
+    }
+    // `c` is whichever side is constant.
+    let c_expr = if match_abs_argument(&simplifier.context, lhs).is_some() {
+        rhs
+    } else {
+        lhs
+    };
+    let c_value = cas_math::numeric_eval::as_rational_const(&simplifier.context, c_expr)?;
+
+    // c <= 0: |g| >= 0, so the sign settles it with no boundary.
+    if c_value.is_negative() {
+        return Some(match op {
+            RelOp::Gt | RelOp::Geq => SolutionSet::AllReals,
+            _ => SolutionSet::Empty,
+        });
+    }
+    let zero = simplifier.context.num(0);
+    if c_value.is_zero() {
+        return Some(match op {
+            RelOp::Lt => SolutionSet::Empty,
+            RelOp::Geq => SolutionSet::AllReals,
+            // |g| <= 0  <=>  g = 0.
+            RelOp::Leq => solve_concrete_side(g, zero, RelOp::Eq, var, simplifier, opts, ctx)?,
+            // |g| > 0  <=>  g > 0 OR g < 0  (i.e. g != 0).
+            RelOp::Gt => {
+                let pos = solve_concrete_side(g, zero, RelOp::Gt, var, simplifier, opts, ctx)?;
+                let neg = solve_concrete_side(g, zero, RelOp::Lt, var, simplifier, opts, ctx)?;
+                cas_solver_core::solution_set::union_solution_sets(&simplifier.context, pos, neg)
+            }
+            _ => return None,
+        });
+    }
+
+    // c > 0: reduce to the two-sided inequality / the outside union.
+    let neg_c = simplifier.context.add(Expr::Number(-c_value));
+    let result = match op {
+        RelOp::Lt => {
+            let upper = solve_concrete_side(g, c_expr, RelOp::Lt, var, simplifier, opts, ctx)?;
+            let lower = solve_concrete_side(g, neg_c, RelOp::Gt, var, simplifier, opts, ctx)?;
+            cas_solver_core::solution_set::intersect_solution_sets(
+                &simplifier.context,
+                upper,
+                lower,
+            )
+        }
+        RelOp::Leq => {
+            let upper = solve_concrete_side(g, c_expr, RelOp::Leq, var, simplifier, opts, ctx)?;
+            let lower = solve_concrete_side(g, neg_c, RelOp::Geq, var, simplifier, opts, ctx)?;
+            cas_solver_core::solution_set::intersect_solution_sets(
+                &simplifier.context,
+                upper,
+                lower,
+            )
+        }
+        RelOp::Gt => {
+            let upper = solve_concrete_side(g, c_expr, RelOp::Gt, var, simplifier, opts, ctx)?;
+            let lower = solve_concrete_side(g, neg_c, RelOp::Lt, var, simplifier, opts, ctx)?;
+            cas_solver_core::solution_set::union_solution_sets(&simplifier.context, upper, lower)
+        }
+        RelOp::Geq => {
+            let upper = solve_concrete_side(g, c_expr, RelOp::Geq, var, simplifier, opts, ctx)?;
+            let lower = solve_concrete_side(g, neg_c, RelOp::Leq, var, simplifier, opts, ctx)?;
+            cas_solver_core::solution_set::union_solution_sets(&simplifier.context, upper, lower)
+        }
+        _ => return None,
+    };
+    Some(result)
+}
+
+/// `expr == ln(var)` (natural log of the bare solve variable)?
+fn is_ln_of_var(ctx: &Context, expr: ExprId, var_id: ExprId) -> bool {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        return args.len() == 1
+            && ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Ln)
+            && args[0] == var_id;
+    }
+    false
+}
+
+/// `expr == ln(var)^2` -> the `ln(var)` node, else `None`.
+fn as_ln_var_squared(ctx: &Context, expr: ExprId, var_id: ExprId) -> Option<ExprId> {
+    use num_rational::BigRational;
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        let (base, exp) = (*base, *exp);
+        let two = BigRational::from_integer(2.into());
+        if cas_math::numeric_eval::as_rational_const(ctx, exp) == Some(two)
+            && is_ln_of_var(ctx, base, var_id)
+        {
+            return Some(base);
+        }
+    }
+    None
+}
+
+/// `expr == coeff · ln(var)^2` -> `(coeff, ln(var))`, else `None`.
+fn match_ln_var_squared_with_coeff(
+    ctx: &Context,
+    expr: ExprId,
+    var_id: ExprId,
+) -> Option<(num_rational::BigRational, ExprId)> {
+    use num_traits::One;
+    if let Some(ln_expr) = as_ln_var_squared(ctx, expr, var_id) {
+        return Some((num_rational::BigRational::one(), ln_expr));
+    }
+    if let Expr::Mul(a, b) = ctx.get(expr) {
+        let (a, b) = (*a, *b);
+        if let Some(ln_expr) = as_ln_var_squared(ctx, b, var_id) {
+            if let Some(r) = cas_math::numeric_eval::as_rational_const(ctx, a) {
+                return Some((r, ln_expr));
+            }
+        }
+        if let Some(ln_expr) = as_ln_var_squared(ctx, a, var_id) {
+            if let Some(r) = cas_math::numeric_eval::as_rational_const(ctx, b) {
+                return Some((r, ln_expr));
+            }
+        }
+    }
+    None
+}
+
+/// `coeff · ln(x)^2 {op} c` (constant `c`) is non-monotonic in `x`, so the log-isolation
+/// path collapses it to the boundary equation and reports "All real numbers if x > 0"
+/// (`ln(x)^2 > 1` -> wrong; truth `(0, 1/e) U (e, ∞)`). Reduce to the two SINGLE-`ln`
+/// inequalities, which the engine solves exactly: with `u = ln(x)`,
+///   `u^2 > t` (t>0) <=> `u > √t` OR `u < -√t`      `u^2 < t` <=> `-√t < u < √t`,
+/// and the single-`ln` solver carries the `x > 0` domain through `x = e^u`. `t <= 0`
+/// resolves by sign on the domain `(0, ∞)`. Only fires for a bare `ln(x)` (natural log
+/// of the solve variable); `log_b(x)^2` already routes correctly or honestly residuals.
+fn try_solve_ln_square_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let (lhs, _) = simplifier.simplify(eq.lhs);
+    let (rhs, _) = simplifier.simplify(eq.rhs);
+    let var_id = simplifier.context.var(var);
+
+    // `coeff · ln(var)^2 {op} c`, flipping the operator if the square is on the right.
+    let (coeff, ln_expr, op, c_value) = if let Some((coeff, ln_expr)) =
+        match_ln_var_squared_with_coeff(&simplifier.context, lhs, var_id)
+    {
+        let c = cas_math::numeric_eval::as_rational_const(&simplifier.context, rhs)?;
+        (coeff, ln_expr, eq.op.clone(), c)
+    } else if let Some((coeff, ln_expr)) =
+        match_ln_var_squared_with_coeff(&simplifier.context, rhs, var_id)
+    {
+        let c = cas_math::numeric_eval::as_rational_const(&simplifier.context, lhs)?;
+        (coeff, ln_expr, flip_inequality(eq.op.clone()), c)
+    } else {
+        return None;
+    };
+    if coeff.is_zero() {
+        return None;
+    }
+    // `ln^2 {op'} t`, `t = c / coeff` (flip the operator when `coeff < 0`).
+    let t = c_value / &coeff;
+    let op = if coeff.is_negative() {
+        flip_inequality(op)
+    } else {
+        op
+    };
+
+    // `ln(x)^2 >= 0`, so a non-positive `t` settles by sign on the domain `(0, ∞)`.
+    if t.is_negative() {
+        return Some(match op {
+            RelOp::Gt | RelOp::Geq => {
+                cas_solver_core::solution_set::open_positive_domain(&mut simplifier.context)
+            }
+            _ => SolutionSet::Empty,
+        });
+    }
+    if t.is_zero() {
+        let zero = simplifier.context.num(0);
+        return Some(match op {
+            RelOp::Lt => SolutionSet::Empty,
+            RelOp::Geq => {
+                cas_solver_core::solution_set::open_positive_domain(&mut simplifier.context)
+            }
+            // ln(x)^2 <= 0  <=>  ln(x) = 0.
+            RelOp::Leq => solve_concrete_side(ln_expr, zero, RelOp::Eq, var, simplifier, opts, ctx)
+                .unwrap_or_else(|| {
+                    cas_solver_core::solve_outcome::residual_solution_set(
+                        &mut simplifier.context,
+                        eq.lhs,
+                        eq.rhs,
+                        var,
+                    )
+                }),
+            // ln(x)^2 > 0  <=>  ln(x) != 0.
+            RelOp::Gt => {
+                match (
+                    solve_concrete_side(ln_expr, zero, RelOp::Gt, var, simplifier, opts, ctx),
+                    solve_concrete_side(ln_expr, zero, RelOp::Lt, var, simplifier, opts, ctx),
+                ) {
+                    (Some(p), Some(n)) => cas_solver_core::solution_set::union_solution_sets(
+                        &simplifier.context,
+                        p,
+                        n,
+                    ),
+                    _ => cas_solver_core::solve_outcome::residual_solution_set(
+                        &mut simplifier.context,
+                        eq.lhs,
+                        eq.rhs,
+                        var,
+                    ),
+                }
+            }
+            _ => return None,
+        });
+    }
+
+    // t > 0: r = √t; reduce to the two single-`ln` inequalities around ±r.
+    let t_expr = simplifier.context.add(Expr::Number(t));
+    let half = simplifier
+        .context
+        .add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let sqrt_t = simplifier.context.add(Expr::Pow(t_expr, half));
+    let neg_one = simplifier.context.add(Expr::Number(-BigRational::one()));
+    let neg_sqrt_t = simplifier.context.add(Expr::Mul(neg_one, sqrt_t));
+
+    let (upper_op, lower_op, combine_union) = match op {
+        RelOp::Gt => (RelOp::Gt, RelOp::Lt, true),
+        RelOp::Geq => (RelOp::Geq, RelOp::Leq, true),
+        RelOp::Lt => (RelOp::Lt, RelOp::Gt, false),
+        RelOp::Leq => (RelOp::Leq, RelOp::Geq, false),
+        _ => return None,
+    };
+    // `upper` is the `ln(x) {>,<} √t` half (the larger-`x` ray `(e^√t, ∞)` for `>`, the
+    // `(0, e^√t)` cap for `<`); `lower` is the `ln(x) {<,>} -√t` half. Both are single
+    // `(…)` intervals whose ENDS are `e^{±√t}` — bounds containing the constant `E`,
+    // which `union_solution_sets`/`intersect_solution_sets` cannot order (they fold via
+    // the rational-only `as_rational_const`, so they would mis-merge `(0,1/e) ∪ (e,∞)`
+    // into `(0,∞)`). Combine them DIRECTLY: for `>`/`≥` the two halves are disjoint and
+    // already ordered (`e^{-√t} < e^{√t}`); for `<`/`≤` the result is the single band
+    // `(e^{-√t}, e^{√t})`.
+    let upper = solve_concrete_side(ln_expr, sqrt_t, upper_op, var, simplifier, opts, ctx);
+    let lower = solve_concrete_side(ln_expr, neg_sqrt_t, lower_op, var, simplifier, opts, ctx);
+    let residual = |simplifier: &mut Simplifier| {
+        cas_solver_core::solve_outcome::residual_solution_set(
+            &mut simplifier.context,
+            eq.lhs,
+            eq.rhs,
+            var,
+        )
+    };
+    let (Some(SolutionSet::Continuous(iv_upper)), Some(SolutionSet::Continuous(iv_lower))) =
+        (upper, lower)
+    else {
+        return Some(residual(simplifier));
+    };
+    Some(if combine_union {
+        // `ln(x) < -√t` -> `(0, e^{-√t})` (small x), then `ln(x) > √t` -> `(e^{√t}, ∞)`.
+        SolutionSet::Union(vec![iv_lower, iv_upper])
+    } else {
+        // `(e^{-√t}, e^{√t})`: low end from the `ln(x) > -√t` half, high end from `< √t`.
+        SolutionSet::Continuous(cas_ast::Interval {
+            min: iv_lower.min,
+            min_type: iv_lower.min_type,
+            max: iv_upper.max,
+            max_type: iv_upper.max_type,
+        })
+    })
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -2614,6 +2975,18 @@ fn solve_local_core(
         Expr::Constant(Constant::Undefined)
     ) {
         return Ok((SolutionSet::Empty, Vec::new()));
+    }
+    // `|g(x)| {op} c` (constant `c`) reduces to the polynomial inequalities on the
+    // two sides of the abs; the isolation/split path below drops the operator and
+    // returns the boundary equation (`|x^2-2x| < 1` -> "No solution"). Handle it
+    // before the sum-of-abs and isolation routing.
+    if let Some(set) = try_solve_abs_threshold_inequality(eq, var, simplifier, opts, ctx) {
+        return Ok((set, Vec::new()));
+    }
+    // `ln(x)^2 {op} c` is non-monotonic; the log-isolation path reports "All reals if
+    // x>0". Reduce to the two single-`ln` inequalities before that path runs.
+    if let Some(set) = try_solve_ln_square_inequality(eq, var, simplifier, opts, ctx) {
+        return Ok((set, Vec::new()));
     }
     if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_relation(
         &mut simplifier.context,
@@ -3569,8 +3942,40 @@ fn union_non_strict_inequality_roots(
     if !matches!(roots, SolutionSet::Discrete(_)) {
         return set;
     }
-    let roots_intervals = discrete_to_intervals(roots);
+    // A root that is ALREADY a closed endpoint of `set` is provably in the solution (e.g. the
+    // boundaries `1/e`, `e` of `ln(x)^2 ≤ 1` -> `[1/e, e]`), so unioning it is a mathematical
+    // no-op. Skip those by EXACT endpoint identity — `union_solution_sets`/`merge_intervals`
+    // order endpoints through the rational-only `compare_values`, which cannot order bounds
+    // containing `E` (`e^√t`) and would otherwise CORRUPT the band into its two endpoints. The
+    // genuinely-dropped roots this function exists for are isolated INTERIOR points (not
+    // endpoints), so they survive the filter and are still unioned in.
+    let SolutionSet::Discrete(points) = roots else {
+        return set;
+    };
+    let missing: Vec<ExprId> = points
+        .into_iter()
+        .filter(|&p| !point_is_closed_endpoint(&set, p))
+        .collect();
+    if missing.is_empty() {
+        return set;
+    }
+    let roots_intervals = discrete_to_intervals(SolutionSet::Discrete(missing));
     union_solution_sets(&simplifier.context, set, roots_intervals)
+}
+
+/// True when `p` is a CLOSED endpoint of `set` (so `p ∈ set` by exact endpoint identity, with no
+/// value comparison). Used to drop roots already present from the non-strict root re-union.
+fn point_is_closed_endpoint(set: &SolutionSet, p: ExprId) -> bool {
+    use cas_ast::BoundType;
+    let on_interval = |iv: &cas_ast::Interval| {
+        (iv.min == p && iv.min_type == BoundType::Closed)
+            || (iv.max == p && iv.max_type == BoundType::Closed)
+    };
+    match set {
+        SolutionSet::Continuous(iv) => on_interval(iv),
+        SolutionSet::Union(ivs) => ivs.iter().any(on_interval),
+        _ => false,
+    }
 }
 
 #[cfg(test)]

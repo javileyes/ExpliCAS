@@ -1131,6 +1131,51 @@ fn test_eval_sqrt_of_perfect_square_inequality_is_abs() {
 }
 
 #[test]
+fn test_eval_abs_threshold_and_ln_square_inequalities() {
+    // `|g(x)| {op} c` (constant `c`) and `ln(x)^2 {op} c` are NON-MONOTONIC: the isolation/
+    // split path dropped the operator and returned the boundary equation (`|x^2-2x| < 1` ->
+    // "No solution"; `ln(x)^2 > 1` -> "All real numbers if x>0"). Both now reduce to the
+    // two sub-inequalities the engine already solves exactly, intersected (`<`) or unioned
+    // (`>`). The non-strict cases additionally exercise the closed-endpoint root filter, which
+    // keeps the `e^{±√t}` band intact (`compare_values` cannot order `E`-bearing bounds).
+    for (input, expected) in [
+        // abs of a quadratic WITH a linear term (the symmetric `|x^2-k|` already worked).
+        ("abs(x^2-2x) < 1", "(1 - sqrt(2), 1) U (1, sqrt(2) + 1)"),
+        (
+            "abs(x^2-2x) > 1",
+            "(-infinity, 1 - sqrt(2)) U (sqrt(2) + 1, infinity)",
+        ),
+        ("abs(x^2-2x) <= 1", "[1 - sqrt(2), sqrt(2) + 1]"),
+        ("abs(x^2-5x+6) < 2", "(1, 4)"),
+        ("abs(x^2-5x+6) <= 2", "[1, 4]"),
+        // c <= 0 edges.
+        ("abs(x^2-2x) > 0", "(-infinity, 0) U (0, 2) U (2, infinity)"),
+        // ln(x)^2 {op} c: strict and non-strict, integer and surd thresholds.
+        ("ln(x)^2 > 1", "(0, 1 / e) U (e, infinity)"),
+        ("ln(x)^2 < 1", "(1 / e, e)"),
+        ("ln(x)^2 >= 1", "(0, 1 / e] U [e, infinity)"),
+        ("ln(x)^2 <= 1", "[1 / e, e]"),
+        ("ln(x)^2 <= 4", "[1 / e^2, e^2]"),
+        ("ln(x)^2 < 4", "(1 / e^2, e^2)"),
+        // ln(x)^2 c-edge cases: domain-aware, never a fabricated "All reals".
+        ("ln(x)^2 > 0", "(0, 1) U (1, infinity)"),
+        ("ln(x)^2 <= 0", "[1, 1]"),
+        ("ln(x)^2 < -1", "No solution"),
+        // Regression: genuinely-dropped isolated roots of non-strict inequalities survive.
+        ("(x-2)^2*(x+1) <= 0", "(-infinity, -1] U [2, 2]"),
+        ("x+1/x <= 2", "(-infinity, 0) U [1, 1]"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_single_abs_inequality_uses_segment_method() {
     // A SINGLE `|f| {op} g` with an affine (non-constant) RHS used to fall to the
     // isolate-one-abs path, which solves the boundary EQUATION and returns the root
