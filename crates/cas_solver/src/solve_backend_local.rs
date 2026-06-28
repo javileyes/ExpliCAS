@@ -3103,8 +3103,27 @@ fn try_solve_periodic_trig_equation(
     // Reduce a squared bare trig to the double-angle cosine equation and recurse: the cos branch's
     // c ∈ {0, ±1} gate then maps EXACTLY the single-family cases (`sin(x)^2=1 → cos(2x)=-1 →
     // {π/2 + kπ}`) and declines the two-family ones (`sin(x)^2=1/4 → cos(2x)=1/2`, not in {0,±1}).
-    let squared = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, ExprId)> {
-        if let Expr::Pow(base, exp) = ctx.get(e) {
+    // Peels an optional leading rational coefficient `A` so `A·trig(arg)^2` is recognised (not just a
+    // bare `trig(arg)^2`); the coefficient is folded into the constant side as `c/A` below. Without it
+    // `4·cos(x)^2 = 1` skipped the reduction and emitted only the two base roots — no `+kπ` family.
+    let squared = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, ExprId, BigRational)> {
+        let (coeff, core) = match ctx.get(e) {
+            Expr::Mul(l, r) => {
+                let (l, r) = (*l, *r);
+                if let Some(a) = cas_math::numeric_eval::as_rational_const(ctx, l) {
+                    (a, r)
+                } else if let Some(a) = cas_math::numeric_eval::as_rational_const(ctx, r) {
+                    (a, l)
+                } else {
+                    (BigRational::one(), e)
+                }
+            }
+            _ => (BigRational::one(), e),
+        };
+        if coeff.is_zero() {
+            return None;
+        }
+        if let Expr::Pow(base, exp) = ctx.get(core) {
             let (base, exp) = (*base, *exp);
             let two = BigRational::from_integer(2.into());
             if cas_math::numeric_eval::as_rational_const(ctx, exp) == Some(two) {
@@ -3112,7 +3131,7 @@ fn try_solve_periodic_trig_equation(
                     if args.len() == 1 && contains_var(ctx, args[0], var) {
                         if let Some(b) = ctx.builtin_of(*fn_id) {
                             if matches!(b, BuiltinFn::Sin | BuiltinFn::Cos) {
-                                return Some((b, args[0]));
+                                return Some((b, args[0], coeff));
                             }
                         }
                     }
@@ -3121,15 +3140,15 @@ fn try_solve_periodic_trig_equation(
         }
         None
     };
-    let squared_hit = if let Some((f, arg)) = squared(&simplifier.context, lhs) {
-        (!contains_var(&simplifier.context, rhs, var)).then_some((f, arg, rhs))
-    } else if let Some((f, arg)) = squared(&simplifier.context, rhs) {
-        (!contains_var(&simplifier.context, lhs, var)).then_some((f, arg, lhs))
+    let squared_hit = if let Some((f, arg, a)) = squared(&simplifier.context, lhs) {
+        (!contains_var(&simplifier.context, rhs, var)).then_some((f, arg, rhs, a))
+    } else if let Some((f, arg, a)) = squared(&simplifier.context, rhs) {
+        (!contains_var(&simplifier.context, lhs, var)).then_some((f, arg, lhs, a))
     } else {
         None
     };
-    if let Some((sq_func, arg, c)) = squared_hit {
-        let cv = cas_math::numeric_eval::as_rational_const(&simplifier.context, c)?;
+    if let Some((sq_func, arg, c, a_coeff)) = squared_hit {
+        let cv = cas_math::numeric_eval::as_rational_const(&simplifier.context, c)? / a_coeff;
         let two_c = &cv + &cv;
         let target = if matches!(sq_func, BuiltinFn::Sin) {
             BigRational::one() - two_c

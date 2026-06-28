@@ -2382,6 +2382,19 @@ fn test_eval_periodic_trig_equation_with_outside_coefficient_emits_full_family()
     // SOUNDNESS edges: out-of-range stays empty; c=±1 single family.
     assert_eq!(r("solve(2*sin(x)=3, x)"), "No solution");
     assert_eq!(r("solve(2*sin(x)=2, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
+    // SQUARED trig with an outside coefficient: `A·trig(arg)^2=c` folds to `trig(arg)^2=c/A` so the
+    // double-angle reduction runs (previously `4·cos²x=1` dropped the `+kπ` and returned `{π/3, 2π/3}`).
+    assert_eq!(
+        r("solve(4*cos(x)^2=1, x)"),
+        "{ 1/3·pi + k·pi, 2/3·pi + k·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(4*sin(x)^2=1, x)"),
+        "{ 1/6·pi + k·pi, 5/6·pi + k·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(2*cos(x)^2=1, x)"), "{ 1/4·pi + k·1/2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(3*sin(x)^2=3, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }"); // sin²=1 single family
+    assert_eq!(r("solve(4*cos(x)^2=5, x)"), "No solution"); // cos²=5/4 > 1
 }
 
 #[test]
