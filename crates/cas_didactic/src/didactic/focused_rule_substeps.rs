@@ -11655,8 +11655,9 @@ fn generate_symbolic_differentiation_substeps(ctx: &Context, step: &Step) -> Vec
         return Vec::new();
     };
 
-    let mut substeps = vec![SubStep::new(
+    let mut substeps = vec![SubStep::keyed(
         rule_title,
+        vec![],
         display_expr(ctx, target),
         display_expr(ctx, after),
     )
@@ -11675,8 +11676,9 @@ fn generate_symbolic_differentiation_substeps(ctx: &Context, step: &Step) -> Vec
             {
                 let inner_derivative = simplify_expr_in_context(&mut scratch, inner_derivative);
                 substeps.push(
-                    SubStep::new(
+                    SubStep::keyed(
                         inner_rule_title,
+                        vec![],
                         display_expr(ctx, inner_target),
                         display_expr(&scratch, inner_derivative),
                     )
@@ -12004,27 +12006,27 @@ fn differentiation_rule_title(
     var_name: &str,
 ) -> Option<&'static str> {
     match ctx.get(target) {
-        Expr::Add(_, _) | Expr::Sub(_, _) => Some("Usar linealidad de la derivada"),
+        Expr::Add(_, _) | Expr::Sub(_, _) => Some("derivative.linearity"),
         Expr::Neg(inner) if contains_named_var(ctx, *inner, var_name) => {
-            Some("Usar linealidad de la derivada")
+            Some("derivative.linearity")
         }
         Expr::Mul(_, _)
             if differentiation_constant_multiple_inner(ctx, target, var_name).is_some() =>
         {
-            Some("Usar factor constante de la derivada")
+            Some("derivative.constant_multiple")
         }
-        Expr::Mul(_, _) => Some("Usar regla del producto"),
-        Expr::Div(_, _) => Some("Usar regla del cociente"),
+        Expr::Mul(_, _) => Some("derivative.product_rule"),
+        Expr::Div(_, _) => Some("derivative.quotient_rule"),
         Expr::Pow(base, exponent) => {
             let base_depends = contains_named_var(ctx, *base, var_name);
             let exponent_depends = contains_named_var(ctx, *exponent, var_name);
             match (base_depends, exponent_depends) {
-                (true, true) => Some("Usar derivación logarítmica"),
+                (true, true) => Some("derivative.use_logarithmic_diff"),
                 (true, false) if !is_named_var(ctx, *base, var_name) => {
-                    Some("Usar regla de la potencia con cadena")
+                    Some("derivative.power_rule_with_chain")
                 }
-                (true, false) => Some("Usar regla de la potencia"),
-                (false, true) => Some("Usar regla exponencial"),
+                (true, false) => Some("derivative.power_rule"),
+                (false, true) => Some("derivative.exponential_rule"),
                 _ => None,
             }
         }
@@ -12032,23 +12034,23 @@ fn differentiation_rule_title(
             if args.len() == 1 && contains_named_var(ctx, args[0], var_name) =>
         {
             match ctx.builtin_of(*fn_id)? {
-                BuiltinFn::Sin => Some("Usar regla de sin(u)"),
-                BuiltinFn::Cos => Some("Usar regla de cos(u)"),
-                BuiltinFn::Tan => Some("Usar regla de tan(u)"),
-                BuiltinFn::Ln => Some("Usar regla de ln(u)"),
-                BuiltinFn::Exp => Some("Usar regla de exp(u)"),
-                BuiltinFn::Sqrt => Some("Usar regla de sqrt(u)"),
-                BuiltinFn::Arctan | BuiltinFn::Atan => Some("Usar regla de arctan(u)"),
-                BuiltinFn::Arcsin | BuiltinFn::Asin => Some("Usar regla de arcsin(u)"),
-                BuiltinFn::Arccos | BuiltinFn::Acos => Some("Usar regla de arccos(u)"),
-                BuiltinFn::Sec => Some("Usar regla de sec(u)"),
-                BuiltinFn::Csc => Some("Usar regla de csc(u)"),
-                BuiltinFn::Cot => Some("Usar regla de cot(u)"),
-                BuiltinFn::Sinh => Some("Usar regla de sinh(u)"),
-                BuiltinFn::Cosh => Some("Usar regla de cosh(u)"),
-                BuiltinFn::Tanh => Some("Usar regla de tanh(u)"),
-                BuiltinFn::Sign => Some("Usar derivada de sign(u) fuera de u = 0"),
-                _ => Some("Usar regla de la cadena"),
+                BuiltinFn::Sin => Some("derivative.rule_sin_u"),
+                BuiltinFn::Cos => Some("derivative.rule_cos_u"),
+                BuiltinFn::Tan => Some("derivative.rule_tan_u"),
+                BuiltinFn::Ln => Some("derivative.rule_ln_u"),
+                BuiltinFn::Exp => Some("derivative.rule_exp_u"),
+                BuiltinFn::Sqrt => Some("derivative.rule_sqrt_u"),
+                BuiltinFn::Arctan | BuiltinFn::Atan => Some("derivative.rule_arctan_u"),
+                BuiltinFn::Arcsin | BuiltinFn::Asin => Some("derivative.rule_arcsin_u"),
+                BuiltinFn::Arccos | BuiltinFn::Acos => Some("derivative.rule_arccos_u"),
+                BuiltinFn::Sec => Some("derivative.rule_sec_u"),
+                BuiltinFn::Csc => Some("derivative.rule_csc_u"),
+                BuiltinFn::Cot => Some("derivative.rule_cot_u"),
+                BuiltinFn::Sinh => Some("derivative.rule_sinh_u"),
+                BuiltinFn::Cosh => Some("derivative.rule_cosh_u"),
+                BuiltinFn::Tanh => Some("derivative.rule_tanh_u"),
+                BuiltinFn::Sign => Some("derivative.rule_sign_u_away_from_zero"),
+                _ => Some("derivative.chain_rule"),
             }
         }
         _ => None,
@@ -12174,12 +12176,12 @@ fn differentiation_component_derivative_substeps(
 
     let components: Vec<(&'static str, ExprId)> = match ctx.get(target) {
         Expr::Mul(left, right) => vec![
-            ("Derivar el primer factor", *left),
-            ("Derivar el segundo factor", *right),
+            ("derivative.differentiate_first_factor", *left),
+            ("derivative.differentiate_second_factor", *right),
         ],
         Expr::Div(numerator, denominator) => vec![
-            ("Derivar el numerador", *numerator),
-            ("Derivar el denominador", *denominator),
+            ("derivative.differentiate_numerator", *numerator),
+            ("derivative.differentiate_denominator", *denominator),
         ],
         _ => return Vec::new(),
     };
@@ -12210,8 +12212,9 @@ fn differentiation_component_derivative_substep(
     )?;
     let derivative = simplify_expr_in_context(&mut scratch, derivative);
     Some(
-        SubStep::new(
+        SubStep::keyed(
             title,
+            vec![],
             display_expr(ctx, component),
             display_expr(&scratch, derivative),
         )
