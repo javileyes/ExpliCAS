@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 425 (newest first)
+Active entries: 426 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -123,6 +123,7 @@ Active entries: 425 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_ast/src/domain.rs` (variante `Periodic{base,period}`), `crates/ca... | SOUNDNESS/L (Grupo B parcial, audit #4): variante `Periodic` del SolutionSet + emisión en ecuaciones trig bare
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (positive_linear_coeff_of_var ... | SOUNDNESS/L (Grupo B cont., audit #4): Periodic para ecuación trig con argumento ESCALADO trig(a·x)=c
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (reducción squared-trig en try... | SOUNDNESS/L (Grupo B COMPLETO, audit #4): ecuación trig al cuadrado vía reducción de ángulo doble
+- 2026-06-28 | `retained` | `crates/cas_ast/src/domain.rs` (Periodic{bases:Vec,period}), `crates/cas_solv... | SOUNDNESS (audit #5): emitir AMBAS familias para ecuaciones trig de dos familias
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17111,3 +17112,32 @@ Active entries: 425 (newest first)
     resultado (ruta fold-add frágil, riesgo de regresión ALTO sobre el simplificador compartido). Verificador
     adversarial: plan inicial unsound. Requiere ciclo DEDICADO con root-cause confirmado + validación de huella
     extensa; NO apresurar. Es el siguiente peldaño.
+
+## 2026-06-28 - SOUNDNESS (audit #5): emitir AMBAS familias para ecuaciones trig de dos familias
+
+- area: `crates/cas_ast/src/domain.rs` (Periodic{bases:Vec,period}), `crates/cas_solver/src/solve_backend_local.rs` (try_solve_periodic_trig_equation), `crates/cas_formatter/src/periodic.rs` (render multi-base) + arms en cas_solver/cas_didactic/repl_snapshots
+- status: `retained` (commit 9221d5ee5). Cierra el ÚNICO hallazgo real de la auditoría de soundness #5.
+- capture:
+  - cell: ANTES `solve(sin(x)=1/2)`→`{π/6}` (suelta la 2ª raíz `5π/6` Y la periodicidad — under-answer presentado como
+    completo). AHORA `{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }`. Igual `cos(x)=1/2`→`{π/3,5π/3}`, `sin(x)=-1/2`,
+    `cos(x)=-1/2`, `sin(2x)=1/2`, `sin(x)=1/3` (simbólico), y `sin(x)^2=1/4`→`{π/6+kπ,5π/6+kπ}` GRATIS (vía cos(2x)=1/2).
+    Una sola familia (c∈{0,±1}, tan, squared/scaled) IDÉNTICO; |c|>1 → "No solution".
+  - causa raíz: `sin/cos=c` con 0<|c|<1 tiene DOS familias en [0,2π); el `Periodic{base,period}` de base única no podía
+    representarlas → caían a la raíz principal.
+  - fix: generalizar a `Periodic{bases:Vec<ExprId>, period}` (período compartido sobre 1+ raíces); emitir ambas raíces
+    (sin: arcsin(c), π-arcsin(c); cos: arccos(c), 2π-arccos(c)), divididas por a y período 2π/a. Render compartido une
+    las familias con coma.
+  - validación: workspace verde; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass; huella
+    GUARD/PRESS IDÉNTICA; 4 asertos de contrato actualizados al conjunto completo + 5 nuevos de dos familias.
+- retained learning:
+  - AUDITORÍA #5 (ultracode, 16 frentes, 32 agentes): 14 candidatos, 11 "confirmados" por los agentes pero al
+    re-verificar A MANO **6 eran FALSOS POSITIVOS** — el hunter Y el verificador adversarial cometieron el MISMO error de
+    convención: (a) `log(a,b)`=log_a(b) aquí (`log(8,2)=1/3`), así que `diff(log(x,2),x)`=`-ln2/(x·ln²x)` ES correcto
+    (derivada de log_x(2)); (b) `nan` no es literal, es un SÍMBOLO libre, así que `nan/nan→1`, `nan*0→0` son `x/x`, `x·0`
+    normales (el `undefined` real SÍ propaga). LECCIÓN: incluso la verificación adversarial puede compartir un
+    malentendido de convención del engine — el operador DEBE re-verificar a mano los P0 antes de actuar (cazó 6/6 falsos).
+  - el único hallazgo real era el under-answer trig de dos familias (ya documentado como límite del Grupo B) → cerrado
+    aquí. **Frente de soundness ahora limpio salvo C5** (hang conocido, diferido). Generalizar `base`→`Vec<bases>` fue el
+    paso natural y de huella nula para no-trig (Periodic no se produce en otro sitio).
+  - siguiente: el frente trig EQUATIONS queda completo. Soundness real-domain: sin wrong-answers conocidos; resta C5
+    (no-terminación honesta, no wrong-answer). Para "universalidad" se puede retomar la cola de capacidad (gatekeepers).
