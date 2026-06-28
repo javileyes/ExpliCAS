@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 431 (newest first)
+Active entries: 432 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -129,6 +129,7 @@ Active entries: 431 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_math/src/limits_support.rs` (`log_sum_limit_at_infinity` + `colle... | UNIVERSALIDAD (capacidad F): límite de suma de N logaritmos en +∞ → valor convergente de impropia racional grado-n
 - 2026-06-28 | `retained` | `crates/cas_math/src/limits_support.rs` (`collect_signed_log_and_arctan_terms... | UNIVERSALIDAD (capacidad F): absorber arctan en el límite suma-de-logs → impropia racional con factor cuadrático irreducible (familia x⁴−1)
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 wrong-answer): trig periódica con coeficiente/offset externo devolvía conjunto incompleto
+- 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 wrong-answer): trig CUADRADA con coeficiente externo devolvía conjunto incompleto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17299,3 +17300,24 @@ Active entries: 431 (newest first)
     cuelga. [[c5-diff-fold-rootcause]] (ciclos de reescritura).
   - siguiente (hermano P0): trig CUADRADA con coeficiente externo (`solve(4*cos(x)^2=1,x)`→`{π/3,2/3π}` sin kπ) — el
     cierre `squared` solo casa `Pow(trig,2)` desnudo, no `Mul(4,Pow)`; mismo archivo, cierre vecino.
+
+## 2026-06-28 - SOUNDNESS (P0 wrong-answer): trig CUADRADA con coeficiente externo devolvía conjunto incompleto
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation`, cierre `squared`)
+- status: `retained` (commit pendiente-de-hash). Hermano del a70bd8429; cierra la clase entera de coeficiente externo en trig periódica.
+- capture:
+  - cell: `solve(4*cos(x)^2=1,x)` → `{ π/3, 2π/3 }` (sin `+kπ`) en vez de `{ π/3+kπ, 2π/3+kπ }`. Control
+    `solve(cos(x)^2=1/4,x)` SÍ da la familia. Otro conjunto INCOMPLETO presentado como completo.
+  - causa raíz: el cierre `squared` solo casaba `Pow(trig,2)` DESNUDO; `4*cos(x)^2`=`Mul(4,Pow)` → `squared`→None →
+    se salta la reducción doble-ángulo (`cos²→cos(2x)`) → cae a la ruta que emite solo las 2 raíces base sin periodicidad.
+  - fix: pelar un coeficiente racional líder `A` en `squared` y plegarlo en el lado constante como `c/A`, así
+    `A·trig(arg)²=c` se reduce EXACTO como `trig(arg)²=c/A` y corre la reducción doble-ángulo existente.
+  - validación: workspace failed:0; clippy --workspace --all-targets; engine-fast/scorecard/pressure pass; huella
+    GUARD/PRESS IDÉNTICA; test de contrato extendido (coef en cos²/sin², una familia, fuera de rango).
+- retained learning:
+  - mismo patrón que el hermano lineal (a70bd8429): un detector de FORMA DESNUDA (`Pow(trig,2)`) no ve el envoltorio
+    `Mul(const,·)`; pelar el coeficiente y plegarlo en la constante reusa la reducción sin tocarla. [[soundness-gates-must-be-exact]].
+  - los dos fixes juntos (lineal + cuadrado) cierran la clase de coeficiente-externo en ecuaciones trig periódicas que
+    el workflow de scouting (universality-frontier-scout) destapó y verificó adversarialmente (2 P0 de 6 wrong-answers).
+  - siguiente del scouting (capacidad, hilo cálido): el `__hold` interno no recursivamente pelado bloquea
+    `∫_a^∞ 1/((x-1)(x²+1))` (el límite-frontera resuelve aislado) — rank 3 del informe.
