@@ -2021,6 +2021,30 @@ fn test_eval_convergent_p_series_even_zeta() {
 }
 
 #[test]
+fn test_eval_chain_substitution_rational_scale() {
+    // The transcendental chain-substitution gate accepts `F(g)` when `d/dx F(g) == k·integrand` for a
+    // NONZERO RATIONAL `k` (was limited to `k = ±1`), returning `F(g)/k`. So `∫ x·e^(x²)` no longer
+    // residualizes: `d/dx e^(x²) = 2x·e^(x²)`, scale ½. The answer stays soundness-gated by exact
+    // differentiation, so every result differentiates back to the integrand.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("integrate(x*e^(x^2), x)"), "1/2·e^(x^2)");
+    assert_eq!(r("integrate(x*cos(x^2), x)"), "1/2·sin(x^2)");
+    assert_eq!(r("integrate(x*e^(2*x^2), x)"), "1/4·e^(2·x^2)");
+    assert_eq!(r("integrate(5*cos(x)*e^(sin(x)), x)"), "5·e^sin(x)");
+    // Unchanged `k = ±1` cases stay correct.
+    assert_eq!(r("integrate(2*x*e^(x^2), x)"), "e^(x^2)");
+    assert_eq!(r("integrate(cos(x)*e^(sin(x)), x)"), "e^sin(x)");
+    assert_eq!(r("integrate(sin(x)*e^(cos(x)), x)"), "-(e^cos(x))");
+}
+
+#[test]
 fn test_eval_improper_rational_integral_real_root_quadratic_denominator() {
     // An improper `∫_a^∞ p/q` with a `½·ln|p/q|` antiderivative and a quadratic denominator with
     // REAL roots OUTSIDE [a, ∞) used to decline: `nonzero_on_unbounded_interval` returned `Unknown`

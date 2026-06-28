@@ -21953,39 +21953,83 @@ fn transcendental_chain_substitution_antiderivative(
     let mut seen = std::collections::HashSet::new();
     collect_chain_substitution_candidates(ctx, integrand, var, &mut candidates, &mut seen);
 
-    // Normalized integrand (sign bubbled to the top) for the exact transcendental compare.
+    // Normalized integrand (rational coefficient stripped) for the exact transcendental compare.
     let reduced_integrand = reduce_ln_e_and_unit_products(ctx, integrand);
-    let (integrand_core, integrand_negated) = usub_strip_top_neg(ctx, reduced_integrand);
+    let (integrand_coeff, integrand_core) = strip_rational_coefficient(ctx, reduced_integrand);
+    if integrand_coeff.is_zero() {
+        return None;
+    }
 
     for (builtin, inner) in candidates {
         let Some(antiderivative) = unary_chain_antiderivative(ctx, builtin, inner) else {
             continue;
         };
-        // SOUNDNESS GATE: accept `F(g)` only when `d/dx F(g) == integrand` exactly. The
-        // differentiation is trusted; the comparison folds the `ln(E)` ( = 1 ) artefact the
-        // general power rule leaves on `Pow(E, g)`, bubbles sign to the top, and uses exact
-        // structural/commutative equality on the sign-stripped core. `-F(g)` covers the
-        // ∫sin = −cos / odd-sign cases.
-        let antiderivative_signed = [antiderivative, negate_scalar_expr(ctx, antiderivative)];
-        for signed in antiderivative_signed {
-            let Some(raw_derivative) =
-                crate::symbolic_differentiation_support::differentiate_symbolic_expr(
-                    ctx, signed, var,
-                )
-            else {
-                continue;
-            };
-            let derivative = reduce_ln_e_and_unit_products(ctx, raw_derivative);
-            let (derivative_core, derivative_negated) = usub_strip_top_neg(ctx, derivative);
-            if derivative_negated == integrand_negated
-                && crate::semantic_equality::SemanticEqualityChecker::new(ctx)
-                    .are_equal(derivative_core, integrand_core)
-            {
-                return Some(signed);
-            }
+        // SOUNDNESS GATE: accept `F(g)` only when `d/dx F(g) == k·integrand` for a NONZERO rational
+        // constant `k` — then `∫ integrand = F(g)/k`. The differentiation is trusted; the comparison
+        // folds the `ln(E)`(=1) artefact the general power rule leaves on `Pow(E, g)`, strips a
+        // rational coefficient from BOTH the derivative and the integrand (covering the sign AND any
+        // scale `≠ ±1` a linear inner like `cos(2x)` introduces via the chain rule), and requires the
+        // coefficient-free cores to be exactly equal. The scale `integrand_coeff / derivative_coeff`
+        // is exact, so the returned `scale · F(g)` differentiates back to the integrand by construction.
+        let Some(raw_derivative) =
+            crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                ctx,
+                antiderivative,
+                var,
+            )
+        else {
+            continue;
+        };
+        let derivative = reduce_ln_e_and_unit_products(ctx, raw_derivative);
+        let (derivative_coeff, derivative_core) = strip_rational_coefficient(ctx, derivative);
+        if derivative_coeff.is_zero() {
+            continue;
+        }
+        if crate::semantic_equality::SemanticEqualityChecker::new(ctx)
+            .are_equal(derivative_core, integrand_core)
+        {
+            let scale = integrand_coeff.clone() / derivative_coeff;
+            return Some(scale_expr_by_rational(ctx, antiderivative, scale));
         }
     }
     None
+}
+
+/// Split `expr` as `(c, core)` with `expr == c · core`, pulling ALL rational multiplicative constants
+/// out of a product tree (recursing through `Neg`/`Mul`, including a constant nested inside a factor,
+/// as the chain rule produces — `e^(cos 2x)·(−2·sin 2x)`). A pure rational constant gives `(c, 1)`.
+/// Used by the chain-substitution gate so a constant-free core compare recovers a scale `≠ ±1`.
+fn strip_rational_coefficient(ctx: &mut Context, expr: ExprId) -> (BigRational, ExprId) {
+    if let Some(c) = crate::numeric_eval::as_rational_const(ctx, expr) {
+        let one = ctx.num(1);
+        return (c, one);
+    }
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (c, core) = strip_rational_coefficient(ctx, inner);
+            (-c, core)
+        }
+        Expr::Mul(a, b) => {
+            let (ca, core_a) = strip_rational_coefficient(ctx, a);
+            let (cb, core_b) = strip_rational_coefficient(ctx, b);
+            let core = ctx.add(Expr::Mul(core_a, core_b));
+            (ca * cb, core)
+        }
+        _ => (BigRational::one(), expr),
+    }
+}
+
+/// Multiply `expr` by a rational constant `k`, folding the trivial `±1` cases to keep the output tidy.
+fn scale_expr_by_rational(ctx: &mut Context, expr: ExprId, k: BigRational) -> ExprId {
+    use num_traits::One;
+    if k.is_one() {
+        expr
+    } else if k == -BigRational::one() {
+        negate_scalar_expr(ctx, expr)
+    } else {
+        let coeff = ctx.add(Expr::Number(k));
+        ctx.add(Expr::Mul(coeff, expr))
+    }
 }
 
 /// Collect `(f, g)` candidates: subexpressions `f(g)` where `f` is a unary builtin with a
