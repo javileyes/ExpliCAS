@@ -2943,6 +2943,89 @@ fn try_solve_ln_square_inequality(
     })
 }
 
+/// `sin(x)=c` / `cos(x)=c` / `tan(x)=c` (bare trig of the solve variable, constant `c`) has an
+/// INFINITE periodic family of roots; the unary-inverse path rewrites to `x = arctan(c)` and returns
+/// only the principal root (`solve(tan(x)=1)→{π/4}`, dropping `+kπ`). Emit the full family as
+/// `SolutionSet::Periodic { base, period }`:
+///   tan(x)=c → {arctan(c) + kπ}        (period π, every constant c)
+///   sin(x)=c → {arcsin(c) + …}         (period π for c=0, 2π for c=±1; other c are TWO families and
+///   cos(x)=c → {arccos(c) + …}          cannot be a single `Periodic`, so they decline)
+/// Only fires for an EQUATION (inequalities correctly residual elsewhere). `arcsin/arccos/arctan`
+/// fold to the exact bound (`arctan(1)→π/4`, `arccos(0)→π/2`) via the simplifier.
+fn try_solve_periodic_trig_equation(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+
+    if !matches!(eq.op, RelOp::Eq) {
+        return None;
+    }
+    let (lhs, _) = simplifier.simplify(eq.lhs);
+    let (rhs, _) = simplifier.simplify(eq.rhs);
+    let var_id = simplifier.context.var(var);
+    let detect = |ctx: &Context, e: ExprId| -> Option<BuiltinFn> {
+        if let Expr::Function(fn_id, args) = ctx.get(e) {
+            if args.len() == 1 && args[0] == var_id {
+                if let Some(b) = ctx.builtin_of(*fn_id) {
+                    if matches!(b, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
+                        return Some(b);
+                    }
+                }
+            }
+        }
+        None
+    };
+    // `trig(x) = c` or `c = trig(x)`, with `c` constant.
+    let (func, c) = if let Some(f) = detect(&simplifier.context, lhs) {
+        if contains_var(&simplifier.context, rhs, var) {
+            return None;
+        }
+        (f, rhs)
+    } else if let Some(f) = detect(&simplifier.context, rhs) {
+        if contains_var(&simplifier.context, lhs, var) {
+            return None;
+        }
+        (f, lhs)
+    } else {
+        return None;
+    };
+
+    let pi = simplifier.context.add(Expr::Constant(Constant::Pi));
+    let two = simplifier.context.num(2);
+    let two_pi = simplifier.context.add(Expr::Mul(two, pi));
+
+    let (arc_name, period) = match func {
+        // tan(x)=c is a single family of period π for EVERY constant c.
+        BuiltinFn::Tan => ("arctan", pi),
+        // sin/cos collapse to a single family only for c ∈ {0, ±1}; other c are two families.
+        BuiltinFn::Sin | BuiltinFn::Cos => {
+            let cv = cas_math::numeric_eval::as_rational_const(&simplifier.context, c)?;
+            let period = if cv.is_zero() {
+                pi
+            } else if cv == BigRational::one() || cv == -BigRational::one() {
+                two_pi
+            } else {
+                return None;
+            };
+            let arc = if matches!(func, BuiltinFn::Sin) {
+                "arcsin"
+            } else {
+                "arccos"
+            };
+            (arc, period)
+        }
+        _ => return None,
+    };
+    let arc_call = simplifier.context.call(arc_name, vec![c]);
+    let (base, _) = simplifier.simplify(arc_call);
+    Some(SolutionSet::Periodic { base, period })
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -2950,6 +3033,11 @@ fn solve_local_core(
     opts: CoreSolverOptions,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // Bare trig equation `sin/cos/tan(x)=c` -> the full periodic family (before the unary-inverse
+    // path, which would return only the principal root).
+    if let Some(set) = try_solve_periodic_trig_equation(eq, var, simplifier) {
+        return Ok((set, Vec::new()));
+    }
     if equation_is_nonzero_const_over_polynomial(simplifier, eq)
         || equation_has_identically_zero_denominator(simplifier, eq)
     {

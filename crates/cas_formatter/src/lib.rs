@@ -19,6 +19,7 @@ pub mod latex_core;
 pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod path;
+pub mod periodic;
 pub mod root_style;
 pub mod rule_scope;
 pub mod visualizer;
@@ -49,6 +50,7 @@ pub use path::{
     diff_find_all_paths_to_expr, diff_find_path_to_expr, diff_find_paths_by_structure,
     extract_add_terms, find_path_to_expr, navigate_to_subexpr,
 };
+pub use periodic::{display_periodic_family, latex_periodic_family};
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
 pub use rule_scope::render_with_rule_scope;
 pub use visualizer::AstVisualizer;

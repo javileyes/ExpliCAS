@@ -26,5 +26,8 @@ pub(super) fn render_non_nested_solution_set_to_latex(
         }
         SolutionSet::Residual(expr) => render_expr_to_latex(context, *expr),
         SolutionSet::Conditional(_) => unreachable!("conditional sets are routed separately"),
+        SolutionSet::Periodic { base, period } => {
+            cas_formatter::latex_periodic_family(context, *base, *period)
+        }
     }
 }

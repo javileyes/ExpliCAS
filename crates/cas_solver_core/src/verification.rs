@@ -131,6 +131,12 @@ where
             guard_description: Some("unverifiable (residual expression)".to_string()),
         },
 
+        SolutionSet::Periodic { .. } => VerifyResult {
+            solutions: vec![],
+            summary: VerifySummary::NotCheckable,
+            guard_description: Some("not checkable (infinite periodic family)".to_string()),
+        },
+
         SolutionSet::Conditional(cases) => {
             if let Some(description) = classify_guard_verified_conditional(cases) {
                 return VerifyResult {
@@ -460,7 +466,10 @@ fn classify_guard_verified_conditional(cases: &[Case]) -> Option<String> {
                     return None;
                 }
             }
-            SolutionSet::Discrete(_) | SolutionSet::Residual(_) | SolutionSet::Conditional(_) => {
+            SolutionSet::Discrete(_)
+            | SolutionSet::Residual(_)
+            | SolutionSet::Conditional(_)
+            | SolutionSet::Periodic { .. } => {
                 return None;
             }
         }

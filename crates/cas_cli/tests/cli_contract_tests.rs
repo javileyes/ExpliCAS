@@ -2153,6 +2153,37 @@ fn test_eval_periodic_trig_inequality_declines() {
 }
 
 #[test]
+fn test_eval_periodic_trig_equation_emits_family() {
+    // A bare `sin/cos/tan(x)=c` equation has an INFINITE periodic family; the unary-inverse path
+    // returned only the principal root (`solve(tan(x)=1)→{π/4}`, dropping `+kπ`). Emit the whole
+    // family via the `Periodic` SolutionSet. tan is period π for every c; sin/cos collapse to a
+    // single family only for c ∈ {0,±1} (other c are two families → decline, unchanged).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Period π families.
+    assert_eq!(r("solve(sin(x)=0, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(tan(x)=0, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x)=0, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(tan(x)=1, x)"), "{ 1/4·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(tan(x)=sqrt(3), x)"), "{ 1/3·pi + k·pi : k ∈ ℤ }");
+    // tan is complete even for a symbolic threshold.
+    assert_eq!(r("solve(tan(x)=2, x)"), "{ arctan(2) + k·pi : k ∈ ℤ }");
+    // Period 2π families (c = ±1).
+    assert_eq!(r("solve(sin(x)=1, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x)=1, x)"), "{ k·2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x)=-1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
+    // Two-family / non-bare / no-solution cases are NOT wrapped (unchanged behavior).
+    assert_eq!(r("solve(sin(x)=1/2, x)"), "{ 1/6·pi }"); // two families, declined
+    assert_eq!(r("solve(sin(x)=2, x)"), "No solution"); // |c|>1
+}
+
+#[test]
 fn test_eval_variable_base_log_inequality_declines() {
     // SOUNDNESS: `log(x, c) ≷ k` reads x as the BASE, so logₓ(c)=ln(c)/ln(x) is NON-monotonic
     // (decreasing on x>1, sign change at x=1). The engine's monotonic isolation emitted a wrong ray

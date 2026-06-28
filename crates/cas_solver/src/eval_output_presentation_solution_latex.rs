@@ -14,5 +14,8 @@ pub(crate) fn solution_set_to_output_latex(ctx: &Context, solution_set: &Solutio
         SolutionSet::Continuous(interval) => intervals::render_continuous_interval(ctx, interval),
         SolutionSet::Union(intervals) => intervals::render_interval_union(ctx, intervals),
         SolutionSet::Residual(expr) => residual::render_residual_solution(ctx, *expr),
+        SolutionSet::Periodic { base, period } => {
+            cas_formatter::latex_periodic_family(ctx, *base, *period)
+        }
     }
 }
