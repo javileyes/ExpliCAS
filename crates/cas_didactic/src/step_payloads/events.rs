@@ -28,7 +28,12 @@ fn build_event_step_payload(index: usize, event: &EngineEvent, ctx: &Context) ->
             Some(StepWire {
                 index,
                 rule: crate::didactic::visible_rule_name(rule_name).to_string(),
-                rule_latex: rule_name.clone(),
+                // Build the colored `before -> after` transform like the normal step path. The raw
+                // `rule_name` string used to land here and the web wraps `rule_latex` in `$...$`, so
+                // the English rule name rendered as garbled MathJax. Use the LOCAL change.
+                rule_latex: crate::step_payload_render::render_local_rule_latex(
+                    ctx, *before, *after,
+                ),
                 before: render_human_expr(ctx, before_expr),
                 after: render_human_expr(ctx, after_expr),
                 before_latex: cas_formatter::LaTeXExpr {
