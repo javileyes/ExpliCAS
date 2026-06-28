@@ -18,7 +18,7 @@ pub(super) fn build_step_wire(
     let rendered_exprs = expr::render_step_wire_exprs(context, step);
     let rendered_latex = latex::render_step_wire_latex(context, step);
     let substeps = substeps::collect_step_wire_substeps(step, enriched, language);
-    let visible_rule = inferred_step_rule(context, step, &substeps).unwrap_or_else(|| {
+    let visible_rule = inferred_step_rule(context, step, enriched).unwrap_or_else(|| {
         crate::didactic::visible_rule_name_for_step(&step.rule_name, &step.description).to_string()
     });
 
@@ -34,10 +34,14 @@ pub(super) fn build_step_wire(
     }
 }
 
+// The step-naming heuristics match on the SOURCE (Spanish) sub-step descriptions, not the rendered
+// wire titles: descriptions are language-independent (a keyed sub-step keeps its Spanish description
+// and only the wire title is translated), so the inferred step name is identical across languages
+// and the `Es` output stays byte-for-byte unchanged.
 fn inferred_step_rule(
     context: &Context,
     step: &crate::runtime::Step,
-    substeps: &[cas_api_models::SubStepWire],
+    enriched: &crate::didactic::EnrichedStep,
 ) -> Option<String> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
@@ -48,7 +52,7 @@ fn inferred_step_rule(
         return Some("Expandir cambio de base".to_string());
     }
 
-    let first_title = substeps.first()?.title.as_str();
+    let first_title = enriched.sub_steps.first()?.description.as_str();
 
     if step.rule_name == "Simplify"
         && matches!(
@@ -110,7 +114,7 @@ fn inferred_step_rule(
         return Some("Extraer potencia par de la raíz".to_string());
     }
 
-    let second_title = substeps.get(1)?.title.as_str();
+    let second_title = enriched.sub_steps.get(1)?.description.as_str();
 
     if matches!(
         step.rule_name.as_str(),

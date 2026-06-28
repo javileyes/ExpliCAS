@@ -109,8 +109,9 @@ fn generate_reverse_nested_fraction_substeps(
             let after_den_display = display_expr(ctx, *after_den);
             let after_den_latex = latex_expr(ctx, *after_den);
 
-            vec![SubStep::new(
-                format!("Reescribir el denominador sacando factor común {common_den_display}"),
+            vec![SubStep::keyed(
+                "nested.rewrite_denominator_common_factor",
+                vec![format!("{common_den_display}")],
                 display_expr(ctx, *before_den),
                 format!("{common_den_grouped_display} · ({after_den_display})"),
             )
@@ -136,8 +137,9 @@ fn generate_reverse_nested_fraction_substeps(
             let after_num_display = display_expr(ctx, *after_num);
             let after_num_latex = latex_expr(ctx, *after_num);
 
-            vec![SubStep::new(
-                format!("Reescribir el numerador sacando factor común {common_den_display}"),
+            vec![SubStep::keyed(
+                "nested.rewrite_numerator_common_factor",
+                vec![format!("{common_den_display}")],
                 display_expr(ctx, *before_num),
                 format!("{common_den_grouped_display} · ({after_num_display})"),
             )

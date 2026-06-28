@@ -610,8 +610,9 @@ fn generate_combine_like_terms_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
     let mut substeps =
         generate_hidden_radical_extraction_before_like_terms_substeps(ctx, step, &literal_factors);
     substeps.push(
-        SubStep::new(
-            format!("Sumar los coeficientes que acompañan a {literal_display}"),
+        SubStep::keyed(
+            "collect.add_literal_coefficients",
+            vec![format!("{literal_display}")],
             before_display,
             after_display,
         )
@@ -3327,8 +3328,9 @@ fn generate_reverse_nested_fraction_substeps(
             let after_den_display = human_expr(ctx, *after_den);
             let after_den_latex = latex_expr(ctx, *after_den);
 
-            return Some(vec![SubStep::new(
-                format!("Reescribir el denominador sacando factor común {common_den_display}"),
+            return Some(vec![SubStep::keyed(
+                "nested.rewrite_denominator_common_factor",
+                vec![format!("{common_den_display}")],
                 human_expr(ctx, *before_den),
                 format!("{common_den_grouped_display} · ({after_den_display})"),
             )
@@ -3351,8 +3353,9 @@ fn generate_reverse_nested_fraction_substeps(
             let after_num_display = human_expr(ctx, *after_num);
             let after_num_latex = latex_expr(ctx, *after_num);
 
-            return Some(vec![SubStep::new(
-                format!("Reescribir el numerador sacando factor común {common_den_display}"),
+            return Some(vec![SubStep::keyed(
+                "nested.rewrite_numerator_common_factor",
+                vec![format!("{common_den_display}")],
                 human_expr(ctx, *before_num),
                 format!("{common_den_grouped_display} · ({after_num_display})"),
             )
@@ -19965,15 +19968,23 @@ fn generate_limit_lhopital_iteration(
         };
         let next_disp = display_expr(&scratch, next_form);
         let next_latex = latex_expr(&scratch, next_form);
-        let title = if k == 0 {
-            format!(
-                "Indeterminación 0/0 en {var} = {point_disp}: aplica L'Hôpital (deriva numerador y denominador)"
+        let substep = if k == 0 {
+            SubStep::keyed(
+                "limit.lhopital_first_iteration",
+                vec![format!("{var}"), format!("{point_disp}")],
+                cur_disp.clone(),
+                next_disp.clone(),
             )
         } else {
-            "Sigue siendo 0/0: aplica L'Hôpital otra vez".to_string()
+            SubStep::keyed(
+                "limit.lhopital_still_0_0_again",
+                vec![],
+                cur_disp.clone(),
+                next_disp.clone(),
+            )
         };
         substeps.push(
-            SubStep::new(title, cur_disp.clone(), next_disp.clone())
+            substep
                 .with_before_latex(cur_latex.clone())
                 .with_after_latex(next_latex.clone()),
         );
@@ -19983,8 +19994,9 @@ fn generate_limit_lhopital_iteration(
         cur_latex = next_latex;
     }
     substeps.push(
-        SubStep::new(
-            format!("El denominador ya no se anula; sustituye {var} = {point_disp}"),
+        SubStep::keyed(
+            "limit.lhopital_denominator_nonzero_substitute",
+            vec![format!("{var}"), format!("{point_disp}")],
             cur_disp,
             display_expr(ctx, step.after),
         )

@@ -16,7 +16,12 @@ pub(super) fn collect_step_payload_substeps(
                 let args: Vec<&str> = substep.desc_args.iter().map(String::as_str).collect();
                 crate::didactic::locale::translate(key, &args, language)
             }
-            None => substep.description.clone(),
+            None => match language {
+                cas_solver_core::eval_option_axes::Language::En => {
+                    crate::didactic::locale::description_en(&substep.description).to_string()
+                }
+                _ => substep.description.clone(),
+            },
         };
         substeps.push(SubStepWire {
             title,
