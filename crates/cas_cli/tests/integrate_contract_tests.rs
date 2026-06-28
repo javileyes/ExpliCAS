@@ -3432,7 +3432,7 @@ fn integrate_contract_linear_exp_by_parts_steps_keep_compact_presentation() {
         "linear exp by-parts should not expand the compact antiderivative: {rules:?}"
     );
     assert!(
-        !rules.contains(&Some("Extract Common Multiplicative Factor")),
+        !rules.contains(&Some("Sacar factor común")),
         "linear exp by-parts should not refactor immediately after expansion: {rules:?}"
     );
 }
@@ -8180,7 +8180,7 @@ fn integrate_contract_constant_base_additive_polynomial_log_trace_uses_common_fa
         2,
         "expected factor then integration steps: {steps:?}"
     );
-    assert_eq!(steps[0]["rule"], "Extract Common Multiplicative Factor");
+    assert_eq!(steps[0]["rule"], "Sacar factor común");
     assert_eq!(steps[1]["rule"], "Calcular la integral");
     let substeps = steps[1]["substeps"]
         .as_array()
@@ -11687,7 +11687,7 @@ fn integrate_contract_negative_power_denominator_displays_base_nonzero_domain() 
         !step_rules
             .iter()
             .any(|rule_name| rule_name == "Simplify Complex Fraction"
-                || rule_name == "Extract Common Multiplicative Factor"),
+                || rule_name == "Sacar factor común"),
         "negative-power denominator integration should not expand then refactor before integrating: {step_rules:?}"
     );
     assert_rendered_antiderivative_verifies(input, &result);
@@ -11715,7 +11715,7 @@ fn integrate_contract_reciprocal_power_denominator_quotient_integrates_directly_
         !step_rules
             .iter()
             .any(|rule_name| rule_name == "Simplify Complex Fraction"
-                || rule_name == "Extract Common Multiplicative Factor"),
+                || rule_name == "Sacar factor común"),
         "reciprocal quotient denominator integration should not expand then refactor before integrating: {step_rules:?}"
     );
     assert_rendered_antiderivative_verifies(input, &result);

@@ -1106,7 +1106,7 @@ fn derive_hyperbolic_double_angle_avoids_generic_canonicalize_step() {
     assert_eq!(steps.len(), 1);
     assert_ne!(
         steps[0]["rule"],
-        "Canonicalize Multiplication",
+        "Reescribir el producto",
         "hyperbolic double-angle contraction should not fall back to a generic canonicalization step"
     );
 }
@@ -3607,7 +3607,7 @@ fn eval_web_example_erased_multiplicative_one_does_not_highlight_neighbor_factor
 
     assert_eq!(
         cancel_step["rule"],
-        "Cancel Identical Numerator/Denominator"
+        "Cancelar numerador y denominador iguales"
     );
     let before_latex = cancel_step["before_latex"].as_str().expect("before_latex");
     let after_latex = cancel_step["after_latex"].as_str().expect("after_latex");

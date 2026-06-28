@@ -468,7 +468,7 @@ Steps:
    - before_latex: `{\color{red}{\text{sign}(\frac{1}{3})\cdot \frac{\pi}{2}}} - \frac{1}{2}\cdot \pi`
    - after_latex: `\frac{\pi}{2} - \frac{1}{2}\cdot \pi`
    - substeps: none
-3. `Cancel Opposite Fractions`
+3. `Cancelar fracciones opuestas`
    - before: `pi/2 - 1/2 · pi`
    - after: `0`
    - before_latex: `{\color{red}{\frac{\pi}{2} - \frac{1}{2}\cdot \pi}}`

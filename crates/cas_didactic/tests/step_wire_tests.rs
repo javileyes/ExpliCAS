@@ -1667,7 +1667,10 @@ fn step_wire_root_denesting_keeps_didactic_substeps() {
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
 
-    if let Some(step) = steps.iter().find(|step| step.rule == "Root Denesting") {
+    if let Some(step) = steps
+        .iter()
+        .find(|step| step.rule == "Desanidar el radical")
+    {
         assert!(
             step.substeps.len() >= 2,
             "expected didactic root-denesting substeps, got: {:?}",

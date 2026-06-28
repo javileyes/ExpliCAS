@@ -180,6 +180,35 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Sophie Germain Identity" => "Expandir la expresión",
         "Sum/Difference of Cubes Contraction" => "Expandir la expresión",
         "Pythagorean Chain Identity" => "Aplicar la identidad pitagórica",
+        // Didactic round: Spanish names for rules that previously leaked their raw English
+        // identifier into the visible `rule` field of the step-by-step (the `_` fallthrough below).
+        "AutoExpandLogRule" => "Expandir el logaritmo de un producto",
+        "Cancel Common Factors" => "Cancelar factores comunes",
+        "Cancel Identical Numerator/Denominator" => "Cancelar numerador y denominador iguales",
+        "Cancel Opposite Fractions" => "Cancelar fracciones opuestas",
+        "Canonicalize Division" => "Reescribir la división",
+        "Canonicalize Multiplication" => "Reescribir el producto",
+        "Canonicalize Reciprocal Sqrt" => "Reescribir el inverso de una raíz",
+        "Division by Infinity" => "Dividir entre infinito",
+        "Evaluate Absolute Value" => "Evaluar el valor absoluto",
+        "Extract Common Multiplicative Factor" => "Sacar factor común",
+        "Extract Perfect Square from Radicand" => "Sacar el cuadrado perfecto de la raíz",
+        "Higher-Order Differentiation" => "Derivar de orden superior",
+        "Infinity Absorption in Addition" => "El infinito domina la suma",
+        "Matrix Functions" => "Operación con matrices",
+        "Matrix Multiplication" => "Multiplicar matrices",
+        "Matrix Reciprocal/Inverse" => "Potencia o inversa de la matriz",
+        "Partial Fraction Decomposition" => "Descomponer en fracciones parciales",
+        "Power of a Product" => "Distribuir la potencia sobre el producto",
+        "Product of Powers" => "Sumar exponentes de la misma base",
+        "Quotient of Powers" => "Restar exponentes de la misma base",
+        "Recognize Hyperbolic from Exponential" => {
+            "Reconocer una función hiperbólica en las exponenciales"
+        }
+        "Root Denesting" => "Desanidar el radical",
+        "Taylor Series" => "Desarrollar en serie de Taylor",
+        "Zero Property of Division" => "Cero dividido entre cualquier valor es cero",
+        "sinh(x)/cosh(x) = tanh(x)" => "Reconocer la tangente hiperbólica",
         _ => rule_name,
     }
 }
