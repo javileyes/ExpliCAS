@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 435 (newest first)
+Active entries: 436 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -133,6 +133,7 @@ Active entries: 435 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (improper rewr... | UNIVERSALIDAD (capacidad F): __hold interno bloqueaba el valor impropio de racional pre-factorizado con cuadrática irreducible
 - 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (`classify_infinite_sum` + `extrac... | UNIVERSALIDAD (capacidad F): serie p divergente (armónica y más lentas) → ±infinito
 - 2026-06-28 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decompos... | UNIVERSALIDAD (capacidad F): apart de fracción IMPROPIA (división polinómica primero)
+- 2026-06-28 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`transcendental_chain_... | UNIVERSALIDAD (capacidad F): u-sustitución de cadena con escala racional (no solo ±1)
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17394,3 +17395,28 @@ Active entries: 435 (newest first)
   - peldaño restante DISTINTO: denominador que cancela a grado-1 (`x/(x-1)`, `(x³+1)/(x²-1)`→`(x²-x+1)/(x-1)`) topa con
     `APART_MIN_DENOMINATOR_DEGREE=2` (política separada, no tocada).
   - siguiente del scouting: rank 8 (u-sub escala≠±1), rank 4 (1/(a²−x²) fuera de |x|<a; medium + soundness indefinido).
+
+## 2026-06-28 - UNIVERSALIDAD (capacidad F): u-sustitución de cadena con escala racional (no solo ±1)
+
+- area: `crates/cas_math/src/symbolic_integration_support.rs` (`transcendental_chain_substitution_antiderivative` + `strip_rational_coefficient`/`scale_expr_by_rational`)
+- status: `retained` (commit pendiente-de-hash). Rank 8 del scouting (parcial: entrega la familia algebraica; el caso trig de argumento escalado queda residual).
+- capture:
+  - cell: `∫x·e^(x²)` residualizaba (`d/dx e^(x²)=2x·e^(x²)`, escala ½, fuera del gate ±1). AHORA `½·e^(x²)`. Igual
+    `x·cos(x²)→½sin(x²)`, `x·e^(2x²)→¼e^(2x²)`, `5·cos x·e^(sin x)→5e^(sin x)`. Verificado d/dx-back=0.
+  - causa raíz: el gate de soundness solo probaba `±F(g)` (escala ±1); una sustitución cuyo `g'` lleva un factor
+    constante no casaba (`are_equal(2x·e, x·e)`=false).
+  - fix: generalizar a escala racional: `strip_rational_coefficient` (recursivo por Mul/Neg) saca TODA constante de la
+    derivada Y del integrando; si los núcleos sin-constante son exactamente iguales, devolver
+    `(integrand_coeff/derivative_coeff)·F(g)`. El álgebra garantiza que la respuesta se deriva de vuelta al integrando
+    ⇒ gate SIGUE sound (solo devuelve si los núcleos casan; si no, residual honesto).
+  - validación: workspace failed:0; clippy --workspace --all-targets; engine-fast/scorecard/pressure pass; huella
+    GUARD/PRESS IDÉNTICA; test de contrato (familia algebraica + ±1 intactos).
+- retained learning:
+  - un gate de verificación-por-diferenciación que solo admite signo ±1 se generaliza a escala racional sin perder
+    soundness: comparar NÚCLEOS sin-constante + recuperar la escala del ratio de coeficientes exactos. La respuesta es
+    correcta por construcción (su derivada = integrando). [[soundness-gates-must-be-exact]].
+  - peldaño restante DISTINTO (no entregado): factor trig × e^(exponente-trig-ESCALADO) (`cos x·e^(2 sin x)`) sigue
+    residual aunque la derivada `2cos x·e^(2sin x)` es un producto limpio estructuralmente idéntico al algebraico que SÍ
+    casa — diferencia de normalización en `are_equal`/núcleo no diagnosticada. Under-answer honesto, no wrong-answer.
+  - siguiente del scouting: rank 4 (`1/(a²−x²)` fuera de |x|<a; medium + repara wrong-answer indefinido atanh-guard),
+    rank 10 (content de factor; cosmético).
