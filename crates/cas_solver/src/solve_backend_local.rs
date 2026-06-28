@@ -2952,6 +2952,37 @@ fn try_solve_ln_square_inequality(
 ///   cos(x)=c → {arccos(c) + …}          cannot be a single `Periodic`, so they decline)
 /// Only fires for an EQUATION (inequalities correctly residual elsewhere). `arcsin/arccos/arctan`
 /// fold to the exact bound (`arctan(1)→π/4`, `arccos(0)→π/2`) via the simplifier.
+/// The positive rational `a` of an argument `a·x` (`x → 1`, `2·x → 2`), else `None`. Used so the
+/// periodic trig guard handles a SCALED argument `trig(a·x)=c`. An affine offset (`a·x+b`) or a
+/// non-positive coefficient declines (kept clean: the family set is sign-insensitive but renders
+/// awkwardly, and an offset shifts the base — out of this guard's scope).
+fn positive_linear_coeff_of_var(
+    ctx: &Context,
+    arg: ExprId,
+    var_id: ExprId,
+) -> Option<num_rational::BigRational> {
+    use num_traits::{One, Signed};
+    if arg == var_id {
+        return Some(num_rational::BigRational::one());
+    }
+    if let Expr::Mul(l, r) = ctx.get(arg) {
+        let (l, r) = (*l, *r);
+        let factor = if r == var_id {
+            cas_math::numeric_eval::as_rational_const(ctx, l)
+        } else if l == var_id {
+            cas_math::numeric_eval::as_rational_const(ctx, r)
+        } else {
+            None
+        };
+        if let Some(a) = factor {
+            if a.is_positive() {
+                return Some(a);
+            }
+        }
+    }
+    None
+}
+
 fn try_solve_periodic_trig_equation(
     eq: &Equation,
     var: &str,
@@ -2968,29 +2999,31 @@ fn try_solve_periodic_trig_equation(
     let (lhs, _) = simplifier.simplify(eq.lhs);
     let (rhs, _) = simplifier.simplify(eq.rhs);
     let var_id = simplifier.context.var(var);
-    let detect = |ctx: &Context, e: ExprId| -> Option<BuiltinFn> {
+    // `trig(a·x)` with a positive rational `a` -> `(func, a)`.
+    let detect = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, BigRational)> {
         if let Expr::Function(fn_id, args) = ctx.get(e) {
-            if args.len() == 1 && args[0] == var_id {
+            if args.len() == 1 {
                 if let Some(b) = ctx.builtin_of(*fn_id) {
                     if matches!(b, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
-                        return Some(b);
+                        let a = positive_linear_coeff_of_var(ctx, args[0], var_id)?;
+                        return Some((b, a));
                     }
                 }
             }
         }
         None
     };
-    // `trig(x) = c` or `c = trig(x)`, with `c` constant.
-    let (func, c) = if let Some(f) = detect(&simplifier.context, lhs) {
+    // `trig(a·x) = c` or `c = trig(a·x)`, with `c` constant.
+    let (func, coeff, c) = if let Some((f, a)) = detect(&simplifier.context, lhs) {
         if contains_var(&simplifier.context, rhs, var) {
             return None;
         }
-        (f, rhs)
-    } else if let Some(f) = detect(&simplifier.context, rhs) {
+        (f, a, rhs)
+    } else if let Some((f, a)) = detect(&simplifier.context, rhs) {
         if contains_var(&simplifier.context, lhs, var) {
             return None;
         }
-        (f, lhs)
+        (f, a, lhs)
     } else {
         return None;
     };
@@ -2999,8 +3032,9 @@ fn try_solve_periodic_trig_equation(
     let two = simplifier.context.num(2);
     let two_pi = simplifier.context.add(Expr::Mul(two, pi));
 
-    let (arc_name, period) = match func {
-        // tan(x)=c is a single family of period π for EVERY constant c.
+    // Family for the bare argument `u = a·x`: `arc(c) + k·period_u`.
+    let (arc_name, period_u) = match func {
+        // tan(u)=c is a single family of period π for EVERY constant c.
         BuiltinFn::Tan => ("arctan", pi),
         // sin/cos collapse to a single family only for c ∈ {0, ±1}; other c are two families.
         BuiltinFn::Sin | BuiltinFn::Cos => {
@@ -3022,7 +3056,15 @@ fn try_solve_periodic_trig_equation(
         _ => return None,
     };
     let arc_call = simplifier.context.call(arc_name, vec![c]);
-    let (base, _) = simplifier.simplify(arc_call);
+    let (base_u, _) = simplifier.simplify(arc_call);
+
+    // `u = a·x` ⇒ `x = u/a`, so divide both base and period by `a` (a > 1 SHRINKS the period:
+    // `cos(2x)=1 → {kπ}`). For `a = 1` this folds back to the bare family.
+    let a_expr = simplifier.context.add(Expr::Number(coeff));
+    let base_div = simplifier.context.add(Expr::Div(base_u, a_expr));
+    let (base, _) = simplifier.simplify(base_div);
+    let period_div = simplifier.context.add(Expr::Div(period_u, a_expr));
+    let (period, _) = simplifier.simplify(period_div);
     Some(SolutionSet::Periodic { base, period })
 }
 

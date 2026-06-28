@@ -2174,6 +2174,11 @@ fn test_eval_periodic_trig_equation_emits_family() {
     assert_eq!(r("solve(tan(x)=sqrt(3), x)"), "{ 1/3·pi + k·pi : k ∈ ℤ }");
     // tan is complete even for a symbolic threshold.
     assert_eq!(r("solve(tan(x)=2, x)"), "{ arctan(2) + k·pi : k ∈ ℤ }");
+    // Scaled argument `trig(a·x)=c`: divide base and period by `a` (a>1 shrinks the period).
+    assert_eq!(r("solve(cos(2*x)=1, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(2*x)=0, x)"), "{ k·1/2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(tan(2*x)=1, x)"), "{ 1/8·pi + k·1/2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x/2)=0, x)"), "{ k·2·pi : k ∈ ℤ }");
     // Period 2π families (c = ±1).
     assert_eq!(r("solve(sin(x)=1, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(cos(x)=1, x)"), "{ k·2·pi : k ∈ ℤ }");
