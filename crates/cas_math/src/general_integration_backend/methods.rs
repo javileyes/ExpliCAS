@@ -541,14 +541,42 @@ pub fn apart_decomposition_expr(
         return None;
     }
     let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
-    if numerator.is_zero() || numerator.degree() >= degree {
+    if numerator.is_zero() {
         return None;
     }
     let leading = denominator.leading_coeff();
     let denominator = denominator.div_scalar(&leading);
     let numerator = numerator.div_scalar(&leading);
 
-    apart_classical_ladder_decomposition(ctx, &numerator, &denominator, variable)
+    // Improper fraction (deg num >= deg den): polynomial-divide first so the classical ladder runs on
+    // the PROPER remainder, then prepend the polynomial quotient — `num/den = q + r/den`. A proper
+    // fraction keeps the previous behaviour (zero quotient, remainder = numerator).
+    let (quotient, remainder) = if numerator.degree() >= degree {
+        numerator.div_rem(&denominator).ok()?
+    } else {
+        (
+            crate::polynomial::Polynomial::new(vec![BigRational::zero()], variable.to_string()),
+            numerator,
+        )
+    };
+
+    let proper_expr = if remainder.is_zero() {
+        None
+    } else {
+        Some(apart_classical_ladder_decomposition(
+            ctx,
+            &remainder,
+            &denominator,
+            variable,
+        )?)
+    };
+    let quotient_expr = (!quotient.is_zero()).then(|| quotient.to_expr(ctx));
+    match (quotient_expr, proper_expr) {
+        (Some(q), Some(p)) => Some(ctx.add(Expr::Add(q, p))),
+        (Some(q), None) => Some(q),
+        (None, Some(p)) => Some(p),
+        (None, None) => None,
+    }
 }
 
 /// Classical partial-fraction decomposition for the `apart` command.

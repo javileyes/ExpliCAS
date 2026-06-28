@@ -1665,7 +1665,8 @@ fn test_eval_matrix_shape_mismatch_is_undefined() {
 fn test_eval_apart_partial_fractions() {
     // `apart(p/q)` (alias `partfrac`) gives the partial-fraction decomposition, exact over Q. The
     // result is `Hold`-protected so the fraction-combining rules don't pull it back over a common
-    // denominator. Single-variable is inferred; `apart(p/q, x)` names it. Proper fractions only.
+    // denominator. Single-variable is inferred; `apart(p/q, x)` names it. An IMPROPER fraction
+    // (deg p ≥ deg q) is polynomial-divided first: `p/q = quotient + remainder/q`.
     let r = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -1675,6 +1676,13 @@ fn test_eval_apart_partial_fractions() {
         wire["result"].as_str().unwrap_or("").to_string()
     };
     assert_eq!(r("apart(1/(x^2-1))"), "1/2 / (x - 1) - 1/2 / (x + 1)");
+    // Improper fractions: the polynomial quotient is prepended to the proper decomposition.
+    assert_eq!(r("apart(x^3/(x^2-1))"), "1/2 / (x - 1) + 1/2 / (x + 1) + x");
+    assert_eq!(r("apart(x^2/(x^2-1))"), "1/2 / (x - 1) + 1 - 1/2 / (x + 1)");
+    assert_eq!(
+        r("apart(x^4/(x^2-1))"),
+        "1/2 / (x - 1) + x^2 + 1 - 1/2 / (x + 1)"
+    );
     assert_eq!(
         r("apart(1/(x^3-x))"),
         "1/2 / (x - 1) + 1/2 / (x + 1) - 1 / x"
