@@ -3485,7 +3485,9 @@ fn eval_log_inverse_power_chain_highlights_power_steps_in_mixed_sum() {
 
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 12);
+    // No-op "Agrupar términos semejantes" steps (before == after) are pruned, so the real
+    // transformations are 9 (three cosmetic grouping no-ops were dropped from the tail).
+    assert_eq!(steps.len(), 9);
 
     let log_inverse_power = &steps[2];
     assert_eq!(
@@ -3537,7 +3539,7 @@ fn eval_log_inverse_power_chain_highlights_power_steps_in_mixed_sum() {
         "step 4 should not highlight the factorial chunk: before={step4_before}; after={step4_after}"
     );
 
-    let hidden_fraction_cancellation = &steps[8];
+    let hidden_fraction_cancellation = &steps[7];
     assert_rule_eq(
         &hidden_fraction_cancellation["rule"],
         "Cancel Exact Additive Pairs",
