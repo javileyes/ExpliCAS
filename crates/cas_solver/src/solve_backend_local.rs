@@ -2983,6 +2983,105 @@ fn positive_linear_coeff_of_var(
     None
 }
 
+/// Decompose `expr == A·trig(arg) + B` where `trig` is a SINGLE bare `Sin`/`Cos`/`Tan` call containing
+/// the variable, `A` (≠ 0) and `B` are rational constants, and every other additive part is var-free.
+/// Returns `(trig_call, A, B)`, or `None` when `expr` is ALREADY the bare trig call (nothing to peel —
+/// `detect` handles that directly) or when the side is not affine in exactly one trig term.
+fn peel_affine_trig(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, num_rational::BigRational, num_rational::BigRational)> {
+    use num_traits::Zero;
+    let mut trig: Option<(ExprId, num_rational::BigRational)> = None;
+    let mut offset = num_rational::BigRational::zero();
+    accumulate_affine_trig(
+        ctx,
+        expr,
+        &num_traits::One::one(),
+        var,
+        &mut trig,
+        &mut offset,
+    )?;
+    let (call, a_coeff) = trig?;
+    // Bare trig call (A = 1, no wrapper) or a vanishing coefficient: nothing for this rule to do.
+    if a_coeff.is_zero() || call == expr {
+        return None;
+    }
+    Some((call, a_coeff, offset))
+}
+
+/// Accumulate `expr` (scaled by `scale`) as `A·trig(arg) + B`: a constant leaf adds to `offset`, a
+/// rational `Mul`/`Div` scales, `Add`/`Sub`/`Neg` recurse, and a single bare trig call of the variable
+/// is recorded with its accumulated coefficient. A second trig term, a trig×trig product, or any other
+/// var-bearing shape declines (`None`).
+fn accumulate_affine_trig(
+    ctx: &Context,
+    expr: ExprId,
+    scale: &num_rational::BigRational,
+    var: &str,
+    trig: &mut Option<(ExprId, num_rational::BigRational)>,
+    offset: &mut num_rational::BigRational,
+) -> Option<()> {
+    use cas_ast::BuiltinFn;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+    if !contains_var(ctx, expr, var) {
+        let c = cas_math::numeric_eval::as_rational_const(ctx, expr)?;
+        *offset += scale * &c;
+        return Some(());
+    }
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            accumulate_affine_trig(ctx, inner, &(-scale.clone()), var, trig, offset)
+        }
+        Expr::Add(a, b) => {
+            accumulate_affine_trig(ctx, a, scale, var, trig, offset)?;
+            accumulate_affine_trig(ctx, b, scale, var, trig, offset)
+        }
+        Expr::Sub(a, b) => {
+            accumulate_affine_trig(ctx, a, scale, var, trig, offset)?;
+            accumulate_affine_trig(ctx, b, &(-scale.clone()), var, trig, offset)
+        }
+        Expr::Mul(a, b) => {
+            if !contains_var(ctx, a, var) {
+                let c = cas_math::numeric_eval::as_rational_const(ctx, a)?;
+                accumulate_affine_trig(ctx, b, &(scale * &c), var, trig, offset)
+            } else if !contains_var(ctx, b, var) {
+                let c = cas_math::numeric_eval::as_rational_const(ctx, b)?;
+                accumulate_affine_trig(ctx, a, &(scale * &c), var, trig, offset)
+            } else {
+                None
+            }
+        }
+        Expr::Div(a, b) => {
+            if contains_var(ctx, b, var) {
+                return None;
+            }
+            let c = cas_math::numeric_eval::as_rational_const(ctx, b)?;
+            if c.is_zero() {
+                return None;
+            }
+            accumulate_affine_trig(ctx, a, &(scale / &c), var, trig, offset)
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let is_trig = ctx
+                .builtin_of(fn_id)
+                .is_some_and(|b| matches!(b, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan));
+            if is_trig && contains_var(ctx, args[0], var) {
+                if trig.is_some() {
+                    return None; // more than one trig term: not affine in a single trig
+                }
+                *trig = Some((expr, scale.clone()));
+                Some(())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 fn try_solve_periodic_trig_equation(
     eq: &Equation,
     var: &str,
@@ -3048,6 +3147,33 @@ fn try_solve_periodic_trig_equation(
             op: RelOp::Eq,
         };
         return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+    }
+
+    // `A·trig(a·x) + B = C` (A ≠ 0, B and C constant) -> `trig(a·x) = (C − B)/A`, then recurse. Without
+    // this the outside coefficient/offset leaves the trig side a `Mul`/`Add` that `detect` cannot see,
+    // so the bare fall-through emitted only the principal value — an INCOMPLETE solution set presented
+    // as complete (e.g. `solve(2·sin x = 1)` -> `{π/6}` instead of `{π/6 + 2kπ, 5π/6 + 2kπ}`), unsound.
+    {
+        let lhs_has = contains_var(&simplifier.context, lhs, var);
+        let rhs_has = contains_var(&simplifier.context, rhs, var);
+        if lhs_has != rhs_has {
+            let (var_side, const_side) = if lhs_has { (lhs, rhs) } else { (rhs, lhs) };
+            if let Some((call, a_coeff, b_offset)) =
+                peel_affine_trig(&simplifier.context, var_side, var)
+            {
+                let b_expr = simplifier.context.add(Expr::Number(b_offset));
+                let diff = simplifier.context.add(Expr::Sub(const_side, b_expr));
+                let a_expr = simplifier.context.add(Expr::Number(a_coeff));
+                let reduced_rhs = simplifier.context.add(Expr::Div(diff, a_expr));
+                let (reduced_rhs, _) = simplifier.simplify(reduced_rhs);
+                let reduced = Equation {
+                    lhs: call,
+                    rhs: reduced_rhs,
+                    op: RelOp::Eq,
+                };
+                return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+            }
+        }
     }
 
     // `trig(a·x)` with a positive rational `a` -> `(func, a)`.

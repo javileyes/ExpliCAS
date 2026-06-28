@@ -2337,6 +2337,54 @@ fn test_eval_periodic_trig_equation_emits_family() {
 }
 
 #[test]
+fn test_eval_periodic_trig_equation_with_outside_coefficient_emits_full_family() {
+    // SOUNDNESS: an OUTSIDE coefficient/offset (`2·sin x = 1`, `2·cos x + 1 = 0`) left the trig side a
+    // `Mul`/`Add` that the bare-trig detector could not see, so the equation fell through to the
+    // unary-inverse path and returned only the PRINCIPAL value (`{π/6}`) — an incomplete solution set
+    // presented as complete, with ok=true and no warning. Normalising `A·trig(a·x)+B=C` to
+    // `trig(a·x)=(C−B)/A` before detection now routes it through the full `Periodic` generator.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Outside coefficient -> the SAME family the bare `trig=c'` form yields.
+    assert_eq!(
+        r("solve(2*sin(x)=1, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(2*cos(x)+1=0, x)"),
+        "{ 2/3·pi + k·2·pi, 4/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(3*tan(x)=3, x)"), "{ 1/4·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(5*sin(x)=5, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }"); // c=1 single family
+    assert_eq!(
+        r("solve(3*sin(x)=1, x)"),
+        "{ arcsin(1/3) + k·2·pi, pi - arcsin(1/3) + k·2·pi : k ∈ ℤ }"
+    );
+    // Negative coefficient (sign folds into c), additive offset, and scaled argument all work.
+    assert_eq!(
+        r("solve(-2*sin(x)=1, x)"),
+        "{ -1/6·pi + k·2·pi, 7/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(2*sin(x)+1=2, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(2*sin(2*x)=1, x)"),
+        "{ 1/12·pi + k·pi, 5/12·pi + k·pi : k ∈ ℤ }"
+    );
+    // SOUNDNESS edges: out-of-range stays empty; c=±1 single family.
+    assert_eq!(r("solve(2*sin(x)=3, x)"), "No solution");
+    assert_eq!(r("solve(2*sin(x)=2, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
+}
+
+#[test]
 fn test_eval_variable_base_log_inequality_declines() {
     // SOUNDNESS: `log(x, c) ≷ k` reads x as the BASE, so logₓ(c)=ln(c)/ln(x) is NON-monotonic
     // (decreasing on x>1, sign change at x=1). The engine's monotonic isolation emitted a wrong ray
