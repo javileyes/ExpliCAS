@@ -14,6 +14,8 @@ pub(super) fn generate_identity_comparison_substeps(
             after_expr: format_poly_stats(ctx, lhs_stats),
             before_latex: None,
             after_latex: None,
+            desc_key: None,
+            desc_args: Vec::new(),
         },
         SubStep {
             description: "Expandir lado derecho".to_string(),
@@ -21,6 +23,8 @@ pub(super) fn generate_identity_comparison_substeps(
             after_expr: format_poly_stats(ctx, rhs_stats),
             before_latex: None,
             after_latex: None,
+            desc_key: None,
+            desc_args: Vec::new(),
         },
         SubStep {
             description: "Comparar formas normales".to_string(),
@@ -34,6 +38,8 @@ pub(super) fn generate_identity_comparison_substeps(
                 lhs_stats.monomials, rhs_stats.monomials
             )),
             after_latex: Some("\\text{Coinciden} \\Rightarrow \\text{diferencia} = 0".to_string()),
+            desc_key: None,
+            desc_args: Vec::new(),
         },
     ]
 }

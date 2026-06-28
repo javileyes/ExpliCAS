@@ -4,12 +4,22 @@ use cas_api_models::SubStepWire;
 pub(super) fn collect_step_payload_substeps(
     _step: &Step,
     enriched: &crate::didactic::EnrichedStep,
+    language: cas_solver_core::eval_option_axes::Language,
 ) -> Vec<SubStepWire> {
     let mut substeps: Vec<SubStepWire> = Vec::new();
 
     for substep in &enriched.sub_steps {
+        // A keyed sub-step renders its title in `language` from the locale table; an unkeyed one keeps
+        // its Spanish `description` (sub-steps are migrated to keys incrementally).
+        let title = match substep.desc_key {
+            Some(key) => {
+                let args: Vec<&str> = substep.desc_args.iter().map(String::as_str).collect();
+                crate::didactic::locale::translate(key, &args, language)
+            }
+            None => substep.description.clone(),
+        };
         substeps.push(SubStepWire {
-            title: substep.description.clone(),
+            title,
             lines: vec![],
             before_latex: Some(render_substep_side(
                 substep.before_latex.clone(),

@@ -12487,22 +12487,25 @@ fn generate_single_inverse_by_parts_substeps(
     let choice_latex = format!("u = {},\\; dv = dx", u_latex);
 
     vec![
-        SubStep::new(
-            "Elegir u y dv",
+        SubStep::keyed(
+            "by_parts.choose_u_dv",
+            vec![],
             display_expr(&scratch, integrand),
             choice_display.clone(),
         )
         .with_before_latex(latex_expr(&scratch, integrand))
         .with_after_latex(choice_latex.clone()),
-        SubStep::new(
-            "Calcular du y v",
+        SubStep::keyed(
+            "by_parts.compute_du_v",
+            vec![],
             choice_display,
             format!("du = {} dx, v = {}", du_display, v_display),
         )
         .with_before_latex(choice_latex)
         .with_after_latex(format!("du = {}\\,dx,\\; v = {}", du_latex, v_latex)),
-        SubStep::new(
-            "Aplicar la fórmula de integración por partes",
+        SubStep::keyed(
+            "by_parts.apply_formula",
+            vec![],
             format!(
                 "{}·{} - integrate({}·{}, {})",
                 u_display_factor, v_display, v_display, du_display_factor, var_name
@@ -12549,22 +12552,25 @@ fn generate_polynomial_affine_log_by_parts_substeps(
     let choice_latex = format!("u = {},\\; dv = {}", u_latex, dv_latex);
 
     vec![
-        SubStep::new(
-            "Elegir u y dv",
+        SubStep::keyed(
+            "by_parts.choose_u_dv",
+            vec![],
             display_expr(ctx, integrand),
             choice_display.clone(),
         )
         .with_before_latex(latex_expr(ctx, integrand))
         .with_after_latex(choice_latex.clone()),
-        SubStep::new(
-            "Calcular du y v",
+        SubStep::keyed(
+            "by_parts.compute_du_v",
+            vec![],
             choice_display,
             format!("du = {}, v = {}", du_display, v_display),
         )
         .with_before_latex(choice_latex)
         .with_after_latex(format!("du = {},\\; v = {}", du_latex, v_latex)),
-        SubStep::new(
-            "Aplicar la fórmula de integración por partes",
+        SubStep::keyed(
+            "by_parts.apply_formula",
+            vec![],
             format!(
                 "{}·{} - integrate({}·{}, {})",
                 u_display, v_display_factor, v_display_factor, du_factor_display, var_name
@@ -12655,22 +12661,25 @@ fn generate_polynomial_elementary_by_parts_substeps(
     };
 
     vec![
-        SubStep::new(
-            "Elegir u y dv",
+        SubStep::keyed(
+            "by_parts.choose_u_dv",
+            vec![],
             display_expr(&scratch, integrand),
             choice_display.clone(),
         )
         .with_before_latex(latex_expr(&scratch, integrand))
         .with_after_latex(choice_latex.clone()),
-        SubStep::new(
-            "Calcular du y v",
+        SubStep::keyed(
+            "by_parts.compute_du_v",
+            vec![],
             choice_display,
             format!("du = {} dx, v = {}", du_display, v_display),
         )
         .with_before_latex(choice_latex)
         .with_after_latex(format!("du = {}\\,dx,\\; v = {}", du_latex, v_latex)),
-        SubStep::new(
-            "Aplicar la fórmula de integración por partes",
+        SubStep::keyed(
+            "by_parts.apply_formula",
+            vec![],
             format!(
                 "{}·{} - integrate({}, {})",
                 u_display_factor, v_display_factor, remaining_display, var_name
@@ -12730,8 +12739,9 @@ fn generate_repeated_polynomial_elementary_by_parts_substeps(
             // current_poly is a constant: integrate the remaining elementary term
             // directly, closing into the engine's final antiderivative.
             substeps.push(
-                SubStep::new(
-                    "Integrar el término restante",
+                SubStep::keyed(
+                    "by_parts.integrate_remaining",
+                    vec![],
                     format!("integrate({}, {})", core_display, var_name),
                     display_expr(&scratch, after),
                 )
@@ -12782,8 +12792,9 @@ fn generate_repeated_polynomial_elementary_by_parts_substeps(
         let remaining_latex = format!("{}\\cdot {}", v_latex_factor, du_latex_factor);
 
         substeps.push(
-            SubStep::new(
-                "Elegir u y dv",
+            SubStep::keyed(
+                "by_parts.choose_u_dv",
+                vec![],
                 core_display.clone(),
                 choice_display.clone(),
             )
@@ -12791,8 +12802,9 @@ fn generate_repeated_polynomial_elementary_by_parts_substeps(
             .with_after_latex(choice_latex.clone()),
         );
         substeps.push(
-            SubStep::new(
-                "Calcular du y v",
+            SubStep::keyed(
+                "by_parts.compute_du_v",
+                vec![],
                 choice_display,
                 // Group du so a multi-term derivative (e.g. 4x - 3) reads as
                 // `(4·x - 3) dx`, not the ambiguous `4·x - 3 dx`. A single-term
@@ -12803,8 +12815,9 @@ fn generate_repeated_polynomial_elementary_by_parts_substeps(
             .with_after_latex(format!("du = {}\\,dx,\\; v = {}", du_latex_factor, v_latex)),
         );
         substeps.push(
-            SubStep::new(
-                "Aplicar la fórmula de integración por partes",
+            SubStep::keyed(
+                "by_parts.apply_formula",
+                vec![],
                 format!("integrate({}, {})", core_display, var_name),
                 format!(
                     "{}·{} - integrate({}, {})",

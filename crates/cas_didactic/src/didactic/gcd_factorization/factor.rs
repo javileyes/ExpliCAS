@@ -24,5 +24,7 @@ pub(super) fn build_factor_substep(
             .to_string(),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     })
 }

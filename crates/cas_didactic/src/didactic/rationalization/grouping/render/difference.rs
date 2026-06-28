@@ -15,6 +15,8 @@ pub(super) fn build_difference_of_squares_substep(
         after_expr: after_denominator_latex.to_string(),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     }
 }
 

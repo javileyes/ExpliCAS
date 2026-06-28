@@ -23,5 +23,7 @@ pub(super) fn build_substituted_expression_substep(
         after_expr: after_plain,
         before_latex: Some(latex_expr(ctx, display_id)),
         after_latex: Some(after_latex),
+        desc_key: None,
+        desc_args: Vec::new(),
     }
 }

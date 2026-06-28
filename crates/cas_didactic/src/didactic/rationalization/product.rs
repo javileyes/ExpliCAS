@@ -19,6 +19,8 @@ pub(super) fn generate_product_rationalization_substeps(
             after_expr: "\\frac{a}{k \\cdot \\sqrt{n}}".to_string(),
             before_latex: None,
             after_latex: None,
+            desc_key: None,
+            desc_args: Vec::new(),
         });
 
         if let Expr::Div(new_num, new_den) = ctx.get(after) {
@@ -33,6 +35,8 @@ pub(super) fn generate_product_rationalization_substeps(
                 after_expr: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
                 before_latex: None,
                 after_latex: None,
+                desc_key: None,
+                desc_args: Vec::new(),
             });
         }
     }

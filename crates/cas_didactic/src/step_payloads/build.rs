@@ -12,11 +12,12 @@ pub(super) fn build_step_wire(
     context: &Context,
     index: usize,
     enriched: &crate::didactic::EnrichedStep,
+    language: cas_solver_core::eval_option_axes::Language,
 ) -> StepWire {
     let step = &enriched.base_step;
     let rendered_exprs = expr::render_step_wire_exprs(context, step);
     let rendered_latex = latex::render_step_wire_latex(context, step);
-    let substeps = substeps::collect_step_wire_substeps(step, enriched);
+    let substeps = substeps::collect_step_wire_substeps(step, enriched, language);
     let visible_rule = inferred_step_rule(context, step, &substeps).unwrap_or_else(|| {
         crate::didactic::visible_rule_name_for_step(&step.rule_name, &step.description).to_string()
     });

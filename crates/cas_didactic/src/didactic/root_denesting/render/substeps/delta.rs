@@ -19,5 +19,7 @@ pub(super) fn build_denesting_delta_substep(
         after_expr: format_rational_latex(delta),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     }
 }

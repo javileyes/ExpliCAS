@@ -8,5 +8,7 @@ pub(super) fn build_grouped_conjugate_substep(grouping: &GroupedRationalizationD
         after_expr: grouping.grouped_conjugate.clone(),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     }
 }

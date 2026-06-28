@@ -13,5 +13,7 @@ pub(super) fn build_cancel_substep(
         after_expr: after_str,
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     }
 }

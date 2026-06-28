@@ -14,5 +14,7 @@ pub(super) fn build_apply_denesting_substep(
         after_expr: denesting_latex(ctx, after_expr),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     }
 }

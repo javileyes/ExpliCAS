@@ -17,6 +17,8 @@ pub(super) fn render_sum_three_cubes_substeps(
             after_expr: "x^3 + y^3 + z^3".to_string(),
             before_latex: None,
             after_latex: None,
+            desc_key: None,
+            desc_args: Vec::new(),
         },
         SubStep {
             description: "Verificamos que x + y + z = 0".to_string(),
@@ -24,6 +26,8 @@ pub(super) fn render_sum_three_cubes_substeps(
             after_expr: "0 \\quad \\checkmark".to_string(),
             before_latex: None,
             after_latex: None,
+            desc_key: None,
+            desc_args: Vec::new(),
         },
         SubStep {
             description: "Aplicamos la identidad: si x+y+z=0, entonces x³+y³+z³=3xyz".to_string(),
@@ -31,6 +35,8 @@ pub(super) fn render_sum_three_cubes_substeps(
             after_expr: format!("3 \\cdot ({}) \\cdot ({}) \\cdot ({})", x_str, y_str, z_str),
             before_latex: None,
             after_latex: None,
+            desc_key: None,
+            desc_args: Vec::new(),
         },
     ]
 }

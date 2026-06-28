@@ -27,5 +27,7 @@ pub(super) fn build_substitution_intro_substep(
         after_expr: format!("Sea {}", subs_desc_plain.join(", ")),
         before_latex: Some(latex_expr(ctx, step.before)),
         after_latex: Some(format!("\\text{{Sea }} {}", subs_desc_latex.join(", \\; "))),
+        desc_key: None,
+        desc_args: Vec::new(),
     }
 }

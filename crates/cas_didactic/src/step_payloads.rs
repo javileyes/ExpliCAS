@@ -28,7 +28,12 @@ pub fn collect_step_payloads_localized(
     steps_mode: &str,
     language: Language,
 ) -> Vec<StepWire> {
-    localize_step_payloads(collect_step_payloads(steps, ctx, steps_mode), language)
+    // Substep titles are rendered in `language` during the build (keyed sub-steps); the visible rule
+    // name is post-translated here (it is built in Spanish).
+    localize_step_payloads(
+        collect_step_payloads_inner(steps, ctx, steps_mode, language),
+        language,
+    )
 }
 
 /// Like [`collect_step_payloads_with_events`], localized into `language`.
@@ -39,19 +44,34 @@ pub fn collect_step_payloads_with_events_localized(
     steps_mode: &str,
     language: Language,
 ) -> Vec<StepWire> {
-    localize_step_payloads(
-        collect_step_payloads_with_events(steps, events, ctx, steps_mode),
-        language,
-    )
+    // Render keyed sub-step titles in `language` (the normal step path); only fall back to events
+    // when the step path is empty (events carry no sub-steps). Rule names are post-translated.
+    let collected = collect_step_payloads_inner(steps, ctx, steps_mode, language);
+    let base = if !collected.is_empty() || steps_mode != "on" {
+        collected
+    } else {
+        events::collect_event_step_payloads(events, ctx)
+    };
+    localize_step_payloads(base, language)
 }
 
-/// Convert engine steps to typed step payload DTOs.
+/// Convert engine steps to typed step payload DTOs (Spanish, the source language).
 ///
 /// Keeps step formatting behavior consistent with timeline rendering.
 pub fn collect_step_payloads(steps: &[Step], ctx: &Context, steps_mode: &str) -> Vec<StepWire> {
+    collect_step_payloads_inner(steps, ctx, steps_mode, Language::Es)
+}
+
+/// Build step payloads, rendering keyed sub-step titles in `language`.
+fn collect_step_payloads_inner(
+    steps: &[Step],
+    ctx: &Context,
+    steps_mode: &str,
+    language: Language,
+) -> Vec<StepWire> {
     let mut payloads = Vec::new();
     for enriched in prepare::prepare_step_payloads(steps, ctx, steps_mode) {
-        let mut wire = build::build_step_wire(ctx, payloads.len() + 1, &enriched);
+        let mut wire = build::build_step_wire(ctx, payloads.len() + 1, &enriched, language);
         if is_noop_wire_step(&wire) {
             continue;
         }

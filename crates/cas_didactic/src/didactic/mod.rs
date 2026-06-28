@@ -46,6 +46,7 @@ mod fraction_sum_analysis;
 mod gcd_factorization;
 mod generic_rule_substeps;
 mod latex_plain_text;
+pub(crate) mod locale;
 mod nested_fraction_analysis;
 mod nested_fractions;
 mod polynomial_identity;

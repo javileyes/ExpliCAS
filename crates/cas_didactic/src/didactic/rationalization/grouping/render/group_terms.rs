@@ -12,5 +12,7 @@ pub(super) fn build_group_terms_substep(
         after_expr: format!("\\frac{{{}}}{{{}}}", numerator_latex, grouping.grouped_sum),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     }
 }

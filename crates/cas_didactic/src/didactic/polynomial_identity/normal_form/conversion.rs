@@ -17,6 +17,8 @@ pub(super) fn generate_normal_form_conversion_substeps(
             after_expr: normal_form_plain,
             before_latex: Some(latex_expr(ctx, step.before)),
             after_latex: normal_form_latex,
+            desc_key: None,
+            desc_args: Vec::new(),
         },
         SubStep {
             description: "Cancelar términos semejantes".to_string(),
@@ -24,6 +26,8 @@ pub(super) fn generate_normal_form_conversion_substeps(
             after_expr: "0".to_string(),
             before_latex: Some("\\text{todos los coeficientes}".to_string()),
             after_latex: Some("0".to_string()),
+            desc_key: None,
+            desc_args: Vec::new(),
         },
     ]
 }

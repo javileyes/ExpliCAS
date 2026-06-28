@@ -15,6 +15,8 @@ pub(crate) fn render_fraction_sum_substeps(
             after_expr: common.converted.join(" + "),
             before_latex: None,
             after_latex: None,
+            desc_key: None,
+            desc_args: Vec::new(),
         });
     }
 
@@ -28,6 +30,8 @@ pub(crate) fn render_fraction_sum_substeps(
         after_expr: format_fraction(&info.result),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     });
 
     sub_steps

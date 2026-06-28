@@ -10,6 +10,8 @@ pub(super) fn build_nested_fraction_default_substeps(
         after_expr: after_str.to_string(),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     }]
 }
 
@@ -23,5 +25,7 @@ pub(super) fn build_general_expression_default_substeps(
         after_expr: after_str.to_string(),
         before_latex: None,
         after_latex: None,
+        desc_key: None,
+        desc_args: Vec::new(),
     }]
 }
