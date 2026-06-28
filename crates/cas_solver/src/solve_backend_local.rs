@@ -2999,6 +2999,57 @@ fn try_solve_periodic_trig_equation(
     let (lhs, _) = simplifier.simplify(eq.lhs);
     let (rhs, _) = simplifier.simplify(eq.rhs);
     let var_id = simplifier.context.var(var);
+
+    // `sin(arg)^2 = c`  <=>  `cos(2·arg) = 1 - 2c` ;  `cos(arg)^2 = c`  <=>  `cos(2·arg) = 2c - 1`.
+    // Reduce a squared bare trig to the double-angle cosine equation and recurse: the cos branch's
+    // c ∈ {0, ±1} gate then maps EXACTLY the single-family cases (`sin(x)^2=1 → cos(2x)=-1 →
+    // {π/2 + kπ}`) and declines the two-family ones (`sin(x)^2=1/4 → cos(2x)=1/2`, not in {0,±1}).
+    let squared = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, ExprId)> {
+        if let Expr::Pow(base, exp) = ctx.get(e) {
+            let (base, exp) = (*base, *exp);
+            let two = BigRational::from_integer(2.into());
+            if cas_math::numeric_eval::as_rational_const(ctx, exp) == Some(two) {
+                if let Expr::Function(fn_id, args) = ctx.get(base) {
+                    if args.len() == 1 && contains_var(ctx, args[0], var) {
+                        if let Some(b) = ctx.builtin_of(*fn_id) {
+                            if matches!(b, BuiltinFn::Sin | BuiltinFn::Cos) {
+                                return Some((b, args[0]));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    };
+    let squared_hit = if let Some((f, arg)) = squared(&simplifier.context, lhs) {
+        (!contains_var(&simplifier.context, rhs, var)).then_some((f, arg, rhs))
+    } else if let Some((f, arg)) = squared(&simplifier.context, rhs) {
+        (!contains_var(&simplifier.context, lhs, var)).then_some((f, arg, lhs))
+    } else {
+        None
+    };
+    if let Some((sq_func, arg, c)) = squared_hit {
+        let cv = cas_math::numeric_eval::as_rational_const(&simplifier.context, c)?;
+        let two_c = &cv + &cv;
+        let target = if matches!(sq_func, BuiltinFn::Sin) {
+            BigRational::one() - two_c
+        } else {
+            two_c - BigRational::one()
+        };
+        let two = simplifier.context.num(2);
+        let two_arg = simplifier.context.add(Expr::Mul(two, arg));
+        let (two_arg, _) = simplifier.simplify(two_arg);
+        let cos_call = simplifier.context.call("cos", vec![two_arg]);
+        let target_expr = simplifier.context.add(Expr::Number(target));
+        let reduced = Equation {
+            lhs: cos_call,
+            rhs: target_expr,
+            op: RelOp::Eq,
+        };
+        return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+    }
+
     // `trig(a·x)` with a positive rational `a` -> `(func, a)`.
     let detect = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, BigRational)> {
         if let Expr::Function(fn_id, args) = ctx.get(e) {

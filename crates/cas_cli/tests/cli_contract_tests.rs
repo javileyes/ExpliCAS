@@ -2179,7 +2179,13 @@ fn test_eval_periodic_trig_equation_emits_family() {
     assert_eq!(r("solve(sin(2*x)=0, x)"), "{ k·1/2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(tan(2*x)=1, x)"), "{ 1/8·pi + k·1/2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(sin(x/2)=0, x)"), "{ k·2·pi : k ∈ ℤ }");
-    // Period 2π families (c = ±1).
+    // Squared trig via the double-angle reduction `sin(arg)^2=c <=> cos(2·arg)=1-2c`.
+    assert_eq!(r("solve(sin(x)^2=1, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x)^2=1, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x)^2=1/2, x)"), "{ 1/4·pi + k·1/2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(2*x)^2=1, x)"), "{ 1/4·pi + k·1/2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x)^2=1/4, x)"), "{ 1/6·pi }"); // two families, declined
+                                                           // Period 2π families (c = ±1).
     assert_eq!(r("solve(sin(x)=1, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(cos(x)=1, x)"), "{ k·2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(cos(x)=-1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
