@@ -1450,6 +1450,11 @@ verificadas + integración definida racional/valor-absoluto). Ordenados por valo
   intacta). Peldaño restante DISTINTO: `∫_a^∞ 1/((x-1)(x²+1))` (denom pre-factorizado, log de arg cuadrático) aún
   residualiza el valor IMPROPIO aunque el límite-frontera resuelve aislado y la definida finita computa — bloqueo en
   la ruta de reescritura impropia, no en el límite.)*
+  *(pre-factorizado cerrado 2026-06-28 43d3f60d1: la antiderivada `Add(__hold(−½arctan−¼ln(x²+1)), ½ln|x−1|)` cargaba
+  un `__hold` interno; el rewrite impropio solo des-envolvía la RAÍZ → el límite-frontera declinaba. `strip_all_holds`
+  recursivo antes de `boundary_value` ⇒ `∫_2^∞ 1/((x-1)(x²+1))=¼(ln5+2arctan2)−¼π` COMPUTA (y el expandido
+  `1/(x³−x²+x−1)` igual); soundness polo/divergente intacta. Racional impropia convergente con factores reales + 1
+  cuadrática irreducible: CUBIERTA.)*
 - [ ] **(F) Definida `1/(a²−x²)` fuera de `|x|<a`** (`1/(1−x²)` en `[2,3]`): la antiderivada
   `atanh(x)` es real solo en `|x|<1`; el valor real fuera es `½ln|(1+x)/(1−x)|`. INTENTADO y
   REVERTIDO en el ciclo 6 — la reescritura atanh→log se enredó con el envoltorio `Hold` y la

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 432 (newest first)
+Active entries: 433 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -130,6 +130,7 @@ Active entries: 432 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_math/src/limits_support.rs` (`collect_signed_log_and_arctan_terms... | UNIVERSALIDAD (capacidad F): absorber arctan en el límite suma-de-logs → impropia racional con factor cuadrático irreducible (familia x⁴−1)
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 wrong-answer): trig periódica con coeficiente/offset externo devolvía conjunto incompleto
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 wrong-answer): trig CUADRADA con coeficiente externo devolvía conjunto incompleto
+- 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (improper rewr... | UNIVERSALIDAD (capacidad F): __hold interno bloqueaba el valor impropio de racional pre-factorizado con cuadrática irreducible
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17321,3 +17322,30 @@ Active entries: 432 (newest first)
     el workflow de scouting (universality-frontier-scout) destapó y verificó adversarialmente (2 P0 de 6 wrong-answers).
   - siguiente del scouting (capacidad, hilo cálido): el `__hold` interno no recursivamente pelado bloquea
     `∫_a^∞ 1/((x-1)(x²+1))` (el límite-frontera resuelve aislado) — rank 3 del informe.
+
+## 2026-06-28 - UNIVERSALIDAD (capacidad F): __hold interno bloqueaba el valor impropio de racional pre-factorizado con cuadrática irreducible
+
+- area: `crates/cas_engine/src/rules/calculus/definite_integration.rs` (improper rewrite: `strip_all_holds` en vez de `unwrap_hold` raíz)
+- status: `retained` (commit 43d3f60d1). Rank 3 del workflow de scouting; cierra el peldaño que dejó abierto el ciclo de absorción-arctan (99e8f4064).
+- capture:
+  - cell: `∫_2^∞ 1/((x-1)(x²+1))` residualizaba aunque su límite-frontera resuelve aislado y su definida FINITA computa.
+    AHORA `¼(ln5 + 2·arctan2) − ¼π` (≈0.170535673, verificado). Igual el expandido `∫_2^∞ 1/(x³−x²+x−1)`.
+  - causa raíz: la antiderivada de fracciones parciales con factor cuadrático irreducible envuelve un SUBÁRBOL:
+    `Add(__hold(−½arctan x − ¼ln(x²+1)), ½ln|x−1|)`. El rewrite impropio solo des-envolvía un `__hold` RAÍZ
+    (loop `unwrap_hold`), así que el `__hold` interno sobrevivía a `boundary_value`; el colector de términos
+    log/arctan del límite suma-de-logs no ve a través de un hold ⇒ `eval_limit_at_infinity` declina ⇒ residual.
+  - fix: reemplazar el loop `unwrap_hold` raíz por `cas_ast::hold::strip_all_holds`. La antiderivada es FINAL en ese
+    punto (se va a sustituir/limitar, no a re-simplificar), así que quitar todas las barreras es seguro y coincide con
+    cómo la ruta de sustitución en bordes finitos ya se comporta. Diagnóstico: el fix alternativo (hacer el colector
+    hold-transparente) NO bastó — el hold bloquea ANTES del colector; la raíz era la antiderivada cargando el hold.
+  - validación: workspace failed:0; clippy --workspace --all-targets; engine-fast/scorecard/pressure pass; huella
+    GUARD/PRESS IDÉNTICA; test de contrato extendido (pre-factorizado + expandido + soundness polo/divergente).
+- retained learning:
+  - una antiderivada lista para EVALUAR no debe llevar `__hold` internos al motor de límites: `strip_all_holds`
+    (recursivo) en vez de `unwrap_hold` (raíz) antes de `boundary_value`. El hold protege contra re-expansión DURANTE
+    la integración; una vez final, estorba al consumidor (límite) que no es hold-transparente.
+  - diagnóstico de capa correcta: dos sitios candidatos ("EITHER" del scout); el síntoma (colector declina en hold)
+    no era la raíz (la antiderivada NO debía llevar el hold). Probar el fix de la capa-fuente antes que el defensivo.
+  - siguiente del scouting: rank 4 (`1/(a²−x²)` fuera de `|x|<a` → emitir `ln|(a+x)/(a−x)|` en vez de atanh con guard
+    espurio; medium, repara también un wrong-answer indefinido), rank 5/8/9/10 (apart impropio, u-sub escala, serie
+    armónica→∞, content de factor) — wins pequeños.
