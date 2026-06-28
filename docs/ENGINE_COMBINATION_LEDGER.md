@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 433 (newest first)
+Active entries: 434 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -131,6 +131,7 @@ Active entries: 433 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 wrong-answer): trig periódica con coeficiente/offset externo devolvía conjunto incompleto
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 wrong-answer): trig CUADRADA con coeficiente externo devolvía conjunto incompleto
 - 2026-06-28 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (improper rewr... | UNIVERSALIDAD (capacidad F): __hold interno bloqueaba el valor impropio de racional pre-factorizado con cuadrática irreducible
+- 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (`classify_infinite_sum` + `extrac... | UNIVERSALIDAD (capacidad F): serie p divergente (armónica y más lentas) → ±infinito
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17349,3 +17350,28 @@ Active entries: 433 (newest first)
   - siguiente del scouting: rank 4 (`1/(a²−x²)` fuera de `|x|<a` → emitir `ln|(a+x)/(a−x)|` en vez de atanh con guard
     espurio; medium, repara también un wrong-answer indefinido), rank 5/8/9/10 (apart impropio, u-sub escala, serie
     armónica→∞, content de factor) — wins pequeños.
+
+## 2026-06-28 - UNIVERSALIDAD (capacidad F): serie p divergente (armónica y más lentas) → ±infinito
+
+- area: `crates/cas_math/src/summation_support.rs` (`classify_infinite_sum` + `extract_inverse_power_term`/`decompose_coeff_and_var_power`)
+- status: `retained` (commit pendiente-de-hash). Rank 9 del scouting; win pequeño de capacidad/decisividad.
+- capture:
+  - cell: `sum(1/n,n,1,oo)` residualizaba; AHORA `infinity`. Igual `2/n`, `1/(2n)`, `1/sqrt(n)` (p=1/2), `-1/n`→`-infinity`.
+    `extract_p_series_term` ni reconocía `1/n` desnudo (den es `Variable`, no `Pow`).
+  - causa raíz: `classify_infinite_sum` decidía divergencia para constante/polinomio/`r^k`(r>1) pero NO para `c/n^p`,
+    0<p≤1 (frontera armónica y más lentas).
+  - fix: `decompose_coeff_and_var_power` lee cualquier forma `c·n^e` (constante=n^0, var=n^1, `n^p`, y combinaciones
+    `Mul`/`Div`/`Neg`); `extract_inverse_power_term` da `(c,p)` para una sola potencia negativa. En `classify`,
+    0<p≤1 ∧ c≠0 ⇒ `sign(c)·∞`. Guard lower-bound ≥1 ⇒ n=0 (único polo de n^(-p)) fuera de rango
+    (`sum(1/n,n,0,oo)`→`undefined` upstream intacto).
+  - validación: workspace failed:0; clippy --workspace --all-targets; engine-fast/scorecard/pressure pass; huella
+    GUARD/PRESS IDÉNTICA; test de contrato (divergentes + no-regresión convergentes/alternante/polo/ζ impar y semi-entero).
+- retained learning:
+  - una clasificación de divergencia incompleta (cubría poly/geom pero no `1/n^p` con p≤1) se cierra con un decompositor
+    `c·n^e` genérico (Mul/Div/Neg, exponente racional) en vez de patrones ad-hoc; reconoce `1/n` desnudo, `1/(2n)`,
+    `1/sqrt(n)`=`n^(-1/2)` por igual.
+  - soundness del borde de convergencia EXACTO: p≤1 diverge, p>1 converge (no tocar — la ruta ζ y residuales honestos);
+    el factor de signo alternante hace que el decompositor DECLINE ⇒ nunca se reporta divergente una serie condicionalmente
+    convergente. [[soundness-gates-must-be-exact]].
+  - siguiente del scouting: rank 5 (apart impropio), rank 8 (u-sub con escala≠±1), rank 4 (1/(a²−x²) fuera de |x|<a,
+    medium + repara wrong-answer indefinido).
