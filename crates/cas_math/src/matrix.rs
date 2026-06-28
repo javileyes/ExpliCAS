@@ -230,10 +230,23 @@ impl Matrix {
     /// symbolically too — `norm([a,b]) = √(a²+b²)` — and the engine folds the
     /// numeric case (`norm([3,4]) = 5`).
     pub fn norm(&self, ctx: &mut Context) -> Option<ExprId> {
+        use num_traits::Zero;
         let two = ctx.num(2);
         let mut sum_of_squares = ctx.num(0);
         for &entry in &self.data {
-            let square = ctx.add(Expr::Pow(entry, two));
+            // The Euclidean norm squares the MAGNITUDE of each component, `|a+bi|^2 = a^2 + b^2`,
+            // NOT `(a+bi)^2` — squaring the raw component makes a complex entry go imaginary or
+            // negative (`norm([3,4i])` must be `5`, not `sqrt(9+(4i)^2) = i·sqrt(7)`; `norm([1,i])`
+            // must be `sqrt(2)`, not `sqrt(1+i^2) = 0`). A real entry keeps the `entry^2` form
+            // (RealOnly-identical); a recognized Gaussian `a+bi` with `b != 0` folds to the exact
+            // rational `a^2 + b^2`.
+            let square = match crate::complex_support::extract_gaussian(ctx, entry) {
+                Some(g) if !g.imag.is_zero() => {
+                    let magnitude_squared = &g.real * &g.real + &g.imag * &g.imag;
+                    ctx.add(Expr::Number(magnitude_squared))
+                }
+                _ => ctx.add(Expr::Pow(entry, two)),
+            };
             sum_of_squares = ctx.add(Expr::Add(sum_of_squares, square));
         }
         Some(ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![sum_of_squares]))

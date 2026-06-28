@@ -1744,7 +1744,8 @@ fn test_eval_binary_matrix_ops_dot_cross_linsolve() {
 
 #[test]
 fn test_eval_vector_norm() {
-    // `norm(v)` is the Euclidean / Frobenius norm √(Σ entryᵢ²). Numeric folds; symbolic stays exact.
+    // `norm(v)` is the Euclidean / Frobenius norm √(Σ |entryᵢ|²): for a COMPLEX entry it squares the
+    // MAGNITUDE (`|a+bi|² = a²+b²`), not the raw component. Numeric folds; symbolic stays exact.
     let r = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -1759,6 +1760,12 @@ fn test_eval_vector_norm() {
     assert_eq!(r("norm([3,-4])"), "5");
     assert_eq!(r("norm([[3,4],[0,12]])"), "13"); // Frobenius norm of a matrix
     assert_eq!(r("norm([a,b])"), "(a^2 + b^2)^(1/2)"); // symbolic
+                                                       // Complex entries: square the magnitude, never the raw component (which went imaginary before).
+    assert_eq!(r("norm([3,4i])"), "5"); // was sqrt(9+(4i)^2) = i·sqrt(7)
+    assert_eq!(r("norm([1,i])"), "sqrt(2)"); // was sqrt(1+i^2) = 0
+    assert_eq!(r("norm([1+i,1])"), "sqrt(3)"); // |1+i|^2 + 1 = 3
+    assert_eq!(r("norm([2i])"), "2");
+    assert_eq!(r("norm([3i,4i])"), "5");
 }
 
 #[test]
