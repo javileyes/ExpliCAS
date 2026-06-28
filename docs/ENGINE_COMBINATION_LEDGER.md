@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 424 (newest first)
+Active entries: 425 (newest first)
 
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
@@ -122,6 +122,7 @@ Active entries: 424 (newest first)
 - 2026-06-28 | `retained` | `crates/cas_math/src/matrix.rs` (Matrix::norm) | SOUNDNESS P0 (Grupo C4, audit #4): norma de vector complejo eleva al cuadrado el componente, no la magnitud
 - 2026-06-28 | `retained` | `crates/cas_ast/src/domain.rs` (variante `Periodic{base,period}`), `crates/ca... | SOUNDNESS/L (Grupo B parcial, audit #4): variante `Periodic` del SolutionSet + emisión en ecuaciones trig bare
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (positive_linear_coeff_of_var ... | SOUNDNESS/L (Grupo B cont., audit #4): Periodic para ecuación trig con argumento ESCALADO trig(a·x)=c
+- 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (reducción squared-trig en try... | SOUNDNESS/L (Grupo B COMPLETO, audit #4): ecuación trig al cuadrado vía reducción de ángulo doble
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::rank`), wiring en `matrix_rule_supp... | CAPACIDAD (álgebra lineal 1/4): rango de matriz exacto
 - 2026-06-27 | `retained` | `crates/cas_math/src/matrix.rs` (`Matrix::charpoly`), `matrix_ops.rs` (exenci... | CAPACIDAD (álgebra lineal 2/4): polinomio característico
 - 2026-06-27 | `retained` | `crates/cas_engine/src/matrix_rule_support.rs` (`try_matrix_eigenvalues`) | CAPACIDAD (álgebra lineal 3/4): autovalores reales
@@ -17081,3 +17082,32 @@ Active entries: 424 (newest first)
     fraction-fold (`(poly+tan)^n`: wrong n=3 por un `cos` perdido en la SIMPLIFICACIÓN del cociente plegado, hangs n=2,4)
     — PROFUNDO del simplificador, alto riesgo de regresión, requiere ciclo dedicado con validación de huella extensa.
     NO apresurar. Verificador adversarial confirmó que el plan inicial de C5 era unsound (split + más scoping).
+
+## 2026-06-28 - SOUNDNESS/L (Grupo B COMPLETO, audit #4): ecuación trig al cuadrado vía reducción de ángulo doble
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (reducción squared-trig en try_solve_periodic_trig_equation)
+- status: `retained` (commit 5628cadd1). Sexto ciclo del plan audit #4; cierra `sin(x)^2=1` (6/6 del Grupo B → Grupo B COMPLETO).
+- capture:
+  - cell: ANTES `solve(sin(x)^2=1)`→`{±π/2}` (suelta `+kπ`). AHORA `{ 1/2·pi + k·pi : k ∈ ℤ }`. Además
+    `cos(x)^2=1`→`{kπ}`, `sin(x)^2=1/2`→`{π/4+kπ/2}`, y compone con arg escalado: `sin(2x)^2=1`→`{π/4+kπ/2}`.
+    `sin(x)^2=1/4`→`{1/6·pi}` (declina: dos familias).
+  - causa raíz: el guard de Periodic detectaba `trig(arg)=c` y `trig(a·x)=c` pero no la forma AL CUADRADO.
+  - fix: reducción de ángulo doble `sin(arg)^2=c ⟺ cos(2·arg)=1-2c` (cos²: `cos(2·arg)=2c-1`); detecta el
+    `Pow(trig,2)=c` arriba del guard y RECURSA en la ecuación cos reducida. El gate `c'∈{0,±1}` de la rama cos
+    (escalada) mapea EXACTAMENTE los casos de UNA familia y declina los de dos — sin lógica extra. Compone con el
+    escalado (sin(2x)²=1 → cos(4x)=-1).
+  - validación: workspace verde; clippy --workspace --all-targets; rustfmt; engine-fast/scorecard/pressure pass;
+    huella GUARD/PRESS IDÉNTICA; asertos squared en el test de contrato.
+- retained learning:
+  - una IDENTIDAD bien elegida colapsa un caso nuevo al ya resuelto sin lógica nueva: `sin²=c → cos(2x)=1-2c`
+    convirtió la forma al cuadrado (+ fusión de dos familias + escalado de período) en el handler cos escalado YA
+    existente, y su gate `{0,±1}` resultó ser EXACTAMENTE la frontera single-family/two-family. Buscar la reducción
+    canónica antes de añadir un camino nuevo.
+  - recursión segura: la ecuación reducida `cos(2·arg)=k` no es un `Pow(trig,2)` → no re-entra en la rama squared;
+    termina en la detección bare/escalada. Sin bucle.
+  - **AUDIT #4: 24/25 wrong-answers cerrados** (A 14, C1-3 3, C4 1, B 6). ÚNICO restante: **C5 diff fraction-fold**
+    (`(poly+tan)^n`: valor erróneo n=3 por un `cos` perdido en la SIMPLIFICACIÓN del cociente plegado `(P/(c·cos))^n`,
+    + hangs n=2,4). La fórmula de diff (regla del cociente genérica) es CORRECTA; el bug está en la simplificación del
+    resultado (ruta fold-add frágil, riesgo de regresión ALTO sobre el simplificador compartido). Verificador
+    adversarial: plan inicial unsound. Requiere ciclo DEDICADO con root-cause confirmado + validación de huella
+    extensa; NO apresurar. Es el siguiente peldaño.
