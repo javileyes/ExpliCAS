@@ -1,7 +1,7 @@
 //! Evaluation options for expression processing.
 
 pub use crate::eval_option_axes::{
-    AutoExpandBinomials, BranchMode, ComplexMode, ContextMode, HeuristicPoly, StepsMode,
+    AutoExpandBinomials, BranchMode, ComplexMode, ContextMode, HeuristicPoly, Language, StepsMode,
 };
 
 /// Evaluation options for expression processing.
@@ -29,6 +29,8 @@ pub struct EvalOptions {
     pub shared: crate::simplify_options::SharedSemanticConfig,
     /// Optional wall-clock budget for cooperative simplification timeout.
     pub time_budget_ms: Option<u64>,
+    /// Natural language for the user-facing step-by-step narration.
+    pub language: Language,
 }
 
 impl EvalOptions {
@@ -109,6 +111,7 @@ impl Default for EvalOptions {
             requires_display: crate::domain_condition::RequiresDisplayLevel::Essential,
             shared: crate::simplify_options::SharedSemanticConfig::default(),
             time_budget_ms: None,
+            language: Language::default(),
         }
     }
 }
