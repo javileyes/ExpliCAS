@@ -1322,37 +1322,49 @@
             margin-left: 10px;
         }
 
-        /* Group section headers inside the examples list */
-        .examples-list li.examples-group-header {
-            background: transparent;
-            border-left: none;
-            border-radius: 0;
-            border-bottom: 1px solid rgba(59, 130, 246, 0.35);
+        /* Category cards in the first (collapsed) modal */
+        .examples-list li.examples-group-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .examples-group-card-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 1.0em;
+        }
+
+        .examples-group-card-count {
             color: #3b82f6;
-            font-weight: 700;
-            font-size: 1.02em;
-            letter-spacing: 0.02em;
-            padding: 20px 2px 6px;
-            margin-bottom: 8px;
-            cursor: default;
+            font-size: 0.85em;
+            white-space: nowrap;
+            font-weight: 500;
         }
 
-        .examples-list li.examples-group-header:first-child {
-            padding-top: 2px;
+        /* Second modal (a single group's examples) stacks above the category list */
+        .examples-group-overlay {
+            z-index: 1001;
         }
 
-        .examples-list li.examples-group-header:hover {
-            background: transparent;
-            transform: none;
-            box-shadow: none;
+        .examples-back-btn {
+            background: rgba(59, 130, 246, 0.15);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            border-radius: 8px;
+            width: 34px;
+            height: 34px;
+            font-size: 1.15em;
+            cursor: pointer;
+            line-height: 1;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
         }
 
-        .examples-group-count {
-            color: var(--text-secondary);
-            font-weight: 400;
-            font-size: 0.8em;
-            font-style: italic;
-            margin-left: 8px;
+        .examples-back-btn:hover {
+            background: rgba(59, 130, 246, 0.3);
+            transform: translateX(-2px);
         }
     </style>
 </head>
@@ -1454,13 +1466,24 @@
         </div>
     </div>
 
-    <!-- Examples Panel Overlay -->
+    <!-- Examples Panel Overlay (collapsed category list) -->
     <div class="examples-panel-overlay" id="examples-panel-overlay" onclick="hideExamplesPanel(event)">
         <div class="examples-panel" onclick="event.stopPropagation()">
-            <h2>❓ Examples - Click to copy</h2>
+            <h2>❓ Examples — Elige una categoría</h2>
             <ul class="examples-list" id="examples-list">
                 <li>Loading examples...</li>
             </ul>
+        </div>
+    </div>
+
+    <!-- Group Examples Overlay (second modal: one category's examples) -->
+    <div class="examples-panel-overlay examples-group-overlay" id="examples-group-overlay" onclick="hideGroupExamples(event)">
+        <div class="examples-panel" onclick="event.stopPropagation()">
+            <h2>
+                <button class="examples-back-btn" onclick="hideGroupExamples()" title="Volver a categorías">←</button>
+                <span id="examples-group-title">Ejemplos</span>
+            </h2>
+            <ul class="examples-list" id="examples-group-list"></ul>
         </div>
     </div>
 
@@ -2780,6 +2803,9 @@
         // =====================
 
         let cachedExamples = null;
+        // Ordered groups [{ group, items: [{ ex, i }] }]; `i` is the index into the flat
+        // cachedExamples array so copyExampleToInput keeps working from the second modal.
+        let cachedGroups = null;
 
         async function loadExamples() {
             if (cachedExamples) return cachedExamples;
@@ -2797,45 +2823,66 @@
             return [];
         }
 
+        function buildExampleGroups(examples) {
+            const order = [];
+            const byGroup = new Map();
+            examples.forEach((ex, i) => {
+                const g = (ex.group && ex.group.trim()) ? ex.group : 'Otros';
+                if (!byGroup.has(g)) { byGroup.set(g, []); order.push(g); }
+                byGroup.get(g).push({ ex, i });
+            });
+            return order.map(g => ({ group: g, items: byGroup.get(g) }));
+        }
+
         async function showExamplesPanel() {
             const overlay = document.getElementById('examples-panel-overlay');
             const list = document.getElementById('examples-list');
 
-            // Load examples
             const examples = await loadExamples();
 
             if (examples.length === 0) {
                 list.innerHTML = '<li style="cursor: default;">No examples available</li>';
             } else {
-                // Group by the `group` field while preserving each example's ORIGINAL index so
-                // copyExampleToInput keeps working against the flat cachedExamples array.
-                const order = [];
-                const byGroup = new Map();
-                examples.forEach((ex, i) => {
-                    const g = (ex.group && ex.group.trim()) ? ex.group : 'Otros';
-                    if (!byGroup.has(g)) { byGroup.set(g, []); order.push(g); }
-                    byGroup.get(g).push({ ex, i });
-                });
-                list.innerHTML = order.map(g => {
-                    const items = byGroup.get(g);
-                    const header = `<li class="examples-group-header">${escapeHtml(g)}`
-                        + `<span class="examples-group-count">${items.length}</span></li>`;
-                    const rows = items.map(({ ex, i }) => `
-                        <li onclick="copyExampleToInput(${i}, this)">
-                            <div class="example-expression">${escapeHtml(ex.expression)}</div>
-                            <div class="example-description">${escapeHtml(ex.description)}</div>
-                        </li>
-                    `).join('');
-                    return header + rows;
-                }).join('');
+                cachedGroups = buildExampleGroups(examples);
+                // Collapsed view: one clickable card per category. Clicking opens the second modal.
+                list.innerHTML = cachedGroups.map((grp, gi) => `
+                    <li class="examples-group-card" onclick="showGroupExamples(${gi})">
+                        <span class="examples-group-card-name">${escapeHtml(grp.group)}</span>
+                        <span class="examples-group-card-count">${grp.items.length} ejemplos ›</span>
+                    </li>
+                `).join('');
             }
 
+            // Reopening the category list always starts collapsed.
+            document.getElementById('examples-group-overlay').classList.remove('visible');
             overlay.classList.add('visible');
+        }
+
+        function showGroupExamples(groupIndex) {
+            if (!cachedGroups || !cachedGroups[groupIndex]) return;
+            const grp = cachedGroups[groupIndex];
+            document.getElementById('examples-group-title').textContent = grp.group;
+            const list = document.getElementById('examples-group-list');
+            list.innerHTML = grp.items.map(({ ex, i }) => `
+                <li onclick="copyExampleToInput(${i}, this)">
+                    <div class="example-expression">${escapeHtml(ex.expression)}</div>
+                    <div class="example-description">${escapeHtml(ex.description)}</div>
+                </li>
+            `).join('');
+            document.getElementById('examples-group-overlay').classList.add('visible');
+        }
+
+        function hideGroupExamples(event) {
+            // Back button (no event) or a click on the backdrop closes only the second modal.
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('examples-group-overlay').classList.remove('visible');
+            }
         }
 
         function hideExamplesPanel(event) {
             if (!event || event.target === event.currentTarget) {
                 document.getElementById('examples-panel-overlay').classList.remove('visible');
+                document.getElementById('examples-group-overlay').classList.remove('visible');
             }
         }
 
@@ -2847,11 +2894,12 @@
             input.value = expression;
             input.focus();
 
-            // Visual feedback
+            // Visual feedback, then close both modals.
             element.classList.add('example-copied');
             setTimeout(() => {
                 element.classList.remove('example-copied');
-                hideExamplesPanel();
+                document.getElementById('examples-group-overlay').classList.remove('visible');
+                document.getElementById('examples-panel-overlay').classList.remove('visible');
             }, 600);
         }
     </script>
