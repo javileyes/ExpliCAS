@@ -58,6 +58,26 @@ pub enum StepsArg {
     Compact,
 }
 
+/// Natural language for the step-by-step narration
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum LangArg {
+    /// Spanish (default)
+    #[default]
+    Es,
+    /// English
+    En,
+}
+
+impl LangArg {
+    /// Map to the engine `Language` axis.
+    pub fn to_language(self) -> cas_didactic::Language {
+        match self {
+            LangArg::Es => cas_didactic::Language::Es,
+            LangArg::En => cas_didactic::Language::En,
+        }
+    }
+}
+
 /// Context mode for eval command
 #[derive(ValueEnum, Debug, Clone, Copy, Default)]
 pub enum ContextArg {
@@ -283,6 +303,10 @@ pub struct EvalArgs {
     /// Steps mode: on, off, compact
     #[arg(long, value_enum, default_value_t = StepsArg::Off)]
     pub steps: StepsArg,
+
+    /// Step-by-step language: es (default), en
+    #[arg(long, value_enum, default_value_t = LangArg::Es)]
+    pub lang: LangArg,
 
     /// Context mode: auto, standard, solve, integrate
     #[arg(long, value_enum, default_value_t = ContextArg::Auto)]

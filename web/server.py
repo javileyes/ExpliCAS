@@ -219,6 +219,18 @@ def _coerce_domain_mode(raw_value):
     return value
 
 
+def _coerce_language(raw_value):
+    """Parse the step-by-step language selector (es/en; default es)."""
+    if raw_value is None or raw_value == "":
+        return "es"
+
+    value = str(raw_value).strip().lower()
+    if value not in {"es", "en"}:
+        return "es"
+
+    return value
+
+
 def _coerce_complex_arithmetic(raw_value):
     """Parse the web complex-arithmetic selector (off/on; default off).
 
@@ -560,6 +572,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             domain_mode = _coerce_domain_mode(data.get("domain"))
             branch_mode = _coerce_branch_mode(data.get("branch"))
             complex_arithmetic = _coerce_complex_arithmetic(data.get("complex_arithmetic"))
+            # Per-request step-by-step language, read back in call_cas_cli (same handler instance).
+            self._step_language = _coerce_language(data.get("language"))
             session = get_session(session_id)
             
             if not expression:
@@ -885,6 +899,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "500000",
                 "--steps",
                 "on" if steps_on else "off",
+                "--lang",
+                getattr(self, "_step_language", "es"),
                 "--domain",
                 domain_mode,
                 "--inv-trig",

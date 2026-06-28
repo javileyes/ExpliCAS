@@ -44,7 +44,13 @@ fn render_wire(args: &EvalArgs) -> CommandOutput {
             args.session.as_deref(),
             eval_command_config(&args.expr, args),
             |steps, events, context, steps_mode| {
-                cas_didactic::collect_step_payloads_with_events(steps, events, context, steps_mode)
+                cas_didactic::collect_step_payloads_with_events_localized(
+                    steps,
+                    events,
+                    context,
+                    steps_mode,
+                    args.lang.to_language(),
+                )
             },
         ),
     )

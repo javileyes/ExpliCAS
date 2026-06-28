@@ -6,6 +6,44 @@ use crate::runtime::Step;
 use cas_api_models::StepWire;
 use cas_ast::Context;
 use cas_solver_core::engine_events::EngineEvent;
+use cas_solver_core::eval_option_axes::Language;
+
+/// Localize already-built step payloads into `language`. The step-by-step is built in Spanish (the
+/// source language); for `En` the visible `rule` name is translated through the Spanish->English
+/// table. Math fields (`before`/`after`/latex) are language-neutral and untouched. (Substep titles
+/// and solver descriptions are localized in a later phase.)
+fn localize_step_payloads(mut wires: Vec<StepWire>, language: Language) -> Vec<StepWire> {
+    if language == Language::En {
+        for wire in &mut wires {
+            wire.rule = crate::didactic::rule_name_es_to_en(&wire.rule).to_string();
+        }
+    }
+    wires
+}
+
+/// Like [`collect_step_payloads`], localized into `language` (default `Es` reproduces the Spanish output).
+pub fn collect_step_payloads_localized(
+    steps: &[Step],
+    ctx: &Context,
+    steps_mode: &str,
+    language: Language,
+) -> Vec<StepWire> {
+    localize_step_payloads(collect_step_payloads(steps, ctx, steps_mode), language)
+}
+
+/// Like [`collect_step_payloads_with_events`], localized into `language`.
+pub fn collect_step_payloads_with_events_localized(
+    steps: &[Step],
+    events: &[EngineEvent],
+    ctx: &Context,
+    steps_mode: &str,
+    language: Language,
+) -> Vec<StepWire> {
+    localize_step_payloads(
+        collect_step_payloads_with_events(steps, events, ctx, steps_mode),
+        language,
+    )
+}
 
 /// Convert engine steps to typed step payload DTOs.
 ///

@@ -587,3 +587,80 @@ pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str>
         _ => Cow::Borrowed(description),
     }
 }
+
+/// Translate a Spanish (default) visible rule name to English. The didactic layer builds the
+/// step-by-step in Spanish (the source language); the `En` localization pivots through that output,
+/// so this is the single Spanish -> English rule-name table. An unmapped name passes through
+/// unchanged (e.g. an already-English internal name, or a dynamic name covered later).
+pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
+    match es {
+        "Agrupar términos semejantes" => "Group like terms",
+        "Aplicar fórmula de suma de cuadrados" => "Apply the sum of squares formula",
+        "Aplicar fórmula de suma de cubos" => "Apply the sum of cubes formula",
+        "Aplicar fórmula de suma geométrica" => "Apply the geometric sum formula",
+        "Aplicar la identidad pitagórica" => "Apply the Pythagorean identity",
+        "Aplicar producto factorial" => "Apply the factorial product",
+        "Calcular coeficiente binomial" => "Compute the binomial coefficient",
+        "Calcular el logaritmo" => "Compute the logarithm",
+        "Calcular la derivada" => "Compute the derivative",
+        "Calcular la integral" => "Compute the integral",
+        "Calcular potencia numérica" => "Compute the numeric power",
+        "Cancelar factores comunes" => "Cancel common factors",
+        "Cancelar factores en una fracción" => "Cancel factors in a fraction",
+        "Cancelar factoriales consecutivos" => "Cancel consecutive factorials",
+        "Cancelar fracciones iguales" => "Cancel equal fractions",
+        "Cancelar fracciones opuestas" => "Cancel opposite fractions",
+        "Cancelar numerador y denominador iguales" => "Cancel identical numerator and denominator",
+        "Cancelar términos opuestos" => "Cancel opposite terms",
+        "Cero dividido entre cualquier valor es cero" => "Zero divided by any value is zero",
+        "Combinar las constantes" => "Combine the constants",
+        "Derivar de orden superior" => "Differentiate to a higher order",
+        "Desanidar el radical" => "Denest the radical",
+        "Desarrollar en serie de Taylor" => "Expand as a Taylor series",
+        "Descomponer en fracciones parciales" => "Decompose into partial fractions",
+        "Deshacer raíz y potencia" => "Cancel the root with the power",
+        "Distribuir la potencia sobre el producto" => "Distribute the power over the product",
+        "Dividir entre infinito" => "Divide by infinity",
+        "El infinito domina la suma" => "Infinity dominates the sum",
+        "Evaluar el valor absoluto" => "Evaluate the absolute value",
+        "Evaluar la operación solicitada" => "Evaluate the requested operation",
+        "Evaluar límite en infinito" => "Evaluate the limit at infinity",
+        "Evaluar límite finito" => "Evaluate the finite limit",
+        "Evaluar operación de teoría de números" => "Evaluate the number-theory operation",
+        "Evaluar producto telescópico finito" => "Evaluate the finite telescoping product",
+        "Evaluar suma finita" => "Evaluate the finite sum",
+        "Evaluar suma telescópica finita" => "Evaluate the finite telescoping sum",
+        "Evaluar valor trigonométrico especial" => "Evaluate the special trigonometric value",
+        "Expandir el logaritmo de un producto" => "Expand the logarithm of a product",
+        "Expandir la expresión" => "Expand the expression",
+        "Expandir tangente como seno entre coseno" => "Expand tangent as sine over cosine",
+        "Expandir y reagrupar un producto polinómico" => "Expand and regroup a polynomial product",
+        "Expandir ángulo doble" => "Expand the double angle",
+        "Factorizar cubos y cancelar" => "Factor the cubes and cancel",
+        "Factorizar el polinomio" => "Factor the polynomial",
+        "Llevar a denominador común" => "Bring to a common denominator",
+        "Multiplicar matrices" => "Multiply matrices",
+        "Operación con matrices" => "Matrix operation",
+        "Potencia o inversa de la matriz" => "Matrix power or inverse",
+        "Presentar resultado de cálculo en forma compacta" => {
+            "Present the calculus result in compact form"
+        }
+        "Quitar paréntesis tras el signo menos" => "Remove the parentheses after the minus sign",
+        "Racionalizar el denominador" => "Rationalize the denominator",
+        "Reconocer la tangente hiperbólica" => "Recognize the hyperbolic tangent",
+        "Reconocer una función hiperbólica en las exponenciales" => {
+            "Recognize a hyperbolic function in the exponentials"
+        }
+        "Repartir el denominador entre los sumandos" => "Split the denominator over the terms",
+        "Restar exponentes de la misma base" => "Subtract exponents of the same base",
+        "Sacar constante de una fracción" => "Factor a constant out of the fraction",
+        "Sacar el cuadrado perfecto de la raíz" => "Take the perfect square out of the root",
+        "Sacar factor común" => "Factor out the common term",
+        "Sacar un exponente fuera del logaritmo" => "Bring an exponent out of the logarithm",
+        "Simplificar fracción anidada" => "Simplify the nested fraction",
+        "Simplificar una potencia con exponente 0 o 1" => "Simplify a power with exponent 0 or 1",
+        "Sumar exponentes de la misma base" => "Add exponents of the same base",
+        "Sumar fracciones" => "Add fractions",
+        other => other,
+    }
+}

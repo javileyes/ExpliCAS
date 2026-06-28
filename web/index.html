@@ -1438,6 +1438,14 @@
                     <option value="on">on</option>
                 </select>
             </label>
+            <label class="mode-control" for="lang-mode-select"
+                title="Step-by-step language">
+                <span class="mode-label">Lang</span>
+                <select class="mode-select" id="lang-mode-select">
+                    <option value="es" selected>es</option>
+                    <option value="en">en</option>
+                </select>
+            </label>
             <input type="text" class="input-field" id="expression-input"
                 placeholder="Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
             <button class="submit-btn" id="submit-btn" onclick="evaluateExpression()">
@@ -1516,6 +1524,7 @@
         const DOMAIN_MODE_STORAGE_KEY = 'expliCAS_domain_mode';
         const BRANCH_MODE_STORAGE_KEY = 'expliCAS_branch_mode';
         const COMPLEX_MODE_STORAGE_KEY = 'expliCAS_complex_arithmetic';
+        const LANG_MODE_STORAGE_KEY = 'expliCAS_step_language';
 
         // Input handling
         const input = document.getElementById('expression-input');
@@ -1549,6 +1558,16 @@
 
         complexModeSelect.addEventListener('change', () => {
             sessionStorage.setItem(COMPLEX_MODE_STORAGE_KEY, complexModeSelect.value);
+        });
+
+        const langModeSelect = document.getElementById('lang-mode-select');
+        const savedLangMode = sessionStorage.getItem(LANG_MODE_STORAGE_KEY);
+        if (savedLangMode === 'es' || savedLangMode === 'en') {
+            langModeSelect.value = savedLangMode;
+        }
+
+        langModeSelect.addEventListener('change', () => {
+            sessionStorage.setItem(LANG_MODE_STORAGE_KEY, langModeSelect.value);
         });
 
         input.addEventListener('keydown', (e) => {
@@ -1607,6 +1626,7 @@
                         domain: domainModeSelect.value,
                         branch: branchModeSelect.value,
                         complex_arithmetic: complexModeSelect.value,
+                        language: langModeSelect.value,
                         time_budget_ms: DEFAULT_TIME_BUDGET_MS
                     })
                 });
