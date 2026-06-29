@@ -484,7 +484,7 @@ pub fn try_rewrite_rationalize_product_denominator_expr(
     let root = root_factor?;
 
     if non_root_factors.is_empty() {
-        let (radicand, _index) = extract_root_base(ctx, root)?;
+        let (radicand, index) = extract_root_base(ctx, root)?;
         if root_base_is_multi_function_sum(ctx, radicand) {
             return None;
         }
@@ -496,7 +496,26 @@ pub fn try_rewrite_rationalize_product_denominator_expr(
             return None;
         }
 
-        let new_num = mul2_raw(ctx, num, root);
+        // Clearing `root(b, n) = b^(1/n)` from the denominator needs the conjugate `b^((n-1)/n)`, so
+        // that `b^(1/n) · b^((n-1)/n) = b`. Multiplying by the BARE root `b^(1/n)` only clears a
+        // SQUARE root (`n = 2`, where `b^(1/2)·b^(1/2) = b`); for `n > 2` it left `b^(2/n) ≠ b` in
+        // the denominator, turning `1/x^(1/4)` into `x^(1/4)/x = x^(-3/4)` and integrating to the
+        // WRONG `4·x^(1/4)` (the true antiderivative of `x^(-1/4)` is `(4/3)·x^(3/4)`).
+        let index_int = match ctx.get(index) {
+            Expr::Number(n) if n.is_integer() => n.to_integer(),
+            _ => return None,
+        };
+        if index_int <= BigInt::from(1) {
+            return None;
+        }
+        let conjugate_factor = if index_int == BigInt::from(2) {
+            root // a square root keeps its `sqrt(...)` spelling; `b^(1/2)` clears it directly.
+        } else {
+            let conjugate_exp = BigRational::new(&index_int - BigInt::from(1), index_int.clone());
+            let conjugate_exp_id = ctx.add(Expr::Number(conjugate_exp));
+            ctx.add(Expr::Pow(radicand, conjugate_exp_id))
+        };
+        let new_num = mul2_raw(ctx, num, conjugate_factor);
         let rewritten = ctx.add(Expr::Div(new_num, radicand));
         return Some(RationalizeProductDenominatorRewrite { rewritten });
     }

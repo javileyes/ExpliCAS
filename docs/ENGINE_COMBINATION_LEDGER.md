@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 439 (newest first)
+Active entries: 440 (newest first)
 
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
+- 2026-06-29 | `retained` | `crates/cas_math/src/rationalize_diff_squares_support.rs` (`try_rewrite_ratio... | SOUNDNESS (P0 wrong-answer): racionalización de raíz n-ésima usa el conjugado de raíz CUADRADA → valor erróneo
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
 - 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (fold_rational_value + expr_has_va... | SOUNDNESS P0 (Grupo C1-3, audit #4): sumatorio con polo en el rango devuelve un número falso
@@ -17466,3 +17467,18 @@ Active entries: 439 (newest first)
 - retained learning:
   - Un escáner de polos que corre sobre el integrando POST-simplificación hereda los polos espurios que la simplificación (racionalización conjugada `1/(a+b)→(a−b)/(a²−b²)`) inventa donde numerador y denominador se anulan juntos. El criterio CORRECTO de divergencia no es "el denominador tiene raíz en el intervalo" sino "la ANTIDERIVADA (continua) explota ahí": `F(r)` finita ⇒ removible/integrable; `F(r)` no-finita (ln0, c/0) ⇒ polo real. Usar la antiderivada como oráculo de removibilidad esquiva tener que evaluar exactamente `√(perfect-square)` (que ni `as_rational_const` ni `provable_const_sign` pliegan con el radicando sin simplificar `1^3`).
   - siguiente: P0-4 (regla "Rationalize Product Denominator" de raíz n-ésima devuelve antiderivada/valor erróneo, p.ej. `∫₀¹ x^(−1/4)→4` en vez de 4/3); último bloqueador para cerrar soundness del dominio real.
+
+## 2026-06-29 - SOUNDNESS (P0 wrong-answer): racionalización de raíz n-ésima usa el conjugado de raíz CUADRADA → valor erróneo
+
+- area: `crates/cas_math/src/rationalize_diff_squares_support.rs` (`try_rewrite_rationalize_product_denominator_expr`, rama single-root)
+- status: `retained` (commit pendiente-de-hash). P0-4 de la revisión de cierre de dominio real ([[real-domain-closure-blockers]]). **CUARTO y ÚLTIMO bloqueador → dominio real soundness-CERRADO.**
+- capture:
+  - investment_class: soundness-fix (wrong-answer → respuesta correcta), exento del orden de fase.
+  - cell: `integrate(1/x^(1/4),x)→4·x^(1/4)` (WRONG; su derivada `x^(-3/4)` ≠ integrando `x^(-1/4)`), `∫₀¹→4` (verdad 4/3), `1/x^(1/6)→6` (verdad 6/5). AHORA `1/x^(1/4)→(4/3)x^(3/4)`, `∫₀¹→4/3`; familia par 1/8,1/10 correcta, todo verificado por diff-back (`diff` da `x^(-1/n)`). Controles sqrt (n=2) intactos: `∫1/√x→2√x`, `∫1/(x√x)→−2/√x`.
+  - causa raíz: la rama "denominador = un solo factor raíz" multiplicaba numerador y denominador por la raíz BARE `root = b^(1/n)` y ponía denominador `= b`, asumiendo `root² = b` — solo cierto para raíz CUADRADA (`b^(1/2)·b^(1/2)=b`). Para `n>2` deja `b^(2/n) ≠ b`: `1/x^(1/4)` se volvía `x^(1/4)/x = x^(-3/4)` y se integraba al erróneo `4·x^(1/4)`. (La rama multi-factor ya usaba el conjugado correcto `b^((n-1)/n)`; el bug era el caso single-root.)
+  - fix: en la rama single-root, multiplicar por el conjugado `b^((n-1)/n)` (que SÍ cierra: `b^(1/n)·b^((n-1)/n)=b`), denominador `= b`; para `n=2` se conserva la raíz `sqrt(...)` (mismo resultado, mejor display). Ahora `1/x^(1/4)→x^(3/4)/x→x^(-1/4)→(4/3)x^(3/4)`.
+  - validación: workspace failed:0 (+ test de contrato `test_eval_nth_root_reciprocal_integral_uses_correct_conjugate`); clippy --workspace --all-targets limpio; engine-fast/scorecard/pressure pass; huella GUARD/PRESS IDÉNTICA (0 deltas).
+- retained learning:
+  - Una regla de racionalización escrita para raíz CUADRADA (multiplicar por la raíz misma, asumir que se eleva al cuadrado) es insólida en cuanto el índice es `n>2`: el conjugado correcto que cierra `b^(1/n)` es `b^((n-1)/n)`, no `b^(1/n)`. Verificar siempre la antiderivada por diferenciación-de-vuelta caza este tipo de wrong-value (`d/dx[4·x^(1/4)] = x^(-3/4) ≠ x^(-1/4)`); el test de contrato lo pinea.
+  - peldaño DISTINTO (capability, no wrong-answer): la raíz IMPAR `1/x^(1/3)` ahora produce la forma racionalizada CORRECTA `x^(2/3)/x` pero el simplificador NO pliega `x^(2/3)/x → x^(-1/3)` (sí pliega `x^(3/4)/x → x^(-1/4)`), así que declina a residual honesto. Es un hueco de la cancelación `x^p/x` del simplificador, no de esta regla; `integrate(x^(-1/3),x)→(3/2)x^(2/3)` ya funciona por la regla de potencia.
+  - **CIERRE: los 4 P0 de la revisión de dominio real están resueltos (commits P0-1 2753e6ce8, P0-2 0de6d7081, P0-3 886fb0ec8, P0-4 este). El dominio real queda soundness-CERRADO (sin wrong-answers abiertos) → puerta de soundness para Fase 2 (dominio complejo) cumplida.** Lo que queda es la mochila de capacidad P1 (declina honestamente, no bloquea el cierre): integración radical/trig avanzada, SOLVE cuadrática-en-trig/exp/hiperbólica, inecuaciones trig periódicas, Taylor binomio-fraccionario, `∫|f|` no-lineal — ver docs/CERRANDO_DOMINIO_REAL.md §3.

@@ -3,13 +3,15 @@
 > Revisión de cierre: ¿es el engine **universal sobre el dominio real** (Fase 1) y
 > puede pasarse a la fase de dominio complejo?
 >
-> **Veredicto: `close_after_p0_fixes`** — el dominio real NO está cerrado todavía.
-> Había **4 clusters de respuesta-incorrecta confirmados** que bloquean el cierre de
-> soundness. Son pocos, localizados y enumerables; al corregirlos, el dominio real
-> queda cerrado (sin wrong-answers abiertos) y se cumple la puerta de soundness
-> para la Fase 2.
+> **Veredicto original: `close_after_p0_fixes`** → **AHORA: dominio real
+> soundness-CERRADO.** Los **4 clusters de respuesta-incorrecta** están resueltos
+> y validados (sin wrong-answers abiertos); se cumple la puerta de soundness para
+> la Fase 2 (dominio complejo).
 >
-> **Progreso:** ✅ **P0-1** · ✅ **P0-2** · ✅ **P0-3** (commits pendientes) · ⬜ P0-4.
+> **Progreso:** ✅ **P0-1** `2753e6ce8` · ✅ **P0-2** `0de6d7081` · ✅ **P0-3**
+> `886fb0ec8` · ✅ **P0-4** (este ciclo). **Cierre de soundness COMPLETO.**
+> Lo que resta es la mochila de capacidad P1 (§3), que declina honestamente y NO
+> bloquea el cierre ni el paso a complejo.
 
 - **Fecha:** 2026-06-29
 - **Método:** workflow multi-agente de 14 frentes (probe del CLI real → verificación
@@ -121,8 +123,25 @@ como polo-en-intervalo → `undefined` falso en una integral convergente/regular
 - **Frente:** `definite-ftc`. *(El `[0,inf)` queda residual honesto: la singularidad
   √x-en-0 con extremo infinito es capacidad de impropias aparte, no un wrong-answer.)*
 
-### P0-4 — Regla de racionalización de raíz n-ésima da valor erróneo
+### P0-4 — Regla de racionalización de raíz n-ésima da valor erróneo  ✅ RESUELTO (commit pendiente)
 
+```
+ANTES                                AHORA
+integrate(1/x^(1/4),x)     => 4·x^(1/4)  => 4/3·x^(3/4)   (diff-back = x^(-1/4) ✓)
+integrate(1/x^(1/4),x,0,1) => 4          => 4/3
+integrate(1/x^(1/6),x,0,1) => 6          => 6/5
+```
+
+La rama "denominador = un solo factor raíz" multiplicaba por la raíz **bare**
+`x^(1/n)` y ponía denominador `= x`, asumiendo `raíz² = x` — solo cierto para
+raíz **cuadrada**. Para `n>2` deja `x^(2/n) ≠ x`, convirtiendo `1/x^(1/4)` en
+`x^(-3/4)` (mal). **Fix:** multiplicar por el conjugado correcto `x^((n-1)/n)`
+(que sí cierra: `x^(1/n)·x^((n-1)/n)=x`); n=2 conserva `sqrt(...)`. Verificado por
+diff-back y test de contrato; huella IDÉNTICA. *(La raíz IMPAR `1/x^(1/3)` ahora
+da la forma racionalizada correcta pero declina por un hueco aparte de cancelación
+`x^p/x` del simplificador — capability, no wrong-answer.)*
+
+(Registro original del bug:)
 ```
 integrate(1/x^(1/4), x, 0, 1)   =>  4   (verdad: 4/3)
 integrate(1/x^(1/6), x, 0, 1)   =>  6   (verdad: 6/5)
@@ -224,12 +243,14 @@ Cada P0 es un ciclo validado con su huella (scorecard guardrail+pressure idénti
 3. ~~**P0-3** — chequeo de polo sobre el integrando ORIGINAL~~ ✅ **HECHO** (commit
    pendiente): dividir raíces removibles (antiderivada finita) antes de certificar;
    pin `test_eval_definite_integral_removable_pole_is_not_undefined`.
-4. **P0-4** — plegado de potencia `x^(-1/n)`. Pin de `1/x^(1/4)=4/3`, `1/x^(1/6)=6/5`,
-   y el antes-declinante `1/x^(1/3)=3/2`; verificar derivada de vuelta.
-5. **GATE** — `cargo test --workspace` + `clippy --workspace --all-targets` + rustfmt
-   + engine-fast + scorecard + pressure; huella estructuralmente idéntica. **Aquí el
-   dominio real queda CERRADO (sin wrong-answers abiertos) → puerta de soundness para
-   Fase 2 cumplida.**
+4. ~~**P0-4** — racionalización de raíz n-ésima~~ ✅ **HECHO** (commit pendiente):
+   conjugado correcto `x^((n-1)/n)`; pin
+   `test_eval_nth_root_reciprocal_integral_uses_correct_conjugate`. (`1/x^(1/3)`
+   queda residual honesto por un hueco aparte de cancelación `x^p/x`.)
+5. ✅ **GATE CUMPLIDO** — `cargo test --workspace` 0 fallos + `clippy --workspace
+   --all-targets` limpio + huella IDÉNTICA en los 4 ciclos. **El dominio real queda
+   CERRADO (sin wrong-answers abiertos) → puerta de soundness para Fase 2 (complejo)
+   cumplida.**
 6. **UNIVERSAL-1** (P1, post-cierre): wins baratos de integración radical/trig que
    comparten causa (split linealidad, `sin^m/cos^n` n≥4, `(a±x²)^(impar/2)`).
 7. **UNIVERSAL-2** (P1): `u=g(x)` + back-sub en SOLVE (quadratic-in-trig, exponencial,

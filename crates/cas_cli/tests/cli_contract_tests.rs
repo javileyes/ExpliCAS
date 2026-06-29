@@ -2536,6 +2536,33 @@ fn test_eval_definite_integral_removable_pole_is_not_undefined() {
 }
 
 #[test]
+fn test_eval_nth_root_reciprocal_integral_uses_correct_conjugate() {
+    // `1/x^(1/n)` rationalized its denominator by multiplying by the BARE root `x^(1/n)`, which only
+    // clears a SQUARE root: `x^(1/4)·x^(1/4) = x^(1/2) ≠ x`. So `1/x^(1/4)` became `x^(1/4)/x = x^(-3/4)`
+    // and integrated to a WRONG `4·x^(1/4)` (whose derivative `x^(-3/4)` ≠ the integrand `x^(-1/4)`).
+    // The conjugate `x^((n-1)/n)` now clears it correctly: `1/x^(1/4) → x^(3/4)/x → x^(-1/4)`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Indefinite even-root antiderivatives (true `(n/(n-1))·x^((n-1)/n)`), verified by diff-back.
+    assert_eq!(r("integrate(1/x^(1/4),x)"), "4/3·x^(3/4)");
+    assert_eq!(r("integrate(1/x^(1/6),x)"), "6/5·x^(5/6)");
+    assert_eq!(r("diff(4/3*x^(3/4),x)"), "x^(-1/4)");
+    // Definite even-root integrals on [0,1] (true `n/(n-1)`).
+    assert_eq!(r("integrate(1/x^(1/4),x,0,1)"), "4/3");
+    assert_eq!(r("integrate(1/x^(1/6),x,0,1)"), "6/5");
+    assert_eq!(r("integrate(1/x^(1/8),x,0,1)"), "8/7");
+    // Square-root rationalization (n=2) is unchanged.
+    assert_eq!(r("integrate(1/sqrt(x),x)"), "2·sqrt(x)");
+    assert_eq!(r("integrate(1/(x*sqrt(x)),x)"), "-2 / sqrt(x)");
+}
+
+#[test]
 fn test_eval_periodic_trig_equation_with_outside_coefficient_emits_full_family() {
     // SOUNDNESS: an OUTSIDE coefficient/offset (`2·sin x = 1`, `2·cos x + 1 = 0`) left the trig side a
     // `Mul`/`Add` that the bare-trig detector could not see, so the equation fell through to the
