@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 441 (newest first)
+Active entries: 442 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
+- 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17497,3 +17498,17 @@ Active entries: 441 (newest first)
 - retained learning:
   - Cuando las PIEZAS de una familia ya integran pero la SUMA declina, la causa suele ser que el integrando es un `Mul(radical^(-1/2), suma)` que `expand` no distribuye (evita expandir potencias fraccionarias) y la linealidad solo ve `Add` de nivel superior. Distribuir explícitamente la suma sobre el factor radical en el punto de integración reutiliza los dueños por-término sin tocar nada más. Bail-si-alguna-pieza-falla mantiene la regla honesta y la huella intacta.
   - peldaño DISTINTO (no entregado): `c/√(a·x²+b)` con coeficiente líder `a≠1` (`1/√(2x²+1)`) sigue declinando — antiderivada `(1/√a)·asinh(√a·x)` ausente; mi split lo deja honestamente residual. Siguiente candidato P1: `sin^m/cos^n` con n≥4 (familia sec^k), o Taylor binomio-fraccionario.
+
+## 2026-06-30 - UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
+
+- area: `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_companion_substitution_antiderivative` + `extract_sin_cos_power_monomial` + helpers `binomial_i64`/`int_pow_rational`/`build_signed_integer_power`, último fallback de `integrate_symbolic_expr`)
+- status: `retained` (commit pendiente-de-hash). Segundo ítem de la mochila P1 (CERRANDO §3).
+- capture:
+  - investment_class: capability (universalidad real, Fase 1).
+  - cell: `integrate(sin(x)/cos(x)^4)` declinaba (verdad `1/(3cos³x)`); AHORA correcto. Igual `sin/cos^5→1/(4cos⁴)`, `sin^3/cos^4`, `sin(2x)/cos(2x)^4→1/(6cos³2x)` (arg afín). Verificado por diff-back y numéricamente.
+  - causa raíz: la regla de potencia-impar `sin^3/5/7` (`trig_odd_power_affine_antiderivative`) NO acepta companion de potencia NEGATIVA; `sin(x)/cos(x)^n` (companion cos⁻ⁿ) caía fuera. Las piezas n=2,3 ya funcionan por dueños específicos (sec, tan²/2).
+  - fix: nueva regla u=cos/u=sin: extrae `scale·sin^p·cos^q` (extractor que recorre Mul/Div/Pow/Neg y suma potencias enteras), con p (o q) impar positivo, integra `∫(1-u²)^((impar-1)/2)·u^companion du` término a término por la regla de potencia (ln|u| si exponente -1), sustituye u=cos/sin. ÚLTIMO fallback de `integrate_symbolic_expr` → las formas existentes (sec/csc/tan²/polinómica) conservan sus dueños; solo se capturan los casos que hoy declinan.
+  - validación: workspace failed:0 (+ test de contrato `integrate_contract_reciprocal_cos_power_via_u_substitution`, pins de forma + diff-back); clippy --workspace --all-targets limpio; engine-fast/scorecard/pressure pass; huella GUARD/PRESS IDÉNTICA (0 deltas).
+- retained learning:
+  - Una regla de potencia-impar trig escrita para companion POLINÓMICA (potencia ≥0) se generaliza a companion NEGATIVA (recíproca) integrando el monomio-en-u con la regla de potencia (que cubre exponentes negativos ≠ -1). Colocarla como ÚLTIMO fallback evita reescribir las formas canónicas existentes (`sec` vs `1/cos`) → huella intacta. Verificar antiderivadas messy por PIN de forma (no `assert_antiderivative_verifies`, que simplifica+difa el resultado trig y tardaba 84s).
+  - peldaño DISTINTO (no entregado, PRE-EXISTENTE): `cos/sin^PAR` (`cos/sin^4`, `cos/sin^5`) toma una ruta Weierstrass lenta (28s+/timeout) con forma de medio-ángulo fea — NO declina (devuelve forma correcta pero lenta/messy), así que mi fallback no se alcanza (Weierstrass dispara antes). Mejorarlo exigiría reordenar antes de Weierstrass, con riesgo de huella. Siguiente candidato P1: Taylor binomio-fraccionario, o `x^p/x` cancelación (destraba `1/x^(1/3)`).

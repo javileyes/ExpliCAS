@@ -171,7 +171,7 @@ Estas **declinan honestamente** (sin valor incorrecto); bloquean la promesa
 | ~~radical-integration~~ ✅ | ~~Split de linealidad `p(x)/√(cuadrática)`~~ **HECHO** (familias asinh/arcsin/acosh; bonus grado superior). *Residual aparte: `1/√(a·x²+b)` con `a≠1`.* | S |
 | radical-integration | Denominadores radicales `(a±x²)^(impar/2)` vía sustitución trig/hiperbólica + reducción | M |
 | radical-integration | Sustitución racionalizante de raíz orden >2 (`t=x^(1/lcd)`) y cofactores `p(x)·(ax+b)^(m/n)` | M |
-| trig-integration | `sin^m/cos^n` con denominador n≥4 (familia sec^k) + reescritura `sin²=1-cos²` | S |
+| ~~trig-integration~~ ✅ | ~~`sin^m/cos^n` con denominador n≥4 (familia sec^k)~~ **HECHO** vía u=cos/u=sin (companion negativa). *Residual aparte: `cos/sin^par` lento por Weierstrass.* | S |
 | transcendental-integration | Componer u-sub∘por-partes y producto triple `poli·trig·exp` | M |
 | solve-equations | SOLVE cuadrática-en-trig / exponencial base-común y base-distinta / hiperbólica (u=g(x) + back-sub). **Además: arregla el crash `E_INTERNAL` → declinar honestamente** | M |
 | solve-inequalities | **Inecuaciones trig periódicas** (variante SolutionSet periódica: `cos(x)>0`, `sin(x)>1/2`, `tan(x)>1`) — mayor palanca restante | L |

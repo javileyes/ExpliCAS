@@ -13351,10 +13351,10 @@ fn integrate_contract_affine_numerator_over_sqrt_quadratic_splits_by_linearity()
     // over the radical before integration now closes the whole asinh/arcsin/acosh family. Each is
     // certified by differentiating the antiderivative back to the integrand.
     for input in [
-        "integrate((x+1)/sqrt(x^2+1), x)",   // asinh(x) + sqrt(x^2+1)
-        "integrate((2*x+3)/sqrt(x^2+1), x)", // 2 sqrt(x^2+1) + 3 asinh(x)
-        "integrate((x+1)/sqrt(1-x^2), x)",   // arcsin(x) - sqrt(1-x^2)
-        "integrate((x-2)/sqrt(x^2-1), x)",   // acosh family
+        "integrate((x+1)/sqrt(x^2+1), x)",     // asinh(x) + sqrt(x^2+1)
+        "integrate((2*x+3)/sqrt(x^2+1), x)",   // 2 sqrt(x^2+1) + 3 asinh(x)
+        "integrate((x+1)/sqrt(1-x^2), x)",     // arcsin(x) - sqrt(1-x^2)
+        "integrate((x-2)/sqrt(x^2-1), x)",     // acosh family
         "integrate((x^2+x+1)/sqrt(x^2+1), x)", // higher-degree numerator also splits
     ] {
         assert_antiderivative_verifies(input);
@@ -13368,6 +13368,37 @@ fn integrate_contract_affine_numerator_over_sqrt_quadratic_splits_by_linearity()
     ] {
         assert_antiderivative_verifies(input);
     }
+}
+
+#[test]
+fn integrate_contract_reciprocal_cos_power_via_u_substitution() {
+    // `sin(x)/cos(x)^n` for n >= 4 (and `sin^odd/cos^n`) declined: the polynomial-only odd-power owner
+    // does not accept a NEGATIVE companion power. The u = cos substitution `∫ sin^p cos^q dx`
+    // (p odd) now integrates the companion by the power rule for any integer q, closing the gap.
+    // Certified by differentiating the antiderivative back to the integrand.
+    let r = |input: &str| evaluated_integral_with_required_conditions(input).0;
+    // Result-form pins for the newly-closed cases (the antiderivative differentiates back, checked by
+    // hand and numerically): u = cos gives `1/((n-1)cos^(n-1))`. Affine argument scales by 1/a.
+    assert_eq!(r("integrate(sin(x)/cos(x)^4, x)"), "1 / (3 * cos(x)^3)");
+    assert_eq!(r("integrate(sin(x)/cos(x)^5, x)"), "1 / (4 * cos(x)^4)");
+    assert_eq!(
+        r("integrate(sin(2*x)/cos(2*x)^4, x)"),
+        "1 / (6 * cos(2 * x)^3)"
+    );
+    // The odd-numerator-power case (the (1-u^2) expansion branch); form verified by hand/numerically
+    // to differentiate back to sin(x)^3/cos(x)^4 (a result pin, not the slow simplify-and-diff path).
+    assert_eq!(
+        r("integrate(sin(x)^3/cos(x)^4, x)"),
+        "(-3/2 * (2 * cos(x)^2 - 1) - 1/2) / (3 * cos(x)^3)"
+    );
+    // Existing owners keep their forms (fallback placement): pins guard against the u-substitution
+    // accidentally taking over the canonical sec/tan/polynomial spellings.
+    assert_eq!(r("integrate(sin(x)/cos(x)^2, x)"), "sec(x)");
+    assert_eq!(r("integrate(sin(x)/cos(x)^3, x)"), "tan(x)^2 / 2");
+    assert_eq!(
+        r("integrate(sin(x)^3*cos(x)^2, x)"),
+        "1/15 * (3 * cos(x)^5 - 5 * cos(x)^3)"
+    );
 }
 
 #[test]

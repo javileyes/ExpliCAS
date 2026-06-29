@@ -4830,6 +4830,201 @@ fn trig_odd_power_affine_antiderivative(
     }
 }
 
+/// `r^mult` for a rational `r` and integer `mult` (negative ⇒ reciprocal). Caller ensures `r != 0`.
+fn int_pow_rational(r: &BigRational, mult: i64) -> BigRational {
+    let pow_pos = |e: u32| -> BigRational {
+        BigRational::new(
+            num_traits::pow(r.numer().clone(), e as usize),
+            num_traits::pow(r.denom().clone(), e as usize),
+        )
+    };
+    if mult >= 0 {
+        pow_pos(mult as u32)
+    } else {
+        pow_pos((-mult) as u32).recip()
+    }
+}
+
+/// `C(n, k)` for small non-negative `n, k`.
+fn binomial_i64(n: i64, k: i64) -> i64 {
+    if k < 0 || k > n {
+        return 0;
+    }
+    let k = k.min(n - k);
+    let mut result: i64 = 1;
+    for i in 0..k {
+        result = result * (n - i) / (i + 1);
+    }
+    result
+}
+
+/// An integer power `u^e` of an already-built base: `u^0 = 1`, `u^1 = u`, else `Pow(u, e)`.
+fn build_signed_integer_power(ctx: &mut Context, u: ExprId, e: i64) -> ExprId {
+    match e {
+        0 => ctx.num(1),
+        1 => u,
+        _ => {
+            let exp = ctx.add(Expr::Number(BigRational::from_integer(e.into())));
+            ctx.add(Expr::Pow(u, exp))
+        }
+    }
+}
+
+/// Decompose `expr` into `scale · sin(arg)^sin_pow · cos(arg)^cos_pow`: a single shared `arg`, integer
+/// trig powers (a `Div` or a negative `Pow` gives a negative power), and a rational `scale`. `None`
+/// if any var-dependent factor is not such a sin/cos power, or two trig arguments disagree.
+fn extract_sin_cos_power_monomial(
+    ctx: &Context,
+    expr: ExprId,
+    _var: &str,
+) -> Option<(BigRational, ExprId, i64, i64)> {
+    fn collect(
+        ctx: &Context,
+        e: ExprId,
+        mult: i64,
+        scale: &mut BigRational,
+        sin_pow: &mut i64,
+        cos_pow: &mut i64,
+        arg: &mut Option<ExprId>,
+    ) -> Option<()> {
+        match ctx.get(e) {
+            Expr::Mul(a, b) => {
+                collect(ctx, *a, mult, scale, sin_pow, cos_pow, arg)?;
+                collect(ctx, *b, mult, scale, sin_pow, cos_pow, arg)
+            }
+            Expr::Div(a, b) => {
+                collect(ctx, *a, mult, scale, sin_pow, cos_pow, arg)?;
+                collect(ctx, *b, -mult, scale, sin_pow, cos_pow, arg)
+            }
+            Expr::Neg(inner) => {
+                if mult % 2 != 0 {
+                    *scale *= -BigRational::one();
+                }
+                collect(ctx, *inner, mult, scale, sin_pow, cos_pow, arg)
+            }
+            Expr::Pow(base, exp) => {
+                let e_rat = rational_constant_value(ctx, *exp)?;
+                if !e_rat.is_integer() {
+                    return None;
+                }
+                let e_int: i64 = e_rat.to_integer().try_into().ok()?;
+                collect(ctx, *base, mult * e_int, scale, sin_pow, cos_pow, arg)
+            }
+            Expr::Function(fn_id, args) if args.len() == 1 => {
+                let is_cos = match ctx.builtin_of(*fn_id) {
+                    Some(BuiltinFn::Sin) => false,
+                    Some(BuiltinFn::Cos) => true,
+                    _ => return None,
+                };
+                match arg {
+                    None => *arg = Some(args[0]),
+                    Some(existing) => {
+                        if compare_expr(ctx, *existing, args[0]) != Ordering::Equal {
+                            return None;
+                        }
+                    }
+                }
+                if is_cos {
+                    *cos_pow += mult;
+                } else {
+                    *sin_pow += mult;
+                }
+                Some(())
+            }
+            _ => {
+                let r = rational_constant_value(ctx, e)?;
+                if r.is_zero() {
+                    return None;
+                }
+                *scale *= int_pow_rational(&r, mult);
+                Some(())
+            }
+        }
+    }
+    let mut scale = BigRational::one();
+    let mut sin_pow = 0i64;
+    let mut cos_pow = 0i64;
+    let mut arg = None;
+    collect(
+        ctx,
+        expr,
+        1,
+        &mut scale,
+        &mut sin_pow,
+        &mut cos_pow,
+        &mut arg,
+    )?;
+    arg.map(|a| (scale, a, sin_pow, cos_pow))
+}
+
+/// Integrate `scale·sin(arg)^p·cos(arg)^q` (arg affine in `var`, ONE of `p,q` a positive ODD integer,
+/// the other ANY integer) by the `u = cos` / `u = sin` substitution:
+/// `∫ sin^p cos^q dx = ∓(1/a)∫ (1−u²)^((odd−1)/2) · u^companion du`, integrated termwise by the power
+/// rule (`u^j → u^(j+1)/(j+1)`, `ln|u|` for `j = −1`), then `u → cos/sin(arg)`. Fills the reciprocal
+/// gap `sin(x)/cos(x)^n → 1/((n−1)cos^(n−1)x)` (n ≥ 4) the polynomial-only odd-power owner misses.
+/// Last-resort fallback, so the working `sec`/`csc`/`tan²` forms keep their dedicated owners.
+fn trig_odd_power_companion_substitution_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (scale, arg, sin_pow, cos_pow) = extract_sin_cos_power_monomial(ctx, expr, var)?;
+    let (u_is_cos, odd_pow, companion_pow) = if sin_pow > 0 && sin_pow % 2 == 1 {
+        (true, sin_pow, cos_pow)
+    } else if cos_pow > 0 && cos_pow % 2 == 1 {
+        (false, cos_pow, sin_pow)
+    } else {
+        return None;
+    };
+    let (a_expr, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a_expr)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    let k = (odd_pow - 1) / 2;
+    let sign = if u_is_cos {
+        -BigRational::one()
+    } else {
+        BigRational::one()
+    };
+    let outer = scale * sign / a;
+    let u_builtin = if u_is_cos {
+        BuiltinFn::Cos
+    } else {
+        BuiltinFn::Sin
+    };
+    let u = ctx.call_builtin(u_builtin, vec![arg]);
+
+    let mut acc: Option<ExprId> = None;
+    for i in 0..=k {
+        let binom = binomial_i64(k, i);
+        let mut c = BigRational::from_integer(binom.into());
+        if i % 2 != 0 {
+            c = -c;
+        }
+        let exponent = companion_pow + 2 * i;
+        let piece = if exponent == -1 {
+            let abs_u = ctx.call_builtin(BuiltinFn::Abs, vec![u]);
+            let ln = ctx.call_builtin(BuiltinFn::Ln, vec![abs_u]);
+            scale_rational_term(ctx, &outer * &c, ln)
+        } else {
+            let next = exponent + 1;
+            let pow = build_signed_integer_power(ctx, u, next);
+            scale_rational_term(
+                ctx,
+                &outer * &c / BigRational::from_integer(next.into()),
+                pow,
+            )
+        };
+        acc = Some(match acc {
+            None => piece,
+            Some(previous) => ctx.add(Expr::Add(previous, piece)),
+        });
+    }
+    acc
+}
+
 fn trig_cube_primitive(ctx: &mut Context, builtin: BuiltinFn, companion: ExprId) -> Option<ExprId> {
     let three = ctx.num(3);
     let companion_cubed = ctx.add(Expr::Pow(companion, three));
@@ -23319,6 +23514,12 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
                 }
             }
         }
+    }
+
+    // Last resort: `sin^p·cos^q` with an odd numerator power and ANY (incl. negative) companion
+    // power, via the `u=cos`/`u=sin` substitution. Fills `sin(x)/cos(x)^n` (n ≥ 4) and friends.
+    if let Some(integral) = trig_odd_power_companion_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
     }
 
     None
