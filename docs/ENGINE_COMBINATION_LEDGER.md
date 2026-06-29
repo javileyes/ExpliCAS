@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 436 (newest first)
+Active entries: 437 (newest first)
 
+- 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
 - 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (fold_rational_value + expr_has_va... | SOUNDNESS P0 (Grupo C1-3, audit #4): sumatorio con polo en el rango devuelve un número falso
@@ -17420,3 +17421,18 @@ Active entries: 436 (newest first)
     casa — diferencia de normalización en `are_equal`/núcleo no diagnosticada. Under-answer honesto, no wrong-answer.
   - siguiente del scouting: rank 4 (`1/(a²−x²)` fuera de |x|<a; medium + repara wrong-answer indefinido atanh-guard),
     rank 10 (content de factor; cosmético).
+
+## 2026-06-29 - SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
+
+- area: `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware) + `crates/cas_solver/src/solve_backend_local.rs` (`try_union_periodic_trig_product` + unión por periodo común) + `crates/cas_solver_core/src/quadratic_didactic.rs` (aggregate declina periodic→residual para que cas_solver lo una)
+- status: `retained` (commit pendiente-de-hash). P0-1 de la revisión de cierre de dominio real ([[real-domain-closure-blockers]] / docs/CERRANDO_DOMINIO_REAL.md). Primer bloqueador de los 4.
+- capture:
+  - investment_class: soundness-fix (wrong-answer → respuesta correcta), exento del orden de fase.
+  - cell: `solve(cos(2x)-cos(x))→{0}` (WRONG, dejaba caer familias enteras + periodicidad), `solve(sin(2x)-sin(x))→{0,π/3}`, `solve(cos(2x)+cos(x))→{π,π/3}`, `solve(sin(x)·cos(x)=0)→{0,π/2}`. AHORA conjuntos periódicos completos: `cos(2x)-cos(x)→{2kπ, 2π/3+2kπ, 4π/3+2kπ}` (=`{2kπ/3}`), `sin(x)·cos(x)=0→{kπ, π/2+kπ}`, etc. Verificado por testigos numéricos.
+  - causa raíz: el solver de trig periódica (`try_solve_periodic_trig_equation`, en cas_solver) corre en la entrada top-level pero la RUTA RECURSIVA (`solve_inner`, que resuelve cada `factor=0` de un producto-cero) lo saltaba y caía a la inversa-unaria → solo la raíz PRINCIPAL. Forma recurrente: un detector de forma principal descarta el envoltorio (aquí, la periodicidad).
+  - fix: (1) la ruta recursiva prueba el solver periódico primero → cada factor trig devuelve su `SolutionSet::Periodic` completo. (2) la agregación de producto-cero (cas_solver_core, contexto INMUTABLE) declina honestamente cuando un factor es `Periodic` → residual con el producto. (3) post-proceso en cas_solver (contexto MUTABLE disponible): `try_union_periodic_trig_product` parte el producto, resuelve cada factor periódico, y UNE las familias sobre un periodo común (cada periodo = racional·π; periodo común = `lcm`; expande cada familia y deduplica bases módulo el periodo). Productos que mezclan trig con factor no-periódico (`(x-1)·sin(x)`) o no-trig se quedan residual honesto / discreto.
+  - validación: workspace failed:0 (+ test de contrato `test_eval_periodic_trig_product_equation_unions_families`); clippy --workspace --all-targets limpio; engine-fast/scorecard/pressure pass; huella GUARD/PRESS IDÉNTICA (0 deltas) pese a que la ruta recursiva periodic-aware es un cambio amplio.
+- retained learning:
+  - Cuando una capacidad correcta (solver periódico) vive en la entrada top-level pero NO en la ruta recursiva, los sub-solves (factores de producto-cero, sustituciones) la pierden silenciosamente. Enhebrar la capacidad en la ruta recursiva la arregla de raíz; el periodic-check solo dispara para trig BARE así que el blast-radius es estrecho (huella idéntica).
+  - La unión de familias periódicas con periodos distintos pero conmensurables (π y 2π, 2π/3 y 2π) se hace expandiendo al periodo común vía `lcm` racional y deduplicando bases módulo periodo — necesita contexto MUTABLE, así que va en cas_solver, no en la agregación inmutable de cas_solver_core (que declina a residual y deja que la capa superior una). EXACTO (BigRational, nunca f64). [[soundness-gates-must-be-exact]].
+  - siguiente: P0-2 (sign-chart de inecuación recíproca de potencia impar pierde el polo x=0), P0-3 (FTC inventa polos), P0-4 (racionalización raíz n-ésima valor erróneo). Distinto y NO entregado aquí: cuadrática-en-trig con término lineal (`sin(x)^2+sin(x)=0`, `2cos(x)^2-cos(x)-1`) garbla un residual `arcsin(...)` — es la ruta de sustitución u=trig, capability gap P1 separado, no tocada.

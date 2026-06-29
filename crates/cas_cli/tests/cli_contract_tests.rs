@@ -2419,6 +2419,55 @@ fn test_eval_periodic_trig_equation_emits_family() {
 }
 
 #[test]
+fn test_eval_periodic_trig_product_equation_unions_families() {
+    // A PRODUCT of periodic trig factors (or a `cos(a)±cos(b)` / `sin(a)±sin(b)` that reduces to one
+    // via sum-to-product) used to drop periodicity: each factor was solved for its PRINCIPAL root
+    // only and the roots unioned into a wrong finite set (`solve(cos(2x)-cos(x))→{0}`). Now every
+    // factor yields its full `Periodic` family and the families are unioned over a common period.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Explicit products, equal period: union the bases (one shared period).
+    assert_eq!(
+        r("solve(sin(x)*cos(x)=0, x)"),
+        "{ k·pi, 1/2·pi + k·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve((2*cos(x)+1)*(cos(x)-1)=0, x)"),
+        "{ 2/3·pi + k·2·pi, 4/3·pi + k·2·pi, k·2·pi : k ∈ ℤ }"
+    );
+    // Mixed periods (π and 2π): expand to the common period 2π, then union.
+    assert_eq!(
+        r("solve(sin(x)*(2*cos(x)-1)=0, x)"),
+        "{ k·2·pi, pi + k·2·pi, 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // Double-angle EQUATIONS via sum-to-product: `cos(2x)-cos(x) = -2·sin(x/2)·sin(3x/2)`, factors
+    // have periods 2π and 2π/3 -> common period 2π.
+    assert_eq!(
+        r("solve(cos(2*x)-cos(x), x)"),
+        "{ k·2·pi, 2/3·pi + k·2·pi, 4/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(2*x)-sin(x), x)"),
+        "{ k·2·pi, 1/3·pi + k·2·pi, pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(cos(2*x)+cos(x), x)"),
+        "{ pi + k·2·pi, 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // SOUNDNESS: a product mixing a trig factor with a non-periodic factor cannot be one periodic
+    // set; it must stay an honest residual rather than emit a half-solved/wrong set.
+    assert_eq!(r("solve((x-1)*sin(x)=0, x)"), "Solve: sin(x)·(x - 1) = 0");
+    // Non-trig products are unaffected.
+    assert_eq!(r("solve((x-1)*(x-2)=0, x)"), "{ 1, 2 }");
+}
+
+#[test]
 fn test_eval_periodic_trig_equation_with_outside_coefficient_emits_full_family() {
     // SOUNDNESS: an OUTSIDE coefficient/offset (`2·sin x = 1`, `2·cos x + 1 = 0`) left the trig side a
     // `Mul`/`Add` that the bare-trig detector could not see, so the equation fell through to the

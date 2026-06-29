@@ -205,7 +205,9 @@ pub enum ZeroProductFactorSolutionAggregate {
     Discrete(Vec<ExprId>),
     /// One factor branch is identically zero (`0 = 0`) so whole equation is true.
     AllReals,
-    /// At least one branch returned non-discrete data (residual/conditional/interval).
+    /// At least one branch returned non-discrete data (residual/conditional/interval/periodic). The
+    /// `Periodic` case (a product of trig factors) is unioned downstream in `cas_solver`, where the
+    /// mutable context needed to expand to a common period is available.
     NonDiscrete,
 }
 

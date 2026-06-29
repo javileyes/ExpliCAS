@@ -18,6 +18,17 @@ pub(crate) fn solve_inner(
     opts: CoreSolverOptions,
     parent_ctx: &crate::SolveCtx,
 ) -> Result<(SolutionSet, Vec<crate::SolveStep>), CasError> {
+    // A bare trig equation `sin/cos/tan(x)=c` has an INFINITE periodic family of roots. The top-level
+    // entry (`solve_local_core`) already checks this, but the RECURSIVE route (this function, used to
+    // solve each `factor = 0` of a zero-product) bypassed it and fell to the unary-inverse path, which
+    // returns only the PRINCIPAL root. That dropped periodicity for products of trig factors
+    // (`solve(sin(x)*cos(x)=0) -> {0, π/2}` instead of the periodic union). Run the periodic solver on
+    // every recursive sub-solve so each trig factor yields its full `SolutionSet::Periodic` family.
+    if let Some(set) =
+        crate::solve_backend_local::try_solve_periodic_trig_equation(eq, var, simplifier)
+    {
+        return Ok((set, Vec::new()));
+    }
     cas_solver_core::solve_runtime_recursive_bound_runtime::solve_inner_with_runtime_state_and_default_recursive_routes_and_errors(
         eq,
         var,

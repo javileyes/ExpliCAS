@@ -3082,7 +3082,7 @@ fn accumulate_affine_trig(
     }
 }
 
-fn try_solve_periodic_trig_equation(
+pub(crate) fn try_solve_periodic_trig_equation(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
@@ -3281,6 +3281,164 @@ fn try_solve_periodic_trig_equation(
     Some(SolutionSet::Periodic { bases, period })
 }
 
+/// Solve a residual product equation `f1·f2·… = 0` whose factors are each a periodic trig equation
+/// (`sin(x)·cos(x)=0`, or the `-2·sin(x/2)·sin(3x/2)` sum-to-product form of `cos(2x)-cos(x)=0`) by
+/// solving every factor and UNIONING the periodic families over a common period. Returns `None` —
+/// leaving the honest residual untouched — if any variable-bearing factor is not a bare periodic
+/// trig equation (so non-trig products like `(x-1)·sin(x)=0` stay residual rather than half-solved).
+fn try_union_periodic_trig_product(
+    simplifier: &mut Simplifier,
+    var: &str,
+    product_expr: ExprId,
+) -> Option<SolutionSet> {
+    use cas_solver_core::isolation_utils::contains_var;
+
+    let mut factors = Vec::new();
+    collect_product_var_factors(&simplifier.context, product_expr, var, &mut factors);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let zero = simplifier.context.num(0);
+    let mut families: Vec<(Vec<ExprId>, ExprId)> = Vec::with_capacity(factors.len());
+    for f in factors {
+        if !contains_var(&simplifier.context, f, var) {
+            continue;
+        }
+        let eq = Equation {
+            lhs: f,
+            rhs: zero,
+            op: cas_ast::RelOp::Eq,
+        };
+        match try_solve_periodic_trig_equation(&eq, var, simplifier) {
+            Some(SolutionSet::Periodic { bases, period }) => families.push((bases, period)),
+            _ => return None,
+        }
+    }
+    if families.len() < 2 {
+        return None;
+    }
+    union_periodic_families_over_common_period(simplifier, families)
+}
+
+/// Flatten a product into its variable-bearing factors, unwrapping `Neg`/`Mul` and dropping constant
+/// factors. Each leaf factor that contains `var` is pushed onto `out`.
+fn collect_product_var_factors(ctx: &Context, e: ExprId, var: &str, out: &mut Vec<ExprId>) {
+    use cas_solver_core::isolation_utils::contains_var;
+    match ctx.get(e) {
+        Expr::Mul(a, b) => {
+            collect_product_var_factors(ctx, *a, var, out);
+            collect_product_var_factors(ctx, *b, var, out);
+        }
+        Expr::Neg(x) => collect_product_var_factors(ctx, *x, var, out),
+        _ => {
+            if contains_var(ctx, e, var) {
+                out.push(e);
+            }
+        }
+    }
+}
+
+/// Union periodic families `{baseᵢⱼ + k·periodᵢ}` over a COMMON period. Every period must be a
+/// rational multiple of π; the common period is `lcm` of those rationals × π. Each family with
+/// period `p` and common period `m·p` expands to `m` shifted copies (`base + t·p`, `t = 0..m`) of
+/// each base; the merged bases are then deduplicated modulo the common period. Returns `None` if any
+/// period is not a rational multiple of π.
+fn union_periodic_families_over_common_period(
+    simplifier: &mut Simplifier,
+    families: Vec<(Vec<ExprId>, ExprId)>,
+) -> Option<SolutionSet> {
+    use num_bigint::BigInt;
+    use num_integer::Integer;
+    use num_rational::BigRational;
+    use num_traits::{Signed, Zero};
+
+    let mut qs: Vec<BigRational> = Vec::with_capacity(families.len());
+    for (_, period) in &families {
+        let q = period_as_rational_multiple_of_pi(simplifier, *period)?;
+        if !q.is_positive() {
+            return None;
+        }
+        qs.push(q);
+    }
+    let common = qs
+        .iter()
+        .cloned()
+        .reduce(|a, b| BigRational::new(a.numer().lcm(b.numer()), a.denom().gcd(b.denom())))?;
+
+    let pi = simplifier.context.add(Expr::Constant(Constant::Pi));
+    let mut bases_out: Vec<ExprId> = Vec::new();
+    for ((bases, period), q) in families.into_iter().zip(qs.into_iter()) {
+        let ratio = &common / &q;
+        if !ratio.is_integer() {
+            return None;
+        }
+        let m = ratio.to_integer();
+        let mut t = BigInt::zero();
+        while t < m {
+            let shift = if t.is_zero() {
+                None
+            } else {
+                let tn = simplifier
+                    .context
+                    .add(Expr::Number(BigRational::from(t.clone())));
+                let prod = simplifier.context.add(Expr::Mul(tn, period));
+                Some(simplifier.simplify(prod).0)
+            };
+            for &b in &bases {
+                let nb = match shift {
+                    None => b,
+                    Some(s) => {
+                        let sum = simplifier.context.add(Expr::Add(b, s));
+                        simplifier.simplify(sum).0
+                    }
+                };
+                bases_out.push(nb);
+            }
+            t += 1;
+        }
+    }
+
+    let cn = simplifier.context.add(Expr::Number(common));
+    let period_expr = simplifier.context.add(Expr::Mul(cn, pi));
+    let period_expr = simplifier.simplify(period_expr).0;
+
+    dedup_bases_modulo_period(simplifier, &mut bases_out, period_expr);
+    Some(SolutionSet::Periodic {
+        bases: bases_out,
+        period: period_expr,
+    })
+}
+
+/// `period / π` as a positive rational, or `None` if `period` is not a rational multiple of π.
+fn period_as_rational_multiple_of_pi(
+    simplifier: &mut Simplifier,
+    period: ExprId,
+) -> Option<num_rational::BigRational> {
+    let pi = simplifier.context.add(Expr::Constant(Constant::Pi));
+    let ratio = simplifier.context.add(Expr::Div(period, pi));
+    let (ratio, _) = simplifier.simplify(ratio);
+    cas_math::numeric_eval::as_rational_const(&simplifier.context, ratio)
+}
+
+/// Deduplicate bases that are equal modulo `period` (i.e. `(b - b') / period` is an integer).
+fn dedup_bases_modulo_period(simplifier: &mut Simplifier, bases: &mut Vec<ExprId>, period: ExprId) {
+    let mut kept: Vec<ExprId> = Vec::new();
+    for b in std::mem::take(bases) {
+        let is_dup = kept.iter().any(|&k| {
+            let diff = simplifier.context.add(Expr::Sub(b, k));
+            let ratio = simplifier.context.add(Expr::Div(diff, period));
+            let (ratio, _) = simplifier.simplify(ratio);
+            cas_math::numeric_eval::as_rational_const(&simplifier.context, ratio)
+                .is_some_and(|r| r.is_integer())
+        });
+        if !is_dup {
+            kept.push(b);
+        }
+    }
+    *bases = kept;
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -3404,6 +3562,16 @@ fn solve_local_core(
         return Ok((set, Vec::new()));
     }
     let (set, steps) = crate::solve_core_runtime::solve_inner(eq, var, simplifier, opts, ctx)?;
+    // A product of periodic trig factors (`sin(x)·cos(x)=0`, or `cos(2x)-cos(x)=0` after
+    // sum-to-product) comes back as a residual product: the zero-product path declines because a
+    // factor solves to an infinite `Periodic` family it cannot merge with an immutable context.
+    // Union the per-factor periodic families over a common period here (mutable context available),
+    // so all branches and their periodicity are emitted instead of a wrong finite set.
+    if let SolutionSet::Residual(product) = &set {
+        if let Some(unioned) = try_union_periodic_trig_product(simplifier, var, *product) {
+            return Ok((unioned, steps));
+        }
+    }
     let conds = ctx.required_conditions();
     let set = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);
     // SOUNDNESS (RealOnly): drop a discrete solution that is provably NON-REAL — it carries the
