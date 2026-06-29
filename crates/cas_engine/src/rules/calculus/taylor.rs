@@ -43,12 +43,15 @@ fn try_extract_taylor_call(
 
 define_rule!(TaylorRule, "Taylor Series", |ctx, expr| {
     let (target, var_name, point, order) = try_extract_taylor_call(ctx, expr)?;
-    // The Maclaurin point uses the analytic engine (nicer closed forms); a non-zero point
-    // expands from the definition by repeated differentiation.
+    // The Maclaurin point uses the analytic engine (nicer closed forms) when it can. When that
+    // declines (e.g. a fractional binomial (1+x)^α), AND for any non-zero point, expand from the
+    // definition by repeated differentiation — which handles any function smooth at the point.
     if cas_math::numeric::as_i64(ctx, point) == Some(0) {
-        let series =
-            cas_math::limits_support::taylor_series_at_zero_expr(ctx, target, &var_name, order)?;
-        return Some(Rewrite::new(series).desc("serie de Taylor (Maclaurin)"));
+        if let Some(series) =
+            cas_math::limits_support::taylor_series_at_zero_expr(ctx, target, &var_name, order)
+        {
+            return Some(Rewrite::new(series).desc("serie de Taylor (Maclaurin)"));
+        }
     }
     let series = cas_math::limits_support::taylor_series_at_point_expr(
         ctx, target, &var_name, point, order,

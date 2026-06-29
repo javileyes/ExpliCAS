@@ -175,7 +175,7 @@ Estas **declinan honestamente** (sin valor incorrecto); bloquean la promesa
 | transcendental-integration | Componer u-sub∘por-partes y producto triple `poli·trig·exp` | M |
 | solve-equations | SOLVE cuadrática-en-trig / exponencial base-común y base-distinta / hiperbólica (u=g(x) + back-sub). **Además: arregla el crash `E_INTERNAL` → declinar honestamente** | M |
 | solve-inequalities | **Inecuaciones trig periódicas** (variante SolutionSet periódica: `cos(x)>0`, `sin(x)>1/2`, `tan(x)>1`) — mayor palanca restante | L |
-| series-sums | Maclaurin binomio-fraccionario y Taylor de singularidad removible en centro 0 | S |
+| ~~series-sums~~ ✅ | ~~Maclaurin binomio-fraccionario~~ **HECHO** (`(1+x)^α` en centro 0, fallback a diferenciación) | S |
 | abs-piecewise | `∫|f|` con f **no lineal** (`∫|x²-1|`, `∫|sin x|` quedan sin evaluar; el lineal y la definida con bordes numéricos sí funcionan) — *hallado por el crítico* | S/M |
 | limits (menor) | `1^∞` en punto finito con `ln(base)·exp→0` (límite=1); singularidad removible de raíz general | S |
 | algebra (menor) | `apart` de numerador monomio sobre factor lineal repetido; `x·|x|=c` piecewise solve | S |

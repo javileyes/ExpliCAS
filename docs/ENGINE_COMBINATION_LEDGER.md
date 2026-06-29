@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 442 (newest first)
+Active entries: 443 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
+- 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17512,3 +17513,17 @@ Active entries: 442 (newest first)
 - retained learning:
   - Una regla de potencia-impar trig escrita para companion POLINÓMICA (potencia ≥0) se generaliza a companion NEGATIVA (recíproca) integrando el monomio-en-u con la regla de potencia (que cubre exponentes negativos ≠ -1). Colocarla como ÚLTIMO fallback evita reescribir las formas canónicas existentes (`sec` vs `1/cos`) → huella intacta. Verificar antiderivadas messy por PIN de forma (no `assert_antiderivative_verifies`, que simplifica+difa el resultado trig y tardaba 84s).
   - peldaño DISTINTO (no entregado, PRE-EXISTENTE): `cos/sin^PAR` (`cos/sin^4`, `cos/sin^5`) toma una ruta Weierstrass lenta (28s+/timeout) con forma de medio-ángulo fea — NO declina (devuelve forma correcta pero lenta/messy), así que mi fallback no se alcanza (Weierstrass dispara antes). Mejorarlo exigiría reordenar antes de Weierstrass, con riesgo de huella. Siguiente candidato P1: Taylor binomio-fraccionario, o `x^p/x` cancelación (destraba `1/x^(1/3)`).
+
+## 2026-06-30 - UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
+
+- area: `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a diferenciación cuando el motor analítico de Maclaurin declina)
+- status: `retained` (commit pendiente-de-hash). Tercer ítem de la mochila P1 (CERRANDO §3).
+- capture:
+  - investment_class: capability (universalidad real, Fase 1).
+  - cell: `taylor(sqrt(1+x),x,0,4)` declinaba; AHORA `1+x/2−x²/8+x³/16−5x⁴/128` (coeficientes binomiales exactos C(1/2,k)). Igual `1/sqrt(1+x)` (C(−1/2,k)), `(1+x)^(1/3)` (C(1/3,k)). Verificado contra los binomiales generalizados.
+  - causa raíz: en `centro=0` la regla delega SOLO en el motor analítico (`taylor_series_at_zero_expr`), que no tiene caso de serie binomial → `?` devuelve None → declina. El MISMO `(1+x)^α` SÍ se expande en centro≠0 por el método de diferenciación repetida (`taylor_series_at_point_expr`), que ya funciona.
+  - fix: en `centro=0`, si el motor analítico declina, CAER al método de diferenciación con punto 0 (en vez de devolver None). El método de derivadas expande cualquier función suave en el punto. Los casos que el motor analítico SÍ resuelve (exp, sin, 1/(1+x), log) se intentan primero → conservan su forma canónica (huella idéntica).
+  - validación: workspace failed:0 (+ test de contrato `test_eval_fractional_binomial_taylor_at_zero`); clippy --workspace --all-targets limpio; engine-fast/scorecard/pressure pass; huella GUARD/PRESS IDÉNTICA (0 deltas).
+- retained learning:
+  - Cuando un comando tiene un motor "bonito" especializado (analítico de Maclaurin) y un método general (diferenciación), pero el especializado solo cubre un catálogo y DECLINA fuera de él, basta con CAER al método general en vez de devolver None — sin tocar el especializado, conservando sus formas y la huella. El método de diferenciación ya funcionaba en centro≠0; el único cambio fue no abortar en centro=0 cuando el analítico declina.
+  - mochila P1 restante: integración radical `(a±x²)^(impar/2)` / sustitución raíz orden>2, SOLVE cuadrática-en-trig/exp/hiperbólica (+ fix crash E_INTERNAL), inecuaciones trig periódicas (L, mayor palanca), `∫|f|` no-lineal. El `x^p/x → x^(p-1)` con denominador impar se OMITE deliberadamente (guard de dominio de raíz impar de negativo; tocar el simplificador compartido es riesgo de soundness).

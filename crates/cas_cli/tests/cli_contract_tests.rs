@@ -2563,6 +2563,46 @@ fn test_eval_nth_root_reciprocal_integral_uses_correct_conjugate() {
 }
 
 #[test]
+fn test_eval_fractional_binomial_taylor_at_zero() {
+    // `taylor((1+x)^α, x, 0, n)` for a fractional α declined at center 0 (the analytic Maclaurin
+    // engine has no binomial-series case), although the SAME expansion works at a nonzero center.
+    // Falling back to the definition-by-differentiation method at 0 now produces the binomial series.
+    // The coefficients are the exact generalized binomials C(α, k).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // sqrt(1+x) = 1 + x/2 - x^2/8 + x^3/16 - 5x^4/128.
+    assert_eq!(
+        r("taylor(sqrt(1+x),x,0,4)"),
+        "1/128·(8·x^3 + 64·x + 128 - 5·x^4 - 16·x^2)"
+    );
+    // 1/sqrt(1+x) = 1 - x/2 + 3x^2/8 - 5x^3/16.
+    assert_eq!(
+        r("taylor(1/sqrt(1+x),x,0,3)"),
+        "1/2·(3/4·x^2 + 2 - 5/8·x^3 - x)"
+    );
+    // (1+x)^(1/3) = 1 + x/3 - x^2/9 + 5x^3/81.
+    assert_eq!(
+        r("taylor((1+x)^(1/3),x,0,3)"),
+        "1/9·(5/9·x^3 + 3·x + 9 - x^2)"
+    );
+    // The analytic-engine cases keep their canonical Maclaurin forms (tried first).
+    assert_eq!(
+        r("taylor(exp(x),x,0,4)"),
+        "1/24·(x^4 + 4·x^3 + 12·x^2 + 24·x + 24)"
+    );
+    assert_eq!(
+        r("taylor(log(1+x),x,0,4)"),
+        "1/12·(4·x^3 + 12·x - 3·x^4 - 6·x^2)"
+    );
+}
+
+#[test]
 fn test_eval_periodic_trig_equation_with_outside_coefficient_emits_full_family() {
     // SOUNDNESS: an OUTSIDE coefficient/offset (`2·sin x = 1`, `2·cos x + 1 = 0`) left the trig side a
     // `Mul`/`Add` that the bare-trig detector could not see, so the equation fell through to the
