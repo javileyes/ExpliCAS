@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 440 (newest first)
+Active entries: 441 (newest first)
 
+- 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17482,3 +17483,17 @@ Active entries: 440 (newest first)
   - Una regla de racionalización escrita para raíz CUADRADA (multiplicar por la raíz misma, asumir que se eleva al cuadrado) es insólida en cuanto el índice es `n>2`: el conjugado correcto que cierra `b^(1/n)` es `b^((n-1)/n)`, no `b^(1/n)`. Verificar siempre la antiderivada por diferenciación-de-vuelta caza este tipo de wrong-value (`d/dx[4·x^(1/4)] = x^(-3/4) ≠ x^(-1/4)`); el test de contrato lo pinea.
   - peldaño DISTINTO (capability, no wrong-answer): la raíz IMPAR `1/x^(1/3)` ahora produce la forma racionalizada CORRECTA `x^(2/3)/x` pero el simplificador NO pliega `x^(2/3)/x → x^(-1/3)` (sí pliega `x^(3/4)/x → x^(-1/4)`), así que declina a residual honesto. Es un hueco de la cancelación `x^p/x` del simplificador, no de esta regla; `integrate(x^(-1/3),x)→(3/2)x^(2/3)` ya funciona por la regla de potencia.
   - **CIERRE: los 4 P0 de la revisión de dominio real están resueltos (commits P0-1 2753e6ce8, P0-2 0de6d7081, P0-3 886fb0ec8, P0-4 este). El dominio real queda soundness-CERRADO (sin wrong-answers abiertos) → puerta de soundness para Fase 2 (dominio complejo) cumplida.** Lo que queda es la mochila de capacidad P1 (declina honestamente, no bloquea el cierre): integración radical/trig avanzada, SOLVE cuadrática-en-trig/exp/hiperbólica, inecuaciones trig periódicas, Taylor binomio-fraccionario, `∫|f|` no-lineal — ver docs/CERRANDO_DOMINIO_REAL.md §3.
+
+## 2026-06-30 - UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
+
+- area: `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over_reciprocal_sqrt_quadratic_antiderivative` + `reciprocal_sqrt_quadratic_radicand`/`signed_additive_terms`, al final del brazo `IntKind::Mul`)
+- status: `retained` (commit pendiente-de-hash). Primer ítem de la mochila P1 de [[real-domain-closure-blockers]] / docs/CERRANDO_DOMINIO_REAL.md §3. Mayor ROI "S": cierra toda la familia asinh/arcsin/acosh.
+- capture:
+  - investment_class: capability (universalidad real, Fase 1). Reutiliza los antiderivados sqrt-cuadrática existentes (extract-before-abstract).
+  - cell: `integrate((x+1)/√(x²+1))` declinaba (verdad `asinh(x)+√(x²+1)`); AHORA correcto. Igual `(2x+3)/√(x²+1)→2√(x²+1)+3asinh(x)`, `(x+1)/√(1-x²)→arcsin(x)-√(1-x²)`, `(x-2)/√(x²-1)→√(x²-1)+2acosh(-x)`. BONUS: numeradores de grado superior también (`(x²+x+1)/√(x²+1)`, `(x³+1)/√(x²+1)`). Todo verificado por diff-back (y numéricamente).
+  - causa raíz: el integrando `(x+1)/√(x²+1)` se normaliza a `(x²+1)^(-1/2)·(x+1)` (un Mul, no un Div) y `expand` NO distribuye sobre un factor de potencia fraccionaria; la linealidad de integración solo dispara para un `Add` de nivel superior. Las piezas `x/√q` y `c/√q` ya funcionan por separado — solo faltaba la distribución.
+  - fix: al final del brazo `IntKind::Mul`, detectar `p(x)·(q)^(-1/2)` con `q` cuadrática y numerador SUMA, distribuir la suma sobre el radical (`signed_additive_terms`), integrar cada `término·(q)^(-1/2)` por recursión y sumar. Bail si CUALQUIER pieza no integra (deja el caso a reglas posteriores). Al final de la cadena → los términos individuales conservan sus dueños y solo se capturan sumas que hoy declinan (huella idéntica).
+  - validación: workspace failed:0 (+ test de contrato `integrate_contract_affine_numerator_over_sqrt_quadratic_splits_by_linearity`, verifica por diferenciación); clippy --workspace --all-targets limpio; engine-fast/scorecard/pressure pass; huella GUARD/PRESS IDÉNTICA (0 deltas).
+- retained learning:
+  - Cuando las PIEZAS de una familia ya integran pero la SUMA declina, la causa suele ser que el integrando es un `Mul(radical^(-1/2), suma)` que `expand` no distribuye (evita expandir potencias fraccionarias) y la linealidad solo ve `Add` de nivel superior. Distribuir explícitamente la suma sobre el factor radical en el punto de integración reutiliza los dueños por-término sin tocar nada más. Bail-si-alguna-pieza-falla mantiene la regla honesta y la huella intacta.
+  - peldaño DISTINTO (no entregado): `c/√(a·x²+b)` con coeficiente líder `a≠1` (`1/√(2x²+1)`) sigue declinando — antiderivada `(1/√a)·asinh(√a·x)` ausente; mi split lo deja honestamente residual. Siguiente candidato P1: `sin^m/cos^n` con n≥4 (familia sec^k), o Taylor binomio-fraccionario.

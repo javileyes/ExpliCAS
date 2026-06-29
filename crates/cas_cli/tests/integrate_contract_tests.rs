@@ -13344,6 +13344,33 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
 }
 
 #[test]
+fn integrate_contract_affine_numerator_over_sqrt_quadratic_splits_by_linearity() {
+    // `(a·x+b)/√(quadratic)` used to decline even though both pieces work (`x/√q → √q`,
+    // `c/√q → asinh/arcsin/acosh`): the integrand normalizes to `(q)^(-1/2)·(a·x+b)` (a product, not
+    // a Div) and `expand` will not distribute over the fractional-power factor. Distributing the sum
+    // over the radical before integration now closes the whole asinh/arcsin/acosh family. Each is
+    // certified by differentiating the antiderivative back to the integrand.
+    for input in [
+        "integrate((x+1)/sqrt(x^2+1), x)",   // asinh(x) + sqrt(x^2+1)
+        "integrate((2*x+3)/sqrt(x^2+1), x)", // 2 sqrt(x^2+1) + 3 asinh(x)
+        "integrate((x+1)/sqrt(1-x^2), x)",   // arcsin(x) - sqrt(1-x^2)
+        "integrate((x-2)/sqrt(x^2-1), x)",   // acosh family
+        "integrate((x^2+x+1)/sqrt(x^2+1), x)", // higher-degree numerator also splits
+    ] {
+        assert_antiderivative_verifies(input);
+    }
+    // The single-term owners are unchanged (still verify), and a product WITH sqrt (positive half) is
+    // untouched by the reciprocal-only split.
+    for input in [
+        "integrate(x/sqrt(x^2+1), x)",
+        "integrate(1/sqrt(x^2+1), x)",
+        "integrate((x+1)*sqrt(x^2+1), x)",
+    ] {
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
 fn integrate_contract_asinh_kernel() {
     assert_eq!(
         simplified_integral("integrate((x^2+1)^(-1/2), x)"),

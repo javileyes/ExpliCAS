@@ -168,7 +168,7 @@ Estas **declinan honestamente** (sin valor incorrecto); bloquean la promesa
 
 | Frente | Hueco | Esf. |
 |---|---|---|
-| radical-integration | Split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical (familias asinh/arcsin/acosh) | S |
+| ~~radical-integration~~ ✅ | ~~Split de linealidad `p(x)/√(cuadrática)`~~ **HECHO** (familias asinh/arcsin/acosh; bonus grado superior). *Residual aparte: `1/√(a·x²+b)` con `a≠1`.* | S |
 | radical-integration | Denominadores radicales `(a±x²)^(impar/2)` vía sustitución trig/hiperbólica + reducción | M |
 | radical-integration | Sustitución racionalizante de raíz orden >2 (`t=x^(1/lcd)`) y cofactores `p(x)·(ax+b)^(m/n)` | M |
 | trig-integration | `sin^m/cos^n` con denominador n≥4 (familia sec^k) + reescritura `sin²=1-cos²` | S |

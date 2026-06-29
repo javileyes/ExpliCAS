@@ -234,6 +234,74 @@ fn reciprocal_sqrt_like_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> 
     }
 }
 
+/// `(q)^(-1/2)` whose radicand `q` is a degree-2 polynomial in `var` — the reciprocal-sqrt factor of
+/// the `p(x)/√(quadratic)` family (`x²+1`, `1-x²`, `x²-1`, `x²+2x+5`).
+fn reciprocal_sqrt_quadratic_radicand(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    let base = reciprocal_sqrt_like_radicand(ctx, expr)?;
+    let poly = Polynomial::from_expr(ctx, base, var).ok()?;
+    (poly.degree() == 2).then_some(base)
+}
+
+/// Flatten an additive tree (`Add`/`Sub`/`Neg`) into signed leaf terms `(is_positive, term)`.
+fn signed_additive_terms(ctx: &Context, expr: ExprId) -> Vec<(bool, ExprId)> {
+    fn walk(ctx: &Context, e: ExprId, positive: bool, out: &mut Vec<(bool, ExprId)>) {
+        match ctx.get(e) {
+            Expr::Add(a, b) => {
+                walk(ctx, *a, positive, out);
+                walk(ctx, *b, positive, out);
+            }
+            Expr::Sub(a, b) => {
+                walk(ctx, *a, positive, out);
+                walk(ctx, *b, !positive, out);
+            }
+            Expr::Neg(inner) => walk(ctx, *inner, !positive, out),
+            _ => out.push((positive, e)),
+        }
+    }
+    let mut out = Vec::new();
+    walk(ctx, expr, true, &mut out);
+    out
+}
+
+/// `p(x)·(q)^(-1/2)` with a SUM numerator `p` and a degree-2 radicand `q`: distribute the sum over
+/// the radical so each `term·(q)^(-1/2)` hits the existing sqrt-quadratic antiderivatives
+/// (`x/√q → √q`, `c/√q → asinh/arcsin/acosh`, `x²/√q → reduction`), then add by linearity. Only a
+/// genuine multi-term numerator splits (a single term already has its dedicated owner); bails unless
+/// EVERY piece integrates, so a stray non-integrable term leaves the case for later rules.
+fn linear_numerator_over_reciprocal_sqrt_quadratic_antiderivative(
+    ctx: &mut Context,
+    l: ExprId,
+    r: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (radical, numerator) = if reciprocal_sqrt_quadratic_radicand(ctx, l, var).is_some() {
+        (l, r)
+    } else if reciprocal_sqrt_quadratic_radicand(ctx, r, var).is_some() {
+        (r, l)
+    } else {
+        return None;
+    };
+    let terms = signed_additive_terms(ctx, numerator);
+    if terms.len() < 2 {
+        return None;
+    }
+    let mut acc: Option<ExprId> = None;
+    for (positive, term) in terms {
+        let piece = ctx.add(Expr::Mul(term, radical));
+        let integral = integrate_symbolic_expr(ctx, piece, var)?;
+        let signed = if positive {
+            integral
+        } else {
+            ctx.add(Expr::Neg(integral))
+        };
+        acc = Some(match acc {
+            None => signed,
+            Some(previous) => ctx.add(Expr::Add(previous, signed)),
+        });
+    }
+    acc
+}
+
 fn var_power(ctx: &Context, expr: ExprId, var: &str) -> Option<BigRational> {
     match ctx.get(expr) {
         Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => Some(BigRational::one()),
@@ -22542,6 +22610,16 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             if let Some(int_l) = integrate_symbolic_expr(ctx, l, var) {
                 return Some(multiply_constant_integral_result(ctx, r, int_l));
             }
+        }
+
+        // `p(x)·(q)^(-1/2)` with a SUM numerator (`(x+1)/√(x²+1)` normalizes to
+        // `(x²+1)^(-1/2)·(x+1)`): distribute over the radical so each `term/√q` hits the existing
+        // sqrt-quadratic antiderivatives, then sum by linearity. Last in the chain, so single-term
+        // numerators keep their dedicated owners and only currently-declining sums are caught.
+        if let Some(integral) =
+            linear_numerator_over_reciprocal_sqrt_quadratic_antiderivative(ctx, l, r, var)
+        {
+            return Some(integral);
         }
     }
 
