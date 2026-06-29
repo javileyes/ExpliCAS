@@ -111,11 +111,23 @@ fn required_condition_wire_is_redundant(
 
 /// A required condition that is ALWAYS satisfied for every real value (vacuous) and must not be
 /// shown. Conservative: returns true only when provably always-true in the reals, so a genuine
-/// domain restriction is never dropped. Currently handles `e >= 0` where `e` is structurally
-/// non-negative; the definedness conditions of sqrt/log/etc. live on the ARGUMENT, not on a
-/// provably-non-negative expression, so they are untouched.
+/// domain restriction is never dropped. Handles `e >= 0` where `e` is structurally non-negative
+/// (or provably reduces to a constant >= 0), and `e != 0` where `e` provably reduces to a non-zero
+/// constant (a denominator that is identically constant). The definedness conditions of
+/// sqrt/log/etc. live on the ARGUMENT, not on a provably-constant expression, so they are untouched.
 fn condition_is_tautological(ctx: &Context, cond: &crate::ImplicitCondition) -> bool {
-    matches!(cond, crate::ImplicitCondition::NonNegative(e) if expr_is_provably_nonnegative(ctx, *e))
+    use crate::ImplicitCondition::{NonNegative, NonZero};
+    match cond {
+        // `e >= 0` always holds: structurally non-negative, or `e` provably reduces to a constant >= 0.
+        NonNegative(e) => {
+            expr_is_provably_nonnegative(ctx, *e)
+                || matches!(reduce_to_exact_constant(ctx, *e), Some(c) if !c.is_negative())
+        }
+        // `e != 0` always holds when `e` provably reduces to a non-zero constant — e.g. a denominator
+        // `sqrt(x^2) - |x| + 1` that is identically `1`, so `... != 0` is vacuous.
+        NonZero(e) => matches!(reduce_to_exact_constant(ctx, *e), Some(c) if !c.is_zero()),
+        _ => false,
+    }
 }
 
 /// True when `e >= 0` holds for every real value where `e` is defined: `|·|`, even integer powers,
@@ -134,10 +146,116 @@ fn expr_is_provably_nonnegative(ctx: &Context, e: ExprId) -> bool {
         }
         Expr::Pow(_, exp) => pow_exponent_forces_nonnegative(ctx, *exp),
         Expr::Add(l, r) => abs_plus_minus_same_arg(ctx, *l, *r),
-        // |a| - a  (l = |a|, r = a)
-        Expr::Sub(l, r) => matches!(abs_value_arg(ctx, *l), Some(a) if exprs_equal(ctx, a, *r)),
+        Expr::Sub(l, r) => {
+            // |a| - a >= 0 always  (l = |a|, r = a)
+            matches!(abs_value_arg(ctx, *l), Some(a) if exprs_equal(ctx, a, *r))
+                // sqrt(a^2) - a = |a| - a >= 0 always  (e.g. sqrt(x^4) - x^2 = |x^2| - x^2).
+                || sqrt_of_structural_square_of(ctx, *l, *r)
+                // a - sqrt(a^2) = a - |a| = 0  when a >= 0  (e.g. x^2 - sqrt(x^4)).
+                || (sqrt_of_structural_square_of(ctx, *r, *l)
+                    && expr_is_provably_nonnegative(ctx, *l))
+        }
         _ => false,
     }
+}
+
+/// If every non-constant part of `e` is an absolute-value magnitude (`abs(a)` or `sqrt(a^2)`) and
+/// those magnitudes cancel pairwise, return the exact real constant `e` reduces to. Used to drop
+/// domain conditions on a provably-constant expression (e.g. `sqrt(x^2) - |x| + 1 == 1`).
+fn reduce_to_exact_constant(ctx: &Context, e: ExprId) -> Option<BigRational> {
+    let mut constant = BigRational::zero();
+    let mut magnitudes: Vec<(bool, ExprId)> = Vec::new();
+    accumulate_additive_constant_and_magnitudes(ctx, e, true, &mut constant, &mut magnitudes)?;
+
+    // Each magnitude must cancel: the net signed count per (structurally equal) argument is zero.
+    let mut net: Vec<(i64, ExprId)> = Vec::new();
+    for (positive, arg) in magnitudes {
+        let delta = if positive { 1 } else { -1 };
+        match net.iter_mut().find(|(_, a)| exprs_equal(ctx, *a, arg)) {
+            Some(entry) => entry.0 += delta,
+            None => net.push((delta, arg)),
+        }
+    }
+    net.iter().all(|(coeff, _)| *coeff == 0).then_some(constant)
+}
+
+/// Walk an additive tree (`Number`/`Neg`/`Add`/`Sub`), summing constants into `constant` and pushing
+/// each absolute-value magnitude leaf into `magnitudes`. Returns `None` on any leaf that is neither a
+/// number nor an `|a|` magnitude (so the caller cannot prove a constant).
+fn accumulate_additive_constant_and_magnitudes(
+    ctx: &Context,
+    e: ExprId,
+    positive: bool,
+    constant: &mut BigRational,
+    magnitudes: &mut Vec<(bool, ExprId)>,
+) -> Option<()> {
+    match ctx.get(e) {
+        Expr::Number(n) => {
+            if positive {
+                *constant += n.clone();
+            } else {
+                *constant -= n.clone();
+            }
+            Some(())
+        }
+        Expr::Neg(inner) => accumulate_additive_constant_and_magnitudes(
+            ctx, *inner, !positive, constant, magnitudes,
+        ),
+        Expr::Add(l, r) => {
+            accumulate_additive_constant_and_magnitudes(ctx, *l, positive, constant, magnitudes)?;
+            accumulate_additive_constant_and_magnitudes(ctx, *r, positive, constant, magnitudes)
+        }
+        Expr::Sub(l, r) => {
+            accumulate_additive_constant_and_magnitudes(ctx, *l, positive, constant, magnitudes)?;
+            accumulate_additive_constant_and_magnitudes(ctx, *r, !positive, constant, magnitudes)
+        }
+        _ => {
+            let arg = abs_value_arg(ctx, e)?;
+            magnitudes.push((positive, arg));
+            Some(())
+        }
+    }
+}
+
+/// True if `maybe_sqrt` is `sqrt(b)` (or `b^(1/2)`) whose radicand `b` is structurally `base^2`, so
+/// the root equals `|base|`. Recognizes `sqrt(x^4)` as `|x^2|` (radicand `x^4 == (x^2)^2`).
+fn sqrt_of_structural_square_of(ctx: &Context, maybe_sqrt: ExprId, base: ExprId) -> bool {
+    let Some(radicand) = sqrt_radicand(ctx, maybe_sqrt) else {
+        return false;
+    };
+    is_structural_square_of(ctx, radicand, base)
+}
+
+/// `Some(b)` if `e == sqrt(b)`: the `Sqrt` builtin or a `(...)^(1/2)` half-power.
+fn sqrt_radicand(ctx: &Context, e: ExprId) -> Option<ExprId> {
+    match ctx.get(e) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        Expr::Pow(base, exp) => {
+            let half = as_rational_const(ctx, *exp)?;
+            (half == BigRational::new(BigInt::from(1), BigInt::from(2))).then_some(*base)
+        }
+        _ => None,
+    }
+}
+
+/// True if `sq == base^2` structurally: the direct square `base^2`, or `base = c^k` with `sq = c^(2k)`
+/// (so `sqrt(sq) = |base|`); e.g. `base = x^2`, `sq = x^4`.
+fn is_structural_square_of(ctx: &Context, sq: ExprId, base: ExprId) -> bool {
+    if matches!(square_base(ctx, sq), Some(b) if exprs_equal(ctx, b, base)) {
+        return true;
+    }
+    if let (Expr::Pow(cb, ce), Expr::Pow(sb, se)) = (ctx.get(base), ctx.get(sq)) {
+        if exprs_equal(ctx, *cb, *sb) {
+            if let (Some(k), Some(m)) = (as_rational_const(ctx, *ce), as_rational_const(ctx, *se)) {
+                return m == k * BigRational::from_integer(BigInt::from(2));
+            }
+        }
+    }
+    false
 }
 
 /// `Some(a)` if `e` equals `|a|`: either `abs(a)` or `sqrt(a^2) = (a^2)^(1/2)`.
@@ -2125,6 +2243,71 @@ mod tests {
                 "must NOT be treated as provably nonnegative: {src}"
             );
         }
+    }
+
+    #[test]
+    fn reduce_to_exact_constant_folds_cancelling_magnitudes() {
+        // The |.| terms cancel, leaving the additive constant.
+        for (src, expected) in [
+            ("sqrt(x^2) - abs(x) + 1", 1),
+            ("-sqrt(x^2) + abs(x) + 2", 2),
+            ("sqrt((x - 1)^2) - abs(x - 1) + 3", 3),
+            ("abs(x) - sqrt(x^2)", 0), // cancels to exactly 0 (NOT a non-zero constant)
+        ] {
+            let (ctx, e) = parse_expr(src);
+            assert_eq!(
+                reduce_to_exact_constant(&ctx, e),
+                Some(BigRational::from_integer(BigInt::from(expected))),
+                "{src} should reduce to {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn reduce_to_exact_constant_rejects_non_constant() {
+        // A magnitude that does not cancel, or a non-magnitude term, is not a provable constant.
+        for src in [
+            "abs(x) - x + 1", // |x| - x does not cancel (x is not a magnitude)
+            "sqrt(x^2) + 1",  // a lone |x| remains
+            "x + 1",          // x is not a magnitude
+            "sqrt(x) + 1",    // sqrt of a non-square is a genuine value
+        ] {
+            let (ctx, e) = parse_expr(src);
+            assert_eq!(
+                reduce_to_exact_constant(&ctx, e),
+                None,
+                "{src} must NOT be treated as a provable constant"
+            );
+        }
+    }
+
+    #[test]
+    fn nonzero_constant_denominator_condition_is_tautological() {
+        // `sqrt(x^2) - |x| + 1 != 0` is vacuous (the denominator is identically 1).
+        let (ctx, e) = parse_expr("sqrt(x^2) - abs(x) + 1");
+        assert!(condition_is_tautological(
+            &ctx,
+            &crate::ImplicitCondition::NonZero(e)
+        ));
+        // But `|x| - x != 0` is a GENUINE restriction (x < 0) and must be kept.
+        let (ctx, e) = parse_expr("abs(x) - x");
+        assert!(!condition_is_tautological(
+            &ctx,
+            &crate::ImplicitCondition::NonZero(e)
+        ));
+    }
+
+    #[test]
+    fn radicand_that_is_identically_zero_is_provably_nonnegative() {
+        // x^2 - sqrt(x^4) = x^2 - |x^2| = 0 >= 0, so the radicand condition is vacuous.
+        let (ctx, e) = parse_expr("x^2 - sqrt(x^4)");
+        assert!(expr_is_provably_nonnegative(&ctx, e));
+        // sqrt(x^4) - x^2 = |x^2| - x^2 = 0 >= 0 too (symmetric).
+        let (ctx, e) = parse_expr("sqrt(x^4) - x^2");
+        assert!(expr_is_provably_nonnegative(&ctx, e));
+        // x^2 - sqrt(x^6) = x^2 - |x^3| is NOT always >= 0 — must stay a genuine restriction.
+        let (ctx, e) = parse_expr("x^2 - sqrt(x^6)");
+        assert!(!expr_is_provably_nonnegative(&ctx, e));
     }
 
     #[test]
