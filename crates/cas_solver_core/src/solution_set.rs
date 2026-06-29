@@ -74,6 +74,13 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
         return ord;
     }
 
+    // Real `n`-th-root bounds (cube/4th/5th roots) from reciprocal power inequalities: `(1/2)^(1/3)`,
+    // `4^(1/4)`, `−2^(1/3)`. Without this they fall to the value-blind structural compare below, which
+    // mis-orders them and corrupts the interval intersection/union (`2/x³ > −1` lost its negative ray).
+    if let Some(ord) = compare_nth_root_surds(ctx, a, b) {
+        return ord;
+    }
+
     // Fallback: Use structural comparison if we can't compare values
     cas_ast::ordering::compare_expr(ctx, a, b)
 }
@@ -197,6 +204,102 @@ fn compare_quadratic_surds(ctx: &Context, a: ExprId, b: ExprId) -> Option<Orderi
         return Some(sign_of_sum_two_surds(&p, &ab, &an, &neg_bb, &bn));
     };
     Some(sign_of_linear_surd(&p, &q, &n))
+}
+
+/// Decompose `expr` into a signed real `n`-th root `sign · q^(1/n)` with `q ≥ 0` rational and
+/// `n ≥ 1` (a plain rational is `n = 1`). Handles `Number`, `Neg`, and `Pow(base, 1/n)` (with an
+/// odd `n` folding `(−q)^(1/n)` to `−(q^(1/n))`). `None` for anything else — including an even root
+/// of a negative (not real). `sign` is `-1`, `0`, or `+1`.
+fn as_nth_root_value(ctx: &Context, expr: ExprId) -> Option<(i8, BigRational, u32)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_traits::{One, Signed, ToPrimitive};
+    let sign_of = |r: &BigRational| match r.cmp(&BigRational::zero()) {
+        Ordering::Greater => 1i8,
+        Ordering::Equal => 0,
+        Ordering::Less => -1,
+    };
+    // A plain rational value (folds `6-3*2`, `1/3`, …) is the trivial root `q^(1/1)`.
+    if let Some(r) = as_rational_const(ctx, expr) {
+        return Some((sign_of(&r), r.abs(), 1));
+    }
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            let (s, q, n) = as_nth_root_value(ctx, *inner)?;
+            Some((-s, q, n))
+        }
+        // `c · root` with a rational coefficient `c`: c·q^(1/n) = sign(c)·s·(|c|ⁿ·q)^(1/n).
+        Expr::Mul(l, r) => {
+            let (coeff, root) = if let Some(c) = as_rational_const(ctx, *l) {
+                (c, *r)
+            } else if let Some(c) = as_rational_const(ctx, *r) {
+                (c, *l)
+            } else {
+                return None;
+            };
+            if coeff.is_zero() {
+                return Some((0, BigRational::zero(), 1));
+            }
+            let (s, q, n) = as_nth_root_value(ctx, root)?;
+            let scaled = num_traits::pow(coeff.abs(), n as usize) * q;
+            Some((s * sign_of(&coeff), scaled, n))
+        }
+        Expr::Pow(base, exp) => {
+            let er = as_rational_const(ctx, *exp)?;
+            if !er.numer().is_one() {
+                return None; // exponent must be 1/n
+            }
+            let n: u32 = er.denom().to_u32()?;
+            if n < 1 {
+                return None;
+            }
+            let q = as_rational_const(ctx, *base)?;
+            match q.cmp(&BigRational::zero()) {
+                Ordering::Greater => Some((1, q, n)),
+                Ordering::Equal => Some((0, q, n)),
+                Ordering::Less if n % 2 == 1 => Some((-1, -q, n)), // (−q)^(1/odd) = −(q^(1/n))
+                Ordering::Less => None,                            // even root of a negative
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Compare two non-negative real `n`-th roots `qa^(1/na)` and `qb^(1/nb)` by VALUE, exactly: raise
+/// both to the common power `lcm(na, nb)` so the comparison is between two rationals.
+fn compare_positive_nth_roots(qa: &BigRational, na: u32, qb: &BigRational, nb: u32) -> Ordering {
+    let gcd = {
+        let (mut x, mut y) = (na, nb);
+        while y != 0 {
+            let t = x % y;
+            x = y;
+            y = t;
+        }
+        x.max(1)
+    };
+    let lcm = na / gcd * nb;
+    let va = num_traits::pow(qa.clone(), (lcm / na) as usize);
+    let vb = num_traits::pow(qb.clone(), (lcm / nb) as usize);
+    va.cmp(&vb)
+}
+
+/// Compare two values by VALUE when at least one is a real `n`-th root with `n ≥ 2` (cube/4th/…
+/// roots, e.g. the `(1/2)^(1/3)` / `4^(1/4)` bounds of reciprocal power inequalities). `None` if
+/// either value is not a signed `n`-th root, or both are plain rationals (handled by the `Number`
+/// branch). Fully exact — never f64.
+fn compare_nth_root_surds(ctx: &Context, a: ExprId, b: ExprId) -> Option<Ordering> {
+    let (sa, qa, na) = as_nth_root_value(ctx, a)?;
+    let (sb, qb, nb) = as_nth_root_value(ctx, b)?;
+    if na < 2 && nb < 2 {
+        return None; // both rational: the Number branch already ordered them
+    }
+    if sa != sb {
+        return Some(sa.cmp(&sb)); // negative < zero < positive
+    }
+    if sa == 0 {
+        return Some(Ordering::Equal);
+    }
+    let mag = compare_positive_nth_roots(&qa, na, &qb, nb);
+    Some(if sa < 0 { mag.reverse() } else { mag })
 }
 
 /// Order two expression ids so the first is `<=` the second under `compare_values`.
@@ -713,6 +816,35 @@ mod tests {
             // Equal value via distinct radicands: √8 = 2·√2.
             ("sqrt(8)", "2*sqrt(2)", Ordering::Equal),
             ("sqrt(3) + sqrt(2)", "sqrt(2) + sqrt(3)", Ordering::Equal),
+        ];
+        for (a_src, b_src, want) in cases {
+            let mut ctx = Context::new();
+            let a = parse(a_src, &mut ctx).expect("parse a");
+            let b = parse(b_src, &mut ctx).expect("parse b");
+            assert_eq!(
+                compare_values(&ctx, a, b),
+                want,
+                "compare_values({a_src}, {b_src})"
+            );
+        }
+    }
+
+    #[test]
+    fn compare_values_orders_nth_root_bounds_by_value() {
+        use cas_parser::parse;
+        // Cube/4th/5th-root bounds from reciprocal power inequalities. These fell to the value-blind
+        // structural compare and mis-ordered (so `2/x³>−1` lost its negative ray). `2^(1/3)≈1.260`,
+        // `(1/2)^(1/3)≈0.794`, `4^(1/4)≈1.414`, `(1/2)^(1/5)≈0.871`, `3^(1/3)≈1.442`.
+        let cases: [(&str, &str, Ordering); 9] = [
+            ("2^(1/3)", "0", Ordering::Greater),
+            ("-(2^(1/3))", "0", Ordering::Less),
+            ("-(2^(1/3))", "(1/2)^(1/3)", Ordering::Less),
+            ("(1/2)^(1/3)", "2^(1/3)", Ordering::Less), // 0.794 < 1.260
+            ("4^(1/4)", "2^(1/3)", Ordering::Greater),  // 1.414 > 1.260
+            ("3^(1/3)", "4^(1/4)", Ordering::Greater),  // 1.442 > 1.414
+            ("(1/2)^(1/5)", "(1/2)^(1/3)", Ordering::Greater), // 0.871 > 0.794
+            ("2^(1/3)", "5/4", Ordering::Greater),      // 1.260 > 1.25 (vs rational)
+            ("8^(1/3)", "2", Ordering::Equal),          // 8^(1/3) = 2 exactly
         ];
         for (a_src, b_src, want) in cases {
             let mut ctx = Context::new();

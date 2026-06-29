@@ -2468,6 +2468,39 @@ fn test_eval_periodic_trig_product_equation_unions_families() {
 }
 
 #[test]
+fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
+    // `c/xⁿ {op} k` with an ODD `n ≥ 3` (or a surd-border even `n`) used to drop the sign-flip across
+    // the x=0 pole, returning a complement / phantom ray / a union with the pole filled in. The
+    // sign-split candidate is now ordered exactly (cube/4th/5th-root bounds) and verified, so each
+    // case is the correct punctured union. Verified numerically against the ground-truth predicate.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(2/x^3 > -1, x)"),
+        "(-infinity, -(2^(1/3))) U (0, infinity)"
+    );
+    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, (1/2)^(1/3))");
+    assert_eq!(
+        r("solve(1/x^3 < 2, x)"),
+        "(-infinity, 0) U ((1/2)^(1/3), infinity)"
+    );
+    assert_eq!(r("solve(1/x^5 > 2, x)"), "(0, (1/2)^(1/5))");
+    assert_eq!(r("solve(3/x^3 > 1, x)"), "(0, 3^(1/3))");
+    assert_eq!(r("solve(2/x^3 < -1, x)"), "(-(2^(1/3)), 0)");
+    // Surd-border even power: the pole at 0 must be EXCLUDED (punctured union, not a single interval).
+    assert_eq!(r("solve(1/x^4 > 1/4, x)"), "(-(4^(1/4)), 0) U (0, 4^(1/4))");
+    // Controls that must stay correct: rational-border even power and linear denominator.
+    assert_eq!(r("solve(1/x^2 > 1, x)"), "(-1, 0) U (0, 1)");
+    assert_eq!(r("solve(1/x > 2, x)"), "(0, 1/2)");
+}
+
+#[test]
 fn test_eval_periodic_trig_equation_with_outside_coefficient_emits_full_family() {
     // SOUNDNESS: an OUTSIDE coefficient/offset (`2·sin x = 1`, `2·cos x + 1 = 0`) left the trig side a
     // `Mul`/`Add` that the bare-trig detector could not see, so the equation fell through to the

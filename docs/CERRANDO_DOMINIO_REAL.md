@@ -9,7 +9,7 @@
 > queda cerrado (sin wrong-answers abiertos) y se cumple la puerta de soundness
 > para la Fase 2.
 >
-> **Progreso:** ✅ **P0-1 RESUELTO** (commit pendiente) · ⬜ P0-2 · ⬜ P0-3 · ⬜ P0-4.
+> **Progreso:** ✅ **P0-1** · ✅ **P0-2** (commits pendientes) · ⬜ P0-3 · ⬜ P0-4.
 
 - **Fecha:** 2026-06-29
 - **Método:** workflow multi-agente de 14 frentes (probe del CLI real → verificación
@@ -69,25 +69,32 @@ periodicidad, presentados como completos.
   con término lineal `sin(x)^2+sin(x)=0` garbla un residual `arcsin(...)` — es la
   ruta de sustitución u=trig, un capability gap P1 separado.)*
 
-### P0-2 — Inecuaciones recíprocas de potencia impar pierden el cambio de signo en x=0
+### P0-2 — Inecuaciones recíprocas de potencia impar pierden el cambio de signo en x=0  ✅ RESUELTO (commit pendiente)
 
 ```
-solve(2/x^3 > -1, x)   =>  (-2^(1/3), ∞)        (verdad: (-∞,-2^(1/3)) ∪ (0,∞))
-solve(1/x^3 > 2, x)    =>  (-∞, (1/2)^(1/3))    (verdad: (0, (1/2)^(1/3)))
-solve(1/x^4 > 1/4, x)  =>  (-4^(1/4), 4^(1/4))  (verdad: (-4^(1/4),0) ∪ (0,4^(1/4)))
+ANTES                                   AHORA (correcto, verificado numéricamente)
+solve(2/x^3 > -1)  => (-2^(1/3), ∞)  => (-∞,-2^(1/3)) ∪ (0,∞)
+solve(1/x^3 > 2)   => (-∞,(1/2)^⅓)   => (0, (1/2)^(1/3))
+solve(1/x^4 > 1/4) => (-4^¼, 4^¼)    => (-4^(1/4),0) ∪ (0,4^(1/4))   [excluye el polo 0]
+solve(1/x^5 > 2)   => (-∞,(1/2)^⅕)   => (0, (1/2)^(1/5))
+solve(2/x^3 < -1)  => (-∞,-2^⅓)      => (-2^(1/3), 0)
 ```
 
 Para `c/x^(impar≥3)` (y la familia surd-border `1/x^4`) el sign-chart que cruza
-el polo x=0 colapsa a un solo rayo → complementos / rayos fantasma / ramas perdidas.
+el polo x=0 colapsaba a un solo rayo.
 
-- **Testigos:** x=-2 cumple `2/x³>-1` (`-0.25 > -1`) pero queda EXCLUIDO; x=-1
-  viola (`-2 > -1` falso) pero queda INCLUIDO.
-- **Control correcto:** `solve(1/x^2 > 1)` → `(-1,0) ∪ (0,1)` ✓ — solo rompen
-  potencias impares / orden ≥3 (y `1/x⁴` además filtra x=0).
-- **Fix:** case-split por el signo de `x^(impar)` a través del polo x=0 en vez de
-  multiplicar cruzado; comparación de bordes **EXACTA** (`BigRational`, nunca f64).
-- **Frente:** `solve-inequalities`. Corresponde al ítem de roadmap "(F) bordes surd
-  orden ≥3".
+- **Causa raíz (dos capas):** (1) el candidato del sign-split ya era correcto, pero
+  el verificador numérico solo ordenaba cotas racionales y surds **cuadráticos** —
+  una cota raíz-cúbica/cuártica no se podía ordenar → declinaba → fallback erróneo;
+  (2) más profundo, `compare_values` (compartido) caía a comparación **estructural**
+  (ciega al valor) para cotas raíz-n → construía mal el candidato.
+- **Fix:** `compare_values` gana orden EXACTO de `signo·q^(1/n)` (comparar elevando
+  a la potencia común `lcm`); el verificador gana el mismo orden de cotas raíz-n; cap
+  de grado 4→6 (cubre `1/x^5`), con la verificación numérica como red de soundness.
+  Todo **exacto** (`BigRational`, nunca f64).
+- **Validación:** workspace failed:0 + 2 tests de contrato; clippy limpio; huella
+  guardrail+pressure IDÉNTICA (pese a tocar el compartido `compare_values`).
+- **Frente:** `solve-inequalities`. Cierra el ítem de roadmap "(F) bordes surd orden ≥3".
 
 ### P0-3 — Integral definida/FTC inventa polos desde la racionalización → `undefined` falso
 
@@ -203,9 +210,10 @@ Cada P0 es un ciclo validado con su huella (scorecard guardrail+pressure idénti
 1. ~~**P0-1** — *lift* periódico en ecuaciones trig~~ ✅ **HECHO** (commit
    pendiente): ruta recursiva periodic-aware + unión de familias por periodo común;
    pin de contrato `test_eval_periodic_trig_product_equation_unions_families`.
-2. **P0-2** — sign-chart con split en el polo x=0 (bordes **EXACTOS** `BigRational`).
-   Pin de `2/x³>-1`, `1/x³>2`, `1/x⁴>1/4`, `2/x³<-1`, `1/x³<2`, `1/x⁵>2`, `3/x³>1` +
-   controles par que deben seguir correctos.
+2. ~~**P0-2** — sign-chart con split en el polo x=0~~ ✅ **HECHO** (commit
+   pendiente): orden exacto de cotas raíz-n en `compare_values` + el verificador, cap
+   4→6; pin `test_eval_reciprocal_power_inequality_keeps_pole_sign_split` +
+   `compare_values_orders_nth_root_bounds_by_value`.
 3. **P0-3** — chequeo de polo sobre el integrando ORIGINAL. Pin de
    `1/(√x·(1+x))` en `[1/2,4]`, en `[1,∞)=π/2`, + el intervalo regular-propio como
    caso de soundness.

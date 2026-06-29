@@ -1221,9 +1221,11 @@ fn try_solve_rational_constant_inequality(
     if p_poly.is_zero() {
         return None;
     }
-    // The inequality solver is unreliable past degree 4 (it mis-solves `x⁵ > 1/32`); decline
-    // higher-degree pieces rather than risk a wrong answer.
-    if p_poly.degree() > 4 || den_poly.degree() > 4 {
+    // The interval algebra can mis-solve high-degree pieces, but the numeric verification gate below
+    // now orders `n`-th-root bounds exactly, so a wrong candidate is REJECTED (declined) rather than
+    // returned. Allow up to degree 6 — enough for reciprocal power inequalities `c/xⁿ {op} k` up to
+    // `1/x⁵` / `1/x⁶` — and let verification be the soundness net for anything it cannot confirm.
+    if p_poly.degree() > 6 || den_poly.degree() > 6 {
         return None;
     }
 
@@ -1294,6 +1296,42 @@ fn cmp_rational_to_quadratic_surd(
     }
 }
 
+/// Exact ordering of a rational `r` against `± q^(1/n)` (a real `n`-th root of the non-negative
+/// rational `q`, optionally negated). No float: for the positive root, `x {?} q^(1/n) ⟺ x^n {?} q`
+/// when `x > 0` (and `x ≤ 0 < q^(1/n)`); the negated bound reflects through 0.
+fn cmp_rational_to_nth_root(
+    r: &num_rational::BigRational,
+    q: &num_rational::BigRational,
+    n: u32,
+    neg: bool,
+) -> std::cmp::Ordering {
+    use num_traits::Zero;
+    use std::cmp::Ordering;
+    let zero = num_rational::BigRational::zero();
+    if q.is_zero() {
+        return r.cmp(&zero); // bound is 0
+    }
+    // Compare `x {?} q^(1/n)` for the POSITIVE root (q > 0, n ≥ 2).
+    let cmp_pos = |x: &num_rational::BigRational| -> Ordering {
+        if *x <= zero {
+            Ordering::Less // x ≤ 0 < q^(1/n)
+        } else {
+            let e = n as usize;
+            let xn = num_rational::BigRational::new(
+                num_traits::pow(x.numer().clone(), e),
+                num_traits::pow(x.denom().clone(), e),
+            );
+            xn.cmp(q)
+        }
+    };
+    if neg {
+        // r {?} −q^(1/n)  ⟺  reverse(−r {?} q^(1/n))
+        cmp_pos(&(-r)).reverse()
+    } else {
+        cmp_pos(r)
+    }
+}
+
 /// Numerically verify a `N/D {op} c` candidate. Returns `true` iff candidate membership matches the
 /// truth of `N(r)/D(r) {op} c` at every rational sample `r` (a pole `D(r) = 0` makes the relation
 /// false — `r` is outside the domain). Returns `false` if any bound is not rational or a quadratic
@@ -1329,10 +1367,46 @@ fn rational_inequality_candidate_verifies(
             _ => None,
         }
     }
-    // `r {?} bound`, exact. `None` if the bound is a higher surd we cannot order.
+    // `± q^(1/n)` (a real `n`-th root of a non-negative rational `q`, possibly negated): the bound
+    // shape produced by reciprocal power inequalities (`1/x³ > 2 → x < (1/2)^(1/3)`). Returns the
+    // radicand `q ≥ 0`, the root `n ≥ 2`, and whether the whole bound is negated.
+    fn bound_nth_root(ctx: &Context, e: ExprId) -> Option<(BigRational, u32, bool)> {
+        use num_traits::{One, Signed, ToPrimitive, Zero};
+        match ctx.get(e) {
+            Expr::Neg(inner) => {
+                let (q, n, neg) = bound_nth_root(ctx, *inner)?;
+                Some((q, n, !neg))
+            }
+            Expr::Pow(base, exp) => {
+                let er = cas_math::numeric_eval::as_rational_const(ctx, *exp)?;
+                // Exponent must be `1/n` with `n ≥ 2`.
+                if !er.numer().is_one() {
+                    return None;
+                }
+                let n: u32 = er.denom().to_u32()?;
+                if n < 2 {
+                    return None;
+                }
+                let q = cas_math::numeric_eval::as_rational_const(ctx, *base)?;
+                if q.is_zero() || q.is_positive() {
+                    Some((q, n, false))
+                } else if n % 2 == 1 {
+                    // (−q)^(1/n) for odd n is the real root −(q^(1/n)).
+                    Some((-q, n, true))
+                } else {
+                    None // even root of a negative: not real
+                }
+            }
+            _ => None,
+        }
+    }
+    // `r {?} bound`, exact. `None` if the bound is a surd we cannot order.
     fn cmp_to_bound(ctx: &Context, r: &BigRational, e: ExprId) -> Option<Ordering> {
-        let (a, b, n) = bound_surd(ctx, e)?;
-        Some(cmp_rational_to_quadratic_surd(r, &a, &b, &n))
+        if let Some((a, b, n)) = bound_surd(ctx, e) {
+            return Some(cmp_rational_to_quadratic_surd(r, &a, &b, &n));
+        }
+        let (q, n, neg) = bound_nth_root(ctx, e)?;
+        Some(cmp_rational_to_nth_root(r, &q, n, neg))
     }
     fn interval_member(ctx: &Context, iv: &Interval, r: &BigRational) -> Option<bool> {
         let lo_ok = if is_neg_infinity(ctx, iv.min) {
