@@ -121,6 +121,10 @@ fn is_noop_wire_step(step: &StepWire) -> bool {
             // A "group like terms" step whose displayed expression is unchanged grouped nothing
             // (e.g. trace([[1,2],[3,4]]) emitted `1 + 4 -> 1 + 4` before the real fold to 5).
             | "Agrupar términos semejantes"
+            // Pure notation/canonicalization renames that leave the displayed expression unchanged:
+            // sqrt(x) <-> x^(1/2) and the inverse-trig name normalization (asin -> arcsin, …).
+            | "Reescribir la raíz como potencia fraccionaria"
+            | "Usar el nombre arctan"
     )
 }
 
