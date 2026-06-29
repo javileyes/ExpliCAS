@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 438 (newest first)
+Active entries: 439 (newest first)
 
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
+- 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_nonunit_exponential... | SOUNDNESS P0 (degree-3 / no-unitario): inecuación exponencial de exponente NO unitario y grado-3+
 - 2026-06-28 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (try_solve_abs_threshold_inequ... | SOUNDNESS P0 (Grupo A, audit #4): inecuación con valor absoluto de cuadrática y `ln(x)^2`
 - 2026-06-28 | `retained` | `crates/cas_math/src/summation_support.rs` (fold_rational_value + expr_has_va... | SOUNDNESS P0 (Grupo C1-3, audit #4): sumatorio con polo en el rango devuelve un número falso
@@ -17451,3 +17452,17 @@ Active entries: 438 (newest first)
 - retained learning:
   - Un comparador de valores que cubre solo racionales+surds-cuadráticos corrompe SILENCIOSAMENTE el álgebra de intervalos (intersect/union/merge) en cuanto aparece una cota fuera de ese dominio (raíz-n): no falla, ordena mal y rellena/vacía uniones. Extenderlo a `signo·q^(1/n)` (comparar por potencia común `lcm`) es exacto y arregla TODOS los consumidores a la vez. Y la red de verificación numérica permite subir el cap de grado con seguridad: un candidato mal construido se RECHAZA, no se devuelve. [[soundness-gates-must-be-exact]].
   - siguiente: P0-3 (FTC inventa polos desde un paso de racionalización → `undefined` falso en integral convergente/propia), P0-4 (regla de racionalización de raíz n-ésima da valor numérico erróneo).
+
+## 2026-06-29 - SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
+
+- area: `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_removable_quotient_poles` + predicado de intervalo cerrado en la ruta finita y en `improper_integration_rewrite`)
+- status: `retained` (commit pendiente-de-hash). P0-3 de la revisión de cierre de dominio real ([[real-domain-closure-blockers]]). Tercer bloqueador.
+- capture:
+  - investment_class: soundness-fix (wrong-answer → respuesta correcta / residual honesto), exento del orden de fase.
+  - cell: `integrate(1/(√x·(1+x)),x,1/2,4)→undefined` (WRONG; intervalo propio regular SIN singularidad, verdad ~0.983), `…,1,inf→undefined` (verdad π/2). AHORA `[1/2,4]→2·(arctan2−arctan√½)`, `[1,inf)→π/2`. `[0,inf)` pasa de `undefined` (WRONG) a residual HONESTO (la singularidad √x-en-0 con extremo infinito es capacidad aparte). Bonus: removibles racionales puros `(x−1)/(x²−1)→ln4`, `(x²−1)/(x−1)→15/2`. Polos GENUINOS siguen `undefined`/residual (`1/(x−1)` en [0,2], `1/(x−2)²`, dos polos interiores).
+  - causa raíz: un paso de simplificación "Racionalizar el denominador" reescribe `1/(√x+√x³)` como `(√x³−√x)/(x³−x)`, inventando una raíz ESPURIA del denominador en x=1 donde el numerador TAMBIÉN se anula (singularidad removible, no polo). El escáner de polos del FTC corre sobre el integrando racionalizado y rechaza x=1 como polo-en-intervalo → `undefined` falso en una integral convergente/regular.
+  - fix: antes de certificar polos, `reduce_removable_quotient_poles` divide del denominador (polinómico) cada raíz SIMPLE en el intervalo cerrado donde la ANTIDERIVADA (condition-free, continua) es FINITA — `boundary_is_genuinely_nonfinite(F(r))` distingue removible (`2·arctan(√1)` finito) de polo genuino (`ln|x−1|→−∞`, se MANTIENE). Predicado de intervalo enhebrado para la ruta finita (Endpoint/root_position) y la impropia (DefiniteBound). Sound: solo elimina raíces que la antiderivada continua puentea; los polos genuinos (F no-finita) y las raíces múltiples se quedan.
+  - validación: workspace failed:0 (+ test de contrato `test_eval_definite_integral_removable_pole_is_not_undefined`); clippy --workspace --all-targets limpio; engine-fast/scorecard/pressure pass; huella GUARD/PRESS IDÉNTICA (0 deltas).
+- retained learning:
+  - Un escáner de polos que corre sobre el integrando POST-simplificación hereda los polos espurios que la simplificación (racionalización conjugada `1/(a+b)→(a−b)/(a²−b²)`) inventa donde numerador y denominador se anulan juntos. El criterio CORRECTO de divergencia no es "el denominador tiene raíz en el intervalo" sino "la ANTIDERIVADA (continua) explota ahí": `F(r)` finita ⇒ removible/integrable; `F(r)` no-finita (ln0, c/0) ⇒ polo real. Usar la antiderivada como oráculo de removibilidad esquiva tener que evaluar exactamente `√(perfect-square)` (que ni `as_rational_const` ni `provable_const_sign` pliegan con el radicando sin simplificar `1^3`).
+  - siguiente: P0-4 (regla "Rationalize Product Denominator" de raíz n-ésima devuelve antiderivada/valor erróneo, p.ej. `∫₀¹ x^(−1/4)→4` en vez de 4/3); último bloqueador para cerrar soundness del dominio real.

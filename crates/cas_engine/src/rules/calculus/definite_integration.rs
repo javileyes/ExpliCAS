@@ -1148,6 +1148,24 @@ pub(super) fn definite_integration_rewrite(
         antiderivative = unwrapped;
     }
 
+    // A rationalization step (`1/(√x·(1+x)) → (√x³−√x)/(x³−x)`) can invent a SPURIOUS denominator
+    // root where the numerator also vanishes (here `x = 1`) — a removable singularity, not a pole.
+    // Divide such removable roots out of the integrand before the pole certificate so they do not
+    // fabricate a false `undefined` on a convergent/regular integral.
+    let in_closed_interval = |r: &BigRational| {
+        !matches!(
+            root_position(&interval_low, &interval_high, r),
+            None | Some(RootPosition::Outside)
+        )
+    };
+    let certify_target = reduce_removable_quotient_poles(
+        ctx,
+        call.target,
+        &call.var_name,
+        call.var_expr,
+        antiderivative,
+        &in_closed_interval,
+    );
     let conditions_and_integrand = combine_certificates(
         certify_interval(
             ctx,
@@ -1158,7 +1176,7 @@ pub(super) fn definite_integration_rewrite(
         ),
         integrand_risks_certified(
             ctx,
-            call.target,
+            certify_target,
             &call.var_name,
             &interval_low,
             &interval_high,
@@ -1302,11 +1320,43 @@ fn improper_integration_rewrite(
     lower_bound: &DefiniteBound,
     upper_bound: &DefiniteBound,
 ) -> Option<Rewrite> {
+    // Drop removable singularities (`(√x³−√x)/(x³−x)`'s spurious `x=1`, or the convergent `√x`
+    // boundary at 0) before the pole certificate — a root the continuous antiderivative bridges does
+    // not diverge the improper integral. A root is in range when it sits in the closed interval,
+    // treating an infinite end as unbounded on that side.
+    let in_closed_interval = |r: &BigRational| {
+        let r_endpoint = Endpoint::from_rational(r.clone());
+        let lower_ok = match lower_bound {
+            DefiniteBound::NegInfinity => true,
+            DefiniteBound::Finite(low) => matches!(
+                low.try_cmp(&r_endpoint),
+                Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+            ),
+            _ => false,
+        };
+        let upper_ok = match upper_bound {
+            DefiniteBound::PosInfinity => true,
+            DefiniteBound::Finite(high) => matches!(
+                r_endpoint.try_cmp(high),
+                Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+            ),
+            _ => false,
+        };
+        lower_ok && upper_ok
+    };
+    let certify_target = reduce_removable_quotient_poles(
+        ctx,
+        call.target,
+        &call.var_name,
+        call.var_expr,
+        antiderivative,
+        &in_closed_interval,
+    );
     match combine_certificates(
         certify_unbounded_interval(ctx, &conditions, &call.var_name, lower_bound, upper_bound),
         integrand_risks_certified_unbounded(
             ctx,
-            call.target,
+            certify_target,
             &call.var_name,
             lower_bound,
             upper_bound,
@@ -1840,6 +1890,79 @@ fn antiderivative_acosh_domain_certificate(
         outcome = combine_certificates(outcome, cert);
     }
     outcome
+}
+
+/// When the integrand is `N/D` with a polynomial `D`, a SIMPLE interior root `r > 0` of `D` where
+/// the numerator `N` ALSO vanishes is a REMOVABLE singularity: the integrand has a finite two-sided
+/// limit there (`N` supplies the `(x − r)` that cancels `D`'s simple zero), so it must NOT make the
+/// definite integral undefined. This arises when a rationalization step turns `1/(√x·(1+x))` into
+/// `(√x³ − √x)/(x³ − x)`, inventing a spurious pole at `x = 1` (where the numerator is also 0).
+/// Divide each removable root out of `D` for the pole certificate; genuine poles (`N(r) ≠ 0`) and
+/// higher-multiplicity roots are kept. Returns the integrand unchanged when nothing is removable.
+fn reduce_removable_quotient_poles(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    var_expr: ExprId,
+    antiderivative: ExprId,
+    in_closed_interval: &dyn Fn(&BigRational) -> bool,
+) -> ExprId {
+    let Expr::Div(numerator, denominator) = ctx.get(target).clone() else {
+        return target;
+    };
+    let Ok(den_poly) = Polynomial::from_expr(ctx, denominator, var_name) else {
+        return target;
+    };
+    if den_poly.degree() < 1 {
+        return target;
+    }
+    let factors = den_poly.factor_rational_roots();
+    let linear_roots: Vec<BigRational> = factors
+        .iter()
+        .filter(|f| f.degree() == 1)
+        .map(|f| -&f.coeffs[0] / &f.coeffs[1])
+        .collect();
+
+    let mut removable: Vec<BigRational> = Vec::new();
+    for root in &linear_roots {
+        // Only a SIMPLE root (multiplicity 1) can be cancelled by a first-order numerator zero.
+        if linear_roots.iter().filter(|r| *r == root).count() != 1 {
+            continue;
+        }
+        // A root strictly OUTSIDE the closed interval never affects the integral; only one inside it
+        // (interior, or a boundary the antiderivative bridges) can fabricate the false undefined.
+        if !in_closed_interval(root) {
+            continue;
+        }
+        // The (condition-free, continuous) antiderivative stays FINITE across a removable
+        // singularity but blows up at a genuine pole (`2·arctan(√1)` is finite; `ln|x−1| → −∞`).
+        // A finite `F(root)` certifies the root is removable, so it must not divergence-reject the
+        // integral; a non-finite `F(root)` is a real pole and is KEPT.
+        let root_expr = ctx.add(Expr::Number(root.clone()));
+        let f_at_root = cas_ast::substitute_expr_by_id(ctx, antiderivative, var_expr, root_expr);
+        if !boundary_is_genuinely_nonfinite(ctx, f_at_root) && !removable.contains(root) {
+            removable.push(root.clone());
+        }
+    }
+    if removable.is_empty() {
+        return target;
+    }
+
+    // Rebuild the denominator dropping one `(x − r)` factor per removable (simple) root.
+    let mut reduced = Polynomial::one(var_name.to_string());
+    let mut to_skip = removable;
+    for factor in &factors {
+        if factor.degree() == 1 {
+            let root = -&factor.coeffs[0] / &factor.coeffs[1];
+            if let Some(pos) = to_skip.iter().position(|r| *r == root) {
+                to_skip.remove(pos);
+                continue;
+            }
+        }
+        reduced = reduced.mul(factor);
+    }
+    let reduced_expr = reduced.to_expr(ctx);
+    ctx.add(Expr::Div(numerator, reduced_expr))
 }
 
 /// SELF-CONTAINED risk scan of the integrand: the condition collectors

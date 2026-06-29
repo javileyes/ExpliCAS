@@ -9,7 +9,7 @@
 > queda cerrado (sin wrong-answers abiertos) y se cumple la puerta de soundness
 > para la Fase 2.
 >
-> **Progreso:** ✅ **P0-1** · ✅ **P0-2** (commits pendientes) · ⬜ P0-3 · ⬜ P0-4.
+> **Progreso:** ✅ **P0-1** · ✅ **P0-2** · ✅ **P0-3** (commits pendientes) · ⬜ P0-4.
 
 - **Fecha:** 2026-06-29
 - **Método:** workflow multi-agente de 14 frentes (probe del CLI real → verificación
@@ -96,23 +96,30 @@ el polo x=0 colapsaba a un solo rayo.
   guardrail+pressure IDÉNTICA (pese a tocar el compartido `compare_values`).
 - **Frente:** `solve-inequalities`. Cierra el ítem de roadmap "(F) bordes surd orden ≥3".
 
-### P0-3 — Integral definida/FTC inventa polos desde la racionalización → `undefined` falso
+### P0-3 — Integral definida/FTC inventa polos desde la racionalización → `undefined` falso  ✅ RESUELTO (commit pendiente)
 
 ```
-integrate(1/(sqrt(x)*(1+x)), x, 1, inf)   =>  undefined   (verdad: π/2)
-integrate(1/(sqrt(x)*(1+x)), x, 1/2, 4)   =>  undefined   (verdad: ~0.983, intervalo regular propio)
-integrate(1/(sqrt(x)*(1+x)), x)           =>  2·arctan(sqrt(x))   ✓ (indefinida correcta)
+ANTES                                          AHORA
+integrate(1/(sqrt(x)*(1+x)),x,1/2,4) => undef  => 2·(arctan(2)−arctan(√½)) ≈ 0.983
+integrate(1/(sqrt(x)*(1+x)),x,1,inf) => undef  => π/2
+integrate(1/(sqrt(x)*(1+x)),x,0,inf) => undef  => residual HONESTO (era wrong)
 ```
 
-Racionalizar `sqrt(x)*(1+x)` introduce raíces de denominador x=0, x=1 que NO son
-polos del integrando; el x=1 dentro del intervalo (cuando el borde inferior ≤1)
-dispara un rechazo falso de "polo en el intervalo". Fabricar divergencia en una
-integral convergente / regular es una violación de soundness.
+Racionalizar `sqrt(x)·(1+x) = √x+√x³` produce `(√x³−√x)/(x³−x)`, introduciendo
+una raíz **espuria** x=1 (donde el numerador TAMBIÉN se anula → removible). El
+escáner de polos del FTC corría sobre el integrando racionalizado y rechazaba x=1
+como polo-en-intervalo → `undefined` falso en una integral convergente/regular.
 
-- **Fix:** correr el chequeo de polo/singularidad sobre el **integrando original**
-  (no sobre el denominador racionalizado), o llevar la antiderivada
-  `2·arctan(sqrt(x))` directamente por FTC.
-- **Frente:** `definite-ftc`.
+- **Fix:** antes de certificar polos, dividir del denominador cada raíz **simple**
+  del intervalo cerrado donde la **antiderivada continua es FINITA**
+  (`boundary_is_genuinely_nonfinite(F(r))` distingue removible — `2·arctan(√1)`
+  finito — de polo genuino — `ln|x−1|→−∞`, que se mantiene). La antiderivada como
+  oráculo de removibilidad esquiva evaluar `√(cuadrado perfecto)` exactamente.
+  Bonus: arregla también removibles racionales puros (`(x−1)/(x²−1)→ln4`).
+- **Validación:** workspace failed:0 + test de contrato; clippy limpio; huella
+  IDÉNTICA. Polos genuinos siguen `undefined`/residual (sound).
+- **Frente:** `definite-ftc`. *(El `[0,inf)` queda residual honesto: la singularidad
+  √x-en-0 con extremo infinito es capacidad de impropias aparte, no un wrong-answer.)*
 
 ### P0-4 — Regla de racionalización de raíz n-ésima da valor erróneo
 
@@ -214,9 +221,9 @@ Cada P0 es un ciclo validado con su huella (scorecard guardrail+pressure idénti
    pendiente): orden exacto de cotas raíz-n en `compare_values` + el verificador, cap
    4→6; pin `test_eval_reciprocal_power_inequality_keeps_pole_sign_split` +
    `compare_values_orders_nth_root_bounds_by_value`.
-3. **P0-3** — chequeo de polo sobre el integrando ORIGINAL. Pin de
-   `1/(√x·(1+x))` en `[1/2,4]`, en `[1,∞)=π/2`, + el intervalo regular-propio como
-   caso de soundness.
+3. ~~**P0-3** — chequeo de polo sobre el integrando ORIGINAL~~ ✅ **HECHO** (commit
+   pendiente): dividir raíces removibles (antiderivada finita) antes de certificar;
+   pin `test_eval_definite_integral_removable_pole_is_not_undefined`.
 4. **P0-4** — plegado de potencia `x^(-1/n)`. Pin de `1/x^(1/4)=4/3`, `1/x^(1/6)=6/5`,
    y el antes-declinante `1/x^(1/3)=3/2`; verificar derivada de vuelta.
 5. **GATE** — `cargo test --workspace` + `clippy --workspace --all-targets` + rustfmt

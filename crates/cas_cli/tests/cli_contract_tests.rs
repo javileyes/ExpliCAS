@@ -2501,6 +2501,41 @@ fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
 }
 
 #[test]
+fn test_eval_definite_integral_removable_pole_is_not_undefined() {
+    // A rationalization step turns `1/(√x·(1+x))` into `(√x³−√x)/(x³−x)`, inventing a SPURIOUS
+    // denominator root at x=1 where the numerator also vanishes (removable). The FTC pole scan used
+    // to reject it as an in-interval pole and return a false `undefined` on a convergent / regular
+    // proper integral. The (continuous) antiderivative `2·arctan(√x)` is finite at x=1, certifying
+    // the singularity removable, so the integral evaluates.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Regular proper interval [1/2, 4] (NO singularity in it): 2·(arctan(2) − arctan(√½)) ≈ 0.9833.
+    assert_eq!(
+        r("integrate(1/(sqrt(x)*(1+x)),x,1/2,4)"),
+        "2·(arctan(2) - arctan(sqrt(1/2)))"
+    );
+    // Convergent improper integral [1, ∞) = π/2.
+    assert_eq!(r("integrate(1/(sqrt(x)*(1+x)),x,1,inf)"), "1/2·pi");
+    // The interval clear of the spurious root is unaffected.
+    assert_eq!(
+        r("integrate(1/(sqrt(x)*(1+x)),x,4,9)"),
+        "2·(arctan(3) - arctan(2))"
+    );
+    // Pure-rational removable singularities also evaluate: (x−1)/(x²−1) = 1/(x+1) on [0,3] = ln(4).
+    assert_eq!(r("integrate((x-1)/(x^2-1),x,0,3)"), "ln(4)");
+    // SOUNDNESS: a GENUINE interior pole (numerator nonzero) still diverges → undefined.
+    assert_eq!(r("integrate(1/(x-1),x,0,2)"), "undefined");
+    assert_eq!(r("integrate(1/((x-1)*(x-3)),x,0,4)"), "undefined");
+    assert_eq!(r("integrate(1/(x-2)^2,x,1,3)"), "undefined");
+}
+
+#[test]
 fn test_eval_periodic_trig_equation_with_outside_coefficient_emits_full_family() {
     // SOUNDNESS: an OUTSIDE coefficient/offset (`2·sin x = 1`, `2·cos x + 1 = 0`) left the trig side a
     // `Mul`/`Add` that the bare-trig detector could not see, so the equation fell through to the
