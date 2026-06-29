@@ -1191,7 +1191,7 @@ fn step_wire_log_cancellation_uses_concrete_substep_expressions() {
         assert_eq!(step.substeps[2].after_latex.as_deref(), Some("0"));
     } else {
         assert_eq!(
-            step.rule, "Collapse Exact Zero Additive Subexpression",
+            step.rule, "Cancelar la subexpresión idénticamente nula",
             "expected explicit log-cancellation story or direct exact-zero collapse, got {:?}",
             step.rule
         );

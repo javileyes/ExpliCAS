@@ -811,7 +811,7 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     } else {
         assert_eq!(
             final_log_cancel_step.rule,
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
             "log_product_cancellation should either keep the explicit three-phase log cancellation story or collapse directly via exact-zero, got {:?}",
             final_log_cancel_step.rule
         );

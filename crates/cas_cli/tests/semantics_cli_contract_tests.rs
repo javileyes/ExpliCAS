@@ -1918,7 +1918,7 @@ fn eval_binomial_expansion_cancel_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -3379,7 +3379,7 @@ fn eval_log_cancellation_exponential_step_keeps_full_additive_before_highlight()
         &[
             "Expandir logaritmos y cancelar términos iguales",
             "Expand Log Product Power",
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
         ],
     );
     let before_latex = expand_log_step["before_latex"]
@@ -4454,7 +4454,7 @@ fn eval_symbolic_sine_sum_to_product_negated_orientation_still_reaches_zero() {
         &steps[0]["rule"],
         &[
             "Aplicar producto a suma",
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
         ],
     );
 }
@@ -4519,7 +4519,7 @@ fn eval_general_sine_sum_to_product_passthrough_difference_collapses_to_zero() {
         &steps[0]["rule"],
         &[
             "Aplicar suma a producto",
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
         ],
     );
 }
@@ -4580,7 +4580,7 @@ fn eval_general_cosine_sum_to_product_shifted_quotient_collapses_to_one() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -4603,7 +4603,7 @@ fn eval_general_cosine_sum_to_product_passthrough_difference_collapses_to_zero()
         &steps[0]["rule"],
         &[
             "Aplicar suma a producto",
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
         ],
     );
 }
@@ -4624,7 +4624,7 @@ fn eval_recursive_six_sine_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
     assert_eq!(steps.len(), 1);
 }
@@ -4686,7 +4686,7 @@ fn eval_mixed_trig_double_angle_product_difference_collapses_to_zero_in_one_step
     assert_rule_matches_any(
         &steps[0]["rule"],
         &[
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
             "Expandir ángulo doble",
         ],
     );
@@ -4710,7 +4710,7 @@ fn eval_expanded_affine_sine_double_angle_product_difference_collapses_to_zero()
     assert_rule_matches_any(
         &steps[0]["rule"],
         &[
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
             "Expandir ángulo doble",
         ],
     );
@@ -4754,7 +4754,7 @@ fn eval_mixed_trig_double_angle_product_passthrough_collapses_to_zero_in_one_ste
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -4775,7 +4775,7 @@ fn eval_pythagorean_identity_difference_collapses_to_zero_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -4835,7 +4835,7 @@ fn eval_sine_cosine_square_product_shifted_quotient_collapses_to_one() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -4984,7 +4984,7 @@ fn eval_sec_squared_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5004,7 +5004,7 @@ fn eval_half_angle_square_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5089,7 +5089,7 @@ fn eval_exact_shifted_sine_cosine_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5156,7 +5156,7 @@ fn eval_general_shifted_sine_cosine_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5251,7 +5251,7 @@ fn eval_exact_phase_shift_pair_passthrough_difference_collapses_in_one_phase_shi
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5272,7 +5272,7 @@ fn eval_exact_phase_shift_pair_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5294,7 +5294,7 @@ fn eval_exact_third_phase_shift_passthrough_difference_collapses_in_one_phase_sh
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5316,7 +5316,7 @@ fn eval_tangent_triple_angle_passthrough_difference_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5338,7 +5338,7 @@ fn eval_tangent_triple_angle_raw_difference_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5360,7 +5360,7 @@ fn eval_tangent_triple_angle_shifted_quotient_collapses_to_one_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5382,7 +5382,7 @@ fn eval_trig_binomial_square_difference_to_zero_uses_named_identity_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     assert!(steps[0].get("substeps").is_none());
 }
@@ -5405,7 +5405,7 @@ fn eval_trig_binomial_square_difference_minus_passthrough_collapses_in_one_step(
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5427,7 +5427,7 @@ fn eval_trig_binomial_square_difference_minus_shifted_quotient_collapses_to_one_
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5469,7 +5469,7 @@ fn eval_half_angle_square_passthrough_difference_collapses_in_one_half_angle_ste
         &steps[0]["rule"],
         &[
             "Aplicar identidad de ángulo mitad",
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
         ],
     );
     assert!(steps[0].get("substeps").is_none());
@@ -5493,7 +5493,7 @@ fn eval_double_angle_cos_one_minus_two_sin_sq_passthrough_difference_collapses_t
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     assert!(steps[0].get("substeps").is_none());
 }
@@ -5516,7 +5516,7 @@ fn eval_double_angle_cos_one_minus_two_sin_sq_raw_difference_collapses_to_zero_i
     assert_rule_matches_any(
         &steps[0]["rule"],
         &[
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
             "Expandir ángulo doble",
         ],
     );
@@ -5565,7 +5565,7 @@ fn eval_double_angle_cos_two_cos_sq_minus_one_shifted_quotient_collapses_to_one_
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
     assert!(steps[0].get("substeps").is_none());
 }
@@ -5587,7 +5587,7 @@ fn eval_hyperbolic_half_angle_square_passthrough_difference_collapses_in_one_ste
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     assert!(steps[0].get("substeps").is_none());
 }
@@ -5609,7 +5609,7 @@ fn eval_hyperbolic_half_angle_square_shifted_quotient_collapses_to_one_in_one_st
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
     assert!(steps[0].get("substeps").is_some());
 }
@@ -5679,7 +5679,7 @@ fn eval_trig_sine_product_cubic_cosine_difference_to_zero_uses_combined_bridge_s
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     assert!(steps[0].get("substeps").is_none());
 }
@@ -5702,7 +5702,7 @@ fn eval_hyperbolic_angle_sum_difference_to_zero_uses_expand_then_self_cancel() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     assert!(steps[0].get("substeps").is_none());
 }
@@ -5724,7 +5724,7 @@ fn eval_hyperbolic_angle_sum_difference_with_passthrough_one_collapses_to_one() 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5745,7 +5745,7 @@ fn eval_hyperbolic_cosh_angle_difference_shifted_quotient_collapses_in_one_step(
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5787,7 +5787,7 @@ fn eval_hyperbolic_angle_sum_difference_negated_orientation_still_reaches_zero()
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5809,7 +5809,7 @@ fn eval_hyperbolic_tanh_angle_sum_difference_passthrough_collapses_in_one_step()
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5831,7 +5831,7 @@ fn eval_hyperbolic_tanh_double_angle_passthrough_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5853,7 +5853,7 @@ fn eval_hyperbolic_tanh_exp_definition_passthrough_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5919,7 +5919,7 @@ fn eval_hyperbolic_tanh_exp_definition_shifted_quotient_collapses_to_one_in_one_
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5941,7 +5941,7 @@ fn eval_hyperbolic_sinh_exp_definition_passthrough_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -5963,7 +5963,7 @@ fn eval_hyperbolic_cosh_exp_definition_shifted_quotient_collapses_to_one_in_one_
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -5985,7 +5985,7 @@ fn eval_hyperbolic_cosh_triple_angle_passthrough_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6007,7 +6007,7 @@ fn eval_hyperbolic_cosh_triple_angle_difference_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6029,7 +6029,7 @@ fn eval_hyperbolic_sinh_double_angle_passthrough_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6051,7 +6051,7 @@ fn eval_hyperbolic_tanh_double_angle_shifted_quotient_collapses_to_one_in_one_st
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -6073,7 +6073,7 @@ fn eval_hyperbolic_tanh_triple_angle_passthrough_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6094,7 +6094,7 @@ fn eval_hyperbolic_sinh_sum_to_product_passthrough_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6174,7 +6174,7 @@ fn eval_trig_cos_double_angle_product_passthrough_collapses_to_zero() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6194,7 +6194,7 @@ fn eval_hyperbolic_cosh_difference_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -6215,7 +6215,7 @@ fn eval_hyperbolic_cosh_difference_passthrough_collapses_to_zero() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6257,7 +6257,7 @@ fn eval_morrie_passthrough_difference_collapses_to_zero_with_nonzero_sine_condit
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     assert_eq!(wire["required_display"][0], "sin(x) ≠ 0");
 }
@@ -6301,7 +6301,7 @@ fn eval_recursive_hyperbolic_sinh_passthrough_difference_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6342,7 +6342,7 @@ fn eval_hyperbolic_product_sum_triple_angle_passthrough_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6384,7 +6384,7 @@ fn eval_hyperbolic_sinh_cubic_shifted_quotient_collapses_to_one_in_one_step() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -6405,7 +6405,7 @@ fn eval_dirichlet_passthrough_difference_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6465,7 +6465,7 @@ fn eval_dirichlet_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -6505,7 +6505,7 @@ fn eval_reverse_dirichlet_passthrough_difference_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     assert_eq!(wire["required_display"][0], "sin(x / 2) ≠ 0");
 }
@@ -6543,7 +6543,7 @@ fn eval_shifted_hyperbolic_pythagorean_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -6564,7 +6564,7 @@ fn eval_shifted_hyperbolic_double_angle_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -6627,7 +6627,7 @@ fn eval_hyperbolic_double_angle_sum_difference_collapses_in_one_step() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6648,7 +6648,7 @@ fn eval_hyperbolic_double_angle_sum_passthrough_collapses_in_one_step() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6685,7 +6685,7 @@ fn eval_complete_square_passthrough_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     let required = wire["required_display"].as_array().expect("required array");
     assert!(required.iter().any(|item| item == "a ≠ 0"));
@@ -6708,7 +6708,7 @@ fn eval_complete_square_symbolic_leading_passthrough_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     let required = wire["required_display"].as_array().expect("required array");
     assert!(required.iter().any(|item| item == "a ≠ 0"));
@@ -6731,7 +6731,7 @@ fn eval_trinomial_square_passthrough_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6815,7 +6815,7 @@ fn eval_complete_square_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
     let required = wire["required_display"].as_array().expect("required array");
     assert!(required.iter().any(|item| item == "a ≠ 0"));
@@ -6838,7 +6838,7 @@ fn eval_complete_square_fractional_symbolic_passthrough_collapses_to_zero() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     let required = wire["required_display"].as_array().expect("required array");
     assert!(required.iter().any(|item| item == "a ≠ 0"));
@@ -6904,7 +6904,7 @@ fn eval_complete_square_fractional_symbolic_shifted_quotient_collapses_to_one() 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
     let required = wire["required_display"].as_array().expect("required array");
     assert!(required.iter().any(|item| item == "a ≠ 0"));
@@ -6926,7 +6926,7 @@ fn eval_trinomial_square_shifted_quotient_collapses_to_one() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -6948,7 +6948,7 @@ fn eval_sinh_plus_cosh_minus_exp_to_zero_skips_convert_exp_to_power_noop() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6970,7 +6970,7 @@ fn eval_exp_sum_minus_double_cosh_to_zero_uses_direct_hyperbolic_recognition() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -6992,7 +6992,7 @@ fn eval_exp_difference_minus_double_sinh_to_zero_uses_direct_hyperbolic_recognit
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -7093,7 +7093,7 @@ fn eval_polynomial_identity_binomial_square_zero_uses_square_formula_substeps() 
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -7191,7 +7191,7 @@ fn eval_cubes_quotient_passthrough_zero_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -7212,7 +7212,7 @@ fn eval_sum_cubes_quotient_shifted_quotient_collapses_to_one_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -8866,7 +8866,7 @@ fn eval_log_cancellation_drops_redundant_exponent_log_substeps() {
         &steps[0]["rule"],
         &[
             "Expandir logaritmos y cancelar términos iguales",
-            "Collapse Exact Zero Additive Subexpression",
+            "Cancelar la subexpresión idénticamente nula",
         ],
     );
 }
@@ -8893,7 +8893,7 @@ fn eval_log_power_product_difference_to_zero_uses_combined_log_cancellation_step
         matches!(
             rule,
             "Expandir logaritmos y cancelar términos iguales"
-                | "Collapse Exact Zero Additive Subexpression"
+                | "Cancelar la subexpresión idénticamente nula"
         ),
         "unexpected rule {rule:?}"
     );
@@ -9022,7 +9022,7 @@ fn eval_composed_log_hyperbolic_inverse_trig_zero_mix_keeps_exact_zero_subset_st
     assert!(
         steps
             .iter()
-            .any(|step| step["rule"] == "Collapse Exact Zero Additive Subexpression"),
+            .any(|step| step["rule"] == "Cancelar la subexpresión idénticamente nula"),
         "expected composed simplification to retain exact-zero subset step: {steps:?}"
     );
 }
@@ -9188,7 +9188,7 @@ fn eval_log_square_hyperbolic_cubic_mix_uses_single_targeted_zero_step_and_keeps
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
     assert_eq!(steps[0]["after"], "0");
 }
@@ -10041,7 +10041,7 @@ fn eval_telescoping_fraction_symbolic_difference_squares_passthrough_collapses_i
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 
@@ -10063,7 +10063,7 @@ fn eval_telescoping_fraction_symbolic_difference_squares_shifted_quotient_collap
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Shifted Quotient of Equivalent Expressions"
+        "Cancelar el cociente de expresiones equivalentes"
     );
 }
 
@@ -10245,7 +10245,7 @@ fn eval_finite_telescoping_product_difference_collapses_in_one_step() {
     assert_eq!(steps.len(), 1);
     assert_eq!(
         steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
+        "Cancelar la subexpresión idénticamente nula"
     );
 }
 

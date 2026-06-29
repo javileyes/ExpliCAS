@@ -10,6 +10,17 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Binomial Expansion" => "Expandir binomio",
         "Small Multinomial Expansion" => "Expandir binomio",
         "Expand" => "Expandir la expresión",
+        "Log Even Power" => "Sacar la potencia par fuera del logaritmo",
+        "Power of a Quotient" => "Potencia de un cociente",
+        "Trig Fourth Power Difference" => "Diferencia de cuartas potencias trigonométricas",
+        "Pythagorean with Generic Coefficient" => "Aplicar la identidad pitagórica con coeficiente",
+        "Quartic Pythagorean Identity" => "Aplicar la identidad pitagórica (cuarta potencia)",
+        "Collapse Shifted Quotient of Equivalent Expressions" => {
+            "Cancelar el cociente de expresiones equivalentes"
+        }
+        "Collapse Exact Zero Additive Subexpression" => {
+            "Cancelar la subexpresión idénticamente nula"
+        }
         "Distributive Property" => "Expandir la expresión",
         "expand_log" => "Expandir logaritmos",
         "Expand Log Abs Mul/Div" => "Expandir logaritmos",
@@ -599,6 +610,19 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Aplicar fórmula de suma de cubos" => "Apply the sum of cubes formula",
         "Aplicar fórmula de suma geométrica" => "Apply the geometric sum formula",
         "Aplicar la identidad pitagórica" => "Apply the Pythagorean identity",
+        "Aplicar la identidad pitagórica con coeficiente" => {
+            "Pythagorean with generic coefficient"
+        }
+        "Aplicar la identidad pitagórica (cuarta potencia)" => "Quartic Pythagorean identity",
+        "Cancelar el cociente de expresiones equivalentes" => {
+            "Collapse the quotient of equivalent expressions"
+        }
+        "Cancelar la subexpresión idénticamente nula" => {
+            "Collapse the identically-zero subexpression"
+        }
+        "Diferencia de cuartas potencias trigonométricas" => "Trig fourth-power difference",
+        "Potencia de un cociente" => "Power of a quotient",
+        "Sacar la potencia par fuera del logaritmo" => "Take the even power out of the logarithm",
         "Aplicar producto factorial" => "Apply the factorial product",
         "Calcular coeficiente binomial" => "Compute the binomial coefficient",
         "Calcular el logaritmo" => "Compute the logarithm",

@@ -6845,7 +6845,7 @@ fn scaled_arccot_sqrt_diff_residual_collapses_without_fraction_add_roundtrip() {
         );
         assert!(
             output.steps.iter().any(|step| {
-                step.rule_name == "Collapse Exact Zero Additive Subexpression"
+                step.rule_name == "Cancelar la subexpresión idénticamente nula"
                     || step.rule_name == "Cancel Exact Additive Pairs"
                     || step.rule_name == "Cancel Opposite Fractions"
                     || step.rule_name == "Cancel Equal Fractions Difference"
