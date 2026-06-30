@@ -4248,6 +4248,27 @@ fn try_solve_biquadratic(
 /// for each, `p = (d − q·b)/(s − q)` and `r = b − p` are forced, and the factorization is accepted
 /// only when `p, r` are integers and the `x²`/`x³` coefficients match. Returns `None` for an
 /// irreducible quartic (e.g. `x⁴ − x − 1`) or coefficients outside `i64`.
+/// Exact integer square root of `n`: `Some(r)` with `r ≥ 0` iff `n = r²`, else `None` (negative or
+/// non-perfect-square). No float in the keep/reject decision — the `f64` seed is only a starting point
+/// that is corrected to the exact integer value before the `r*r == n` test.
+fn exact_i64_sqrt(n: i64) -> Option<i64> {
+    if n < 0 {
+        return None;
+    }
+    let mut r = (n as f64).sqrt() as i64;
+    while r > 0 && r * r > n {
+        r -= 1;
+    }
+    while (r + 1) * (r + 1) <= n {
+        r += 1;
+    }
+    if r * r == n {
+        Some(r)
+    } else {
+        None
+    }
+}
+
 fn factor_monic_quartic_into_rational_quadratics(
     b: i64,
     c: i64,
@@ -4268,7 +4289,30 @@ fn factor_monic_quartic_into_rational_quadratics(
         for q in [mag as i64, -(mag as i64)] {
             let s = e / q; // exact: q divides e
             if s == q {
-                continue; // degenerate q = s handled by neither branch; skip
+                // The two quadratics share a constant term `q = s` (e.g. a perfect square like
+                // `(x²-3)² = (x²-3)(x²-3)` with `q = s = -3`). The general formula below divides by
+                // `s - q = 0`, so it skipped this case — which silently dropped the roots of a SQUARED
+                // (or equal-constant) irreducible quadratic factor. Solve it directly: with `q = s`,
+                //   p·s + r·q = q·(p + r) = q·b  ⇒ requires  d == q·b,
+                //   q + s + p·r = 2q + p·r = c   ⇒  p·r = c - 2q,  and  p + r = b,
+                // so `p, r` are the integer roots of `t² - b·t + (c - 2q) = 0`.
+                if d != q * b {
+                    continue;
+                }
+                let disc = b * b - 4 * (c - 2 * q);
+                let root = match exact_i64_sqrt(disc) {
+                    Some(v) => v,
+                    None => continue,
+                };
+                if (b + root).rem_euclid(2) != 0 {
+                    continue; // p, r would not be integers
+                }
+                let p = (b + root) / 2;
+                let r = (b - root) / 2;
+                if q + s + p * r == c && p + r == b {
+                    return Some(((p, q), (r, s)));
+                }
+                continue;
             }
             let numerator = d - q * b;
             let denom = s - q;

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 447 (newest first)
+Active entries: 448 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -123,6 +123,7 @@ Active entries: 447 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 re-auditoría Clase A): ecuación trig que se reduce a potencia de un solo trig colapsa la familia periódica
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo `try_decline_unsound_po... | SOUNDNESS (P0 re-auditoría Clase C): inecuación de potencia-monomio `c·x^e {op} k` con `x^e` NO monótona resuelta por isolación monótona → conjunto erróneo
 - 2026-06-30 | `retained` | `crates/cas_solver/src/linear_system/solve2/classify.rs` (`classify_degenerat... | SOUNDNESS (auditoría P0, Familia 8): sistema lineal 2×2 con coeficientes todos cero y RHS no nulo clasificado como "infinitas soluciones"
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`factor_monic_quartic_into_ra... | SOUNDNESS (auditoría P0, Familia 1): factor cuadrático irreducible AL CUADRADO suelta sus raíces irracionales en solve
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17589,3 +17590,18 @@ Active entries: 447 (newest first)
 - retained learning:
   - Un atajo de caso pequeño (Cramer 2×2) que duplica la lógica de un clasificador general (Gauss) debe cubrir TODOS los casos degenerados que el general ya cubre; aquí el general detectaba `0=c` y el atajo no. Un chequeo de consistencia por proporcionalidad cruzada (`d1·b2==d2·b1`) es CIEGO al RHS cuando la matriz de coeficientes se anula (`0==0` vacuo) — la contradicción `0=c` debe chequearse explícita y ANTES. Patrón: las fast-paths de caso pequeño son una fuente recurrente de huecos de soundness que la ruta general no tiene.
   - siguiente de la auditoría: Familia 1 (root-drop poli: `solve((x²-3)²(x-1)=0)`→`{1}`, suelta `±√3`; el factor cuadrado SOLO sí resuelve, el producto no).
+
+## 2026-06-30 - SOUNDNESS (auditoría P0, Familia 1): factor cuadrático irreducible AL CUADRADO suelta sus raíces irracionales en solve
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`factor_monic_quartic_into_rational_quadratics`: rama `q == s` + helper `exact_i64_sqrt`)
+- status: `retained` (commit pendiente-de-hash). Familia 1 de [[p0-audit-2026-06-30-eight-families]]. Wrong-answer PRE-EXISTENTE (no regresión). Cierra el sub-caso monic-entero (la mayor parte de la familia); deja residual documentado el no-monic/fraccionario/mult≥3.
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento del orden de fase.
+  - cell: `solve((x²-3)²(x-1)=0)` daba `{1}` (soltaba `±√3`), `ok:true` sin warning. AHORA `{1, √3, -√3}`. Igual `(x²-7)²(x-3)`, `(x²-2)²(x-1)`, `(x²-3x+1)²(x-1)`→`{1,(3±√5)/2}`, la forma biquadrática `(x⁴-6x²+9)(x-1)`, la EXPANDIDA `x⁵-x⁴-6x³+6x²+9x-9`, y los grado-6 con dos raíces racionales `(x²-3)²(x²-4)`→`{±2,±√3}`, `(x²-3)²(x-1)(x-2)`. Controles intactos: factores cuadráticos DISTINTOS `x⁵-5x³+x²-5`→`{-1,±√5}`, cuadrática simple, `(x²-3)²` solo.
+  - causa raíz: tras pelar las raíces racionales (p.ej. x=1), el solver factoriza el cociente cuártico mónico en `(x²+px+q)(x²+rx+s)` con `q·s=e`. Cuando los dos factores comparten término constante (`q=s`, el caso CUADRADO PERFECTO `(x²-3)²` con `q=s=-3`), la fórmula `p=(d−qb)/(s−q)` divide por `s−q=0`, así que el código hacía `continue` y saltaba el caso → devolvía `None` → el solver cuártico declinaba → se perdían las raíces del factor cuadrático repetido.
+  - fix: resolver el caso `q=s` directamente. Con `q=s`: `d=q·b` (requisito), y `p,r` son las raíces ENTERAS de `t²−b·t+(c−2q)=0` (porque `p+r=b`, `p·r=c−2q`). `exact_i64_sqrt` da la raíz entera exacta del discriminante (sin f64 en la decisión keep/reject). Cubre tanto el cuadrado perfecto como dos cuadráticas de igual constante (`(x²+2x−3)(x²−2x−3)`).
+  - residual honesto (siguiente peldaño, NO cerrado): cociente NO mónico-entero — `(2x²−3)²` (cuadrática irreducible no mónica), `(2x²−6)²`=4(x²−3)² (necesita normalización de contenido), `(x²−½)²` (coef. fraccionarios), y multiplicidad ≥3 `(x²−3)³` (cociente séxtico, no cuártico) — siguen devolviendo `{1}`. Requieren factorización general sobre ℚ (factorizar en irreducibles y resolver cada uno), un cambio mayor que un ciclo acotado.
+  - validación: workspace failed:0 (+ test `test_eval_squared_irrational_quadratic_factor_keeps_its_roots` con controles distinct-factor); clippy `-p cas_solver --all-targets` limpio; huella GUARD/PRESS por baseline-FIEL (stash-regen): **0 deltas estructurales**.
+- retained learning:
+  - Un factorizador por enumeración de divisores con una fórmula `…/(s−q)` tiene un agujero en la DIAGONAL `q=s` (división por cero) que se "parchea" con un `continue` — pero ese `continue` SILENCIOSAMENTE descarta toda una clase (factores repetidos / cuadrados perfectos). El caso degenerado de una fórmula casi siempre necesita su propia rama cerrada, no un skip. Patrón gemelo del de la Familia 8 (la fast-path salta el caso degenerado).
+  - siguiente de la auditoría: Familia 2 (trig family-drop: `sin(x)=√2/2`→`{π/4}`, suelta periodicidad + 2ª rama; la forma RHS-racional `sin(x)=1/2` SÍ da la familia).

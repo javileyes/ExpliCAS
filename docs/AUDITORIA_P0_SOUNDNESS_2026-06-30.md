@@ -190,8 +190,11 @@ solución**. El motor responde "infinitas soluciones, ecuaciones dependientes".
 
 1. ~~**F8 sistema inconsistente**~~ ✅ **HECHO** (commit pendiente) — guarda de
    contradicción `0=c` en `classify_degenerate_2x2`; 0 deltas de huella.
-2. **F1 root-drop poli** — extraer raíces de factores irreducibles **repetidos**;
-   silencioso y muy común. Alto valor.
+2. ~~**F1 root-drop poli**~~ ✅ **PARCIAL** (commit pendiente) — rama `q=s` en
+   `factor_monic_quartic_into_rational_quadratics` cierra el sub-caso monic-entero
+   (`(x²-3)²`, `(x²-3x+1)²`, biquadrática, grado-6 dos-raíces). Residual: no-monic
+   `(2x²-3)²`, contenido `(2x²-6)²`, fraccionario `(x²-½)²`, mult≥3 `(x²-3)³`
+   (necesitan factorización general sobre ℚ). 0 deltas de huella.
 3. **F2 trig family-drop** — enrutar RHS-radical / argumento-afín / `trig^n=c` al
    solver periódico (reutiliza la maquinaria de Clase A / P0-1).
 4. **F3 inecuación racional 2-polos** — normalizar `a/(x-p)±b/(x-q)` a `N/D` antes del

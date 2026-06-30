@@ -2571,6 +2571,54 @@ fn test_eval_high_degree_polynomial_inequality_with_rational_root() {
 }
 
 #[test]
+fn test_eval_squared_irrational_quadratic_factor_keeps_its_roots() {
+    // A polynomial with a SQUARED (or equal-constant) irreducible quadratic factor dropped that
+    // factor's irrational roots: `(x²-3)²·(x-1) = 0` returned `{1}`, losing ±√3. The quartic-factor
+    // solver factors the deflated monic quartic into `(x²+px+q)(x²+rx+s)`, but when the two factors
+    // share a constant term (`q = s`, the perfect-square case) the `p = (d-qb)/(s-q)` formula divided
+    // by zero, so that case was skipped — the roots of the repeated quadratic vanished. The `q = s`
+    // branch now solves `p,r` from `t²-bt+(c-2q)=0` directly.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `-√3` renders as `-3·3^(-1/2)`. Squared quadratic × a simple rational factor.
+    assert_eq!(
+        r("solve((x^2-3)^2*(x-1) = 0, x)"),
+        "{ 1, sqrt(3), -3·3^(-1/2) }"
+    );
+    assert_eq!(
+        r("solve((x^2-7)^2*(x-3) = 0, x)"),
+        "{ 3, sqrt(7), -7·7^(-1/2) }"
+    );
+    // A general (non-symmetric) irreducible quadratic, squared: roots (3±√5)/2.
+    assert_eq!(
+        r("solve((x^2-3*x+1)^2*(x-1) = 0, x)"),
+        "{ 1, 1/2·(sqrt(5) + 3), 1/2·(3 - sqrt(5)) }"
+    );
+    // The bug survives full expansion (same quintic, factored back internally).
+    assert_eq!(
+        r("solve(x^5 - x^4 - 6*x^3 + 6*x^2 + 9*x - 9 = 0, x)"),
+        "{ 1, sqrt(3), -3·3^(-1/2) }"
+    );
+    // Degree-6 with two rational cofactor roots; the squared factor still contributes ±√3.
+    assert_eq!(
+        r("solve((x^2-3)^2*(x^2-4) = 0, x)"),
+        "{ 2, -2, sqrt(3), -3·3^(-1/2) }"
+    );
+    // Controls: the DISTINCT-quadratic-factor case and a plain quadratic are unchanged.
+    assert_eq!(
+        r("solve(x^5-5*x^3+x^2-5 = 0, x)"),
+        "{ -1, sqrt(5), -5·5^(-1/2) }"
+    );
+    assert_eq!(r("solve(x^2-5*x+6 = 0, x)"), "{ 2, 3 }");
+}
+
+#[test]
 fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
     // A power-monomial inequality `c·x^e {op} k` is solved by the engine's MONOTONIC isolation, which
     // emits a single ray — correct ONLY when `x^e` is strictly monotonic (`e > 0`, odd numerator).
