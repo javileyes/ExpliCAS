@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 456 (newest first)
+Active entries: 457 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -132,6 +132,7 @@ Active entries: 456 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevos `sign_via_abs_arg` + `... | SOUNDNESS (auditoría P0, Familia 7): `g/|g| {op} c` (signo vía abs) incluía el polo 0/0
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevos `extract_affine_power_... | CAPACIDAD (gradúa Clase C + Familia 5): inecuación de potencia VALLE de numerador par RESUELTA correctamente
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (re-auditoría Familia 1): ecuación trig de potencia PAR ≥4 y `|trig|=c` colapsan la familia / filtran arcsin(>1)
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log_... | SOUNDNESS (re-auditoría Familia 2): inecuación polinómica en `ln(x)` `P(ln(x)) {op} 0` colapsa a "No solution"
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17731,3 +17732,19 @@ Active entries: 456 (newest first)
   - Una clasificación de magnitud que solo cubre surds cuadráticos se pierde las raíces n-ésimas (`(1/4)^(1/4)`) que una reducción de potencia produce; `q^e` (q racional≥0,e>0) clasifica por `q` vs {0,1}. Y devolver `Empty` (no `None`) para fuera-de-rango mata el `arcsin(>1)` espurio que la isolación genérica filtraría.
   - PATRÓN (otra vez): un reductor cubre el caso nombrado (n=2, impar) y se pierde el hermano par; y un gate `as_rational_const` suelta el RHS surd — la verificación adversarial fue clave para cazar el surd que los tests racionales no veían.
   - siguiente de la re-auditoría: Familia 2 (inecuación polinómica en ln `ln(x)^2-3ln(x)+2<0`→"No solution").
+
+## 2026-06-30 - SOUNDNESS (re-auditoría Familia 2): inecuación polinómica en `ln(x)` `P(ln(x)) {op} 0` colapsa a "No solution"
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log_inequality`, despachada antes de `try_solve_ln_square_inequality`, a la que subsume)
+- status: `retained` (commit pendiente-de-hash). Familia 2 de [[reaudit-post-fixes-six-families]]. Wrong-answers PRE-EXISTENTES (la inecuación devolvía "No solution" para un conjunto no vacío). Verificado adversarialmente (2 lentes — rejilla numérica + oráculo sympy — 23 casos; las 22 in-scope SOUND).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase.
+  - cell: `ln(x)^2-3ln(x)+2<0`→`(e,e²)` (era "No solution"); `<=0`→`[e,e²]`; `>0`→`(0,e)∪(e²,∞)` (complemento, conserva el borde `x>0`); `ln(x)^2-4<0`→`(1/e²,e²)` (cuadrado puro simétrico); `>=0`→`(0,1/e²]∪[e²,∞)`; raíces surd `ln(x)^2-3<0`→`(e^(-√3),e^(√3))`, `ln(x)^2-ln(x)-1<0`→`(e^((1-√5)/2),e^φ)`; coef. líder negativo `-ln(x)^2+3ln(x)-2>0`→`(e,e²)`; grado 3 `ln(x)^3-ln(x)<0`→`(0,1/e)∪(1,e)`; sin raíz real `ln(x)^2+1<0`→No solution, `>0`→`(0,∞)`. Controles intactos: `ln` simple (grado 1, isolación monótona), ecuación `=0`→`{e,e²}`, y el argumento NO-bare `ln(2x)` se DECLINA al path antiguo (peldaño siguiente, no regresión).
+  - causa raíz: el path de log-isolación trata `P(ln(x))` como monótono y, al no poder aislar, reporta "No solution"; el handler de cuadrado puro previo (`try_solve_ln_square_inequality`) solo casaba `coeff·ln^2 {op} c` con la constante ya en el RHS, no el polinomio general en `ln`.
+  - fix: resolver el polinomio en `u=ln(x)` (`expand` deshace el plegado en diferencia-de-cuadrados que `Polynomial::from_expr` no lee), obtener el conjunto-en-u, y mapearlo DIRECTO por `x=e^u` (creciente): `(a,b)→(e^a,e^b)`, `-∞→0` (borde abierto del dominio `x>0`), `+∞→+∞`. Construir `e^cota` directamente evita el comparador de cotas (que no podía ordenar `1/e²` (forma `Div`) contra `e²` y vaciaba la banda a ∅ — el bug original de mi primer intento). Restringido al átomo BARE `ln(var)`; argumento compuesto/afín → `None` (path antiguo).
+  - validación: workspace failed:0 (+ test `test_eval_polynomial_in_log_inequality_back_substitutes_through_exp`); clippy `-D warnings` limpio; huella GUARD/PRESS por baseline-FIEL (stash-regenera): **0 deltas de estado/returncode**; los 2 únicos suites con drift de métrica (`calculus_integrate_command_matrix_smoke`, `simplify_zero_mixed`) DERIVAN entre dos corridas del binario IDÉNTICO → ruido de orden/latencia, no de mi cambio. Verificación adversarial 2-lentes (rejilla 1e-6..1e6 + bandas de frontera + oráculo sympy): 22/22 in-scope SOUND, 1 out-of-scope (`ln(2x)`, pre-existente confirmado en el binario baseline).
+- retained learning:
+  - Para mapear un conjunto-en-u de vuelta por una función creciente, CONSTRUYE la cota imagen directamente (`e^cota`) en vez de re-resolver `f(x) {op} cota` y `intersect` — el comparador de cotas no sabe ordenar formas no normalizadas (`1/e²` `Div` vs `e²`) y colapsa la banda a ∅. El mapeo directo de intervalos es exacto y barato.
+  - PATRÓN (otra vez, 3ª en la re-auditoría): el handler cubre el átomo BARE (`ln(x)`) y deja el envoltorio afín (`ln(2x)`, `ln(x-1)`) como peldaño honesto — declinado al path antiguo, no resuelto a medias. El siguiente peldaño de Familia 2 es el argumento afín `ln(a·x+b)` (mapear `g∈(e^a,e^b)` y luego `x` por la afín, volteando si `a<0`).
+  - La verificación adversarial numérica (rejilla densa + bandas de tolerancia en cada frontera) cazó 0 falsos positivos y confirmó el borde `x>0` abierto y los strict/non-strict; el oráculo sympy fue redundante pero independiente.
+  - siguiente de la re-auditoría: Familia 4 (raíz extraña de ecuación radical `sqrt(x+1)=-x`→raíz espuria) y Familia 3 (signo-vía-abs con coef. negativo `-x/|x|=1` incluye el polo).

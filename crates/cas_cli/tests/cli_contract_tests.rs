@@ -2787,6 +2787,44 @@ fn test_eval_sign_via_abs_excludes_pole() {
 }
 
 #[test]
+fn test_eval_polynomial_in_log_inequality_back_substitutes_through_exp() {
+    // `P(ln(x)) {op} 0` (degree ≥ 2 in `ln(x)`) used to collapse to "No solution": the polynomial-in-u
+    // path solved the EQUATION but the inequality dropped the band. It now solves for `u = ln(x)` and
+    // maps each u-interval directly through the increasing `x = e^u`: `a < ln(x) < b  ⟺  e^a < x < e^b`,
+    // with `-∞ → 0` (the `x > 0` domain edge, OPEN) and `+∞ → +∞`. Building `e^bound` directly avoids the
+    // bound comparator (which could not order `1/e²` against `e²` and previously emptied the band).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Distinct rational roots: the band between the two exponentials.
+    assert_eq!(r("solve(ln(x)^2 - 3*ln(x) + 2 < 0, x)"), "(e, e^2)");
+    assert_eq!(r("solve(ln(x)^2 - 3*ln(x) + 2 <= 0, x)"), "[e, e^2]");
+    // Complement: the two outer rays, `(0, e)` keeping the `x > 0` domain edge.
+    assert_eq!(
+        r("solve(ln(x)^2 - 3*ln(x) + 2 > 0, x)"),
+        "(0, e) U (e^2, infinity)"
+    );
+    // A root at 0 (`ln(x)(ln(x) - 2)`) maps to `x = 1`.
+    assert_eq!(r("solve(ln(x)^2 - 2*ln(x) < 0, x)"), "(1, e^2)");
+    assert_eq!(r("solve(ln(x)^2 - 5*ln(x) + 6 < 0, x)"), "(e^2, e^3)");
+    // Symmetric `ln² - 4`: the band is `(e^-2, e^2)`, rendered with the reciprocal lower bound.
+    assert_eq!(r("solve(ln(x)^2 - 4 < 0, x)"), "(1 / e^2, e^2)");
+    assert_eq!(
+        r("solve(ln(x)^2 - 4 >= 0, x)"),
+        "(0, 1 / e^2] U [e^2, infinity)"
+    );
+    // Controls: a single `ln` (degree 1) stays the ordinary monotonic isolation; the equation form and a
+    // NON-bare argument (`ln(2x)`, left to the existing path) are unchanged.
+    assert_eq!(r("solve(ln(x) > 1, x)"), "(e, infinity)");
+    assert_eq!(r("solve(ln(x)^2 - 3*ln(x) + 2 = 0, x)"), "{ e, e^2 }");
+}
+
+#[test]
 fn test_eval_high_degree_polynomial_inequality_with_rational_root() {
     // `xⁿ - c > 0` for odd n with a RATIONAL root (`x⁵-1 = (x-1)(x⁴+x³+x²+x+1)`) used to return
     // "No solution": the inequality path declined because it could not certify the positive-definite

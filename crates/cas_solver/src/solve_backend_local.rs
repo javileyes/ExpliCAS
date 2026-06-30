@@ -1936,6 +1936,109 @@ fn try_solve_polynomial_in_log(
     solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
 }
 
+/// Solve a polynomial-in-`ln(arg)` INEQUALITY `P(ln(x)) {op} 0` (`ln(x)^2 - 3·ln(x) + 2 < 0`, the
+/// pure-square `ln(x)^2 - 4 < 0`, …) which the isolation path mis-reported as "No solution". Substitute
+/// `u = ln(arg)`, solve the polynomial inequality `P(u) {op} 0` for the u-set, then map each u-interval
+/// back through `ln` (a strictly increasing bijection `(0,∞) → ℝ`): `a < ln(x) < b ⟺ e^a < x < e^b`,
+/// done by solving the single-`ln` bound relations and intersecting/uniting.
+fn try_solve_polynomial_in_log_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BoundType, BuiltinFn, Constant, Interval, RelOp};
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::solution_set::{is_infinity, is_neg_infinity};
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (expr, _) = simplifier.simplify(diff); // P(ln(x))
+    let atom = find_log_atom_containing_var(&simplifier.context, expr, var)?;
+    // Restrict to the BARE `ln(var)` atom: the back-substitution `ln(x) ∈ (a, b) ⟺ x ∈ (e^a, e^b)` is
+    // then a direct interval map (e^· is increasing). A compound argument (`ln(2x)`, `ln(x-1)`) is left
+    // to the existing path.
+    let var_id = simplifier.context.var(var);
+    let bare_ln = matches!(simplifier.context.get(atom),
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && args[0] == var_id
+            && simplifier.context.is_builtin(*fn_id, BuiltinFn::Ln));
+    if !bare_ln {
+        return None;
+    }
+    let u_var = "__lns_u";
+    let u = simplifier.context.var(u_var);
+    let u_expr = substitute_expr_by_id(&mut simplifier.context, expr, atom, u);
+    if expr_contains_named_var(&simplifier.context, u_expr, var) {
+        return None; // a second distinct log atom (or x elsewhere) remains
+    }
+    // EXPAND: the simplifier factors a difference of squares (`ln(x)^2 - 4 → (ln(x)-2)(ln(x)+2)`), which
+    // `Polynomial::from_expr` cannot read; expanding restores the `u^2 - 4` monomial form.
+    let u_expr = cas_math::expand_ops::expand(&mut simplifier.context, u_expr);
+    // Degree ≥ 2 in u — a single `ln` (degree 1) is the ordinary monotonic isolation's job.
+    if Polynomial::from_expr(&simplifier.context, u_expr, u_var)
+        .ok()?
+        .degree()
+        < 2
+    {
+        return None;
+    }
+    let zero = simplifier.context.num(0);
+    let u_eq = Equation {
+        lhs: u_expr,
+        rhs: zero,
+        op: eq.op.clone(),
+    };
+    let (u_set, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
+
+    // Map the u-set through `x = e^u` (increasing): `(a, b) → (e^a, e^b)`, `-∞ → 0` (the `x > 0`
+    // domain), `+∞ → +∞`. Building `e^bound` directly avoids the bound-comparator (which could not
+    // order `1/e²` against `e²` and collapsed the band to ∅).
+    let u_intervals: Vec<Interval> = match u_set {
+        SolutionSet::Empty => return Some(SolutionSet::Empty),
+        SolutionSet::AllReals => {
+            return Some(cas_solver_core::solution_set::open_positive_domain(
+                &mut simplifier.context,
+            ))
+        }
+        SolutionSet::Continuous(iv) => vec![iv],
+        SolutionSet::Union(v) => v,
+        _ => return None, // Discrete / Conditional / unsolved: leave to the existing path
+    };
+    let exp_of = |simplifier: &mut Simplifier, bound: ExprId| -> ExprId {
+        let e = simplifier.context.add(Expr::Constant(Constant::E));
+        let p = simplifier.context.add(Expr::Pow(e, bound));
+        simplifier.simplify(p).0
+    };
+    let mut x_intervals: Vec<Interval> = Vec::with_capacity(u_intervals.len());
+    for iv in u_intervals {
+        let (min, min_type) = if is_neg_infinity(&simplifier.context, iv.min) {
+            (simplifier.context.num(0), BoundType::Open) // e^(-∞) = 0, x > 0
+        } else {
+            (exp_of(simplifier, iv.min), iv.min_type)
+        };
+        let (max, max_type) = if is_infinity(&simplifier.context, iv.max) {
+            (
+                simplifier.context.add(Expr::Constant(Constant::Infinity)),
+                BoundType::Open,
+            )
+        } else {
+            (exp_of(simplifier, iv.max), iv.max_type)
+        };
+        x_intervals.push(Interval {
+            min,
+            min_type,
+            max,
+            max_type,
+        });
+    }
+    Some(if x_intervals.len() == 1 {
+        SolutionSet::Continuous(x_intervals.pop().unwrap())
+    } else {
+        SolutionSet::Union(x_intervals)
+    })
+}
+
 /// Return a `ln(arg)` subexpression of `expr` whose argument contains `var`
 /// (the substitution atom for [`try_solve_polynomial_in_log`]), or None.
 fn find_log_atom_containing_var(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
@@ -4314,6 +4417,13 @@ fn solve_local_core(
     // returns the boundary equation (`|x^2-2x| < 1` -> "No solution"). Handle it
     // before the sum-of-abs and isolation routing.
     if let Some(set) = try_solve_abs_threshold_inequality(eq, var, simplifier, opts, ctx) {
+        return Ok((set, Vec::new()));
+    }
+    // A polynomial-in-`ln(x)` inequality `P(ln(x)) {op} 0` (`ln(x)^2 - 3·ln(x) + 2 < 0`, also the pure
+    // `ln(x)^2 - 4 < 0`) is non-monotonic; the isolation path reports "No solution". Solve `P(u) {op} 0`
+    // (u = ln x) and map the u-intervals back through `ln`. Runs before the pure-square handler, which
+    // it subsumes (and which only matched a bare `coeff·ln^2` with the constant already on the RHS).
+    if let Some(set) = try_solve_polynomial_in_log_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // `ln(x)^2 {op} c` is non-monotonic; the log-isolation path reports "All reals if
