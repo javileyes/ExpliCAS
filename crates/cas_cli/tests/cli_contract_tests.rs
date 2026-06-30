@@ -2503,6 +2503,58 @@ fn test_eval_periodic_trig_product_equation_unions_families() {
 }
 
 #[test]
+fn test_eval_quadratic_in_trig_equation_unions_periodic_roots() {
+    // A polynomial of degree ≥ 2 in a single trig atom (`2·sin(x)² − 3·sin(x) + 1 = 0`, NOT a perfect
+    // square, so the squared-trig reduction misses it) leaked an `arcsin(… − cos(2x) …)` residual once
+    // the double-angle identity fired. Substitute `u = sin(x)`, solve `P(u) = 0`, back-substitute each
+    // root through the periodic solver (range guard drops `|u| > 1`), and union the families over a
+    // common period — `union_solution_sets` drops a `Periodic ∪ Periodic`, so the handler combines them.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `(2sin-1)(sin-1)=0`: BOTH families kept (`sin = 1/2` and `sin = 1`).
+    assert_eq!(
+        r("solve(2*sin(x)^2 - 3*sin(x) + 1 = 0, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi, 1/2·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // `(2cos-1)(cos+1)=0`.
+    assert_eq!(
+        r("solve(2*cos(x)^2 + cos(x) - 1 = 0, x)"),
+        "{ pi + k·2·pi, 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // Mixed periods: `sin = 0` (period π) and `sin = 1` (period 2π) combine over 2π.
+    assert_eq!(
+        r("solve(sin(x)^2 - sin(x) = 0, x)"),
+        "{ k·2·pi, pi + k·2·pi, 1/2·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // SOUNDNESS: a root outside `[-1, 1]` is dropped (`cos = 2` has no angle).
+    assert_eq!(
+        r("solve(cos(x)^2 - cos(x) - 2 = 0, x)"),
+        "{ pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(2*sin(x)^2 + 5*sin(x) + 2 = 0, x)"),
+        "{ -1/6·pi + k·2·pi, 7/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // Controls: a pure square stays with the squared-trig reduction (compact form); a single trig and a
+    // Pythagorean mix (two distinct atoms) are unchanged.
+    assert_eq!(r("solve(2*sin(x)^2 - 1 = 0, x)"), "{ 1/4·pi + k·1/2·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(sin(x) = 1/2, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x)^2 + cos(x) = 1, x)"),
+        "Solve: solve(x - arccos(cos(x)^2) = 0, x) = 0"
+    );
+}
+
+#[test]
 fn test_eval_trig_power_equation_keeps_periodicity() {
     // A trig EXPRESSION that simplifies to a perfect square / odd power of a single trig
     // (`cos(x)^2-1 -> -sin(x)^2`, `sin(x)*tan(x) -> sin^2/cos`, `(cos+1)(cos-1)sin -> -sin^3`)
@@ -2915,7 +2967,10 @@ fn test_eval_sign_form_sum_partitions_at_poles() {
         r("solve((x+1)/abs(x+1) + (x-1)/abs(x-1) > 0, x)"),
         "(1, infinity)"
     );
-    assert_eq!(r("solve(x/abs(x) + (x-2)/abs(x-2) > 0, x)"), "(2, infinity)");
+    assert_eq!(
+        r("solve(x/abs(x) + (x-2)/abs(x-2) > 0, x)"),
+        "(2, infinity)"
+    );
     // A difference of signs (`sign(x) − sign(x-2)`) is +2 only between the poles.
     assert_eq!(r("solve(x/abs(x) - (x-2)/abs(x-2) > 0, x)"), "(0, 2)");
     // `= 0` keeps the middle region where the signs cancel.
@@ -2941,7 +2996,10 @@ fn test_eval_sign_form_sum_partitions_at_poles() {
         r("solve(x/abs(x) + (x-2)/abs(x-2) >= 0, x)"),
         "(0, 2) U (2, infinity)"
     );
-    assert_eq!(r("solve(x/abs(x) + (x-2)/abs(x-2) < 0, x)"), "(-infinity, 0)");
+    assert_eq!(
+        r("solve(x/abs(x) + (x-2)/abs(x-2) < 0, x)"),
+        "(-infinity, 0)"
+    );
     // Controls: a SINGLE sign form (n = 1) stays with the dedicated handler.
     assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
     assert_eq!(r("solve(x/abs(x) + 1 > 0, x)"), "(0, infinity)");

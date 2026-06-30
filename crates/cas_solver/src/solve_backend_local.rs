@@ -1956,6 +1956,78 @@ fn try_solve_polynomial_in_log(
     solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
 }
 
+/// Solve an EQUATION that is a polynomial of degree ≥ 2 in a single trig atom `sin(g)` / `cos(g)` /
+/// `tan(g)` whose argument contains the variable (`2·sin(x)² − 3·sin(x) + 1 = 0`, a quadratic in
+/// `sin(x)`). Substitute `u = trig(g)`, solve the polynomial in `u`, then back-substitute
+/// `trig(g) = u_root` — each root finishes as the recursive solver's PERIODIC family (with the range
+/// guard, so `sin(x) = 2` drops). Without this, the isolation path rewrites `sin²(x)` via the
+/// double-angle identity (`cos(2x)`) and leaks an `arcsin(… − cos(2x) …)` residual.
+fn try_solve_polynomial_in_trig(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    if eq.op != cas_ast::RelOp::Eq {
+        return None;
+    }
+    use cas_math::polynomial::Polynomial;
+    // RAW difference: simplifying would apply the double-angle identity to `sin²(x)`, destroying the
+    // polynomial-in-`sin(x)` structure before substitution.
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let atom = find_trig_atom_containing_var(&simplifier.context, diff, var)?;
+    let u_var = "__trig_u";
+    let u = simplifier.context.var(u_var);
+    let u_expr = substitute_expr_by_id(&mut simplifier.context, diff, atom, u);
+    if expr_contains_named_var(&simplifier.context, u_expr, var) {
+        return None; // a second, distinct trig atom (or x elsewhere) remains
+    }
+    if Polynomial::from_expr(&simplifier.context, u_expr, u_var)
+        .ok()?
+        .degree()
+        < 2
+    {
+        return None; // a single trig term (degree 1) is the ordinary isolation's job
+    }
+    // Solve `P(u) = 0` for the trig value.
+    let zero = simplifier.context.num(0);
+    let u_eq = Equation {
+        lhs: u_expr,
+        rhs: zero,
+        op: cas_ast::RelOp::Eq,
+    };
+    let (u_solution, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
+    let u_roots = match u_solution {
+        SolutionSet::Discrete(roots) => roots,
+        SolutionSet::Empty => return Some(SolutionSet::Empty),
+        _ => return None,
+    };
+    // Back-substitute each root `trig(g) = u_root` → a PERIODIC family (or `Empty` via the range guard
+    // for `|sin/cos| > 1`). Union the families over a common period — the generic `union_solution_sets`
+    // drops a `Periodic ∪ Periodic` via its catch-all, so collect and combine explicitly.
+    let mut families: Vec<(Vec<ExprId>, ExprId)> = Vec::new();
+    for u_root in u_roots {
+        let back_eq = Equation {
+            lhs: atom,
+            rhs: u_root,
+            op: cas_ast::RelOp::Eq,
+        };
+        let (xs, _) = crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
+        match xs {
+            SolutionSet::Periodic { bases, period } => families.push((bases, period)),
+            SolutionSet::Empty => {} // out of range: no real angle for this root
+            _ => return None,        // non-periodic back-substitution: leave to the existing path
+        }
+    }
+    match families.len() {
+        0 => Some(SolutionSet::Empty),
+        1 => {
+            let (bases, period) = families.pop().unwrap();
+            Some(SolutionSet::Periodic { bases, period })
+        }
+        _ => union_periodic_families_over_common_period(simplifier, families),
+    }
+}
+
 /// Solve a polynomial-in-`ln(arg)` INEQUALITY `P(ln(x)) {op} 0` (`ln(x)^2 - 3·ln(x) + 2 < 0`, the
 /// pure-square `ln(x)^2 - 4 < 0`, …) which the isolation path mis-reported as "No solution". Substitute
 /// `u = ln(arg)`, solve the polynomial inequality `P(u) {op} 0` for the u-set, then map each u-interval
@@ -2257,6 +2329,33 @@ fn find_log_atom_containing_var(ctx: &Context, expr: ExprId, var: &str) -> Optio
         Expr::Function(_, args) => args
             .iter()
             .find_map(|&a| find_log_atom_containing_var(ctx, a, var)),
+        _ => None,
+    }
+}
+
+/// Return a `sin(arg)` / `cos(arg)` / `tan(arg)` subexpression whose argument contains `var` (the
+/// substitution atom for [`try_solve_polynomial_in_trig`]), searching the whole tree, or None.
+fn find_trig_atom_containing_var(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    use cas_ast::BuiltinFn;
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1
+            && (ctx.is_builtin(*fn_id, BuiltinFn::Sin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Cos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Tan))
+            && expr_contains_named_var(ctx, args[0], var)
+        {
+            return Some(expr);
+        }
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            find_trig_atom_containing_var(ctx, l, var)
+                .or_else(|| find_trig_atom_containing_var(ctx, r, var))
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => find_trig_atom_containing_var(ctx, inner, var),
+        Expr::Function(_, args) => args
+            .iter()
+            .find_map(|&a| find_trig_atom_containing_var(ctx, a, var)),
         _ => None,
     }
 }
@@ -4688,6 +4787,12 @@ fn solve_local_core(
     // (`ln(x)^2 - ln(x) - 2 = 0`, …) leak the same way; solve them by the
     // `u = ln(x)` substitution.
     if let Some(set) = try_solve_polynomial_in_log(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // Equations that are a polynomial of degree ≥ 2 in a trig atom (`2·sin(x)² − 3·sin(x) + 1 = 0`)
+    // leak an `arcsin(… − cos(2x) …)` residual once the double-angle identity fires; substitute
+    // `u = sin(x)` (cos/tan) and back-substitute each root through the periodic solver.
+    if let Some(set) = try_solve_polynomial_in_trig(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks

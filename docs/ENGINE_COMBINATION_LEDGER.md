@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 465 (newest first)
+Active entries: 466 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -17876,3 +17877,18 @@ Active entries: 465 (newest first)
   - Una SUMA de formas con polo es una función ESCALÓN: particiona en los polos, evalúa el valor constante por región, conserva las que cumplen, excluye los polos. Generaliza el handler de signo único (n=1) a n≥2.
   - CLAVE: descomponer los lados CRUDOS, no `simplify(lhs-rhs)` — el simplificador combina la suma de signos sobre denominador común y la vuelve ilegible. (Por eso el caso `Sub` funcionaba antes del fix y el `Add` no: el simplificador combinaba el `+` pero dejaba el `-`.) Cuando un handler descompone una ESTRUCTURA aditiva, lee el árbol crudo, no el simplificado.
   - PATRÓN (cierre de la saga signo-vía-abs): Familia 3 (coeficiente) → D (offset aditivo) → SS (suma de términos). Cada peldaño añade un envoltorio; la suma es el más general (combinación lineal de signos).
+
+## 2026-07-01 - CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig` + `find_trig_atom_containing_var`; usa `union_periodic_families_over_common_period`, NO el `union_solution_sets` genérico)
+- status: `retained` (commit pendiente-de-hash). Capability gap (under-answer → resuelto) + EXPONE un bug de soundness latente en `union_solution_sets` (Periodic∪Periodic). Verificado adversarialmente (20 formas sin/cos × cuadráticas: 0 wrong, sin raíces perdidas ni espurias).
+- capture:
+  - investment_class: capability (Fase 1, real univariable elemental — trigonometría). Espejo de `try_solve_polynomial_in_log` (ecuación) con back-sub periódico.
+  - cell: `2sin²-3sin+1=0` → `{π/6+2kπ, 5π/6+2kπ, π/2+2kπ}` (era residual `arcsin(...-cos(2x))`); `2cos²+cos-1=0` → `{π+2kπ, π/3+2kπ, 5π/3+2kπ}`; `sin²-sin=0` (períodos MIXTOS π y 2π) → `{2kπ, π+2kπ, π/2+2kπ}`; SOUNDNESS `cos²-cos-2=0` → `{π+2kπ}` (raíz cos=2 fuera de rango DESCARTADA); `2sin²+5sin+2=0` → `{-π/6+2kπ, 7π/6+2kπ}`. Controles: cuadrado puro `2sin²-1=0` → `{π/4+kπ/2}` (reducción doble-ángulo, sin cambio); trig simple y mezcla pitagórica `sin²+cos=1` (dos átomos distintos) → residual.
+  - causa raíz: NO había handler de polinomio-en-trig (ecuación); la isolación aplicaba la identidad doble-ángulo a `sin²(x)` (→`cos(2x)`) y dejaba un residual `arcsin(...)`. Y al construir el handler, **`union_solution_sets` PIERDE una familia** en `Periodic∪Periodic`: su catch-all `(s1,_)=>return s1` devuelve solo la primera (drop silencioso de la segunda). Por eso un primer intento con `solve_polynomial_in_atom` (que usa esa union) daba `2sin²-3sin+1=0`→solo la familia sin=1/2, perdiendo sin=1.
+  - fix: `try_solve_polynomial_in_trig` sustituye `u=trig(g)` (átomo CRUDO, sin simplificar — el simplificador rompe la estructura con doble-ángulo), resuelve `P(u)=0` → raíces discretas, back-sub `trig(g)=u_root` por raíz (cada una → familia `Periodic`, o `Empty` por el guard de rango), y UNE las familias con `union_periodic_families_over_common_period` (período común por lcm, expansión de bases, dedup) en vez del `union_solution_sets` genérico.
+  - validación: workspace failed:0 (+ test `test_eval_quadratic_in_trig_equation_unions_periodic_roots`; los tests de producto-periódico y potencia-trig siguen verdes); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (solo los 2 suites auto-derivantes). Adversarial: 20 formas (sin/cos × 10 cuadráticas) verificando (1) cada ángulo-verdad está en el conjunto (sin raíces perdidas) y (2) cada base reclamada es raíz real (sin familias espurias) → 0 wrong.
+- retained learning:
+  - Espejo del patrón sustituir-u: `u=trig(g)`, resolver `P(u)=0`, back-sub cada raíz por el solver periódico (que ya da la familia + guard de rango), unir. Reusa toda la maquinaria periódica existente.
+  - BUG LATENTE EXPUESTO (P0, próximo): `union_solution_sets` (cas_solver_core) DEJA CAER un set en `Periodic∪Periodic` por su catch-all `(s1,_)=>return s1` — devuelve solo el primero. Cualquier ruta que una dos familias periódicas pierde la segunda. El fix correcto vive en core pero la combinación de períodos (lcm) está en cas_solver; por eso este handler la rodea usando `union_periodic_families_over_common_period` directamente. ARREGLAR el core (o mover la lógica de período a core) es el siguiente peldaño.
+  - CLAVE (otra vez): descomponer el átomo desde el árbol CRUDO, no simplificado — el simplificador reescribe `sin²` por doble-ángulo y destruye la estructura polinómica (gemelo de la lección de la suma de signos, que el simplificador combinaba sobre denominador común).
