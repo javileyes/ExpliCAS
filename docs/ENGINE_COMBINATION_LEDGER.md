@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 443 (newest first)
+Active entries: 444 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (recuperación por sign-analysi... | SOUNDNESS (P0 re-auditoría Clase B): inecuación polinómica `xⁿ−c` con raíz racional + residuo positivo-definido → "No solution"
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17527,3 +17528,17 @@ Active entries: 443 (newest first)
 - retained learning:
   - Cuando un comando tiene un motor "bonito" especializado (analítico de Maclaurin) y un método general (diferenciación), pero el especializado solo cubre un catálogo y DECLINA fuera de él, basta con CAER al método general en vez de devolver None — sin tocar el especializado, conservando sus formas y la huella. El método de diferenciación ya funcionaba en centro≠0; el único cambio fue no abortar en centro=0 cuando el analítico declina.
   - mochila P1 restante: integración radical `(a±x²)^(impar/2)` / sustitución raíz orden>2, SOLVE cuadrática-en-trig/exp/hiperbólica (+ fix crash E_INTERNAL), inecuaciones trig periódicas (L, mayor palanca), `∫|f|` no-lineal. El `x^p/x → x^(p-1)` con denominador impar se OMITE deliberadamente (guard de dominio de raíz impar de negativo; tocar el simplificador compartido es riesgo de soundness).
+
+## 2026-06-30 - SOUNDNESS (P0 re-auditoría Clase B): inecuación polinómica `xⁿ−c` con raíz racional + residuo positivo-definido → "No solution"
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (recuperación por sign-analysis sobre raíces de la ECUACIÓN cuando la inecuación declina a Empty/Residual + helper `polynomial_equation_real_roots`; cap de grado 6→12; límite de magnitud de potencia en `rational_function_of` 8→12)
+- status: `retained` (commit pendiente-de-hash). Clase B de la re-auditoría ([[soundness-reaudit-found-missed-forms]]). Wrong-answer PRE-EXISTENTE (no regresión).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento del orden de fase.
+  - cell: `solve(x^5 > 1)→"No solution"` (verdad (1,∞)), `x^9>1`, `x^7<1` — y vía esto los recíprocos `1/x^5>1→(-∞,1)` (verdad (0,1)), `1/x^7>1`, `1/x^9>1`, `1/x^7<1`, `2/x^7>1`. AHORA todos correctos, verificados numéricamente (0 mismatches). El RHS surd (`x^5>2`) y n≤4/par ya funcionaban.
+  - causa raíz: `x^5−1=(x−1)(x⁴+x³+x²+x+1)` — la ruta de inecuación factoriza la raíz racional pero NO puede certificar el signo del residuo cuártico ciclotómico (positivo-definido) → declina a Empty. La recuperación por sign-analysis solo se disparaba si el `set` era `Discrete`; aquí es `Empty`. Y los recíprocos `1/x^n` heredaban el bug vía el sub-solve `solve_poly_sign(1−xⁿ)`; además n≥7 caía por dos caps (grado 6 en la regla recíproca, magnitud 8 en `rational_function_of`).
+  - fix: (1) cuando una inecuación polinómica devuelve Empty/Residual/Conditional, RE-RESOLVER la ECUACIÓN `p=0` (que SÍ halla las raíces reales, p.ej. {1}) y correr el mismo `try_polynomial_inequality_sign_analysis` — sus guardas (signos alternan en cada raíz simple + comportamiento en ±∞ casa con el coeficiente líder) lo mantienen SOUND ante un conjunto de raíces incompleto (falla→None→se queda como estaba). (2) subir el cap de grado de la regla recíproca 6→12 y el límite de magnitud en `rational_function_of` 8→12 para que los recíprocos `1/xⁿ` hasta n=12 enruten (la verificación numérica es la red).
+  - validación: workspace failed:0 (+ test de contrato `test_eval_high_degree_polynomial_inequality_with_rational_root`); clippy --workspace --all-targets limpio; engine-fast/scorecard/pressure pass; huella GUARD/PRESS IDÉNTICA (0 deltas).
+- retained learning:
+  - La recuperación de un valor desde un caso especializado puede engancharse a un estado de salida demasiado estrecho (`Discrete`): si la ruta primaria DECLINA a `Empty`/`Residual` en vez de devolver las raíces, hay que re-derivarlas (re-resolver la ecuación) y reusar el analizador que YA es sound por construcción (sus guardas rechazan conjuntos incompletos). Genérico: "si el recuperador exige Discrete pero la ruta primaria devuelve Empty, deriva las raíces aparte y pásalas al analizador con auto-chequeo".
+  - siguiente de la re-auditoría: Clase A (ecuaciones trig que se simplifican a `sin²`/`cos²`/`sin³` colapsan a `{0,0}`/`{0}` — re-enganchar periodicidad en la ruta cuadrática-en-trig + dedup), Clase C (inecuaciones de raíz impar `1/x^(1/3)` — operator-drop / "No solution").

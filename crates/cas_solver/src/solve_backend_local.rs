@@ -1139,8 +1139,8 @@ fn rational_function_of(
                 if k.is_integer() {
                     let exponent = k.to_i64()?;
                     let magnitude = exponent.unsigned_abs() as usize;
-                    if magnitude > 8 {
-                        return None; // bound degree growth
+                    if magnitude > 12 {
+                        return None; // bound degree growth (matches the rational-inequality degree cap)
                     }
                     let (nb, db) = rational_function_of(ctx, base, var, depth + 1)?;
                     let raise = |p: &Polynomial| {
@@ -1222,10 +1222,11 @@ fn try_solve_rational_constant_inequality(
         return None;
     }
     // The interval algebra can mis-solve high-degree pieces, but the numeric verification gate below
-    // now orders `n`-th-root bounds exactly, so a wrong candidate is REJECTED (declined) rather than
-    // returned. Allow up to degree 6 — enough for reciprocal power inequalities `c/xⁿ {op} k` up to
-    // `1/x⁵` / `1/x⁶` — and let verification be the soundness net for anything it cannot confirm.
-    if p_poly.degree() > 6 || den_poly.degree() > 6 {
+    // now orders `n`-th-root bounds exactly AND the sign-analysis recovery handles `xⁿ - c` with a
+    // rational root and a positive-definite residual, so a wrong candidate is REJECTED (declined)
+    // rather than returned. Allow up to degree 12 — enough for reciprocal power inequalities `c/xⁿ`
+    // through `1/x¹²` — and let verification be the soundness net for anything it cannot confirm.
+    if p_poly.degree() > 12 || den_poly.degree() > 12 {
         return None;
     }
 
@@ -3728,15 +3729,29 @@ fn solve_local_core(
     // by the normal path, dropping the operator and returning the equation's root SET (so `> 0` and
     // `< 0` give identical output). When the operator is an inequality and the result is a `Discrete`
     // root set, recover the interval solution by sign analysis over those (now closed-form) real roots.
+    // An ODD-degree poly with a rational root and a positive-definite even residual (`x⁵-1 =
+    // (x-1)(x⁴+x³+x²+x+1)`) DECLINES the inequality to `Empty`/`Residual` even though the EQUATION
+    // path finds the real roots ({1}); re-solve `p = 0` for the roots and run the same sign analysis
+    // (its alternation + end-behaviour guards keep it sound on an incomplete root set).
     let set = if matches!(
         eq.op,
         cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
     ) {
-        if let SolutionSet::Discrete(roots) = &set {
-            let roots = roots.clone();
-            try_polynomial_inequality_sign_analysis(simplifier, eq, var, &roots).unwrap_or(set)
-        } else {
-            set
+        match &set {
+            SolutionSet::Discrete(roots) => {
+                let roots = roots.clone();
+                try_polynomial_inequality_sign_analysis(simplifier, eq, var, &roots).unwrap_or(set)
+            }
+            SolutionSet::Empty | SolutionSet::Residual(_) | SolutionSet::Conditional(_) => {
+                match polynomial_equation_real_roots(simplifier, eq, var) {
+                    Some(roots) => {
+                        try_polynomial_inequality_sign_analysis(simplifier, eq, var, &roots)
+                            .unwrap_or(set)
+                    }
+                    None => set,
+                }
+            }
+            _ => set,
         }
     } else {
         set
@@ -3766,6 +3781,26 @@ fn solve_local_core(
 /// Returns `None` (falling back to the raw root set) unless the sign chart is fully consistent — the
 /// signs alternate across every (simple) root and the unbounded ends match the leading coefficient's
 /// end behaviour — so an incomplete or mis-ordered root set can never yield an unsound interval set.
+/// Solve the EQUATION form `lhs = rhs` of an inequality and return its discrete real roots, or
+/// `None` if it does not reduce to a finite real root set. Lets the inequality sign analysis run over
+/// the equation's roots when the inequality path itself declined to `Empty`/`Residual`.
+fn polynomial_equation_real_roots(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<Vec<ExprId>> {
+    let eq_form = Equation {
+        lhs: eq.lhs,
+        rhs: eq.rhs,
+        op: cas_ast::RelOp::Eq,
+    };
+    let (set, _) = crate::solver_entrypoints_solve::solve(&eq_form, var, simplifier).ok()?;
+    match set {
+        SolutionSet::Discrete(roots) if !roots.is_empty() => Some(roots),
+        _ => None,
+    }
+}
+
 fn try_polynomial_inequality_sign_analysis(
     simplifier: &mut Simplifier,
     eq: &Equation,

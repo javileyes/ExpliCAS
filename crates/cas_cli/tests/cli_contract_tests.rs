@@ -2501,6 +2501,37 @@ fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
 }
 
 #[test]
+fn test_eval_high_degree_polynomial_inequality_with_rational_root() {
+    // `xⁿ - c > 0` for odd n with a RATIONAL root (`x⁵-1 = (x-1)(x⁴+x³+x²+x+1)`) used to return
+    // "No solution": the inequality path declined because it could not certify the positive-definite
+    // residual quartic, while the EQUATION path finds the real root {1}. Running the sign analysis
+    // over the equation's roots (its alternation + end-behaviour guards keep it sound) recovers the
+    // interval. This also unblocks the reciprocal form `1/xⁿ > c` for n up to 12.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Direct polynomial inequalities (were "No solution").
+    assert_eq!(r("solve(x^5 > 1, x)"), "(1, infinity)");
+    assert_eq!(r("solve(x^9 > 1, x)"), "(1, infinity)");
+    assert_eq!(r("solve(x^7 < 1, x)"), "(-infinity, 1)");
+    assert_eq!(r("solve(x^5 > 32, x)"), "(2, infinity)");
+    // Reciprocal forms for odd n >= 5 with a rational boundary (were inventing the negative ray).
+    assert_eq!(r("solve(1/x^5 > 1, x)"), "(0, 1)");
+    assert_eq!(r("solve(1/x^7 > 1, x)"), "(0, 1)");
+    assert_eq!(r("solve(1/x^9 > 1, x)"), "(0, 1)");
+    assert_eq!(r("solve(1/x^7 < 1, x)"), "(-infinity, 0) U (1, infinity)");
+    // Surd-boundary and lower-degree controls remain correct.
+    assert_eq!(r("solve(x^5 > 2, x)"), "(2^(1/5), infinity)");
+    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, (1/2)^(1/3))");
+    assert_eq!(r("solve(x^3 - x > 0, x)"), "(-1, 0) U (1, infinity)");
+}
+
+#[test]
 fn test_eval_definite_integral_removable_pole_is_not_undefined() {
     // A rationalization step turns `1/(√x·(1+x))` into `(√x³−√x)/(x³−x)`, inventing a SPURIOUS
     // denominator root at x=1 where the numerator also vanishes (removable). The FTC pole scan used
