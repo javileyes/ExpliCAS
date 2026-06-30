@@ -3592,6 +3592,124 @@ fn reduces_to_trig_zero(
     }
 }
 
+/// Position of a `sin`/`cos` RHS `c` relative to the unit interval, decided EXACTLY.
+enum TrigUnitClass {
+    Zero,       // c = 0
+    Unit,       // |c| = 1
+    InOpen,     // 0 < |c| < 1
+    OutOfRange, // |c| > 1 (no real solution)
+}
+
+/// `c = ±q^e` with `q` a NON-NEGATIVE rational and `e` a POSITIVE rational. Returns `(q, neg)`. Since
+/// `q^e` is increasing in `q` for `e > 0`, `q^e {<,=,>} 1 ⟺ q {<,=,>} 1` and `q^e = 0 ⟺ q = 0` — so
+/// the magnitude class only needs `q` vs `{0, 1}`. Covers the `n`-th roots `(1/4)^(1/4)`, `4^(1/4)`
+/// the even-power reduction produces (which `as_linear_surd` — quadratic surds only — does not).
+fn as_nonneg_power_magnitude(
+    ctx: &Context,
+    c: ExprId,
+) -> Option<(num_rational::BigRational, bool)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_traits::Signed;
+    match ctx.get(c) {
+        Expr::Neg(inner) => {
+            let (q, neg) = as_nonneg_power_magnitude(ctx, *inner)?;
+            Some((q, !neg))
+        }
+        Expr::Pow(base, exp) => {
+            let q = as_rational_const(ctx, *base)?;
+            let e = as_rational_const(ctx, *exp)?;
+            if q.is_negative() || !e.is_positive() {
+                return None;
+            }
+            Some((q, false))
+        }
+        _ => None,
+    }
+}
+
+/// Classify a constant `sin`/`cos` RHS `c` EXACTLY (never f64): a quadratic surd `a + b·√n` via
+/// `linear_surd_sign`, or an `n`-th root `±q^e` via `as_nonneg_power_magnitude`. `None` for a
+/// transcendental / unrecognised constant (declines).
+fn classify_trig_unit_rhs(ctx: &Context, c: ExprId) -> Option<TrigUnitClass> {
+    use cas_math::root_forms::as_linear_surd;
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+    use std::cmp::Ordering;
+    let one = BigRational::one();
+    if let Some((a, b, n)) = as_linear_surd(ctx, c) {
+        let sign_c = linear_surd_sign(&a, &b, &n);
+        let vs_upper = linear_surd_sign(&(&a - &one), &b, &n);
+        let vs_lower = linear_surd_sign(&(&a + &one), &b, &n);
+        return Some(
+            if vs_upper == Ordering::Greater || vs_lower == Ordering::Less {
+                TrigUnitClass::OutOfRange
+            } else if vs_upper == Ordering::Equal || vs_lower == Ordering::Equal {
+                TrigUnitClass::Unit
+            } else if sign_c == Ordering::Equal {
+                TrigUnitClass::Zero
+            } else {
+                TrigUnitClass::InOpen
+            },
+        );
+    }
+    if let Some((q, _neg)) = as_nonneg_power_magnitude(ctx, c) {
+        return Some(if q.is_zero() {
+            TrigUnitClass::Zero
+        } else {
+            match q.cmp(&one) {
+                Ordering::Greater => TrigUnitClass::OutOfRange,
+                Ordering::Equal => TrigUnitClass::Unit,
+                Ordering::Less => TrigUnitClass::InOpen,
+            }
+        });
+    }
+    None
+}
+
+/// Exact sign of a constant `c` versus 0 (`Less`/`Equal`/`Greater`) when `c` is a rational or quadratic
+/// surd; `None` if not so reducible. Used to branch `trig^n = c` / `|trig| = c` on the sign of `c`
+/// while ALSO accepting a SURD `c` (e.g. `|cos(x)| = √2/2`), which `as_rational_const` rejects.
+fn const_sign_vs_zero(ctx: &Context, c: ExprId) -> Option<std::cmp::Ordering> {
+    let (a, b, n) = cas_math::root_forms::as_linear_surd(ctx, c)?;
+    Some(linear_surd_sign(&a, &b, &n))
+}
+
+/// Solve `trig(arg) = value  ∨  trig(arg) = −value` and UNION the periodic families — the reduction
+/// target of `trig(arg)^n = c` (n even) and `|trig(arg)| = c`. An out-of-range side solves to `Empty`
+/// and is dropped; both empty ⇒ `Empty`; one family ⇒ that family; two ⇒ the merged periodic union.
+/// Returns `None` if either side does not solve to a clean `Periodic`/`Empty` (so the caller declines).
+fn solve_trig_equals_plus_minus(
+    simplifier: &mut Simplifier,
+    trig_call: ExprId,
+    value: ExprId,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    let neg_value = simplifier.context.add(Expr::Neg(value));
+    let (neg_value, _) = simplifier.simplify(neg_value);
+    let mut families: Vec<(Vec<ExprId>, ExprId)> = Vec::new();
+    for rhs in [value, neg_value] {
+        let eq = Equation {
+            lhs: trig_call,
+            rhs,
+            op: RelOp::Eq,
+        };
+        match try_solve_periodic_trig_equation(&eq, var, simplifier) {
+            Some(SolutionSet::Periodic { bases, period }) => families.push((bases, period)),
+            Some(SolutionSet::Empty) => {} // out of range — contributes nothing
+            _ => return None,
+        }
+    }
+    match families.len() {
+        0 => Some(SolutionSet::Empty),
+        1 => {
+            let (bases, period) = families.pop().unwrap();
+            Some(SolutionSet::Periodic { bases, period })
+        }
+        _ => union_periodic_families_over_common_period(simplifier, families),
+    }
+}
+
 pub(crate) fn try_solve_periodic_trig_equation(
     eq: &Equation,
     var: &str,
@@ -3758,6 +3876,112 @@ pub(crate) fn try_solve_periodic_trig_equation(
         }
     }
 
+    // `trig(arg)^n = c` for an EVEN integer n ≥ 4 (sin/cos): `sin(x)ⁿ ∈ [0, 1]` for even n, so c < 0 or
+    // c > 1 ⇒ NO solution; c = 0 ⇒ `trig(arg) = 0`; 0 < c ≤ 1 ⇒ `trig(arg) = ±c^(1/n)`, union the two
+    // families. (n = 2 is the double-angle reduction above; odd n is the bijective reduction above.)
+    // Without this, `sin(x)^4 = 1` collapsed to a finite `{π/2, -π/2}` and `sin(x)^4 = 4` leaked a
+    // spurious `arcsin(4^(1/4))`.
+    {
+        let even_power_trig =
+            |ctx: &Context, e: ExprId| -> Option<(ExprId, BigRational, BuiltinFn)> {
+                if let Expr::Pow(base, exp) = ctx.get(e) {
+                    let (base, exp) = (*base, *exp);
+                    let n = cas_math::numeric_eval::as_rational_const(ctx, exp)?;
+                    if !n.is_integer() {
+                        return None;
+                    }
+                    let ni = n.to_integer();
+                    if ni < num_bigint::BigInt::from(4) || !num_integer::Integer::is_even(&ni) {
+                        return None;
+                    }
+                    if let Expr::Function(fn_id, args) = ctx.get(base) {
+                        if args.len() == 1 && contains_var(ctx, args[0], var) {
+                            if let Some(f) = ctx.builtin_of(*fn_id) {
+                                if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos) {
+                                    return Some((base, n, f));
+                                }
+                            }
+                        }
+                    }
+                }
+                None
+            };
+        let hit = if !contains_var(&simplifier.context, rhs, var) {
+            even_power_trig(&simplifier.context, lhs).map(|(call, n, f)| (call, n, f, rhs))
+        } else if !contains_var(&simplifier.context, lhs, var) {
+            even_power_trig(&simplifier.context, rhs).map(|(call, n, f)| (call, n, f, lhs))
+        } else {
+            None
+        };
+        if let Some((trig_call, n, _f, c)) = hit {
+            match const_sign_vs_zero(&simplifier.context, c)? {
+                std::cmp::Ordering::Less => return Some(SolutionSet::Empty), // sin/cos^(even) ≥ 0
+                std::cmp::Ordering::Equal => {
+                    let zero = simplifier.context.num(0);
+                    let reduced = Equation {
+                        lhs: trig_call,
+                        rhs: zero,
+                        op: RelOp::Eq,
+                    };
+                    return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+                }
+                std::cmp::Ordering::Greater => {
+                    let inv_n = simplifier.context.add(Expr::Number(n.recip())); // 1/n
+                    let value = simplifier.context.add(Expr::Pow(c, inv_n)); // c^(1/n) ≥ 0
+                    let (value, _) = simplifier.simplify(value);
+                    return solve_trig_equals_plus_minus(simplifier, trig_call, value, var);
+                }
+            }
+        }
+    }
+
+    // `|trig(arg)| = c` (sin/cos): `|sin/cos| ∈ [0, 1]`, so c < 0 ⇒ NO solution; c = 0 ⇒ `trig = 0`;
+    // 0 < c ≤ 1 ⇒ `trig = ±c`, union the families (c > 1 declines via both `±c` solving to Empty).
+    // `abs(sin(x)) = 1` collapsed to a finite `{π/2, -π/2}` instead of `{π/2 + kπ}`.
+    {
+        let abs_trig = |ctx: &Context, e: ExprId| -> Option<(ExprId, BuiltinFn)> {
+            if let Expr::Function(fn_id, args) = ctx.get(e) {
+                if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Abs) {
+                    if let Expr::Function(inner_id, inner_args) = ctx.get(args[0]) {
+                        if inner_args.len() == 1 && contains_var(ctx, inner_args[0], var) {
+                            if let Some(f) = ctx.builtin_of(*inner_id) {
+                                if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos) {
+                                    return Some((args[0], f));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        };
+        let hit = if !contains_var(&simplifier.context, rhs, var) {
+            abs_trig(&simplifier.context, lhs).map(|(call, f)| (call, f, rhs))
+        } else if !contains_var(&simplifier.context, lhs, var) {
+            abs_trig(&simplifier.context, rhs).map(|(call, f)| (call, f, lhs))
+        } else {
+            None
+        };
+        if let Some((trig_call, _f, c)) = hit {
+            // Accept a SURD RHS (`|cos(x)| = √2/2`) too, not just a rational — branch on the exact sign.
+            match const_sign_vs_zero(&simplifier.context, c)? {
+                std::cmp::Ordering::Less => return Some(SolutionSet::Empty), // |trig| ≥ 0
+                std::cmp::Ordering::Equal => {
+                    let zero = simplifier.context.num(0);
+                    let reduced = Equation {
+                        lhs: trig_call,
+                        rhs: zero,
+                        op: RelOp::Eq,
+                    };
+                    return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+                }
+                std::cmp::Ordering::Greater => {
+                    return solve_trig_equals_plus_minus(simplifier, trig_call, c, var)
+                }
+            }
+        }
+    }
+
     // `A·trig(a·x) + B = C` (A ≠ 0, B and C constant) -> `trig(a·x) = (C − B)/A`, then recurse. Without
     // this the outside coefficient/offset leaves the trig side a `Mul`/`Add` that `detect` cannot see,
     // so the bare fall-through emitted only the principal value — an INCOMPLETE solution set presented
@@ -3819,7 +4043,6 @@ pub(crate) fn try_solve_periodic_trig_equation(
     let two_pi = simplifier.context.add(Expr::Mul(two, pi));
 
     // Representative root(s) for the bare argument `u = a·x`, and the shared period.
-    let one = BigRational::one();
     let (bases_u, period_u): (Vec<ExprId>, ExprId) = match func {
         // tan(u)=c is a single family {arctan(c) + kπ} for EVERY constant c.
         BuiltinFn::Tan => {
@@ -3827,39 +4050,39 @@ pub(crate) fn try_solve_periodic_trig_equation(
             (vec![simplifier.simplify(at).0], pi)
         }
         BuiltinFn::Sin | BuiltinFn::Cos => {
-            // Classify the RHS `c` relative to {−1, 0, 1} EXACTLY over a single quadratic surd
-            // `a + b·√n` — so an IRRATIONAL special-angle value like √2/2 or √3/2 (which is NOT a
-            // rational, so `as_rational_const` returned None and the whole periodic solve declined,
-            // leaking just the principal value `{π/4}`) is now recognised. `linear_surd_sign` is exact
-            // (never f64); a transcendental `c` (π, e) that `as_linear_surd` cannot reduce declines.
-            use cas_math::root_forms::as_linear_surd;
-            let (a, b, n) = as_linear_surd(&simplifier.context, c)?;
-            let sign_c = linear_surd_sign(&a, &b, &n); // c vs 0
-            let vs_upper = linear_surd_sign(&(&a - &one), &b, &n); // c vs 1
-            let vs_lower = linear_surd_sign(&(&a + &one), &b, &n); // c vs −1
-            if vs_upper == std::cmp::Ordering::Greater || vs_lower == std::cmp::Ordering::Less {
-                return None; // |c| > 1: no real solution; let the existing path report it.
-            }
+            // Classify the RHS `c` relative to {−1, 0, 1} EXACTLY (never f64): a quadratic surd
+            // (`√2/2`, `√3/2`) OR an n-th root (`(1/4)^(1/4)` from the even-power reduction). An
+            // out-of-range `c` (|c| > 1) is NO real solution — returning `Empty` here also kills the
+            // spurious `arcsin(c)` (= nan) the generic inversion would otherwise leak (`sin(x)^4 = 4`).
             let is_sin = matches!(func, BuiltinFn::Sin);
-            let arc = if is_sin { "arcsin" } else { "arccos" };
-            let arc_call = simplifier.context.call(arc, vec![c]);
-            let (r1, _) = simplifier.simplify(arc_call);
-            if vs_upper == std::cmp::Ordering::Equal || vs_lower == std::cmp::Ordering::Equal {
-                // c = ±1: the two roots of the period coincide → ONE family, period 2π.
-                (vec![r1], two_pi)
-            } else if sign_c == std::cmp::Ordering::Equal {
-                // c = 0: sin(u)=0 → {kπ}; cos(u)=0 → {π/2 + kπ}. Two roots π apart → ONE family, period π.
-                (vec![r1], pi)
-            } else {
-                // 0 < |c| < 1: TWO families in [0, 2π), shared period 2π.
-                //   sin(u)=c → {arcsin(c) + 2kπ, π - arcsin(c) + 2kπ}
-                //   cos(u)=c → {arccos(c) + 2kπ, 2π - arccos(c) + 2kπ}
-                let second = if is_sin {
-                    simplifier.context.add(Expr::Sub(pi, r1))
-                } else {
-                    simplifier.context.add(Expr::Sub(two_pi, r1))
-                };
-                (vec![r1, simplifier.simplify(second).0], two_pi)
+            match classify_trig_unit_rhs(&simplifier.context, c)? {
+                TrigUnitClass::OutOfRange => return Some(SolutionSet::Empty),
+                TrigUnitClass::Unit => {
+                    // c = ±1: the two roots of the period coincide → ONE family, period 2π.
+                    let arc = if is_sin { "arcsin" } else { "arccos" };
+                    let arc_call = simplifier.context.call(arc, vec![c]);
+                    (vec![simplifier.simplify(arc_call).0], two_pi)
+                }
+                TrigUnitClass::Zero => {
+                    // c = 0: sin(u)=0 → {kπ}; cos(u)=0 → {π/2 + kπ}. Two roots π apart → ONE family, period π.
+                    let arc = if is_sin { "arcsin" } else { "arccos" };
+                    let arc_call = simplifier.context.call(arc, vec![c]);
+                    (vec![simplifier.simplify(arc_call).0], pi)
+                }
+                TrigUnitClass::InOpen => {
+                    // 0 < |c| < 1: TWO families in [0, 2π), shared period 2π.
+                    //   sin(u)=c → {arcsin(c) + 2kπ, π - arcsin(c) + 2kπ}
+                    //   cos(u)=c → {arccos(c) + 2kπ, 2π - arccos(c) + 2kπ}
+                    let arc = if is_sin { "arcsin" } else { "arccos" };
+                    let arc_call = simplifier.context.call(arc, vec![c]);
+                    let (r1, _) = simplifier.simplify(arc_call);
+                    let second = if is_sin {
+                        simplifier.context.add(Expr::Sub(pi, r1))
+                    } else {
+                        simplifier.context.add(Expr::Sub(two_pi, r1))
+                    };
+                    (vec![r1, simplifier.simplify(second).0], two_pi)
+                }
             }
         }
         _ => return None,

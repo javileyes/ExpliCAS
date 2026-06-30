@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 455 (newest first)
+Active entries: 456 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -131,6 +131,7 @@ Active entries: 455 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`pure_power_monomial_exponent... | SOUNDNESS (auditoría P0, Familia 5): inecuación de potencia no-monótona ENVUELTA escapaba al detector bare de Clase C
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevos `sign_via_abs_arg` + `... | SOUNDNESS (auditoría P0, Familia 7): `g/|g| {op} c` (signo vía abs) incluía el polo 0/0
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevos `extract_affine_power_... | CAPACIDAD (gradúa Clase C + Familia 5): inecuación de potencia VALLE de numerador par RESUELTA correctamente
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (re-auditoría Familia 1): ecuación trig de potencia PAR ≥4 y `|trig|=c` colapsan la familia / filtran arcsin(>1)
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17715,3 +17716,18 @@ Active entries: 455 (newest first)
   - Un valle `|α|^(p/q)` (numerador par) NO hay que declinarlo: es representable y soluble por reducción a `|α| {op} k^(q/p)` (dos piezas lineales). Declinar fue el paso sound interino; la reducción a la forma-abs que el motor YA resuelve es el cierre correcto. La verificación adversarial fue la que distinguió "irrepresentable" de "el motor lo resuelve mal" — clave para no quedarse en el residual.
   - El extractor `c·(α)^e+d` (afín + coef + constante aditiva) reusa la misma estructura que el detector de decline; un detector que ya reconoce una familia para DECLINARLA suele tener la info para RESOLVERLA.
   - siguiente: recíprocas fraccionarias `1/x^(1/3)`, `1/sqrt(x)` (exponente negativo, polo) — reducir a `x^(1/3) {op'} ...` / `sqrt(α) {op'} 1/k` con el polo excluido.
+
+## 2026-06-30 - SOUNDNESS (re-auditoría Familia 1): ecuación trig de potencia PAR ≥4 y `|trig|=c` colapsan la familia / filtran arcsin(>1)
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation`: clasificador `classify_trig_unit_rhs` extendido a raíces n-ésimas; reducciones potencia-par y `|trig|=c`; helpers `as_nonneg_power_magnitude`, `const_sign_vs_zero`, `solve_trig_equals_plus_minus`)
+- status: `retained` (commit pendiente-de-hash). Familia 1 de [[reaudit-post-fixes-six-families]]. Wrong-answers PRE-EXISTENTES. Verificado adversarialmente (2 lentes, 30 casos, SOUND tras corregir el caso surd).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase.
+  - cell: `sin(x)^4=1`→`{π/2,-π/2}` (perdía la familia) AHORA `{π/2+2kπ,-π/2+2kπ}` (=`{π/2+kπ}`); `cos(x)^4=1`→`{kπ}`; `sin(x)^4=1/16`/`=1/4` (raíz n-ésima) familia completa de 4 ramas; `sin(2x)^4=1`; **SOUNDNESS** `sin(x)^4=4`→`arcsin(√2)` ESPURIO (nan) AHORA "No solution"; `sin^6=2`, `sin^4=-1`, `sin^4=0`→`{kπ}`. Igual `|trig(x)|=c`: `abs(sin(x))=1`, `abs(cos(x))=0`, `abs(sin(x))=1/2`, **`abs(cos(x))=√2/2`** (RHS surd, full family), `abs(sin(x))=2`→No solution. Controles intactos: n=2 (`sin²=1`), impar (`cos³=1`), bare (`sin=1/2`, `sin=√2/2`).
+  - causa raíz: (1) la clasificación del RHS sin/cos usaba SOLO `as_linear_surd` (surds cuadráticos) → `(1/4)^(1/4)` (raíz 4ª que produce la reducción par) no se reconocía → valor principal; y un `c` fuera de rango devolvía `None` → la isolación genérica filtraba `arcsin(c)` no-real. (2) ningún reductor manejaba `trig^n=c` con n par ≥4 (el n=2 va por doble-ángulo, el impar por biyección) ni `|trig|=c`.
+  - fix: (A) `classify_trig_unit_rhs` añade `as_nonneg_power_magnitude` (clasifica `±q^e`, q racional≥0, e>0, por `q` vs {0,1}) y devuelve `OutOfRange`→`Empty` (mata el arcsin espurio). (B) reducción par: c<0/c>1→Empty, c=0→trig=0, 0<c≤1→`trig=±c^(1/n)` unión. (C) `|trig|=c`: c<0→Empty, c=0→trig=0, c>0→`trig=±c` unión. El sign-branch usa `const_sign_vs_zero` (surd-aware) — el `as_rational_const` inicial soltaba el RHS surd (`|cos|=√2/2`), cazado por la verificación adversarial. `solve_trig_equals_plus_minus` resuelve ambos lados y une las familias periódicas (`union_periodic_families_over_common_period`).
+  - validación: workspace failed:0 (+ test `test_eval_even_power_and_abs_trig_equation_keeps_family`); clippy limpio; huella GUARD/PRESS por baseline-FIEL: **0 deltas**; verificación adversarial 2-lentes (30 casos, SOUND; la 1ª ronda cazó el caso surd-RHS del abs, corregido y re-verificado).
+- retained learning:
+  - Una clasificación de magnitud que solo cubre surds cuadráticos se pierde las raíces n-ésimas (`(1/4)^(1/4)`) que una reducción de potencia produce; `q^e` (q racional≥0,e>0) clasifica por `q` vs {0,1}. Y devolver `Empty` (no `None`) para fuera-de-rango mata el `arcsin(>1)` espurio que la isolación genérica filtraría.
+  - PATRÓN (otra vez): un reductor cubre el caso nombrado (n=2, impar) y se pierde el hermano par; y un gate `as_rational_const` suelta el RHS surd — la verificación adversarial fue clave para cazar el surd que los tests racionales no veían.
+  - siguiente de la re-auditoría: Familia 2 (inecuación polinómica en ln `ln(x)^2-3ln(x)+2<0`→"No solution").

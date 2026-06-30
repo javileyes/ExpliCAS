@@ -2593,6 +2593,55 @@ fn test_eval_trig_equation_affine_argument_and_odd_power_keep_family() {
 }
 
 #[test]
+fn test_eval_even_power_and_abs_trig_equation_keeps_family() {
+    // `trig(x)^n = c` for EVEN n >= 4 (and `|trig(x)| = c`) collapsed the infinite periodic root set
+    // to a finite pair, or leaked a spurious arcsin(>1) for an out-of-range RHS. Now reduced to
+    // `trig = ±c^(1/n)` (resp. `trig = ±c`) with a range guard.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Even power: the full two-branch periodic family (sin=+/-1, +/-c^(1/n), ...).
+    assert_eq!(
+        r("solve(sin(x)^4=1, x)"),
+        "{ 1/2·pi + k·2·pi, -1/2·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(cos(x)^4=1, x)"), "{ k·2·pi, pi + k·2·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(sin(x)^4=1/16, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi, -1/6·pi + k·2·pi, 7/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(sin(x)^4=0, x)"), "{ k·pi : k ∈ ℤ }");
+    // An n-th-root RHS (not a quadratic surd) now also emits the full family.
+    assert_eq!(
+        r("solve(sin(x)^4=1/4, x)"),
+        "{ arcsin((1/4)^(1/4)) + k·2·pi, pi - arcsin((1/4)^(1/4)) + k·2·pi, -arcsin((1/4)^(1/4)) + k·2·pi, arcsin((1/4)^(1/4)) + pi + k·2·pi : k ∈ ℤ }"
+    );
+    // SOUNDNESS: an out-of-range RHS has NO real solution (no spurious arcsin(>1)).
+    assert_eq!(r("solve(sin(x)^4=4, x)"), "No solution");
+    assert_eq!(r("solve(sin(x)^6=2, x)"), "No solution");
+    assert_eq!(r("solve(sin(x)^4=-1, x)"), "No solution");
+    // |trig(x)| = c reduces the same way.
+    assert_eq!(
+        r("solve(abs(sin(x))=1, x)"),
+        "{ 1/2·pi + k·2·pi, -1/2·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(abs(cos(x))=0, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(abs(sin(x))=2, x)"), "No solution");
+    // Controls: n=2, odd power, and the bare form are unchanged.
+    assert_eq!(r("solve(sin(x)^2=1, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x)^3=1, x)"), "{ k·2·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(sin(x)=1/2, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+}
+
+#[test]
 fn test_eval_boundary_trig_inequality_is_periodic_point_set_or_residual() {
     // A bare sin/cos inequality at the EXACT range boundary +-1 returned a wrong ray
     // (`sin(x) >= 1 -> [pi/2, infinity)`). The TOUCH side holds only where the trig equals the extreme,
