@@ -2078,6 +2078,54 @@ fn try_decline_periodic_trig_inequality(
     ))
 }
 
+/// A bare `sin(x)`/`cos(x)` inequality whose threshold is EXACTLY the range boundary `±1` (so the
+/// generic monotonic inversion emits a wrong ray like `sin(x) ≥ 1 → [π/2, ∞)`). Two sub-cases:
+/// - The TOUCH side (`sin(x) ≥ 1`, `sin(x) ≤ -1`, `cos(x) ≥ 1`, `cos(x) ≤ -1`) holds only where the
+///   trig EQUALS the extreme value, so it reduces to the boundary equation `trig(x) = ±1` and returns
+///   its periodic point set (`{π/2 + 2kπ}`) — exactly representable as `Periodic`.
+/// - The COMPLEMENT side (`sin(x) < 1`, `cos(x) > -1`, …) is `ℝ` minus those periodic points, which
+///   the `SolutionSet` enum cannot represent, so it declines to an honest residual (better than the
+///   wrong ray). The other combinations (`sin(x) ≤ 1 → ℝ`, `sin(x) > 1 → ∅`) are answered by the
+///   trig-range guard and are left untouched here.
+fn try_solve_boundary_trig_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    if !bare_sin_or_cos_of_var(&simplifier.context, eq.lhs, var) {
+        return None;
+    }
+    let region = classify_trig_threshold(&simplifier.context, eq.rhs)?;
+    match (region, eq.op.clone()) {
+        // sin(x) ≥ 1  ⇔  sin(x) = 1 ; cos(x) ≤ -1  ⇔  cos(x) = -1 : the periodic touch points.
+        (TrigThresholdRegion::AtUpperBound, RelOp::Geq)
+        | (TrigThresholdRegion::AtLowerBound, RelOp::Leq) => {
+            let reduced = Equation {
+                lhs: eq.lhs,
+                rhs: eq.rhs,
+                op: RelOp::Eq,
+            };
+            try_solve_periodic_trig_equation(&reduced, var, simplifier)
+        }
+        // sin(x) < 1 / sin(x) > -1: the COMPLEMENT ℝ∖{touch points}, not representable -> residual.
+        (TrigThresholdRegion::AtUpperBound, RelOp::Lt)
+        | (TrigThresholdRegion::AtLowerBound, RelOp::Gt) => {
+            Some(cas_solver_core::solve_outcome::residual_solution_set(
+                &mut simplifier.context,
+                eq.lhs,
+                eq.rhs,
+                var,
+            ))
+        }
+        // ≤ 1 → ℝ, > 1 → ∅, and the strictly out-of-range cases: left to the trig-range guard.
+        _ => None,
+    }
+}
+
 /// Net exponent of `var` when `e` is a PURE power monomial `c·var^k` — a single power term, possibly
 /// written with a constant coefficient or as a quotient of powers (the simplifier rewrites
 /// `1/x^(1/3)` to `x^(2/3)/x`, net exponent `−1/3`). Returns `None` for anything that is not a single
@@ -3928,6 +3976,13 @@ fn solve_local_core(
     // `log(x, c) {op} k` (the variable is the BASE) is non-monotonic; decline to an honest residual
     // rather than letting the generic monotonic isolation emit a wrong ray.
     if let Some(set) = try_decline_variable_base_log_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A bare `sin(x)`/`cos(x)` inequality at the EXACT range boundary `±1`: the touch side
+    // (`sin(x) ≥ 1`) is the periodic point set `{π/2 + 2kπ}` (reduce to the boundary equation); the
+    // complement side (`sin(x) < 1`) is `ℝ` minus those points → honest residual. Otherwise the generic
+    // inversion emits a wrong ray (`[π/2, ∞)`). Runs before the decline below so these are not lumped in.
+    if let Some(set) = try_solve_boundary_trig_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // A periodic `sin`/`cos`/`tan` inequality has a periodic-union solution the engine cannot

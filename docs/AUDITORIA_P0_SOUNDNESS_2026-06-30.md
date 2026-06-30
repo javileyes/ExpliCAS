@@ -202,8 +202,9 @@ solución**. El motor responde "infinitas soluciones, ecuaciones dependientes".
 4. ~~**F3 inecuación racional 2-polos**~~ ✅ **HECHO** (commit pendiente) — reescribe
    `A(x) {op} B(x)` → `(A−B) {op} 0` (diferencia racional, denom grado≥1) y enruta por
    la ruta verificada `N/D {op} 0`. 0 deltas de huella.
-5. **F4 inecuación trig frontera** — dar el conjunto-punto periódico exacto en `=±1`,
-   y declinar/ℝ-menos-puntos en `<1`,`>-1`.
+5. ~~**F4 inecuación trig frontera**~~ ✅ **HECHO** (commit pendiente) — toque `sin(x)≥1`
+   → conjunto-punto periódico `{π/2+2kπ}` (reduce a la ecuación); complemento `cos(x)<1`
+   → residual honesto. Verificado adversarialmente. 0 deltas de huella.
 6. **F5 potencia envuelta** — extender el detector de Clase C: mover constante
    aditiva, base afín `(x-a)^e`, forma función `sqrt()`.
 7. **F7 sign-vía-abs** — excluir el polo `0/0` y resolver las inecuaciones de signo.

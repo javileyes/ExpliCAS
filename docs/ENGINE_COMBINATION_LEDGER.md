@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 451 (newest first)
+Active entries: 452 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -127,6 +127,7 @@ Active entries: 451 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (auditoría P0, Familia 2a): ecuación trig `sin/cos(x)=c` con RHS SURD irracional colapsa a su valor principal
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (auditoría P0, Familia 2b): ecuación trig con argumento AFÍN o potencia IMPAR colapsa la familia periódica
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (transform two-sided en el dis... | SOUNDNESS (auditoría P0, Familia 3): inecuación racional de dos polos `A(x) {op} B(x)` produce basura
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo `try_solve_boundary_tri... | SOUNDNESS (auditoría P0, Familia 4): inecuación trig de FRONTERA `sin(x)≥1` da un rayo en vez del conjunto-punto periódico
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17653,3 +17654,17 @@ Active entries: 451 (newest first)
 - retained learning:
   - Un handler que exige RHS constante deja sin red las formas `A(x) {op} B(x)`; la normalización canónica (mover todo a un lado, `(A-B) {op} 0`) las reduce al caso resuelto. Hacerla TEMPRANA y gateada por "la diferencia es del tipo que sé resolver" evita preemptar otros handlers. Mismo patrón que el fix `Add`-racional de una sola fracción ([[rational-sum-inequality-collapses-to-equation]]) extendido al caso de dos fracciones separadas por el operador.
   - siguiente de la auditoría: Familia 4 (inecuación trig de frontera `sin(x)≥1`→rayo, debe ser conjunto-punto periódico) o Familia 7 (sign-vía-abs) o Familia 5 (potencia envuelta).
+
+## 2026-06-30 - SOUNDNESS (auditoría P0, Familia 4): inecuación trig de FRONTERA `sin(x)≥1` da un rayo en vez del conjunto-punto periódico
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (nuevo `try_solve_boundary_trig_inequality`, despachado antes de `try_decline_periodic_trig_inequality`)
+- status: `retained` (commit pendiente-de-hash). Familia 4 de [[p0-audit-2026-06-30-eight-families]]. Wrong-answer PRE-EXISTENTE. Verificado adversarialmente.
+- capture:
+  - investment_class: soundness-fix (wrong-answer → conjunto exacto / residual honesto), exento de fase.
+  - cell: `sin(x)≥1` daba el rayo `[π/2,∞)`. AHORA `{π/2+2kπ}`. Igual `sin(x)≤-1`→`{-π/2+2kπ}`, `cos(x)≥1`→`{2kπ}`, `cos(x)≤-1`→`{π+2kπ}`. Lado COMPLEMENTO `cos(x)<1`, `sin(x)>-1`, etc. → residual honesto (antes rayo erróneo `(-∞,0)`). BONUS: `abs(sin(x))≥1` pasó de dos rayos erróneos a residual (el handler de abs no sabe unir los sub-resultados periódicos → declina honestamente). Controles intactos (range guard): `sin(x)≤1`→ℝ, `sin(x)>1`→∅, `sin(x)≥-1`→ℝ, `cos(x)<-1`→∅, fuera de rango.
+  - causa raíz: la guarda de rango (`intersect_inequality_with_trig_range`) cubría 4 de las 8 combinaciones frontera (`≤1`→ℝ, `>1`→∅, `≥-1`→ℝ, `<-1`→∅) y dejaba caer las 4 de TOQUE (`≥1`, `≤-1`, `<1`, `>-1`) a `_ => set` = el rayo erróneo de la isolación monótona. El comentario decía "→ residual" pero no se implementaba.
+  - fix: handler dedicado. Lado de TOQUE (`sin≥1` etc.): `sin(x)≥1 ⇔ sin(x)=1` (sin≤1), reduce a la ECUACIÓN frontera → conjunto-punto periódico (variante `Periodic`, ya verificada en F2). Lado COMPLEMENTO (`sin<1` etc.): es `ℝ∖{puntos}`, no representable por `SolutionSet` → residual honesto. Las otras combinaciones se dejan a la guarda de rango (None).
+  - validación: workspace failed:0 (+ test `test_eval_boundary_trig_inequality_is_periodic_point_set_or_residual`); clippy limpio; huella GUARD/PRESS por baseline-FIEL: **0 deltas**; verificación adversarial 2-lentes (witness-sampling de los conjuntos-punto + ℝ/∅).
+- retained learning:
+  - Un caso frontera `f(x) {≥} max(f)` colapsa a la ECUACIÓN `f(x)=max(f)`; si su solución es representable (conjunto-punto periódico) se resuelve exacto, no se declina. Distinguir el lado de TOQUE (reducible a ecuación) del lado COMPLEMENTO (`ℝ∖{puntos}`, no representable → residual honesto) es la clave; ambos eran rayos erróneos antes.
+  - siguiente de la auditoría: Familia 5 (potencia envuelta) o Familia 7 (sign-vía-abs) o Familia 6 (Taylor centro≠0).

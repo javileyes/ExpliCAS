@@ -2593,6 +2593,38 @@ fn test_eval_trig_equation_affine_argument_and_odd_power_keep_family() {
 }
 
 #[test]
+fn test_eval_boundary_trig_inequality_is_periodic_point_set_or_residual() {
+    // A bare sin/cos inequality at the EXACT range boundary +-1 returned a wrong ray
+    // (`sin(x) >= 1 -> [pi/2, infinity)`). The TOUCH side holds only where the trig equals the extreme,
+    // so it is the periodic point set; the COMPLEMENT side is R minus those points (not representable)
+    // and declines to an honest residual instead of the wrong ray.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Touch side -> periodic point set (Periodic variant).
+    assert_eq!(r("solve(sin(x) >= 1, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x) <= -1, x)"), "{ -1/2·pi + k·2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x) >= 1, x)"), "{ k·2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x) <= -1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
+    // Complement side -> honest residual (no more wrong ray).
+    assert_eq!(r("solve(cos(x) < 1, x)"), "Solve: solve(cos(x) = 1, x) = 0");
+    assert_eq!(
+        r("solve(sin(x) > -1, x)"),
+        "Solve: solve(sin(x) = -1, x) = 0"
+    );
+    // Range-guard combinations stay exact R / empty.
+    assert_eq!(r("solve(sin(x) <= 1, x)"), "All real numbers");
+    assert_eq!(r("solve(sin(x) > 1, x)"), "No solution");
+    assert_eq!(r("solve(sin(x) >= -1, x)"), "All real numbers");
+    assert_eq!(r("solve(cos(x) < -1, x)"), "No solution");
+}
+
+#[test]
 fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
     // `c/xⁿ {op} k` with an ODD `n ≥ 3` (or a surd-border even `n`) used to drop the sign-flip across
     // the x=0 pole, returning a complement / phantom ray / a union with the pole filled in. The
