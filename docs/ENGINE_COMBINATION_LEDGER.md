@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 454 (newest first)
+Active entries: 455 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -130,6 +130,7 @@ Active entries: 454 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo `try_solve_boundary_tri... | SOUNDNESS (auditoría P0, Familia 4): inecuación trig de FRONTERA `sin(x)≥1` da un rayo en vez del conjunto-punto periódico
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`pure_power_monomial_exponent... | SOUNDNESS (auditoría P0, Familia 5): inecuación de potencia no-monótona ENVUELTA escapaba al detector bare de Clase C
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevos `sign_via_abs_arg` + `... | SOUNDNESS (auditoría P0, Familia 7): `g/|g| {op} c` (signo vía abs) incluía el polo 0/0
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevos `extract_affine_power_... | CAPACIDAD (gradúa Clase C + Familia 5): inecuación de potencia VALLE de numerador par RESUELTA correctamente
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17700,3 +17701,17 @@ Active entries: 454 (newest first)
 - retained learning:
   - `g/|g|` y `|g|/g` son `sign(g)`, una función de RANGO {-1,+1} con polo en g=0; resolverla por isolación genérica incluye el 0/0. Reducir a "qué valores del rango finito satisfacen la relación" → condición de signo estricta sobre g (intervalos abiertos = polo excluido) es exacto y general.
   - siguiente de la auditoría: Familia 6 (Taylor centro≠0, signo de un coeficiente) — última familia.
+
+## 2026-06-30 - CAPACIDAD (gradúa Clase C + Familia 5): inecuación de potencia VALLE de numerador par RESUELTA correctamente
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (nuevos `extract_affine_power_term` + `try_solve_even_power_valley_inequality`, despachado ANTES del decline de potencia)
+- status: `retained` (commit pendiente-de-hash). Gradúa de residual→CORRECTO los valles de [[soundness-reaudit-found-missed-forms]] Clase C y de [[p0-audit-2026-06-30-eight-families]] Familia 5. Verificado adversarialmente (2 lentes, 30 casos, SOUND).
+- capture:
+  - investment_class: capacidad nueva (residual honesto → respuesta correcta); exenta de fase (mejora soundness/cobertura sobre solve).
+  - cell: AHORA resuelto exacto (antes residual): `x^(2/3)>2`→`(-∞,-2^(3/2))∪(2^(3/2),∞)`, `x^(2/3)<2`→`(-2^(3/2),2^(3/2))`, `x^(2/5)>2`, `x^(4/3)>16`, base afín `(x-1)^(2/3)>4`→`(-∞,-7)∪(9,∞)`, `(x+2)^(2/3)>9`, escalada `(2x-3)^(2/3)>4`, aditiva `x^(2/3)+1>5`, invertida `5-x^(2/3)>1`→`(-8,8)`, no-estricta `(x-1)^(2/3)≥4` (cerrada). KEEP: monótonas `x^(1/3)>2`→`(8,∞)`, recíprocas `1/x^(1/3)`/`1/sqrt(x)` (residual, fuera de scope = siguiente ciclo), enteras `x^2`/`(x-1)^2`.
+  - reducción: `c·(α)^(p/q)+d {op} k` (α afín, p PAR, e>0) ⟺ `(α)^(p/q)=|α|^(p/q)` (q impar ⇒ definida en todo ℝ), increasing en |α|, así `|α| {op'} ((k-d)/c)^(q/p)` (op' se voltea si c<0), partido en dos piezas lineales del argumento afín vía `solve_relation_set` + union/intersect. Casos degenerados m≤0 (todo-ℝ/∅/α≠0/{raíz}) cerrados. La cota `m^(q/p)` la evalúa/renderiza el motor (`4^(3/2)`→8; surd se preserva).
+  - validación: workspace failed:0 (+ tests `test_eval_unsound_power_monomial_inequality_declines_to_residual` y `..._wrapped_...` actualizados: valle→intervalo, recíproca→residual); clippy `-p cas_solver --all-targets` limpio; huella GUARD/PRESS por baseline-FIEL: **0 deltas**; verificación adversarial 2-lentes (30 casos, SOUND, incl. bordes m≤0, no-estrictos, coef/aditivo, y que monótonas/recíprocas NO se tocan).
+- retained learning:
+  - Un valle `|α|^(p/q)` (numerador par) NO hay que declinarlo: es representable y soluble por reducción a `|α| {op} k^(q/p)` (dos piezas lineales). Declinar fue el paso sound interino; la reducción a la forma-abs que el motor YA resuelve es el cierre correcto. La verificación adversarial fue la que distinguió "irrepresentable" de "el motor lo resuelve mal" — clave para no quedarse en el residual.
+  - El extractor `c·(α)^e+d` (afín + coef + constante aditiva) reusa la misma estructura que el detector de decline; un detector que ya reconoce una familia para DECLINARLA suele tener la info para RESOLVERLA.
+  - siguiente: recíprocas fraccionarias `1/x^(1/3)`, `1/sqrt(x)` (exponente negativo, polo) — reducir a `x^(1/3) {op'} ...` / `sqrt(α) {op'} 1/k` con el polo excluido.

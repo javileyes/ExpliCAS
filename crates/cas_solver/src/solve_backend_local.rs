@@ -2215,6 +2215,166 @@ fn pure_power_monomial_exponent(
     }
 }
 
+/// Decompose `e` into `coeff·(α)^exp + addconst` where `α` is an AFFINE function of `var` (`a·x + b`),
+/// `coeff`/`addconst` are rational constants, and `exp` is a rational constant. Returns
+/// `(coeff, α, exp, addconst)`. Handles a leading coefficient, an additive constant on either side, and
+/// `Neg`. Returns `None` for anything else (a sum of two powers, a non-affine base, …).
+fn extract_affine_power_term(
+    ctx: &Context,
+    e: ExprId,
+    var: &str,
+) -> Option<(
+    num_rational::BigRational,
+    ExprId,
+    num_rational::BigRational,
+    num_rational::BigRational,
+)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+    match ctx.get(e) {
+        Expr::Neg(inner) => {
+            let (c, a, x, d) = extract_affine_power_term(ctx, *inner, var)?;
+            Some((-c, a, x, -d))
+        }
+        Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
+            match (contains_var(ctx, l, var), contains_var(ctx, r, var)) {
+                (true, false) => {
+                    let (c, a, x, d) = extract_affine_power_term(ctx, l, var)?;
+                    Some((c, a, x, d + as_rational_const(ctx, r)?))
+                }
+                (false, true) => {
+                    let (c, a, x, d) = extract_affine_power_term(ctx, r, var)?;
+                    Some((c, a, x, d + as_rational_const(ctx, l)?))
+                }
+                _ => None,
+            }
+        }
+        Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            match (contains_var(ctx, l, var), contains_var(ctx, r, var)) {
+                (true, false) => {
+                    let (c, a, x, d) = extract_affine_power_term(ctx, l, var)?;
+                    Some((c, a, x, d - as_rational_const(ctx, r)?))
+                }
+                (false, true) => {
+                    // `cst − (c·αˣ + d) = −c·αˣ + (cst − d)`
+                    let (c, a, x, d) = extract_affine_power_term(ctx, r, var)?;
+                    Some((-c, a, x, as_rational_const(ctx, l)? - d))
+                }
+                _ => None,
+            }
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            match (contains_var(ctx, l, var), contains_var(ctx, r, var)) {
+                (true, false) => {
+                    let (c, a, x, d) = extract_affine_power_term(ctx, l, var)?;
+                    let f = as_rational_const(ctx, r)?;
+                    Some((c * &f, a, x, d * f))
+                }
+                (false, true) => {
+                    let (c, a, x, d) = extract_affine_power_term(ctx, r, var)?;
+                    let f = as_rational_const(ctx, l)?;
+                    Some((c * &f, a, x, d * f))
+                }
+                _ => None,
+            }
+        }
+        Expr::Pow(base, exp) => {
+            let (base, exp) = (*base, *exp);
+            if is_affine_degree_one(ctx, base, var) {
+                let x = as_rational_const(ctx, exp)?;
+                Some((BigRational::one(), base, x, BigRational::zero()))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Solve an even-numerator VALLEY power inequality `c·(a·x+b)^(p/q) + d {op} k` exactly (p EVEN,
+/// e = p/q > 0). Since `(α)^(p/q) = |α|^(p/q)` and that is increasing in `|α|`, the relation reduces to
+/// `|α| {op'} ((k−d)/c)^(q/p)` (op' flips when c < 0), which splits into two linear pieces of the affine
+/// argument. The reciprocal valleys (`e < 0`) are left to the decline. Returns `None` for the
+/// non-valley shapes so the surrounding dispatch keeps its other behaviour.
+fn try_solve_even_power_valley_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+    use num_integer::Integer;
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let k = as_rational_const(&simplifier.context, eq.rhs)?;
+    let (c, alpha, exp, d) = extract_affine_power_term(&simplifier.context, eq.lhs, var)?;
+    if c.is_zero() {
+        return None;
+    }
+    // VALLEY only: e = p/q > 0 with EVEN numerator (so q is odd and `α^(p/q)` is defined for all α).
+    if exp.denom().is_one() || !exp.is_positive() || !exp.numer().is_even() {
+        return None;
+    }
+    // `(α)^e {op} m`, with `m = (k − d)/c` and `op` flipped if c < 0.
+    let m = (&k - &d) / &c;
+    let op = if c.is_negative() {
+        flip_inequality(eq.op.clone())
+    } else {
+        eq.op.clone()
+    };
+
+    // `|α|^e {op} m`, `|α|^e ≥ 0`.  Handle the `m ≤ 0` degenerate cases, then the main `m > 0` reduction
+    // `|α| {op} m^(q/p)`.
+    let zero = simplifier.context.num(0);
+    if !m.is_positive() {
+        // m < 0: `|α|^e ≥ 0 > m` everywhere; m = 0: `|α|^e = 0` only at α = 0.
+        return Some(match (&op, m.is_zero()) {
+            (RelOp::Gt, false) | (RelOp::Geq, _) => SolutionSet::AllReals, // > m<0, ≥ m≤0
+            (RelOp::Lt, _) | (RelOp::Leq, false) => SolutionSet::Empty,    // < m≤0, ≤ m<0
+            (RelOp::Gt, true) => {
+                // |α|^e > 0 ⟺ α ≠ 0.
+                let lo = solve_relation_set(simplifier, var, alpha, zero, RelOp::Lt)?;
+                let hi = solve_relation_set(simplifier, var, alpha, zero, RelOp::Gt)?;
+                union_solution_sets(&simplifier.context, lo, hi)
+            }
+            (RelOp::Leq, true) => solve_relation_set(simplifier, var, alpha, zero, RelOp::Eq)?, // α = 0
+            _ => return None,
+        });
+    }
+    // m > 0: bound `B = m^(q/p) ≥ 0`.
+    let m_expr = simplifier.context.add(Expr::Number(m));
+    let qp = BigRational::new(exp.denom().clone(), exp.numer().abs());
+    let qp_expr = simplifier.context.add(Expr::Number(qp));
+    let bound = simplifier.context.add(Expr::Pow(m_expr, qp_expr));
+    let (bound, _) = simplifier.simplify(bound);
+    let neg_bound = simplifier.context.add(Expr::Neg(bound));
+    let (neg_bound, _) = simplifier.simplify(neg_bound);
+    // `|α| {op} B`: outside-the-band union for >, ≥; inside-the-band intersection for <, ≤.
+    match op {
+        RelOp::Gt | RelOp::Geq => {
+            let hi = solve_relation_set(simplifier, var, alpha, bound, op.clone())?; // α {>,≥} B
+            let lo = solve_relation_set(simplifier, var, alpha, neg_bound, flip_inequality(op))?; // α {<,≤} −B
+            Some(union_solution_sets(&simplifier.context, lo, hi))
+        }
+        RelOp::Lt | RelOp::Leq => {
+            let hi = solve_relation_set(simplifier, var, alpha, bound, op.clone())?; // α {<,≤} B
+            let lo = solve_relation_set(simplifier, var, alpha, neg_bound, flip_inequality(op))?; // α {>,≥} −B
+            Some(intersect_solution_sets(&simplifier.context, lo, hi))
+        }
+        _ => None,
+    }
+}
+
 /// Decline a power-monomial inequality `c·x^e {op} k` whose exponent makes the engine's monotonic
 /// isolation UNSOUND, to an honest residual. The isolation treats `x^e` as globally monotonic and
 /// emits a single ray — correct ONLY when `e > 0` with an ODD numerator (a strictly monotonic power).
@@ -3947,11 +4107,18 @@ fn solve_local_core(
     ) {
         return Ok((set, Vec::new()));
     }
+    // An even-numerator VALLEY power inequality `c·(a·x+b)^(p/q) + d {op} k` (p even, e = p/q > 0) is
+    // `c·|a·x+b|^(p/q) + d {op} k`. SOLVE it exactly by reducing to `|a·x+b| {op'} ((k−d)/c)^(q/p)` —
+    // two linear pieces of the affine argument — instead of declining. (`(x-1)^(2/3) > 4` →
+    // `|x-1| > 8` → `(−∞,−7)∪(9,∞)`.)
+    if let Some(set) = try_solve_even_power_valley_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
     // A power-monomial inequality `c·x^e {op} k` whose exponent makes the engine's monotonic
-    // isolation UNSOUND (an even-numerator valley like `x^(2/3) > 2`, or a negative non-integer
-    // exponent like `1/x^(1/3) > 2`) is declined to an honest residual before any handler emits a
-    // wrong single ray. Strictly-monotonic powers (`e > 0`, odd numerator: `x^(1/3)`, `x^(3/2)`) and
-    // integer-exponent reciprocals (`1/x³`, owned by the rational-constant path) are NOT declined.
+    // isolation UNSOUND — a NEGATIVE non-integer exponent like `1/x^(1/3) > 2` (a reciprocal
+    // fractional power the valley reduction above does not cover) — is declined to an honest residual
+    // before any handler emits a wrong single ray. Strictly-monotonic powers (`e > 0`, odd numerator:
+    // `x^(1/3)`, `x^(3/2)`) and integer-exponent reciprocals (`1/x³`) are NOT declined.
     if let Some(set) = try_decline_unsound_power_monomial_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }

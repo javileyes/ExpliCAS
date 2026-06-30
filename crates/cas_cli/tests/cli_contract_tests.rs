@@ -2820,10 +2820,10 @@ fn test_eval_squared_irrational_quadratic_factor_keeps_its_roots() {
 fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
     // A power-monomial inequality `c·x^e {op} k` is solved by the engine's MONOTONIC isolation, which
     // emits a single ray — correct ONLY when `x^e` is strictly monotonic (`e > 0`, odd numerator).
-    // For an even-numerator valley (`x^(2/3) = |x|^(2/3)`) the truth is TWO rays and isolation dropped
-    // the negative one; for a negative non-integer exponent (`1/x^(1/3)`, `1/√x`) it returned the
-    // complement / included the pole. Both are now declined to an honest residual instead of a wrong
-    // answer (correct solving of these is the next capability rung).
+    // An even-numerator VALLEY (`x^(2/3) = |x|^(2/3)`) is now SOLVED exactly by the `|x| {op} k^(q/p)`
+    // reduction (its truth is two rays / a bounded interval). A NEGATIVE non-integer exponent
+    // (`1/x^(1/3)`, `1/√x`) — a reciprocal fractional power with a pole — is still declined to an honest
+    // residual (correct solving of the reciprocals is the next rung).
     let r = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -2832,20 +2832,17 @@ fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
         let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
         wire["result"].as_str().unwrap_or("").to_string()
     };
-    // Even-numerator valleys (were dropping the negative ray / over-including).
+    // Even-numerator valleys are now SOLVED exactly (two rays for `>`, a bounded interval for `<`).
     assert_eq!(
         r("solve(x^(2/3) > 2, x)"),
-        "Solve: solve(x^(2 / 3) = 2, x) = 0"
+        "(-infinity, -(2^(3/2))) U (2^(3/2), infinity)"
     );
-    assert_eq!(
-        r("solve(x^(2/3) < 2, x)"),
-        "Solve: solve(x^(2 / 3) = 2, x) = 0"
-    );
+    assert_eq!(r("solve(x^(2/3) < 2, x)"), "(-(2^(3/2)), 2^(3/2))");
     assert_eq!(
         r("solve(x^(2/5) > 2, x)"),
-        "Solve: solve(x^(2 / 5) = 2, x) = 0"
+        "(-infinity, -(2^(5/2))) U (2^(5/2), infinity)"
     );
-    // Negative non-integer exponents / reciprocal fractional powers (were complement / pole).
+    // Negative non-integer exponents / reciprocal fractional powers (were complement / pole) — declined.
     assert_eq!(
         r("solve(1/x^(1/3) > 2, x)"),
         "Solve: solve(1 / x^(1 / 3) = 2, x) = 0"
@@ -2872,9 +2869,9 @@ fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
 
 #[test]
 fn test_eval_wrapped_non_monotonic_power_inequality_declines_to_residual() {
-    // The non-monotonic power decline must also fire through the WRAPPERS the bare detector missed: a
-    // shifted/scaled affine base `(x-1)^(2/3)`, an additive constant `x^(2/3) + 1`, and the `sqrt`
-    // FUNCTION form `1/sqrt(x)` — these escaped and emitted a wrong single ray / complement.
+    // An even-numerator VALLEY through its WRAPPERS — a shifted/scaled affine base `(x-1)^(2/3)`, an
+    // additive constant `x^(2/3) + 1` — is now SOLVED exactly by the `|a·x+b| {op} k^(q/p)` reduction.
+    // The `sqrt` FUNCTION reciprocal `1/sqrt(x)` (a negative exponent with a pole) is still declined.
     let r = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -2883,25 +2880,22 @@ fn test_eval_wrapped_non_monotonic_power_inequality_declines_to_residual() {
         let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
         wire["result"].as_str().unwrap_or("").to_string()
     };
-    // Shifted / scaled affine base (even-numerator valley).
+    // Shifted / scaled affine base (even-numerator valley) — SOLVED.
     assert_eq!(
         r("solve((x-1)^(2/3) > 4, x)"),
-        "Solve: solve((x - 1)^(2 / 3) = 4, x) = 0"
+        "(-infinity, -7) U (9, infinity)"
     );
     assert_eq!(
         r("solve((2*x-3)^(2/3) > 4, x)"),
-        "Solve: solve((2·x - 3)^(2 / 3) = 4, x) = 0"
+        "(-infinity, -5/2) U (11/2, infinity)"
     );
-    // Additive constant on the power.
+    // Additive constant on the power — SOLVED.
     assert_eq!(
         r("solve(x^(2/3) + 1 > 5, x)"),
-        "Solve: solve(x^(2 / 3) + 1 = 5, x) = 0"
+        "(-infinity, -8) U (8, infinity)"
     );
-    assert_eq!(
-        r("solve(5 - x^(2/3) > 1, x)"),
-        "Solve: solve(5 - x^(2 / 3) = 1, x) = 0"
-    );
-    // sqrt FUNCTION reciprocal (negative exponent, pole at the affine root).
+    assert_eq!(r("solve(5 - x^(2/3) > 1, x)"), "(-8, 8)");
+    // sqrt FUNCTION reciprocal (negative exponent, pole at the affine root) — declined.
     assert_eq!(
         r("solve(1/sqrt(x) > 2, x)"),
         "Solve: solve(1 / sqrt(x) = 2, x) = 0"
