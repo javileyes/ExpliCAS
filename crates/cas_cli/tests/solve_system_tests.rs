@@ -59,6 +59,24 @@ fn test_solve_system_2x2_no_solution() {
 }
 
 #[test]
+fn test_solve_system_2x2_zero_coefficient_row_is_inconsistent() {
+    // 0·x + 0·y = 1 is the contradiction 0 = 1, so the system has NO solution. The all-zero
+    // coefficient matrix made the proportionality cross-products (d1·b2 == d2·b1, d1·a2 == d2·a1)
+    // reduce to 0 == 0 vacuously, so it was wrongly reported as "infinitely many solutions".
+    run_cas("solve_system(0*x+0*y=1; 0*x+0*y=0; x; y)\n")
+        .success()
+        .stdout(predicate::str::contains("no solution"));
+    // Two contradictory zero rows (0 = 2 and 0 = 3) are likewise inconsistent.
+    run_cas("solve_system(0*x+0*y=2; 0*x+0*y=3; x; y)\n")
+        .success()
+        .stdout(predicate::str::contains("no solution"));
+    // Control: both rows are the trivial 0 = 0, so EVERY (x, y) is a solution — infinitely many.
+    run_cas("solve_system(0*x+0*y=0; 0*x+0*y=0; x; y)\n")
+        .success()
+        .stdout(predicate::str::contains("infinitely many solutions"));
+}
+
+#[test]
 fn test_solve_system_2x2_non_linear() {
     // x * y = 1  (non-linear!)
     // x = 2

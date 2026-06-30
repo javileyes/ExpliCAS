@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 446 (newest first)
+Active entries: 447 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -122,6 +122,7 @@ Active entries: 446 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (recuperación por sign-analysi... | SOUNDNESS (P0 re-auditoría Clase B): inecuación polinómica `xⁿ−c` con raíz racional + residuo positivo-definido → "No solution"
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 re-auditoría Clase A): ecuación trig que se reduce a potencia de un solo trig colapsa la familia periódica
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo `try_decline_unsound_po... | SOUNDNESS (P0 re-auditoría Clase C): inecuación de potencia-monomio `c·x^e {op} k` con `x^e` NO monótona resuelta por isolación monótona → conjunto erróneo
+- 2026-06-30 | `retained` | `crates/cas_solver/src/linear_system/solve2/classify.rs` (`classify_degenerat... | SOUNDNESS (auditoría P0, Familia 8): sistema lineal 2×2 con coeficientes todos cero y RHS no nulo clasificado como "infinitas soluciones"
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17574,3 +17575,17 @@ Active entries: 446 (newest first)
   - El exponente NETO debe computarse sobre la forma SIMPLIFICADA: el simplificador reescribe `1/x^(1/3)` como `x^(2/3)/x` (cociente de potencias, exponente neto −1/3), no como `x^(-1/3)`; un detector que solo casa `Pow(x, neg)` se pierde la mitad de la familia.
   - LECCIÓN de proceso: cuando la baseline de huella COMMITTED está stale (no regenerada en commits previos de la sesión), la comparación JSON-vs-JSON inventa deltas; la prueba fiel es regenerar la baseline con el cambio en `git stash` y comparar mismo-binario-vs-mismo-binario. Confirmó 0 deltas reales.
   - siguiente peldaño (capacidad, no soundness): resolver CORRECTAMENTE estas formas — valles de dos rayos y recíprocas fraccionarias — requiere primero arreglar el solver de ECUACIONES `x^(a/b)=k` (hoy da basura), luego construir el sign-chart con puntos de prueba exactos (limpiando la raíz a comparación entera). Es un proyecto de capacidad, no un ciclo.
+
+## 2026-06-30 - SOUNDNESS (auditoría P0, Familia 8): sistema lineal 2×2 con coeficientes todos cero y RHS no nulo clasificado como "infinitas soluciones"
+
+- area: `crates/cas_solver/src/linear_system/solve2/classify.rs` (`classify_degenerate_2x2`)
+- status: `retained` (commit pendiente-de-hash). Familia 8 de [[p0-audit-2026-06-30-eight-families]]. Wrong-answer PRE-EXISTENTE (no regresión). Primera familia cerrada del backlog de la auditoría.
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento del orden de fase.
+  - cell: `solve_system(0x+0y=1; 0x+0y=0; x; y)` daba "infinitas soluciones" (verdad: SIN solución; la fila `0=1` es una contradicción). Igual `0=2;0=3`, `0=-3;0=0`, `x-x=1;x-x=0`. AHORA todos "no solution / inconsistent". Controles intactos: dependiente real `x+y=1;2x+2y=2`→infinitas; paralelas `x+y=1;x+y=2`→sin solución; único `x+y=3;x-y=1`→{2,1}; trivial `0=0;0=0`→infinitas.
+  - causa raíz: el atajo 2×2 (Cramer) clasifica el caso degenerado (det=0) por proporcionalidad cruzada `d1·b2==d2·b1 && d1·a2==d2·a1`. Con la matriz de coeficientes TODA cero (`a1=b1=a2=b2=0`) ambos productos cruzados se reducen a `0==0` con independencia del RHS, así que `0=c` (c≠0) pasaba como consistente → infinitas. La ruta Gauss general (`classify_reduced_system`) y la 3×3 (que delega en Gauss) SÍ lo detectan; solo el atajo 2×2 hand-rolled tenía el agujero.
+  - fix: chequear primero la contradicción explícita — una fila `0·x+0·y=d` con `d≠0` no la satisface ningún `(x,y)` → `NoSolution`. Guarda `(a1=0 ∧ b1=0 ∧ d1≠0) ∨ (a2=0 ∧ b2=0 ∧ d2≠0)` antes de los productos cruzados (que tras la guarda solo ven filas de coeficientes proporcionales no nulas, donde son correctos).
+  - validación: workspace failed:0 (+ test `test_solve_system_2x2_zero_coefficient_row_is_inconsistent` con los 3 controles); clippy `-p cas_solver --all-targets` limpio; huella GUARD/PRESS verificada por baseline-FIEL (regenerada con el cambio en stash): **0 deltas estructurales en TODAS las suites**.
+- retained learning:
+  - Un atajo de caso pequeño (Cramer 2×2) que duplica la lógica de un clasificador general (Gauss) debe cubrir TODOS los casos degenerados que el general ya cubre; aquí el general detectaba `0=c` y el atajo no. Un chequeo de consistencia por proporcionalidad cruzada (`d1·b2==d2·b1`) es CIEGO al RHS cuando la matriz de coeficientes se anula (`0==0` vacuo) — la contradicción `0=c` debe chequearse explícita y ANTES. Patrón: las fast-paths de caso pequeño son una fuente recurrente de huecos de soundness que la ruta general no tiene.
+  - siguiente de la auditoría: Familia 1 (root-drop poli: `solve((x²-3)²(x-1)=0)`→`{1}`, suelta `±√3`; el factor cuadrado SOLO sí resuelve, el producto no).
