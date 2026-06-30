@@ -2703,6 +2703,41 @@ fn test_eval_two_sided_rational_inequality_moves_to_one_side() {
 }
 
 #[test]
+fn test_eval_sign_via_abs_excludes_pole() {
+    // `g/|g| {op} c` is `sign(g) {op} c`, sign in {-1, +1} and undefined at g=0. The generic path
+    // returned a CLOSED ray including the 0/0 point (`x/|x| = 1 -> [0, infinity)`) or "No solution" for
+    // the inequality forms. It now reduces to a strict sign condition on g, with OPEN pole exclusion.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x/abs(x) = -1, x)"), "(-infinity, 0)");
+    assert_eq!(r("solve(abs(x)/x = 1, x)"), "(0, infinity)");
+    assert_eq!(r("solve((x-2)/abs(x-2) = 1, x)"), "(2, infinity)");
+    assert_eq!(r("solve((x-2)/abs(x-2) >= 1, x)"), "(2, infinity)");
+    assert_eq!(
+        r("solve((x-2)/abs(x-2) <= 1, x)"),
+        "(-infinity, 2) U (2, infinity)"
+    );
+    assert_eq!(r("solve((x-2)/abs(x-2) < 1, x)"), "(-infinity, 2)");
+    // sign(g) is never 0 or out of {-1,+1}.
+    assert_eq!(r("solve(x/abs(x) = 2, x)"), "No solution");
+    assert_eq!(r("solve(x/abs(x) = 0, x)"), "No solution");
+    // Controls: genuine abs equations/inequalities (denominator is not |numerator|) are unchanged.
+    assert_eq!(r("solve(abs(x) = 3, x)"), "{ 3, -3 }");
+    assert_eq!(r("solve(abs(x)/2 = 1, x)"), "{ -2, 2 }");
+    assert_eq!(
+        r("solve(abs(x-1) > 2, x)"),
+        "(-infinity, -1) U (3, infinity)"
+    );
+}
+
+#[test]
 fn test_eval_high_degree_polynomial_inequality_with_rational_root() {
     // `xⁿ - c > 0` for odd n with a RATIONAL root (`x⁵-1 = (x-1)(x⁴+x³+x²+x+1)`) used to return
     // "No solution": the inequality path declined because it could not certify the positive-definite

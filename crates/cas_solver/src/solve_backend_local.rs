@@ -3919,6 +3919,13 @@ fn solve_local_core(
     ) {
         return Ok((SolutionSet::Empty, Vec::new()));
     }
+    // `g/|g| {op} c` (or `|g|/g {op} c`) is `sign(g) {op} c`, sign ∈ {−1, +1} (undefined at g = 0).
+    // Reduce to a sign condition on `g` so the OPEN intervals exclude the `g = 0` pole — the generic
+    // path returned a CLOSED ray that wrongly includes the 0/0 point (`x/|x| = 1 → [0, ∞)`) or "No
+    // solution" for the inequality forms.
+    if let Some(set) = try_solve_sign_via_abs(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
     // `|g(x)| {op} c` (constant `c`) reduces to the polynomial inequalities on the
     // two sides of the abs; the isolation/split path below drops the operator and
     // returns the boundary equation (`|x^2-2x| < 1` -> "No solution"). Handle it
@@ -4633,6 +4640,103 @@ fn try_solve_polynomial_with_quartic_factor(
         return Some(SolutionSet::Empty);
     }
     Some(SolutionSet::Discrete(roots))
+}
+
+/// The inner expression `g` when `e` is the SIGN form `g/|g|` or `|g|/g` (both equal `sign(g)` for
+/// `g ≠ 0`). `g` must carry the variable. Returns `None` otherwise.
+fn sign_via_abs_arg(ctx: &Context, e: ExprId, var: &str) -> Option<ExprId> {
+    use cas_ast::ordering::compare_expr;
+    use cas_ast::BuiltinFn;
+    use cas_solver_core::isolation_utils::contains_var;
+    let Expr::Div(num, den) = ctx.get(e) else {
+        return None;
+    };
+    let (num, den) = (*num, *den);
+    let abs_arg = |x: ExprId| -> Option<ExprId> {
+        if let Expr::Function(fn_id, args) = ctx.get(x) {
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Abs) {
+                return Some(args[0]);
+            }
+        }
+        None
+    };
+    // g/|g|: denominator is |numerator|.
+    if let Some(a) = abs_arg(den) {
+        if contains_var(ctx, num, var) && compare_expr(ctx, a, num) == std::cmp::Ordering::Equal {
+            return Some(num);
+        }
+    }
+    // |g|/g: numerator is |denominator|.
+    if let Some(a) = abs_arg(num) {
+        if contains_var(ctx, den, var) && compare_expr(ctx, a, den) == std::cmp::Ordering::Equal {
+            return Some(den);
+        }
+    }
+    None
+}
+
+/// Solve `sign(g(x)) {op} c` written as `g/|g| {op} c` (or `|g|/g {op} c`), `c` constant. Because
+/// `sign(g) ∈ {−1, +1}` (undefined at `g = 0`), the relation reduces to which of those two values
+/// satisfy `s {op} c`: only `+1` ⇒ `g > 0`; only `−1` ⇒ `g < 0`; both ⇒ `g ≠ 0`; neither ⇒ ∅. Solving
+/// the strict sign condition on `g` yields OPEN intervals that EXCLUDE the `g = 0` pole — the generic
+/// path returned a closed ray including the `0/0` point, or "No solution" for the inequality forms.
+fn try_solve_sign_via_abs(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use cas_solver_core::solution_set::union_solution_sets;
+    use num_rational::BigRational;
+
+    let ctx = &simplifier.context;
+    let (g, c, op) = if let Some(g) = sign_via_abs_arg(ctx, eq.lhs, var) {
+        if contains_var(ctx, eq.rhs, var) {
+            return None;
+        }
+        (g, as_rational_const(ctx, eq.rhs)?, eq.op.clone())
+    } else if let Some(g) = sign_via_abs_arg(ctx, eq.rhs, var) {
+        if contains_var(ctx, eq.lhs, var) {
+            return None;
+        }
+        // `c {op} sign(g)` ⟺ `sign(g) {flip op} c` (Eq is symmetric).
+        let op = if matches!(eq.op, RelOp::Eq) {
+            RelOp::Eq
+        } else {
+            flip_inequality(eq.op.clone())
+        };
+        (g, as_rational_const(ctx, eq.lhs)?, op)
+    } else {
+        return None;
+    };
+
+    let satisfies = |s: i64| -> bool {
+        let sv = BigRational::from_integer(s.into());
+        match op {
+            RelOp::Eq => sv == c,
+            RelOp::Lt => sv < c,
+            RelOp::Leq => sv <= c,
+            RelOp::Gt => sv > c,
+            RelOp::Geq => sv >= c,
+            RelOp::Neq => sv != c,
+        }
+    };
+    let neg = satisfies(-1);
+    let pos = satisfies(1);
+    let zero = simplifier.context.num(0);
+    match (neg, pos) {
+        (false, false) => Some(SolutionSet::Empty),
+        (false, true) => solve_relation_set(simplifier, var, g, zero, RelOp::Gt), // g > 0
+        (true, false) => solve_relation_set(simplifier, var, g, zero, RelOp::Lt), // g < 0
+        (true, true) => {
+            // g ≠ 0: everything except the pole.
+            let lo = solve_relation_set(simplifier, var, g, zero, RelOp::Lt)?;
+            let hi = solve_relation_set(simplifier, var, g, zero, RelOp::Gt)?;
+            Some(union_solution_sets(&simplifier.context, lo, hi))
+        }
+    }
 }
 
 /// Solve an absolute-value equation `|arg(x)| = c` for a NON-NEGATIVE constant `c` by the textbook

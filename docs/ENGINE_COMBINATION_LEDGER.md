@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 453 (newest first)
+Active entries: 454 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -129,6 +129,7 @@ Active entries: 453 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (transform two-sided en el dis... | SOUNDNESS (auditoría P0, Familia 3): inecuación racional de dos polos `A(x) {op} B(x)` produce basura
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo `try_solve_boundary_tri... | SOUNDNESS (auditoría P0, Familia 4): inecuación trig de FRONTERA `sin(x)≥1` da un rayo en vez del conjunto-punto periódico
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`pure_power_monomial_exponent... | SOUNDNESS (auditoría P0, Familia 5): inecuación de potencia no-monótona ENVUELTA escapaba al detector bare de Clase C
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevos `sign_via_abs_arg` + `... | SOUNDNESS (auditoría P0, Familia 7): `g/|g| {op} c` (signo vía abs) incluía el polo 0/0
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17685,3 +17686,17 @@ Active entries: 453 (newest first)
   - Un detector que recursa sobre la base de un `Pow` y exige `var` literal se pierde la base AFÍN (`(x-a)^e`); `Polynomial::from_expr(...).degree()==1` la reconoce de forma general. Igual con la constante aditiva (peelar `Add`/`Sub`) y la función `sqrt` (= `^(1/2)`, que el simplificador NO reescribe a `Pow`).
   - Un decline a residual es SOUND pero la verificación adversarial debe preguntar "¿es esto realmente irrepresentable, o sólo lo resuelve mal el motor?". Aquí los valles `<k` y las recíprocas-sqrt SON representables (`(-a,a)`, `Union` de dos rayos, intervalo con borde de dominio) — el motor los resuelve mal pero la reducción a `|afín|`/`sqrt` (que SÍ resuelve bien) los cierra. Declinar fue el paso sound interino; solver es el peldaño.
   - siguiente de la auditoría: Familia 7 (sign-vía-abs) o Familia 6 (Taylor centro≠0); luego el SOLVE de Familia 5/Clase C vía reducción a |afín|/sqrt.
+
+## 2026-06-30 - SOUNDNESS (auditoría P0, Familia 7): `g/|g| {op} c` (signo vía abs) incluía el polo 0/0
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (nuevos `sign_via_abs_arg` + `try_solve_sign_via_abs`, despachado antes de `try_solve_abs_threshold_inequality`)
+- status: `retained` (commit pendiente-de-hash). Familia 7 de [[p0-audit-2026-06-30-eight-families]]. Wrong-answer PRE-EXISTENTE. SOLVE correcto (no decline).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase.
+  - cell: `x/abs(x)=1` daba `[0,∞)` (incluía el polo 0/0). AHORA `(0,∞)`. Igual `x/abs(x)=-1`→`(-∞,0)`, `abs(x)/x=1`→`(0,∞)` (antes "All reals if x≥0"), `(x-2)/abs(x-2)=1`→`(2,∞)`, `≥1`→`(2,∞)` (antes "No solution"), `≤1`→`(-∞,2)∪(2,∞)`, `<1`→`(-∞,2)`. `=2`/`=0`→No solution (signo∈{-1,1}). Controles intactos: `abs(x)=3`→`{3,-3}`, `abs(x)/2=1`→`{-2,2}` (denominador 2, no `|num|`), `abs(x-1)>2`.
+  - causa raíz: `g/|g|` (y `|g|/g`) es `sign(g)∈{-1,+1}`, indefinido en g=0. La ruta genérica lo trataba como una función ordinaria → rayo CERRADO incluyendo el punto 0/0, o "No solution" para las inecuaciones.
+  - fix: handler dedicado. Detecta `Div(g,|g|)`/`Div(|g|,g)` (compare_expr del arg de abs con el otro operando), RHS constante c. Decide cuáles de {-1,+1} satisfacen `s {op} c`: solo +1 ⇒ g>0; solo -1 ⇒ g<0; ambos ⇒ g≠0 (unión g<0 ∪ g>0); ninguno ⇒ ∅. Resolver la condición ESTRICTA de signo da intervalos ABIERTOS que excluyen el polo. Funciona para g de cualquier grado (no solo afín) porque `solve_relation_set(g>0)` ya maneja polinómicas.
+  - validación: workspace failed:0 (+ test `test_eval_sign_via_abs_excludes_pole` con controles abs reales); clippy limpio; huella GUARD/PRESS por baseline-FIEL: **0 deltas**.
+- retained learning:
+  - `g/|g|` y `|g|/g` son `sign(g)`, una función de RANGO {-1,+1} con polo en g=0; resolverla por isolación genérica incluye el 0/0. Reducir a "qué valores del rango finito satisfacen la relación" → condición de signo estricta sobre g (intervalos abiertos = polo excluido) es exacto y general.
+  - siguiente de la auditoría: Familia 6 (Taylor centro≠0, signo de un coeficiente) — última familia.

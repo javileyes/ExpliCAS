@@ -210,7 +210,9 @@ solución**. El motor responde "infinitas soluciones, ecuaciones dependientes".
    declinan a residual honesto (antes rayo/complemento erróneo). La verificación
    adversarial mostró que son SOLUBLES vía `|α|`/`sqrt` reducción (próximo peldaño:
    SOLVE correcto en vez de decline; también gradúa los bare de Clase C). 0 deltas.
-7. **F7 sign-vía-abs** — excluir el polo `0/0` y resolver las inecuaciones de signo.
+7. ~~**F7 sign-vía-abs**~~ ✅ **HECHO** (commit pendiente) — `g/|g| {op} c` = `sign(g) {op} c`
+   reducido a condición de signo estricta sobre `g` (intervalos abiertos, polo `0/0`
+   excluido). SOLVE correcto. 0 deltas de huella.
 8. **F6 Taylor centro≠0** — corregir el signo del coeficiente en el constructor por
    diferenciación.
 
