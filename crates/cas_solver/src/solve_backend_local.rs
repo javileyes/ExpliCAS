@@ -3521,18 +3521,30 @@ pub(crate) fn try_solve_periodic_trig_equation(
             (vec![simplifier.simplify(at).0], pi)
         }
         BuiltinFn::Sin | BuiltinFn::Cos => {
-            let cv = cas_math::numeric_eval::as_rational_const(&simplifier.context, c)?;
+            // Classify the RHS `c` relative to {−1, 0, 1} EXACTLY over a single quadratic surd
+            // `a + b·√n` — so an IRRATIONAL special-angle value like √2/2 or √3/2 (which is NOT a
+            // rational, so `as_rational_const` returned None and the whole periodic solve declined,
+            // leaking just the principal value `{π/4}`) is now recognised. `linear_surd_sign` is exact
+            // (never f64); a transcendental `c` (π, e) that `as_linear_surd` cannot reduce declines.
+            use cas_math::root_forms::as_linear_surd;
+            let (a, b, n) = as_linear_surd(&simplifier.context, c)?;
+            let sign_c = linear_surd_sign(&a, &b, &n); // c vs 0
+            let vs_upper = linear_surd_sign(&(&a - &one), &b, &n); // c vs 1
+            let vs_lower = linear_surd_sign(&(&a + &one), &b, &n); // c vs −1
+            if vs_upper == std::cmp::Ordering::Greater || vs_lower == std::cmp::Ordering::Less {
+                return None; // |c| > 1: no real solution; let the existing path report it.
+            }
             let is_sin = matches!(func, BuiltinFn::Sin);
             let arc = if is_sin { "arcsin" } else { "arccos" };
             let arc_call = simplifier.context.call(arc, vec![c]);
             let (r1, _) = simplifier.simplify(arc_call);
-            if cv.is_zero() {
-                // sin(u)=0 → {kπ}; cos(u)=0 → {π/2 + kπ}. The two roots are π apart → ONE family, period π.
-                (vec![r1], pi)
-            } else if cv == one || cv == -one.clone() {
+            if vs_upper == std::cmp::Ordering::Equal || vs_lower == std::cmp::Ordering::Equal {
                 // c = ±1: the two roots of the period coincide → ONE family, period 2π.
                 (vec![r1], two_pi)
-            } else if cv > -one.clone() && cv < one {
+            } else if sign_c == std::cmp::Ordering::Equal {
+                // c = 0: sin(u)=0 → {kπ}; cos(u)=0 → {π/2 + kπ}. Two roots π apart → ONE family, period π.
+                (vec![r1], pi)
+            } else {
                 // 0 < |c| < 1: TWO families in [0, 2π), shared period 2π.
                 //   sin(u)=c → {arcsin(c) + 2kπ, π - arcsin(c) + 2kπ}
                 //   cos(u)=c → {arccos(c) + 2kπ, 2π - arccos(c) + 2kπ}
@@ -3542,9 +3554,6 @@ pub(crate) fn try_solve_periodic_trig_equation(
                     simplifier.context.add(Expr::Sub(two_pi, r1))
                 };
                 (vec![r1, simplifier.simplify(second).0], two_pi)
-            } else {
-                // |c| > 1: no real solution; let the existing path report it.
-                return None;
             }
         }
         _ => return None,

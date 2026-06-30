@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 448 (newest first)
+Active entries: 449 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -124,6 +124,7 @@ Active entries: 448 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo `try_decline_unsound_po... | SOUNDNESS (P0 re-auditoría Clase C): inecuación de potencia-monomio `c·x^e {op} k` con `x^e` NO monótona resuelta por isolación monótona → conjunto erróneo
 - 2026-06-30 | `retained` | `crates/cas_solver/src/linear_system/solve2/classify.rs` (`classify_degenerat... | SOUNDNESS (auditoría P0, Familia 8): sistema lineal 2×2 con coeficientes todos cero y RHS no nulo clasificado como "infinitas soluciones"
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`factor_monic_quartic_into_ra... | SOUNDNESS (auditoría P0, Familia 1): factor cuadrático irreducible AL CUADRADO suelta sus raíces irracionales en solve
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (auditoría P0, Familia 2a): ecuación trig `sin/cos(x)=c` con RHS SURD irracional colapsa a su valor principal
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17605,3 +17606,18 @@ Active entries: 448 (newest first)
 - retained learning:
   - Un factorizador por enumeración de divisores con una fórmula `…/(s−q)` tiene un agujero en la DIAGONAL `q=s` (división por cero) que se "parchea" con un `continue` — pero ese `continue` SILENCIOSAMENTE descarta toda una clase (factores repetidos / cuadrados perfectos). El caso degenerado de una fórmula casi siempre necesita su propia rama cerrada, no un skip. Patrón gemelo del de la Familia 8 (la fast-path salta el caso degenerado).
   - siguiente de la auditoría: Familia 2 (trig family-drop: `sin(x)=√2/2`→`{π/4}`, suelta periodicidad + 2ª rama; la forma RHS-racional `sin(x)=1/2` SÍ da la familia).
+
+## 2026-06-30 - SOUNDNESS (auditoría P0, Familia 2a): ecuación trig `sin/cos(x)=c` con RHS SURD irracional colapsa a su valor principal
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation`, rama `Sin|Cos`: clasificación del RHS por `as_linear_surd` + `linear_surd_sign` en vez de `as_rational_const`)
+- status: `retained` (commit pendiente-de-hash). Sub-caso (a) de la Familia 2 de [[p0-audit-2026-06-30-eight-families]]. Wrong-answer PRE-EXISTENTE (no regresión). Verificado adversarialmente (3 lentes, witness-sampling: sin/cos SOUND).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → familia periódica completa), exento del orden de fase.
+  - cell: `solve(sin(x)=√2/2)` daba `{π/4}` (soltaba periodicidad + 2ª rama). AHORA `{π/4+2kπ, 3π/4+2kπ}`. Igual `cos(x)=√3/2`→`{π/6+2kπ, 11π/6+2kπ}`, `cos(x)=-√2/2`, `sin(x)=√3/2`, `sin(x)=1/√2`. (`arcsin(√2/2)` se simplifica a `π/4`.) Controles intactos: RHS racional `sin(x)=1/2`, `sin(x)=1/3` (familia con arcsin), fronteras `=±1`/`=0`, fuera de rango `sin(x)=2`→No solution.
+  - causa raíz: la rama sin/cos usaba `let cv = as_rational_const(c)?` SOLO para CLASIFICAR la magnitud del RHS (0 / ±1 / dentro de (-1,1) / fuera); las RAÍCES ya usaban `arcsin(c)`/`arccos(c)` simbólico. Con `c` irracional (√2/2) `as_rational_const` da None → `?` aborta toda la ruta periódica → caía al inverso de valor principal → un solo `{π/4}`.
+  - fix: clasificar `c` EXACTAMENTE sobre el surd cuadrático `a+b√n` con `as_linear_surd` + `linear_surd_sign` (ya existían, exactos, sin f64): `c` vs 0, vs 1, vs −1 → Zero (período π) / ±1 (1 familia, 2π) / dentro (2 familias, 2π) / fuera (None, sin solución real). Reutiliza la maquinaria del gate de rango trig.
+  - residual honesto (siguiente peldaño): (a') RHS TRANSCENDENTE no-surd (`sin(x)=π/4`, `1/π`, `e/3`, `ln(2)`) sigue dando solo el valor principal — `as_linear_surd`=None para transcendentes y probar `|π/4|<1` exige `π<4`, fuera del álgebra de surds. (b) argumento AFÍN `sin(x-1)=0`→`{1}` (offset interior). (c) potencia impar = const `cos(x)^3=1`→`{0}`. (a'-offset) offset exterior irracional `2cos(x)+√2=0`→`{3π/4}` (el acumulador de offset es de tipo `BigRational`). Próximo ciclo F2b.
+  - validación: workspace failed:0 (+ test `test_eval_trig_equation_with_surd_rhs_keeps_full_periodic_family` con controles); clippy `-p cas_solver --all-targets` limpio; huella GUARD/PRESS por baseline-FIEL (stash-regen): **0 deltas estructurales**; verificación adversarial 2-lentes (sin/cos SOUND, witness-sampling de ambas ramas + período + fuera-de-rango).
+- retained learning:
+  - Un gate `as_rational_const(x)?` usado SOLO para clasificar una magnitud (no para construir el resultado) bloquea innecesariamente todas las constantes irracionales. Si la clasificación admite una decisión EXACTA más amplia (aquí surds cuadráticos vía `linear_surd_sign`), usarla — el resultado simbólico (`arcsin(c)`) ya era correcto. Patrón recurrente del audit: el detector maneja el caso "simple" (racional) y suelta el envoltorio (surd).
+  - siguiente de la auditoría: Familia 2b (resto de trig: argumento afín, potencia impar, offset exterior irracional) o Familia 3 (inecuación racional 2-polos: `1/(x-1)>1/(x+1)`→basura `inf^(1/2)`).

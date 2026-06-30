@@ -2507,6 +2507,52 @@ fn test_eval_trig_power_equation_keeps_periodicity() {
 }
 
 #[test]
+fn test_eval_trig_equation_with_surd_rhs_keeps_full_periodic_family() {
+    // `sin(x) = √2/2` (and the other special-angle SURD right-hand sides) returned only the principal
+    // value `{π/4}`: the periodic solver classified the RHS magnitude with `as_rational_const`, which
+    // bails on an irrational, so the whole periodic path declined and the generic inverse leaked one
+    // root. The classification is now exact over a quadratic surd (`linear_surd_sign`), so the full
+    // two-branch periodic family is emitted — and `arcsin(√2/2)` simplifies to `π/4`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(sin(x) = sqrt(2)/2, x)"),
+        "{ 1/4·pi + k·2·pi, 3/4·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x) = sqrt(3)/2, x)"),
+        "{ 1/3·pi + k·2·pi, 2/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(cos(x) = sqrt(3)/2, x)"),
+        "{ 1/6·pi + k·2·pi, 11/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(cos(x) = -sqrt(2)/2, x)"),
+        "{ 3/4·pi + k·2·pi, 5/4·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // Controls: rational RHS (special angle and general), the ±1 / 0 boundaries, and out-of-range
+    // are all unchanged.
+    assert_eq!(
+        r("solve(sin(x) = 1/2, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x) = 1/3, x)"),
+        "{ arcsin(1/3) + k·2·pi, pi - arcsin(1/3) + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(sin(x) = 1, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x) = 0, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x) = 2, x)"), "No solution");
+}
+
+#[test]
 fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
     // `c/xⁿ {op} k` with an ODD `n ≥ 3` (or a surd-border even `n`) used to drop the sign-flip across
     // the x=0 pole, returning a complement / phantom ray / a union with the pole filled in. The
