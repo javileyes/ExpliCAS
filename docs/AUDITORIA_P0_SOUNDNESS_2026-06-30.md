@@ -213,9 +213,33 @@ solución**. El motor responde "infinitas soluciones, ecuaciones dependientes".
 7. ~~**F7 sign-vía-abs**~~ ✅ **HECHO** (commit pendiente) — `g/|g| {op} c` = `sign(g) {op} c`
    reducido a condición de signo estricta sobre `g` (intervalos abiertos, polo `0/0`
    excluido). SOLVE correcto. 0 deltas de huella.
-8. **F6 Taylor centro≠0** — corregir el signo del coeficiente en el constructor por
-   diferenciación.
+8. **F6 Taylor centro≠0** — ⚠️ **DIAGNOSTICADO, NO un ciclo acotado.** NO es un bug del
+   constructor: `taylor_series_at_point_expr` produce la suma `Σ cₖ·(x−a)^k` CORRECTA (las
+   derivadas son correctas: `diff(ln(x),x,4)=−6/x⁴`). El **SIMPLIFICADOR del engine**, al
+   FACTORIZAR esa suma en la forma anidada `(x−a)^k` para presentarla, **invierte el signo
+   de un coeficiente** — el resultado renderizado de `taylor(ln(x),x,1,5)` evalúa a `77/60`
+   (≈1.283) en x=2 cuando la verdad es `47/60` (≈0.783). Es la clase de bug factor↔expand
+   documentada en [[c5-diff-fold-rootcause]]. WORKAROUND exacto: `expand(taylor(...))` da el
+   polinomio plano correcto (evita la factorización anidada). NO afecta a centro 0
+   (Maclaurin, ruta analítica) ni a exp/cos/sin en centro≠0 (su forma anidada NO tiene el
+   bug); SÍ afecta a `ln`, `1/x`, `sqrt`. Intentos de arreglo desde el comando taylor
+   (expandir en el builder; simplify+expand en la regla) fallan: el engine RE-anida la
+   salida tras la regla, o la expansión deja coeficientes sin reducir (`ln(1)`, `1^(−11/2)`)
+   → o regresa otras funciones o emite basura. **Requiere arreglar la regla de
+   factorización del simplificador compartido** (localizar el signo invertido en el
+   factor-fold), un ciclo dedicado de simplificador, no del comando.
 
-Cada uno es un ciclo acotado y retenible; F1, F2, F8 son los de mayor severidad
+Cada uno (salvo F6) fue un ciclo acotado y retenible; F1, F2, F8 son los de mayor severidad
 (wrong-answers silenciosos en formas de libro de texto). Ninguno es regresión de los
 ciclos recientes; todos son deuda pre-existente que la caza multiagente sacó a la luz.
+
+## Estado de cierre (2026-06-30)
+
+**7 de 8 familias cerradas** en 10 commits, cada una con huella IDÉNTICA (0 deltas
+estructurales, baseline-fiel stash-regen) y verificación adversarial donde introdujo
+procedimientos de decisión:
+- F8 `9494e212e`, F1 `45576c420`, F2 `1a927898c`+`435265bb7`, F3 `5be0a10b8`,
+  F4 `956956225`, F5 `0b07bf22a`, F7 `37102f4f4`.
+- F6 queda DIAGNOSTICADO (arriba) como bug del simplificador compartido (no del comando
+  taylor); workaround `expand(taylor(...))`. Es la única no-cerrada y la de menor severidad
+  (el cálculo es correcto; solo la presentación factorizada corrompe un signo).
