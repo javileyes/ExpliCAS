@@ -243,3 +243,21 @@ procedimientos de decisión:
 - F6 queda DIAGNOSTICADO (arriba) como bug del simplificador compartido (no del comando
   taylor); workaround `expand(taylor(...))`. Es la única no-cerrada y la de menor severidad
   (el cálculo es correcto; solo la presentación factorizada corrompe un signo).
+
+### Ciclos de capacidad post-auditoría (mejor ROI)
+
+- **VALLE de potencia RESUELTO** `fdcc55408` — gradúa de residual→CORRECTO los valles de
+  numerador par (Clase C + Familia 5): `x^(2/3)>2`→`(-∞,-2^(3/2))∪(2^(3/2),∞)`,
+  `(x-1)^(2/3)>4`→`(-∞,-7)∪(9,∞)`, `5-x^(2/3)>1`→`(-8,8)`, vía la reducción
+  `c·(α)^(p/q)+d {op} k` ⟺ `|α| {op} ((k-d)/c)^(q/p)`. Verificado adversarialmente (30 casos,
+  SOUND), 0 deltas de huella.
+- **SIGUIENTE peldaño (especificado, no hecho):** recíprocas fraccionarias `1/x^(1/3)`,
+  `1/sqrt(x)`, `x^(-1/3)`, `1/x^(2/3)` (exponente NEGATIVO) — hoy DECLINAN honestamente
+  (residual sound, NO wrong-answer). Reducción: `c·(α)^e {op} k` (e<0, f=-e>0) ⟺ resolver la
+  inecuación racional `c/W {op} k` (W=(α)^f) → W-intervalos, y back-sustituir `(α)^f ∈ W` con
+  los solucionadores de potencia POSITIVA (monótono num-impar, valle num-par ya resueltos),
+  excluyendo el polo `(α)^f>0`. Es ~120 líneas de casework (formas Div/sqrt, signos de c/k,
+  paridad, dominio) — un proyecto acotado pero no trivial; los building-blocks (`x^(1/3)<1/2`,
+  `sqrt(x)<1/2`, el valle) ya funcionan. F1-restante (no-mónico `(2x²-3)²`, fraccionario
+  `(x²-½)²`, mult≥3 `(x²-3)³`) sigue siendo wrong-answer y requiere factorización general
+  sobre ℚ.
