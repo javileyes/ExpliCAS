@@ -9,9 +9,17 @@
 > la Fase 2 (dominio complejo).
 >
 > **Progreso:** ✅ **P0-1** `2753e6ce8` · ✅ **P0-2** `0de6d7081` · ✅ **P0-3**
-> `886fb0ec8` · ✅ **P0-4** (este ciclo). **Cierre de soundness COMPLETO.**
-> Lo que resta es la mochila de capacidad P1 (§3), que declina honestamente y NO
-> bloquea el cierre ni el paso a complejo.
+> `886fb0ec8` · ✅ **P0-4** `9f2920b06`. Los 4 P0 AUDITADOS están cerrados.
+>
+> ⚠️ **MATIZ (re-auditoría 2026-06-30, `wf_32971e89-52c`):** una segunda prueba
+> adversarial de soundness halló **18 wrong-answers PRE-EXISTENTES** (confirmados a
+> mano vs `729e72d52`, NO regresiones) en **formas que la auditoría original no
+> sondeó** — adyacentes a P0-1 y P0-2. Mis 7 ciclos son **sound** (cero regresiones;
+> 5 frentes limpios). Pero el dominio real está cerrado para las formas AUDITADAS,
+> **no universalmente.** Clases abiertas (§2b):
+> A (ecuaciones trig que se reducen a `sin²`/`cos²`/`sin³` → colapsan a `{0,0}`),
+> B (inecuaciones recíprocas `1/x^n` con n≥7 y RHS racional), C (inecuaciones de
+> raíz impar `1/x^(1/3)`).
 
 - **Fecha:** 2026-06-29
 - **Método:** workflow multi-agente de 14 frentes (probe del CLI real → verificación
@@ -160,6 +168,37 @@ comparte la misma regla rota.
 - **Frente:** `definite-ftc`.
 
 ---
+
+## 2b. Clases ABIERTAS de la re-auditoría (2026-06-30 · NO regresiones)
+
+Una segunda prueba adversarial (`wf_32971e89-52c`, 27 agentes, verificación
+diff-back/numérica/testigos) halló **18 wrong-answers que ya existían ANTES de los
+4 P0** (confirmados a mano contra `729e72d52`). La auditoría original no sondeó
+estas formas (las que el simplificador REESCRIBE: cuadrados, factorizadas, potencia
+superior). Cada clase repite la forma "el detector cubre el caso bare/pequeño y
+pierde el envoltorio general".
+
+| Clase | Síntoma | Ejemplo | Verdad |
+|---|---|---|---|
+| **A** trig→potencia | colapsa a conjunto finito (a menudo DUPLICADO) | `solve(cos(x)^2-1)→{0,0}`, `solve(sin(x)*tan(x))→{0}` | `{kπ}` |
+| **B** recíproca n≥7 / RHS racional | inventa el rayo negativo | `1/x^7>1→(-∞,1)`, `1/x^5>1→(-∞,1)` | `(0,1)` |
+| **C** raíz impar | operator-drop / "No solution" | `solve(1/x^(1/3)>2)` (renderiza `=0`) | `(0,1/8)` |
+
+- **Clase A:** la forma ECUACIÓN `solve(sin(x)^2=1)` SÍ es correcta (`{π/2+kπ}`); solo
+  la forma EXPRESIÓN/factorizada que se simplifica a una potencia colapsa. Mi fix P0-1
+  cubrió productos de factores trig BARE distintos (los une periódicamente); estos se
+  simplifican a `sin²`/`cos²`/`sin³` ANTES y van por la ruta cuadrática-en-trig, que
+  pierde periodicidad y duplica la raíz principal. Relacionado con el hueco
+  cuadrática-en-trig de §3.
+- **Clase B:** mi fix P0-2 subió el cap de grado 4→6, así que n=5,6 funcionan; n≥7 cae
+  al fallback insólido. `1/x^5>1` (n=5, RHS racional) falla aunque `1/x^5>2` (RHS surd)
+  acierta — apunta a una ruta temprana específica de RHS racional. Fix: subir/quitar el
+  cap (la verificación numérica es la red) + revisar la ruta RHS-racional.
+- **Clase C:** subsistema distinto (inecuación de potencia fraccionaria); el bug
+  Add/recíproca-colapsa-a-ecuación extendido a potencias fraccionarias.
+
+**Mis 7 ciclos son sound (cero regresiones; 5 frentes limpios + 2 P0 mejorados).**
+Estas 3 clases son P0 de soundness NUEVAS-descubiertas, pendientes.
 
 ## 3. Mochila de capacidad para "universal" (NO bloquea soundness)
 
