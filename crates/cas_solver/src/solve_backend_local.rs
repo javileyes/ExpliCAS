@@ -2126,16 +2126,27 @@ fn try_solve_boundary_trig_inequality(
     }
 }
 
-/// Net exponent of `var` when `e` is a PURE power monomial `c·var^k` — a single power term, possibly
-/// written with a constant coefficient or as a quotient of powers (the simplifier rewrites
-/// `1/x^(1/3)` to `x^(2/3)/x`, net exponent `−1/3`). Returns `None` for anything that is not a single
-/// power of `var` (sums, two distinct radicals, a non-monomial base). The coefficient is irrelevant —
-/// only the exponent decides monotonicity — so it is not returned.
+/// True when `e` is an AFFINE function of `var` — a degree-1 polynomial `a·x + b` (`x`, `x-1`,
+/// `2x+3`). The non-monotonicity of a fractional power is invariant under such a shift/scale, so
+/// `(x-1)^(2/3)` is a symmetric valley exactly like `x^(2/3)`.
+fn is_affine_degree_one(ctx: &Context, e: ExprId, var: &str) -> bool {
+    cas_math::polynomial::Polynomial::from_expr(ctx, e, var)
+        .map(|p| p.degree() == 1)
+        .unwrap_or(false)
+}
+
+/// Net exponent of `var` when `e` is a single power term `c·(α)^k` of an AFFINE argument `α = a·x + b`
+/// (`x`, `x-1`, `2x+3`), possibly with a constant coefficient, an additive constant (`x^(2/3) + 1`), a
+/// quotient form (the simplifier rewrites `1/x^(1/3)` to `x^(2/3)/x`, net `−1/3`), or a `sqrt`
+/// (`= ^(1/2)`). Returns `None` for anything that is not a single power of one affine argument (sums of
+/// two powers, two distinct radicals, a non-affine base). The coefficient and the additive constant are
+/// irrelevant — only the exponent decides monotonicity — so they are not returned.
 fn pure_power_monomial_exponent(
     ctx: &Context,
     e: ExprId,
     var: &str,
 ) -> Option<num_rational::BigRational> {
+    use cas_ast::BuiltinFn;
     use cas_math::numeric_eval::as_rational_const;
     use cas_solver_core::isolation_utils::contains_var;
     use num_rational::BigRational;
@@ -2143,11 +2154,32 @@ fn pure_power_monomial_exponent(
     match ctx.get(e) {
         Expr::Variable(s) if ctx.sym_name(*s) == var => Some(BigRational::one()),
         Expr::Neg(inner) => pure_power_monomial_exponent(ctx, *inner, var),
+        // Peel an additive constant: only one side carries the variable (`x^(2/3) + 1`, `5 - x^(2/3)`).
+        Expr::Add(l, r) | Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            match (contains_var(ctx, l, var), contains_var(ctx, r, var)) {
+                (true, false) => pure_power_monomial_exponent(ctx, l, var),
+                (false, true) => pure_power_monomial_exponent(ctx, r, var),
+                _ => None,
+            }
+        }
         Expr::Pow(base, exp) => {
             let (base, exp) = (*base, *exp);
-            let base_exp = pure_power_monomial_exponent(ctx, base, var)?;
             let k = as_rational_const(ctx, exp)?;
+            // The base is a power-monomial in `var` (recurse) OR an affine argument `a·x + b`, which
+            // contributes exponent 1 — so `(x-1)^(2/3)` is a valley exactly like `x^(2/3)`.
+            let base_exp = pure_power_monomial_exponent(ctx, base, var)
+                .or_else(|| is_affine_degree_one(ctx, base, var).then(BigRational::one))?;
             Some(base_exp * k)
+        }
+        // `sqrt(α)` of an affine argument is `α^(1/2)` (the simplifier keeps it as a `Sqrt` call, not a
+        // `Pow(·, 1/2)`, so `1/sqrt(x)` is `Div(1, Sqrt(x))`).
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sqrt))
+                && is_affine_degree_one(ctx, args[0], var) =>
+        {
+            Some(BigRational::new(1.into(), 2.into()))
         }
         Expr::Mul(l, r) => {
             let (l, r) = (*l, *r);
@@ -2176,6 +2208,9 @@ fn pure_power_monomial_exponent(
             };
             Some(n - d)
         }
+        // A bare affine argument `x - 1` (exponent 1, an integer — never declined, but lets a `Pow`
+        // base / `Div` operand recurse uniformly).
+        _ if is_affine_degree_one(ctx, e, var) => Some(BigRational::one()),
         _ => None,
     }
 }

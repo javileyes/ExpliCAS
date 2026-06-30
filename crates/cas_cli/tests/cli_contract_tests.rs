@@ -2836,6 +2836,58 @@ fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
 }
 
 #[test]
+fn test_eval_wrapped_non_monotonic_power_inequality_declines_to_residual() {
+    // The non-monotonic power decline must also fire through the WRAPPERS the bare detector missed: a
+    // shifted/scaled affine base `(x-1)^(2/3)`, an additive constant `x^(2/3) + 1`, and the `sqrt`
+    // FUNCTION form `1/sqrt(x)` — these escaped and emitted a wrong single ray / complement.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Shifted / scaled affine base (even-numerator valley).
+    assert_eq!(
+        r("solve((x-1)^(2/3) > 4, x)"),
+        "Solve: solve((x - 1)^(2 / 3) = 4, x) = 0"
+    );
+    assert_eq!(
+        r("solve((2*x-3)^(2/3) > 4, x)"),
+        "Solve: solve((2·x - 3)^(2 / 3) = 4, x) = 0"
+    );
+    // Additive constant on the power.
+    assert_eq!(
+        r("solve(x^(2/3) + 1 > 5, x)"),
+        "Solve: solve(x^(2 / 3) + 1 = 5, x) = 0"
+    );
+    assert_eq!(
+        r("solve(5 - x^(2/3) > 1, x)"),
+        "Solve: solve(5 - x^(2 / 3) = 1, x) = 0"
+    );
+    // sqrt FUNCTION reciprocal (negative exponent, pole at the affine root).
+    assert_eq!(
+        r("solve(1/sqrt(x) > 2, x)"),
+        "Solve: solve(1 / sqrt(x) = 2, x) = 0"
+    );
+    assert_eq!(
+        r("solve(1/sqrt(x-1) > 2, x)"),
+        "Solve: solve(1 / sqrt(x - 1) = 2, x) = 0"
+    );
+    // KEEP: a shifted/scaled STRICTLY-MONOTONIC power (e > 0, odd numerator) stays solved exactly.
+    assert_eq!(r("solve((x-1)^(1/3) > 2, x)"), "(9, infinity)");
+    assert_eq!(r("solve(sqrt(x-1) > 2, x)"), "(5, infinity)");
+    assert_eq!(r("solve(sqrt(x) < 2, x)"), "[0, 4)");
+    // KEEP: an integer power of an affine base is a polynomial inequality, solved exactly.
+    assert_eq!(
+        r("solve((x-1)^2 > 4, x)"),
+        "(-infinity, -1) U (3, infinity)"
+    );
+    assert_eq!(r("solve(1/(x-1) > 2, x)"), "(1, 3/2)");
+}
+
+#[test]
 fn test_eval_definite_integral_removable_pole_is_not_undefined() {
     // A rationalization step turns `1/(√x·(1+x))` into `(√x³−√x)/(x³−x)`, inventing a SPURIOUS
     // denominator root at x=1 where the numerator also vanishes (removable). The FTC pole scan used

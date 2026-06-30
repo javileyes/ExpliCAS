@@ -205,8 +205,11 @@ solución**. El motor responde "infinitas soluciones, ecuaciones dependientes".
 5. ~~**F4 inecuación trig frontera**~~ ✅ **HECHO** (commit pendiente) — toque `sin(x)≥1`
    → conjunto-punto periódico `{π/2+2kπ}` (reduce a la ecuación); complemento `cos(x)<1`
    → residual honesto. Verificado adversarialmente. 0 deltas de huella.
-6. **F5 potencia envuelta** — extender el detector de Clase C: mover constante
-   aditiva, base afín `(x-a)^e`, forma función `sqrt()`.
+6. ~~**F5 potencia envuelta**~~ ✅ **SOUND** (commit pendiente) — detector de Clase C
+   extendido a base afín `(x-a)^e`, constante aditiva `x^(2/3)+1`, función `sqrt()`:
+   declinan a residual honesto (antes rayo/complemento erróneo). La verificación
+   adversarial mostró que son SOLUBLES vía `|α|`/`sqrt` reducción (próximo peldaño:
+   SOLVE correcto en vez de decline; también gradúa los bare de Clase C). 0 deltas.
 7. **F7 sign-vía-abs** — excluir el polo `0/0` y resolver las inecuaciones de signo.
 8. **F6 Taylor centro≠0** — corregir el signo del coeficiente en el constructor por
    diferenciación.

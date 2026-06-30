@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 452 (newest first)
+Active entries: 453 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -128,6 +128,7 @@ Active entries: 452 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (auditoría P0, Familia 2b): ecuación trig con argumento AFÍN o potencia IMPAR colapsa la familia periódica
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (transform two-sided en el dis... | SOUNDNESS (auditoría P0, Familia 3): inecuación racional de dos polos `A(x) {op} B(x)` produce basura
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (nuevo `try_solve_boundary_tri... | SOUNDNESS (auditoría P0, Familia 4): inecuación trig de FRONTERA `sin(x)≥1` da un rayo en vez del conjunto-punto periódico
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`pure_power_monomial_exponent... | SOUNDNESS (auditoría P0, Familia 5): inecuación de potencia no-monótona ENVUELTA escapaba al detector bare de Clase C
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17668,3 +17669,19 @@ Active entries: 452 (newest first)
 - retained learning:
   - Un caso frontera `f(x) {≥} max(f)` colapsa a la ECUACIÓN `f(x)=max(f)`; si su solución es representable (conjunto-punto periódico) se resuelve exacto, no se declina. Distinguir el lado de TOQUE (reducible a ecuación) del lado COMPLEMENTO (`ℝ∖{puntos}`, no representable → residual honesto) es la clave; ambos eran rayos erróneos antes.
   - siguiente de la auditoría: Familia 5 (potencia envuelta) o Familia 7 (sign-vía-abs) o Familia 6 (Taylor centro≠0).
+
+## 2026-06-30 - SOUNDNESS (auditoría P0, Familia 5): inecuación de potencia no-monótona ENVUELTA escapaba al detector bare de Clase C
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`pure_power_monomial_exponent` generalizado a base afín + constante aditiva + función `sqrt`; nuevo `is_affine_degree_one`)
+- status: `retained` (commit pendiente-de-hash). Familia 5 de [[p0-audit-2026-06-30-eight-families]]. Wrong-answers PRE-EXISTENTES. Verificado adversarialmente (lente should-keep SOUND: ningún caso monótono mal-declinado).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → residual honesto), exento de fase. EXTIENDE Clase C ([[soundness-reaudit-found-missed-forms]]).
+  - cell: AHORA declinan (antes rayo/complemento erróneo): base desplazada `(x-1)^(2/3)>4`, `(x+2)^(2/3)>9`, `(2x-3)^(2/3)>4`; constante aditiva `x^(2/3)+1>5`, `5-x^(2/3)>1`; función sqrt recíproca `1/sqrt(x)>2`, `1/sqrt(x-1)>2`, `1/sqrt(2x)>2`. KEEP (monótonas, siguen correctas): `(x-1)^(1/3)>2`→`(9,∞)`, `(x-1)^(3/2)`, `sqrt(x-1)>2`→`(5,∞)`, `sqrt(x)<2`→`[0,4)`, y entero/racional `(x-1)^2>4`, `1/(x-1)>2`.
+  - causa raíz: el detector de Clase C (`pure_power_monomial_exponent`) recursaba sobre la BASE del `Pow` y fallaba para `x-1` (un `Sub`), no peelaba constantes aditivas, y no veía `sqrt` como `^(1/2)`. Así los envoltorios escapaban y caían a la isolación monótona (rayo erróneo).
+  - fix: generalizar el detector — peelar constante aditiva (`Add`/`Sub` con un lado constante), aceptar BASE AFÍN (`is_affine_degree_one` vía `Polynomial::from_expr` grado 1) en el `Pow` (la no-monotonía es invariante al shift), y tratar `sqrt(afín)` como `^(1/2)`. La regla de decline es la misma (exponente no-entero con numerador par O negativo).
+  - HALLAZGO ADVERSARIAL (próximo peldaño, NO un bug de soundness): la verificación de 2 lentes mostró que la lente should-keep es SOUND (0 monótonas mal-declinadas), pero la lente should-decline señaló que varios casos declinados son en realidad REPRESENTABLES y por tanto SOLUBLES: el lado `<k` de un valle `5-x^(2/3)>1` es el intervalo acotado `(-8,8)`; el lado `>k` es la unión de dos rayos `(-∞,-a)∪(a,∞)` (variante `Union`); la recíproca-sqrt `1/sqrt(x)>2` es `(0,1/4)` (el "polo" es el BORDE de dominio). REDUCCIÓN VERIFICADA: `(α)^(p/q) {op} k` (p par) ⟺ `|α| {op} k^(q/p)`, y `1/sqrt(α) {op} k` ⟺ `sqrt(α) {op'} 1/k` — el motor YA resuelve `|x-1|>8`→`(-∞,-7)∪(9,∞)` y `sqrt(x)<1/2`→`[0,1/4)`. Declinar es SOUND (wrong→honesto) pero sub-óptimo; el SOLVE correcto vía esta reducción a |afín|/sqrt es el siguiente ciclo (también graduaría los bare de Clase C de residual a intervalo correcto).
+  - validación: workspace failed:0 (+ test `test_eval_wrapped_non_monotonic_power_inequality_declines_to_residual` con controles monótonos/enteros); clippy limpio; huella GUARD/PRESS por baseline-FIEL: **0 deltas**; verificación adversarial 2-lentes (should-keep SOUND).
+- retained learning:
+  - Un detector que recursa sobre la base de un `Pow` y exige `var` literal se pierde la base AFÍN (`(x-a)^e`); `Polynomial::from_expr(...).degree()==1` la reconoce de forma general. Igual con la constante aditiva (peelar `Add`/`Sub`) y la función `sqrt` (= `^(1/2)`, que el simplificador NO reescribe a `Pow`).
+  - Un decline a residual es SOUND pero la verificación adversarial debe preguntar "¿es esto realmente irrepresentable, o sólo lo resuelve mal el motor?". Aquí los valles `<k` y las recíprocas-sqrt SON representables (`(-a,a)`, `Union` de dos rayos, intervalo con borde de dominio) — el motor los resuelve mal pero la reducción a `|afín|`/`sqrt` (que SÍ resuelve bien) los cierra. Declinar fue el paso sound interino; solver es el peldaño.
+  - siguiente de la auditoría: Familia 7 (sign-vía-abs) o Familia 6 (Taylor centro≠0); luego el SOLVE de Familia 5/Clase C vía reducción a |afín|/sqrt.
