@@ -2571,6 +2571,60 @@ fn test_eval_high_degree_polynomial_inequality_with_rational_root() {
 }
 
 #[test]
+fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
+    // A power-monomial inequality `c·x^e {op} k` is solved by the engine's MONOTONIC isolation, which
+    // emits a single ray — correct ONLY when `x^e` is strictly monotonic (`e > 0`, odd numerator).
+    // For an even-numerator valley (`x^(2/3) = |x|^(2/3)`) the truth is TWO rays and isolation dropped
+    // the negative one; for a negative non-integer exponent (`1/x^(1/3)`, `1/√x`) it returned the
+    // complement / included the pole. Both are now declined to an honest residual instead of a wrong
+    // answer (correct solving of these is the next capability rung).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Even-numerator valleys (were dropping the negative ray / over-including).
+    assert_eq!(
+        r("solve(x^(2/3) > 2, x)"),
+        "Solve: solve(x^(2 / 3) = 2, x) = 0"
+    );
+    assert_eq!(
+        r("solve(x^(2/3) < 2, x)"),
+        "Solve: solve(x^(2 / 3) = 2, x) = 0"
+    );
+    assert_eq!(
+        r("solve(x^(2/5) > 2, x)"),
+        "Solve: solve(x^(2 / 5) = 2, x) = 0"
+    );
+    // Negative non-integer exponents / reciprocal fractional powers (were complement / pole).
+    assert_eq!(
+        r("solve(1/x^(1/3) > 2, x)"),
+        "Solve: solve(1 / x^(1 / 3) = 2, x) = 0"
+    );
+    assert_eq!(
+        r("solve(1/x^(1/2) > 2, x)"),
+        "Solve: solve(1 / x^(1 / 2) = 2, x) = 0"
+    );
+    assert_eq!(
+        r("solve(x^(-1/3) > 2, x)"),
+        "Solve: solve(x^(-1 / 3) = 2, x) = 0"
+    );
+    // KEEP: strictly-monotonic powers (e > 0, odd numerator) stay solved EXACTLY.
+    assert_eq!(r("solve(x^(1/3) > 2, x)"), "(8, infinity)");
+    assert_eq!(r("solve(x^(1/2) < 2, x)"), "[0, 4)");
+    assert_eq!(r("solve(x^(3/2) > 2, x)"), "(2^(2/3), infinity)");
+    assert_eq!(r("solve(x^(5/3) > 2, x)"), "(2^(3/5), infinity)");
+    // KEEP: integer-exponent reciprocals are owned by the rational-constant path (Class B).
+    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, (1/2)^(1/3))");
+    assert_eq!(r("solve(1/x > 2, x)"), "(0, 1/2)");
+    // KEEP: the EQUATION form is untouched (op gate) — both valley roots are found.
+    assert_eq!(r("solve(x^(2/3) = 8, x)"), "{ -64·2^(-3/2), 64·2^(-3/2) }");
+}
+
+#[test]
 fn test_eval_definite_integral_removable_pole_is_not_undefined() {
     // A rationalization step turns `1/(√x·(1+x))` into `(√x³−√x)/(x³−x)`, inventing a SPURIOUS
     // denominator root at x=1 where the numerator also vanishes (removable). The FTC pole scan used

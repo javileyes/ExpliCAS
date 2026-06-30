@@ -182,7 +182,7 @@ pierde el envoltorio general".
 |---|---|---|---|
 | ~~**A**~~ ✅ trig→potencia | ~~colapsa a finito~~ **HECHO** (peel Neg/coef + `trig^n=0⇒trig=0`, guarda de complementariedad) | `{kπ}` |
 | ~~**B**~~ ✅ recíproca n≥7 / RHS racional | ~~inventa el rayo negativo~~ **HECHO** (sign-analysis sobre raíces de la ecuación + caps 6/8→12) | `(0,1)` |
-| **C** raíz impar | operator-drop / "No solution" | `solve(1/x^(1/3)>2)` (renderiza `=0`) | `(0,1/8)` |
+| ~~**C**~~ ✅ potencia fraccionaria | ~~operator-drop / "No solution" / complemento~~ **HECHO** (declina a residual honesto las potencias NO monótonas: numerador par o exponente negativo no-entero) | `(0,1/8)` |
 
 - **Clase A:** la forma ECUACIÓN `solve(sin(x)^2=1)` SÍ es correcta (`{π/2+kπ}`); solo
   la forma EXPRESIÓN/factorizada que se simplifica a una potencia colapsa. Mi fix P0-1
@@ -194,11 +194,20 @@ pierde el envoltorio general".
   al fallback insólido. `1/x^5>1` (n=5, RHS racional) falla aunque `1/x^5>2` (RHS surd)
   acierta — apunta a una ruta temprana específica de RHS racional. Fix: subir/quitar el
   cap (la verificación numérica es la red) + revisar la ruta RHS-racional.
-- **Clase C:** subsistema distinto (inecuación de potencia fraccionaria); el bug
-  Add/recíproca-colapsa-a-ecuación extendido a potencias fraccionarias.
+- **Clase C:** la re-auditoría era más amplia de lo anotado: además de las recíprocas
+  de raíz impar (`1/x^(1/3)>2 → "No solution"`), las potencias de **numerador par**
+  (`x^(2/3)>2 = |x|^(2/3)>2`, un valle simétrico) perdían el rayo negativo, y las
+  recíprocas de raíz par (`1/√x>2`) devolvían el complemento o incluían el polo. El
+  principio unificador: la isolación monótona del motor solo es correcta cuando `x^e`
+  es **estrictamente monótona** (`e>0`, numerador IMPAR). Todo lo demás no-entero
+  (numerador par = valle, o exponente negativo = recíproca con polo/salto de signo) se
+  declina ahora a residual honesto en vez de emitir un rayo erróneo. El solver de
+  ECUACIONES bajo estas formas (`solve(1/x^(1/3)=2)` también daba basura) sigue roto;
+  resolverlas correctamente (valles de dos rayos + recíprocas fraccionarias) es el
+  siguiente peldaño de capacidad — declinar mantiene el motor SOUND mientras tanto.
 
-**Mis 7 ciclos son sound (cero regresiones; 5 frentes limpios + 2 P0 mejorados).**
-Estas 3 clases son P0 de soundness NUEVAS-descubiertas, pendientes.
+**Las 3 clases P0 de la re-auditoría están CERRADAS (soundness restaurada).** Mis ciclos
+son sound (cero regresiones; 5 frentes limpios + los P0 originales mejorados).
 
 ## 3. Mochila de capacidad para "universal" (NO bloquea soundness)
 

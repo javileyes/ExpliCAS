@@ -2078,6 +2078,103 @@ fn try_decline_periodic_trig_inequality(
     ))
 }
 
+/// Net exponent of `var` when `e` is a PURE power monomial `c·var^k` — a single power term, possibly
+/// written with a constant coefficient or as a quotient of powers (the simplifier rewrites
+/// `1/x^(1/3)` to `x^(2/3)/x`, net exponent `−1/3`). Returns `None` for anything that is not a single
+/// power of `var` (sums, two distinct radicals, a non-monomial base). The coefficient is irrelevant —
+/// only the exponent decides monotonicity — so it is not returned.
+fn pure_power_monomial_exponent(
+    ctx: &Context,
+    e: ExprId,
+    var: &str,
+) -> Option<num_rational::BigRational> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+    match ctx.get(e) {
+        Expr::Variable(s) if ctx.sym_name(*s) == var => Some(BigRational::one()),
+        Expr::Neg(inner) => pure_power_monomial_exponent(ctx, *inner, var),
+        Expr::Pow(base, exp) => {
+            let (base, exp) = (*base, *exp);
+            let base_exp = pure_power_monomial_exponent(ctx, base, var)?;
+            let k = as_rational_const(ctx, exp)?;
+            Some(base_exp * k)
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            match (contains_var(ctx, l, var), contains_var(ctx, r, var)) {
+                (true, false) => pure_power_monomial_exponent(ctx, l, var),
+                (false, true) => pure_power_monomial_exponent(ctx, r, var),
+                (true, true) => {
+                    let a = pure_power_monomial_exponent(ctx, l, var)?;
+                    let b = pure_power_monomial_exponent(ctx, r, var)?;
+                    Some(a + b)
+                }
+                (false, false) => None,
+            }
+        }
+        Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
+            let n = if contains_var(ctx, num, var) {
+                pure_power_monomial_exponent(ctx, num, var)?
+            } else {
+                BigRational::zero()
+            };
+            let d = if contains_var(ctx, den, var) {
+                pure_power_monomial_exponent(ctx, den, var)?
+            } else {
+                BigRational::zero()
+            };
+            Some(n - d)
+        }
+        _ => None,
+    }
+}
+
+/// Decline a power-monomial inequality `c·x^e {op} k` whose exponent makes the engine's monotonic
+/// isolation UNSOUND, to an honest residual. The isolation treats `x^e` as globally monotonic and
+/// emits a single ray — correct ONLY when `e > 0` with an ODD numerator (a strictly monotonic power).
+/// It is WRONG (1) for an EVEN numerator — `x^(2/3) = |x|^(2/3)` is a symmetric valley, so
+/// `x^(2/3) > 2` truly has TWO rays `(−∞,−2√2)∪(2√2,∞)` but isolation drops the negative one; and
+/// (2) for a NEGATIVE non-integer exponent (`1/x^(1/3)`, `1/√x`) — a reciprocal fractional power with
+/// a pole at 0 and a sign jump that isolation mishandles (it returns the complement ray, or includes
+/// the pole). Integer-exponent reciprocals (`1/x³`, `1/x²`) are EXCLUDED — they are solved exactly by
+/// the rational-constant path. Only a rational-constant RHS is handled (the audited shape); equations
+/// are untouched (op gate). Correctly solving the two-ray valleys and the reciprocal fractional powers
+/// is the next capability rung; declining keeps the engine SOUND until then.
+fn try_decline_unsound_power_monomial_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use num_integer::Integer;
+    use num_traits::{One, Zero};
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // RHS must be a rational constant (the audited `x^e {op} k` shape).
+    as_rational_const(&simplifier.context, eq.rhs)?;
+    let exp = pure_power_monomial_exponent(&simplifier.context, eq.lhs, var)?;
+    // Integer exponents (`x²`, `1/x³`) are owned by the polynomial / rational-constant paths.
+    if exp.denom().is_one() {
+        return None;
+    }
+    let numerator_even = exp.numer().is_even();
+    let negative = exp < num_rational::BigRational::zero();
+    if !(numerator_even || negative) {
+        return None; // e > 0 with odd numerator: strictly monotonic, solved correctly — keep.
+    }
+    Some(cas_solver_core::solve_outcome::residual_solution_set(
+        &mut simplifier.context,
+        eq.lhs,
+        eq.rhs,
+        var,
+    ))
+}
+
 /// Flatten `expr` into a linear combination of the exponential atom `base^x`:
 /// accumulate the rational coefficient of every `base^x` (or `c*base^x`) term
 /// into `atom_coeff`, collect the signed constant terms (no `var`) into
@@ -3683,6 +3780,14 @@ fn solve_local_core(
         eq.op.clone(),
         var,
     ) {
+        return Ok((set, Vec::new()));
+    }
+    // A power-monomial inequality `c·x^e {op} k` whose exponent makes the engine's monotonic
+    // isolation UNSOUND (an even-numerator valley like `x^(2/3) > 2`, or a negative non-integer
+    // exponent like `1/x^(1/3) > 2`) is declined to an honest residual before any handler emits a
+    // wrong single ray. Strictly-monotonic powers (`e > 0`, odd numerator: `x^(1/3)`, `x^(3/2)`) and
+    // integer-exponent reciprocals (`1/x³`, owned by the rational-constant path) are NOT declined.
+    if let Some(set) = try_decline_unsound_power_monomial_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // Equations that are a polynomial of degree ≥ 2 in `x^(1/q)` (`x - 3·√x + 2`,
