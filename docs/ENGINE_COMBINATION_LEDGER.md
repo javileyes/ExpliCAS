@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 461 (newest first)
+Active entries: 462 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -137,6 +137,7 @@ Active entries: 461 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff` reemplaza a... | SOUNDNESS (re-auditoría Familia 3): signo-vía-abs con COEFICIENTE `c·g/|g| {op} k` incluye el polo / da rayo cerrado
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`extract_affine_power_term`: ... | SOUNDNESS (re-auditoría Familia 6): inecuación valle con términos potencia SIN COMBINAR `x^(2/3)+x^(2/3) {op} k`
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_qu... | SOUNDNESS (re-auditoría Familia 5, sub-caso CONTENT): factor cuadrático irracional al cuadrado con CONTENIDO escalar suelta sus raíces
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff_offset` envu... | SOUNDNESS (sibling de Familia 3): signo-vía-abs con CONSTANTE ADITIVA `sign(g) + d {op} k` da "No solution" / incluye el polo
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17812,3 +17813,17 @@ Active entries: 461 (newest first)
   - El factorizador de cuárticas exigía mónico y soltaba el factor con contenido; normalizar a mónico ANTES de factorizar (dividir por el líder, preserva raíces) es la cura mínima que reutiliza el factorizador verificado. PATRÓN F1 (otra vez): el detector cubre el caso mónico nombrado y suelta el envoltorio escalar.
   - RESIDUAL HONESTO documentado: las raíces irracionales de multiplicidad ≥3 (`(x²-3)³(x-1)=0`→`{1}`, deflacta a séxtica) y de DOS factores cuadráticos irracionales distintos (`(x²-3)²(x²-2)=0`, residual) siguen sin resolverse — necesitan ℚ-factorización GENERAL de grado >4, no un ciclo acotado. (El degrado-6 con cofactores RACIONALES sí funciona, p.ej. `(x²-3)²(x²-4)=0`, porque pela ±2 hasta una cuártica.) También queda el bug COSMÉTICO de duplicación `(x²-3)²=0`→`{√3,-√3,√3,-√3}` (raíces correctas, listadas 2×; va por el path de potencia, no el de cuártica).
   - **Cierre de la re-auditoría de 6 familias: 5 cerradas + el sub-caso content de la 6ª (F5).** Lo único pendiente es ℚ-factorización general (mult≥3 / dos factores irracionales distintos) — peldaño grande, no acotado.
+
+## 2026-06-30 - SOUNDNESS (sibling de Familia 3): signo-vía-abs con CONSTANTE ADITIVA `sign(g) + d {op} k` da "No solution" / incluye el polo
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff_offset` envuelve a `sign_form_coeff`; `try_solve_sign_via_abs` resta el offset en el RHS reducido)
+- status: `retained` (commit pendiente-de-hash). Sibling de la Familia 3 ([[reaudit-post-fixes-six-families]]), hallado al sondear next-rungs. Wrong-answers PRE-EXISTENTES. Verificado adversarialmente (1800 formas `coeff·sign(g)+d {op} k` vs verdad por muestreo + chequeo de polo: 0 wrong).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase.
+  - cell: `x/|x|+1>0` → `(0,∞)` (era "No solution"; `sign(x)>-1`); `x/|x|+1=2` → `(0,∞)` (era `[0,∞)` con polo); `x/|x|-1<0` → `(-∞,0)`; `2+x/|x|>0` → `(-∞,0)∪(0,∞)` (`sign>-2` siempre → ℝ\{0}); `-x/|x|+1>0` → `(-∞,0)`; `3-x/|x|>0` → ℝ\{0}. Controles: sin offset (Familia 3) intacto; RHS reducido inalcanzable (`x/|x|+1>3` → `sign>2` → No solution).
+  - causa raíz: `sign_form_coeff` detecta `coeff·sign(g)` desde `Neg`/`Mul`/`Div` pero NO desde un `Add`/`Sub` con una constante, así que `x/|x| + 1` (= `Add(Div,1)`) no casaba → declinaba → el path genérico daba "No solution" o un rayo cerrado con el polo.
+  - fix: `sign_form_coeff_offset` envuelve a `sign_form_coeff` pelando una constante racional aditiva de un `Add`/`Sub` (`x/|x|+1`, `2-x/|x|`), devolviendo `(g, coeff, offset)` con `e = coeff·sign(g) + offset`. `try_solve_sign_via_abs` reduce `coeff·sign(g)+offset {op} k` ⟺ `sign(g) {op'} (k-offset)/coeff` (voltea op estricto si coeff<0), resuelto como condición de signo estricta con polo abierto.
+  - validación: workspace failed:0 (+ test `test_eval_sign_via_abs_with_additive_constant_excludes_pole`; los 2 tests previos de signo-vía-abs siguen verdes); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (solo los 2 suites auto-derivantes). Adversarial: 1800 formas (coeff∈{1,-1,2,-2}, d∈{-2..3}, k∈{-1..3}, op∈{=,<,>,≤,≥}, g=x-a) vs verdad por muestreo → 0 wrong.
+- retained learning:
+  - El reductor de signo-vía-abs cubría el factor multiplicativo (Familia 3) pero no el término aditivo; pelar el offset y restarlo del RHS (`(k-offset)/coeff`) generaliza a la forma afín completa `coeff·sign(g)+offset`. PATRÓN (otra vez): tras cerrar el coeficiente, el SIBLING es el offset — el envoltorio aditivo. Sondear los next-rungs tras cada familia caza al hermano barato.
+  - Candidatos sondeados a la vez: polinomio-en-exp inecuación (`e^(2x)-3e^x+2<0`) ya estaba CORRECTO (memoria stale); polinomio-en-trig (`sin(x)^2-1<0`) declina honesto (periódico, no wrong); affine-arg log inecuación (`ln(2x)^2-4<0`→"No solution") es el siguiente ciclo.

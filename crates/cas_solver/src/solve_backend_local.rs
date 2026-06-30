@@ -5310,6 +5310,50 @@ fn sign_form_coeff(
     }
 }
 
+/// Detect `e = coeff·sign(g) + offset` — the sign form [`sign_form_coeff`] plus an additive rational
+/// constant peeled from an enclosing `Add`/`Sub` (`x/|x| + 1`, `2 - x/|x|`). Returns `(g, coeff, offset)`.
+fn sign_form_coeff_offset(
+    simplifier: &mut Simplifier,
+    e: ExprId,
+    var: &str,
+) -> Option<(ExprId, num_rational::BigRational, num_rational::BigRational)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    // The bare sign form carries no offset.
+    if let Some((g, c)) = sign_form_coeff(simplifier, e, var) {
+        return Some((g, c, BigRational::zero()));
+    }
+    match simplifier.context.get(e).clone() {
+        Expr::Add(l, r) => {
+            if let Some(d) = as_rational_const(&simplifier.context, l) {
+                let (g, c, o) = sign_form_coeff_offset(simplifier, r, var)?;
+                Some((g, c, o + d))
+            } else if let Some(d) = as_rational_const(&simplifier.context, r) {
+                let (g, c, o) = sign_form_coeff_offset(simplifier, l, var)?;
+                Some((g, c, o + d))
+            } else {
+                None
+            }
+        }
+        Expr::Sub(l, r) => {
+            if let Some(d) = as_rational_const(&simplifier.context, r) {
+                // `l − d`: shift the offset down.
+                let (g, c, o) = sign_form_coeff_offset(simplifier, l, var)?;
+                Some((g, c, o - d))
+            } else if let Some(d) = as_rational_const(&simplifier.context, l) {
+                // `d − (coeff·sign(g) + o) = −coeff·sign(g) + (d − o)`.
+                let (g, c, o) = sign_form_coeff_offset(simplifier, r, var)?;
+                Some((g, -c, d - o))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Solve `sign(g(x)) {op} c` written as `g/|g| {op} c` (or `|g|/g {op} c`), `c` constant. Because
 /// `sign(g) ∈ {−1, +1}` (undefined at `g = 0`), the relation reduces to which of those two values
 /// satisfy `s {op} c`: only `+1` ⇒ `g > 0`; only `−1` ⇒ `g < 0`; both ⇒ `g ≠ 0`; neither ⇒ ∅. Solving
@@ -5327,33 +5371,34 @@ fn try_solve_sign_via_abs(
     use num_rational::BigRational;
     use num_traits::Zero;
 
-    // `(g, coeff)` such that the var side equals `coeff·sign(g)`; `k` is the constant other side; `op`
-    // is oriented so the relation reads `coeff·sign(g) {op} k`.
-    let (g, coeff, k, op) = if let Some((g, coeff)) = sign_form_coeff(simplifier, eq.lhs, var) {
-        if contains_var(&simplifier.context, eq.rhs, var) {
-            return None;
-        }
-        let k = as_rational_const(&simplifier.context, eq.rhs)?;
-        (g, coeff, k, eq.op.clone())
-    } else if let Some((g, coeff)) = sign_form_coeff(simplifier, eq.rhs, var) {
-        if contains_var(&simplifier.context, eq.lhs, var) {
-            return None;
-        }
-        // `k {op} coeff·sign(g)` ⟺ `coeff·sign(g) {flip op} k` (Eq/Neq are symmetric — left as-is).
-        let op = if matches!(eq.op, RelOp::Eq | RelOp::Neq) {
-            eq.op.clone()
+    // `(g, coeff, offset)` such that the var side equals `coeff·sign(g) + offset`; `k` is the constant
+    // other side; `op` is oriented so the relation reads `coeff·sign(g) + offset {op} k`.
+    let (g, coeff, offset, k, op) =
+        if let Some((g, coeff, offset)) = sign_form_coeff_offset(simplifier, eq.lhs, var) {
+            if contains_var(&simplifier.context, eq.rhs, var) {
+                return None;
+            }
+            let k = as_rational_const(&simplifier.context, eq.rhs)?;
+            (g, coeff, offset, k, eq.op.clone())
+        } else if let Some((g, coeff, offset)) = sign_form_coeff_offset(simplifier, eq.rhs, var) {
+            if contains_var(&simplifier.context, eq.lhs, var) {
+                return None;
+            }
+            // `k {op} coeff·sign(g)+offset` ⟺ `coeff·sign(g)+offset {flip op} k` (Eq/Neq symmetric).
+            let op = if matches!(eq.op, RelOp::Eq | RelOp::Neq) {
+                eq.op.clone()
+            } else {
+                flip_inequality(eq.op.clone())
+            };
+            let k = as_rational_const(&simplifier.context, eq.lhs)?;
+            (g, coeff, offset, k, op)
         } else {
-            flip_inequality(eq.op.clone())
+            return None;
         };
-        let k = as_rational_const(&simplifier.context, eq.lhs)?;
-        (g, coeff, k, op)
-    } else {
-        return None;
-    };
 
-    // Reduce `coeff·sign(g) {op} k` to `sign(g) {op} k/coeff`, flipping a strict op when `coeff < 0`
-    // (dividing an inequality by a negative). `Eq`/`Neq` are sign-independent.
-    let c = k / &coeff;
+    // Reduce `coeff·sign(g) + offset {op} k` to `sign(g) {op} (k−offset)/coeff`, flipping a strict op
+    // when `coeff < 0` (dividing an inequality by a negative). `Eq`/`Neq` are sign-independent.
+    let c = (k - offset) / &coeff;
     let op = if coeff < BigRational::zero() && !matches!(op, RelOp::Eq | RelOp::Neq) {
         flip_inequality(op)
     } else {

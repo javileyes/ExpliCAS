@@ -2858,6 +2858,45 @@ fn test_eval_sign_via_abs_with_coefficient_excludes_pole() {
 }
 
 #[test]
+fn test_eval_sign_via_abs_with_additive_constant_excludes_pole() {
+    // An ADDITIVE constant on the sign form (`sign(g) + d {op} k`) was not peeled, so the detector
+    // declined and the generic path returned "No solution" (or a closed ray with the `0/0` pole). The
+    // constant now folds into the reduced RHS: `coeff·sign(g) + offset {op} k ⟺ sign(g) {op} (k-offset)/coeff`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `sign(x) + 1 > 0` ⟺ `sign(x) > -1` ⟺ `x > 0` (pole open).
+    assert_eq!(r("solve(x/abs(x) + 1 > 0, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x/abs(x) + 1 = 2, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x/abs(x) - 1 < 0, x)"), "(-infinity, 0)");
+    assert_eq!(r("solve(x/abs(x) - 1 = 0, x)"), "(0, infinity)");
+    // `sign(x) > -2` holds for both sign values, so the whole domain minus the pole.
+    assert_eq!(
+        r("solve(2 + x/abs(x) > 0, x)"),
+        "(-infinity, 0) U (0, infinity)"
+    );
+    assert_eq!(
+        r("solve(x/abs(x) + 2 > 0, x)"),
+        "(-infinity, 0) U (0, infinity)"
+    );
+    // Negated sign with an offset: `-sign(x) + 1 > 0` ⟺ `sign(x) < 1` ⟺ `x < 0`. The `3 - sign(x)`
+    // constant exceeds the sign range, so again everything but the pole.
+    assert_eq!(r("solve(-x/abs(x) + 1 > 0, x)"), "(-infinity, 0)");
+    assert_eq!(
+        r("solve(3 - x/abs(x) > 0, x)"),
+        "(-infinity, 0) U (0, infinity)"
+    );
+    // Control: no offset (Family 3) and an unreachable reduced RHS stay correct.
+    assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x/abs(x) + 1 > 3, x)"), "No solution");
+}
+
+#[test]
 fn test_eval_polynomial_in_log_inequality_back_substitutes_through_exp() {
     // `P(ln(x)) {op} 0` (degree ≥ 2 in `ln(x)`) used to collapse to "No solution": the polynomial-in-u
     // path solved the EQUATION but the inequality dropped the band. It now solves for `u = ln(x)` and
