@@ -2897,6 +2897,57 @@ fn test_eval_sign_via_abs_with_additive_constant_excludes_pole() {
 }
 
 #[test]
+fn test_eval_sign_form_sum_partitions_at_poles() {
+    // A SUM of ≥2 sign forms `Σ cᵢ·sign(gᵢ) {op} k` is a step function (the simplifier combines it over a
+    // common denominator and the isolation path then returns "No solution" / a garbage residual). It now
+    // partitions ℝ at the `gᵢ = 0` poles, evaluates the constant sum on each open region, and keeps the
+    // satisfying ones — the poles excluded.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `sign(x+1) + sign(x-1) > 0` is +2 only on `(1, ∞)`.
+    assert_eq!(
+        r("solve((x+1)/abs(x+1) + (x-1)/abs(x-1) > 0, x)"),
+        "(1, infinity)"
+    );
+    assert_eq!(r("solve(x/abs(x) + (x-2)/abs(x-2) > 0, x)"), "(2, infinity)");
+    // A difference of signs (`sign(x) − sign(x-2)`) is +2 only between the poles.
+    assert_eq!(r("solve(x/abs(x) - (x-2)/abs(x-2) > 0, x)"), "(0, 2)");
+    // `= 0` keeps the middle region where the signs cancel.
+    assert_eq!(
+        r("solve((x+1)/abs(x+1) + (x-1)/abs(x-1) = 0, x)"),
+        "(-1, 1)"
+    );
+    // Three terms, and a constant RHS on the sum.
+    assert_eq!(
+        r("solve(x/abs(x) + (x-1)/abs(x-1) + (x-2)/abs(x-2) > 1, x)"),
+        "(2, infinity)"
+    );
+    assert_eq!(
+        r("solve((x+1)/abs(x+1) + (x-1)/abs(x-1) = 2, x)"),
+        "(1, infinity)"
+    );
+    // A weighted sum; `>= 0` holds on two regions, the pole between them excluded.
+    assert_eq!(
+        r("solve(2*x/abs(x) + (x-1)/abs(x-1) >= 0, x)"),
+        "(0, 1) U (1, infinity)"
+    );
+    assert_eq!(
+        r("solve(x/abs(x) + (x-2)/abs(x-2) >= 0, x)"),
+        "(0, 2) U (2, infinity)"
+    );
+    assert_eq!(r("solve(x/abs(x) + (x-2)/abs(x-2) < 0, x)"), "(-infinity, 0)");
+    // Controls: a SINGLE sign form (n = 1) stays with the dedicated handler.
+    assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x/abs(x) + 1 > 0, x)"), "(0, infinity)");
+}
+
+#[test]
 fn test_eval_polynomial_in_log_inequality_back_substitutes_through_exp() {
     // `P(ln(x)) {op} 0` (degree ≥ 2 in `ln(x)`) used to collapse to "No solution": the polynomial-in-u
     // path solved the EQUATION but the inequality dropped the band. It now solves for `u = ln(x)` and

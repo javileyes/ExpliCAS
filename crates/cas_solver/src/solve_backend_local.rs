@@ -4621,6 +4621,12 @@ fn solve_local_core(
     ) {
         return Ok((SolutionSet::Empty, Vec::new()));
     }
+    // A SUM of ≥2 sign forms `Σ cᵢ·sign(gᵢ) {op} k` (`(x+1)/|x+1| + (x-1)/|x-1| > 0`) is a step function;
+    // partition ℝ at the `gᵢ = 0` poles and test each region. The single-sign handler below keeps the
+    // `n = 1` case (this requires ≥ 2 sign terms).
+    if let Some(set) = try_solve_sign_sum_relation(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
     // `g/|g| {op} c` (or `|g|/g {op} c`) is `sign(g) {op} c`, sign ∈ {−1, +1} (undefined at g = 0).
     // Reduce to a sign condition on `g` so the OPEN intervals exclude the `g = 0` pole — the generic
     // path returned a CLOSED ray that wrongly includes the 0/0 point (`x/|x| = 1 → [0, ∞)`) or "No
@@ -5537,6 +5543,159 @@ fn sign_form_coeff_offset(
         }
         _ => None,
     }
+}
+
+/// Decompose `expr` into a sum of sign forms plus a rational offset: `expr = Σ cᵢ·sign(gᵢ) + offset`.
+/// Walks `Add`/`Sub` (tracking the running sign) and reads each leaf as either a sign form
+/// ([`sign_form_coeff`]) or a rational constant. Returns false if any leaf is neither.
+fn collect_sign_sum_terms(
+    simplifier: &mut Simplifier,
+    expr: ExprId,
+    var: &str,
+    sign: &num_rational::BigRational,
+    terms: &mut Vec<(ExprId, num_rational::BigRational)>,
+    offset: &mut num_rational::BigRational,
+) -> bool {
+    use cas_math::numeric_eval::as_rational_const;
+    match simplifier.context.get(expr).clone() {
+        Expr::Add(l, r) => {
+            collect_sign_sum_terms(simplifier, l, var, sign, terms, offset)
+                && collect_sign_sum_terms(simplifier, r, var, sign, terms, offset)
+        }
+        Expr::Sub(l, r) => {
+            let neg = -sign.clone();
+            collect_sign_sum_terms(simplifier, l, var, sign, terms, offset)
+                && collect_sign_sum_terms(simplifier, r, var, &neg, terms, offset)
+        }
+        _ => {
+            if let Some((g, c)) = sign_form_coeff(simplifier, expr, var) {
+                terms.push((g, sign.clone() * c));
+                true
+            } else if let Some(d) = as_rational_const(&simplifier.context, expr) {
+                *offset += sign.clone() * d;
+                true
+            } else {
+                false // a variable term that is not a sign form
+            }
+        }
+    }
+}
+
+/// Solve a SUM of at least two sign forms `Σ cᵢ·sign(gᵢ) {op} k` (each `gᵢ` affine in the variable) — a
+/// step function with jumps at the `gᵢ = 0` poles. `(x+1)/|x+1| + (x-1)/|x-1| > 0` was reported "No
+/// solution" (truth `(1, ∞)`). Partition ℝ at the sorted breakpoints `−bᵢ/aᵢ`, evaluate the (constant)
+/// sum on each open region with a rational test point, and keep the regions satisfying the relation; the
+/// breakpoints themselves are excluded (each is a `0/0` pole of its term).
+fn try_solve_sign_sum_relation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BoundType, Interval, RelOp};
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::solution_set::{neg_inf, pos_inf};
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    // Decompose the RAW sides (`Σ cᵢ·sign(gᵢ) + offset`) rather than `simplify(lhs − rhs)`: the
+    // simplifier combines a same-sign sum over a common denominator (`(x+1)/|x+1| + (x-1)/|x-1| →`
+    // a single fraction), which is no longer a readable sum of sign forms.
+    let mut terms: Vec<(ExprId, BigRational)> = Vec::new();
+    let mut offset = BigRational::zero();
+    let one = BigRational::from_integer(1.into());
+    let neg_one = -one.clone();
+    if !collect_sign_sum_terms(simplifier, eq.lhs, var, &one, &mut terms, &mut offset)
+        || !collect_sign_sum_terms(simplifier, eq.rhs, var, &neg_one, &mut terms, &mut offset)
+    {
+        return None;
+    }
+    if terms.len() < 2 {
+        return None; // a single sign form: the dedicated handler renders it cleanly
+    }
+    // Each `gᵢ` must be AFFINE (`aᵢ·x + bᵢ`); its breakpoint is the root `−bᵢ/aᵢ`.
+    let mut affine: Vec<(BigRational, BigRational, BigRational)> = Vec::new(); // (a, b, coeff)
+    for (g, c) in &terms {
+        let poly = Polynomial::from_expr(&simplifier.context, *g, var).ok()?;
+        if poly.degree() != 1 {
+            return None;
+        }
+        let a = poly.coeffs.get(1).cloned()?;
+        let b = poly
+            .coeffs
+            .first()
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if a.is_zero() {
+            return None;
+        }
+        affine.push((a, b, c.clone()));
+    }
+    let mut breaks: Vec<BigRational> = affine.iter().map(|(a, b, _)| -b / a).collect();
+    breaks.sort();
+    breaks.dedup();
+
+    // `Σ cᵢ·sign(aᵢ·t + bᵢ) + offset {op} 0` at a rational `t` (never a breakpoint, so every `aᵢ·t + bᵢ`
+    // is nonzero).
+    let satisfies = |t: &BigRational| -> bool {
+        let mut s = offset.clone();
+        for (a, b, c) in &affine {
+            let v = a * t + b;
+            if v > BigRational::zero() {
+                s += c.clone();
+            } else {
+                s -= c.clone();
+            }
+        }
+        match eq.op {
+            RelOp::Lt => s < BigRational::zero(),
+            RelOp::Leq => s <= BigRational::zero(),
+            RelOp::Gt => s > BigRational::zero(),
+            RelOp::Geq => s >= BigRational::zero(),
+            RelOp::Eq => s.is_zero(),
+            RelOp::Neq => !s.is_zero(),
+        }
+    };
+
+    // Regions: `(−∞, r₁)`, `(rⱼ, rⱼ₊₁)`, `(r_k, ∞)`; a satisfying region becomes an OPEN interval.
+    let n = breaks.len();
+    let one_r = BigRational::from_integer(1.into());
+    let two = BigRational::from_integer(2.into());
+    let mut intervals: Vec<Interval> = Vec::new();
+    for idx in 0..=n {
+        let t = if idx == 0 {
+            &breaks[0] - &one_r
+        } else if idx == n {
+            &breaks[n - 1] + &one_r
+        } else {
+            (&breaks[idx - 1] + &breaks[idx]) / &two
+        };
+        if !satisfies(&t) {
+            continue;
+        }
+        let min = if idx == 0 {
+            neg_inf(&mut simplifier.context)
+        } else {
+            simplifier
+                .context
+                .add(Expr::Number(breaks[idx - 1].clone()))
+        };
+        let max = if idx == n {
+            pos_inf(&mut simplifier.context)
+        } else {
+            simplifier.context.add(Expr::Number(breaks[idx].clone()))
+        };
+        intervals.push(Interval {
+            min,
+            min_type: BoundType::Open,
+            max,
+            max_type: BoundType::Open,
+        });
+    }
+    Some(match intervals.len() {
+        0 => SolutionSet::Empty,
+        1 => SolutionSet::Continuous(intervals.pop().unwrap()),
+        _ => SolutionSet::Union(intervals),
+    })
 }
 
 /// Solve `sign(g(x)) {op} c` written as `g/|g| {op} c` (or `|g|/g {op} c`), `c` constant. Because

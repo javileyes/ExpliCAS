@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 464 (newest first)
+Active entries: 465 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -17860,3 +17861,18 @@ Active entries: 464 (newest first)
   - El ORDEN DE DESPACHO importa: un handler nuevo más general puede interceptar formas que un handler especializado renderiza mejor; ponlo DESPUÉS para que solo capture el residual genuino. Un cambio sound (valor correcto) puede romper tests por la FORMA del render — juzga si es regresión de presentación (reordena) o captura legítima (actualiza contrato).
   - RESIDUAL HONESTO documentado: el caso degenerado de cuadrado perfecto con `≤`/`≥` (`x-4√x+4<=0` → `(√x-2)²≤0` → u-set DISCRETO `{2}` → `x={4}`) declina (el handler solo mapea intervalos, no conjuntos discretos). Es under-answer, no wrong. Siguiente peldaño menor: mapear el u-set discreto por `x=u^q`.
   - WRONG-ANSWER pendiente (P0, próximo): SUMA de formas de signo `(x+1)/|x+1| + (x-1)/|x-1| > 0` → "No solution" (verdad `(1,∞)`) — necesita un partidor multi-polo (step function), mecanismo nuevo no trivial.
+
+## 2026-07-01 - SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation` + `collect_sign_sum_terms`; despachada antes del handler de signo único)
+- status: `retained` (commit pendiente-de-hash). Wrong-answer P0 PRE-EXISTENTE (conjunto no vacío → "No solution"/garbage). Verificado adversarialmente (600 formas muestreadas vs verdad por muestreo, incl. polos: 0 wrong).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase.
+  - cell: `(x+1)/|x+1| + (x-1)/|x-1| > 0` → `(1,∞)` (era "No solution"); `x/|x| + (x-2)/|x-2| > 0` → `(2,∞)`; `x/|x| - (x-2)/|x-2| > 0` → `(0,2)`; `=0` → `(-1,1)`; 3 términos `>1` → `(2,∞)`; `=2` → `(1,∞)`; peso `2x/|x| + (x-1)/|x-1| >= 0` → `(0,1)∪(1,∞)` (dos regiones, polo intermedio excluido); `x/|x| + (x-2)/|x-2| >= 0` → `(0,2)∪(2,∞)`; `<0` → `(-∞,0)`. Controles: signo ÚNICO (n=1) sigue con su handler dedicado (`x/|x|=1`→`(0,∞)`).
+  - causa raíz: `try_solve_sign_via_abs` solo maneja UNA forma de signo. Una SUMA `Σ cᵢ·sign(gᵢ)` no casaba; peor, el simplificador la combina sobre denominador común → fracción única ilegible → "No solution"/residual garbage.
+  - fix: `collect_sign_sum_terms` descompone los lados CRUDOS (no `simplify(lhs-rhs)`, que combina) en `Σ cᵢ·sign(gᵢ) + offset` reusando `sign_form_coeff`. `try_solve_sign_sum_relation` (≥2 términos, cada `gᵢ` afín): es una función ESCALÓN con saltos en los polos `−bᵢ/aᵢ`; particiona ℝ en los breakpoints ordenados, evalúa la suma CONSTANTE en cada región abierta con un punto de prueba racional, y queda con las regiones que cumplen — los breakpoints excluidos (cada uno es polo 0/0 de su término).
+  - validación: workspace failed:0 (+ test `test_eval_sign_form_sum_partitions_at_poles`; los 3 tests previos de signo-vía-abs siguen verdes); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (solo los 2 suites auto-derivantes). Adversarial: 600 formas muestreadas (2-3 términos, coef {1,-1,2}, raíces {-1,0,1,2}, todos los ops, RHS {-1,0,1,2}) vs verdad por muestreo con chequeo de polos → 0 wrong.
+- retained learning:
+  - Una SUMA de formas con polo es una función ESCALÓN: particiona en los polos, evalúa el valor constante por región, conserva las que cumplen, excluye los polos. Generaliza el handler de signo único (n=1) a n≥2.
+  - CLAVE: descomponer los lados CRUDOS, no `simplify(lhs-rhs)` — el simplificador combina la suma de signos sobre denominador común y la vuelve ilegible. (Por eso el caso `Sub` funcionaba antes del fix y el `Add` no: el simplificador combinaba el `+` pero dejaba el `-`.) Cuando un handler descompone una ESTRUCTURA aditiva, lee el árbol crudo, no el simplificado.
+  - PATRÓN (cierre de la saga signo-vía-abs): Familia 3 (coeficiente) → D (offset aditivo) → SS (suma de términos). Cada peldaño añade un envoltorio; la suma es el más general (combinación lineal de signos).
