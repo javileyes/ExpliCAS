@@ -2975,6 +2975,54 @@ fn test_eval_squared_irrational_quadratic_factor_keeps_its_roots() {
 }
 
 #[test]
+fn test_eval_content_scaled_squared_quadratic_factor_keeps_roots() {
+    // A CONTENT / scalar-multiple wrapper on the squared-quadratic case dropped the irrational roots:
+    // `2·(x²-3)²·(x-1) = 0` returned `{1}`. After peeling the rational root, the deflated quotient is
+    // `2·(x²-3)²` — a NON-monic quartic, which the factorizer rejected. Normalizing the quotient to
+    // monic (dividing by the leading coefficient preserves the roots) recovers ±√3. The remaining
+    // higher-multiplicity cases (`(x²-3)³`, two distinct irrational-root factors) deflate past degree 4
+    // and stay residual — they need general ℚ-factorization.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Outer scalar content.
+    assert_eq!(
+        r("solve(2*(x^2-3)^2*(x-1) = 0, x)"),
+        "{ 1, sqrt(3), -3·3^(-1/2) }"
+    );
+    // Content folded INTO the squared factor (`(2x²-6)² = 4·(x²-3)²`).
+    assert_eq!(
+        r("solve((2*x^2-6)^2*(x-1) = 0, x)"),
+        "{ 1, sqrt(3), -3·3^(-1/2) }"
+    );
+    // A different scalar and root.
+    assert_eq!(
+        r("solve(3*(x^2-5)^2*(x-2) = 0, x)"),
+        "{ 2, sqrt(5), -5·5^(-1/2) }"
+    );
+    // NEGATIVE content (leading coefficient < 0) normalizes the same way.
+    assert_eq!(
+        r("solve(-2*(x^2-3)^2*(x-1) = 0, x)"),
+        "{ 1, sqrt(3), -3·3^(-1/2) }"
+    );
+    // Content on a non-repeated quartic (distinct factors) stays correct.
+    assert_eq!(
+        r("solve(2*x^4 - 10*x^2 + 12 = 0, x)"),
+        "{ sqrt(3), -(sqrt(3)), sqrt(2), -(sqrt(2)) }"
+    );
+    // Control: the monic case is unchanged.
+    assert_eq!(
+        r("solve((x^2-3)^2*(x-1) = 0, x)"),
+        "{ 1, sqrt(3), -3·3^(-1/2) }"
+    );
+}
+
+#[test]
 fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
     // A power-monomial inequality `c·x^e {op} k` is solved by the engine's MONOTONIC isolation, which
     // emits a single ray — correct ONLY when `x^e` is strictly monotonic (`e > 0`, odd numerator).

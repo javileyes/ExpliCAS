@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 460 (newest first)
+Active entries: 461 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -136,6 +136,7 @@ Active entries: 460 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (path de ecuación en `solve`: ... | SOUNDNESS (re-auditoría Familia 4): raíz extraña de ecuación radical `√(x+1)=-x` conserva el espurio `φ`
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff` reemplaza a... | SOUNDNESS (re-auditoría Familia 3): signo-vía-abs con COEFICIENTE `c·g/|g| {op} k` incluye el polo / da rayo cerrado
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`extract_affine_power_term`: ... | SOUNDNESS (re-auditoría Familia 6): inecuación valle con términos potencia SIN COMBINAR `x^(2/3)+x^(2/3) {op} k`
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_qu... | SOUNDNESS (re-auditoría Familia 5, sub-caso CONTENT): factor cuadrático irracional al cuadrado con CONTENIDO escalar suelta sus raíces
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17796,3 +17797,18 @@ Active entries: 460 (newest first)
   - El solver valle extrae del LHS CRUDO, donde `extract_affine_power_term` no combinaba like-terms (var en ambos lados del `Add`); combinar en el extractor (no depender del simplificador externo, que el solve no invoca sobre su LHS) es la cura mínima y delega al solver ya verificado. PATRÓN de la re-auditoría (6ª): el caso nombrado (un término) se cubre, el envoltorio (suma sin combinar) se suelta.
   - LECCIÓN de verificación: un barrido numérico que evalúa `|x|^(p/q)` en la FRONTERA exacta sufre redondeo float (`8**(2/3)≠4`); usar sympy exacto en los puntos de frontera (o tolerancia) evita falsos positivos. El engine es EXACTO ahí (open/closed correcto).
   - **Re-auditoría de 6 familias CERRADA salvo Familia 5** (F1 mult≥3/content, `(x²-3)³(x-1)=0`→`{1}`): KNOWN, requiere ℚ-factorización general — NO es un ciclo acotado, queda como peldaño grande documentado.
+
+## 2026-06-30 - SOUNDNESS (re-auditoría Familia 5, sub-caso CONTENT): factor cuadrático irracional al cuadrado con CONTENIDO escalar suelta sus raíces
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_quartic_factor`: normaliza el cociente deflactado a MÓNICO)
+- status: `retained` (commit pendiente-de-hash). Sub-caso CONTENT de la Familia 5 (=F1 remanente del P0). Wrong-answers PRE-EXISTENTES (soltaba ±√a). Verificado adversarialmente (48 formas `m·(x²-a)²·(x-b)=0` vs verdad sympy: 0 wrong).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase. Extensión acotada del fix F1 P0 (`45576c420`), reutiliza el factorizador de cuárticas.
+  - cell: `2(x²-3)²(x-1)=0` → `{1,√3,-√3}` (era `{1}`); `(2x²-6)²(x-1)=0` (=`4(x²-3)²(x-1)`) igual; `3(x²-5)²(x-2)=0` → `{2,√5,-√5}`; `-2(x²-3)²(x-1)=0` (contenido NEGATIVO) igual; `2x⁴-10x²+12=0` (contenido, factores distintos) → `{±√3,±√2}`. Controles: el caso mónico (`(x²-3)²(x-1)=0`) intacto.
+  - causa raíz: tras pelar las raíces racionales, `try_solve_polynomial_with_quartic_factor` exigía que el cociente cuártico fuera MÓNICO (`quotient[4]==1`). Un contenido / múltiplo escalar (`2·(x²-3)²` de `2(x²-3)²(x-1)`, o el `4·(x²-3)²` de `(2x²-6)²(x-1)`) deja el cociente con coeficiente líder ≠ 1 → declinaba → las raíces del factor repetido desaparecían.
+  - fix: normalizar el cociente a mónico dividiendo TODOS sus coeficientes por el líder (preserva las raíces: dividir un polinomio por una constante no nula no cambia sus ceros). Si los coeficientes mónicos resultan enteros, se factoriza `x⁴+bx³+cx²+dx+e` como antes; si no, declina (conservador). Cubre contenido externo, contenido dentro del factor cuadrático, y contenido negativo.
+  - validación: workspace failed:0 (+ test `test_eval_content_scaled_squared_quadratic_factor_keeps_roots`; el `test_eval_squared_irrational_quadratic_factor_keeps_its_roots` mónico sigue verde); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (solo los 2 suites auto-derivantes). Adversarial: 48 formas `m·(x²-a)²·(x-b)=0` (m∈{2,3,-2,5}, a∈{2,3,5,7}, b∈{1,2,-1}) vs verdad sympy → 0 wrong.
+- retained learning:
+  - El factorizador de cuárticas exigía mónico y soltaba el factor con contenido; normalizar a mónico ANTES de factorizar (dividir por el líder, preserva raíces) es la cura mínima que reutiliza el factorizador verificado. PATRÓN F1 (otra vez): el detector cubre el caso mónico nombrado y suelta el envoltorio escalar.
+  - RESIDUAL HONESTO documentado: las raíces irracionales de multiplicidad ≥3 (`(x²-3)³(x-1)=0`→`{1}`, deflacta a séxtica) y de DOS factores cuadráticos irracionales distintos (`(x²-3)²(x²-2)=0`, residual) siguen sin resolverse — necesitan ℚ-factorización GENERAL de grado >4, no un ciclo acotado. (El degrado-6 con cofactores RACIONALES sí funciona, p.ej. `(x²-3)²(x²-4)=0`, porque pela ±2 hasta una cuártica.) También queda el bug COSMÉTICO de duplicación `(x²-3)²=0`→`{√3,-√3,√3,-√3}` (raíces correctas, listadas 2×; va por el path de potencia, no el de cuártica).
+  - **Cierre de la re-auditoría de 6 familias: 5 cerradas + el sub-caso content de la 6ª (F5).** Lo único pendiente es ℚ-factorización general (mult≥3 / dos factores irracionales distintos) — peldaño grande, no acotado.

@@ -5121,7 +5121,7 @@ fn try_solve_polynomial_with_quartic_factor(
     use cas_solver_core::quadratic_formula::sqrt_expr;
     use cas_solver_core::rational_roots::{find_rational_roots, rational_to_expr};
     use num_rational::BigRational;
-    use num_traits::ToPrimitive;
+    use num_traits::{ToPrimitive, Zero};
     use std::collections::HashMap;
     const MAX_CANDIDATES: usize = 256;
 
@@ -5132,10 +5132,20 @@ fn try_solve_polynomial_with_quartic_factor(
         return None;
     }
     let (rational_roots, quotient) = find_rational_roots(poly.coeffs.clone(), MAX_CANDIDATES);
-    // The deflated quotient must be a MONIC quartic with integer coefficients.
+    // The deflated quotient must be a degree-4 factor.
     if quotient.len() != 5 {
         return None;
     }
+    // Normalize the quotient to MONIC. Dividing a polynomial by its (nonzero) leading coefficient
+    // preserves its roots, so a content / scalar-multiple factor — `2·(x²-3)²` from
+    // `2(x²-3)²(x-1)=0`, or the `4·(x²-3)²` of `(2x²-6)²(x-1)=0` — reduces to the monic `x⁴-6x²+9`
+    // that `factor_monic_quartic_into_rational_quadratics` reads; otherwise the non-monic leading
+    // coefficient made the factorizer decline and the repeated factor's irrational roots vanished.
+    let lead = quotient[4].clone();
+    if lead.is_zero() {
+        return None;
+    }
+    let monic: Vec<BigRational> = quotient.iter().map(|cf| cf / &lead).collect();
     let int_of = |r: &BigRational| -> Option<i64> {
         if r.is_integer() {
             r.to_i64()
@@ -5143,13 +5153,10 @@ fn try_solve_polynomial_with_quartic_factor(
             None
         }
     };
-    if int_of(&quotient[4])? != 1 {
-        return None;
-    }
-    let e = int_of(&quotient[0])?;
-    let d = int_of(&quotient[1])?;
-    let c = int_of(&quotient[2])?;
-    let b = int_of(&quotient[3])?;
+    let e = int_of(&monic[0])?;
+    let d = int_of(&monic[1])?;
+    let c = int_of(&monic[2])?;
+    let b = int_of(&monic[3])?;
     let ((p1, q1), (p2, q2)) = factor_monic_quartic_into_rational_quadratics(b, c, d, e)?;
 
     // Solve each monic quadratic `x² + p·x + q` for its real roots `(−p ± √(p²−4q))/2`.
