@@ -386,6 +386,7 @@ fn root_violates_required_condition(
     conds: &[ImplicitCondition],
 ) -> bool {
     use cas_math::root_forms::{provable_sign_vs_zero, provable_sign_vs_zero_const_radicand};
+    use num_traits::Zero;
     use std::cmp::Ordering;
 
     if conds.is_empty() {
@@ -395,7 +396,26 @@ fn root_violates_required_condition(
     // one (radicand `9 + 4e` etc.). Both are proofs, never float estimates, so a valid root is never
     // dropped — a `None` simply keeps the root.
     let sign_vs_zero = |ctx: &Context, at: ExprId| -> Option<Ordering> {
-        provable_sign_vs_zero(ctx, at).or_else(|| provable_sign_vs_zero_const_radicand(ctx, at))
+        provable_sign_vs_zero(ctx, at)
+            .or_else(|| provable_sign_vs_zero_const_radicand(ctx, at))
+            .or_else(|| {
+                // Exact interval bounds for the named constants `phi`, `e`, `π` and their arithmetic
+                // (`const_value_bounds` uses arbitrary-precision sqrt/interval arithmetic, never an f64
+                // estimate). This decides the sign of a root the surd parser cannot read — a radical
+                // equation whose squared quadratic is `x²-x-1` returns the golden-ratio constant `phi`,
+                // and `-phi < 0` is exactly what rejects the extraneous root of `√(x+1) = -x`.
+                let (lo, hi) = cas_math::const_sign::const_value_bounds(ctx, at)?;
+                let zero = num_rational::BigRational::zero();
+                if hi < zero {
+                    Some(Ordering::Less)
+                } else if lo > zero {
+                    Some(Ordering::Greater)
+                } else if lo.is_zero() && hi.is_zero() {
+                    Some(Ordering::Equal)
+                } else {
+                    None // bounds straddle 0 — undecided, keep the root
+                }
+            })
     };
     let var_id = ctx.var(var);
     for cond in conds {
@@ -4564,7 +4584,45 @@ fn solve_local_core(
             return Ok((unioned, steps));
         }
     }
-    let conds = ctx.required_conditions();
+    let mut conds = ctx.required_conditions();
+    // RADICAL-EQUATION RANGE CONDITION: an equation reducible to a single isolated radical
+    // `s·√f + rest = 0` ⟺ `√f = g` (g = −rest/s) carries the range constraint `g ≥ 0` (√ is
+    // nonnegative). Squaring loses it, so the solver returns BOTH quadratic roots — e.g.
+    // `√(x+1) = −x` yields `{φ, ½(1−√5)}` but `φ > 0` makes `−x < 0`, an extraneous root. Recording
+    // `NonNegative(g)` lets the EXACT surd-sign prover in `root_violates_required_condition` drop it.
+    // This is always sound: a genuine root has `g = √f ≥ 0`, so it can never violate; the prover only
+    // ever drops on a proof (a `None` keeps the root). The radicand's own `f ≥ 0` is already recorded.
+    if eq.op == cas_ast::RelOp::Eq {
+        let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+        let (d, _) = simplifier.simplify(diff);
+        if let Some((s, _f, rest)) = collect_radical_split(&simplifier.context, d, var) {
+            if !rest.is_empty()
+                && !rest
+                    .iter()
+                    .any(|&(_, t)| expr_contains_sqrt(&simplifier.context, t))
+            {
+                let mut r = simplifier.context.num(0);
+                for (sg, term) in rest {
+                    r = if sg >= 0 {
+                        simplifier.context.add(Expr::Add(r, term))
+                    } else {
+                        simplifier.context.add(Expr::Sub(r, term))
+                    };
+                }
+                // `s·√f = −rest` ⟹ `√f = −rest/s`; with `s = ±1`, `g = −r` (s>0) or `g = r` (s<0).
+                let g = if s >= 0 {
+                    simplifier.context.add(Expr::Neg(r))
+                } else {
+                    r
+                };
+                let (g, _) = simplifier.simplify(g);
+                let cond = ImplicitCondition::NonNegative(g);
+                if !conds.contains(&cond) {
+                    conds.push(cond);
+                }
+            }
+        }
+    }
     let set = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);
     // SOUNDNESS (RealOnly): drop a discrete solution that is provably NON-REAL — it carries the
     // imaginary unit `i`, `√(negative)`, or an EVEN root of a negative (`(-1)^(1/2)`). The inversion

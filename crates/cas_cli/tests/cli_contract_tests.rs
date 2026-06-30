@@ -1039,6 +1039,41 @@ fn test_eval_radical_inequality_fractional_constant_and_degenerate() {
 }
 
 #[test]
+fn test_eval_radical_equation_drops_extraneous_root_via_rhs_sign() {
+    // A single-radical equation `√f = g` carries the range constraint `g ≥ 0` (√ is nonnegative);
+    // squaring loses it, so the solver returned BOTH quadratic roots. `√(x+1) = -x` yielded
+    // `{φ, ½(1-√5)}`, but `φ > 0` makes the RHS `-x < 0` — extraneous. Recording `NonNegative(g)` lets
+    // the EXACT surd-sign prover drop it. The golden-ratio root is the named constant `phi`, whose sign
+    // the surd parser cannot read; the `const_value_bounds` fallback (arbitrary-precision interval
+    // arithmetic) decides `-phi < 0` exactly. A valid root has `g = √f ≥ 0`, so this never overdrops.
+    for (input, expected) in [
+        ("sqrt(x+1) = -x", "{ 1/2·(1 - sqrt(5)) }"),
+        ("sqrt(x+1) = -1*x", "{ 1/2·(1 - sqrt(5)) }"),
+        // φ is VALID here (`√(φ+1) = φ`), so it must be KEPT — the condition `x ≥ 0` holds at φ.
+        ("sqrt(x+1) = x", "{ phi }"),
+        // RATIONAL squared-roots already filtered, but the condition is consistent.
+        ("sqrt(x+6) = -x", "{ -2 }"),
+        ("sqrt(x) = x - 2", "{ 4 }"),
+        ("sqrt(x-1) = x - 3", "{ 5 }"),
+        ("sqrt(x+1) = x - 1", "{ 3 }"),
+        // Surd squared-roots with a non-unit RHS slope stay correct.
+        ("sqrt(x+1) = -2*x", "{ 1/8·(1 - sqrt(17)) }"),
+        // No real root survives the RHS-sign constraint.
+        ("sqrt(x-1) = -x", "No solution"),
+        // Pure isolation (constant RHS) unaffected.
+        ("sqrt(x) = 2", "{ 4 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_ln_of_even_numerator_power_uses_abs() {
     // `ln(x^(p/q))` with q ODD and p EVEN is real for EVERY x != 0 (under the
     // engine's real power semantics `(-8)^(2/3) = 4`), so it expands to
