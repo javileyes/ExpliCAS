@@ -3128,31 +3128,30 @@ fn try_solve_ln_square_inequality(
 /// periodic trig guard handles a SCALED argument `trig(a·x)=c`. An affine offset (`a·x+b`) or a
 /// non-positive coefficient declines (kept clean: the family set is sign-insensitive but renders
 /// awkwardly, and an offset shifts the base — out of this guard's scope).
-fn positive_linear_coeff_of_var(
+/// Extract the AFFINE argument `a·x + b` (positive rational slope `a`, rational offset `b`) of a trig
+/// call, so `sin(x − 1)`, `cos(2x + 1)` etc. are recognised — not only the pure `a·x` form. Returns
+/// `(a, b)` with `a > 0`. Declines a non-affine argument (`x²`, `√x`) or a non-rational offset.
+fn positive_affine_arg_of_var(
     ctx: &Context,
     arg: ExprId,
-    var_id: ExprId,
-) -> Option<num_rational::BigRational> {
-    use num_traits::{One, Signed};
-    if arg == var_id {
-        return Some(num_rational::BigRational::one());
+    var: &str,
+) -> Option<(num_rational::BigRational, num_rational::BigRational)> {
+    use cas_math::polynomial::Polynomial;
+    use num_traits::{Signed, Zero};
+    let poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if poly.degree() != 1 {
+        return None;
     }
-    if let Expr::Mul(l, r) = ctx.get(arg) {
-        let (l, r) = (*l, *r);
-        let factor = if r == var_id {
-            cas_math::numeric_eval::as_rational_const(ctx, l)
-        } else if l == var_id {
-            cas_math::numeric_eval::as_rational_const(ctx, r)
-        } else {
-            None
-        };
-        if let Some(a) = factor {
-            if a.is_positive() {
-                return Some(a);
-            }
-        }
+    let a = poly.coeffs.get(1).cloned()?;
+    let b = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(num_rational::BigRational::zero);
+    if !a.is_positive() {
+        return None; // keep the positive-slope convention; a < 0 left to the existing path
     }
-    None
+    Some((a, b))
 }
 
 /// Decompose `expr == A·trig(arg) + B` where `trig` is a SINGLE bare `Sin`/`Cos`/`Tan` call containing
@@ -3365,7 +3364,6 @@ pub(crate) fn try_solve_periodic_trig_equation(
     }
     let (lhs, _) = simplifier.simplify(eq.lhs);
     let (rhs, _) = simplifier.simplify(eq.rhs);
-    let var_id = simplifier.context.var(var);
 
     // `sin(arg)^2 = c`  <=>  `cos(2·arg) = 1 - 2c` ;  `cos(arg)^2 = c`  <=>  `cos(2·arg) = 2c - 1`.
     // Reduce a squared bare trig to the double-angle cosine equation and recurse: the cos branch's
@@ -3452,6 +3450,71 @@ pub(crate) fn try_solve_periodic_trig_equation(
         }
     }
 
+    // `trig(arg)^n = c` for an ODD integer n ≥ 3 and a constant c  ⇔  `trig(arg) = c^(1/n)` — the map
+    // t ↦ tⁿ is a bijection on ℝ for odd n, so this is exact. Reduces `cos(x)^3 = 1 → cos(x) = 1 →
+    // {2kπ}`; without it the bare fall-through isolated the principal root only (`{0}`). The n = 2
+    // square is handled by the double-angle reduction above; the n = 0 case (RHS already 0) by the
+    // zero reduction; even n ≥ 4 is left to the residual path.
+    {
+        // Restricted to sin/cos: tan(x)^n is rewritten by the simplifier (tan = sin/cos) into a form
+        // this Pow-matcher does not see, and the reduced tan(x) = c^(1/n) recursion mangled into a
+        // residual — leave tan powers to the existing path.
+        let odd_power_trig =
+            |ctx: &Context, e: ExprId| -> Option<(ExprId, BigRational, BuiltinFn)> {
+                if let Expr::Pow(base, exp) = ctx.get(e) {
+                    let (base, exp) = (*base, *exp);
+                    let n = cas_math::numeric_eval::as_rational_const(ctx, exp)?;
+                    if !n.is_integer() {
+                        return None;
+                    }
+                    let ni = n.to_integer();
+                    if ni < num_bigint::BigInt::from(3) || num_integer::Integer::is_even(&ni) {
+                        return None;
+                    }
+                    if let Expr::Function(fn_id, args) = ctx.get(base) {
+                        if args.len() == 1 && contains_var(ctx, args[0], var) {
+                            if let Some(f) = ctx.builtin_of(*fn_id) {
+                                if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos) {
+                                    return Some((base, n, f));
+                                }
+                            }
+                        }
+                    }
+                }
+                None
+            };
+        let hit = if !contains_var(&simplifier.context, rhs, var) {
+            odd_power_trig(&simplifier.context, lhs).map(|(call, n, f)| (call, n, f, rhs))
+        } else if !contains_var(&simplifier.context, lhs, var) {
+            odd_power_trig(&simplifier.context, rhs).map(|(call, n, f)| (call, n, f, lhs))
+        } else {
+            None
+        };
+        if let Some((trig_call, n, _f, c)) = hit {
+            // SOUNDNESS: sin/cos ∈ [−1, 1], so sin(x)ⁿ ∈ [−1, 1]; if the RHS is PROVABLY |c| > 1 the
+            // equation has NO real solution. Without this the reduced `sin(x) = c^(1/n)` (e.g.
+            // `sin(x)^3 = 2 → sin(x) = 2^(1/3)`) leaks a spurious non-real `arcsin(2^(1/3))` because the
+            // cube root is not a quadratic surd the range guard recognises.
+            if let Some((a, b, nn)) = cas_math::root_forms::as_linear_surd(&simplifier.context, c) {
+                let one = BigRational::one();
+                let vs_upper = linear_surd_sign(&(&a - &one), &b, &nn);
+                let vs_lower = linear_surd_sign(&(&a + &one), &b, &nn);
+                if vs_upper == std::cmp::Ordering::Greater || vs_lower == std::cmp::Ordering::Less {
+                    return Some(SolutionSet::Empty);
+                }
+            }
+            let inv_n = simplifier.context.add(Expr::Number(n.recip())); // 1/n
+            let root = simplifier.context.add(Expr::Pow(c, inv_n));
+            let (root, _) = simplifier.simplify(root);
+            let reduced = Equation {
+                lhs: trig_call,
+                rhs: root,
+                op: RelOp::Eq,
+            };
+            return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+        }
+    }
+
     // `A·trig(a·x) + B = C` (A ≠ 0, B and C constant) -> `trig(a·x) = (C − B)/A`, then recurse. Without
     // this the outside coefficient/offset leaves the trig side a `Mul`/`Add` that `detect` cannot see,
     // so the bare fall-through emitted only the principal value — an INCOMPLETE solution set presented
@@ -3479,31 +3542,31 @@ pub(crate) fn try_solve_periodic_trig_equation(
         }
     }
 
-    // `trig(a·x)` with a positive rational `a` -> `(func, a)`.
-    let detect = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, BigRational)> {
+    // `trig(a·x + b)` with a positive rational slope `a` and rational offset `b` -> `(func, a, b)`.
+    let detect = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, BigRational, BigRational)> {
         if let Expr::Function(fn_id, args) = ctx.get(e) {
             if args.len() == 1 {
-                if let Some(b) = ctx.builtin_of(*fn_id) {
-                    if matches!(b, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
-                        let a = positive_linear_coeff_of_var(ctx, args[0], var_id)?;
-                        return Some((b, a));
+                if let Some(f) = ctx.builtin_of(*fn_id) {
+                    if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
+                        let (a, b) = positive_affine_arg_of_var(ctx, args[0], var)?;
+                        return Some((f, a, b));
                     }
                 }
             }
         }
         None
     };
-    // `trig(a·x) = c` or `c = trig(a·x)`, with `c` constant.
-    let (func, coeff, c) = if let Some((f, a)) = detect(&simplifier.context, lhs) {
+    // `trig(a·x + b) = c` or `c = trig(a·x + b)`, with `c` constant.
+    let (func, coeff, offset, c) = if let Some((f, a, b)) = detect(&simplifier.context, lhs) {
         if contains_var(&simplifier.context, rhs, var) {
             return None;
         }
-        (f, a, rhs)
-    } else if let Some((f, a)) = detect(&simplifier.context, rhs) {
+        (f, a, b, rhs)
+    } else if let Some((f, a, b)) = detect(&simplifier.context, rhs) {
         if contains_var(&simplifier.context, lhs, var) {
             return None;
         }
-        (f, a, lhs)
+        (f, a, b, lhs)
     } else {
         return None;
     };
@@ -3559,13 +3622,16 @@ pub(crate) fn try_solve_periodic_trig_equation(
         _ => return None,
     };
 
-    // `u = a·x` ⇒ `x = u/a`: divide every base and the period by `a` (a > 1 SHRINKS the period:
-    // `cos(2x)=1 → {kπ}`). For `a = 1` this folds back to the bare family.
+    // `u = a·x + b` ⇒ `x = (u − b)/a`: shift every base by `−b` then divide it and the period by `a`
+    // (a > 1 SHRINKS the period: `cos(2x)=1 → {kπ}`). For `a = 1, b = 0` this folds back to the bare
+    // family; `b ≠ 0` handles the affine argument `sin(x − 1) = 0 → {1 + kπ}`.
     let a_expr = simplifier.context.add(Expr::Number(coeff));
+    let b_expr = simplifier.context.add(Expr::Number(offset));
     let bases: Vec<ExprId> = bases_u
         .into_iter()
-        .map(|b| {
-            let d = simplifier.context.add(Expr::Div(b, a_expr));
+        .map(|u| {
+            let shifted = simplifier.context.add(Expr::Sub(u, b_expr));
+            let d = simplifier.context.add(Expr::Div(shifted, a_expr));
             simplifier.simplify(d).0
         })
         .collect();

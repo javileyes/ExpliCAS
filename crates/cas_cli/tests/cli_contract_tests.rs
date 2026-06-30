@@ -2553,6 +2553,46 @@ fn test_eval_trig_equation_with_surd_rhs_keeps_full_periodic_family() {
 }
 
 #[test]
+fn test_eval_trig_equation_affine_argument_and_odd_power_keep_family() {
+    // Two more periodic-family-drop forms. (b) an AFFINE argument `sin(x - 1) = 0` returned only the
+    // principal `{1}` — the arg detector handled `a·x` but not `a·x + b`; it now peels the offset and
+    // shifts the family (`x = (u - b)/a`). (c) an ODD power `cos(x)^3 = 1` returned `{0}` — it now
+    // reduces `trig^n = c` (n odd) to `trig = c^(1/n)` (a bijection on ℝ) and recurses.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // (b) affine argument: shifted, scaled+shifted, and the c=1 single-family form.
+    assert_eq!(r("solve(sin(x-1)=0, x)"), "{ 1 + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x+1)=0, x)"), "{ 1/2·(pi - 2) + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(3*x-1)=0, x)"), "{ 1/3 + k·1/3·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x-1)=1, x)"), "{ 1 + k·2·pi : k ∈ ℤ }");
+    // (c) odd power = constant: real n-th root, then the full family.
+    assert_eq!(r("solve(cos(x)^3=1, x)"), "{ k·2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x)^3=1, x)"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x)^3=-1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
+    // sin(x)^5 = 1/32 -> sin(x) = 1/2 -> both branches.
+    assert_eq!(
+        r("solve(sin(x)^5=1/32, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // SOUNDNESS: sin(x)^n ∈ [-1, 1], so an out-of-range RHS has NO real solution (must not leak the
+    // spurious non-real arcsin(2^(1/3)) the cube-root reduction would otherwise produce).
+    assert_eq!(r("solve(sin(x)^3=2, x)"), "No solution");
+    assert_eq!(r("solve(cos(x)^3=8, x)"), "No solution");
+    // Controls: the n=2 square reduction and the bare/scaled forms are unchanged.
+    assert_eq!(r("solve(cos(x)^2=1, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(sin(2*x)=1/2, x)"),
+        "{ 1/12·pi + k·pi, 5/12·pi + k·pi : k ∈ ℤ }"
+    );
+}
+
+#[test]
 fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
     // `c/xⁿ {op} k` with an ODD `n ≥ 3` (or a surd-border even `n`) used to drop the sign-flip across
     // the x=0 pole, returning a complement / phantom ray / a union with the pole filled in. The

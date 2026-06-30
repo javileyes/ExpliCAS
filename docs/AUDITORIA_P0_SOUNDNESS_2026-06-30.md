@@ -195,10 +195,10 @@ solución**. El motor responde "infinitas soluciones, ecuaciones dependientes".
    (`(x²-3)²`, `(x²-3x+1)²`, biquadrática, grado-6 dos-raíces). Residual: no-monic
    `(2x²-3)²`, contenido `(2x²-6)²`, fraccionario `(x²-½)²`, mult≥3 `(x²-3)³`
    (necesitan factorización general sobre ℚ). 0 deltas de huella.
-3. ~~**F2 trig family-drop**~~ ✅ **PARCIAL** (commit pendiente) — RHS surd irracional
-   (`sin(x)=√2/2`→`{π/4+2kπ, 3π/4+2kπ}`) vía clasificación exacta `linear_surd_sign`;
-   verificado adversarialmente. Residual (F2b): argumento afín `sin(x-1)`, potencia
-   impar `cos³=1`, offset exterior irracional `2cos(x)+√2`, RHS transcendente `sin(x)=π/4`.
+3. ~~**F2 trig family-drop**~~ ✅ **HECHO (mayoría)** (2 commits) — RHS surd `sin(x)=√2/2`,
+   argumento afín `sin(x-1)=0→{1+kπ}`, potencia impar `cos³=1→{2kπ}` (con guarda
+   `|c|>1⇒∅`); todo verificado adversarialmente. Residual menor: offset exterior
+   irracional `2cos(x)+√2`, RHS transcendente `sin(x)=π/4`, `tan³=1`, `sin(x²)=0`.
 4. **F3 inecuación racional 2-polos** — normalizar `a/(x-p)±b/(x-q)` a `N/D` antes del
    análisis de signo (eco del fix `Add`-racional de una fracción).
 5. **F4 inecuación trig frontera** — dar el conjunto-punto periódico exacto en `=±1`,
