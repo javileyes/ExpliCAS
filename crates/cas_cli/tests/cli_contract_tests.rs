@@ -2468,6 +2468,45 @@ fn test_eval_periodic_trig_product_equation_unions_families() {
 }
 
 #[test]
+fn test_eval_trig_power_equation_keeps_periodicity() {
+    // A trig EXPRESSION that simplifies to a perfect square / odd power of a single trig
+    // (`cos(x)^2-1 -> -sin(x)^2`, `sin(x)*tan(x) -> sin^2/cos`, `(cos+1)(cos-1)sin -> -sin^3`)
+    // collapsed to a single (often duplicated) finite root because the squared-trig reduction only
+    // saw a bare `trig^2 = c` with the constant on the OTHER side and `n = 2`. Peeling a leading
+    // coefficient/`Neg` and reducing `trig(arg)^n = 0` to `trig(arg) = 0` (with a complementary-
+    // denominator guard for the quotient form) restores the full periodic family.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Squared / Neg / conjugate-factor forms.
+    assert_eq!(r("solve(cos(x)^2-1, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x)^2-1, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve((cos(x)-1)*(cos(x)+1), x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(-cos(x)^2, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    // Odd-power forms (sin^3 used to decline; -sin^3 collapsed to {0}).
+    assert_eq!(r("solve(sin(x)^3, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(cos(x)^3, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve((cos(x)+1)*(cos(x)-1)*sin(x), x)"),
+        "{ k·pi : k ∈ ℤ }"
+    );
+    // Quotient form with a complementary denominator (sin*tan = sin^2/cos).
+    assert_eq!(r("solve(sin(x)*tan(x), x)"), "{ k·pi : k ∈ ℤ }");
+    // Controls: the `= c` squared forms and non-trig equations are unchanged.
+    assert_eq!(r("solve(sin(x)^2 = 1, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(4*cos(x)^2 = 1, x)"),
+        "{ 1/3·pi + k·pi, 2/3·pi + k·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(x^2 - 1, x)"), "{ -1, 1 }");
+}
+
+#[test]
 fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
     // `c/xⁿ {op} k` with an ODD `n ≥ 3` (or a surd-border even `n`) used to drop the sign-flip across
     // the x=0 pole, returning a complement / phantom ray / a union with the pole filled in. The

@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 444 (newest first)
+Active entries: 445 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (recuperación por sign-analysi... | SOUNDNESS (P0 re-auditoría Clase B): inecuación polinómica `xⁿ−c` con raíz racional + residuo positivo-definido → "No solution"
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (P0 re-auditoría Clase A): ecuación trig que se reduce a potencia de un solo trig colapsa la familia periódica
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17542,3 +17543,17 @@ Active entries: 444 (newest first)
 - retained learning:
   - La recuperación de un valor desde un caso especializado puede engancharse a un estado de salida demasiado estrecho (`Discrete`): si la ruta primaria DECLINA a `Empty`/`Residual` en vez de devolver las raíces, hay que re-derivarlas (re-resolver la ecuación) y reusar el analizador que YA es sound por construcción (sus guardas rechazan conjuntos incompletos). Genérico: "si el recuperador exige Discrete pero la ruta primaria devuelve Empty, deriva las raíces aparte y pásalas al analizador con auto-chequeo".
   - siguiente de la re-auditoría: Clase A (ecuaciones trig que se simplifican a `sin²`/`cos²`/`sin³` colapsan a `{0,0}`/`{0}` — re-enganchar periodicidad en la ruta cuadrática-en-trig + dedup), Clase C (inecuaciones de raíz impar `1/x^(1/3)` — operator-drop / "No solution").
+
+## 2026-06-30 - SOUNDNESS (P0 re-auditoría Clase A): ecuación trig que se reduce a potencia de un solo trig colapsa la familia periódica
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation`: `peel_rational_coefficient` peela `Neg`/coeficiente; nueva reducción `c·trig(arg)^n = 0 ⇒ trig(arg)=0` con `reduces_to_trig_zero`/`trig_call_arg`)
+- status: `retained` (commit pendiente-de-hash). Clase A de la re-auditoría ([[soundness-reaudit-found-missed-forms]]). Wrong-answer PRE-EXISTENTE (no regresión).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento del orden de fase.
+  - cell: `solve(cos(x)^2-1)→{0,0}` (verdad {kπ}; cos²−1 simplifica a −sin²), `sin(x)^2-1→{π/2,π/2}` (verdad {π/2+kπ}), `(cos±1)(cos∓1)`, `sin(x)*tan(x)→{0}` (=sin²/cos), `(cos+1)(cos-1)sin→{0}` (=−sin³), `sin(x)^3→residual`. AHORA todos correctos (familia periódica completa), verificados por testigos (miembros satisfacen + no-miembro excluido).
+  - causa raíz: el reductor cuadrático-trig (`sin²=c ⇔ cos(2x)=1−2c`) solo casaba `A·trig(arg)^2` con la constante en el OTRO lado y exponente EXACTAMENTE 2 — sin manejar `Neg` (cos²−1→−sin²), ni potencias impares, ni la forma fracción. Fuera de ese patrón caía a la ruta cuadrática-en-trig que devuelve solo la raíz principal (duplicada).
+  - fix: (1) `peel_rational_coefficient` peela `Neg` (como −1) y `Mul` de constantes antes de detectar `trig²` → cubre `−sin²=0`, `cos²−1`. (2) nueva reducción: `c·trig(arg)^n = 0` (n≥2) o el cociente `c·trig^n / comp(arg)^m = 0` (denominador la trig COMPLEMENTARIA, ceros disjuntos sin/cos) ⇒ `trig(arg)=0` → solver periódico. La guarda de complementariedad mantiene SOUND el caso fracción (no dispara para `sin²/sin`, que comparte ceros).
+  - validación: workspace failed:0 (+ test de contrato `test_eval_trig_power_equation_keeps_periodicity`); clippy --workspace --all-targets limpio; engine-fast/scorecard/pressure pass; huella GUARD/PRESS IDÉNTICA (0 deltas).
+- retained learning:
+  - Un reductor de patrón estrecho (`A·trig² = c`, exponente literal 2, constante en el otro lado) pierde TODAS las formas que el simplificador reescribe hacia ese patrón con un envoltorio: `Neg` (cos²−1→−sin²), potencia distinta, cociente. Peelar el coeficiente racional (incl. `Neg`) ANTES de casar, y añadir la reducción trivial `trig^n=0 ⇒ trig=0`, recupera la familia. Para la forma cociente, la SOUNDNESS exige que el denominador no se anule en los ceros del numerador → restringir a denominador de la trig COMPLEMENTARIA (sin/cos disjuntos).
+  - siguiente de la re-auditoría: Clase C (inecuaciones de raíz impar `1/x^(1/3) > k` — operator-drop a `=0` / "No solution").

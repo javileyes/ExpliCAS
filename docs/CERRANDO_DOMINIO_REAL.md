@@ -180,7 +180,7 @@ pierde el envoltorio general".
 
 | Clase | Síntoma | Ejemplo | Verdad |
 |---|---|---|---|
-| **A** trig→potencia | colapsa a conjunto finito (a menudo DUPLICADO) | `solve(cos(x)^2-1)→{0,0}`, `solve(sin(x)*tan(x))→{0}` | `{kπ}` |
+| ~~**A**~~ ✅ trig→potencia | ~~colapsa a finito~~ **HECHO** (peel Neg/coef + `trig^n=0⇒trig=0`, guarda de complementariedad) | `{kπ}` |
 | ~~**B**~~ ✅ recíproca n≥7 / RHS racional | ~~inventa el rayo negativo~~ **HECHO** (sign-analysis sobre raíces de la ecuación + caps 6/8→12) | `(0,1)` |
 | **C** raíz impar | operator-drop / "No solution" | `solve(1/x^(1/3)>2)` (renderiza `=0`) | `(0,1/8)` |
 

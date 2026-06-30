@@ -3157,6 +3157,102 @@ fn accumulate_affine_trig(
     }
 }
 
+/// Peel a leading rational coefficient (including `Neg` as `-1` and nested `Mul`s of constants) off
+/// `e`, returning `(coefficient, core)` with `e = coefficient · core`. `cos(x)^2 - 1` simplifies to
+/// `-(sin(x)^2)`, so a `Neg` wrapper must be peeled for the squared-trig detector to see the trig.
+fn peel_rational_coefficient(ctx: &Context, e: ExprId) -> (num_rational::BigRational, ExprId) {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    use num_traits::One;
+    match ctx.get(e) {
+        Expr::Neg(inner) => {
+            let (c, core) = peel_rational_coefficient(ctx, *inner);
+            (-c, core)
+        }
+        Expr::Mul(l, r) => {
+            if let Some(a) = as_rational_const(ctx, *l) {
+                let (c, core) = peel_rational_coefficient(ctx, *r);
+                (a * c, core)
+            } else if let Some(a) = as_rational_const(ctx, *r) {
+                let (c, core) = peel_rational_coefficient(ctx, *l);
+                (a * c, core)
+            } else {
+                (BigRational::one(), e)
+            }
+        }
+        _ => (BigRational::one(), e),
+    }
+}
+
+/// `(builtin, arg)` if `e` is a single `sin`/`cos`/`tan` of an expression containing `var`.
+fn trig_call_arg(ctx: &Context, e: ExprId, var: &str) -> Option<(cas_ast::BuiltinFn, ExprId)> {
+    use cas_ast::BuiltinFn;
+    use cas_solver_core::isolation_utils::contains_var;
+    if let Expr::Function(fn_id, args) = ctx.get(e) {
+        if args.len() == 1 && contains_var(ctx, args[0], var) {
+            if let Some(b) = ctx.builtin_of(*fn_id) {
+                if matches!(b, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
+                    return Some((b, args[0]));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// When the equation `e = 0` reduces to `trig(arg) = 0`, return `(trig_builtin, arg)`. A power
+/// `c·trig(arg)^n` (n ≥ 2) is zero iff the trig is zero. A quotient `c·trig(arg)^n / d` is zero where
+/// its NUMERATOR is — and a numerator zero is a genuine solution only where the denominator does not
+/// also vanish, so the quotient form fires ONLY when the denominator is a power of the COMPLEMENTARY
+/// trig of the same argument (`sin`/`cos` zeros are disjoint), e.g. `sin·tan = sin²/cos`.
+fn reduces_to_trig_zero(
+    ctx: &Context,
+    e: ExprId,
+    var: &str,
+) -> Option<(cas_ast::BuiltinFn, ExprId)> {
+    use cas_ast::BuiltinFn;
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+    let (coeff, core) = peel_rational_coefficient(ctx, e);
+    if coeff.is_zero() {
+        return None;
+    }
+    match ctx.get(core) {
+        Expr::Pow(base, exp) => {
+            let n = as_rational_const(ctx, *exp)?;
+            if !n.is_integer() || n < BigRational::from_integer(2.into()) {
+                return None;
+            }
+            trig_call_arg(ctx, *base, var)
+        }
+        Expr::Div(num, den) => {
+            let (num_coeff, num_core) = peel_rational_coefficient(ctx, *num);
+            if num_coeff.is_zero() {
+                return None;
+            }
+            let (f, arg) = match ctx.get(num_core) {
+                Expr::Pow(base, _) => trig_call_arg(ctx, *base, var)?,
+                _ => trig_call_arg(ctx, num_core, var)?,
+            };
+            let (_, den_core) = peel_rational_coefficient(ctx, *den);
+            let (g, arg2) = match ctx.get(den_core) {
+                Expr::Pow(base, _) => trig_call_arg(ctx, *base, var)?,
+                _ => trig_call_arg(ctx, den_core, var)?,
+            };
+            let complement = match f {
+                BuiltinFn::Sin => BuiltinFn::Cos,
+                BuiltinFn::Cos => BuiltinFn::Sin,
+                _ => return None,
+            };
+            (g == complement
+                && cas_ast::ordering::compare_expr(ctx, arg, arg2) == std::cmp::Ordering::Equal)
+                .then_some((f, arg))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn try_solve_periodic_trig_equation(
     eq: &Equation,
     var: &str,
@@ -3182,19 +3278,7 @@ pub(crate) fn try_solve_periodic_trig_equation(
     // bare `trig(arg)^2`); the coefficient is folded into the constant side as `c/A` below. Without it
     // `4·cos(x)^2 = 1` skipped the reduction and emitted only the two base roots — no `+kπ` family.
     let squared = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, ExprId, BigRational)> {
-        let (coeff, core) = match ctx.get(e) {
-            Expr::Mul(l, r) => {
-                let (l, r) = (*l, *r);
-                if let Some(a) = cas_math::numeric_eval::as_rational_const(ctx, l) {
-                    (a, r)
-                } else if let Some(a) = cas_math::numeric_eval::as_rational_const(ctx, r) {
-                    (a, l)
-                } else {
-                    (BigRational::one(), e)
-                }
-            }
-            _ => (BigRational::one(), e),
-        };
+        let (coeff, core) = peel_rational_coefficient(ctx, e);
         if coeff.is_zero() {
             return None;
         }
@@ -3241,6 +3325,34 @@ pub(crate) fn try_solve_periodic_trig_equation(
             op: RelOp::Eq,
         };
         return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+    }
+
+    // `c·trig(arg)^n = 0` (n ≥ 2) and the complementary quotient `c·trig(arg)^n / comp(arg)^m = 0`
+    // are zero exactly where `trig(arg) = 0`. Covers the odd-power and `Neg` forms the n=2 reduction
+    // misses (`-sin(x)^3 = 0` from `(cos+1)(cos-1)·sin`; `sin(x)·tan(x) = sin²/cos = 0`), which else
+    // collapsed to the principal root only / a residual.
+    {
+        let is_zero = |ctx: &Context, e: ExprId| -> bool {
+            !contains_var(ctx, e, var)
+                && cas_math::numeric_eval::as_rational_const(ctx, e).is_some_and(|c| c.is_zero())
+        };
+        let hit = if is_zero(&simplifier.context, rhs) {
+            reduces_to_trig_zero(&simplifier.context, lhs, var)
+        } else if is_zero(&simplifier.context, lhs) {
+            reduces_to_trig_zero(&simplifier.context, rhs, var)
+        } else {
+            None
+        };
+        if let Some((f, arg)) = hit {
+            let zero = simplifier.context.num(0);
+            let trig_call = simplifier.context.call_builtin(f, vec![arg]);
+            let reduced = Equation {
+                lhs: trig_call,
+                rhs: zero,
+                op: RelOp::Eq,
+            };
+            return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+        }
     }
 
     // `A·trig(a·x) + B = C` (A ≠ 0, B and C constant) -> `trig(a·x) = (C − B)/A`, then recurse. Without
