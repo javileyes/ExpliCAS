@@ -2114,6 +2114,128 @@ fn try_solve_polynomial_in_log_inequality(
     })
 }
 
+/// Solve a polynomial-in-`x^(1/q)` INEQUALITY (`x − 3·√x + 2 < 0`, a quadratic in `√x`;
+/// `x^(2/3) − x^(1/3) − 2 < 0`, a quadratic in `x^(1/3)`) which the isolation path mis-reports as an
+/// honest-but-incomplete residual. Substitute `u = x^(1/q)`, solve the polynomial inequality `P(u) {op}
+/// 0` for the u-set, then map each u-interval back through `x = u^q` (monotonic increasing on the valid
+/// u-domain): even `q` ⇒ `u ≥ 0` (so the u-set is first intersected with `[0, ∞)` and `x ≥ 0`); odd `q`
+/// ⇒ all reals. Mirrors [`try_solve_rational_power_polynomial`] (its equation sibling).
+fn try_solve_rational_power_polynomial_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BoundType, Interval, RelOp};
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::solution_set::{
+        intersect_solution_sets, is_infinity, is_neg_infinity, neg_inf, pos_inf,
+    };
+    use num_bigint::BigInt;
+    use num_integer::Integer;
+    use num_rational::BigRational;
+    use num_traits::One;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (expr, _) = simplifier.simplify(diff); // radicals canonicalize to `x^(p/q)`
+    let mut exps: Vec<BigRational> = Vec::new();
+    if !collect_x_power_exponents(&simplifier.context, expr, var, &mut exps) || exps.is_empty() {
+        return None;
+    }
+    let q_big = exps.iter().fold(BigInt::one(), |acc, e| acc.lcm(e.denom()));
+    if q_big <= BigInt::one() {
+        return None; // q == 1: a plain polynomial inequality, owned by the normal path
+    }
+    let u_var = "__rps_u";
+    let u_expr = rebuild_x_powers_as_u(&mut simplifier.context, expr, var, u_var, &q_big);
+    // Degree ≥ 2 in u — a single power (degree 1) is the ordinary monotonic isolation's job.
+    if Polynomial::from_expr(&simplifier.context, u_expr, u_var)
+        .ok()?
+        .degree()
+        < 2
+    {
+        return None;
+    }
+    let zero = simplifier.context.num(0);
+    let u_eq = Equation {
+        lhs: u_expr,
+        rhs: zero,
+        op: eq.op.clone(),
+    };
+    let (u_set, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
+
+    // `u = x^(1/q)`: even q ⇒ `u ≥ 0` (and `x ≥ 0`); odd q ⇒ all reals.
+    let q_even = q_big.is_even();
+    let u_set = if q_even {
+        let lo = simplifier.context.num(0);
+        let hi = pos_inf(&mut simplifier.context);
+        let dom = SolutionSet::Continuous(Interval {
+            min: lo,
+            min_type: BoundType::Closed,
+            max: hi,
+            max_type: BoundType::Open,
+        });
+        intersect_solution_sets(&simplifier.context, u_set, dom)
+    } else {
+        u_set
+    };
+    let u_intervals: Vec<Interval> = match u_set {
+        SolutionSet::Empty => return Some(SolutionSet::Empty),
+        SolutionSet::AllReals => {
+            // Every real `u` satisfies: `x` is the whole u-domain image (`[0, ∞)` for even q, ℝ for odd).
+            if q_even {
+                let lo = simplifier.context.num(0);
+                let hi = pos_inf(&mut simplifier.context);
+                return Some(SolutionSet::Continuous(Interval {
+                    min: lo,
+                    min_type: BoundType::Closed,
+                    max: hi,
+                    max_type: BoundType::Open,
+                }));
+            }
+            return Some(SolutionSet::AllReals);
+        }
+        SolutionSet::Continuous(iv) => vec![iv],
+        SolutionSet::Union(v) => v,
+        _ => return None, // Discrete / Conditional / unsolved: leave to the existing path
+    };
+    // `x = u^q` is increasing on the valid u-domain, so each `(p, r) ↦ (p^q, r^q)` keeps its order and
+    // bound types. Building the power directly avoids the bound-comparator.
+    let pow_q = |simplifier: &mut Simplifier, bound: ExprId| -> ExprId {
+        let qn = simplifier
+            .context
+            .add(Expr::Number(BigRational::from(q_big.clone())));
+        let p = simplifier.context.add(Expr::Pow(bound, qn));
+        simplifier.simplify(p).0
+    };
+    let mut x_intervals: Vec<Interval> = Vec::with_capacity(u_intervals.len());
+    for iv in u_intervals {
+        let (min, min_type) = if is_neg_infinity(&simplifier.context, iv.min) {
+            (neg_inf(&mut simplifier.context), BoundType::Open) // odd q only
+        } else {
+            (pow_q(simplifier, iv.min), iv.min_type)
+        };
+        let (max, max_type) = if is_infinity(&simplifier.context, iv.max) {
+            (pos_inf(&mut simplifier.context), BoundType::Open)
+        } else {
+            (pow_q(simplifier, iv.max), iv.max_type)
+        };
+        x_intervals.push(Interval {
+            min,
+            min_type,
+            max,
+            max_type,
+        });
+    }
+    Some(if x_intervals.len() == 1 {
+        SolutionSet::Continuous(x_intervals.pop().unwrap())
+    } else {
+        SolutionSet::Union(x_intervals)
+    })
+}
+
 /// Return a `ln(arg)` subexpression of `expr` whose argument contains `var`
 /// (the substitution atom for [`try_solve_polynomial_in_log`]), or None.
 fn find_log_atom_containing_var(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
@@ -4571,6 +4693,14 @@ fn solve_local_core(
     // not by squaring blindly (which loses the RHS-sign branches and gives
     // wrong answers like `√x < x-2 → [0,1) ∪ (4,∞)`).
     if let Some(set) = try_solve_radical_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A polynomial-in-`x^(1/q)` inequality (`x − 3·√x + 2 < 0`, a quadratic in `√x`) is non-monotonic;
+    // the isolation path emits an honest-but-incomplete residual. Solve `P(u) {op} 0` (u = x^(1/q)) and
+    // map the u-intervals back through `x = u^q` (`u ≥ 0` domain for even q). Runs AFTER the valley /
+    // monomial-decline / single-radical handlers so a bare monomial (`x^(2/3) > 2`) or a radical-vs-linear
+    // (`√x < x/2 − 3`) keeps their cleaner rendering; this only catches the genuine mixed quadratics.
+    if let Some(set) = try_solve_rational_power_polynomial_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // `A(x) {op} B(x)` with BOTH sides carrying the variable and a RATIONAL difference: move everything

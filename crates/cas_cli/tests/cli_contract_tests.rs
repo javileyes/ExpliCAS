@@ -2949,10 +2949,7 @@ fn test_eval_affine_argument_polynomial_in_log_inequality() {
         wire["result"].as_str().unwrap_or("").to_string()
     };
     // Scaled argument `ln(2x)`: band `e^-2 < 2x < e^2`.
-    assert_eq!(
-        r("solve(ln(2*x)^2 - 4 < 0, x)"),
-        "(1 / (2·e^2), 1/2·e^2)"
-    );
+    assert_eq!(r("solve(ln(2*x)^2 - 4 < 0, x)"), "(1 / (2·e^2), 1/2·e^2)");
     // Shifted argument `ln(x-1)`: band `e < x-1 < e^2`.
     assert_eq!(
         r("solve(ln(x-1)^2 - 3*ln(x-1) + 2 < 0, x)"),
@@ -2974,6 +2971,47 @@ fn test_eval_affine_argument_polynomial_in_log_inequality() {
     // Controls: the bare `ln(x)` case and the single-`ln` affine isolation are unchanged.
     assert_eq!(r("solve(ln(x)^2 - 4 < 0, x)"), "(1 / e^2, e^2)");
     assert_eq!(r("solve(ln(2*x) > 1, x)"), "(1/2·e, infinity)");
+}
+
+#[test]
+fn test_eval_rational_power_polynomial_inequality() {
+    // A polynomial-in-`x^(1/q)` inequality (`x − 3√x + 2 < 0`, a quadratic in `√x`) used to emit an
+    // honest-but-incomplete residual. It now substitutes `u = x^(1/q)`, solves the u-inequality, and
+    // maps the u-band back through `x = u^q`, honouring the `u ≥ 0` (and `x ≥ 0`) domain for even q.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Quadratic in `√x` (q = 2 even): `1 < √x < 2 ⟺ 1 < x < 4`.
+    assert_eq!(r("solve(x - 3*sqrt(x) + 2 < 0, x)"), "(1, 4)");
+    assert_eq!(r("solve(x - 3*sqrt(x) + 2 <= 0, x)"), "[1, 4]");
+    // Complement keeps the domain edge `x = 0` (`√x < 1 ⟺ 0 ≤ x < 1`).
+    assert_eq!(
+        r("solve(x - 3*sqrt(x) + 2 > 0, x)"),
+        "[0, 1) U (4, infinity)"
+    );
+    assert_eq!(
+        r("solve(x - 3*sqrt(x) + 2 >= 0, x)"),
+        "[0, 1] U [4, infinity)"
+    );
+    assert_eq!(r("solve(x - 5*sqrt(x) + 6 < 0, x)"), "(4, 9)");
+    // Quadratic in `x^(1/3)` (q = 3 odd): the whole real line is the u-domain, so the band is signed.
+    assert_eq!(r("solve(x^(2/3) - x^(1/3) - 2 < 0, x)"), "(-1, 8)");
+    assert_eq!(
+        r("solve(x^(2/3) - x^(1/3) - 2 > 0, x)"),
+        "(-infinity, -1) U (8, infinity)"
+    );
+    // No constant term (`u² - 3u = u(u-3)`): `0 < √x < 3 ⟺ 0 < x < 9`, the pole at u=0 open.
+    assert_eq!(r("solve(x - 3*sqrt(x) < 0, x)"), "(0, 9)");
+    // Controls: a degree-1 `√x` stays the ordinary monotonic isolation, a plain polynomial is unchanged,
+    // and the equation form is untouched.
+    assert_eq!(r("solve(sqrt(x) - 2 < 0, x)"), "[0, 4)");
+    assert_eq!(r("solve(x^2 - 3*x + 2 < 0, x)"), "(1, 2)");
+    assert_eq!(r("solve(x - 5*sqrt(x) + 6 = 0, x)"), "{ 4, 9 }");
 }
 
 #[test]
@@ -3241,12 +3279,18 @@ fn test_eval_uncombined_like_power_terms_valley_inequality() {
         r("solve((x-1)^(2/3) + (x-1)^(2/3) > 8, x)"),
         "(-infinity, -7) U (9, infinity)"
     );
-    // Controls: UNLIKE terms (different exponent or base) are NOT combined — left to the residual /
-    // other paths; exact cancellation is empty; the odd-power and integer-power forms stay correct.
+    // UNLIKE exponents sharing the SAME base (`x^(2/3) + x^(4/3)`, a quartic in `x^(1/3)`) are not a
+    // single valley, but the rational-power-polynomial handler now solves them (`u⁴ + u² - 8 > 0`).
     assert_eq!(
         r("solve(x^(2/3) + x^(4/3) > 8, x)"),
-        "Solve: solve(x - (8 - x^(4/3))^(1 / 2/3) = 0, x) = 0"
+        "(-infinity, -((1/2·(sqrt(33) - 1))^(3/2))) U ((1/2·(sqrt(33) - 1))^(3/2), infinity)"
     );
+    // A DIFFERENT base (`(x-1)^(2/3)`) is not an `x`-power polynomial, so it stays residual.
+    assert_eq!(
+        r("solve(x^(2/3) + (x-1)^(2/3) > 8, x)"),
+        "Solve: solve(x - (8 - (x - 1)^(2/3))^(1 / 2/3) = 0, x) = 0"
+    );
+    // Exact cancellation is empty; the odd-power and integer-power forms stay correct.
     assert_eq!(r("solve(x^(2/3) - x^(2/3) > 0, x)"), "No solution");
     assert_eq!(r("solve(x^(1/3) + x^(1/3) > 8, x)"), "(64, infinity)");
     assert_eq!(

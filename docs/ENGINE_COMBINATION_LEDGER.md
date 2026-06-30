@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 463 (newest first)
+Active entries: 464 (newest first)
 
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -17843,3 +17844,19 @@ Active entries: 463 (newest first)
   - Generalizar de un átomo BARE a uno AFÍN: extraer (pendiente, intercepto) por `Polynomial::from_expr` grado 1 y mapear por la inversa afín, intercambiando límites si la pendiente es negativa. CLAVE: el `AllReals` en u no es `x>0` sino el DOMINIO `g>0` (`a·x+b>0`) — un medio-rayo afín; tratarlo como el intervalo abierto completo `(−∞,∞)` y pasarlo por el mismo mapeo da el dominio correcto automáticamente.
   - LECCIÓN DE VERIFICACIÓN (reincidente y crítica): un barrido reportó `checked=64` de 320; al escrutar, el `num()` del verificador no mapeaba `e`→Euler (sympify lo trataba como símbolo libre) → 256 intervalos con `e` se SALTABAN en silencio como 'bad'. Tras pasar `locals={'e':E,...}`: 320 checked, 0 wrong. SIEMPRE auditar el conteo `checked` vs el total — un verificador que se salta justo los casos que debe comprobar parece verde. (Gemela de la lección de la frontera float en la Familia 6.)
   - PATRÓN (de nuevo): tras cerrar el átomo bare, el next-rung es el envoltorio AFÍN — y la verificación adversarial debe cubrirlo de verdad, no saltárselo.
+
+## 2026-07-01 - CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_polynomial_inequality`, despachada DESPUÉS de los handlers de valle/decline/radical)
+- status: `retained` (commit pendiente-de-hash). Capability gap (under-answer → resuelto), no wrong-answer. Espejo de inecuación del `try_solve_rational_power_polynomial` (ecuación). Verificado adversarialmente (54 formas vs verdad numérica: 0 wrong).
+- capture:
+  - investment_class: capability (Fase 1, real univariable elemental — álgebra/solve). Convierte un residual honesto en respuesta correcta.
+  - cell: `x-3√x+2<0` → `(1,4)` (era residual); `>0` → `[0,1)∪(4,∞)` (borde de dominio `x=0` incluido); `<=0` → `[1,4]`; `x-5√x+6<0` → `(4,9)`; impar `x^(2/3)-x^(1/3)-2<0` (q=3) → `(-1,8)`; sin término constante `x-3√x<0` → `(0,9)`; y CUÁRTICA en `x^(1/3)`: `x^(2/3)+x^(4/3)>8` → `(-∞,-((√33-1)/2)^(3/2))∪(((√33-1)/2)^(3/2),∞)`. Controles: `√x-2<0` (grado 1, isolación) → `[0,4)`; `x²-3x+2<0` (poli normal) → `(1,2)`; ecuación `x-5√x+6=0` → `{4,9}`.
+  - causa raíz: la inecuación polinómica de grado ≥2 en `x^(1/q)` (q≥2) no tenía handler — solo existía el de ECUACIÓN; la isolación emitía un residual `solve(...)=0` honesto pero incompleto.
+  - fix: reusar `collect_x_power_exponents` + `rebuild_x_powers_as_u` (u=x^(1/q)), resolver la u-inecuación, y mapear cada u-intervalo por `x=u^q` (creciente en el dominio válido). q PAR ⇒ `u≥0` (intersecta el u-set con `[0,∞)`, x≥0); q IMPAR ⇒ todos los reales. Construir `u^q` directo evita el comparador de cotas.
+  - ORDEN DE DESPACHO (clave): el handler corre DESPUÉS de valle/decline/radical, no antes — si no, interceptaba `x^(2/3)>2` (valle) y `√x<x/2−3` (radical) y los renderizaba en forma `u^q` equivalente pero más fea (`(√7+1)²` vs `2(√7+4)`; `−8·2^(-3/2)` vs `−2^(3/2)`), rompiendo 3 tests. Reordenado: solo caza las cuadráticas MIXTAS genuinas (x y √x juntas).
+  - validación: workspace failed:0 (+ test `test_eval_rational_power_polynomial_inequality`; actualizado el control de [[Familia 6]] `x^(2/3)+x^(4/3)>8` de residual a resuelto — un ciclo que convierte residual en soportado actualiza el contrato); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (solo los 2 suites auto-derivantes). Adversarial: 54 formas (q∈{2,3}, 7 polinomios, 4 ops) vs verdad numérica → 0 wrong.
+- retained learning:
+  - El ORDEN DE DESPACHO importa: un handler nuevo más general puede interceptar formas que un handler especializado renderiza mejor; ponlo DESPUÉS para que solo capture el residual genuino. Un cambio sound (valor correcto) puede romper tests por la FORMA del render — juzga si es regresión de presentación (reordena) o captura legítima (actualiza contrato).
+  - RESIDUAL HONESTO documentado: el caso degenerado de cuadrado perfecto con `≤`/`≥` (`x-4√x+4<=0` → `(√x-2)²≤0` → u-set DISCRETO `{2}` → `x={4}`) declina (el handler solo mapea intervalos, no conjuntos discretos). Es under-answer, no wrong. Siguiente peldaño menor: mapear el u-set discreto por `x=u^q`.
+  - WRONG-ANSWER pendiente (P0, próximo): SUMA de formas de signo `(x+1)/|x+1| + (x-1)/|x-1| > 0` → "No solution" (verdad `(1,∞)`) — necesita un partidor multi-polo (step function), mecanismo nuevo no trivial.
