@@ -3075,6 +3075,58 @@ fn test_eval_wrapped_non_monotonic_power_inequality_declines_to_residual() {
 }
 
 #[test]
+fn test_eval_uncombined_like_power_terms_valley_inequality() {
+    // The solve path extracts the power term from the RAW LHS, where `x^(2/3) + x^(2/3)` (the variable
+    // on BOTH sides of the `Add`) hit the `(_, _) => None` arm and bypassed the valley reduction — the
+    // monotonic fall-through then dropped the `x < 0` ray (`> 8` gave `(8, ∞)`) or emitted garbage
+    // (`>= 8` gave `[-8, -8] ∪ [8, ∞)`). The extractor now COMBINES like power terms (same affine base
+    // and exponent), matching the standalone simplifier's `→ 2·x^(2/3)` fold.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(x^(2/3) + x^(2/3) > 8, x)"),
+        "(-infinity, -8) U (8, infinity)"
+    );
+    assert_eq!(
+        r("solve(x^(2/3) + x^(2/3) >= 8, x)"),
+        "(-infinity, -8] U [8, infinity)"
+    );
+    assert_eq!(r("solve(x^(2/3) + x^(2/3) < 8, x)"), "(-8, 8)");
+    // Mixed coefficients combine to 3·x^(2/3); three terms also fold.
+    assert_eq!(
+        r("solve(x^(2/3) + 2*x^(2/3) > 9, x)"),
+        "(-infinity, -(3^(3/2))) U (3^(3/2), infinity)"
+    );
+    assert_eq!(
+        r("solve(x^(2/3) + x^(2/3) + x^(2/3) > 12, x)"),
+        "(-infinity, -8) U (8, infinity)"
+    );
+    // Shifted base combines too.
+    assert_eq!(
+        r("solve((x-1)^(2/3) + (x-1)^(2/3) > 8, x)"),
+        "(-infinity, -7) U (9, infinity)"
+    );
+    // Controls: UNLIKE terms (different exponent or base) are NOT combined — left to the residual /
+    // other paths; exact cancellation is empty; the odd-power and integer-power forms stay correct.
+    assert_eq!(
+        r("solve(x^(2/3) + x^(4/3) > 8, x)"),
+        "Solve: solve(x - (8 - x^(4/3))^(1 / 2/3) = 0, x) = 0"
+    );
+    assert_eq!(r("solve(x^(2/3) - x^(2/3) > 0, x)"), "No solution");
+    assert_eq!(r("solve(x^(1/3) + x^(1/3) > 8, x)"), "(64, infinity)");
+    assert_eq!(
+        r("solve(x^2 + x^2 > 8, x)"),
+        "(-infinity, -2) U (2, infinity)"
+    );
+}
+
+#[test]
 fn test_eval_definite_integral_removable_pole_is_not_undefined() {
     // A rationalization step turns `1/(√x·(1+x))` into `(√x³−√x)/(x³−x)`, inventing a SPURIOUS
     // denominator root at x=1 where the numerator also vanishes (removable). The FTC pole scan used

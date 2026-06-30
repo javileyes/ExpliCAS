@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 459 (newest first)
+Active entries: 460 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -135,6 +135,7 @@ Active entries: 459 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log_... | SOUNDNESS (re-auditoría Familia 2): inecuación polinómica en `ln(x)` `P(ln(x)) {op} 0` colapsa a "No solution"
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (path de ecuación en `solve`: ... | SOUNDNESS (re-auditoría Familia 4): raíz extraña de ecuación radical `√(x+1)=-x` conserva el espurio `φ`
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff` reemplaza a... | SOUNDNESS (re-auditoría Familia 3): signo-vía-abs con COEFICIENTE `c·g/|g| {op} k` incluye el polo / da rayo cerrado
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`extract_affine_power_term`: ... | SOUNDNESS (re-auditoría Familia 6): inecuación valle con términos potencia SIN COMBINAR `x^(2/3)+x^(2/3) {op} k`
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17780,3 +17781,18 @@ Active entries: 459 (newest first)
   - Un detector que exige IGUALDAD ESTRUCTURAL entre el numerador y el argumento del `abs` se pierde toda forma con coeficiente; pelar el coeficiente racional (vía `num/a` constante) y reescalar el RHS (`k/c`, volteando el op si `c<0`) generaliza a TODO `c·sign(g)`. PATRÓN de la re-auditoría (la 4ª familia con la misma forma): el detector bare cubre el caso nombrado y suelta el envoltorio (aquí el coeficiente/`Neg`); la cura es reducir a la condición canónica (signo estricto con polo abierto), no parchear el caso.
   - El bug declarado era "coef. NEGATIVO" pero el sondeo reveló que CUALQUIER `c≠1` fallaba (incl. `3x/|x|` positivo) — sondear la frontera real antes de implementar amplió el alcance del fix (y lo hizo más barato: una sola reducción cubre neg y pos).
   - re-auditoría: quedan Familia 5 (F1 mult≥3/content — conocida, necesita ℚ-factorización general) y Familia 6 (valle Add sin combinar — baja). Las 4 familias de alto/medio ROI (1,2,4,3) están cerradas.
+
+## 2026-06-30 - SOUNDNESS (re-auditoría Familia 6): inecuación valle con términos potencia SIN COMBINAR `x^(2/3)+x^(2/3) {op} k`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`extract_affine_power_term`: brazo `(true, true)` que COMBINA términos potencia like en `Add`/`Sub`)
+- status: `retained` (commit pendiente-de-hash). Familia 6 de [[reaudit-post-fixes-six-families]]. Wrong-answers PRE-EXISTENTES (rayo único en vez de dos, o garbage). Verificado adversarialmente (180 formas `c1·x^(2/3)+c2·x^(2/3) {op} k` vs verdad sympy EXACTA, incl. fronteras: 0 wrong).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase. Extensión MECÁNICA de la familia valle (combina y delega al solver valle ya verificado).
+  - cell: `x^(2/3)+x^(2/3)>8` → `(-∞,-8)∪(8,∞)` (era `(8,∞)`, perdía el rayo `x<0`); `≥8` → `(-∞,-8]∪[8,∞)` (era garbage `[-8,-8]∪[8,∞)`); `<8` → `(-8,8)`; `x^(2/3)+2x^(2/3)>9` → `(-∞,-3^(3/2))∪(3^(3/2),∞)`; 3 términos `+x^(2/3)·3>12`; base desplazada `(x-1)^(2/3)+(x-1)^(2/3)>8` → `(-∞,-7)∪(9,∞)`. Controles: exponentes distintos (`x^(2/3)+x^(4/3)`) y bases distintas (`x^(2/3)+(x-1)^(2/3)`) → residual honesto (no combinables); cancelación `x^(2/3)-x^(2/3)>0` → No solution (guard `c.is_zero()`); impar `x^(1/3)+x^(1/3)>8`→`(64,∞)` (monótono); entero `x²+x²>8` (polinómico).
+  - causa raíz: `try_solve_even_power_valley_inequality` extrae el término potencia del LHS CRUDO (`eq.lhs`); `extract_affine_power_term` solo manejaba `Add(l,r)` con la var en UN lado (`(true,false)`/`(false,true)`), así que `x^(2/3)+x^(2/3)` (var en AMBOS) caía al `_ => None` → el valle declinaba → fall-through monótono que trataba `x^(2/3)` como creciente (un solo rayo) o emitía garbage. El simplificador standalone SÍ combina `→ 2x^(2/3)`, pero el LHS de solve no se combina antes de extraer.
+  - fix: brazo `(true, true)` en `Add`/`Sub`: extrae ambos lados y COMBINA si son términos LIKE (misma base afín por `compare_expr`, mismo exponente) — `Add`: `(c1+c2)·αˣ + (d1+d2)`; `Sub`: `(c1-c2)·αˣ + (d1-d2)`. Bases/exponentes distintos → `None` (a los otros paths). El solver valle ya verificado recibe el coeficiente combinado; el guard `c.is_zero()` cubre la cancelación.
+  - validación: workspace failed:0 (+ test `test_eval_uncombined_like_power_terms_valley_inequality`; los contratos de decline `power_monomial`/`non_monotonic` siguen verdes); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (solo los 2 suites auto-derivantes). Adversarial: 180 formas vs sympy exacto (con puntos de frontera exactos `±(k/C)^(3/2)` y open/closed) → 0 wrong (los 6 "wrong" del primer barrido eran artefactos float de `8**(2/3)=3.9999…` en la frontera, no del engine).
+- retained learning:
+  - El solver valle extrae del LHS CRUDO, donde `extract_affine_power_term` no combinaba like-terms (var en ambos lados del `Add`); combinar en el extractor (no depender del simplificador externo, que el solve no invoca sobre su LHS) es la cura mínima y delega al solver ya verificado. PATRÓN de la re-auditoría (6ª): el caso nombrado (un término) se cubre, el envoltorio (suma sin combinar) se suelta.
+  - LECCIÓN de verificación: un barrido numérico que evalúa `|x|^(p/q)` en la FRONTERA exacta sufre redondeo float (`8**(2/3)≠4`); usar sympy exacto en los puntos de frontera (o tolerancia) evita falsos positivos. El engine es EXACTO ahí (open/closed correcto).
+  - **Re-auditoría de 6 familias CERRADA salvo Familia 5** (F1 mult≥3/content, `(x²-3)³(x-1)=0`→`{1}`): KNOWN, requiere ℚ-factorización general — NO es un ciclo acotado, queda como peldaño grande documentado.

@@ -2352,10 +2352,16 @@ fn extract_affine_power_term(
     num_rational::BigRational,
     num_rational::BigRational,
 )> {
+    use cas_ast::ordering::compare_expr;
     use cas_math::numeric_eval::as_rational_const;
     use cas_solver_core::isolation_utils::contains_var;
     use num_rational::BigRational;
     use num_traits::{One, Zero};
+    // Two affine power terms are LIKE (combinable) when they share the affine base and the exponent.
+    let like =
+        |ctx: &Context, a1: ExprId, x1: &BigRational, a2: ExprId, x2: &BigRational| -> bool {
+            x1 == x2 && compare_expr(ctx, a1, a2) == std::cmp::Ordering::Equal
+        };
     match ctx.get(e) {
         Expr::Neg(inner) => {
             let (c, a, x, d) = extract_affine_power_term(ctx, *inner, var)?;
@@ -2372,7 +2378,15 @@ fn extract_affine_power_term(
                     let (c, a, x, d) = extract_affine_power_term(ctx, r, var)?;
                     Some((c, a, x, d + as_rational_const(ctx, l)?))
                 }
-                _ => None,
+                // Both sides carry the variable: combine LIKE power terms
+                // (`x^(2/3) + x^(2/3) → 2·x^(2/3)`), which the standalone simplifier folds but the raw
+                // solve LHS does not. Unlike bases/exponents stay `None` (left to the other paths).
+                (true, true) => {
+                    let (c1, a1, x1, d1) = extract_affine_power_term(ctx, l, var)?;
+                    let (c2, a2, x2, d2) = extract_affine_power_term(ctx, r, var)?;
+                    like(ctx, a1, &x1, a2, &x2).then(|| (c1 + c2, a1, x1, d1 + d2))
+                }
+                (false, false) => None,
             }
         }
         Expr::Sub(l, r) => {
@@ -2387,7 +2401,12 @@ fn extract_affine_power_term(
                     let (c, a, x, d) = extract_affine_power_term(ctx, r, var)?;
                     Some((-c, a, x, as_rational_const(ctx, l)? - d))
                 }
-                _ => None,
+                (true, true) => {
+                    let (c1, a1, x1, d1) = extract_affine_power_term(ctx, l, var)?;
+                    let (c2, a2, x2, d2) = extract_affine_power_term(ctx, r, var)?;
+                    like(ctx, a1, &x1, a2, &x2).then(|| (c1 - c2, a1, x1, d1 - d2))
+                }
+                (false, false) => None,
             }
         }
         Expr::Mul(l, r) => {
