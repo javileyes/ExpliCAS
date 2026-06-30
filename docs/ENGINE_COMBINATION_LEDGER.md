@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 450 (newest first)
+Active entries: 451 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -126,6 +126,7 @@ Active entries: 450 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`factor_monic_quartic_into_ra... | SOUNDNESS (auditoría P0, Familia 1): factor cuadrático irreducible AL CUADRADO suelta sus raíces irracionales en solve
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (auditoría P0, Familia 2a): ecuación trig `sin/cos(x)=c` con RHS SURD irracional colapsa a su valor principal
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (auditoría P0, Familia 2b): ecuación trig con argumento AFÍN o potencia IMPAR colapsa la familia periódica
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (transform two-sided en el dis... | SOUNDNESS (auditoría P0, Familia 3): inecuación racional de dos polos `A(x) {op} B(x)` produce basura
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17638,3 +17639,17 @@ Active entries: 450 (newest first)
   - Una reducción `f(t)=c → t=f⁻¹(c)` que reusa una ruta downstream con guarda de dominio INCOMPLETA puede CREAR respuestas espurias: `sin³=2 → sin=2^(1/3)` filtró un arcsin no-real (la guarda de rango solo cubría surds cuadráticos). Una reducción debe re-verificar el dominio del resultado (`|c|>1`⇒∅ para sin/cos) ANTES de delegar. La verificación adversarial lo cazó; los tests verdes no.
   - Extraer el afín `a·x+b` con `Polynomial::from_expr` (grado 1) es más robusto que un matcher `Mul` a mano que solo veía `a·x`.
   - siguiente de la auditoría: Familia 3 (inecuación racional 2-polos) o Familia 4 (inecuación trig de frontera).
+
+## 2026-06-30 - SOUNDNESS (auditoría P0, Familia 3): inecuación racional de dos polos `A(x) {op} B(x)` produce basura
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (transform two-sided en el dispatch, antes de `try_solve_rational_constant_inequality`)
+- status: `retained` (commit pendiente-de-hash). Familia 3 de [[p0-audit-2026-06-30-eight-families]]. Wrong-answer PRE-EXISTENTE (no regresión).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase.
+  - cell: `1/(x-1) > 1/(x+1)` daba la cota basura `(-∞,-inf^(1/2))∪(inf^(1/2),∞)`. AHORA `(-∞,-1)∪(1,∞)`. Igual `1/(x+2)>1/(x-2)`→`(-2,2)`, `3/(x-1)>3/(x+1)`, `1/(x-1)<1/(x+1)`→`(-1,1)`, `1/(x-1)>3/(x+1)`→`(-∞,-1)∪(1,2)` (antes `{2}`), `1/(x-1)>x`→`(-∞,(1-√5)/2)∪(1,φ)` (antes "No solution"), `2/(x-1)≥3/(x-2)`→`(-∞,-1]∪(1,2)`. Controles intactos: formas ya correctas `1/(x-1)>2/(x+1)`, radical `sqrt(x)>x-2` (no preempt), polinómica `x²>x` (declina la ruta racional, va por la suya).
+  - causa raíz: `try_solve_rational_constant_inequality` exige RHS CONSTANTE (`as_rational_const(rhs)?`). Con `A(x) {op} B(x)` (RHS con variable) declina, y la forma de dos fracciones caía a una ruta general que, cuando el numerador de la diferencia es una CONSTANTE no nula (`1/(x-1)-1/(x+1)=2/(x²-1)`), resolvía la ecuación frontera `1/(x-1)=1/(x+1)` (insatisfacible) y degeneraba la cota en `√∞`. La forma EXPLÍCITA de diferencia `1/(x-1)-1/(x+1)>0` SÍ resolvía bien (RHS=0 constante).
+  - fix: cuando ambos lados llevan la variable y la DIFERENCIA `lhs-rhs` es racional (`split_rational_inequality_lhs` con denominador grado ≥1), reescribir a `(lhs-rhs) {op} 0` y enrutar por la ruta verificada `N/D {op} 0`. Gateado a diferencia racional ⇒ no preempta las inecuaciones de dos lados con radical/exp/trig (manejadas antes), y a denominador grado ≥1 ⇒ las polinómicas declinan y van por su ruta.
+  - validación: workspace failed:0 (+ test `test_eval_two_sided_rational_inequality_moves_to_one_side` con controles radical/polinómica/ya-correcta); clippy `-p cas_solver --all-targets` limpio; huella GUARD/PRESS por baseline-FIEL: **0 deltas estructurales**.
+- retained learning:
+  - Un handler que exige RHS constante deja sin red las formas `A(x) {op} B(x)`; la normalización canónica (mover todo a un lado, `(A-B) {op} 0`) las reduce al caso resuelto. Hacerla TEMPRANA y gateada por "la diferencia es del tipo que sé resolver" evita preemptar otros handlers. Mismo patrón que el fix `Add`-racional de una sola fracción ([[rational-sum-inequality-collapses-to-equation]]) extendido al caso de dos fracciones separadas por el operador.
+  - siguiente de la auditoría: Familia 4 (inecuación trig de frontera `sin(x)≥1`→rayo, debe ser conjunto-punto periódico) o Familia 7 (sign-vía-abs) o Familia 5 (potencia envuelta).

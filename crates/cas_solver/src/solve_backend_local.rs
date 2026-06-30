@@ -3889,6 +3889,34 @@ fn solve_local_core(
     if let Some(set) = try_solve_radical_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
+    // `A(x) {op} B(x)` with BOTH sides carrying the variable and a RATIONAL difference: move everything
+    // to one side so the RHS is the constant 0 and the verified `N/D {op} 0` path below applies. The
+    // two-sided form `1/(x-1) > 1/(x+1)` otherwise reached a path that emitted a garbage `inf^(1/2)`
+    // bound when the difference numerator is a nonzero constant (`→ 2/(x²-1) > 0`), even though the
+    // explicit-difference form `1/(x-1) - 1/(x+1) > 0` solved correctly. Gated to a rational difference,
+    // so radical / exponential / trig two-sided inequalities (handled above) are not preempted, and to
+    // a denominator of degree ≥ 1 (a polynomial difference declines and falls through to its own path).
+    if matches!(
+        eq.op,
+        cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
+    ) && cas_solver_core::isolation_utils::contains_var(&simplifier.context, eq.lhs, var)
+        && cas_solver_core::isolation_utils::contains_var(&simplifier.context, eq.rhs, var)
+    {
+        let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+        if split_rational_inequality_lhs(&mut simplifier.context, diff, var)
+            .is_some_and(|(_, den)| den.degree() >= 1)
+        {
+            let zero = simplifier.context.num(0);
+            let reduced = Equation {
+                lhs: diff,
+                rhs: zero,
+                op: eq.op.clone(),
+            };
+            if let Some(set) = try_solve_rational_constant_inequality(simplifier, &reduced, var) {
+                return Ok((set, Vec::new()));
+            }
+        }
+    }
     // `N / D {op} c` with a polynomial denominator (e.g. `1/(x²+1) < 1/2`, `1/x³ < 8`,
     // `5/x² > 1/4`): with `P = N − c·D`, solve `P {op} 0` where `D > 0` and `P {flip op} 0`
     // where `D < 0`, then NUMERICALLY verify the candidate before returning it (the general

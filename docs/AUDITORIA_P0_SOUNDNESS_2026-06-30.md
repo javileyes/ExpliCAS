@@ -199,8 +199,9 @@ solución**. El motor responde "infinitas soluciones, ecuaciones dependientes".
    argumento afín `sin(x-1)=0→{1+kπ}`, potencia impar `cos³=1→{2kπ}` (con guarda
    `|c|>1⇒∅`); todo verificado adversarialmente. Residual menor: offset exterior
    irracional `2cos(x)+√2`, RHS transcendente `sin(x)=π/4`, `tan³=1`, `sin(x²)=0`.
-4. **F3 inecuación racional 2-polos** — normalizar `a/(x-p)±b/(x-q)` a `N/D` antes del
-   análisis de signo (eco del fix `Add`-racional de una fracción).
+4. ~~**F3 inecuación racional 2-polos**~~ ✅ **HECHO** (commit pendiente) — reescribe
+   `A(x) {op} B(x)` → `(A−B) {op} 0` (diferencia racional, denom grado≥1) y enruta por
+   la ruta verificada `N/D {op} 0`. 0 deltas de huella.
 5. **F4 inecuación trig frontera** — dar el conjunto-punto periódico exacto en `=±1`,
    y declinar/ℝ-menos-puntos en `<1`,`>-1`.
 6. **F5 potencia envuelta** — extender el detector de Clase C: mover constante

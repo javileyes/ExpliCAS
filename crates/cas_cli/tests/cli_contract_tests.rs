@@ -2626,6 +2626,51 @@ fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
 }
 
 #[test]
+fn test_eval_two_sided_rational_inequality_moves_to_one_side() {
+    // `A(x) {op} B(x)` with the variable on BOTH sides and a rational difference (`1/(x-1) > 1/(x+1)`)
+    // reached a path that emitted a garbage `inf^(1/2)` bound when the difference numerator is a nonzero
+    // constant — or `{2}` / "No solution" for other shapes — even though the explicit-difference form
+    // solved correctly. It is now moved to one side (`(A - B) {op} 0`) and routed through the verified
+    // `N/D {op} 0` path.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Constant-numerator difference (the `inf^(1/2)` garbage case).
+    assert_eq!(
+        r("solve(1/(x-1) > 1/(x+1), x)"),
+        "(-infinity, -1) U (1, infinity)"
+    );
+    assert_eq!(r("solve(1/(x+2) > 1/(x-2), x)"), "(-2, 2)");
+    assert_eq!(
+        r("solve(3/(x-1) > 3/(x+1), x)"),
+        "(-infinity, -1) U (1, infinity)"
+    );
+    assert_eq!(r("solve(1/(x-1) < 1/(x+1), x)"), "(-1, 1)");
+    // A linear-numerator difference (was returning the boundary point `{2}`).
+    assert_eq!(r("solve(1/(x-1) > 3/(x+1), x)"), "(-infinity, -1) U (1, 2)");
+    // Fraction vs a polynomial side (was "No solution"); irrational golden-ratio bounds.
+    assert_eq!(
+        r("solve(1/(x-1) > x, x)"),
+        "(-infinity, 1/2·(1 - sqrt(5))) U (1, phi)"
+    );
+    // Non-strict keeps the numerator zero as a CLOSED endpoint, poles excluded.
+    assert_eq!(
+        r("solve(2/(x-1) >= 3/(x-2), x)"),
+        "(-infinity, -1] U (1, 2)"
+    );
+    // Controls: an already-correct two-sided form, a radical two-sided (NOT preempted), and a
+    // polynomial two-sided (declines the rational path, solved by its own).
+    assert_eq!(r("solve(1/(x-1) > 2/(x+1), x)"), "(-infinity, -1) U (1, 3)");
+    assert_eq!(r("solve(sqrt(x) > x - 2, x)"), "[0, 4)");
+    assert_eq!(r("solve(x^2 > x, x)"), "(-infinity, 0) U (1, infinity)");
+}
+
+#[test]
 fn test_eval_high_degree_polynomial_inequality_with_rational_root() {
     // `xⁿ - c > 0` for odd n with a RATIONAL root (`x⁵-1 = (x-1)(x⁴+x³+x²+x+1)`) used to return
     // "No solution": the inequality path declined because it could not certify the positive-definite
