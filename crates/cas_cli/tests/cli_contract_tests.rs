@@ -2928,10 +2928,52 @@ fn test_eval_polynomial_in_log_inequality_back_substitutes_through_exp() {
         r("solve(ln(x)^2 - 4 >= 0, x)"),
         "(0, 1 / e^2] U [e^2, infinity)"
     );
-    // Controls: a single `ln` (degree 1) stays the ordinary monotonic isolation; the equation form and a
-    // NON-bare argument (`ln(2x)`, left to the existing path) are unchanged.
+    // Controls: a single `ln` (degree 1) stays the ordinary monotonic isolation, and the equation form
+    // is unchanged.
     assert_eq!(r("solve(ln(x) > 1, x)"), "(e, infinity)");
     assert_eq!(r("solve(ln(x)^2 - 3*ln(x) + 2 = 0, x)"), "{ e, e^2 }");
+}
+
+#[test]
+fn test_eval_affine_argument_polynomial_in_log_inequality() {
+    // A polynomial-in-`ln(g)` inequality with an AFFINE argument `g = a·x + b` (`ln(2x)`, `ln(x-1)`)
+    // used to return "No solution" (the handler was restricted to the bare `ln(x)`). The u-band now maps
+    // back through the affine inverse `x = (e^u − b)/a`: `u ∈ (p, q) ⟺ x ∈ ((e^p − b)/a, (e^q − b)/a)`,
+    // with the bounds swapping when a < 0 and the `−∞` end giving the domain edge `−b/a`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Scaled argument `ln(2x)`: band `e^-2 < 2x < e^2`.
+    assert_eq!(
+        r("solve(ln(2*x)^2 - 4 < 0, x)"),
+        "(1 / (2·e^2), 1/2·e^2)"
+    );
+    // Shifted argument `ln(x-1)`: band `e < x-1 < e^2`.
+    assert_eq!(
+        r("solve(ln(x-1)^2 - 3*ln(x-1) + 2 < 0, x)"),
+        "(1 + e, e^2 + 1)"
+    );
+    // Complement with the domain edge `x > 1/3` kept open.
+    assert_eq!(
+        r("solve(ln(3*x-1)^2 - 4 >= 0, x)"),
+        "(1/3, (e^2 + 1) / (3·e^2)] U [1/3·(e^2 + 1), infinity)"
+    );
+    // Negative slope `ln(1-x)` (a = -1): the bounds swap, giving `1 - e^2 < x < 1 - e^-2`.
+    assert_eq!(
+        r("solve(ln(1-x)^2 - 4 < 0, x)"),
+        "(1 - e^2, -(1 - e^2) / e^2)"
+    );
+    // AllReals in u ⇒ the affine DOMAIN `g > 0` (`2x > 0 ⟺ x > 0`), NOT a blanket `x > 0` coincidence.
+    assert_eq!(r("solve(ln(2*x)^2 + 1 > 0, x)"), "(0, infinity)");
+    assert_eq!(r("solve(ln(x-1)^2 + 1 < 0, x)"), "No solution");
+    // Controls: the bare `ln(x)` case and the single-`ln` affine isolation are unchanged.
+    assert_eq!(r("solve(ln(x)^2 - 4 < 0, x)"), "(1 / e^2, e^2)");
+    assert_eq!(r("solve(ln(2*x) > 1, x)"), "(1/2·e, infinity)");
 }
 
 #[test]

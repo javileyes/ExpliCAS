@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 462 (newest first)
+Active entries: 463 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -138,6 +138,7 @@ Active entries: 462 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`extract_affine_power_term`: ... | SOUNDNESS (re-auditoría Familia 6): inecuación valle con términos potencia SIN COMBINAR `x^(2/3)+x^(2/3) {op} k`
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_with_qu... | SOUNDNESS (re-auditoría Familia 5, sub-caso CONTENT): factor cuadrático irracional al cuadrado con CONTENIDO escalar suelta sus raíces
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff_offset` envu... | SOUNDNESS (sibling de Familia 3): signo-vía-abs con CONSTANTE ADITIVA `sign(g) + d {op} k` da "No solution" / incluye el polo
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log_... | SOUNDNESS (next-rung de Familia 2): inecuación polinómica en `ln(g)` con ARGUMENTO AFÍN da "No solution"
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17827,3 +17828,18 @@ Active entries: 462 (newest first)
 - retained learning:
   - El reductor de signo-vía-abs cubría el factor multiplicativo (Familia 3) pero no el término aditivo; pelar el offset y restarlo del RHS (`(k-offset)/coeff`) generaliza a la forma afín completa `coeff·sign(g)+offset`. PATRÓN (otra vez): tras cerrar el coeficiente, el SIBLING es el offset — el envoltorio aditivo. Sondear los next-rungs tras cada familia caza al hermano barato.
   - Candidatos sondeados a la vez: polinomio-en-exp inecuación (`e^(2x)-3e^x+2<0`) ya estaba CORRECTO (memoria stale); polinomio-en-trig (`sin(x)^2-1<0`) declina honesto (periódico, no wrong); affine-arg log inecuación (`ln(2x)^2-4<0`→"No solution") es el siguiente ciclo.
+
+## 2026-06-30 - SOUNDNESS (next-rung de Familia 2): inecuación polinómica en `ln(g)` con ARGUMENTO AFÍN da "No solution"
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log_inequality`: generaliza el back-sub de `ln(x)` bare a `ln(a·x+b)` afín)
+- status: `retained` (commit pendiente-de-hash). Next-rung documentado de la Familia 2 ([[reaudit-post-fixes-six-families]]). Wrong-answers PRE-EXISTENTES. Verificado adversarialmente (320 formas `P(ln(a·x+b)) {op} 0` vs verdad numérica EXACTA, 0 skipped, 0 wrong).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase.
+  - cell: `ln(2x)^2-4<0` → `(1/(2e²), e²/2)` (era "No solution"); `ln(x-1)^2-3ln(x-1)+2<0` → `(1+e, e²+1)`; `ln(3x-1)^2-4>=0` → `(1/3, (e²+1)/(3e²)] ∪ [(e²+1)/3, ∞)` (era garbage "All real numbers if x > 1/3"); pendiente NEGATIVA `ln(1-x)^2-4<0` → `(1-e², 1-e^-2)` (los límites se intercambian, a<0); dominio afín `ln(2x)^2+1>0` → `(0,∞)` (NO un `x>0` casual). Controles: bare `ln(x)` (Familia 2) y `ln` simple afín (isolación monótona) intactos.
+  - causa raíz: el handler de la Familia 2 estaba restringido al átomo BARE `ln(var)` (`args[0]==var_id`), así que `ln(2x)`, `ln(x-1)` declinaban → "No solution" (o garbage por el path antiguo).
+  - fix: extraer el argumento `g` del átomo `ln(g)`, exigir `g` AFÍN (`Polynomial::from_expr` grado 1 → pendiente `a`, intercepto `b`, a≠0), y mapear cada u-intervalo `(p,q)` por la inversa afín `x = (e^u − b)/a`: `(e^p, e^q)` y luego `(·−b)/a`, intercambiando min/max cuando `a<0`; el extremo `−∞→0` da el borde de dominio `−b/a` (abierto, `g>0`). `AllReals` (p.ej. `ln(g)^2+1>0`) se trata como el intervalo abierto `(−∞,∞)` que mapea al dominio afín `g>0` (no a `x>0`). El bare `ln(x)` es `a=1,b=0` (subsumido).
+  - validación: workspace failed:0 (+ test `test_eval_affine_argument_polynomial_in_log_inequality`; la Familia 2 bare sigue verde); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (solo los 2 suites auto-derivantes). Adversarial: 320 formas (a∈{1,2,-1,3}, b∈{0,-1,1,3}, 5 polinomios en u, op∈{<,>,≤,≥}) vs verdad numérica → 0 wrong.
+- retained learning:
+  - Generalizar de un átomo BARE a uno AFÍN: extraer (pendiente, intercepto) por `Polynomial::from_expr` grado 1 y mapear por la inversa afín, intercambiando límites si la pendiente es negativa. CLAVE: el `AllReals` en u no es `x>0` sino el DOMINIO `g>0` (`a·x+b>0`) — un medio-rayo afín; tratarlo como el intervalo abierto completo `(−∞,∞)` y pasarlo por el mismo mapeo da el dominio correcto automáticamente.
+  - LECCIÓN DE VERIFICACIÓN (reincidente y crítica): un barrido reportó `checked=64` de 320; al escrutar, el `num()` del verificador no mapeaba `e`→Euler (sympify lo trataba como símbolo libre) → 256 intervalos con `e` se SALTABAN en silencio como 'bad'. Tras pasar `locals={'e':E,...}`: 320 checked, 0 wrong. SIEMPRE auditar el conteo `checked` vs el total — un verificador que se salta justo los casos que debe comprobar parece verde. (Gemela de la lección de la frontera float en la Familia 6.)
+  - PATRÓN (de nuevo): tras cerrar el átomo bare, el next-rung es el envoltorio AFÍN — y la verificación adversarial debe cubrirlo de verdad, no saltárselo.

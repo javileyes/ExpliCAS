@@ -1968,22 +1968,41 @@ fn try_solve_polynomial_in_log_inequality(
 ) -> Option<SolutionSet> {
     use cas_ast::{BoundType, BuiltinFn, Constant, Interval, RelOp};
     use cas_math::polynomial::Polynomial;
-    use cas_solver_core::solution_set::{is_infinity, is_neg_infinity};
+    use cas_solver_core::solution_set::{is_infinity, is_neg_infinity, neg_inf, pos_inf};
+    use num_rational::BigRational;
+    use num_traits::Zero;
     if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
         return None;
     }
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
-    let (expr, _) = simplifier.simplify(diff); // P(ln(x))
+    let (expr, _) = simplifier.simplify(diff); // P(ln(g))
     let atom = find_log_atom_containing_var(&simplifier.context, expr, var)?;
-    // Restrict to the BARE `ln(var)` atom: the back-substitution `ln(x) ∈ (a, b) ⟺ x ∈ (e^a, e^b)` is
-    // then a direct interval map (e^· is increasing). A compound argument (`ln(2x)`, `ln(x-1)`) is left
-    // to the existing path.
-    let var_id = simplifier.context.var(var);
-    let bare_ln = matches!(simplifier.context.get(atom),
+    // The atom must be `ln(g)` with `g` AFFINE in the variable (`g = a·x + b`, a ≠ 0). The back-sub
+    // `u = ln(g) ∈ (p, q) ⟺ g ∈ (e^p, e^q) ⟺ x ∈ ((e^p − b)/a, (e^q − b)/a)` is then an affine image of
+    // the exponential band (the bounds swap when a < 0). The bare `ln(x)` case is just `a = 1, b = 0`.
+    let g_arg = match simplifier.context.get(atom) {
         Expr::Function(fn_id, args)
-            if args.len() == 1 && args[0] == var_id
-            && simplifier.context.is_builtin(*fn_id, BuiltinFn::Ln));
-    if !bare_ln {
+            if args.len() == 1 && simplifier.context.is_builtin(*fn_id, BuiltinFn::Ln) =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+    let g_poly = Polynomial::from_expr(&simplifier.context, g_arg, var).ok()?;
+    if g_poly.degree() != 1 {
+        return None; // non-affine argument (`ln(x²)`, `ln(sin x)`) — left to other paths
+    }
+    let a = g_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero); // slope
+    let b = g_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero); // intercept
+    if a.is_zero() {
         return None;
     }
     let u_var = "__lns_u";
@@ -2011,46 +2030,82 @@ fn try_solve_polynomial_in_log_inequality(
     };
     let (u_set, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
 
-    // Map the u-set through `x = e^u` (increasing): `(a, b) → (e^a, e^b)`, `-∞ → 0` (the `x > 0`
-    // domain), `+∞ → +∞`. Building `e^bound` directly avoids the bound-comparator (which could not
-    // order `1/e²` against `e²` and collapsed the band to ∅).
+    // Map the u-set through `x = (e^u − b)/a`. `AllReals` (e.g. `ln(g)^2 + 1 > 0`) is the full band
+    // `u ∈ (−∞, +∞)`, which maps to the DOMAIN `g > 0` — an affine half-line at `−b/a`, NOT `x > 0` —
+    // so it runs through the same mapping as an open `(−∞, +∞)` interval.
     let u_intervals: Vec<Interval> = match u_set {
         SolutionSet::Empty => return Some(SolutionSet::Empty),
         SolutionSet::AllReals => {
-            return Some(cas_solver_core::solution_set::open_positive_domain(
-                &mut simplifier.context,
-            ))
+            let lo = neg_inf(&mut simplifier.context);
+            let hi = pos_inf(&mut simplifier.context);
+            vec![Interval {
+                min: lo,
+                min_type: BoundType::Open,
+                max: hi,
+                max_type: BoundType::Open,
+            }]
         }
         SolutionSet::Continuous(iv) => vec![iv],
         SolutionSet::Union(v) => v,
         _ => return None, // Discrete / Conditional / unsolved: leave to the existing path
     };
+    // `g = e^u` (`e^(−∞) = 0`, `e^(+∞) = +∞`). Building the bound directly avoids the bound-comparator
+    // (which could not order `1/e²` against `e²` and collapsed the band to ∅).
     let exp_of = |simplifier: &mut Simplifier, bound: ExprId| -> ExprId {
         let e = simplifier.context.add(Expr::Constant(Constant::E));
         let p = simplifier.context.add(Expr::Pow(e, bound));
         simplifier.simplify(p).0
     };
+    // `x = (g − b)/a` for a finite g-bound.
+    let affine_x = |simplifier: &mut Simplifier,
+                    g_bound: ExprId,
+                    a: &BigRational,
+                    b: &BigRational|
+     -> ExprId {
+        let b_node = simplifier.context.add(Expr::Number(b.clone()));
+        let diff = simplifier.context.add(Expr::Sub(g_bound, b_node));
+        let a_node = simplifier.context.add(Expr::Number(a.clone()));
+        let q = simplifier.context.add(Expr::Div(diff, a_node));
+        simplifier.simplify(q).0
+    };
+    let a_pos = a > BigRational::zero();
     let mut x_intervals: Vec<Interval> = Vec::with_capacity(u_intervals.len());
     for iv in u_intervals {
-        let (min, min_type) = if is_neg_infinity(&simplifier.context, iv.min) {
-            (simplifier.context.num(0), BoundType::Open) // e^(-∞) = 0, x > 0
+        // x-image of the LOWER u-endpoint (`g = e^u`, `e^(−∞) = 0`, so always finite).
+        let g_lo = if is_neg_infinity(&simplifier.context, iv.min) {
+            simplifier.context.num(0)
         } else {
-            (exp_of(simplifier, iv.min), iv.min_type)
+            exp_of(simplifier, iv.min)
         };
-        let (max, max_type) = if is_infinity(&simplifier.context, iv.max) {
-            (
-                simplifier.context.add(Expr::Constant(Constant::Infinity)),
-                BoundType::Open,
-            )
+        let x_lo_img = affine_x(simplifier, g_lo, &a, &b);
+        // x-image of the UPPER u-endpoint (finite, or `+∞ ↦ +∞` (a>0) / `−∞` (a<0)).
+        let x_hi_img = if is_infinity(&simplifier.context, iv.max) {
+            if a_pos {
+                pos_inf(&mut simplifier.context)
+            } else {
+                neg_inf(&mut simplifier.context)
+            }
         } else {
-            (exp_of(simplifier, iv.max), iv.max_type)
+            let g_hi = exp_of(simplifier, iv.max);
+            affine_x(simplifier, g_hi, &a, &b)
         };
-        x_intervals.push(Interval {
-            min,
-            min_type,
-            max,
-            max_type,
-        });
+        // Increasing (a>0): the lower u-endpoint is the lower x-bound. Decreasing (a<0): swapped.
+        let interval = if a_pos {
+            Interval {
+                min: x_lo_img,
+                min_type: iv.min_type,
+                max: x_hi_img,
+                max_type: iv.max_type,
+            }
+        } else {
+            Interval {
+                min: x_hi_img,
+                min_type: iv.max_type,
+                max: x_lo_img,
+                max_type: iv.min_type,
+            }
+        };
+        x_intervals.push(interval);
     }
     Some(if x_intervals.len() == 1 {
         SolutionSet::Continuous(x_intervals.pop().unwrap())
