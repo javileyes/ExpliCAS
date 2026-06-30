@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 458 (newest first)
+Active entries: 459 (newest first)
 
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
@@ -134,6 +134,7 @@ Active entries: 458 (newest first)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (re-auditoría Familia 1): ecuación trig de potencia PAR ≥4 y `|trig|=c` colapsan la familia / filtran arcsin(>1)
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_log_... | SOUNDNESS (re-auditoría Familia 2): inecuación polinómica en `ln(x)` `P(ln(x)) {op} 0` colapsa a "No solution"
 - 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (path de ecuación en `solve`: ... | SOUNDNESS (re-auditoría Familia 4): raíz extraña de ecuación radical `√(x+1)=-x` conserva el espurio `φ`
+- 2026-06-30 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff` reemplaza a... | SOUNDNESS (re-auditoría Familia 3): signo-vía-abs con COEFICIENTE `c·g/|g| {op} k` incluye el polo / da rayo cerrado
 - 2026-06-29 | `retained` | `crates/cas_solver/src/solve_core_runtime.rs` (ruta recursiva periodic-aware)... | SOUNDNESS (P0 wrong-answer): producto de factores trig periódicos perdía la periodicidad
 - 2026-06-29 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` + `as_nth_root... | SOUNDNESS (P0 wrong-answer): inecuación recíproca de potencia impar/surd-border pierde el polo x=0
 - 2026-06-29 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`reduce_remov... | SOUNDNESS (P0 wrong-answer): FTC inventa un polo removible desde la racionalización → `undefined` falso
@@ -17764,3 +17765,18 @@ Active entries: 458 (newest first)
   - Una constante algebraica NOMBRADA (`phi`) derrota a un probador de signo basado en parsing de surd `A+B√n`; `const_value_bounds` (intervalos exactos para phi/e/π + aritmética) es el fallback correcto y general — y como es exacto (None→conserva) no puede sobre-filtrar. Patrón gemelo del de [[reaudit-post-fixes-six-families]] Familia 1 (un clasificador de magnitud que solo cubre surds cuadráticos se pierde formas que sí tienen signo decidible).
   - Cuadrar `√f=g` introduce el espurio que `g≥0` rechaza; registrar la condición de RANGO (no solo la de dominio del radicando) y dejar que el filtro EXACTO de condiciones la aplique es más barato y general que re-verificar por back-substitución (que además es float-frágil en surds). PATRÓN de la re-auditoría (otra vez): el caso nombrado/racional filtra, el surd/constante-nombrada no.
   - siguiente de la re-auditoría: Familia 3 (signo-vía-abs con coef. negativo `-x/|x|=1`→incluye el polo 0/0); luego Familia 5 (F1 mult≥3/content, conocida) y Familia 6 (valle Add sin combinar, baja).
+
+## 2026-06-30 - SOUNDNESS (re-auditoría Familia 3): signo-vía-abs con COEFICIENTE `c·g/|g| {op} k` incluye el polo / da rayo cerrado
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff` reemplaza a `sign_via_abs_arg`; `try_solve_sign_via_abs` reduce por el coeficiente)
+- status: `retained` (commit pendiente-de-hash). Familia 3 de [[reaudit-post-fixes-six-families]]. Wrong-answers PRE-EXISTENTES (rayo CERRADO con el polo 0/0, o "No solution"). Verificado adversarialmente (barrido numérico de 360 formas `c·g/|g| {op} k` vs verdad por muestreo, incl. test del polo: 0 wrong).
+- capture:
+  - investment_class: soundness-fix (wrong-answer → correcto), exento de fase.
+  - cell: NEG: `-x/|x|=1` → `(-∞,0)` (era `(-∞,0]`, incluía el polo); `-x/|x|=-1` → `(0,∞)`; `-(x-2)/|x-2|=1` → `(-∞,2)`; `-3x/|3x|=1` → `(-∞,0)`; `-x/|x|≥1` → `(-∞,0)` y `-x/|x|<1` → `(0,∞)` (eran "No solution"). POS≠1: `3x/|x|=3`, `2x/|x|=2`, `5x/|x|=5` → `(0,∞)` (eran `[0,∞)`, con polo). `|x|/(-x)=1` → `(-∞,0)` (era el garbage "All real numbers if -x ≥ 0"). Controles: bare `x/|x|=1`→`(0,∞)`, coef. casado `2x/|2x|=1`→`(0,∞)`, RHS irrealizable `-x/|x|=2`/`3x/|x|=2`→No solution.
+  - causa raíz: el detector F7 `sign_via_abs_arg` exigía que el numerador IGUALARA exactamente el argumento del `abs` (`compare_expr==Equal`), así que CUALQUIER coeficiente (el `Neg` de `-x`, o `3x` con `|x|`) no casaba → declinaba → el path genérico devolvía un rayo cerrado con el polo `0/0` o "No solution". El bug NO era solo el coef. negativo: cualquier `c≠1` (también `3x/|x|`) fallaba; solo la forma casada `g/|g|` (incl. `2x/|2x|`) acertaba.
+  - fix: `sign_form_coeff` detecta `e = c·sign(g)` pelando un coeficiente racional NO nulo de un `Neg` líder, un `Mul` por constante externo, o un numerador/denominador coeficientado (`num/|a|` con `num/a` constante; `|a|/den` con `a/den` constante). `try_solve_sign_via_abs` reduce `c·sign(g) {op} k` ⟺ `sign(g) {op} k/c`, volteando un op estricto si `c<0` (`Eq`/`Neq` son invariantes al signo). El conjunto se resuelve como condición de signo ESTRICTA (`g>0`/`g<0`/`g≠0`), que excluye el polo con bordes ABIERTOS.
+  - validación: workspace failed:0 (+ test `test_eval_sign_via_abs_with_coefficient_excludes_pole`; el `test_eval_sign_via_abs_excludes_pole` bare sigue verde); clippy `-D warnings` limpio; huella GUARD/PRESS por baseline-FIEL (stash-regenera): **0 deltas de estado/returncode** (solo los 2 suites auto-derivantes conocidos). Adversarial: 360 formas `c·g/|g| {op} k` (a∈{0,2,-1}, c∈{-3..3}\{0}, k∈{-1,0,1,2}, op∈{=,<,>,≤,≥}) vs verdad por muestreo + chequeo de exclusión del polo → 0 wrong.
+- retained learning:
+  - Un detector que exige IGUALDAD ESTRUCTURAL entre el numerador y el argumento del `abs` se pierde toda forma con coeficiente; pelar el coeficiente racional (vía `num/a` constante) y reescalar el RHS (`k/c`, volteando el op si `c<0`) generaliza a TODO `c·sign(g)`. PATRÓN de la re-auditoría (la 4ª familia con la misma forma): el detector bare cubre el caso nombrado y suelta el envoltorio (aquí el coeficiente/`Neg`); la cura es reducir a la condición canónica (signo estricto con polo abierto), no parchear el caso.
+  - El bug declarado era "coef. NEGATIVO" pero el sondeo reveló que CUALQUIER `c≠1` fallaba (incl. `3x/|x|` positivo) — sondear la frontera real antes de implementar amplió el alcance del fix (y lo hizo más barato: una sola reducción cubre neg y pos).
+  - re-auditoría: quedan Familia 5 (F1 mult≥3/content — conocida, necesita ℚ-factorización general) y Familia 6 (valle Add sin combinar — baja). Las 4 familias de alto/medio ROI (1,2,4,3) están cerradas.

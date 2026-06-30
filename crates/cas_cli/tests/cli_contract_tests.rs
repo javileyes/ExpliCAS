@@ -2822,6 +2822,42 @@ fn test_eval_sign_via_abs_excludes_pole() {
 }
 
 #[test]
+fn test_eval_sign_via_abs_with_coefficient_excludes_pole() {
+    // The sign form carries a COEFFICIENT: `c·g/|g| = c·sign(g)`. The bare detector required the
+    // numerator to equal the abs-argument exactly, so any coefficient (`-x/|x|`, `3x/|x|`) fell to the
+    // generic path that returned a CLOSED ray including the `0/0` pole — or "No solution" for the
+    // inequalities. Peeling `c` reduces to `sign(g) {op} k/c` (flipping a strict op when `c < 0`), with
+    // OPEN pole exclusion.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Negative unit coefficient (`-sign(g)`): the ray flips and the pole is OPEN.
+    assert_eq!(r("solve(-x/abs(x) = 1, x)"), "(-infinity, 0)");
+    assert_eq!(r("solve(-x/abs(x) = -1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(-(x-2)/abs(x-2) = 1, x)"), "(-infinity, 2)");
+    assert_eq!(r("solve(-3*x/abs(3*x) = 1, x)"), "(-infinity, 0)");
+    // Negated inequalities were "No solution"; now the correct half-line.
+    assert_eq!(r("solve(-x/abs(x) >= 1, x)"), "(-infinity, 0)");
+    assert_eq!(r("solve(-x/abs(x) < 1, x)"), "(0, infinity)");
+    // Positive coefficient ≠ 1 (the abs-argument is bare `x`, not `c·x`): also excludes the pole now.
+    assert_eq!(r("solve(3*x/abs(x) = 3, x)"), "(0, infinity)");
+    assert_eq!(r("solve(2*x/abs(x) = 2, x)"), "(0, infinity)");
+    // `|g|/g` with a negated denominator: `|x|/(-x) = -sign(x)` (was a garbage conditional).
+    assert_eq!(r("solve(abs(x)/(-x) = 1, x)"), "(-infinity, 0)");
+    // Controls: the bare and matched-coefficient forms are unchanged; a rescaled RHS that no sign
+    // value can hit is empty.
+    assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(2*x/abs(2*x) = 1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(-x/abs(x) = 2, x)"), "No solution");
+    assert_eq!(r("solve(3*x/abs(x) = 2, x)"), "No solution");
+}
+
+#[test]
 fn test_eval_polynomial_in_log_inequality_back_substitutes_through_exp() {
     // `P(ln(x)) {op} 0` (degree ≥ 2 in `ln(x)`) used to collapse to "No solution": the polynomial-in-u
     // path solved the EQUATION but the inequality dropped the band. It now solves for `u = ln(x)` and

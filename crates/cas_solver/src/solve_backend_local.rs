@@ -5200,37 +5200,88 @@ fn try_solve_polynomial_with_quartic_factor(
     Some(SolutionSet::Discrete(roots))
 }
 
-/// The inner expression `g` when `e` is the SIGN form `g/|g|` or `|g|/g` (both equal `sign(g)` for
-/// `g ≠ 0`). `g` must carry the variable. Returns `None` otherwise.
-fn sign_via_abs_arg(ctx: &Context, e: ExprId, var: &str) -> Option<ExprId> {
-    use cas_ast::ordering::compare_expr;
+/// Return the `abs(arg)` argument of `x` (a unary `|·|` call), or None.
+fn abs_call_arg(ctx: &Context, x: ExprId) -> Option<ExprId> {
     use cas_ast::BuiltinFn;
-    use cas_solver_core::isolation_utils::contains_var;
-    let Expr::Div(num, den) = ctx.get(e) else {
-        return None;
-    };
-    let (num, den) = (*num, *den);
-    let abs_arg = |x: ExprId| -> Option<ExprId> {
-        if let Expr::Function(fn_id, args) = ctx.get(x) {
-            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Abs) {
-                return Some(args[0]);
-            }
-        }
-        None
-    };
-    // g/|g|: denominator is |numerator|.
-    if let Some(a) = abs_arg(den) {
-        if contains_var(ctx, num, var) && compare_expr(ctx, a, num) == std::cmp::Ordering::Equal {
-            return Some(num);
-        }
-    }
-    // |g|/g: numerator is |denominator|.
-    if let Some(a) = abs_arg(num) {
-        if contains_var(ctx, den, var) && compare_expr(ctx, a, den) == std::cmp::Ordering::Equal {
-            return Some(den);
+    if let Expr::Function(fn_id, args) = ctx.get(x) {
+        if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Abs) {
+            return Some(args[0]);
         }
     }
     None
+}
+
+/// Detect `e = c · sign(g)` where the sign is written as `g/|g|` or `|g|/g`, and `c` is a NONZERO
+/// rational coefficient peeled from a leading `Neg`, an outer constant `Mul`, or a coefficiented
+/// numerator/denominator. Returns `(g, c)` with `g` carrying the variable. This generalizes the bare
+/// `g/|g|` (`c = 1`) form so `-x/|x|` (`c = -1`), `3x/|x|` (`c = 3`), `|x|/(-x)` (`c = -1`) all reduce
+/// to a sign condition — the coefficient just rescales the constant RHS (`c·sign(g) {op} k`
+/// ⟺ `sign(g) {op} k/c`, flipping a strict op when `c < 0`).
+fn sign_form_coeff(
+    simplifier: &mut Simplifier,
+    e: ExprId,
+    var: &str,
+) -> Option<(ExprId, num_rational::BigRational)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+
+    match simplifier.context.get(e).clone() {
+        Expr::Neg(inner) => {
+            let (g, c) = sign_form_coeff(simplifier, inner, var)?;
+            Some((g, -c))
+        }
+        Expr::Mul(a, b) => {
+            // Peel a constant factor on either side; the other factor must be the sign form.
+            if let Some(k) = as_rational_const(&simplifier.context, a) {
+                if k.is_zero() {
+                    return None;
+                }
+                let (g, c) = sign_form_coeff(simplifier, b, var)?;
+                Some((g, k * c))
+            } else if let Some(k) = as_rational_const(&simplifier.context, b) {
+                if k.is_zero() {
+                    return None;
+                }
+                let (g, c) = sign_form_coeff(simplifier, a, var)?;
+                Some((g, k * c))
+            } else {
+                None
+            }
+        }
+        Expr::Div(num, den) => {
+            let den_abs = abs_call_arg(&simplifier.context, den);
+            let num_abs = abs_call_arg(&simplifier.context, num);
+            if let Some(a) = den_abs {
+                // `num/|a| = (num/a)·sign(a)`; `num/a` must fold to a nonzero rational constant.
+                if !contains_var(&simplifier.context, a, var) {
+                    return None;
+                }
+                let ratio = simplifier.context.add(Expr::Div(num, a));
+                let (ratio, _) = simplifier.simplify(ratio);
+                let c = as_rational_const(&simplifier.context, ratio)?;
+                if c.is_zero() {
+                    return None;
+                }
+                Some((a, c))
+            } else if let Some(a) = num_abs {
+                // `|a|/den = (a/den)·sign(a)`; `a/den` must fold to a nonzero rational constant.
+                if !contains_var(&simplifier.context, a, var) {
+                    return None;
+                }
+                let ratio = simplifier.context.add(Expr::Div(a, den));
+                let (ratio, _) = simplifier.simplify(ratio);
+                let c = as_rational_const(&simplifier.context, ratio)?;
+                if c.is_zero() {
+                    return None;
+                }
+                Some((a, c))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Solve `sign(g(x)) {op} c` written as `g/|g| {op} c` (or `|g|/g {op} c`), `c` constant. Because
@@ -5248,26 +5299,39 @@ fn try_solve_sign_via_abs(
     use cas_solver_core::isolation_utils::contains_var;
     use cas_solver_core::solution_set::union_solution_sets;
     use num_rational::BigRational;
+    use num_traits::Zero;
 
-    let ctx = &simplifier.context;
-    let (g, c, op) = if let Some(g) = sign_via_abs_arg(ctx, eq.lhs, var) {
-        if contains_var(ctx, eq.rhs, var) {
+    // `(g, coeff)` such that the var side equals `coeff·sign(g)`; `k` is the constant other side; `op`
+    // is oriented so the relation reads `coeff·sign(g) {op} k`.
+    let (g, coeff, k, op) = if let Some((g, coeff)) = sign_form_coeff(simplifier, eq.lhs, var) {
+        if contains_var(&simplifier.context, eq.rhs, var) {
             return None;
         }
-        (g, as_rational_const(ctx, eq.rhs)?, eq.op.clone())
-    } else if let Some(g) = sign_via_abs_arg(ctx, eq.rhs, var) {
-        if contains_var(ctx, eq.lhs, var) {
+        let k = as_rational_const(&simplifier.context, eq.rhs)?;
+        (g, coeff, k, eq.op.clone())
+    } else if let Some((g, coeff)) = sign_form_coeff(simplifier, eq.rhs, var) {
+        if contains_var(&simplifier.context, eq.lhs, var) {
             return None;
         }
-        // `c {op} sign(g)` ⟺ `sign(g) {flip op} c` (Eq is symmetric).
-        let op = if matches!(eq.op, RelOp::Eq) {
-            RelOp::Eq
+        // `k {op} coeff·sign(g)` ⟺ `coeff·sign(g) {flip op} k` (Eq/Neq are symmetric — left as-is).
+        let op = if matches!(eq.op, RelOp::Eq | RelOp::Neq) {
+            eq.op.clone()
         } else {
             flip_inequality(eq.op.clone())
         };
-        (g, as_rational_const(ctx, eq.lhs)?, op)
+        let k = as_rational_const(&simplifier.context, eq.lhs)?;
+        (g, coeff, k, op)
     } else {
         return None;
+    };
+
+    // Reduce `coeff·sign(g) {op} k` to `sign(g) {op} k/coeff`, flipping a strict op when `coeff < 0`
+    // (dividing an inequality by a negative). `Eq`/`Neq` are sign-independent.
+    let c = k / &coeff;
+    let op = if coeff < BigRational::zero() && !matches!(op, RelOp::Eq | RelOp::Neq) {
+        flip_inequality(op)
+    } else {
+        op
     };
 
     let satisfies = |s: i64| -> bool {
