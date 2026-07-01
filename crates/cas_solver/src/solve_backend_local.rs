@@ -5573,6 +5573,47 @@ fn try_solve_shifted_argument_trig(
 /// quadratic (`|x²−4| = 3`) by the isolation path — this catches the mixed `|quadratic| = variable`
 /// forms (`|x²−1| = x+1`) that otherwise leak an `arcsin`/`sqrt` residual. Declines (residual) if any
 /// candidate root is non-rational, so completeness is never overclaimed with unverifiable surds.
+/// Solve `|E| = 0` ⟺ `E = 0` by dispatching the argument's zero-set to the full solver. The generic
+/// abs isolation mis-handles a FACTORED argument (`|x·(x−2)| = 0 → {0}`, dropping the other factor's
+/// root), whereas the direct `x·(x−2) = 0` path returns the complete `{0, 2}`. Scoped to the RHS-zero
+/// case so `|E| = c` (c ≠ 0) keeps its own handlers.
+fn try_solve_abs_equals_zero(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_math::numeric_eval::as_rational_const;
+    use num_traits::Zero;
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    let as_abs = |ctx: &Context, e: ExprId| -> Option<ExprId> {
+        if let Expr::Function(fn_id, args) = ctx.get(e) {
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Abs) {
+                return Some(args[0]);
+            }
+        }
+        None
+    };
+    let is_zero = |ctx: &Context, e: ExprId| as_rational_const(ctx, e).is_some_and(|v| v.is_zero());
+    let arg = if is_zero(&simplifier.context, eq.rhs) {
+        as_abs(&simplifier.context, eq.lhs)?
+    } else if is_zero(&simplifier.context, eq.lhs) {
+        as_abs(&simplifier.context, eq.rhs)?
+    } else {
+        return None;
+    };
+    let zero = simplifier.context.num(0);
+    let inner_eq = Equation {
+        lhs: arg,
+        rhs: zero,
+        op: RelOp::Eq,
+    };
+    let (sol, _) = crate::solver_entrypoints_solve::solve(&inner_eq, var, simplifier).ok()?;
+    Some(sol)
+}
+
 fn try_solve_abs_polynomial_equation(
     simplifier: &mut Simplifier,
     eq: &Equation,
@@ -5802,6 +5843,11 @@ fn solve_local_core(
     // `|A(x)| = c` with a trig-bearing argument: the generic abs isolation solves the two branches to
     // PRINCIPAL roots (`|2·sin(x)−1| = 1 → {π/2, 0}`); solve each branch fully so trig stays periodic.
     if let Some(set) = try_solve_abs_of_trig_equation(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `|E| = 0 ⟺ E = 0`: dispatch the argument's full zero-set (the generic abs isolation drops all but
+    // the first factor of a product, `|x·(x−2)| = 0 → {0}` instead of `{0, 2}`).
+    if let Some(set) = try_solve_abs_equals_zero(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // `|f(x)| = g(x)` with a degree-≥2 polynomial `f` and a variable RHS (`|x²−1| = x+1`): split into

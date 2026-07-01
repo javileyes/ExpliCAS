@@ -816,6 +816,11 @@ fn test_eval_abs_of_quadratic_equals_variable_splits_and_verifies() {
     // `|f(r)| = g(r)` (which enforces `g(r) ≥ 0`). Linear `|f|` (piecewise handler) and constant-RHS
     // (isolation, keeps surds) forms are untouched.
     for (input, expected) in [
+        // `|E| = 0 ⟺ E = 0`: the FULL zero-set of a factored product (the abs isolation dropped all but
+        // the first factor, `|x·(x−2)| = 0 → {0}`).
+        ("abs(x*(x-2)) = 0", "{ 0, 2 }"),
+        ("abs((x-1)*(x-3)*(x+2)) = 0", "{ -2, 1, 3 }"),
+        ("abs(sin(x)) = 0", "{ k·pi : k ∈ ℤ }"),
         // `|x²−1| = x+1`: f=g ⟹ {2,−1}; f=−g ⟹ {0,−1}; all have g ≥ 0.
         ("abs(x^2 - 1) = x + 1", "{ -1, 2, 0 }"),
         ("abs(x^2 - 4) = x + 2", "{ -2, 3, 1 }"),
