@@ -2026,6 +2026,134 @@ fn try_solve_polynomial_in_log(
     solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
 }
 
+/// Core of [`try_solve_polynomial_in_trig`]: treat `diff` as a polynomial of degree ≥ 2 in a single
+/// trig atom `sin(g)`/`cos(g)`/`tan(g)`, substitute `u = trig(g)`, solve `P(u) = 0`, and back-substitute
+/// each root through the periodic solver (range guard drops `|u| > 1`). Returns `None` if `diff` is not
+/// a polynomial in ONE such atom (a second, distinct atom or `x` remains after substitution).
+fn solve_polynomial_in_trig_from_diff(
+    simplifier: &mut Simplifier,
+    diff: ExprId,
+    var: &str,
+) -> Option<SolutionSet> {
+    let atom = find_trig_atom_containing_var(&simplifier.context, diff, var)?;
+    let u_var = "__trig_u";
+    let u = simplifier.context.var(u_var);
+    let u_expr = substitute_expr_by_id(&mut simplifier.context, diff, atom, u);
+    if expr_contains_named_var(&simplifier.context, u_expr, var) {
+        return None; // a second, distinct trig atom (or x elsewhere) remains
+    }
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+}
+
+/// Rewrite every EVEN power of `atom` in `expr` via `atom² = sq_repl` (`atom^(2k) → sq_repl^k`),
+/// returning the rewritten tree — or `None` if `atom` occurs to any ODD power (a bare `atom` or
+/// `atom^(2k+1)`), which the even-power Pythagorean substitution cannot eliminate. Used to turn a
+/// mixed `sin(g)`/`cos(g)` polynomial into a single-atom one via `cos² = 1 − sin²` (or `sin² = 1 − cos²`).
+fn rewrite_even_power_of_atom(
+    ctx: &mut Context,
+    expr: ExprId,
+    atom: ExprId,
+    sq_repl: ExprId,
+) -> Option<ExprId> {
+    use cas_ast::ordering::compare_expr;
+    // A bare `atom` is an odd (first) power — not eliminable by an even-power substitution.
+    if compare_expr(ctx, expr, atom) == std::cmp::Ordering::Equal {
+        return None;
+    }
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            if compare_expr(ctx, base, atom) == std::cmp::Ordering::Equal {
+                // `atom^n`: even `n` ⇒ `sq_repl^(n/2)`; odd `n` ⇒ not eliminable.
+                let n = cas_math::numeric_eval::as_rational_const(ctx, exp)?;
+                if !n.is_integer() {
+                    return None;
+                }
+                let n = num_traits::ToPrimitive::to_i64(&n.to_integer())?;
+                if n <= 0 || n % 2 != 0 {
+                    return None;
+                }
+                let half = ctx.num(n / 2);
+                return Some(ctx.add(Expr::Pow(sq_repl, half)));
+            }
+            let base = rewrite_even_power_of_atom(ctx, base, atom, sq_repl)?;
+            let exp = rewrite_even_power_of_atom(ctx, exp, atom, sq_repl)?;
+            Some(ctx.add(Expr::Pow(base, exp)))
+        }
+        Expr::Add(l, r) => {
+            let l = rewrite_even_power_of_atom(ctx, l, atom, sq_repl)?;
+            let r = rewrite_even_power_of_atom(ctx, r, atom, sq_repl)?;
+            Some(ctx.add(Expr::Add(l, r)))
+        }
+        Expr::Sub(l, r) => {
+            let l = rewrite_even_power_of_atom(ctx, l, atom, sq_repl)?;
+            let r = rewrite_even_power_of_atom(ctx, r, atom, sq_repl)?;
+            Some(ctx.add(Expr::Sub(l, r)))
+        }
+        Expr::Mul(l, r) => {
+            let l = rewrite_even_power_of_atom(ctx, l, atom, sq_repl)?;
+            let r = rewrite_even_power_of_atom(ctx, r, atom, sq_repl)?;
+            Some(ctx.add(Expr::Mul(l, r)))
+        }
+        Expr::Div(l, r) => {
+            let l = rewrite_even_power_of_atom(ctx, l, atom, sq_repl)?;
+            let r = rewrite_even_power_of_atom(ctx, r, atom, sq_repl)?;
+            Some(ctx.add(Expr::Div(l, r)))
+        }
+        Expr::Neg(i) => {
+            let i = rewrite_even_power_of_atom(ctx, i, atom, sq_repl)?;
+            Some(ctx.add(Expr::Neg(i)))
+        }
+        // A leaf that is not `atom` (and not a Pow of it): keep as-is. A different function carrying the
+        // argument would leave the poly-in-single-atom check to fail downstream.
+        _ => Some(expr),
+    }
+}
+
+/// If `diff` is a polynomial in BOTH `sin(g)` and `cos(g)` where one of them occurs only to EVEN powers,
+/// eliminate it via the Pythagorean identity (`cos² = 1 − sin²` or `sin² = 1 − cos²`) to obtain a
+/// single-atom polynomial, then solve. Handles `2·cos(x)² − sin(x) − 1 = 0` (and its double-angle twin
+/// `cos(2x) = sin(x)`, whose simplified form is `2·cos(x)² − sin(x) − 1`). Returns `None` when neither
+/// atom is purely even (e.g. a genuine `sin·cos` product).
+fn try_solve_mixed_trig_via_pythagorean(
+    simplifier: &mut Simplifier,
+    diff: ExprId,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::BuiltinFn;
+    let probe = find_trig_atom_containing_var(&simplifier.context, diff, var)?;
+    let g = match simplifier.context.get(probe) {
+        Expr::Function(_, args) if args.len() == 1 => args[0],
+        _ => return None,
+    };
+    let sin_id = simplifier.context.builtin_id(BuiltinFn::Sin);
+    let cos_id = simplifier.context.builtin_id(BuiltinFn::Cos);
+    let sin_g = simplifier.context.add(Expr::Function(sin_id, vec![g]));
+    let cos_g = simplifier.context.add(Expr::Function(cos_id, vec![g]));
+    let two = simplifier.context.num(2);
+    let one = simplifier.context.num(1);
+    // `cos(g)² = 1 − sin(g)²` (eliminate an all-even `cos`).
+    let sin_sq = simplifier.context.add(Expr::Pow(sin_g, two));
+    let cos_repl = simplifier.context.add(Expr::Sub(one, sin_sq));
+    if let Some(reduced) =
+        rewrite_even_power_of_atom(&mut simplifier.context, diff, cos_g, cos_repl)
+    {
+        if let Some(set) = solve_polynomial_in_trig_from_diff(simplifier, reduced, var) {
+            return Some(set);
+        }
+    }
+    // `sin(g)² = 1 − cos(g)²` (eliminate an all-even `sin`).
+    let one = simplifier.context.num(1);
+    let two = simplifier.context.num(2);
+    let cos_sq = simplifier.context.add(Expr::Pow(cos_g, two));
+    let sin_repl = simplifier.context.add(Expr::Sub(one, cos_sq));
+    if let Some(reduced) =
+        rewrite_even_power_of_atom(&mut simplifier.context, diff, sin_g, sin_repl)
+    {
+        return solve_polynomial_in_trig_from_diff(simplifier, reduced, var);
+    }
+    None
+}
+
 /// Solve an EQUATION that is a polynomial of degree ≥ 2 in a single trig atom `sin(g)` / `cos(g)` /
 /// `tan(g)` whose argument contains the variable (`2·sin(x)² − 3·sin(x) + 1 = 0`, a quadratic in
 /// `sin(x)`). Substitute `u = trig(g)`, solve the polynomial in `u`, then back-substitute
@@ -2040,20 +2168,25 @@ fn try_solve_polynomial_in_trig(
     if eq.op != cas_ast::RelOp::Eq {
         return None;
     }
-    // RAW difference: simplifying would apply the double-angle identity to `sin²(x)`, destroying the
-    // polynomial-in-`sin(x)` structure before substitution.
-    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
-    let atom = find_trig_atom_containing_var(&simplifier.context, diff, var)?;
-    let u_var = "__trig_u";
-    let u = simplifier.context.var(u_var);
-    let u_expr = substitute_expr_by_id(&mut simplifier.context, diff, atom, u);
-    if expr_contains_named_var(&simplifier.context, u_expr, var) {
-        return None; // a second, distinct trig atom (or x elsewhere) remains
+    // Try the RAW difference FIRST: simplifying would fold `sin²(x)` into `cos(2x)`, destroying the
+    // polynomial-in-`sin(x)` structure (the reason this handler exists).
+    let raw_diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    if let Some(set) = solve_polynomial_in_trig_from_diff(simplifier, raw_diff, var) {
+        return Some(set);
     }
-    // `solve_polynomial_in_atom` solves `P(u) = 0` and back-substitutes each root; it is periodic-aware
-    // (the `trig(g) = u_root` back-substitution yields a family per root, combined over a common period)
-    // and applies the range guard (`sin(x) = 2` drops).
-    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+    // Fallback: the SIMPLIFIED difference. This is the DUAL case — a `cos(2x)` (double-angle) term folds
+    // to `2·cos(x)² − 1`, turning `cos(2x) + 3·cos(x) + 2 = 0` (two atoms in the raw form) into the
+    // single-atom polynomial `2·cos(x)² + 3·cos(x) + 1`. (When the raw form already succeeded — the
+    // `sin²` case — we never reach here, so its structure is untouched.) The two-term `cos(2x) ± cos(x)`
+    // instead simplifies to a PRODUCT and is solved by the product-equation path, not here.
+    let (simplified_diff, _) = simplifier.simplify(raw_diff);
+    if let Some(set) = solve_polynomial_in_trig_from_diff(simplifier, simplified_diff, var) {
+        return Some(set);
+    }
+    // Last fallback: the simplified form mixes `sin(g)` and `cos(g)` (e.g. `cos(2x) − sin(x)` folds to
+    // the MIXED `2·cos(x)² − sin(x) − 1`). If one atom is purely even, the Pythagorean identity reduces
+    // it to a single-atom polynomial.
+    try_solve_mixed_trig_via_pythagorean(simplifier, simplified_diff, var)
 }
 
 /// Classify a leaf as a (possibly coefficiented) BARE `sin(g)`/`cos(g)` whose argument carries `var`:

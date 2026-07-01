@@ -2497,12 +2497,14 @@ fn test_eval_periodic_trig_product_equation_unions_families() {
         r("solve(sin(x)*(2*cos(x)-1)=0, x)"),
         "{ k·2·pi, pi + k·2·pi, 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
     );
-    // Double-angle EQUATIONS via sum-to-product: `cos(2x)-cos(x) = -2·sin(x/2)·sin(3x/2)`, factors
-    // have periods 2π and 2π/3 -> common period 2π.
+    // `cos(2x) − cos(x)` simplifies (in the solve context) to the single-atom polynomial
+    // `2·cos(x)² − cos(x) − 1`, so the double-angle poly-in-`cos` path solves it (`cos ∈ {1, −1/2}`);
+    // the family order reflects that path (the same complete set as sum-to-product).
     assert_eq!(
         r("solve(cos(2*x)-cos(x), x)"),
-        "{ k·2·pi, 2/3·pi + k·2·pi, 4/3·pi + k·2·pi : k ∈ ℤ }"
+        "{ 2/3·pi + k·2·pi, 4/3·pi + k·2·pi, k·2·pi : k ∈ ℤ }"
     );
+    // `sin(2x) − sin(x) = sin(x)·(2·cos(x) − 1)` stays on the sum-to-product / product path.
     assert_eq!(
         r("solve(sin(2*x)-sin(x), x)"),
         "{ k·2·pi, 1/3·pi + k·2·pi, pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
@@ -2567,9 +2569,57 @@ fn test_eval_quadratic_in_trig_equation_unions_periodic_roots() {
         r("solve(sin(x) = 1/2, x)"),
         "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
     );
+    // A MIXED `sin²(x) + cos(x)` now reduces via the Pythagorean identity (`sin² = 1 − cos²`) to a
+    // polynomial in `cos(x)` and solves (`cos(x)·(1 − cos(x)) = 0 ⟹ cos(x) ∈ {0, 1}`).
     assert_eq!(
         r("solve(sin(x)^2 + cos(x) = 1, x)"),
-        "Solve: solve(x - arccos(cos(x)^2) = 0, x) = 0"
+        "{ 1/2·pi + k·2·pi, 3/2·pi + k·2·pi, k·2·pi : k ∈ ℤ }"
+    );
+}
+
+#[test]
+fn test_eval_double_angle_and_mixed_trig_reduce_to_single_atom() {
+    // A double-angle `cos(2x)` folds (via the simplifier) to `2·cos(x)² − 1`; when the rest is a
+    // polynomial in `cos(x)` the equation becomes a single-atom quadratic. When it mixes `sin` and
+    // `cos` (e.g. `cos(2x) − sin(x) → 2·cos(x)² − sin(x) − 1`) the Pythagorean identity eliminates the
+    // all-even atom. Both were `arccos(…)` / `arcsin(…)` residuals before.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `cos(2x) + 3cos(x) + 2 = 0 ⟹ 2cos² + 3cos + 1 = 0 ⟹ cos ∈ {−1, −1/2}`.
+    assert_eq!(
+        r("solve(cos(2*x) + 3*cos(x) + 2 = 0, x)"),
+        "{ pi + k·2·pi, 2/3·pi + k·2·pi, 4/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // Mixed via Pythagorean: `cos(2x) = sin(x) ⟹ 2cos² − sin − 1 ⟹ −2sin² − sin + 1 = 0 ⟹
+    // sin ∈ {1/2, −1}`. The `A = B` form and the pre-expanded form agree.
+    assert_eq!(
+        r("solve(cos(2*x) = sin(x), x)"),
+        "{ -1/2·pi + k·2·pi, 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(2*cos(x)^2 - sin(x) - 1 = 0, x)"),
+        "{ -1/2·pi + k·2·pi, 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // `2sin²(x) + 3cos(x) − 3 = 0 ⟹ 2cos² − 3cos + 1 = 0 ⟹ cos ∈ {1, 1/2}`.
+    assert_eq!(
+        r("solve(2*sin(x)^2 + 3*cos(x) - 3 = 0, x)"),
+        "{ 1/3·pi + k·2·pi, 5/3·pi + k·2·pi, k·2·pi : k ∈ ℤ }"
+    );
+    // Controls: a pure single-atom quadratic and a two-term `cos(2x) + cos(x)` (solved as a PRODUCT via
+    // sum-to-product) are unchanged.
+    assert_eq!(
+        r("solve(2*sin(x)^2 - 3*sin(x) + 1 = 0, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi, 1/2·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(cos(2*x) + cos(x) = 0, x)"),
+        "{ pi + k·2·pi, 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
     );
 }
 
