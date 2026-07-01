@@ -36,6 +36,11 @@ contexto — son tu memoria externa):
    elemental + vectorial multivariable → Fase 3 capas analíticas), con los
    items por fase y los **guardrails inter-fase** que mantienen baratas las
    fases futuras. Define a qué apuntar; las fuentes 4/6 dicen qué item.
+8. `docs/AUDITORIA_P0_SOUNDNESS_<fecha>.md` — el informe de la última
+   auditoría P0 multi-agente (workflow `cas-frontier-audit`): wrong-answers
+   confirmados, agrupados por familia de causa-raíz, con estado de fix y
+   backlog restante. Si existe uno reciente, su cola P0 manda sobre la
+   fuente 6 para soundness.
 
 ## Fases del north star (a qué apuntar)
 
@@ -98,6 +103,82 @@ no L):
 4. Backstop de soundness domain-aware y EXACTO (`BigRational`, patrón
    `*_in_domain`); nunca f64 para keep/drop.
 5. Resultados como contrato (cargan decisiones de rama/dominio).
+
+## Cerrar el dominio real = preparar el dominio complejo (nexo clave)
+
+Cerrar soundness en dominio real y preparar Fase 2 (complejo) son el MISMO trabajo
+cuando se hace bien: el chokepoint compartido es la **capa de decisión EXACTA y
+parametrizada por dominio** (signo, condiciones de dominio, cortes de rama). Cada
+fix real que hace una decisión exacta y la carga como CONTRATO es directamente
+reutilizable en complejo (donde la misma decisión devuelve una condición de
+rama en vez de un intervalo real).
+
+- **La capa de signo/constante es el chokepoint transversal.** Enseñar a los
+  probadores de signo (`cas_math::prove_sign::prove_positive`/`prove_nonnegative`,
+  `cas_solver_core::isolation_utils::is_known_negative`, el discriminante en
+  `quadratic_formula.rs`, el umbral radical) que un **surd/transcendental constante
+  `A+B√n`, `e−3` es un valor real DECIDIBLE** — vía `cas_math::root_forms::provable_sign_vs_zero`
+  (Option<Ordering>) o `cas_math::const_sign::provable_const_sign` (superset: también
+  e/π) — cerró **5+ familias P0 de una vez** (2026-07). Esa misma capa exacta es lo
+  que Fase 2 necesita: no es de usar y tirar.
+- **Nunca hard-codees RealOnly; devuelve la CONDICIÓN.** Un fix que devuelve `Empty`
+  para un radicando real-negativo debe poder devolver la condición estructurada, para
+  que el dominio complejo la voltee a una raíz compleja sin re-derivar (guardrails
+  inter-fase #1/#3/#5). El "surd es constante decidible, no coeficiente simbólico" es
+  precisamente esta preparación.
+
+## Estrategias de reducción, soundness y completitud (validadas 2026-07)
+
+**Reduce-a-canónico — el patrón de mayor ROI para universalidad.** Identifica el
+ATOM invertible y delega en su solver robusto; NO parchees el caso:
+- radicales `√f = ±g`, `√f ± √g = c`; exponenciales `m^x → p^(k·x)`,
+  Laurent-en-`b^x` (recíprocas/hiperbólicas `e^x+e^(-x)`), dos-bases-distintas
+  `A·m^x = B·n^x → log`; trig `a·sin+b·cos = 0 → tan(g) = −b/a`, inhomogénea
+  `→ R·sin(g+φ) = c/R` (ángulo auxiliar), argumento afín/desfase-π; abs
+  `|E| = 0 ⟺ E = 0`, `|f| = g → f = ±g`; poly-en-atom (`u = ln/√/trig/exp/x^(1/q)`).
+- La VERIFICACIÓN de raíces contra la ecuación ORIGINAL subsume las condiciones de
+  dominio (radicandos ≥ 0, surdos que cancelan, `g ≥ 0` en abs) — no re-derives el
+  dominio: verifica. Y trabaja en el árbol CRUDO si `simplify` colapsa la estructura
+  que detectas (`e^x+e^(-x) → cosh`, `sin² →` doble-ángulo).
+
+**Chokepoint > parche por caso.** Cuando varios wrong-answers comparten una
+meta-forma ("un guard dispara solo para el caso racional/nombrado y pierde el
+hermano surd/negado/compuesto/recíproco"), arregla la CAPA compartida UNA vez, no
+caso a caso. Colector que hornea un signo/forma fija → devuelve el signo/forma como
+DATO. Al mover el RHS a un lado, `Sub(lhs, 0)` deja una constante `0` que un colector
+estructural debe DESCARTAR explícitamente (una no-nula ⇒ otra forma ⇒ declina).
+
+**Disciplina de barrido adversarial (procedimientos de decisión).** Verde en tests
+unitarios NO basta — ha cazado wrong-answers que los tests verdes no veían:
+- incluye el BORDE de la constante sobre la que se ramifica (`c = 0`), no solo
+  `c ∈ {1,2,3}`; e incluye coeficientes COMPUESTOS (`2√2`, surd×surd), no solo
+  atómicos (un descarte de coeficiente interno anidado es invisible a los atómicos).
+- oráculo independiente (sympy) + verificación por SUSTITUCIÓN para familias
+  periódicas (raíces tangentes: se comprueban por sustitución, no por cambio de signo).
+- al AMPLIAR el alcance de un colector, enumera los casos que ahora TAMBIÉN captura y
+  re-deriva su verificación — una heredada demasiado estricta convierte un acierto de
+  otro handler en un wrong-answer (p.ej. `√A=√B` con surdos que cancelan).
+
+**Descubrimiento y scoping con workflows multi-agente (ultracode / opt-in).** La
+frontera real la descubres exhaustivamente, no de memoria:
+- FRONTIER-AUDIT: N scouts (uno por frente: solve / inecuaciones / radicales / exp /
+  log / trig / abs / derivadas / integrales / límites / series-matrices) probando ~40
+  inputs c/u → verificación adversarial 2-lentes (confirma wrong-answer vs falso
+  positivo de convención) → síntesis rankeada por ROI. Guarda el informe en
+  `docs/AUDITORIA_P0_SOUNDNESS_<fecha>.md`.
+- SCOPING: un investigador READ-ONLY por bug → `file:line` exacto + fix mínimo
+  verificado + blast-radius + dificultad; convierte cada P0 en un ciclo acotado.
+- COMMITEA antes de lanzar cualquier workflow (los agentes pueden tocar el árbol).
+- Falsos positivos a NO reportar: `log(a,b) = log_a(b)`, familias tangentes de una
+  sola rama, y la omisión CORRECTA de raíces complejas en dominio real.
+
+**Arquitectura: extraer antes de abstraer (corte de menor riesgo).** Cuando un god
+file (`solve_backend_local.rs`) acumula handlers, extrae PRIMERO las utilidades PURAS
+(matchers estructurales sobre `&Context`, sin deps de la infra de solve, no usadas por
+los tests inline) en bloques CONTIGUOS a un módulo hermano `pub(crate)`: `cargo check`
+valida la visibilidad al instante y la huella 0-delta prueba que es behavior-preserving.
+Los handlers y los helpers entrelazados con la infra de inecuaciones son un corte
+posterior de mayor riesgo (necesitan `pub(crate)` en la maquinaria compartida).
 
 ## Protocolo de un ciclo
 
@@ -240,15 +321,25 @@ repitas en bucle).
   candidato), o cualquier indicio de pérdida de datos.
 - Verificación adversarial: para ciclos que introducen procedimientos de
   decisión o verificadores (no para extensiones mecánicas de familias),
-  lanza un workflow adversarial de 2 lentes (soundness con probes de
-  refutación + regresión de contadores) antes de retener — ha cazado
-  defectos reales que los tests unitarios verdes no veían.
+  barre adversarialmente antes de retener — ha cazado defectos reales que los
+  tests unitarios verdes no veían. Cubre los BORDES (`c = 0`) y los coeficientes
+  COMPUESTOS (`2√2`, surd×surd), oráculo sympy + sustitución para periódicas
+  (ver "Disciplina de barrido adversarial" arriba). Para lotes grandes de
+  soundness, un workflow de 2 lentes (refutación + regresión de contadores).
 - Presupuesto de fricción: si un ciclo lleva 3+ intentos fallidos de la
   misma edición, relee el archivo real (rustfmt reordena imports y
   reformatea anclas) en vez de reintentar a ciegas.
 
 ## Lecciones operativas acumuladas (no re-aprender)
 
+- **Sitios de la capa de decisión de signo/constante** (donde arreglar el chokepoint
+  surd/transcendental): `cas_math::root_forms::provable_sign_vs_zero` (surd lineal,
+  Option<Ordering>) y `cas_math::const_sign::provable_const_sign` (superset con e/π);
+  consumidos por `cas_math::prove_sign::{prove_positive,prove_nonnegative}_depth_inner`,
+  `cas_solver_core::isolation_utils::is_known_negative`, el discriminante SymbolicEq en
+  `quadratic_formula.rs`, y el umbral even-root en `solve_backend_local.rs`. Un `_ =>
+  false`/`as_rational_const(...)`-only en un guard de signo es casi siempre un
+  wrong-answer surd latente.
 - El motor **expande** productos sintácticos antes de `integrate`: las
   frontera racionales se miden sobre polinomios expandidos.
 - `numeric_value` solo casa literales: usa `numeric_eval::as_rational_const`
