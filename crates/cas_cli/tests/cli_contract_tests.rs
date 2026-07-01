@@ -816,6 +816,12 @@ fn test_eval_abs_of_quadratic_equals_variable_splits_and_verifies() {
     // `|f(r)| = g(r)` (which enforces `g(r) ≥ 0`). Linear `|f|` (piecewise handler) and constant-RHS
     // (isolation, keeps surds) forms are untouched.
     for (input, expected) in [
+        // `|x²−1| = √2` splits into `x² = 1±√2`; the `1−√2 < 0` branch is now DISPROVEN (an even root of
+        // a provably-negative surd is non-real) and dropped, instead of leaking `±√(1−√2)` (imaginary).
+        (
+            "abs(x^2 - 1) = sqrt(2)",
+            "{ (sqrt(2) + 1)^(1/2), -((sqrt(2) + 1)^(1/2)) }",
+        ),
         // `|E| = 0 ⟺ E = 0`: the FULL zero-set of a factored product (the abs isolation dropped all but
         // the first factor, `|x·(x−2)| = 0 → {0}`).
         ("abs(x*(x-2)) = 0", "{ 0, 2 }"),

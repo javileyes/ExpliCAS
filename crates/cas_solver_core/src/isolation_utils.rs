@@ -33,7 +33,9 @@ pub fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
         Expr::Number(n) => *n < num_rational::BigRational::from_integer(0.into()),
         Expr::Neg(_) => true,
         Expr::Mul(l, r) => is_known_negative(ctx, *l) ^ is_known_negative(ctx, *r),
-        _ => false,
+        // A constant LINEAR SURD `A + B·√n` (e.g. `1 − √2`): decide its sign exactly, so an even-root
+        // isolation `x² = 1 − √2` correctly drops to No solution instead of leaking `±√(1−√2)`.
+        _ => cas_math::root_forms::provable_sign_vs_zero(ctx, expr) == Some(Ordering::Less),
     }
 }
 
