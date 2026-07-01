@@ -850,6 +850,36 @@ fn test_eval_abs_of_quadratic_equals_variable_splits_and_verifies() {
 }
 
 #[test]
+fn test_eval_symbolic_quadratic_with_negative_constant_discriminant_is_empty() {
+    // `x² = c` with a PROVABLY-NEGATIVE constant `c` (surd OR transcendental) has no real root, but the
+    // symbolic-coefficient quadratic path emitted `±√(negative)/(2a)` as if real (a mixed surd /
+    // transcendental radicand doesn't syntactically expose its sign). The discriminant now gates on
+    // `provable_const_sign` — a proven-negative constant delta ⇒ No solution.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(x^2 = 1-sqrt(2), x)"), "No solution");
+    assert_eq!(r("solve(abs(x^2+2) = sqrt(2), x)"), "No solution");
+    assert_eq!(r("solve(x^2 = -pi, x)"), "No solution");
+    assert_eq!(r("solve(x^2 = e-3, x)"), "No solution");
+    // Controls: a POSITIVE constant discriminant keeps both real roots; a free-variable (symbolic)
+    // quadratic is untouched (sign undecidable ⇒ kept).
+    assert_eq!(
+        r("solve(x^2 = sqrt(2)-1, x)"),
+        "{ -((sqrt(2) - 1)^(1/2)), (sqrt(2) - 1)^(1/2) }"
+    );
+    assert_eq!(
+        r("solve(a*x^2+b*x+c=0, x)"),
+        "{ (-(b^2 - 4·a·c)^(1/2) - b) / (2·a), ((b^2 - 4·a·c)^(1/2) - b) / (2·a) }"
+    );
+}
+
+#[test]
 fn test_eval_rational_power_polynomial_equation_solves_by_substitution() {
     // Equations that are a polynomial of degree >= 2 in x^(1/q) (a
     // quadratic-in-disguise) used to leak a malformed internal `Solve: solve(...)`

@@ -254,6 +254,23 @@ where
     let plan = build_quadratic_coefficient_solve_plan(context_mut(state), op.clone(), a, b, c)
         .map_err(map_plan_error)?;
 
+    // Real domain: a symbolic-coefficient quadratic (`x² = 1 − √2`, `x² = e − 3`) whose constant
+    // discriminant is PROVABLY NEGATIVE has NO real roots. The symbolic root builder below would
+    // otherwise emit `±√(negative)/(2a)` as if real (`{±(1−√2)^(1/2)}`), because a mixed surd /
+    // transcendental radicand does not syntactically expose its sign. `provable_const_sign` decides it
+    // exactly (surds AND e/π), and returns `None` for anything with a free variable, so a genuinely
+    // symbolic quadratic (`a·x²+b·x+c=0`) is untouched.
+    if let QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr } = &plan {
+        let delta_expr = *delta_expr;
+        let expanded = expand_expr(state, delta_expr);
+        let sim_delta = simplify_expr(state, expanded);
+        if cas_math::const_sign::provable_const_sign(context_mut(state), sim_delta)
+            == Some(cas_math::const_sign::ConstSign::Negative)
+        {
+            return Ok(SolutionSet::Empty);
+        }
+    }
+
     Ok(solve_quadratic_coefficient_solve_plan_with_state(
         state,
         op,
@@ -306,6 +323,14 @@ where
         QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr } => {
             let delta_expanded = expand_expr(delta_expr);
             let sim_delta = simplify_expr(delta_expanded);
+
+            // Real domain: a provably-negative constant discriminant ⇒ no real roots (see the wrapper
+            // `execute_…_with_state` for the rationale). Keeps this public twin consistent.
+            if cas_math::const_sign::provable_const_sign(ctx, sim_delta)
+                == Some(cas_math::const_sign::ConstSign::Negative)
+            {
+                return SolutionSet::Empty;
+            }
 
             let (sol1_raw, sol2_raw) = roots_from_a_b_and_simplified_delta(ctx, a, b, sim_delta);
             let sol1_expanded = expand_expr(sol1_raw);
