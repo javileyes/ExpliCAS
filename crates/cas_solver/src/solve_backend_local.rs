@@ -2056,6 +2056,175 @@ fn try_solve_polynomial_in_trig(
     solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
 }
 
+/// Classify a leaf as a (possibly coefficiented) BARE `sin(g)`/`cos(g)` whose argument carries `var`:
+/// returns `(is_sin, coeff, g)` where `coeff` is the multiplicative coefficient (`1` if bare). Matches
+/// `sin(g)`, `cos(g)`, `c·sin(g)`, `sin(g)·c` (with `c` free of `var`). `None` for anything else.
+fn classify_linear_trig_leaf(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(bool, ExprId, ExprId)> {
+    use cas_ast::BuiltinFn;
+    use cas_solver_core::isolation_utils::contains_var;
+    // Bare `sin(g)` / `cos(g)`.
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let (fn_id, args) = (*fn_id, args.clone());
+        if args.len() == 1 && contains_var(ctx, args[0], var) {
+            if ctx.is_builtin(fn_id, BuiltinFn::Sin) {
+                let one = ctx.num(1);
+                return Some((true, one, args[0]));
+            }
+            if ctx.is_builtin(fn_id, BuiltinFn::Cos) {
+                let one = ctx.num(1);
+                return Some((false, one, args[0]));
+            }
+        }
+        return None;
+    }
+    // `c · (bare sin/cos)` with `c` free of `var`.
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        let (l, r) = (*l, *r);
+        if !contains_var(ctx, l, var) {
+            if let Some((is_sin, _one, g)) = classify_linear_trig_leaf(ctx, r, var) {
+                return Some((is_sin, l, g));
+            }
+        }
+        if !contains_var(ctx, r, var) {
+            if let Some((is_sin, _one, g)) = classify_linear_trig_leaf(ctx, l, var) {
+                return Some((is_sin, r, g));
+            }
+        }
+    }
+    None
+}
+
+/// Accumulate `expr` as a homogeneous linear combination `a·sin(g) + b·cos(g)`: fold each leaf's
+/// coefficient into `a`/`b` (with the running `positive` sign) and enforce a single shared argument `g`.
+/// `None` on any non-`{sin,cos}(g)` term (a constant, a different argument, or other var structure).
+#[allow(clippy::too_many_arguments)]
+fn accumulate_linear_sin_cos(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    positive: bool,
+    a: &mut ExprId,
+    b: &mut ExprId,
+    arg: &mut Option<ExprId>,
+    found_sin: &mut bool,
+    found_cos: &mut bool,
+) -> Option<()> {
+    use cas_ast::ordering::compare_expr;
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) => {
+            accumulate_linear_sin_cos(ctx, l, var, positive, a, b, arg, found_sin, found_cos)?;
+            accumulate_linear_sin_cos(ctx, r, var, positive, a, b, arg, found_sin, found_cos)
+        }
+        Expr::Sub(l, r) => {
+            accumulate_linear_sin_cos(ctx, l, var, positive, a, b, arg, found_sin, found_cos)?;
+            accumulate_linear_sin_cos(ctx, r, var, !positive, a, b, arg, found_sin, found_cos)
+        }
+        Expr::Neg(inner) => {
+            accumulate_linear_sin_cos(ctx, inner, var, !positive, a, b, arg, found_sin, found_cos)
+        }
+        _ => {
+            let Some((is_sin, coeff, g)) = classify_linear_trig_leaf(ctx, expr, var) else {
+                // A var-free ZERO constant (the moved-over RHS `… − 0`) contributes nothing; a NONZERO
+                // constant makes the equation inhomogeneous (`a·sin + b·cos = c`) — out of scope.
+                if let Some(c) = cas_math::numeric_eval::as_rational_const(ctx, expr) {
+                    if num_traits::Zero::is_zero(&c) {
+                        return Some(());
+                    }
+                }
+                return None;
+            };
+            match arg {
+                Some(g0) => {
+                    if compare_expr(ctx, *g0, g) != std::cmp::Ordering::Equal {
+                        return None;
+                    }
+                }
+                None => *arg = Some(g),
+            }
+            let signed = if positive {
+                coeff
+            } else {
+                ctx.add(Expr::Neg(coeff))
+            };
+            if is_sin {
+                *found_sin = true;
+                *a = ctx.add(Expr::Add(*a, signed));
+            } else {
+                *found_cos = true;
+                *b = ctx.add(Expr::Add(*b, signed));
+            }
+            Some(())
+        }
+    }
+}
+
+/// Solve a HOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = 0` (a single shared argument `g`,
+/// `a ≠ 0`) by dividing through by `cos(g)`: `tan(g) = −b/a`, handed to the periodic tan solver. When
+/// `a ≠ 0` the points `cos(g) = 0` are never solutions (there `a·sin(g) = ±a ≠ 0`), so the division
+/// loses nothing. Without this the isolation path leaks an `arcsin(cos(x)·…)` residual. Handles common
+/// textbook forms `sin(x) = cos(x)` (→ `tan(x) = 1`), `√3·sin(x) − cos(x) = 0` (→ `tan(x) = 1/√3`),
+/// and affine arguments `sin(2x) = cos(2x)`. The INHOMOGENEOUS `a·sin + b·cos = c` (`c ≠ 0`) is a
+/// different (auxiliary-angle) reduction and declines here (a leftover constant term fails the collect).
+fn try_solve_homogeneous_linear_trig(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::BuiltinFn;
+    if eq.op != cas_ast::RelOp::Eq {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let mut a = simplifier.context.num(0);
+    let mut b = simplifier.context.num(0);
+    let mut arg = None;
+    let (mut found_sin, mut found_cos) = (false, false);
+    accumulate_linear_sin_cos(
+        &mut simplifier.context,
+        diff,
+        var,
+        true,
+        &mut a,
+        &mut b,
+        &mut arg,
+        &mut found_sin,
+        &mut found_cos,
+    )?;
+    // Require a genuine `sin`+`cos` combination (a bare `sin(x) = 0` is owned by the periodic handler).
+    if !found_sin || !found_cos {
+        return None;
+    }
+    let g = arg?;
+    // `a` must be nonzero: a RATIONAL-zero `a` (the sin terms cancelled) declines; an irrational — hence
+    // nonzero — `a` proceeds. Dividing by a nonzero `a` is exactly the divide-by-`cos(g)` step.
+    if let Some(av) = cas_math::numeric_eval::as_rational_const(&simplifier.context, a) {
+        if num_traits::Zero::is_zero(&av) {
+            return None;
+        }
+    }
+    // `tan(g) = −b/a`.
+    let neg_b = simplifier.context.add(Expr::Neg(b));
+    let rhs = simplifier.context.add(Expr::Div(neg_b, a));
+    let (rhs, _) = simplifier.simplify(rhs);
+    let tan_id = simplifier.context.builtin_id(BuiltinFn::Tan);
+    let tan_g = simplifier.context.add(Expr::Function(tan_id, vec![g]));
+    let tan_eq = Equation {
+        lhs: tan_g,
+        rhs,
+        op: cas_ast::RelOp::Eq,
+    };
+    let (sol, _) = crate::solver_entrypoints_solve::solve(&tan_eq, var, simplifier).ok()?;
+    // Trust only a fully resolved periodic/discrete/empty answer (guard against a residual echo).
+    match sol {
+        SolutionSet::Periodic { .. } | SolutionSet::Discrete(_) | SolutionSet::Empty => Some(sol),
+        _ => None,
+    }
+}
+
 /// Solve an equation that is a *Laurent* polynomial in an exponential atom `base^x` — one that mixes
 /// `base^x` with its reciprocal `base^(−x)` (canonicalized to `1/base^x`), e.g. `e^x + e^(−x) = 2`,
 /// `3^x + 3^(−x) = 2`, `2^x − 3 + 2^(1−x) = 0`. Substitute `u = base^x` (the existing detector +
@@ -5287,6 +5456,12 @@ fn solve_local_core(
     // leak an `arcsin(… − cos(2x) …)` residual once the double-angle identity fires; substitute
     // `u = sin(x)` (cos/tan) and back-substitute each root through the periodic solver.
     if let Some(set) = try_solve_polynomial_in_trig(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A HOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = 0` (`sin(x) = cos(x)`,
+    // `√3·sin(x) − cos(x) = 0`) reduces to `tan(g) = −b/a`; the isolation path otherwise leaks an
+    // `arcsin(cos(x)·…)` residual. The inhomogeneous `… = c` (c ≠ 0) declines.
+    if let Some(set) = try_solve_homogeneous_linear_trig(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // `|A(x)| = c` with a trig-bearing argument: the generic abs isolation solves the two branches to

@@ -2574,6 +2574,53 @@ fn test_eval_quadratic_in_trig_equation_unions_periodic_roots() {
 }
 
 #[test]
+fn test_eval_homogeneous_linear_trig_equation_reduces_to_tangent() {
+    // A HOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = 0` (same argument `g`, `a ≠ 0`) reduces
+    // to `tan(g) = −b/a` — dividing by `cos(g)` loses nothing since `cos(g) = 0` is never a solution when
+    // `a ≠ 0`. The isolation path otherwise leaks an `arcsin(cos(x)·…)` residual.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `sin = cos ⟹ tan = 1`, `sin + cos = 0 ⟹ tan = −1` (period π, one family).
+    assert_eq!(r("solve(sin(x) = cos(x), x)"), "{ 1/4·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(sin(x) + cos(x) = 0, x)"),
+        "{ -1/4·pi + k·pi : k ∈ ℤ }"
+    );
+    // Irrational coefficient: `√3·sin − cos = 0 ⟹ tan = 1/√3 ⟹ π/6`.
+    assert_eq!(
+        r("solve(sqrt(3)*sin(x) - cos(x) = 0, x)"),
+        "{ 1/6·pi + k·pi : k ∈ ℤ }"
+    );
+    // A non-notable ratio keeps the exact `arctan`.
+    assert_eq!(
+        r("solve(2*sin(x) - 3*cos(x) = 0, x)"),
+        "{ arctan(3/2) + k·pi : k ∈ ℤ }"
+    );
+    // Affine argument: `sin(2x) = cos(2x) ⟹ tan(2x) = 1 ⟹ π/8 + kπ/2`.
+    assert_eq!(
+        r("solve(sin(2*x) = cos(2*x), x)"),
+        "{ 1/8·pi + k·1/2·pi : k ∈ ℤ }"
+    );
+    // Controls: bare `sin/cos = 0` (owned by the periodic handler), the inhomogeneous `… = c` (declines
+    // to a residual), and a product (not a sum) are all unchanged.
+    assert_eq!(r("solve(sin(x) = 0, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(sin(x) + cos(x) = 1, x)"),
+        "Solve: solve(x - arcsin(1 - cos(x)) = 0, x) = 0"
+    );
+    assert_eq!(
+        r("solve(sin(x)*cos(x) = 0, x)"),
+        "{ k·pi, 1/2·pi + k·pi : k ∈ ℤ }"
+    );
+}
+
+#[test]
 fn test_eval_abs_of_trig_equation_keeps_periodicity() {
     // `|A| = c` with a trig-bearing argument was solved to PRINCIPAL roots by the generic abs isolation
     // (`|2·sin(x)−1| = 1 → {π/2, 0}`). It now splits into `A = c ∨ A = −c`, solving each branch fully so

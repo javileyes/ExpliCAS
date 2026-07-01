@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 474 (newest first)
+Active entries: 475 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -127,6 +127,7 @@ Active entries: 474 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_via_exp_base_norma... | UNIVERSALIDAD (exponenciales de base mixta): `4^x − 3·2^x + 2` daba ERROR; normalizar a base prima común
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sum_of_two_radical... | UNIVERSALIDAD (diferencia de dos radicales): `√f − √g = c` DECLINABA aunque `√f + √g = c` funcionaba
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_exponential_recipr... | UNIVERSALIDAD (exponenciales recíprocas / hiperbólicas): `e^x + e^(−x) = 2` daba ERROR "cosh no definida"
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_homogeneous_linear... | UNIVERSALIDAD (trig lineal homogénea): `sin(x) = cos(x)` daba residual; reducir a `tan(g) = −b/a`
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -18015,3 +18016,18 @@ Active entries: 474 (newest first)
   - Cuando `simplify` tiene una IDENTIDAD que colapsa la estructura que necesitas (aquí `e^x+e^(−x) → 2cosh`), el handler debe trabajar sobre el árbol EN CRUDO y hacer su propia extracción estructural — llamar a `simplify` (aunque sea para "limpiar") re-dispara la identidad y rompe todo. Es el gemelo del patrón de `try_solve_polynomial_in_trig` (que evita el doble-ángulo trabajando en la diferencia cruda).
   - En crudo el recíproco aparece como `Pow(base, −x)` (NO como `Div(1, base^x)`), y `substitute_expr_pattern` NO lo mapea; construir el MAPA Laurent `k→coeff` a mano (pendiente entera del exponente afín, intercepto plegado como `b^m`) es más robusto que apoyarse en la sustitución de patrones, y desemboca limpio en `solve_polynomial_in_atom` reusando toda su retro-sustitución con dominio.
   - PRÓXIMO PELDAÑO: raíz IRRACIONAL en u (`e^x+e^(−x)=3` → u=(3±√5)/2) degrada a residual honesto porque la retro-sustitución `e^x = surd` no determina el signo del surdo `(3−√5)/2 > 0` (gap PRE-EXISTENTE de la isolación exp=surd; `(3+√5)/2` sí da `ln(...)`). Y bases de exponente fraccionario (`e^(x/2)`) o intercepto irracional (`e^(x+1)=e·e^x`) declinan (fuera del alcance entero/racional).
+
+## 2026-07-01 - UNIVERSALIDAD (trig lineal homogénea): `sin(x) = cos(x)` daba residual; reducir a `tan(g) = −b/a`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_homogeneous_linear_trig` + `accumulate_linear_sin_cos`, `classify_linear_trig_leaf`)
+- status: `retained` (commit pendiente-de-hash). Under-answer (residual) → resuelto. Capability (Fase 1, real univariable — ecuaciones trigonométricas). Verificado adversarialmente (35 formas `a·sin(x)+b·cos(x)=0` vs el oráculo `tan(x)=−b/a`: 0 mismatch, 0 residual).
+- capture:
+  - investment_class: capability. Reducción canónica (trig homogénea → `tan`) que REUSA el solver periódico de `tan(g)=c` existente (robusto: maneja argumento afín y RHS irracional).
+  - cell: `sin(x)=cos(x)` → `{π/4+kπ}`, `sin(x)+cos(x)=0` → `{−π/4+kπ}`, `√3·sin(x)−cos(x)=0` → `{π/6+kπ}`, `2·sin(x)−3·cos(x)=0` → `{arctan(3/2)+kπ}`, `sin(2x)=cos(2x)` → `{π/8+kπ/2}` (argumento afín), `3·sin(x)=4·cos(x)` → `{arctan(4/3)+kπ}`. Controles: bare `sin(x)=0`/`cos(x)=0` (del handler periódico), inhomogénea `sin(x)+cos(x)=1` (declina a residual), cuadrática-en-trig y producto `sin·cos=0` intactos.
+  - causa raíz: la isolación reorienta `a·sin+b·cos=0` a `x = arcsin(cos(x)·…)` y filtra un residual (la variable queda en ambos lados). La reducción textbook es dividir por `cos(g)`: `tan(g)=−b/a` (cuando `a≠0`, `cos(g)=0` NUNCA es solución — ahí `a·sin=±a≠0`, no se pierde nada).
+  - fix: `try_solve_homogeneous_linear_trig` acumula `a·sin(g)+b·cos(g)` recorriendo la diferencia CRUDA (coeficientes como ExprId, un único argumento `g` compartido, exige AMBOS sin y cos presentes), descarta la constante 0 sobrante del RHS movido (una constante NO nula ⇒ inhomogénea ⇒ declina), y despacha `tan(g)=−b/a` al solver existente. Solo confía en una resolución periódica/discreta/vacía (guardia contra el eco residual).
+  - validación: workspace failed:0 (+ test `test_eval_homogeneous_linear_trig_equation_reduces_to_tangent`); clippy `-p cas_solver -p cas_cli --all-targets -D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (los 2 suites con drift son los auto-derivantes). Adversarial: 35 formas vs oráculo `tan` → 0 mismatch.
+- retained learning:
+  - Reducir a una FORMA CANÓNICA con dueño robusto existente (`tan(g)=c`) es el patrón de mayor ROI para familias trig: la trig homogénea NO necesita maquinaria propia, solo el mapeo `a·sin+b·cos=0 → tan=−b/a` y delegar. Gemelo del `m^x→p^(k·x)` (exponenciales) y del `√A=√B` (radicales): identifica el atom canónico invertible y deja que su solver haga el trabajo periódico/de dominio.
+  - Trabajar en la diferencia CRUDA (sin `simplify`) evita que una identidad plegue la estructura (aquí `simplify` NO colapsó, pero la disciplina es la misma que en exp-recíproca `cosh` y poly-en-trig doble-ángulo). El detalle sutil: al mover el RHS, `Sub(lhs, 0)` deja una constante `0` que el colector debe DESCARTAR explícitamente (una no-nula ⇒ inhomogénea ⇒ declina), o toda la familia `= 0` falla la detección — exactamente el bug que vi antes de añadir esa rama.
+  - PRÓXIMO PELDAÑO: la INHOMOGÉNEA `a·sin(x)+b·cos(x)=c` (c≠0) sigue en residual — necesita el método del ángulo auxiliar (`R·sin(x+φ)=c`, R=√(a²+b²)), que produce `arcsin(c/R)` con `φ=arctan(b/a)` posiblemente no-notable; y `cos(2x)=cos(x)` (cuadrática tras doble-ángulo, dos atoms distintos) necesita reconocer `cos(2x)=2cos²x−1` antes de la sustitución poly-en-cos.
