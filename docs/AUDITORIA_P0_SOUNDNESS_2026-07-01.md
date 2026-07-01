@@ -206,3 +206,29 @@ layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prov
   (`diff(sin(x)·tan(x),x,2)`) — a simplify soundness-invariant violation (hardest; separate effort).
 - **P1 families** F1–F4 (surd-coefficient poly-in-u; surd limits; radical fixpoint; sec/csc/cot/cbrt
   registration).
+
+---
+
+## FIX STATUS UPDATE #2 (2026-07-01, next batch — scoped by the `p0-remaining-scope` workflow)
+
+- **P0-B** — FULLY CLOSED (`101288481` + `538f0a902`): the direct `x² = c` symbolic-quadratic path now
+  gates on `const_sign::provable_const_sign` of the constant discriminant — a proven-negative Δ ⇒ No
+  solution. Covers surds AND transcendentals (`x² = 1−√2`, `x² = −π`, `x² = e−3`, `|x²+2| = √2`).
+- **P0-F (radical ineq, BUG 1)** — FIXED (`872780c12`): the even-root range correction decides a negative
+  SURD threshold exactly (`√x < −√2 → No solution`, `√x > −√2 → [0,∞)`) via `provable_sign_vs_zero`.
+- **P0-C** — PARTIAL (`b5e14b08f`): `affine_var_rational_slope` reduces a nonzero-constant numerator over
+  a single-pole linear-SURD/π denominator to the boundary `g {op'} 0` (`1/(x−√2)>0 → (√2,∞)`,
+  `1/(x−π)>0 → (π,∞)`). REMAINING: `1/(x+√2)>0` / `−1/(x−√2)>0` still show a spurious conjugate-surd hole
+  — they reach the rational-constant-inequality handler, which injects `±surd` into the breakpoint set.
+
+### STILL REMAINING (next-next batch)
+- **P0-C conjugate-hole** (2 cases): the rational-constant-inequality path (`try_solve_rational_constant_inequality`
+  / the surd-pole breakpoint construction) injects the conjugate `±surd`.
+- **P0-F-log**: `ln(x)−ln(x+1)=1/3` keeps a negative out-of-domain root — scoped to
+  `cas_math/src/const_sign.rs::interval_pow` (bails on non-integer exponent `e^(1/3)`); fix = add a
+  nonnegative-base rational-exponent branch with an `nth_root_bounds` bracketing helper (like `sqrt_bounds`).
+- **P0-F-ineq (BUG 2)**: `abs(ln(x)) < 2 → No solution` (imposes `ln(x)>0` value-positivity instead of the
+  argument domain `x>0`); `compare_values` in `solution_set.rs` also needs a surd branch.
+- **P0-G**: 2nd-derivative simplifier `depth_overflow` returns a non-equivalent truncated tree — scoped to
+  `cas_engine/src/engine/transform/mod.rs` (`MAX_SIMPLIFY_DEPTH=50`); fix = a `subtree_truncated` flag so
+  an ancestor SKIPS value-changing collect/merge rewrites over a truncated descendant. Hardest; separate effort.
