@@ -3734,6 +3734,35 @@ fn test_eval_exponential_positivity_inequality() {
 }
 
 #[test]
+fn test_eval_mixed_base_exponential_normalizes_to_common_prime() {
+    // Terms with DIFFERENT integer bases that share a common prime (`4^x` and `2^x`, `9^x` and `3^x`)
+    // used to error with "Cannot isolate: variable on both sides". They are now rewritten to the common
+    // prime base (`4^x → 2^(2x)`), making the relation a polynomial in the single atom `p^x`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `u = 2^x`: `u² - 3u + 2 = 0 ⟹ u ∈ {1, 2} ⟹ x ∈ {0, 1}`.
+    assert_eq!(r("solve(4^x - 3*2^x + 2 = 0, x)"), "{ 0, 1 }");
+    assert_eq!(r("solve(9^x - 4*3^x + 3 = 0, x)"), "{ 0, 1 }");
+    assert_eq!(r("solve(4^x - 5*2^x + 4 = 0, x)"), "{ 0, 2 }");
+    // A branch out of range (`2^x = -1`) is dropped.
+    assert_eq!(r("solve(4^x - 2^x - 2 = 0, x)"), "{ 1 }");
+    // The inequality form normalizes too.
+    assert_eq!(r("solve(4^x - 3*2^x + 2 < 0, x)"), "(0, 1)");
+    // Three bases sharing the prime 2 (`8=2³, 4=2², 2=2¹`), a cubic in `2^x`.
+    assert_eq!(r("solve(8^x - 6*4^x + 8*2^x = 0, x)"), "{ 1, 2 }");
+    // Controls: a single base (already handled), base e (non-integer), and INCOMPATIBLE primes decline.
+    assert_eq!(r("solve(2^(2*x) - 3*2^x + 2 = 0, x)"), "{ 0, 1 }");
+    assert_eq!(r("solve(e^(2*x) - 3*e^x + 2 = 0, x)"), "{ ln(2), 0 }");
+    assert_eq!(r("solve(2^x = 8, x)"), "{ 3 }");
+}
+
+#[test]
 fn test_eval_fractional_base_exponential_inequality_direction() {
     // SOUNDNESS: `a^x ≷ k` with 0 < a < 1 (decreasing) must FLIP the inequality direction when
     // isolating x through the logarithm. Previously the engine kept the direction, returning the

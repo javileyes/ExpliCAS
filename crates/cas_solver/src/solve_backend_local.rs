@@ -2901,6 +2901,186 @@ fn try_decline_unsound_power_monomial_inequality(
     ))
 }
 
+/// Factor an integer `n ≥ 2` as a single prime power `p^k`, or `None` if it has more than one distinct
+/// prime factor (`6 = 2·3` → None). Trial division; the bases here are small literals.
+fn integer_prime_power(n: &num_bigint::BigInt) -> Option<(num_bigint::BigInt, u32)> {
+    use num_bigint::BigInt;
+    use num_traits::{One, Zero};
+    let mut m = n.clone();
+    if m < BigInt::from(2) {
+        return None;
+    }
+    let mut p = BigInt::from(2);
+    while &p * &p <= m {
+        if (&m % &p).is_zero() {
+            break;
+        }
+        p += 1;
+    }
+    if &p * &p > m {
+        p = m.clone(); // m itself is prime
+    }
+    let mut k = 0u32;
+    while (&m % &p).is_zero() {
+        m /= &p;
+        k += 1;
+    }
+    m.is_one().then_some((p, k))
+}
+
+/// Collect the DISTINCT integer bases `m ≥ 2` of every `m^(…)` subterm whose EXPONENT carries the
+/// variable (`4^x`, `2^x`, `9^x`), so a mixed-base exponential can be normalized to a common base.
+fn collect_exp_integer_bases(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    out: &mut Vec<num_bigint::BigInt>,
+) {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::One;
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        let (base, exp) = (*base, *exp);
+        if contains_var(ctx, exp, var) && !contains_var(ctx, base, var) {
+            if let Some(b) = as_rational_const(ctx, base) {
+                if b.is_integer() && b > num_rational::BigRational::one() {
+                    let bi = b.to_integer();
+                    if !out.contains(&bi) {
+                        out.push(bi);
+                    }
+                }
+            }
+        }
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            collect_exp_integer_bases(ctx, a, var, out);
+            collect_exp_integer_bases(ctx, b, var, out);
+        }
+        Expr::Neg(a) | Expr::Hold(a) => collect_exp_integer_bases(ctx, a, var, out),
+        Expr::Function(_, args) => {
+            for a in args {
+                collect_exp_integer_bases(ctx, a, var, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Rewrite every `m^g` (integer `m = p^k`, exponent `g` carrying the variable) to `p^(k·g)`, mapping a
+/// mixed-base exponential onto the common prime base `p` (`4^x → 2^(2x)`).
+fn rewrite_exp_bases_to_prime(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    p: &num_bigint::BigInt,
+) -> ExprId {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    if let Expr::Pow(base, exp) = ctx.get(expr).clone() {
+        if contains_var(ctx, exp, var) && !contains_var(ctx, base, var) {
+            if let Some(b) = as_rational_const(ctx, base) {
+                if b.is_integer() {
+                    if let Some((q, k)) = integer_prime_power(&b.to_integer()) {
+                        if &q == p {
+                            let g = rewrite_exp_bases_to_prime(ctx, exp, var, p);
+                            if k == 1 {
+                                let p_node = ctx.add(Expr::Number(BigRational::from(p.clone())));
+                                return ctx.add(Expr::Pow(p_node, g));
+                            }
+                            let p_node = ctx.add(Expr::Number(BigRational::from(p.clone())));
+                            let k_node = ctx
+                                .add(Expr::Number(BigRational::from(num_bigint::BigInt::from(k))));
+                            let new_exp = ctx.add(Expr::Mul(k_node, g));
+                            return ctx.add(Expr::Pow(p_node, new_exp));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(a, b) => {
+            let (a, b) = (
+                rewrite_exp_bases_to_prime(ctx, a, var, p),
+                rewrite_exp_bases_to_prime(ctx, b, var, p),
+            );
+            ctx.add(Expr::Add(a, b))
+        }
+        Expr::Sub(a, b) => {
+            let (a, b) = (
+                rewrite_exp_bases_to_prime(ctx, a, var, p),
+                rewrite_exp_bases_to_prime(ctx, b, var, p),
+            );
+            ctx.add(Expr::Sub(a, b))
+        }
+        Expr::Mul(a, b) => {
+            let (a, b) = (
+                rewrite_exp_bases_to_prime(ctx, a, var, p),
+                rewrite_exp_bases_to_prime(ctx, b, var, p),
+            );
+            ctx.add(Expr::Mul(a, b))
+        }
+        Expr::Div(a, b) => {
+            let (a, b) = (
+                rewrite_exp_bases_to_prime(ctx, a, var, p),
+                rewrite_exp_bases_to_prime(ctx, b, var, p),
+            );
+            ctx.add(Expr::Div(a, b))
+        }
+        Expr::Pow(a, b) => {
+            let (a, b) = (
+                rewrite_exp_bases_to_prime(ctx, a, var, p),
+                rewrite_exp_bases_to_prime(ctx, b, var, p),
+            );
+            ctx.add(Expr::Pow(a, b))
+        }
+        Expr::Neg(a) => {
+            let a = rewrite_exp_bases_to_prime(ctx, a, var, p);
+            ctx.add(Expr::Neg(a))
+        }
+        _ => expr,
+    }
+}
+
+/// Solve an exponential equation/inequality whose terms use DIFFERENT integer bases that are powers of
+/// a common prime (`4^x − 3·2^x + 2 = 0`): rewrite every `m^g` to `p^(k·g)` (`4^x → 2^(2x)`) so the
+/// whole thing is a polynomial in the single atom `p^x`, then solve the normalized relation. Without
+/// this, the isolation reports "Cannot isolate: variable appears on both sides" (two distinct bases).
+fn try_solve_via_exp_base_normalization(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    let mut bases = Vec::new();
+    collect_exp_integer_bases(&simplifier.context, eq.lhs, var, &mut bases);
+    collect_exp_integer_bases(&simplifier.context, eq.rhs, var, &mut bases);
+    if bases.len() < 2 {
+        return None; // one base (or none): already the normal path's job — avoids a rewrite loop
+    }
+    // Every base must be a power of a SINGLE common prime `p`.
+    let (p, _) = integer_prime_power(&bases[0])?;
+    for b in &bases[1..] {
+        let (q, _) = integer_prime_power(b)?;
+        if q != p {
+            return None; // e.g. {4, 9}: 2 vs 3 — no common base
+        }
+    }
+    let lhs = rewrite_exp_bases_to_prime(&mut simplifier.context, eq.lhs, var, &p);
+    let rhs = rewrite_exp_bases_to_prime(&mut simplifier.context, eq.rhs, var, &p);
+    let (lhs, _) = simplifier.simplify(lhs);
+    let (rhs, _) = simplifier.simplify(rhs);
+    let new_eq = Equation {
+        lhs,
+        rhs,
+        op: eq.op.clone(),
+    };
+    // The rewritten relation has a single base `p`, so this handler declines on re-entry (no loop).
+    let (set, _) = crate::solver_entrypoints_solve::solve(&new_eq, var, simplifier).ok()?;
+    Some(set)
+}
+
 /// Flatten `expr` into a linear combination of the exponential atom `base^x`:
 /// accumulate the rational coefficient of every `base^x` (or `c*base^x`) term
 /// into `atom_coeff`, collect the signed constant terms (no `var`) into
@@ -4936,6 +5116,12 @@ fn solve_local_core(
     // represent; decline to an honest residual instead of a wrong ray (out-of-range bare sin/cos are
     // excluded — they are answered ℝ/∅ by the trig-range guard after solve_inner).
     if let Some(set) = try_decline_periodic_trig_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // Mixed integer bases that share a common prime (`4^x − 3·2^x + 2`, `9^x − 4·3^x + 3`): rewrite each
+    // `m^g` to `p^(k·g)` (`4^x → 2^(2x)`) so it is a polynomial in the single atom `p^x`, then re-solve.
+    // Otherwise the isolation reports "Cannot isolate: variable on both sides" (two distinct bases).
+    if let Some(set) = try_solve_via_exp_base_normalization(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // A single-exponential inequality `a*base^x + c {op} k` is isolated to the

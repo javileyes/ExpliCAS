@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 471 (newest first)
+Active entries: 472 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -124,6 +124,7 @@ Active entries: 471 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_of_trig_equati... | SOUNDNESS (auditoría core-union → familia hallada): `|f(trig)| = c` daba raíces PRINCIPALES, no periódicas
 - 2026-07-01 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`union_solution_sets`, `interse... | ARQUITECTURA (soundness + universalidad): endurecer los combinadores de SolutionSet (fin del drop silencioso)
 - 2026-07-01 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (los brazos `Continuous∩Union` y... | ARQUITECTURA (A2): `intersect_solution_sets` DROPEA el punto de contacto en `Continuous∩Union` / `Union∩Union`
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_via_exp_base_norma... | UNIVERSALIDAD (exponenciales de base mixta): `4^x − 3·2^x + 2` daba ERROR; normalizar a base prima común
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -17967,3 +17968,17 @@ Active entries: 471 (newest first)
 - retained learning:
   - El anti-patrón "drop silencioso" no vive solo en los catch-alls: un `match` dentro de un bucle que solo maneja el caso `Continuous` y comenta `// Complex, assume Continuous` para el `Discrete` es la MISMA trampa. Auditar TODOS los sitios donde un combinador ignora una variante del resultado, no solo los catch-all finales.
   - Ensamblar "intervalos + puntos sueltos" se hace uniendo `Discrete∪(Continuous|Union)`, que ya absorbe correctamente un punto en un borde abierto adyacente — reusa la lógica de union en vez de re-implementar la absorción.
+
+## 2026-07-01 - UNIVERSALIDAD (exponenciales de base mixta): `4^x − 3·2^x + 2` daba ERROR; normalizar a base prima común
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_via_exp_base_normalization` + `collect_exp_integer_bases`, `integer_prime_power`, `rewrite_exp_bases_to_prime`)
+- status: `retained` (commit pendiente-de-hash). Under-answer/error → resuelto. Capability. Verificado adversarialmente (17 formas `c2·b²^x + c1·b^x + c0 = 0` vs verdad sympy: 0 wrong).
+- capture:
+  - investment_class: capability (Fase 1, real univariable — ecuaciones/inecuaciones exponenciales). Normalización canónica pre-solve.
+  - cell: `4^x-3·2^x+2=0` → `{0,1}` (era "Cannot isolate: variable on both sides"); `9^x-4·3^x+3=0` → `{0,1}`; `4^x-5·2^x+4=0` → `{0,2}`; `4^x-2^x-2=0` → `{1}` (rama 2^x=-1 descartada); INECUACIÓN `4^x-3·2^x+2<0` → `(0,1)`; tres bases `8^x-6·4^x+8·2^x=0` → `{1,2}` (cúbica en 2^x). Controles: base única (`2^(2x)-3·2^x+2`) y base e (`e^(2x)-3e^x+2`) intactos; bases incompatibles (`4^x-9^x`, primos 2 vs 3) DECLINAN.
+  - causa raíz: la isolación exponencial falla cuando x aparece en dos bases LITERALES distintas (`4^x` y `2^x`) — "variable appears on both sides". La maquinaria SÍ resuelve base única (`2^(2x)-3·2^x+2` como polinomio en 2^x), pero el simplificador NO normaliza `4^x → 2^(2x)`.
+  - fix: `try_solve_via_exp_base_normalization` recolecta las bases enteras `m≥2` de `m^(…x…)`; si TODAS son potencias de un mismo primo `p` (`integer_prime_power`), reescribe cada `m^g → p^(k·g)` (`4^x→2^(2x)`, `9^x→3^(2x)`) y RE-RESUELVE la relación normalizada (que ya es polinómica en `p^x`). Anti-loop: tras reescribir queda base única → el handler declina en la re-entrada (`bases.len()<2`). Bases de primos DISTINTOS o no-prime-power → decline.
+  - validación: workspace failed:0 (+ test `test_eval_mixed_base_exponential_normalizes_to_common_prime`); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (los 2 suites con drift son los auto-derivantes). Adversarial: 17 formas (b∈{2,3}, 9 polinomios en b^x) vs verdad sympy (log_b de las raíces u>0) → 0 wrong.
+- retained learning:
+  - Normalizar a una BASE CANÓNICA común antes de resolver desbloquea toda una familia: `m^x → p^(k·x)` cuando las bases comparten un primo, y re-resolver reusa la maquinaria de base única existente (poli en `p^x`). Patrón "reduce-a-canónico" aplicado a exponenciales (gemelo del `a·tan+b → tan=c'` que intenté, pero AQUÍ funciona limpio porque la maquinaria de base única es robusta y consistente).
+  - PRÓXIMO PELDAÑO: bases de primos distintos (`4^x = 9^x` → `(4/9)^x = 1` → x=0; `2^x·3^x = 6^x`; ratio de exponenciales) siguen declinando — necesitan una reducción distinta (dividir por un exponencial, o tomar log). Y la base fraccionaria/simbólica no se normaliza (solo enteros).
