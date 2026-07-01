@@ -1864,12 +1864,8 @@ fn solve_polynomial_in_atom(
         SolutionSet::Empty => return Some(SolutionSet::Empty),
         _ => return None, // non-discrete / unsolved u-polynomial: leave to the existing path
     };
-    // Back-substitute each root `atom = u_root`. Non-periodic results (log/sqrt give a point `x = e^c` /
-    // `x = c^q`) union normally; PERIODIC results (a trig atom gives a family per root) are collected and
-    // combined over a common period, because `union_solution_sets` cannot merge two periodic families of
-    // different periods (it would drop one).
-    let mut solution = SolutionSet::Empty;
-    let mut periodic_families: Vec<(Vec<ExprId>, ExprId)> = Vec::new();
+    // Back-substitute each root `atom = u_root`, then union the branch solutions (periodic-aware).
+    let mut branch_sets = Vec::with_capacity(u_roots.len());
     for u_root in u_roots {
         let back_eq = Equation {
             lhs: back_sub_atom,
@@ -1877,9 +1873,25 @@ fn solve_polynomial_in_atom(
             op: cas_ast::RelOp::Eq,
         };
         let (xs, _) = crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
-        match xs {
+        branch_sets.push(xs);
+    }
+    union_branch_solutions(simplifier, branch_sets)
+}
+
+/// Union a set of branch/root solution sets. PERIODIC families are collected and combined over a common
+/// period (which `union_solution_sets` cannot do for DIFFERENT periods — it would drop one); `Empty`
+/// branches are skipped; non-periodic branches (points/intervals) union normally. Shared by the
+/// polynomial-in-atom equation solver and the `|A| = c` absolute-value solver.
+fn union_branch_solutions(
+    simplifier: &mut Simplifier,
+    branch_sets: Vec<SolutionSet>,
+) -> Option<SolutionSet> {
+    let mut solution = SolutionSet::Empty;
+    let mut periodic_families: Vec<(Vec<ExprId>, ExprId)> = Vec::new();
+    for s in branch_sets {
+        match s {
             SolutionSet::Periodic { bases, period } => periodic_families.push((bases, period)),
-            SolutionSet::Empty => {} // this root has no real pre-image (e.g. sin(x) = 2)
+            SolutionSet::Empty => {} // no real pre-image for this branch (e.g. sin(x) = 2)
             other => {
                 solution = cas_solver_core::solution_set::union_solution_sets(
                     &simplifier.context,
@@ -2015,6 +2027,70 @@ fn try_solve_polynomial_in_trig(
     // (the `trig(g) = u_root` back-substitution yields a family per root, combined over a common period)
     // and applies the range guard (`sin(x) = 2` drops).
     solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+}
+
+/// Solve `|A(x)| = c` where `A` contains a trig atom and `c` is a nonnegative rational constant, by the
+/// textbook split `A = c ∨ A = −c` — solving EACH branch with the full solver so a trig argument yields
+/// its PERIODIC family, then unioning. The generic absolute-value isolation solves the branches to
+/// PRINCIPAL roots only (`|2·sin(x) − 1| = 1 → {π/2, 0}` instead of `{π/2+2kπ} ∪ {kπ}`). Scoped to a
+/// trig-bearing argument so the (correct) non-trig abs path is untouched; bare `|trig| = c` is already
+/// handled earlier by the periodic-trig reduction.
+fn try_solve_abs_of_trig_equation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    // LHS must be a unary `|A|` whose argument carries a trig atom in the variable.
+    let arg = match simplifier.context.get(eq.lhs) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && simplifier.context.is_builtin(*fn_id, BuiltinFn::Abs) =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+    // A non-trig `|A|` is already solved correctly by the existing path.
+    find_trig_atom_containing_var(&simplifier.context, arg, var)?;
+    if contains_var(&simplifier.context, eq.rhs, var) {
+        return None; // a variable RHS needs the `rhs ≥ 0` guard machinery — leave it to the abs path
+    }
+    let c = as_rational_const(&simplifier.context, eq.rhs)?;
+    if c < BigRational::zero() {
+        return Some(SolutionSet::Empty); // |A| = negative ⇒ no solution
+    }
+    // Branches `A = c` and (for c > 0) `A = -c`, each solved fully so trig gives a periodic family.
+    let mut branch_rhs = vec![eq.rhs];
+    if !c.is_zero() {
+        let neg = simplifier.context.add(Expr::Neg(eq.rhs));
+        branch_rhs.push(simplifier.simplify(neg).0);
+    }
+    let mut branch_sets = Vec::with_capacity(branch_rhs.len());
+    for rhs in branch_rhs {
+        let branch_eq = Equation {
+            lhs: arg,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let (s, _) = crate::solver_entrypoints_solve::solve(&branch_eq, var, simplifier).ok()?;
+        // A trig branch must resolve to a PERIODIC family (or `Empty` via the range guard). A `Discrete`
+        // (or other) result means the branch solver returned PRINCIPAL roots — dropping periodicity
+        // (e.g. `2·tan(x) − 1 = 1 → {π/4}`). Emitting a principal union would turn the existing honest
+        // residual into a wrong answer, so decline and let the residual path own it.
+        match s {
+            SolutionSet::Periodic { .. } | SolutionSet::Empty => branch_sets.push(s),
+            _ => return None,
+        }
+    }
+    union_branch_solutions(simplifier, branch_sets)
 }
 
 /// Solve a polynomial-in-`ln(arg)` INEQUALITY `P(ln(x)) {op} 0` (`ln(x)^2 - 3·ln(x) + 2 < 0`, the
@@ -4782,6 +4858,11 @@ fn solve_local_core(
     // leak an `arcsin(… − cos(2x) …)` residual once the double-angle identity fires; substitute
     // `u = sin(x)` (cos/tan) and back-substitute each root through the periodic solver.
     if let Some(set) = try_solve_polynomial_in_trig(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `|A(x)| = c` with a trig-bearing argument: the generic abs isolation solves the two branches to
+    // PRINCIPAL roots (`|2·sin(x)−1| = 1 → {π/2, 0}`); solve each branch fully so trig stays periodic.
+    if let Some(set) = try_solve_abs_of_trig_equation(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks

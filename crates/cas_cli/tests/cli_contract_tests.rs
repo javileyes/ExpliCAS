@@ -2555,6 +2555,53 @@ fn test_eval_quadratic_in_trig_equation_unions_periodic_roots() {
 }
 
 #[test]
+fn test_eval_abs_of_trig_equation_keeps_periodicity() {
+    // `|A| = c` with a trig-bearing argument was solved to PRINCIPAL roots by the generic abs isolation
+    // (`|2·sin(x)−1| = 1 → {π/2, 0}`). It now splits into `A = c ∨ A = −c`, solving each branch fully so
+    // trig stays periodic, then unions the families (over a common period when they differ).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `sin = 1` (period 2π) ∪ `sin = 0` (period π) — combined over 2π.
+    assert_eq!(
+        r("solve(abs(2*sin(x) - 1) = 1, x)"),
+        "{ 1/2·pi + k·2·pi, k·2·pi, pi + k·2·pi : k ∈ ℤ }"
+    );
+    // `tan = ±1`, period π.
+    assert_eq!(
+        r("solve(abs(tan(x)) = 1, x)"),
+        "{ 1/4·pi + k·pi, -1/4·pi + k·pi : k ∈ ℤ }"
+    );
+    // Both branches' non-principal `π − arcsin` roots are kept.
+    assert_eq!(
+        r("solve(abs(sin(x) - 1/2) = 1/4, x)"),
+        "{ arcsin(3/4) + k·2·pi, pi - arcsin(3/4) + k·2·pi, arcsin(1/4) + k·2·pi, pi - arcsin(1/4) + k·2·pi : k ∈ ℤ }"
+    );
+    // One branch is out of range (`cos = 2`) and contributes nothing.
+    assert_eq!(r("solve(abs(cos(x) - 1) = 1, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    // `c = 0` is a single branch.
+    assert_eq!(
+        r("solve(abs(2*sin(x) - 1) = 0, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // Both branches out of range ⇒ empty.
+    assert_eq!(r("solve(abs(2*sin(x) - 1) = 5, x)"), "No solution");
+    // Controls: bare `|trig| = c` keeps the periodic-trig reduction's form; non-trig `|A|` and a
+    // negative RHS are unchanged.
+    assert_eq!(
+        r("solve(abs(sin(x)) = 1/2, x)"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi, -1/6·pi + k·2·pi, 7/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(abs(x - 1) = 2, x)"), "{ 3, -1 }");
+    assert_eq!(r("solve(abs(sin(x)) = -1, x)"), "No solution");
+}
+
+#[test]
 fn test_eval_trig_power_equation_keeps_periodicity() {
     // A trig EXPRESSION that simplifies to a perfect square / odd power of a single trig
     // (`cos(x)^2-1 -> -sin(x)^2`, `sin(x)*tan(x) -> sin^2/cos`, `(cos+1)(cos-1)sin -> -sin^3`)
