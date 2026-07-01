@@ -1290,6 +1290,86 @@ where
 }
 
 /// Execute full division isolation pipeline (`numerator / denominator = rhs`)
+/// Slope of `expr` as an affine `a·x + b` in `var` where `a` is a nonzero RATIONAL and `b` is any
+/// var-free constant (surd/π allowed): returns `Some(a)`, or `None` if `expr` is not linear in `var`
+/// (a higher power, a product/quotient carrying `var`, or a vanishing slope). Unlike
+/// `Polynomial::from_expr`, this tolerates an IRRATIONAL intercept (`x − √2`), which the polynomial
+/// path rejects — that rejection is exactly why a `c/(x − √2)` inequality used to fall through to the
+/// legacy garbage-interval path.
+fn affine_var_rational_slope(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<num_rational::BigRational> {
+    use crate::isolation_utils::contains_var;
+    use num_traits::{One, Zero};
+    fn go(
+        ctx: &Context,
+        expr: ExprId,
+        var: &str,
+        scale: &num_rational::BigRational,
+        slope: &mut num_rational::BigRational,
+    ) -> Option<()> {
+        if !contains_var(ctx, expr, var) {
+            return Some(()); // var-free constant term (the affine intercept — may be a surd)
+        }
+        match ctx.get(expr) {
+            cas_ast::Expr::Variable(sym) if ctx.sym_name(*sym) == var => {
+                *slope += scale;
+                Some(())
+            }
+            cas_ast::Expr::Neg(inner) => go(ctx, *inner, var, &(-scale.clone()), slope),
+            cas_ast::Expr::Add(a, b) => {
+                let (a, b) = (*a, *b);
+                go(ctx, a, var, scale, slope)?;
+                go(ctx, b, var, scale, slope)
+            }
+            cas_ast::Expr::Sub(a, b) => {
+                let (a, b) = (*a, *b);
+                go(ctx, a, var, scale, slope)?;
+                go(ctx, b, var, &(-scale.clone()), slope)
+            }
+            cas_ast::Expr::Mul(l, r) => {
+                let (l, r) = (*l, *r);
+                if !contains_var(ctx, l, var) {
+                    let c = cas_math::numeric_eval::as_rational_const(ctx, l)?;
+                    go(ctx, r, var, &(scale * &c), slope)
+                } else if !contains_var(ctx, r, var) {
+                    let c = cas_math::numeric_eval::as_rational_const(ctx, r)?;
+                    go(ctx, l, var, &(scale * &c), slope)
+                } else {
+                    None
+                }
+            }
+            cas_ast::Expr::Div(a, b) => {
+                let (a, b) = (*a, *b);
+                if contains_var(ctx, b, var) {
+                    return None;
+                }
+                let c = cas_math::numeric_eval::as_rational_const(ctx, b)?;
+                if c.is_zero() {
+                    return None;
+                }
+                go(ctx, a, var, &(scale / &c), slope)
+            }
+            _ => None, // Pow(x, …) etc. ⇒ not affine
+        }
+    }
+    let mut slope = num_rational::BigRational::zero();
+    go(
+        ctx,
+        expr,
+        var,
+        &num_rational::BigRational::one(),
+        &mut slope,
+    )?;
+    if slope.is_zero() {
+        None
+    } else {
+        Some(slope)
+    }
+}
+
 /// using default route derivation and default numerator/denominator kernels.
 ///
 /// Route behavior:
@@ -1462,6 +1542,38 @@ where
         // would need a polynomial-inequality solve the numerator pipeline does not
         // reliably deliver here, so leave it an honest residual on the legacy path.
         Some(_) => (numerator, rhs, route),
+        // `Polynomial::from_expr` declined the denominator (an IRRATIONAL intercept like `x − √2`), so
+        // `cluster_e_fold` was `None`. But a nonzero rational numerator `c'` over a SINGLE-POLE linear
+        // surd denominator `g` with `rhs = 0` still reduces exactly: `c'/g (op) 0 ⟺ g (strict op') 0`
+        // (the value is never zero, so `≥`/`≤` collapse to strict; the only excluded point is the pole).
+        // Without this the legacy path fabricated a garbage interval (`(√2+∞, ∞)`).
+        None if is_inequality_relop(&op) => {
+            let ctx = context_ref(state);
+            let numer_const = cas_math::numeric_eval::as_rational_const(ctx, numerator);
+            let rhs_is_zero = cas_math::numeric_eval::as_rational_const(ctx, rhs)
+                .is_some_and(|r| num_traits::Zero::is_zero(&r));
+            match numer_const {
+                Some(c) if !num_traits::Zero::is_zero(&c) && rhs_is_zero => {
+                    if affine_var_rational_slope(ctx, denominator, var).is_some() {
+                        let op_is_upper = matches!(op, RelOp::Gt | RelOp::Geq);
+                        let denominator_op = if op_is_upper == c.is_positive() {
+                            RelOp::Gt
+                        } else {
+                            RelOp::Lt
+                        };
+                        let zero = context_mut(state).num(0);
+                        let equation = Equation {
+                            lhs: denominator,
+                            rhs: zero,
+                            op: denominator_op,
+                        };
+                        return solve_isolate(state, &equation);
+                    }
+                    (numerator, rhs, route)
+                }
+                _ => (numerator, rhs, route),
+            }
+        }
         None => (numerator, rhs, route),
     };
 

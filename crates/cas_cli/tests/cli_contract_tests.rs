@@ -3207,6 +3207,14 @@ fn test_eval_two_sided_rational_inequality_moves_to_one_side() {
     assert_eq!(r("solve(1/(x-1) > 2/(x+1), x)"), "(-infinity, -1) U (1, 3)");
     assert_eq!(r("solve(sqrt(x) > x - 2, x)"), "[0, 4)");
     assert_eq!(r("solve(x^2 > x, x)"), "(-infinity, 0) U (1, infinity)");
+
+    // A nonzero constant numerator over a SINGLE-POLE linear-SURD/π denominator reduces exactly to the
+    // boundary `g {op'} 0` (`Polynomial::from_expr` declines the irrational intercept `x − √2`, which
+    // used to leave a garbage `(√2+∞, ∞)` interval on the legacy path).
+    assert_eq!(r("solve(1/(x-sqrt(2)) > 0, x)"), "(sqrt(2), infinity)");
+    assert_eq!(r("solve(1/(x-pi) > 0, x)"), "(pi, infinity)");
+    assert_eq!(r("solve(1/(x-pi) < 0, x)"), "(-infinity, pi)");
+    assert_eq!(r("solve(2/(x-sqrt(3)) < 0, x)"), "(-infinity, sqrt(3))");
 }
 
 #[test]
