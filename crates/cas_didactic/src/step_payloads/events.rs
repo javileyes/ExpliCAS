@@ -31,6 +31,20 @@ fn build_event_step_payload(event: &EngineEvent, ctx: &Context) -> Option<StepWi
             let before_human = render_human_expr(ctx, before_expr);
             let after_human = render_human_expr(ctx, after_expr);
 
+            // `Canonicalize Negation` ("Quitar paréntesis tras el signo menos") is a pure normalization
+            // rule — it reorders additive terms (`√19 − √17 + x → √19 + x − √17`) or distributes a
+            // leading negation, always preserving the multiset of signed terms. Those are didactic noise
+            // (the step-quality tests assert this visible name never appears), but the display-equal
+            // no-op filter below misses them (the reorder changes the string) and `is_always_keep`
+            // protects `Canonicalize*` anyway. Drop them whenever the additive-term multiset is
+            // unchanged; a STRUCTURAL rewrite under the same rule changes the multiset and is kept.
+            if rule_name == "Canonicalize Negation"
+                && super::build::additive_term_multiset(ctx, before_expr)
+                    == super::build::additive_term_multiset(ctx, after_expr)
+            {
+                return None;
+            }
+
             // Drop a no-op step: when the displayed expression is unchanged the step teaches nothing
             // (the event/equiv path previously emitted ~10/19 such canonicalization no-ops, e.g. "Quitar
             // paréntesis"/"Reescribir la división" that render identical before -> after). The normal

@@ -49,6 +49,21 @@ fn prune_semantically_noop_step_payloads(steps: &[Step], ctx: &Context) -> Vec<S
 }
 
 fn should_drop_semantically_noop_step_payload(step: &Step, ctx: &Context) -> bool {
+    // `Canonicalize Negation` ("Quitar paréntesis tras el signo menos") is a pure NORMALIZATION rule:
+    // it reorders additive terms (`√19 − √17 + x → √19 + x − √17`) or distributes a leading negation
+    // (`−(√21 − √19) → √19 − √21`), always preserving the multiset of signed additive terms. Those steps
+    // are didactic noise (the step-quality tests assert this visible name never appears). This check
+    // runs BEFORE the `is_always_keep_step_rule_name` guard below, because every `Canonicalize*` rule is
+    // "always keep" — yet a value-preserving reordering teaches nothing. A genuine STRUCTURAL rewrite
+    // under the same rule (the `(a+b)^3` cube expansion, relabelled to "Expandir la expresión") changes
+    // the term multiset and is therefore kept.
+    if step.rule_name == "Canonicalize Negation"
+        && super::build::additive_term_multiset(ctx, step.before)
+            == super::build::additive_term_multiset(ctx, step.after)
+    {
+        return true;
+    }
+
     if cas_solver_core::step_rules::is_always_keep_step_rule_name(step.rule_name.as_str()) {
         return false;
     }

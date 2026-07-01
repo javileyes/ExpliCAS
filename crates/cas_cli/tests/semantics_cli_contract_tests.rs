@@ -9016,6 +9016,39 @@ fn eval_atanh_square_ratio_log_difference_steps_hide_noop_negation_cleanup() {
 }
 
 #[test]
+fn eval_solve_surd_inequality_steps_drop_reorder_negation_cleanup_noise() {
+    // Solving a constant-surd inequality emitted a chain of `Quitar paréntesis tras el signo menos`
+    // steps that only reorder additive terms / distribute a leading negation (value-preserving noise) —
+    // via the ENGINE-EVENT step path, which the display-equal no-op filter missed. They are dropped now
+    // (the additive-term multiset is unchanged); only the meaningful "Agrupar términos semejantes" stays.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(sqrt(19)-sqrt(17)+x > sqrt(21)-sqrt(19)+x, x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "All real numbers");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(
+        steps
+            .iter()
+            .all(|step| step["rule"] != "Quitar paréntesis tras el signo menos"),
+        "unexpected reorder/negation cleanup step(s): {steps:?}"
+    );
+    // The one genuinely-informative step survives.
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Agrupar términos semejantes"),
+        "expected the like-terms step to survive: {steps:?}"
+    );
+}
+
+#[test]
 fn eval_composed_log_hyperbolic_inverse_trig_zero_mix_collapses_to_zero() {
     let (output, code) = run_cli(&[
         "eval",

@@ -8,6 +8,35 @@ use cas_math::expr_nary;
 
 pub(super) use expr::render_human_expr;
 
+/// Sorted multiset of the SIGNED additive leaf terms of `expr` (walking `Add`/`Sub`/`Neg`), each as its
+/// signed human string. Two expressions with the same multiset differ only by term order / negation
+/// distribution — a value-preserving reordering, not a structural rewrite. Used by both the normal step
+/// pipeline and the event pipeline to drop pure-reorder `Canonicalize Negation` didactic noise.
+pub(super) fn additive_term_multiset(ctx: &Context, expr: ExprId) -> Vec<String> {
+    fn collect(ctx: &Context, expr: ExprId, negated: bool, out: &mut Vec<String>) {
+        match ctx.get(expr) {
+            Expr::Add(a, b) => {
+                collect(ctx, *a, negated, out);
+                collect(ctx, *b, negated, out);
+            }
+            Expr::Sub(a, b) => {
+                collect(ctx, *a, negated, out);
+                collect(ctx, *b, !negated, out);
+            }
+            Expr::Neg(inner) => collect(ctx, *inner, !negated, out),
+            _ => out.push(format!(
+                "{}{}",
+                if negated { "-" } else { "+" },
+                render_human_expr(ctx, expr)
+            )),
+        }
+    }
+    let mut terms = Vec::new();
+    collect(ctx, expr, false, &mut terms);
+    terms.sort();
+    terms
+}
+
 pub(super) fn build_step_wire(
     context: &Context,
     index: usize,
