@@ -2501,6 +2501,27 @@ fn test_eval_periodic_trig_equation_emits_family() {
         "{ arcsin(1/3) + k·2·pi, pi - arcsin(1/3) + k·2·pi : k ∈ ℤ }"
     );
     assert_eq!(r("solve(sin(x)=2, x)"), "No solution"); // |c|>1
+                                                        // A SURD constant in the `= 0` form (`2·cos(x) − √3 = 0`) used to collapse to the principal root
+                                                        // `{π/6}`, dropping the periodic family AND the second base root — the `A·trig + B` normalization
+                                                        // required a RATIONAL offset `B`, so a surd `B` fell through to the principal-inverse isolation. The
+                                                        // offset is now kept symbolically, so the `= 0` form matches the trusted direct-RHS form.
+    assert_eq!(
+        r("solve(2*cos(x)-sqrt(3)=0, x)"),
+        "{ 1/6·pi + k·2·pi, 11/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x)-sqrt(3)/2=0, x)"),
+        "{ 1/3·pi + k·2·pi, 2/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(tan(x)-sqrt(3)=0, x)"), "{ 1/3·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(cos(x)+sqrt(2)/2=0, x)"),
+        "{ 3/4·pi + k·2·pi, 5/4·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(2*x)-sqrt(3)/2=0, x)"),
+        "{ 1/6·pi + k·pi, 1/3·pi + k·pi : k ∈ ℤ }"
+    );
 }
 
 #[test]

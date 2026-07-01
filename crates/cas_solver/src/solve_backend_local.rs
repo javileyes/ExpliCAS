@@ -4556,13 +4556,13 @@ fn positive_affine_arg_of_var(
 /// Returns `(trig_call, A, B)`, or `None` when `expr` is ALREADY the bare trig call (nothing to peel —
 /// `detect` handles that directly) or when the side is not affine in exactly one trig term.
 fn peel_affine_trig(
-    ctx: &Context,
+    ctx: &mut Context,
     expr: ExprId,
     var: &str,
-) -> Option<(ExprId, num_rational::BigRational, num_rational::BigRational)> {
+) -> Option<(ExprId, num_rational::BigRational, ExprId)> {
     use num_traits::Zero;
     let mut trig: Option<(ExprId, num_rational::BigRational)> = None;
-    let mut offset = num_rational::BigRational::zero();
+    let mut offset = ctx.num(0);
     accumulate_affine_trig(
         ctx,
         expr,
@@ -4579,24 +4579,28 @@ fn peel_affine_trig(
     Some((call, a_coeff, offset))
 }
 
-/// Accumulate `expr` (scaled by `scale`) as `A·trig(arg) + B`: a constant leaf adds to `offset`, a
-/// rational `Mul`/`Div` scales, `Add`/`Sub`/`Neg` recurse, and a single bare trig call of the variable
-/// is recorded with its accumulated coefficient. A second trig term, a trig×trig product, or any other
+/// Accumulate `expr` (scaled by `scale`) as `A·trig(arg) + B`: a constant leaf adds `scale·leaf` to the
+/// SYMBOLIC `offset` (so a SURD offset like `−√3` is kept, not just a rational — the reason
+/// `2·cos(x) − √3 = 0` used to fall through to the principal-root isolation), a rational `Mul`/`Div`
+/// scales, `Add`/`Sub`/`Neg` recurse, and a single bare trig call of the variable is recorded with its
+/// accumulated (rational) coefficient. A second trig term, a trig×trig product, or any other
 /// var-bearing shape declines (`None`).
 fn accumulate_affine_trig(
-    ctx: &Context,
+    ctx: &mut Context,
     expr: ExprId,
     scale: &num_rational::BigRational,
     var: &str,
     trig: &mut Option<(ExprId, num_rational::BigRational)>,
-    offset: &mut num_rational::BigRational,
+    offset: &mut ExprId,
 ) -> Option<()> {
     use cas_ast::BuiltinFn;
     use cas_solver_core::isolation_utils::contains_var;
     use num_traits::Zero;
     if !contains_var(ctx, expr, var) {
-        let c = cas_math::numeric_eval::as_rational_const(ctx, expr)?;
-        *offset += scale * &c;
+        // A var-free leaf is a constant offset term — keep it symbolically (surd/π allowed).
+        let scale_node = ctx.add(Expr::Number(scale.clone()));
+        let scaled = ctx.add(Expr::Mul(scale_node, expr));
+        *offset = ctx.add(Expr::Add(*offset, scaled));
         return Some(());
     }
     match ctx.get(expr).clone() {
@@ -5146,13 +5150,20 @@ pub(crate) fn try_solve_periodic_trig_equation(
         if lhs_has != rhs_has {
             let (var_side, const_side) = if lhs_has { (lhs, rhs) } else { (rhs, lhs) };
             if let Some((call, a_coeff, b_offset)) =
-                peel_affine_trig(&simplifier.context, var_side, var)
+                peel_affine_trig(&mut simplifier.context, var_side, var)
             {
-                let b_expr = simplifier.context.add(Expr::Number(b_offset));
-                let diff = simplifier.context.add(Expr::Sub(const_side, b_expr));
-                let a_expr = simplifier.context.add(Expr::Number(a_coeff));
-                let reduced_rhs = simplifier.context.add(Expr::Div(diff, a_expr));
-                let (reduced_rhs, _) = simplifier.simplify(reduced_rhs);
+                let diff = simplifier.context.add(Expr::Sub(const_side, b_offset));
+                let (diff, _) = simplifier.simplify(diff);
+                // Skip the `/1` when the coefficient is unit: `Div(diff, 1)` sends `simplify` down a
+                // different normal form (`√3/2 → 9/2·3^(-3/2)`) that the notable-angle classifier no
+                // longer recognizes, leaving `arcsin(√3/2)` unfolded to `π/3`.
+                let reduced_rhs = if num_traits::One::is_one(&a_coeff) {
+                    diff
+                } else {
+                    let a_expr = simplifier.context.add(Expr::Number(a_coeff));
+                    let d = simplifier.context.add(Expr::Div(diff, a_expr));
+                    simplifier.simplify(d).0
+                };
                 let reduced = Equation {
                     lhs: call,
                     rhs: reduced_rhs,
