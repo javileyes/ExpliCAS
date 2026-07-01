@@ -1864,7 +1864,12 @@ fn solve_polynomial_in_atom(
         SolutionSet::Empty => return Some(SolutionSet::Empty),
         _ => return None, // non-discrete / unsolved u-polynomial: leave to the existing path
     };
+    // Back-substitute each root `atom = u_root`. Non-periodic results (log/sqrt give a point `x = e^c` /
+    // `x = c^q`) union normally; PERIODIC results (a trig atom gives a family per root) are collected and
+    // combined over a common period, because `union_solution_sets` cannot merge two periodic families of
+    // different periods (it would drop one).
     let mut solution = SolutionSet::Empty;
+    let mut periodic_families: Vec<(Vec<ExprId>, ExprId)> = Vec::new();
     for u_root in u_roots {
         let back_eq = Equation {
             lhs: back_sub_atom,
@@ -1872,8 +1877,34 @@ fn solve_polynomial_in_atom(
             op: cas_ast::RelOp::Eq,
         };
         let (xs, _) = crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
-        solution =
-            cas_solver_core::solution_set::union_solution_sets(&simplifier.context, solution, xs);
+        match xs {
+            SolutionSet::Periodic { bases, period } => periodic_families.push((bases, period)),
+            SolutionSet::Empty => {} // this root has no real pre-image (e.g. sin(x) = 2)
+            other => {
+                solution = cas_solver_core::solution_set::union_solution_sets(
+                    &simplifier.context,
+                    solution,
+                    other,
+                );
+            }
+        }
+    }
+    if !periodic_families.is_empty() {
+        let combined = if periodic_families.len() == 1 {
+            let (bases, period) = periodic_families.pop().unwrap();
+            SolutionSet::Periodic { bases, period }
+        } else {
+            union_periodic_families_over_common_period(simplifier, periodic_families)?
+        };
+        solution = if matches!(solution, SolutionSet::Empty) {
+            combined
+        } else {
+            cas_solver_core::solution_set::union_solution_sets(
+                &simplifier.context,
+                solution,
+                combined,
+            )
+        };
     }
     Some(solution)
 }
@@ -1970,7 +2001,6 @@ fn try_solve_polynomial_in_trig(
     if eq.op != cas_ast::RelOp::Eq {
         return None;
     }
-    use cas_math::polynomial::Polynomial;
     // RAW difference: simplifying would apply the double-angle identity to `sin²(x)`, destroying the
     // polynomial-in-`sin(x)` structure before substitution.
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
@@ -1981,51 +2011,10 @@ fn try_solve_polynomial_in_trig(
     if expr_contains_named_var(&simplifier.context, u_expr, var) {
         return None; // a second, distinct trig atom (or x elsewhere) remains
     }
-    if Polynomial::from_expr(&simplifier.context, u_expr, u_var)
-        .ok()?
-        .degree()
-        < 2
-    {
-        return None; // a single trig term (degree 1) is the ordinary isolation's job
-    }
-    // Solve `P(u) = 0` for the trig value.
-    let zero = simplifier.context.num(0);
-    let u_eq = Equation {
-        lhs: u_expr,
-        rhs: zero,
-        op: cas_ast::RelOp::Eq,
-    };
-    let (u_solution, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
-    let u_roots = match u_solution {
-        SolutionSet::Discrete(roots) => roots,
-        SolutionSet::Empty => return Some(SolutionSet::Empty),
-        _ => return None,
-    };
-    // Back-substitute each root `trig(g) = u_root` → a PERIODIC family (or `Empty` via the range guard
-    // for `|sin/cos| > 1`). Union the families over a common period — the generic `union_solution_sets`
-    // drops a `Periodic ∪ Periodic` via its catch-all, so collect and combine explicitly.
-    let mut families: Vec<(Vec<ExprId>, ExprId)> = Vec::new();
-    for u_root in u_roots {
-        let back_eq = Equation {
-            lhs: atom,
-            rhs: u_root,
-            op: cas_ast::RelOp::Eq,
-        };
-        let (xs, _) = crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
-        match xs {
-            SolutionSet::Periodic { bases, period } => families.push((bases, period)),
-            SolutionSet::Empty => {} // out of range: no real angle for this root
-            _ => return None,        // non-periodic back-substitution: leave to the existing path
-        }
-    }
-    match families.len() {
-        0 => Some(SolutionSet::Empty),
-        1 => {
-            let (bases, period) = families.pop().unwrap();
-            Some(SolutionSet::Periodic { bases, period })
-        }
-        _ => union_periodic_families_over_common_period(simplifier, families),
-    }
+    // `solve_polynomial_in_atom` solves `P(u) = 0` and back-substitutes each root; it is periodic-aware
+    // (the `trig(g) = u_root` back-substitution yields a family per root, combined over a common period)
+    // and applies the range guard (`sin(x) = 2` drops).
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
 }
 
 /// Solve a polynomial-in-`ln(arg)` INEQUALITY `P(ln(x)) {op} 0` (`ln(x)^2 - 3·ln(x) + 2 < 0`, the

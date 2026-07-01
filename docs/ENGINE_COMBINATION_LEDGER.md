@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 467 (newest first)
+Active entries: 468 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
 - 2026-07-01 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`union_solution_sets`: brazo `(... | SOUNDNESS (core union, C1 de 3): `union_solution_sets` DEJABA CAER una familia en `Periodic∪Periodic` (mismo período)
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_polynomial_in_atom` re... | REFACTOR (core union, C2 de 3): `solve_polynomial_in_atom` periodic-aware; el handler de trig lo reusa
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -17908,3 +17909,17 @@ Active entries: 467 (newest first)
   - Un `match` de union con catch-all `(s1,_)=>return s1` es una trampa de DROP SILENCIOSO: cualquier par no enumerado pierde el segundo operando. El caso `Periodic∪Periodic` mismo-período es representable sin simplificar (concat + dedup estructural); el de período distinto NO (necesita lcm-π), y por eso debe resolverse en la capa que tiene simplifier.
   - Restricción de capas: `cas_solver_core` (solo `&Context`, sin `Simplifier`) puede hacer aritmética estructural (`compare_expr`) pero no simplificación simbólica; la lógica que necesita simplify (combinar períodos por lcm) vive en `cas_solver`. Dividir el fix por capa según la capacidad disponible.
   - PRÓXIMO (C2): hacer `solve_polynomial_in_atom` (capa solver, con simplifier) periodic-aware para combinar familias de período DISTINTO vía `union_periodic_families_over_common_period`, y revertir el handler de trig del ciclo T para reusarlo (de-duplicar). (C3): auditar el resto de callers de `union_solution_sets`.
+
+## 2026-07-01 - REFACTOR (core union, C2 de 3): `solve_polynomial_in_atom` periodic-aware; el handler de trig lo reusa
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`solve_polynomial_in_atom` recolecta familias periódicas y las combina; `try_solve_polynomial_in_trig` revertido a reusarlo)
+- status: `retained` (commit pendiente-de-hash). C2 de 3 del "core union". Refactor behavior-preserving (mismas salidas). Validado por workspace + huella FIEL.
+- capture:
+  - investment_class: architecture/soundness (mueve el fix del período-distinto a la maquinaria compartida con simplifier). Solver.
+  - observed: el ciclo T había duplicado la lógica de back-sub + unión periódica en `try_solve_polynomial_in_trig` para rodear el bug de `union_solution_sets` (que deja caer `Periodic∪Periodic`). C1 arregló el mismo-período en core, pero el período-DISTINTO (`sin=0` período π ∪ `sin=1` período 2π) necesita lcm-π (simplify), que core no tiene.
+  - decision: hacer `solve_polynomial_in_atom` (capa solver, con simplifier — la usan los handlers de log/sqrt/trig) periodic-aware: en el back-sub de cada raíz, las salidas `Periodic` se RECOLECTAN y se combinan con `union_periodic_families_over_common_period` (maneja períodos distintos vía lcm); las `Empty` se saltan (raíz fuera de rango, p.ej. `sin=2`); las demás (log→`x=e^c`, sqrt→`x=c^q`, Discrete/intervalo) se unen normal. Revertir `try_solve_polynomial_in_trig` a una llamada simple a `solve_polynomial_in_atom` (elimina la duplicación del ciclo T).
+  - validación: workspace failed:0 (los tests de cuadrática-en-trig, producto-periódico y las ECUACIONES log/sqrt siguen verdes — `ln²-3ln+2=0`→`{e,e²}`, `x-5√x+6=0`→`{4,9}`, `x^(2/3)-x^(1/3)-2=0`→`{-1,8}`); clippy `-p cas_solver --all-targets` limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (refactor behavior-preserving; los 2 suites con drift de métrica son los auto-derivantes).
+- retained learning:
+  - Cuando la maquinaria COMPARTIDA (aquí `solve_polynomial_in_atom`, usada por log/sqrt/trig) tiene el bug, arréglalo AHÍ en vez de rodearlo en cada handler: el trig lo rodeaba, ahora todos los sustituir-u futuros heredan la unión periódica correcta y se de-duplica el código.
+  - La combinación de períodos distintos DEBE vivir donde hay simplifier (capa solver); core solo cubre el mismo-período (C1). Repartir el fix por capa según la capacidad.
+  - AUDITORÍA (hacia C3): `combine_abs_branch_sets` (core) une las dos ramas de `|A| op B`; para `|f(trig)|=c` las ramas SON periódicas — pero el path actual las resuelve a raíz PRINCIPAL (Discrete), no periódica (`|2sin(x)-1|=1`→`{π/2,0}`, `|tan(x)|=1`→`{π/4,-π/4}`, `|sin(x)-1/2|=1/4`→`{arcsin(3/4),arcsin(1/4)}`) — un WRONG-ANSWER de periodicidad SEPARADO (principal-value en la rama abs-trig), no un drop de unión. Documentado como próximo peldaño.
