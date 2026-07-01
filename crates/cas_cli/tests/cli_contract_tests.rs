@@ -3785,6 +3785,38 @@ fn test_eval_mixed_base_exponential_normalizes_to_common_prime() {
 }
 
 #[test]
+fn test_eval_exponential_reciprocal_polynomial_clears_the_reciprocal() {
+    // Equations that mix an exponential with its RECIPROCAL (`e^x + e^(−x)`, the hyperbolic form) used
+    // to bail — `función [cosh] no definida` for base `e`, `Cannot isolate 'x'` for general bases —
+    // because `simplify` folds `e^x + e^(−x)` into `2·cosh(x)`. The Laurent map `u = base^x` (built on
+    // the raw tree, so `simplify` never runs) clears the `1/u` and solves the polynomial in `u`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `u = base^x`: `u² − 2u + 1 = 0 ⟹ u = 1 ⟹ x = 0`.
+    assert_eq!(r("solve(e^x + e^(-x) = 2, x)"), "{ 0 }");
+    assert_eq!(r("solve(3^x + 3^(-x) = 2, x)"), "{ 0 }");
+    // `u² − 1 = 0 ⟹ u = 1` (the `u = −1` root is dropped: `base^x > 0`).
+    assert_eq!(r("solve(e^x - e^(-x) = 0, x)"), "{ 0 }");
+    // Distinct positive roots: `u² − 3u + 2 = 0 ⟹ u ∈ {1, 2}`.
+    assert_eq!(r("solve(e^x + 2*e^(-x) = 3, x)"), "{ 0, ln(2) }");
+    // An affine exponent (`2^(1−x) = 2·2^(−x)`) folds the `2` into the coefficient.
+    assert_eq!(r("solve(2^x - 3 + 2^(1-x) = 0, x)"), "{ 0, 1 }");
+    // `2^x + 2^(−x) = 5/2 ⟹ u ∈ {1/2, 2} ⟹ x ∈ {−1, 1}`.
+    assert_eq!(r("solve(2^x + 2^(-x) = 5/2, x)"), "{ ln(1/2) / ln(2), 1 }");
+    // `cosh(x) ≥ 1` always, so `= 1/2·2 = 1` (i.e. sum `= 1`) has NO real solution.
+    assert_eq!(r("solve(e^x + e^(-x) = 1, x)"), "No solution");
+    // Controls: the pure positive-power forms are owned by the existing path and must be UNCHANGED.
+    assert_eq!(r("solve(e^(2*x) - 3*e^x + 2 = 0, x)"), "{ ln(2), 0 }");
+    assert_eq!(r("solve(4^x - 3*2^x + 2 = 0, x)"), "{ 0, 1 }");
+}
+
+#[test]
 fn test_eval_fractional_base_exponential_inequality_direction() {
     // SOUNDNESS: `a^x ≷ k` with 0 < a < 1 (decreasing) must FLIP the inequality direction when
     // isolating x through the logarithm. Previously the engine kept the direction, returning the
