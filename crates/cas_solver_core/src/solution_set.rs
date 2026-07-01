@@ -661,6 +661,37 @@ pub fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> S
             }
             u
         }
+        // Two periodic families with the SAME (structurally equal) fundamental period: merge their
+        // representative bases over that period. Without this the catch-all below would silently keep
+        // only the first, DROPPING the second family (`sin(x)=1/2 ∪ sin(x)=1` lost the `{π/2+2kπ}`
+        // branch). Families with DIFFERENT periods need an LCM over rational π-multiples — a symbolic
+        // simplification this `&Context`-only entry point cannot do, so they are combined by the
+        // solver layer (`union_periodic_families_over_common_period`) before reaching here.
+        (
+            SolutionSet::Periodic {
+                bases: mut b1,
+                period: p1,
+            },
+            SolutionSet::Periodic {
+                bases: b2,
+                period: p2,
+            },
+        ) => {
+            if cas_ast::ordering::compare_expr(ctx, p1, p2) == Ordering::Equal {
+                b1.extend(b2);
+                sort_and_dedup_exprs(ctx, &mut b1);
+                return SolutionSet::Periodic {
+                    bases: b1,
+                    period: p1,
+                };
+            }
+            // Different periods: cannot combine here. Preserve the first (the historical behaviour);
+            // the solver-layer combiner handles the mixed-period case upstream.
+            return SolutionSet::Periodic {
+                bases: b1,
+                period: p1,
+            };
+        }
         (s1, _) => return s1,
     };
 
@@ -987,6 +1018,44 @@ mod tests {
                 assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 5.into());
             }
             other => panic!("expected merged [0, 5), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_union_two_periodic_same_period_merges_bases() {
+        let mut ctx = Context::new();
+        // Two families sharing a period: ALL bases kept (the old catch-all dropped the second family,
+        // e.g. `sin(x)=1/2 ∪ sin(x)=1` losing the `{π/2+2kπ}` branch). Period reused ⇒ structurally equal.
+        let period = ctx.num(7);
+        let a = SolutionSet::Periodic {
+            bases: vec![ctx.num(1), ctx.num(2)],
+            period,
+        };
+        let b = SolutionSet::Periodic {
+            bases: vec![ctx.num(3)],
+            period,
+        };
+        match union_solution_sets(&ctx, a, b) {
+            SolutionSet::Periodic { bases, period: per } => {
+                assert_eq!(bases.len(), 3, "all three bases kept (no silent drop)");
+                assert_eq!(per, period);
+            }
+            other => panic!("expected merged Periodic, got {other:?}"),
+        }
+        // A shared base is deduplicated, not duplicated.
+        let c = SolutionSet::Periodic {
+            bases: vec![ctx.num(1), ctx.num(2)],
+            period,
+        };
+        let d = SolutionSet::Periodic {
+            bases: vec![ctx.num(2), ctx.num(5)],
+            period,
+        };
+        match union_solution_sets(&ctx, c, d) {
+            SolutionSet::Periodic { bases, .. } => {
+                assert_eq!(bases.len(), 3, "the shared base 2 is deduped")
+            }
+            other => panic!("expected merged Periodic, got {other:?}"),
         }
     }
 

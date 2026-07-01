@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 466 (newest first)
+Active entries: 467 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
+- 2026-07-01 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`union_solution_sets`: brazo `(... | SOUNDNESS (core union, C1 de 3): `union_solution_sets` DEJABA CAER una familia en `Periodic∪Periodic` (mismo período)
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -17892,3 +17893,18 @@ Active entries: 466 (newest first)
   - Espejo del patrón sustituir-u: `u=trig(g)`, resolver `P(u)=0`, back-sub cada raíz por el solver periódico (que ya da la familia + guard de rango), unir. Reusa toda la maquinaria periódica existente.
   - BUG LATENTE EXPUESTO (P0, próximo): `union_solution_sets` (cas_solver_core) DEJA CAER un set en `Periodic∪Periodic` por su catch-all `(s1,_)=>return s1` — devuelve solo el primero. Cualquier ruta que una dos familias periódicas pierde la segunda. El fix correcto vive en core pero la combinación de períodos (lcm) está en cas_solver; por eso este handler la rodea usando `union_periodic_families_over_common_period` directamente. ARREGLAR el core (o mover la lógica de período a core) es el siguiente peldaño.
   - CLAVE (otra vez): descomponer el átomo desde el árbol CRUDO, no simplificado — el simplificador reescribe `sin²` por doble-ángulo y destruye la estructura polinómica (gemelo de la lección de la suma de signos, que el simplificador combinaba sobre denominador común).
+
+## 2026-07-01 - SOUNDNESS (core union, C1 de 3): `union_solution_sets` DEJABA CAER una familia en `Periodic∪Periodic` (mismo período)
+
+- area: `crates/cas_solver_core/src/solution_set.rs` (`union_solution_sets`: brazo `(Periodic, Periodic)`)
+- status: `retained` (commit pendiente-de-hash). Fix del bug latente EXPUESTO por el ciclo T ([[reaudit-post-fixes-six-families]]). Primer ciclo de 3 para cerrar "core union". Verificado por unit test (dormant a nivel CLI).
+- capture:
+  - investment_class: soundness-fix defensivo (elimina drop silencioso). Core.
+  - cell (unit test): `Periodic{[1,2],7} ∪ Periodic{[3],7}` → `Periodic{[1,2,3],7}` (antes: catch-all `(s1,_)=>return s1` devolvía solo `{[1,2],7}`, perdiendo `[3]`); bases compartidas se deduplican (`[1,2] ∪ [2,5]` → `[1,2,5]`).
+  - causa raíz: el `match (s1,s2)` de `union_solution_sets` no tenía brazo para `(Periodic, Periodic)`; caía al catch-all `(s1,_)=>return s1` que descarta el segundo conjunto en silencio. Correcto MIENTRAS el conjunto sea representable — para MISMO período basta concatenar bases y deduplicar por `compare_expr` (estructural), sin simplificar.
+  - fix: brazo `(Periodic{b1,p1}, Periodic{b2,p2})`: si `compare_expr(p1,p2)==Equal`, `b1.extend(b2)` + `sort_and_dedup_exprs` → `Periodic{bases, p1}`. Períodos DISTINTOS necesitan lcm de múltiplos de π (simplificación simbólica que este entry-point solo-`&Context` no puede hacer) → se resuelven en la capa solver (C2, `union_periodic_families_over_common_period`); por ahora ese caso preserva el primero (comportamiento histórico) hasta que C2 los combine aguas arriba.
+  - validación: workspace failed:0 (+ unit test `test_union_two_periodic_same_period_merges_bases`); mi cambio limpio en clippy (los errores de `cas_math` `PAR_TERM_THRESHOLD`/too-many-args son PRE-EXISTENTES, aparecen con el cambio STASHED — `cas_math` con `default-features=false` desde cas_solver_core; el gate `clippy -p cas_solver --all-targets` sigue limpio); huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (el cambio es dormant a nivel CLI — ningún path actual pasa dos Periodic a esta union; los 2 suites con drift de métrica son los auto-derivantes conocidos).
+- retained learning:
+  - Un `match` de union con catch-all `(s1,_)=>return s1` es una trampa de DROP SILENCIOSO: cualquier par no enumerado pierde el segundo operando. El caso `Periodic∪Periodic` mismo-período es representable sin simplificar (concat + dedup estructural); el de período distinto NO (necesita lcm-π), y por eso debe resolverse en la capa que tiene simplifier.
+  - Restricción de capas: `cas_solver_core` (solo `&Context`, sin `Simplifier`) puede hacer aritmética estructural (`compare_expr`) pero no simplificación simbólica; la lógica que necesita simplify (combinar períodos por lcm) vive en `cas_solver`. Dividir el fix por capa según la capacidad disponible.
+  - PRÓXIMO (C2): hacer `solve_polynomial_in_atom` (capa solver, con simplifier) periodic-aware para combinar familias de período DISTINTO vía `union_periodic_families_over_common_period`, y revertir el handler de trig del ciclo T para reusarlo (de-duplicar). (C3): auditar el resto de callers de `union_solution_sets`.
