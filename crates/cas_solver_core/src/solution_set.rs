@@ -793,25 +793,18 @@ pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) 
             intersect_intervals(ctx, &i1, &i2)
         }
         (SolutionSet::Continuous(i), SolutionSet::Union(u)) => {
-            // Intersect i with each interval in u
+            // Intersect `i` with each interval in `u`. A closed-closed touch (`[1,3] ∩ (−∞,1] = {1}`)
+            // yields a Discrete POINT — keep it (the old code dropped it as "complex").
             let mut new_u = Vec::new();
+            let mut points = Vec::new();
             for interval in u {
-                let res = intersect_intervals(ctx, &i, &interval);
-                match res {
+                match intersect_intervals(ctx, &i, &interval) {
                     SolutionSet::Continuous(new_i) => new_u.push(new_i),
-                    SolutionSet::Discrete(_d) => {
-                        // Complex. Let's assume for now we get Continuous intervals.
-                    }
+                    SolutionSet::Discrete(d) => points.extend(d),
                     _ => {}
                 }
             }
-            if new_u.is_empty() {
-                SolutionSet::Empty
-            } else if new_u.len() == 1 {
-                SolutionSet::Continuous(new_u[0].clone())
-            } else {
-                SolutionSet::Union(new_u)
-            }
+            assemble_intervals_and_points(ctx, new_u, points)
         }
         (SolutionSet::Union(u), SolutionSet::Continuous(i)) => {
             intersect_solution_sets(ctx, SolutionSet::Continuous(i), SolutionSet::Union(u))
@@ -819,21 +812,17 @@ pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) 
         (SolutionSet::Union(u1), SolutionSet::Union(u2)) => {
             // Distributive property: (A U B) n (C U D) = (A n C) U (A n D) U (B n C) U (B n D)
             let mut new_u = Vec::new();
+            let mut points = Vec::new();
             for i1 in &u1 {
                 for i2 in &u2 {
-                    let res = intersect_intervals(ctx, i1, i2);
-                    if let SolutionSet::Continuous(new_i) = res {
-                        new_u.push(new_i)
+                    match intersect_intervals(ctx, i1, i2) {
+                        SolutionSet::Continuous(new_i) => new_u.push(new_i),
+                        SolutionSet::Discrete(d) => points.extend(d),
+                        _ => {}
                     }
                 }
             }
-            if new_u.is_empty() {
-                SolutionSet::Empty
-            } else if new_u.len() == 1 {
-                SolutionSet::Continuous(new_u[0].clone())
-            } else {
-                SolutionSet::Union(new_u)
-            }
+            assemble_intervals_and_points(ctx, new_u, points)
         }
         // A discrete set intersected with intervals keeps the points that fall INSIDE them (the old
         // catch-all returned `Empty`, silently dropping every such point). Membership is a value
@@ -900,6 +889,26 @@ fn discrete_or_empty(points: Vec<ExprId>) -> SolutionSet {
         SolutionSet::Empty
     } else {
         SolutionSet::Discrete(points)
+    }
+}
+
+/// Assemble an intersection result from its interval pieces and any isolated touch POINTS. The points
+/// are unioned in (which absorbs a point sitting on an adjacent interval's open endpoint, e.g. a touch
+/// at `1` next to `(1, 5)` closes it to `[1, 5)`).
+fn assemble_intervals_and_points(
+    ctx: &Context,
+    intervals: Vec<Interval>,
+    points: Vec<ExprId>,
+) -> SolutionSet {
+    let interval_set = match intervals.len() {
+        0 => SolutionSet::Empty,
+        1 => SolutionSet::Continuous(intervals.into_iter().next().unwrap()),
+        _ => SolutionSet::Union(intervals),
+    };
+    if points.is_empty() {
+        interval_set
+    } else {
+        union_solution_sets(ctx, SolutionSet::Discrete(points), interval_set)
     }
 }
 
@@ -1200,6 +1209,27 @@ mod tests {
             intersect_solution_sets(&ctx, iv2, pts2),
             SolutionSet::Empty
         ));
+    }
+
+    #[test]
+    fn test_intersect_interval_with_union_keeps_touch_points() {
+        let mut ctx = Context::new();
+        // [1, 3] ∩ ((-∞, 1] ∪ [3, ∞)) = {1, 3}: two closed-closed touches the old arm dropped as
+        // "complex", returning Empty.
+        let i = SolutionSet::Continuous(make_interval(
+            &mut ctx,
+            1,
+            BoundType::Closed,
+            3,
+            BoundType::Closed,
+        ));
+        let lo = make_interval(&mut ctx, 0, BoundType::Open, 1, BoundType::Closed); // stand-in (-∞,1]
+        let hi = make_interval(&mut ctx, 3, BoundType::Closed, 9, BoundType::Open); // stand-in [3,∞)
+        let u = SolutionSet::Union(vec![lo, hi]);
+        match intersect_solution_sets(&ctx, i, u) {
+            SolutionSet::Discrete(d) => assert_eq!(d.len(), 2, "kept both touch points {{1, 3}}"),
+            other => panic!("expected Discrete {{1, 3}}, got {other:?}"),
+        }
     }
 
     #[test]

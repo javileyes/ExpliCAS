@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 470 (newest first)
+Active entries: 471 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -123,6 +123,7 @@ Active entries: 470 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_polynomial_in_atom` re... | REFACTOR (core union, C2 de 3): `solve_polynomial_in_atom` periodic-aware; el handler de trig lo reusa
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_of_trig_equati... | SOUNDNESS (auditoría core-union → familia hallada): `|f(trig)| = c` daba raíces PRINCIPALES, no periódicas
 - 2026-07-01 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`union_solution_sets`, `interse... | ARQUITECTURA (soundness + universalidad): endurecer los combinadores de SolutionSet (fin del drop silencioso)
+- 2026-07-01 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (los brazos `Continuous∩Union` y... | ARQUITECTURA (A2): `intersect_solution_sets` DROPEA el punto de contacto en `Continuous∩Union` / `Union∩Union`
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -17953,3 +17954,16 @@ Active entries: 470 (newest first)
   - Un catch-all en un `match` de combinador (union/intersect de conjuntos) es una trampa: `return s1` DROPEA el segundo operando, `_ => Empty` PIERDE la intersección. Separa (a) los combos REPRESENTABLES en este layer → manéjalos bien (aquí `Discrete∩intervalos` vía `compare_values`); (b) los best-effort ACEPTADOS (`Residual`/`Conditional`) → explícitos y documentados; (c) los NO representables sin simplify (`Periodic`-con-intervalos) → `debug_assert!` para que un futuro caller que los produzca falle fuerte en test en vez de emitir un wrong-answer silencioso.
   - MÉTODO: `cargo test` oculta la salida de tests que pasan. Para medir si un brazo se ejecuta, usa `debug_assert!`/panic (se ve como test fallido) o `--nocapture`, no `eprintln`+grep (se traga). Este error me hizo creer "dormant" lo que estaba muy vivo (`Residual∪Residual`).
   - El fix arquitectónico REPARTE por capa (consistente con C1/C2): mismo-período y `Discrete∩intervalos` = core (aritmética estructural / `compare_values`); período-distinto y `Periodic∩intervalo` = capa solver (simplify). El `debug_assert` marca la frontera.
+
+## 2026-07-01 - ARQUITECTURA (A2): `intersect_solution_sets` DROPEA el punto de contacto en `Continuous∩Union` / `Union∩Union`
+
+- area: `crates/cas_solver_core/src/solution_set.rs` (los brazos `Continuous∩Union` y `Union∩Union` + helper `assemble_intervals_and_points`)
+- status: `retained` (commit pendiente-de-hash). Segunda instancia del mismo anti-patrón hallada en la auditoría A2 de [[core-union-periodic-drop-fixed]]. Unit test + huella FIEL 0-delta.
+- capture:
+  - investment_class: architecture (robustez) + soundness (no perder el punto de contacto). Core.
+  - observed: `intersect_intervals` devuelve `Discrete([min])` para un contacto cerrado-cerrado (`[1,3]∩(−∞,1]={1}`). Los brazos `Continuous∩Union` y `Union∩Union` IGNORABAN ese `Discrete` (`// Complex. Let's assume Continuous`), dropeando el punto — el mismo drop silencioso que A1.
+  - decision: recolectar los puntos de contacto (`Discrete`) junto a los intervalos `Continuous` en ambos brazos, y ensamblarlos con `assemble_intervals_and_points` (une `Discrete(puntos)` con los intervalos vía `union_solution_sets`, que ABSORBE un punto sobre el borde abierto de un intervalo adyacente: `{1}∪(1,5)=[1,5)`).
+  - validación: workspace failed:0 (+ unit test `test_intersect_interval_with_union_keeps_touch_points`); clippy limpio; huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (el caso es raro/dormant en las suites; los 2 suites con drift son los auto-derivantes).
+- retained learning:
+  - El anti-patrón "drop silencioso" no vive solo en los catch-alls: un `match` dentro de un bucle que solo maneja el caso `Continuous` y comenta `// Complex, assume Continuous` para el `Discrete` es la MISMA trampa. Auditar TODOS los sitios donde un combinador ignora una variante del resultado, no solo los catch-all finales.
+  - Ensamblar "intervalos + puntos sueltos" se hace uniendo `Discrete∪(Continuous|Union)`, que ya absorbe correctamente un punto en un borde abierto adyacente — reusa la lógica de union en vez de re-implementar la absorción.
