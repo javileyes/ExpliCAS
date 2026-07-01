@@ -411,10 +411,10 @@ fn test_prove_positive_products() {
     let two_times_three = ctx.add(cas_ast::Expr::Mul(two, three));
     assert_eq!(prove_positive(&ctx, two_times_three, vd), Proof::Proven);
 
-    // 2 * (-2) = -4, NOT proven positive (but could be - depends on logic)
-    // Our implementation returns Unknown for mixed signs
+    // 2 * (-2) = -4: now DISPROVEN positive (the exact constant-sign check evaluates the product and
+    // decides its sign, instead of leaving a numeric product Unknown).
     let two_times_neg = ctx.add(cas_ast::Expr::Mul(two, neg_two));
-    assert_eq!(prove_positive(&ctx, two_times_neg, vd), Proof::Unknown);
+    assert_eq!(prove_positive(&ctx, two_times_neg, vd), Proof::Disproven);
 }
 
 #[test]

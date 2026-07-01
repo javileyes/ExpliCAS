@@ -290,6 +290,16 @@ where
         return TriProof::Unknown;
     }
 
+    // A constant LINEAR SURD `A + B·√n` (e.g. `2 − √3`, `1 − √2`): decide its sign EXACTLY. The
+    // structural rules below cannot compare `2` against `√3`, leaving such offsets `Unknown` — which
+    // makes a solver attach a spurious `2 − √3 > 0` domain condition (dropping a valid branch). Returns
+    // `None` for variable-bearing or transcendental expressions, so those fall through unchanged.
+    match crate::root_forms::provable_sign_vs_zero(ctx, expr) {
+        Some(std::cmp::Ordering::Greater) => return TriProof::Proven,
+        Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal) => return TriProof::Disproven,
+        None => {}
+    }
+
     match ctx.get(expr) {
         Expr::Number(n) => {
             if *n > num_rational::BigRational::zero() {
@@ -492,6 +502,14 @@ where
 
     if depth == 0 {
         return TriProof::Unknown;
+    }
+
+    // A constant LINEAR SURD `A + B·√n`: decide `≥ 0` exactly (`> 0` or `= 0` ⇒ Proven, `< 0` ⇒
+    // Disproven). `None` for variable/transcendental expressions ⇒ fall through unchanged.
+    match crate::root_forms::provable_sign_vs_zero(ctx, expr) {
+        Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal) => return TriProof::Proven,
+        Some(std::cmp::Ordering::Less) => return TriProof::Disproven,
+        None => {}
     }
 
     match ctx.get(expr) {

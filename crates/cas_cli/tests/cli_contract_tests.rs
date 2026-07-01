@@ -4099,6 +4099,19 @@ fn test_eval_exponential_reciprocal_polynomial_clears_the_reciprocal() {
     assert_eq!(r("solve(2^x + 2^(-x) = 5/2, x)"), "{ ln(1/2) / ln(2), 1 }");
     // `cosh(x) ≥ 1` always, so `= 1/2·2 = 1` (i.e. sum `= 1`) has NO real solution.
     assert_eq!(r("solve(e^x + e^(-x) = 1, x)"), "No solution");
+    // SURD-discriminant roots: BOTH `u = 2 ± √3` are provably positive, so both back-substitute. The
+    // exact-surd-sign upgrade to the positivity prover keeps the second root (it used to drop it behind
+    // a spurious `2 − √3 > 0` guard).
+    assert_eq!(
+        r("solve(e^x + e^(-x) = 4, x)"),
+        "{ ln(2 - sqrt(3)), ln(sqrt(3) + 2) }"
+    );
+    // `u² − 2u − 1 = 0 ⟹ u = 1 ± √2`; the negative `1 − √2` is now DISPROVEN positive ⟹ dropped.
+    assert_eq!(r("solve(e^x - e^(-x) = 2, x)"), "{ ln(sqrt(2) + 1) }");
+    assert_eq!(
+        r("solve(e^x + e^(-x) = 3, x)"),
+        "{ ln(1/2·(3 - sqrt(5))), ln(1/2·(sqrt(5) + 3)) }"
+    );
     // Controls: the pure positive-power forms are owned by the existing path and must be UNCHANGED.
     assert_eq!(r("solve(e^(2*x) - 3*e^x + 2 = 0, x)"), "{ ln(2), 0 }");
     assert_eq!(r("solve(4^x - 3*2^x + 2 = 0, x)"), "{ 0, 1 }");
