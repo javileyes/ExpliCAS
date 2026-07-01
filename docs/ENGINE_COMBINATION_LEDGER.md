@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 478 (newest first)
+Active entries: 479 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -131,6 +131,7 @@ Active entries: 478 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | UNIVERSALIDAD (doble ángulo + trig mixta cuadrática): `cos(2x)=cos(x)` / `2cos²x−sinx−1=0` daban residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_pi_shifted_argumen... | UNIVERSALIDAD (argumento trig con desfase π): `sin(x+π/4)=1/2` devolvía SOLO la raíz principal
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_polynomial_equ... | UNIVERSALIDAD (valor absoluto de polinomio = variable): `|x²−1| = x+1` daba residual
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_two_different_base... | UNIVERSALIDAD (exponenciales de dos bases distintas): `4^x − 9^x = 0` daba ERROR "Cannot isolate"
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -18079,3 +18080,18 @@ Active entries: 478 (newest first)
   - Para `|f|=g` la VERIFICACIÓN contra la ecuación original (`|f(r)|=g(r)`) subsume elegantemente la condición `g≥0`: no hace falta un predicado de dominio separado ni razonar sobre los signos de las ramas — resolver `f=±g` y verificar es completo y sound. Mismo patrón que la verificación de radicales (`√f±√g=c`): el álgebra genera candidatos, la verificación exacta filtra los espurios Y los de dominio de un golpe.
   - Reparto por dueño existente: `|lineal|` (piecewise), `|poli|=const` (isolación con surds), `|poli≥2|=var` (este). Gatear al hueco EXACTO (grado≥2 Y RHS-variable) mantiene la huella intacta y no re-enruta lo que ya funciona — la lección recurrente de "no interceptar lo que otro handler ya cubre bien" (cf. la regresión de radicales `√A=√B`).
   - PRÓXIMO PELDAÑO: raíces surd (`|x²−5|=2x+2`, raíces `1±2√2`) declinan — necesitan verificación surd-exacta (evaluar `|f|` y `g` como surds y comparar, como en `compare_values`); y `|f|` con `f` no-polinómico (`|sqrt(x)−1|=…`) fuera de alcance.
+
+## 2026-07-01 - UNIVERSALIDAD (exponenciales de dos bases distintas): `4^x − 9^x = 0` daba ERROR "Cannot isolate"
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_two_different_base_exponential_equation` + `collect_exponential_base_terms`, `exponential_base_and_coeff`)
+- status: `retained` (commit pendiente-de-hash). Under-answer/error → resuelto. Capability (Fase 1, real univariable — ecuaciones exponenciales). Verificado adversarialmente (176 formas `A·m^x = B·n^x` y `A·m^x − B·n^x = 0` vs verdad `ln(B/A)/ln(m/n)`: 0 wrong).
+- capture:
+  - investment_class: capability. Reducción canónica: dos exponenciales de bases distintas ⟺ dividir → un exponencial = constante → log.
+  - cell: `4^x−9^x=0` → `{0}`, `2^x−5^x=0` → `{0}`, `2·4^x=3·9^x` → `{ln(3/2)/ln(4/9)}`, `5·2^x=3^x` → `{ln(1/5)/ln(2/3)}`. `(M/N)^x>0` ⇒ ratio ≤ 0 sin solución: `4^x+9^x=0` → No solution, `2^x=−3^x` → No solution. Controles: base única (`4^x−3·2^x+2` → `{0,1}`), RHS-constante no-nula (`4^x−9^x=1`, transcendental) declina. NOTA: `2^x=3^(x−1)` cambió de render `−ln(3)/ln(2/3)` → `ln(1/3)/ln(2/3)` (VALOR idéntico; ahora lo captura este handler en vez de la isolación).
+  - causa raíz: la isolación resuelve las formas A=B (`4^x=9^x` → `{0}`) dividiendo, pero al mover a un lado (`4^x−9^x=0`) o coeficientar ambos lados (`2·4^x=3·9^x`, `5·2^x=3^x`) reporta "Cannot isolate: variable on both sides". La normalización de primo-común (`4^x→2^(2x)`) declina (2 y 3 son primos distintos).
+  - fix: `try_solve_two_different_base_exponential_equation` colecta la diferencia como `Σ coeffᵢ·baseᵢ^x` (base efectiva `base^k` del exponente afín, coeficiente `coeff·base^m`; descarta la constante 0 sobrante del RHS movido, rechaza una constante no-nula), exige EXACTAMENTE dos términos con bases `M≠N`, y devuelve `x = ln(−B/A)/ln(M/N)` (ratio ≤ 0 ⇒ Empty; `M/N≠1` garantizado). Colocado tras la normalización primo-común (que se queda las de primo compartido).
+  - validación: workspace failed:0 (+ test `test_eval_two_different_base_exponential_divides_to_a_log`; ningún contrato existente rompió pese al cambio de render de `2^x=3^(x−1)`); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas**. Adversarial: 176 formas → 0 wrong.
+- retained learning:
+  - Tercer caso del MISMO patrón de "constante 0 sobrante" (tras homogénea-trig y este): al mover el RHS a un lado, `Sub(lhs, 0)` deja una hoja `0` que un colector estructural debe DESCARTAR explícitamente (una no-nula ⇒ otra forma ⇒ declina), o toda la familia `= 0` falla la detección. Ya es un patrón reconocido — cualquier colector nuevo que opere sobre `lhs − rhs` necesita esta rama desde el principio.
+  - Un handler que corre ANTES de la isolación captura también las formas que la isolación YA resolvía (aquí `2^x=3^(x−1)`), cambiando su RENDER (mismo valor). Es inevitable si el fix debe atrapar las que la isolación ROMPE (mismo punto de entrada). Aceptable cuando el valor es idéntico y la huella queda a 0 — pero hay que VERIFICAR la huella y anotar el cambio de render (no es una regresión).
+  - PRÓXIMO PELDAÑO: tres o más exponenciales de bases distintas (`2^x+3^x=5^x`, `2^x+2=3^x`) siguen siendo transcendentales sin forma cerrada (residual honesto); base `e` mezclada con base racional (`e^x=2^x` → x=0) NO se captura (base efectiva `e` irracional) — un caso especial ratio=1 que podría añadirse.

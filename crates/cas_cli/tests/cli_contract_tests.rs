@@ -3960,6 +3960,33 @@ fn test_eval_mixed_base_exponential_normalizes_to_common_prime() {
 }
 
 #[test]
+fn test_eval_two_different_base_exponential_divides_to_a_log() {
+    // Two exponentials with DIFFERENT (incompatible-prime) bases: `A·M^x + B·N^x = 0 ⟺ (M/N)^x = −B/A`,
+    // i.e. `x = ln(−B/A)/ln(M/N)`. The A=B forms happened to isolate, but the one-sided
+    // (`4^x − 9^x = 0`) and both-coefficiented (`5·2^x = 3^x`) forms errored with "Cannot isolate 'x'".
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `(4/9)^x = 1 ⟹ x = 0` (the ratio is 1, so `ln(1) = 0`).
+    assert_eq!(r("solve(4^x - 9^x = 0, x)"), "{ 0 }");
+    assert_eq!(r("solve(2^x - 5^x = 0, x)"), "{ 0 }");
+    // Non-unit coefficients ⟹ a genuine log.
+    assert_eq!(r("solve(2*4^x = 3*9^x, x)"), "{ ln(3/2) / ln(4/9) }");
+    assert_eq!(r("solve(5*2^x = 3^x, x)"), "{ ln(1/5) / ln(2/3) }");
+    // SOUNDNESS: `(M/N)^x > 0`, so a non-positive ratio has no real solution.
+    assert_eq!(r("solve(4^x + 9^x = 0, x)"), "No solution");
+    assert_eq!(r("solve(2^x = -3^x, x)"), "No solution");
+    // Controls: same-base polynomial forms and a nonzero-constant RHS are NOT this shape.
+    assert_eq!(r("solve(4^x - 3*2^x + 2 = 0, x)"), "{ 0, 1 }");
+    assert_eq!(r("solve(2^x = 8, x)"), "{ 3 }");
+}
+
+#[test]
 fn test_eval_exponential_reciprocal_polynomial_clears_the_reciprocal() {
     // Equations that mix an exponential with its RECIPROCAL (`e^x + e^(−x)`, the hyperbolic form) used
     // to bail — `función [cosh] no definida` for base `e`, `Cannot isolate 'x'` for general bases —

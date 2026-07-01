@@ -3588,6 +3588,150 @@ fn rewrite_exp_bases_to_prime(
     }
 }
 
+/// Match a single leaf as `coeff · base^(k·x + m)` and return its EFFECTIVE base `base^k` (the base of
+/// `^x`) and folded coefficient `coeff · base^m`, both rational. `None` for a non-exponential leaf, a
+/// non-rational base, or a `base^0` (constant slope) term.
+fn exponential_base_and_coeff(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(num_rational::BigRational, num_rational::BigRational)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    if !contains_var(ctx, expr, var) {
+        return None; // a constant term ⇒ not a pure two-exponential form
+    }
+    match ctx.get(expr) {
+        Expr::Pow(b, e) => {
+            let base = as_rational_const(ctx, *b)?;
+            // A valid exponential base is a positive rational ≠ 1.
+            if base <= num_traits::Zero::zero() || base == num_traits::One::one() {
+                return None;
+            }
+            let (slope, intercept) = affine_integer_exponent(ctx, *e, var)?;
+            if slope == 0 {
+                return None;
+            }
+            let eff_base = base_pow_integer_rational(ctx, *b, slope)?;
+            let coeff = base_pow_integer_rational(ctx, *b, intercept)?;
+            Some((eff_base, coeff))
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if !contains_var(ctx, l, var) {
+                let c = as_rational_const(ctx, l)?;
+                let (base, coeff) = exponential_base_and_coeff(ctx, r, var)?;
+                Some((base, c * coeff))
+            } else if !contains_var(ctx, r, var) {
+                let c = as_rational_const(ctx, r)?;
+                let (base, coeff) = exponential_base_and_coeff(ctx, l, var)?;
+                Some((base, c * coeff))
+            } else {
+                None
+            }
+        }
+        Expr::Div(n, d) => {
+            let (n, d) = (*n, *d);
+            if contains_var(ctx, n, var) {
+                return None;
+            }
+            let c = as_rational_const(ctx, n)?;
+            let (base, coeff) = exponential_base_and_coeff(ctx, d, var)?;
+            if num_traits::Zero::is_zero(&base) || num_traits::Zero::is_zero(&coeff) {
+                return None;
+            }
+            Some((base.recip(), c / coeff))
+        }
+        Expr::Neg(inner) => {
+            let (base, coeff) = exponential_base_and_coeff(ctx, *inner, var)?;
+            Some((base, -coeff))
+        }
+        _ => None,
+    }
+}
+
+/// Collect `expr` as `Σ coeffᵢ · baseᵢ^x` into `terms` (effective base + rational coefficient), walking
+/// `Add`/`Sub`/`Neg` for the sign. `None` if any leaf is not `c · b^(affine·x)` (a nonzero constant, a
+/// non-rational base, or other var structure) — i.e. the expression is not a pure sum of exponentials.
+fn collect_exponential_base_terms(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    positive: bool,
+    terms: &mut Vec<(num_rational::BigRational, num_rational::BigRational)>,
+) -> Option<()> {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_exponential_base_terms(ctx, l, var, positive, terms)?;
+            collect_exponential_base_terms(ctx, r, var, positive, terms)
+        }
+        Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_exponential_base_terms(ctx, l, var, positive, terms)?;
+            collect_exponential_base_terms(ctx, r, var, !positive, terms)
+        }
+        Expr::Neg(inner) => collect_exponential_base_terms(ctx, *inner, var, !positive, terms),
+        _ => {
+            if let Some((base, coeff)) = exponential_base_and_coeff(ctx, expr, var) {
+                let signed = if positive { coeff } else { -coeff };
+                terms.push((base, signed));
+                return Some(());
+            }
+            // A var-free ZERO constant (the moved-over `= 0` RHS) contributes nothing; a NONZERO
+            // constant is a different form (`4^x − 9^x = 1`) and is out of scope.
+            let c = cas_math::numeric_eval::as_rational_const(ctx, expr)?;
+            if num_traits::Zero::is_zero(&c) {
+                Some(())
+            } else {
+                None
+            }
+        }
+    }
+}
+
+/// Solve a two-term exponential equation with DIFFERENT effective bases: `A·M^x + B·N^x = 0` (`M ≠ N`,
+/// both positive rationals, no constant term) ⟺ `(M/N)^x = −B/A`, i.e. `x = ln(−B/A) / ln(M/N)`. Covers
+/// `4^x − 9^x = 0` (→ `x = 0`), `5·2^x = 3^x`, `2·4^x = 3·9^x` — which otherwise error with "Cannot
+/// isolate 'x'" once moved to one side / coefficiented (the A=B forms happen to isolate, but the
+/// one-sided forms do not). `(M/N)^x > 0`, so `−B/A ≤ 0` ⇒ NO solution. Same-base forms (`M = N`) are
+/// the single-base polynomial path's job and decline here.
+fn try_solve_two_different_base_exponential_equation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use num_traits::Signed;
+    if eq.op != cas_ast::RelOp::Eq {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let mut terms = Vec::new();
+    collect_exponential_base_terms(&simplifier.context, diff, var, true, &mut terms)?;
+    if terms.len() != 2 {
+        return None;
+    }
+    let (m, a) = terms[0].clone();
+    let (n, b) = terms[1].clone();
+    if m == n || num_traits::Zero::is_zero(&a) || num_traits::Zero::is_zero(&b) {
+        return None;
+    }
+    // `(M/N)^x = −B/A`; the LHS is strictly positive, so a non-positive ratio has no real solution.
+    let ratio = -b / &a;
+    if !ratio.is_positive() {
+        return Some(SolutionSet::Empty);
+    }
+    let mn = m / &n;
+    // `x = ln(ratio) / ln(M/N)` (well-defined: `M/N > 0`, `M/N ≠ 1` since `M ≠ N`).
+    let ratio_expr = simplifier.context.add(Expr::Number(ratio));
+    let mn_expr = simplifier.context.add(Expr::Number(mn));
+    let ln_ratio = simplifier.context.call("ln", vec![ratio_expr]);
+    let ln_mn = simplifier.context.call("ln", vec![mn_expr]);
+    let x = simplifier.context.add(Expr::Div(ln_ratio, ln_mn));
+    let (x, _) = simplifier.simplify(x);
+    Some(SolutionSet::Discrete(vec![x]))
+}
+
 /// Solve an exponential equation/inequality whose terms use DIFFERENT integer bases that are powers of
 /// a common prime (`4^x − 3·2^x + 2 = 0`): rewrite every `m^g` to `p^(k·g)` (`4^x → 2^(2x)`) so the
 /// whole thing is a polynomial in the single atom `p^x`, then solve the normalized relation. Without
@@ -5933,6 +6077,12 @@ fn solve_local_core(
     // `m^g` to `p^(k·g)` (`4^x → 2^(2x)`) so it is a polynomial in the single atom `p^x`, then re-solve.
     // Otherwise the isolation reports "Cannot isolate: variable on both sides" (two distinct bases).
     if let Some(set) = try_solve_via_exp_base_normalization(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // Two exponentials with DIFFERENT (incompatible-prime) bases (`4^x − 9^x = 0`, `5·2^x = 3^x`):
+    // `A·M^x + B·N^x = 0 ⟺ (M/N)^x = −B/A`, i.e. `x = ln(−B/A)/ln(M/N)`. The A=B forms happen to
+    // isolate; the one-sided / both-coefficiented forms otherwise error with "Cannot isolate".
+    if let Some(set) = try_solve_two_different_base_exponential_equation(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // A single-exponential inequality `a*base^x + c {op} k` is isolated to the
