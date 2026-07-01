@@ -5618,6 +5618,101 @@ fn try_solve_pi_shifted_argument_trig(
     map_solution_through_affine(simplifier, u_sol, &a, b)
 }
 
+/// Solve `|f(x)| = g(x)` where `f` is a polynomial of degree ≥ 2 and `g` (or, for `|f| = |h|`, its
+/// inner `h`) is a polynomial. The textbook split is `|f| = g ⟺ (f = g ∨ f = −g)` with each candidate
+/// verified against the ORIGINAL equation `|f(r)| = g(r)` (which enforces the `g ≥ 0` requirement
+/// exactly). The linear-`f` case is owned by the piecewise absolute-value handler; the constant-RHS
+/// quadratic (`|x²−4| = 3`) by the isolation path — this catches the mixed `|quadratic| = variable`
+/// forms (`|x²−1| = x+1`) that otherwise leak an `arcsin`/`sqrt` residual. Declines (residual) if any
+/// candidate root is non-rational, so completeness is never overclaimed with unverifiable surds.
+fn try_solve_abs_polynomial_equation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    // Identify `|f|` on one side; the other side is `g`.
+    let as_abs = |ctx: &Context, e: ExprId| -> Option<ExprId> {
+        if let Expr::Function(fn_id, args) = ctx.get(e) {
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Abs) {
+                return Some(args[0]);
+            }
+        }
+        None
+    };
+    let (f, g) = if let Some(f) = as_abs(&simplifier.context, eq.lhs) {
+        (f, eq.rhs)
+    } else if let Some(f) = as_abs(&simplifier.context, eq.rhs) {
+        (f, eq.lhs)
+    } else {
+        return None;
+    };
+    // `f` must be a polynomial of degree ≥ 2 (linear `|f|` is the piecewise handler's job).
+    let f_poly = Polynomial::from_expr(&simplifier.context, f, var).ok()?;
+    if f_poly.degree() < 2 {
+        return None;
+    }
+    // `g` may itself be `|h|`; unwrap for the branch RHS, remembering to take the absolute value in the
+    // verification. `g_core` must be a polynomial too (to evaluate exactly at each candidate).
+    let (g_core, g_is_abs) = match as_abs(&simplifier.context, g) {
+        Some(h) => (h, true),
+        None => (g, false),
+    };
+    if !contains_var(&simplifier.context, g_core, var) {
+        return None; // constant RHS is owned by the isolation path (keeps its surd rendering)
+    }
+    let g_poly = Polynomial::from_expr(&simplifier.context, g_core, var).ok()?;
+
+    // Branches `f = g_core` and `f = −g_core`.
+    let neg_g = simplifier.context.add(Expr::Neg(g_core));
+    let mut candidates: Vec<ExprId> = Vec::new();
+    for rhs in [g_core, neg_g] {
+        let branch = Equation {
+            lhs: f,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let (sol, _) = crate::solver_entrypoints_solve::solve(&branch, var, simplifier).ok()?;
+        match sol {
+            SolutionSet::Discrete(roots) => candidates.extend(roots),
+            SolutionSet::Empty => {}
+            _ => return None, // a non-discrete branch ⇒ out of scope
+        }
+    }
+
+    // Verify each candidate against the ORIGINAL `|f(r)| = g(r)` exactly (this enforces `g(r) ≥ 0`).
+    // All candidates must be rational so the check — and completeness — is exact.
+    let mut kept: Vec<ExprId> = Vec::new();
+    let mut seen: Vec<num_rational::BigRational> = Vec::new();
+    for r in candidates {
+        let rv = as_rational_const(&simplifier.context, r)?; // non-rational ⇒ decline (scope)
+        let fr = f_poly.eval(&rv);
+        let gr = g_poly.eval(&rv);
+        let abs_fr = num_traits::Signed::abs(&fr);
+        let target = if g_is_abs {
+            num_traits::Signed::abs(&gr)
+        } else {
+            gr
+        };
+        if abs_fr == target && !seen.contains(&rv) {
+            seen.push(rv);
+            kept.push(r);
+        }
+    }
+    if kept.is_empty() {
+        Some(SolutionSet::Empty)
+    } else {
+        Some(SolutionSet::Discrete(kept))
+    }
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -5753,6 +5848,12 @@ fn solve_local_core(
     // `|A(x)| = c` with a trig-bearing argument: the generic abs isolation solves the two branches to
     // PRINCIPAL roots (`|2·sin(x)−1| = 1 → {π/2, 0}`); solve each branch fully so trig stays periodic.
     if let Some(set) = try_solve_abs_of_trig_equation(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `|f(x)| = g(x)` with a degree-≥2 polynomial `f` and a variable RHS (`|x²−1| = x+1`): split into
+    // `f = ±g` and verify each root against the original (enforcing `g ≥ 0`). Linear `|f|` and
+    // constant-RHS forms keep their existing handlers.
+    if let Some(set) = try_solve_abs_polynomial_equation(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks

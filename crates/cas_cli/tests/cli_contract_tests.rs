@@ -810,6 +810,35 @@ fn test_eval_sum_of_absolute_values_equation_solves_piecewise() {
 }
 
 #[test]
+fn test_eval_abs_of_quadratic_equals_variable_splits_and_verifies() {
+    // `|f(x)| = g(x)` with a degree-≥2 polynomial `f` and a variable RHS leaked an `arcsin`/`sqrt`
+    // residual (the isolation path). Split into `f = ±g` and verify each root against the ORIGINAL
+    // `|f(r)| = g(r)` (which enforces `g(r) ≥ 0`). Linear `|f|` (piecewise handler) and constant-RHS
+    // (isolation, keeps surds) forms are untouched.
+    for (input, expected) in [
+        // `|x²−1| = x+1`: f=g ⟹ {2,−1}; f=−g ⟹ {0,−1}; all have g ≥ 0.
+        ("abs(x^2 - 1) = x + 1", "{ -1, 2, 0 }"),
+        ("abs(x^2 - 4) = x + 2", "{ -2, 3, 1 }"),
+        // `|f| = |h|` needs no sign condition (both branches kept).
+        ("abs(x^2 - 1) = abs(x + 1)", "{ -1, 2, 0 }"),
+        // Verification DROPS roots where the RHS is negative.
+        ("abs(x^2 - 2) = x", "{ 2, 1 }"),
+        ("abs(x^2 - 1) = -x - 5", "No solution"),
+        // Controls: linear `|f|` and constant-RHS quadratic keep their existing handlers.
+        ("abs(x - 3) = 2*x", "{ 1 }"),
+        ("abs(x^2 - 4) = 3", "{ sqrt(7), -(sqrt(7)), 1, -1 }"),
+    ] {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        assert!(output.status.success(), "{input}");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+        assert_eq!(wire["result"].as_str(), Some(expected), "{input}");
+    }
+}
+
+#[test]
 fn test_eval_rational_power_polynomial_equation_solves_by_substitution() {
     // Equations that are a polynomial of degree >= 2 in x^(1/q) (a
     // quadratic-in-disguise) used to leak a malformed internal `Solve: solve(...)`

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 477 (newest first)
+Active entries: 478 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -130,6 +130,7 @@ Active entries: 477 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_homogeneous_linear... | UNIVERSALIDAD (trig lineal homogénea): `sin(x) = cos(x)` daba residual; reducir a `tan(g) = −b/a`
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | UNIVERSALIDAD (doble ángulo + trig mixta cuadrática): `cos(2x)=cos(x)` / `2cos²x−sinx−1=0` daban residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_pi_shifted_argumen... | UNIVERSALIDAD (argumento trig con desfase π): `sin(x+π/4)=1/2` devolvía SOLO la raíz principal
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_polynomial_equ... | UNIVERSALIDAD (valor absoluto de polinomio = variable): `|x²−1| = x+1` daba residual
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -18063,3 +18064,18 @@ Active entries: 477 (newest first)
   - Cuando el simplificador APLICA una identidad que degrada la resolubilidad (adición de ángulo para desfases π-notables → combinación lineal inhomogénea → sólo principal), hay que interceptar en CRUDO ANTES de que corra, y GATEAR exactamente a la condición que dispara la identidad (aquí `b` múltiplo de π) para no tocar las formas que ya funcionan (desfase no-π, bare). Gemelo de la disciplina raw-tree de exp-recíproca/doble-ángulo, pero aquí el disparador es el VALOR notable del desfase, no la estructura.
   - Extraer coeficientes afines por MUESTREO (`g(0),g(1),g(2)`) es robusto cuando el intercepto es SIMBÓLICO (π/4) y `Polynomial::from_expr` no aplica (coef. no racional): `a=g(1)−g(0)` racional, 2ª diferencia nula ⇒ afín. Y mapear una familia `Periodic` por un afín `x=(u−b)/a` (bases e `período/|a|`) es la operación inversa canónica reutilizable.
   - PRÓXIMO PELDAÑO: la inhomogénea lineal genuina `a·sin(x)+b·cos(x)=c` (c≠0, ángulo auxiliar) sigue dando principal — el mismo bug de fondo (isolación a arcsin) pero SIN un desfase que revertir; necesita construir `R·sin(x+φ)=c` con `φ=arctan(b/a)` y resolver como argumento-desfasado (ahora que ESE camino ya es periódico, el ángulo auxiliar es viable como siguiente ciclo).
+
+## 2026-07-01 - UNIVERSALIDAD (valor absoluto de polinomio = variable): `|x²−1| = x+1` daba residual
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_polynomial_equation`)
+- status: `retained` (commit pendiente-de-hash). Under-answer (residual) → resuelto. Capability (Fase 1, real univariable — ecuaciones con valor absoluto). Verificado adversarialmente (59 formas `|x²+bx+c| = dx+e` con raíces racionales vs sympy: 0 wrong; 133 skip = raíces surd que declinan honestamente).
+- capture:
+  - investment_class: capability. Reducción canónica `|f|=g ⟺ f=±g` + verificación exacta de cada raíz contra la ecuación ORIGINAL (que impone `g≥0`), reusando el solver recursivo para las ramas.
+  - cell: `|x²−1|=x+1` → `{−1,0,2}`, `|x²−4|=x+2` → `{−2,1,3}`, `|x²−1|=|x+1|` → `{−1,0,2}` (sin condición de signo), `|x²−2|=x` → `{1,2}` (verificación descarta las raíces con `g<0`), `|x²−1|=−x−5` → No solution. Controles: `|f|` LINEAL (`|x−3|=2x` → `{1}`) del handler piecewise, RHS CONSTANTE (`|x²−4|=3` → `{±√7,±1}`) de la isolación (conserva surds), ambos INTACTOS.
+  - causa raíz: el handler piecewise de valor absoluto cubre `|lineal|`; la isolación cubre `|cuadrático|=constante`. Pero `|cuadrático|=g(x)` con RHS variable caía a la isolación, que reorientaba a `x=√(...)` y filtraba un residual.
+  - fix: `try_solve_abs_polynomial_equation` detecta `|f|` con `f` polinomio de grado ≥2 (el lineal es del piecewise) y RHS `g` variable (constante es de la isolación), resuelve las ramas `f=g` y `f=−g` (recursivo), y VERIFICA cada candidato contra `|f(r)|=g(r)` exacto (si RHS es `|h|`, contra `|f(r)|=|h(r)|`) — la verificación impone `g≥0` sin un predicado de dominio separado. Exige candidatos RACIONALES (verificación y completitud exactas); cualquier raíz surd ⇒ declina a residual (no sobre-declara completitud).
+  - validación: workspace failed:0 (+ test `test_eval_abs_of_quadratic_equals_variable_splits_and_verifies`); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas** (gate grado≥2 + RHS-variable ⇒ handlers lineal/constante intactos). Adversarial: 59 formas vs sympy → 0 wrong.
+- retained learning:
+  - Para `|f|=g` la VERIFICACIÓN contra la ecuación original (`|f(r)|=g(r)`) subsume elegantemente la condición `g≥0`: no hace falta un predicado de dominio separado ni razonar sobre los signos de las ramas — resolver `f=±g` y verificar es completo y sound. Mismo patrón que la verificación de radicales (`√f±√g=c`): el álgebra genera candidatos, la verificación exacta filtra los espurios Y los de dominio de un golpe.
+  - Reparto por dueño existente: `|lineal|` (piecewise), `|poli|=const` (isolación con surds), `|poli≥2|=var` (este). Gatear al hueco EXACTO (grado≥2 Y RHS-variable) mantiene la huella intacta y no re-enruta lo que ya funciona — la lección recurrente de "no interceptar lo que otro handler ya cubre bien" (cf. la regresión de radicales `√A=√B`).
+  - PRÓXIMO PELDAÑO: raíces surd (`|x²−5|=2x+2`, raíces `1±2√2`) declinan — necesitan verificación surd-exacta (evaluar `|f|` y `g` como surds y comparar, como en `compare_values`); y `|f|` con `f` no-polinómico (`|sqrt(x)−1|=…`) fuera de alcance.
