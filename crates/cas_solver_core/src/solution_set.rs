@@ -620,6 +620,19 @@ pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> Solut
     }
 }
 
+fn sset_kind(s: &SolutionSet) -> &'static str {
+    match s {
+        SolutionSet::Discrete(_) => "Discrete",
+        SolutionSet::Continuous(_) => "Continuous",
+        SolutionSet::Union(_) => "Union",
+        SolutionSet::Empty => "Empty",
+        SolutionSet::AllReals => "AllReals",
+        SolutionSet::Residual(_) => "Residual",
+        SolutionSet::Conditional(_) => "Conditional",
+        SolutionSet::Periodic { .. } => "Periodic",
+    }
+}
+
 pub fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
     let intervals = match (s1, s2) {
         (SolutionSet::Empty, s) | (s, SolutionSet::Empty) => return s,
@@ -685,14 +698,37 @@ pub fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> S
                     period: p1,
                 };
             }
-            // Different periods: cannot combine here. Preserve the first (the historical behaviour);
-            // the solver-layer combiner handles the mixed-period case upstream.
+            // Different periods: an LCM over π-multiples is needed, which this `&Context`-only core
+            // cannot compute — the solver-layer combiner handles this upstream, so it should not reach
+            // here. Fail loud in debug rather than silently dropping the second family.
+            debug_assert!(
+                false,
+                "union_solution_sets: different-period Periodic ∪ Periodic — combine at the solver layer"
+            );
             return SolutionSet::Periodic {
                 bases: b1,
                 period: p1,
             };
         }
-        (s1, _) => return s1,
+        // A `Residual` (unsolved fragment) or `Conditional` (guarded cases) operand: the surrounding
+        // solve resolves the real answer elsewhere, so keeping the first is the accepted best-effort —
+        // NOT a dropped representable solution. (`Residual ∪ Residual` arises in polynomial root
+        // finding.)
+        (s1 @ (SolutionSet::Residual(_) | SolutionSet::Conditional(_)), _)
+        | (s1, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) => return s1,
+        // A PERIODIC family unioned with intervals/points needs the `base + k·period` membership test —
+        // a symbolic simplification this `&Context`-only core cannot do. It must be combined at the
+        // SOLVER layer (see `union_periodic_families_over_common_period`). Fail loud in debug rather
+        // than silently DROPPING the second operand.
+        (s1, s2) => {
+            debug_assert!(
+                false,
+                "union_solution_sets: unrepresentable {} ∪ {} — combine at the solver layer",
+                sset_kind(&s1),
+                sset_kind(&s2)
+            );
+            return s1;
+        }
     };
 
     let merged = merge_intervals(ctx, intervals);
@@ -799,7 +835,71 @@ pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) 
                 SolutionSet::Union(new_u)
             }
         }
-        _ => SolutionSet::Empty,
+        // A discrete set intersected with intervals keeps the points that fall INSIDE them (the old
+        // catch-all returned `Empty`, silently dropping every such point). Membership is a value
+        // comparison against the bounds — available in this core via `compare_values`.
+        (SolutionSet::Discrete(d), SolutionSet::Continuous(i))
+        | (SolutionSet::Continuous(i), SolutionSet::Discrete(d)) => discrete_or_empty(
+            d.into_iter()
+                .filter(|&p| point_in_interval(ctx, p, &i))
+                .collect(),
+        ),
+        (SolutionSet::Discrete(d), SolutionSet::Union(u))
+        | (SolutionSet::Union(u), SolutionSet::Discrete(d)) => discrete_or_empty(
+            d.into_iter()
+                .filter(|&p| u.iter().any(|i| point_in_interval(ctx, p, i)))
+                .collect(),
+        ),
+        // Two discrete sets: the common points (by VALUE, so `√3` matches `√3`, not just structurally).
+        (SolutionSet::Discrete(d1), SolutionSet::Discrete(d2)) => discrete_or_empty(
+            d1.into_iter()
+                .filter(|&p| {
+                    d2.iter()
+                        .any(|&q| compare_values(ctx, p, q) == Ordering::Equal)
+                })
+                .collect(),
+        ),
+        // A `Residual` (unsolved fragment) or `Conditional` (guarded cases) operand: the domain
+        // restriction is resolved elsewhere; `Empty` is the accepted historical result here.
+        (SolutionSet::Residual(_) | SolutionSet::Conditional(_), _)
+        | (_, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) => SolutionSet::Empty,
+        // A `Periodic ∩ interval` is a finite point set, but finding WHICH `base + k·period` land inside
+        // needs solving — a symbolic simplification this `&Context`-only core cannot do; resolve at the
+        // solver layer. Fail loud in debug rather than silently returning `Empty` (dropping real points).
+        (s1, s2) => {
+            debug_assert!(
+                false,
+                "intersect_solution_sets: unhandled {} ∩ {} — resolve at the solver layer",
+                sset_kind(&s1),
+                sset_kind(&s2)
+            );
+            SolutionSet::Empty
+        }
+    }
+}
+
+/// Whether the point `p` lies inside the interval `i` (bounds compared by VALUE, `±∞` handled).
+fn point_in_interval(ctx: &Context, p: ExprId, i: &Interval) -> bool {
+    let lo_ok = is_neg_infinity(ctx, i.min)
+        || match compare_values(ctx, p, i.min) {
+            Ordering::Greater => true,
+            Ordering::Equal => i.min_type == BoundType::Closed,
+            Ordering::Less => false,
+        };
+    let hi_ok = is_infinity(ctx, i.max)
+        || match compare_values(ctx, p, i.max) {
+            Ordering::Less => true,
+            Ordering::Equal => i.max_type == BoundType::Closed,
+            Ordering::Greater => false,
+        };
+    lo_ok && hi_ok
+}
+
+fn discrete_or_empty(points: Vec<ExprId>) -> SolutionSet {
+    if points.is_empty() {
+        SolutionSet::Empty
+    } else {
+        SolutionSet::Discrete(points)
     }
 }
 
@@ -1056,6 +1156,61 @@ mod tests {
                 assert_eq!(bases.len(), 3, "the shared base 2 is deduped")
             }
             other => panic!("expected merged Periodic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_intersect_discrete_with_interval_keeps_inside_points() {
+        let mut ctx = Context::new();
+        // {1, 2, 5, 8} ∩ (1, 5] = {2, 5}: the old catch-all returned Empty, dropping every point.
+        let pts = SolutionSet::Discrete(vec![ctx.num(1), ctx.num(2), ctx.num(5), ctx.num(8)]);
+        let iv = SolutionSet::Continuous(make_interval(
+            &mut ctx,
+            1,
+            BoundType::Open,
+            5,
+            BoundType::Closed,
+        ));
+        match intersect_solution_sets(&ctx, pts, iv) {
+            SolutionSet::Discrete(d) => {
+                let vals: Vec<i64> = d
+                    .iter()
+                    .map(|&p| {
+                        get_number(&ctx, p)
+                            .unwrap()
+                            .to_integer()
+                            .try_into()
+                            .unwrap()
+                    })
+                    .collect();
+                assert_eq!(vals, vec![2, 5], "kept 2 (inside) and 5 (closed endpoint)");
+            }
+            other => panic!("expected Discrete {{2, 5}}, got {other:?}"),
+        }
+        // Symmetric order and a fully-outside set ⇒ Empty.
+        let iv2 = SolutionSet::Continuous(make_interval(
+            &mut ctx,
+            10,
+            BoundType::Open,
+            20,
+            BoundType::Open,
+        ));
+        let pts2 = SolutionSet::Discrete(vec![ctx.num(2), ctx.num(5)]);
+        assert!(matches!(
+            intersect_solution_sets(&ctx, iv2, pts2),
+            SolutionSet::Empty
+        ));
+    }
+
+    #[test]
+    fn test_intersect_two_discrete_keeps_common_points() {
+        let mut ctx = Context::new();
+        // {1, 2, 3} ∩ {2, 3, 4} = {2, 3} (the old catch-all returned Empty).
+        let a = SolutionSet::Discrete(vec![ctx.num(1), ctx.num(2), ctx.num(3)]);
+        let b = SolutionSet::Discrete(vec![ctx.num(2), ctx.num(3), ctx.num(4)]);
+        match intersect_solution_sets(&ctx, a, b) {
+            SolutionSet::Discrete(d) => assert_eq!(d.len(), 2, "kept the two common points"),
+            other => panic!("expected Discrete of size 2, got {other:?}"),
         }
     }
 

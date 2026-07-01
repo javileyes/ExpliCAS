@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 469 (newest first)
+Active entries: 470 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -122,6 +122,7 @@ Active entries: 469 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`union_solution_sets`: brazo `(... | SOUNDNESS (core union, C1 de 3): `union_solution_sets` DEJABA CAER una familia en `Periodic∪Periodic` (mismo período)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`solve_polynomial_in_atom` re... | REFACTOR (core union, C2 de 3): `solve_polynomial_in_atom` periodic-aware; el handler de trig lo reusa
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_of_trig_equati... | SOUNDNESS (auditoría core-union → familia hallada): `|f(trig)| = c` daba raíces PRINCIPALES, no periódicas
+- 2026-07-01 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`union_solution_sets`, `interse... | ARQUITECTURA (soundness + universalidad): endurecer los combinadores de SolutionSet (fin del drop silencioso)
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -17938,3 +17939,17 @@ Active entries: 469 (newest first)
 - retained learning:
   - Un handler que resuelve por ramas puede AMPLIFICAR un bug de rama: si `solve(rama)` devuelve principal (Discrete) en vez de periódico, unir las ramas produce una respuesta principal INCORRECTA — peor que el residual honesto previo (under→wrong = regresión). GUARD: aceptar solo ramas `Periodic`/`Empty`; si una es Discrete, DECLINAR. Un handler que declina es transparente (== ausente) → nunca regresiona.
   - PRÓXIMO PELDAÑO (bug de rama subyacente): `a·tan(x)+b = c` (lineal-en-tan con coeficiente/constante) devuelve raíz PRINCIPAL o residual en vez de la familia `{...+kπ}` (`solve(2·tan(x)-1=1)`→`{π/4}`, `solve(2·tan(x)-1=-1)`→residual). Lineal-en-sin/cos SÍ da periódico; solo tan-afín está roto. Arreglarlo desbloquearía `|a·tan+b|=c` (que hoy declina). Y el poly-in-exp de base general (`4^x-3·2^x+2`) sigue pendiente.
+
+## 2026-07-01 - ARQUITECTURA (soundness + universalidad): endurecer los combinadores de SolutionSet (fin del drop silencioso)
+
+- area: `crates/cas_solver_core/src/solution_set.rs` (`union_solution_sets`, `intersect_solution_sets`)
+- status: `retained` (commit pendiente-de-hash). Mejora arquitectónica derivada de la lección del "catch-all `(s1,_)=>return s1` es una trampa de drop silencioso" ([[core-union-periodic-drop-fixed]]). Verificada por unit tests + huella FIEL 0-delta.
+- capture:
+  - investment_class: architecture (robustez) + capability (intersección de discretos). Core.
+  - observed: (1) `intersect_solution_sets` tenía un catch-all `_ => Empty` que PIERDE soluciones para combos representables (`Discrete∩Continuous`, `Discrete∩Discrete`, `Discrete∩Union` → Empty). (2) Ambos combinadores caían a un catch-all silencioso para el resto. LECCIÓN DE MÉTODO CRÍTICA: instrumentar con `eprintln`+`cargo test | grep` dio "0 hits" FALSO — `cargo test` CAPTURA y OCULTA el stdout/stderr de los tests que PASAN; solo un `debug_assert!` (que hace fallar el test al golpear) reveló que `Residual∪Residual` SÍ se usa (9 tests, factorización de polinomios). Para detectar si un path se ejecuta: panic/assert o `--nocapture`, nunca eprintln+grep.
+  - decision: (A) CAPACIDAD/soundness — añadir a `intersect_solution_sets` los brazos `Discrete∩{Continuous,Union,Discrete}` (filtran los puntos DENTRO de los intervalos / los comunes, vía `compare_values` + `point_in_interval`, con `±∞` y surds correctos) en vez de `Empty`. (B) ROBUSTEZ — separar en ambos catch-alls los operandos `Residual`/`Conditional` (fragmentos sin resolver / casos guardados: `return s1` / `Empty` es el best-effort histórico ACEPTADO, no un drop de solución representable) de los combos `Periodic`-con-intervalos y `Periodic∪Periodic` de período DISTINTO (NO representables en este core solo-`&Context`, necesitan simplify): estos hacen `debug_assert!` (fallan fuerte en debug) y se resuelven en la capa solver. Verificado DORMANT (0 panics en un barrido amplio: polinomios, trig, periódico, abs, inecuaciones).
+  - validación: workspace failed:0 (+ unit tests `test_intersect_discrete_with_interval_keeps_inside_points`, `test_intersect_two_discrete_keeps_common_points`); clippy limpio (mi crate; los errores de `cas_math` son pre-existentes por `default-features=false`); huella GUARD/PRESS FIEL: **0 deltas estado/returncode** (los 2 suites con drift son los auto-derivantes; los brazos nuevos y los debug_assert no cambian salida release).
+- retained learning:
+  - Un catch-all en un `match` de combinador (union/intersect de conjuntos) es una trampa: `return s1` DROPEA el segundo operando, `_ => Empty` PIERDE la intersección. Separa (a) los combos REPRESENTABLES en este layer → manéjalos bien (aquí `Discrete∩intervalos` vía `compare_values`); (b) los best-effort ACEPTADOS (`Residual`/`Conditional`) → explícitos y documentados; (c) los NO representables sin simplify (`Periodic`-con-intervalos) → `debug_assert!` para que un futuro caller que los produzca falle fuerte en test en vez de emitir un wrong-answer silencioso.
+  - MÉTODO: `cargo test` oculta la salida de tests que pasan. Para medir si un brazo se ejecuta, usa `debug_assert!`/panic (se ve como test fallido) o `--nocapture`, no `eprintln`+grep (se traga). Este error me hizo creer "dormant" lo que estaba muy vivo (`Residual∪Residual`).
+  - El fix arquitectónico REPARTE por capa (consistente con C1/C2): mismo-período y `Discrete∩intervalos` = core (aritmética estructural / `compare_values`); período-distinto y `Periodic∩intervalo` = capa solver (simplify). El `debug_assert` marca la frontera.
