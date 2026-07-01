@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 483 (newest first)
+Active entries: 484 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -136,6 +136,7 @@ Active entries: 483 (newest first)
 - 2026-07-01 | `retained-internal` | `crates/cas_solver/src/solve_exponential_terms.rs` ← `crates/cas_solver/src/s... | ARQUITECTURA (cohesión, 2ª extracción): mover el resto de parsers/rewriters exponenciales puros al módulo
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_shifted_argument_t... | UNIVERSALIDAD (trig con desfase SIMBÓLICO): generalizar el desfase-π a arctan/surd
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inhomogeneous_line... | UNIVERSALIDAD (trig lineal INHOMOGÉNEA): `3·sin(x)+4·cos(x)=5` daba residual — ángulo auxiliar
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inhomogeneous_line... | UNIVERSALIDAD + SOUNDNESS (ángulo auxiliar con coef. irracional + bug de coeficiente compuesto)
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -18157,3 +18158,18 @@ Active entries: 483 (newest first)
   - Cadena de desbloqueo: el ciclo de desfase-simbólico (0aa2c6254) hizo periódico `sin(x+arctan(·))=v`, lo que convirtió el ángulo auxiliar en un simple DESPACHO (construir `R`, `φ=arctan(b/a)`, `c/R` y reenviar). Cuando un handler necesita un target que otro handler aún no maneja bien, arreglar PRIMERO el target y LUEGO despachar es más limpio y sound que replicar la lógica del target. El guard de rango (`|c/R|>1`⇒∅) y la periodicidad vienen GRATIS del target.
   - La normalización `a>0` (voltear a,b,c juntos) es la forma canónica que hace `φ=arctan(b/a)` correcto en TODOS los cuadrantes sin `atan2` — la identidad `R·sin(g+φ)` con `R cos φ=a>0`, `R sin φ=b` fija el cuadrante de φ por el signo de b, que `arctan(b/a)` ya captura (arctan∈(−π/2,π/2), cos>0).
   - PRÓXIMO PELDAÑO: coeficientes IRRACIONALES (`sin+√3cos=1`, R=2, φ=π/3) declinan — el colector exige racionales; extenderlo a coeficientes-ExprId (como el homogéneo) con `R`/`φ` simbólicos sería el siguiente peldaño. `a·sin(g)+b·cos(g)=d·sin(g)+e·cos(g)` (trig en ambos lados) ya lo cubre el colector (mueve a un lado).
+
+## 2026-07-01 - UNIVERSALIDAD + SOUNDNESS (ángulo auxiliar con coef. irracional + bug de coeficiente compuesto)
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inhomogeneous_linear_trig` + `accumulate_linear_sin_cos_const` a ExprId; **fix** en `classify_linear_trig_leaf`)
+- status: `retained` (commit pendiente-de-hash). Extiende el ángulo auxiliar (0d7f32aea) a coeficientes IRRACIONALES + corrige un WRONG-ANSWER pre-existente de coeficiente compuesto. Verificado adversarialmente (176 formas incl. surds √2/√3/2√2 y mezclas vs numérico: 0 wrong reales; 10 "flags" = tangentes c=±R).
+- capture:
+  - investment_class: capability (coef. irracional) + soundness (bug de coeficiente compuesto). El adversarial destapó el bug.
+  - cell: `sin+√3cos=1` → `{−π/6+2kπ, π/2+2kπ}` (R=2, φ=arctan(√3)=π/3), `√3sin+cos=1` → `{2kπ, 2π/3+2kπ}`, `√2sin+√2cos=1` → `{−π/12+2kπ, 7π/12+2kπ}`, `sin+2√2cos=3` → tangente correcta. Racionales INTACTOS (huella 0). Homogénea compuesta `2√2sin−cos=0` → `{arctan(1/(2√2))+kπ}` (ANTES daba tan mal por el bug).
+  - causa raíz (2): (1) el handler racional exigía coef. racionales → los irracionales declinaban; (2) BUG en `classify_linear_trig_leaf`: para un coeficiente COMPUESTO `2·(√2·cos(x))` (Mul anidado) DESCARTABA el factor interno `√2`, devolviendo coef=2 en vez de 2√2 — wrong-answer pre-existente en homogénea E inhomogénea con coef rational×surd.
+  - fix: (1) `accumulate_linear_sin_cos_const` acumula coeficientes como ExprId (admite surds); el handler determina el signo de `a` (racional directo, si no `provable_sign_vs_zero` exacto de surd), normaliza `a>0`, y construye `R=√(a²+b²)`, `φ=arctan(b/a)`, `c/R` SIMPLIFICADO (un `R²` cuadrado-perfecto colapsa `2/√9→2/3`; sin simplificar, el guard de rango lee mal el `√(cuadrado)` como surd irracional y da No solution falso). (2) `classify_linear_trig_leaf` MULTIPLICA el factor externo por el coeficiente interno (`Mul(l, inner)`) en vez de descartarlo (bare devuelve inner=1, así el caso simple `c·sin` no cambia).
+  - validación: workspace failed:0 (+ filas irracionales/compuestas en los tests inhomogéneo y homogéneo); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas** (el fix solo cambia coef. compuestos, ausentes en las suites). Adversarial: 176 formas → 0 wrong reales.
+- retained learning:
+  - EL ADVERSARIAL SALVÓ EL CICLO: la extensión a surds parecía correcta en los casos simples (√3, √2) pero el sweep con `2√2` y mezclas destapó **61 wrong** → localicé un bug PRE-EXISTENTE de `classify_linear_trig_leaf` (descarta el coef. interno de un Mul anidado) que afectaba también a la homogénea. Sin el sweep de coeficientes COMPUESTOS habría shippeado wrong-answers. Regla: barrer coeficientes compuestos (rational×surd, surd×surd), no solo atómicos.
+  - Al construir `c/R` con `R=√(perfect square)`, SIMPLIFICAR antes de despachar: `2/√9` sin simplificar hace que el guard de rango trate `√9` como surd y falle; `2/3` va limpio. Los surds genuinos (`1/√2`) el guard sí los maneja — el problema es el "surd falso" `√(cuadrado)`.
+  - PRÓXIMO PELDAÑO: coef. surd cuyo signo `provable_sign_vs_zero` no decide → declina (honesto). Trig de argumento múltiple `a·sin(2x)+b·cos(2x)=c` ya lo cubre (g=2x compartido).

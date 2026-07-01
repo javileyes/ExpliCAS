@@ -2218,17 +2218,21 @@ fn classify_linear_trig_leaf(
         }
         return None;
     }
-    // `c · (bare sin/cos)` with `c` free of `var`.
+    // `c · (coefficiented sin/cos)` with `c` free of `var`. The recursive call may itself carry an inner
+    // coefficient (`2 · (√3 · cos(g))`), so MULTIPLY the outer factor by it — do not discard it (a bare
+    // sin/cos returns inner coefficient `1`, so simple `c · sin(g)` is unaffected).
     if let Expr::Mul(l, r) = ctx.get(expr) {
         let (l, r) = (*l, *r);
         if !contains_var(ctx, l, var) {
-            if let Some((is_sin, _one, g)) = classify_linear_trig_leaf(ctx, r, var) {
-                return Some((is_sin, l, g));
+            if let Some((is_sin, inner, g)) = classify_linear_trig_leaf(ctx, r, var) {
+                let coeff = ctx.add(Expr::Mul(l, inner));
+                return Some((is_sin, coeff, g));
             }
         }
         if !contains_var(ctx, r, var) {
-            if let Some((is_sin, _one, g)) = classify_linear_trig_leaf(ctx, l, var) {
-                return Some((is_sin, r, g));
+            if let Some((is_sin, inner, g)) = classify_linear_trig_leaf(ctx, l, var) {
+                let coeff = ctx.add(Expr::Mul(r, inner));
+                return Some((is_sin, coeff, g));
             }
         }
     }
@@ -2362,25 +2366,25 @@ fn try_solve_homogeneous_linear_trig(
     }
 }
 
-/// Accumulate `expr` as a linear combination `a·sin(g) + b·cos(g) + konst` (all rational, single shared
-/// argument `g`): like [`accumulate_linear_sin_cos`] but ALSO collecting a (possibly nonzero) constant
-/// term into `konst` and requiring every coefficient to be rational. `None` on any non-`{sin,cos}(g)`,
-/// non-constant term (a different argument, an irrational coefficient, or other var structure).
+/// Accumulate `expr` as a linear combination `a·sin(g) + b·cos(g) + konst` (coefficients kept as
+/// EXPRESSIONS, single shared argument `g`): like [`accumulate_linear_sin_cos`] but ALSO collecting a
+/// (possibly nonzero) constant term into `konst`. Keeping the coefficients symbolic admits IRRATIONAL
+/// ones (`√3·sin(x)`). `None` on any non-`{sin,cos}(g)`, non-constant term (a different argument or
+/// other var structure).
 #[allow(clippy::too_many_arguments)]
 fn accumulate_linear_sin_cos_const(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
     positive: bool,
-    a: &mut num_rational::BigRational,
-    b: &mut num_rational::BigRational,
-    konst: &mut num_rational::BigRational,
+    a: &mut ExprId,
+    b: &mut ExprId,
+    konst: &mut ExprId,
     arg: &mut Option<ExprId>,
     found_sin: &mut bool,
     found_cos: &mut bool,
 ) -> Option<()> {
     use cas_ast::ordering::compare_expr;
-    use cas_math::numeric_eval::as_rational_const;
     use cas_solver_core::isolation_utils::contains_var;
     match ctx.get(expr).clone() {
         Expr::Add(l, r) => {
@@ -2404,7 +2408,6 @@ fn accumulate_linear_sin_cos_const(
         ),
         _ => {
             if let Some((is_sin, coeff, g)) = classify_linear_trig_leaf(ctx, expr, var) {
-                let coeff = as_rational_const(ctx, coeff)?; // require a RATIONAL coefficient
                 match arg {
                     Some(g0) => {
                         if compare_expr(ctx, *g0, g) != std::cmp::Ordering::Equal {
@@ -2413,51 +2416,58 @@ fn accumulate_linear_sin_cos_const(
                     }
                     None => *arg = Some(g),
                 }
-                let signed = if positive { coeff } else { -coeff };
+                let signed = if positive {
+                    coeff
+                } else {
+                    ctx.add(Expr::Neg(coeff))
+                };
                 if is_sin {
                     *found_sin = true;
-                    *a += signed;
+                    *a = ctx.add(Expr::Add(*a, signed));
                 } else {
                     *found_cos = true;
-                    *b += signed;
+                    *b = ctx.add(Expr::Add(*b, signed));
                 }
                 return Some(());
             }
-            // Not a trig leaf: must be a `var`-free rational constant (else out of scope).
+            // Not a trig leaf: must be a `var`-free constant (else out of scope).
             if contains_var(ctx, expr, var) {
                 return None;
             }
-            let c = as_rational_const(ctx, expr)?;
-            *konst += if positive { c } else { -c };
+            *konst = if positive {
+                ctx.add(Expr::Add(*konst, expr))
+            } else {
+                ctx.add(Expr::Sub(*konst, expr))
+            };
             Some(())
         }
     }
 }
 
-/// Solve an INHOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = c` (`a`, `b`, `c` rational, `c ≠ 0`,
-/// `a ≠ 0`) by the auxiliary-angle method: `a·sin(g) + b·cos(g) = R·sin(g + φ)` with `R = √(a²+b²)` and
-/// `φ = arctan(b/a)` (normalizing `a > 0`), so the equation becomes `sin(g + φ) = c/R` — dispatched to
-/// the shifted-argument trig solver (which returns the full periodic family and detects `|c/R| > 1 ⇒
-/// No solution` via the surd range guard). Without this the isolation leaks an `arcsin(… − cos(g) …)`
-/// residual. The homogeneous case `c = 0` is the tangent reduction; a pure `sin`/`cos` (a or b zero) is
-/// owned by the bare/shifted handlers.
+/// Solve an INHOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = c` (`c ≠ 0`, `a ≠ 0`) by the
+/// auxiliary-angle method: `a·sin(g) + b·cos(g) = R·sin(g + φ)` with `R = √(a²+b²)` and `φ = arctan(b/a)`
+/// (normalizing `a > 0`, so `cos φ = a/R > 0` fixes the quadrant), giving `sin(g + φ) = c/R` — dispatched
+/// to the shifted-argument trig solver (full periodic family; `|c/R| > 1 ⇒ No solution` via the surd
+/// range guard). Coefficients may be rational OR provable-sign surds (`√3·sin(x) + cos(x) = 1`). Without
+/// this the isolation leaks an `arcsin(… − cos(g) …)` residual. Homogeneous `c = 0` is the tangent
+/// reduction; a pure `sin`/`cos` is owned by the bare/shifted handlers.
 fn try_solve_inhomogeneous_linear_trig(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
 ) -> Option<SolutionSet> {
     use cas_ast::BuiltinFn;
+    use cas_math::numeric_eval::as_rational_const;
     use num_rational::BigRational;
     use num_traits::{Signed, Zero};
+
     if eq.op != cas_ast::RelOp::Eq {
         return None;
     }
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
-    let (mut a, mut b, mut konst) = (
-        BigRational::zero(),
-        BigRational::zero(),
-        BigRational::zero(),
-    );
+    let mut a = simplifier.context.num(0);
+    let mut b = simplifier.context.num(0);
+    let mut konst = simplifier.context.num(0);
     let mut arg = None;
     let (mut found_sin, mut found_cos) = (false, false);
     accumulate_linear_sin_cos_const(
@@ -2472,35 +2482,59 @@ fn try_solve_inhomogeneous_linear_trig(
         &mut found_sin,
         &mut found_cos,
     )?;
-    if !found_sin || !found_cos || a.is_zero() {
-        return None; // need a genuine sin+cos combination with a nonzero sin coefficient
+    if !found_sin || !found_cos {
+        return None; // need a genuine sin+cos combination
     }
     let g = arg?;
+    let (a, _) = simplifier.simplify(a);
+    let (b, _) = simplifier.simplify(b);
     // `a·sin + b·cos + konst = 0` ⇒ `a·sin + b·cos = −konst = c`.
-    let mut c = -konst;
-    if c.is_zero() {
-        return None; // homogeneous ⇒ the tangent reduction owns it
+    let neg_konst = simplifier.context.add(Expr::Neg(konst));
+    let (c, _) = simplifier.simplify(neg_konst);
+    // `a ≠ 0` and `c ≠ 0` (the homogeneous `c = 0` is the tangent reduction's job).
+    let is_zero = |ctx: &Context, e: ExprId| as_rational_const(ctx, e).is_some_and(|v| v.is_zero());
+    if is_zero(&simplifier.context, a) || is_zero(&simplifier.context, c) {
+        return None;
     }
-    // Normalize `a > 0` (flip all three signs) so `φ = arctan(b/a)` has `cos φ = a/R > 0`.
-    if a.is_negative() {
-        a = -a;
-        b = -b;
-        c = -c;
-    }
+    // Sign of `a`: rational directly, else an exact surd sign; unprovable ⇒ decline.
+    let a_positive = match as_rational_const(&simplifier.context, a) {
+        Some(v) => v.is_positive(),
+        None => match cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, a)? {
+            std::cmp::Ordering::Greater => true,
+            std::cmp::Ordering::Less => false,
+            std::cmp::Ordering::Equal => return None,
+        },
+    };
+    // Normalize `a > 0` by flipping all three signs.
+    let (a, b, c) = if a_positive {
+        (a, b, c)
+    } else {
+        let na = simplifier.context.add(Expr::Neg(a));
+        let nb = simplifier.context.add(Expr::Neg(b));
+        let nc = simplifier.context.add(Expr::Neg(c));
+        (
+            simplifier.simplify(na).0,
+            simplifier.simplify(nb).0,
+            simplifier.simplify(nc).0,
+        )
+    };
     // `R = √(a²+b²)`, `φ = arctan(b/a)`; dispatch `sin(g + φ) = c/R`.
-    let r2 = &a * &a + &b * &b;
-    let r2_expr = simplifier.context.add(Expr::Number(r2));
+    let a2 = simplifier.context.add(Expr::Mul(a, a));
+    let b2 = simplifier.context.add(Expr::Mul(b, b));
+    let r2 = simplifier.context.add(Expr::Add(a2, b2));
+    let (r2, _) = simplifier.simplify(r2);
     let half = simplifier
         .context
         .add(Expr::Number(BigRational::new(1.into(), 2.into())));
-    let r_expr = simplifier.context.add(Expr::Pow(r2_expr, half));
-    let c_expr = simplifier.context.add(Expr::Number(c));
-    let c_over_r = simplifier.context.add(Expr::Div(c_expr, r_expr));
-    let ba_expr = simplifier.context.add(Expr::Number(&b / &a));
+    let r_expr = simplifier.context.add(Expr::Pow(r2, half));
+    let c_over_r = simplifier.context.add(Expr::Div(c, r_expr));
+    // Simplify `c/R` so a perfect-square `R²` collapses (`2/√9 → 2/3`); otherwise the range guard
+    // mis-reads the `√(perfect square)` as an irrational surd and can wrongly report No solution.
+    let (c_over_r, _) = simplifier.simplify(c_over_r);
+    let ba = simplifier.context.add(Expr::Div(b, a));
+    let (ba, _) = simplifier.simplify(ba);
     let arctan_id = simplifier.context.builtin_id(BuiltinFn::Arctan);
-    let phi = simplifier
-        .context
-        .add(Expr::Function(arctan_id, vec![ba_expr]));
+    let phi = simplifier.context.add(Expr::Function(arctan_id, vec![ba]));
     let g_plus_phi = simplifier.context.add(Expr::Add(g, phi));
     let sin_id = simplifier.context.builtin_id(BuiltinFn::Sin);
     let sin_call = simplifier

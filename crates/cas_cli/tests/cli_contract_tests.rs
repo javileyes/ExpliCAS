@@ -2784,12 +2784,27 @@ fn test_eval_inhomogeneous_linear_trig_uses_auxiliary_angle() {
     // SOUNDNESS: `|c| > R ⟹ |c/R| > 1 ⟹` No solution (the surd range guard).
     assert_eq!(r("solve(3*sin(x) + 4*cos(x) = 6, x)"), "No solution");
     assert_eq!(r("solve(3*sin(x) + 4*cos(x) = 10, x)"), "No solution");
-    // Controls: the homogeneous `c = 0` (tangent reduction) and an irrational coefficient (out of the
-    // rational scope) are NOT this handler's job and are unchanged.
-    assert_eq!(r("solve(sin(x) = cos(x), x)"), "{ 1/4·pi + k·pi : k ∈ ℤ }");
+    // Irrational (provable-sign surd) coefficients: `sin + √3·cos = 1 ⟹ R = 2, φ = arctan(√3) = π/3`.
     assert_eq!(
         r("solve(sin(x) + sqrt(3)*cos(x) = 1, x)"),
-        "Solve: solve(x - arcsin(1 - cos(x)·sqrt(3)) = 0, x) = 0"
+        "{ -1/6·pi + k·2·pi, 1/2·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sqrt(3)*sin(x) + cos(x) = 1, x)"),
+        "{ k·2·pi, 2/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // A COMPOUND coefficient `2·√2` (rational × surd): `classify_linear_trig_leaf` now multiplies the
+    // outer factor by the inner coefficient (it used to discard the `√2`). `R = √(1+8) = 3`.
+    assert_eq!(
+        r("solve(sin(x) + 2*sqrt(2)*cos(x) = 3, x)"),
+        "{ 1/2·pi - arctan(4·2^(-1/2)) + k·2·pi : k ∈ ℤ }"
+    );
+    // Controls: the homogeneous `c = 0` is the tangent reduction (and its compound-coefficient case is
+    // now correct too, thanks to the same `classify_linear_trig_leaf` fix).
+    assert_eq!(r("solve(sin(x) = cos(x), x)"), "{ 1/4·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(2*sqrt(2)*sin(x) - cos(x) = 0, x)"),
+        "{ arctan(2^(-1/2) / 2) + k·pi : k ∈ ℤ }"
     );
 }
 
