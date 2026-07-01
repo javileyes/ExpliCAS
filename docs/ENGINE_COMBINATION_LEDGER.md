@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 481 (newest first)
+Active entries: 482 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -134,6 +134,7 @@ Active entries: 481 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_two_different_base... | UNIVERSALIDAD (exponenciales de dos bases distintas): `4^x − 9^x = 0` daba ERROR "Cannot isolate"
 - 2026-07-01 | `retained-internal` | `crates/cas_solver/src/solve_exponential_terms.rs` (nuevo) ← `crates/cas_solv... | ARQUITECTURA (cohesión): extraer los parsers de términos exponenciales a un módulo propio
 - 2026-07-01 | `retained-internal` | `crates/cas_solver/src/solve_exponential_terms.rs` ← `crates/cas_solver/src/s... | ARQUITECTURA (cohesión, 2ª extracción): mover el resto de parsers/rewriters exponenciales puros al módulo
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_shifted_argument_t... | UNIVERSALIDAD (trig con desfase SIMBÓLICO): generalizar el desfase-π a arctan/surd
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -18126,3 +18127,17 @@ Active entries: 481 (newest first)
   - Afinar el import al conjunto REALMENTE llamado desde fuera (no re-exportar todo): `exponential_base_and_coeff` no se importa porque su único caller (`collect_exponential_base_terms`) también se movió. `cargo` avisa del import no usado al instante.
   - `make engine-scorecard` (guard) + `-pressure` juntos superan el timeout de 5 min al regenerar baseline; PARTIR en dos comandos (guard, luego pressure) cada uno bajo su límite. El "after" se guarda ANTES del stash; el baseline se regenera con el stash aplicado.
   - PRÓXIMO PELDAÑO: quedan en `solve_backend_local` los HANDLERS exponenciales (reciprocal, two-different-base, base-normalization + los de inecuación) y sus helpers entrelazados con inecuaciones (`collect_linear_exponential_atom_terms`, `exponential_has_negative_rate`, `exponent_linear_rate`, `find_first_exponential`, `is_provably_positive`). Extraer los HANDLERS a `solve_exponential.rs` requiere `pub(crate)` en `solve_polynomial_in_atom` (corte de mayor riesgo, siguiente ciclo dedicado). Luego la familia trig.
+
+## 2026-07-01 - UNIVERSALIDAD (trig con desfase SIMBÓLICO): generalizar el desfase-π a arctan/surd
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_shifted_argument_trig`, antes `try_solve_pi_shifted_argument_trig`)
+- status: `retained` (commit pendiente-de-hash). Extiende el ciclo del desfase-π (923b1fb54) de "múltiplo de π" a "cualquier constante simbólica". Under-answer → resuelto. Verificado adversarialmente (60 formas `sin/cos(a·x + φ)=c` con `φ∈{arctan(·),√2,…}` vs numérico: 0 wrong).
+- capture:
+  - investment_class: capability. Generalización del gate de un handler existente (reduce-a-canónico: `u=a·x+b` → periódico → mapear).
+  - cell: `sin(x+arctan(4/3))=1` → `{π/2−arctan(4/3)+2kπ}` (era `{π/2−arctan(4/3)}` principal), `sin(x+arctan(1/2))=1/2` → ambas ramas periódicas, `cos(x−arctan(2))=0` → `{arctan(2)+π/2+kπ}`, `sin(x+√2)=1/2` → ambas ramas. π-shift intacto; controles (desfase racional plano `sin(x+1)`, bare, coeficiente) UNCHANGED.
+  - causa raíz: el gate anterior (`period_as_rational_multiple_of_pi(b) != 0`) sólo disparaba para múltiplos de π. Los desfases simbólicos NO-π (arctan, surd) también los mal-maneja la isolación (raíz principal), pero declinaban.
+  - fix: cambiar el gate a "`b` es un desfase SIMBÓLICO" = `as_rational_const(b).is_none()` (cubre π-multiplos, arctan, surds; declina el racional plano —incluido `b=0` bare— que ya funciona). Todo lo demás del handler (extracción afín por muestreo, mapeo `Periodic` por `x=(u−b)/a`) sin cambios.
+  - validación: workspace failed:0 (+ filas simbólicas en `test_eval_pi_shifted_argument_trig_keeps_periodic_family`); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas** (el gate sigue declinando los racionales planos). Adversarial: 60 formas → 0 wrong.
+- retained learning:
+  - Cuando un handler gatea a un SUBCASO de un fenómeno más amplio (desfase-π ⊂ desfase-simbólico), y el resto del pipeline es agnóstico al subcaso, GENERALIZAR el gate al fenómeno completo es un win barato y de bajo riesgo — el mismo mapeo `Periodic`-por-afín vale para cualquier `b` constante. Verificar que el gate ampliado sigue declinando exactamente lo que otro path maneja (aquí `as_rational_const(b).is_some()` = racional plano) mantiene la huella a 0.
+  - DESBLOQUEA el ángulo auxiliar: `a·sin(x)+b·cos(x)=c` → `R·sin(x+φ)=c/R` con `φ=arctan(b/a)` ahora se puede DESPACHAR (el target `sin(x+arctan)=v` ya devuelve familia periódica). Siguiente ciclo: construir esa reducción (R=√(a²+b²), cuidado con el cuadrante de φ y `|c/R|>1`).

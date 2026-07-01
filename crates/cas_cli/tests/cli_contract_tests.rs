@@ -2535,8 +2535,18 @@ fn test_eval_pi_shifted_argument_trig_keeps_periodic_family() {
     assert_eq!(r("solve(sin(x - pi/2) = 1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
     // Out of range stays unsatisfiable.
     assert_eq!(r("solve(sin(x + pi/4) = 2, x)"), "No solution");
-    // Controls: a NON-π additive shift and the bare/coefficient forms are handled by the existing
-    // periodic path and must be UNCHANGED (this handler declines — it gates on a π-multiple shift).
+    // A SYMBOLIC (non-π) shift — `arctan`, surd — is mishandled the same way and now also keeps the
+    // full family (the auxiliary-angle dispatch target `sin(x + arctan(b/a)) = c` relies on this).
+    assert_eq!(
+        r("solve(sin(x + arctan(4/3)) = 1, x)"),
+        "{ 1/2·pi - arctan(4/3) + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x + sqrt(2)) = 1/2, x)"),
+        "{ 1/6·pi - sqrt(2) + k·2·pi, 5/6·pi - sqrt(2) + k·2·pi : k ∈ ℤ }"
+    );
+    // Controls: a PLAIN-rational additive shift and the bare/coefficient forms are handled by the
+    // existing periodic path and must be UNCHANGED (this handler declines — it gates on a symbolic shift).
     assert_eq!(
         r("solve(sin(x + 1) = 1/2, x)"),
         "{ 1/6·(pi - 6) + k·2·pi, 5/6·pi - 1 + k·2·pi : k ∈ ℤ }"

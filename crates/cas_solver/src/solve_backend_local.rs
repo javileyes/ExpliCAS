@@ -5338,15 +5338,15 @@ fn map_solution_through_affine(
     }
 }
 
-/// Solve a bare `trig(a·x + b) = c` whose additive shift `b` is a NONZERO rational multiple of π.
-/// The simplifier expands such a shift via the angle-addition identity (`sin(x + π/4) → (√2/2)·(sin x +
-/// cos x)`), turning the equation into an inhomogeneous linear-trig relation that the isolation path
-/// solves to the PRINCIPAL root only — dropping the periodic family and the second branch. Solving
+/// Solve a bare `trig(a·x + b) = c` whose additive shift `b` is a SYMBOLIC constant (a π-multiple like
+/// `π/4`, an `arctan`, a surd — anything that is not a plain rational number). For such a shift the
+/// simplifier's angle-addition expansion (`sin(x + π/4) → (√2/2)·(sin x + cos x)`) / the isolation
+/// returns only the PRINCIPAL root, dropping the periodic family and the second branch. Solving
 /// `trig(u) = c` for `u = a·x + b` (bare, so the existing periodic solver gives the full family) and
-/// mapping back through `x = (u − b)/a` restores the periodicity. Non-π shifts (`sin(x + 1)`) and
-/// bare/coefficient forms (`sin(2x)`) are NOT expanded, so the existing path already handles them and
-/// this declines (keeping their behaviour and the huella untouched).
-fn try_solve_pi_shifted_argument_trig(
+/// mapping back through `x = (u − b)/a` restores the periodicity. A PLAIN-rational shift (`sin(x + 1)`)
+/// and bare/coefficient forms (`sin(2x)`) are handled correctly by the existing periodic path, so this
+/// declines on them (keeping their behaviour and the huella untouched).
+fn try_solve_shifted_argument_trig(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
@@ -5357,13 +5357,14 @@ fn try_solve_pi_shifted_argument_trig(
     }
     let (f, g, c) = detect_bare_trig_equation(&simplifier.context, eq, var)?;
     let (a, b) = affine_coefficients(simplifier, g, var)?;
-    // Only the π-multiple additive shift is mishandled; gate to it so working forms are untouched.
-    let q = period_as_rational_multiple_of_pi(simplifier, b)?;
-    if num_traits::Zero::is_zero(&q) {
+    // Gate to a SYMBOLIC (non-plain-rational) shift — the forms the expansion/isolation mishandles to a
+    // principal root. A plain-rational shift (including `b = 0`, the bare form) is already correct via
+    // the existing periodic path, so decline it and leave its behaviour (and the huella) untouched.
+    if cas_math::numeric_eval::as_rational_const(&simplifier.context, b).is_some() {
         return None;
     }
     // Solve the BARE `trig(u) = c` (full periodic family), then map `u = a·x + b` back to `x`.
-    let u_var = "__pi_shift_u";
+    let u_var = "__shift_u";
     let u = simplifier.context.var(u_var);
     let trig_u = simplifier.context.call_builtin(f, vec![u]);
     let u_eq = Equation {
@@ -5477,10 +5478,10 @@ fn solve_local_core(
     opts: CoreSolverOptions,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // `trig(a·x + b) = c` with `b` a π-multiple additive shift: the simplifier would expand the
-    // angle-addition and the isolation would return only the principal root. Solve `trig(u) = c` for
-    // `u = a·x + b` (full periodic family) and map back — BEFORE the bare handler simplifies (expands).
-    if let Some(set) = try_solve_pi_shifted_argument_trig(simplifier, eq, var) {
+    // `trig(a·x + b) = c` with `b` a SYMBOLIC shift (π-multiple, arctan, surd): the angle-addition
+    // expansion / isolation would return only the principal root. Solve `trig(u) = c` for `u = a·x + b`
+    // (full periodic family) and map back — BEFORE the bare handler simplifies (expands).
+    if let Some(set) = try_solve_shifted_argument_trig(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // Bare trig equation `sin/cos/tan(x)=c` -> the full periodic family (before the unary-inverse
