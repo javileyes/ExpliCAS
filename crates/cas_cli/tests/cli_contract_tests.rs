@@ -912,6 +912,22 @@ fn test_eval_sum_of_two_radicals_equation_solves_and_verifies() {
         // the LHS exceeds c) — verification drops it.
         ("sqrt(x) + sqrt(x+8) = 2", "No solution"),
         ("sqrt(x+1) + sqrt(x) = 0", "No solution"),
+        // DIFFERENCE of two radicals `√f − √g = c`: the reduction flips the RHS sign and the
+        // verification checks `√f − √g == c`, so the sign carries through.
+        ("sqrt(x+5) - sqrt(x) = 1", "{ 4 }"),
+        ("sqrt(3*x+1) - sqrt(x+4) = 1", "{ 5 }"),
+        ("sqrt(x) - sqrt(x-3) = 1", "{ 4 }"),
+        // A difference exceeding its bound, and a negatively-signed one, are dropped by verification.
+        ("sqrt(x+5) - sqrt(x) = 10", "No solution"),
+        ("sqrt(x) - sqrt(x+5) = 1", "No solution"),
+        // EQUAL radicands with `c = 0` (the both-sides equality `√A = √B`): the candidate makes
+        // both radicands equal but IRRATIONAL (√7 at x=2), so the verification must accept the
+        // canceling surds rather than demanding each radicand be a perfect square.
+        ("sqrt(2*x+3) = sqrt(x+5)", "{ 2 }"),
+        ("sqrt(x+1) = sqrt(2*x-3)", "{ 4 }"),
+        ("sqrt(2*x+8) - sqrt(x+5) = 0", "{ -3 }"),
+        // Equal-slope radicands never meet: genuine no-solution stays no-solution.
+        ("sqrt(x+3) - sqrt(x+5) = 0", "No solution"),
     ] {
         let output = cli()
             .args(["eval", input, "--format", "json"])
@@ -2543,7 +2559,10 @@ fn test_eval_quadratic_in_trig_equation_unions_periodic_roots() {
     );
     // Controls: a pure square stays with the squared-trig reduction (compact form); a single trig and a
     // Pythagorean mix (two distinct atoms) are unchanged.
-    assert_eq!(r("solve(2*sin(x)^2 - 1 = 0, x)"), "{ 1/4·pi + k·1/2·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(2*sin(x)^2 - 1 = 0, x)"),
+        "{ 1/4·pi + k·1/2·pi : k ∈ ℤ }"
+    );
     assert_eq!(
         r("solve(sin(x) = 1/2, x)"),
         "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
@@ -2583,7 +2602,10 @@ fn test_eval_abs_of_trig_equation_keeps_periodicity() {
         "{ arcsin(3/4) + k·2·pi, pi - arcsin(3/4) + k·2·pi, arcsin(1/4) + k·2·pi, pi - arcsin(1/4) + k·2·pi : k ∈ ℤ }"
     );
     // One branch is out of range (`cos = 2`) and contributes nothing.
-    assert_eq!(r("solve(abs(cos(x) - 1) = 1, x)"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(abs(cos(x) - 1) = 1, x)"),
+        "{ 1/2·pi + k·pi : k ∈ ℤ }"
+    );
     // `c = 0` is a single branch.
     assert_eq!(
         r("solve(abs(2*sin(x) - 1) = 0, x)"),

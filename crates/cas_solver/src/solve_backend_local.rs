@@ -1659,7 +1659,7 @@ fn collect_two_sqrt_and_const(
     ctx: &Context,
     expr: ExprId,
     var: &str,
-) -> Option<(ExprId, ExprId, num_rational::BigRational)> {
+) -> Option<(ExprId, i8, ExprId, i8, num_rational::BigRational)> {
     use cas_math::numeric_eval::as_rational_const;
     use num_rational::BigRational;
     use num_traits::Zero;
@@ -1669,7 +1669,7 @@ fn collect_two_sqrt_and_const(
         expr: ExprId,
         sign: i8,
         var: &str,
-        rads: &mut Vec<ExprId>,
+        rads: &mut Vec<(ExprId, i8)>,
         constant: &mut BigRational,
     ) -> bool {
         match ctx.get(expr) {
@@ -1687,9 +1687,10 @@ fn collect_two_sqrt_and_const(
             }
             _ => {
                 if let Some(radicand) = as_sqrt_radicand(ctx, expr) {
-                    // A radical must be +1·√(radicand) with the variable inside.
-                    if sign == 1 && expr_contains_named_var(ctx, radicand, var) {
-                        rads.push(radicand);
+                    // A radical `±√(radicand)` with the variable inside — keep its running sign so a
+                    // DIFFERENCE `√f − √g` is handled, not only a sum.
+                    if expr_contains_named_var(ctx, radicand, var) {
+                        rads.push((radicand, sign));
                         return true;
                     }
                     return false;
@@ -1712,12 +1713,12 @@ fn collect_two_sqrt_and_const(
         }
     }
 
-    let mut rads: Vec<ExprId> = Vec::new();
+    let mut rads: Vec<(ExprId, i8)> = Vec::new();
     let mut constant = BigRational::zero();
     if !walk(ctx, expr, 1, var, &mut rads, &mut constant) || rads.len() != 2 {
         return None;
     }
-    Some((rads[0], rads[1], constant))
+    Some((rads[0].0, rads[0].1, rads[1].0, rads[1].1, constant))
 }
 
 /// Exact rational square root: returns `√q` when `q ≥ 0` and both numerator and
@@ -1758,7 +1759,7 @@ fn try_solve_sum_of_two_radicals_equation(
     use cas_math::numeric_eval::as_rational_const;
     use cas_math::polynomial::Polynomial;
     use num_rational::BigRational;
-    use num_traits::Signed;
+    use num_traits::{Signed, Zero};
 
     if eq.op != cas_ast::RelOp::Eq {
         return None;
@@ -1766,20 +1767,23 @@ fn try_solve_sum_of_two_radicals_equation(
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
     let (expr, _) = simplifier.simplify(diff);
 
-    let (f, g, constant) = collect_two_sqrt_and_const(&simplifier.context, expr, var)?;
-    // `√f + √g + constant = 0`  ⇒  `√f + √g = c` with `c = −constant`.
+    let (f, sign_f, g, sign_g, constant) =
+        collect_two_sqrt_and_const(&simplifier.context, expr, var)?;
+    // `s_f·√f + s_g·√g + constant = 0`  ⇒  `s_f·√f + s_g·√g = c` with `c = −constant`.
     let c = -constant;
-    if c.is_negative() {
-        return Some(SolutionSet::Empty); // a sum of square roots is never negative
+    // A SUM of square roots (both signs +) is never negative — the difference has no such bound.
+    if sign_f == 1 && sign_g == 1 && c.is_negative() {
+        return Some(SolutionSet::Empty);
     }
 
     // Radicands must be polynomials (to evaluate the verification exactly).
     let f_poly = Polynomial::from_expr(&simplifier.context, f, var).ok()?;
     let g_poly = Polynomial::from_expr(&simplifier.context, g, var).ok()?;
 
-    // Reduced single-radical equation: √(f·g) = (c² − f − g)/2. Build the
-    // radicand as the EXPANDED polynomial product (the single-radical solver
-    // declines an un-expanded `√((x+1)(x-1))` but handles `√(x²-1)`).
+    // Squaring `s_f·√f + s_g·√g = c` gives `f + g + 2·s_f·s_g·√(fg) = c²`, i.e. the reduced single
+    // radical `√(f·g) = s_f·s_g·(c² − f − g)/2` (the difference flips the sign of the RHS). Build the
+    // radicand as the EXPANDED polynomial product (the single-radical solver declines
+    // `√((x+1)(x-1))` but handles `√(x²-1)`).
     let fg = f_poly.mul(&g_poly).to_expr(&mut simplifier.context);
     let half = simplifier
         .context
@@ -1788,8 +1792,14 @@ fn try_solve_sum_of_two_radicals_equation(
     let c2 = simplifier.context.add(Expr::Number(c.clone() * &c));
     let c2_minus_f = simplifier.context.add(Expr::Sub(c2, f));
     let c2_minus_f_minus_g = simplifier.context.add(Expr::Sub(c2_minus_f, g));
+    // `s_f·s_g = −1` (a difference) negates the numerator.
+    let numerator = if sign_f * sign_g == 1 {
+        c2_minus_f_minus_g
+    } else {
+        simplifier.context.add(Expr::Neg(c2_minus_f_minus_g))
+    };
     let two = simplifier.context.num(2);
-    let reduced_rhs_raw = simplifier.context.add(Expr::Div(c2_minus_f_minus_g, two));
+    let reduced_rhs_raw = simplifier.context.add(Expr::Div(numerator, two));
     // Distribute the `/2` to the canonical polynomial form (`(9 - 2·x)/2 → 9/2 - x`)
     // via a Polynomial round-trip; the single-radical solver declines the
     // un-distributed `Div(poly, 2)` / `½·(…)` form but handles the affine form.
@@ -1816,10 +1826,27 @@ fn try_solve_sum_of_two_radicals_equation(
         let rr = as_rational_const(&simplifier.context, r)?; // non-rational ⇒ decline (scope)
         let fr = f_poly.eval(&rr);
         let gr = g_poly.eval(&rr);
-        if let (Some(sf), Some(sg)) = (perfect_rational_sqrt(&fr), perfect_rational_sqrt(&gr)) {
-            if sf + sg == c {
-                kept.push(r);
+        // Domain: both radicands must be nonnegative for the real square roots to exist.
+        if fr.is_negative() || gr.is_negative() {
+            continue;
+        }
+        // Exact check of `s_f·√fr + s_g·√gr == c` with rational `c` and rational radicands.
+        let holds = match (perfect_rational_sqrt(&fr), perfect_rational_sqrt(&gr)) {
+            // Both radicands are perfect rational squares: compare the signed rational roots.
+            (Some(sf), Some(sg)) => {
+                let signed_f = if sign_f == 1 { sf } else { -sf };
+                let signed_g = if sign_g == 1 { sg } else { -sg };
+                signed_f + signed_g == c
             }
+            // At least one radicand is an irrational surd: with a rational `c` the only way
+            // `s_f·√fr + s_g·√gr = c` can hold is if the two surds CANCEL — a difference
+            // (`s_f·s_g = −1`) of equal radicands with `c = 0` (e.g. `√(2x+3) − √(x+5) = 0`
+            // at `x = 2`, where both sides equal `√7`). A rational `c ≠ 0` would force the
+            // remaining surd to be rational, contradicting non-perfect-square.
+            _ => sign_f * sign_g == -1 && c.is_zero() && fr == gr,
+        };
+        if holds {
+            kept.push(r);
         }
     }
     if kept.is_empty() {
