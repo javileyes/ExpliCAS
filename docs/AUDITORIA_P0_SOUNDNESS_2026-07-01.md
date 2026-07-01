@@ -177,3 +177,32 @@ Grouped by root cause; every one returns a confident, incorrect closed-form set/
 **④ P0-F (log-equation domain escape, `ln(x)-ln(x+1)=1/3`)** — After producing each candidate root, **test it against the already-collected `required_conditions` (`x>0`) with exact arithmetic** and drop violators, returning No solution if none survive. The filter code path already exists (the `=1/2` sibling uses it); the `1/3`/`1/4`/`3/2` branches bypass it. Canonical: solve the invertible atom `x/(x+A)=e^c`, back-substitute, then verify against real-domain constraints. Pairs with the `log(base<1)` operator-flip fix and the `abs(ln(x))` argument-vs-value positivity fix in the same transcendental-inequality dispatch.
 
 **⑤ F1 (surd-coefficient poly-in-u, `e^x+e^(-x)=2*sqrt(2)` / `cosh(x)=2`)** — In `try_solve_exponential_reciprocal_polynomial` (solve_backend_local.rs:2567): widen the coefficient carrier in `collect_exp_laurent_terms`/`exp_laurent_leaf` from `BigRational` to a **symbolic/ExprId-coefficient map** (or special-case the reciprocal-pair span-2 form to build `u²−RHS·u+1=0` with the raw RHS ExprId). Dispatch the quadratic-in-u to the **surd-capable** algebraic solver, iterate over **all** real roots keeping `u>0`, back-substitute `x=ln(u)/ln(base)`, and verify each against the original. Register `cosh`/`2cosh(x)=c` as an alias reducing to `e^x+e^(-x)=c` so they route through the same solver instead of `función [cosh] no definida`. This one change also closes P0-E's integer-RHS root-drop.
+---
+
+## FIX STATUS (2026-07-01, same day)
+
+The audit's meta-hypothesis ("a 'surd constants are decidable real constants' upgrade to the sign/guard
+layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prove_positive`/
+`prove_nonnegative`, and `is_known_negative`) each closed multiple families.
+
+- **P0-D** — FIXED (`be76f3d00`): `|E| = 0 ⟺ E = 0` dispatched to the full solver (all factor roots).
+- **P0-A** — FIXED (`7d7b3ec94`): the `A·trig + B = 0` normalization now keeps a SURD offset symbolically.
+- **P0-E** — FIXED (`6ed3ad19e`): `prove_positive`/`prove_nonnegative` decide linear-surd signs exactly
+  (`root_forms::provable_sign_vs_zero`). Also fixed `e^x = 2−√3`, `e^x+e^(−x)=3`, and the general
+  `e^x = surd` / log-of-surd family, and the P0-F case `e^x > −1/2` → All reals.
+- **P0-B** — PARTIAL (`538f0a902`): `is_known_negative` decides linear-surd signs, fixing the abs-split
+  cases (`|x²−1| = √2`, `|x²−1| = √3`). REMAINING: the direct `x² = 1−√2` and all-imaginary
+  `|x²+2| = √2` still leak — a separate even-root-of-negative-surd guard in the `x²=c` power inversion.
+
+### REMAINING (next batch)
+- **P0-B residual**: `x² = neg-surd` power inversion (the `abs(base)=rhs^(1/2)` even-root path) needs the
+  surd non-negativity guard on the transformed RHS.
+- **P0-C**: `1/(x − surd) > 0` — the single-fraction sign-analysis injects a phantom `+∞` sentinel /
+  both `±surd` copies into the pole set (interval-endpoint arithmetic bug, not a sign-decision bug).
+- **P0-F**: log-equation domain filter (`ln(x)−ln(x+1)=1/3` keeps a negative out-of-domain root);
+  radical/power inequality with negative-surd RHS (`√x < −√2` → wrong ray); `log(base<1)` operator flip;
+  `abs(ln(x)) < 2` (imposes `ln(x)>0` instead of argument `x>0`).
+- **P0-G**: 2nd-derivative simplifier depth_overflow returns a NON-EQUIVALENT truncated tree
+  (`diff(sin(x)·tan(x),x,2)`) — a simplify soundness-invariant violation (hardest; separate effort).
+- **P1 families** F1–F4 (surd-coefficient poly-in-u; surd limits; radical fixpoint; sec/csc/cot/cbrt
+  registration).
