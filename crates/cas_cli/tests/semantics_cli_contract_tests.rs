@@ -3266,6 +3266,37 @@ fn eval_symbolic_integration_step_keeps_integral_latex_in_before_wire() {
 }
 
 #[test]
+fn eval_solve_inequality_input_latex_shows_the_real_relational_operator() {
+    // The `input_latex` echo of `solve(<inequality>, x)` hard-coded ` = ` between the two sides, so an
+    // inequality (`x²−2x−3 > 0`) was rendered as an EQUATION. It must show the real relation.
+    for (input, needle, forbidden) in [
+        ("solve(x^2-2*x-3>0,x)", "> 0", "= 0"),
+        ("solve(x^2-4<=0,x)", "\\leq 0", "= 0"),
+        ("solve(1/(x-2)>=1,x)", "\\geq 1", "= 1"),
+        ("solve((x-1)/(x-2)<0,x)", "< 0", "= 0"),
+    ] {
+        let (output, _code) = run_cli(&["eval", input, "--format", "json"]);
+        let wire = parse_wire(&output);
+        let input_latex = wire["input_latex"].as_str().expect("input_latex");
+        assert!(
+            input_latex.contains(needle),
+            "expected `{needle}` in input_latex for `{input}`, got: {input_latex}"
+        );
+        assert!(
+            !input_latex.contains(forbidden),
+            "did not expect `{forbidden}` in input_latex for `{input}`, got: {input_latex}"
+        );
+    }
+    // Control: a genuine equation still renders `=`.
+    let (output, _code) = run_cli(&["eval", "solve(x^2-5*x+6=0,x)", "--format", "json"]);
+    let input_latex = parse_wire(&output)["input_latex"]
+        .as_str()
+        .expect("input_latex")
+        .to_string();
+    assert!(input_latex.contains("= 0"), "got: {input_latex}");
+}
+
+#[test]
 fn eval_default_variable_integration_keeps_integral_latex_in_wire() {
     let (output, _code) = run_cli(&[
         "eval",

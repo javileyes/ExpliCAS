@@ -46,6 +46,20 @@ fn fallback_solve_input_latex(equation: &str, var: &str) -> String {
     )
 }
 
+/// LaTeX for a relational operator, so an INEQUALITY argument of `solve(...)` echoes its real relation
+/// (`>`, `≤`, …) instead of collapsing to `=`.
+fn relop_latex(op: &cas_ast::RelOp) -> &'static str {
+    use cas_ast::RelOp;
+    match op {
+        RelOp::Eq => "=",
+        RelOp::Neq => "\\neq",
+        RelOp::Lt => "<",
+        RelOp::Gt => ">",
+        RelOp::Leq => "\\leq",
+        RelOp::Geq => "\\geq",
+    }
+}
+
 fn format_solve_input_latex(equation: &str, var: &str) -> String {
     let mut temp_ctx = cas_ast::Context::new();
     let statement = match cas_parser::parse_statement(equation, &mut temp_ctx) {
@@ -59,9 +73,10 @@ fn format_solve_input_latex(equation: &str, var: &str) -> String {
     let eq_signals = ParseStyleSignals::from_input_string(equation);
     let lhs = style_latex_for_input(&temp_ctx, eq.lhs, &eq_signals);
     let rhs = style_latex_for_input(&temp_ctx, eq.rhs, &eq_signals);
+    let op = relop_latex(&eq.op);
 
     format!(
-        "\\operatorname{{solve}}\\left({lhs} = {rhs}, {}\\right)",
+        "\\operatorname{{solve}}\\left({lhs} {op} {rhs}, {}\\right)",
         latex_escape(var)
     )
 }
@@ -89,7 +104,8 @@ fn format_solve_system_input_latex(input: &str) -> String {
         let eq_signals = ParseStyleSignals::from_input_string(eq_str);
         let lhs = style_latex_for_input(&temp_ctx, eq.lhs, &eq_signals);
         let rhs = style_latex_for_input(&temp_ctx, eq.rhs, &eq_signals);
-        rendered_parts.push(format!("{lhs} = {rhs}"));
+        let op = relop_latex(&eq.op);
+        rendered_parts.push(format!("{lhs} {op} {rhs}"));
     }
 
     rendered_parts.extend(var_parts.iter().map(|var| latex_escape(var)));
