@@ -2745,16 +2745,51 @@ fn test_eval_homogeneous_linear_trig_equation_reduces_to_tangent() {
         r("solve(sin(2*x) = cos(2*x), x)"),
         "{ 1/8·pi + k·1/2·pi : k ∈ ℤ }"
     );
-    // Controls: bare `sin/cos = 0` (owned by the periodic handler), the inhomogeneous `… = c` (declines
-    // to a residual), and a product (not a sum) are all unchanged.
+    // Controls: bare `sin/cos = 0` (owned by the periodic handler) and a product (not a sum) are
+    // unchanged. (The inhomogeneous `… = c` is now solved by the auxiliary-angle handler — see below.)
     assert_eq!(r("solve(sin(x) = 0, x)"), "{ k·pi : k ∈ ℤ }");
-    assert_eq!(
-        r("solve(sin(x) + cos(x) = 1, x)"),
-        "Solve: solve(x - arcsin(1 - cos(x)) = 0, x) = 0"
-    );
     assert_eq!(
         r("solve(sin(x)*cos(x) = 0, x)"),
         "{ k·pi, 1/2·pi + k·pi : k ∈ ℤ }"
+    );
+}
+
+#[test]
+fn test_eval_inhomogeneous_linear_trig_uses_auxiliary_angle() {
+    // `a·sin(g) + b·cos(g) = c` (`c ≠ 0`) reduces by the auxiliary angle to
+    // `sin(g + arctan(b/a)) = c/√(a²+b²)` (normalizing `a > 0`), dispatched to the shifted-argument
+    // solver. It was an `arcsin(… − cos(x) …)` residual before.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `c/R = 1` (tangent): a single family. `3·sin + 4·cos = 5 ⟹ sin(x + arctan(4/3)) = 1`.
+    assert_eq!(
+        r("solve(3*sin(x) + 4*cos(x) = 5, x)"),
+        "{ 1/2·pi - arctan(4/3) + k·2·pi : k ∈ ℤ }"
+    );
+    // `c/R < 1` (notable): `sin + cos = 1 ⟹ sin(x + π/4) = 1/√2 ⟹ {2kπ, π/2 + 2kπ}`.
+    assert_eq!(
+        r("solve(sin(x) + cos(x) = 1, x)"),
+        "{ k·2·pi, 1/2·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x) - cos(x) = 1, x)"),
+        "{ 1/2·pi + k·2·pi, pi + k·2·pi : k ∈ ℤ }"
+    );
+    // SOUNDNESS: `|c| > R ⟹ |c/R| > 1 ⟹` No solution (the surd range guard).
+    assert_eq!(r("solve(3*sin(x) + 4*cos(x) = 6, x)"), "No solution");
+    assert_eq!(r("solve(3*sin(x) + 4*cos(x) = 10, x)"), "No solution");
+    // Controls: the homogeneous `c = 0` (tangent reduction) and an irrational coefficient (out of the
+    // rational scope) are NOT this handler's job and are unchanged.
+    assert_eq!(r("solve(sin(x) = cos(x), x)"), "{ 1/4·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(
+        r("solve(sin(x) + sqrt(3)*cos(x) = 1, x)"),
+        "Solve: solve(x - arcsin(1 - cos(x)·sqrt(3)) = 0, x) = 0"
     );
 }
 

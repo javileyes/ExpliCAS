@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 482 (newest first)
+Active entries: 483 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -135,6 +135,7 @@ Active entries: 482 (newest first)
 - 2026-07-01 | `retained-internal` | `crates/cas_solver/src/solve_exponential_terms.rs` (nuevo) ← `crates/cas_solv... | ARQUITECTURA (cohesión): extraer los parsers de términos exponenciales a un módulo propio
 - 2026-07-01 | `retained-internal` | `crates/cas_solver/src/solve_exponential_terms.rs` ← `crates/cas_solver/src/s... | ARQUITECTURA (cohesión, 2ª extracción): mover el resto de parsers/rewriters exponenciales puros al módulo
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_shifted_argument_t... | UNIVERSALIDAD (trig con desfase SIMBÓLICO): generalizar el desfase-π a arctan/surd
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inhomogeneous_line... | UNIVERSALIDAD (trig lineal INHOMOGÉNEA): `3·sin(x)+4·cos(x)=5` daba residual — ángulo auxiliar
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -18141,3 +18142,18 @@ Active entries: 482 (newest first)
 - retained learning:
   - Cuando un handler gatea a un SUBCASO de un fenómeno más amplio (desfase-π ⊂ desfase-simbólico), y el resto del pipeline es agnóstico al subcaso, GENERALIZAR el gate al fenómeno completo es un win barato y de bajo riesgo — el mismo mapeo `Periodic`-por-afín vale para cualquier `b` constante. Verificar que el gate ampliado sigue declinando exactamente lo que otro path maneja (aquí `as_rational_const(b).is_some()` = racional plano) mantiene la huella a 0.
   - DESBLOQUEA el ángulo auxiliar: `a·sin(x)+b·cos(x)=c` → `R·sin(x+φ)=c/R` con `φ=arctan(b/a)` ahora se puede DESPACHAR (el target `sin(x+arctan)=v` ya devuelve familia periódica). Siguiente ciclo: construir esa reducción (R=√(a²+b²), cuidado con el cuadrante de φ y `|c/R|>1`).
+
+## 2026-07-01 - UNIVERSALIDAD (trig lineal INHOMOGÉNEA): `3·sin(x)+4·cos(x)=5` daba residual — ángulo auxiliar
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inhomogeneous_linear_trig` + `accumulate_linear_sin_cos_const`)
+- status: `retained` (commit pendiente-de-hash). Under-answer (residual) → resuelto. Capability (Fase 1, real univariable — ecuaciones trig). Completa la familia trig lineal (homogénea 4c75f7f8d + esta). Verificado adversarialmente (147 formas `a·sin+b·cos=c` incl. a<0 vs numérico: 0 wrong; los 8 "flags" eran tangentes c=±R hand-verificadas correctas).
+- capture:
+  - investment_class: capability. Reducción canónica ÁNGULO AUXILIAR que DESPACHA al handler de desfase-simbólico (desbloqueado en 0aa2c6254): `a·sin+b·cos=c` → `sin(g+arctan(b/a))=c/√(a²+b²)`.
+  - cell: `3·sin+4·cos=5` → `{π/2−arctan(4/3)+2kπ}` (tangente c/R=1), `sin+cos=1` → `{2kπ, π/2+2kπ}` (c/R=1/√2 notable), `sin−cos=1` → `{π/2+2kπ, π+2kπ}`, `sin+cos=1/2` → forma `arcsin(√2/4)`. `|c|>R` ⇒ No solution (`3sin+4cos=6`, `=10`) vía el guard de rango surd. Normalización `a<0` verificada (`−3sin+4cos=5` correcto). Controles: homogénea `c=0` (reducción a tan) intacta; coeficiente IRRACIONAL (`sin+√3cos=1`) declina (fuera del alcance racional).
+  - causa raíz: la isolación reorienta `a·sin+b·cos=c` a `x=arcsin(c/a−(b/a)cos(x))` y filtra un residual. El método textbook es el ángulo auxiliar `R·sin(g+φ)=c`.
+  - fix: colectar `a·sin(g)+b·cos(g)+konst` (todos RACIONALES, único `g`, `accumulate_linear_sin_cos_const` — gemelo del homogéneo pero capturando la constante), exigir ambos sin+cos y `a≠0` y `c=−konst≠0`, NORMALIZAR `a>0` (voltear signos de a,b,c) para que `cos φ=a/R>0`, y despachar `sin(g+arctan(b/a))=c/√(a²+b²)` al solver (que devuelve la familia periódica completa y detecta `|c/R|>1`⇒No solution). Confía solo en periódico/discreto/vacío.
+  - validación: workspace failed:0 (+ test `test_eval_inhomogeneous_linear_trig_uses_auxiliary_angle`; actualicé el control `sin+cos=1` del test homogéneo: era residual, AHORA lo resuelve este handler); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas**. Adversarial: 147 formas → 0 wrong.
+- retained learning:
+  - Cadena de desbloqueo: el ciclo de desfase-simbólico (0aa2c6254) hizo periódico `sin(x+arctan(·))=v`, lo que convirtió el ángulo auxiliar en un simple DESPACHO (construir `R`, `φ=arctan(b/a)`, `c/R` y reenviar). Cuando un handler necesita un target que otro handler aún no maneja bien, arreglar PRIMERO el target y LUEGO despachar es más limpio y sound que replicar la lógica del target. El guard de rango (`|c/R|>1`⇒∅) y la periodicidad vienen GRATIS del target.
+  - La normalización `a>0` (voltear a,b,c juntos) es la forma canónica que hace `φ=arctan(b/a)` correcto en TODOS los cuadrantes sin `atan2` — la identidad `R·sin(g+φ)` con `R cos φ=a>0`, `R sin φ=b` fija el cuadrante de φ por el signo de b, que `arctan(b/a)` ya captura (arctan∈(−π/2,π/2), cos>0).
+  - PRÓXIMO PELDAÑO: coeficientes IRRACIONALES (`sin+√3cos=1`, R=2, φ=π/3) declinan — el colector exige racionales; extenderlo a coeficientes-ExprId (como el homogéneo) con `R`/`φ` simbólicos sería el siguiente peldaño. `a·sin(g)+b·cos(g)=d·sin(g)+e·cos(g)` (trig en ambos lados) ya lo cubre el colector (mueve a un lado).
