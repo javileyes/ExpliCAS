@@ -2470,6 +2470,55 @@ fn test_eval_periodic_trig_equation_emits_family() {
 }
 
 #[test]
+fn test_eval_pi_shifted_argument_trig_keeps_periodic_family() {
+    // `trig(a·x + b) = c` with `b` a π-multiple additive shift: the simplifier expands the
+    // angle-addition (`sin(x + π/4) → (√2/2)·(sin x + cos x)`), and the isolation then returned only the
+    // PRINCIPAL root (`sin(x + π/4) = 1/2 → {−π/12}`, dropping both the `+2kπ` family and the second
+    // branch). Now `trig(u) = c` is solved for `u = a·x + b` and mapped back through `x = (u − b)/a`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Both branches, full 2π period.
+    assert_eq!(
+        r("solve(sin(x + pi/4) = 1/2, x)"),
+        "{ -1/12·pi + k·2·pi, 7/12·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(cos(x + pi/3) = 1/2, x)"),
+        "{ k·2·pi, 4/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // A coefficient AND a π-shift: base and period both scale by `1/a`.
+    assert_eq!(
+        r("solve(sin(2*x + pi/4) = 1/2, x)"),
+        "{ -1/24·pi + k·pi, 7/24·pi + k·pi : k ∈ ℤ }"
+    );
+    // Single-family `c ∈ {0, ±1}` cases, and tan (period π).
+    assert_eq!(
+        r("solve(cos(x - pi/6) = 0, x)"),
+        "{ 2/3·pi + k·pi : k ∈ ℤ }"
+    );
+    assert_eq!(r("solve(tan(x + pi/4) = 1, x)"), "{ k·pi : k ∈ ℤ }");
+    assert_eq!(r("solve(sin(x - pi/2) = 1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
+    // Out of range stays unsatisfiable.
+    assert_eq!(r("solve(sin(x + pi/4) = 2, x)"), "No solution");
+    // Controls: a NON-π additive shift and the bare/coefficient forms are handled by the existing
+    // periodic path and must be UNCHANGED (this handler declines — it gates on a π-multiple shift).
+    assert_eq!(
+        r("solve(sin(x + 1) = 1/2, x)"),
+        "{ 1/6·(pi - 6) + k·2·pi, 5/6·pi - 1 + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(2*x) = 1/2, x)"),
+        "{ 1/12·pi + k·pi, 5/12·pi + k·pi : k ∈ ℤ }"
+    );
+}
+
+#[test]
 fn test_eval_periodic_trig_product_equation_unions_families() {
     // A PRODUCT of periodic trig factors (or a `cos(a)±cos(b)` / `sin(a)±sin(b)` that reduces to one
     // via sum-to-product) used to drop periodicity: each factor was solved for its PRINCIPAL root

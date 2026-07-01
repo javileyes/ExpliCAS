@@ -5471,6 +5471,153 @@ fn dedup_bases_modulo_period(simplifier: &mut Simplifier, bases: &mut Vec<ExprId
     *bases = kept;
 }
 
+/// Detect a bare `trig(g) = c` (or `c = trig(g)`) equation: a single `sin`/`cos`/`tan` whose argument
+/// `g` carries `var`, against a `var`-free side `c`. Returns `(f, g, c)`.
+fn detect_bare_trig_equation(
+    ctx: &Context,
+    eq: &Equation,
+    var: &str,
+) -> Option<(cas_ast::BuiltinFn, ExprId, ExprId)> {
+    use cas_solver_core::isolation_utils::contains_var;
+    let side = |call: ExprId, other: ExprId| -> Option<(cas_ast::BuiltinFn, ExprId, ExprId)> {
+        if let Expr::Function(fn_id, args) = ctx.get(call) {
+            if args.len() == 1 && contains_var(ctx, args[0], var) && !contains_var(ctx, other, var)
+            {
+                if let Some(f) = ctx.builtin_of(*fn_id) {
+                    if matches!(
+                        f,
+                        cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos | cas_ast::BuiltinFn::Tan
+                    ) {
+                        return Some((f, args[0], other));
+                    }
+                }
+            }
+        }
+        None
+    };
+    side(eq.lhs, eq.rhs).or_else(|| side(eq.rhs, eq.lhs))
+}
+
+/// Extract the affine coefficients of `g = a·x + b` (slope `a` a nonzero rational, intercept `b` a
+/// `var`-free expression) by sampling `g` at `x ∈ {0, 1, 2}`. Returns `None` if `g` is not affine in
+/// `var` (the second difference is nonzero) or the slope is not a nonzero rational.
+fn affine_coefficients(
+    simplifier: &mut Simplifier,
+    g: ExprId,
+    var: &str,
+) -> Option<(num_rational::BigRational, ExprId)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    let xvar = simplifier.context.var(var);
+    let sample = |simplifier: &mut Simplifier, k: i64| -> ExprId {
+        let kn = simplifier.context.num(k);
+        let s = substitute_expr_by_id(&mut simplifier.context, g, xvar, kn);
+        simplifier.simplify(s).0
+    };
+    let g0 = sample(simplifier, 0);
+    if contains_var(&simplifier.context, g0, var) {
+        return None; // intercept still depends on the variable ⇒ not affine
+    }
+    let g1 = sample(simplifier, 1);
+    let g2 = sample(simplifier, 2);
+    // slope `a = g(1) − g(0)`; second difference `g(2) − 2·g(1) + g(0)` must vanish (affine).
+    let a_expr = simplifier.context.add(Expr::Sub(g1, g0));
+    let (a_expr, _) = simplifier.simplify(a_expr);
+    let a = as_rational_const(&simplifier.context, a_expr)?;
+    if num_traits::Zero::is_zero(&a) {
+        return None;
+    }
+    let two_g1 = simplifier.context.add(Expr::Add(g1, g1));
+    let g2_plus_g0 = simplifier.context.add(Expr::Add(g2, g0));
+    let second = simplifier.context.add(Expr::Sub(g2_plus_g0, two_g1));
+    let (second, _) = simplifier.simplify(second);
+    if as_rational_const(&simplifier.context, second)? != num_traits::Zero::zero() {
+        return None;
+    }
+    Some((a, g0))
+}
+
+/// Map a periodic/discrete solution set for the atom `u = a·x + b` back to `x` via `x = (u − b)/a`:
+/// each base becomes `(base − b)/a` and the period scales by `1/|a|` (kept positive). Declines a
+/// non-periodic/non-discrete set (nothing to map soundly).
+fn map_solution_through_affine(
+    simplifier: &mut Simplifier,
+    sol: SolutionSet,
+    a: &num_rational::BigRational,
+    b: ExprId,
+) -> Option<SolutionSet> {
+    use num_traits::Signed;
+    let a_num = simplifier.context.add(Expr::Number(a.clone()));
+    let a_abs = simplifier.context.add(Expr::Number(a.abs()));
+    let map_point = |simplifier: &mut Simplifier, base: ExprId| -> ExprId {
+        let shifted = simplifier.context.add(Expr::Sub(base, b));
+        let scaled = simplifier.context.add(Expr::Div(shifted, a_num));
+        simplifier.simplify(scaled).0
+    };
+    match sol {
+        SolutionSet::Empty => Some(SolutionSet::Empty),
+        SolutionSet::Periodic { bases, period } => {
+            let new_bases: Vec<ExprId> = bases
+                .into_iter()
+                .map(|base| map_point(simplifier, base))
+                .collect();
+            let scaled_period = simplifier.context.add(Expr::Div(period, a_abs));
+            let (new_period, _) = simplifier.simplify(scaled_period);
+            let mut new_bases = new_bases;
+            dedup_bases_modulo_period(simplifier, &mut new_bases, new_period);
+            Some(SolutionSet::Periodic {
+                bases: new_bases,
+                period: new_period,
+            })
+        }
+        SolutionSet::Discrete(points) => {
+            let mapped = points
+                .into_iter()
+                .map(|p| map_point(simplifier, p))
+                .collect();
+            Some(SolutionSet::Discrete(mapped))
+        }
+        _ => None,
+    }
+}
+
+/// Solve a bare `trig(a·x + b) = c` whose additive shift `b` is a NONZERO rational multiple of π.
+/// The simplifier expands such a shift via the angle-addition identity (`sin(x + π/4) → (√2/2)·(sin x +
+/// cos x)`), turning the equation into an inhomogeneous linear-trig relation that the isolation path
+/// solves to the PRINCIPAL root only — dropping the periodic family and the second branch. Solving
+/// `trig(u) = c` for `u = a·x + b` (bare, so the existing periodic solver gives the full family) and
+/// mapping back through `x = (u − b)/a` restores the periodicity. Non-π shifts (`sin(x + 1)`) and
+/// bare/coefficient forms (`sin(2x)`) are NOT expanded, so the existing path already handles them and
+/// this declines (keeping their behaviour and the huella untouched).
+fn try_solve_pi_shifted_argument_trig(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    let (f, g, c) = detect_bare_trig_equation(&simplifier.context, eq, var)?;
+    let (a, b) = affine_coefficients(simplifier, g, var)?;
+    // Only the π-multiple additive shift is mishandled; gate to it so working forms are untouched.
+    let q = period_as_rational_multiple_of_pi(simplifier, b)?;
+    if num_traits::Zero::is_zero(&q) {
+        return None;
+    }
+    // Solve the BARE `trig(u) = c` (full periodic family), then map `u = a·x + b` back to `x`.
+    let u_var = "__pi_shift_u";
+    let u = simplifier.context.var(u_var);
+    let trig_u = simplifier.context.call_builtin(f, vec![u]);
+    let u_eq = Equation {
+        lhs: trig_u,
+        rhs: c,
+        op: RelOp::Eq,
+    };
+    let (u_sol, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
+    map_solution_through_affine(simplifier, u_sol, &a, b)
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -5478,6 +5625,12 @@ fn solve_local_core(
     opts: CoreSolverOptions,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // `trig(a·x + b) = c` with `b` a π-multiple additive shift: the simplifier would expand the
+    // angle-addition and the isolation would return only the principal root. Solve `trig(u) = c` for
+    // `u = a·x + b` (full periodic family) and map back — BEFORE the bare handler simplifies (expands).
+    if let Some(set) = try_solve_pi_shifted_argument_trig(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
     // Bare trig equation `sin/cos/tan(x)=c` -> the full periodic family (before the unary-inverse
     // path, which would return only the principal root).
     if let Some(set) = try_solve_periodic_trig_equation(eq, var, simplifier) {

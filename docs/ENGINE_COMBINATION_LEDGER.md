@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 476 (newest first)
+Active entries: 477 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -129,6 +129,7 @@ Active entries: 476 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_exponential_recipr... | UNIVERSALIDAD (exponenciales recíprocas / hiperbólicas): `e^x + e^(−x) = 2` daba ERROR "cosh no definida"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_homogeneous_linear... | UNIVERSALIDAD (trig lineal homogénea): `sin(x) = cos(x)` daba residual; reducir a `tan(g) = −b/a`
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | UNIVERSALIDAD (doble ángulo + trig mixta cuadrática): `cos(2x)=cos(x)` / `2cos²x−sinx−1=0` daban residual
+- 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_pi_shifted_argumen... | UNIVERSALIDAD (argumento trig con desfase π): `sin(x+π/4)=1/2` devolvía SOLO la raíz principal
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -18047,3 +18048,18 @@ Active entries: 476 (newest first)
   - Un handler que trabaja en la forma CRUDA para preservar UNA estructura (`sin²`→no-plegar) debe ofrecer la forma SIMPLIFICADA como FALLBACK para el caso DUAL (`cos(2x)`→plegar-ayuda): las dos direcciones de la misma identidad (`sin²x↔cos(2x)`) se necesitan en momentos opuestos — RAW primero (preserva), SIMPLIFICADO después (canoniza). No es "raw vs simplify", es "raw Y LUEGO simplify".
   - La reducción pitagórica `cos²=1−sin²` (eliminar el átomo de potencia par) unifica CUALQUIER cuadrática trig mixta a un solo átomo, reusando el solver poly-en-atom — el patrón "reduce-a-canónico" otra vez, ahora para trig mixta. `rewrite_even_power_of_atom` declina limpio si el átomo aparece impar (producto `sin·cos` genuino = `sin(2x)/2`, otra familia).
   - PRÓXIMO PELDAÑO: `cos(2x)=cos(x)` con RHS≠0 y sin poly-en-cos (los que simplifican a PRODUCTO de argumentos DISTINTOS `sin(x/2)sin(3x/2)`) siguen por la ruta producto (correcta). La inhomogénea lineal `a·sin+b·cos=c` (ángulo auxiliar) y multi-ángulo n≥3 (Chebyshev `cos(3x)`) siguen pendientes.
+
+## 2026-07-01 - UNIVERSALIDAD (argumento trig con desfase π): `sin(x+π/4)=1/2` devolvía SOLO la raíz principal
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_pi_shifted_argument_trig` + `detect_bare_trig_equation`, `affine_coefficients`, `map_solution_through_affine`)
+- status: `retained` (commit pendiente-de-hash). Under-answer (dropea la familia periódica y la 2ª rama) → resuelto. Capability (Fase 1, real univariable — ecuaciones trig con argumento afín). Verificado adversarialmente (88 formas `sin/cos(a·x+q·π)=c` vs raíces numéricas: 0 wrong; los 24 "flags" eran raíces tangentes c=±1 que el buscador por cambio-de-signo no ve, hand-verificadas correctas).
+- capture:
+  - investment_class: capability. Reducción canónica `u = a·x+b` → resolver `trig(u)=c` (periódico, reusa el solver bare) → mapear la familia por `x=(u−b)/a`.
+  - cell: `sin(x+π/4)=1/2` → `{−π/12+2kπ, 7π/12+2kπ}` (era `{−π/12}` principal), `cos(x+π/3)=1/2` → `{2kπ, 4π/3+2kπ}`, `sin(2x+π/4)=1/2` → `{−π/24+kπ, 7π/24+kπ}` (base y período escalan por 1/a), `cos(x−π/6)=0` → `{2π/3+kπ}`, `tan(x+π/4)=1` → `{kπ}`, `sin(x+π/4)=2` → No solution. Controles: desfase NO-π (`sin(x+1)=1/2`) y bare/coeficiente (`sin(2x)=1/2`) INTACTOS (mi handler declina — gatea al múltiplo de π).
+  - causa raíz: el simplificador EXPANDE el desfase múltiplo-de-π vía identidad de adición de ángulo (`sin(x+π/4) → (√2/2)(sin x + cos x)`), convirtiendo la ecuación en una combinación lineal trig INHOMOGÉNEA; la isolación la resuelve a la raíz PRINCIPAL (`arcsin(...)`), perdiendo periodicidad y la 2ª rama. El desfase no-π (`+1`) NO se expande (1 no es ángulo notable) → el path afín periódico existente lo resuelve bien.
+  - fix: `try_solve_pi_shifted_argument_trig` detecta `trig(g)=c` en CRUDO (sin `simplify`, antes de la expansión), extrae los coeficientes afines `g=a·x+b` (muestreando `g` en x∈{0,1,2}: `a=g(1)−g(0)`, chequeo de 2ª diferencia = afín), GATEA a `b` múltiplo racional NO-nulo de π (`period_as_rational_multiple_of_pi`), resuelve el bare `trig(u)=c` (familia completa) y mapea `u=a·x+b`→`x=(u−b)/a` (bases `(base−b)/a`, período `período/|a|`, con dedup). Corre ANTES del handler bare (que simplifica=expande).
+  - validación: workspace failed:0 (+ test `test_eval_pi_shifted_argument_trig_keeps_periodic_family`); clippy `-D warnings` limpio; huella GUARD/PRESS FIEL: **0 deltas** (gate al desfase-π ⇒ formas que funcionaban intactas). Adversarial: 88 formas vs numérico → 0 wrong.
+- retained learning:
+  - Cuando el simplificador APLICA una identidad que degrada la resolubilidad (adición de ángulo para desfases π-notables → combinación lineal inhomogénea → sólo principal), hay que interceptar en CRUDO ANTES de que corra, y GATEAR exactamente a la condición que dispara la identidad (aquí `b` múltiplo de π) para no tocar las formas que ya funcionan (desfase no-π, bare). Gemelo de la disciplina raw-tree de exp-recíproca/doble-ángulo, pero aquí el disparador es el VALOR notable del desfase, no la estructura.
+  - Extraer coeficientes afines por MUESTREO (`g(0),g(1),g(2)`) es robusto cuando el intercepto es SIMBÓLICO (π/4) y `Polynomial::from_expr` no aplica (coef. no racional): `a=g(1)−g(0)` racional, 2ª diferencia nula ⇒ afín. Y mapear una familia `Periodic` por un afín `x=(u−b)/a` (bases e `período/|a|`) es la operación inversa canónica reutilizable.
+  - PRÓXIMO PELDAÑO: la inhomogénea lineal genuina `a·sin(x)+b·cos(x)=c` (c≠0, ángulo auxiliar) sigue dando principal — el mismo bug de fondo (isolación a arcsin) pero SIN un desfase que revertir; necesita construir `R·sin(x+φ)=c` con `φ=arctan(b/a)` y resolver como argumento-desfasado (ahora que ESE camino ya es periódico, el ángulo auxiliar es viable como siguiente ciclo).
