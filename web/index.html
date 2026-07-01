@@ -1300,7 +1300,10 @@
             max-width: 700px;
             width: 90%;
             max-height: 70vh;
-            overflow-y: auto;
+            /* Flex column so the header stays fixed and only the list scrolls. */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
         }
 
@@ -1310,12 +1313,22 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            /* Fixed header: never scrolls or shrinks with the list. */
+            flex-shrink: 0;
         }
 
         .examples-list {
             list-style: none;
             padding: 0;
             margin: 0;
+            /* Only the list scrolls under the fixed header. The negative margin +
+               matching padding put the scrollbar (and the hover translateX) in the
+               panel's padding gutter, keeping items symmetric with no horizontal bar. */
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            margin-right: -12px;
+            padding-right: 12px;
         }
 
         .examples-list li {
