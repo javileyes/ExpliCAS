@@ -1027,6 +1027,11 @@ fn test_eval_radical_inequality_keeps_argument_domain() {
         ("sqrt(x+2) > 1", "(-1, infinity)"),
         // Range correction (sqrt ≥ 0): a negative upper threshold is impossible.
         ("sqrt(x-1) < -1", "No solution"),
+        // A negative SURD threshold: decided exactly (`√x < −√2` impossible; `√x > −√2` holds on the
+        // whole domain) — it used to fall through to the unsound squaring branch (`√x < −√2 → [0,2)`).
+        ("sqrt(x) < -sqrt(2)", "No solution"),
+        ("sqrt(x) > -sqrt(2)", "[0, infinity)"),
+        ("sqrt(x-1) >= -sqrt(3)", "[1, infinity)"),
         // sqrt(g) <= 0 forces g = 0: a single point in the domain (a degenerate interval `[p, p]`).
         ("sqrt(x+3) <= 0", "[-3, -3]"),
         // ln argument domain is g(x) > 0 (open).

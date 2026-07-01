@@ -636,7 +636,6 @@ fn intersect_inequality_with_function_domain(
 ) -> SolutionSet {
     use cas_ast::{BoundType, Interval, RelOp};
     use cas_solver_core::solution_set::{intersect_solution_sets, pos_inf};
-    use num_traits::Signed;
 
     if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
         return set;
@@ -701,8 +700,17 @@ fn intersect_inequality_with_function_domain(
     // Even-root RANGE correction (`√ ≥ 0`): inverting squares the threshold `c`,
     // which is unsound when `c` is on the wrong side of 0 — handle those directly.
     if let MonotonicFn::EvenRoot = kind {
-        if let Some(c) = cas_math::numeric_eval::as_rational_const(&simplifier.context, eq.rhs) {
-            let (neg, pos) = (c.is_negative(), c.is_positive());
+        // Decide the sign of `c` EXACTLY: a rational directly, else a constant linear surd
+        // (`−√2`) via `provable_sign_vs_zero`. Without the surd path, `√x < −√2` fell through to the
+        // (unsound) squaring branch and returned `[0, 2)` instead of No solution.
+        let sign = cas_math::numeric_eval::as_rational_const(&simplifier.context, eq.rhs)
+            .map(|c| c.cmp(&num_rational::BigRational::from_integer(0.into())))
+            .or_else(|| cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, eq.rhs));
+        if let Some(ord) = sign {
+            let (neg, pos) = (
+                ord == std::cmp::Ordering::Less,
+                ord == std::cmp::Ordering::Greater,
+            );
             match eq.op {
                 // √ < c≤0 and √ ≤ c<0 are impossible (√ ≥ 0).
                 RelOp::Lt if !pos => return SolutionSet::Empty,
