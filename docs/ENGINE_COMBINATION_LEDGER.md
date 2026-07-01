@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 479 (newest first)
+Active entries: 480 (newest first)
 
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
@@ -132,6 +132,7 @@ Active entries: 479 (newest first)
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_pi_shifted_argumen... | UNIVERSALIDAD (argumento trig con desfase π): `sin(x+π/4)=1/2` devolvía SOLO la raíz principal
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_polynomial_equ... | UNIVERSALIDAD (valor absoluto de polinomio = variable): `|x²−1| = x+1` daba residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_two_different_base... | UNIVERSALIDAD (exponenciales de dos bases distintas): `4^x − 9^x = 0` daba ERROR "Cannot isolate"
+- 2026-07-01 | `retained-internal` | `crates/cas_solver/src/solve_exponential_terms.rs` (nuevo) ← `crates/cas_solv... | ARQUITECTURA (cohesión): extraer los parsers de términos exponenciales a un módulo propio
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`linear_numerator_over... | UNIVERSALIDAD (capacidad P1): split de linealidad `p(x)/√(cuadrática)` antes del dispatch radical
 - 2026-06-30 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`trig_odd_power_compan... | UNIVERSALIDAD (capacidad P1): `sin^p·cos^q` con potencia impar y companion NEGATIVA por u-sustitución
 - 2026-06-30 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (`TaylorRule`: fallback a di... | UNIVERSALIDAD (capacidad P1): Taylor de binomio fraccionario `(1+x)^α` en centro 0
@@ -18095,3 +18096,17 @@ Active entries: 479 (newest first)
   - Tercer caso del MISMO patrón de "constante 0 sobrante" (tras homogénea-trig y este): al mover el RHS a un lado, `Sub(lhs, 0)` deja una hoja `0` que un colector estructural debe DESCARTAR explícitamente (una no-nula ⇒ otra forma ⇒ declina), o toda la familia `= 0` falla la detección. Ya es un patrón reconocido — cualquier colector nuevo que opere sobre `lhs − rhs` necesita esta rama desde el principio.
   - Un handler que corre ANTES de la isolación captura también las formas que la isolación YA resolvía (aquí `2^x=3^(x−1)`), cambiando su RENDER (mismo valor). Es inevitable si el fix debe atrapar las que la isolación ROMPE (mismo punto de entrada). Aceptable cuando el valor es idéntico y la huella queda a 0 — pero hay que VERIFICAR la huella y anotar el cambio de render (no es una regresión).
   - PRÓXIMO PELDAÑO: tres o más exponenciales de bases distintas (`2^x+3^x=5^x`, `2^x+2=3^x`) siguen siendo transcendentales sin forma cerrada (residual honesto); base `e` mezclada con base racional (`e^x=2^x` → x=0) NO se captura (base efectiva `e` irracional) — un caso especial ratio=1 que podría añadirse.
+
+## 2026-07-01 - ARQUITECTURA (cohesión): extraer los parsers de términos exponenciales a un módulo propio
+
+- area: `crates/cas_solver/src/solve_exponential_terms.rs` (nuevo) ← `crates/cas_solver/src/solve_backend_local.rs`
+- status: `retained-internal` (commit pendiente-de-hash). Refactor behavior-preserving (extract-before-abstract). Sin cambio de comportamiento público.
+- capture:
+  - investment_class: architecture (cohesión / ownership). `solve_backend_local.rs` había crecido a **7989 líneas / 29 handlers `try_solve_*`** — un god file — tras 7 ciclos de universalidad que yo mismo añadí.
+  - observed: los ~145 líneas de utilidades PURAS de parsing de términos exponenciales (`collect_exp_laurent_terms`, `exp_laurent_leaf`, `affine_integer_exponent`, `base_pow_integer_rational`) son matchers estructurales sin efectos sobre `&Context`, SIN dependencias de la infraestructura de solve (no llaman a `solve_polynomial_in_atom`, `simplify`, entrypoints), y NO están referenciados por los tests inline — un cluster contiguo (líneas 2430-2574) trivialmente extraíble.
+  - decision: mover el cluster a `solve_exponential_terms.rs` como `pub(crate)`, `mod` en orden alfabético en `lib.rs`, e importar en `solve_backend_local`. Los HANDLERS que usan el vocabulario (reciprocal, two-different-base) se quedan con el dispatch; solo se mueve el "cómo leemos un término exponencial". Los helpers de INECUACIÓN exponencial (`collect_linear_exponential_atom_terms`, `exponential_has_negative_rate`) y de normalización primo-común quedan para un follow-up (están más entrelazados con la infra de inecuaciones).
+  - validación: `cargo build`/`clippy -D warnings` limpio (quité el import no usado `exp_laurent_leaf` — solo lo llama `collect_exp_laurent_terms`, intra-módulo); workspace failed:0; huella GUARD (16) + PRESS (3) FIEL: **0 deltas estructurales** (refactor puro); probes de comportamiento (`e^x+e^(−x)=2`, `4^x−9^x=0`, `4^x−3·2^x+2`, `2^x−3+2^(1−x)`) idénticos.
+- retained learning:
+  - Primera extracción retenida del god file `solve_backend_local.rs` (precedente para las siguientes). Regla de corte de MENOR riesgo: mover primero las utilidades PURAS (matchers sobre `&Context` sin deps de infra, no usadas por tests inline) en bloques CONTIGUOS — `cargo check` valida visibilidad al instante y la huella 0-delta prueba behavior-preserving. Los handlers y los helpers entrelazados con inecuaciones son un corte posterior de mayor riesgo (necesitan `pub(crate)` en `solve_polynomial_in_atom` y la infra de rays).
+  - `mod` en `lib.rs` DEBE ir en orden alfabético (lo exige `make ci` fmt global) — inserté `solve_exponential_terms` entre `solve_event_steps` y `solve_input_parse_parse`.
+  - PRÓXIMO PELDAÑO (cohesión): extraer la familia de HANDLERS de ecuación exponencial (reciprocal, two-different-base, base-normalization + sus helpers `exponential_base_and_coeff`, `collect_exponential_base_terms`, `integer_prime_power`, `collect_exp_integer_bases`, `rewrite_exp_bases_to_prime`) a `solve_exponential.rs`, haciendo `pub(crate)` los pocos cruces (`solve_polynomial_in_atom`); luego la familia trig (periodic, poly-in-trig, homogeneous, double-angle, pi-shifted, abs-of-trig) a `solve_trigonometric.rs`. Cada uno su propio ciclo con huella 0-delta.
