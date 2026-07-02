@@ -33,8 +33,10 @@ pub struct ParentContext {
     pub(crate) goal: crate::semantics::NormalFormGoal,
     /// Root expression for this simplification pass (for implicit domain)
     pub(crate) root_expr: Option<ExprId>,
-    /// Cached implicit domain (computed once per pass)
-    pub(crate) implicit_domain: Option<crate::ImplicitDomain>,
+    /// Cached implicit domain (computed once per pass). `Rc` so the per-node `ParentContext::clone`
+    /// in the rule-application hot loop shares the domain set instead of deep-cloning its `HashSet`
+    /// (mirrors `pattern_marks` above; P12 of the saneamiento audit).
+    pub(crate) implicit_domain: Option<std::rc::Rc<crate::ImplicitDomain>>,
     /// Context mode (Standard, Solve, etc.)
     pub(crate) context_mode: crate::options::ContextMode,
     /// Purpose of simplification (Eval, SolvePrepass, SolveTactic)
@@ -348,7 +350,11 @@ impl ParentContext {
     pub fn with_root_expr(mut self, ctx: &Context, root: ExprId) -> Self {
         use crate::infer_implicit_domain;
         self.root_expr = Some(root);
-        self.implicit_domain = Some(infer_implicit_domain(ctx, root, self.value_domain));
+        self.implicit_domain = Some(std::rc::Rc::new(infer_implicit_domain(
+            ctx,
+            root,
+            self.value_domain,
+        )));
         self
     }
 
@@ -361,13 +367,13 @@ impl ParentContext {
 
     /// Get cached implicit domain
     pub fn implicit_domain(&self) -> Option<&crate::ImplicitDomain> {
-        self.implicit_domain.as_ref()
+        self.implicit_domain.as_deref()
     }
 
     /// Set implicit domain (for propagation during rule execution)
     /// V2.14.20: Used to propagate pre-computed implicit domain from initial context
     pub fn with_implicit_domain(mut self, domain: Option<crate::ImplicitDomain>) -> Self {
-        self.implicit_domain = domain;
+        self.implicit_domain = domain.map(std::rc::Rc::new);
         self
     }
 
