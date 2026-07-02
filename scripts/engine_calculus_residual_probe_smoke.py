@@ -26,7 +26,11 @@ SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from engine_command_matrix_observability import stderr_fragility_error
+from cas_cli_release import ensure_release_cas_cli
+from engine_command_matrix_observability import (
+    extract_warning_messages as extract_warnings,
+    stderr_fragility_error,
+)
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -1112,25 +1116,6 @@ def run_probe(
     )
 
 
-def ensure_release_cas_cli(cas_cli: str | pathlib.Path) -> None:
-    path = pathlib.Path(cas_cli)
-    if path != DEFAULT_CAS_CLI or path.exists():
-        return
-    try:
-        subprocess.run(
-            ["cargo", "build", "--release", "-q", "-p", "cas_cli"],
-            cwd=ROOT,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        sys.stderr.write(exc.stdout or "")
-        sys.stderr.write(exc.stderr or "")
-        raise
-
-
 def run_default_matrix(
     timeout_seconds: float,
     cas_cli: str | pathlib.Path = DEFAULT_CAS_CLI,
@@ -1298,23 +1283,6 @@ def extract_impossible_required_conditions(parsed: dict[str, Any] | None) -> tup
         if witness == "0":
             impossible.append("NonZero(0)")
     return tuple(impossible)
-
-
-def extract_warnings(parsed: dict[str, Any] | None) -> tuple[str, ...]:
-    if not parsed:
-        return ()
-    raw = parsed.get("warnings") or []
-    if not isinstance(raw, list):
-        return ()
-    warnings: list[str] = []
-    for item in raw:
-        if isinstance(item, str):
-            warnings.append(item)
-        elif isinstance(item, dict):
-            message = item.get("message") or item.get("text")
-            if isinstance(message, str):
-                warnings.append(message)
-    return tuple(warnings)
 
 
 def extract_cli_error(parsed: dict[str, Any] | None) -> str | None:

@@ -35,7 +35,7 @@ WARNINGS=0
 # Canonical: cas_ast/src/hold.rs
 # Allowed: files that reference cas_ast::hold
 # -----------------------------------------------------------------------------
-echo "  [1/9] Checking strip_hold..."
+echo "  [1/10] Checking strip_hold..."
 
 for file in $(grep -rl "fn strip.*hold" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null | grep -v "cas_ast/src/hold.rs" || true); do
     if ! grep -q "cas_ast::hold::" "$file"; then
@@ -49,7 +49,7 @@ done
 # Canonical: cas_engine/src/nary.rs (AddView, add_terms_no_sign, add_terms_signed)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [2/9] Checking flatten_add..."
+echo "  [2/10] Checking flatten_add..."
 
 FLATTEN_ADD_ALLOWED=(
     "nary.rs"           # Canonical: AddView
@@ -82,7 +82,7 @@ done
 # Canonical: cas_engine/src/nary.rs (MulView, mul_factors)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [3/9] Checking flatten_mul..."
+echo "  [3/10] Checking flatten_mul..."
 
 FLATTEN_MUL_ALLOWED=(
     "views.rs"          # Canonical: MulChainView
@@ -117,7 +117,7 @@ done
 # Matches EXACT function names only (not is_one_term, is_negative_factor, etc.)
 # Allowed: canonical module or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [4/9] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
+echo "  [4/10] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
 
 PREDICATE_ALLOWED=(
     "helpers.rs"        # Canonical
@@ -165,7 +165,7 @@ done
 # -----------------------------------------------------------------------------
 # CHECK 5: __hold in output boundaries (HARD FAIL if in production JSON)
 # -----------------------------------------------------------------------------
-echo "  [5/9] Checking __hold doesn't leak to JSON output..."
+echo "  [5/10] Checking __hold doesn't leak to JSON output..."
 
 # Check test assertions to ensure we have contract tests
 if ! grep -rq "contains.*__hold" "$ROOT_DIR/crates/cas_engine/tests" 2>/dev/null; then
@@ -177,7 +177,7 @@ fi
 # CHECK 6: Builder duplicates (HARD FAIL - migration complete)
 # Canonical: MulBuilder (right-fold), Context::build_balanced_mul (balanced)
 # -----------------------------------------------------------------------------
-echo "  [6/9] Checking builders (build_mul_from_factors)..."
+echo "  [6/10] Checking builders (build_mul_from_factors)..."
 
 BUILDER_ALLOWED=(
     "views.rs"       # MulBuilder canonical
@@ -211,7 +211,7 @@ done
 # CHECK 7: Traversal duplicates (HARD FAIL - migration complete)
 # Canonical: cas_ast::traversal::{count_all_nodes, count_nodes_matching, count_nodes_and_max_depth}
 # -----------------------------------------------------------------------------
-echo "  [7/9] Checking traversal (count_nodes*)..."
+echo "  [7/10] Checking traversal (count_nodes*)..."
 
 TRAVERSAL_ALLOWED=(
     "traversal.rs"  # Canonical module
@@ -245,7 +245,7 @@ done
 # (the former `factors_to_vec` / `find_factor_exp` that the four div_* cancel
 # modules each defined privately, byte-identical — consolidated 2026-07-02).
 # -----------------------------------------------------------------------------
-echo "  [8/9] Checking factor-list helpers (factors_to_vec/find_factor_exp)..."
+echo "  [8/10] Checking factor-list helpers (factors_to_vec/find_factor_exp)..."
 
 FACTOR_ALLOWED=(
     "fraction_factors.rs"  # Canonical module
@@ -280,7 +280,7 @@ done
 # byte-identically as sign_of_linear_surd (cas_solver_core::solution_set) and
 # linear_surd_sign (cas_solver::solve_backend_local) — consolidated 2026-07-02.
 # -----------------------------------------------------------------------------
-echo "  [9/9] Checking surd/nth-root exact comparators (root_forms canonical)..."
+echo "  [9/10] Checking surd/nth-root exact comparators (root_forms canonical)..."
 
 SURD_SIGN_ALLOWED=(
     "root_forms.rs"  # Canonical module
@@ -313,6 +313,39 @@ for pattern in \
             echo -e "         Fix: Use cas_math::root_forms::<comparator>"
             ((ERRORS++))
         fi
+    done
+done
+
+# -----------------------------------------------------------------------------
+# CHECK 10: Python smoke-harness helpers (HARD FAIL - migration complete)
+# Canonical homes:
+#   - ensure_release_cas_cli  -> scripts/cas_cli_release.py (mtime-aware rebuild;
+#     a weaker exists-only copy in the residual probe validated STALE binaries)
+#   - extract_warning_messages -> scripts/engine_command_matrix_observability.py
+#     (a drifted copy dropped rule/assumption-shaped warnings) — consolidated
+#     2026-07-02. The old drifted name extract_warnings must not reappear.
+# -----------------------------------------------------------------------------
+echo "  [10/10] Checking Python smoke-harness helpers (single canonical home)..."
+
+# pattern|canonical-basename ("" => no re-definition allowed anywhere)
+for spec in \
+    "def ensure_release_cas_cli\>|cas_cli_release.py" \
+    "def extract_warning_messages\>|engine_command_matrix_observability.py" \
+    "def extract_warnings\>|"; do
+    pattern="${spec%%|*}"
+    canonical="${spec##*|}"
+    for file in $(grep -rln "$pattern" "$ROOT_DIR/scripts" --include="*.py" 2>/dev/null || true); do
+        basename_file=$(basename "$file")
+        if [[ -n "$canonical" && "$basename_file" == "$canonical" ]]; then
+            continue
+        fi
+        echo -e "  ${RED}ERROR${NC}: $file defines '$pattern'"
+        if [[ -n "$canonical" ]]; then
+            echo -e "         Fix: import it from $canonical"
+        else
+            echo -e "         Fix: use extract_warning_messages from engine_command_matrix_observability.py"
+        fi
+        ((ERRORS++))
     done
 done
 

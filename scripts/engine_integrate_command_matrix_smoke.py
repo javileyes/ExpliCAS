@@ -27,6 +27,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from cas_cli_release import ensure_release_cas_cli
 from engine_command_matrix_observability import (
+    extract_warning_messages,
     payload_observability_summary,
     runtime_observability_summary,
     stderr_fragility_error,
@@ -5632,25 +5633,6 @@ def timing_seconds(timings_us: dict[str, int], key: str) -> float | None:
     if not isinstance(value, int):
         return None
     return value / 1_000_000.0
-
-
-def extract_warning_messages(payload: dict[str, Any] | None) -> tuple[str, ...]:
-    if not payload:
-        return ()
-    raw = payload.get("warnings") or []
-    if not isinstance(raw, list):
-        return ()
-    messages: list[str] = []
-    for item in raw:
-        if isinstance(item, str):
-            messages.append(item)
-        elif isinstance(item, dict):
-            rule = item.get("rule")
-            assumption = item.get("assumption") or item.get("message") or item.get("text")
-            parts = [part for part in (rule, assumption) if isinstance(part, str)]
-            if parts:
-                messages.append(": ".join(parts))
-    return tuple(messages)
 
 
 def extract_step_text(payload: dict[str, Any] | None) -> str:

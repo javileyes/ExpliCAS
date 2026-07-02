@@ -30,6 +30,32 @@ def stderr_fragility_error(
     return None
 
 
+def extract_warning_messages(payload: dict[str, Any] | None) -> tuple[str, ...]:
+    """Decode the public `warnings` wire array into flat message strings.
+
+    Warnings arrive as bare strings or as objects. Object warnings can carry a
+    `rule` label plus an `assumption`/`message`/`text` body; both are surfaced
+    (joined with ": ") so rule/assumption-shaped warnings are never dropped.
+    """
+
+    if not payload:
+        return ()
+    raw = payload.get("warnings") or []
+    if not isinstance(raw, list):
+        return ()
+    messages: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            messages.append(item)
+        elif isinstance(item, dict):
+            rule = item.get("rule")
+            assumption = item.get("assumption") or item.get("message") or item.get("text")
+            parts = [part for part in (rule, assumption) if isinstance(part, str)]
+            if parts:
+                messages.append(": ".join(parts))
+    return tuple(messages)
+
+
 def runtime_observability_summary(
     results: list[dict[str, Any]],
     *,
