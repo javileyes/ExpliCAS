@@ -31,6 +31,7 @@ from engine_command_matrix_observability import (
     extract_warning_messages as extract_warnings,
     stderr_fragility_error,
 )
+from engine_smoke_common import parse_json, terminate_process_group
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -1215,27 +1216,6 @@ def run_matrix_cases(
         "issue_kind_counts": issue_kind_counts,
         "cases": results,
     }
-
-
-def terminate_process_group(process: subprocess.Popen[str]) -> None:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=1.0)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-
-
-def parse_json(stdout: str) -> tuple[dict[str, Any] | None, str | None]:
-    try:
-        value = json.loads(stdout)
-    except json.JSONDecodeError as err:
-        return None, f"invalid json: {err}"
-    if not isinstance(value, dict):
-        return None, "json output is not an object"
-    return value, None
 
 
 def extract_result(parsed: dict[str, Any] | None) -> str | None:

@@ -21,6 +21,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from typing import Literal
+from engine_smoke_common import terminate_process_group
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -222,17 +223,6 @@ def run_candidate(
             slow_wall_seconds=slow_wall_seconds,
             slow_runner_seconds=slow_runner_seconds,
         )
-
-
-def terminate_process_group(process: subprocess.Popen[str]) -> None:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=1.0)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
 
 
 def build_result(

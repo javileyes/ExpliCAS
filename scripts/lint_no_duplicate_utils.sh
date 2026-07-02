@@ -35,7 +35,7 @@ WARNINGS=0
 # Canonical: cas_ast/src/hold.rs
 # Allowed: files that reference cas_ast::hold
 # -----------------------------------------------------------------------------
-echo "  [1/11] Checking strip_hold..."
+echo "  [1/12] Checking strip_hold..."
 
 for file in $(grep -rl "fn strip.*hold" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null | grep -v "cas_ast/src/hold.rs" || true); do
     if ! grep -q "cas_ast::hold::" "$file"; then
@@ -49,7 +49,7 @@ done
 # Canonical: cas_engine/src/nary.rs (AddView, add_terms_no_sign, add_terms_signed)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [2/11] Checking flatten_add..."
+echo "  [2/12] Checking flatten_add..."
 
 FLATTEN_ADD_ALLOWED=(
     "nary.rs"           # Canonical: AddView
@@ -82,7 +82,7 @@ done
 # Canonical: cas_engine/src/nary.rs (MulView, mul_factors)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [3/11] Checking flatten_mul..."
+echo "  [3/12] Checking flatten_mul..."
 
 FLATTEN_MUL_ALLOWED=(
     "views.rs"          # Canonical: MulChainView
@@ -117,7 +117,7 @@ done
 # Matches EXACT function names only (not is_one_term, is_negative_factor, etc.)
 # Allowed: canonical module or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [4/11] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
+echo "  [4/12] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
 
 PREDICATE_ALLOWED=(
     "helpers.rs"        # Canonical
@@ -165,7 +165,7 @@ done
 # -----------------------------------------------------------------------------
 # CHECK 5: __hold in output boundaries (HARD FAIL if in production JSON)
 # -----------------------------------------------------------------------------
-echo "  [5/11] Checking __hold doesn't leak to JSON output..."
+echo "  [5/12] Checking __hold doesn't leak to JSON output..."
 
 # Check test assertions to ensure we have contract tests
 if ! grep -rq "contains.*__hold" "$ROOT_DIR/crates/cas_engine/tests" 2>/dev/null; then
@@ -177,7 +177,7 @@ fi
 # CHECK 6: Builder duplicates (HARD FAIL - migration complete)
 # Canonical: MulBuilder (right-fold), Context::build_balanced_mul (balanced)
 # -----------------------------------------------------------------------------
-echo "  [6/11] Checking builders (build_mul_from_factors)..."
+echo "  [6/12] Checking builders (build_mul_from_factors)..."
 
 BUILDER_ALLOWED=(
     "views.rs"       # MulBuilder canonical
@@ -211,7 +211,7 @@ done
 # CHECK 7: Traversal duplicates (HARD FAIL - migration complete)
 # Canonical: cas_ast::traversal::{count_all_nodes, count_nodes_matching, count_nodes_and_max_depth}
 # -----------------------------------------------------------------------------
-echo "  [7/11] Checking traversal (count_nodes*)..."
+echo "  [7/12] Checking traversal (count_nodes*)..."
 
 TRAVERSAL_ALLOWED=(
     "traversal.rs"  # Canonical module
@@ -245,7 +245,7 @@ done
 # (the former `factors_to_vec` / `find_factor_exp` that the four div_* cancel
 # modules each defined privately, byte-identical — consolidated 2026-07-02).
 # -----------------------------------------------------------------------------
-echo "  [8/11] Checking factor-list helpers (factors_to_vec/find_factor_exp)..."
+echo "  [8/12] Checking factor-list helpers (factors_to_vec/find_factor_exp)..."
 
 FACTOR_ALLOWED=(
     "fraction_factors.rs"  # Canonical module
@@ -280,7 +280,7 @@ done
 # byte-identically as sign_of_linear_surd (cas_solver_core::solution_set) and
 # linear_surd_sign (cas_solver::solve_backend_local) — consolidated 2026-07-02.
 # -----------------------------------------------------------------------------
-echo "  [9/11] Checking surd/nth-root exact comparators (root_forms canonical)..."
+echo "  [9/12] Checking surd/nth-root exact comparators (root_forms canonical)..."
 
 SURD_SIGN_ALLOWED=(
     "root_forms.rs"  # Canonical module
@@ -325,7 +325,7 @@ done
 #     (a drifted copy dropped rule/assumption-shaped warnings) — consolidated
 #     2026-07-02. The old drifted name extract_warnings must not reappear.
 # -----------------------------------------------------------------------------
-echo "  [10/11] Checking Python smoke-harness helpers (single canonical home)..."
+echo "  [10/12] Checking Python smoke-harness helpers (single canonical home)..."
 
 # pattern|canonical-basename ("" => no re-definition allowed anywhere)
 for spec in \
@@ -358,7 +358,7 @@ done
 # Bare literals are allowed only in: rule_names.rs (the definitions), test files,
 # and files carrying a #[cfg(test)] module (unit-test wire anchors).
 # -----------------------------------------------------------------------------
-echo "  [11/11] Checking cross-crate rule-name vocabulary (rule_names canonical)..."
+echo "  [11/12] Checking cross-crate rule-name vocabulary (rule_names canonical)..."
 
 RULE_NAME_LITERALS=(
     "Sum Exponents"
@@ -386,6 +386,36 @@ for literal in "${RULE_NAME_LITERALS[@]}"; do
         echo -e "  ${RED}ERROR${NC}: $file hardcodes rule name \"$literal\""
         echo -e "         Fix: use cas_solver_core::rule_names::RULE_* instead"
         ((ERRORS++))
+    done
+done
+
+# -----------------------------------------------------------------------------
+# CHECK 12: Python smoke CLI-runner plumbing (HARD FAIL - migration complete)
+# Canonical: scripts/engine_smoke_common.py (parse_json, terminate_process_group,
+# extract_cli_timings_us) — consolidated 2026-07-03 (audit §9.2 item 3).
+# Exception: engine_improvement_scorecard.py keeps its own terminate_process_group
+# on purpose (different contract: caller-orchestrated signal escalation).
+# -----------------------------------------------------------------------------
+echo "  [12/12] Checking Python smoke CLI-runner plumbing (engine_smoke_common)..."
+
+for spec in \
+    "def parse_json(|engine_smoke_common.py" \
+    "def extract_cli_timings_us(|engine_smoke_common.py" \
+    "def terminate_process_group(|engine_smoke_common.py:engine_improvement_scorecard.py"; do
+    pattern="${spec%%|*}"
+    allowed="${spec##*|}"
+    for file in $(grep -rlF "$pattern" "$ROOT_DIR/scripts" --include="*.py" 2>/dev/null || true); do
+        basename_file=$(basename "$file")
+        ok=false
+        IFS=':' read -ra ALLOWED_ARR <<< "$allowed"
+        for a in "${ALLOWED_ARR[@]}"; do
+            [[ "$basename_file" == "$a" ]] && ok=true
+        done
+        if [ "$ok" = false ]; then
+            echo -e "  ${RED}ERROR${NC}: $file defines '$pattern'"
+            echo -e "         Fix: import it from engine_smoke_common.py"
+            ((ERRORS++))
+        fi
     done
 done
 

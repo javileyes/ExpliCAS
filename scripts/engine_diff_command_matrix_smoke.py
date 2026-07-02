@@ -32,6 +32,7 @@ from engine_command_matrix_observability import (
     runtime_observability_summary,
     stderr_fragility_error,
 )
+from engine_smoke_common import parse_json, terminate_process_group
 
 
 ROOT = SCRIPT_DIR.parent
@@ -1362,27 +1363,6 @@ def parse_args() -> argparse.Namespace:
         help="When emitting JSON, omit passing case payloads.",
     )
     return parser.parse_args()
-
-
-def terminate_process_group(process: subprocess.Popen[str]) -> None:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=1.0)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-
-
-def parse_json(stdout: str) -> tuple[dict[str, Any] | None, str | None]:
-    try:
-        value = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        return None, f"invalid json: {exc}"
-    if not isinstance(value, dict):
-        return None, "json output is not an object"
-    return value, None
 
 
 def extract_required_display(payload: dict[str, Any] | None) -> tuple[str, ...]:

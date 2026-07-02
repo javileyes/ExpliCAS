@@ -32,6 +32,7 @@ from engine_command_matrix_observability import (
     runtime_observability_summary,
     stderr_fragility_error,
 )
+from engine_smoke_common import extract_cli_timings_us, parse_json, terminate_process_group
 
 
 ROOT = SCRIPT_DIR.parent
@@ -5583,27 +5584,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def terminate_process_group(process: subprocess.Popen[str]) -> None:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=1.0)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-
-
-def parse_json(stdout: str) -> tuple[dict[str, Any] | None, str | None]:
-    try:
-        value = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        return None, f"invalid json: {exc}"
-    if not isinstance(value, dict):
-        return None, "json output is not an object"
-    return value, None
-
-
 def extract_required_display(payload: dict[str, Any] | None) -> tuple[str, ...]:
     if not payload:
         return ()
@@ -5611,21 +5591,6 @@ def extract_required_display(payload: dict[str, Any] | None) -> tuple[str, ...]:
     if not isinstance(raw, list):
         return ()
     return tuple(item for item in raw if isinstance(item, str))
-
-
-def extract_cli_timings_us(payload: dict[str, Any] | None) -> dict[str, int]:
-    if not payload:
-        return {}
-    raw = payload.get("timings_us")
-    if not isinstance(raw, dict):
-        return {}
-
-    timings: dict[str, int] = {}
-    for key in ("parse_us", "simplify_us", "total_us"):
-        value = raw.get(key)
-        if isinstance(value, int):
-            timings[key] = value
-    return timings
 
 
 def timing_seconds(timings_us: dict[str, int], key: str) -> float | None:
