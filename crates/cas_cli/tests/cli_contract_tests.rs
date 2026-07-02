@@ -880,6 +880,39 @@ fn test_eval_symbolic_quadratic_with_negative_constant_discriminant_is_empty() {
 }
 
 #[test]
+fn test_eval_abs_of_log_threshold_inequality_solves_both_branches() {
+    // `|ln(x)| {op} c`: the two-sided reduction was ALREADY correct, but the interval
+    // algebra downstream could not ORDER the transcendental endpoints (`e²` vs `1/e²`),
+    // so the intersection collapsed (`< 2` → "No solution", `≤ 2` → `[e², e²]`) and the
+    // union filled the gap (`> 2` → `(0, ∞)`). `compare_values` now decides constant
+    // transcendental endpoints by the exact value-bounds oracle.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(abs(ln(x)) < 2, x)"), "(1 / e^2, e^2)");
+    assert_eq!(r("solve(abs(ln(x)) <= 2, x)"), "[1 / e^2, e^2]");
+    assert_eq!(
+        r("solve(abs(ln(x)) > 2, x)"),
+        "(0, 1 / e^2) U (e^2, infinity)"
+    );
+    assert_eq!(
+        r("solve(abs(ln(x)) >= 2, x)"),
+        "(0, 1 / e^2] U [e^2, infinity)"
+    );
+    // The equation sibling stays as it was (already correct).
+    assert_eq!(r("solve(abs(ln(x)) = 2, x)"), "{ e^2, 1 / e^2 }");
+    // An exponential inside the abs: one side is vacuous (e^x − 1 > −2 always).
+    assert_eq!(r("solve(abs(e^x - 1) < 2, x)"), "(-infinity, ln(3))");
+    // Polynomial controls keep their surd-endpoint rendering.
+    assert_eq!(r("solve(abs(x) < 2, x)"), "(-2, 2)");
+}
+
+#[test]
 fn test_eval_irrational_fractional_base_exponential_inequality_flips() {
     // `base^x {op} c` where the CONSTANT base is provably in (0, 1) but IRRATIONAL
     // (`sin(1)`, `cos(1)`): the `log(base, ·)` isolation must flip the direction

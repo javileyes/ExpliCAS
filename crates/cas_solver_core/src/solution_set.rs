@@ -81,6 +81,23 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
         return ord;
     }
 
+    // Constant transcendental endpoints (`e²` vs `1/e²`, `ln(2)` vs `0`, `π` vs `e`): decide by the
+    // exact value-bounds oracle when the two intervals SEPARATE. Without this they fell to the
+    // value-blind structural compare, which corrupted the interval algebra downstream
+    // (`|ln(x)| < 2` intersected `(0, e²) ∩ (1/e², ∞)` to "No solution"). Overlapping or
+    // unbounded values fall through — a structurally equal pair still compares Equal below.
+    if let (Some((a_lo, a_hi)), Some((b_lo, b_hi))) = (
+        cas_math::const_sign::const_value_bounds(ctx, a),
+        cas_math::const_sign::const_value_bounds(ctx, b),
+    ) {
+        if a_hi < b_lo {
+            return Ordering::Less;
+        }
+        if a_lo > b_hi {
+            return Ordering::Greater;
+        }
+    }
+
     // Fallback: Use structural comparison if we can't compare values
     cas_ast::ordering::compare_expr(ctx, a, b)
 }
@@ -967,6 +984,41 @@ mod tests {
                 "compare_values({a_src}, {b_src})"
             );
         }
+    }
+
+    #[test]
+    fn compare_values_orders_transcendental_constants_by_value() {
+        use cas_parser::parse;
+        // Constant transcendental endpoints from abs/log inequalities. These fell to the
+        // value-blind structural compare, corrupting the interval algebra downstream
+        // (`|ln(x)| < 2` intersected `(0, e²) ∩ (1/e², ∞)` to "No solution"). Decided by
+        // the exact value-bounds oracle when the value intervals separate.
+        let cases: [(&str, &str, Ordering); 8] = [
+            ("e^2", "1/e^2", Ordering::Greater),
+            ("1/e^2", "e^2", Ordering::Less),
+            ("1/e^2", "0", Ordering::Greater),
+            ("e^2", "0", Ordering::Greater),
+            ("ln(2)", "0", Ordering::Greater),
+            ("ln(2)", "1", Ordering::Less), // 0.693 < 1
+            ("pi", "e", Ordering::Greater),
+            ("e^(1/3)", "1", Ordering::Greater),
+        ];
+        for (a_src, b_src, want) in cases {
+            let mut ctx = Context::new();
+            let a = parse(a_src, &mut ctx).expect("parse a");
+            let b = parse(b_src, &mut ctx).expect("parse b");
+            assert_eq!(
+                compare_values(&ctx, a, b),
+                want,
+                "compare_values({a_src}, {b_src})"
+            );
+        }
+        // A structurally equal transcendental pair still compares Equal (bounds overlap,
+        // falls through to the structural compare).
+        let mut ctx = Context::new();
+        let a = parse("e^2", &mut ctx).expect("parse");
+        let b = parse("e^2", &mut ctx).expect("parse");
+        assert_eq!(compare_values(&ctx, a, b), Ordering::Equal);
     }
 
     #[test]

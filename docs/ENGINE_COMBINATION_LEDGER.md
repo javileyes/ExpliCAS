@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 487 (newest first)
+Active entries: 488 (newest first)
 
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
+- 2026-07-02 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` — rama de sepa... | SOUNDNESS (P0-F-ineq `|ln(x)| < 2`): el álgebra de intervalos no ordenaba endpoints transcendentales
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
@@ -18222,3 +18223,18 @@ Active entries: 487 (newest first)
 - retained learning:
   - Los DOS builders de isolación exponencial tienen políticas de flip OPUESTAS y correctas: `build_log_linear_equation` NUNCA pre-voltea (la división downstream posee la decisión, con el oráculo), `build_exponent_log_isolation_equation` SIEMPRE decide él (no hay downstream). Al ampliar la decidibilidad del oráculo hay que clasificar cada sitio de flip por QUIÉN posee la decisión — el mismo upgrade que arregla uno (añadir flip) rompería el otro (doble flip).
   - PRÓXIMO PELDAÑO: `sin(1)^x > −1` → error "Cannot take real logarithm" en vez de "All real numbers" (RHS ≤ 0 provable con base > 0 provable ⇒ AllReals/Empty directo, sin log); y el condicional `if sin(1) > 0` es podable ahora que el signo es provable (mismo tema que el ciclo 4 planificado de condicionales vacuos).
+
+## 2026-07-02 - SOUNDNESS (P0-F-ineq `|ln(x)| < 2`): el álgebra de intervalos no ordenaba endpoints transcendentales
+
+- area: `crates/cas_solver_core/src/solution_set.rs` (`compare_values` — rama de separación por `const_value_bounds`)
+- status: `retained` (commit pendiente-de-hash). Cierra P0-F-ineq del backlog (`abs(ln(x)) < 2 → "No solution"`) y sus 3 hermanos de operador con UN solo cambio en el chokepoint de ordenación. Verificado adversarialmente (80 formas `|f| {op} c` con f ∈ {ln, ln−1, 2ln+1, e^x−1, x²−1} vs verdad numérica por muestreo de membresía: 0 wrong).
+- capture:
+  - investment_class: soundness. El consumidor (handler abs-threshold con reducción dos-lados) era CORRECTO; el defecto estaba una capa más abajo.
+  - cell: `|ln(x)|<2` → `(1/e², e²)` (era "No solution"), `≤` → `[1/e², e²]` (era el degenerado `[e², e²]`), `>` → `(0,1/e²)∪(e²,∞)` (era `(0,∞)` con el gap RELLENADO — wrong), `≥` análogo. `|e^x−1|<2` → `(−∞, ln3)` (el lado vacuo se descarta bien). Controles: `|ln(x)|=2` (ya correcta), abs polinómico con endpoints surd, `|x|<2` INTACTOS.
+  - causa raíz: `compare_values` (la ordenación de endpoints del álgebra de intervalos) tenía ramas para racionales, surds cuadráticos y n-th-roots, y caía a comparación ESTRUCTURAL (ciega al valor) para transcendentales (`e²` vs `1/e²` vs `0`) — la intersección `(0,e²) ∩ (1/e²,∞)` colapsaba y la unión rellenaba el hueco. La MISMA meta-forma del audit una vez más: cada rama de valor se añadió para una familia (racional→surd→nth-root) y el hermano transcendental caía al fallback.
+  - fix: antes del fallback estructural, decidir por SEPARACIÓN de intervalos exactos: `const_value_bounds(a)`, `const_value_bounds(b)`; `a_hi < b_lo ⇒ Less`, `a_lo > b_hi ⇒ Greater`; solapamiento/no-constante ⇒ fallback (un par estructuralmente igual sigue comparando Equal). Solo &Context — sin construir `Sub(a,b)` (compare_values no tiene &mut).
+  - validación: workspace 12508 passed / 0 failed — en FOREGROUND (los runs backgroundeados sufren re-ejecuciones espurias del harness que truncan logs y colisionan entre sí fabricando 'FAILED' fantasma; totales fiables = run único en foreground con awk); clippy limpio; huella GUARD/PRESS FIEL 0 deltas. Adversarial: 80 formas → 0 wrong.
+- retained learning:
+  - En un COMPARADOR de endpoints el patrón "una rama por familia de forma" (racional/surd/nth-root/...) garantiza el hermano perdido perpetuo; la rama de SEPARACIÓN POR BOUNDS es el cierre genérico que subsume a las futuras familias (cualquier constante que el oráculo acote). Las ramas exactas específicas siguen siendo necesarias para EQUAL exacto (los bounds nunca prueban igualdad de irracionales) — separación por bounds + igualdad por formas exactas es la división de trabajo correcta.
+  - Cuando el bug reportado es "el handler X da No solution", verificar PRIMERO si el handler ya reduce bien y el defecto está en la infraestructura compartida de conjuntos (intersección/unión/ordenación) — aquí el fix de una capa cerró 4 operadores de golpe sin tocar el handler.
+  - PRÓXIMO PELDAÑO: `log2` no registrada (`abs(log2(x))<3` → "función no definida", item P1 sec/csc/cot/cbrt/log2); `|ln(x)| > c` con c<0: PROBADO — el shortcut AllReals queda guardado por la capa de dominio exterior (`All real numbers if x > 0`), correcto.

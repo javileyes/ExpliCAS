@@ -284,3 +284,8 @@ layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prov
   `log(base,·)` isolation's flip gate) now decides constant irrational bases via `const_value_bounds`
   (lo > 0, hi < 1). 192-form adversarial sweep, 0 wrong. Residual: `sin(1)^x > −1` errors instead of
   returning All reals (needs a provably-nonpositive-RHS shortcut before the log).
+- **P0-F-ineq (`abs(ln(x)) < 2`)** — FIXED (same day): the abs-threshold handler's two-sided
+  reduction was already correct; `compare_values` (solution_set.rs) could not ORDER transcendental
+  endpoints (`e²` vs `1/e²`) and the interval algebra collapsed the intersection / filled the union
+  gap. Fixed by an exact value-bounds SEPARATION branch before the structural fallback. All four
+  operators + the `|e^x−1|` sibling verified (80-form adversarial sweep, 0 wrong).
