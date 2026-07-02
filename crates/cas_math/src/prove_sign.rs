@@ -299,6 +299,17 @@ where
         Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal) => return TriProof::Disproven,
         None => {}
     }
+    // General constant fallback (`1 − e^(1/3)`, `π − 4`, `ln(2)`): the exact value-bounds
+    // oracle decides transcendental constants the linear-surd form misses, so a linear solve
+    // with such a coefficient returns its solution DIRECTLY instead of a vacuous conditional
+    // (`All reals if e^(1/3) = 0 and …`). `None`/straddling ⇒ fall through unchanged.
+    match crate::const_sign::provable_const_sign(ctx, expr) {
+        Some(crate::const_sign::ConstSign::Positive) => return TriProof::Proven,
+        Some(crate::const_sign::ConstSign::Negative | crate::const_sign::ConstSign::Zero) => {
+            return TriProof::Disproven
+        }
+        None => {}
+    }
 
     match ctx.get(expr) {
         Expr::Number(n) => {
@@ -509,6 +520,14 @@ where
     match crate::root_forms::provable_sign_vs_zero(ctx, expr) {
         Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal) => return TriProof::Proven,
         Some(std::cmp::Ordering::Less) => return TriProof::Disproven,
+        None => {}
+    }
+    // General constant fallback via exact value bounds (same rationale as the positive prover).
+    match crate::const_sign::provable_const_sign(ctx, expr) {
+        Some(crate::const_sign::ConstSign::Positive | crate::const_sign::ConstSign::Zero) => {
+            return TriProof::Proven
+        }
+        Some(crate::const_sign::ConstSign::Negative) => return TriProof::Disproven,
         None => {}
     }
 

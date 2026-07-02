@@ -289,3 +289,9 @@ layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prov
   endpoints (`e²` vs `1/e²`) and the interval algebra collapsed the intersection / filled the union
   gap. Fixed by an exact value-bounds SEPARATION branch before the structural fallback. All four
   operators + the `|e^x−1|` sibling verified (80-form adversarial sweep, 0 wrong).
+- **Vacuous-conditional residual** — FIXED (same day): `prove_sign` gained a `provable_const_sign`
+  fallback and `prove_nonzero` an exact constant decision (a NEGATIVE proven constant is nonzero —
+  the kernel only tried positivity). Linear solves with decidable transcendental coefficients now
+  return their solution DIRECTLY: `ln(x)−ln(x+1)=1/3 → No solution` clean (also the pre-existing
+  `=1/2`, `=2` degenerates), `=−1/3` → the unconditional root, `sin(1)^x=2 → { ln(2)/ln(sin(1)) }`
+  (guard pruned). Symbolic coefficients (`a·x=1`) untouched.

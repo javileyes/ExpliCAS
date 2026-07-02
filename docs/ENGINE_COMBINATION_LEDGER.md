@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 488 (newest first)
+Active entries: 489 (newest first)
 
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` — rama de sepa... | SOUNDNESS (P0-F-ineq `|ln(x)| < 2`): el álgebra de intervalos no ordenaba endpoints transcendentales
+- 2026-07-02 | `retained` | `crates/cas_math/src/prove_sign.rs` (fallback `provable_const_sign` en los pr... | SOUNDNESS+PRESENTACIÓN (condicionales vacuos): `prove_sign`/`prove_nonzero` deciden constantes transcendentales
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
@@ -18238,3 +18239,18 @@ Active entries: 488 (newest first)
   - En un COMPARADOR de endpoints el patrón "una rama por familia de forma" (racional/surd/nth-root/...) garantiza el hermano perdido perpetuo; la rama de SEPARACIÓN POR BOUNDS es el cierre genérico que subsume a las futuras familias (cualquier constante que el oráculo acote). Las ramas exactas específicas siguen siendo necesarias para EQUAL exacto (los bounds nunca prueban igualdad de irracionales) — separación por bounds + igualdad por formas exactas es la división de trabajo correcta.
   - Cuando el bug reportado es "el handler X da No solution", verificar PRIMERO si el handler ya reduce bien y el defecto está en la infraestructura compartida de conjuntos (intersección/unión/ordenación) — aquí el fix de una capa cerró 4 operadores de golpe sin tocar el handler.
   - PRÓXIMO PELDAÑO: `log2` no registrada (`abs(log2(x))<3` → "función no definida", item P1 sec/csc/cot/cbrt/log2); `|ln(x)| > c` con c<0: PROBADO — el shortcut AllReals queda guardado por la capa de dominio exterior (`All real numbers if x > 0`), correcto.
+
+## 2026-07-02 - SOUNDNESS+PRESENTACIÓN (condicionales vacuos): `prove_sign`/`prove_nonzero` deciden constantes transcendentales
+
+- area: `crates/cas_math/src/prove_sign.rs` (fallback `provable_const_sign` en los probadores positivo/no-negativo) + `crates/cas_math/src/prove_nonzero.rs` (decisión constante exacta al inicio del kernel)
+- status: `retained` (commit pendiente-de-hash). Elimina la familia entera de condicionales vacuos `All reals if e^c = 0 and …` (incluidos los hermanos pre-existentes `=1/2`, `=2`) y las condiciones podables `if 1 − e^(−1/3) != 0` / `if sin(1) > 0`. Dos tests de contrato actualizados a propósito (valor idéntico, render/condición mejor).
+- capture:
+  - investment_class: soundness/honestidad de presentación vía el chokepoint const-sign (3er ciclo consecutivo consumiéndolo — el patrón se sostiene).
+  - cell: `solve(ln(x)−ln(x+1)=1/3)` → **"No solution"** limpio (era `All reals if e^(1/3) = 0 and 1 − e^(1/3) = 0`); `=1/2`/`=2` (degenerados pre-existentes) también; `=−1/3` → `{e^(−1/3)/(1−e^(−1/3))}` INCONDICIONAL; `(1−e^(1/3))·x=1` → `{1/(1−e^(1/3))}`; `sin(1)^x=2` → `{ln(2)/ln(sin(1))}` (condición `sin(1)>0` podada, render vía ln). Controles: `a·x=1` → `{1/a}`, `a·x+b=0` → `{−b/a}` (simbólicos INTACTOS — siguen sin condicional porque ya lo hacían así), `a^x>2` conserva su `if a > 0`.
+  - causa raíz (2): (1) los probadores de signo de `cas_math::prove_sign` consultaban `provable_sign_vs_zero` (surd lineal) y NO el superset `provable_const_sign` — `1−e^(1/3)` quedaba Unknown; (2) el kernel `prove_nonzero` solo intenta POSITIVIDAD en Add/Sub — una constante NEGATIVA probada no contaba como no-cero. Con ambos, `build_linear_solution_set` recibe NonZero y devuelve Discrete directo: el condicional ni se construye (mejor que podarlo a posteriori).
+  - fix: prove_positive/prove_nonnegative: tras el check surd-lineal, fallback a `provable_const_sign` (Positive⇒Proven, Negative/Zero⇒Disproven; None⇒cae a las reglas estructurales). prove_nonzero_depth_inner: al inicio, `provable_const_sign` decide (±⇒Proven nonzero, Zero⇒Disproven); variable-bearing devuelve None al instante.
+  - validación: workspace failed:0 tras actualizar 2 contratos (juicio de intención: fijaban el residual degenerado que este ciclo convierte en soportado); clippy limpio; huella GUARD/PRESS FIEL 0 deltas. Los probes simbólicos confirman que NO se sobre-decide (None cae limpio).
+- retained learning:
+  - "NO CONSTRUIR el condicional" > "podarlo después": el punto de mayor apalancamiento no era el builder de Cases ni el render, sino los PROBADORES que alimentan el `NonZeroStatus` — una vez el status es decidible, todos los constructores de condicionales del solver mejoran gratis (lineal, log-unwrap, exponencial). El plan original del ciclo ("podar en el builder") habría sido un parche por caso.
+  - Un kernel de no-nulidad que solo prueba POSITIVIDAD tiene el sesgo del hermano negado (mismo meta-bug del audit): `nonzero ⟸ positivo ∨ negativo ∨ (bounds separados de 0)`. Al añadir decisión por bounds, el caso Zero exacto también cae (Disproven), completando el ternario.
+  - PRÓXIMO PELDAÑO: `a·x=1` simbólico devuelve `{1/a}` SIN el condicional `a≠0` (pre-existente, política deliberada del solver aparentemente); si algún día se quiere el condicional simbólico explícito, es un contrato aparte. El render `log(b,c)` → `ln(c)/ln(b)` en los casos podados viene de la ruta ln (valor idéntico).

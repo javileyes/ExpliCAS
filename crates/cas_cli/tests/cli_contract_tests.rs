@@ -927,24 +927,23 @@ fn test_eval_irrational_fractional_base_exponential_inequality_flips() {
         let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
         wire["result"].as_str().unwrap_or("").to_string()
     };
+    // (The `if sin(1) > 0` guard is PRUNED — the sign is provable — and the isolation
+    // renders the equivalent `ln` ratio; the direction is what this contract fixes.)
     assert_eq!(
         r("solve(sin(1)^x > 2, x)"),
-        "(-infinity, log(sin(1), 2)) if sin(1) > 0"
+        "(-infinity, ln(2) / ln(sin(1)))"
     );
     assert_eq!(
         r("solve(cos(1)^x >= 3, x)"),
-        "(-infinity, log(cos(1), 3)] if cos(1) > 0"
+        "(-infinity, ln(3) / ln(cos(1))]"
     );
     assert_eq!(
         r("solve(sin(1)^x < 2, x)"),
-        "(log(sin(1), 2), infinity) if sin(1) > 0"
+        "(ln(2) / ln(sin(1)), infinity)"
     );
     // Controls: base > 1 keeps direction; equations never flip; symbolic base untouched.
     assert_eq!(r("solve(pi^x > 5, x)"), "(ln(5) / ln(pi), infinity)");
-    assert_eq!(
-        r("solve(sin(1)^x = 2, x)"),
-        "{ log(sin(1), 2) } if sin(1) > 0"
-    );
+    assert_eq!(r("solve(sin(1)^x = 2, x)"), "{ ln(2) / ln(sin(1)) }");
     assert_eq!(r("solve(a^x > 2, x)"), "(log(a, 2), infinity) if a > 0");
 }
 
@@ -1004,18 +1003,14 @@ fn test_eval_rational_exponent_constants_are_sign_decidable() {
         wire["result"].as_str().unwrap_or("").to_string()
     };
     // Log-equation domain filter: the candidate root is provably negative (x > 0
-    // required), so only the vacuous conditional branch remains — same shape as the
-    // long-working `= 1/2` sibling. (Pruning the provably-false conditional itself
-    // is a separate presentation step.)
-    assert_eq!(
-        r("solve(ln(x)-ln(x+1)=1/3, x)"),
-        "All real numbers if e^(1/3) = 0 and 1 - e^(1/3) = 0"
-    );
-    // Control: a positive in-domain root is KEPT (e^(-1/3)/(1-e^(-1/3)) ~ 2.53 > 0).
+    // required) and the conditional's constant conditions are provably false, so the
+    // whole thing prunes to a clean "No solution".
+    assert_eq!(r("solve(ln(x)-ln(x+1)=1/3, x)"), "No solution");
+    // Control: a positive in-domain root is KEPT (e^(-1/3)/(1-e^(-1/3)) ~ 2.53 > 0),
+    // unconditionally (the coefficient 1 - e^(-1/3) is provably nonzero).
     assert_eq!(
         r("solve(ln(x)-ln(x+1)=-1/3, x)"),
-        "{ e^(-1/3) / (1 - e^(-1/3)) } if 1 - e^(-1/3) != 0; \
-         All real numbers if e^(-1/3) = 0 and 1 - e^(-1/3) = 0"
+        "{ e^(-1/3) / (1 - e^(-1/3)) }"
     );
     // Even-root RANGE correction with a transcendental-power threshold (`√ >= 0`).
     assert_eq!(r("solve(sqrt(x) < -e^(1/3), x)"), "No solution");

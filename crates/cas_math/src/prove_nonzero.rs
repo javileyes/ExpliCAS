@@ -53,6 +53,18 @@ where
         return TriProof::Unknown;
     }
 
+    // Exact constant decision first: a provably-signed constant settles non-zero at
+    // once — POSITIVE or NEGATIVE ⇒ nonzero (the structural arms below only try
+    // positivity, so a negative constant like `1 − e^(1/3)` stayed Unknown and a
+    // linear solve built a vacuous conditional); an exact ZERO ⇒ Disproven.
+    // Variable-bearing expressions return `None` immediately and fall through.
+    if let Some(sign) = crate::const_sign::provable_const_sign(ctx, expr) {
+        return match sign {
+            crate::const_sign::ConstSign::Zero => TriProof::Disproven,
+            _ => TriProof::Proven,
+        };
+    }
+
     match ctx.get(expr) {
         _ if extract_exp_argument(ctx, expr).is_some() => TriProof::Proven,
         Expr::Number(n) => {
