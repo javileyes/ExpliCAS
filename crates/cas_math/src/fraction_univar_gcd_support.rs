@@ -30,7 +30,7 @@ pub struct FractionCancelForms {
 }
 
 /// Build reduced result expression for `(new_num/new_den)`, collapsing `/1`.
-pub fn build_reduced_fraction_result(
+pub(crate) fn build_reduced_fraction_result(
     ctx: &mut Context,
     new_num: ExprId,
     new_den: ExprId,
@@ -58,7 +58,7 @@ fn build_numeric_fraction_result(
 }
 
 /// Build factored display/cancellation forms and normalized variants.
-pub fn build_fraction_cancel_forms(
+pub(crate) fn build_fraction_cancel_forms(
     ctx: &mut Context,
     new_num: ExprId,
     new_den: ExprId,
@@ -101,7 +101,7 @@ pub fn build_fraction_cancel_forms(
 /// Try univariate GCD reduction for a fraction `num/den` in variable `var`.
 ///
 /// Returns `None` for unsupported inputs, trivial GCD, or inexact division.
-pub fn try_univariate_fraction_gcd_reduction(
+pub(crate) fn try_univariate_fraction_gcd_reduction(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,

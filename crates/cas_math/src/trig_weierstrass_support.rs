@@ -64,7 +64,7 @@ pub fn extract_tan_half_angle_like(ctx: &Context, expr: ExprId) -> Option<ExprId
 }
 
 /// Match `2*tan(x/2)` (or `2*sin(x/2)/cos(x/2)`) and return `x`.
-pub fn match_two_tan_half(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn match_two_tan_half(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let two_rat = num_rational::BigRational::from_integer(2.into());
     if let Expr::Mul(l, r) = ctx.get(expr) {
         if let Expr::Number(n) = ctx.get(*l) {
@@ -82,7 +82,10 @@ pub fn match_two_tan_half(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 }
 
 /// Match `1 + tan(x/2)^2` and return `(x, tan_half_expr)`.
-pub fn match_one_plus_tan_half_squared(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn match_one_plus_tan_half_squared(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
     if let Expr::Add(l, r) = ctx.get(expr) {
         let two_rat = num_rational::BigRational::from_integer(2.into());
         let (_one_id, pow_id) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one()) {
@@ -107,7 +110,10 @@ pub fn match_one_plus_tan_half_squared(ctx: &Context, expr: ExprId) -> Option<(E
 }
 
 /// Match `1 - tan(x/2)^2` (or `1 + (-tan(x/2)^2)`) and return `(x, tan_half_expr)`.
-pub fn match_one_minus_tan_half_squared(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn match_one_minus_tan_half_squared(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
     let two_rat = num_rational::BigRational::from_integer(2.into());
 
     if let Expr::Sub(l, r) = ctx.get(expr) {
@@ -164,7 +170,7 @@ pub fn build_weierstrass_sin(ctx: &mut Context, t: ExprId) -> ExprId {
 
 /// Build the Weierstrass substitution image of `cos(x)` using `t = tan(x/2)`.
 /// Returns `(1-t^2)/(1+t^2)`.
-pub fn build_weierstrass_cos(ctx: &mut Context, t: ExprId) -> ExprId {
+pub(crate) fn build_weierstrass_cos(ctx: &mut Context, t: ExprId) -> ExprId {
     let one = ctx.num(1);
     let two = ctx.num(2);
     let t_squared = ctx.add(Expr::Pow(t, two));
@@ -175,7 +181,7 @@ pub fn build_weierstrass_cos(ctx: &mut Context, t: ExprId) -> ExprId {
 
 /// Build the Weierstrass substitution image of `tan(x)` using `t = tan(x/2)`.
 /// Returns `2t/(1-t^2)`.
-pub fn build_weierstrass_tan(ctx: &mut Context, t: ExprId) -> ExprId {
+pub(crate) fn build_weierstrass_tan(ctx: &mut Context, t: ExprId) -> ExprId {
     let two = ctx.num(2);
     let one = ctx.num(1);
     let t_squared = ctx.add(Expr::Pow(t, two));
@@ -365,7 +371,7 @@ fn match_weierstrass_cos_identity_zero_pair(ctx: &Context, cos_side: ExprId, rhs
 
 /// Match:
 /// `sin(x) - 2*tan(x/2)/(1+tan(x/2)^2)` (or swapped sides) for identity-zero cancellation.
-pub fn match_weierstrass_sin_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn match_weierstrass_sin_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
     let Some((left, right)) = extract_sub_like_operands(ctx, expr) else {
         return false;
     };
@@ -375,7 +381,7 @@ pub fn match_weierstrass_sin_identity_zero_expr(ctx: &Context, expr: ExprId) -> 
 
 /// Match:
 /// `cos(x) - (1-tan(x/2)^2)/(1+tan(x/2)^2)` (or swapped sides) for identity-zero cancellation.
-pub fn match_weierstrass_cos_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn match_weierstrass_cos_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
     let Some((left, right)) = extract_sub_like_operands(ctx, expr) else {
         return false;
     };

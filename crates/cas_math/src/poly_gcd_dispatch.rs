@@ -83,7 +83,7 @@ pub enum GcdPreEvalDirective {
 /// - `expand(...)` (builtin) -> [`GcdPreEvalDirective::EvaluateExpand`]
 /// - `__hold(x)` -> [`GcdPreEvalDirective::UnwrapHold`]
 /// - `factor(...)` / `simplify(...)` -> [`GcdPreEvalDirective::Keep`]
-pub fn classify_pre_evaluate_for_gcd(ctx: &Context, expr: ExprId) -> GcdPreEvalDirective {
+pub(crate) fn classify_pre_evaluate_for_gcd(ctx: &Context, expr: ExprId) -> GcdPreEvalDirective {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return GcdPreEvalDirective::Keep;
     };

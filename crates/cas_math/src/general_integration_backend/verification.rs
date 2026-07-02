@@ -12,7 +12,7 @@ use crate::symbolic_differentiation_support::differentiate_symbolic_expr;
 use cas_ast::{ConditionPredicate, Context, Expr, ExprId};
 use num_traits::One;
 
-pub fn verify_antiderivative_by_differentiation(
+pub(crate) fn verify_antiderivative_by_differentiation(
     ctx: &mut Context,
     candidate: &mut AlgorithmicIntegrationCandidate,
 ) -> AlgorithmicIntegrationVerificationOutcome {
@@ -21,7 +21,7 @@ pub fn verify_antiderivative_by_differentiation(
     report.into_outcome()
 }
 
-pub fn antiderivative_verification_report(
+pub(crate) fn antiderivative_verification_report(
     ctx: &mut Context,
     candidate: &AlgorithmicIntegrationCandidate,
 ) -> AlgorithmicIntegrationVerificationReport {

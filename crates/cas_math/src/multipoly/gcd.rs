@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use crate::polynomial::Polynomial;
 
 use super::arithmetic::gcd_bigrational;
-use super::{Monomial, MultiPoly, PolyBudget, PolyOperation, PolyPassStats, VarIdx};
+use super::{Monomial, MultiPoly, PolyBudget, VarIdx};
 
 // =============================================================================
 // Layer 2: Evaluation, Interpolation, Heuristic GCD
@@ -226,7 +226,11 @@ fn interpolate_lagrange(points: &[(BigRational, BigRational)], var: &str) -> Opt
 
 /// Heuristic multivariate GCD using evaluation and interpolation
 /// Supports N variables (N >= 2) by fixing extra vars to seed values
-pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> Option<MultiPoly> {
+pub(crate) fn gcd_multivar_layer2(
+    p: &MultiPoly,
+    q: &MultiPoly,
+    budget: &GcdBudget,
+) -> Option<MultiPoly> {
     if p.vars.len() < 2 {
         return None;
     }
@@ -311,30 +315,6 @@ pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> 
     }
 
     None
-}
-
-/// GCD with budget tracking, returning PassStats.
-///
-/// This is the instrumented version of `gcd_multivar_layer2` for unified budget charging.
-pub fn gcd_multivar_layer2_with_stats(
-    p: &MultiPoly,
-    q: &MultiPoly,
-    budget: &GcdBudget,
-) -> (Option<MultiPoly>, PolyPassStats) {
-    let result = gcd_multivar_layer2(p, q, budget);
-
-    let terms = result.as_ref().map_or(0, |g| g.num_terms() as u64);
-
-    let stats = PolyPassStats {
-        op: PolyOperation::PolyOps,
-        rewrite_count: 0,
-        nodes_delta: 0,
-        terms_materialized: terms,
-        poly_ops: 1, // One GCD operation
-        stop_reason: None,
-    };
-
-    (result, stats)
 }
 
 /// Generate seed combinations for fixing extra variables

@@ -85,7 +85,7 @@ pub fn extract_sub_like_pair(ctx: &mut Context, expr: ExprId) -> Option<(ExprId,
 }
 
 /// Build a canonical subtraction-like expression: `a + (-b)`.
-pub fn build_sub_like_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+pub(crate) fn build_sub_like_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     let neg_b = ctx.add(Expr::Neg(b));
     ctx.add(Expr::Add(a, neg_b))
 }
@@ -96,7 +96,7 @@ pub fn build_sub_like_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
 /// - `Neg(t)` -> core `t`
 /// - `Mul(-1, t)` or `Mul(t, -1)` -> core `t`
 /// - sub-like forms with reversed canonical orientation (treated as negated)
-pub fn peel_negation_sub_like(ctx: &mut Context, id: ExprId) -> (ExprId, bool) {
+pub(crate) fn peel_negation_sub_like(ctx: &mut Context, id: ExprId) -> (ExprId, bool) {
     match ctx.get(id) {
         Expr::Neg(inner) => (*inner, true),
         Expr::Mul(l, r) => {
@@ -130,7 +130,7 @@ pub fn peel_negation_sub_like(ctx: &mut Context, id: ExprId) -> (ExprId, bool) {
 /// - `Neg(t)` -> `t`
 /// - `Mul(-1,t)`/`Mul(t,-1)` -> `t`
 /// - otherwise returns original `id`
-pub fn build_unnegated_sub_like_expr(ctx: &mut Context, id: ExprId) -> ExprId {
+pub(crate) fn build_unnegated_sub_like_expr(ctx: &mut Context, id: ExprId) -> ExprId {
     if let Some((a, b)) = extract_sub_like_pair(ctx, id) {
         return build_sub_like_expr(ctx, b, a);
     }

@@ -13,7 +13,7 @@ use std::collections::HashSet;
 /// opposing side is detected via structural fingerprints.
 ///
 /// Returns `true` if any term was expanded.
-pub fn try_expand_for_cancel_with<F>(
+pub(crate) fn try_expand_for_cancel_with<F>(
     ctx: &mut Context,
     terms: &mut Vec<(ExprId, bool, OriginSafety)>,
     opposing_fps: &HashSet<u64>,

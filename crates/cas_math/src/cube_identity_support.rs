@@ -21,14 +21,18 @@ pub struct SumDiffCubesContractionRewrite {
 /// Return true when `a*b` matches one of:
 /// - `(X + c) * (X^2 - c*X + c^2)`
 /// - `(X - c) * (X^2 + c*X + c^2)`
-pub fn is_cube_identity_product(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+pub(crate) fn is_cube_identity_product(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     try_extract_cube_identity(ctx, a, b).is_some()
 }
 
 /// Extract cube-identity components from a binomial/trinomial product.
 ///
 /// The factor order is commutative (`a*b` or `b*a`).
-pub fn try_extract_cube_identity(ctx: &Context, a: ExprId, b: ExprId) -> Option<CubeIdentityMatch> {
+pub(crate) fn try_extract_cube_identity(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+) -> Option<CubeIdentityMatch> {
     try_extract_cube_identity_ordered(ctx, a, b)
         .or_else(|| try_extract_cube_identity_ordered(ctx, b, a))
 }

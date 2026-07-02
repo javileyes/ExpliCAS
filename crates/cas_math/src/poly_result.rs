@@ -31,7 +31,7 @@ pub fn is_poly_result(ctx: &Context, id: ExprId) -> bool {
 /// - `poly_result(id)` (canonical wrapper)
 /// - `poly_ref(id)` (legacy wrapper)
 #[inline]
-pub fn is_poly_ref_or_result(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn is_poly_ref_or_result(ctx: &Context, id: ExprId) -> bool {
     if is_poly_result(ctx, id) {
         return true;
     }
@@ -47,7 +47,7 @@ pub fn is_poly_ref_or_result(ctx: &Context, id: ExprId) -> bool {
 /// Use this when you need access to the argument expression
 /// but don't need to parse it as a PolyId yet.
 #[inline]
-pub fn poly_result_arg(ctx: &Context, id: ExprId) -> Option<ExprId> {
+pub(crate) fn poly_result_arg(ctx: &Context, id: ExprId) -> Option<ExprId> {
     match ctx.get(id) {
         Expr::Function(fn_id, args)
             if ctx.is_builtin(*fn_id, BuiltinFn::PolyResult) && args.len() == 1 =>
@@ -94,7 +94,7 @@ pub fn parse_poly_result_id(ctx: &Context, id: ExprId) -> Option<PolyResultId> {
 /// let poly_id = store.insert(meta, poly);
 /// let wrapped = wrap_poly_result(ctx, poly_id);
 /// ```
-pub fn wrap_poly_result(ctx: &mut Context, poly_id: PolyResultId) -> ExprId {
+pub(crate) fn wrap_poly_result(ctx: &mut Context, poly_id: PolyResultId) -> ExprId {
     let id_expr = ctx.num(poly_id as i64);
     ctx.call_builtin(BuiltinFn::PolyResult, vec![id_expr])
 }

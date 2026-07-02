@@ -12,7 +12,7 @@ fn args_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
 
 /// Collect top-level additive terms from an Add chain.
 /// Only flattens Add nodes; Sub, Neg, etc. are treated as leaf terms.
-pub fn collect_add_chain(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+pub(crate) fn collect_add_chain(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
     match ctx.get(expr) {
         Expr::Add(a, b) => {
             collect_add_chain(ctx, *a, terms);
@@ -28,7 +28,7 @@ pub fn collect_add_chain(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
 /// Examples:
 /// - `-2*u - 3` -> `Some(2*u + 3)`
 /// - `-u + 3` -> `None`
-pub fn try_extract_all_negative_sum(
+pub(crate) fn try_extract_all_negative_sum(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, Option<BigRational>)> {
@@ -98,7 +98,7 @@ pub fn try_extract_all_negative_sum(
 }
 
 /// Check if expression is sec²(x), returns Some(x) if true
-pub fn is_sec_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn is_sec_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             if is_two_expr(ctx, *exp) {
@@ -119,7 +119,7 @@ pub fn is_sec_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 }
 
 /// Check if expression is tan²(x), returns Some(x) if true
-pub fn is_tan_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn is_tan_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             if is_two_expr(ctx, *exp) {
@@ -140,7 +140,7 @@ pub fn is_tan_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 }
 
 /// Check if expression is csc²(x), returns Some(x) if true
-pub fn is_csc_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn is_csc_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             if is_two_expr(ctx, *exp) {
@@ -161,7 +161,7 @@ pub fn is_csc_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 }
 
 /// Check if expression is cot²(x), returns Some(x) if true
-pub fn is_cot_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn is_cot_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             if is_two_expr(ctx, *exp) {
@@ -182,7 +182,7 @@ pub fn is_cot_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 }
 
 /// Detect sec²(x) - tan²(x) pattern
-pub fn is_sec_tan_pattern(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_sec_tan_pattern(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Sub(left, right) = ctx.get(expr) {
         if let (Some(sec_arg), Some(tan_arg)) =
             (is_sec_squared(ctx, *left), is_tan_squared(ctx, *right))
@@ -194,7 +194,7 @@ pub fn is_sec_tan_pattern(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Detect csc²(x) - cot²(x) pattern
-pub fn is_csc_cot_pattern(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_csc_cot_pattern(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Sub(left, right) = ctx.get(expr) {
         if let (Some(csc_arg), Some(cot_arg)) =
             (is_csc_squared(ctx, *left), is_cot_squared(ctx, *right))
@@ -206,7 +206,7 @@ pub fn is_csc_cot_pattern(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Detect (sec²-tan²) ± C or (csc²-cot²) ± C
-pub fn is_pythagorean_with_constant(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_pythagorean_with_constant(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Sub(left, _) | Expr::Add(left, _) => {
             is_sec_tan_pattern(ctx, *left) || is_csc_cot_pattern(ctx, *left)
@@ -248,7 +248,7 @@ fn matches_pattern_containing(ctx: &Context, pattern_root: ExprId, target: ExprI
 }
 
 /// Check if given expr_id is part of a Pythagorean pattern in its ancestor chain
-pub fn is_part_of_pythagorean_pattern(
+pub(crate) fn is_part_of_pythagorean_pattern(
     ctx: &Context,
     expr_id: ExprId,
     ancestors: &[ExprId],
@@ -260,7 +260,7 @@ pub fn is_part_of_pythagorean_pattern(
 
 /// Smart guard for trig functions: checks if this function will be squared and used in Pythagorean pattern
 /// This is specifically for protecting tan/sec/cot/csc from conversion when they're part of identities
-pub fn should_preserve_trig_function(
+pub(crate) fn should_preserve_trig_function(
     ctx: &Context,
     func_expr: ExprId,
     func_name: &str,

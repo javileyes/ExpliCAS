@@ -115,7 +115,7 @@ pub fn try_extract_finite_aggregate_call(
 /// - both bounds are exact integers
 /// - `start <= end`
 /// - range length is <= `max_span`
-pub fn try_extract_bounded_integer_range(
+pub(crate) fn try_extract_bounded_integer_range(
     ctx: &Context,
     start_expr: ExprId,
     end_expr: ExprId,
@@ -133,7 +133,7 @@ pub fn try_extract_bounded_integer_range(
 }
 
 /// Build finite sum by substituting integer values into `term`.
-pub fn build_finite_sum_substitution(
+pub(crate) fn build_finite_sum_substitution(
     ctx: &mut Context,
     term: ExprId,
     var_expr: ExprId,
@@ -150,7 +150,7 @@ pub fn build_finite_sum_substitution(
 }
 
 /// Build finite product by substituting integer values into `term`.
-pub fn build_finite_product_substitution(
+pub(crate) fn build_finite_product_substitution(
     ctx: &mut Context,
     term: ExprId,
     var_expr: ExprId,
@@ -930,7 +930,7 @@ pub fn try_plan_finite_sum_evaluation(
     None
 }
 
-pub fn try_build_sum_of_first_integers(
+pub(crate) fn try_build_sum_of_first_integers(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -966,7 +966,7 @@ fn build_triangular_number(ctx: &mut Context, end: ExprId) -> ExprId {
     ctx.add(Expr::Div(numerator, two))
 }
 
-pub fn try_build_sum_of_squares(
+pub(crate) fn try_build_sum_of_squares(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -1022,7 +1022,7 @@ fn build_double_minus_one(ctx: &mut Context, value: ExprId) -> ExprId {
     ctx.add(Expr::Sub(doubled, one))
 }
 
-pub fn try_build_sum_of_cubes(
+pub(crate) fn try_build_sum_of_cubes(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -1166,7 +1166,7 @@ const MAX_POLYNOMIAL_SUM_DEGREE: usize = 12;
 /// multi-term cases the dedicated single-power builders decline. Constants are owned by
 /// [`try_build_sum_of_constant`] and bare single powers by their dedicated builders earlier
 /// in the dispatch, so this only ever runs on what they left.
-pub fn try_build_polynomial_sum(
+pub(crate) fn try_build_polynomial_sum(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -1226,7 +1226,7 @@ pub fn try_build_polynomial_sum(
     Some(combined)
 }
 
-pub fn try_build_sum_of_constant(
+pub(crate) fn try_build_sum_of_constant(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -1266,7 +1266,7 @@ fn build_inclusive_range_count(ctx: &mut Context, start: ExprId, end: ExprId) ->
     ctx.add(Expr::Add(end_minus_start, one))
 }
 
-pub fn try_build_geometric_power_sum(
+pub(crate) fn try_build_geometric_power_sum(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -1313,7 +1313,7 @@ pub fn try_build_geometric_power_sum(
 /// the integer-base [`try_build_geometric_power_sum`] declines, with a numeric OR symbolic
 /// upper bound. Returns `None` for a non-geometric summand, `r = 1` (a constant sum, owned
 /// elsewhere), or a bound that contains the index variable.
-pub fn try_build_geometric_rational_sum(
+pub(crate) fn try_build_geometric_rational_sum(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -1473,7 +1473,7 @@ pub fn try_plan_finite_product_evaluation(
     None
 }
 
-pub fn try_build_product_of_first_integers(
+pub(crate) fn try_build_product_of_first_integers(
     ctx: &mut Context,
     factor: ExprId,
     var: &str,
@@ -1499,7 +1499,7 @@ pub fn try_build_product_of_first_integers(
     Some(ctx.add(Expr::Div(upper, lower)))
 }
 
-pub fn try_build_product_of_powers(
+pub(crate) fn try_build_product_of_powers(
     ctx: &mut Context,
     factor: ExprId,
     var: &str,
@@ -1527,7 +1527,7 @@ pub fn try_build_product_of_powers(
     Some(ctx.add(Expr::Pow(quotient, exponent)))
 }
 
-pub fn try_build_product_of_constant(
+pub(crate) fn try_build_product_of_constant(
     ctx: &mut Context,
     factor: ExprId,
     var: &str,
@@ -1579,92 +1579,6 @@ pub fn extract_linear_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<i
     }
 }
 
-/// Detect reciprocal power forms for a target variable.
-///
-/// Matches:
-/// - `1/var^n`
-/// - `1/var`
-/// - `var^(-n)`
-///
-/// Returns the positive power `n`.
-pub fn detect_reciprocal_power(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> {
-    if let Expr::Div(num, den) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*num) {
-            if n.is_one() {
-                if let Expr::Pow(base, exp) = ctx.get(*den) {
-                    if let Expr::Variable(sym_id) = ctx.get(*base) {
-                        if ctx.sym_name(*sym_id) == var {
-                            if let Some(power) = crate::expr_extract::extract_i64_integer(ctx, *exp)
-                            {
-                                return Some(power);
-                            }
-                        }
-                    }
-                }
-                if let Expr::Variable(sym_id) = ctx.get(*den) {
-                    if ctx.sym_name(*sym_id) == var {
-                        return Some(1);
-                    }
-                }
-            }
-        }
-    }
-
-    if let Expr::Pow(base, exp) = ctx.get(expr) {
-        if let Expr::Variable(sym_id) = ctx.get(*base) {
-            if ctx.sym_name(*sym_id) == var {
-                if let Expr::Neg(inner_exp) = ctx.get(*exp) {
-                    if let Some(power) = crate::expr_extract::extract_i64_integer(ctx, *inner_exp) {
-                        return Some(power);
-                    }
-                }
-                if let Some(power) = crate::expr_extract::extract_i64_integer(ctx, *exp) {
-                    if power < 0 {
-                        return Some(-power);
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Detect `1 - reciprocal_power(var)` pattern.
-///
-/// Matches:
-/// - `1 - 1/var^n`
-/// - `1 - var^(-n)`
-/// - `1 + (-(1/var^n))`
-pub fn detect_one_minus_reciprocal_power(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> {
-    if let Expr::Sub(left, right) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*left) {
-            if n.is_one() {
-                return detect_reciprocal_power(ctx, *right, var);
-            }
-        }
-    }
-
-    if let Expr::Add(left, right) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*right) {
-            if n.is_one() {
-                if let Expr::Neg(inner) = ctx.get(*left) {
-                    return detect_reciprocal_power(ctx, *inner, var);
-                }
-            }
-        }
-        if let Expr::Number(n) = ctx.get(*left) {
-            if n.is_one() {
-                if let Expr::Neg(inner) = ctx.get(*right) {
-                    return detect_reciprocal_power(ctx, *inner, var);
-                }
-            }
-        }
-    }
-
-    None
-}
-
 /// Extract `(coefficient, offset)` from an integer linear expression `coefficient·var + offset`,
 /// or `None` if it is not linear with integer coefficients.
 fn linear_int_coeff_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<(i64, i64)> {
@@ -1696,7 +1610,7 @@ fn affine_value_at(ctx: &mut Context, anchor: ExprId, coefficient: i64, offset: 
 /// Build telescoping product closed form for shift-1 pattern `(k+a)/(k+b)` where `a-b=1`.
 ///
 /// Returns `(end + a) / (start + b)` as an expression when applicable.
-pub fn try_build_telescoping_product_shift1(
+pub(crate) fn try_build_telescoping_product_shift1(
     ctx: &mut Context,
     factor: ExprId,
     var: &str,
@@ -1773,7 +1687,7 @@ pub fn try_build_telescoping_product_shift1(
 /// Build product closed form for `1 - 1/var^2`:
 /// `∏_{start}^{end}(1 - 1/k^2) = ((start-1)*(end+1))/(start*end)`, and the convergent infinite
 /// product `∏_{start}^∞ = (start-1)/start`.
-pub fn try_build_factorizable_product_for_one_minus_reciprocal_square(
+pub(crate) fn try_build_factorizable_product_for_one_minus_reciprocal_square(
     ctx: &mut Context,
     factor: ExprId,
     var: &str,
@@ -1996,7 +1910,7 @@ fn decompose_arithmetic_geometric(
 /// `p` is a polynomial in the index of degree 1 or 2 and `r` is a rational ratio ≠ 0, 1.
 /// Sums by linearity `Σ(α·k² + β·k + γ)·r^k = α·S₂ + β·S₁ + γ·S₀`, with `S₀ = Σr^k`, `S₁ = Σk·r^k`,
 /// `S₂ = Σk²·r^k`. Degree 0 (a pure geometric) is declined so the geometric builder owns it.
-pub fn try_build_arithmetic_geometric_sum(
+pub(crate) fn try_build_arithmetic_geometric_sum(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -2044,7 +1958,7 @@ fn product_of_leaves(ctx: &mut Context, leaves: &[ExprId]) -> Option<ExprId> {
 /// `Σ(g₁ ± g₂ ± …) = Σg₁ ± Σg₂ ± …`. Handles the distributed affine cofactor the engine
 /// produces (`(2k+1)·2^k` → `2^k + k·2^(k+1)`). Declines unless EVERY term is summable as a
 /// geometric or arithmetic-geometric (so polynomial sums fall through to their own builder).
-pub fn try_build_geometric_additive_sum(
+pub(crate) fn try_build_geometric_additive_sum(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -2382,7 +2296,7 @@ fn factor_telescoping_quadratic_denominator(
 /// 1/∏_{j=0}^{m-2}(k+a+j)` (the first `m-1` factors), so `Σ_{k=start}^{end} = 1/(m-1)·[g(start) −
 /// g(end+1)]`, and the convergent infinite sum (`start+a ≥ 1`) is `1/(m-1)·g(start)`. Two factors are
 /// handled by the dedicated builder; non-consecutive or non-unit-numerator products are declined.
-pub fn try_build_telescoping_consecutive_factor_sum(
+pub(crate) fn try_build_telescoping_consecutive_factor_sum(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -2450,7 +2364,7 @@ pub fn try_build_telescoping_consecutive_factor_sum(
 ///
 /// Uses identity:
 /// `1/((k+b)(k+c)) = (1/(c-b)) * (1/(k+b) - 1/(k+c))` for `b != c`.
-pub fn try_build_telescoping_rational_sum(
+pub(crate) fn try_build_telescoping_rational_sum(
     ctx: &mut Context,
     summand: ExprId,
     var: &str,
@@ -2787,8 +2701,7 @@ fn build_signed_additive_expr(ctx: &mut Context, terms: &[(ExprId, expr_nary::Si
 #[cfg(test)]
 mod tests {
     use super::{
-        build_finite_product_substitution, build_finite_sum_substitution,
-        detect_one_minus_reciprocal_power, detect_reciprocal_power, extract_linear_offset,
+        build_finite_product_substitution, build_finite_sum_substitution, extract_linear_offset,
         extract_p_series_term, try_build_factorizable_product_for_one_minus_reciprocal_square,
         try_build_geometric_power_sum, try_build_polynomial_sum, try_build_product_of_constant,
         try_build_product_of_first_integers, try_build_product_of_powers,
@@ -2863,21 +2776,6 @@ mod tests {
     }
 
     #[test]
-    fn detects_reciprocal_power_forms() {
-        let mut ctx = Context::new();
-        let k = ctx.var("k");
-        let two = ctx.num(2);
-        let k_sq = ctx.add(Expr::Pow(k, two));
-        let one = ctx.num(1);
-        let inv_k_sq = ctx.add(Expr::Div(one, k_sq));
-        let neg_two = ctx.add(Expr::Neg(two));
-        let k_neg_two = ctx.add(Expr::Pow(k, neg_two));
-
-        assert_eq!(detect_reciprocal_power(&ctx, inv_k_sq, "k"), Some(2));
-        assert_eq!(detect_reciprocal_power(&ctx, k_neg_two, "k"), Some(2));
-    }
-
-    #[test]
     fn p_series_term_and_even_zeta_coefficient() {
         let mut ctx = Context::new();
         let k = ctx.var("k");
@@ -2924,28 +2822,6 @@ mod tests {
             Some(BigRational::new(1.into(), 9450.into()))
         );
         assert_eq!(even_zeta_pi_coefficient(0), None);
-    }
-
-    #[test]
-    fn detects_one_minus_reciprocal_power_forms() {
-        let mut ctx = Context::new();
-        let k = ctx.var("k");
-        let two = ctx.num(2);
-        let k_sq = ctx.add(Expr::Pow(k, two));
-        let one = ctx.num(1);
-        let inv_k_sq = ctx.add(Expr::Div(one, k_sq));
-        let sub_form = ctx.add(Expr::Sub(one, inv_k_sq));
-        let neg_inv = ctx.add(Expr::Neg(inv_k_sq));
-        let add_neg_form = ctx.add(Expr::Add(one, neg_inv));
-
-        assert_eq!(
-            detect_one_minus_reciprocal_power(&ctx, sub_form, "k"),
-            Some(2)
-        );
-        assert_eq!(
-            detect_one_minus_reciprocal_power(&ctx, add_neg_form, "k"),
-            Some(2)
-        );
     }
 
     #[test]

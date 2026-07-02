@@ -61,7 +61,7 @@ fn inverse_trig_composition_mode_from_flags(
 ///
 /// `arg_in_unit_interval_proven` should be true only when strict mode can prove
 /// the inverse-function input lies in `[-1, 1]`.
-pub fn plan_inverse_trig_composition_with_mode_flags(
+pub(crate) fn plan_inverse_trig_composition_with_mode_flags(
     kind: InverseTrigCompositionKind,
     arg_in_unit_interval_proven: bool,
     assume_mode: bool,
@@ -91,7 +91,7 @@ pub fn plan_inverse_trig_composition_with_mode_flags(
 }
 
 /// Strict-mode helper: checks whether `expr` is a numeric literal in `[-1, 1]`.
-pub fn is_number_in_unit_interval(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_number_in_unit_interval(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Number(n) = ctx.get(expr) {
         let one = num_rational::BigRational::one();
         let neg_one = -one.clone();
@@ -489,7 +489,7 @@ pub fn try_plan_inverse_trig_composition_expr(
 /// Build sum of all terms except indices `skip_i` and `skip_j`.
 ///
 /// Returns `None` when no terms remain.
-pub fn build_sum_without(
+pub(crate) fn build_sum_without(
     ctx: &mut Context,
     terms: &[ExprId],
     skip_i: usize,
@@ -509,7 +509,11 @@ pub fn build_sum_without(
 }
 
 /// Combine optional additive base with a new term.
-pub fn combine_with_term(ctx: &mut Context, base: Option<ExprId>, new_term: ExprId) -> ExprId {
+pub(crate) fn combine_with_term(
+    ctx: &mut Context,
+    base: Option<ExprId>,
+    new_term: ExprId,
+) -> ExprId {
     match base {
         None => new_term,
         Some(b) => ctx.add(Expr::Add(b, new_term)),
@@ -531,7 +535,7 @@ pub struct PairWithNegationPlan {
 /// - `k*f(x) + k*g(x) -> k*V`
 /// - `k*(-f(x)) + k*(-g(x)) -> -k*V`
 #[allow(clippy::too_many_arguments)] // all arguments are semantically distinct inputs
-pub fn try_plan_pair_with_negation<F>(
+pub(crate) fn try_plan_pair_with_negation<F>(
     ctx: &mut Context,
     term_i: ExprId,
     term_j: ExprId,
@@ -672,7 +676,7 @@ pub struct PrincipalBranchInverseTrigPlan {
 
 /// Plan `atan(a) + atan(b) -> atan((a+b)/(1-ab))` for rational arguments,
 /// valid only when `1-ab > 0` and `ab != 1`.
-pub fn try_plan_atan_rational_add_pair_expr(
+pub(crate) fn try_plan_atan_rational_add_pair_expr(
     ctx: &mut Context,
     terms: &[ExprId],
     i: usize,
@@ -734,7 +738,7 @@ pub fn try_plan_atan_rational_add_pair_expr(
 }
 
 /// Plan `arcsin(x) + arccos(x) = π/2` across an additive pair with sign handling.
-pub fn try_plan_inverse_trig_sum_pair_expr(
+pub(crate) fn try_plan_inverse_trig_sum_pair_expr(
     ctx: &mut Context,
     terms: &[ExprId],
     i: usize,
@@ -798,7 +802,7 @@ pub fn try_plan_inverse_trig_sum_pair_expr(
 }
 
 /// Plan `arctan(x) + arctan(1/x) = π/2` across an additive pair with sign handling.
-pub fn try_plan_inverse_atan_reciprocal_pair_expr(
+pub(crate) fn try_plan_inverse_atan_reciprocal_pair_expr(
     ctx: &mut Context,
     terms: &[ExprId],
     i: usize,
@@ -882,7 +886,7 @@ fn are_arctan_args_opposite(ctx: &mut Context, left: ExprId, right: ExprId) -> b
 }
 
 /// Plan `arctan(u) + arctan(v) = 0` when `u` and `v` are structural opposites.
-pub fn try_plan_inverse_atan_opposite_pair_expr(
+pub(crate) fn try_plan_inverse_atan_opposite_pair_expr(
     ctx: &mut Context,
     terms: &[ExprId],
     i: usize,

@@ -87,7 +87,7 @@ fn extract_numeric_factor(ctx: &Context, expr: ExprId) -> Option<(BigRational, E
 /// Recognizes:
 /// - `(A + B)` with `(A - B)` (order-insensitive on additive terms)
 /// - canonicalized additive variants like `(A + B)` with `(A + (-B))`
-pub fn is_conjugate_add_sub(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+pub(crate) fn is_conjugate_add_sub(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     let a_expr = ctx.get(a);
     let b_expr = ctx.get(b);
 
@@ -198,7 +198,7 @@ pub fn conjugate_add_sub_pair(
 /// - `(x + 1)` vs `(x - 1)`
 /// - `(x - 1)` vs `(1 + x)`
 /// - `(-1 + x)` vs `(1 + x)` (numeric sign normalization)
-pub fn is_conjugate_binomial(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+pub(crate) fn is_conjugate_binomial(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     let (a_terms, a_base_signs) = match ctx.get(a) {
         Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
         Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
@@ -551,7 +551,7 @@ pub fn conjugate_nary_add_sub_pair(
 /// Count additive terms by flattening `Add/Sub` recursively.
 ///
 /// `Neg` preserves term count of its inner expression.
-pub fn count_additive_terms(ctx: &Context, expr: ExprId) -> usize {
+pub(crate) fn count_additive_terms(ctx: &Context, expr: ExprId) -> usize {
     match ctx.get(expr) {
         Expr::Add(l, r) => count_additive_terms(ctx, *l) + count_additive_terms(ctx, *r),
         Expr::Sub(l, r) => count_additive_terms(ctx, *l) + count_additive_terms(ctx, *r),
@@ -606,7 +606,7 @@ fn normalize_term_sign_for_poly_eq(ctx: &Context, term: ExprId, neg: bool) -> (E
 }
 
 /// Check if two expressions are polynomially equal (same after expansion).
-pub fn poly_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+pub(crate) fn poly_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     if a == b {
         return true;
     }
@@ -707,7 +707,7 @@ pub fn poly_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
 ///
 /// This handles cyclic additive telescoping shapes like:
 /// `(a-b) + (b-c) + (c-a)`.
-pub fn is_structurally_zero(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_structurally_zero(ctx: &Context, expr: ExprId) -> bool {
     use num_traits::Zero;
 
     if let Expr::Number(n) = ctx.get(expr) {

@@ -38,7 +38,7 @@ pub struct ParsedPolyGcdCall {
 }
 
 /// Parse `GcdMode` from expression (variable token).
-pub fn parse_gcd_mode(ctx: &Context, expr: ExprId) -> GcdMode {
+pub(crate) fn parse_gcd_mode(ctx: &Context, expr: ExprId) -> GcdMode {
     if let Expr::Variable(sym_id) = ctx.get(expr) {
         let s = ctx.sym_name(*sym_id);
         match s.to_lowercase().as_str() {
@@ -53,7 +53,10 @@ pub fn parse_gcd_mode(ctx: &Context, expr: ExprId) -> GcdMode {
 }
 
 /// Parse modp options (preset symbol and/or `main_var` integer) from arguments.
-pub fn parse_modp_options(ctx: &Context, args: &[ExprId]) -> (Option<ZippelPreset>, Option<usize>) {
+pub(crate) fn parse_modp_options(
+    ctx: &Context,
+    args: &[ExprId],
+) -> (Option<ZippelPreset>, Option<usize>) {
     let mut preset: Option<ZippelPreset> = None;
     let mut main_var: Option<usize> = None;
 

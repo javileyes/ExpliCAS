@@ -39,7 +39,7 @@ pub struct CollectCoreResult {
 }
 
 /// Core collect-like-terms implementation without domain semantics.
-pub fn collect_impl(ctx: &mut Context, expr: ExprId) -> CollectCoreResult {
+pub(crate) fn collect_impl(ctx: &mut Context, expr: ExprId) -> CollectCoreResult {
     // CRITICAL: Do NOT collect non-commutative expressions (e.g., matrices).
     if !ctx.is_mul_commutative(expr) {
         return CollectCoreResult {

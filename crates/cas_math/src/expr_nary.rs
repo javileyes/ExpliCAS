@@ -40,7 +40,7 @@ use smallvec::SmallVec;
 /// These nodes must be treated as ATOMIC by AddView/MulView to prevent
 /// O(n²) traversal of huge polynomial results stored in PolyStore.
 #[inline]
-pub fn is_poly_ref(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn is_poly_ref(ctx: &Context, id: ExprId) -> bool {
     crate::poly_result::is_poly_ref_or_result(ctx, id)
 }
 

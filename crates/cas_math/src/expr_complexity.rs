@@ -49,7 +49,7 @@ pub fn rewrite_worsens_too_much(
 ///
 /// Unlike `node_count_tree`, this counts unique `ExprId`s and short-circuits
 /// as soon as the limit is exceeded.
-pub fn dedup_node_count_within(ctx: &Context, root: ExprId, max_nodes: usize) -> bool {
+pub(crate) fn dedup_node_count_within(ctx: &Context, root: ExprId, max_nodes: usize) -> bool {
     let mut seen: HashSet<ExprId> = HashSet::new();
     let mut stack = vec![root];
 

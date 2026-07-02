@@ -138,7 +138,7 @@ pub fn extract_rational_pi_multiple(
 ///
 /// Returns true only if we can prove sin(θ) ≠ 0. Returns false otherwise
 /// (including cases where we cannot determine).
-pub fn is_provably_sin_nonzero(ctx: &Context, theta: ExprId) -> bool {
+pub(crate) fn is_provably_sin_nonzero(ctx: &Context, theta: ExprId) -> bool {
     if let Some(k) = extract_rational_pi_multiple(ctx, theta) {
         // sin(k·π) = 0 iff k is an integer
         // So sin(k·π) ≠ 0 iff k is NOT an integer

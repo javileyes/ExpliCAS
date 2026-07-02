@@ -287,12 +287,16 @@ fn as_fraction_like_num_den(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, 
 }
 
 /// True when both numerator and denominator are simple leaf-like atoms.
-pub fn both_sides_leaf_like(ctx: &Context, num: ExprId, den: ExprId) -> bool {
+pub(crate) fn both_sides_leaf_like(ctx: &Context, num: ExprId, den: ExprId) -> bool {
     is_leaf_like(ctx, num) && is_leaf_like(ctx, den)
 }
 
 /// Guard used by expand-to-cancel: require expandable structure on at least one side.
-pub fn has_expandable_product_on_either_side(ctx: &Context, num: ExprId, den: ExprId) -> bool {
+pub(crate) fn has_expandable_product_on_either_side(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+) -> bool {
     contains_expandable_small_depth(ctx, num) || contains_expandable_small_depth(ctx, den)
 }
 
@@ -412,7 +416,7 @@ fn has_structural_factor_overlap(ctx: &Context, left: &[ExprId], right: &[ExprId
 /// rules own any eventual inverse-root presentation, while this helper only
 /// avoids running expensive simplify/expand callbacks from rationalization
 /// probes that would return `None`.
-pub fn should_skip_inverse_sqrt_denominator_expand_cancel(
+pub(crate) fn should_skip_inverse_sqrt_denominator_expand_cancel(
     ctx: &Context,
     num: ExprId,
     den: ExprId,
@@ -442,7 +446,7 @@ pub fn should_skip_inverse_sqrt_denominator_expand_cancel(
 /// Detect high-cost cases where several inner opaque calls are shared across a
 /// root over a multi-function sum. Callers still allow the cheap exact quotient
 /// check before using this signature to skip full simplify/expand callbacks.
-pub fn should_skip_broad_opaque_root_expand_cancel(
+pub(crate) fn should_skip_broad_opaque_root_expand_cancel(
     ctx: &Context,
     num: ExprId,
     den: ExprId,
@@ -457,7 +461,7 @@ pub fn should_skip_broad_opaque_root_expand_cancel(
 }
 
 /// Node-budget guard for expensive expand-to-cancel strategies.
-pub fn within_div_expand_cancel_budget(
+pub(crate) fn within_div_expand_cancel_budget(
     ctx: &Context,
     num: ExprId,
     den: ExprId,
@@ -466,7 +470,7 @@ pub fn within_div_expand_cancel_budget(
     node_count_tree(ctx, num) + node_count_tree(ctx, den) <= max_total_nodes
 }
 
-pub fn default_div_expand_cancel_poly_budget() -> PolyBudget {
+pub(crate) fn default_div_expand_cancel_poly_budget() -> PolyBudget {
     PolyBudget {
         max_terms: 200,
         max_total_degree: 12,
@@ -475,7 +479,7 @@ pub fn default_div_expand_cancel_poly_budget() -> PolyBudget {
 }
 
 /// Discover shared opaque function calls between numerator and denominator.
-pub fn find_shared_opaque_calls(
+pub(crate) fn find_shared_opaque_calls(
     ctx: &Context,
     num: ExprId,
     den: ExprId,
@@ -526,7 +530,7 @@ pub fn find_shared_opaque_calls(
 /// - `Some(true)`: both lowered and are equal.
 /// - `Some(false)`: both lowered and differ.
 /// - `None`: lowering failed on at least one side.
-pub fn poly_equality_if_convertible(
+pub(crate) fn poly_equality_if_convertible(
     ctx: &Context,
     num: ExprId,
     den: ExprId,
@@ -546,7 +550,7 @@ fn try_exact_poly_quotient_expr(ctx: &mut Context, num: ExprId, den: ExprId) -> 
 }
 
 /// Replace matched shared function calls with fresh temporary variables.
-pub fn prepare_opaque_shared_substitution(
+pub(crate) fn prepare_opaque_shared_substitution(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
@@ -620,7 +624,7 @@ pub fn prepare_opaque_shared_substitution(
 }
 
 /// Restore temporary opaque variables back to original calls.
-pub fn substitute_back_opaque_temps(
+pub(crate) fn substitute_back_opaque_temps(
     ctx: &mut Context,
     mut expr: ExprId,
     temp_vars: &[(ExprId, ExprId)],
@@ -638,7 +642,7 @@ pub fn substitute_back_opaque_temps(
 /// The callback receives `(context_after_substitution, substituted_fraction)`
 /// and must return `(updated_context, simplified_expr)` when simplification
 /// succeeds.
-pub fn try_opaque_substitution_cancel_with<FSim>(
+pub(crate) fn try_opaque_substitution_cancel_with<FSim>(
     ctx: &Context,
     num: ExprId,
     den: ExprId,
@@ -708,7 +712,7 @@ where
 
 /// Compare expanded forms using polynomial equality when possible, otherwise
 /// fall back to structural ordering equality.
-pub fn expanded_forms_cancel_equivalent(
+pub(crate) fn expanded_forms_cancel_equivalent(
     ctx: &Context,
     simplified_num: ExprId,
     simplified_den: ExprId,
@@ -723,7 +727,7 @@ pub fn expanded_forms_cancel_equivalent(
 
 /// Clone context, expand numerator and denominator, and return only when at
 /// least one side changed after expansion.
-pub fn expand_div_sides_if_changed_with<FExpand>(
+pub(crate) fn expand_div_sides_if_changed_with<FExpand>(
     ctx: &Context,
     num: ExprId,
     den: ExprId,
@@ -750,7 +754,7 @@ where
 
 /// Strategy-2 helper: expand both sides, simplify each expanded side via callback,
 /// and compare by poly/structural equivalence.
-pub fn try_expand_then_compare_cancel_with<FExpand, FSimplify>(
+pub(crate) fn try_expand_then_compare_cancel_with<FExpand, FSimplify>(
     ctx: &Context,
     num: ExprId,
     den: ExprId,
@@ -779,7 +783,7 @@ where
 /// End-to-end orchestration for `DivExpandToCancelRule` with injected
 /// simplification callbacks for Strategy 0 and Strategy 2.
 #[allow(clippy::too_many_arguments)]
-pub fn try_rewrite_div_expand_to_cancel_expr_with<FStrategy0, FExpand, FStrategy2>(
+pub(crate) fn try_rewrite_div_expand_to_cancel_expr_with<FStrategy0, FExpand, FStrategy2>(
     ctx: &mut Context,
     expr: ExprId,
     mut strategy0_simplify_sub_fraction: FStrategy0,

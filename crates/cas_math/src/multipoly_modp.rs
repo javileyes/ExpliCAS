@@ -457,7 +457,7 @@ pub fn build_linear_pow_direct(coeffs: &[u64], exp: u32, p: u64, num_vars: usize
 
 /// Precompute val^0, val^1, ..., val^max_exp mod p
 #[inline]
-pub fn pow_table(val: u64, max_exp: usize, p: u64) -> Vec<u64> {
+pub(crate) fn pow_table(val: u64, max_exp: usize, p: u64) -> Vec<u64> {
     let mut table = vec![1u64; max_exp + 1];
     for e in 1..=max_exp {
         table[e] = mul_mod(table[e - 1], val, p);

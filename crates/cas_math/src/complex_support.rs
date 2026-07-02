@@ -194,7 +194,7 @@ pub fn try_rewrite_imaginary_power_expr(ctx: &mut Context, expr: ExprId) -> Opti
 }
 
 /// Rewrite `i * i` into `-1`.
-pub fn try_rewrite_i_squared_mul_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_i_squared_mul_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Mul(l, r) = ctx.get(expr) else {
         return None;
     };

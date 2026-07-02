@@ -651,7 +651,7 @@ fn try_rewrite_tanh_pythagorean_common_cofactor(
 /// Detects hyperbolic Pythagorean subtraction forms:
 /// - `cosh(x)^2 - sinh(x)^2` -> `1`
 /// - `sinh(x)^2 - cosh(x)^2` -> `-1`
-pub fn detect_hyperbolic_pythagorean_sub(
+pub(crate) fn detect_hyperbolic_pythagorean_sub(
     ctx: &Context,
     expr: ExprId,
 ) -> Option<HyperbolicPythagoreanValue> {
@@ -1026,7 +1026,7 @@ pub fn try_rewrite_tanh_pythagorean_add_chain(
 }
 
 /// Detect and rewrite `sinh(x)/cosh(x) -> tanh(x)`.
-pub fn try_rewrite_sinh_cosh_to_tanh(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_sinh_cosh_to_tanh(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Div(num, den) = ctx.get(expr) else {
         return None;
     };
@@ -1055,7 +1055,10 @@ pub fn try_rewrite_sinh_cosh_to_tanh(ctx: &mut Context, expr: ExprId) -> Option<
 }
 
 /// Detect and rewrite `cosh(x)/sinh(x) -> 1/tanh(x)`.
-pub fn try_rewrite_cosh_sinh_to_reciprocal_tanh(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_cosh_sinh_to_reciprocal_tanh(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     let Expr::Div(num, den) = ctx.get(expr) else {
         return None;
     };

@@ -82,19 +82,6 @@ pub fn is_odd_power_of(ctx: &Context, source: ExprId, target: ExprId) -> bool {
     false
 }
 
-/// Check if `expr` is `base^p` for any non-zero numeric exponent `p`.
-pub fn is_power_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
-    if let Expr::Pow(pow_base, exp) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            let zero = num_rational::BigRational::from_integer(0.into());
-            if *n != zero {
-                return exprs_equivalent(ctx, *pow_base, base);
-            }
-        }
-    }
-    false
-}
-
 /// Check if `expr` is a power whose base is equivalent to `base`.
 ///
 /// This is used for positive-domain implication:
@@ -735,7 +722,7 @@ fn is_positive_expr_dominated_by_positives(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::Expr;
+
     use cas_parser::parse;
 
     #[test]
@@ -765,17 +752,6 @@ mod tests {
         let even = parse("b^4", &mut ctx).expect("parse");
         assert!(is_odd_power_of(&ctx, source, target));
         assert!(!is_odd_power_of(&ctx, even, target));
-    }
-
-    #[test]
-    fn power_of_base_detects_fractional_exponent() {
-        let mut ctx = Context::new();
-        let base = parse("x", &mut ctx).expect("parse");
-        let half = ctx.rational(1, 2);
-        let frac_pow = ctx.add(Expr::Pow(base, half));
-        let zero_exp = parse("x^0", &mut ctx).expect("parse");
-        assert!(is_power_of_base(&ctx, frac_pow, base));
-        assert!(!is_power_of_base(&ctx, zero_exp, base));
     }
 
     #[test]

@@ -19,7 +19,7 @@ pub fn build_sum(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
 /// Collect additive terms by flattening only `Add(...)` nodes.
 ///
 /// For `a + b + c`, returns `[a, b, c]`.
-pub fn collect_additive_terms_flat_add(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+pub(crate) fn collect_additive_terms_flat_add(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     let mut terms = Vec::new();
     collect_additive_terms_recursive(ctx, expr, &mut terms);
     terms
@@ -40,7 +40,7 @@ fn collect_additive_terms_recursive(ctx: &Context, expr: ExprId, terms: &mut Vec
 /// The predicate is structural:
 /// - fractional powers are irrational (`x^(1/2)`, etc.)
 /// - `sqrt(...)` builtin is irrational
-pub fn contains_irrational(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn contains_irrational(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Pow(_, exp) => match ctx.get(*exp) {
             Expr::Number(n) => !n.is_integer(),

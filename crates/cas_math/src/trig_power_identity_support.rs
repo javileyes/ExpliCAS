@@ -35,15 +35,15 @@ fn extract_trig_pow_n(ctx: &Context, term: ExprId, n: i64) -> Option<(ExprId, &'
     extract_trig_pow_n_from_set(ctx, term, n, &SIN_COS_BUILTINS)
 }
 
-pub fn extract_trig_pow2(ctx: &Context, term: ExprId) -> Option<(ExprId, &'static str)> {
+pub(crate) fn extract_trig_pow2(ctx: &Context, term: ExprId) -> Option<(ExprId, &'static str)> {
     extract_trig_pow_n(ctx, term, 2)
 }
 
-pub fn extract_trig_pow4(ctx: &Context, term: ExprId) -> Option<(ExprId, &'static str)> {
+pub(crate) fn extract_trig_pow4(ctx: &Context, term: ExprId) -> Option<(ExprId, &'static str)> {
     extract_trig_pow_n(ctx, term, 4)
 }
 
-pub fn extract_trig_pow6(ctx: &Context, term: ExprId) -> Option<(ExprId, &'static str)> {
+pub(crate) fn extract_trig_pow6(ctx: &Context, term: ExprId) -> Option<(ExprId, &'static str)> {
     extract_trig_pow_n(ctx, term, 6)
 }
 
@@ -102,7 +102,7 @@ pub fn extract_coeff_trig_pow2(
 }
 
 /// Extract `(coefficient, trig_name, argument)` from `k * tan(arg)^2` or `k * cot(arg)^2`.
-pub fn extract_coeff_tan_or_cot_pow2(
+pub(crate) fn extract_coeff_tan_or_cot_pow2(
     ctx: &Context,
     term: ExprId,
 ) -> Option<(BigRational, &'static str, ExprId)> {
@@ -238,7 +238,7 @@ fn extract_reciprocal_product_square(
 ///
 /// For higher powers `trig^n` (`n >= 3`), this decomposes as `trig^(n-2) * trig^2`,
 /// so `sin(x)^3` contributes a `sin(x)^2` candidate with residual `[sin(x)]`.
-pub fn extract_all_trig_squared_candidates(
+pub(crate) fn extract_all_trig_squared_candidates(
     ctx: &mut Context,
     term: ExprId,
 ) -> Vec<(bool, ExprId, Vec<ExprId>)> {
@@ -397,7 +397,7 @@ pub fn extract_all_trig_squared_candidates(
 /// For `2*cos(x)^2*sin(u)^2`, this yields two entries:
 /// - treating `cos(x)^2` as the chosen trig-square
 /// - treating `sin(u)^2` as the chosen trig-square
-pub fn decompose_term_with_residual_multi(
+pub(crate) fn decompose_term_with_residual_multi(
     ctx: &Context,
     term: ExprId,
 ) -> Vec<(bool, ExprId, BigRational, Vec<ExprId>)> {
@@ -476,7 +476,10 @@ pub fn decompose_term_with_residual_multi(
 }
 
 /// Flatten a product term and separate numeric coefficient from non-numeric factors.
-pub fn extract_as_product(ctx: &Context, term: ExprId) -> Option<(Vec<ExprId>, BigRational)> {
+pub(crate) fn extract_as_product(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(Vec<ExprId>, BigRational)> {
     let mut factors = Vec::new();
     let mut stack = vec![term];
     let mut is_negated = false;
@@ -522,7 +525,7 @@ pub fn extract_as_product(ctx: &Context, term: ExprId) -> Option<(Vec<ExprId>, B
 ///
 /// For trig powers `sin/cos` with integer exponent `n >= 3`, decomposes
 /// `trig^n` into `trig^(n-2)` and `trig^2` to expose a square factor.
-pub fn flatten_with_trig_decomp(ctx: &mut Context, term: ExprId) -> (bool, Vec<ExprId>) {
+pub(crate) fn flatten_with_trig_decomp(ctx: &mut Context, term: ExprId) -> (bool, Vec<ExprId>) {
     use num_traits::{One, Signed};
 
     let mut is_neg = false;
@@ -678,7 +681,7 @@ fn find_single_extra_factor(
 /// Try to match `small_term + big_term` where `big_term = -small_term * trig(x)^2`.
 /// Returns `(rewritten_expr, trig, other)` for the identity:
 /// `R - R*trig(x)^2 = R*other(x)^2`.
-pub fn try_high_power_pythagorean(
+pub(crate) fn try_high_power_pythagorean(
     ctx: &mut Context,
     small_term: ExprId,
     big_term: ExprId,
@@ -705,7 +708,7 @@ pub fn try_high_power_pythagorean(
 /// Check if `(c_term, t_term)` matches `k - k*trig(x)^2` with `trig ∈ {sin, cos}`.
 /// Returns `(rewritten_expr, trig, other)` for the identity:
 /// `k - k*trig(x)^2 = k*other(x)^2`.
-pub fn check_pythagorean_pattern(
+pub(crate) fn check_pythagorean_pattern(
     ctx: &mut Context,
     c_term: ExprId,
     t_term: ExprId,
@@ -785,7 +788,10 @@ pub fn check_pythagorean_pattern(
 
 /// Extract `coeff * sin(arg)^2 * cos(arg)^2` from a product term.
 /// Returns `(coeff, arg)` when both squared trig factors share the same argument.
-pub fn extract_sin2_cos2_product(ctx: &mut Context, term: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn extract_sin2_cos2_product(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(ExprId, ExprId)> {
     let factors = mul_leaves(ctx, term);
     if factors.len() < 2 {
         return None;
@@ -829,7 +835,7 @@ pub fn extract_sin2_cos2_product(ctx: &mut Context, term: ExprId) -> Option<(Exp
 }
 
 /// Check if a coefficient expression is exactly 3.
-pub fn coeff_is_three(ctx: &mut Context, coeff: ExprId) -> bool {
+pub(crate) fn coeff_is_three(ctx: &mut Context, coeff: ExprId) -> bool {
     if let Expr::Number(n) = ctx.get(coeff) {
         return n.is_integer() && *n.numer() == 3.into();
     }

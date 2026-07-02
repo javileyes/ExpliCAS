@@ -50,9 +50,7 @@ pub use methods::{
 };
 pub use model::*;
 pub use probe_runner::*;
-pub use verification::{
-    antiderivative_verification_report, verify_antiderivative_by_differentiation,
-};
+pub(crate) use verification::verify_antiderivative_by_differentiation;
 
 #[cfg(test)]
 mod tests;

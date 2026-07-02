@@ -564,7 +564,7 @@ pub fn try_rewrite_rationalize_product_denominator_expr(
 ///
 /// This function performs only structural matching and candidate construction.
 /// Domain gating (`B >= 0`) is handled by caller policy.
-pub fn try_match_sqrt_conjugate_collapse_expr(
+pub(crate) fn try_match_sqrt_conjugate_collapse_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<SqrtConjugateCollapseMatch> {

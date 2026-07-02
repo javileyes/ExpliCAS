@@ -13,7 +13,7 @@ pub struct SubTermMatchesDenomRewrite {
 /// Try to rewrite `a - b/a` (canonicalized as `a + -(b/a)`) to `(a^2 - b)/a`.
 ///
 /// Also handles the commuted add form `-(b/a) + a`.
-pub fn try_rewrite_sub_term_matches_denom_expr(
+pub(crate) fn try_rewrite_sub_term_matches_denom_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<SubTermMatchesDenomRewrite> {

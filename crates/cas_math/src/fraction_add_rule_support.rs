@@ -2,7 +2,6 @@ use cas_ast::ordering::compare_expr;
 use cas_ast::views::FractionParts;
 use cas_ast::{Context, Expr, ExprId};
 
-use crate::expr_classify::is_trig_function;
 use crate::expr_predicates::is_constant_expr;
 use crate::fold_add_build_support::try_build_fold_add_fraction_rewrite;
 use crate::fold_add_fraction_support::extract_fold_add_operands;
@@ -135,17 +134,6 @@ pub fn try_plan_symmetric_reciprocal_sum_rewrite(
     let denominator = ctx.add(Expr::Sub(base_sq, one));
     let rewritten = ctx.add(Expr::Div(numerator, denominator));
     Some(SymmetricReciprocalSumPlan { rewritten })
-}
-
-/// Compute whether parent ancestry indicates a trig-function argument context.
-pub fn is_inside_trig_ancestor_with<F>(ctx: &Context, mut has_ancestor_matching: F) -> bool
-where
-    F: FnMut(&Context, &mut dyn FnMut(&Context, ExprId) -> bool) -> bool,
-{
-    has_ancestor_matching(
-        ctx,
-        &mut |c, node_id| matches!(c.get(node_id), cas_ast::Expr::Function(fn_id, _) if is_trig_function(c, *fn_id)),
-    )
 }
 
 #[cfg(test)]

@@ -5,14 +5,14 @@
 
 /// Modular addition: (a + b) mod p
 #[inline(always)]
-pub fn add_mod(a: u64, b: u64, p: u64) -> u64 {
+pub(crate) fn add_mod(a: u64, b: u64, p: u64) -> u64 {
     let sum = a as u128 + b as u128;
     (sum % p as u128) as u64
 }
 
 /// Modular subtraction: (a - b) mod p (always non-negative)
 #[inline(always)]
-pub fn sub_mod(a: u64, b: u64, p: u64) -> u64 {
+pub(crate) fn sub_mod(a: u64, b: u64, p: u64) -> u64 {
     if a >= b {
         a - b
     } else {
@@ -22,7 +22,7 @@ pub fn sub_mod(a: u64, b: u64, p: u64) -> u64 {
 
 /// Modular multiplication: (a * b) mod p
 #[inline(always)]
-pub fn mul_mod(a: u64, b: u64, p: u64) -> u64 {
+pub(crate) fn mul_mod(a: u64, b: u64, p: u64) -> u64 {
     let prod = (a as u128) * (b as u128);
     (prod % p as u128) as u64
 }
@@ -50,7 +50,7 @@ fn extended_gcd(a: i128, b: i128) -> (i128, i128, i128) {
 
 /// Modular inverse: a^(-1) mod p, returns None if gcd(a,p) != 1
 #[inline]
-pub fn inv_mod(a: u64, p: u64) -> Option<u64> {
+pub(crate) fn inv_mod(a: u64, p: u64) -> Option<u64> {
     if a == 0 {
         return None;
     }
@@ -66,12 +66,12 @@ pub fn inv_mod(a: u64, p: u64) -> Option<u64> {
 /// Modular division: (a / b) mod p = a * b^(-1) mod p
 #[allow(dead_code)] // Modular arithmetic infrastructure, used in tests
 #[inline]
-pub fn div_mod(a: u64, b: u64, p: u64) -> Option<u64> {
+pub(crate) fn div_mod(a: u64, b: u64, p: u64) -> Option<u64> {
     inv_mod(b, p).map(|b_inv| mul_mod(a, b_inv, p))
 }
 
 /// Modular exponentiation: a^e mod p (binary exponentiation)
-pub fn pow_mod(mut base: u64, mut exp: u64, p: u64) -> u64 {
+pub(crate) fn pow_mod(mut base: u64, mut exp: u64, p: u64) -> u64 {
     if p == 1 {
         return 0;
     }

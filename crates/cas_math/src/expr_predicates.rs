@@ -148,7 +148,7 @@ pub fn has_positivity_structure(ctx: &Context, expr: ExprId) -> bool {
 ///
 /// Note: for powers, this follows existing engine behavior and only descends
 /// into the base expression.
-pub fn contains_function(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn contains_function(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
         Expr::Function(_, _) => true,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
@@ -160,7 +160,7 @@ pub fn contains_function(ctx: &Context, id: ExprId) -> bool {
 }
 
 /// Check if expression is a pure constant expression (no variables/functions).
-pub fn is_constant_expr(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn is_constant_expr(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
         Expr::Number(_) | Expr::Constant(_) => true,
         Expr::Neg(inner) => is_constant_expr(ctx, *inner),
@@ -178,7 +178,7 @@ pub fn is_constant_expr(ctx: &Context, id: ExprId) -> bool {
 /// - `sqrt(...)`
 /// - powers with fractional exponent in `(0, 1)` magnitude
 /// - powers with explicit `Div(_, _)` exponents
-pub fn contains_root_term(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn contains_root_term(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
         Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) => true,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
@@ -198,7 +198,7 @@ pub fn contains_root_term(ctx: &Context, id: ExprId) -> bool {
 }
 
 /// Check if denominator is trivially equal to 1.
-pub fn is_trivial_denom_one(ctx: &Context, d: ExprId) -> bool {
+pub(crate) fn is_trivial_denom_one(ctx: &Context, d: ExprId) -> bool {
     matches!(ctx.get(d), Expr::Number(n) if n.is_one())
 }
 
@@ -218,7 +218,7 @@ pub fn is_two_expr(ctx: &Context, id: ExprId) -> bool {
 }
 
 /// Check if expression is numerically equal to `+1/2`.
-pub fn is_half_expr(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn is_half_expr(ctx: &Context, id: ExprId) -> bool {
     matches!(ctx.get(id), Expr::Number(n) if *n == BigRational::new(1.into(), 2.into()))
 }
 
@@ -237,7 +237,7 @@ pub fn is_e_constant_expr(ctx: &Context, id: ExprId) -> bool {
 }
 
 /// Check if expression contains any explicit division node.
-pub fn contains_div_term(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn contains_div_term(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
         Expr::Div(_, _) => true,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
@@ -278,17 +278,17 @@ fn exponent_implies_division(ctx: &Context, id: ExprId) -> bool {
 }
 
 /// Check if expression contains a function call or any root form.
-pub fn contains_function_or_root(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn contains_function_or_root(ctx: &Context, id: ExprId) -> bool {
     contains_function(ctx, id) || contains_root_term(ctx, id)
 }
 
 /// Check if numerator/denominator pair is a constant fraction.
-pub fn is_constant_fraction(ctx: &Context, n: ExprId, d: ExprId) -> bool {
+pub(crate) fn is_constant_fraction(ctx: &Context, n: ExprId, d: ExprId) -> bool {
     is_constant_expr(ctx, n) && is_constant_expr(ctx, d)
 }
 
 /// Check if expression is a small numeric literal in `[-max_abs, max_abs]`.
-pub fn is_simple_number_abs_leq(ctx: &Context, id: ExprId, max_abs: i64) -> bool {
+pub(crate) fn is_simple_number_abs_leq(ctx: &Context, id: ExprId, max_abs: i64) -> bool {
     if max_abs < 0 {
         return false;
     }

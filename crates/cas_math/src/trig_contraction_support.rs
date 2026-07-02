@@ -85,7 +85,10 @@ fn is_tan_squared_of_arg(ctx: &Context, expr: ExprId, tan_arg: ExprId) -> bool {
 /// Accepted denominator shapes:
 /// - `1 - tan(t)^2`
 /// - `1 + (-(tan(t)^2))`
-pub fn match_tan_double_angle_contraction_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn match_tan_double_angle_contraction_arg(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     let (num, den) = as_div(ctx, expr)?;
 
     let tan_arg = if let Expr::Mul(l, r) = ctx.get(num) {
@@ -147,13 +150,13 @@ pub fn match_tan_double_angle_contraction_arg(ctx: &Context, expr: ExprId) -> Op
 }
 
 /// Semantic expression equality for trig matching.
-pub fn args_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+pub(crate) fn args_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     a == b || compare_expr(ctx, a, b) == Ordering::Equal
 }
 
 /// Semantic subtraction: matches `Sub(a, b)`, `Add(a, Neg(b))`, `Add(Neg(b), a)`.
 /// Returns `(positive_part, subtracted_part)`.
-pub fn semantic_sub(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn semantic_sub(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     if let Some((l, r)) = as_sub(ctx, expr) {
         return Some((l, r));
     }
@@ -171,7 +174,7 @@ pub fn semantic_sub(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
 }
 
 /// Extract `(sin_arg, cos_arg)` from `sin(x)·cos(y)` or `cos(y)·sin(x)`.
-pub fn extract_sin_times_cos(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn extract_sin_times_cos(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     let (l, r) = as_mul(ctx, expr)?;
 
     if let Some(sin_arg) = extract_trig_arg(ctx, l, BuiltinFn::Sin.name()) {
@@ -189,7 +192,7 @@ pub fn extract_sin_times_cos(ctx: &Context, expr: ExprId) -> Option<(ExprId, Exp
 }
 
 /// Find argument of a target trig function in factors.
-pub fn find_trig_in_factors(
+pub(crate) fn find_trig_in_factors(
     ctx: &Context,
     factors: &[ExprId],
     target: BuiltinFn,
@@ -201,7 +204,7 @@ pub fn find_trig_in_factors(
 }
 
 /// Extract `(a, b)` from `f(a)·f(b)` where `f` is target trig function.
-pub fn extract_same_trig_product(
+pub(crate) fn extract_same_trig_product(
     ctx: &Context,
     expr: ExprId,
     target: BuiltinFn,
@@ -227,7 +230,7 @@ pub fn extract_same_trig_product(
 }
 
 /// Extract `(a, b)` from one term `sin(a)·cos(b)` and another `cos(a)·sin(b)`.
-pub fn extract_sin_cos_product_pair(
+pub(crate) fn extract_sin_cos_product_pair(
     ctx: &Context,
     term1: ExprId,
     term2: ExprId,
@@ -263,7 +266,7 @@ pub fn extract_sin_cos_product_pair(
 }
 
 /// Extract `(a, b)` from `cos(a)·cos(b) - sin(a)·sin(b)`.
-pub fn extract_cos_cos_minus_sin_sin(
+pub(crate) fn extract_cos_cos_minus_sin_sin(
     ctx: &Context,
     left: ExprId,
     right: ExprId,
@@ -281,7 +284,7 @@ pub fn extract_cos_cos_minus_sin_sin(
 }
 
 /// Extract `(a, b)` from one positive term `cos(a)·cos(b)` and one `sin(a)·sin(b)`.
-pub fn extract_cos_cos_and_sin_sin(
+pub(crate) fn extract_cos_cos_and_sin_sin(
     ctx: &Context,
     left: ExprId,
     right: ExprId,
@@ -312,7 +315,7 @@ pub fn extract_cos_cos_and_sin_sin(
 }
 
 /// Extract `(sin_arg, cos_arg)` from `2·sin(t)·cos(t)` in any multiplication arrangement.
-pub fn extract_two_sin_cos(ctx: &Context, l: ExprId, r: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn extract_two_sin_cos(ctx: &Context, l: ExprId, r: ExprId) -> Option<(ExprId, ExprId)> {
     let two_rat = BigRational::from_integer(2.into());
 
     if let Expr::Number(n) = ctx.get(l) {
@@ -361,7 +364,11 @@ pub fn extract_two_sin_cos(ctx: &Context, l: ExprId, r: ExprId) -> Option<(ExprI
 }
 
 /// Extract `(sin_arg, cos_arg)` from a pair `sin(t)`/`cos(t)` in either order.
-pub fn extract_sin_cos_pair(ctx: &Context, a: ExprId, b: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn extract_sin_cos_pair(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+) -> Option<(ExprId, ExprId)> {
     if let Expr::Function(fn_id_a, args_a) = ctx.get(a) {
         if let Expr::Function(fn_id_b, args_b) = ctx.get(b) {
             if args_a.len() == 1 && args_b.len() == 1 {
@@ -384,7 +391,7 @@ pub fn extract_sin_cos_pair(ctx: &Context, a: ExprId, b: ExprId) -> Option<(Expr
 }
 
 /// Extract `(sin_arg, cos_arg)` from two trig nodes by matching `sin` and `cos` in any order.
-pub fn extract_trig_and_match(
+pub(crate) fn extract_trig_and_match(
     ctx: &Context,
     trig1: ExprId,
     trig2: ExprId,
@@ -393,7 +400,11 @@ pub fn extract_trig_and_match(
 }
 
 /// Extract `(cos_arg, sin_arg)` from `cos²(t) - sin²(t)`.
-pub fn extract_cos2_minus_sin2(ctx: &Context, l: ExprId, r: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn extract_cos2_minus_sin2(
+    ctx: &Context,
+    l: ExprId,
+    r: ExprId,
+) -> Option<(ExprId, ExprId)> {
     let two_rat = BigRational::from_integer(2.into());
 
     if let Expr::Pow(base_l, exp_l) = ctx.get(l) {
@@ -424,7 +435,7 @@ pub fn extract_cos2_minus_sin2(ctx: &Context, l: ExprId, r: ExprId) -> Option<(E
 }
 
 /// Extract `(trig_arg, is_sin, coefficient)` from a term like `±k·sin²(t)` or `±k·cos²(t)`.
-pub fn extract_coeff_trig_squared(
+pub(crate) fn extract_coeff_trig_squared(
     ctx: &Context,
     term: ExprId,
 ) -> Option<(ExprId, bool, BigRational)> {
@@ -518,7 +529,7 @@ fn extract_trig_squared_factor(ctx: &Context, factor: ExprId) -> Option<(ExprId,
 
 /// Match `(sin(a)cos(b) + cos(a)sin(b)) / (cos(a)cos(b) - sin(a)sin(b))`.
 /// Returns `(a, b)` if matched.
-pub fn match_angle_sum_fraction(
+pub(crate) fn match_angle_sum_fraction(
     ctx: &Context,
     numerator: ExprId,
     denominator: ExprId,
@@ -540,7 +551,7 @@ pub fn match_angle_sum_fraction(
 
 /// Match `(sin(a)cos(b) - cos(a)sin(b)) / (cos(a)cos(b) + sin(a)sin(b))`.
 /// Returns `(a, b)` if matched.
-pub fn match_angle_diff_fraction(
+pub(crate) fn match_angle_diff_fraction(
     ctx: &Context,
     numerator: ExprId,
     denominator: ExprId,

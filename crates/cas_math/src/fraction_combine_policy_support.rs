@@ -39,7 +39,7 @@ fn fraction_combine_domain_mode_from_flags(
 /// - Strict: requires proven denominator nonzero.
 /// - Assume: applies; when nonzero is unproven, marks assumption requirement.
 /// - Generic: applies without additional assumption marker.
-pub fn decide_combine_same_denominator_policy(
+pub(crate) fn decide_combine_same_denominator_policy(
     assume_mode: bool,
     strict_mode: bool,
     denominator_is_proven_nonzero: bool,
@@ -100,7 +100,7 @@ pub struct SameDenominatorCombinationPlan {
 /// Extract fraction-like term information from:
 /// - `a / d`
 /// - `-(a / d)`
-pub fn extract_fraction_term_with_sign(
+pub(crate) fn extract_fraction_term_with_sign(
     ctx: &Context,
     term: ExprId,
 ) -> Option<FractionTermWithSign> {
@@ -130,7 +130,7 @@ pub fn extract_fraction_term_with_sign(
 /// Returns:
 /// - `FractionDenGroups`: denominator -> list of `(term_index, numerator, is_negated)`
 /// - `Vec<usize>`: indices of non-fraction terms.
-pub fn group_fraction_terms_by_denominator(
+pub(crate) fn group_fraction_terms_by_denominator(
     ctx: &Context,
     terms: &[ExprId],
 ) -> (FractionDenGroups, Vec<usize>) {
@@ -166,7 +166,7 @@ pub fn group_fraction_terms_by_denominator(
 }
 
 /// Prepare all structural inputs needed to combine one same-denominator group.
-pub fn prepare_same_denominator_combination(
+pub(crate) fn prepare_same_denominator_combination(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<SameDenominatorPreparation> {
@@ -192,7 +192,7 @@ pub fn prepare_same_denominator_combination(
 }
 
 /// Return the first denominator group that has at least two fraction terms.
-pub fn first_combinable_denominator_group(
+pub(crate) fn first_combinable_denominator_group(
     denom_groups: &FractionDenGroups,
 ) -> Option<(ExprId, Vec<FractionGroupEntry>)> {
     for (den, group) in denom_groups.iter() {
@@ -207,7 +207,7 @@ pub fn first_combinable_denominator_group(
 ///
 /// Returns `None` when the rebuilt expression is a structural/no-op downgrade
 /// (no reduced division count and no node-count win).
-pub fn build_same_denominator_combination(
+pub(crate) fn build_same_denominator_combination(
     ctx: &mut Context,
     original_expr: ExprId,
     terms: &[ExprId],

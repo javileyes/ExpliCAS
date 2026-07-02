@@ -83,7 +83,11 @@ pub struct PolyLowerStep {
 ///
 /// This should be called AFTER eager_eval_expand_calls and BEFORE the simplifier.
 /// Uses the thread-local PolyStore for polynomial operations.
-pub fn poly_lower_pass(ctx: &mut Context, expr: ExprId, collect_steps: bool) -> PolyLowerResult {
+pub(crate) fn poly_lower_pass(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> PolyLowerResult {
     let mut steps = Vec::new();
     let mut combined_any = false;
     let result = lower_recursive(ctx, expr, &mut steps, &mut combined_any, collect_steps);

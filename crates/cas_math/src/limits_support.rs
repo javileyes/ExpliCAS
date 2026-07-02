@@ -19,7 +19,7 @@ use num_traits::{One, Signed, ToPrimitive, Zero};
 /// Check if an expression depends on a specific variable id.
 ///
 /// Uses iterative traversal to avoid recursion limits on deep trees.
-pub fn depends_on(ctx: &Context, expr: ExprId, var: ExprId) -> bool {
+pub(crate) fn depends_on(ctx: &Context, expr: ExprId, var: ExprId) -> bool {
     let mut stack = vec![expr];
 
     while let Some(current) = stack.pop() {
@@ -54,7 +54,7 @@ pub fn depends_on(ctx: &Context, expr: ExprId, var: ExprId) -> bool {
 /// Parse a power expression with integer exponent.
 ///
 /// Returns `(base, n)` if `expr` is `base^n` where `n` is an integer literal.
-pub fn parse_pow_int(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
+pub(crate) fn parse_pow_int(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             let n = crate::expr_extract::extract_i64_integer(ctx, *exp)?;
@@ -65,7 +65,7 @@ pub fn parse_pow_int(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
 }
 
 /// Create a residual limit expression: `limit(expr, var, approach_symbol)`.
-pub fn mk_limit(ctx: &mut Context, expr: ExprId, var: ExprId, approach: InfSign) -> ExprId {
+pub(crate) fn mk_limit(ctx: &mut Context, expr: ExprId, var: ExprId, approach: InfSign) -> ExprId {
     let approach_sym = match approach {
         InfSign::Pos => ctx.add(Expr::Constant(Constant::Infinity)),
         InfSign::Neg => {
@@ -77,7 +77,7 @@ pub fn mk_limit(ctx: &mut Context, expr: ExprId, var: ExprId, approach: InfSign)
 }
 
 /// Create a residual limit expression from a typed approach.
-pub fn mk_limit_for_approach(
+pub(crate) fn mk_limit_for_approach(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -95,7 +95,7 @@ pub fn mk_limit_for_approach(
 }
 
 /// Determine resulting infinity sign from approach sign and exponent parity.
-pub fn limit_sign(approach: InfSign, power: i64) -> InfSign {
+pub(crate) fn limit_sign(approach: InfSign, power: i64) -> InfSign {
     match approach {
         InfSign::Pos => InfSign::Pos,
         InfSign::Neg => {
@@ -108,13 +108,8 @@ pub fn limit_sign(approach: InfSign, power: i64) -> InfSign {
     }
 }
 
-/// Create infinity with appropriate sign.
-pub fn mk_inf(ctx: &mut Context, sign: InfSign) -> ExprId {
-    mk_infinity(ctx, sign)
-}
-
 /// Rule 1: Constant - lim c = c (if `expr` doesn't depend on `var`).
-pub fn apply_constant_rule(ctx: &Context, expr: ExprId, var: ExprId) -> Option<ExprId> {
+pub(crate) fn apply_constant_rule(ctx: &Context, expr: ExprId, var: ExprId) -> Option<ExprId> {
     if !depends_on(ctx, expr, var) {
         Some(expr)
     } else {
@@ -5432,7 +5427,7 @@ fn try_limit_rules_at_finite_one_sided(
 }
 
 /// Rule 2: Variable - lim x = ±∞ based on approach sign.
-pub fn apply_variable_rule(
+pub(crate) fn apply_variable_rule(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -5449,7 +5444,7 @@ pub fn apply_variable_rule(
 /// - n > 0: ±∞ (sign depends on approach and parity)
 /// - n = 0: 1
 /// - n < 0: 0
-pub fn apply_power_rule(
+pub(crate) fn apply_power_rule(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -5484,7 +5479,7 @@ pub fn apply_power_rule(
 ///
 /// For `x->-∞` the base is negative and `x^q` with non-integer `q` is not real,
 /// so we decline and leave the limit as an honest residual.
-pub fn apply_rational_power_rule(
+pub(crate) fn apply_rational_power_rule(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -5519,7 +5514,11 @@ pub fn apply_rational_power_rule(
 }
 
 /// Rule 4: Reciprocal power - lim c/x^n = 0 for n > 0 and c independent of x.
-pub fn apply_reciprocal_power_rule(ctx: &mut Context, expr: ExprId, var: ExprId) -> Option<ExprId> {
+pub(crate) fn apply_reciprocal_power_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+) -> Option<ExprId> {
     let Expr::Div(num, den) = ctx.get(expr).clone() else {
         return None;
     };
@@ -8003,7 +8002,7 @@ fn binary_log_finite_rational_argument_limit_at_infinity(
 /// leading-coefficient ratio lands strictly inside its real domain (`tail > 1`).
 /// Other elementary families remain linear-argument only, except for already
 /// documented `exp(linear)` compositions.
-pub fn elementary_function_limit_at_infinity(
+pub(crate) fn elementary_function_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -8419,7 +8418,7 @@ fn collect_rational_exp_terms(
     }
 }
 
-pub fn additive_limit_at_infinity(
+pub(crate) fn additive_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -8440,7 +8439,7 @@ pub fn additive_limit_at_infinity(
     }
 }
 
-pub fn multiplicative_limit_at_infinity(
+pub(crate) fn multiplicative_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -8633,7 +8632,7 @@ fn is_bounded_elementary_expr_at_infinity(
 /// numerators (`sin`/`cos`/`arctan`/`tanh`, plus finite arithmetic combinations
 /// of bounded pieces and constants) are accepted, and the denominator must
 /// already be proven divergent by the existing infinity rules.
-pub fn bounded_elementary_over_divergent_limit_at_infinity(
+pub(crate) fn bounded_elementary_over_divergent_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -8689,7 +8688,7 @@ fn bounded_elementary_times_decaying_exp_limit_at_infinity(
 /// numeric scaling is compared with polynomials whose relevant leading
 /// coefficient is numeric. Parameterized exponent tails and nested
 /// exponentials remain residual.
-pub fn exponential_polynomial_dominance_limit_at_infinity(
+pub(crate) fn exponential_polynomial_dominance_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -8785,7 +8784,7 @@ pub fn exponential_polynomial_dominance_limit_at_infinity(
 /// hyperbolic sine are total-real, so their signed linear tails are preserved.
 /// Unsupported nonlinear arguments and
 /// subpolynomial-vs-subpolynomial comparisons remain residual.
-pub fn subpolynomial_polynomial_dominance_limit_at_infinity(
+pub(crate) fn subpolynomial_polynomial_dominance_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -8995,7 +8994,7 @@ fn scaled_exp_subpoly_product_limit(
 /// must tend to `+∞` on a linear real tail; cube roots and inverse hyperbolic
 /// sine may carry either signed linear tail. Parametric or nested exponential
 /// tails remain residual.
-pub fn exponential_subpolynomial_dominance_limit_at_infinity(
+pub(crate) fn exponential_subpolynomial_dominance_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -9094,7 +9093,7 @@ pub fn exponential_subpolynomial_dominance_limit_at_infinity(
 /// This handles polynomial expressions whose leading coefficient in `var` is a
 /// numeric constant. Symbolic leading coefficients remain unresolved because
 /// their sign is not known under the conservative limit policy.
-pub fn polynomial_limit_at_infinity(
+pub(crate) fn polynomial_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -9136,7 +9135,7 @@ pub fn polynomial_limit_at_infinity(
 /// - `deg(P) < deg(Q) -> 0`
 /// - `deg(P) = deg(Q) -> lc(P)/lc(Q)` when both leading coefficients are numeric
 /// - `deg(P) > deg(Q) -> ±∞` according to leading coefficient sign and parity
-pub fn rational_poly_limit(
+pub(crate) fn rational_poly_limit(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -9236,7 +9235,7 @@ pub fn rational_poly_limit(
 /// 15. Exact exponential-vs-subpolynomial dominance
 /// 16. Polynomial
 /// 17. Rational polynomial
-pub fn try_limit_rules_at_infinity(
+pub(crate) fn try_limit_rules_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
@@ -10434,7 +10433,7 @@ fn presimplify_recursive(ctx: &mut Context, expr: ExprId, depth: usize) -> ExprI
 ///
 /// This is an allowlist-only pass and intentionally excludes transforms that
 /// require domain assumptions (for example, `a/a -> 1` or `a^0 -> 1`).
-pub fn presimplify_safe_for_limit(ctx: &mut Context, expr: ExprId) -> ExprId {
+pub(crate) fn presimplify_safe_for_limit(ctx: &mut Context, expr: ExprId) -> ExprId {
     presimplify_recursive(ctx, expr, 0)
 }
 

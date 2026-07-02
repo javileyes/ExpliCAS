@@ -10,7 +10,7 @@ use num_traits::ToPrimitive;
 /// Get a reference to the Number without cloning.
 /// Use for inspection only; the reference is tied to the Context's lifetime.
 #[inline]
-pub fn as_number(ctx: &Context, id: ExprId) -> Option<&num_rational::BigRational> {
+pub(crate) fn as_number(ctx: &Context, id: ExprId) -> Option<&num_rational::BigRational> {
     match ctx.get(id) {
         Expr::Number(n) => Some(n),
         _ => None,
@@ -28,7 +28,7 @@ pub fn as_i64(ctx: &Context, id: ExprId) -> Option<i64> {
 }
 
 /// GCD for rational numbers when both are integers; otherwise returns `1`.
-pub fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
+pub(crate) fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
     if a.is_integer() && b.is_integer() {
         use num_integer::Integer;
         let num_a = a.to_integer();

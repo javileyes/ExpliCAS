@@ -18,21 +18,6 @@ pub fn extract_i64_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
     None
 }
 
-/// Extract an integer multiplier and base from `k*base`, `base*k`, or plain `base`.
-///
-/// Returns `(1, expr)` when no integer `i64` multiplier is found.
-pub fn extract_i64_multiplier_and_base(ctx: &Context, expr: ExprId) -> (i64, ExprId) {
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        if let Some(k) = extract_i64_integer(ctx, *l) {
-            return (k, *r);
-        }
-        if let Some(k) = extract_i64_integer(ctx, *r) {
-            return (k, *l);
-        }
-    }
-    (1, expr)
-}
-
 /// Extract an integer multiplier together with the remaining multiplicative basis factors.
 ///
 /// This is shape-independent for commutative products:
@@ -75,7 +60,7 @@ pub fn extract_i64_multiplier_and_base_factors(
 /// Extract an integer as an exact `BigInt` from an expression.
 ///
 /// Also accepts unary negation wrappers, e.g. `-(5)` -> `-5`.
-pub fn extract_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_bigint::BigInt> {
+pub(crate) fn extract_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_bigint::BigInt> {
     match ctx.get(expr) {
         Expr::Number(n) => {
             if n.is_integer() {
@@ -90,7 +75,7 @@ pub fn extract_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_bigint::
 }
 
 /// Extract a non-negative integer as `u64` from an expression.
-pub fn extract_u64_integer(ctx: &Context, expr: ExprId) -> Option<u64> {
+pub(crate) fn extract_u64_integer(ctx: &Context, expr: ExprId) -> Option<u64> {
     if let Expr::Number(n) = ctx.get(expr) {
         if n.is_integer() {
             return n.to_integer().to_u64();
@@ -100,7 +85,7 @@ pub fn extract_u64_integer(ctx: &Context, expr: ExprId) -> Option<u64> {
 }
 
 /// Extract a non-negative integer as `usize` from an expression.
-pub fn extract_usize_integer(ctx: &Context, expr: ExprId) -> Option<usize> {
+pub(crate) fn extract_usize_integer(ctx: &Context, expr: ExprId) -> Option<usize> {
     if let Expr::Number(n) = ctx.get(expr) {
         if n.is_integer() {
             return n.to_integer().to_usize();
@@ -110,7 +95,7 @@ pub fn extract_usize_integer(ctx: &Context, expr: ExprId) -> Option<usize> {
 }
 
 /// Extract a symbol token from an expression (represented as `Variable`).
-pub fn extract_symbol_name(ctx: &Context, expr: ExprId) -> Option<&str> {
+pub(crate) fn extract_symbol_name(ctx: &Context, expr: ExprId) -> Option<&str> {
     if let Expr::Variable(sym_id) = ctx.get(expr) {
         return Some(ctx.sym_name(*sym_id));
     }
@@ -147,7 +132,10 @@ pub fn extract_exp_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 /// - `log(base, arg)` -> `(base, arg)`
 /// - `ln(arg)` -> `(e, arg)` where `e` is inserted in the context
 /// - `log10(arg)` -> `(10, arg)` where `10` is inserted in the context
-pub fn extract_log_base_argument(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn extract_log_base_argument(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
     // log2(arg) -> (2, arg). The non-mutating view carries an implicit base only for log10 (via a
     // sentinel, since it cannot allocate a numeric node); log2 was simply absent, so base-2 logs
     // never reached the evaluator (`log2(8)` stayed inert while `log10(1000) = 3`). Supply the
@@ -315,7 +303,7 @@ pub fn extract_log_base_argument_relaxed_view(
 /// - plain logs accepted by `extract_log_base_argument_relaxed_view`
 /// - `k * log(...)` / `k * ln(...)` where one factor is numeric
 /// - unary negation wrappers around those forms
-pub fn extract_scaled_log_base_argument_relaxed_view(
+pub(crate) fn extract_scaled_log_base_argument_relaxed_view(
     ctx: &Context,
     expr: ExprId,
 ) -> Option<(Option<ExprId>, ExprId)> {
@@ -348,36 +336,6 @@ mod tests {
         let half = parse("1/2", &mut ctx).expect("parse 1/2");
         assert_eq!(extract_i64_integer(&ctx, five), Some(5));
         assert_eq!(extract_i64_integer(&ctx, half), None);
-    }
-
-    #[test]
-    fn extracts_i64_multiplier_and_base_from_mul_or_plain() {
-        let mut ctx = Context::new();
-        let three_x = parse("3*x", &mut ctx).expect("parse 3*x");
-        let x_four = parse("x*4", &mut ctx).expect("parse x*4");
-        let half_x = parse("(1/2)*x", &mut ctx).expect("parse (1/2)*x");
-        let plain = parse("x+y", &mut ctx).expect("parse x+y");
-        let x = parse("x", &mut ctx).expect("parse x");
-
-        let (k1, b1) = extract_i64_multiplier_and_base(&ctx, three_x);
-        let (k2, b2) = extract_i64_multiplier_and_base(&ctx, x_four);
-        let (k3, b3) = extract_i64_multiplier_and_base(&ctx, half_x);
-        let (k4, b4) = extract_i64_multiplier_and_base(&ctx, plain);
-
-        assert_eq!(k1, 3);
-        assert_eq!(
-            cas_ast::ordering::compare_expr(&ctx, b1, x),
-            std::cmp::Ordering::Equal
-        );
-        assert_eq!(k2, 4);
-        assert_eq!(
-            cas_ast::ordering::compare_expr(&ctx, b2, x),
-            std::cmp::Ordering::Equal
-        );
-        assert_eq!(k3, 1);
-        assert_eq!(b3, half_x);
-        assert_eq!(k4, 1);
-        assert_eq!(b4, plain);
     }
 
     #[test]

@@ -2549,7 +2549,10 @@ pub fn try_rewrite_odd_half_power_expr(
 /// - `sqrt(x)` as `(x, 2)`
 /// - `x^(1/k)` where exponent is numeric `1/k`
 /// - `x^(1/k)` where exponent is structural `Div(1, k)`
-pub fn extract_root_base_and_index(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn extract_root_base_and_index(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
     let sqrt_arg = match ctx.get(expr) {
         Expr::Function(fn_id, args)
             if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
@@ -2590,7 +2593,7 @@ pub fn extract_root_base_and_index(ctx: &mut Context, expr: ExprId) -> Option<(E
 /// Recognizes:
 /// - `sqrt(n)`
 /// - `n^(1/2)` (including equivalent rational constants)
-pub fn extract_numeric_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<i64> {
+pub(crate) fn extract_numeric_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<i64> {
     use cas_ast::views::as_rational_const;
 
     let base = match ctx.get(expr) {
@@ -2623,7 +2626,7 @@ pub fn extract_numeric_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<i64>
 /// Returns `(outside, inside)` such that:
 /// - `outside^k * inside == n`
 /// - `inside` has no remaining `k`-th-power factors
-pub fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
+pub(crate) fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
     if n.is_zero() {
         return (BigInt::zero(), BigInt::one());
     }
@@ -2695,7 +2698,7 @@ pub fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
 /// Safe cases:
 /// - Purely numeric subexpressions.
 /// - Symbolic factors whose exponents are integer multiples of `n`.
-pub fn can_distribute_root_safely(ctx: &Context, expr: ExprId, root_index: &BigInt) -> bool {
+pub(crate) fn can_distribute_root_safely(ctx: &Context, expr: ExprId, root_index: &BigInt) -> bool {
     match ctx.get(expr) {
         Expr::Number(_) => true,
         Expr::Variable(_) | Expr::Constant(_) => root_index == &BigInt::from(1),
@@ -2794,7 +2797,7 @@ pub fn split_numeric_plus_surd(ctx: &Context, expr: ExprId) -> Option<(ExprId, E
 /// Check whether two expressions are conjugates in the `m ± t` form.
 ///
 /// Returns `(m, t)` when both sides share the same `m` and `t` and opposite sign.
-pub fn conjugate_numeric_surd_pair(
+pub(crate) fn conjugate_numeric_surd_pair(
     ctx: &Context,
     left: ExprId,
     right: ExprId,
@@ -2819,7 +2822,7 @@ pub fn conjugate_numeric_surd_pair(
 }
 
 /// Extract base from `Pow(base, 1/3)`.
-pub fn extract_cube_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn extract_cube_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
         match ctx.get(*exp) {
             Expr::Number(n) => {
@@ -2874,7 +2877,7 @@ pub fn rational_cbrt_exact(r: &BigRational) -> Option<BigRational> {
 /// root of a negative is undefined over the reals (returns `None`); an odd root
 /// keeps the sign. Generalizes `rational_sqrt` (n=2) and `rational_cbrt_exact`
 /// (n=3).
-pub fn rational_nth_root(r: &BigRational, n: u32) -> Option<BigRational> {
+pub(crate) fn rational_nth_root(r: &BigRational, n: u32) -> Option<BigRational> {
     if n == 0 {
         return None;
     }
@@ -2904,7 +2907,7 @@ pub fn rational_nth_root(r: &BigRational, n: u32) -> Option<BigRational> {
 }
 
 /// Compute `t²` when `t` is numeric, `sqrt(d)`, `d^(1/2)`, or `k*sqrt(d)`.
-pub fn surd_square_rational(ctx: &Context, t: ExprId) -> Option<BigRational> {
+pub(crate) fn surd_square_rational(ctx: &Context, t: ExprId) -> Option<BigRational> {
     match ctx.get(t) {
         Expr::Number(n) => Some(n * n),
         Expr::Function(fn_id, args)
@@ -2974,7 +2977,10 @@ pub fn surd_square_rational(ctx: &Context, t: ExprId) -> Option<BigRational> {
 /// Find a rational root of the depressed cubic `x³ + p·x + q = 0`.
 ///
 /// Uses Rational Root Theorem after clearing denominators.
-pub fn find_rational_root_depressed_cubic(p: &BigRational, q: &BigRational) -> Option<BigRational> {
+pub(crate) fn find_rational_root_depressed_cubic(
+    p: &BigRational,
+    q: &BigRational,
+) -> Option<BigRational> {
     use num_bigint::BigInt;
 
     if q.is_zero() {

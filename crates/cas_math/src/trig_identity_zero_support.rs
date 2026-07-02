@@ -178,16 +178,16 @@ fn is_trig_squared_t(ctx: &Context, expr: ExprId, trig: BuiltinFn, t: ExprId) ->
     compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal
 }
 
-pub fn is_sin_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
+pub(crate) fn is_sin_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
     is_trig_squared_t(ctx, expr, BuiltinFn::Sin, t)
 }
 
-pub fn is_cos_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
+pub(crate) fn is_cos_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
     is_trig_squared_t(ctx, expr, BuiltinFn::Cos, t)
 }
 
 /// Match `1 + tan(a)*tan(b)` (in any operand order) and return the two `tan` nodes.
-pub fn extract_one_plus_tan_product_nodes(
+pub(crate) fn extract_one_plus_tan_product_nodes(
     ctx: &Context,
     expr: ExprId,
     a: ExprId,
@@ -218,11 +218,6 @@ pub fn extract_one_plus_tan_product_nodes(
     } else {
         None
     }
-}
-
-/// Match `1 + tan(a)*tan(b)` (in any operand order).
-pub fn match_one_plus_tan_product(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> bool {
-    extract_one_plus_tan_product_nodes(ctx, expr, a, b).is_some()
 }
 
 fn extract_sub_like(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
@@ -297,7 +292,7 @@ fn match_tan_difference_identity_pair(
 
 /// Match full identity cancellation form:
 /// `tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b))` (or swapped sides).
-pub fn match_tan_difference_identity_expr(
+pub(crate) fn match_tan_difference_identity_expr(
     ctx: &Context,
     expr: ExprId,
 ) -> Option<TanDifferenceIdentityMatch> {
@@ -455,7 +450,7 @@ fn is_1_minus_2sin_sq(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> boo
 /// Match:
 /// `sin(4t) - 4*sin(t)*cos(t)*(cos²(t)-sin²(t))` (or swapped sides),
 /// including the equivalent `cos(2t)` factor in place of `(cos²-sin²)`.
-pub fn match_sin4x_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn match_sin4x_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
     let Some((left, right)) = extract_sub_like(ctx, expr) else {
         return false;
     };
@@ -529,7 +524,7 @@ fn match_sin_sum_triple_identity_pair(ctx: &Context, lhs: ExprId, rhs: ExprId) -
     has_two && has_sin_2t && has_cos_t
 }
 
-pub fn match_sin_sum_triple_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn match_sin_sum_triple_identity_zero_expr(ctx: &Context, expr: ExprId) -> bool {
     let Some((left, right)) = extract_sub_like(ctx, expr) else {
         return false;
     };
@@ -752,20 +747,6 @@ mod tests {
         assert!(is_sin_squared_t(&ctx, sin_sq, t));
         assert!(is_cos_squared_t(&ctx, cos_sq, t));
         assert!(!is_sin_squared_t(&ctx, wrong, t));
-    }
-
-    #[test]
-    fn matches_one_plus_tan_product_both_orders() {
-        let mut ctx = Context::new();
-        let a = parse("a", &mut ctx).expect("a");
-        let b = parse("b", &mut ctx).expect("b");
-        let expr1 = parse("1 + tan(a)*tan(b)", &mut ctx).expect("expr1");
-        let expr2 = parse("tan(b)*tan(a) + 1", &mut ctx).expect("expr2");
-        let wrong = parse("1 + tan(a)*tan(c)", &mut ctx).expect("wrong");
-
-        assert!(match_one_plus_tan_product(&ctx, expr1, a, b));
-        assert!(match_one_plus_tan_product(&ctx, expr2, a, b));
-        assert!(!match_one_plus_tan_product(&ctx, wrong, a, b));
     }
 
     #[test]

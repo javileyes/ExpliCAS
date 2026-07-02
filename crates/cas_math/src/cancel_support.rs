@@ -12,7 +12,7 @@ use std::hash::{Hash, Hasher};
 /// Collect additive terms from an expression, flattening `Add/Sub/Neg`.
 ///
 /// Each term is returned as `(term_expr_id, is_positive)`.
-pub fn collect_additive_terms_signed(
+pub(crate) fn collect_additive_terms_signed(
     ctx: &Context,
     id: ExprId,
     positive: bool,
@@ -37,7 +37,7 @@ pub fn collect_additive_terms_signed(
 /// Rebuild an additive expression from signed terms.
 ///
 /// Empty input returns `0`.
-pub fn rebuild_from_signed_terms(ctx: &mut Context, terms: &[(ExprId, bool)]) -> ExprId {
+pub(crate) fn rebuild_from_signed_terms(ctx: &mut Context, terms: &[(ExprId, bool)]) -> ExprId {
     if terms.is_empty() {
         return ctx.num(0);
     }
@@ -63,7 +63,7 @@ pub fn rebuild_from_signed_terms(ctx: &mut Context, terms: &[(ExprId, bool)]) ->
 ///
 /// This hash is shape-sensitive and order-sensitive for non-commutative nodes.
 /// It is suitable as a cheap pre-filter before exact structural comparison.
-pub fn structural_expr_fingerprint(ctx: &Context, id: ExprId) -> u64 {
+pub(crate) fn structural_expr_fingerprint(ctx: &Context, id: ExprId) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut h = DefaultHasher::new();
     hash_expr_structural(ctx, id, &mut h);
@@ -107,7 +107,7 @@ fn hash_expr_structural(ctx: &Context, id: ExprId, h: &mut impl Hasher) {
 ///
 /// Folds `Pow(x,a) * Pow(x,b) -> Pow(x,a+b)` and `Number * Number -> Number`,
 /// treating bare variables as `Pow(x, 1)`. Falls back to plain multiplication.
-pub fn mul_preview(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+pub(crate) fn mul_preview(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     if let (Expr::Number(na), Expr::Number(nb)) = (ctx.get(a), ctx.get(b)) {
         let product = na.clone() * nb.clone();
         return ctx.add(Expr::Number(product));

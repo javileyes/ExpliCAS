@@ -124,7 +124,7 @@ const EVAL_RULES: &[(&str, EvalCheck, ResultBuilder, ReciprocalTrigEvalKind)] = 
 ];
 
 /// Evaluate exact reciprocal trig and inverse-reciprocal trig table values.
-pub fn eval_reciprocal_trig_value(
+pub(crate) fn eval_reciprocal_trig_value(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
@@ -166,7 +166,7 @@ const COMPOSITION_PAIRS: &[(&str, &str)] = &[
 ];
 
 /// Returns true for identities of form `f(g(x)) = x` in reciprocal trig pairs.
-pub fn is_reciprocal_trig_composition(outer_name: &str, inner_name: &str) -> bool {
+pub(crate) fn is_reciprocal_trig_composition(outer_name: &str, inner_name: &str) -> bool {
     COMPOSITION_PAIRS
         .iter()
         .any(|(outer, inner)| outer_name == *outer && inner_name == *inner)
@@ -253,7 +253,7 @@ const NEG_BEHAVIORS: &[(&str, NegBehavior)] = &[
 ];
 
 /// Rewrite reciprocal trig negative arguments using parity/principal-branch identities.
-pub fn rewrite_negative_reciprocal_trig_argument(
+pub(crate) fn rewrite_negative_reciprocal_trig_argument(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,

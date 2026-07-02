@@ -16,7 +16,7 @@ use super::{Monomial, MultiPoly, PolyBudget, PolyError};
 ///
 /// Delegates to the canonical `cas_ast::collect_variables` traversal,
 /// converting to `BTreeSet` for deterministic variable ordering.
-pub fn collect_poly_vars(ctx: &Context, expr: ExprId) -> BTreeSet<String> {
+pub(crate) fn collect_poly_vars(ctx: &Context, expr: ExprId) -> BTreeSet<String> {
     cas_ast::collect_variables(ctx, expr).into_iter().collect()
 }
 

@@ -11,7 +11,11 @@ use cas_ast::{Context, Expr, ExprId};
 /// - `term` contains functions or roots
 /// - denominator contains functions or roots
 /// - denominator is purely numeric
-pub fn should_block_fold_add_term_or_den(ctx: &Context, term: ExprId, denominator: ExprId) -> bool {
+pub(crate) fn should_block_fold_add_term_or_den(
+    ctx: &Context,
+    term: ExprId,
+    denominator: ExprId,
+) -> bool {
     contains_div_term(ctx, term)
         || contains_function_or_root(ctx, term)
         || contains_function_or_root(ctx, denominator)
@@ -19,7 +23,7 @@ pub fn should_block_fold_add_term_or_den(ctx: &Context, term: ExprId, denominato
 }
 
 /// Combined policy guard for `k + p/q -> (k*q + p)/q`.
-pub fn should_block_fold_add_rewrite(
+pub(crate) fn should_block_fold_add_rewrite(
     ctx: &Context,
     term: ExprId,
     denominator: ExprId,

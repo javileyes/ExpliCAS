@@ -105,7 +105,7 @@ pub fn normalize_for_even_fn(ctx: &Context, expr: ExprId) -> ExprId {
 
 /// Simplify a numeric division in coefficient-linear forms.
 /// Examples: `4*x/2 -> 2*x`, `-2*x/2 -> -x`, `4/2 -> 2`.
-pub fn simplify_numeric_div(ctx: &mut Context, expr: ExprId) -> ExprId {
+pub(crate) fn simplify_numeric_div(ctx: &mut Context, expr: ExprId) -> ExprId {
     let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
         (*n, *d)
     } else {

@@ -2,7 +2,7 @@ use crate::expr_nary::AddView;
 use cas_ast::{Context, Expr, ExprId};
 
 /// Find a suitable multiplier to clear denominators in telescoping-style sums.
-pub fn find_denominator_for_clearing(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn find_denominator_for_clearing(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let view = AddView::from_expr(ctx, expr);
 
     for &(term, _sign) in &view.terms {

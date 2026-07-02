@@ -11,7 +11,7 @@ pub fn add_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
 }
 
 /// Multiply two exponent expressions, folding when both are numeric literals.
-pub fn mul_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
+pub(crate) fn mul_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
     if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(e1), ctx.get(e2)) {
         let prod = n1 * n2;
         ctx.add(Expr::Number(prod))
@@ -21,7 +21,7 @@ pub fn mul_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
 }
 
 /// Check whether an expression has a numeric factor at top level.
-pub fn has_numeric_factor(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn has_numeric_factor(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(_) => true,
         Expr::Mul(l, r) => {

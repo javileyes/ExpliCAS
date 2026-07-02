@@ -7,7 +7,7 @@ use cas_ast::{Context, Expr, ExprId};
 /// - `Pow(Add/Sub, integer >= 2)`
 ///
 /// Search depth is capped to keep this predicate cheap.
-pub fn contains_expandable_small_depth(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn contains_expandable_small_depth(ctx: &Context, expr: ExprId) -> bool {
     contains_expandable_depth(ctx, expr, 0)
 }
 

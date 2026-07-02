@@ -835,7 +835,7 @@ pub fn try_rewrite_pythagorean_identity_add_expr(
 ///
 /// In non-expand mode, only allow `sin/cos/tan` over `Add/Sub` where both sides
 /// contain at least one variable, or `sin/cos/tan((Add/Sub)/c)` with same property.
-pub fn should_block_angle_identity_non_expand_mode(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn should_block_angle_identity_non_expand_mode(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Function(_, args) if args.len() == 1 => match ctx.get(args[0]) {
             Expr::Add(l, r) | Expr::Sub(l, r) => {
@@ -854,7 +854,7 @@ pub fn should_block_angle_identity_non_expand_mode(ctx: &Context, expr: ExprId) 
 }
 
 /// True when angle-sum expansion should be blocked due to large coefficients.
-pub fn should_block_angle_identity_large_coeff(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn should_block_angle_identity_large_coeff(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
         return matches!(
             ctx.builtin_of(*fn_id),
@@ -867,7 +867,7 @@ pub fn should_block_angle_identity_large_coeff(ctx: &Context, expr: ExprId) -> b
 
 /// True when angle-sum expansion should be blocked because an Add/Sub operand
 /// already contains a multiple-angle term.
-pub fn should_block_angle_identity_multiple_angle(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn should_block_angle_identity_multiple_angle(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
         if matches!(
             ctx.builtin_of(*fn_id),

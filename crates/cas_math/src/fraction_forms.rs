@@ -64,7 +64,7 @@ fn try_extract_factor(ctx: &Context, expr: ExprId, factor: ExprId) -> Option<Exp
 }
 
 /// Check if expression is `+1` or `-1` (including `Neg(1)` shape).
-pub fn sign_one(ctx: &Context, id: ExprId) -> Option<SignOne> {
+pub(crate) fn sign_one(ctx: &Context, id: ExprId) -> Option<SignOne> {
     use num_rational::BigRational;
     match ctx.get(id) {
         Expr::Number(n) => {
@@ -90,7 +90,10 @@ pub fn sign_one(ctx: &Context, id: ExprId) -> Option<SignOne> {
 /// - `a + 1` => `(a, 1, true,  true)`
 /// - `a - 1` => `(a, 1, false, true)`
 /// - `a + (-1)` => `(a, 1, false, true)` (normalized to subtraction)
-pub fn split_binomial_den(ctx: &mut Context, den: ExprId) -> Option<(ExprId, ExprId, bool, bool)> {
+pub(crate) fn split_binomial_den(
+    ctx: &mut Context,
+    den: ExprId,
+) -> Option<(ExprId, ExprId, bool, bool)> {
     let one = ctx.num(1);
     match ctx.get(den) {
         Expr::Add(l, r) => match sign_one(ctx, *r) {
@@ -113,7 +116,7 @@ pub fn split_binomial_den(ctx: &mut Context, den: ExprId) -> Option<(ExprId, Exp
 /// - `(a - b)` vs `(b - a)`
 /// - `(-a + b)` vs `(a - b)`
 /// - `(a-b)(a-c)` vs `(a-c)(b-a)`
-pub fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+pub(crate) fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
     match (ctx.get(e1), ctx.get(e2)) {
         // Case 1: (a - b) vs (b - a)
         (Expr::Sub(l1, r1), Expr::Sub(l2, r2)) => {
@@ -206,7 +209,7 @@ pub fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool 
 /// - `Div(num, den)`
 /// - `Mul(Number(±1/n), x)` / `Mul(x, Number(±1/n))`
 /// - `Mul(Div(±1, den), x)` / `Mul(x, Div(±1, den))`
-pub fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool) {
+pub(crate) fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool) {
     use num_bigint::BigInt;
     use num_rational::BigRational;
     use num_traits::Signed;
@@ -286,7 +289,7 @@ pub fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, 
 /// Check if one denominator divides the other.
 ///
 /// Returns `(new_n1, new_n2, common_den, is_divisible)`.
-pub fn check_divisible_denominators(
+pub(crate) fn check_divisible_denominators(
     ctx: &mut Context,
     n1: ExprId,
     n2: ExprId,

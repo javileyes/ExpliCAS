@@ -4,7 +4,10 @@ use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
 /// Extract trig function name and argument from `sin(arg)` / `cos(arg)`.
-pub fn extract_sin_cos_fn_arg(ctx: &Context, expr: ExprId) -> Option<(&'static str, ExprId)> {
+pub(crate) fn extract_sin_cos_fn_arg(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(&'static str, ExprId)> {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
         let builtin = ctx.builtin_of(*fn_id);
         if args.len() == 1 {

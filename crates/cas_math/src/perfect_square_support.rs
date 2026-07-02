@@ -79,7 +79,7 @@ pub fn rational_sqrt(r: &BigRational) -> Option<BigRational> {
 /// - `Pow(base, 2k)` -> `base^k`
 /// - `Mul(n, Pow(base, 2k))` with perfect-square integer `n` -> `sqrt(n) * base^k`
 /// - `Number(n)` with perfect-square integer `n` -> `sqrt(n)`
-pub fn extract_square_root_of_term(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
+pub(crate) fn extract_square_root_of_term(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
     if let Some(root) = extract_square_root_of_simple_term(ctx, term) {
         return Some(root);
     }

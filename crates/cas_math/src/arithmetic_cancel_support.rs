@@ -75,7 +75,7 @@ fn should_skip_semantic_self_cancel_check(ctx: &Context, lhs: ExprId, rhs: ExprI
 /// Match `a - a` using semantic equality.
 ///
 /// Returns the representative inner term when both sides are semantically equal.
-pub fn match_sub_self_semantic_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn match_sub_self_semantic_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Sub(lhs, rhs) = ctx.get(expr) else {
         return None;
     };
@@ -138,7 +138,7 @@ pub fn match_sub_self_semantic_expr(ctx: &Context, expr: ExprId) -> Option<ExprI
 /// - `(-a) + a`
 ///
 /// Returns `a` when matched.
-pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Add(l, r) = ctx.get(expr) else {
         return None;
     };
@@ -1619,7 +1619,7 @@ pub fn expr_carries_nonfinite_or_undefined(ctx: &Context, expr: ExprId) -> bool 
 /// mode the structurally-real-undefined forms that are defined in ℂ (even roots of
 /// negatives, `ln`/`log` of negatives) are not counted as non-finite; genuine
 /// non-finites (`Infinity`, `Undefined`, `c/0`, trig poles) still are.
-pub fn expr_carries_nonfinite_or_undefined_in_domain(
+pub(crate) fn expr_carries_nonfinite_or_undefined_in_domain(
     ctx: &Context,
     expr: ExprId,
     vd: crate::abs_support::ValueDomainMode,
@@ -1644,39 +1644,6 @@ pub fn expr_carries_nonfinite_or_undefined_in_domain(
             .any(|&c| expr_carries_nonfinite_or_undefined_in_domain(ctx, c, vd)),
         _ => false,
     }
-}
-
-/// True when rewriting `before` into `after` would unsoundly drop a non-finite or
-/// undefined value.
-///
-/// `before` is an additive node (`Add`/`Sub`) that carries a literal non-finite
-/// or undefined value, but `after` no longer does. Every such rewrite is a
-/// cancellation/collapse that silently turned an *indeterminate* difference
-/// (`inf - inf`, `x/0 - x/0`, `sqrt(inf) - sqrt(inf)`, `undefined - undefined`,
-/// `ln(inf) - ln(inf) + 7`) into a purely finite value — which is unsound.
-///
-/// This is the universal backstop applied at every rewrite-acceptance point
-/// (`Rule::apply` and the orchestrator root-shortcut dispatch), because the same
-/// "this additive combination is zero" conclusion is reached by a large family of
-/// independent rules and shortcuts. A *sound* resolution either keeps the value
-/// non-finite (`inf + 1 -> inf`) or folds to `undefined` — both of which still
-/// "carry", so they are never blocked. Function/quotient *evaluations* such as
-/// `atan(inf) -> pi/2` or `1/inf -> 0` operate on non-additive nodes, so they are
-/// never blocked either.
-///
-/// The second clause covers division by a PROVABLY-zero denominator: a quotient
-/// `c/(x-x)` is `c/0` (undefined), so a fraction-simplification shortcut that
-/// cancels its zero factor — `(x^2-x^2)/(x-x) -> x+x`, `(3x-3x)/(x-x) -> 3` — is
-/// unsound and must be rejected. This is scoped to a *provably-zero* denominator
-/// (not any non-finite-bearing `Div`), so a legitimate evaluation like `1/inf -> 0`
-/// (where `inf` is non-zero) is never blocked.
-pub fn rewrite_unsoundly_drops_nonfinite(ctx: &Context, before: ExprId, after: ExprId) -> bool {
-    rewrite_unsoundly_drops_nonfinite_in_domain(
-        ctx,
-        before,
-        after,
-        crate::abs_support::ValueDomainMode::RealOnly,
-    )
 }
 
 /// Domain-aware variant of [`rewrite_unsoundly_drops_nonfinite`]. In `ComplexEnabled`
@@ -1727,7 +1694,7 @@ pub fn rewrite_unsoundly_drops_nonfinite_in_domain(
 /// `Infinity` has well-defined limit evaluations under many strict operators
 /// (`1/inf -> 0`, `tanh(inf) -> 1`, `sign(inf) -> 1`, `e^(-inf) -> 0`), so dropping
 /// it is frequently sound, whereas dropping a genuine `undefined`/`c/0` never is.
-pub fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
     expr_carries_undefined_in_domain(ctx, expr, crate::abs_support::ValueDomainMode::RealOnly)
 }
 
@@ -1735,7 +1702,7 @@ pub fn expr_carries_undefined(ctx: &Context, expr: ExprId) -> bool {
 /// structurally-real-undefined forms that are defined in ℂ (even roots of negatives,
 /// `ln`/`log` of negatives) are not counted; `c/0`, `Undefined`, `0^k` (k ≤ 0) and
 /// trig poles still are.
-pub fn expr_carries_undefined_in_domain(
+pub(crate) fn expr_carries_undefined_in_domain(
     ctx: &Context,
     expr: ExprId,
     vd: crate::abs_support::ValueDomainMode,
@@ -1801,10 +1768,9 @@ pub fn try_rewrite_add_inverse_zero_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        expr_carries_nonfinite_or_undefined, expr_carries_undefined, is_provably_zero,
-        match_add_inverse_expr, match_sub_self_semantic_expr, rewrite_unsoundly_drops_nonfinite,
-        rewrite_unsoundly_drops_nonfinite_in_domain, try_rewrite_add_inverse_zero_expr,
-        try_rewrite_sub_self_zero_expr,
+        expr_carries_nonfinite_or_undefined, is_provably_zero, match_add_inverse_expr,
+        match_sub_self_semantic_expr, rewrite_unsoundly_drops_nonfinite_in_domain,
+        try_rewrite_add_inverse_zero_expr, try_rewrite_sub_self_zero_expr,
     };
     use crate::abs_support::ValueDomainMode;
     use cas_ast::Context;
@@ -1856,312 +1822,6 @@ mod tests {
                     "`{src}` -> 0 must stay blocked in {vd:?} (undefined in both domains)"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn rewrite_filter_blocks_nonfinite_additive_drop_but_allows_evaluations() {
-        let mut ctx = Context::new();
-        let zero = ctx.num(0);
-        let undef = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Undefined));
-
-        // Additive non-finite collapses to a finite value -> BLOCKED.
-        for src in [
-            "inf - inf",
-            "sqrt(inf) - sqrt(inf)",
-            "ln(inf) - ln(inf) + 7",
-            "x/0 - x/0 + y/0 - y/0",
-            "sin(undefined) - sin(undefined)",
-        ] {
-            let before = parse(src, &mut ctx).expect("parse");
-            assert!(
-                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero),
-                "`{src}` -> 0 must be flagged as an unsound drop"
-            );
-        }
-
-        // Folding the SAME non-finite difference to `undefined` is allowed (after
-        // still carries the non-finite marker).
-        let inf_minus_inf = parse("inf - inf", &mut ctx).expect("parse");
-        assert!(!rewrite_unsoundly_drops_nonfinite(
-            &ctx,
-            inf_minus_inf,
-            undef
-        ));
-
-        // A non-ADDITIVE node carrying non-finite (a function/quotient evaluation
-        // like `atan(inf) -> pi/2` or `1/inf -> 0`) is never blocked.
-        let atan_inf = parse("atan(inf)", &mut ctx).expect("parse");
-        let pi_half = parse("pi/2", &mut ctx).expect("parse");
-        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, atan_inf, pi_half));
-
-        // A purely finite additive expression simplifying is never blocked.
-        let finite = parse("2*x + 3*x", &mut ctx).expect("parse");
-        let five_x = parse("5*x", &mut ctx).expect("parse");
-        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, finite, five_x));
-
-        // A `Div` with a PROVABLY-zero denominator folding to a finite value is
-        // blocked (`(x^2-x^2)/(x-x) -> x+x`), but `1/inf -> 0` (denominator non-zero)
-        // and a legit quotient (`(x^2-1)/(x-1) -> x+1`) are NOT.
-        let sq_over_zero = parse("(x^2-x^2)/(x-x)", &mut ctx).expect("parse");
-        let x_plus_x = parse("x+x", &mut ctx).expect("parse");
-        assert!(rewrite_unsoundly_drops_nonfinite(
-            &ctx,
-            sq_over_zero,
-            x_plus_x
-        ));
-        let one_over_inf = parse("1/inf", &mut ctx).expect("parse");
-        let zero = ctx.num(0);
-        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, one_over_inf, zero));
-        let legit = parse("(x^2-1)/(x-1)", &mut ctx).expect("parse");
-        let x_plus_1 = parse("x+1", &mut ctx).expect("parse");
-        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, legit, x_plus_1));
-
-        // R4-5: a strict WRAPPER (function/power/product/neg) around a genuinely
-        // UNDEFINED value (`c/0`, `Undefined`) must not collapse to a finite value:
-        // `f(undefined) = undefined`. This covers the `simplify`/`expand`/`factor`
-        // command surface and any `f(1/(x-x) - 1/(x-x))`.
-        let zero2 = ctx.num(0);
-        for src in [
-            "abs(1/(x-x) - 1/(x-x))",
-            "sin(1/(x-x) - 1/(x-x))",
-            "simplify(1/(x-x) - 1/(x-x))",
-            "expand(1/(sin(x)^2+cos(x)^2-1) - 1/(sin(x)^2+cos(x)^2-1))",
-            "(1/(x-x) - 1/(x-x))^2",
-            "-(1/(x*x-x^2) - 1/(x*x-x^2))",
-            "sin(undefined)",
-        ] {
-            let before = parse(src, &mut ctx).expect("parse");
-            assert!(
-                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
-                "`{src}` -> 0 must be flagged as an unsound drop"
-            );
-        }
-
-        // A wrapper that maps the undefined argument to ANOTHER non-finite (e.g.
-        // `ln(1/(x-x) - 1/(x-x)) -> -inf` via `ln(0) -> -inf`) is STILL an unsound
-        // drop: `ln(undefined) = undefined`, not `-inf`. Infinity must not excuse it.
-        let neg_inf = parse("-inf", &mut ctx).expect("parse");
-        let ln_undef = parse("ln(1/(x-x) - 1/(x-x))", &mut ctx).expect("parse");
-        assert!(rewrite_unsoundly_drops_nonfinite(&ctx, ln_undef, neg_inf));
-
-        // But a wrapper around a NONZERO-denominator quotient (legitimately
-        // cancellable) or carrying only `Infinity` (legit limit evaluation) is NOT
-        // blocked: `abs(1/(x+1) - 1/(x+1)) -> 0`, `tanh(inf) -> 1`.
-        let abs_nonzero = parse("abs(1/(x+1) - 1/(x+1))", &mut ctx).expect("parse");
-        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, abs_nonzero, zero2));
-        let tanh_inf = parse("tanh(inf)", &mut ctx).expect("parse");
-        let one = ctx.num(1);
-        assert!(!rewrite_unsoundly_drops_nonfinite(&ctx, tanh_inf, one));
-
-        // `expr_carries_undefined` excludes pure Infinity but flags `c/0`/`Undefined`.
-        let inf_fn = parse("atan(inf)", &mut ctx).expect("parse");
-        assert!(!expr_carries_undefined(&ctx, inf_fn));
-        let zero_den = parse("sin(1/(x-x))", &mut ctx).expect("parse");
-        assert!(expr_carries_undefined(&ctx, zero_den));
-
-        // R4-6: the `D^(-n)` reciprocal spelling of a zero denominator is `1/0`,
-        // undefined — `(x-x)^(-1) - (x-x)^(-1) -> 0` must be blocked, across every
-        // provably-zero family and any negative rational exponent.
-        for src in [
-            "(x-x)^(-1) - (x-x)^(-1)",
-            "(x*x-x^2)^(-1) - (x*x-x^2)^(-1)",
-            "(sin(x)^2+cos(x)^2-1)^(-1) - (sin(x)^2+cos(x)^2-1)^(-1)",
-            "(ln(e^x)-x)^(-1) - (ln(e^x)-x)^(-1)",
-            "(x-x)^(-2) - (x-x)^(-2)",
-        ] {
-            let before = parse(src, &mut ctx).expect("parse");
-            assert!(
-                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
-                "`{src}` -> 0 must be flagged as an unsound drop"
-            );
-        }
-        // But a POSITIVE exponent (`0^n = 0`, defined) or a non-provably-zero base
-        // is NOT blocked: `(x-x)^2 - (x-x)^2 -> 0` and `x^(-1) - x^(-1) -> 0` are sound.
-        for src in [
-            "(x-x)^2 - (x-x)^2",
-            "x^(-1) - x^(-1)",
-            "(x+1)^(-1) - (x+1)^(-1)",
-        ] {
-            let before = parse(src, &mut ctx).expect("parse");
-            assert!(
-                !rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
-                "`{src}` -> 0 must NOT be blocked (sound cancellation)"
-            );
-        }
-        // `expr_carries_undefined` flags `D^(-n)` (zero base, negative exp) and `D^0`
-        // (R3-2 `0^0` indeterminate) but not `D^n` (positive exp -> 0, defined).
-        let pow_recip = parse("(x-x)^(-1)", &mut ctx).expect("parse");
-        assert!(expr_carries_undefined(&ctx, pow_recip));
-        let pow_pos = parse("(x-x)^2", &mut ctx).expect("parse");
-        assert!(!expr_carries_undefined(&ctx, pow_pos));
-        let pow_zero = parse("(x-x)^0", &mut ctx).expect("parse");
-        assert!(expr_carries_undefined(&ctx, pow_zero));
-
-        // R3-2: a power/function at a PROVABLY-ZERO argument that is a pole or
-        // indeterminate (`0^0`, `cot(0)`, `csc(0)`) is undefined — `A − A → 0` blocked.
-        for src in [
-            "0^0 - 0^0",
-            "(x-x)^0 - (x-x)^0",
-            "0^0 - 1",
-            "cot(0) - cot(0)",
-            "csc(0) - csc(0)",
-            "cot(x-x) - cot(x-x)",
-            // `0^(provably-zero EXPRESSION)` = `0^0`: the exponent is not a literal.
-            "0^(x-x) - 0^(x-x)",
-            "0^(sin(x)^2+cos(x)^2-1) - 0^(sin(x)^2+cos(x)^2-1)",
-            "2*0^(x-x) - 2*0^(x-x)",
-        ] {
-            let before = parse(src, &mut ctx).expect("parse");
-            assert!(
-                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
-                "`{src}` -> 0 must be flagged as an unsound drop"
-            );
-        }
-        // But a NON-provably-zero argument is a genuine value whose cancellation is
-        // sound (`cot(x) − cot(x) → 0`), and `ln(0)` is excluded (it is −∞, and
-        // `1/ln(0) = 0`, so flagging it would wrongly block `1/ln(0) − 1/ln(0) → 0`).
-        for src in [
-            "cot(x) - cot(x)",
-            "cot(1) - cot(1)",
-            "csc(y) - csc(y)",
-            "(x-x+1)^0 - (x-x+1)^0",
-        ] {
-            let before = parse(src, &mut ctx).expect("parse");
-            assert!(
-                !rewrite_unsoundly_drops_nonfinite(&ctx, before, zero2),
-                "`{src}` -> 0 must NOT be blocked (sound cancellation)"
-            );
-        }
-        let cot_zero = parse("cot(x-x)", &mut ctx).expect("parse");
-        assert!(expr_carries_undefined(&ctx, cot_zero));
-        let ln_zero = parse("ln(x-x)", &mut ctx).expect("parse");
-        assert!(!expr_carries_undefined(&ctx, ln_zero)); // -inf, excluded
-
-        // Round-3 Cluster A: an EVEN root of a NEGATIVE base (`sqrt(-2) = (-2)^(1/2)`,
-        // and the `Sqrt` builtin form) is undefined over ℝ, so the power/quotient merges
-        // that produce a real value (`sqrt(-2)^2 → -2`, `sqrt(-2)*sqrt(-2) → -2`,
-        // `sqrt(-9)/sqrt(-4) → 3/2`) are unsound drops and must be blocked.
-        for src in [
-            "(-2)^(1/2) * (-2)^(1/2)",
-            "(-1)^(1/2) * (-1)^(1/2)",
-            "((-2)^(1/2))^2",
-            "(-1)^(3/2) - (-1)^(3/2)",
-        ] {
-            let before = parse(src, &mut ctx).expect("parse");
-            let any = ctx.num(7); // a finite, undefined-free target
-            assert!(
-                rewrite_unsoundly_drops_nonfinite(&ctx, before, any),
-                "`{src}` -> finite must be flagged as an unsound drop"
-            );
-        }
-        // `expr_carries_undefined` flags even-roots-of-negative (both `Pow` and `Sqrt`
-        // spellings) but never a real odd root, a positive base, or an integer power.
-        for src in ["(-2)^(1/2)", "(-1)^(1/2)", "sqrt(-9)", "(-4)^(1/4)"] {
-            let e = parse(src, &mut ctx).expect("parse");
-            assert!(
-                expr_carries_undefined(&ctx, e),
-                "`{src}` is undefined over R"
-            );
-        }
-        for src in [
-            "(-8)^(1/3)",
-            "(-1)^(1/3)",
-            "(-8)^(2/3)",
-            "2^(1/2)",
-            "(-2)^3",
-            "sqrt(2)",
-        ] {
-            let e = parse(src, &mut ctx).expect("parse");
-            assert!(
-                !expr_carries_undefined(&ctx, e),
-                "`{src}` is a real value, must NOT be flagged undefined"
-            );
-        }
-    }
-
-    #[test]
-    fn trig_poles_and_negative_log_block_additive_cancellation() {
-        // Round-4 Cluster G: a VAR-FREE constant that is undefined over ℝ —
-        // `tan`/`sec` at a half-odd-integer multiple of π, `cot`/`csc` at an integer
-        // multiple of π, `ln`/`log` of a negative — must NOT cancel with itself to a
-        // finite value (`tan(π/2) - tan(π/2)` is `undefined`, not `0`). Sign and
-        // representation variants (`-π/2`, `3π/2`, `(-1/2)·π`) all resolve.
-        let mut ctx = Context::new();
-        let zero = ctx.num(0);
-        for src in [
-            "tan(pi/2) - tan(pi/2)",
-            "tan(-pi/2) - tan(-pi/2)",
-            "tan(3*pi/2) - tan(3*pi/2)",
-            "sec(pi/2) - sec(pi/2)",
-            "sec(-pi/2) - sec(-pi/2)",
-            "cot(pi) - cot(pi)",
-            "cot(-pi) - cot(-pi)",
-            "cot(2*pi) - cot(2*pi)",
-            "csc(pi) - csc(pi)",
-            "ln(-5) - ln(-5)",
-            "ln(-1/2) - ln(-1/2)",
-            "tan(pi/2) - tan(pi/2) + 5",
-            // Sum/difference arguments that normalize to a pole.
-            "tan(pi/4 + pi/4) - tan(pi/4 + pi/4)",
-            "tan(pi/3 + pi/6) - tan(pi/3 + pi/6)",
-            "tan(pi/2 + pi) - tan(pi/2 + pi)",
-            "tan(pi/2 - pi) - tan(pi/2 - pi)",
-            "tan(pi/2 + 0) - tan(pi/2 + 0)",
-            "cot(pi/2 + pi/2) - cot(pi/2 + pi/2)",
-            "csc(pi/3 + 2*pi/3) - csc(pi/3 + 2*pi/3)",
-            // Two-argument `log(base, value)` of a negative value.
-            "log(2,-8) - log(2,-8)",
-            "log(10,-3) - log(10,-3)",
-            "log(7,-2) - log(7,-2)",
-        ] {
-            let before = parse(src, &mut ctx).expect("parse");
-            assert!(
-                rewrite_unsoundly_drops_nonfinite(&ctx, before, zero),
-                "`{src}` -> 0 must be flagged as an unsound drop (undefined)"
-            );
-        }
-        // Each pole term, standalone, carries undefined (so the additive guard sees it).
-        for term in [
-            "tan(pi/2)",
-            "tan(pi/4 + pi/4)",
-            "cot(pi/2 + pi/2)",
-            "sec(pi/2 + pi)",
-            "ln(-5)",
-            "log(2,-8)",
-        ] {
-            let e = parse(term, &mut ctx).expect("parse term");
-            assert!(
-                expr_carries_nonfinite_or_undefined(&ctx, e),
-                "`{term}` is undefined over ℝ"
-            );
-        }
-        // DEFINED trig values and `ln` of a positive are NOT flagged — their
-        // cancellation is sound (`tan(π/3) - tan(π/3) -> 0`). `tan(π/4)`, `cot(π/2)`
-        // (= 0), `cos(π)`, `sin(-π)` are all finite.
-        for src in [
-            "tan(pi/3)",
-            "tan(-pi/3)",
-            "tan(pi/4)",
-            "cot(pi/2)",
-            "cos(pi)",
-            "sin(-pi)",
-            "ln(5)",
-            "tan(0)",
-            "sin(x)",
-            // Sum args that normalize to a DEFINED point must NOT be flagged:
-            "tan(pi/2 + pi/2)", // tan(π) = 0
-            "tan(pi/3 + pi/3)", // tan(2π/3) = -√3
-            "cot(pi/3 + pi/6)", // cot(π/2) = 0
-            "tan(x + pi/2)",    // symbolic argument — never flagged
-            "log(2, 8)",        // positive value
-            "log(10, 3)",
-        ] {
-            let e = parse(src, &mut ctx).expect("parse");
-            assert!(
-                !expr_carries_nonfinite_or_undefined(&ctx, e),
-                "`{src}` is a finite real value, must NOT be flagged undefined"
-            );
         }
     }
 

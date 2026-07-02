@@ -47,7 +47,7 @@ fn apply_binary(op: PolyBinaryOp, left: PolyId, right: PolyId) -> Option<PolyId>
 /// Supports:
 /// - direct `poly_result` + `poly_result` combinations
 /// - auto-promotion of one non-poly side using the other side as base context
-pub fn try_combine_binary_poly_with_promotion(
+pub(crate) fn try_combine_binary_poly_with_promotion(
     ctx: &mut Context,
     left: ExprId,
     right: ExprId,
@@ -99,14 +99,14 @@ pub fn try_combine_binary_poly_with_promotion(
 }
 
 /// Try negating a `poly_result(...)` expression.
-pub fn try_negate_poly_ref(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_negate_poly_ref(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let id = parse_poly_result_id(ctx, expr)?;
     let new_id = thread_local_neg(id)?;
     Some(wrap_poly_result(ctx, new_id))
 }
 
 /// Try computing `(poly_result(...))^exp` for non-negative integer exponent.
-pub fn try_pow_poly_ref(ctx: &mut Context, base: ExprId, exp: u32) -> Option<ExprId> {
+pub(crate) fn try_pow_poly_ref(ctx: &mut Context, base: ExprId, exp: u32) -> Option<ExprId> {
     let id = parse_poly_result_id(ctx, base)?;
     let new_id = thread_local_pow(id, exp)?;
     Some(wrap_poly_result(ctx, new_id))
@@ -117,10 +117,7 @@ mod tests {
     use super::*;
     use crate::multipoly_modp::MultiPolyModP;
     use crate::poly_modp_conv::DEFAULT_PRIME;
-    use crate::poly_store::{
-        clear_thread_local_store, thread_local_insert, with_thread_local_store, PolyMeta,
-    };
-    use cas_parser::parse;
+    use crate::poly_store::{clear_thread_local_store, thread_local_insert, PolyMeta};
 
     fn insert_x_plus_const(constant: u64) -> PolyId {
         let x = MultiPolyModP::var(0, DEFAULT_PRIME, 1);
@@ -156,32 +153,5 @@ mod tests {
         .expect("combine");
         assert_eq!(combined.kind, PolyCombineKind::Direct);
         assert!(parse_poly_result_id(&ctx, combined.expr).is_some());
-    }
-
-    #[test]
-    fn combine_promotes_rhs_when_needed() {
-        let mut ctx = Context::new();
-        clear_thread_local_store();
-        let b = parse("2", &mut ctx).expect("parse b");
-        let id_a = insert_x_plus_const(1);
-        let pr_a = wrap_poly_result(&mut ctx, id_a);
-
-        let combined = try_combine_binary_poly_with_promotion(
-            &mut ctx,
-            pr_a,
-            b,
-            PolyBinaryOp::Sub,
-            200,
-            10_000,
-        )
-        .expect("combine with promotion");
-
-        assert_eq!(combined.kind, PolyCombineKind::Promoted);
-        let new_id = parse_poly_result_id(&ctx, combined.expr).expect("poly_result id");
-
-        // Ensure resulting id is materialized in thread-local store.
-        with_thread_local_store(|store| {
-            assert!(store.get(new_id).is_some());
-        });
     }
 }

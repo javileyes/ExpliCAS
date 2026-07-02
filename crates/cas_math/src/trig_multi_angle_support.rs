@@ -53,7 +53,7 @@ pub struct TrigMultiAngleRewriteOwned {
 
 /// Check if a trig argument is "trivial": variable, constant, number,
 /// or a simple numeric multiple of one of those.
-pub fn is_trivial_angle(ctx: &Context, arg: ExprId) -> bool {
+pub(crate) fn is_trivial_angle(ctx: &Context, arg: ExprId) -> bool {
     match ctx.get(arg) {
         Expr::Variable(_) | Expr::Constant(_) | Expr::Number(_) => true,
         Expr::Mul(l, r) => {
@@ -279,7 +279,7 @@ pub fn try_rewrite_quadruple_cos_angle_expr(
 /// Unified policy gate for double-angle expansion (`sin(2x)`, `cos(2x)`).
 ///
 /// Returns `true` when expansion should be blocked.
-pub fn should_block_double_angle_expr(
+pub(crate) fn should_block_double_angle_expr(
     is_expand_mode: bool,
     is_inside_div_context: bool,
     has_sin4x_identity_pattern: bool,
@@ -736,7 +736,7 @@ pub fn try_rewrite_angle_consistency_expr(
 
 /// Check whether `arg` is a multiple-angle form `n*x` (or `x*n`)
 /// with integer `|n| > 1`.
-pub fn is_multiple_angle(ctx: &Context, arg: ExprId) -> bool {
+pub(crate) fn is_multiple_angle(ctx: &Context, arg: ExprId) -> bool {
     let Expr::Mul(l, r) = ctx.get(arg) else {
         return false;
     };
@@ -760,7 +760,7 @@ pub fn is_multiple_angle(ctx: &Context, arg: ExprId) -> bool {
 /// - `n*x` with integer `|n| > 2` is considered large.
 /// - For `a+b` / `a-b`, if either side is a multiple-angle (`|n| > 1`),
 ///   it is considered large.
-pub fn has_large_coefficient(ctx: &Context, arg: ExprId) -> bool {
+pub(crate) fn has_large_coefficient(ctx: &Context, arg: ExprId) -> bool {
     if let Expr::Mul(l, r) = ctx.get(arg) {
         let is_very_large_integer_factor = |id: ExprId| -> bool {
             if let Expr::Number(n) = ctx.get(id) {
@@ -788,7 +788,7 @@ pub fn has_large_coefficient(ctx: &Context, arg: ExprId) -> bool {
 /// - `Add(trig(A), trig(B))`
 /// - `Sub(trig(A), trig(B))`
 /// - `Add(trig(A), Neg(trig(B)))`
-pub fn is_binary_trig_op(ctx: &Context, expr: ExprId, fn_name: &str) -> bool {
+pub(crate) fn is_binary_trig_op(ctx: &Context, expr: ExprId, fn_name: &str) -> bool {
     match ctx.get(expr) {
         Expr::Add(l, r) => {
             if extract_trig_arg(ctx, *l, fn_name).is_some()
@@ -821,7 +821,7 @@ pub fn is_binary_trig_op(ctx: &Context, expr: ExprId, fn_name: &str) -> bool {
 }
 
 /// Check if `expr` is `Add(trig(A), trig(B))`.
-pub fn is_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> bool {
+pub(crate) fn is_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> bool {
     if let Expr::Add(l, r) = ctx.get(expr) {
         return extract_trig_arg(ctx, *l, fn_name).is_some()
             && extract_trig_arg(ctx, *r, fn_name).is_some();
@@ -832,7 +832,7 @@ pub fn is_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> bool {
 /// Check whether an expression matches a protected trig quotient scaffold:
 /// - `(sin(A) ± sin(B)) / (cos(C) + cos(D))`
 /// - `(cos(A) - cos(B)) / (sin(C) - sin(D))`
-pub fn is_trig_sum_quotient_div_pattern(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_trig_sum_quotient_div_pattern(ctx: &Context, expr: ExprId) -> bool {
     let Expr::Div(num, den) = ctx.get(expr) else {
         return false;
     };
@@ -851,7 +851,10 @@ pub fn is_trig_sum_quotient_div_pattern(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Check whether any ancestor expression matches a trig sum-quotient scaffold.
-pub fn is_inside_trig_sum_quotient_with_ancestors(ctx: &Context, ancestors: &[ExprId]) -> bool {
+pub(crate) fn is_inside_trig_sum_quotient_with_ancestors(
+    ctx: &Context,
+    ancestors: &[ExprId],
+) -> bool {
     ancestors
         .iter()
         .copied()
@@ -864,7 +867,7 @@ pub fn is_inside_trig_sum_quotient_with_ancestors(ctx: &Context, ancestors: &[Ex
 /// - `large = 2 * small`
 /// - `small = large / 2`
 /// - `small = (1/2) * large`
-pub fn is_double_angle_relation(ctx: &mut Context, large: ExprId, small: ExprId) -> bool {
+pub(crate) fn is_double_angle_relation(ctx: &mut Context, large: ExprId, small: ExprId) -> bool {
     if extract_double_angle_arg_relaxed(ctx, large)
         .is_some_and(|half| compare_expr(ctx, half, small) == Ordering::Equal)
     {
@@ -925,7 +928,11 @@ pub fn is_double_angle_relation(ctx: &mut Context, large: ExprId, small: ExprId)
 ///
 /// This matcher is robust to normalization by comparing extracted rational
 /// coefficients in `k*pi` space rather than raw AST shapes.
-pub fn verify_dyadic_pi_sequence(ctx: &Context, theta: ExprId, trig_args: &[ExprId]) -> bool {
+pub(crate) fn verify_dyadic_pi_sequence(
+    ctx: &Context,
+    theta: ExprId,
+    trig_args: &[ExprId],
+) -> bool {
     let n = trig_args.len() as u32;
     if n == 0 {
         return false;
@@ -1035,7 +1042,7 @@ pub struct DyadicCosProductPolicyPlan {
 ///
 /// This helper performs structural matching and builds the rewritten expression.
 /// Domain assumptions (e.g. `sin(θ) != 0`) are intentionally left to the engine.
-pub fn try_plan_dyadic_cos_product_expr(
+pub(crate) fn try_plan_dyadic_cos_product_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<DyadicCosProductPlan> {
@@ -1116,7 +1123,7 @@ pub fn try_plan_dyadic_cos_product_with_policy(
 }
 
 /// Collect all arguments from unary `sin`, `cos` and `tan` calls in an expression tree.
-pub fn collect_trig_args_recursive(ctx: &Context, expr: ExprId, args: &mut Vec<ExprId>) {
+pub(crate) fn collect_trig_args_recursive(ctx: &Context, expr: ExprId, args: &mut Vec<ExprId>) {
     match ctx.get(expr) {
         Expr::Function(fn_id, fargs) => {
             if matches!(
@@ -1140,7 +1147,7 @@ pub fn collect_trig_args_recursive(ctx: &Context, expr: ExprId, args: &mut Vec<E
 }
 
 /// Expand `sin/cos/tan(large_angle)` nodes to half-angle forms using `small_angle`.
-pub fn expand_trig_angle(
+pub(crate) fn expand_trig_angle(
     ctx: &mut Context,
     expr: ExprId,
     large_angle: ExprId,

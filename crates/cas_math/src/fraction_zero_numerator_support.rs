@@ -3,7 +3,7 @@
 use cas_ast::{collect_variables, Context, Expr, ExprId};
 
 /// Detect whether `numerator` simplifies to zero under a two-pass expansion.
-pub fn numerator_simplifies_to_zero_with<FExpand>(
+pub(crate) fn numerator_simplifies_to_zero_with<FExpand>(
     ctx: &mut Context,
     numerator: ExprId,
     mut expand: FExpand,
@@ -26,7 +26,7 @@ where
 /// Returns:
 /// - `0` when denominator has no variables.
 /// - `0/den` when denominator depends on variables (preserves domain restrictions).
-pub fn build_zero_or_zero_over_den(ctx: &mut Context, den: ExprId) -> ExprId {
+pub(crate) fn build_zero_or_zero_over_den(ctx: &mut Context, den: ExprId) -> ExprId {
     let zero = ctx.num(0);
     let den_vars = collect_variables(ctx, den);
     if den_vars.is_empty() {

@@ -150,7 +150,7 @@ pub enum SymbolicRootCancelDomainMode {
 }
 
 /// Derive symbolic-root-cancel mode from generic mode flags.
-pub fn symbolic_root_cancel_mode_from_flags(
+pub(crate) fn symbolic_root_cancel_mode_from_flags(
     assume_mode: bool,
     strict_mode: bool,
 ) -> SymbolicRootCancelDomainMode {
@@ -311,7 +311,7 @@ fn has_reciprocal_outer_exponent(ctx: &Context, outer_exp: ExprId, inner_exp: Ex
 /// This function is policy-free: it does not apply domain-mode assumptions or
 /// blocked hints. For symbolic `n`, callers should decide whether cancellation
 /// is allowed in the active domain policy.
-pub fn try_rewrite_root_pow_cancel_expr(
+pub(crate) fn try_rewrite_root_pow_cancel_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<RootPowCancelRewrite> {
@@ -406,7 +406,7 @@ pub fn classify_root_pow_cancel_pattern(
 /// `m*n`, so the absolute value must be kept: `(x^m)^y = |x|^(m*y)` for all real
 /// `x` and `y`. Dropping it (the old `a^(m*y)` result) is wrong — e.g. at
 /// `a=-2, y=1/4`, `(a^2)^(2y) = (4)^(1/2) = 2`, but `a^(4y) = (-2)^1 = -2`.
-pub fn try_rewrite_power_power_even_root_abs_expr(
+pub(crate) fn try_rewrite_power_power_even_root_abs_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<PowerPowerEvenRootAbsRewrite> {
@@ -450,7 +450,10 @@ pub fn try_rewrite_power_power_even_root_abs_expr(
 }
 
 /// Analyze `(x^a)^b` shape and derive reusable structural facts.
-pub fn analyze_power_power_expr(ctx: &mut Context, expr: ExprId) -> Option<PowerPowerAnalysis> {
+pub(crate) fn analyze_power_power_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<PowerPowerAnalysis> {
     let (base, outer_exp) = match ctx.get(expr) {
         Expr::Pow(base, exp) => (*base, *exp),
         _ => return None,
@@ -512,7 +515,7 @@ pub fn classify_power_power_pattern(ctx: &mut Context, expr: ExprId) -> Option<P
 
 /// Prepare rewrite decision for the `(x^a)^b` even-root branch using an injected
 /// non-negativity prover.
-pub fn decide_power_power_even_root_guard_with<FProveNonnegative>(
+pub(crate) fn decide_power_power_even_root_guard_with<FProveNonnegative>(
     ctx: &mut Context,
     expr: ExprId,
     mut prove_nonnegative: FProveNonnegative,
@@ -564,7 +567,7 @@ where
 }
 
 /// Decide policy for symbolic root cancellation in `(x^n)^(1/n)` style rewrites.
-pub fn decide_symbolic_root_cancel_policy(
+pub(crate) fn decide_symbolic_root_cancel_policy(
     value_domain_is_real_only: bool,
     mode: SymbolicRootCancelDomainMode,
 ) -> SymbolicRootCancelPolicy {
@@ -581,7 +584,7 @@ pub fn decide_symbolic_root_cancel_policy(
 }
 
 /// Plan symbolic root-cancel handling for a caller-provided rewrite candidate.
-pub fn plan_symbolic_root_cancel_action(
+pub(crate) fn plan_symbolic_root_cancel_action(
     value_domain_is_real_only: bool,
     mode: SymbolicRootCancelDomainMode,
     rewritten: ExprId,

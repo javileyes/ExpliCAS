@@ -26,7 +26,7 @@ pub struct FractionAddAcceptanceInput {
 /// Returns `(does_simplify, is_proper)` where:
 /// - `does_simplify`: likely cancellation/algebraic gain exists.
 /// - `is_proper`: resulting fraction appears proper (`deg(num) < deg(den)`).
-pub fn assess_fraction_add_simplification(
+pub(crate) fn assess_fraction_add_simplification(
     ctx: &Context,
     numerator: ExprId,
     denominator: ExprId,
@@ -62,7 +62,7 @@ pub fn assess_fraction_add_simplification(
 }
 
 /// Final acceptance policy for fraction-addition rewrites after candidate build.
-pub fn should_accept_fraction_add_rewrite(
+pub(crate) fn should_accept_fraction_add_rewrite(
     ctx: &Context,
     input: FractionAddAcceptanceInput,
 ) -> bool {

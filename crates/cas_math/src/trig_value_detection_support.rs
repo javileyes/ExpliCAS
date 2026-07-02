@@ -192,7 +192,7 @@ fn exact_rational_expr_value(ctx: &Context, expr: ExprId) -> Option<BigRational>
 }
 
 /// Detect if an expression is a special input for inverse trig.
-pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseTrigInput> {
+pub(crate) fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseTrigInput> {
     match ctx.get(expr) {
         Expr::Number(n) => {
             if n.is_zero() {
@@ -285,14 +285,14 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
 /// anti-worsen policy:
 /// - multiple-angle argument `n*x` with `|n| > 1`
 /// - special-angle argument where table evaluation is preferred
-pub fn should_block_tan_to_sin_cos_for_arg(ctx: &Context, arg: ExprId) -> bool {
+pub(crate) fn should_block_tan_to_sin_cos_for_arg(ctx: &Context, arg: ExprId) -> bool {
     is_multiple_angle(ctx, arg)
         || has_large_coefficient(ctx, arg)
         || detect_special_angle(ctx, arg).is_some()
 }
 
 /// Whether `tan(expr)` should be preserved due to pre-scanned structural marks.
-pub fn should_block_tan_to_sin_cos_for_marks(marks: &PatternMarks, expr: ExprId) -> bool {
+pub(crate) fn should_block_tan_to_sin_cos_for_marks(marks: &PatternMarks, expr: ExprId) -> bool {
     marks.is_pythagorean_protected(expr)
         || marks.is_inverse_trig_protected(expr)
         || marks.is_tan_triple_product_protected(expr)
@@ -302,7 +302,7 @@ pub fn should_block_tan_to_sin_cos_for_marks(marks: &PatternMarks, expr: ExprId)
 }
 
 /// Unified anti-expansion gate for `tan(expr) -> sin(expr)/cos(expr)`.
-pub fn should_block_tan_to_sin_cos_expr(
+pub(crate) fn should_block_tan_to_sin_cos_expr(
     ctx: &Context,
     expr: ExprId,
     marks: Option<&PatternMarks>,

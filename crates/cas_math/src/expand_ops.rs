@@ -16,7 +16,12 @@ use num_traits::{Signed, ToPrimitive};
 /// - `1` for `n = 0`
 /// - `a + b` for `n = 1`
 /// - binomial expansion for `n >= 2`
-pub fn build_binomial_power_expansion(ctx: &mut Context, a: ExprId, b: ExprId, n: u32) -> ExprId {
+pub(crate) fn build_binomial_power_expansion(
+    ctx: &mut Context,
+    a: ExprId,
+    b: ExprId,
+    n: u32,
+) -> ExprId {
     if n == 0 {
         return ctx.num(1);
     }

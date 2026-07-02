@@ -316,7 +316,7 @@ pub fn try_expand_small_pow_sum_expr(
 
 /// Returns true when expression tree contains `Pow(Add(..), n)` where
 /// `n` is in `[min_exp, max_exp]` and base looks polynomial-like.
-pub fn contains_small_polynomial_pow_sum_candidate(
+pub(crate) fn contains_small_polynomial_pow_sum_candidate(
     ctx: &Context,
     expr: ExprId,
     min_exp: u32,

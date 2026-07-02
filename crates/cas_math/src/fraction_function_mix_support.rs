@@ -17,7 +17,7 @@ pub struct AddFunctionConstantMixInput {
 }
 
 /// Add-rule guard: block function-containing term combined with constant fraction.
-pub fn should_block_add_function_constant_mix(
+pub(crate) fn should_block_add_function_constant_mix(
     ctx: &Context,
     input: AddFunctionConstantMixInput,
 ) -> bool {
@@ -29,7 +29,7 @@ pub fn should_block_add_function_constant_mix(
 }
 
 /// Sub-rule guard: both sides are already fraction terms.
-pub fn should_block_sub_function_constant_mix(
+pub(crate) fn should_block_sub_function_constant_mix(
     ctx: &Context,
     l: ExprId,
     r: ExprId,

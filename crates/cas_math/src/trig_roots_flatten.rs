@@ -11,7 +11,7 @@ use std::cmp::Ordering;
 /// // Matches sin(x)^2
 /// is_trig_pow(ctx, expr, "sin", 2)
 /// ```
-pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
+pub(crate) fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
     if let Expr::Pow(base, exp) = context.get(expr) {
         if let Expr::Number(n) = context.get(*exp) {
             if n.is_integer() && n.to_integer() == power.into() {
@@ -30,7 +30,7 @@ pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> b
 /// Extract the argument from a trigonometric power expression.
 ///
 /// For an expression like `sin(x)^2`, returns `Some(x)`.
-pub fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Pow(base, _) = context.get(expr) {
         if let Expr::Function(_, args) = context.get(*base) {
             if args.len() == 1 {
@@ -41,7 +41,7 @@ pub fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     None
 }
 
-pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
     // We need to clone the expression to avoid borrowing issues if we need to inspect it deeply
     // But context.get returns reference.
     // We can't hold reference to context while mutating it.
@@ -292,7 +292,7 @@ pub fn extract_int_multiple(
 /// - additive forms sharing the factor `target`
 /// - divisible integer coefficients like `4*x` for `target=2` (returns `2*x`)
 /// - simple fraction forms like `(4*x)/y` for `target=2` (returns `(2*x)/y`)
-pub fn extract_int_multiple_relaxed(
+pub(crate) fn extract_int_multiple_relaxed(
     context: &mut Context,
     expr: ExprId,
     target: i64,
@@ -399,7 +399,7 @@ pub fn extract_int_multiple_additive(
 /// Extract inner variable from `2*x` pattern (for double angle identities).
 /// Backward-compatible wrapper around [`extract_int_multiple`].
 #[inline]
-pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     extract_int_multiple(context, expr, 2).and_then(|(positive, inner)| positive.then_some(inner))
 }
 
@@ -425,7 +425,7 @@ pub fn extract_triple_angle_arg_relaxed(context: &mut Context, expr: ExprId) -> 
 /// Extract inner variable from `5*x` pattern (for quintuple angle identities).
 /// Backward-compatible wrapper around [`extract_int_multiple`].
 #[inline]
-pub fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     extract_int_multiple(context, expr, 5).and_then(|(positive, inner)| positive.then_some(inner))
 }
 

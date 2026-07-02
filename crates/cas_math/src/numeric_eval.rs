@@ -287,7 +287,7 @@ fn is_one_half(ctx: &Context, expr: ExprId) -> bool {
 ///
 /// Returns `true` if the expression evaluates to 0 at all probe points.
 /// Returns `false` if any evaluation is non-zero or evaluation fails.
-pub fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
     use num_rational::BigRational;
     use num_traits::Zero;
 

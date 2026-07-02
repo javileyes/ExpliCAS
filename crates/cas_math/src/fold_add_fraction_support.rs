@@ -46,7 +46,7 @@ pub fn extract_fold_add_operands(ctx: &Context, l: ExprId, r: ExprId) -> Option<
 ///
 /// Returns true when the external term is `1` or `-1` and the fraction numerator
 /// is constant-like, which tends to interact poorly with cancellation cycles.
-pub fn should_block_fold_add_unit_constant_term(
+pub(crate) fn should_block_fold_add_unit_constant_term(
     ctx: &Context,
     term: ExprId,
     numerator_is_constant: bool,

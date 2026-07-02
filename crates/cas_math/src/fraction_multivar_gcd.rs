@@ -45,7 +45,7 @@ fn collapse_scalar_multiple_reduction(
 /// Returns:
 /// - `None` when conversion fails, inputs are effectively univariate, or GCD is trivial.
 /// - `Some((new_num, new_den, gcd_expr, layer))` when a factor is extracted.
-pub fn try_multivar_gcd(
+pub(crate) fn try_multivar_gcd(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,

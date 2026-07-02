@@ -47,7 +47,7 @@ pub fn poly_eq(ctx: &Context, a: ExprId, b: ExprId) -> bool {
 /// - `Some(SignRelation::Same)` if `a == b`
 /// - `Some(SignRelation::Negated)` if `a == -b`
 /// - `None` otherwise
-pub fn poly_relation(ctx: &Context, a: ExprId, b: ExprId) -> Option<SignRelation> {
+pub(crate) fn poly_relation(ctx: &Context, a: ExprId, b: ExprId) -> Option<SignRelation> {
     let budget = compare_budget();
 
     let pa = multipoly_from_expr(ctx, a, &budget).ok()?;

@@ -11,7 +11,7 @@ use num_traits::{One, Zero};
 /// - π -> 1
 /// - k*π -> k
 /// - π*k -> k
-pub fn extract_pi_coefficient(ctx: &Context, expr: ExprId) -> Option<i32> {
+pub(crate) fn extract_pi_coefficient(ctx: &Context, expr: ExprId) -> Option<i32> {
     if is_pi(ctx, expr) {
         return Some(1);
     }
@@ -37,7 +37,7 @@ pub fn extract_pi_coefficient(ctx: &Context, expr: ExprId) -> Option<i32> {
 }
 
 /// Extract `k` from expressions equivalent to `k*π/2` with integer `k`.
-pub fn extract_pi_half_multiple(ctx: &Context, expr: ExprId) -> Option<i32> {
+pub(crate) fn extract_pi_half_multiple(ctx: &Context, expr: ExprId) -> Option<i32> {
     if is_pi_over_n(ctx, expr, 2) {
         return Some(1);
     }
@@ -283,7 +283,7 @@ fn extract_symbolic_den_phase_shift(
 /// - `Div(Add(n*x, k*pi), m)` when `m | (2k)`
 /// - `Mul(1/n, Add(..., k*pi))`
 /// - Any n-ary additive expression containing a `k*π/2` term
-pub fn extract_phase_shift(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, i32)> {
+pub(crate) fn extract_phase_shift(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, i32)> {
     // Form 1: Div((coeff*x + k*pi), denom) - canonical quotient form
     if let Expr::Div(num, den) = ctx.get(expr) {
         let num = *num;

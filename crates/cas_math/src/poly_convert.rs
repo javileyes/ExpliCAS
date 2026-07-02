@@ -4,7 +4,7 @@ use crate::multipoly::{multipoly_from_expr, MultiPoly, PolyBudget, PolyError};
 use cas_ast::{Context, ExprId};
 
 /// Convert an expression to `MultiPoly` and enforce a max variable count.
-pub fn multipoly_from_expr_with_var_limit(
+pub(crate) fn multipoly_from_expr_with_var_limit(
     ctx: &Context,
     expr: ExprId,
     budget: &PolyBudget,

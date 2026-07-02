@@ -28,7 +28,7 @@ pub fn known_constant_abs_exceeds_one(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Returns true for constants whose real value is known to be positive and > 1.
-pub fn known_positive_constant_exceeds_one(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn known_positive_constant_exceeds_one(ctx: &Context, expr: ExprId) -> bool {
     if crate::numeric_eval::as_rational_const(ctx, expr)
         .is_some_and(|value| value > BigRational::one())
     {
@@ -323,7 +323,7 @@ pub fn log_base_is_invalid_over_reals(ctx: &mut Context, base: ExprId, proof_dep
 
 /// Returns true when a logarithm call has no real-domain value for any input
 /// assignment provable within `proof_depth`.
-pub fn logarithm_real_domain_is_empty_over_reals(
+pub(crate) fn logarithm_real_domain_is_empty_over_reals(
     ctx: &mut Context,
     builtin: Option<BuiltinFn>,
     args: &[ExprId],
@@ -343,7 +343,7 @@ pub fn logarithm_real_domain_is_empty_over_reals(
 
 /// Returns true when a bounded inverse function call has no real-domain value
 /// for any input assignment provable within `proof_depth`.
-pub fn bounded_inverse_real_domain_is_empty_over_reals(
+pub(crate) fn bounded_inverse_real_domain_is_empty_over_reals(
     ctx: &mut Context,
     builtin: Option<BuiltinFn>,
     args: &[ExprId],
@@ -481,7 +481,7 @@ fn expr_is_known_lt_minus_one_by_negative_constant_offset(
 /// Returns true when a bounded inverse function call has no real-domain points
 /// where the derivative rule has a finite real value, provable within
 /// `proof_depth`.
-pub fn bounded_inverse_derivative_real_domain_is_empty_over_reals(
+pub(crate) fn bounded_inverse_derivative_real_domain_is_empty_over_reals(
     ctx: &mut Context,
     builtin: Option<BuiltinFn>,
     args: &[ExprId],
@@ -527,7 +527,7 @@ pub fn bounded_inverse_derivative_real_domain_is_empty_over_reals(
 /// Returns true when a closed inverse-trig call has no real-domain points where
 /// the derivative rule has a finite real value. Source-empty checks should run
 /// before using this as a rejection reason.
-pub fn closed_inverse_trig_derivative_domain_is_empty_over_reals(
+pub(crate) fn closed_inverse_trig_derivative_domain_is_empty_over_reals(
     ctx: &Context,
     builtin: Option<BuiltinFn>,
     args: &[ExprId],
@@ -623,7 +623,7 @@ fn closed_inverse_trig_boundary_only_polynomial_arg(ctx: &Context, arg: ExprId) 
 
 /// Returns true when a variable-independent calculus expression has a statically
 /// empty real domain. Unknown symbolic domains are deliberately preserved.
-pub fn real_domain_is_empty_for_static_expr(
+pub(crate) fn real_domain_is_empty_for_static_expr(
     ctx: &mut Context,
     expr: ExprId,
     proof_depth: usize,
@@ -636,7 +636,7 @@ pub fn real_domain_is_empty_for_static_expr(
 /// or a nonfinite/undefined constant. This is the shared calculus guard for
 /// commands that must reject nonfinite operands instead of treating them as
 /// valid constants.
-pub fn real_domain_is_empty_or_nonfinite_over_reals(
+pub(crate) fn real_domain_is_empty_or_nonfinite_over_reals(
     ctx: &mut Context,
     expr: ExprId,
     proof_depth: usize,

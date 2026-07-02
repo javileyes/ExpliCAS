@@ -5892,6 +5892,8 @@ pub fn integrate_symbolic_is_cot_eighth_affine_target(
     }
 }
 
+// NOTE: unwired capability predicate (kept pub as reserved API; its handler exists
+// but no route calls it yet) — see docs/INFORME_SANEAMIENTO_CODIGO_2026-07-02.md §11.
 pub fn integrate_symbolic_is_sec_third_affine_target(
     ctx: &mut Context,
     expr: ExprId,
@@ -5910,6 +5912,8 @@ pub fn integrate_symbolic_is_sec_third_affine_target(
     }
 }
 
+// NOTE: unwired capability predicate (kept pub as reserved API; its handler exists
+// but no route calls it yet) — see docs/INFORME_SANEAMIENTO_CODIGO_2026-07-02.md §11.
 pub fn integrate_symbolic_is_csc_third_affine_target(
     ctx: &mut Context,
     expr: ExprId,
@@ -8612,7 +8616,7 @@ pub struct PositiveConstantRadiusQuadraticParts {
     pub arctan_scale: ExprId,
 }
 
-pub fn positive_constant_radius_quadratic_parts(
+pub(crate) fn positive_constant_radius_quadratic_parts(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
@@ -15471,6 +15475,8 @@ fn polynomial_times_constant_base_power_antiderivative(
     Some(mul2_raw(ctx, power_factor, inner))
 }
 
+// NOTE: unwired capability predicate (kept pub as reserved API; its handler exists
+// but no route calls it yet) — see docs/INFORME_SANEAMIENTO_CODIGO_2026-07-02.md §11.
 pub fn integrate_symbolic_is_polynomial_times_constant_base_power_target(
     ctx: &mut Context,
     expr: ExprId,

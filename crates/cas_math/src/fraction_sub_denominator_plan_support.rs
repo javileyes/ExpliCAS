@@ -17,7 +17,7 @@ pub struct SubDenominatorPlan {
 /// Handles:
 /// - semantic/algebraic same-denominator detection
 /// - divisible denominator normalization via `check_divisible_denominators`
-pub fn plan_sub_denominator_with<FExpand>(
+pub(crate) fn plan_sub_denominator_with<FExpand>(
     ctx: &mut Context,
     n1: ExprId,
     n2: ExprId,

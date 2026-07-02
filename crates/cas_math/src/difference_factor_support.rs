@@ -11,7 +11,7 @@ use num_traits::Signed;
 /// - `Add(x, Neg(y))`
 /// - `Add(x, Mul(-1, y))`
 /// - `Add(Neg(x), y)` (interpreted as `y - x`)
-pub fn extract_difference_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+pub(crate) fn extract_difference_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     match ctx.get(expr) {
         Expr::Sub(l, r) => Some((*l, *r)),
         Expr::Add(l, r) => {

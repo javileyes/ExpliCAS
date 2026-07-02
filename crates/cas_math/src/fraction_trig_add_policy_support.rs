@@ -10,7 +10,7 @@ use cas_ast::{Context, Expr, ExprId};
 /// - If not inside trig, never block.
 /// - If both sides are constants, never block.
 /// - Otherwise, block symbolic + pi-constant mixes to preserve identity-friendly form.
-pub fn should_block_symbolic_plus_pi_add_inside_trig(
+pub(crate) fn should_block_symbolic_plus_pi_add_inside_trig(
     inside_trig: bool,
     l_is_const: bool,
     r_is_const: bool,
@@ -28,7 +28,7 @@ pub fn should_block_symbolic_plus_pi_add_inside_trig(
 
 /// True when any addition rewrite inside trig should be blocked to preserve
 /// a visible `+ k*pi/2` or `+ pi` shape for downstream trig identities.
-pub fn should_block_general_fraction_add_rewrite(
+pub(crate) fn should_block_general_fraction_add_rewrite(
     ctx: &Context,
     l: ExprId,
     r: ExprId,
@@ -51,7 +51,7 @@ pub fn should_block_general_fraction_add_rewrite(
 ///
 /// Returns `false` when denominators are not both numeric, or when trig-aware
 /// blocking policy says to preserve the original structure.
-pub fn should_allow_numeric_fraction_add_rewrite(
+pub(crate) fn should_allow_numeric_fraction_add_rewrite(
     ctx: &Context,
     l: ExprId,
     r: ExprId,

@@ -20,7 +20,7 @@ pub struct AddDenominatorResolution {
 
 /// Check whether two denominators should be treated as the same denominator
 /// for subtraction/addition paths that do not use opposite-denominator folding.
-pub fn denominators_are_same_with<FExpand>(
+pub(crate) fn denominators_are_same_with<FExpand>(
     ctx: &mut Context,
     d1: ExprId,
     d2: ExprId,
@@ -36,7 +36,7 @@ where
 ///
 /// If denominators are opposite, this normalizes to common denominator `d1`
 /// and flips `n2` sign accordingly.
-pub fn resolve_add_denominator_relation_with<FExpand>(
+pub(crate) fn resolve_add_denominator_relation_with<FExpand>(
     ctx: &mut Context,
     n2: ExprId,
     d1: ExprId,

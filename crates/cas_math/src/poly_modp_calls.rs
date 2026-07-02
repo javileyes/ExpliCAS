@@ -14,7 +14,7 @@ use crate::poly_store::{compute_poly_mul_modp_meta, PolyMeta, PolyMulMetaError};
 use cas_ast::{hold, Context, Expr, ExprId};
 
 /// Compute `poly_gcd_modp` with structural factor extraction and wrap in `__hold(...)`.
-pub fn compute_gcd_modp_held_expr(
+pub(crate) fn compute_gcd_modp_held_expr(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
@@ -27,7 +27,7 @@ pub fn compute_gcd_modp_held_expr(
 }
 
 /// Compute `poly_eq_modp(a, b, p)` and return boolean result.
-pub fn compute_poly_eq_modp(
+pub(crate) fn compute_poly_eq_modp(
     ctx: &Context,
     a: ExprId,
     b: ExprId,
@@ -37,7 +37,7 @@ pub fn compute_poly_eq_modp(
 }
 
 /// Compute `poly_eq_modp(a, b, p)` and return numeric indicator expression plus bool.
-pub fn compute_poly_eq_modp_indicator(
+pub(crate) fn compute_poly_eq_modp_indicator(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
@@ -49,7 +49,7 @@ pub fn compute_poly_eq_modp_indicator(
 }
 
 /// Compute metadata for `poly_mul_modp(a, b, p)`.
-pub fn compute_poly_mul_modp_stats(
+pub(crate) fn compute_poly_mul_modp_stats(
     ctx: &Context,
     a: ExprId,
     b: ExprId,
@@ -132,7 +132,7 @@ pub struct PolyEqModpCall {
 /// - `Ok(None)` when expression is not a valid `poly_mul_modp` call
 /// - `Ok(Some(...))` with computed stats payload when successful
 /// - `Err(...)` when conversion/size checks fail during poly analysis
-pub fn try_eval_poly_mul_modp_stats_call(
+pub(crate) fn try_eval_poly_mul_modp_stats_call(
     ctx: &mut Context,
     expr: ExprId,
     default_prime: u64,
@@ -206,7 +206,7 @@ where
 /// - `Ok(None)` when expression is not a valid `poly_gcd_modp`/`pgcdp` call
 /// - `Ok(Some(...))` with computed held gcd payload when successful
 /// - `Err(...)` when polynomial conversion/evaluation fails
-pub fn try_eval_poly_gcd_modp_call(
+pub(crate) fn try_eval_poly_gcd_modp_call(
     ctx: &mut Context,
     expr: ExprId,
     default_prime: u64,
@@ -278,7 +278,7 @@ where
 /// - `Ok(None)` when expression is not a valid `poly_eq_modp`/`peqp` call
 /// - `Ok(Some(...))` with indicator payload when successful
 /// - `Err(...)` when polynomial conversion/evaluation fails
-pub fn try_eval_poly_eq_modp_call(
+pub(crate) fn try_eval_poly_eq_modp_call(
     ctx: &mut Context,
     expr: ExprId,
     default_prime: u64,
@@ -338,7 +338,7 @@ where
 }
 
 /// Build `poly_mul_stats(terms, degree, vars, modulus)` expression from metadata.
-pub fn build_poly_mul_stats_expr(ctx: &mut Context, meta: &PolyMeta) -> ExprId {
+pub(crate) fn build_poly_mul_stats_expr(ctx: &mut Context, meta: &PolyMeta) -> ExprId {
     let terms = ctx.num(meta.n_terms as i64);
     let degree = ctx.num(meta.max_total_degree as i64);
     let nvars = ctx.num(meta.n_vars as i64);

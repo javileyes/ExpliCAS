@@ -3,7 +3,7 @@
 use cas_ast::{Context, ExprId};
 
 /// Check if a function name is trigonometric (including inverse/hyperbolic forms).
-pub fn is_trig_function_name(name: &str) -> bool {
+pub(crate) fn is_trig_function_name(name: &str) -> bool {
     matches!(
         name,
         "sin"
@@ -31,7 +31,7 @@ pub fn is_trig_function(ctx: &Context, fn_id: usize) -> bool {
 }
 
 /// Check if expression is a rational multiple of `pi` (e.g. `pi`, `pi/9`, `2*pi/3`).
-pub fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
     crate::pi_helpers::extract_rational_pi_multiple(ctx, id).is_some()
 }
 

@@ -32,7 +32,7 @@ fn dyadic_sin_nonzero_mode_from_flags(
 /// Otherwise:
 /// - Strict/Generic: block.
 /// - Assume: apply and record assumption.
-pub fn decide_dyadic_sin_nonzero_policy(
+pub(crate) fn decide_dyadic_sin_nonzero_policy(
     assume_mode: bool,
     strict_mode: bool,
     sin_nonzero_proven: bool,

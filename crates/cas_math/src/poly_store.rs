@@ -278,7 +278,7 @@ pub enum PolyMulMetaError {
 ///
 /// This performs conversion to mod-p polynomials, applies a term explosion guard,
 /// multiplies in polynomial space, and returns resulting metadata.
-pub fn compute_poly_mul_modp_meta(
+pub(crate) fn compute_poly_mul_modp_meta(
     ctx: &Context,
     a_expr: ExprId,
     b_expr: ExprId,
@@ -321,18 +321,6 @@ thread_local! {
     static THREAD_POLY_STORE: RefCell<PolyStore> = RefCell::new(PolyStore::new());
 }
 
-/// Execute a function with access to the thread-local PolyStore.
-/// The store is cleared before each evaluation to prevent state leakage.
-pub fn with_thread_local_store<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut PolyStore) -> R,
-{
-    THREAD_POLY_STORE.with(|store| {
-        let mut store = store.borrow_mut();
-        f(&mut store)
-    })
-}
-
 /// Clear the thread-local store (call at start of evaluation)
 pub fn clear_thread_local_store() {
     THREAD_POLY_STORE.with(|store| {
@@ -351,32 +339,32 @@ pub fn thread_local_meta(id: PolyId) -> Option<PolyMeta> {
 }
 
 /// Add two polys in thread-local store
-pub fn thread_local_add(a: PolyId, b: PolyId) -> Option<PolyId> {
+pub(crate) fn thread_local_add(a: PolyId, b: PolyId) -> Option<PolyId> {
     THREAD_POLY_STORE.with(|store| store.borrow_mut().add(a, b))
 }
 
 /// Subtract two polys in thread-local store
-pub fn thread_local_sub(a: PolyId, b: PolyId) -> Option<PolyId> {
+pub(crate) fn thread_local_sub(a: PolyId, b: PolyId) -> Option<PolyId> {
     THREAD_POLY_STORE.with(|store| store.borrow_mut().sub(a, b))
 }
 
 /// Multiply two polys in thread-local store
-pub fn thread_local_mul(a: PolyId, b: PolyId) -> Option<PolyId> {
+pub(crate) fn thread_local_mul(a: PolyId, b: PolyId) -> Option<PolyId> {
     THREAD_POLY_STORE.with(|store| store.borrow_mut().mul(a, b))
 }
 
 /// Negate poly in thread-local store
-pub fn thread_local_neg(a: PolyId) -> Option<PolyId> {
+pub(crate) fn thread_local_neg(a: PolyId) -> Option<PolyId> {
     THREAD_POLY_STORE.with(|store| store.borrow_mut().neg(a))
 }
 
 /// Pow poly in thread-local store
-pub fn thread_local_pow(a: PolyId, n: u32) -> Option<PolyId> {
+pub(crate) fn thread_local_pow(a: PolyId, n: u32) -> Option<PolyId> {
     THREAD_POLY_STORE.with(|store| store.borrow_mut().pow(a, n))
 }
 
 /// Get polynomial from thread-local store for materialization
-pub fn thread_local_get_for_materialize(id: PolyId) -> Option<(PolyMeta, MultiPolyModP)> {
+pub(crate) fn thread_local_get_for_materialize(id: PolyId) -> Option<(PolyMeta, MultiPolyModP)> {
     THREAD_POLY_STORE.with(|store| store.borrow().get(id).map(|(m, p)| (m.clone(), p.clone())))
 }
 
@@ -395,7 +383,7 @@ pub fn materialize_poly_result_expr(ctx: &mut Context, id: PolyId) -> Option<Exp
 
 /// Expand an expression in mod-p space and return either `__hold(materialized_ast)` or
 /// `poly_result(id)` based on `materialize_limit`.
-pub fn expand_expr_modp_to_poly_ref_or_hold(
+pub(crate) fn expand_expr_modp_to_poly_ref_or_hold(
     ctx: &mut Context,
     expr: ExprId,
     materialize_limit: usize,
@@ -434,7 +422,10 @@ pub fn expand_expr_modp_to_poly_ref_or_hold(
 }
 
 /// Expand an expression in mod-p space and always materialize into `__hold(AST)`.
-pub fn expand_expr_modp_materialized_hold(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn expand_expr_modp_materialized_hold(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     // `usize::MAX` guarantees materialization branch if conversion succeeds.
     expand_expr_modp_to_poly_ref_or_hold(ctx, expr, usize::MAX).and_then(|expanded| {
         if crate::poly_result::parse_poly_result_id(ctx, expanded).is_some() {
@@ -448,7 +439,7 @@ pub fn expand_expr_modp_materialized_hold(ctx: &mut Context, expr: ExprId) -> Op
 /// a base poly's modulus and variable context.
 ///
 /// Returns the new `PolyId` on success, `None` when promotion is not possible.
-pub fn thread_local_promote_expr_with_base(
+pub(crate) fn thread_local_promote_expr_with_base(
     ctx: &Context,
     expr: ExprId,
     base_id: PolyId,
@@ -644,13 +635,6 @@ pub fn render_poly_result_latex(id: PolyId, max_terms: usize) -> Option<String> 
     }
 
     Some(result)
-}
-
-/// Check if an expression is a poly_result and render it as LaTeX.
-/// Returns None if not a poly_result or if rendering fails.
-pub fn try_render_poly_result_latex(ctx: &Context, expr: ExprId) -> Option<String> {
-    let id = crate::poly_result::parse_poly_result_id(ctx, expr)?;
-    render_poly_result_latex(id, 100_000)
 }
 
 /// Get the term count from a poly_result expression.

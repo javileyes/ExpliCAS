@@ -15,7 +15,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 /// Simplify `base^(log(base, x))` subterms when splitting exponent sums.
-pub fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
+pub(crate) fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     if let Expr::Function(name, args) = context.get(exp) {
         if context.is_builtin(*name, BuiltinFn::Log) && args.len() == 2 {
             let log_base = args[0];
@@ -52,7 +52,7 @@ pub fn try_rewrite_split_log_exponents_expr(ctx: &mut Context, expr: ExprId) -> 
 }
 
 /// Detect whether expression is a log/ln call (possibly nested in a product).
-pub fn is_log(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_log(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Function(name, _) = ctx.get(expr) {
         if let Some(b) = ctx.builtin_of(*name) {
             return b == BuiltinFn::Log || b == BuiltinFn::Ln || b == BuiltinFn::Log10;
@@ -68,7 +68,7 @@ pub fn is_log(ctx: &Context, expr: ExprId) -> bool {
 /// - `a` => `(a, 1)`
 /// - `a^m` => `(a, m)`
 /// - `1/a` => `(a, -1)`
-pub fn normalize_to_power(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId) {
+pub(crate) fn normalize_to_power(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId) {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => (*base, *exp),
         Expr::Div(num, den) => {
@@ -89,7 +89,7 @@ pub fn normalize_to_power(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId) {
 }
 
 /// Count multiplicative factors in a flattened multiplication tree.
-pub fn count_mul_factors(ctx: &Context, expr: ExprId) -> u32 {
+pub(crate) fn count_mul_factors(ctx: &Context, expr: ExprId) -> u32 {
     match ctx.get(expr) {
         Expr::Mul(a, b) => count_mul_factors(ctx, *a) + count_mul_factors(ctx, *b),
         _ => 1,
@@ -148,7 +148,7 @@ pub fn estimate_log_terms(ctx: &Context, arg: ExprId) -> Option<(u32, u32, Optio
 ///
 /// Returns `Some(ratio)` when both `base` and `val` are powers of the same
 /// underlying prime support.
-pub fn eval_log_rational(
+pub(crate) fn eval_log_rational(
     base: &num_bigint::BigInt,
     val: &num_bigint::BigInt,
 ) -> Option<num_rational::BigRational> {
@@ -217,7 +217,7 @@ fn signed_prime_exponent_map(r: &num_rational::BigRational) -> HashMap<num_bigin
 /// both are powers of a common set of primes with a CONSISTENT exponent ratio. Generalizes
 /// [`eval_log_rational`] to fractional bases — `log_{1/2}(16) = -4`, `log_{1/4}(1/2) = 1/2`,
 /// `log_{2/3}(9/4) = -2` — and rational arguments. `None` when there is no rational power relation.
-pub fn eval_log_rational_full(
+pub(crate) fn eval_log_rational_full(
     base: &num_rational::BigRational,
     val: &num_rational::BigRational,
 ) -> Option<num_rational::BigRational> {
@@ -477,7 +477,7 @@ pub fn try_rewrite_evaluate_log_expr(
 }
 
 /// Compute prime factorization map `prime -> exponent`.
-pub fn prime_exponent_map(n: &num_bigint::BigInt) -> HashMap<num_bigint::BigInt, u32> {
+pub(crate) fn prime_exponent_map(n: &num_bigint::BigInt) -> HashMap<num_bigint::BigInt, u32> {
     use num_bigint::BigInt;
     use num_integer::Integer;
     use num_traits::{One, Signed, Zero};
@@ -831,21 +831,6 @@ pub fn plan_log_exp_inverse_symbolic_policy(
     }
 }
 
-/// Plan domain policy for `b^log(b, x)` family rewrites.
-pub fn plan_exponential_log_inverse_policy(
-    mode: LogExpInversePolicyMode,
-    positive_subject_proven: bool,
-) -> ExponentialLogInversePolicyPlan {
-    match mode {
-        LogExpInversePolicyMode::Strict if !positive_subject_proven => {
-            ExponentialLogInversePolicyPlan::Block
-        }
-        _ => ExponentialLogInversePolicyPlan::Rewrite {
-            require_positive_subject: !positive_subject_proven,
-        },
-    }
-}
-
 /// Plan domain policy for numeric `log(a^m, a^n) -> n/m` rewrites.
 pub fn plan_log_power_base_numeric_policy(
     mode: LogExpInversePolicyMode,
@@ -931,7 +916,7 @@ pub fn try_extract_log_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, Exp
 ///
 /// Special handling:
 /// - `ExprId::from_raw(u32::MAX)` is treated as ln-base sentinel and matches `e`.
-pub fn exprs_match_for_logs(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+pub(crate) fn exprs_match_for_logs(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
     let sentinel = ln_base_sentinel();
 
     if e1 == sentinel {
@@ -3151,30 +3136,6 @@ mod tests {
             e_base,
             LogExpInversePolicyPlan::Rewrite {
                 assume_positive_base: false
-            }
-        );
-    }
-
-    #[test]
-    fn exponential_log_inverse_policy_strict_vs_generic() {
-        let strict_unproven =
-            plan_exponential_log_inverse_policy(LogExpInversePolicyMode::Strict, false);
-        let generic_unproven =
-            plan_exponential_log_inverse_policy(LogExpInversePolicyMode::Generic, false);
-        let strict_proven =
-            plan_exponential_log_inverse_policy(LogExpInversePolicyMode::Strict, true);
-
-        assert_eq!(strict_unproven, ExponentialLogInversePolicyPlan::Block);
-        assert_eq!(
-            generic_unproven,
-            ExponentialLogInversePolicyPlan::Rewrite {
-                require_positive_subject: true
-            }
-        );
-        assert_eq!(
-            strict_proven,
-            ExponentialLogInversePolicyPlan::Rewrite {
-                require_positive_subject: false
             }
         );
     }

@@ -237,7 +237,7 @@ fn perfect_cube_root(value: &BigRational) -> Option<BigRational> {
 /// cubes, carrying the real sign (`∛(-8) = -2`, the real odd root). `None` otherwise, so `∛2`,
 /// `∛9`, `∛16` (a non-perfect cube) stay symbolic. EXACT — verified by re-cubing the candidate
 /// roots, never an `f64` estimate.
-pub fn rational_cbrt(r: &BigRational) -> Option<BigRational> {
+pub(crate) fn rational_cbrt(r: &BigRational) -> Option<BigRational> {
     if r.is_zero() {
         return Some(BigRational::from_integer(0.into()));
     }

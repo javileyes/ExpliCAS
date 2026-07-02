@@ -176,7 +176,7 @@ fn try_remove_factor_two_from_add(ctx: &mut Context, expr: ExprId) -> Option<Exp
 }
 
 /// Check if `expr` is `tan(u/2)` and return `u`.
-pub fn extract_tan_half_angle(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn extract_tan_half_angle(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
         if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
             return is_half_angle(ctx, args[0]);
@@ -220,7 +220,10 @@ fn extract_trig_half_angle_relaxed(ctx: &mut Context, expr: ExprId) -> Option<(E
 
 /// Extract coefficient and cot argument from a term.
 /// Returns `(coefficient_opt, cot_arg, is_positive)` where `coefficient_opt=None` means `1`.
-pub fn extract_cot_term(ctx: &Context, term: ExprId) -> Option<(Option<ExprId>, ExprId, bool)> {
+pub(crate) fn extract_cot_term(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(Option<ExprId>, ExprId, bool)> {
     let term_data = ctx.get(term);
 
     let (inner_term, is_positive) = match term_data {

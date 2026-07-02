@@ -173,7 +173,10 @@ pub(crate) fn find_factor_exp(
 ///
 /// Negative exponents are ignored (the caller typically manages denominator
 /// factors separately).
-pub fn build_mul_from_factors_int_pow(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
+pub(crate) fn build_mul_from_factors_int_pow(
+    ctx: &mut Context,
+    factors: &[(ExprId, i64)],
+) -> ExprId {
     use cas_ast::views::MulBuilder;
 
     let mut builder = MulBuilder::new_simple();
@@ -193,7 +196,7 @@ pub fn build_mul_from_factors_int_pow(ctx: &mut Context, factors: &[(ExprId, i64
 /// - products containing reciprocal factors: `a * b * den^(-1)`
 ///
 /// Returns `None` when the input is not fraction-like.
-pub fn decompose_fraction_like_factors(
+pub(crate) fn decompose_fraction_like_factors(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(Vec<ExprId>, Vec<ExprId>)> {
@@ -237,7 +240,7 @@ pub fn decompose_fraction_like_factors(
 }
 
 /// Build a fraction expression from numerator and denominator factor vectors.
-pub fn build_fraction_from_factor_vectors(
+pub(crate) fn build_fraction_from_factor_vectors(
     ctx: &mut Context,
     num_factors: &[ExprId],
     den_factors: &[ExprId],
@@ -268,7 +271,7 @@ pub fn build_fraction_from_factor_vectors(
 /// Classify structural cancellation action for a single numerator/denominator factor pair.
 ///
 /// This performs pure shape/exponent analysis and does not apply domain policy.
-pub fn classify_factor_cancellation_action(
+pub(crate) fn classify_factor_cancellation_action(
     ctx: &mut Context,
     num_factor: ExprId,
     den_factor: ExprId,
@@ -396,7 +399,7 @@ pub fn classify_factor_cancellation_action(
 ///
 /// Domain policy is injected via callback for the `RemoveBoth` cases that may
 /// require `nonzero_base != 0` conditions.
-pub fn cancel_common_factor_vectors_with<FAllowRemoveBoth>(
+pub(crate) fn cancel_common_factor_vectors_with<FAllowRemoveBoth>(
     ctx: &mut Context,
     num_factors: &mut Vec<ExprId>,
     den_factors: &mut Vec<ExprId>,

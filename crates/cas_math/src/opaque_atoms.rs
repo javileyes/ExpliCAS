@@ -190,13 +190,6 @@ fn is_polynomial_candidate_inner(
     }
 }
 
-/// Collect all function calls under `expr` up to `max_depth`.
-pub fn collect_function_calls(ctx: &Context, expr: ExprId, max_depth: usize) -> Vec<ExprId> {
-    let mut out = Vec::new();
-    collect_function_calls_inner(ctx, expr, &mut out, 0, max_depth, 18);
-    out
-}
-
 pub fn collect_function_calls_with_pow_limit(
     ctx: &Context,
     expr: ExprId,
@@ -573,15 +566,6 @@ mod tests {
         )
         .expect("parse ok");
         assert!(is_polynomial_candidate(&ctx, ok, 30, 6));
-    }
-
-    #[test]
-    fn function_call_collection_and_dedup() {
-        let mut ctx = Context::new();
-        let expr = parse("sin(x) + (x^2 + 1)^(1/2) + (x^2 + 1)^(1/2)", &mut ctx).expect("parse");
-        let calls = collect_function_calls(&ctx, expr, 6);
-        let unique = dedup_expr_ids(&ctx, &calls);
-        assert_eq!(unique.len(), 2);
     }
 
     #[test]

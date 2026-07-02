@@ -43,7 +43,7 @@ fn collect_additive_term_signs_preserving_hold(ctx: &Context, expr: ExprId) -> V
 ///
 /// Returns both original terms so callers can apply policy gates
 /// (e.g. domain/definedness checks) before committing to `0`.
-pub fn find_two_term_annihilation_match(
+pub(crate) fn find_two_term_annihilation_match(
     ctx: &Context,
     expr: ExprId,
 ) -> Option<TwoTermAnnihilationMatch> {
@@ -77,7 +77,7 @@ pub fn find_two_term_annihilation_match(
 /// Determine whether an additive expression should be rewritten to `0`
 /// by annihilation (`X-X` or `__hold(sum)-sum`), with optional strict-domain
 /// blocking for two-term matches.
-pub fn should_rewrite_annihilation_to_zero_with(
+pub(crate) fn should_rewrite_annihilation_to_zero_with(
     ctx: &Context,
     expr: ExprId,
     strict_domain: bool,
@@ -142,7 +142,7 @@ fn terms_cancel(
 }
 
 /// Detect `__hold(sum) - sum` annihilation patterns in additive expressions.
-pub fn is_hold_sum_annihilation(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_hold_sum_annihilation(ctx: &Context, expr: ExprId) -> bool {
     if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
         return false;
     }

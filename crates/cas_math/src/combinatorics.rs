@@ -1,7 +1,7 @@
 //! Basic combinatorics helpers shared by expansion rules.
 
 /// Binomial coefficient `C(n, k)`.
-pub fn binomial_coeff(n: u32, k: u32) -> u32 {
+pub(crate) fn binomial_coeff(n: u32, k: u32) -> u32 {
     if k == 0 || k == n {
         return 1;
     }

@@ -4,7 +4,7 @@ use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Signed};
 
 /// Count `Div(_, _)` nodes in an expression tree.
-pub fn count_div_nodes(ctx: &Context, expr: ExprId) -> usize {
+pub(crate) fn count_div_nodes(ctx: &Context, expr: ExprId) -> usize {
     cas_ast::traversal::count_nodes_matching(ctx, expr, |node| matches!(node, Expr::Div(_, _)))
 }
 
@@ -73,7 +73,7 @@ pub fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> Expr
 }
 
 /// Collect denominator candidates from explicit `Div` nodes under `expr`.
-pub fn collect_denominators(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+pub(crate) fn collect_denominators(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     let mut denoms = Vec::new();
     match ctx.get(expr) {
         Expr::Div(_, den) => {

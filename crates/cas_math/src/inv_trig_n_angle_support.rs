@@ -15,7 +15,7 @@ fn literal_outside_unit_interval(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Build `expr^(1/2)` i.e. `sqrt(expr)`.
-pub fn build_sqrt(ctx: &mut Context, expr: ExprId) -> ExprId {
+pub(crate) fn build_sqrt(ctx: &mut Context, expr: ExprId) -> ExprId {
     let half = ctx.add(Expr::Number(BigRational::new(
         BigInt::from(1),
         BigInt::from(2),
@@ -24,7 +24,7 @@ pub fn build_sqrt(ctx: &mut Context, expr: ExprId) -> ExprId {
 }
 
 /// Build `1 + t^2`.
-pub fn build_one_plus_t_sq(ctx: &mut Context, t: ExprId) -> ExprId {
+pub(crate) fn build_one_plus_t_sq(ctx: &mut Context, t: ExprId) -> ExprId {
     let one = ctx.num(1);
     let two = ctx.num(2);
     let t_sq = ctx.add(Expr::Pow(t, two));
@@ -32,7 +32,7 @@ pub fn build_one_plus_t_sq(ctx: &mut Context, t: ExprId) -> ExprId {
 }
 
 /// Build `1 - t^2`.
-pub fn build_one_minus_t_sq(ctx: &mut Context, t: ExprId) -> ExprId {
+pub(crate) fn build_one_minus_t_sq(ctx: &mut Context, t: ExprId) -> ExprId {
     let one = ctx.num(1);
     let two = ctx.num(2);
     let t_sq = ctx.add(Expr::Pow(t, two));
@@ -65,7 +65,7 @@ pub fn count_nodes_dedup(ctx: &Context, root: ExprId) -> usize {
 }
 
 /// Build Weierstrass polynomials `A_n(t), B_n(t)` via recurrence.
-pub fn weierstrass_recurrence(ctx: &mut Context, t: ExprId, n: usize) -> (ExprId, ExprId) {
+pub(crate) fn weierstrass_recurrence(ctx: &mut Context, t: ExprId, n: usize) -> (ExprId, ExprId) {
     let mut a = ctx.num(1);
     let mut b = ctx.num(0);
 
@@ -82,7 +82,7 @@ pub fn weierstrass_recurrence(ctx: &mut Context, t: ExprId, n: usize) -> (ExprId
 }
 
 /// Build Chebyshev `T_n(t)` via recurrence.
-pub fn chebyshev_t(ctx: &mut Context, t: ExprId, n: usize) -> ExprId {
+pub(crate) fn chebyshev_t(ctx: &mut Context, t: ExprId, n: usize) -> ExprId {
     if n == 0 {
         return ctx.num(1);
     }
@@ -103,7 +103,7 @@ pub fn chebyshev_t(ctx: &mut Context, t: ExprId, n: usize) -> ExprId {
 }
 
 /// Build Chebyshev `U_{n-1}(t)` via recurrence (for `n >= 1`).
-pub fn chebyshev_u_nm1(ctx: &mut Context, t: ExprId, n: usize) -> ExprId {
+pub(crate) fn chebyshev_u_nm1(ctx: &mut Context, t: ExprId, n: usize) -> ExprId {
     debug_assert!(n >= 1, "chebyshev_u_nm1 requires n >= 1");
     if n == 1 {
         return ctx.num(1);
@@ -122,7 +122,7 @@ pub fn chebyshev_u_nm1(ctx: &mut Context, t: ExprId, n: usize) -> ExprId {
 }
 
 /// Build `sin/cos(n*arcsin(t))` via recurrence.
-pub fn arcsin_recurrence(
+pub(crate) fn arcsin_recurrence(
     ctx: &mut Context,
     t: ExprId,
     cos_theta: ExprId,

@@ -3,8 +3,9 @@
 //! This module provides a data-driven approach to evaluating trig functions
 //! at special angles like 0, π/6, π/4, π/3, π/2, π using static tables.
 
+pub(crate) use crate::trig_value_detection_support::detect_inverse_trig_input;
 pub use crate::trig_value_detection_support::{
-    detect_inverse_trig_input, detect_special_angle, InverseTrigInput, SpecialAngle,
+    detect_special_angle, InverseTrigInput, SpecialAngle,
 };
 use cas_ast::{Context, Expr, ExprId};
 
@@ -547,7 +548,7 @@ pub static INVERSE_TRIG_TABLE: &[(&str, InverseTrigInput, TrigValue)] = &[
 ];
 
 /// Look up an inverse trig value from the static table
-pub fn lookup_inverse_trig_value(
+pub(crate) fn lookup_inverse_trig_value(
     func_name: &str,
     input: InverseTrigInput,
 ) -> Option<&'static TrigValue> {

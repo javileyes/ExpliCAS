@@ -14,7 +14,7 @@ pub struct AddFractionBuildResult {
 ///
 /// When `related_denominators` is true, uses `(n1 + n2) / common_den`.
 /// Otherwise uses `(n1*d2 + n2*d1) / (d1*d2)` with `1*x` and `-1*x` shortcuts.
-pub fn build_add_fraction_rewrite(
+pub(crate) fn build_add_fraction_rewrite(
     ctx: &mut Context,
     n1: ExprId,
     n2: ExprId,

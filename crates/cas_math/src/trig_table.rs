@@ -357,22 +357,22 @@ pub const ATAN_TABLE: &[(ValueSpec, AngleSpec)] = &[
 // =============================================================================
 
 /// Lookup sin value for a first-quadrant angle
-pub fn lookup_sin(angle: AngleSpec) -> Option<ValueSpec> {
+pub(crate) fn lookup_sin(angle: AngleSpec) -> Option<ValueSpec> {
     SIN_TABLE.iter().find(|(a, _)| *a == angle).map(|(_, v)| *v)
 }
 
 /// Lookup cos value for a first-quadrant angle
-pub fn lookup_cos(angle: AngleSpec) -> Option<ValueSpec> {
+pub(crate) fn lookup_cos(angle: AngleSpec) -> Option<ValueSpec> {
     COS_TABLE.iter().find(|(a, _)| *a == angle).map(|(_, v)| *v)
 }
 
 /// Lookup tan value for a first-quadrant angle
-pub fn lookup_tan(angle: AngleSpec) -> Option<ValueSpec> {
+pub(crate) fn lookup_tan(angle: AngleSpec) -> Option<ValueSpec> {
     TAN_TABLE.iter().find(|(a, _)| *a == angle).map(|(_, v)| *v)
 }
 
 /// Lookup asin angle for a special value
-pub fn lookup_asin(value: ValueSpec) -> Option<AngleSpec> {
+pub(crate) fn lookup_asin(value: ValueSpec) -> Option<AngleSpec> {
     ASIN_TABLE
         .iter()
         .find(|(v, _)| *v == value)
@@ -380,7 +380,7 @@ pub fn lookup_asin(value: ValueSpec) -> Option<AngleSpec> {
 }
 
 /// Lookup acos angle for a special value
-pub fn lookup_acos(value: ValueSpec) -> Option<AngleSpec> {
+pub(crate) fn lookup_acos(value: ValueSpec) -> Option<AngleSpec> {
     ACOS_TABLE
         .iter()
         .find(|(v, _)| *v == value)
@@ -388,7 +388,7 @@ pub fn lookup_acos(value: ValueSpec) -> Option<AngleSpec> {
 }
 
 /// Lookup atan angle for a special value
-pub fn lookup_atan(value: ValueSpec) -> Option<AngleSpec> {
+pub(crate) fn lookup_atan(value: ValueSpec) -> Option<AngleSpec> {
     ATAN_TABLE
         .iter()
         .find(|(v, _)| *v == value)
@@ -472,7 +472,7 @@ impl NormAngle {
 ///    - Q2 [π/2, π]: sin(π-x) = sin(x), cos(π-x) = -cos(x)
 ///    - Q3 [π, 3π/2]: sin(π+x) = -sin(x), cos(π+x) = -cos(x)
 ///    - Q4 [3π/2, 2π]: sin(2π-x) = -sin(x), cos(2π-x) = cos(x)
-pub fn normalize_angle(angle: AngleSpec) -> NormAngle {
+pub(crate) fn normalize_angle(angle: AngleSpec) -> NormAngle {
     // First reduce to [0, 2π)
     let reduced = angle.reduce_mod_2pi();
 
@@ -634,7 +634,7 @@ pub fn parse_angle_from_expr(ctx: &Context, expr: ExprId) -> Option<AngleSpec> {
 ///
 /// This is the main entry point for table-driven trig evaluation.
 /// Returns `None` if the angle is not a special value we know about.
-pub fn eval_trig_special(ctx: &mut Context, f: TrigFn, arg: ExprId) -> Option<ExprId> {
+pub(crate) fn eval_trig_special(ctx: &mut Context, f: TrigFn, arg: ExprId) -> Option<ExprId> {
     // Step 1: Parse angle from expression
     let angle = parse_angle_from_expr(ctx, arg)?;
 
@@ -682,7 +682,7 @@ pub enum InvTrigFn {
 /// - sqrt(3)/2, -sqrt(3)/2
 /// - sqrt(3), -sqrt(3)
 /// - sqrt(3)/3 (= 1/sqrt(3)), -sqrt(3)/3
-pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
+pub(crate) fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
     use num_traits::One;
 
     match ctx.get(expr) {
@@ -868,7 +868,11 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
 /// Evaluate inverse trig (asin/acos/atan) at a special value.
 ///
 /// Returns the angle as ExprId if the value is recognized.
-pub fn eval_inv_trig_special(ctx: &mut Context, f: InvTrigFn, arg: ExprId) -> Option<ExprId> {
+pub(crate) fn eval_inv_trig_special(
+    ctx: &mut Context,
+    f: InvTrigFn,
+    arg: ExprId,
+) -> Option<ExprId> {
     // Step 1: Parse value from expression
     let value = parse_special_value(ctx, arg)?;
 

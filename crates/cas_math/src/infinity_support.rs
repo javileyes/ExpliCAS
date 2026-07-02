@@ -27,7 +27,7 @@ pub struct InfinityRewritePlan {
 }
 
 /// Detect if an expression is ±∞.
-pub fn inf_sign(ctx: &Context, id: ExprId) -> Option<InfSign> {
+pub(crate) fn inf_sign(ctx: &Context, id: ExprId) -> Option<InfSign> {
     match ctx.get(id) {
         Expr::Constant(Constant::Infinity) => Some(InfSign::Pos),
         Expr::Neg(inner) => match ctx.get(*inner) {
@@ -39,7 +39,7 @@ pub fn inf_sign(ctx: &Context, id: ExprId) -> Option<InfSign> {
 }
 
 /// Construct ±∞.
-pub fn mk_infinity(ctx: &mut Context, sign: InfSign) -> ExprId {
+pub(crate) fn mk_infinity(ctx: &mut Context, sign: InfSign) -> ExprId {
     let inf = ctx.add(Expr::Constant(Constant::Infinity));
     match sign {
         InfSign::Pos => inf,
@@ -57,7 +57,7 @@ pub fn mk_undefined(ctx: &mut Context) -> ExprId {
 /// Conservative policy: only true for expressions we KNOW are finite:
 /// - Numbers (BigRational)
 /// - Constants that are not Infinity or Undefined (π, e, i)
-pub fn is_finite_literal(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn is_finite_literal(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
         Expr::Number(_) => true,
         Expr::Constant(c) => !matches!(c, Constant::Infinity | Constant::Undefined),
@@ -97,7 +97,7 @@ pub fn is_negative_literal(ctx: &Context, id: ExprId) -> bool {
 }
 
 /// Collect additive terms with their signs (iterative, handles Sub).
-pub fn collect_add_terms_with_sign(
+pub(crate) fn collect_add_terms_with_sign(
     ctx: &Context,
     id: ExprId,
     is_positive: bool,
@@ -334,7 +334,7 @@ pub fn is_infinite_valued(ctx: &Context, id: ExprId) -> bool {
 /// indeterminate, for every value of the cofactors (`x·∞ / (2·x·∞)` is `∞/∞` when `x≠0` and
 /// `undefined/undefined` when `x=0` — never `1/2`). It does NOT recurse into `Div`/`Pow`/`Add`, so a
 /// finite expression that merely mentions `∞` (`1/∞ = 0`, `∞+1`, `∞^0`) is correctly NOT flagged.
-pub fn contains_unbounded_factor(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn contains_unbounded_factor(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
         Expr::Constant(Constant::Infinity) => true,
         Expr::Neg(inner) => contains_unbounded_factor(ctx, *inner),
@@ -584,7 +584,7 @@ fn fold_bin(
 /// arithmetic, where pre-existing cancellation rules (a-a=0, a/a=1,
 /// x^0=1) mishandle it - e.g. `sinh(∞) - cosh(∞)` would wrongly
 /// collapse to 0 instead of staying an honest ∞ - ∞ form.
-pub fn try_rewrite_function_at_infinity_expr(
+pub(crate) fn try_rewrite_function_at_infinity_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<InfinityRewritePlan> {

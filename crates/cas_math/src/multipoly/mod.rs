@@ -19,11 +19,10 @@ use num_traits::{One, Zero};
 use std::collections::BTreeMap;
 
 // Re-export public API so `crate::multipoly::X` continues to work
-pub use conversion::{collect_poly_vars, multipoly_from_expr, multipoly_to_expr};
-pub use gcd::{
-    gcd_multivar_layer2, gcd_multivar_layer25, gcd_multivar_layer2_with_stats, GcdBudget, GcdLayer,
-    Layer25Budget,
-};
+pub(crate) use conversion::collect_poly_vars;
+pub use conversion::{multipoly_from_expr, multipoly_to_expr};
+pub(crate) use gcd::gcd_multivar_layer2;
+pub use gcd::{gcd_multivar_layer25, GcdBudget, GcdLayer, Layer25Budget};
 
 // =============================================================================
 // Types

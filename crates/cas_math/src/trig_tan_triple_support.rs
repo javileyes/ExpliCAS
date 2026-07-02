@@ -14,7 +14,7 @@ pub struct TanTripleProductRewrite {
 }
 
 /// Check if an expression is `π/3` (division or canonical multiplication form).
-pub fn is_pi_over_3(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_pi_over_3(ctx: &Context, expr: ExprId) -> bool {
     let is_one_third_factor = |id: ExprId| -> bool {
         if let Expr::Number(n) = ctx.get(id) {
             return *n == num_rational::BigRational::new(1.into(), 3.into());
@@ -53,7 +53,7 @@ pub fn is_pi_over_3(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Check if `expr` equals `u + π/3` or `π/3 + u`.
-pub fn is_u_plus_pi_over_3(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
+pub(crate) fn is_u_plus_pi_over_3(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
     if let Expr::Add(l, r) = ctx.get(expr) {
         if cas_ast::ordering::compare_expr(ctx, *l, u) == Ordering::Equal {
             return is_pi_over_3(ctx, *r);
@@ -66,7 +66,7 @@ pub fn is_u_plus_pi_over_3(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
 }
 
 /// Check if `expr` equals `π/3 - u` or canonicalized `-u + π/3`.
-pub fn is_pi_over_3_minus_u(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
+pub(crate) fn is_pi_over_3_minus_u(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
     if let Expr::Sub(l, r) = ctx.get(expr) {
         if is_pi_over_3(ctx, *l) && cas_ast::ordering::compare_expr(ctx, *r, u) == Ordering::Equal {
             return true;
@@ -95,7 +95,7 @@ pub fn is_pi_over_3_minus_u(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
 
 /// Check if `tan_expr` participates in a triple-product scaffold
 /// `tan(u)·tan(π/3+u)·tan(π/3-u)` within the provided ancestor chain.
-pub fn is_part_of_tan_triple_product_with_ancestors(
+pub(crate) fn is_part_of_tan_triple_product_with_ancestors(
     ctx: &Context,
     tan_expr: ExprId,
     ancestors: &[ExprId],

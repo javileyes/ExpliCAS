@@ -526,7 +526,7 @@ pub fn try_rewrite_sqrt_square_expr(ctx: &mut Context, expr: ExprId) -> Option<A
 
 /// Extract base from symbolic root-cancel pattern:
 /// `sqrt(base^n, n)` where `n` is symbolic (non-numeric).
-pub fn try_extract_symbolic_root_cancel_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_extract_symbolic_root_cancel_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -714,7 +714,7 @@ pub fn try_rewrite_abs_quotient_sub_normalize_expr(
 }
 
 /// Rewrite `|a| * |b|` into `|a * b|` when the input expression matches.
-pub fn try_rewrite_abs_product_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_abs_product_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Mul(lhs, rhs) = ctx.get(expr) else {
         return None;
     };
@@ -739,7 +739,7 @@ pub fn try_rewrite_abs_product_identity_expr(
 }
 
 /// Rewrite `|a| / |b|` into `|a / b|` when the input expression matches.
-pub fn try_rewrite_abs_quotient_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_abs_quotient_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Div(lhs, rhs) = ctx.get(expr) else {
         return None;
     };
@@ -768,7 +768,7 @@ pub fn try_rewrite_abs_quotient_identity_expr(
 /// `sqrt_like` includes:
 /// - `sqrt(arg)`
 /// - `arg^(1/2)`
-pub fn try_extract_abs_sqrt_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_extract_abs_sqrt_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let abs_arg = try_unwrap_abs_arg(ctx, expr)?;
 
     // Radicand of the matched sqrt-like form, when present.
@@ -809,7 +809,7 @@ pub fn try_rewrite_abs_sqrt_identity_expr(ctx: &Context, expr: ExprId) -> Option
 /// `exp_like` includes:
 /// - `exp(arg)`
 /// - `e^arg`
-pub fn try_extract_abs_exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_extract_abs_exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let abs_arg = try_unwrap_abs_arg(ctx, expr)?;
 
     if let Expr::Function(fn_id, _) = ctx.get(abs_arg) {
@@ -1013,7 +1013,7 @@ pub fn try_rewrite_abs_numeric_factor_expr(
 /// - `abs`, `sqrt`, `exp`
 /// - non-negative numeric literals
 /// - sums/products of non-negative expressions
-pub fn is_sum_of_nonnegative(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_sum_of_nonnegative(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         // x^(2k) is non-negative
         Expr::Pow(_, exp) => {

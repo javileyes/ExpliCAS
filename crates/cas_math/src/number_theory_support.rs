@@ -72,7 +72,7 @@ impl NumberTheorySimpleRewrite {
 /// - `fact` / `factorial`
 /// - `choose` / `nCr`
 /// - `perm` / `nPr`
-pub fn try_eval_simple_number_theory_call(
+pub(crate) fn try_eval_simple_number_theory_call(
     ctx: &mut Context,
     name: &str,
     args: &[ExprId],
@@ -509,7 +509,7 @@ pub fn try_rewrite_consecutive_factorial_ratio_expr(
 }
 
 /// Check if expression contains a `poly_result(...)` reference.
-pub fn contains_poly_result(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn contains_poly_result(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Function(fn_id, args) => {
             if ctx.is_builtin(*fn_id, BuiltinFn::PolyResult) {
@@ -530,7 +530,7 @@ pub fn contains_poly_result(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Extract integer exponent from expression.
-pub fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
+pub(crate) fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
     match ctx.get(exp) {
         Expr::Number(n) => {
             if n.is_integer() {
@@ -545,7 +545,7 @@ pub fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
 }
 
 /// Check if expression has large unexpanded powers (exponent > 2) over non-atomic bases.
-pub fn has_large_unexpanded_power(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn has_large_unexpanded_power(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             if let Some(n) = get_integer_exponent(ctx, *exp) {
@@ -574,7 +574,7 @@ pub fn has_large_unexpanded_power(ctx: &Context, expr: ExprId) -> bool {
 /// Accepted forms:
 /// - `n^(1/2)`
 /// - `sqrt(n)`
-pub fn is_sqrt_of_integer_expr(ctx: &Context, id: ExprId, n: i64) -> bool {
+pub(crate) fn is_sqrt_of_integer_expr(ctx: &Context, id: ExprId, n: i64) -> bool {
     let target = BigRational::from_integer(BigInt::from(n));
     let half = BigRational::new(1.into(), 2.into());
 
@@ -595,7 +595,7 @@ pub fn is_sqrt_of_integer_expr(ctx: &Context, id: ExprId, n: i64) -> bool {
 /// - use `Modp` when expression references `poly_result(...)` or contains
 ///   large unexpanded powers over non-atomic bases;
 /// - otherwise use `Structural`.
-pub fn select_poly_gcd_mode(
+pub(crate) fn select_poly_gcd_mode(
     ctx: &Context,
     a: ExprId,
     b: ExprId,
@@ -657,7 +657,7 @@ fn integer_result(ctx: &mut Context, value: BigInt) -> ExprId {
 }
 
 /// `isprime(n)` → `1` if prime, `0` otherwise (the engine has no boolean type).
-pub fn compute_isprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_isprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if !within_prime_search_cap(&val) {
         return None;
@@ -666,7 +666,7 @@ pub fn compute_isprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 }
 
 /// Smallest prime strictly greater than `n`.
-pub fn compute_nextprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_nextprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if !within_prime_search_cap(&val) {
         return None;
@@ -683,7 +683,7 @@ pub fn compute_nextprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 }
 
 /// Largest prime strictly less than `n` (declines when none exists, i.e. `n ≤ 2`).
-pub fn compute_prevprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_prevprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if !within_prime_search_cap(&val) || val <= BigInt::from(2) {
         return None;
@@ -700,7 +700,7 @@ pub fn compute_prevprime_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 const COMBINATORIAL_INDEX_CAP: i64 = 1_000_000;
 
 /// `n`th Fibonacci number (`F₀=0, F₁=1`), iteratively. Declines for negative `n`.
-pub fn compute_fibonacci_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_fibonacci_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let idx = extract_integer_bigint(ctx, n)?;
     if idx.is_negative() || idx > BigInt::from(COMBINATORIAL_INDEX_CAP) {
         return None;
@@ -716,7 +716,7 @@ pub fn compute_fibonacci_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 }
 
 /// `n`th Lucas number (`L₀=2, L₁=1`), iteratively. Declines for negative `n`.
-pub fn compute_lucas_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_lucas_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let idx = extract_integer_bigint(ctx, n)?;
     if idx.is_negative() || idx > BigInt::from(COMBINATORIAL_INDEX_CAP) {
         return None;
@@ -733,7 +733,7 @@ pub fn compute_lucas_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 
 /// `n`th Catalan number `Cₙ = (2n)! / ((n+1)!·n!)`, via the exact integer
 /// recurrence `Cₖ₊₁ = Cₖ·2(2k+1)/(k+2)`. Declines for negative `n`.
-pub fn compute_catalan_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_catalan_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let idx = extract_integer_bigint(ctx, n)?;
     if idx.is_negative() || idx > BigInt::from(100_000) {
         return None;
@@ -762,7 +762,7 @@ fn binomial_bigint(n: u64, k: u64) -> BigInt {
 /// `n`th Bernoulli number `Bₙ` as an exact rational (`B₁ = −1/2` convention) via the
 /// recurrence `Σ_{k=0}^{m} C(m+1,k)·Bₖ = 0` (with `B₀ = 1`). Shared by `bernoulli(n)`
 /// and the even-zeta closed form.
-pub fn bernoulli_number(n: u64) -> BigRational {
+pub(crate) fn bernoulli_number(n: u64) -> BigRational {
     let mut bernoulli: Vec<BigRational> = Vec::with_capacity((n + 1) as usize);
     bernoulli.push(BigRational::one()); // B₀ = 1
     for i in 1..=n {
@@ -777,7 +777,7 @@ pub fn bernoulli_number(n: u64) -> BigRational {
 
 /// Rational coefficient `c` with `ζ(2n) = c·π^(2n)`, from Euler's formula
 /// `ζ(2n) = (-1)^(n+1)·B_{2n}·(2π)^(2n) / (2·(2n)!)`. Always positive. `None` for `n = 0`.
-pub fn even_zeta_pi_coefficient(n: u64) -> Option<BigRational> {
+pub(crate) fn even_zeta_pi_coefficient(n: u64) -> Option<BigRational> {
     if n == 0 {
         return None;
     }
@@ -799,7 +799,7 @@ pub fn even_zeta_pi_coefficient(n: u64) -> Option<BigRational> {
 }
 
 /// `n`th Bernoulli number `Bₙ` (rational, `B₁ = −1/2` convention). Declines for negative `n`.
-pub fn compute_bernoulli_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_bernoulli_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let idx = extract_integer_bigint(ctx, n)?;
     if idx.is_negative() || idx > BigInt::from(1000) {
         return None;
@@ -811,7 +811,11 @@ pub fn compute_bernoulli_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 /// Stirling number of the second kind `S(n,k)`: ways to partition an `n`-set
 /// into `k` non-empty blocks. Recurrence `S(n,k)=k·S(n-1,k)+S(n-1,k-1)`.
 /// Declines for negative arguments.
-pub fn compute_stirling_second_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_stirling_second_expr(
+    ctx: &mut Context,
+    n: ExprId,
+    k: ExprId,
+) -> Option<ExprId> {
     let n_big = extract_integer_bigint(ctx, n)?;
     let k_big = extract_integer_bigint(ctx, k)?;
     if n_big.is_negative()
@@ -841,7 +845,11 @@ pub fn compute_stirling_second_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> 
 /// Unsigned Stirling number of the first kind `c(n,k)`: permutations of `n`
 /// elements with exactly `k` cycles. Recurrence `c(n,k)=c(n-1,k-1)+(n-1)·c(n-1,k)`.
 /// Declines for negative arguments.
-pub fn compute_stirling_first_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_stirling_first_expr(
+    ctx: &mut Context,
+    n: ExprId,
+    k: ExprId,
+) -> Option<ExprId> {
     let n_big = extract_integer_bigint(ctx, n)?;
     let k_big = extract_integer_bigint(ctx, k)?;
     if n_big.is_negative()
@@ -880,7 +888,7 @@ fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
 
 /// Extended Euclid as a user operation: `gcdext(a, b) → [g, x, y]` with
 /// `a·x + b·y = g = gcd(a, b)`, the Bézout coefficients, as a row vector.
-pub fn compute_gcdext_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_gcdext_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
     let a = extract_integer_bigint(ctx, a)?;
     let b = extract_integer_bigint(ctx, b)?;
     let (mut g, mut x, mut y) = extended_gcd(&a, &b);
@@ -906,7 +914,7 @@ pub fn compute_gcdext_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<Ex
 
 /// Modular inverse `a⁻¹ mod n` in `[0, n)`, via extended Euclid. Declines when the
 /// inverse does not exist (`gcd(a, n) ≠ 1`) or the modulus is `≤ 1`.
-pub fn compute_modinv_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_modinv_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
     let a = extract_integer_bigint(ctx, a)?;
     let modulus = extract_integer_bigint(ctx, n)?;
     if modulus <= BigInt::one() {
@@ -923,7 +931,7 @@ pub fn compute_modinv_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<Ex
 
 /// Jacobi symbol `(a / n)` for an ODD POSITIVE `n` — `−1`, `0`, or `1`. (For prime
 /// `n` this is the Legendre symbol.) Declines for even or non-positive `n`.
-pub fn compute_jacobi_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_jacobi_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
     let mut a = extract_integer_bigint(ctx, a)?;
     let mut n = extract_integer_bigint(ctx, n)?;
     if n <= BigInt::zero() || n.is_even() {
@@ -983,7 +991,7 @@ fn prime_factorization(mut n: BigInt) -> Vec<(BigInt, u32)> {
 }
 
 /// Number of positive divisors `τ(n) = ∏(eᵢ + 1)`. Declines for `n < 1`.
-pub fn compute_numdivisors_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_numdivisors_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if val < BigInt::one() || !within_prime_search_cap(&val) {
         return None;
@@ -1012,7 +1020,7 @@ fn divisor_sum_bigint(n: BigInt) -> BigInt {
     sigma
 }
 
-pub fn compute_sigma_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_sigma_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if val < BigInt::one() || !within_prime_search_cap(&val) {
         return None;
@@ -1022,7 +1030,7 @@ pub fn compute_sigma_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 
 /// 1 if `n` is a perfect number (`σ(n) = 2n`, `n ≥ 1`), else 0. The engine has no
 /// boolean type, so the predicate is reported as `1`/`0` like `isprime`.
-pub fn compute_isperfect_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_isperfect_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if val < BigInt::one() || !within_prime_search_cap(&val) {
         return None;
@@ -1041,7 +1049,7 @@ pub fn compute_isperfect_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 
 /// `n`th derangement (subfactorial) `!n`: permutations of `n` elements with NO fixed
 /// point. Recurrence `!n = (n-1)·(!(n-1)+!(n-2))`, `!0=1`, `!1=0`. Declines for negative `n`.
-pub fn compute_derangement_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_derangement_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let idx = extract_integer_bigint(ctx, n)?;
     if idx.is_negative() || idx > BigInt::from(COMBINATORIAL_INDEX_CAP) {
         return None;
@@ -1064,7 +1072,7 @@ pub fn compute_derangement_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> 
 }
 
 /// `n`th harmonic number `Hₙ = Σ_{k=1}^n 1/k` as an exact rational. Declines for `n < 1`.
-pub fn compute_harmonic_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_harmonic_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let idx = extract_integer_bigint(ctx, n)?;
     if idx < BigInt::one() || idx > BigInt::from(100_000) {
         return None;
@@ -1079,7 +1087,7 @@ pub fn compute_harmonic_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 
 /// Sorted list of the positive divisors of `n`, returned as a 1×k row matrix
 /// (`divisors(12) → [1, 2, 3, 4, 6, 12]`). Declines for `n < 1`.
-pub fn compute_divisors_list_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_divisors_list_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if val < BigInt::one() || !within_prime_search_cap(&val) {
         return None;
@@ -1114,7 +1122,11 @@ pub fn compute_divisors_list_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId
 /// Chinese Remainder Theorem: the smallest non-negative `x` with `x ≡ rᵢ (mod mᵢ)`
 /// for every pair, returned modulo `lcm(mᵢ)`. Handles non-coprime moduli, declining
 /// to a residual when the congruences are inconsistent. `crt([2,3],[3,5]) → 8`.
-pub fn compute_crt_expr(ctx: &mut Context, residues: ExprId, moduli: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_crt_expr(
+    ctx: &mut Context,
+    residues: ExprId,
+    moduli: ExprId,
+) -> Option<ExprId> {
     let residues = crate::matrix::Matrix::from_expr(ctx, residues)?;
     let moduli = crate::matrix::Matrix::from_expr(ctx, moduli)?;
     if residues.data.is_empty() || residues.data.len() != moduli.data.len() {
@@ -1152,7 +1164,7 @@ pub fn compute_crt_expr(ctx: &mut Context, residues: ExprId, moduli: ExprId) -> 
 }
 
 /// `iscomposite(n)` → `1` when `n > 1` is composite, `0` otherwise (no boolean type).
-pub fn compute_iscomposite_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_iscomposite_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if !within_prime_search_cap(&val) {
         return None;
@@ -1163,7 +1175,7 @@ pub fn compute_iscomposite_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> 
 
 /// Euler's totient `φ(n) = n·∏(1 − 1/p)` over the distinct primes `p | n`, by exact
 /// integer factorization. Declines for `n < 1`.
-pub fn compute_totient_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_totient_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if val < BigInt::one() || !within_prime_search_cap(&val) {
         return None;
@@ -1195,7 +1207,7 @@ pub fn compute_integer_gcd_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Opti
 }
 
 /// Compute `lcm(a, b)` when both inputs are exact integers.
-pub fn compute_lcm_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_lcm_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
     let val_a = extract_integer_bigint(ctx, a)?;
     let val_b = extract_integer_bigint(ctx, b)?;
     if val_a.is_zero() && val_b.is_zero() {
@@ -1206,7 +1218,7 @@ pub fn compute_lcm_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprI
 }
 
 /// Compute Euclidean remainder `a mod n` when both inputs are exact integers.
-pub fn compute_mod_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_mod_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
     let val_a = extract_integer_bigint(ctx, a)?;
     let val_n = extract_integer_bigint(ctx, n)?;
     if val_n.is_zero() {
@@ -1219,7 +1231,7 @@ pub fn compute_mod_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprI
 /// Compute prime factorization expression for exact integer input.
 ///
 /// Returns a `factored(...)` expression with optional `factored_pow(base, exp)` nodes.
-pub fn compute_prime_factors_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_prime_factors_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if val.is_zero() {
         return Some(ctx.num(0));
@@ -1290,7 +1302,7 @@ pub fn compute_prime_factors_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId
 }
 
 /// Compute `n!` for exact non-negative integer inputs, bounded by `n <= 1000`.
-pub fn compute_factorial_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_factorial_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if val.is_negative() {
         return None;
@@ -1309,7 +1321,7 @@ pub fn compute_factorial_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 }
 
 /// Compute binomial coefficient `n choose k` for exact integer inputs.
-pub fn compute_choose_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_choose_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
     let val_n = extract_integer_bigint(ctx, n)?;
     let val_k = extract_integer_bigint(ctx, k)?;
 
@@ -1357,7 +1369,7 @@ pub fn compute_choose_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<Ex
 }
 
 /// Compute permutations `nPk` for exact integer inputs.
-pub fn compute_perm_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
+pub(crate) fn compute_perm_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
     let val_n = extract_integer_bigint(ctx, n)?;
     let val_k = extract_integer_bigint(ctx, k)?;
 

@@ -22,7 +22,7 @@ pub struct AddDenominatorPlan {
 /// Handles:
 /// - same/opposite denominator relation (with algebraic check)
 /// - divisible denominator normalization for common-denominator construction.
-pub fn plan_add_denominator_with<FExpand>(
+pub(crate) fn plan_add_denominator_with<FExpand>(
     ctx: &mut Context,
     n1: ExprId,
     n2: ExprId,

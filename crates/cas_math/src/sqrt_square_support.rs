@@ -15,7 +15,7 @@ pub enum SqrtSquarePattern {
 /// Recognized forms:
 /// - `base = arg^2`
 /// - `base = arg * arg`
-pub fn detect_sqrt_square_pattern(ctx: &Context, base: ExprId) -> Option<SqrtSquarePattern> {
+pub(crate) fn detect_sqrt_square_pattern(ctx: &Context, base: ExprId) -> Option<SqrtSquarePattern> {
     match ctx.get(base) {
         Expr::Pow(inner_base, inner_exp) => {
             if crate::expr_predicates::is_two_expr(ctx, *inner_exp) {

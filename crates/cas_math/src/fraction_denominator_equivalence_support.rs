@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 /// - Fast structural equality check.
 /// - Optional expansion-based comparison for polynomial-looking terms.
 /// - Numeric polynomial zero probe on `expand(d1 - d2)` as fallback.
-pub fn are_denominators_algebraically_equal_with<FExpand>(
+pub(crate) fn are_denominators_algebraically_equal_with<FExpand>(
     ctx: &mut Context,
     d1: ExprId,
     d2: ExprId,

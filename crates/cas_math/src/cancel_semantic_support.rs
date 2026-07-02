@@ -20,7 +20,7 @@ pub type SignedSafetyTerm = (ExprId, bool, OriginSafety);
 
 /// Collect additive signed terms from one expression and tag each with the
 /// same origin safety classification.
-pub fn collect_signed_terms_with_uniform_safety(
+pub(crate) fn collect_signed_terms_with_uniform_safety(
     ctx: &Context,
     expr: ExprId,
     safety: OriginSafety,
@@ -31,7 +31,7 @@ pub fn collect_signed_terms_with_uniform_safety(
 }
 
 /// Build a set of structural fingerprints for signed terms.
-pub fn signed_term_fingerprints(ctx: &Context, terms: &[SignedSafetyTerm]) -> HashSet<u64> {
+pub(crate) fn signed_term_fingerprints(ctx: &Context, terms: &[SignedSafetyTerm]) -> HashSet<u64> {
     terms
         .iter()
         .map(|(t, _, _)| term_fingerprint(ctx, *t))
@@ -39,21 +39,14 @@ pub fn signed_term_fingerprints(ctx: &Context, terms: &[SignedSafetyTerm]) -> Ha
 }
 
 /// Compute per-term node counts using a caller-provided counting callback.
-pub fn signed_term_node_counts<FCount>(terms: &[SignedSafetyTerm], mut count: FCount) -> Vec<usize>
+pub(crate) fn signed_term_node_counts<FCount>(
+    terms: &[SignedSafetyTerm],
+    mut count: FCount,
+) -> Vec<usize>
 where
     FCount: FnMut(ExprId) -> usize,
 {
     terms.iter().map(|(t, _, _)| count(*t)).collect()
-}
-
-/// Apply an ExprId-to-ExprId mapping in place to each signed term.
-pub fn map_signed_terms_in_place<FMap>(terms: &mut [SignedSafetyTerm], mut map: FMap)
-where
-    FMap: FnMut(ExprId) -> ExprId,
-{
-    for (term, _, _) in terms.iter_mut() {
-        *term = map(*term);
-    }
 }
 
 /// Try overlap-aware expansion in both directions:
@@ -61,7 +54,7 @@ where
 /// - expand `rhs_terms` against fingerprints from `lhs_terms`.
 ///
 /// Returns `true` when at least one side expanded.
-pub fn try_bidirectional_overlap_expansion_with(
+pub(crate) fn try_bidirectional_overlap_expansion_with(
     ctx: &mut Context,
     lhs_terms: &mut Vec<SignedSafetyTerm>,
     rhs_terms: &mut Vec<SignedSafetyTerm>,
@@ -88,7 +81,7 @@ pub struct CancelUsage {
 /// - signs are equal,
 /// - both terms are `DefinabilityPreserving`,
 /// - structural comparison is equal.
-pub fn match_structural_definability_pairs(
+pub(crate) fn match_structural_definability_pairs(
     ctx: &Context,
     lhs_terms: &[SignedSafetyTerm],
     rhs_terms: &[SignedSafetyTerm],
@@ -127,7 +120,7 @@ pub fn match_structural_definability_pairs(
 ///
 /// `lhs_node_counts` / `rhs_node_counts` are precomputed node counts for the
 /// corresponding term vectors, used to enforce the max-node guard.
-pub fn match_semantic_pairs_with_usage_and_node_counts<FProof>(
+pub(crate) fn match_semantic_pairs_with_usage_and_node_counts<FProof>(
     lhs_terms: &[SignedSafetyTerm],
     rhs_terms: &[SignedSafetyTerm],
     lhs_node_counts: &[usize],
@@ -168,7 +161,7 @@ pub fn match_semantic_pairs_with_usage_and_node_counts<FProof>(
 }
 
 /// Collect unmatched signed terms from a term list and usage mask.
-pub fn collect_unmatched_signed_terms(
+pub(crate) fn collect_unmatched_signed_terms(
     terms: &[SignedSafetyTerm],
     used: &[bool],
 ) -> Vec<(ExprId, bool)> {
@@ -399,16 +392,6 @@ mod tests {
         ];
         let counts = signed_term_node_counts(&terms, |_id| 7usize);
         assert_eq!(counts, vec![7, 7]);
-    }
-
-    #[test]
-    fn map_signed_terms_in_place_updates_ids() {
-        let mut ctx = Context::new();
-        let x = parse("x", &mut ctx).expect("parse");
-        let y = parse("y", &mut ctx).expect("parse");
-        let mut terms = vec![(x, true, OriginSafety::DefinabilityPreserving)];
-        map_signed_terms_in_place(&mut terms, |_old| y);
-        assert_eq!(terms[0].0, y);
     }
 
     #[test]

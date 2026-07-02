@@ -76,7 +76,7 @@ pub fn lookup_trig_or_inverse(
 
 /// Rewrite trig calls with negative arguments according to parity:
 /// `sin(-x)=-sin(x)`, `cos(-x)=cos(x)`, `tan(-x)=-tan(x)`.
-pub fn rewrite_negative_trig_argument(
+pub(crate) fn rewrite_negative_trig_argument(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,

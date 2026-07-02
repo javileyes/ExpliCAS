@@ -41,26 +41,6 @@ where
     (result, items)
 }
 
-/// Eagerly evaluate `expand(arg)` calls using crate default thresholds.
-pub fn eager_eval_expand_calls_default_with<Item, FBuildItem>(
-    ctx: &mut Context,
-    expr: ExprId,
-    include_items: bool,
-    build_item: FBuildItem,
-) -> (ExprId, Vec<Item>)
-where
-    FBuildItem: FnMut(&Context, u64, ExprId, ExprId) -> Item,
-{
-    eager_eval_expand_calls_with(
-        ctx,
-        expr,
-        include_items,
-        DEFAULT_EAGER_EXPAND_MODP_THRESHOLD,
-        DEFAULT_EAGER_EXPAND_MATERIALIZE_LIMIT,
-        build_item,
-    )
-}
-
 fn eager_eval_expand_recursive<Item, FBuildItem>(
     ctx: &mut Context,
     expr: ExprId,
@@ -211,10 +191,7 @@ fn try_eval_expand_call(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        eager_eval_expand_calls_default_with, eager_eval_expand_calls_with,
-        DEFAULT_EAGER_EXPAND_MATERIALIZE_LIMIT, DEFAULT_EAGER_EXPAND_MODP_THRESHOLD,
-    };
+    use super::eager_eval_expand_calls_with;
     use cas_ast::Expr;
     use cas_parser::parse;
 
@@ -264,27 +241,5 @@ mod tests {
 
         assert!(matches!(ctx.get(rewritten), Expr::Add(_, _)));
         assert_eq!(items.len(), 1);
-    }
-
-    #[test]
-    fn eager_default_wrapper_uses_defaults() {
-        let mut ctx = cas_ast::Context::new();
-        let expr = parse("expand((x+1)^2)", &mut ctx).expect("parse expand call");
-
-        let (default_rewritten, default_items) =
-            eager_eval_expand_calls_default_with(&mut ctx, expr, true, |_ctx, est, b, a| {
-                (est, b, a)
-            });
-        let (explicit_rewritten, explicit_items) = eager_eval_expand_calls_with(
-            &mut ctx,
-            expr,
-            true,
-            DEFAULT_EAGER_EXPAND_MODP_THRESHOLD,
-            DEFAULT_EAGER_EXPAND_MATERIALIZE_LIMIT,
-            |_ctx, est, b, a| (est, b, a),
-        );
-
-        assert_eq!(default_rewritten, explicit_rewritten);
-        assert_eq!(default_items.len(), explicit_items.len());
     }
 }

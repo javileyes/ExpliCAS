@@ -30,7 +30,7 @@ pub fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
 }
 
 /// Check if a list of additive terms contains any reciprocal `atan`/`arctan` argument pair.
-pub fn has_reciprocal_atan_pair(ctx: &Context, terms: &[ExprId]) -> bool {
+pub(crate) fn has_reciprocal_atan_pair(ctx: &Context, terms: &[ExprId]) -> bool {
     let mut atan_args: Vec<ExprId> = Vec::new();
     for &term in terms {
         if let Expr::Function(fn_id, args) = ctx.get(term) {

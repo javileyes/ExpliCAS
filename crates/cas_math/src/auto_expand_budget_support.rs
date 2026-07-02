@@ -6,7 +6,7 @@ use cas_ast::{Context, Expr, ExprId};
 ///
 /// This intentionally treats only `Add` as additive branching to preserve
 /// historical behavior in `AutoExpandPowSumRule`.
-pub fn count_add_terms_for_pow_base(ctx: &Context, expr: ExprId) -> u32 {
+pub(crate) fn count_add_terms_for_pow_base(ctx: &Context, expr: ExprId) -> u32 {
     match ctx.get(expr) {
         Expr::Add(l, r) => {
             count_add_terms_for_pow_base(ctx, *l) + count_add_terms_for_pow_base(ctx, *r)
@@ -16,7 +16,7 @@ pub fn count_add_terms_for_pow_base(ctx: &Context, expr: ExprId) -> u32 {
 }
 
 /// Count distinct variables in an expression.
-pub fn count_distinct_variables_in_expr(ctx: &Context, expr: ExprId) -> u32 {
+pub(crate) fn count_distinct_variables_in_expr(ctx: &Context, expr: ExprId) -> u32 {
     cas_ast::collect_variables(ctx, expr).len() as u32
 }
 
@@ -25,7 +25,7 @@ pub fn count_distinct_variables_in_expr(ctx: &Context, expr: ExprId) -> u32 {
 /// - `n` = exponent
 ///
 /// Returns `None` on overflow.
-pub fn estimate_multinomial_terms_for_pow(k: u32, n: u32) -> Option<u32> {
+pub(crate) fn estimate_multinomial_terms_for_pow(k: u32, n: u32) -> Option<u32> {
     if k <= 1 {
         return Some(1);
     }

@@ -153,7 +153,7 @@ pub fn classify_power_identity_policy_pattern(
 }
 
 /// Decide whether `x^0` can rewrite to `1` in the given mode.
-pub fn decide_pow_zero_policy(
+pub(crate) fn decide_pow_zero_policy(
     mode: PowerIdentityDomainMode,
     base_is_literal_zero: bool,
     base_is_numeric_literal: bool,
@@ -183,7 +183,7 @@ pub fn decide_pow_zero_policy(
 }
 
 /// Plan the full `x^0` rewrite action.
-pub fn plan_pow_zero_policy_action(
+pub(crate) fn plan_pow_zero_policy_action(
     mode: PowerIdentityDomainMode,
     base_is_literal_zero: bool,
     base_is_numeric_literal: bool,
@@ -221,7 +221,7 @@ pub fn plan_pow_zero_policy_action_with_mode_flags(
 }
 
 /// Decide the numeric fast-path for `0^x`.
-pub fn decide_zero_pow_numeric_policy(
+pub(crate) fn decide_zero_pow_numeric_policy(
     exp_is_numeric_positive: bool,
     exp_is_numeric_non_positive: bool,
 ) -> ZeroPowNumericPolicyDecision {

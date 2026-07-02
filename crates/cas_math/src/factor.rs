@@ -483,7 +483,7 @@ fn split_reducible_even_quartic(poly: &Polynomial) -> Option<(Polynomial, Polyno
 /// genuine identity is returned. (Univariate numeric cubes like `x³-8` are already
 /// factored by `factor_polynomial` via rational roots; coefficient cubes such as
 /// `8x³+27y³` need a richer cube-root extractor and stay whole here.)
-pub fn factor_sum_difference_of_cubes(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn factor_sum_difference_of_cubes(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let (l, r, is_difference) = match ctx.get(expr).clone() {
         Expr::Sub(l, r) => (l, r, true),
         Expr::Add(a, b) => {

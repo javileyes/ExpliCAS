@@ -89,7 +89,7 @@ pub fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Check whether `expr` is an inverse-trig function call (asin/acos/atan/etc.).
-pub fn is_inverse_trig_function_call(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_inverse_trig_function_call(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Function(fn_id, _args) => ctx.builtin_of(*fn_id).is_some_and(is_inverse_trig_builtin),
         _ => false,
@@ -231,7 +231,7 @@ fn is_pythagorean_style(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Check if should trigger mixed-fraction conversion to `sin/cos`.
-pub fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
+pub(crate) fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
     if is_pythagorean_style(ctx, num) || is_pythagorean_style(ctx, den) {
         return false;
     }
@@ -259,7 +259,7 @@ pub fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
 }
 
 /// Recursively convert reciprocal trig calls into `sin/cos` forms.
-pub fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
+pub(crate) fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
     enum TrigOp {
         Function(usize, Vec<ExprId>),
         Binary(ExprId, ExprId, u8), // 0=Add, 1=Sub, 2=Mul, 3=Div
@@ -329,7 +329,7 @@ pub fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
 }
 
 /// Check if `expr` is `fname(arg)^2`.
-pub fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprId> {
+pub(crate) fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             if is_two_expr(ctx, *exp) {
@@ -362,7 +362,7 @@ fn is_reciprocal_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> O
 }
 
 /// Check if two expressions form a reciprocal trig pair with shared argument.
-pub fn check_reciprocal_pair(
+pub(crate) fn check_reciprocal_pair(
     ctx: &Context,
     expr1: ExprId,
     expr2: ExprId,
@@ -644,7 +644,7 @@ pub fn try_rewrite_trig_quotient_div_expr(
     None
 }
 
-pub fn try_rewrite_mixed_fraction_sin_tan_identity_expr(
+pub(crate) fn try_rewrite_mixed_fraction_sin_tan_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<TrigCanonicalIdentityRewrite> {
@@ -745,7 +745,7 @@ fn match_cos_plus_cos_sq(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     None
 }
 
-pub fn try_rewrite_combined_mixed_fraction_sin_tan_identity_expr(
+pub(crate) fn try_rewrite_combined_mixed_fraction_sin_tan_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<TrigCanonicalIdentityRewrite> {
@@ -771,7 +771,10 @@ pub fn try_rewrite_combined_mixed_fraction_sin_tan_identity_expr(
     })
 }
 
-pub fn try_rewrite_sec_tan_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_sec_tan_pythagorean_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     let (l, r) = crate::expr_sub_like::extract_sub_like_pair(ctx, expr)?;
 
     let (Some(sec_arg), Some(tan_arg)) = (
@@ -801,7 +804,10 @@ pub fn try_rewrite_sec_tan_pythagorean_identity_expr(
     })
 }
 
-pub fn try_rewrite_csc_cot_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_csc_cot_pythagorean_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     let (l, r) = crate::expr_sub_like::extract_sub_like_pair(ctx, expr)?;
 
     let (Some(csc_arg), Some(cot_arg)) = (
@@ -831,7 +837,10 @@ pub fn try_rewrite_csc_cot_pythagorean_identity_expr(
     })
 }
 
-pub fn try_rewrite_tan_to_sec_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_tan_to_sec_pythagorean_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     let Expr::Add(l, r) = ctx.get(expr) else {
         return None;
     };
@@ -861,7 +870,10 @@ pub fn try_rewrite_tan_to_sec_pythagorean_identity_expr(
     })
 }
 
-pub fn try_rewrite_cot_to_csc_pythagorean_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_cot_to_csc_pythagorean_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     let Expr::Add(l, r) = ctx.get(expr) else {
         return None;
     };
@@ -891,7 +903,7 @@ pub fn try_rewrite_cot_to_csc_pythagorean_identity_expr(
     })
 }
 
-pub fn try_rewrite_sec_tan_minus_one_identity_expr(
+pub(crate) fn try_rewrite_sec_tan_minus_one_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExprId> {
@@ -932,7 +944,7 @@ pub fn try_rewrite_sec_tan_minus_one_identity_zero_expr(
     })
 }
 
-pub fn try_rewrite_csc_cot_minus_one_identity_expr(
+pub(crate) fn try_rewrite_csc_cot_minus_one_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExprId> {
@@ -973,7 +985,10 @@ pub fn try_rewrite_csc_cot_minus_one_identity_zero_expr(
     })
 }
 
-pub fn try_rewrite_reciprocal_product_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_reciprocal_product_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     let Expr::Mul(l, r) = ctx.get(expr) else {
         return None;
     };
@@ -997,7 +1012,7 @@ pub fn try_rewrite_reciprocal_product_identity_expr(
     })
 }
 
-pub fn try_rewrite_mixed_fraction_to_sincos_expr(
+pub(crate) fn try_rewrite_mixed_fraction_to_sincos_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExprId> {

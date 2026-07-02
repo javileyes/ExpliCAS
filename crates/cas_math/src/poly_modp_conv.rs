@@ -266,7 +266,7 @@ impl PolyResultResolver for ThreadLocalPolyStoreResolver {
 
 /// Strip __hold() wrappers from expression (multi-level)
 /// Uses canonical implementation from cas_ast::hold
-pub fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
+pub(crate) fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
         let unwrapped = cas_ast::hold::unwrap_hold(ctx, expr);
         if unwrapped == expr {
@@ -276,20 +276,8 @@ pub fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
     }
 }
 
-/// Convert Expr to MultiPolyModP
-pub fn expr_to_poly_modp(
-    ctx: &Context,
-    expr: ExprId,
-    p: u64,
-    budget: &PolyModpBudget,
-    vars: &mut VarTable,
-) -> Result<MultiPolyModP, PolyConvError> {
-    let expr = strip_hold(ctx, expr);
-    expr_to_poly_modp_with_resolver(ctx, expr, p, budget, vars, &NoPolyResultResolver)
-}
-
 /// Convert Expr to MultiPolyModP with external `poly_result` resolution.
-pub fn expr_to_poly_modp_with_resolver<R: PolyResultResolver>(
+pub(crate) fn expr_to_poly_modp_with_resolver<R: PolyResultResolver>(
     ctx: &Context,
     expr: ExprId,
     p: u64,
@@ -302,7 +290,7 @@ pub fn expr_to_poly_modp_with_resolver<R: PolyResultResolver>(
 }
 
 /// Convert Expr to MultiPolyModP, resolving `poly_result(id)` via thread-local store.
-pub fn expr_to_poly_modp_with_store(
+pub(crate) fn expr_to_poly_modp_with_store(
     ctx: &Context,
     expr: ExprId,
     p: u64,
@@ -313,7 +301,7 @@ pub fn expr_to_poly_modp_with_store(
 }
 
 /// Compute polynomial GCD in mod-p space and return it as an Expr.
-pub fn compute_gcd_modp_expr_with_options(
+pub(crate) fn compute_gcd_modp_expr_with_options(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
@@ -339,7 +327,7 @@ pub fn compute_gcd_modp_expr_with_options(
 }
 
 /// Strip `expand(...)` and `__hold(...)` wrappers iteratively.
-pub fn strip_expand_hold_wrappers(ctx: &Context, mut expr: ExprId) -> ExprId {
+pub(crate) fn strip_expand_hold_wrappers(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let builtin = ctx.builtin_of(*fn_id);
@@ -356,7 +344,7 @@ pub fn strip_expand_hold_wrappers(ctx: &Context, mut expr: ExprId) -> ExprId {
 ///
 /// This path avoids symbolic expansion and first reduces `a,b` by their visible
 /// structural GCD to shrink the modular conversion workload.
-pub fn compute_gcd_modp_expr_with_factor_extraction(
+pub(crate) fn compute_gcd_modp_expr_with_factor_extraction(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
@@ -813,7 +801,11 @@ fn modp_to_signed(c: u64, p: u64) -> i128 {
 }
 
 /// Convert MultiPolyModP back to an Expr (balanced Add tree).
-pub fn multipoly_modp_to_expr(ctx: &mut Context, poly: &MultiPolyModP, vars: &VarTable) -> ExprId {
+pub(crate) fn multipoly_modp_to_expr(
+    ctx: &mut Context,
+    poly: &MultiPolyModP,
+    vars: &VarTable,
+) -> ExprId {
     use num_bigint::BigInt;
     use num_rational::BigRational;
 
@@ -897,39 +889,4 @@ fn build_balanced_sum(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use cas_parser::parse;
-
-    #[test]
-    fn test_simple_var() {
-        let mut ctx = cas_ast::Context::new();
-        let expr = parse("x", &mut ctx).unwrap();
-        let mut vars = VarTable::new();
-        let poly =
-            expr_to_poly_modp(&ctx, expr, 17, &PolyModpBudget::default(), &mut vars).unwrap();
-        assert_eq!(poly.num_terms(), 1);
-        assert_eq!(vars.len(), 1);
-    }
-
-    #[test]
-    fn test_linear_sum() {
-        let mut ctx = cas_ast::Context::new();
-        let expr = parse("1 + 2*x + 3*y", &mut ctx).unwrap();
-        let mut vars = VarTable::new();
-        let poly =
-            expr_to_poly_modp(&ctx, expr, 17, &PolyModpBudget::default(), &mut vars).unwrap();
-        assert_eq!(poly.num_terms(), 3);
-    }
-
-    #[test]
-    fn test_pow_fast_path() {
-        let mut ctx = cas_ast::Context::new();
-        let expr = parse("(1 + x)^3", &mut ctx).unwrap();
-        let mut vars = VarTable::new();
-        let poly =
-            expr_to_poly_modp(&ctx, expr, 17, &PolyModpBudget::default(), &mut vars).unwrap();
-        // (1+x)^3 = 1 + 3x + 3x^2 + x^3
-        assert_eq!(poly.num_terms(), 4);
-    }
-}
+mod tests {}

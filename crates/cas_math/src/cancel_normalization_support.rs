@@ -42,7 +42,11 @@ impl OriginSafety {
 /// normalization is definability-preserving or needs analytic conditions.
 ///
 /// Guard: max recursion depth 3, max 6 numerator/additive terms.
-pub fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId, OriginSafety) {
+pub(crate) fn normalize_for_cancel(
+    ctx: &mut Context,
+    id: ExprId,
+    depth: usize,
+) -> (ExprId, OriginSafety) {
     if depth > 3 {
         return (id, OriginSafety::DefinabilityPreserving);
     }
@@ -242,7 +246,7 @@ pub fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (Exp
 ///
 /// Each term is normalized with `normalize_for_cancel`, safety flags are merged,
 /// and if normalization expands into additive structure the term is re-split.
-pub fn renormalize_signed_terms_for_cancel(
+pub(crate) fn renormalize_signed_terms_for_cancel(
     ctx: &mut Context,
     terms: &[(ExprId, bool, OriginSafety)],
 ) -> Vec<(ExprId, bool, OriginSafety)> {
@@ -267,7 +271,7 @@ pub fn renormalize_signed_terms_for_cancel(
 ///
 /// If a term became additive (e.g. `a + b`) it is split into multiple signed
 /// terms while preserving outer sign and safety metadata.
-pub fn reflatten_signed_terms_for_cancel(
+pub(crate) fn reflatten_signed_terms_for_cancel(
     ctx: &Context,
     terms: Vec<(ExprId, bool, OriginSafety)>,
 ) -> Vec<(ExprId, bool, OriginSafety)> {
