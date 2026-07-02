@@ -379,7 +379,9 @@ fn gcd_zippel_rec(
 // =============================================================================
 
 /// Threshold for parallel evaluation
+#[cfg(feature = "parallel")]
 const PAR_DEPTH: usize = 2; // Parallelize at depth 0, 1, 2
+#[cfg(feature = "parallel")]
 const PAR_TERM_THRESHOLD: usize = 5_000; // Minimum combined terms for parallelism
 
 /// Decide whether to use parallel evaluation
