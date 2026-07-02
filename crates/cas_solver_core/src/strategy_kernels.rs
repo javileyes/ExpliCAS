@@ -429,47 +429,6 @@ where
     ))
 }
 
-/// Materialize and solve one collect-terms kernel returning the plain
-/// `(SolutionSet, steps)` tuple used by engine strategy surfaces.
-#[allow(clippy::too_many_arguments)]
-pub fn solve_collect_terms_kernel_result_pipeline_with_item<
-    E,
-    S,
-    FSimplify,
-    FRender,
-    FSolve,
-    FStep,
->(
-    kernel: CollectTermsKernel,
-    op: RelOp,
-    original_rhs: ExprId,
-    var: &str,
-    include_item: bool,
-    simplify_expr: FSimplify,
-    render_expr: FRender,
-    solve_rewritten: FSolve,
-    map_item_to_step: FStep,
-) -> Result<(SolutionSet, Vec<S>), E>
-where
-    FSimplify: FnMut(ExprId) -> ExprId,
-    FRender: FnMut(ExprId) -> String,
-    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(StrategyExecutionItem) -> S,
-{
-    let solved = solve_collect_terms_kernel_pipeline_with_item(
-        kernel,
-        op,
-        original_rhs,
-        var,
-        include_item,
-        simplify_expr,
-        render_expr,
-        solve_rewritten,
-        map_item_to_step,
-    )?;
-    Ok((solved.solution_set, solved.steps))
-}
-
 /// Derive and solve one collect-terms kernel returning plain strategy output.
 ///
 /// Returns `None` when collect-terms kernel derivation does not apply.
@@ -810,22 +769,6 @@ where
     ))
 }
 
-/// Derive, simplify, and materialize rational-exponent rewrite in one pipeline
-/// deriving side presence from `eq` for `var`.
-pub fn execute_rational_exponent_rewrite_with_for_var<FSimplify>(
-    ctx: &mut Context,
-    eq: &Equation,
-    var: &str,
-    simplify_expr: FSimplify,
-) -> Option<RationalExponentSolvedRewrite>
-where
-    FSimplify: FnMut(ExprId) -> ExprId,
-{
-    let lhs_has_var = contains_var(ctx, eq.lhs, var);
-    let rhs_has_var = contains_var(ctx, eq.rhs, var);
-    execute_rational_exponent_rewrite_with(ctx, eq, var, lhs_has_var, rhs_has_var, simplify_expr)
-}
-
 /// Execute recursive solve for a materialized rational-exponent rewrite.
 pub fn solve_rational_exponent_rewrite_with<E, T, FSolve>(
     rewrite: RationalExponentSolvedRewrite,
@@ -969,42 +912,6 @@ where
         map_item_to_step,
         verify_discrete_solution,
     ))
-}
-
-/// Materialize and solve one rational-exponent kernel returning the plain
-/// `(SolutionSet, steps)` tuple used by engine strategy surfaces.
-pub fn solve_rational_exponent_kernel_result_pipeline_with_item_with<
-    E,
-    S,
-    FSimplify,
-    FSolve,
-    FStep,
-    FVerify,
->(
-    kernel: RationalExponentKernel,
-    var: &str,
-    include_item: bool,
-    simplify_expr: FSimplify,
-    solve_rewritten: FSolve,
-    map_item_to_step: FStep,
-    verify_discrete_solution: FVerify,
-) -> Result<(SolutionSet, Vec<S>), E>
-where
-    FSimplify: FnMut(ExprId) -> ExprId,
-    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(StrategyExecutionItem) -> S,
-    FVerify: FnMut(ExprId) -> bool,
-{
-    let solved = solve_rational_exponent_kernel_pipeline_with_item_with(
-        kernel,
-        var,
-        include_item,
-        simplify_expr,
-        solve_rewritten,
-        map_item_to_step,
-        verify_discrete_solution,
-    )?;
-    Ok((solved.solution_set, solved.steps))
 }
 
 /// Derive and solve one rational-exponent kernel returning plain strategy output.

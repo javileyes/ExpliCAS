@@ -90,26 +90,6 @@ where
     core_to_proof(core)
 }
 
-/// Run non-zero proof using [`DEFAULT_PROOF_DEPTH`].
-pub fn prove_nonzero_with_default_depth<FPositive, FGround>(
-    ctx: &Context,
-    expr: ExprId,
-    prove_positive: FPositive,
-    ground_nonzero: FGround,
-) -> Proof
-where
-    FPositive: FnMut(&Context, ExprId) -> Proof,
-    FGround: FnMut(&Context, ExprId) -> Option<Proof>,
-{
-    prove_nonzero_depth_with(
-        ctx,
-        expr,
-        DEFAULT_PROOF_DEPTH,
-        prove_positive,
-        ground_nonzero,
-    )
-}
-
 /// Depth-limited non-zero proof wired to the standard runtime pattern:
 /// `prove_positive(RealOnly)` + runtime `try_ground_nonzero`.
 pub fn prove_nonzero_depth_with_runtime_ground(
@@ -132,16 +112,6 @@ pub fn prove_nonzero_depth_with_runtime_ground(
         },
         try_ground_nonzero,
     )
-}
-
-/// Non-zero proof with [`DEFAULT_PROOF_DEPTH`] wired to the standard runtime
-/// pattern: `prove_positive(RealOnly)` + runtime `try_ground_nonzero`.
-pub fn prove_nonzero_with_default_depth_with_runtime_ground(
-    ctx: &Context,
-    expr: ExprId,
-    try_ground_nonzero: TryGroundNonZeroFn,
-) -> Proof {
-    prove_nonzero_depth_with_runtime_ground(ctx, expr, DEFAULT_PROOF_DEPTH, try_ground_nonzero)
 }
 
 /// Shallow non-zero proof helper used by runtime ground-eval recursion.
@@ -405,30 +375,6 @@ where
     try_ground_nonzero_with(ctx, expr, ground_eval, |evaluated_ctx, evaluated_expr| {
         prove_nonzero_shallow_with_runtime_ground(evaluated_ctx, evaluated_expr, try_ground_nonzero)
     })
-}
-
-/// Same as [`try_ground_nonzero_with_shallow_recursive`], but wires the shared
-/// conservative simplify options and passes them to the runtime evaluator.
-pub fn try_ground_nonzero_with_shallow_recursive_and_conservative_options<FGroundEval>(
-    ctx: &Context,
-    expr: ExprId,
-    mut ground_eval: FGroundEval,
-    try_ground_nonzero: TryGroundNonZeroFn,
-) -> Option<Proof>
-where
-    FGroundEval: FnMut(
-        &Context,
-        ExprId,
-        &crate::simplify_options::SimplifyOptions,
-    ) -> Option<(Context, ExprId)>,
-{
-    let opts = crate::conservative_eval_config::conservative_numeric_fold_options();
-    try_ground_nonzero_with_shallow_recursive(
-        ctx,
-        expr,
-        |source_ctx, source_expr| ground_eval(source_ctx, source_expr, &opts),
-        try_ground_nonzero,
-    )
 }
 
 #[cfg(test)]
