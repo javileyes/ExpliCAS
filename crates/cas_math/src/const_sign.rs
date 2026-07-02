@@ -19,6 +19,18 @@ use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::str::FromStr;
+use std::sync::OnceLock;
+
+/// Process-wide cache for the fixed transcendental-constant bounds. Each entry is a pair of
+/// exact `BigRational`s that never change, so the first computation (a 50-digit string parse for
+/// `pi`/`e`, or a 60-term atanh series for `ln(2)`/`ln(10)`) is done once and every later call
+/// clones the cached value instead of recomputing it — the exact-bounds oracle runs deep in the
+/// sign-proof hot loop (P10 of the saneamiento audit).
+type ConstBounds = (BigRational, BigRational);
+static PI_BOUNDS_CACHE: OnceLock<ConstBounds> = OnceLock::new();
+static E_BOUNDS_CACHE: OnceLock<ConstBounds> = OnceLock::new();
+static LN2_BOUNDS_CACHE: OnceLock<ConstBounds> = OnceLock::new();
+static LN10_BOUNDS_CACHE: OnceLock<ConstBounds> = OnceLock::new();
 
 /// Provable sign of a real constant expression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,11 +59,32 @@ fn bounds_to_50dp(lo_digits: &str) -> (BigRational, BigRational) {
 }
 fn pi_bounds() -> (BigRational, BigRational) {
     // pi = 3.14159265358979323846264338327950288419716939937510 5820974944...
-    bounds_to_50dp("314159265358979323846264338327950288419716939937510")
+    PI_BOUNDS_CACHE
+        .get_or_init(|| bounds_to_50dp("314159265358979323846264338327950288419716939937510"))
+        .clone()
 }
 fn e_bounds() -> (BigRational, BigRational) {
     // e  = 2.71828182845904523536028747135266249775724709369995 9574966968...
-    bounds_to_50dp("271828182845904523536028747135266249775724709369995")
+    E_BOUNDS_CACHE
+        .get_or_init(|| bounds_to_50dp("271828182845904523536028747135266249775724709369995"))
+        .clone()
+}
+
+/// Cached `ln(2)` bounds (the base-2 range-reduction constant used by every `ln_bounds` call).
+fn ln2_bounds() -> ConstBounds {
+    LN2_BOUNDS_CACHE
+        .get_or_init(|| atanh_ln_bounds(&BigRational::from_integer(BigInt::from(2))))
+        .clone()
+}
+
+/// Cached `ln(10)` bounds (used by the `log10` value-bounds path).
+fn ln10_bounds() -> ConstBounds {
+    LN10_BOUNDS_CACHE
+        .get_or_init(|| {
+            ln_bounds(&BigRational::from_integer(BigInt::from(10)))
+                .expect("ln(10) bounds are always computable")
+        })
+        .clone()
 }
 
 fn zero() -> BigRational {
@@ -240,7 +273,7 @@ fn ln_bounds(x: &BigRational) -> Option<(BigRational, BigRational)> {
             return None; // defensive: absurdly large argument
         }
     }
-    let (l2_lo, l2_hi) = atanh_ln_bounds(&two); // ln(2)
+    let (l2_lo, l2_hi) = ln2_bounds(); // ln(2), cached
     let (lm_lo, lm_hi) = atanh_ln_bounds(&m); // ln(m), m ∈ [1, 2)
     let e_r = BigRational::from_integer(BigInt::from(e));
     Some((&e_r * &l2_lo + lm_lo, &e_r * &l2_hi + lm_hi))
@@ -447,12 +480,12 @@ fn const_value_bounds_depth(
             } else if ctx.is_builtin_call(expr, BuiltinFn::Log2) && args.len() == 1 {
                 // log2(c) = ln(c) / ln(2); ln(2) > 0 so the reciprocal is well-defined.
                 let num = ln_interval_bounds(bounds(args[0])?)?;
-                let den = interval_recip(ln_bounds(&BigRational::from_integer(BigInt::from(2)))?)?;
+                let den = interval_recip(ln2_bounds())?;
                 Some(interval_mul(num, den))
             } else if ctx.is_builtin_call(expr, BuiltinFn::Log10) && args.len() == 1 {
                 // log10(c) = ln(c) / ln(10).
                 let num = ln_interval_bounds(bounds(args[0])?)?;
-                let den = interval_recip(ln_bounds(&BigRational::from_integer(BigInt::from(10)))?)?;
+                let den = interval_recip(ln10_bounds())?;
                 Some(interval_mul(num, den))
             } else if ctx.is_builtin_call(expr, BuiltinFn::Log) && args.len() == 2 {
                 // log(base, arg) = ln(arg) / ln(base); the base interval must not
