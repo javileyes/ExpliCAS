@@ -250,6 +250,12 @@ engine-scorecard-profiled:
 engine-scorecard-pressure:
 	python3 ./scripts/engine_improvement_scorecard.py --profile pressure --output "$(ENGINE_SCORECARD_PRESSURE_OUTPUT)" --markdown-output "$(ENGINE_SCORECARD_PRESSURE_MARKDOWN)"
 
+# Deterministic simplify-equivalence fuzz (numeric oracle; the detector that
+# caught P0-G). Opt-in: not part of the guardrail chain. 0 non-equivalences
+# allowed; hangs bounded (known C5 expand<->factor oscillation).
+engine-equivfuzz:
+	python3 ./scripts/engine_simplify_equivalence_fuzz.py
+
 engine-scorecard-pressure-profiled:
 	python3 ./scripts/engine_improvement_scorecard.py --profile pressure --orchestrator-profile --orchestrator-profile-filter "$(ORCHESTRATOR_PROFILE_FILTER)" --orchestrator-profile-limit "$(ORCHESTRATOR_PROFILE_LIMIT)" --output "$(ENGINE_SCORECARD_PRESSURE_PROFILED_OUTPUT)" --markdown-output "$(ENGINE_SCORECARD_PRESSURE_PROFILED_MARKDOWN)"
 

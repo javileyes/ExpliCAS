@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 493 (newest first)
+Active entries: 494 (newest first)
 
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
@@ -125,6 +125,7 @@ Active entries: 493 (newest first)
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | UNIVERSALIDAD+SOUNDNESS (umbral no nulo sobre denominador surd-afín): `1/(x+√2) > 1` daba "No solution"
 - 2026-07-02 | `retained` | `crates/cas_math/src/fraction_factors.rs` (`collect_mul_factors_int_pow` ahor... | SOUNDNESS (P0-G): el colector de factores devolvía bases repetidas — over-cancel en factor-from-Add
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`normalize_solver_function_al... | UNIVERSALIDAD (P1-F4: alias de funciones en solve): log2/log10/cbrt/csc/sec/cot resolubles
+- 2026-07-02 | `retained` | `scripts/engine_simplify_equivalence_fuzz.py` (nuevo) + target `engine-equivf... | HARNESS (fuzz de equivalencia permanente): `make engine-equivfuzz`
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
@@ -18319,3 +18320,17 @@ Active entries: 493 (newest first)
   - Cuando una reescritura de normalización NO SOBREVIVE al simplificador (re-pliega la forma canónica al alias), el nivel correcto es la ECUACIÓN, no el subárbol: `f(g) = c → g_can = h(c)` se despacha una vez y el re-pliegue ya no importa. Verificar empíricamente que la normalización sobrevive (DBG en la entrada + error persistente = re-pliegue) antes de asumir que un rewrite temprano basta.
   - El reparto correcto de una función recíproca es delegar al DUEÑO del átomo (sin/cos/homogéneo): el rango (|1/c|>1), la periodicidad y los args afines componen GRATIS. El único razonamiento propio es el borde `c=0` (imposible para 1/trig; raíces de cos−c·sin nunca coinciden con sin=0).
   - PRÓXIMO PELDAÑO: INECUACIONES con estos alias (`csc(x)>2`) siguen declinando al error de isolación (residual pre-existente); `log2` en otros comandos ya funcionaba. El re-pliegue `1/sin→csc` del simplificador es una presentación que puede sorprender a futuros handlers de forma recíproca — anotar en la próxima extensión trig.
+
+## 2026-07-02 - HARNESS (fuzz de equivalencia permanente): `make engine-equivfuzz`
+
+- area: `scripts/engine_simplify_equivalence_fuzz.py` (nuevo) + target `engine-equivfuzz` en `Makefile`
+- status: `retained` (commit pendiente-de-hash). Convierte en herramienta permanente el detector que cazó P0-G. El candidato planificado del ciclo (shortcut RHS≤0 exponencial) se EVAPORÓ al sondear: `sin(1)^x > −1` → "All real numbers" ya correcto (cerrado colateralmente por los fixes de provers de esta sesión) — la frontera real manda, y el siguiente ROI era institucionalizar el detector.
+- capture:
+  - investment_class: harness/proceso (clase A ligera). Cero riesgo de huella (no toca el engine; target opt-in fuera de la cadena guardrail).
+  - observed: el fuzz (grammar racional-trig determinista con semilla fija, oráculo numérico en 3 puntos vs `simplify` del CLI release) encontró P0-G en minutos cuando la hipótesis estructural del audit apuntaba a otro sitio. Contrato del script: 0 no-equivalencias permitidas (cualquiera es bug de soundness del simplificador); hangs REPORTADOS y acotados por presupuesto (8% ≥ el ~2-3% observado del bug C5 expand↔factor) sin fallar el run — al arreglar C5-hang, bajar el presupuesto a 0.
+  - estado actual: 120 formas → 0 no-equivalencias, 4 hangs (presupuesto 9). Determinista (SEED fija) ⇒ estable como lane futura.
+  - validación: `make engine-equivfuzz` exit 0; `python3 -m unittest scripts.test_engine_makefile_targets` OK; sin cambios Rust (workspace verde del ciclo anterior vigente); huella intacta por construcción.
+- retained learning:
+  - Cuando el candidato planificado se evapora al sondear (la frontera se movió por fixes colaterales de la misma sesión), el mejor sustituto suele ser INSTITUCIONALIZAR la técnica que acaba de pagar: un detector one-off que cazó un P0 vale más como contrato permanente que el siguiente parche puntual.
+  - Un fuzz con SEMILLA FIJA convierte una técnica exploratoria en un guardrail determinista: mismo conjunto siempre ⇒ sin flakiness; el presupuesto de hangs separa el bug conocido (no-terminación honesta) del contrato duro (equivalencia).
+  - PRÓXIMO PELDAÑO: promover a lane del scorecard (con contadores en la huella) cuando el hang de C5 esté cerrado; ampliar la grammar (exp/ln/radicales) — la trig racional fue la familia de P0-G, otras familias merecen su semilla propia. El único residual del candidato original: `a^x > −1` con base SIMBÓLICA (necesita el condicional `if a > 0`, camino distinto).
