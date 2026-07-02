@@ -1912,6 +1912,163 @@ pub fn sign_of_linear_surd(
     }
 }
 
+/// Exact sign of `p + q·√m + s·√n` (`m, n ≥ 0` rational, all coefficients rational), allowing
+/// DISTINCT radicands `m ≠ n`. Two nested squarings, each comparing a rational against a single
+/// quadratic surd via [`sign_of_linear_surd`] — fully exact (no f64). Canonical home for the
+/// value kernel that used to live in `cas_solver_core::solution_set` (chokepoint A).
+pub fn sign_of_sum_two_surds(
+    p: &BigRational,
+    q: &BigRational,
+    m: &BigRational,
+    s: &BigRational,
+    n: &BigRational,
+) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let zero = BigRational::zero();
+    let q_term_zero = q.is_zero() || m.is_zero();
+    let s_term_zero = s.is_zero() || n.is_zero();
+    let sq = if q_term_zero {
+        Ordering::Equal
+    } else {
+        q.cmp(&zero)
+    };
+    let ss = if s_term_zero {
+        Ordering::Equal
+    } else {
+        s.cmp(&zero)
+    };
+    let q_sq_m = q * q * m;
+    let s_sq_n = s * s * n;
+    let sign_x = match (sq, ss) {
+        (Ordering::Equal, _) => ss, // q·√m term is zero ⇒ sign(s·√n)
+        (_, Ordering::Equal) => sq, // s·√n term is zero ⇒ sign(q·√m)
+        _ if sq == ss => sq,        // same sign ⇒ that sign
+        // Opposite signs ⇒ the larger magnitude wins: |q√m| vs |s√n| ⟺ q²m vs s²n.
+        _ => match q_sq_m.cmp(&s_sq_n) {
+            Ordering::Greater => sq,
+            Ordering::Less => ss,
+            Ordering::Equal => Ordering::Equal,
+        },
+    };
+
+    let sign_p = p.cmp(&zero);
+    if sign_p == Ordering::Equal {
+        return sign_x;
+    }
+    if sign_x == Ordering::Equal {
+        return sign_p;
+    }
+    if sign_p == sign_x {
+        return sign_p;
+    }
+    // p and X have OPPOSITE signs ⇒ sign(p + X) is the sign of the larger magnitude. Compare
+    // `p²` vs `X² = (q²m + s²n) + 2qs·√(mn)` exactly: sign(p² − X²) decides which wins.
+    let p_sq = p * p;
+    let rational_part = &p_sq - &q_sq_m - &s_sq_n;
+    let two = BigRational::new(2.into(), 1.into());
+    let surd_coeff = -(two * q * s);
+    let mn = m * n;
+    match sign_of_linear_surd(&rational_part, &surd_coeff, &mn) {
+        Ordering::Greater => sign_p, // |p| > |X|
+        Ordering::Less => sign_x,    // |X| > |p|
+        Ordering::Equal => Ordering::Equal,
+    }
+}
+
+/// Exact ordering of a rational `r` against the quadratic surd `a + b·√n` (`n ≥ 0`). Squares the
+/// comparison `r − a {?} b·√n` with sign tracking so no float ever enters a keep/drop decision.
+/// Canonical home for the kernel that used to live in `cas_solver::solve_backend_local`.
+pub fn cmp_rational_to_quadratic_surd(
+    r: &BigRational,
+    a: &BigRational,
+    b: &BigRational,
+    n: &BigRational,
+) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let zero = BigRational::zero();
+    let diff = r - a; // compare diff {?} b·√n
+    if b.is_zero() || n.is_zero() {
+        return diff.cmp(&zero);
+    }
+    // Reduce to a positive coefficient: for b < 0, `diff {?} b·√n  ⟺  reverse(−diff {?} −b·√n)`.
+    let (d, bb, reversed) = if *b < zero {
+        (-&diff, -b, true)
+    } else {
+        (diff.clone(), b.clone(), false)
+    };
+    // bb·√n ≥ 0: if d < 0 it is strictly smaller; otherwise compare the squares exactly.
+    let ord = if d < zero {
+        Ordering::Less
+    } else {
+        (&d * &d).cmp(&(&bb * &bb * n))
+    };
+    if reversed {
+        ord.reverse()
+    } else {
+        ord
+    }
+}
+
+/// Exact ordering of a rational `r` against `± q^(1/n)` (a real `n`-th root of the non-negative
+/// rational `q`, optionally negated). No float: for the positive root, `x {?} q^(1/n) ⟺ x^n {?} q`
+/// when `x > 0` (and `x ≤ 0 < q^(1/n)`); the negated bound reflects through 0. Canonical home for
+/// the kernel that used to live in `cas_solver::solve_backend_local`.
+pub fn cmp_rational_to_nth_root(
+    r: &BigRational,
+    q: &BigRational,
+    n: u32,
+    neg: bool,
+) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let zero = BigRational::zero();
+    if q.is_zero() {
+        return r.cmp(&zero); // bound is 0
+    }
+    // Compare `x {?} q^(1/n)` for the POSITIVE root (q > 0, n ≥ 2).
+    let cmp_pos = |x: &BigRational| -> Ordering {
+        if *x <= zero {
+            Ordering::Less // x ≤ 0 < q^(1/n)
+        } else {
+            let e = n as usize;
+            let xn = BigRational::new(
+                num_traits::pow(x.numer().clone(), e),
+                num_traits::pow(x.denom().clone(), e),
+            );
+            xn.cmp(q)
+        }
+    };
+    if neg {
+        // r {?} −q^(1/n)  ⟺  reverse(−r {?} q^(1/n))
+        cmp_pos(&(-r)).reverse()
+    } else {
+        cmp_pos(r)
+    }
+}
+
+/// Compare two non-negative real `n`-th roots `qa^(1/na)` and `qb^(1/nb)` by VALUE, exactly: raise
+/// both to the common power `lcm(na, nb)` so the comparison is between two rationals. Canonical
+/// home for the kernel that used to live in `cas_solver_core::solution_set`.
+pub fn compare_positive_nth_roots(
+    qa: &BigRational,
+    na: u32,
+    qb: &BigRational,
+    nb: u32,
+) -> std::cmp::Ordering {
+    let gcd = {
+        let (mut x, mut y) = (na, nb);
+        while y != 0 {
+            let t = x % y;
+            x = y;
+            y = t;
+        }
+        x.max(1)
+    };
+    let lcm = na / gcd * nb;
+    let va = num_traits::pow(qa.clone(), (lcm / na) as usize);
+    let vb = num_traits::pow(qb.clone(), (lcm / nb) as usize);
+    va.cmp(&vb)
+}
+
 /// `base^k` for `k ≥ 0` (exact rational power).
 fn pow_rat_nonneg(base: &BigRational, k: i64) -> BigRational {
     let mut acc = BigRational::one();

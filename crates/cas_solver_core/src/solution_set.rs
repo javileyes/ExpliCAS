@@ -1,5 +1,7 @@
 use cas_ast::{BoundType, Constant, Context, Expr, ExprId, Interval, RelOp, SolutionSet};
-use cas_math::root_forms::sign_of_linear_surd;
+use cas_math::root_forms::{
+    compare_positive_nth_roots, sign_of_linear_surd, sign_of_sum_two_surds,
+};
 use num_rational::BigRational;
 use num_traits::Zero;
 use std::cmp::Ordering;
@@ -114,69 +116,6 @@ fn as_surd_value(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRationa
     cas_math::root_forms::as_linear_surd(ctx, expr)
 }
 
-/// Exact sign of `p + q·√m + s·√n` (`m, n ≥ 0` rational, all coefficients rational), allowing
-/// DISTINCT radicands `m ≠ n`. Two nested squarings, each comparing a rational against a single
-/// quadratic surd via [`sign_of_linear_surd`] — fully exact (no f64).
-fn sign_of_sum_two_surds(
-    p: &BigRational,
-    q: &BigRational,
-    m: &BigRational,
-    s: &BigRational,
-    n: &BigRational,
-) -> Ordering {
-    let zero = BigRational::zero();
-    // sign(X) where X = q·√m + s·√n: each term's sign, breaking a sign conflict by comparing the
-    // squared magnitudes `q²m` vs `s²n` (both ≥ 0, so the comparison is on rationals).
-    let q_term_zero = q.is_zero() || m.is_zero();
-    let s_term_zero = s.is_zero() || n.is_zero();
-    let sq = if q_term_zero {
-        Ordering::Equal
-    } else {
-        q.cmp(&zero)
-    };
-    let ss = if s_term_zero {
-        Ordering::Equal
-    } else {
-        s.cmp(&zero)
-    };
-    let q_sq_m = q * q * m;
-    let s_sq_n = s * s * n;
-    let sign_x = match (sq, ss) {
-        (Ordering::Equal, _) => ss, // q·√m term is zero ⇒ sign(s·√n)
-        (_, Ordering::Equal) => sq, // s·√n term is zero ⇒ sign(q·√m)
-        _ if sq == ss => sq,        // same sign ⇒ that sign
-        // Opposite signs ⇒ the larger magnitude wins: |q√m| vs |s√n| ⟺ q²m vs s²n.
-        _ => match q_sq_m.cmp(&s_sq_n) {
-            Ordering::Greater => sq,
-            Ordering::Less => ss,
-            Ordering::Equal => Ordering::Equal,
-        },
-    };
-
-    let sign_p = p.cmp(&zero);
-    if sign_p == Ordering::Equal {
-        return sign_x;
-    }
-    if sign_x == Ordering::Equal {
-        return sign_p;
-    }
-    if sign_p == sign_x {
-        return sign_p;
-    }
-    // p and X have OPPOSITE signs ⇒ sign(p + X) is the sign of the larger magnitude. Compare
-    // `p²` vs `X² = (q²m + s²n) + 2qs·√(mn)` exactly: sign(p² − X²) decides which wins.
-    let p_sq = p * p;
-    let rational_part = &p_sq - &q_sq_m - &s_sq_n;
-    let two = BigRational::new(2.into(), 1.into());
-    let surd_coeff = -(two * q * s);
-    let mn = m * n;
-    match sign_of_linear_surd(&rational_part, &surd_coeff, &mn) {
-        Ordering::Greater => sign_p, // |p| > |X|
-        Ordering::Less => sign_x,    // |X| > |p|
-        Ordering::Equal => Ordering::Equal,
-    }
-}
-
 /// Compare two quadratic-surd values `a`, `b` by VALUE via the exact sign of `a − b`. `None` only
 /// when either is not a single real quadratic surd. DISTINCT radicands with both surd parts
 /// non-zero (e.g. domain bound `√6` against constraint `√2 − 1`) are ordered exactly via
@@ -256,24 +195,6 @@ fn as_nth_root_value(ctx: &Context, expr: ExprId) -> Option<(i8, BigRational, u3
         }
         _ => None,
     }
-}
-
-/// Compare two non-negative real `n`-th roots `qa^(1/na)` and `qb^(1/nb)` by VALUE, exactly: raise
-/// both to the common power `lcm(na, nb)` so the comparison is between two rationals.
-fn compare_positive_nth_roots(qa: &BigRational, na: u32, qb: &BigRational, nb: u32) -> Ordering {
-    let gcd = {
-        let (mut x, mut y) = (na, nb);
-        while y != 0 {
-            let t = x % y;
-            x = y;
-            y = t;
-        }
-        x.max(1)
-    };
-    let lcm = na / gcd * nb;
-    let va = num_traits::pow(qa.clone(), (lcm / na) as usize);
-    let vb = num_traits::pow(qb.clone(), (lcm / nb) as usize);
-    va.cmp(&vb)
 }
 
 /// Compare two values by VALUE when at least one is a real `n`-th root with `n ≥ 2` (cube/4th/…

@@ -12,6 +12,8 @@ use crate::{CasError, Simplifier, SolveCtx, SolveStep};
 use cas_ast::{substitute_expr_by_id, Constant, Context, Equation, Expr, ExprId, SolutionSet};
 // Canonical surd-sign kernel (was a byte-identical private `linear_surd_sign` copy).
 use cas_math::root_forms::sign_of_linear_surd as linear_surd_sign;
+// Canonical exact surd/nth-root comparators (were private copies; chokepoint A part 2).
+use cas_math::root_forms::{cmp_rational_to_nth_root, cmp_rational_to_quadratic_surd};
 use cas_solver_core::domain_condition::ImplicitCondition;
 use std::collections::HashMap;
 
@@ -1296,76 +1298,6 @@ fn try_solve_rational_constant_inequality(
         Some(candidate)
     } else {
         None
-    }
-}
-
-/// Exact ordering of a rational `r` against the quadratic surd `a + b·√n` (`n ≥ 0`). Squares the
-/// comparison `r − a {?} b·√n` with sign tracking so no float ever enters a keep/drop decision.
-fn cmp_rational_to_quadratic_surd(
-    r: &num_rational::BigRational,
-    a: &num_rational::BigRational,
-    b: &num_rational::BigRational,
-    n: &num_rational::BigRational,
-) -> std::cmp::Ordering {
-    use num_traits::Zero;
-    use std::cmp::Ordering;
-    let zero = num_rational::BigRational::zero();
-    let diff = r - a; // compare diff {?} b·√n
-    if b.is_zero() || n.is_zero() {
-        return diff.cmp(&zero);
-    }
-    // Reduce to a positive coefficient: for b < 0, `diff {?} b·√n  ⟺  reverse(−diff {?} −b·√n)`.
-    let (d, bb, reversed) = if *b < zero {
-        (-&diff, -b, true)
-    } else {
-        (diff.clone(), b.clone(), false)
-    };
-    // bb·√n ≥ 0: if d < 0 it is strictly smaller; otherwise compare the squares exactly.
-    let ord = if d < zero {
-        Ordering::Less
-    } else {
-        (&d * &d).cmp(&(&bb * &bb * n))
-    };
-    if reversed {
-        ord.reverse()
-    } else {
-        ord
-    }
-}
-
-/// Exact ordering of a rational `r` against `± q^(1/n)` (a real `n`-th root of the non-negative
-/// rational `q`, optionally negated). No float: for the positive root, `x {?} q^(1/n) ⟺ x^n {?} q`
-/// when `x > 0` (and `x ≤ 0 < q^(1/n)`); the negated bound reflects through 0.
-fn cmp_rational_to_nth_root(
-    r: &num_rational::BigRational,
-    q: &num_rational::BigRational,
-    n: u32,
-    neg: bool,
-) -> std::cmp::Ordering {
-    use num_traits::Zero;
-    use std::cmp::Ordering;
-    let zero = num_rational::BigRational::zero();
-    if q.is_zero() {
-        return r.cmp(&zero); // bound is 0
-    }
-    // Compare `x {?} q^(1/n)` for the POSITIVE root (q > 0, n ≥ 2).
-    let cmp_pos = |x: &num_rational::BigRational| -> Ordering {
-        if *x <= zero {
-            Ordering::Less // x ≤ 0 < q^(1/n)
-        } else {
-            let e = n as usize;
-            let xn = num_rational::BigRational::new(
-                num_traits::pow(x.numer().clone(), e),
-                num_traits::pow(x.denom().clone(), e),
-            );
-            xn.cmp(q)
-        }
-    };
-    if neg {
-        // r {?} −q^(1/n)  ⟺  reverse(−r {?} q^(1/n))
-        cmp_pos(&(-r)).reverse()
-    } else {
-        cmp_pos(r)
     }
 }
 
@@ -7820,11 +7752,11 @@ mod tests {
         // φ = ½ + ½·√5 ≈ 1.618 — the worst case for a float gate near the boundary.
         let (a, b, n) = (r(1, 2), r(1, 2), BigRational::from_integer(5.into()));
         assert_eq!(
-            super::cmp_rational_to_quadratic_surd(&r(8, 5), &a, &b, &n),
+            cas_math::root_forms::cmp_rational_to_quadratic_surd(&r(8, 5), &a, &b, &n),
             Ordering::Less // 1.6 < φ
         );
         assert_eq!(
-            super::cmp_rational_to_quadratic_surd(&r(13, 8), &a, &b, &n),
+            cas_math::root_forms::cmp_rational_to_quadratic_surd(&r(13, 8), &a, &b, &n),
             Ordering::Greater // 1.625 > φ
         );
         // 2√5 ≈ 4.472 (a = 0, b = 2, n = 5): exact ordering of nearby rationals.
@@ -7833,11 +7765,11 @@ mod tests {
             BigRational::from_integer(2.into()),
         );
         assert_eq!(
-            super::cmp_rational_to_quadratic_surd(&r(9, 2), &a0, &b2, &n),
+            cas_math::root_forms::cmp_rational_to_quadratic_surd(&r(9, 2), &a0, &b2, &n),
             Ordering::Greater // 4.5 > 2√5
         );
         assert_eq!(
-            super::cmp_rational_to_quadratic_surd(&r(4, 1), &a0, &b2, &n),
+            cas_math::root_forms::cmp_rational_to_quadratic_surd(&r(4, 1), &a0, &b2, &n),
             Ordering::Less // 4 < 2√5
         );
         // Negative coefficient `1 − √2` ≈ −0.414 (a = 1, b = −1, n = 2): sign handled.
@@ -7847,17 +7779,17 @@ mod tests {
             BigRational::from_integer(2.into()),
         );
         assert_eq!(
-            super::cmp_rational_to_quadratic_surd(&r(-1, 2), &a1, &bn1, &n2),
+            cas_math::root_forms::cmp_rational_to_quadratic_surd(&r(-1, 2), &a1, &bn1, &n2),
             Ordering::Less // −0.5 < 1 − √2
         );
         assert_eq!(
-            super::cmp_rational_to_quadratic_surd(&r(-2, 5), &a1, &bn1, &n2),
+            cas_math::root_forms::cmp_rational_to_quadratic_surd(&r(-2, 5), &a1, &bn1, &n2),
             Ordering::Greater // −0.4 > 1 − √2
         );
         // Degenerate (b = 0): a plain rational comparison.
         let z = BigRational::from_integer(0.into());
         assert_eq!(
-            super::cmp_rational_to_quadratic_surd(&r(3, 1), &r(3, 1), &z, &z),
+            cas_math::root_forms::cmp_rational_to_quadratic_surd(&r(3, 1), &r(3, 1), &z, &z),
             Ordering::Equal
         );
     }

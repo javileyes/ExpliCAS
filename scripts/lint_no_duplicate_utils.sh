@@ -280,13 +280,21 @@ done
 # byte-identically as sign_of_linear_surd (cas_solver_core::solution_set) and
 # linear_surd_sign (cas_solver::solve_backend_local) — consolidated 2026-07-02.
 # -----------------------------------------------------------------------------
-echo "  [9/9] Checking surd-sign kernel (sign_of_linear_surd/linear_surd_sign)..."
+echo "  [9/9] Checking surd/nth-root exact comparators (root_forms canonical)..."
 
 SURD_SIGN_ALLOWED=(
     "root_forms.rs"  # Canonical module
 )
 
-for pattern in "fn sign_of_linear_surd\>" "fn linear_surd_sign\>"; do
+# All the exact surd/nth-root VALUE comparators live in cas_math::root_forms
+# (chokepoint A, consolidated 2026-07-02). linear_surd_sign is the solver alias.
+for pattern in \
+    "fn sign_of_linear_surd\>" \
+    "fn linear_surd_sign\>" \
+    "fn sign_of_sum_two_surds\>" \
+    "fn cmp_rational_to_quadratic_surd\>" \
+    "fn cmp_rational_to_nth_root\>" \
+    "fn compare_positive_nth_roots\>"; do
     for file in $(grep -rln "$pattern" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null || true); do
         basename_file=$(basename "$file")
         is_allowed=false
@@ -296,13 +304,13 @@ for pattern in "fn sign_of_linear_surd\>" "fn linear_surd_sign\>"; do
                 break
             fi
         done
-        # Allow files that use the canonical root_forms kernel (wrappers/aliases).
-        if [ "$is_allowed" = false ] && grep -qE "root_forms::sign_of_linear_surd" "$file"; then
+        # Allow files that use the canonical root_forms comparators (wrappers/aliases).
+        if [ "$is_allowed" = false ] && grep -qE "root_forms::(sign_of_linear_surd|sign_of_sum_two_surds|cmp_rational_to_quadratic_surd|cmp_rational_to_nth_root|compare_positive_nth_roots)" "$file"; then
             is_allowed=true
         fi
         if [ "$is_allowed" = false ]; then
             echo -e "  ${RED}ERROR${NC}: $file defines $pattern without using canonical root_forms"
-            echo -e "         Fix: Use cas_math::root_forms::sign_of_linear_surd"
+            echo -e "         Fix: Use cas_math::root_forms::<comparator>"
             ((ERRORS++))
         fi
     done
