@@ -10,6 +10,8 @@ use crate::solve_exponential_terms::{
 };
 use crate::{CasError, Simplifier, SolveCtx, SolveStep};
 use cas_ast::{substitute_expr_by_id, Constant, Context, Equation, Expr, ExprId, SolutionSet};
+// Canonical surd-sign kernel (was a byte-identical private `linear_surd_sign` copy).
+use cas_math::root_forms::sign_of_linear_surd as linear_surd_sign;
 use cas_solver_core::domain_condition::ImplicitCondition;
 use std::collections::HashMap;
 
@@ -24,34 +26,6 @@ use crate::solve_backend_contract::{CoreSolverOptions, SolveBackend};
 /// anything `as_linear_surd` cannot reduce yields `false`, so a valid root is NEVER
 /// dropped on an unproven bound (the boundary `|c| = 1`, `arcsin(±1) = ±π/2`, is
 /// kept). Never uses f64 — a float gate could drop a root at `c = √2`.
-/// Exact sign of the quadratic surd `a + b·√n` (`n ≥ 0`) versus zero. Never uses f64.
-fn linear_surd_sign(
-    a: &num_rational::BigRational,
-    b: &num_rational::BigRational,
-    n: &num_rational::BigRational,
-) -> std::cmp::Ordering {
-    use num_rational::BigRational;
-    use num_traits::{Signed, Zero};
-    let zero = BigRational::zero();
-    if b.is_zero() || n.is_zero() {
-        return a.cmp(&zero);
-    }
-    if a.is_zero() {
-        return b.cmp(&zero); // b·√n, with √n > 0
-    }
-    let (sa, sb) = (a.cmp(&zero), b.cmp(&zero));
-    if sa == sb {
-        return sa; // same sign -> that sign
-    }
-    // Opposite signs: sign(a + b·√n) = sign(b) · sign(b²·n − a²).
-    let inner = (b * b * n).cmp(&(a * a));
-    if b.is_negative() {
-        inner.reverse()
-    } else {
-        inner
-    }
-}
-
 fn inv_trig_arg_provably_out_of_range(ctx: &Context, c: ExprId) -> bool {
     use cas_math::root_forms::as_linear_surd;
     use num_rational::BigRational;

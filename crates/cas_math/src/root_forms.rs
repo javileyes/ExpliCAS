@@ -1874,31 +1874,42 @@ pub fn as_linear_surd(
 /// `Equal`), because `A + B·sqrt(n)` with `B ≠ 0` and `n` not a perfect square
 /// is irrational and thus never zero.
 pub fn provable_sign_vs_zero(ctx: &Context, expr: ExprId) -> Option<std::cmp::Ordering> {
-    let zero = BigRational::zero();
     let (a, b, n) = as_linear_surd(ctx, expr)?;
-    // B == 0 (or n == 0): the value is the rational A.
-    if b.is_zero() || n.is_zero() {
-        return Some(a.cmp(&zero));
+    Some(sign_of_linear_surd(&a, &b, &n))
+}
+
+/// Exact sign of the constant linear surd `p + q·√n` (`n ≥ 0` rational) vs zero, by squaring
+/// with sign tracking — never an `f64`. This is the value-level kernel of the surd-sign
+/// chokepoint that closed multiple P0 wrong-answer families; it used to be re-implemented
+/// byte-identically as `sign_of_linear_surd` in `cas_solver_core::solution_set` and
+/// `linear_surd_sign` in `cas_solver::solve_backend_local`. Canonical home is here.
+pub fn sign_of_linear_surd(
+    p: &BigRational,
+    q: &BigRational,
+    n: &BigRational,
+) -> std::cmp::Ordering {
+    let zero = BigRational::zero();
+    // q == 0 (or n == 0): the value is the rational p.
+    if q.is_zero() || n.is_zero() {
+        return p.cmp(&zero);
     }
-    // A == 0: the value is B·sqrt(n); sign is sign(B) since sqrt(n) > 0 for n > 0.
-    if a.is_zero() {
-        return Some(b.cmp(&zero));
+    // p == 0: the value is q·√n; sign is sign(q) since √n > 0 for n > 0.
+    if p.is_zero() {
+        return q.cmp(&zero);
     }
-    let sa = a.cmp(&zero);
-    let sb = b.cmp(&zero);
-    if sa == sb {
-        // A and B share a sign -> the value has that sign.
-        return Some(sa);
+    let sp = p.cmp(&zero);
+    let sq = q.cmp(&zero);
+    if sp == sq {
+        // p and q share a sign -> the value has that sign.
+        return sp;
     }
-    // Opposite signs: sign(A + B·sqrt(n)) = sign(B) · sign(B^2·n − A^2).
-    let b2n = b.clone() * b.clone() * n.clone();
-    let a2 = a.clone() * a.clone();
-    let inner = b2n.cmp(&a2);
-    Some(if b.is_negative() {
+    // Opposite signs: sign(p + q·√n) = sign(q) · sign(q²·n − p²).
+    let inner = (q.clone() * q.clone() * n.clone()).cmp(&(p.clone() * p.clone()));
+    if q.is_negative() {
         inner.reverse()
     } else {
         inner
-    })
+    }
 }
 
 /// `base^k` for `k ≥ 0` (exact rational power).

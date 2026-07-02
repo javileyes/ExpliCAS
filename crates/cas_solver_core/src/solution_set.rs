@@ -1,4 +1,5 @@
 use cas_ast::{BoundType, Constant, Context, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_math::root_forms::sign_of_linear_surd;
 use num_rational::BigRational;
 use num_traits::Zero;
 use std::cmp::Ordering;
@@ -111,30 +112,6 @@ fn as_surd_value(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRationa
         return Some((half.clone(), half, BigRational::from_integer(5.into())));
     }
     cas_math::root_forms::as_linear_surd(ctx, expr)
-}
-
-/// Exact sign of the quadratic surd `p + q·√n` (`n ≥ 0`).
-fn sign_of_linear_surd(p: &BigRational, q: &BigRational, n: &BigRational) -> Ordering {
-    let zero = BigRational::zero();
-    if q.is_zero() || n.is_zero() {
-        return p.cmp(&zero);
-    }
-    // n > 0, q ≠ 0.
-    if p.is_zero() {
-        return q.cmp(&zero); // sign(q), since √n > 0
-    }
-    let sp = p.cmp(&zero);
-    let sq = q.cmp(&zero);
-    if sp == sq {
-        return sp; // same sign ⇒ that sign
-    }
-    // Opposite signs: sign(p + q·√n) = sign(q)·sign(q²·n − p²).
-    let inner = (q.clone() * q.clone() * n.clone()).cmp(&(p.clone() * p.clone()));
-    if sq == Ordering::Less {
-        inner.reverse()
-    } else {
-        inner
-    }
 }
 
 /// Exact sign of `p + q·√m + s·√n` (`m, n ≥ 0` rational, all coefficients rational), allowing
