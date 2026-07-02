@@ -13,6 +13,10 @@ use std::sync::Arc;
 
 use tracing::debug;
 
+/// The default rule set: target-bucketed rules plus the untargeted global rules. Built once
+/// per thread and cloned per simplifier (see [`Simplifier::register_default_rules`]).
+type DefaultRuleRegistry = (HashMap<TargetKind, Vec<Arc<dyn Rule>>>, Vec<Arc<dyn Rule>>);
+
 pub struct Simplifier {
     pub context: Context,
     pub(super) rules: HashMap<TargetKind, Vec<Arc<dyn Rule>>>,
@@ -393,7 +397,30 @@ impl Simplifier {
         self.disabled_rules.remove(rule_name);
     }
 
+    /// Populate this simplifier with the default rule set.
+    ///
+    /// The default registry (~340 stateless `Arc<dyn Rule>` in priority order) is
+    /// identical for every simplifier, so it is built ONCE per thread and cloned here
+    /// (cloning the bucket `HashMap`/`Vec`s bumps `Arc` refcounts; it does NOT reconstruct
+    /// the rule objects or re-run the priority-ordered inserts). This is the hot path for
+    /// the ~57 `run_default_simplify` call sites that used to rebuild all ~340 rules per
+    /// call (P15 of the saneamiento audit). `thread_local` (not a global `LazyLock`) because
+    /// `dyn Rule` is not `Sync`; per-thread isolation also keeps rule objects unshared across
+    /// threads.
     pub fn register_default_rules(&mut self) {
+        thread_local! {
+            static DEFAULT_RULES: DefaultRuleRegistry = {
+                let mut builder = Simplifier::new();
+                builder.register_default_rules_uncached();
+                (builder.rules, builder.global_rules)
+            };
+        }
+        let (rules, global_rules) = DEFAULT_RULES.with(|r| r.clone());
+        self.rules = rules;
+        self.global_rules = global_rules;
+    }
+
+    fn register_default_rules_uncached(&mut self) {
         use crate::rules::*;
 
         arithmetic::register(self);
