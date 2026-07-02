@@ -290,25 +290,36 @@ where
         return TriProof::Unknown;
     }
 
-    // A constant LINEAR SURD `A + B·√n` (e.g. `2 − √3`, `1 − √2`): decide its sign EXACTLY. The
-    // structural rules below cannot compare `2` against `√3`, leaving such offsets `Unknown` — which
-    // makes a solver attach a spurious `2 − √3 > 0` domain condition (dropping a valid branch). Returns
-    // `None` for variable-bearing or transcendental expressions, so those fall through unchanged.
-    match crate::root_forms::provable_sign_vs_zero(ctx, expr) {
-        Some(std::cmp::Ordering::Greater) => return TriProof::Proven,
-        Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal) => return TriProof::Disproven,
-        None => {}
-    }
-    // General constant fallback (`1 − e^(1/3)`, `π − 4`, `ln(2)`): the exact value-bounds
-    // oracle decides transcendental constants the linear-surd form misses, so a linear solve
-    // with such a coefficient returns its solution DIRECTLY instead of a vacuous conditional
-    // (`All reals if e^(1/3) = 0 and …`). `None`/straddling ⇒ fall through unchanged.
-    match crate::const_sign::provable_const_sign(ctx, expr) {
-        Some(crate::const_sign::ConstSign::Positive) => return TriProof::Proven,
-        Some(crate::const_sign::ConstSign::Negative | crate::const_sign::ConstSign::Zero) => {
-            return TriProof::Disproven
+    // The two exact constant oracles below only ever decide a VARIABLE-FREE expression (a linear
+    // surd / rational / transcendental constant); on any variable-bearing subtree they walk part of
+    // the tree only to bail to `None`. Since they run at EVERY recursion node, gate them behind one
+    // cheap bail-at-first-variable check — behavior-identical (both return `None` for variable-bearing
+    // exprs), but it replaces two allocating walks (incl. the 50-digit `const_value_bounds` interval
+    // arithmetic) with a single boolean walk on the common case (measured ~449 ns/node of waste
+    // removed per variable-bearing node; the `provable_const_sign` fallback was added in 1250a156e).
+    if !crate::expr_predicates::contains_variable(ctx, expr) {
+        // A constant LINEAR SURD `A + B·√n` (e.g. `2 − √3`, `1 − √2`): decide its sign EXACTLY. The
+        // structural rules below cannot compare `2` against `√3`, leaving such offsets `Unknown` —
+        // which makes a solver attach a spurious `2 − √3 > 0` domain condition (dropping a valid
+        // branch).
+        match crate::root_forms::provable_sign_vs_zero(ctx, expr) {
+            Some(std::cmp::Ordering::Greater) => return TriProof::Proven,
+            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal) => {
+                return TriProof::Disproven
+            }
+            None => {}
         }
-        None => {}
+        // General constant fallback (`1 − e^(1/3)`, `π − 4`, `ln(2)`): the exact value-bounds oracle
+        // decides transcendental constants the linear-surd form misses, so a linear solve with such a
+        // coefficient returns its solution DIRECTLY instead of a vacuous conditional
+        // (`All reals if e^(1/3) = 0 and …`). `None`/straddling ⇒ fall through unchanged.
+        match crate::const_sign::provable_const_sign(ctx, expr) {
+            Some(crate::const_sign::ConstSign::Positive) => return TriProof::Proven,
+            Some(crate::const_sign::ConstSign::Negative | crate::const_sign::ConstSign::Zero) => {
+                return TriProof::Disproven
+            }
+            None => {}
+        }
     }
 
     match ctx.get(expr) {
@@ -515,20 +526,27 @@ where
         return TriProof::Unknown;
     }
 
-    // A constant LINEAR SURD `A + B·√n`: decide `≥ 0` exactly (`> 0` or `= 0` ⇒ Proven, `< 0` ⇒
-    // Disproven). `None` for variable/transcendental expressions ⇒ fall through unchanged.
-    match crate::root_forms::provable_sign_vs_zero(ctx, expr) {
-        Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal) => return TriProof::Proven,
-        Some(std::cmp::Ordering::Less) => return TriProof::Disproven,
-        None => {}
-    }
-    // General constant fallback via exact value bounds (same rationale as the positive prover).
-    match crate::const_sign::provable_const_sign(ctx, expr) {
-        Some(crate::const_sign::ConstSign::Positive | crate::const_sign::ConstSign::Zero) => {
-            return TriProof::Proven
+    // Gate both exact constant oracles behind one cheap variable-free check (see the positive prover
+    // for the rationale): both return `None` on variable-bearing subtrees anyway, so this is
+    // behavior-identical and removes the two per-node walks on the common case.
+    if !crate::expr_predicates::contains_variable(ctx, expr) {
+        // A constant LINEAR SURD `A + B·√n`: decide `≥ 0` exactly (`> 0` or `= 0` ⇒ Proven, `< 0` ⇒
+        // Disproven).
+        match crate::root_forms::provable_sign_vs_zero(ctx, expr) {
+            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal) => {
+                return TriProof::Proven
+            }
+            Some(std::cmp::Ordering::Less) => return TriProof::Disproven,
+            None => {}
         }
-        Some(crate::const_sign::ConstSign::Negative) => return TriProof::Disproven,
-        None => {}
+        // General constant fallback via exact value bounds (same rationale as the positive prover).
+        match crate::const_sign::provable_const_sign(ctx, expr) {
+            Some(crate::const_sign::ConstSign::Positive | crate::const_sign::ConstSign::Zero) => {
+                return TriProof::Proven
+            }
+            Some(crate::const_sign::ConstSign::Negative) => return TriProof::Disproven,
+            None => {}
+        }
     }
 
     match ctx.get(expr) {
