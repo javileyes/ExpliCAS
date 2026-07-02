@@ -295,3 +295,9 @@ layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prov
   return their solution DIRECTLY: `ln(x)−ln(x+1)=1/3 → No solution` clean (also the pre-existing
   `=1/2`, `=2` degenerates), `=−1/3` → the unconditional root, `sin(1)^x=2 → { ln(2)/ln(sin(1)) }`
   (guard pruned). Symbolic coefficients (`a·x=1`) untouched.
+- **P0-C threshold sibling** — FIXED (same day): `1/(x+√2) > 1` (false "No solution") and
+  `1/(x+√2) = 1` (malformed residual): the raw-tree handler now covers nonzero rational thresholds by
+  solving `c/u {op} k` in `u = g(x)` space (all-rational breakpoints) and mapping the set back through
+  the inverse affine (orientation flips for negative slope); the equation reduces to the single point
+  `x = (c/k − b)/a`. 1500-form adversarial sweep, 0 wrong. Remaining honest residuals: irrational `c`/`k`
+  and variable numerators decline to the general path.

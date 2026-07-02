@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 490 (newest first)
+Active entries: 491 (newest first)
 
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
@@ -122,6 +122,7 @@ Active entries: 490 (newest first)
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` — rama de sepa... | SOUNDNESS (P0-F-ineq `|ln(x)| < 2`): el álgebra de intervalos no ordenaba endpoints transcendentales
 - 2026-07-02 | `retained` | `crates/cas_math/src/prove_sign.rs` (fallback `provable_const_sign` en los pr... | SOUNDNESS+PRESENTACIÓN (condicionales vacuos): `prove_sign`/`prove_nonzero` deciden constantes transcendentales
 - 2026-07-02 | `retained` | `scripts/engine_integrate_command_matrix_smoke.py` (5 fixtures), `scripts/eng... | HONESTIDAD DE HARNESS (RED didáctico heredado): re-contratar 6 fixtures al contrato didáctico vigente + refresh de baselines
+- 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | UNIVERSALIDAD+SOUNDNESS (umbral no nulo sobre denominador surd-afín): `1/(x+√2) > 1` daba "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
@@ -18269,3 +18270,18 @@ Active entries: 490 (newest first)
   - Un RED heredado de step-trace tiene DOS causas típicas tras una campaña didáctica: pasos PODADOS por diseño (el fixture viejo pide ruido que ya no se narra) y reglas RE-TITULADAS por localización (el fixture greppea el título viejo). Diagnóstico en 1 comando por fixture: correr el input real con `--steps on --format json` y comparar títulos — NUNCA re-emitir el paso sin antes mirar la traza real (habría revertido una mejora didáctica retenida).
   - Cuando el baseline commiteado lleva ≥2 sesiones stale, el coste del stash-regenerate por ciclo supera al ciclo de re-contrato: cerrar el RED + re-commitear baselines devuelve el guardrail a barato para todos los ciclos siguientes.
   - PRÓXIMO PELDAÑO: el warn de `simplify_didactic_audit` (1 caso single_step_no_substeps) es el residual didáctico legítimo a pulir; y la memoria de sesión (inherited-red) debe actualizarse a CERRADO.
+
+## 2026-07-02 - UNIVERSALIDAD+SOUNDNESS (umbral no nulo sobre denominador surd-afín): `1/(x+√2) > 1` daba "No solution"
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_affine_inequality` extendido a `k ≠ 0` y a la ecuación; `map_set_through_inverse_affine`/`map_bound_through_inverse_affine` nuevos)
+- status: `retained` (commit pendiente-de-hash). Cierra el peldaño RHS≠0 anotado por el ciclo del conjugate-hole: `c/g > k` era "No solution" FALSO y `c/g = k` un residual malformado. Verificado adversarialmente (1500 formas `c/(a·x+b) {op|=} k` vs verdad numérica: 0 wrong; 36 flags iniciales = bug de 1-ulp del VERIFICADOR, el engine era exacto).
+- capture:
+  - investment_class: capability+soundness (Fase 1, inecuaciones racionales reales) — reduce-a-canónico.
+  - cell: `1/(x+√2)>1` → `(−√2, 1−√2)` (era "No solution"), `<1` → `(−∞,−√2) ∪ (1−√2,∞)`, `≥1` → `(−√2, 1−√2]` (frontera incluida), `=1` → `{1−√2}` (era `Solve: solve(x − (−(2 − √2 − x²)) = 0, x) = 0` malformado), `2/(x−√3)≤−1` → `[√3−2, √3)`, pendiente negativa `1/(−x+√2)>2` → `(√2−1/2, √2)` (orientación volteada). Controles: `k=0` (ciclo 1) intacto, polo racional `1/(x−2)>1` → `(2,3)` de su dueño, simbólico declina.
+  - causa raíz: la misma del conjugate-hole — el racionalizador destruye el dominio de la forma cruda; con `k≠0` el análisis posterior colapsaba a "No solution" o filtraba residual.
+  - fix: resolver en el espacio `u = g(x)`: `c/u {op} k` tiene TODOS los breakpoints RACIONALES (polo `u=0`, frontera `u=c/k`) — exactamente la ruta rational-constant-inequality ya robusta — y mapear el conjunto por la inversa afín `x = (u−b)/a` (monótona; `a<0` invierte orientación e orden de la unión; ±∞ mapea con el signo de `a`; endpoints simplificados). La ecuación `c/g = k` es directa: `x = (c/k − b)/a`.
+  - validación: workspace foreground failed:0; clippy limpio; huella GUARD/PRESS 0 deltas (vs baselines FIELES re-commiteados por el ciclo 5 — primera vez que el compare es committed-vs-current). Adversarial: 1500 formas → 0 wrong.
+- retained learning:
+  - Espacio-u con breakpoints racionales + mapeo afín inverso es el mismo esqueleto que el handler trig de argumento desfasado (`map_solution_through_affine` para Periodic/Discrete) — esta vez para conjuntos CONTINUOS (Interval/Union). El mapeo afín inverso de conjuntos es la segunda mitad reutilizable: cualquier reducción `atom = a·x+b` puede ahora devolver intervalos, no solo familias discretas.
+  - En sweeps numéricos contra endpoints EXACTOS del engine, un test de membresía estricta a 1 ulp fabrica falsos "boundary-inclusivity" (root float ≠ endpoint float por redondeo de caminos distintos): la membresía debe tratar |x−endpoint|<ε como frontera. 36/36 flags eran del verificador — verificar el VERIFICADOR antes de creer sus flags (gemelo de la lección de raíces tangentes).
+  - PRÓXIMO PELDAÑO: `c` o `k` IRRACIONALES (`√2/(x+√2) > 1`) declinan (colector racional); numerador con variable (`x/(x+√2) > 1`) fuera de alcance del handler (ruta general). El render `−2·2^(−1/2)` (= −√2) es feo pero exacto — candidato de presentación.

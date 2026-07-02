@@ -978,6 +978,21 @@ fn test_eval_const_over_surd_affine_denominator_keeps_true_pole_only() {
     // A nonzero constant over ANYTHING is never zero (raw check, before the
     // rationalizer plants a conjugate numerator root).
     assert_eq!(r("solve(-2/3/(2*x+sqrt(2))=0, x)"), "No solution");
+    // Nonzero thresholds solve in `u = g(x)` space (all-rational breakpoints) and map
+    // back through the affine — these previously returned a false "No solution" or a
+    // malformed residual.
+    assert_eq!(
+        r("solve(1/(x+sqrt(2))>1, x)"),
+        "(-2\u{b7}2^(-1/2), 1 - sqrt(2))"
+    );
+    assert_eq!(
+        r("solve(1/(x+sqrt(2))<1, x)"),
+        "(-infinity, -2\u{b7}2^(-1/2)) U (1 - sqrt(2), infinity)"
+    );
+    assert_eq!(r("solve(1/(x+sqrt(2))=1, x)"), "{ 1 - sqrt(2) }");
+    assert_eq!(r("solve(2/(x-sqrt(3))<=-1, x)"), "[sqrt(3) - 2, sqrt(3))");
+    // Orientation flips for a negative slope.
+    assert_eq!(r("solve(1/(-x+sqrt(2))>2, x)"), "(sqrt(2) - 1/2, sqrt(2))");
     // Controls: rational pole, symbolic intercept, bare 1/x, and the equation
     // forms with a variable numerator keep their owners.
     assert_eq!(r("solve(1/(x-2)>0, x)"), "(2, infinity)");
@@ -985,6 +1000,7 @@ fn test_eval_const_over_surd_affine_denominator_keeps_true_pole_only() {
     assert_eq!(r("solve(1/x>0, x)"), "(0, infinity)");
     assert_eq!(r("solve(x/(x-2)=0, x)"), "{ 0 }");
     assert_eq!(r("solve(1/(x-2)=3, x)"), "{ 7/3 }");
+    assert_eq!(r("solve(1/(x-2)>1, x)"), "(2, 3)");
 }
 
 #[test]

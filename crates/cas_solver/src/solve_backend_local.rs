@@ -5762,16 +5762,103 @@ fn try_solve_abs_polynomial_equation(
     }
 }
 
-/// `c / g(x) {op} 0` with a nonzero RATIONAL `c` and `g` AFFINE in `var` with a NON-RATIONAL
-/// constant intercept (`1/(x+√2) > 0`, `3/(x+√5) ≤ 0`, `1/(x+2^(1/3)) > 0`), detected on the
-/// RAW tree. The simplifier RATIONALIZES such denominators through the conjugate
-/// (`1/(x+√2) → (√2−x)/(2−x²)`), fabricating a spurious removable pole at the CONJUGATE that
-/// the rational-inequality path then punches out of the answer (`(−√2,√2)∪(√2,∞)`), or (odd
-/// roots) collapses to a false "No solution". Reduce exactly BEFORE it runs:
-/// `c/g {op} 0 ⟺ g {op'} 0` — the value is never zero, so `≥`/`≤` collapse to strict and the
-/// only excluded point is the true pole. Rational and SYMBOLIC intercepts decline (their
-/// owners already solve them; keeps the huella intact). Nonzero thresholds (`1/(x+√2) > 1`)
-/// are a different reduction and stay out of scope here.
+/// Map an interval bound through the inverse affine `x = (u − b)/a` (`a` rational ≠ 0,
+/// `b` a constant ExprId). Infinities map to the ±∞ matching the sign of `a`.
+fn map_bound_through_inverse_affine(
+    simplifier: &mut Simplifier,
+    bound: ExprId,
+    a: &num_rational::BigRational,
+    b: ExprId,
+) -> ExprId {
+    use cas_solver_core::solution_set::{is_infinity, is_neg_infinity, neg_inf, pos_inf};
+    use num_traits::Signed;
+    let a_positive = a.is_positive();
+    if is_infinity(&simplifier.context, bound) {
+        return if a_positive {
+            pos_inf(&mut simplifier.context)
+        } else {
+            neg_inf(&mut simplifier.context)
+        };
+    }
+    if is_neg_infinity(&simplifier.context, bound) {
+        return if a_positive {
+            neg_inf(&mut simplifier.context)
+        } else {
+            pos_inf(&mut simplifier.context)
+        };
+    }
+    let a_num = simplifier.context.add(Expr::Number(a.clone()));
+    let shifted = simplifier.context.add(Expr::Sub(bound, b));
+    let scaled = simplifier.context.add(Expr::Div(shifted, a_num));
+    simplifier.simplify(scaled).0
+}
+
+/// Map a solution set in `u`-space back through `x = (u − b)/a`. A negative `a` reverses
+/// interval orientation. Only structural sets are mapped; anything else declines.
+fn map_set_through_inverse_affine(
+    simplifier: &mut Simplifier,
+    set: SolutionSet,
+    a: &num_rational::BigRational,
+    b: ExprId,
+) -> Option<SolutionSet> {
+    use num_traits::Signed;
+    let map_interval = |simplifier: &mut Simplifier, iv: cas_ast::Interval| -> cas_ast::Interval {
+        let new_min = map_bound_through_inverse_affine(simplifier, iv.min, a, b);
+        let new_max = map_bound_through_inverse_affine(simplifier, iv.max, a, b);
+        if a.is_positive() {
+            cas_ast::Interval {
+                min: new_min,
+                min_type: iv.min_type,
+                max: new_max,
+                max_type: iv.max_type,
+            }
+        } else {
+            cas_ast::Interval {
+                min: new_max,
+                min_type: iv.max_type,
+                max: new_min,
+                max_type: iv.min_type,
+            }
+        }
+    };
+    Some(match set {
+        SolutionSet::Empty => SolutionSet::Empty,
+        SolutionSet::AllReals => SolutionSet::AllReals,
+        SolutionSet::Discrete(points) => SolutionSet::Discrete(
+            points
+                .into_iter()
+                .map(|p| map_bound_through_inverse_affine(simplifier, p, a, b))
+                .collect(),
+        ),
+        SolutionSet::Continuous(iv) => SolutionSet::Continuous(map_interval(simplifier, iv)),
+        SolutionSet::Union(ivs) => {
+            let mut mapped: Vec<cas_ast::Interval> = ivs
+                .into_iter()
+                .map(|iv| map_interval(simplifier, iv))
+                .collect();
+            if !a.is_positive() {
+                mapped.reverse(); // keep ascending order after the flip
+            }
+            SolutionSet::Union(mapped)
+        }
+        _ => return None, // Residual / Conditional / Periodic: nothing sound to map here
+    })
+}
+
+/// `c / g(x) {op} k` with nonzero RATIONAL `c`, RATIONAL `k`, and `g` AFFINE in `var` with a
+/// NON-RATIONAL constant intercept (`1/(x+√2) > 0`, `3/(x+√5) ≤ 0`, `1/(x+2^(1/3)) > 0`,
+/// `1/(x+√2) > 1`, `1/(x+√2) = 1`), detected on the RAW tree. The simplifier RATIONALIZES
+/// such denominators through the conjugate (`1/(x+√2) → (√2−x)/(2−x²)`), fabricating a
+/// spurious removable pole at the CONJUGATE that the rational path then punches out of the
+/// answer, collapses to a false "No solution", or leaks as a malformed residual. Reduce
+/// exactly BEFORE it runs:
+/// - `k = 0`: `c/g {op} 0 ⟺ g {op'} 0` (the value is never zero; only the true pole is out).
+/// - `k ≠ 0` equation: `c/g = k ⟺ g = c/k ⟺ x = (c/k − b)/a` (a single exact point).
+/// - `k ≠ 0` inequality: solve `c/u {op} k` in `u = g(x)` space (all-RATIONAL breakpoints
+///   `0` and `c/k`, the already-robust path) and map the set back through the monotonic
+///   `x = (u − b)/a` (orientation flips for `a < 0`).
+///
+/// Rational and SYMBOLIC intercepts decline (their owners already solve them).
 fn try_solve_const_over_surd_affine_inequality(
     simplifier: &mut Simplifier,
     eq: &Equation,
@@ -5781,13 +5868,14 @@ fn try_solve_const_over_surd_affine_inequality(
     use cas_math::numeric_eval::as_rational_const;
     use cas_solver_core::isolation_utils::contains_var;
     use num_traits::{Signed, Zero};
-    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+    if !matches!(
+        eq.op,
+        RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq | RelOp::Eq
+    ) {
         return None;
     }
-    // The threshold must be exactly 0.
-    if as_rational_const(&simplifier.context, eq.rhs).is_none_or(|r| !r.is_zero()) {
-        return None;
-    }
+    // The threshold must be a rational constant.
+    let k = as_rational_const(&simplifier.context, eq.rhs)?;
     // Peel negations into the constant's sign; expect `Div(const, g)` underneath.
     let mut neg = false;
     let mut node = eq.lhs;
@@ -5812,20 +5900,39 @@ fn try_solve_const_over_surd_affine_inequality(
     // `g` affine with a NON-RATIONAL *constant* intercept: exactly the forms the
     // rationalizer mangles. A rational intercept has a working owner; a symbolic
     // (free-variable) intercept belongs to the generic isolation path.
-    let (_a, b) = affine_coefficients(simplifier, den, var)?;
+    let (a, b) = affine_coefficients(simplifier, den, var)?;
     if as_rational_const(&simplifier.context, b).is_some()
         || !cas_ast::collect_variables(&simplifier.context, b).is_empty()
     {
         return None;
     }
-    let op_is_upper = matches!(eq.op, RelOp::Gt | RelOp::Geq);
-    let den_op = if op_is_upper == c.is_positive() {
-        RelOp::Gt
-    } else {
-        RelOp::Lt
-    };
-    let zero = simplifier.context.num(0);
-    solve_relation_set(simplifier, var, den, zero, den_op)
+    if k.is_zero() {
+        if eq.op == RelOp::Eq {
+            return None; // `c/g = 0` is the nonzero-const-over-anything guard's job
+        }
+        let op_is_upper = matches!(eq.op, RelOp::Gt | RelOp::Geq);
+        let den_op = if op_is_upper == c.is_positive() {
+            RelOp::Gt
+        } else {
+            RelOp::Lt
+        };
+        let zero = simplifier.context.num(0);
+        return solve_relation_set(simplifier, var, den, zero, den_op);
+    }
+    if eq.op == RelOp::Eq {
+        // `g = c/k` exactly: one root `x = (c/k − b)/a`.
+        let target = simplifier.context.add(Expr::Number(c / k));
+        let root = map_bound_through_inverse_affine(simplifier, target, &a, b);
+        return Some(SolutionSet::Discrete(vec![root]));
+    }
+    // Inequality vs a nonzero threshold: solve in `u = g(x)` space, where every
+    // breakpoint (`u = 0` pole, `u = c/k` boundary) is RATIONAL, then map back.
+    let u_name = format!("__{var}_g");
+    let u_var = simplifier.context.var(&u_name);
+    let c_expr = simplifier.context.add(Expr::Number(c));
+    let u_lhs = simplifier.context.add(Expr::Div(c_expr, u_var));
+    let u_set = solve_relation_set(simplifier, &u_name, u_lhs, eq.rhs, eq.op.clone())?;
+    map_set_through_inverse_affine(simplifier, u_set, &a, b)
 }
 
 fn solve_local_core(
