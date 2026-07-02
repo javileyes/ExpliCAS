@@ -61,29 +61,3 @@ where
         map_missing_var_error,
     )
 }
-
-/// Enter the default equation-fingerprint cycle guard using a caller-provided
-/// context accessor, returning a mapped error on cycle re-entry.
-pub fn try_enter_default_equation_cycle_guard_with_context_ref_and_error_with_state<
-    SState,
-    E,
-    FContextRef,
-    FMapError,
->(
-    state: &mut SState,
-    equation: &Equation,
-    var: &str,
-    mut context_ref: FContextRef,
-    map_error: FMapError,
-) -> Result<crate::cycle_guard::CycleGuard, E>
-where
-    FContextRef: FnMut(&mut SState) -> &cas_ast::Context,
-    FMapError: FnOnce() -> E,
-{
-    crate::solve_analysis::try_enter_equation_cycle_guard_with_error(
-        context_ref(state),
-        equation,
-        var,
-        map_error,
-    )
-}

@@ -326,25 +326,6 @@ where
     }
 }
 
-/// Execute strategy attempts and finalize into a plain solve result in one call.
-pub fn execute_strategy_attempt_sequence_with_resolution<S, E, I, FSoft, FResolveDiscrete>(
-    attempts: I,
-    is_soft_error: FSoft,
-    resolve_discrete: FResolveDiscrete,
-    no_solution_error: E,
-) -> Result<(SolutionSet, Vec<S>), E>
-where
-    I: IntoIterator<Item = (Option<Result<(SolutionSet, Vec<S>), E>>, bool)>,
-    FSoft: FnMut(&E) -> bool,
-    FResolveDiscrete: FnMut(Vec<ExprId>, Vec<S>) -> (SolutionSet, Vec<S>),
-{
-    finalize_strategy_attempt_sequence_with(
-        run_strategy_attempt_sequence(attempts, is_soft_error),
-        resolve_discrete,
-        no_solution_error,
-    )
-}
-
 /// Execute strategy sequence by evaluating one strategy at a time against
 /// caller-provided mutable state.
 ///

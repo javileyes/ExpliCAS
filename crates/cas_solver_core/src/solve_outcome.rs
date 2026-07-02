@@ -4680,36 +4680,6 @@ where
     )
 }
 
-/// Execute a prebuilt unary-inverse solve execution and prepend solved steps
-/// before caller-owned existing steps.
-pub fn execute_unary_inverse_execution_pipeline_with_items_and_merge_with_existing_steps_with<
-    E,
-    S,
-    FSolve,
-    FStep,
->(
-    execution: crate::function_inverse::UnaryInverseSolveExecution,
-    include_items: bool,
-    existing_steps: Vec<S>,
-    solve: FSolve,
-    map_item_to_step: FStep,
-) -> Result<(SolutionSet, Vec<S>), E>
-where
-    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(crate::function_inverse::UnaryInverseSolveExecutionItem) -> S,
-{
-    let solved = crate::function_inverse::solve_unary_inverse_execution_pipeline_with_items(
-        execution,
-        include_items,
-        solve,
-        map_item_to_step,
-    )?;
-    Ok(merge_solved_with_existing_steps_prepend(
-        (solved.solution_set, solved.steps),
-        existing_steps,
-    ))
-}
-
 /// Execute negated-LHS isolation rewrite and optional first-item didactic
 /// projection via caller-provided callbacks.
 pub fn solve_negated_lhs_isolation_plan_with<E, S, FSolve, FStep>(
@@ -7595,22 +7565,6 @@ pub struct DivisionDenominatorDidacticSteps {
     pub items: Vec<DivisionDidacticExecutionItem>,
 }
 
-/// Collect denominator-isolation didactic steps in display order:
-/// multiply step first, divide step second.
-pub fn collect_division_denominator_didactic_steps(
-    didactic: &DivisionDenominatorDidacticSteps,
-) -> Vec<DivisionCaseDidacticStep> {
-    didactic
-        .items
-        .iter()
-        .cloned()
-        .map(|item| DivisionCaseDidacticStep {
-            description: item.description,
-            equation_after: item.equation,
-        })
-        .collect()
-}
-
 /// Collect denominator-isolation execution items in display order:
 /// multiply step first, divide step second.
 pub fn collect_division_denominator_execution_items(
@@ -10073,14 +10027,6 @@ where
 pub struct AbsSplitDidacticPair {
     pub positive: AbsSplitDidacticStep,
     pub negative: AbsSplitDidacticStep,
-}
-
-/// Collect absolute-value split didactic steps in execution order:
-/// positive branch first, negative branch second.
-pub fn collect_abs_split_didactic_steps(
-    didactic: &AbsSplitDidacticPair,
-) -> Vec<AbsSplitDidacticStep> {
-    vec![didactic.positive.clone(), didactic.negative.clone()]
 }
 
 /// One executable absolute-split item aligned with didactic payload.

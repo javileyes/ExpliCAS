@@ -159,32 +159,6 @@ pub fn simplifier_prove_nonzero_status<S: RuntimeSolveAdapterState>(
     )
 }
 
-pub fn simplifier_prove_positive<S: RuntimeSolveAdapterState>(
-    simplifier: &mut S,
-    expr: ExprId,
-    value_domain: crate::value_domain::ValueDomain,
-) -> crate::domain_proof::Proof {
-    simplifier.runtime_prove_positive(expr, value_domain)
-}
-
-pub fn simplifier_infer_implicit_domain<S: RuntimeSolveAdapterState>(
-    simplifier: &S,
-    expr: ExprId,
-    value_domain: crate::value_domain::ValueDomain,
-) -> crate::solve_runtime_types::RuntimeImplicitDomain {
-    simplifier.runtime_infer_implicit_domain(expr, value_domain)
-}
-
-pub fn simplifier_derive_requires_from_equation<S: RuntimeSolveAdapterState>(
-    simplifier: &S,
-    lhs: ExprId,
-    rhs: ExprId,
-    existing: &crate::solve_runtime_types::RuntimeImplicitDomain,
-    value_domain: crate::value_domain::ValueDomain,
-) -> Vec<crate::solve_runtime_types::RuntimeImplicitCondition> {
-    simplifier.runtime_derive_requires_from_equation(lhs, rhs, existing, value_domain)
-}
-
 pub fn simplifier_cancel_additive_terms_semantic<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     lhs: ExprId,

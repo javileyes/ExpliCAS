@@ -18,35 +18,8 @@ use crate::solve_outcome::{
     AbsSplitExecutionItem,
 };
 
-/// Dispatch function-isolation routing to caller-provided branch handlers.
-pub fn execute_function_isolation_route_with<T, E, FAbs, FLog, FUnary, FVarMissing, FUnsupported>(
-    routing: Result<FunctionIsolationRoute, FunctionIsolationRouteError>,
-    on_abs_unary: FAbs,
-    on_log_binary: FLog,
-    on_unary_invertible: FUnary,
-    on_variable_missing: FVarMissing,
-    on_unsupported_arity: FUnsupported,
-) -> Result<T, E>
-where
-    FAbs: FnOnce(ExprId) -> Result<T, E>,
-    FLog: FnOnce(ExprId, ExprId) -> Result<T, E>,
-    FUnary: FnOnce(ExprId) -> Result<T, E>,
-    FVarMissing: FnOnce() -> E,
-    FUnsupported: FnOnce() -> E,
-{
-    match routing {
-        Ok(FunctionIsolationRoute::AbsUnary { arg }) => on_abs_unary(arg),
-        Ok(FunctionIsolationRoute::LogBinary { base, arg }) => on_log_binary(base, arg),
-        Ok(FunctionIsolationRoute::UnaryInvertible { arg }) => on_unary_invertible(arg),
-        Err(FunctionIsolationRouteError::VariableNotFoundInUnaryArg) => Err(on_variable_missing()),
-        Err(FunctionIsolationRouteError::UnsupportedArity) => Err(on_unsupported_arity()),
-    }
-}
-
-/// Stateful variant of [`execute_function_isolation_route_with`].
-///
-/// This form lets callers dispatch function-isolation route branches while
-/// threading one mutable state object across branch handlers.
+/// Dispatch function-isolation route branches, threading one mutable state
+/// object across branch handlers.
 pub fn execute_function_isolation_route_with_state<
     T,
     R,

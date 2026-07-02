@@ -39,14 +39,6 @@ pub struct SubstitutionIntroDidacticSteps {
     pub rewritten: SubstitutionDidacticStep,
 }
 
-/// Collect substitution-introduction didactic steps in display order:
-/// detected substitution first, rewritten equation second.
-pub fn collect_substitution_intro_didactic_steps(
-    didactic: &SubstitutionIntroDidacticSteps,
-) -> Vec<SubstitutionDidacticStep> {
-    vec![didactic.detected.clone(), didactic.rewritten.clone()]
-}
-
 /// Collect substitution-introduction execution items in display order:
 /// detected substitution first, rewritten equation second.
 pub fn collect_substitution_intro_execution_items(

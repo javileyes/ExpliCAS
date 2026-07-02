@@ -34,11 +34,6 @@ where
         .unwrap_or(false)
 }
 
-/// Check if a step stream starts with the log-linear marker.
-pub fn is_log_linear_pattern(steps: &[LogLinearNarrationStep]) -> bool {
-    is_log_linear_pattern_by(steps, |s| s.description.as_str())
-}
-
 /// Build the canonical "take log both sides" narration step.
 pub fn build_take_log_entry_step(equation_after: Equation) -> LogLinearNarrationStep {
     LogLinearNarrationStep {
