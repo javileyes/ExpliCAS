@@ -5935,6 +5935,148 @@ fn try_solve_const_over_surd_affine_inequality(
     map_set_through_inverse_affine(simplifier, u_set, &a, b)
 }
 
+/// Rewrite solver-opaque function ALIASES to their canonical invertible forms, recursively:
+/// `log2(u) → log(2, u)`, `log10(u) → log(10, u)`, `cbrt(u) → u^(1/3)`. These evaluate,
+/// differentiate and integrate fine, but the isolation dispatch has no inverse for them and
+/// errored `función [log2] no definida`. The reciprocal-trig aliases (`csc`/`sec`/`cot`) are
+/// NOT rewritten here: the simplifier re-folds `1/sin → csc` downstream, so they are handled
+/// at the EQUATION level by [`try_solve_reciprocal_trig_equation`]. Returns `None` when
+/// nothing changed.
+fn normalize_solver_function_aliases(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    use cas_ast::BuiltinFn;
+    let node = ctx.get(expr).clone();
+    match node {
+        Expr::Function(fn_id, args) => {
+            let new_args: Vec<ExprId> = args
+                .iter()
+                .map(|a| normalize_solver_function_aliases(ctx, *a).unwrap_or(*a))
+                .collect();
+            let changed_args = new_args != args;
+            let builtin = ctx.builtin_of(fn_id);
+            if new_args.len() == 1 {
+                let u = new_args[0];
+                let rewritten = match builtin {
+                    Some(BuiltinFn::Log2) => {
+                        let two = ctx.num(2);
+                        Some(ctx.call("log", vec![two, u]))
+                    }
+                    Some(BuiltinFn::Log10) => {
+                        let ten = ctx.num(10);
+                        Some(ctx.call("log", vec![ten, u]))
+                    }
+                    Some(BuiltinFn::Cbrt) => {
+                        let third = ctx.add(Expr::Number(num_rational::BigRational::new(
+                            1.into(),
+                            3.into(),
+                        )));
+                        Some(ctx.add(Expr::Pow(u, third)))
+                    }
+                    _ => None,
+                };
+                if let Some(r) = rewritten {
+                    return Some(r);
+                }
+            }
+            if changed_args {
+                Some(ctx.add(Expr::Function(fn_id, new_args)))
+            } else {
+                None
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            let nl = normalize_solver_function_aliases(ctx, l);
+            let nr = normalize_solver_function_aliases(ctx, r);
+            if nl.is_none() && nr.is_none() {
+                return None;
+            }
+            let (nl, nr) = (nl.unwrap_or(l), nr.unwrap_or(r));
+            Some(match ctx.get(expr) {
+                Expr::Add(_, _) => ctx.add(Expr::Add(nl, nr)),
+                Expr::Sub(_, _) => ctx.add(Expr::Sub(nl, nr)),
+                Expr::Mul(_, _) => ctx.add(Expr::Mul(nl, nr)),
+                Expr::Div(_, _) => ctx.add(Expr::Div(nl, nr)),
+                _ => ctx.add(Expr::Pow(nl, nr)),
+            })
+        }
+        Expr::Neg(inner) => {
+            let ni = normalize_solver_function_aliases(ctx, inner)?;
+            Some(ctx.add(Expr::Neg(ni)))
+        }
+        _ => None,
+    }
+}
+
+/// `csc(g) = c` / `sec(g) = c` / `cot(g) = c` at the EQUATION level (raw tree, constant
+/// `c`): reduce to the owning trig solver — `csc ⟺ sin(g) = 1/c` (`c = 0` ⇒ Empty, `1/sin`
+/// is never 0), `sec ⟺ cos(g) = 1/c`, and `cot ⟺ cos(g) − c·sin(g) = 0` (the homogeneous
+/// linear-trig handler, which keeps `cot(g) = 0 → g = π/2 + kπ` — a `1/tan` rewrite would
+/// lose those roots). A subtree rewrite (`csc → 1/sin`) does NOT survive: the simplifier
+/// re-folds the reciprocal back to `csc` and the isolation errors `función [csc] no
+/// definida`. Inequalities and symbolic RHS decline (honest residuals).
+fn try_solve_reciprocal_trig_equation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    // Normalize to `fn(g) = rhs` with the call on the LHS.
+    let (call, rhs) = if contains_var(&simplifier.context, eq.lhs, var) {
+        (eq.lhs, eq.rhs)
+    } else {
+        (eq.rhs, eq.lhs)
+    };
+    if contains_var(&simplifier.context, rhs, var) {
+        return None;
+    }
+    let (fn_id, args) = match simplifier.context.get(call) {
+        Expr::Function(f, a) => (*f, a.clone()),
+        _ => return None,
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let g = args[0];
+    if !contains_var(&simplifier.context, g, var) {
+        return None;
+    }
+    let builtin = simplifier.context.builtin_of(fn_id);
+    match builtin {
+        Some(BuiltinFn::Csc) | Some(BuiltinFn::Sec) => {
+            // `1/trig(g) = c`: `c = 0` is impossible; otherwise `trig(g) = 1/c` (the
+            // range check |1/c| ≤ 1 comes free from the sin/cos solver).
+            if as_rational_const(&simplifier.context, rhs).is_some_and(|r| r.is_zero()) {
+                return Some(SolutionSet::Empty);
+            }
+            let one = simplifier.context.num(1);
+            let recip = simplifier.context.add(Expr::Div(one, rhs));
+            let trig_name = if builtin == Some(BuiltinFn::Csc) {
+                "sin"
+            } else {
+                "cos"
+            };
+            let trig = simplifier.context.call(trig_name, vec![g]);
+            solve_relation_set(simplifier, var, trig, recip, RelOp::Eq)
+        }
+        Some(BuiltinFn::Cot) => {
+            // `cos(g)/sin(g) = c ⟺ cos(g) − c·sin(g) = 0` (where sin(g) ≠ 0; the roots of
+            // cos − c·sin never coincide with sin = 0, since cos and sin have no common zero).
+            let cos = simplifier.context.call("cos", vec![g]);
+            let sin = simplifier.context.call("sin", vec![g]);
+            let c_sin = simplifier.context.add(Expr::Mul(rhs, sin));
+            let lhs = simplifier.context.add(Expr::Sub(cos, c_sin));
+            let zero = simplifier.context.num(0);
+            solve_relation_set(simplifier, var, lhs, zero, RelOp::Eq)
+        }
+        _ => None,
+    }
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -5942,6 +6084,23 @@ fn solve_local_core(
     opts: CoreSolverOptions,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // Solver-opaque function aliases (`log2`, `log10`, `csc`, `sec`, `cot`, `cbrt`) rewrite to
+    // their canonical invertible forms up front, so every handler below sees solvable atoms
+    // instead of erroring `función [...] no definida`.
+    let nl = normalize_solver_function_aliases(&mut simplifier.context, eq.lhs);
+    let nr = normalize_solver_function_aliases(&mut simplifier.context, eq.rhs);
+    if nl.is_some() || nr.is_some() {
+        let normalized = Equation {
+            lhs: nl.unwrap_or(eq.lhs),
+            rhs: nr.unwrap_or(eq.rhs),
+            op: eq.op.clone(),
+        };
+        return solve_local_core(&normalized, var, simplifier, opts, ctx);
+    }
+    // `csc/sec/cot(g) = c`: reduce to the owning sin/cos solver (full periodic family).
+    if let Some(set) = try_solve_reciprocal_trig_equation(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
     // `trig(a·x + b) = c` with `b` a SYMBOLIC shift (π-multiple, arctan, surd): the angle-addition
     // expansion / isolation would return only the principal root. Solve `trig(u) = c` for `u = a·x + b`
     // (full periodic family) and map back — BEFORE the bare handler simplifies (expands).

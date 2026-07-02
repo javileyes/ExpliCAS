@@ -880,6 +880,44 @@ fn test_eval_symbolic_quadratic_with_negative_constant_discriminant_is_empty() {
 }
 
 #[test]
+fn test_eval_solver_function_aliases_solve_via_canonical_forms() {
+    // `log2`/`log10`/`cbrt` used to error `función [...] no definida` in solve():
+    // they now rewrite to their canonical invertible forms (`log(2,·)`, `log(10,·)`,
+    // `u^(1/3)`) at the solve entry. The reciprocal trig aliases (`csc`/`sec`/`cot`)
+    // are handled at the EQUATION level (a subtree `1/sin` rewrite gets re-folded to
+    // `csc` by the simplifier): `csc ⟺ sin = 1/c`, `sec ⟺ cos = 1/c`,
+    // `cot(g) = c ⟺ cos − c·sin = 0` — the cos/sin form keeps `cot = 0 → π/2 + kπ`,
+    // which a `1/tan` rewrite would lose.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(log2(x)=3, x)"), "{ 8 }");
+    assert_eq!(r("solve(log10(x)=2, x)"), "{ 100 }");
+    assert_eq!(r("solve(abs(log2(x))<3, x)"), "(1/8, 8)");
+    assert_eq!(r("solve(cbrt(x)=-2, x)"), "{ -8 }");
+    assert_eq!(
+        r("solve(csc(x)=2, x)"),
+        "{ 1/6\u{b7}pi + k\u{b7}2\u{b7}pi, 5/6\u{b7}pi + k\u{b7}2\u{b7}pi : k \u{2208} \u{2124} }"
+    );
+    assert_eq!(
+        r("solve(sec(x)=2, x)"),
+        "{ 1/3\u{b7}pi + k\u{b7}2\u{b7}pi, 5/3\u{b7}pi + k\u{b7}2\u{b7}pi : k \u{2208} \u{2124} }"
+    );
+    assert_eq!(
+        r("solve(cot(x)=0, x)"),
+        "{ 1/2\u{b7}pi + k\u{b7}pi : k \u{2208} \u{2124} }"
+    );
+    // Range honesty comes free from the owning solver: |1/c| > 1 has no solution.
+    assert_eq!(r("solve(csc(x)=1/2, x)"), "No solution");
+    assert_eq!(r("solve(csc(x)=0, x)"), "No solution");
+}
+
+#[test]
 fn test_eval_second_derivative_of_sin_tan_is_numerically_equivalent() {
     // P0-G: `diff(sin(x)·tan(x), x, 2)` returned a NON-equivalent tree (wrong at
     // every sample point). Root cause: `collect_mul_factors_int_pow` returned a

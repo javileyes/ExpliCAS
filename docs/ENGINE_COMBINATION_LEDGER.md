@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 492 (newest first)
+Active entries: 493 (newest first)
 
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
@@ -124,6 +124,7 @@ Active entries: 492 (newest first)
 - 2026-07-02 | `retained` | `scripts/engine_integrate_command_matrix_smoke.py` (5 fixtures), `scripts/eng... | HONESTIDAD DE HARNESS (RED didáctico heredado): re-contratar 6 fixtures al contrato didáctico vigente + refresh de baselines
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | UNIVERSALIDAD+SOUNDNESS (umbral no nulo sobre denominador surd-afín): `1/(x+√2) > 1` daba "No solution"
 - 2026-07-02 | `retained` | `crates/cas_math/src/fraction_factors.rs` (`collect_mul_factors_int_pow` ahor... | SOUNDNESS (P0-G): el colector de factores devolvía bases repetidas — over-cancel en factor-from-Add
+- 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`normalize_solver_function_al... | UNIVERSALIDAD (P1-F4: alias de funciones en solve): log2/log10/cbrt/csc/sec/cot resolubles
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
@@ -18302,3 +18303,19 @@ Active entries: 492 (newest first)
   - EL FUZZ DE EQUIVALENCIA ES EL DETECTOR CORRECTO para bugs de "simplify devuelve algo no equivalente": barato (grammar pequeña + verdad numérica en 3 puntos), encuentra el repro mínimo por shrink, y la traza --steps localiza la regla exacta. La hipótesis estructural del audit (truncación) habría llevado a un fix arquitectónico grande E INÚTIL — sondear la hipótesis (`--budget unlimited`) antes de implementarla ahorró el ciclo.
   - Un colector de factores que puede recibir árboles NO-canónicos (mid-pipeline: `sin·sin` legal tras una expansión) y devuelve lista cruda viola el invariante multiset que sus consumidores asumen silenciosamente — la agregación pertenece al COLECTOR (chokepoint, 20 consumidores), no a cada consumidor (el bug era exactamente que uno agregaba y otro no).
   - PRÓXIMO PELDAÑO: el hang de `diff((x+tan(x))^2,x)` (bug-2 de C5: ciclo expand↔factor inverso) sigue abierto — el fuzzer lo reproduce en el 2.3% de formas; es un no-terminación honesta, no un wrong-answer. El fuzz de equivalencia merece quedar como herramienta permanente (script o lane).
+
+## 2026-07-02 - UNIVERSALIDAD (P1-F4: alias de funciones en solve): log2/log10/cbrt/csc/sec/cot resolubles
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`normalize_solver_function_aliases` + `try_solve_reciprocal_trig_equation` nuevos, despachados al inicio de `solve_local_core`)
+- status: `retained` (commit pendiente-de-hash). Cierra el item P1-F4 del backlog (funciones que evalúan/derivan/integran pero `solve` rechazaba con `función [...] no definida`). Verificado adversarialmente (72 formas csc/sec/cot × args afines × constantes con verificación por SUSTITUCIÓN de las bases periódicas: 0 wrong del engine; 2 flags eran del parser del verificador).
+- capture:
+  - investment_class: capability (Fase 1, ecuaciones elementales) — reduce-a-canónico en dos variantes.
+  - cell: `solve(log2(x)=3)` → `{8}` (era error), `solve(abs(log2(x))<3)` → `(1/8, 8)` (compone con el fix de compare_values), `solve(cbrt(x)=−2)` → `{−8}`, `solve(csc(x)=2)` → `{π/6+2kπ, 5π/6+2kπ}`, `solve(sec(2x)=2)` → `{π/6+kπ, 5π/6+kπ}` (arg afín compone), `solve(cot(x)=0)` → `{π/2+kπ}`, `solve(csc(x)=1/2)` → No solution (rango |1/c|>1 GRATIS del dueño), `solve(csc(x)=0)` → Empty. Controles sin/cos/tan/ln INTACTOS.
+  - causa raíz: la tabla de inversión de la isolación (`UnaryInverseKind`: sqrt/ln/exp/sin/cos/tan) no conoce los alias; el gate general de eval sí los acepta (son BuiltinFn), así que llegaban hasta la isolación y erroraban.
+  - fix (2 variantes por una razón REAL): (1) log2/log10/cbrt → reescritura de SUBÁRBOL a formas canónicas estables (`log(2,·)`, `u^(1/3)`) al entrar en solve_local_core; (2) csc/sec/cot → handler a NIVEL DE ECUACIÓN (`csc(g)=c ⟺ sin(g)=1/c`, `sec ⟺ cos=1/c`, `cot(g)=c ⟺ cos−c·sin=0` vía el handler homogéneo) porque la reescritura de subárbol `csc→1/sin` NO SOBREVIVE — el simplificador re-pliega `1/sin → csc` aguas abajo y la isolación vuelve a errar (verificado con DBG: la normalización ocurría y el error persistía).
+  - decisión de soundness: `cot → cos/sin`, NUNCA `1/tan` — `cot(x)=0` tiene raíces `π/2+kπ` donde tan es INDEFINIDA; la forma `1/tan` las perdería. Y `csc/sec = 0` ⇒ Empty explícito (1/trig nunca es 0).
+  - validación: workspace failed:0; clippy limpio; huella GUARD/PRESS 0 deltas; adversarial 72 formas → 0 wrong (sustitución, no cambio de signo).
+- retained learning:
+  - Cuando una reescritura de normalización NO SOBREVIVE al simplificador (re-pliega la forma canónica al alias), el nivel correcto es la ECUACIÓN, no el subárbol: `f(g) = c → g_can = h(c)` se despacha una vez y el re-pliegue ya no importa. Verificar empíricamente que la normalización sobrevive (DBG en la entrada + error persistente = re-pliegue) antes de asumir que un rewrite temprano basta.
+  - El reparto correcto de una función recíproca es delegar al DUEÑO del átomo (sin/cos/homogéneo): el rango (|1/c|>1), la periodicidad y los args afines componen GRATIS. El único razonamiento propio es el borde `c=0` (imposible para 1/trig; raíces de cos−c·sin nunca coinciden con sin=0).
+  - PRÓXIMO PELDAÑO: INECUACIONES con estos alias (`csc(x)>2`) siguen declinando al error de isolación (residual pre-existente); `log2` en otros comandos ya funcionaba. El re-pliegue `1/sin→csc` del simplificador es una presentación que puede sorprender a futuros handlers de forma recíproca — anotar en la próxima extensión trig.
