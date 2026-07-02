@@ -37,6 +37,23 @@ pub fn count_all_nodes(ctx: &Context, root: ExprId) -> usize {
     count_nodes_matching(ctx, root, |_| true)
 }
 
+/// Count all nodes but stop early once the count would exceed `cap`, returning
+/// `min(actual_count, cap + 1)`. Lets callers that only need "is the tree bigger
+/// than N?" avoid walking a huge subtree in full (the exact count above `cap` is
+/// not observable, only that it exceeded `cap`).
+pub fn count_all_nodes_capped(ctx: &Context, root: ExprId, cap: usize) -> usize {
+    let mut count = 0;
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        count += 1;
+        if count > cap {
+            return count; // cap + 1
+        }
+        push_children(ctx.get(id), &mut stack);
+    }
+    count
+}
+
 /// Count nodes matching a predicate.
 ///
 /// **CANONICAL traversal function for filtered counting.**
@@ -323,6 +340,24 @@ mod tests {
         let abc = ctx.add_raw(Expr::Mul(ab, c));
 
         assert_eq!(count_all_nodes(&ctx, abc), 5);
+    }
+
+    #[test]
+    fn test_count_all_nodes_capped_returns_min_of_actual_and_cap_plus_one() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let ab = ctx.add_raw(Expr::Add(a, b));
+        let abc = ctx.add_raw(Expr::Mul(ab, c)); // 5 nodes
+
+        // Cap above the size: exact count.
+        assert_eq!(count_all_nodes_capped(&ctx, abc, 10), 5);
+        assert_eq!(count_all_nodes_capped(&ctx, abc, 5), 5); // equal is not "exceeded"
+        // Cap below the size: stops at cap + 1.
+        assert_eq!(count_all_nodes_capped(&ctx, abc, 4), 5);
+        assert_eq!(count_all_nodes_capped(&ctx, abc, 2), 3);
+        assert_eq!(count_all_nodes_capped(&ctx, abc, 0), 1);
     }
 
     #[test]

@@ -21,12 +21,25 @@ pub fn rewrite_worsens_too_much(
     max_growth_ratio: f64,
 ) -> bool {
     let size_before = node_count_tree(ctx, before);
-    let size_after = node_count_tree(ctx, after);
+
+    // The result is `true` iff `size_after > size_before + max_growth_abs` AND
+    // `size_after > size_before * max_growth_ratio`, i.e. iff `size_after` exceeds the
+    // max of those two thresholds. So we never need the exact `size_after` beyond that
+    // threshold — cap the `after` walk there instead of expanding a possibly-huge tree
+    // in full on every accepted rewrite (P14 of the saneamiento audit). Behavior-identical.
+    let ratio_threshold = (size_before as f64 * max_growth_ratio).ceil();
+    let ratio_threshold = if ratio_threshold.is_finite() && ratio_threshold >= 0.0 {
+        ratio_threshold as usize
+    } else {
+        usize::MAX
+    };
+    let threshold = (size_before.saturating_add(max_growth_abs)).max(ratio_threshold);
+    // Cap at `threshold` (we only care whether `size_after` STRICTLY exceeds it).
+    let size_after = cas_ast::traversal::count_all_nodes_capped(ctx, after, threshold);
 
     if size_after <= size_before {
         return false;
     }
-
     let growth_abs = size_after - size_before;
     let growth_ratio = size_after as f64 / size_before.max(1) as f64;
     growth_abs > max_growth_abs && growth_ratio > max_growth_ratio
