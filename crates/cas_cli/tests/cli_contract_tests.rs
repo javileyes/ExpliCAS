@@ -880,6 +880,50 @@ fn test_eval_symbolic_quadratic_with_negative_constant_discriminant_is_empty() {
 }
 
 #[test]
+fn test_eval_rational_exponent_constants_are_sign_decidable() {
+    // A constant `base^(p/q)` (`e^(1/3)`, `2^(1/3)`, ...) is now sign-decidable via
+    // exact n-th-root value bounds (`const_sign::interval_pow`), closing the P0-F-log
+    // family (an out-of-domain negative root `e^(1/3)/(1-e^(1/3))` was kept) and its
+    // guard siblings (even-root threshold, abs-split, quadratic discriminant) that
+    // previously only decided rationals/linear surds.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Log-equation domain filter: the candidate root is provably negative (x > 0
+    // required), so only the vacuous conditional branch remains — same shape as the
+    // long-working `= 1/2` sibling. (Pruning the provably-false conditional itself
+    // is a separate presentation step.)
+    assert_eq!(
+        r("solve(ln(x)-ln(x+1)=1/3, x)"),
+        "All real numbers if e^(1/3) = 0 and 1 - e^(1/3) = 0"
+    );
+    // Control: a positive in-domain root is KEPT (e^(-1/3)/(1-e^(-1/3)) ~ 2.53 > 0).
+    assert_eq!(
+        r("solve(ln(x)-ln(x+1)=-1/3, x)"),
+        "{ e^(-1/3) / (1 - e^(-1/3)) } if 1 - e^(-1/3) != 0; \
+         All real numbers if e^(-1/3) = 0 and 1 - e^(-1/3) = 0"
+    );
+    // Even-root RANGE correction with a transcendental-power threshold (`√ >= 0`).
+    assert_eq!(r("solve(sqrt(x) < -e^(1/3), x)"), "No solution");
+    assert_eq!(r("solve(sqrt(x) >= -2^(1/3), x)"), "[0, infinity)");
+    // abs-split: the `x² = 1 - e^(1/3)` branch radicand is provably negative — the
+    // spurious complex pair is dropped, keeping only the real pair.
+    assert_eq!(
+        r("solve(abs(x^2-1) = e^(1/3), x)"),
+        "{ (e^(1/3) + 1)^(1/2), -((e^(1/3) + 1)^(1/2)) }"
+    );
+    // Quadratic with a provably-negative transcendental-power constant.
+    assert_eq!(r("solve(x^2 = 1-e^(1/3), x)"), "No solution");
+    // Control: positive threshold still squares (the sound branch).
+    assert_eq!(r("solve(sqrt(x) > e^(1/3), x)"), "(e^(2/3), infinity)");
+}
+
+#[test]
 fn test_eval_rational_power_polynomial_equation_solves_by_substitution() {
     // Equations that are a polynomial of degree >= 2 in x^(1/q) (a
     // quadratic-in-disguise) used to leak a malformed internal `Solve: solve(...)`

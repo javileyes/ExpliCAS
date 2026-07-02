@@ -2,8 +2,9 @@
 //!
 //! Computes VERIFIED rational value bounds `[lo, hi]` (with `lo <= value <= hi`,
 //! both `BigRational`) for a constant expression built from rationals, `pi`, `e`,
-//! the golden ratio `phi`, `sqrt`, and `+ - * /` / integer powers, and derives a
-//! provable sign from them. Transcendental `ln`/`log`/`exp` get cheap exact sign
+//! the golden ratio `phi`, `sqrt`, and `+ - * /` / rational powers (integer, and
+//! `p/q` over a nonnegative base via n-th-root bounds), and derives a provable
+//! sign from them. Transcendental `ln`/`log`/`exp` get cheap exact sign
 //! rules (a base `> 1` log is positive iff its argument exceeds 1; `exp` of a real
 //! is always positive).
 //!
@@ -27,6 +28,7 @@ pub enum ConstSign {
     Positive,
 }
 
+#[cfg(test)]
 fn ratio(numer: i64, denom: i64) -> BigRational {
     BigRational::new(BigInt::from(numer), BigInt::from(denom))
 }
@@ -63,6 +65,12 @@ fn one() -> BigRational {
 fn round_up(x: &BigRational, denom: &BigInt) -> BigRational {
     let scaled = x * BigRational::from_integer(denom.clone());
     scaled.ceil() / BigRational::from_integer(denom.clone())
+}
+
+/// Round `x` DOWN to a multiple of `1/denom` (keeps a lower bound a lower bound).
+fn round_down(x: &BigRational, denom: &BigInt) -> BigRational {
+    let scaled = x * BigRational::from_integer(denom.clone());
+    scaled.floor() / BigRational::from_integer(denom.clone())
 }
 
 /// Tight rational bounds `(lo, hi)` with `lo <= sqrt(q) <= hi` for `q >= 0`.
@@ -108,6 +116,72 @@ fn exact_sqrt(q: &BigRational) -> Option<BigRational> {
     } else {
         None
     }
+}
+
+/// `x^n` for a small non-negative integer `n` (exact rational).
+fn rational_pow_u32(x: &BigRational, n: u32) -> BigRational {
+    let mut acc = one();
+    for _ in 0..n {
+        acc = &acc * x;
+    }
+    acc
+}
+
+/// Exact rational n-th root of `q >= 0` when it is rational (both numerator and
+/// denominator of the reduced fraction are perfect n-th powers), else `None`.
+fn exact_nth_root(q: &BigRational, n: u32) -> Option<BigRational> {
+    let rn = q.numer().nth_root(n);
+    let rd = q.denom().nth_root(n);
+    let pow_back = |b: &BigInt| -> BigInt {
+        let mut acc = BigInt::one();
+        for _ in 0..n {
+            acc *= b;
+        }
+        acc
+    };
+    if &pow_back(&rn) == q.numer() && &pow_back(&rd) == q.denom() {
+        Some(BigRational::new(rn, rd))
+    } else {
+        None
+    }
+}
+
+/// Tight rational bounds `(lo, hi)` with `lo <= q^(1/n) <= hi` for `q >= 0`, `n >= 1`.
+///
+/// Newton-from-above on `x^n = q`: `x_{k+1} = ((n-1)·x_k + q/x_k^(n-1))/n >= q^(1/n)`
+/// by AM-GM, so every iterate (rounded UP to bounded precision) stays an upper
+/// bound; the matching lower bound is `q / hi^(n-1) <= q^(1/n)`. Both are exact
+/// rationals; if the loop stops before converging the bounds are LOOSE but still
+/// valid (the caller can only fail to decide, never decide wrongly).
+fn nth_root_bounds(q: &BigRational, n: u32) -> Option<(BigRational, BigRational)> {
+    if n == 0 || q.is_negative() {
+        return None;
+    }
+    if n == 1 || q.is_zero() || q.is_one() {
+        return Some((q.clone(), q.clone()));
+    }
+    if let Some(exact) = exact_nth_root(q, n) {
+        return Some((exact.clone(), exact));
+    }
+    let precision = BigInt::from(10).pow(40); // 1/10^40 resolution
+    let n_r = BigRational::from_integer(BigInt::from(n));
+    let n_minus_1 = BigRational::from_integer(BigInt::from(n - 1));
+    // x0 >= q^(1/n): max(q, 1) works (q >= 1 => q >= q^(1/n); q < 1 => 1 > q^(1/n)).
+    // Rounded UP to bounded precision so the first `hi^(n-1)` cannot blow up when
+    // `q` carries a huge exact denominator (round-up keeps an upper bound).
+    let mut hi = round_up(&if q >= &one() { q.clone() } else { one() }, &precision);
+    for _ in 0..400 {
+        let next = round_up(
+            &((&n_minus_1 * &hi + q / rational_pow_u32(&hi, n - 1)) / &n_r),
+            &precision,
+        );
+        if next >= hi {
+            break; // converged (monotone non-increasing, bounded below by q^(1/n))
+        }
+        hi = next;
+    }
+    let lo = q / rational_pow_u32(&hi, n - 1); // hi >= q^(1/n)  =>  q/hi^(n-1) <= q^(1/n)
+    Some((lo, hi))
 }
 
 /// Tight rational bounds `(lo, hi)` with `lo <= ln(m) <= hi` for `m >= 1`, via the
@@ -404,26 +478,50 @@ fn const_value_bounds_depth(
 }
 
 /// Bounds of `base ^ exp` where `exp` is a rational constant. Handles integer
-/// exponents (positive/negative) and `1/2` (square root); bails otherwise.
+/// exponents (positive/negative) and, for a NONNEGATIVE base, any small rational
+/// exponent `p/q` via `base^(p/q) = (base^|p|)^(1/q)` (reciprocated for `p < 0`);
+/// bails on a negative base with a fractional exponent (odd-root semantics are
+/// the caller's business, never guessed here).
 fn interval_pow(
     base: (BigRational, BigRational),
     exp: &BigRational,
 ) -> Option<(BigRational, BigRational)> {
+    use num_traits::ToPrimitive;
     if exp.is_zero() {
         return Some((one(), one()));
     }
-    // exp == 1/2  =>  sqrt
-    if *exp == ratio(1, 2) {
-        let (lo, hi) = base;
-        if lo.is_negative() {
+    if !exp.is_integer() {
+        // General rational exponent p/q (reduced, q >= 2) over a nonnegative base.
+        // Caps at 16: every realistic textbook exponent (1/2..7/2, p/q with small q)
+        // fits, and the n-th-root Newton cost stays milliseconds. Larger exponents
+        // return None (honest indecision) rather than multi-second exact arithmetic.
+        let root: u32 = exp.denom().to_u32().filter(|d| *d <= 16)?;
+        let p = exp.numer();
+        if p.abs() > BigInt::from(16) {
             return None;
         }
-        let (lo2, _) = sqrt_bounds(&lo)?;
-        let (_, hi2) = sqrt_bounds(&hi)?;
-        return Some((lo2, hi2));
-    }
-    if !exp.is_integer() {
-        return None;
+        let (blo, bhi) = base;
+        if blo.is_negative() {
+            return None;
+        }
+        // Round the base OUTWARD to bounded precision before powering: a 50-digit
+        // bound raised to p=63 otherwise explodes to ~200k-digit rationals inside
+        // the n-th-root Newton (multi-minute gcds). Outward rounding only widens
+        // the interval — bounds stay valid, decisions stay sound.
+        let precision = BigInt::from(10).pow(40);
+        let blo = round_down(&blo, &precision);
+        let bhi = round_up(&bhi, &precision);
+        // The rounded-down lower bound of a nonnegative base can dip below 0; clamp.
+        let blo = if blo.is_negative() { zero() } else { blo };
+        // base >= 0 and |p| >= 1  =>  x^|p| is monotone nondecreasing on the interval.
+        let times = p.abs().to_u32().unwrap_or(0);
+        let (rlo, _) = nth_root_bounds(&rational_pow_u32(&blo, times), root)?;
+        let (_, rhi) = nth_root_bounds(&rational_pow_u32(&bhi, times), root)?;
+        return if p.is_negative() {
+            interval_recip((rlo, rhi))
+        } else {
+            Some((rlo, rhi))
+        };
     }
     let n = exp.to_integer();
     // Bound the magnitude of the exponent to avoid blow-up.
@@ -550,6 +648,28 @@ mod tests {
         assert_eq!(sign("sqrt(5) - 2"), Some(ConstSign::Positive)); // 2.236 > 2
         assert_eq!(sign("sqrt(4) - 2"), Some(ConstSign::Zero)); // exact
         assert_eq!(sign("sqrt(2) - 7/5"), Some(ConstSign::Positive)); // 1.4142 > 1.4
+    }
+
+    #[test]
+    fn rational_exponent_powers_decide_comparisons() {
+        // base^(p/q) over a nonnegative base via n-th-root bounds: e^(1/3)~1.3956,
+        // 2^(1/3)~1.2599, pi^(3/2)~5.568, e^(-1/2)~0.6065.
+        assert_eq!(sign("e^(1/3) - 1"), Some(ConstSign::Positive));
+        assert_eq!(sign("1 - e^(1/3)"), Some(ConstSign::Negative));
+        assert_eq!(sign("e^(1/3) - 7/5"), Some(ConstSign::Negative)); // 1.3956 < 1.4
+        assert_eq!(sign("2^(1/3) - 5/4"), Some(ConstSign::Positive)); // 1.2599 > 1.25
+        assert_eq!(sign("2^(1/3) - 63/50"), Some(ConstSign::Negative)); // 1.2599 < 1.26
+        assert_eq!(sign("8^(1/3) - 2"), Some(ConstSign::Zero)); // exact n-th root
+        assert_eq!(sign("(27/8)^(2/3) - 9/4"), Some(ConstSign::Zero)); // ((3/2)^3)^(2/3)
+        assert_eq!(sign("pi^(3/2) - 5"), Some(ConstSign::Positive)); // 5.568 > 5
+        assert_eq!(sign("pi^(3/2) - 6"), Some(ConstSign::Negative)); // 5.568 < 6
+        assert_eq!(sign("e^(-1/2) - 1"), Some(ConstSign::Negative)); // reciprocal branch
+        assert_eq!(sign("e^(-1/2) - 3/5"), Some(ConstSign::Positive)); // 0.6065 > 0.6
+                                                                       // The P0-F-log root: e^(1/3)/(1 - e^(1/3)) ~ -3.53 must prove negative so
+                                                                       // the log-equation domain filter (x > 0) can drop it.
+        assert_eq!(sign("e^(1/3) / (1 - e^(1/3))"), Some(ConstSign::Negative));
+        // Negative base with a fractional exponent: never guessed.
+        assert_eq!(sign("(-2)^(1/3)"), None);
     }
 
     #[test]

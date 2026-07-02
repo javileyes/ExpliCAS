@@ -701,11 +701,20 @@ fn intersect_inequality_with_function_domain(
     // which is unsound when `c` is on the wrong side of 0 — handle those directly.
     if let MonotonicFn::EvenRoot = kind {
         // Decide the sign of `c` EXACTLY: a rational directly, else a constant linear surd
-        // (`−√2`) via `provable_sign_vs_zero`. Without the surd path, `√x < −√2` fell through to the
-        // (unsound) squaring branch and returned `[0, 2)` instead of No solution.
+        // (`−√2`) via `provable_sign_vs_zero`, else the general exact value-bounds oracle
+        // (`−e^(1/3)`). Without these paths, `√x < −√2` fell through to the (unsound)
+        // squaring branch and returned `[0, 2)` instead of No solution.
         let sign = cas_math::numeric_eval::as_rational_const(&simplifier.context, eq.rhs)
             .map(|c| c.cmp(&num_rational::BigRational::from_integer(0.into())))
-            .or_else(|| cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, eq.rhs));
+            .or_else(|| cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, eq.rhs))
+            .or_else(|| {
+                use cas_math::const_sign::{provable_const_sign, ConstSign};
+                Some(match provable_const_sign(&simplifier.context, eq.rhs)? {
+                    ConstSign::Negative => std::cmp::Ordering::Less,
+                    ConstSign::Zero => std::cmp::Ordering::Equal,
+                    ConstSign::Positive => std::cmp::Ordering::Greater,
+                })
+            });
         if let Some(ord) = sign {
             let (neg, pos) = (
                 ord == std::cmp::Ordering::Less,

@@ -232,3 +232,37 @@ layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prov
 - **P0-G**: 2nd-derivative simplifier `depth_overflow` returns a non-equivalent truncated tree — scoped to
   `cas_engine/src/engine/transform/mod.rs` (`MAX_SIMPLIFY_DEPTH=50`); fix = a `subtree_truncated` flag so
   an ancestor SKIPS value-changing collect/merge rewrites over a truncated descendant. Hardest; separate effort.
+
+---
+
+## FIX STATUS UPDATE #3 (2026-07-02)
+
+- **P0-F-log** — FIXED: `interval_pow` now handles ANY small rational exponent `p/q` over a nonnegative
+  base via a new `nth_root_bounds` Newton-from-above bracketing helper (twin of `sqrt_bounds`, AM-GM
+  upper bound + `q/hi^(n-1)` lower bound, exact `BigRational`). `e^(1/3)`-style constants are now
+  sign-decidable, so the existing log-equation domain filter drops the out-of-domain root for `= 1/3`,
+  `= 1/4`, `= 3/2` (same shape as the long-working `= 1/2` sibling); in-domain roots (`= -1/3`,
+  `ln(x+1)−ln(x)=1/3`) are kept. Adversarially verified: 689 constant-sign forms vs an 80-digit decimal
+  oracle (0 wrong) + 168 solver-level `√x op c` / `x²=c` forms (0 wrong).
+- **Guard siblings closed by the same upgrade** (found probing consumers): the even-root range
+  correction (`solve_backend_local.rs`) and `is_known_negative` (`isolation_utils.rs`) only consulted
+  the linear-surd oracle `provable_sign_vs_zero` and were WRONG for transcendental-power constants —
+  `√x < −e^(1/3) → [0, e^(2/3))`, `√x > −2^(1/3) → (2^(2/3), ∞)`, `|x²−1| = e^(1/3)` leaked the complex
+  pair. Both now fall back to `provable_const_sign` (the superset oracle). The audit's meta-lesson
+  again: the named case (surd) was fixed, the transcendental-power sibling wasn't.
+- **Regression caught & re-architected (flip ownership)**: widening `is_known_negative` made the
+  mul-isolation pipeline decide `ln(1/2) < 0` and flip `(1/2)^x > 4` — but `build_log_linear_equation`
+  (rational_power.rs) was PRE-flipping to compensate for exactly that blindness ⇒ double flip, reversed
+  ray (caught by `test_eval_fractional_base_exponential_inequality_direction`). Fix: the pre-flip is
+  REMOVED; direction is owned by the sign-aware division downstream. BONUS: irrational bases now flip
+  too — `(1/π)^x > 2 → (−∞, ln 2/ln(1/π))` was a pre-existing wrong ray (the pre-flip only knew
+  rationals) and is now correct.
+- **Pre-existing sibling (verified pre-cycle by stash-probe, NOT a regression)**: `sin(1)^x > 2` still
+  returns the unflipped ray `(log(sin(1),2), ∞) if sin(1) > 0` — it routes through
+  `build_exponent_log_isolation_equation` (the `log(base,·)` form, no downstream division), whose flip
+  is still keyed on EXACT RATIONAL `0 < base < 1` only. Next step: decide `0 < base < 1` for constant
+  irrational bases via `const_value_bounds` (lo > 0, hi < 1) at that builder.
+- **Residual (presentation, not soundness)**: the vacuous conditional `All real numbers if e^(c) = 0
+  and 1 - e^(c) = 0` survives for the whole family (incl. the pre-existing `= 1/2`, `= 2` siblings) —
+  the conditional-case builder never prunes provably-false constant conditions. Now that
+  `provable_const_sign` decides these, a follow-up cycle can prune to a clean `No solution`.

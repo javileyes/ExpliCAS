@@ -35,7 +35,13 @@ pub fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
         Expr::Mul(l, r) => is_known_negative(ctx, *l) ^ is_known_negative(ctx, *r),
         // A constant LINEAR SURD `A + B·√n` (e.g. `1 − √2`): decide its sign exactly, so an even-root
         // isolation `x² = 1 − √2` correctly drops to No solution instead of leaking `±√(1−√2)`.
-        _ => cas_math::root_forms::provable_sign_vs_zero(ctx, expr) == Some(Ordering::Less),
+        // Fallback: the exact value-bounds oracle decides general constants the surd
+        // form misses (`1 − e^(1/3)`, `1 − π`), same discipline, never a guess.
+        _ => {
+            cas_math::root_forms::provable_sign_vs_zero(ctx, expr) == Some(Ordering::Less)
+                || cas_math::const_sign::provable_const_sign(ctx, expr)
+                    == Some(cas_math::const_sign::ConstSign::Negative)
+        }
     }
 }
 

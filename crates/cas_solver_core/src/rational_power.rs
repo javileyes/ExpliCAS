@@ -157,18 +157,11 @@ pub fn build_log_linear_equation(
     is_lhs: bool,
 ) -> Equation {
     // The rewrite `exponent·ln(base) op ln(other)` is solved downstream by dividing through by the
-    // SYMBOLIC coefficient `ln(base)`, which the linear solver treats as positive. When `0 < base < 1`
-    // the true coefficient `ln(base)` is NEGATIVE, so the relation must be flipped to compensate
-    // (otherwise `(1/2)^x>4` yields the reversed ray). Keyed on the EXACT rational base (no f64): only
-    // a provable `0 < base < 1` flips; `base ≥ 1`, symbolic, and irrational bases keep `op` (sound
-    // default — no flip without a proven sign of `ln(base)`). Eq/Neq pass through.
-    let op = if matches!(op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq)
-        && base_is_provably_fraction_below_one(ctx, base)
-    {
-        flip_inequality(op)
-    } else {
-        op
-    };
+    // coefficient `ln(base)`, and the mul-isolation pipeline decides that coefficient's sign with the
+    // exact `is_known_negative` oracle (which resolves `ln(b)` for any provably `0 < b < 1` base,
+    // rational or not) and flips the relation itself. Do NOT pre-flip here: a second flip at this
+    // layer double-compensates and reverses the ray (`(1/2)^x>4` regressed exactly that way when the
+    // oracle learned to decide `ln(1/2) < 0`). Eq/Neq are unaffected either way.
     let ln_base = ctx.call("ln", vec![base]);
     let lhs_linear = ctx.add(Expr::Mul(exponent, ln_base));
     let ln_other = ctx.call("ln", vec![other]);
@@ -664,7 +657,13 @@ mod tests {
     }
 
     #[test]
-    fn log_linear_equation_flips_inequality_for_fractional_base() {
+    fn log_linear_equation_never_pre_flips_inequality() {
+        // Direction ownership: the downstream mul-isolation decides the sign of the
+        // coefficient `ln(base)` with the exact oracle and flips there. The builder
+        // must pass `op` through UNCHANGED for every base, or the two layers
+        // double-flip (`(1/2)^x > 4` regressed to the reversed ray). The end-to-end
+        // direction contract lives in the CLI test
+        // `test_eval_fractional_base_exponential_inequality_direction`.
         let mut ctx = Context::new();
         let exponent = ctx.var("x");
         let other = ctx.num(4);
@@ -673,16 +672,14 @@ mod tests {
             2.into(),
         )));
         let two = ctx.num(2);
-        // 0 < base < 1: ln(base) < 0 ⇒ the relation flips (Gt → Lt).
         let eq = build_log_linear_equation(&mut ctx, half, exponent, other, RelOp::Gt, true);
-        assert_eq!(eq.op, RelOp::Lt, "(1/2)^x > 4 must flip to Lt");
-        // base > 1: ln(base) > 0 ⇒ relation preserved.
+        assert_eq!(eq.op, RelOp::Gt, "(1/2)^x > 4: flip is owned downstream");
         let eq2 = build_log_linear_equation(&mut ctx, two, exponent, other, RelOp::Gt, true);
-        assert_eq!(eq2.op, RelOp::Gt, "2^x > 4 must keep Gt");
-        // Equality is never flipped.
+        assert_eq!(eq2.op, RelOp::Gt, "2^x > 4 keeps Gt");
+        // Equality is never flipped anywhere.
         let eq3 = build_log_linear_equation(&mut ctx, half, exponent, other, RelOp::Eq, true);
         assert_eq!(eq3.op, RelOp::Eq);
-        // The fractional-base predicate is exact.
+        // The fractional-base predicate stays exact (used by the log-isolation builder).
         assert!(base_is_provably_fraction_below_one(&ctx, half));
         assert!(!base_is_provably_fraction_below_one(&ctx, two));
     }
