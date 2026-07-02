@@ -51,8 +51,6 @@ pub enum TrigCanonicalIdentityKind {
     CscCotPythagorean,
     TanToSecPythagorean,
     CotToCscPythagorean,
-    SecTanMinusOneIdentityZero,
-    CscCotMinusOneIdentityZero,
     ReciprocalProductIdentity,
     MixedFractionSinTanIdentity,
     MixedFractionToSinCos,
@@ -899,88 +897,6 @@ pub fn try_rewrite_cot_to_csc_pythagorean_identity_expr(
     Some(TrigCanonicalIdentityRewrite {
         rewritten,
         kind: TrigCanonicalIdentityKind::CotToCscPythagorean,
-        required_nonzero: SmallVec::new(),
-    })
-}
-
-pub(crate) fn try_rewrite_sec_tan_minus_one_identity_expr(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<ExprId> {
-    let Expr::Sub(left, right) = ctx.get(expr) else {
-        return None;
-    };
-    if !is_one_expr(ctx, *right) {
-        return None;
-    }
-
-    let Expr::Sub(ll, lr) = ctx.get(*left) else {
-        return None;
-    };
-
-    let (Some(sec_arg), Some(tan_arg)) = (
-        is_function_squared(ctx, *ll, "sec"),
-        is_function_squared(ctx, *lr, "tan"),
-    ) else {
-        return None;
-    };
-
-    if sec_arg == tan_arg {
-        Some(ctx.num(0))
-    } else {
-        None
-    }
-}
-
-pub fn try_rewrite_sec_tan_minus_one_identity_zero_expr(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<TrigCanonicalIdentityRewrite> {
-    let rewritten = try_rewrite_sec_tan_minus_one_identity_expr(ctx, expr)?;
-    Some(TrigCanonicalIdentityRewrite {
-        rewritten,
-        kind: TrigCanonicalIdentityKind::SecTanMinusOneIdentityZero,
-        required_nonzero: SmallVec::new(),
-    })
-}
-
-pub(crate) fn try_rewrite_csc_cot_minus_one_identity_expr(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<ExprId> {
-    let Expr::Sub(left, right) = ctx.get(expr) else {
-        return None;
-    };
-    if !is_one_expr(ctx, *right) {
-        return None;
-    }
-
-    let Expr::Sub(ll, lr) = ctx.get(*left) else {
-        return None;
-    };
-
-    let (Some(csc_arg), Some(cot_arg)) = (
-        is_function_squared(ctx, *ll, "csc"),
-        is_function_squared(ctx, *lr, "cot"),
-    ) else {
-        return None;
-    };
-
-    if csc_arg == cot_arg {
-        Some(ctx.num(0))
-    } else {
-        None
-    }
-}
-
-pub fn try_rewrite_csc_cot_minus_one_identity_zero_expr(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<TrigCanonicalIdentityRewrite> {
-    let rewritten = try_rewrite_csc_cot_minus_one_identity_expr(ctx, expr)?;
-    Some(TrigCanonicalIdentityRewrite {
-        rewritten,
-        kind: TrigCanonicalIdentityKind::CscCotMinusOneIdentityZero,
         required_nonzero: SmallVec::new(),
     })
 }

@@ -1,12 +1,8 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::trig_canonicalization_support::{
-    is_trig_of_inverse_trig, try_rewrite_cot_to_csc_pythagorean_identity_expr,
-    try_rewrite_csc_cot_minus_one_identity_zero_expr,
-    try_rewrite_csc_cot_pythagorean_identity_expr, try_rewrite_mixed_fraction_to_sincos_plan_expr,
-    try_rewrite_reciprocal_product_identity_expr, try_rewrite_sec_tan_minus_one_identity_zero_expr,
-    try_rewrite_sec_tan_pythagorean_identity_expr,
-    try_rewrite_tan_to_sec_pythagorean_identity_expr,
+    is_trig_of_inverse_trig, try_rewrite_mixed_fraction_to_sincos_plan_expr,
+    try_rewrite_reciprocal_product_identity_expr,
     try_rewrite_trig_function_name_canonicalization_expr, TrigCanonicalIdentityKind,
     TrigCanonicalRewriteKind,
 };
@@ -20,8 +16,6 @@ fn format_trig_canonical_identity_desc(kind: TrigCanonicalIdentityKind) -> &'sta
         TrigCanonicalIdentityKind::CscCotPythagorean => "csc²(x) - cot²(x) = 1",
         TrigCanonicalIdentityKind::TanToSecPythagorean => "1 + tan²(x) = sec²(x)",
         TrigCanonicalIdentityKind::CotToCscPythagorean => "1 + cot²(x) = csc²(x)",
-        TrigCanonicalIdentityKind::SecTanMinusOneIdentityZero => "sec²(x) - tan²(x) - 1 = 0",
-        TrigCanonicalIdentityKind::CscCotMinusOneIdentityZero => "csc²(x) - cot²(x) - 1 = 0",
         TrigCanonicalIdentityKind::ReciprocalProductIdentity => "Reciprocal trig product = 1",
         TrigCanonicalIdentityKind::MixedFractionSinTanIdentity => {
             "(sin(u)+tan(u))/(cot(u)+csc(u)) = sin(u)·tan(u)"
@@ -88,95 +82,24 @@ define_rule!(
 );
 
 // =================================================================================
-// Direct Pythagorean Identity Rules (No Conversion)
+// Direct Pythagorean Identity Rules — REMOVED (were dead code)
 // =================================================================================
-// Instead of converting to sin/cos (which creates complex intermediate forms),
-// directly apply the Pythagorean identities:
-// - sec²(x) - tan²(x) = 1
-// - csc²(x) - cot²(x) = 1
-// - 1 + tan²(x) = sec²(x)
-// - 1 + cot²(x) = csc²(x)
-
-// sec²(x) - tan²(x) → 1
-define_rule!(
-    SecTanPythagoreanRule,
-    "sec²(x) - tan²(x) = 1",
-    Some(crate::target_kind::TargetKindSet::SUB | crate::target_kind::TargetKindSet::ADD),
-    |ctx, expr| {
-        let rewrite = try_rewrite_sec_tan_pythagorean_identity_expr(ctx, expr)?;
-        Some(
-            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
-        )
-    }
-);
-
-// csc²(x) - cot²(x) → 1
-define_rule!(
-    CscCotPythagoreanRule,
-    "csc²(x) - cot²(x) = 1",
-    Some(crate::target_kind::TargetKindSet::SUB | crate::target_kind::TargetKindSet::ADD),
-    |ctx, expr| {
-        let rewrite = try_rewrite_csc_cot_pythagorean_identity_expr(ctx, expr)?;
-        Some(
-            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
-        )
-    }
-);
-
-// 1 + tan²(x) → sec²(x)
-define_rule!(
-    TanToSecPythagoreanRule,
-    "1 + tan²(x) = sec²(x)",
-    Some(crate::target_kind::TargetKindSet::ADD),
-    |ctx, expr| {
-        let rewrite = try_rewrite_tan_to_sec_pythagorean_identity_expr(ctx, expr)?;
-        Some(
-            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
-        )
-    }
-);
-
-// 1 + cot²(x) → csc²(x)
-define_rule!(
-    CotToCscPythagoreanRule,
-    "1 + cot²(x) = csc²(x)",
-    Some(crate::target_kind::TargetKindSet::ADD),
-    |ctx, expr| {
-        let rewrite = try_rewrite_cot_to_csc_pythagorean_identity_expr(ctx, expr)?;
-        Some(
-            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
-        )
-    }
-);
-
-// ==================== Pythagorean Identity Variants with Constants ====================
-
-// sec²(x) - tan²(x) - 1 → 0
-// This handles the variant where we have the full identity minus 1
-define_rule!(
-    SecTanMinusOneIdentityRule,
-    "sec²(x) - tan²(x) - 1 = 0",
-    Some(crate::target_kind::TargetKindSet::SUB),
-    |ctx, expr| {
-        let rewrite = try_rewrite_sec_tan_minus_one_identity_zero_expr(ctx, expr)?;
-        Some(
-            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
-        )
-    }
-);
-
-// csc²(x) - cot²(x) - 1 → 0
-define_rule!(
-    CscCotMinusOneIdentityRule,
-    "csc²(x) - cot²(x) - 1 = 0",
-    Some(crate::target_kind::TargetKindSet::SUB),
-    |ctx, expr| {
-        let rewrite = try_rewrite_csc_cot_minus_one_identity_zero_expr(ctx, expr)?;
-        Some(
-            Rewrite::new(rewrite.rewritten).desc(format_trig_canonical_identity_desc(rewrite.kind)),
-        )
-    }
-);
+// The rules `SecTanPythagoreanRule`, `CscCotPythagoreanRule`, `TanToSecPythagoreanRule`,
+// `CotToCscPythagoreanRule`, `SecTanMinusOneIdentityRule`, and `CscCotMinusOneIdentityRule`
+// used to live here and were registered by `register_pythagorean_identities`, which was
+// never called from anywhere in the workspace — so these six rules never fired.
+//
+// Their behavior is fully covered by LIVE rules registered in
+// `rules/trigonometry/identities/sum_to_product_rules.rs::register`:
+//   - `sec²(x) - tan²(x) → 1`, `csc²(x) - cot²(x) → 1`      → `SecTanPythagoreanRule` /
+//     `CscCotPythagoreanRule` (defined in `identities/values_rules.rs`, same support fns).
+//   - `1 + tan²(x) → sec²(x)`, `1 + cot²(x) → csc²(x)`      → `pythagorean::RecognizeSecSquaredRule`
+//     / `RecognizeCscSquaredRule`, which match the additive chain via n-ary `add_leaves`
+//     (a superset of the removed binary-only matchers).
+//   - `sec²(x) - tan²(x) - 1 → 0`, `csc²(x) - cot²(x) - 1 → 0` fall out of the above plus
+//     arithmetic (`1 - 1 → 0`).
+// Verified: `simplify` already returns 1 / 0 / 1/cos(x)^2 / 1/sin(x)^2 for all six forms.
+// Contract locked by `cas_solver/tests/pythagorean_identity_contract_tests.rs`.
 
 // Convert reciprocal products like tan(x)*cot(x) → 1
 define_rule!(
@@ -214,21 +137,6 @@ define_rule!(
 );
 
 // ==================== Registration ====================
-
-// Register ONLY direct Pythagorean identity rules
-// CRITICAL: Must be called BEFORE any conversion rules to preserve patterns
-// sec²-tan²-1 must match BEFORE tan² becomes sin²/cos²
-pub fn register_pythagorean_identities(simplifier: &mut crate::engine::Simplifier) {
-    // These are the HIGHEST PRIORITY rules that must fire first
-    simplifier.add_rule(Box::new(SecTanPythagoreanRule));
-    simplifier.add_rule(Box::new(CscCotPythagoreanRule));
-    simplifier.add_rule(Box::new(TanToSecPythagoreanRule));
-    simplifier.add_rule(Box::new(CotToCscPythagoreanRule));
-
-    // Pythagorean variants with constants
-    simplifier.add_rule(Box::new(SecTanMinusOneIdentityRule));
-    simplifier.add_rule(Box::new(CscCotMinusOneIdentityRule));
-}
 
 // Register sophisticated canonicalization rules
 // CRITICAL: These rules are applied AFTER compositions resolve
