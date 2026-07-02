@@ -266,3 +266,17 @@ layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prov
   and 1 - e^(c) = 0` survives for the whole family (incl. the pre-existing `= 1/2`, `= 2` siblings) —
   the conditional-case builder never prunes provably-false constant conditions. Now that
   `provable_const_sign` decides these, a follow-up cycle can prune to a clean `No solution`.
+
+## FIX STATUS UPDATE #4 (2026-07-02)
+
+- **P0-C conjugate-hole** — FIXED: the SIMPLIFIER was the culprit — it rationalizes a surd-affine
+  denominator through its conjugate (`1/(x+√2) → (√2−x)/(2−x²)`), fabricating a spurious REMOVABLE
+  pole at the conjugate; the rational-inequality path then analyzed the rationalized form. Fixed by a
+  RAW-tree reduction `c/g {op} 0 ⟺ g {op'} 0` (surd-affine `g`, before the simplifier runs) + a raw
+  check in `equation_is_nonzero_const_over_polynomial` (`c/anything = 0` ⇒ No solution — the `≥` split
+  was resurrecting the conjugate via the equation branch) + an exact surd-zero second-difference test
+  in `affine_coefficients`. Also closed siblings the audit had not listed: `1/(x+2^(1/3)) > 0` (false
+  "No solution"), `1/(1+√2−x) > 0` (symbolic-coefficients error), `−2/3/(2x+√2) ≥ 0` (conjugate
+  boundary singleton), `−2/3/(2x+√2) = 0 → {2^(−1/2)}` (wrong root). Adversarial: 480 forms, 0 wrong.
+  REMAINING sibling (pre-existing): nonzero threshold `1/(x+√2) > 1 → No solution` (needs a raw
+  `c/g − k` reduction) and the malformed residual for `1/(x+√2) = 1`.

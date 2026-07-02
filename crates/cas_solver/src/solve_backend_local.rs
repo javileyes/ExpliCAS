@@ -471,6 +471,27 @@ fn equation_is_nonzero_const_over_polynomial(simplifier: &mut Simplifier, eq: &E
     if eq.op != cas_ast::RelOp::Eq {
         return false;
     }
+    // RAW-tree check first, BEFORE simplify: `c / g = 0` with a nonzero constant `c` has no
+    // solution regardless of `g` (where defined the value is nonzero; the poles are undefined).
+    // The simplifier RATIONALIZES a surd-affine denominator through its conjugate and plants a
+    // numerator root there, so the post-simplify check below missed it and the solver returned
+    // the conjugate as a root (`-2/3/(2x+√2) = 0 → {2^(-1/2)}`).
+    if cas_math::numeric_eval::as_rational_const(&simplifier.context, eq.rhs)
+        .is_some_and(|r| r.is_zero())
+    {
+        let mut node = eq.lhs;
+        while let Expr::Neg(inner) = simplifier.context.get(node) {
+            node = *inner;
+        }
+        if let Expr::Div(num, _den) = simplifier.context.get(node) {
+            let num = *num;
+            if cas_math::numeric_eval::as_rational_const(&simplifier.context, num)
+                .is_some_and(|r| !r.is_zero())
+            {
+                return true;
+            }
+        }
+    }
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
     let (simplified, _) = simplifier.simplify(diff);
     let Expr::Div(num, _den) = simplifier.context.get(simplified) else {
@@ -5506,7 +5527,18 @@ fn affine_coefficients(
     let g2_plus_g0 = simplifier.context.add(Expr::Add(g2, g0));
     let second = simplifier.context.add(Expr::Sub(g2_plus_g0, two_g1));
     let (second, _) = simplifier.simplify(second);
-    if as_rational_const(&simplifier.context, second)? != num_traits::Zero::zero() {
+    // The simplifier can leave an EXACTLY-ZERO surd combination uncollected
+    // (`(√2−1) + (√2+1) − 2·√2` stays `√2+√2−√2−√2`), which `as_rational_const`
+    // cannot read; decide exact zero via the linear-surd oracle. Undecidable ⇒
+    // treat as not affine (sound decline).
+    let second_is_zero = match as_rational_const(&simplifier.context, second) {
+        Some(r) => num_traits::Zero::is_zero(&r),
+        None => {
+            cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, second)
+                == Some(std::cmp::Ordering::Equal)
+        }
+    };
+    if !second_is_zero {
         return None;
     }
     Some((a, g0))
@@ -5730,6 +5762,72 @@ fn try_solve_abs_polynomial_equation(
     }
 }
 
+/// `c / g(x) {op} 0` with a nonzero RATIONAL `c` and `g` AFFINE in `var` with a NON-RATIONAL
+/// constant intercept (`1/(x+√2) > 0`, `3/(x+√5) ≤ 0`, `1/(x+2^(1/3)) > 0`), detected on the
+/// RAW tree. The simplifier RATIONALIZES such denominators through the conjugate
+/// (`1/(x+√2) → (√2−x)/(2−x²)`), fabricating a spurious removable pole at the CONJUGATE that
+/// the rational-inequality path then punches out of the answer (`(−√2,√2)∪(√2,∞)`), or (odd
+/// roots) collapses to a false "No solution". Reduce exactly BEFORE it runs:
+/// `c/g {op} 0 ⟺ g {op'} 0` — the value is never zero, so `≥`/`≤` collapse to strict and the
+/// only excluded point is the true pole. Rational and SYMBOLIC intercepts decline (their
+/// owners already solve them; keeps the huella intact). Nonzero thresholds (`1/(x+√2) > 1`)
+/// are a different reduction and stay out of scope here.
+fn try_solve_const_over_surd_affine_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::{Signed, Zero};
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // The threshold must be exactly 0.
+    if as_rational_const(&simplifier.context, eq.rhs).is_none_or(|r| !r.is_zero()) {
+        return None;
+    }
+    // Peel negations into the constant's sign; expect `Div(const, g)` underneath.
+    let mut neg = false;
+    let mut node = eq.lhs;
+    while let Expr::Neg(inner) = simplifier.context.get(node) {
+        node = *inner;
+        neg = !neg;
+    }
+    let (num, den) = match simplifier.context.get(node) {
+        Expr::Div(n, d) => (*n, *d),
+        _ => return None,
+    };
+    if contains_var(&simplifier.context, num, var) {
+        return None;
+    }
+    let mut c = as_rational_const(&simplifier.context, num)?;
+    if c.is_zero() {
+        return None;
+    }
+    if neg {
+        c = -c;
+    }
+    // `g` affine with a NON-RATIONAL *constant* intercept: exactly the forms the
+    // rationalizer mangles. A rational intercept has a working owner; a symbolic
+    // (free-variable) intercept belongs to the generic isolation path.
+    let (_a, b) = affine_coefficients(simplifier, den, var)?;
+    if as_rational_const(&simplifier.context, b).is_some()
+        || !cas_ast::collect_variables(&simplifier.context, b).is_empty()
+    {
+        return None;
+    }
+    let op_is_upper = matches!(eq.op, RelOp::Gt | RelOp::Geq);
+    let den_op = if op_is_upper == c.is_positive() {
+        RelOp::Gt
+    } else {
+        RelOp::Lt
+    };
+    let zero = simplifier.context.num(0);
+    solve_relation_set(simplifier, var, den, zero, den_op)
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -5752,6 +5850,11 @@ fn solve_local_core(
         || equation_has_identically_zero_denominator(simplifier, eq)
     {
         return Ok((SolutionSet::Empty, Vec::new()));
+    }
+    // `c/(x+√2) {op} 0` on the RAW tree, before the simplifier rationalizes the surd
+    // denominator through its conjugate and fabricates a spurious removable pole.
+    if let Some(set) = try_solve_const_over_surd_affine_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
     }
     // Absolute-value relations (`|x| + |x-1| < 5`, `|x| > x+1`, etc.) are
     // piecewise-linear: the isolate-one-abs strategy below loses terms or returns

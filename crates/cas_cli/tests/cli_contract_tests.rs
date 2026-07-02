@@ -880,6 +880,46 @@ fn test_eval_symbolic_quadratic_with_negative_constant_discriminant_is_empty() {
 }
 
 #[test]
+fn test_eval_const_over_surd_affine_denominator_keeps_true_pole_only() {
+    // `c/(a·x + b) {op} 0` with a NON-RATIONAL constant intercept `b`: the simplifier
+    // rationalizes the denominator through its conjugate (`1/(x+√2) → (√2−x)/(2−x²)`),
+    // fabricating a spurious REMOVABLE pole at the conjugate that the rational-inequality
+    // path punched out of the answer (`(−√2,√2)∪(√2,∞)`), collapsed odd-root denominators
+    // to a false "No solution", and returned the conjugate as a root of `c/g = 0`. The
+    // raw-tree reduction `c/g {op} 0 ⟺ g {op'} 0` keeps only the TRUE pole.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(1/(x+sqrt(2))>0, x)"), "(-(sqrt(2)), infinity)");
+    assert_eq!(r("solve(-1/(x-sqrt(2))>0, x)"), "(-infinity, sqrt(2))");
+    assert_eq!(r("solve(2/(x+sqrt(3))>=0, x)"), "(-(sqrt(3)), infinity)");
+    assert_eq!(r("solve(1/(2*x+sqrt(2))>0, x)"), "(-(2^(-1/2)), infinity)");
+    assert_eq!(r("solve(1/(x+2^(1/3))>0, x)"), "(-(2^(1/3)), infinity)");
+    assert_eq!(r("solve(1/(1+sqrt(2)-x)>0, x)"), "(-infinity, sqrt(2) + 1)");
+    // Non-strict + negative constant: the `≥` split's equation branch must NOT
+    // resurrect the conjugate as a boundary singleton.
+    assert_eq!(
+        r("solve(-2/3/(2*x+sqrt(2))>=0, x)"),
+        "(-infinity, -(2^(-1/2)))"
+    );
+    // A nonzero constant over ANYTHING is never zero (raw check, before the
+    // rationalizer plants a conjugate numerator root).
+    assert_eq!(r("solve(-2/3/(2*x+sqrt(2))=0, x)"), "No solution");
+    // Controls: rational pole, symbolic intercept, bare 1/x, and the equation
+    // forms with a variable numerator keep their owners.
+    assert_eq!(r("solve(1/(x-2)>0, x)"), "(2, infinity)");
+    assert_eq!(r("solve(1/(x+a)>0, x)"), "(-a, infinity)");
+    assert_eq!(r("solve(1/x>0, x)"), "(0, infinity)");
+    assert_eq!(r("solve(x/(x-2)=0, x)"), "{ 0 }");
+    assert_eq!(r("solve(1/(x-2)=3, x)"), "{ 7/3 }");
+}
+
+#[test]
 fn test_eval_rational_exponent_constants_are_sign_decidable() {
     // A constant `base^(p/q)` (`e^(1/3)`, `2^(1/3)`, ...) is now sign-decidable via
     // exact n-th-root value bounds (`const_sign::interval_pow`), closing the P0-F-log
