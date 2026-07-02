@@ -59,6 +59,15 @@ fn collect_mul_factors_flat_recursive(ctx: &Context, expr: ExprId, factors: &mut
 /// - `Pow(base, k)` with integer `k` becomes `(base, k)`
 /// - top-level `Neg(x)` is unwrapped for intersection purposes
 /// - everything else becomes `(expr, 1)`
+/// - repeated bases are AGGREGATED into one entry with the summed exponent
+///
+/// The aggregation is a soundness invariant: a mid-pipeline non-canonical tree
+/// (`2·sin(x)·sin(x)·cos(x)` from a double-angle expansion) is a legal input, and
+/// every consumer treats this list as a MULTISET keyed by base — with duplicate
+/// entries the factor-from-Add subtraction removed the common exponent from EACH
+/// occurrence, over-cancelling a factor (`2·sin·sin·cos` factored by `sin` became
+/// `sin·(2·cos)`: the non-equivalent `diff(sin(x)·tan(x), x, 2)` P0). Order of
+/// first occurrence is preserved.
 pub fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
     let mut factors = Vec::new();
     let actual_expr = match ctx.get(expr) {
@@ -66,7 +75,19 @@ pub fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, 
         _ => expr,
     };
     collect_mul_factors_recursive(ctx, actual_expr, 1, &mut factors);
-    factors
+    let mut aggregated: Vec<(ExprId, i64)> = Vec::new();
+    for (base, exp) in factors {
+        if let Some((_, total)) = aggregated.iter_mut().find(|(existing, _)| {
+            *existing == base
+                || cas_ast::ordering::compare_expr(ctx, *existing, base)
+                    == std::cmp::Ordering::Equal
+        }) {
+            *total += exp;
+        } else {
+            aggregated.push((base, exp));
+        }
+    }
+    aggregated
 }
 
 fn collect_mul_factors_recursive(
@@ -654,5 +675,34 @@ mod tests {
             },
         );
         assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn collect_mul_factors_aggregates_repeated_bases() {
+        use cas_parser::parse;
+        // `2·sin(x)·sin(x)·cos(x)` (a legal mid-pipeline non-canonical tree) must
+        // collect sin(x) ONCE with exponent 2 — duplicate entries broke the
+        // factor-from-Add subtraction (over-cancel, the diff(sin·tan, x, 2) P0).
+        let mut ctx = Context::new();
+        let e = parse("2*sin(x)*sin(x)*cos(x)", &mut ctx).expect("parse");
+        let factors = super::collect_mul_factors_int_pow(&ctx, e);
+        let sin = parse("sin(x)", &mut ctx).expect("parse");
+        let sin_entries: Vec<i64> = factors
+            .iter()
+            .filter(|(b, _)| {
+                cas_ast::ordering::compare_expr(&ctx, *b, sin) == std::cmp::Ordering::Equal
+            })
+            .map(|(_, e)| *e)
+            .collect();
+        assert_eq!(
+            sin_entries,
+            vec![2],
+            "sin must aggregate to one entry with exp 2"
+        );
+        // Powers merge with bare occurrences: x^2 * x -> (x, 3).
+        let e2 = parse("x^2*x", &mut ctx).expect("parse");
+        let f2 = super::collect_mul_factors_int_pow(&ctx, e2);
+        assert_eq!(f2.len(), 1);
+        assert_eq!(f2[0].1, 3);
     }
 }

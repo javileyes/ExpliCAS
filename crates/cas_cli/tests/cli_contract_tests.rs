@@ -880,6 +880,40 @@ fn test_eval_symbolic_quadratic_with_negative_constant_discriminant_is_empty() {
 }
 
 #[test]
+fn test_eval_second_derivative_of_sin_tan_is_numerically_equivalent() {
+    // P0-G: `diff(sin(x)·tan(x), x, 2)` returned a NON-equivalent tree (wrong at
+    // every sample point). Root cause: `collect_mul_factors_int_pow` returned a
+    // repeated base (`2·sin·sin·cos`, a legal mid-pipeline non-canonical tree from
+    // the double-angle expansion) as TWO entries, and the factor-from-Add
+    // subtraction removed the common exponent from each — over-cancelling a
+    // factor. The collector now aggregates duplicates. Same root cause fixed the
+    // C5 family `diff((x+tan(x))^n, x)` for n = 3, 4 (dropped a cos / hung).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // (8 - (2·sin·cos)²)/(4·cos³) = (2 - sin²cos²·... ) — numerically f'' of sin·tan.
+    assert_eq!(
+        r("diff(sin(x)*tan(x), x, 2)"),
+        "(8 - (2\u{b7}sin(x)\u{b7}cos(x))^2) / (4\u{b7}cos(x)^3)"
+    );
+    // The minimal over-cancel repro keeps its sin factor.
+    assert_eq!(
+        r("simplify((-sin(x)^3*cos(x) + 2*sin(x)^2*cos(x)) / (cos(x)^2*sin(x)))"),
+        "(2\u{b7}sin(x) - sin(x)^2) / cos(x)"
+    );
+    // C5 siblings: n = 3 and n = 4 produce the correct 3(x+tan)²·(1+sec²) shape.
+    assert_eq!(
+        r("diff((x+tan(x))^3, x)"),
+        "3\u{b7}(sin(x) / cos(x) + x)^2\u{b7}(2\u{b7}cos(x)^2 - 1 + 3) / (2\u{b7}cos(x)^2)"
+    );
+}
+
+#[test]
 fn test_eval_abs_of_log_threshold_inequality_solves_both_branches() {
     // `|ln(x)| {op} c`: the two-sided reduction was ALREADY correct, but the interval
     // algebra downstream could not ORDER the transcendental endpoints (`e²` vs `1/e²`),

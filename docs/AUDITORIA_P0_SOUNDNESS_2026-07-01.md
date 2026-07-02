@@ -301,3 +301,15 @@ layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prov
   the inverse affine (orientation flips for negative slope); the equation reduces to the single point
   `x = (c/k − b)/a`. 1500-form adversarial sweep, 0 wrong. Remaining honest residuals: irrational `c`/`k`
   and variable numerators decline to the general path.
+- **P0-G** — FIXED (2026-07-02): the audit's depth-truncation hypothesis was WRONG (`--budget
+  unlimited` reproduced the same wrong tree; every depth-guard return is identity-preserving). An
+  equivalence FUZZER (random trig rational forms, simplify vs numeric truth at 3 points) found the
+  real culprit in minutes: `collect_mul_factors_int_pow` returned a REPEATED base as separate entries
+  (`2·sin·sin·cos`, a legal mid-pipeline non-canonical tree from the double-angle expansion), and the
+  factor-from-Add subtraction removed the common exponent from EACH occurrence — over-cancelling a
+  factor. The collector now aggregates duplicates (multiset invariant, 20 consumer sites protected at
+  once). Also fixes the C5 family `diff((x+tan(x))^n, x)` for n = 3 (dropped cos) and n = 4 (hung).
+  600-form equivalence fuzz post-fix: 0 non-equivalences. REMAINING: the n = 2 HANG (C5 bug-2, the
+  expand↔factor inverse cycle — honest non-termination, not a wrong answer; ~2.3% of fuzzed forms).
+
+**With this, every wrong-answer P0 from this audit is CLOSED.**

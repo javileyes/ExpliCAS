@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 491 (newest first)
+Active entries: 492 (newest first)
 
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
@@ -123,6 +123,7 @@ Active entries: 491 (newest first)
 - 2026-07-02 | `retained` | `crates/cas_math/src/prove_sign.rs` (fallback `provable_const_sign` en los pr... | SOUNDNESS+PRESENTACIÓN (condicionales vacuos): `prove_sign`/`prove_nonzero` deciden constantes transcendentales
 - 2026-07-02 | `retained` | `scripts/engine_integrate_command_matrix_smoke.py` (5 fixtures), `scripts/eng... | HONESTIDAD DE HARNESS (RED didáctico heredado): re-contratar 6 fixtures al contrato didáctico vigente + refresh de baselines
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | UNIVERSALIDAD+SOUNDNESS (umbral no nulo sobre denominador surd-afín): `1/(x+√2) > 1` daba "No solution"
+- 2026-07-02 | `retained` | `crates/cas_math/src/fraction_factors.rs` (`collect_mul_factors_int_pow` ahor... | SOUNDNESS (P0-G): el colector de factores devolvía bases repetidas — over-cancel en factor-from-Add
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
@@ -18285,3 +18286,19 @@ Active entries: 491 (newest first)
   - Espacio-u con breakpoints racionales + mapeo afín inverso es el mismo esqueleto que el handler trig de argumento desfasado (`map_solution_through_affine` para Periodic/Discrete) — esta vez para conjuntos CONTINUOS (Interval/Union). El mapeo afín inverso de conjuntos es la segunda mitad reutilizable: cualquier reducción `atom = a·x+b` puede ahora devolver intervalos, no solo familias discretas.
   - En sweeps numéricos contra endpoints EXACTOS del engine, un test de membresía estricta a 1 ulp fabrica falsos "boundary-inclusivity" (root float ≠ endpoint float por redondeo de caminos distintos): la membresía debe tratar |x−endpoint|<ε como frontera. 36/36 flags eran del verificador — verificar el VERIFICADOR antes de creer sus flags (gemelo de la lección de raíces tangentes).
   - PRÓXIMO PELDAÑO: `c` o `k` IRRACIONALES (`√2/(x+√2) > 1`) declinan (colector racional); numerador con variable (`x/(x+√2) > 1`) fuera de alcance del handler (ruta general). El render `−2·2^(−1/2)` (= −√2) es feo pero exacto — candidato de presentación.
+
+## 2026-07-02 - SOUNDNESS (P0-G): el colector de factores devolvía bases repetidas — over-cancel en factor-from-Add
+
+- area: `crates/cas_math/src/fraction_factors.rs` (`collect_mul_factors_int_pow` ahora AGREGA bases repetidas sumando exponentes)
+- status: `retained` (commit pendiente-de-hash). Cierra P0-G (`diff(sin(x)·tan(x),x,2)` devolvía un árbol NO equivalente — el último wrong-answer del backlog de la auditoría 2026-07-01) Y la mitad de C5 (`diff((x+tan(x))^n,x)` n=3 perdía un cos, n=4 colgaba — ahora ambos correctos). Verificado: fuzz de equivalencia 600 formas → 0 no-equivalencias (antes 2 + 8 hangs en 400); P0-G verificado numéricamente en 3 puntos.
+- capture:
+  - investment_class: soundness (invariante del simplificador: simplify debe preservar equivalencia numérica).
+  - cell: `diff(sin(x)·tan(x),x,2)` → `(8−(2·sin·cos)²)/(4·cos³)` (= verdad numérica en x∈{0.5,1,2}; antes wrong en TODOS los puntos, error = +2s²c²); repro mínimo `simplify((−sin³cos+2sin²cos)/(cos²sin))` → `(2sin−sin²)/cos` (antes `(2cos²−1+3)/(2cos)` wrong); C5 n=3/n=4 → `n(x+tan)^(n−1)·(1+sec²)` en forma equivalente. Residual: n=2 sigue COLGANDO (bug-2 de C5, ciclo expand↔factor, honesto).
+  - método de descubrimiento: la hipótesis del audit (truncación por profundidad ⇒ árbol parcial) era INCORRECTA — `--budget unlimited` reproducía el mismo wrong, y cada retorno del depth-guard es identity-preserving. Un **fuzz de equivalencia** (400 expresiones racionales trig aleatorias, simplify vs verdad numérica en 3 puntos) encontró 2 no-equivalencias reales en minutos; el shrink a 2 términos + la traza `--steps on` señalaron el paso exacto: "Factor Common Factors from Add in Div" factorizaba `2·sin·sin·cos` como `sin·(2·cos)`.
+  - causa raíz: `collect_mul_factors_int_pow` empujaba cada ocurrencia de un factor repetido como ENTRADA SEPARADA (`sin` dos veces para el árbol no-canónico `2·sin·sin·cos` que produce la expansión de ángulo doble a mitad de pipeline). `factors_to_vec` (para computar el factor común) SÍ agregaba, pero `build_factored_add` restaba el exponente común de CADA entrada cruda ⇒ una ocurrencia perdida. 20 call sites consumen el colector asumiendo el invariante multiset.
+  - fix: agregar en el PROPIO colector (merge por `compare_expr`/id, suma de exponentes, orden de primera aparición) — chokepoint: los 20 consumidores quedan protegidos de una vez, y el contrato documentado pasa a ser "multiset por base". El builder ya saltaba exp≤0, consistente.
+  - validación: workspace failed:0; clippy limpio; huella GUARD/PRESS 0 deltas committed-vs-current; fuzz 600 → 0 non-equiv; matrices verdes.
+- retained learning:
+  - EL FUZZ DE EQUIVALENCIA ES EL DETECTOR CORRECTO para bugs de "simplify devuelve algo no equivalente": barato (grammar pequeña + verdad numérica en 3 puntos), encuentra el repro mínimo por shrink, y la traza --steps localiza la regla exacta. La hipótesis estructural del audit (truncación) habría llevado a un fix arquitectónico grande E INÚTIL — sondear la hipótesis (`--budget unlimited`) antes de implementarla ahorró el ciclo.
+  - Un colector de factores que puede recibir árboles NO-canónicos (mid-pipeline: `sin·sin` legal tras una expansión) y devuelve lista cruda viola el invariante multiset que sus consumidores asumen silenciosamente — la agregación pertenece al COLECTOR (chokepoint, 20 consumidores), no a cada consumidor (el bug era exactamente que uno agregaba y otro no).
+  - PRÓXIMO PELDAÑO: el hang de `diff((x+tan(x))^2,x)` (bug-2 de C5: ciclo expand↔factor inverso) sigue abierto — el fuzzer lo reproduce en el 2.3% de formas; es un no-terminación honesta, no un wrong-answer. El fuzz de equivalencia merece quedar como herramienta permanente (script o lane).
